@@ -17,19 +17,23 @@ Conecta la oferta y la demanda dentro de tu barrio. Productos, servicios, mano d
 - Arana
 - Correas
 
-## Despliegue en Render.com
+## Despliegue rpido
 
-1. Conectá tu GitHub repo en Render
-2. Creá los servicios Web + PostgreSQL en el dashboard de Render
-3. Configurá las variables de entorno desde `.env.example`
-4. Push a `main` despliega automáticamente
+Ver **[DEPLOYMENT.md](DEPLOYMENT.md)** para instrucciones completas paso a paso.
+
+En resumen:
+1. Crear proyecto en Supabase
+2. Ejecutar `supabase/migrations/001_init.sql` en el SQL Editor
+3. Crear Web Service en Render.com conectando este repo
+4. Agregar las variables de entorno de Supabase en Render
+5. Listo
 
 ## Desarrollo local
 
 ```bash
 npm install
 cp .env.example .env.local
-# completá las variables de entorno de Supabase
+# complet las variables de entorno de Supabase
 npm run dev
 ```
 
@@ -42,4 +46,5 @@ src/
   lib/          → Supabase client, utilities
   types/        → TypeScript type definitions
 supabase/       → Migrations SQL
+render.yaml     → Configuracin de deploy en Render
 ```

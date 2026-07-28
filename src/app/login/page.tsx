@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { supabase } from "@/lib/supabase";
+import { getSupabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,6 +17,13 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
     setMessage("");
+
+    const supabase = getSupabase();
+    if (!supabase) {
+      setMessage("Error: no se pudo conectar");
+      setLoading(false);
+      return;
+    }
 
     const { error } = await supabase.auth.signInWithOtp({
       email,

@@ -1,4 +1,4 @@
-import { supabase } from "@/lib/supabase";
+import { getSupabase } from "@/lib/supabase";
 import { notFound } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -9,6 +9,9 @@ type PageProps = {
 };
 
 export default async function ProductDetailPage({ params }: PageProps) {
+  const supabase = getSupabase();
+  if (!supabase) notFound();
+
   const { data: product, error } = await supabase
     .from("products")
     .select("*")

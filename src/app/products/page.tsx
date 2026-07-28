@@ -1,4 +1,4 @@
-import { supabase } from "@/lib/supabase";
+import { getSupabase } from "@/lib/supabase";
 import { ProductCard } from "@/components/products/product-card";
 import { Input } from "@/components/ui/input";
 
@@ -15,6 +15,15 @@ export default async function ProductsPage({
 }: {
   searchParams: SearchParams;
 }) {
+  const supabase = getSupabase();
+  if (!supabase) {
+    return (
+      <main className="container mx-auto px-4 py-8">
+        <p className="text-red-600">Error: no se pudo conectar a la base de datos</p>
+      </main>
+    );
+  }
+
   const { barrio, q, type: typeFilter } = await searchParams;
 
   let query = supabase

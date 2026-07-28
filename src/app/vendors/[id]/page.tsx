@@ -1,4 +1,4 @@
-import { supabase } from "@/lib/supabase";
+import { getSupabase } from "@/lib/supabase";
 import { notFound } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { ProductCard } from "@/components/products/product-card";
@@ -10,6 +10,9 @@ type PageProps = {
 };
 
 export default async function VendorPage({ params }: PageProps) {
+  const supabase = getSupabase();
+  if (!supabase) notFound();
+
   const { data: vendor, error: vendorError } = await supabase
     .from("vendors")
     .select("*")

@@ -7,23 +7,49 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
+type Mode = "password" | "magic";
+
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [mode, setMode] = useState<Mode>("password");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
 
-  async function handleMagicLink(e: React.FormEvent) {
+  const supabase = getSupabase();
+
+  async function handlePasswordLogin(e: React.FormEvent) {
     e.preventDefault();
+    if (!supabase) {
+      setMessage("Error: no se pudo conectar");
+      return;
+    }
     setLoading(true);
     setMessage("");
 
-    const supabase = getSupabase();
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (error) {
+      setMessage(error.message);
+    } else {
+      router.push("/");
+    }
+    setLoading(false);
+  }
+
+  async function handleMagicLink(e: React.FormEvent) {
+    e.preventDefault();
     if (!supabase) {
       setMessage("Error: no se pudo conectar");
       setLoading(false);
       return;
     }
+    setLoading(true);
+    setMessage("");
 
     const { error } = await supabase.auth.signInWithOtp({
       email,
@@ -39,7 +65,6 @@ export default function LoginPage() {
         "Revisá tu correo electrónico para completar el inicio de sesión."
       );
     }
-
     setLoading(false);
   }
 
@@ -48,11 +73,14 @@ export default function LoginPage() {
       <div className="text-center mb-8">
         <h1 className="text-3xl font-bold">conectaMOS</h1>
         <p className="text-gray-600 mt-2">
-          Iniciá sesión para comprar publicar y vender
+          Iniciá sesión para comprar, publicar y vender
         </p>
       </div>
 
-      <form onSubmit={handleMagicLink} className="space-y-4">
+      <form
+        onSubmit={mode === "password" ? handlePasswordLogin : handleMagicLink}
+        className="space-y-4"
+      >
         <div>
           <Label htmlFor="email">Correo electrónico</Label>
           <Input
@@ -64,10 +92,25 @@ export default function LoginPage() {
             required
           />
         </div>
+
+        {mode === "password" && (
+          <div>
+            <Label htmlFor="password">Contraseña</Label>
+            <Input
+              id="password"
+              type="password"
+              placeholder="••••••••"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+            />
+          </div>
+        )}
+
         {message && (
           <p
             className={`text-sm ${
-              message.includes("correo")
+              message.includes("correo") || message.includes("Revisá")
                 ? "text-green-600"
                 : "text-red-600"
             }`}
@@ -75,10 +118,41 @@ export default function LoginPage() {
             {message}
           </p>
         )}
+
         <Button type="submit" className="w-full" disabled={loading}>
-          {loading ? "Enviando..." : "Enviar link de acceso"}
+          {loading
+            ? "Enviando..."
+            : mode === "password"
+            ? "Iniciar sesión"
+            : "Enviar link de acceso"}
         </Button>
       </form>
+
+      <p className="text-center text-sm text-gray-500 mt-4">
+        {mode === "password" ? (
+          <>
+            ¿Prefieres un link mágico?{" "}
+            <button
+              type="button"
+              onClick={() => setMode("magic")}
+              className="text-primary underline hover:no-underline"
+            >
+              Enviar link al email
+            </button>
+          </>
+        ) : (
+          <>
+            ¿Tenés contraseña?{" "}
+            <button
+              type="button"
+              onClick={() => setMode("password")}
+              className="text-primary underline hover:no-underline"
+            >
+              Iniciar sesión con contraseña
+            </button>
+          </>
+        )}
+      </p>
     </main>
   );
 }

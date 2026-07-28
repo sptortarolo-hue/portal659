@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { getSupabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,24 +16,20 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
 
-  const supabase = getSupabase();
-
   async function handlePasswordLogin(e: React.FormEvent) {
     e.preventDefault();
-    if (!supabase) {
-      setMessage("Error: no se pudo conectar");
-      return;
-    }
     setLoading(true);
     setMessage("");
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
+    const res = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
     });
 
-    if (error) {
-      setMessage(error.message);
+    if (!res.ok) {
+      const data = await res.json();
+      setMessage(data.error || "Error al iniciar sesión");
     } else {
       router.push("/");
     }
@@ -43,23 +38,18 @@ export default function LoginPage() {
 
   async function handleMagicLink(e: React.FormEvent) {
     e.preventDefault();
-    if (!supabase) {
-      setMessage("Error: no se pudo conectar");
-      setLoading(false);
-      return;
-    }
     setLoading(true);
     setMessage("");
 
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: {
-        emailRedirectTo: `${window.location.origin}/`,
-      },
+    const res = await fetch("/api/auth/magic-link", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
     });
 
-    if (error) {
-      setMessage(error.message);
+    if (!res.ok) {
+      const data = await res.json();
+      setMessage(data.error || "Error al enviar link");
     } else {
       setMessage(
         "Revisá tu correo electrónico para completar el inicio de sesión."

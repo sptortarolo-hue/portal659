@@ -17,9 +17,15 @@ export default async function ProductsPage({
 }) {
   const supabase = getSupabase();
   if (!supabase) {
+    const missing = [];
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL && !process.env.SUPABASE_URL) missing.push("SUPABASE_URL");
+    if (!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY && !process.env.SUPABASE_ANON_KEY) missing.push("ANON_KEY");
     return (
       <main className="container mx-auto px-4 py-8">
-        <p className="text-red-600">Error: no se pudo conectar a la base de datos</p>
+        <p className="text-red-600">
+          Error de configuración: faltan variables de entorno ({missing.join(", ")}).
+          Verificá que estén configuradas en Render.
+        </p>
       </main>
     );
   }

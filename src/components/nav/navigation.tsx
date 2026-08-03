@@ -1,6 +1,5 @@
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { UserMenu } from "./user-menu";
 
 export function Navigation() {
   return (
@@ -9,23 +8,7 @@ export function Navigation() {
         <Link href="/" className="text-xl font-bold tracking-tight">
           conectaMOS
         </Link>
-        <div className="flex items-center gap-4">
-          <Link
-            href="/products"
-            className="text-sm font-medium text-gray-600 hover:text-gray-900"
-          >
-            Productos
-          </Link>
-          <Link
-            href="/login"
-            className="text-sm font-medium text-gray-600 hover:text-gray-900"
-          >
-            Iniciar sesión
-          </Link>
-          <Button asChild size="sm">
-            <Link href="/login">Vender</Link>
-          </Button>
-        </div>
+        <UserMenu />
       </div>
     </nav>
   );

@@ -2,13 +2,12 @@
   "name": "conecta-mos",
   "version": "1.0.0",
   "private": true,
-  "description": "Marketplace hiperlocal que conecta la oferta y la demanda dentro de un barrio: mano de obra, servicios, productos y comida",
+  "description": "Galería gastronómica de barrio: micrositios por local, pedido por WhatsApp, 0% comisión",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
-    "seed": "node scripts/seed-users.mjs"
+    "lint": "next lint"
   },
   "dependencies": {
     "@radix-ui/react-alert-dialog": "^1.1.15",

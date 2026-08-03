@@ -5,3 +5,5 @@ node_modules/
 next-env.d.ts
 dist/
 build/
+pass DB.txt
+*.tsbuildinfo

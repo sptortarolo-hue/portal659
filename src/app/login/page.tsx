@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-
 type Mode = "password" | "magic";
 
 export default function LoginPage() {
@@ -27,8 +26,9 @@ export default function LoginPage() {
       body: JSON.stringify({ email, password }),
     });
 
+    const data = await res.json();
+
     if (!res.ok) {
-      const data = await res.json();
       setMessage(data.error || "Error al iniciar sesión");
     } else {
       router.push("/");

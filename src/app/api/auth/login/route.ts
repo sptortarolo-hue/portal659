@@ -16,7 +16,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const { error } = await supabase.auth.signInWithPassword({
+  const { data, error } = await supabase.auth.signInWithPassword({
     email,
     password,
   });
@@ -25,5 +25,23 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 401 });
   }
 
-  return NextResponse.json({ ok: true });
+  const response = NextResponse.json({ ok: true, session: data.session });
+  if (data.session) {
+    const isLocal = process.env.NODE_ENV === "development";
+    response.cookies.set("sb-access-token", data.session.access_token, {
+      httpOnly: true,
+      secure: !isLocal,
+      sameSite: "lax",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 7,
+    });
+    response.cookies.set("sb-refresh-token", data.session.refresh_token, {
+      httpOnly: true,
+      secure: !isLocal,
+      sameSite: "lax",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 7,
+    });
+  }
+  return response;
 }

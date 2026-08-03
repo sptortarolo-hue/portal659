@@ -22,7 +22,9 @@ export default function CheckoutPage() {
   if (!vendor || items.length === 0) {
     return (
       <main className="container mx-auto px-4 py-20 max-w-md text-center">
-        <h1 className="text-2xl font-bold mb-4">Tu pedido está vacío</h1>
+        <h1 className="font-display text-3xl font-semibold mb-4">
+          Tu pedido está vacío
+        </h1>
         <p className="text-gray-500 mb-6">
           Agregá platos de un local para poder hacer el pedido.
         </p>
@@ -95,7 +97,9 @@ export default function CheckoutPage() {
   if (done) {
     return (
       <main className="container mx-auto px-4 py-20 max-w-md text-center">
-        <h1 className="text-2xl font-bold mb-4">Pedido enviado</h1>
+        <h1 className="font-display text-3xl font-semibold mb-4">
+          Pedido enviado
+        </h1>
         <p className="text-gray-600 mb-6">
           Se abrió WhatsApp con tu pedido para{" "}
           <span className="font-medium">{v.storeName}</span>. El local te
@@ -108,7 +112,9 @@ export default function CheckoutPage() {
 
   return (
     <main className="container mx-auto px-4 py-8 max-w-md">
-      <h1 className="text-2xl font-bold mb-2">Confirmar pedido</h1>
+      <h1 className="font-display text-3xl font-semibold mb-2">
+        Confirmar pedido
+      </h1>
       <p className="text-gray-500 text-sm mb-6">
         Con {v.storeName} · {items.length} items ·{" "}
         <span className="font-semibold">${total.toLocaleString("es-AR")}</span>
@@ -193,8 +199,12 @@ export default function CheckoutPage() {
 
         {error && <p className="text-sm text-red-600">{error}</p>}
 
-        <Button type="submit" className="w-full" disabled={loading}>
-          {loading ? "Enviando pedido..." : "Enviar pedido por WhatsApp"}
+        <Button
+          type="submit"
+          className="w-full bg-whatsapp text-white hover:bg-whatsapp-dark"
+          disabled={loading}
+        >
+          {loading ? "Enviando pedido..." : "Confirmar pedido por WhatsApp"}
         </Button>
         <p className="text-xs text-gray-400 text-center">
           El pedido se envía al WhatsApp del local. Sin registro, sin pagar

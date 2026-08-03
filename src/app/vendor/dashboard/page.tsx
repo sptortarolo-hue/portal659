@@ -63,7 +63,7 @@ const STATUS_LABELS: Record<Order["status"], string> = {
 };
 
 const STATUS_COLORS: Record<Order["status"], string> = {
-  new: "bg-blue-100 text-blue-700",
+  new: "bg-orange-100 text-orange-700",
   confirmed: "bg-amber-100 text-amber-700",
   completed: "bg-green-100 text-green-700",
   cancelled: "bg-red-100 text-red-700",
@@ -215,7 +215,9 @@ export default function VendorDashboard() {
   if (!vendor) {
     return (
       <main className="container mx-auto px-4 py-20 max-w-lg text-center">
-        <h1 className="text-2xl font-bold mb-4">Tu local en conectaMOS</h1>
+        <h1 className="font-display text-3xl font-semibold mb-4">
+          Tu local en conectaMOS
+        </h1>
         <p className="text-gray-600 mb-6">
           Registrá tu local gastronómico para armar tu menú y recibir pedidos
           de {PRIMARY_NEIGHBORHOOD.name} por WhatsApp.
@@ -254,7 +256,9 @@ export default function VendorDashboard() {
     <main className="container mx-auto px-4 py-8 max-w-4xl">
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div>
-          <h1 className="text-2xl font-bold">{vendor.store_name}</h1>
+          <h1 className="font-display text-3xl font-semibold">
+            {vendor.store_name}
+          </h1>
           <p className="text-gray-500 text-sm">
             {vendor.slug && (
               <a

@@ -1,12 +1,20 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Inter, Fraunces } from "next/font/google";
 import "./globals.css";
 import { Navigation } from "@/components/nav/navigation";
 import { CartProvider } from "@/lib/cart";
 import { CartButton } from "@/components/cart/cart-button";
 import { CartDrawer } from "@/components/cart/cart-drawer";
 
-const inter = Inter({ subsets: ["latin"] });
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-inter",
+});
+
+const fraunces = Fraunces({
+  subsets: ["latin"],
+  variable: "--font-fraunces",
+});
 
 export const metadata: Metadata = {
   title: "conectaMOS — Gastronomía de barrio",
@@ -21,14 +29,17 @@ export default function RootLayout({
 }) {
   return (
     <html lang="es">
-      <body className={`${inter.className} antialiased min-h-screen flex flex-col`}>
+      <body
+        className={`${inter.variable} ${fraunces.variable} antialiased min-h-screen flex flex-col`}
+      >
         <CartProvider>
           <Navigation />
           <main className="flex-1">{children}</main>
           <CartButton />
           <CartDrawer />
-          <footer className="border-t py-6 text-center text-sm text-gray-500">
-            © {new Date().getFullYear()} conectaMOS — Gastronomía de barrio
+          <footer className="border-t border-border py-6 text-center text-sm text-muted-foreground bg-card">
+            © {new Date().getFullYear()} conectaMOS — La galería gastronómica de
+            tu barrio · 0% comisión
           </footer>
         </CartProvider>
       </body>

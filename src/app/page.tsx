@@ -32,46 +32,76 @@ export default async function HomePage() {
     .order("featured_today", { ascending: false })
     .order("created_at", { ascending: false });
 
-  const featured =
-    offers?.filter((o: any) => o.featured_today) || [];
+  const featured = offers?.filter((o: any) => o.featured_today) || [];
   const rest = offers?.filter((o: any) => !o.featured_today) || [];
 
   return (
-    <main className="container mx-auto px-4 py-8">
-      <section className="text-center mb-10">
-        <h1 className="text-4xl font-bold tracking-tight sm:text-5xl">
-          conectaMOS
-        </h1>
-        <p className="mt-3 text-lg text-gray-600 max-w-2xl mx-auto">
-          La galería gastronómica de tu barrio. Pedí comida casera y regional
-          directo a los productores de {PRIMARY_NEIGHBORHOOD.name}, sin
-          comisiones ni intermediarios.
-        </p>
+    <main>
+      <section className="bg-gradient-to-b from-accent via-cream to-background border-b border-border">
+        <div className="container mx-auto px-4 py-16 text-center">
+          <p className="text-xs font-semibold tracking-widest uppercase text-primary mb-4">
+            Del barrio para tu mesa · {PRIMARY_NEIGHBORHOOD.name}
+          </p>
+          <h1 className="font-display text-5xl font-semibold tracking-tight sm:text-6xl">
+            La galería gastronómica de tu barrio
+          </h1>
+          <p className="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">
+            Pedí comida casera y regional directo a los productores de{" "}
+            {PRIMARY_NEIGHBORHOOD.name}. Sin comisiones, sin intermediarios:
+            el pedido cae en el WhatsApp del local.
+          </p>
+          <div className="mt-8 flex flex-wrap justify-center gap-3">
+            <Link
+              href="#locales"
+              className="rounded-md bg-primary text-primary-foreground px-6 py-3 text-sm font-medium hover:bg-primary/90"
+            >
+              Ver los locales
+            </Link>
+            <Link
+              href="/register"
+              className="rounded-md border border-border bg-card px-6 py-3 text-sm font-medium hover:bg-accent"
+            >
+              ¿Tenés un local? Sumate gratis
+            </Link>
+          </div>
+        </div>
       </section>
 
-      <section className="flex flex-wrap justify-center gap-2 mb-10">
-        {NEIGHBORHOODS.map((n) => (
-          <span
-            key={n.slug}
-            className={`rounded-full px-4 py-1.5 text-sm ${
-              n.active
-                ? "bg-primary text-primary-foreground font-medium"
-                : "bg-gray-100 text-gray-400"
-            }`}
-          >
-            {n.name}
-            {!n.active && " (próximamente)"}
-          </span>
-        ))}
+      <section className="container mx-auto px-4 py-10">
+        <div className="flex flex-wrap justify-center gap-2">
+          {NEIGHBORHOODS.map((n) => (
+            <span
+              key={n.slug}
+              className={`rounded-full px-4 py-1.5 text-sm ${
+                n.active
+                  ? "bg-primary text-primary-foreground font-medium"
+                  : "bg-muted text-muted-foreground"
+              }`}
+            >
+              {n.name}
+              {!n.active && " (próximamente)"}
+            </span>
+          ))}
+        </div>
       </section>
 
       {featured.length > 0 && (
-        <section className="mb-12">
-          <div className="flex items-center gap-3 mb-4">
-            <h2 className="text-2xl font-bold">La oferta de hoy</h2>
-            <span className="rounded-full bg-orange-100 text-orange-700 px-3 py-1 text-xs font-medium">
-              Elegida por los locales de {PRIMARY_NEIGHBORHOOD.name}
-            </span>
+        <section className="container mx-auto px-4 mb-12" id="hoy">
+          <div className="rounded-2xl border border-amber-200 bg-gradient-to-r from-amber-50 to-orange-50 p-6 mb-6">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+              <span className="rounded-full bg-primary px-3 py-1 text-xs font-semibold uppercase tracking-widest text-primary-foreground">
+                Hoy
+              </span>
+              <div>
+                <h2 className="font-display text-2xl font-semibold">
+                  La oferta de hoy
+                </h2>
+                <p className="text-sm text-muted-foreground">
+                  Lo que los locales de {PRIMARY_NEIGHBORHOOD.name} te
+                  recomiendan hoy
+                </p>
+              </div>
+            </div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {featured.map((o: any) => (
@@ -91,12 +121,16 @@ export default async function HomePage() {
         </section>
       )}
 
-      <section className="mb-12">
-        <h2 className="text-2xl font-bold mb-4">
+      <section className="container mx-auto px-4 mb-12" id="locales">
+        <h2 className="font-display text-3xl font-semibold mb-2">
           Los locales de {PRIMARY_NEIGHBORHOOD.name}
         </h2>
+        <p className="text-muted-foreground mb-6">
+          Cada local tiene su propia vidriera. Tocá para ver su menú y pedir
+          por WhatsApp.
+        </p>
         {!vendors || vendors.length === 0 ? (
-          <p className="text-gray-500 text-center py-8">
+          <p className="text-muted-foreground text-center py-8">
             Todavía no hay locales cargados. ¡Volvé pronto!
           </p>
         ) : (
@@ -114,20 +148,22 @@ export default async function HomePage() {
                     </div>
                   ) : (
                     <div className="h-32 w-full bg-gradient-to-br from-amber-100 to-orange-200 flex items-center justify-center">
-                      <span className="text-5xl font-bold text-orange-400">
+                      <span className="font-display text-5xl font-bold text-primary/70">
                         {v.store_name.charAt(0)}
                       </span>
                     </div>
                   )}
                   <CardContent className="p-5">
-                    <h3 className="font-bold text-lg">{v.store_name}</h3>
+                    <h3 className="font-display text-xl font-semibold">
+                      {v.store_name}
+                    </h3>
                     {v.description && (
-                      <p className="text-sm text-gray-500 mt-1 line-clamp-2">
+                      <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
                         {v.description}
                       </p>
                     )}
-                    <p className="text-xs text-gray-400 mt-2">
-                      Ver menú y pedir
+                    <p className="text-xs text-primary mt-3 font-medium">
+                      Ver menú y pedir →
                     </p>
                   </CardContent>
                 </Card>
@@ -138,8 +174,10 @@ export default async function HomePage() {
       </section>
 
       {rest.length > 0 && (
-        <section>
-          <h2 className="text-2xl font-bold mb-4">Todo el menú del barrio</h2>
+        <section className="container mx-auto px-4 pb-12">
+          <h2 className="font-display text-3xl font-semibold mb-6">
+            Todo el menú del barrio
+          </h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {rest.map((o: any) => (
               <OfferCard

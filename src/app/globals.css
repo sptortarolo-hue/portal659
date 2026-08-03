@@ -1,9 +1,38 @@
 @import "tailwindcss";
 
 @theme {
-  --color-primary: #2563eb;
-  --color-accent: #f59e0b;
-  --font-sans: ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-fraunces), ui-serif, Georgia, serif;
+
+  --color-background: #faf6f0;
+  --color-foreground: #2b2118;
+
+  --color-card: #ffffff;
+  --color-card-foreground: #2b2118;
+
+  --color-primary: #ea580c;
+  --color-primary-foreground: #ffffff;
+
+  --color-secondary: #f3e9dd;
+  --color-secondary-foreground: #7c3f1d;
+
+  --color-muted: #f1e8dc;
+  --color-muted-foreground: #8a7466;
+
+  --color-accent: #fde8c8;
+  --color-accent-foreground: #b45309;
+
+  --color-destructive: #dc2626;
+  --color-destructive-foreground: #ffffff;
+
+  --color-border: #e7d9c8;
+  --color-input: #e7d9c8;
+  --color-ring: #ea580c;
+
+  --color-cream: #faf6f0;
+  --color-ink: #2b2118;
+  --color-whatsapp: #25d366;
+  --color-whatsapp-dark: #128c7e;
 }
 
 @utility container {
@@ -12,4 +41,16 @@
   padding-left: 1rem;
   padding-right: 1rem;
   max-width: 1200px;
+}
+
+@layer base {
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+  }
+
+  ::selection {
+    background-color: var(--color-accent);
+    color: var(--color-accent-foreground);
+  }
 }

@@ -29,11 +29,11 @@ export function OfferCard({
       <Card
         className={cn(
           "h-full hover:shadow-lg transition-shadow cursor-pointer overflow-hidden",
-          featured && "ring-2 ring-primary"
+          featured && "ring-2 ring-amber-400"
         )}
       >
         {imageUrl ? (
-          <div className="aspect-video bg-gray-100">
+          <div className="aspect-video bg-muted">
             <img
               src={imageUrl}
               alt={name}
@@ -41,29 +41,37 @@ export function OfferCard({
             />
           </div>
         ) : (
-          <div className="aspect-video bg-gradient-to-br from-amber-50 to-orange-100 flex items-center justify-center">
-            <span className="text-4xl font-bold text-orange-300">
+          <div className="aspect-video bg-gradient-to-br from-amber-100 to-orange-200 flex items-center justify-center">
+            <span className="font-display text-5xl font-bold text-primary/60">
               {name.charAt(0)}
             </span>
           </div>
         )}
         <CardHeader className="pb-2">
           <div className="flex items-center gap-2">
-            {featured && <Badge>Hoy</Badge>}
+            {featured && (
+              <Badge className="bg-amber-500 text-white hover:bg-amber-500">
+                Hoy
+              </Badge>
+            )}
             {category && (
-              <span className="text-xs text-gray-500 capitalize">{category}</span>
+              <span className="text-xs text-muted-foreground capitalize">
+                {category}
+              </span>
             )}
           </div>
-          <CardTitle className="text-base">{name}</CardTitle>
+          <CardTitle className="font-display text-lg">{name}</CardTitle>
         </CardHeader>
         <CardContent className="pb-3">
-          <p className="text-sm text-gray-600 line-clamp-2">{description}</p>
+          <p className="text-sm text-muted-foreground line-clamp-2">
+            {description}
+          </p>
         </CardContent>
         <div className="px-6 pb-4 flex items-center justify-between">
-          <span className="font-bold text-lg">
+          <span className="font-bold text-lg text-foreground">
             ${Number(price).toLocaleString("es-AR")}
           </span>
-          <span className="text-xs text-gray-500">{storeName}</span>
+          <span className="text-xs text-muted-foreground">{storeName}</span>
         </div>
       </Card>
     </Link>

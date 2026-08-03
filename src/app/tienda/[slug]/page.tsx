@@ -37,9 +37,11 @@ export default async function TiendaPage({
     whatsapp: v.whatsapp || "",
   };
 
+  const waNumber = (v.whatsapp || "").replace(/[^0-9]/g, "");
+
   return (
     <main className="container mx-auto px-4 py-8 max-w-4xl">
-      <div className="rounded-2xl overflow-hidden border mb-8">
+      <div className="rounded-2xl overflow-hidden border border-border bg-card mb-8">
         {v.image_url ? (
           <div className="h-48 w-full">
             <img
@@ -50,29 +52,53 @@ export default async function TiendaPage({
           </div>
         ) : (
           <div className="h-48 w-full bg-gradient-to-br from-amber-100 to-orange-200 flex items-center justify-center">
-            <span className="text-6xl font-bold text-orange-400">
+            <span className="font-display text-7xl font-bold text-primary/70">
               {v.store_name.charAt(0)}
             </span>
           </div>
         )}
         <div className="p-6">
-          <h1 className="text-3xl font-bold">{v.store_name}</h1>
+          <h1 className="font-display text-4xl font-semibold">
+            {v.store_name}
+          </h1>
           {v.description && (
-            <p className="text-gray-600 mt-2">{v.description}</p>
+            <p className="text-muted-foreground mt-2">{v.description}</p>
           )}
-          <div className="flex flex-wrap gap-x-4 gap-y-1 mt-4 text-sm text-gray-600">
-            {v.hours && <span>Horarios: {v.hours}</span>}
-            {v.address && <span>Dirección: {v.address}</span>}
+          <div className="flex flex-wrap gap-2 mt-4 text-sm">
+            {v.hours && (
+              <span className="rounded-full bg-muted px-3 py-1 text-muted-foreground">
+                Horarios: {v.hours}
+              </span>
+            )}
+            {v.address && (
+              <span className="rounded-full bg-muted px-3 py-1 text-muted-foreground">
+                Dirección: {v.address}
+              </span>
+            )}
             {v.neighborhood && (
-              <span className="capitalize">Barrio: {v.neighborhood}</span>
+              <span className="rounded-full bg-muted px-3 py-1 text-muted-foreground capitalize">
+                {v.neighborhood}
+              </span>
             )}
           </div>
+          {waNumber && (
+            <a
+              href={`https://wa.me/${waNumber}?text=${encodeURIComponent(
+                `Hola ${v.store_name}! Quiero hacer un pedido.`
+              )}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-5 inline-flex items-center gap-2 rounded-md bg-whatsapp text-white px-5 py-2.5 text-sm font-medium hover:bg-whatsapp-dark"
+            >
+              Pedir por WhatsApp
+            </a>
+          )}
         </div>
       </div>
 
-      <h2 className="text-xl font-bold mb-4">Menú</h2>
+      <h2 className="font-display text-2xl font-semibold mb-4">Menú</h2>
       {!offers || offers.length === 0 ? (
-        <p className="text-gray-500 text-center py-12">
+        <p className="text-muted-foreground text-center py-12">
           Este local todavía no cargó su menú.
         </p>
       ) : (
@@ -80,7 +106,7 @@ export default async function TiendaPage({
           {offers.map((o: any) => (
             <div
               key={o.id}
-              className="border rounded-xl p-4 flex items-start justify-between gap-4"
+              className="border border-border rounded-xl p-4 bg-card flex items-start justify-between gap-4"
             >
               <div className="flex items-start gap-3 min-w-0">
                 {o.image_url ? (
@@ -92,8 +118,8 @@ export default async function TiendaPage({
                     />
                   </div>
                 ) : (
-                  <div className="h-16 w-16 rounded-lg bg-orange-50 flex items-center justify-center flex-shrink-0">
-                    <span className="text-2xl font-bold text-orange-300">
+                  <div className="h-16 w-16 rounded-lg bg-accent flex items-center justify-center flex-shrink-0">
+                    <span className="font-display text-2xl font-bold text-primary/60">
                       {o.name.charAt(0)}
                     </span>
                   </div>
@@ -101,15 +127,19 @@ export default async function TiendaPage({
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <p className="font-semibold leading-tight">{o.name}</p>
-                    {o.featured_today && <Badge>Hoy</Badge>}
+                    {o.featured_today && (
+                      <Badge className="bg-amber-500 text-white hover:bg-amber-500">
+                        Hoy
+                      </Badge>
+                    )}
                   </div>
                   {o.description && (
-                    <p className="text-sm text-gray-500 mt-1 line-clamp-2">
+                    <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
                       {o.description}
                     </p>
                   )}
                   {o.category && (
-                    <p className="text-xs text-gray-400 mt-1 capitalize">
+                    <p className="text-xs text-muted-foreground mt-1 capitalize">
                       {o.category}
                     </p>
                   )}

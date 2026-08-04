@@ -9,18 +9,24 @@ export const VERTICALS = [
     name: "Gastronomía",
     description: "Rotiserías, pizzerías y comida casera del barrio",
     emoji: "🍽️",
+    color: "vert-gastro",
+    hex: "#ff6b4a",
   },
   {
     slug: "almacen",
     name: "El Almacén",
     description: "Verdulerías, carnicerías y almacenes de la zona",
     emoji: "🥦",
+    color: "vert-almacen",
+    hex: "#10b981",
   },
   {
     slug: "servicio",
     name: "Servicios del Barrio",
     description: "Oficios y profesionales que atienden en el barrio",
     emoji: "🔧",
+    color: "vert-servicio",
+    hex: "#0ea5e9",
   },
 ] as const;
 

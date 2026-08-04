@@ -204,7 +204,7 @@ export default async function TiendaPage({
                         <div className="flex items-center gap-2">
                           <p className="font-semibold leading-tight">{o.name}</p>
                           {o.featured_today && (
-                            <Badge className="bg-sun text-pine hover:bg-sun">
+                            <Badge className="bg-sun text-ink hover:bg-sun">
                               Hoy
                             </Badge>
                           )}

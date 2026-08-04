@@ -81,7 +81,7 @@ const STATUS_LABELS: Record<Order["status"], string> = {
 };
 
 const STATUS_COLORS: Record<Order["status"], string> = {
-  new: "bg-sun/20 text-[#8a6a00]",
+  new: "bg-sun/20 text-ink",
   confirmed: "bg-amber-100 text-amber-700",
   completed: "bg-green-100 text-green-700",
   cancelled: "bg-red-100 text-red-700",
@@ -1063,7 +1063,7 @@ export default function VendorDashboard() {
                       <div className="flex items-center gap-2">
                         <span className="font-medium">{offer.name}</span>
                         {offer.featured_today && (
-                          <Badge className="bg-sun/20 text-[#8a6a00]">
+                          <Badge className="bg-sun/20 text-ink">
                             Hoy
                           </Badge>
                         )}

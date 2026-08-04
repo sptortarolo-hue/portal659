@@ -72,7 +72,7 @@ export default async function HomePage() {
           <div className="mt-10 flex flex-wrap justify-center gap-3">
             <Link
               href="#gastronomia"
-              className="rounded-md bg-sun text-pine px-6 py-3 text-sm font-semibold hover:bg-sun/90"
+              className="rounded-md bg-sun text-ink px-6 py-3 text-sm font-semibold hover:bg-sun/90"
             >
               Ver los comercios
             </Link>
@@ -92,7 +92,7 @@ export default async function HomePage() {
             <a
               key={vert.slug}
               href={`#${vert.slug}`}
-              className="rounded-full border border-border bg-card px-4 py-1.5 text-sm font-medium text-muted-foreground hover:border-primary hover:text-primary"
+              className={`rounded-full border border-${vert.color}/30 bg-${vert.color}/5 px-4 py-1.5 text-sm font-medium text-${vert.color} hover:bg-${vert.color}/10`}
             >
               {vert.emoji} {vert.name}
             </a>
@@ -104,7 +104,7 @@ export default async function HomePage() {
         <section className="container mx-auto px-4 mb-12" id="hoy">
           <div className="rounded-2xl border border-sun/40 bg-gradient-to-r from-secondary to-accent p-6 mb-6">
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-              <span className="rounded-full bg-sun px-3 py-1 text-xs font-semibold uppercase tracking-widest text-pine">
+              <span className="rounded-full bg-sun px-3 py-1 text-xs font-semibold uppercase tracking-widest text-ink">
                 Hoy
               </span>
               <div>
@@ -143,7 +143,8 @@ export default async function HomePage() {
             className="container mx-auto px-4 mb-12 scroll-mt-20"
             id={vert.slug}
           >
-            <h2 className="font-display text-3xl font-semibold mb-2">
+            <h2 className="font-display text-3xl font-semibold mb-2 flex items-center gap-2">
+              <span className={`inline-block h-3 w-3 rounded-full bg-${vert.color}`}></span>
               {vert.name}
             </h2>
             <p className="text-muted-foreground mb-6">{vert.description}</p>

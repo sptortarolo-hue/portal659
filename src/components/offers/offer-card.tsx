@@ -50,7 +50,7 @@ export function OfferCard({
         <CardHeader className="pb-2">
           <div className="flex items-center gap-2">
             {featured && (
-              <Badge className="bg-sun text-pine hover:bg-sun">
+              <Badge className="bg-sun text-ink hover:bg-sun">
                 Hoy
               </Badge>
             )}

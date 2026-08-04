@@ -4,37 +4,38 @@
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   --font-display: var(--font-fraunces), ui-serif, Georgia, serif;
 
-  --color-background: #faf7f2;
-  --color-foreground: #171717;
+  --color-background: #ffffff;
+  --color-foreground: #101623;
 
   --color-card: #ffffff;
-  --color-card-foreground: #171717;
+  --color-card-foreground: #101623;
 
-  --color-primary: #1f4d32;
+  --color-primary: #4f46e5;
   --color-primary-foreground: #ffffff;
 
-  --color-secondary: #e7efe4;
-  --color-secondary-foreground: #2f5c3b;
+  --color-secondary: #eef0ff;
+  --color-secondary-foreground: #4338ca;
 
-  --color-muted: #f1ece6;
-  --color-muted-foreground: #6b6259;
+  --color-muted: #f5f6f8;
+  --color-muted-foreground: #667085;
 
-  --color-accent: #fdf3cf;
-  --color-accent-foreground: #7c5e10;
+  --color-accent: #f3fce3;
+  --color-accent-foreground: #4d7c0f;
 
-  --color-destructive: #dc2626;
+  --color-destructive: #e11d48;
   --color-destructive-foreground: #ffffff;
 
-  --color-border: #e9e0d6;
-  --color-input: #e9e0d6;
-  --color-ring: #f5b800;
+  --color-border: #e6e8ec;
+  --color-input: #e6e8ec;
+  --color-ring: #a3e635;
 
-  --color-sun: #f5b800;
-  --color-pine: #1f4d32;
-  --color-cream: #faf7f2;
-  --color-ink: #171717;
+  --color-sun: #a3e635;
+  --color-ink: #101623;
   --color-whatsapp: #25d366;
   --color-whatsapp-dark: #128c7e;
+  --color-vert-gastro: #ff6b4a;
+  --color-vert-almacen: #10b981;
+  --color-vert-servicio: #0ea5e9;
 }
 
 @utility container {

@@ -12,7 +12,7 @@ export function LogoMark({ className }: { className?: string }) {
         d="M32 2C20.4 2 11 11.4 11 23c0 15.6 19.4 36.6 21 39 1.6-2.4 21-23.4 21-39 0-11.6-9.4-21-21-21z"
         fill="currentColor"
       />
-      <circle cx="32" cy="22" r="8" fill="#f5b800" />
+      <circle cx="32" cy="22" r="8" fill="#a3e635" />
     </svg>
   );
 }

@@ -345,7 +345,7 @@ async function seed() {
     const userId = authUser.user.id;
     userIdByEmail[u.email] = userId;
 
-    const { error: profileError } = await supabase.from("profiles").insert({
+    const { error: profileError } = await supabase.from("profiles").upsert({
       id: userId,
       email: u.email,
       full_name: u.full_name,
@@ -353,7 +353,7 @@ async function seed() {
       phone: u.phone,
       role: u.role,
       verified: true,
-    });
+    }, { onConflict: "id" });
 
     if (profileError) {
       console.log(`❌ profile: ${profileError.message}`);

@@ -505,6 +505,44 @@ export default function VendorDashboard() {
 
   const configContent = (
     <form onSubmit={handleSetup} className="space-y-4">
+      {/* Vista previa live */}
+      <div className="rounded-2xl overflow-hidden border border-border bg-card">
+        {storePreview || vendor.image_url ? (
+          <div className="h-28 w-full"><img src={storePreview || vendor.image_url || ""} alt="" className="w-full h-full object-cover" /></div>
+        ) : (
+          <div className="h-28 w-full bg-gradient-to-br from-secondary to-accent flex items-center justify-center"><span className="font-display text-4xl font-bold text-primary/30">{(storeName || vendor.store_name || "?").charAt(0)}</span></div>
+        )}
+        <div className="p-4">
+          <div className="flex items-center gap-3 mb-2">
+            {logoPreview || vendor.logo_url ? (
+              <img src={logoPreview || vendor.logo_url || ""} alt="" className="h-10 w-10 rounded-full object-cover border-2 border-white shadow -mt-8 relative" />
+            ) : (
+              <div className="h-10 w-10 rounded-full bg-accent flex items-center justify-center border-2 border-white shadow -mt-8 relative"><span className="font-bold text-primary text-sm">{(storeName || vendor.store_name || "?").charAt(0)}</span></div>
+            )}
+            <div className="min-w-0">
+              <p className="font-semibold text-sm truncate">{storeName || vendor.store_name}</p>
+              <p className="text-[10px] text-muted-foreground">Vista previa de tu micrositio</p>
+            </div>
+          </div>
+          {description && <p className="text-xs text-muted-foreground line-clamp-2 mb-2">{description}</p>}
+          <div className="flex flex-wrap gap-1.5 text-[10px]">
+            {hours && <span className="rounded-full bg-muted px-2 py-0.5 text-muted-foreground">🕐 {hours}</span>}
+            {address && <span className="rounded-full bg-muted px-2 py-0.5 text-muted-foreground">📍 {address}</span>}
+            {paymentMethods.length > 0 && <span className="rounded-full bg-muted px-2 py-0.5 text-muted-foreground">💳 {paymentMethods.join(", ")}</span>}
+          </div>
+          <div className="flex flex-wrap gap-1.5 mt-2 text-[10px]">
+            {instagram && <span className="text-primary">📷 Instagram</span>}
+            {facebook && <span className="text-primary">👤 Facebook</span>}
+            {phone && <span className="text-primary">📞 Tel</span>}
+          </div>
+          {whatsapp && (
+            <div className="mt-3 inline-flex items-center gap-1 rounded-md bg-whatsapp/10 text-whatsapp px-3 py-1.5 text-xs font-medium">
+              📱 WhatsApp {isService ? "de consulta" : "de pedidos"}
+            </div>
+          )}
+        </div>
+      </div>
+
       <CollapsibleSection icon="🏪" title="Tu comercio" defaultOpen badge={storeVertical === "servicio" ? "Servicio" : undefined}>
         <div className="space-y-3">
           <div><Label>Tipo</Label><select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={storeVertical} onChange={(e) => setStoreVertical(e.target.value)}>{VERTICAL_OPTIONS.map((v) => <option key={v.value} value={v.value}>{v.label}</option>)}</select></div>

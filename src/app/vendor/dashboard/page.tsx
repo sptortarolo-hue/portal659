@@ -735,14 +735,9 @@ export default function VendorDashboard() {
           <div className="space-y-4">{configContent}</div>
         ) : (
           <>
-            <div className={tab === "config" ? "" : "hidden sm:hidden"}>{configContent}</div>
-            <div className={tab === "menu" ? "" : "hidden sm:hidden"}>{menuContent}</div>
-            <div className={tab === "orders" ? "" : "hidden sm:hidden"}>{ordersContent}</div>
-            <div className="hidden sm:block">
-              {tab === "config" && configContent}
-              {tab === "menu" && menuContent}
-              {tab === "orders" && ordersContent}
-            </div>
+            <div className={tab === "config" ? "" : "hidden"}>{configContent}</div>
+            <div className={tab === "menu" ? "" : "hidden"}>{menuContent}</div>
+            <div className={tab === "orders" ? "" : "hidden"}>{ordersContent}</div>
           </>
         )}
       </div>

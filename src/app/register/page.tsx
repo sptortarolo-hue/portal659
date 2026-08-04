@@ -13,6 +13,7 @@ export default function RegisterPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [tipo, setTipo] = useState("gastronomia");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
 
@@ -24,7 +25,7 @@ export default function RegisterPage() {
     const res = await fetch("/api/register", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password, name }),
+      body: JSON.stringify({ email, password, name, tipo }),
     });
 
     const data = await res.json();
@@ -45,7 +46,7 @@ export default function RegisterPage() {
         <Logo markClassName="h-14 w-14 text-primary" />
         <h1 className="font-display text-4xl font-semibold mt-4">Crear cuenta</h1>
         <p className="text-muted-foreground mt-2">
-          Unite a SeMorfa y abrí la vidriera de tu local
+          Sumate al centro comercial de tu barrio
         </p>
       </div>
 
@@ -83,6 +84,26 @@ export default function RegisterPage() {
             required
             minLength={6}
           />
+        </div>
+        <div>
+          <Label htmlFor="tipo">¿Qué tipo de emprendimiento tenés?</Label>
+          <select
+            id="tipo"
+            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+            value={tipo}
+            onChange={(e) => setTipo(e.target.value)}
+          >
+            <option value="gastronomia">
+              Comida (rotisería, pizzas, comida casera)
+            </option>
+            <option value="almacen">
+              Almacén (verdulería, carnicería, kiosco)
+            </option>
+            <option value="servicio">
+              Servicio u oficio (electricista, plomero, jardinería)
+            </option>
+            <option value="comprador">Solo quiero pedir</option>
+          </select>
         </div>
 
         {message && (

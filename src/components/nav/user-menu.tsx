@@ -60,7 +60,7 @@ export function UserMenu() {
             Iniciar sesión
           </Link>
           <Button asChild size="sm">
-            <Link href="/register">Vender</Link>
+            <Link href="/register">Sumá tu comercio</Link>
           </Button>
         </>
       )}

@@ -68,7 +68,7 @@ export default function LoginPage() {
       <div className="flex flex-col items-center mb-8">
         <Logo markClassName="h-14 w-14 text-primary" />
         <p className="text-muted-foreground mt-3">
-          Iniciá sesión para administrar tu local y tus pedidos
+          Iniciá sesión para administrar tu comercio y tus pedidos
         </p>
       </div>
 

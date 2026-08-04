@@ -21,17 +21,26 @@ export type Product = {
   created_at: string;
 };
 
+export type Vertical = "gastronomia" | "almacen" | "servicio" | "otro";
+
 export type Vendor = {
   id: string;
   user_id: string;
   store_name: string;
-  category: string;
-  neighborhood: string;
+  slug: string | null;
+  category: string | null;
+  vertical: Vertical;
+  neighborhood: string | null;
   whatsapp: string | null;
   accepting_quotes: boolean;
   verified: boolean;
   hours: string | null;
   location: string | null;
+  address: string | null;
+  description: string | null;
+  image_url: string | null;
+  logo_url: string | null;
+  created_at: string;
 };
 
 export type Booking = {

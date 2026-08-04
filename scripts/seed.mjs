@@ -70,6 +70,22 @@ const SEED_USERS = [
     neighborhood: "garibaldi",
     phone: "2215550104",
   },
+  {
+    email: "vendedor5@test.com",
+    password: "test123456",
+    role: "vendor",
+    full_name: "Huerta de Sicardi",
+    neighborhood: "sicardi",
+    phone: "2215550105",
+  },
+  {
+    email: "vendedor6@test.com",
+    password: "test123456",
+    role: "vendor",
+    full_name: "Marcos Electricista",
+    neighborhood: "sicardi",
+    phone: "2215550106",
+  },
 ];
 
 const SEED_VENDORS = [
@@ -79,6 +95,7 @@ const SEED_VENDORS = [
     store_name: "Las Empanadas de María",
     slug: "las-empanadas-de-maria",
     category: "empanadas",
+    vertical: "gastronomia",
     neighborhood: "sicardi",
     whatsapp: "5492215550101",
     address: "Calle 49 y 22, Sicardi",
@@ -91,6 +108,7 @@ const SEED_VENDORS = [
     store_name: "Pastas Rossi",
     slug: "pastas-rossi",
     category: "pastas",
+    vertical: "gastronomia",
     neighborhood: "sicardi",
     whatsapp: "5492215550102",
     address: "Calle 51 y 18, Sicardi",
@@ -103,6 +121,7 @@ const SEED_VENDORS = [
     store_name: "Pizza a la Piedra Sicardi",
     slug: "pizza-a-la-piedra-sicardi",
     category: "pizzas",
+    vertical: "gastronomia",
     neighborhood: "sicardi",
     whatsapp: "5492215550103",
     address: "Calle 50 y 20, Sicardi",
@@ -115,11 +134,38 @@ const SEED_VENDORS = [
     store_name: "Rotisería La Esquina de Garibaldi",
     slug: "rotiseria-la-esquina-de-garibaldi",
     category: "asado",
+    vertical: "gastronomia",
     neighborhood: "garibaldi",
     whatsapp: "5492215550104",
     address: "Calle 7 y 32, Garibaldi",
     hours: "Mar a Dom · 11:00 a 14:00 y 20:00 a 23:00",
     description: "Pollos al spiedo y milanesas caseras de la esquina.",
+  },
+  {
+    id: "c5d6e7f8-0001-4000-8000-000000000001",
+    email: "vendedor5@test.com",
+    store_name: "Verdulería La Huerta",
+    slug: "verduleria-la-huerta",
+    category: "verduras",
+    vertical: "almacen",
+    neighborhood: "sicardi",
+    whatsapp: "5492215550105",
+    address: "Calle 46 y 25, Sicardi",
+    hours: "Lun a Sáb · 8:00 a 20:00",
+    description: "Frutas y verduras de la quinta, todos los días.",
+  },
+  {
+    id: "c5d6e7f8-0002-4000-8000-000000000002",
+    email: "vendedor6@test.com",
+    store_name: "Marcos Electricista",
+    slug: "marcos-electricista",
+    category: "oficios",
+    vertical: "servicio",
+    neighborhood: "sicardi",
+    whatsapp: "5492215550106",
+    address: "Sicardi y alrededores",
+    hours: "Lun a Sáb · 8:00 a 18:00",
+    description: "Instalaciones, arreglos y urgencias eléctricas en el barrio.",
   },
 ];
 
@@ -313,6 +359,34 @@ const SEED_PRODUCTS = [
     category: "bebidas",
     neighborhood: "garibaldi",
   },
+  // Verdulería La Huerta (c5d6e7f8-0001-4000-8000-000000000001)
+  {
+    id: "a1000000-0001-4000-8000-000000000001",
+    vendor_id: "c5d6e7f8-0001-4000-8000-000000000001",
+    name: "Bolsa de papas (5kg)",
+    description: "Papas blancas de la quinta",
+    price: 5500,
+    category: "verduras",
+    neighborhood: "sicardi",
+  },
+  {
+    id: "a1000000-0002-4000-8000-000000000002",
+    vendor_id: "c5d6e7f8-0001-4000-8000-000000000001",
+    name: "Tomate perita (1kg)",
+    description: "Maduro en la planta",
+    price: 3200,
+    category: "verduras",
+    neighborhood: "sicardi",
+  },
+  {
+    id: "a1000000-0003-4000-8000-000000000003",
+    vendor_id: "c5d6e7f8-0001-4000-8000-000000000001",
+    name: "Docena de huevos",
+    description: "Huevos de campo",
+    price: 4200,
+    category: "almacen",
+    neighborhood: "sicardi",
+  },
 ];
 
 const SEED_CATEGORIES = [
@@ -324,6 +398,8 @@ const SEED_CATEGORIES = [
   { vendor_id: "27813e79-b06a-4420-993f-540d3547b242", name: "Bebidas", position: 1 },
   { vendor_id: "b1a2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d", name: "Asado", position: 0 },
   { vendor_id: "b1a2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d", name: "Bebidas", position: 1 },
+  { vendor_id: "c5d6e7f8-0001-4000-8000-000000000001", name: "Verduras", position: 0 },
+  { vendor_id: "c5d6e7f8-0001-4000-8000-000000000001", name: "Almacén", position: 1 },
 ];
 
 const SEED_ORDERS = [
@@ -418,6 +494,7 @@ async function seed() {
       store_name: v.store_name,
       slug: v.slug,
       category: v.category,
+      vertical: v.vertical,
       neighborhood: v.neighborhood,
       whatsapp: v.whatsapp,
       address: v.address,
@@ -455,12 +532,14 @@ async function seed() {
   }
   console.log(`✔ ${SEED_ORDERS.length} pedidos`);
 
-  console.log("\n✅ Seed de SeMorfa completado.");
+  console.log("\n✅ Seed de Portal 659 completado.");
   console.log("  comprador@test.com / test123456 (buyer)");
   console.log("  vendedor1@test.com / test123456 (María)");
   console.log("  vendedor2@test.com / test123456 (Rossi)");
   console.log("  vendedor3@test.com / test123456 (Pizza)");
   console.log("  vendedor4@test.com / test123456 (Esquina, Garibaldi)");
+  console.log("  vendedor5@test.com / test123456 (Verdulería, Almacén)");
+  console.log("  vendedor6@test.com / test123456 (Electricista, Servicio)");
 }
 
 seed().catch((err) => {

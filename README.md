@@ -1,4 +1,4 @@
-# SeMorfa App — El delivery de nuestro barrio
+# Portal 659 — El centro comercial de tu barrio
 
 Galería gastronómica hiperlocal. Cada local tiene su micrositio, el cliente arma el pedido sin registrarse y cae directo al WhatsApp del local. 0% comisión.
 

@@ -29,7 +29,7 @@ export function OfferCard({
       <Card
         className={cn(
           "h-full hover:shadow-lg transition-shadow cursor-pointer overflow-hidden",
-          featured && "ring-2 ring-amber-400"
+          featured && "ring-2 ring-sun"
         )}
       >
         {imageUrl ? (
@@ -41,7 +41,7 @@ export function OfferCard({
             />
           </div>
         ) : (
-          <div className="aspect-video bg-gradient-to-br from-amber-100 to-orange-200 flex items-center justify-center">
+          <div className="aspect-video bg-gradient-to-br from-secondary to-accent flex items-center justify-center">
             <span className="font-display text-5xl font-bold text-primary/60">
               {name.charAt(0)}
             </span>
@@ -50,7 +50,7 @@ export function OfferCard({
         <CardHeader className="pb-2">
           <div className="flex items-center gap-2">
             {featured && (
-              <Badge className="bg-amber-500 text-white hover:bg-amber-500">
+              <Badge className="bg-sun text-pine hover:bg-sun">
                 Hoy
               </Badge>
             )}

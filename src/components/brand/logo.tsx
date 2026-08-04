@@ -8,16 +8,11 @@ export function LogoMark({ className }: { className?: string }) {
       aria-hidden="true"
       focusable="false"
     >
-      <circle cx="32" cy="32" r="32" fill="currentColor" />
-      <g
-        fill="none"
-        stroke="#ffffff"
-        strokeWidth="7"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <path d="M18 45 V24 L27 32 L32 42 L37 32 L46 24 V45" />
-      </g>
+      <path
+        d="M32 2C20.4 2 11 11.4 11 23c0 15.6 19.4 36.6 21 39 1.6-2.4 21-23.4 21-39 0-11.6-9.4-21-21-21z"
+        fill="currentColor"
+      />
+      <circle cx="32" cy="22" r="8" fill="#f5b800" />
     </svg>
   );
 }
@@ -33,7 +28,7 @@ export function Logo({
     <span className={cn("inline-flex items-center gap-2", className)}>
       <LogoMark className={markClassName ?? "h-8 w-8 text-primary"} />
       <span className="font-display text-2xl font-semibold tracking-tight">
-        Se<span className="text-primary">Morfa</span>
+        Portal <span className="text-primary">659</span>
       </span>
     </span>
   );

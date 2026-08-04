@@ -17,9 +17,9 @@ const fraunces = Fraunces({
 });
 
 export const metadata: Metadata = {
-  title: "SeMorfa App — El delivery de nuestro barrio",
+  title: "Portal 659 — El centro comercial de tu barrio",
   description:
-    "SeMorfa App, la galería gastronómica de tu barrio. Pedí comida casera y regional directo a los productores de la zona: el pedido cae en el WhatsApp del local, sin comisiones.",
+    "Portal 659: el centro comercial de Sicardi y Garibaldi en tu pantalla. Comida, almacenes y servicios del barrio, con pedido o contacto directo por WhatsApp y 0% comisión.",
 };
 
 export default function RootLayout({
@@ -38,8 +38,8 @@ export default function RootLayout({
           <CartButton />
           <CartDrawer />
           <footer className="border-t border-border py-6 text-center text-sm text-muted-foreground bg-card">
-            © {new Date().getFullYear()} SeMorfa App — El delivery de nuestro
-            barrio · 0% comisión
+            © {new Date().getFullYear()} Portal 659 — El centro comercial de
+            tu barrio · 0% comisión
           </footer>
         </CartProvider>
       </body>

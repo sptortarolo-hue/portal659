@@ -1,8 +1,8 @@
 {
-  "name": "semorfa-app",
+  "name": "portal-659",
   "version": "1.0.0",
   "private": true,
-  "description": "Galería gastronómica de barrio: micrositios por local, pedido por WhatsApp, 0% comisión",
+  "description": "El centro comercial de tu barrio: micrositios por comercio, pedidos por WhatsApp, 0% comisión",
   "scripts": {
     "dev": "next dev",
     "build": "next build",

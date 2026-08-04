@@ -17,6 +17,7 @@ type Vendor = {
   store_name: string;
   slug: string | null;
   category: string | null;
+  vertical: string;
   neighborhood: string | null;
   whatsapp: string | null;
   address: string | null;
@@ -25,6 +26,13 @@ type Vendor = {
   image_url: string | null;
   logo_url: string | null;
 };
+
+const VERTICAL_OPTIONS = [
+  { value: "gastronomia", label: "Gastronomía (comida)" },
+  { value: "almacen", label: "Almacén (verdulería, carnicería)" },
+  { value: "servicio", label: "Servicio u oficio (sin menú)" },
+  { value: "otro", label: "Otro" },
+] as const;
 
 type Offer = {
   id: string;
@@ -73,7 +81,7 @@ const STATUS_LABELS: Record<Order["status"], string> = {
 };
 
 const STATUS_COLORS: Record<Order["status"], string> = {
-  new: "bg-orange-100 text-orange-700",
+  new: "bg-sun/20 text-[#8a6a00]",
   confirmed: "bg-amber-100 text-amber-700",
   completed: "bg-green-100 text-green-700",
   cancelled: "bg-red-100 text-red-700",
@@ -101,6 +109,7 @@ export default function VendorDashboard() {
   // Vendor form
   const [storeName, setStoreName] = useState("");
   const [storeCategory, setStoreCategory] = useState("otras");
+  const [storeVertical, setStoreVertical] = useState("gastronomia");
   const [whatsapp, setWhatsapp] = useState("");
   const [address, setAddress] = useState("");
   const [hours, setHours] = useState("");
@@ -177,6 +186,7 @@ export default function VendorDashboard() {
       setVendor(me.vendor);
       setStoreName(me.vendor.store_name);
       setStoreCategory(me.vendor.category || "otras");
+      setStoreVertical(me.vendor.vertical || "gastronomia");
       setWhatsapp(me.vendor.whatsapp || "");
       setAddress(me.vendor.address || "");
       setHours(me.vendor.hours || "");
@@ -279,6 +289,7 @@ export default function VendorDashboard() {
         store_name: storeName,
         neighborhood: DEFAULT_NEIGHBORHOOD.slug,
         category: storeCategory,
+        vertical: storeVertical,
         whatsapp,
         address,
         hours,
@@ -480,18 +491,32 @@ export default function VendorDashboard() {
     return (
       <main className="container mx-auto px-4 py-20 max-w-lg text-center">
         <h1 className="font-display text-3xl font-semibold mb-4">
-          Tu local en SeMorfa
+          Tu comercio en Portal 659
         </h1>
         <p className="text-gray-600 mb-6">
-          Registrá tu local gastronómico para armar tu menú y recibir pedidos
-          de {ZONE.name} por WhatsApp.
+          Registrá tu comercio para armar tu menú o recibir consultas de{" "}
+          {ZONE.name} por WhatsApp.
         </p>
         <form
           onSubmit={handleSetup}
           className="text-left space-y-4 bg-white border rounded-xl p-6"
         >
           <div>
-            <Label>Nombre del local</Label>
+            <Label>Tipo de comercio</Label>
+            <select
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              value={storeVertical}
+              onChange={(e) => setStoreVertical(e.target.value)}
+            >
+              {VERTICAL_OPTIONS.map((v) => (
+                <option key={v.value} value={v.value}>
+                  {v.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <Label>Nombre del comercio</Label>
             <Input
               value={storeName}
               onChange={(e) => setStoreName(e.target.value)}
@@ -592,6 +617,126 @@ export default function VendorDashboard() {
     );
   }
 
+  const isService = vendor?.vertical === "servicio";
+
+  const configCard = (
+    <Card className="p-5 mb-6">
+      <h2 className="font-semibold mb-3">Configuración del comercio</h2>
+      <form
+        onSubmit={handleSetup}
+        className="grid grid-cols-1 sm:grid-cols-2 gap-4"
+      >
+        <div>
+          <Label>Tipo de comercio</Label>
+          <select
+            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+            value={storeVertical}
+            onChange={(e) => setStoreVertical(e.target.value)}
+          >
+            {VERTICAL_OPTIONS.map((v) => (
+              <option key={v.value} value={v.value}>
+                {v.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <Label>Nombre</Label>
+          <Input
+            value={storeName}
+            onChange={(e) => setStoreName(e.target.value)}
+            required
+          />
+        </div>
+        <div>
+          <Label>Categoría</Label>
+          <select
+            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+            value={storeCategory}
+            onChange={(e) => setStoreCategory(e.target.value)}
+          >
+            {CATEGORIES.map((c) => (
+              <option key={c} value={c} className="capitalize">
+                {c}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <Label>WhatsApp</Label>
+          <Input
+            value={whatsapp}
+            onChange={(e) => setWhatsapp(e.target.value)}
+          />
+        </div>
+        <div>
+          <Label>Dirección</Label>
+          <Input
+            value={address}
+            onChange={(e) => setAddress(e.target.value)}
+          />
+        </div>
+        <div>
+          <Label>Horarios</Label>
+          <Input
+            value={hours}
+            onChange={(e) => setHours(e.target.value)}
+          />
+        </div>
+        <div>
+          <Label>Foto del comercio</Label>
+          <Input
+            type="file"
+            accept="image/*"
+            onChange={(e) => {
+              const f = e.target.files?.[0] || null;
+              setStoreFile(f);
+              if (f) readPreview(f, setStorePreview);
+            }}
+          />
+          {storePreview && (
+            <img
+              src={storePreview}
+              alt="Vista previa"
+              className="mt-2 h-24 w-full object-cover rounded-lg"
+            />
+          )}
+        </div>
+        <div>
+          <Label>Logo del comercio (cuadrado)</Label>
+          <Input
+            type="file"
+            accept="image/*"
+            onChange={(e) => {
+              const f = e.target.files?.[0] || null;
+              setLogoFile(f);
+              if (f) readPreview(f, setLogoPreview);
+            }}
+          />
+          {logoPreview && (
+            <img
+              src={logoPreview}
+              alt="Vista previa del logo"
+              className="mt-2 h-20 w-20 object-cover rounded-full border border-border"
+            />
+          )}
+        </div>
+        <div className="sm:col-span-2">
+          <Label>Descripción</Label>
+          <Textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+          />
+        </div>
+        <div className="sm:col-span-2">
+          <Button type="submit" size="sm" disabled={saving}>
+            {saving ? "Guardando..." : "Guardar comercio"}
+          </Button>
+        </div>
+      </form>
+    </Card>
+  );
+
   return (
     <main className="container mx-auto px-4 py-8 max-w-4xl">
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
@@ -632,120 +777,54 @@ export default function VendorDashboard() {
           <Button variant="outline" onClick={openShare}>
             Compartir
           </Button>
-          <Button variant="outline" onClick={() => setTab("menu")}>
-            Menú
-          </Button>
-          <Button variant="outline" onClick={() => setTab("orders")}>
-            Pedidos ({orders.length})
-          </Button>
+          {!isService && (
+            <>
+              <Button variant="outline" onClick={() => setTab("menu")}>
+                Menú
+              </Button>
+              <Button variant="outline" onClick={() => setTab("orders")}>
+                Pedidos ({orders.length})
+              </Button>
+            </>
+          )}
         </div>
       </div>
 
       {msg && <p className="text-sm mb-4 text-green-600">{msg}</p>}
 
-      {tab === "menu" && (
+      {isService ? (
         <>
+          {configCard}
           <Card className="p-5 mb-6">
-            <h2 className="font-semibold mb-3">Configuración del local</h2>
-            <form
-              onSubmit={handleSetup}
-              className="grid grid-cols-1 sm:grid-cols-2 gap-4"
-            >
-              <div>
-                <Label>Nombre</Label>
-                <Input
-                  value={storeName}
-                  onChange={(e) => setStoreName(e.target.value)}
-                  required
-                />
-              </div>
-              <div>
-                <Label>Categoría</Label>
-                <select
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  value={storeCategory}
-                  onChange={(e) => setStoreCategory(e.target.value)}
+            <h2 className="font-semibold mb-3">Tu vidriera de servicio</h2>
+            <p className="text-sm text-muted-foreground mb-4">
+              Los vecinos entran a tu vidriera y te escriben directo por
+              WhatsApp para consultarte. Sin menú ni precios: vos coordinás
+              cada trabajo.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={openShare} size="sm">
+                Compartí tu QR
+              </Button>
+              {vendor.slug && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    window.open(`/tienda/${vendor.slug}`, "_blank")
+                  }
                 >
-                  {CATEGORIES.map((c) => (
-                    <option key={c} value={c} className="capitalize">
-                      {c}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <Label>WhatsApp</Label>
-                <Input
-                  value={whatsapp}
-                  onChange={(e) => setWhatsapp(e.target.value)}
-                />
-              </div>
-              <div>
-                <Label>Dirección</Label>
-                <Input
-                  value={address}
-                  onChange={(e) => setAddress(e.target.value)}
-                />
-              </div>
-              <div>
-                <Label>Horarios</Label>
-                <Input
-                  value={hours}
-                  onChange={(e) => setHours(e.target.value)}
-                />
-              </div>
-              <div>
-                <Label>Foto del local</Label>
-                <Input
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) => {
-                    const f = e.target.files?.[0] || null;
-                    setStoreFile(f);
-                    if (f) readPreview(f, setStorePreview);
-                  }}
-                />
-                {storePreview && (
-                  <img
-                    src={storePreview}
-                    alt="Vista previa"
-                    className="mt-2 h-24 w-full object-cover rounded-lg"
-                  />
-                )}
-              </div>
-              <div>
-                <Label>Logo del local (cuadrado)</Label>
-                <Input
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) => {
-                    const f = e.target.files?.[0] || null;
-                    setLogoFile(f);
-                    if (f) readPreview(f, setLogoPreview);
-                  }}
-                />
-                {logoPreview && (
-                  <img
-                    src={logoPreview}
-                    alt="Vista previa del logo"
-                    className="mt-2 h-20 w-20 object-cover rounded-full border border-border"
-                  />
-                )}
-              </div>
-              <div className="sm:col-span-2">
-                <Label>Descripción</Label>
-                <Textarea
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                />
-              </div>
-              <div className="sm:col-span-2">
-                <Button type="submit" size="sm" disabled={saving}>
-                  {saving ? "Guardando..." : "Guardar local"}
+                  Ver mi vidriera
                 </Button>
-              </div>
-            </form>
+              )}
+            </div>
           </Card>
+        </>
+      ) : (
+        <>
+          {tab === "menu" && (
+        <>
+          {configCard}
 
           <Card className="p-5 mb-6">
             <h2 className="font-semibold mb-1">Categorías del menú</h2>
@@ -984,7 +1063,7 @@ export default function VendorDashboard() {
                       <div className="flex items-center gap-2">
                         <span className="font-medium">{offer.name}</span>
                         {offer.featured_today && (
-                          <Badge className="bg-orange-100 text-orange-700">
+                          <Badge className="bg-sun/20 text-[#8a6a00]">
                             Hoy
                           </Badge>
                         )}
@@ -1122,6 +1201,8 @@ export default function VendorDashboard() {
           )}
         </div>
       )}
+      </>
+    )}
 
       {shareOpen && vendor.slug && (
         <div

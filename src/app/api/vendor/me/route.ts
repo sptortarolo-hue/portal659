@@ -56,6 +56,7 @@ export async function POST(request: Request) {
     image_url,
     logo_url,
     category,
+    vertical,
   } = body;
 
   if (!store_name || !neighborhood) {
@@ -64,6 +65,11 @@ export async function POST(request: Request) {
       { status: 400 }
     );
   }
+
+  const VALID_VERTICALS = ["gastronomia", "almacen", "servicio", "otro"];
+  const resolvedVertical = VALID_VERTICALS.includes(vertical)
+    ? vertical
+    : "gastronomia";
 
   const { data: existing } = await supabase
     .from("vendors")
@@ -81,6 +87,7 @@ export async function POST(request: Request) {
     image_url: image_url || null,
     logo_url: logo_url || null,
     category: category || "otras",
+    vertical: resolvedVertical,
     slug: existing?.slug || slugify(store_name),
   };
 

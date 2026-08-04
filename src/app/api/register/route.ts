@@ -1,13 +1,15 @@
 import { getSupabase } from "@/lib/supabase";
 import { NextResponse } from "next/server";
 
+const TIPOS = ["gastronomia", "almacen", "servicio", "comprador"] as const;
+
 export async function POST(request: Request) {
   const supabase = getSupabase();
   if (!supabase) {
     return NextResponse.json({ error: "Error de conexión" }, { status: 503 });
   }
 
-  const { email, password, name } = await request.json();
+  const { email, password, name, tipo } = await request.json();
 
   if (!email || !password || !name) {
     return NextResponse.json(
@@ -23,10 +25,16 @@ export async function POST(request: Request) {
     );
   }
 
+  const selected = TIPOS.includes(tipo) ? tipo : "gastronomia";
+  const role = selected === "comprador" ? "buyer" : "vendor";
+  const vertical = selected === "comprador" ? "otro" : selected;
+
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
-    options: { data: { full_name: name, role: "vendor" } },
+    options: {
+      data: { full_name: name, role, vertical },
+    },
   });
 
   if (error) {

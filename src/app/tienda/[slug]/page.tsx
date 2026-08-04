@@ -63,7 +63,11 @@ export default async function TiendaPage({
     whatsapp: v.whatsapp || "",
   };
 
+  const isService = v.vertical === "servicio";
   const waNumber = (v.whatsapp || "").replace(/[^0-9]/g, "");
+  const waText = isService
+    ? `Hola ${v.store_name}! Quiero consultar por tu servicio.`
+    : `Hola ${v.store_name}! Quiero hacer un pedido.`;
 
   return (
     <main className="container mx-auto px-4 py-8 max-w-4xl">
@@ -77,7 +81,7 @@ export default async function TiendaPage({
             />
           </div>
         ) : (
-          <div className="h-48 w-full bg-gradient-to-br from-amber-100 to-orange-200 flex items-center justify-center">
+          <div className="h-48 w-full bg-gradient-to-br from-secondary to-accent flex items-center justify-center">
             <span className="font-display text-7xl font-bold text-primary/70">
               {v.store_name.charAt(0)}
             </span>
@@ -116,19 +120,39 @@ export default async function TiendaPage({
           </div>
           {waNumber && (
             <a
-              href={`https://wa.me/${waNumber}?text=${encodeURIComponent(
-                `Hola ${v.store_name}! Quiero hacer un pedido.`
-              )}`}
+              href={`https://wa.me/${waNumber}?text=${encodeURIComponent(waText)}`}
               target="_blank"
               rel="noopener noreferrer"
               className="mt-5 inline-flex items-center gap-2 rounded-md bg-whatsapp text-white px-5 py-2.5 text-sm font-medium hover:bg-whatsapp-dark"
             >
-              Pedir por WhatsApp
+              {isService ? "Consultar por WhatsApp" : "Pedir por WhatsApp"}
             </a>
           )}
         </div>
       </div>
 
+      {isService ? (
+        <div className="border border-border rounded-2xl p-8 text-center bg-card">
+          <h2 className="font-display text-2xl font-semibold mb-2">
+            Servicio del barrio
+          </h2>
+          <p className="text-muted-foreground max-w-md mx-auto">
+            Este comercio ofrece un servicio en el barrio. Escribile por
+            WhatsApp para consultar disponibilidad y coordinar el trabajo.
+          </p>
+          {waNumber && (
+            <a
+              href={`https://wa.me/${waNumber}?text=${encodeURIComponent(waText)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-5 inline-flex items-center gap-2 rounded-md bg-whatsapp text-white px-6 py-3 text-sm font-medium hover:bg-whatsapp-dark"
+            >
+              Consultar por WhatsApp
+            </a>
+          )}
+        </div>
+      ) : (
+        <>
       <h2 className="font-display text-2xl font-semibold mb-4">Menú</h2>
       {sections.length === 0 ? (
         <p className="text-muted-foreground text-center py-12">
@@ -180,7 +204,7 @@ export default async function TiendaPage({
                         <div className="flex items-center gap-2">
                           <p className="font-semibold leading-tight">{o.name}</p>
                           {o.featured_today && (
-                            <Badge className="bg-amber-500 text-white hover:bg-amber-500">
+                            <Badge className="bg-sun text-pine hover:bg-sun">
                               Hoy
                             </Badge>
                           )}
@@ -209,6 +233,8 @@ export default async function TiendaPage({
             </section>
           ))}
         </>
+      )}
+      </>
       )}
     </main>
   );

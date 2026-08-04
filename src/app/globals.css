@@ -10,25 +10,27 @@
   --color-card: #ffffff;
   --color-card-foreground: #171717;
 
-  --color-primary: #ff6b00;
+  --color-primary: #1f4d32;
   --color-primary-foreground: #ffffff;
 
-  --color-secondary: #ffedd5;
-  --color-secondary-foreground: #9a3412;
+  --color-secondary: #e7efe4;
+  --color-secondary-foreground: #2f5c3b;
 
   --color-muted: #f1ece6;
   --color-muted-foreground: #6b6259;
 
-  --color-accent: #ffe0b3;
-  --color-accent-foreground: #7c2d12;
+  --color-accent: #fdf3cf;
+  --color-accent-foreground: #7c5e10;
 
   --color-destructive: #dc2626;
   --color-destructive-foreground: #ffffff;
 
   --color-border: #e9e0d6;
   --color-input: #e9e0d6;
-  --color-ring: #ff6b00;
+  --color-ring: #f5b800;
 
+  --color-sun: #f5b800;
+  --color-pine: #1f4d32;
   --color-cream: #faf7f2;
   --color-ink: #171717;
   --color-whatsapp: #25d366;

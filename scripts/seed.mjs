@@ -62,6 +62,14 @@ const SEED_USERS = [
     neighborhood: "sicardi",
     phone: "2215550103",
   },
+  {
+    email: "vendedor4@test.com",
+    password: "test123456",
+    role: "vendor",
+    full_name: "La Familia de la Esquina",
+    neighborhood: "garibaldi",
+    phone: "2215550104",
+  },
 ];
 
 const SEED_VENDORS = [
@@ -100,6 +108,18 @@ const SEED_VENDORS = [
     address: "Calle 50 y 20, Sicardi",
     hours: "Vie, Sáb y Dom · 19:00 a 00:00",
     description: "Pizzas a la piedra con masa madre de 48 horas.",
+  },
+  {
+    id: "b1a2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+    email: "vendedor4@test.com",
+    store_name: "Rotisería La Esquina de Garibaldi",
+    slug: "rotiseria-la-esquina-de-garibaldi",
+    category: "asado",
+    neighborhood: "garibaldi",
+    whatsapp: "5492215550104",
+    address: "Calle 7 y 32, Garibaldi",
+    hours: "Mar a Dom · 11:00 a 14:00 y 20:00 a 23:00",
+    description: "Pollos al spiedo y milanesas caseras de la esquina.",
   },
 ];
 
@@ -217,6 +237,44 @@ const SEED_PRODUCTS = [
     price: 1200,
     category: "pizzas",
     neighborhood: "sicardi",
+  },
+  // Rotisería La Esquina de Garibaldi (b1a2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d)
+  {
+    id: "f0a11111-2222-4333-8444-555566667777",
+    vendor_id: "b1a2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+    name: "Pollo al spiedo entero",
+    description: "Con ensalada mixta",
+    price: 8500,
+    category: "asado",
+    neighborhood: "garibaldi",
+    featured_today: true,
+  },
+  {
+    id: "f0a22222-3333-4444-8555-666677778888",
+    vendor_id: "b1a2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+    name: "Milanesas de pollo x4",
+    description: "Caseras, con puré o papas",
+    price: 6200,
+    category: "asado",
+    neighborhood: "garibaldi",
+  },
+  {
+    id: "f0a33333-4444-4555-8666-777788889999",
+    vendor_id: "b1a2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+    name: "Papas fritas para 2",
+    description: "Crocantes, con cheddar y verdeo",
+    price: 3500,
+    category: "asado",
+    neighborhood: "garibaldi",
+  },
+  {
+    id: "f0a44444-5555-4666-8777-888899990000",
+    vendor_id: "b1a2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+    name: "Flan casero con dulce de leche",
+    description: "Postre de la casa",
+    price: 2800,
+    category: "asado",
+    neighborhood: "garibaldi",
   },
 ];
 
@@ -345,6 +403,7 @@ async function seed() {
   console.log("  vendedor1@test.com / test123456 (María)");
   console.log("  vendedor2@test.com / test123456 (Rossi)");
   console.log("  vendedor3@test.com / test123456 (Pizza)");
+  console.log("  vendedor4@test.com / test123456 (Esquina, Garibaldi)");
 }
 
 seed().catch((err) => {

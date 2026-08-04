@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getSupabase } from "@/lib/supabase";
-import { PRIMARY_NEIGHBORHOOD, NEIGHBORHOODS } from "@/lib/config";
+import { ZONE } from "@/lib/config";
 import { OfferCard } from "@/components/offers/offer-card";
 import { Card, CardContent } from "@/components/ui/card";
 
@@ -21,13 +21,13 @@ export default async function HomePage() {
   const { data: vendors } = await supabase
     .from("vendors")
     .select("*")
-    .eq("neighborhood", PRIMARY_NEIGHBORHOOD.slug)
+    .in("neighborhood", ZONE.slugs)
     .order("created_at", { ascending: false });
 
   const { data: offers } = await supabase
     .from("products")
     .select("*, vendors(id, slug, store_name)")
-    .eq("neighborhood", PRIMARY_NEIGHBORHOOD.slug)
+    .in("neighborhood", ZONE.slugs)
     .eq("available", true)
     .order("featured_today", { ascending: false })
     .order("created_at", { ascending: false });
@@ -40,7 +40,7 @@ export default async function HomePage() {
       <section className="bg-[#171717] text-white border-b border-[#171717]">
         <div className="container mx-auto px-4 py-20 text-center">
           <p className="text-xs font-semibold tracking-widest uppercase text-primary mb-4">
-            El delivery de nuestro barrio · {PRIMARY_NEIGHBORHOOD.name}
+            El delivery de nuestro barrio · {ZONE.name}
           </p>
           <h1 className="font-display text-4xl font-semibold tracking-tight sm:text-5xl lg:text-6xl max-w-4xl mx-auto">
             Donde las aplicaciones grandes no llegan,{" "}
@@ -48,7 +48,7 @@ export default async function HomePage() {
           </h1>
           <p className="mt-6 text-lg text-white/80 max-w-2xl mx-auto">
             Pedí comida casera y regional directo a los productores de{" "}
-            {PRIMARY_NEIGHBORHOOD.name}. Sin comisiones, sin intermediarios:
+            {ZONE.name}. Sin comisiones, sin intermediarios:
             el pedido cae en el WhatsApp del local.
           </p>
           <div className="mt-10 flex flex-wrap justify-center gap-3">
@@ -70,19 +70,9 @@ export default async function HomePage() {
 
       <section className="container mx-auto px-4 py-10">
         <div className="flex flex-wrap justify-center gap-2">
-          {NEIGHBORHOODS.map((n) => (
-            <span
-              key={n.slug}
-              className={`rounded-full px-4 py-1.5 text-sm ${
-                n.active
-                  ? "bg-primary text-primary-foreground font-medium"
-                  : "bg-muted text-muted-foreground"
-              }`}
-            >
-              {n.name}
-              {!n.active && " (próximamente)"}
-            </span>
-          ))}
+          <span className="rounded-full bg-primary text-primary-foreground font-medium px-4 py-1.5 text-sm">
+            {ZONE.name}
+          </span>
         </div>
       </section>
 
@@ -98,7 +88,7 @@ export default async function HomePage() {
                   La oferta de hoy
                 </h2>
                 <p className="text-sm text-muted-foreground">
-                  Lo que los locales de {PRIMARY_NEIGHBORHOOD.name} te
+                  Lo que los locales de {ZONE.name} te
                   recomiendan hoy
                 </p>
               </div>
@@ -124,7 +114,7 @@ export default async function HomePage() {
 
       <section className="container mx-auto px-4 mb-12" id="locales">
         <h2 className="font-display text-3xl font-semibold mb-2">
-          Los locales de {PRIMARY_NEIGHBORHOOD.name}
+          Los locales de {ZONE.name}
         </h2>
         <p className="text-muted-foreground mb-6">
           Cada local tiene su propia vidriera. Tocá para ver su menú y pedir

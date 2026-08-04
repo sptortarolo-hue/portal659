@@ -8,8 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { PRIMARY_NEIGHBORHOOD } from "@/lib/config";
-
+import { DEFAULT_NEIGHBORHOOD, ZONE } from "@/lib/config";
 type Vendor = {
   id: string;
   store_name: string;
@@ -129,7 +128,7 @@ export default function VendorDashboard() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         store_name: storeName,
-        neighborhood: PRIMARY_NEIGHBORHOOD.slug,
+        neighborhood: DEFAULT_NEIGHBORHOOD.slug,
         whatsapp,
         address,
         hours,
@@ -220,7 +219,7 @@ export default function VendorDashboard() {
         </h1>
         <p className="text-gray-600 mb-6">
           Registrá tu local gastronómico para armar tu menú y recibir pedidos
-          de {PRIMARY_NEIGHBORHOOD.name} por WhatsApp.
+          de {ZONE.name} por WhatsApp.
         </p>
         <form onSubmit={handleSetup} className="text-left space-y-4 bg-white border rounded-xl p-6">
           <div>

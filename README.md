@@ -11,11 +11,10 @@ Galería gastronómica hiperlocal. Cada local tiene su micrositio, el cliente ar
 - **Tailwind CSS v4**
 - **Render.com** (deploy, vía Docker)
 
-## Barrios cubiertos (MVP)
+## Zona activa (MVP)
 
-- Sicardi (activo)
-- Garibaldi (próximamente)
-- Arana (próximamente)
+- **Sicardi y Garibaldi** (se muestran juntos como una única zona)
+- Arana y Correas quedan para más adelante (no se muestran)
 
 ## Desarrollo local
 

@@ -1,17 +1,17 @@
-# Lanzamiento SeMorfa App — MVP Sicardi
+# Lanzamiento SeMorfa App — Zona Sicardi + Garibaldi
 
 ## Propuesta de valor
 
 **"El delivery de nuestro barrio"** — Donde las aplicaciones grandes no llegan, nosotros te salvamos la cena.
 
-- Galería gastronómica hiperlocal (MVP: Sicardi; + Garibaldi y Arana)
+- Galería gastronómica hiperlocal (zona activa: **Sicardi y Garibaldi** juntos; Arana y Correas quedan fuera por ahora)
 - Cada local tiene su micrositio `/tienda/[slug]`
 - El cliente pide sin registrarse (guest) y el pedido cae en el WhatsApp del local
 - 0% comisión (a diferencia de PedidosYa/Rappi que cobran 20-30%)
 
 ## Fase 1: Arranque gratis con rotiserías locales
 
-- Incorporar las primeras rotiserías de Sicardi **gratis** (sin comisión, sin costo de alta)
+- Incorporar las primeras rotiserías de Sicardi y Garibaldi **gratis** (sin comisión, sin costo de alta)
 - Objetivo: conseguir 5-10 locales cargados con su menú completo antes del lanzamiento público
 - Vender el micrositio como "tu vidriera en el barrio" + WhatsApp directo
 
@@ -25,14 +25,14 @@
 ## Fase 3: Métricas a validar (primeras 4 semanas)
 
 - Pedidos por local por semana (el vendedor los confirma en su dashboard)
-- Qué local engancha más (para duplicar el modelo en Garibaldi y Arana)
+- Qué local engancha más (para duplicar el modelo en los barrios vecinos, ej. Arana)
 - % de pedidos que llegan al WhatsApp (conversión)
 
 ## Backlog de producto (fase 2)
 
 - Pagos con Mercado Pago
 - Confirmación de pedido desde el WhatsApp del local hacia la app
-- Más barrios: Garibaldi y Arana
+- Más barrios: Arana y Correas
 - Panel con estadísticas para vendedores
 
 ## Notas de seguridad pendientes

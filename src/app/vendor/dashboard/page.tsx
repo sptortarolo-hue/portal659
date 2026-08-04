@@ -10,6 +10,10 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { CollapsibleSection } from "@/components/ui/collapsible-section";
+import { ChipToggle } from "@/components/ui/chip-toggle";
+import { RadioCards } from "@/components/ui/radio-cards";
+import { DropdownMenu } from "@/components/ui/dropdown-menu";
 import { DEFAULT_NEIGHBORHOOD, ZONE } from "@/lib/config";
 
 type Vendor = {
@@ -20,11 +24,23 @@ type Vendor = {
   vertical: string;
   neighborhood: string | null;
   whatsapp: string | null;
-  address: string | null;
+  phone: string | null;
+  instagram: string | null;
+  facebook: string | null;
+  payment_methods: string | null;
+  delivery_options: string | null;
+  services_list: string | null;
+  service_area: string | null;
+  free_estimate: boolean | null;
+  accepting_quotes: boolean;
+  verified: boolean;
   hours: string | null;
+  location: string | null;
+  address: string | null;
   description: string | null;
   image_url: string | null;
   logo_url: string | null;
+  created_at: string;
 };
 
 const VERTICAL_OPTIONS = [
@@ -73,6 +89,20 @@ const CATEGORIES = [
   "otras",
 ];
 
+const PAYMENT_OPTIONS = [
+  { label: "Efectivo", value: "Efectivo", icon: "💵" },
+  { label: "Débito", value: "Débito", icon: "💳" },
+  { label: "Crédito", value: "Crédito", icon: "💳" },
+  { label: "Mercado Pago", value: "Mercado Pago", icon: "📱" },
+  { label: "Transferencia", value: "Transferencia", icon: "🏦" },
+];
+
+const DELIVERY_OPTIONS = [
+  { label: "Retiro", value: "retiro", icon: "🏠", desc: "en local" },
+  { label: "Domicilio", value: "domicilio", icon: "🚗", desc: "" },
+  { label: "Ambos", value: "ambos", icon: "🔄", desc: "" },
+];
+
 const STATUS_LABELS: Record<Order["status"], string> = {
   new: "Nuevo",
   confirmed: "Confirmado",
@@ -102,11 +132,10 @@ export default function VendorDashboard() {
   const [vendor, setVendor] = useState<Vendor | null>(null);
   const [offers, setOffers] = useState<Offer[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
-  const [tab, setTab] = useState<"menu" | "orders">("menu");
+  const [tab, setTab] = useState<"config" | "menu" | "orders">("config");
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState("");
 
-  // Vendor form
   const [storeName, setStoreName] = useState("");
   const [storeCategory, setStoreCategory] = useState("otras");
   const [storeVertical, setStoreVertical] = useState("gastronomia");
@@ -121,13 +150,12 @@ export default function VendorDashboard() {
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [instagram, setInstagram] = useState("");
   const [facebook, setFacebook] = useState("");
-  const [paymentMethods, setPaymentMethods] = useState("");
+  const [paymentMethods, setPaymentMethods] = useState<string[]>([]);
   const [deliveryOptions, setDeliveryOptions] = useState("ambos");
   const [servicesList, setServicesList] = useState("");
   const [serviceArea, setServiceArea] = useState("");
   const [freeEstimate, setFreeEstimate] = useState(true);
 
-  // Offer form
   const [showNew, setShowNew] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [offName, setOffName] = useState("");
@@ -138,14 +166,12 @@ export default function VendorDashboard() {
   const [offPreview, setOffPreview] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  // Menu categories
   const [categories, setCategories] = useState<MenuCategory[]>([]);
   const [newCatName, setNewCatName] = useState("");
   const [editingCatId, setEditingCatId] = useState<string | null>(null);
   const [editingCatName, setEditingCatName] = useState("");
   const [catBusy, setCatBusy] = useState(false);
 
-  // Share modal
   const [shareOpen, setShareOpen] = useState(false);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -168,9 +194,7 @@ export default function VendorDashboard() {
       const res = await fetch("/api/vendor/orders");
       const data = await res.json();
       if (data.orders) setOrders(data.orders);
-    } catch {
-      /* noop */
-    }
+    } catch { /* noop */ }
   }
 
   async function loadData() {
@@ -204,7 +228,11 @@ export default function VendorDashboard() {
       setLogoPreview(me.vendor.logo_url || null);
       setInstagram(me.vendor.instagram || "");
       setFacebook(me.vendor.facebook || "");
-      setPaymentMethods(me.vendor.payment_methods || "");
+      setPaymentMethods(
+        me.vendor.payment_methods
+          ? me.vendor.payment_methods.split(", ").map((s: string) => s.trim()).filter(Boolean)
+          : []
+      );
       setDeliveryOptions(me.vendor.delivery_options || "ambos");
       setServicesList(me.vendor.services_list || "");
       setServiceArea(me.vendor.service_area || "");
@@ -223,9 +251,7 @@ export default function VendorDashboard() {
     setLoading(false);
   }
 
-  useEffect(() => {
-    loadData();
-  }, []);
+  useEffect(() => { loadData(); }, []);
 
   useEffect(() => {
     if (!vendor?.id) return;
@@ -234,39 +260,20 @@ export default function VendorDashboard() {
 
     (async () => {
       try {
-        const { accessToken } = await fetch("/api/auth/token").then((r) =>
-          r.json()
-        );
+        const { accessToken } = await fetch("/api/auth/token").then((r) => r.json());
         if (!accessToken) return;
         const client = getBrowserClient();
         client.realtime.setAuth(accessToken);
         channel = client
           .channel(`orders-${vendor.id}`)
-          .on(
-            "postgres_changes",
-            {
-              event: "*",
-              schema: "public",
-              table: "orders",
-              filter: `vendor_id=eq."${vendor.id}"`,
-            },
-            () => loadOrdersOnly()
-          )
+          .on("postgres_changes", { event: "*", schema: "public", table: "orders", filter: `vendor_id=eq."${vendor.id}"` }, () => loadOrdersOnly())
           .subscribe();
-      } catch {
-        /* noop */
-      }
+      } catch { /* noop */ }
     })();
 
     return () => {
       clearInterval(poll);
-      if (channel) {
-        try {
-          getBrowserClient().removeChannel(channel);
-        } catch {
-          /* noop */
-        }
-      }
+      if (channel) { try { getBrowserClient().removeChannel(channel); } catch { /* noop */ } }
     };
   }, [vendor?.id]);
 
@@ -287,16 +294,8 @@ export default function VendorDashboard() {
 
     let imageUrl = vendor?.image_url || null;
     let logoUrl = vendor?.logo_url || null;
-    if (storeFile) {
-      const url = await uploadImage(storeFile, "vendors");
-      if (url) imageUrl = url;
-      else setMsg("No se pudo subir la imagen");
-    }
-    if (logoFile) {
-      const url = await uploadImage(logoFile, "vendors");
-      if (url) logoUrl = url;
-      else setMsg("No se pudo subir el logo");
-    }
+    if (storeFile) { const url = await uploadImage(storeFile, "vendors"); if (url) imageUrl = url; else setMsg("No se pudo subir la imagen"); }
+    if (logoFile) { const url = await uploadImage(logoFile, "vendors"); if (url) logoUrl = url; else setMsg("No se pudo subir el logo"); }
 
     const res = await fetch("/api/vendor/me", {
       method: "POST",
@@ -315,7 +314,7 @@ export default function VendorDashboard() {
         logo_url: logoUrl,
         instagram,
         facebook,
-        payment_methods: paymentMethods,
+        payment_methods: paymentMethods.join(", "),
         delivery_options: deliveryOptions,
         services_list: servicesList,
         service_area: serviceArea,
@@ -324,12 +323,7 @@ export default function VendorDashboard() {
     });
     const data = await res.json();
     if (data.error) setMsg(data.error);
-    else {
-      setVendor(data.vendor);
-      setStoreFile(null);
-      setLogoFile(null);
-      setMsg("Local guardado");
-    }
+    else { setVendor(data.vendor); setStoreFile(null); setLogoFile(null); setMsg("Guardado"); }
     setSaving(false);
   }
 
@@ -339,41 +333,18 @@ export default function VendorDashboard() {
     setMsg("");
 
     let imageUrl = null;
-    if (offFile) {
-      imageUrl = await uploadImage(offFile, "offers");
-      if (!imageUrl) setMsg("No se pudo subir la imagen");
-    }
+    if (offFile) { imageUrl = await uploadImage(offFile, "offers"); if (!imageUrl) setMsg("No se pudo subir la imagen"); }
 
-    const payload = {
-      name: offName,
-      description: offDesc,
-      price: Number(offPrice),
-      category: offCategory,
-      image_url: imageUrl,
-    };
-
+    const payload = { name: offName, description: offDesc, price: Number(offPrice), category: offCategory, image_url: imageUrl };
     let res: Response;
     if (editingId) {
-      res = await fetch(`/api/vendor/offers/${editingId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+      res = await fetch(`/api/vendor/offers/${editingId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
     } else {
-      res = await fetch("/api/vendor/offers", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+      res = await fetch("/api/vendor/offers", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
     }
     const data = await res.json();
     if (data.error) setMsg(data.error);
-    else {
-      setShowNew(false);
-      resetOfferForm();
-      setMsg(editingId ? "Plato actualizado" : "Plato agregado");
-      loadData();
-    }
+    else { setShowNew(false); resetOfferForm(); setMsg(editingId ? "Plato actualizado" : "Plato agregado"); loadData(); }
     setSaving(false);
   }
 
@@ -390,20 +361,12 @@ export default function VendorDashboard() {
   }
 
   async function toggleFeatured(offer: Offer) {
-    await fetch(`/api/vendor/offers/${offer.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ featured_today: !offer.featured_today }),
-    });
+    await fetch(`/api/vendor/offers/${offer.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ featured_today: !offer.featured_today }) });
     loadData();
   }
 
   async function toggleAvailable(offer: Offer) {
-    await fetch(`/api/vendor/offers/${offer.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ available: !offer.available }),
-    });
+    await fetch(`/api/vendor/offers/${offer.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ available: !offer.available }) });
     loadData();
   }
 
@@ -413,11 +376,7 @@ export default function VendorDashboard() {
   }
 
   async function updateOrderStatus(order: Order, status: Order["status"]) {
-    await fetch(`/api/vendor/orders/${order.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status }),
-    });
+    await fetch(`/api/vendor/orders/${order.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }) });
     loadOrdersOnly();
   }
 
@@ -425,35 +384,22 @@ export default function VendorDashboard() {
     e.preventDefault();
     if (!newCatName.trim() || catBusy) return;
     setCatBusy(true);
-    const res = await fetch("/api/vendor/categories", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: newCatName }),
-    });
-    if (res.ok) {
-      setNewCatName("");
-      loadData();
-    }
+    const res = await fetch("/api/vendor/categories", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: newCatName }) });
+    if (res.ok) { setNewCatName(""); loadData(); }
     setCatBusy(false);
   }
 
   async function renameCategory() {
     if (!editingCatId || !editingCatName.trim() || catBusy) return;
     setCatBusy(true);
-    await fetch(`/api/vendor/categories/${editingCatId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: editingCatName }),
-    });
+    await fetch(`/api/vendor/categories/${editingCatId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: editingCatName }) });
     setEditingCatId(null);
     setCatBusy(false);
     loadData();
   }
 
   async function deleteCategory(cat: MenuCategory) {
-    if (!window.confirm(`¿Eliminar la categoría "${cat.name}"? Los platos quedan sin categoría.`)) {
-      return;
-    }
+    if (!window.confirm(`¿Eliminar "${cat.name}"? Los platos quedan sin categoría.`)) return;
     await fetch(`/api/vendor/categories/${cat.id}`, { method: "DELETE" });
     loadData();
   }
@@ -466,15 +412,9 @@ export default function VendorDashboard() {
     const [moved] = reordered.splice(idx, 1);
     reordered.splice(target, 0, moved);
     setCategories(reordered.map((c, i) => ({ ...c, position: i })));
-    await Promise.all(
-      reordered.map((c, i) =>
-        fetch(`/api/vendor/categories/${c.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ position: i }),
-        })
-      )
-    );
+    await Promise.all(reordered.map((c, i) =>
+      fetch(`/api/vendor/categories/${c.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ position: i }) })
+    ));
     loadData();
   }
 
@@ -485,201 +425,77 @@ export default function VendorDashboard() {
     setShareOpen(true);
     try {
       const url = `${window.location.origin}/tienda/${vendor.slug}`;
-      const dataUrl = await QRCode.toDataURL(url, { width: 480, margin: 1 });
-      setQrDataUrl(dataUrl);
-    } catch {
-      /* noop */
-    }
+      setQrDataUrl(await QRCode.toDataURL(url, { width: 480, margin: 1 }));
+    } catch { /* noop */ }
   }
 
   async function copyLink() {
     if (!vendor?.slug) return;
     try {
-      await navigator.clipboard.writeText(
-        `${window.location.origin}/tienda/${vendor.slug}`
-      );
+      await navigator.clipboard.writeText(`${window.location.origin}/tienda/${vendor.slug}`);
       setCopied(true);
-    } catch {
-      /* noop */
-    }
+    } catch { /* noop */ }
   }
 
-  if (loading)
-    return (
-      <main className="container mx-auto px-4 py-8">
-        <p className="text-gray-500">Cargando...</p>
-      </main>
-    );
+  if (loading) return <main className="container mx-auto px-4 py-8"><p className="text-muted-foreground">Cargando...</p></main>;
 
   if (!vendor) {
     return (
-      <main className="container mx-auto px-4 py-20 max-w-lg text-center">
-        <h1 className="font-display text-3xl font-semibold mb-4">
-          Tu comercio en Portal 659
-        </h1>
-        <p className="text-gray-600 mb-6">
-          Registrá tu comercio para armar tu menú o recibir consultas de{" "}
-          {ZONE.name} por WhatsApp.
-        </p>
-        <form
-          onSubmit={handleSetup}
-          className="text-left space-y-4 bg-white border rounded-xl p-6"
-        >
-          <div>
-            <Label>Tipo de comercio</Label>
-            <select
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              value={storeVertical}
-              onChange={(e) => setStoreVertical(e.target.value)}
-            >
-              {VERTICAL_OPTIONS.map((v) => (
-                <option key={v.value} value={v.value}>
-                  {v.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <Label>Nombre del comercio</Label>
-            <Input
-              value={storeName}
-              onChange={(e) => setStoreName(e.target.value)}
-              required
-            />
-          </div>
-          <div>
-            <Label>Categoría</Label>
-            <select
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              value={storeCategory}
-              onChange={(e) => setStoreCategory(e.target.value)}
-            >
-              {CATEGORIES.map((c) => (
-                <option key={c} value={c} className="capitalize">
-                  {c}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <Label>WhatsApp (con código de país)</Label>
-            <Input
-              value={whatsapp}
-              onChange={(e) => setWhatsapp(e.target.value)}
-              placeholder="5492215550000"
-              required
-            />
-          </div>
-          <div>
-            <Label>Dirección</Label>
-            <Input
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              placeholder="Calle y número, Sicardi"
-            />
-          </div>
-          <div>
-            <Label>Horarios</Label>
-            <Input
-              value={hours}
-              onChange={(e) => setHours(e.target.value)}
-              placeholder="Mar a Dom 12-22h"
-            />
-          </div>
-          <div>
-            <Label>Descripción</Label>
-            <Textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Contá qué cocinás..."
-            />
-          </div>
-          <div>
-            <Label>Teléfono directo (opcional)</Label>
-            <Input
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="2215550000"
-            />
-          </div>
-          <div>
-            <Label>Instagram (opcional)</Label>
-            <Input
-              value={instagram}
-              onChange={(e) => setInstagram(e.target.value)}
-              placeholder="@tulocal"
-            />
-          </div>
-          <div>
-            <Label>Facebook (opcional)</Label>
-            <Input
-              value={facebook}
-              onChange={(e) => setFacebook(e.target.value)}
-              placeholder="https://facebook.com/tulocal"
-            />
-          </div>
-          <div>
-            <Label>Medios de pago</Label>
-            <Input
-              value={paymentMethods}
-              onChange={(e) => setPaymentMethods(e.target.value)}
-              placeholder="Efectivo, Débito, Mercado Pago"
-            />
-          </div>
-          <div>
-            <Label>Entrega</Label>
-            <select
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              value={deliveryOptions}
-              onChange={(e) => setDeliveryOptions(e.target.value)}
-            >
-              <option value="ambos">Retiro y domicilio</option>
-              <option value="retiro">Solo retiro en local</option>
-              <option value="domicilio">Solo a domicilio</option>
-            </select>
-          </div>
-          <div>
-            <Label>Foto del local (opcional)</Label>
-            <Input
-              type="file"
-              accept="image/*"
-              onChange={(e) => {
-                const f = e.target.files?.[0] || null;
-                setStoreFile(f);
-                if (f) readPreview(f, setStorePreview);
-              }}
-            />
-            {storePreview && (
-              <img
-                src={storePreview}
-                alt="Vista previa"
-                className="mt-2 h-24 w-full object-cover rounded-lg"
-              />
-            )}
-          </div>
-          <div>
-            <Label>Logo del local (cuadrado, opcional)</Label>
-            <Input
-              type="file"
-              accept="image/*"
-              onChange={(e) => {
-                const f = e.target.files?.[0] || null;
-                setLogoFile(f);
-                if (f) readPreview(f, setLogoPreview);
-              }}
-            />
-            {logoPreview && (
-              <img
-                src={logoPreview}
-                alt="Vista previa del logo"
-                className="mt-2 h-20 w-20 object-cover rounded-full border border-border"
-              />
-            )}
-          </div>
+      <main className="container mx-auto px-4 py-8 max-w-lg">
+        <h1 className="font-display text-2xl font-semibold mb-1">Tu comercio en Portal 659</h1>
+        <p className="text-muted-foreground text-sm mb-6">Completá los datos para armar tu vidriera.</p>
+        <form onSubmit={handleSetup} className="space-y-4">
+          <CollapsibleSection icon="🏪" title="Tu comercio" defaultOpen>
+            <div className="space-y-3">
+              <div><Label>Tipo</Label><select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={storeVertical} onChange={(e) => setStoreVertical(e.target.value)}>{VERTICAL_OPTIONS.map((v) => <option key={v.value} value={v.value}>{v.label}</option>)}</select></div>
+              <div><Label>Nombre</Label><Input value={storeName} onChange={(e) => setStoreName(e.target.value)} required /></div>
+              <div><Label>Categoría</Label><select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={storeCategory} onChange={(e) => setStoreCategory(e.target.value)}>{CATEGORIES.map((c) => <option key={c} value={c} className="capitalize">{c}</option>)}</select></div>
+            </div>
+          </CollapsibleSection>
+          <CollapsibleSection icon="📱" title="Contacto" defaultOpen>
+            <div className="space-y-3">
+              <div><Label>WhatsApp</Label><Input value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} placeholder="5492215550000" required /></div>
+              <div><Label>Teléfono (opcional)</Label><Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="2215550000" /></div>
+            </div>
+          </CollapsibleSection>
+          <CollapsibleSection icon="📍" title="Ubicación">
+            <div className="space-y-3">
+              <div><Label>Dirección</Label><Input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Calle y número" /></div>
+              <div><Label>Horarios</Label><Input value={hours} onChange={(e) => setHours(e.target.value)} placeholder="Mar a Dom 12-22h" /></div>
+            </div>
+          </CollapsibleSection>
+          <CollapsibleSection icon="📝" title="Descripción">
+            <Textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Contá qué hacés..." />
+          </CollapsibleSection>
+          <CollapsibleSection icon="📸" title="Fotos">
+            <div className="space-y-3">
+              <div><Label>Foto del local</Label><Input type="file" accept="image/*" onChange={(e) => { const f = e.target.files?.[0] || null; setStoreFile(f); if (f) readPreview(f, setStorePreview); }} />{storePreview && <img src={storePreview} alt="Vista previa" className="mt-2 h-24 w-full object-cover rounded-lg" />}</div>
+              <div><Label>Logo</Label><Input type="file" accept="image/*" onChange={(e) => { const f = e.target.files?.[0] || null; setLogoFile(f); if (f) readPreview(f, setLogoPreview); }} />{logoPreview && <img src={logoPreview} alt="Logo" className="mt-2 h-16 w-16 object-cover rounded-full border" />}</div>
+            </div>
+          </CollapsibleSection>
+          <CollapsibleSection icon="🌐" title="Redes sociales">
+            <div className="space-y-3">
+              <div><Label>Instagram</Label><Input value={instagram} onChange={(e) => setInstagram(e.target.value)} placeholder="@tulocal" /></div>
+              <div><Label>Facebook</Label><Input value={facebook} onChange={(e) => setFacebook(e.target.value)} placeholder="https://facebook.com/tulocal" /></div>
+            </div>
+          </CollapsibleSection>
+          <CollapsibleSection icon="💳" title="Pago y entrega">
+            <div className="space-y-4">
+              <div><Label className="mb-2 block">Medios de pago</Label><ChipToggle options={PAYMENT_OPTIONS} value={paymentMethods} onChange={setPaymentMethods} /></div>
+              <div><Label className="mb-2 block">Entrega</Label><RadioCards options={DELIVERY_OPTIONS} value={deliveryOptions} onChange={setDeliveryOptions} /></div>
+            </div>
+          </CollapsibleSection>
+          {storeVertical === "servicio" && (
+            <CollapsibleSection icon="🔧" title="Servicios">
+              <div className="space-y-3">
+                <div><Label>Servicios que ofrecés</Label><Input value={servicesList} onChange={(e) => setServicesList(e.target.value)} placeholder="Instalaciones, reparaciones, urgencias" /><p className="text-xs text-muted-foreground mt-1">Separá con coma</p></div>
+                <div><Label>Zona de cobertura</Label><Input value={serviceArea} onChange={(e) => setServiceArea(e.target.value)} placeholder="Sicardi, Garibaldi" /></div>
+                <label className="flex items-center gap-2"><input type="checkbox" checked={freeEstimate} onChange={(e) => setFreeEstimate(e.target.checked)} className="h-4 w-4 rounded border-border" /><span className="text-sm">Presupuesto sin compromiso</span></label>
+              </div>
+            </CollapsibleSection>
+          )}
           {msg && <p className="text-sm text-red-600">{msg}</p>}
-          <Button type="submit" className="w-full" disabled={saving}>
-            {saving ? "Guardando..." : "Registrar mi local"}
-          </Button>
+          <Button type="submit" className="w-full" disabled={saving}>{saving ? "Guardando..." : "Crear mi vidriera"}</Button>
         </form>
       </main>
     );
@@ -687,706 +503,279 @@ export default function VendorDashboard() {
 
   const isService = vendor?.vertical === "servicio";
 
-  const configCard = (
-    <Card className="p-5 mb-6">
-      <h2 className="font-semibold mb-3">Configuración del comercio</h2>
-      <form
-        onSubmit={handleSetup}
-        className="grid grid-cols-1 sm:grid-cols-2 gap-4"
-      >
-        <div>
-          <Label>Tipo de comercio</Label>
-          <select
-            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-            value={storeVertical}
-            onChange={(e) => setStoreVertical(e.target.value)}
-          >
-            {VERTICAL_OPTIONS.map((v) => (
-              <option key={v.value} value={v.value}>
-                {v.label}
-              </option>
+  const configContent = (
+    <form onSubmit={handleSetup} className="space-y-4">
+      <CollapsibleSection icon="🏪" title="Tu comercio" defaultOpen badge={storeVertical === "servicio" ? "Servicio" : undefined}>
+        <div className="space-y-3">
+          <div><Label>Tipo</Label><select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={storeVertical} onChange={(e) => setStoreVertical(e.target.value)}>{VERTICAL_OPTIONS.map((v) => <option key={v.value} value={v.value}>{v.label}</option>)}</select></div>
+          <div><Label>Nombre</Label><Input value={storeName} onChange={(e) => setStoreName(e.target.value)} required /></div>
+          <div><Label>Categoría</Label><select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={storeCategory} onChange={(e) => setStoreCategory(e.target.value)}>{CATEGORIES.map((c) => <option key={c} value={c} className="capitalize">{c}</option>)}</select></div>
+        </div>
+      </CollapsibleSection>
+      <CollapsibleSection icon="📍" title="Ubicación y horarios">
+        <div className="space-y-3">
+          <div><Label>Dirección</Label><Input value={address} onChange={(e) => setAddress(e.target.value)} /></div>
+          <div><Label>Horarios</Label><Input value={hours} onChange={(e) => setHours(e.target.value)} /></div>
+        </div>
+      </CollapsibleSection>
+      <CollapsibleSection icon="📸" title="Fotos">
+        <div className="space-y-3">
+          <div><Label>Foto del comercio</Label><Input type="file" accept="image/*" onChange={(e) => { const f = e.target.files?.[0] || null; setStoreFile(f); if (f) readPreview(f, setStorePreview); }} />{storePreview && <img src={storePreview} alt="Vista previa" className="mt-2 h-24 w-full object-cover rounded-lg" />}</div>
+          <div><Label>Logo</Label><Input type="file" accept="image/*" onChange={(e) => { const f = e.target.files?.[0] || null; setLogoFile(f); if (f) readPreview(f, setLogoPreview); }} />{logoPreview && <img src={logoPreview} alt="Logo" className="mt-2 h-16 w-16 object-cover rounded-full border" />}</div>
+        </div>
+      </CollapsibleSection>
+      <CollapsibleSection icon="📝" title="Descripción">
+        <Textarea value={description} onChange={(e) => setDescription(e.target.value)} />
+      </CollapsibleSection>
+      <CollapsibleSection icon="📱" title="Contacto">
+        <div className="space-y-3">
+          <div><Label>WhatsApp</Label><Input value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} /></div>
+          <div><Label>Teléfono directo</Label><Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="2215550000" /></div>
+        </div>
+      </CollapsibleSection>
+      <CollapsibleSection icon="🌐" title="Redes sociales">
+        <div className="space-y-3">
+          <div><Label>Instagram</Label><Input value={instagram} onChange={(e) => setInstagram(e.target.value)} placeholder="@tulocal" /></div>
+          <div><Label>Facebook</Label><Input value={facebook} onChange={(e) => setFacebook(e.target.value)} placeholder="https://facebook.com/tulocal" /></div>
+        </div>
+      </CollapsibleSection>
+      <CollapsibleSection icon="💳" title="Pago y entrega">
+        <div className="space-y-4">
+          <div><Label className="mb-2 block">Medios de pago</Label><ChipToggle options={PAYMENT_OPTIONS} value={paymentMethods} onChange={setPaymentMethods} /></div>
+          <div><Label className="mb-2 block">Entrega</Label><RadioCards options={DELIVERY_OPTIONS} value={deliveryOptions} onChange={setDeliveryOptions} /></div>
+        </div>
+      </CollapsibleSection>
+      {isService && (
+        <CollapsibleSection icon="🔧" title="Servicios" defaultOpen>
+          <div className="space-y-3">
+            <div><Label>Servicios que ofrecés</Label><Input value={servicesList} onChange={(e) => setServicesList(e.target.value)} placeholder="Instalaciones, reparaciones, urgencias" /><p className="text-xs text-muted-foreground mt-1">Separá con coma</p></div>
+            <div><Label>Zona de cobertura</Label><Input value={serviceArea} onChange={(e) => setServiceArea(e.target.value)} placeholder="Sicardi, Garibaldi" /></div>
+            <label className="flex items-center gap-2"><input type="checkbox" checked={freeEstimate} onChange={(e) => setFreeEstimate(e.target.checked)} className="h-4 w-4 rounded border-border" /><span className="text-sm">Presupuesto sin compromiso</span></label>
+          </div>
+        </CollapsibleSection>
+      )}
+      <Button type="submit" className="w-full" disabled={saving}>{saving ? "Guardando..." : "Guardar cambios"}</Button>
+    </form>
+  );
+
+  const menuContent = (
+    <>
+      <CollapsibleSection icon="📂" title={`Categorías (${categories.length})`}>
+        <form onSubmit={addCategory} className="flex gap-2 mb-3">
+          <Input placeholder="Nueva categoría" value={newCatName} onChange={(e) => setNewCatName(e.target.value)} />
+          <Button type="submit" size="sm" disabled={catBusy || !newCatName.trim()}>+</Button>
+        </form>
+        {categories.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Creá categorías para organizar tu menú.</p>
+        ) : (
+          <ul className="space-y-2">
+            {categories.map((cat, i) => (
+              <li key={cat.id} className="flex items-center gap-2 border border-border rounded-lg px-3 py-2">
+                {editingCatId === cat.id ? (
+                  <>
+                    <Input className="h-8 flex-1" value={editingCatName} onChange={(e) => setEditingCatName(e.target.value)} autoFocus />
+                    <Button size="sm" variant="outline" disabled={catBusy} onClick={renameCategory}>OK</Button>
+                    <Button size="sm" variant="ghost" onClick={() => setEditingCatId(null)}>✕</Button>
+                  </>
+                ) : (
+                  <>
+                    <span className="font-medium flex-1 min-w-0 truncate">{cat.name}</span>
+                    <span className="text-xs text-muted-foreground">{offers.filter((o) => o.category === cat.name).length} platos</span>
+                    <Button size="sm" variant="ghost" disabled={i === 0} onClick={() => moveCategory(cat, -1)}>↑</Button>
+                    <Button size="sm" variant="ghost" disabled={i === categories.length - 1} onClick={() => moveCategory(cat, 1)}>↓</Button>
+                    <Button size="sm" variant="ghost" onClick={() => { setEditingCatId(cat.id); setEditingCatName(cat.name); }}>✏️</Button>
+                    <Button size="sm" variant="ghost" className="text-red-600" onClick={() => deleteCategory(cat)}>🗑️</Button>
+                  </>
+                )}
+              </li>
             ))}
-          </select>
-        </div>
-        <div>
-          <Label>Nombre</Label>
-          <Input
-            value={storeName}
-            onChange={(e) => setStoreName(e.target.value)}
-            required
-          />
-        </div>
-        <div>
-          <Label>Categoría</Label>
-          <select
-            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-            value={storeCategory}
-            onChange={(e) => setStoreCategory(e.target.value)}
-          >
-            {CATEGORIES.map((c) => (
-              <option key={c} value={c} className="capitalize">
-                {c}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <Label>WhatsApp</Label>
-          <Input
-            value={whatsapp}
-            onChange={(e) => setWhatsapp(e.target.value)}
-          />
-        </div>
-        <div>
-          <Label>Dirección</Label>
-          <Input
-            value={address}
-            onChange={(e) => setAddress(e.target.value)}
-          />
-        </div>
-        <div>
-          <Label>Horarios</Label>
-          <Input
-            value={hours}
-            onChange={(e) => setHours(e.target.value)}
-          />
-        </div>
-        <div>
-          <Label>Foto del comercio</Label>
-          <Input
-            type="file"
-            accept="image/*"
-            onChange={(e) => {
-              const f = e.target.files?.[0] || null;
-              setStoreFile(f);
-              if (f) readPreview(f, setStorePreview);
-            }}
-          />
-          {storePreview && (
-            <img
-              src={storePreview}
-              alt="Vista previa"
-              className="mt-2 h-24 w-full object-cover rounded-lg"
-            />
-          )}
-        </div>
-        <div>
-          <Label>Logo del comercio (cuadrado)</Label>
-          <Input
-            type="file"
-            accept="image/*"
-            onChange={(e) => {
-              const f = e.target.files?.[0] || null;
-              setLogoFile(f);
-              if (f) readPreview(f, setLogoPreview);
-            }}
-          />
-          {logoPreview && (
-            <img
-              src={logoPreview}
-              alt="Vista previa del logo"
-              className="mt-2 h-20 w-20 object-cover rounded-full border border-border"
-            />
-          )}
-        </div>
-        <div className="sm:col-span-2">
-          <Label>Descripción</Label>
-          <Textarea
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-          />
-        </div>
-        <div>
-          <Label>Teléfono directo</Label>
-          <Input
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            placeholder="2215550000"
-          />
-        </div>
-        <div>
-          <Label>Instagram</Label>
-          <Input
-            value={instagram}
-            onChange={(e) => setInstagram(e.target.value)}
-            placeholder="@tulocal"
-          />
-        </div>
-        <div>
-          <Label>Facebook</Label>
-          <Input
-            value={facebook}
-            onChange={(e) => setFacebook(e.target.value)}
-            placeholder="https://facebook.com/tulocal"
-          />
-        </div>
-        <div>
-          <Label>Medios de pago</Label>
-          <Input
-            value={paymentMethods}
-            onChange={(e) => setPaymentMethods(e.target.value)}
-            placeholder="Efectivo, Débito, Mercado Pago"
-          />
-        </div>
-        <div>
-          <Label>Entrega</Label>
-          <select
-            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-            value={deliveryOptions}
-            onChange={(e) => setDeliveryOptions(e.target.value)}
-          >
-            <option value="ambos">Retiro y domicilio</option>
-            <option value="retiro">Solo retiro en local</option>
-            <option value="domicilio">Solo a domicilio</option>
-          </select>
-        </div>
-        <div className="sm:col-span-2">
-          <Button type="submit" size="sm" disabled={saving}>
-            {saving ? "Guardando..." : "Guardar comercio"}
-          </Button>
-        </div>
-      </form>
-    </Card>
+          </ul>
+        )}
+      </CollapsibleSection>
+
+      <div className="flex items-center justify-between mt-6 mb-4">
+        <h2 className="font-semibold">Menú ({offers.length})</h2>
+        <Button size="sm" onClick={() => { if (showNew && !editingId) resetOfferForm(); setShowNew(!showNew); }}>{editingId ? "Cancelar" : "+ Plato"}</Button>
+      </div>
+
+      {showNew && (
+        <Card className="p-4 mb-4">
+          <h3 className="font-semibold mb-3">{editingId ? "Editar plato" : "Nuevo plato"}</h3>
+          <form onSubmit={handleNewOffer} className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div><Label>Nombre</Label><Input value={offName} onChange={(e) => setOffName(e.target.value)} required /></div>
+              <div><Label>Precio ($)</Label><Input type="number" step="0.01" value={offPrice} onChange={(e) => setOffPrice(e.target.value)} required /></div>
+            </div>
+            <div><Label>Categoría</Label><select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={offCategory} onChange={(e) => setOffCategory(e.target.value)}>{categories.length === 0 && <option value="otras">otras</option>}{categories.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}{offCategory && !categories.some((c) => c.name === offCategory) && offCategory !== "otras" && <option value={offCategory}>{offCategory}</option>}</select></div>
+            <div><Label>Foto</Label><Input type="file" accept="image/*" onChange={(e) => { const f = e.target.files?.[0] || null; setOffFile(f); if (f) readPreview(f, setOffPreview); }} />{offPreview && <img src={offPreview} alt="Preview" className="mt-2 h-20 w-full object-cover rounded-lg" />}</div>
+            <div><Label>Descripción</Label><Textarea value={offDesc} onChange={(e) => setOffDesc(e.target.value)} /></div>
+            <Button type="submit" disabled={saving} className="w-full">{saving ? "Guardando..." : editingId ? "Guardar" : "Agregar"}</Button>
+          </form>
+        </Card>
+      )}
+
+      <div className="space-y-3">
+        {offers.length === 0 ? (
+          <p className="text-muted-foreground text-sm text-center py-8">Todavía no cargaste platos.</p>
+        ) : (
+          offers.map((offer) => (
+            <Card key={offer.id} className="p-3">
+              <div className="flex items-center gap-3">
+                {offer.image_url ? (
+                  <img src={offer.image_url} alt={offer.name} className="h-12 w-12 rounded-lg object-cover flex-shrink-0" />
+                ) : (
+                  <div className="h-12 w-12 rounded-lg bg-accent flex items-center justify-center flex-shrink-0"><span className="font-bold text-primary/60">{offer.name.charAt(0)}</span></div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-medium text-sm truncate">{offer.name}</span>
+                    {offer.featured_today && <Badge className="bg-sun/20 text-ink text-[10px] px-1.5 py-0">Hoy</Badge>}
+                    {!offer.available && <Badge variant="secondary" className="text-[10px] px-1.5 py-0">Pausado</Badge>}
+                  </div>
+                  <p className="text-xs text-muted-foreground">${Number(offer.price).toLocaleString("es-AR")}{offer.category && ` · ${offer.category}`}</p>
+                </div>
+                <div className="hidden sm:flex items-center gap-1 flex-shrink-0">
+                  <Button variant="outline" size="sm" onClick={() => startEdit(offer)}>Editar</Button>
+                  <Button variant="outline" size="sm" onClick={() => toggleFeatured(offer)}>{offer.featured_today ? "Quitar" : "Destacar"}</Button>
+                  <Button variant="outline" size="sm" onClick={() => toggleAvailable(offer)}>{offer.available ? "Pausar" : "Activar"}</Button>
+                  <Button variant="ghost" size="sm" className="text-red-600" onClick={() => deleteOffer(offer)}>Eliminar</Button>
+                </div>
+                <div className="sm:hidden flex-shrink-0">
+                  <DropdownMenu
+                    trigger={<span className="text-xl">⋯</span>}
+                    items={[
+                      { label: "Editar", icon: "✏️", onClick: () => startEdit(offer) },
+                      { label: offer.featured_today ? "Quitar de Hoy" : "Destacar Hoy", icon: "⭐", onClick: () => toggleFeatured(offer) },
+                      { label: offer.available ? "Pausar" : "Activar", icon: offer.available ? "⏸️" : "▶️", onClick: () => toggleAvailable(offer) },
+                      { label: "Eliminar", icon: "🗑️", onClick: () => deleteOffer(offer), destructive: true },
+                    ]}
+                  />
+                </div>
+              </div>
+            </Card>
+          ))
+        )}
+      </div>
+    </>
+  );
+
+  const ordersContent = (
+    <div className="space-y-3">
+      {orders.length === 0 ? (
+        <p className="text-muted-foreground text-center py-12">Todavía no recibiste pedidos.</p>
+      ) : (
+        orders.map((order) => (
+          <Card key={order.id} className="p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+              <div>
+                <p className="font-semibold text-sm">{order.customer_name}</p>
+                <p className="text-xs text-muted-foreground">
+                  <a href={`https://wa.me/${order.customer_phone.replace(/[^0-9]/g, "")}`} target="_blank" rel="noopener noreferrer" className="text-primary">{order.customer_phone}</a>
+                  {order.method === "delivery" ? ` · ${order.customer_address || "sin dirección"}` : " · Retiro"}
+                </p>
+              </div>
+              <Badge className={STATUS_COLORS[order.status]}>{STATUS_LABELS[order.status]}</Badge>
+            </div>
+            <div className="border-t pt-2 mb-2">
+              {(order.items || []).map((item, i) => (
+                <p key={i} className="text-xs flex justify-between"><span>{item.qty}x {item.name}</span><span>${Number(item.price * item.qty).toLocaleString("es-AR")}</span></p>
+              ))}
+              <div className="border-t mt-1 pt-1 flex justify-between font-bold text-sm"><span>Total</span><span>${Number(order.total).toLocaleString("es-AR")}</span></div>
+            </div>
+            <p className="text-[10px] text-muted-foreground mb-2">{new Date(order.created_at).toLocaleString("es-AR")}</p>
+            <div className="flex flex-wrap gap-2">
+              {order.status === "new" && <Button size="sm" onClick={() => updateOrderStatus(order, "confirmed")}>Confirmar</Button>}
+              {order.status === "confirmed" && <Button size="sm" onClick={() => updateOrderStatus(order, "completed")}>Completar</Button>}
+              {order.status !== "cancelled" && order.status !== "completed" && (
+                <Button size="sm" variant="outline" className="text-red-600" onClick={() => updateOrderStatus(order, "cancelled")}>Cancelar</Button>
+              )}
+            </div>
+          </Card>
+        ))
+      )}
+    </div>
   );
 
   return (
-    <main className="container mx-auto px-4 py-8 max-w-4xl">
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-        <div className="flex items-center gap-4 min-w-0">
+    <main className="min-h-screen bg-background pb-20 sm:pb-8">
+      {/* Header */}
+      <div className="sticky top-0 z-40 bg-background border-b border-border">
+        <div className="container mx-auto px-4 py-3 flex items-center gap-3">
           {vendor.logo_url || vendor.image_url ? (
-            <img
-              src={vendor.logo_url || vendor.image_url || ""}
-              alt={vendor.store_name}
-              className="h-14 w-14 rounded-full object-cover"
-            />
+            <img src={vendor.logo_url || vendor.image_url || ""} alt={vendor.store_name} className="h-10 w-10 rounded-full object-cover flex-shrink-0" />
           ) : (
-            <div className="h-14 w-14 rounded-full bg-accent flex items-center justify-center flex-shrink-0">
-              <span className="font-display text-2xl font-bold text-primary/70">
-                {vendor.store_name.charAt(0)}
-              </span>
-            </div>
+            <div className="h-10 w-10 rounded-full bg-accent flex items-center justify-center flex-shrink-0"><span className="font-bold text-primary">{vendor.store_name.charAt(0)}</span></div>
           )}
-          <div className="min-w-0">
-            <h1 className="font-display text-3xl font-semibold truncate">
-              {vendor.store_name}
-            </h1>
-            <p className="text-gray-500 text-sm">
-              {vendor.slug && (
-                <a
-                  href={`/tienda/${vendor.slug}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-primary underline"
-                >
-                  Ver mi micrositio
-                </a>
-              )}
-              {vendor.whatsapp && ` · WhatsApp: ${vendor.whatsapp}`}
-            </p>
+          <div className="flex-1 min-w-0">
+            <h1 className="font-semibold text-sm truncate">{vendor.store_name}</h1>
+            {vendor.slug && <a href={`/tienda/${vendor.slug}`} target="_blank" rel="noopener noreferrer" className="text-xs text-primary">Ver mi micrositio →</a>}
           </div>
+          <Button variant="outline" size="sm" onClick={openShare} className="flex-shrink-0">Compartir</Button>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={openShare}>
-            Compartir
-          </Button>
+      </div>
+
+      {msg && <div className="container mx-auto px-4 pt-3"><p className="text-sm text-green-600 bg-green-50 rounded-lg px-3 py-2">{msg}</p></div>}
+
+      {/* Desktop tabs */}
+      <div className="hidden sm:block container mx-auto px-4 mt-4">
+        <div className="flex gap-2 mb-4">
           {!isService && (
             <>
-              <Button variant="outline" onClick={() => setTab("menu")}>
-                Menú
-              </Button>
-              <Button variant="outline" onClick={() => setTab("orders")}>
-                Pedidos ({orders.length})
-              </Button>
+              <Button variant={tab === "config" ? "default" : "outline"} size="sm" onClick={() => setTab("config")}>Configuración</Button>
+              <Button variant={tab === "menu" ? "default" : "outline"} size="sm" onClick={() => setTab("menu")}>Menú ({offers.length})</Button>
+              <Button variant={tab === "orders" ? "default" : "outline"} size="sm" onClick={() => setTab("orders")}>Pedidos ({orders.length})</Button>
             </>
           )}
         </div>
       </div>
 
-      {msg && <p className="text-sm mb-4 text-green-600">{msg}</p>}
-
-      {isService ? (
-        <>
-          {configCard}
-          <Card className="p-5 mb-6">
-            <h2 className="font-semibold mb-3">Tu vidriera de servicio</h2>
-            <p className="text-sm text-muted-foreground mb-4">
-              Los vecinos entran a tu vidriera y te escriben directo por
-              WhatsApp para consultarte. Completá los datos de tu servicio
-              para que te encuentren fácil.
-            </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-              <div className="sm:col-span-2">
-                <Label>Servicios que ofrecés</Label>
-                <Input
-                  value={servicesList}
-                  onChange={(e) => setServicesList(e.target.value)}
-                  placeholder="Instalaciones, reparaciones, urgencias"
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Separá cada servicio con coma
-                </p>
-              </div>
-              <div>
-                <Label>Zona de cobertura</Label>
-                <Input
-                  value={serviceArea}
-                  onChange={(e) => setServiceArea(e.target.value)}
-                  placeholder="Sicardi, Garibaldi y alrededores"
-                />
-              </div>
-              <div className="flex items-center gap-2 pt-6">
-                <input
-                  type="checkbox"
-                  id="free-estimate"
-                  checked={freeEstimate}
-                  onChange={(e) => setFreeEstimate(e.target.checked)}
-                  className="h-4 w-4 rounded border-border"
-                />
-                <Label htmlFor="free-estimate" className="cursor-pointer">
-                  Presupuesto sin compromiso
-                </Label>
-              </div>
+      {/* Content */}
+      <div className="container mx-auto px-4 mt-4 max-w-2xl">
+        {isService ? (
+          <div className="space-y-4">{configContent}</div>
+        ) : (
+          <>
+            <div className={tab === "config" ? "" : "hidden sm:hidden"}>{configContent}</div>
+            <div className={tab === "menu" ? "" : "hidden sm:hidden"}>{menuContent}</div>
+            <div className={tab === "orders" ? "" : "hidden sm:hidden"}>{ordersContent}</div>
+            <div className="hidden sm:block">
+              {tab === "config" && configContent}
+              {tab === "menu" && menuContent}
+              {tab === "orders" && ordersContent}
             </div>
-            <div className="flex flex-wrap gap-2">
-              <Button onClick={openShare} size="sm">
-                Compartí tu QR
-              </Button>
-              {vendor.slug && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() =>
-                    window.open(`/tienda/${vendor.slug}`, "_blank")
-                  }
-                >
-                  Ver mi vidriera
-                </Button>
-              )}
-            </div>
-          </Card>
-        </>
-      ) : (
-        <>
-          {tab === "menu" && (
-        <>
-          {configCard}
+          </>
+        )}
+      </div>
 
-          <Card className="p-5 mb-6">
-            <h2 className="font-semibold mb-1">Categorías del menú</h2>
-            <p className="text-sm text-muted-foreground mb-4">
-              Separá tu menú en secciones (por ejemplo: Empanadas, Pizzas,
-              Bebidas). En tu vidriera se muestran en este orden.
-            </p>
-            <form onSubmit={addCategory} className="flex gap-2 mb-4">
-              <Input
-                placeholder="Nueva categoría (ej: Bebidas)"
-                value={newCatName}
-                onChange={(e) => setNewCatName(e.target.value)}
-              />
-              <Button type="submit" size="sm" disabled={catBusy || !newCatName.trim()}>
-                Agregar
-              </Button>
-            </form>
-            {categories.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                Todavía no creaste categorías. Agregá una para empezar.
-              </p>
-            ) : (
-              <ul className="space-y-2">
-                {categories.map((cat, i) => (
-                  <li
-                    key={cat.id}
-                    className="flex flex-wrap items-center gap-2 border border-border rounded-lg px-3 py-2"
-                  >
-                    {editingCatId === cat.id ? (
-                      <>
-                        <Input
-                          className="h-8 max-w-[240px]"
-                          value={editingCatName}
-                          onChange={(e) => setEditingCatName(e.target.value)}
-                          autoFocus
-                        />
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={catBusy}
-                          onClick={() => renameCategory()}
-                        >
-                          Guardar
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => setEditingCatId(null)}
-                        >
-                          Cancelar
-                        </Button>
-                      </>
-                    ) : (
-                      <>
-                        <span className="font-medium flex-1 min-w-0 truncate">
-                          {cat.name}
-                        </span>
-                        <span className="text-xs text-muted-foreground">
-                          {offers.filter((o) => o.category === cat.name).length}{" "}
-                          platos
-                        </span>
-                      </>
-                    )}
-                    <div className="flex items-center gap-1 ml-auto">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        disabled={i === 0}
-                        onClick={() => moveCategory(cat, -1)}
-                      >
-                        ↑
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        disabled={i === categories.length - 1}
-                        onClick={() => moveCategory(cat, 1)}
-                      >
-                        ↓
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => {
-                          setEditingCatId(cat.id);
-                          setEditingCatName(cat.name);
-                        }}
-                      >
-                        Editar
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="text-red-600 hover:text-red-700"
-                        onClick={() => deleteCategory(cat)}
-                      >
-                        Eliminar
-                      </Button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Card>
-
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold">Tu menú ({offers.length})</h2>
-            <Button
-              size="sm"
-              onClick={() => {
-                if (showNew && !editingId) resetOfferForm();
-                setShowNew(!showNew);
-              }}
-            >
-              {editingId ? "Cancelar edición" : "+ Agregar plato"}
-            </Button>
+      {/* Mobile bottom nav */}
+      {!isService && (
+        <nav className="sm:hidden fixed bottom-0 inset-x-0 bg-card border-t border-border z-50">
+          <div className="flex">
+            <button onClick={() => setTab("config")} className={`flex-1 flex flex-col items-center gap-0.5 py-2 text-[10px] font-medium ${tab === "config" ? "text-primary" : "text-muted-foreground"}`}>
+              <span className="text-lg">⚙️</span>Config
+            </button>
+            <button onClick={() => setTab("menu")} className={`flex-1 flex flex-col items-center gap-0.5 py-2 text-[10px] font-medium ${tab === "menu" ? "text-primary" : "text-muted-foreground"}`}>
+              <span className="text-lg">🍽️</span>Menú
+            </button>
+            <button onClick={() => setTab("orders")} className={`flex-1 flex flex-col items-center gap-0.5 py-2 text-[10px] font-medium ${tab === "orders" ? "text-primary" : "text-muted-foreground"}`}>
+              <span className="text-lg">📦</span>Pedidos
+              {orders.length > 0 && <span className="absolute top-1 right-1/3 -translate-x-4 bg-red-500 text-white text-[9px] rounded-full h-4 w-4 flex items-center justify-center">{orders.length}</span>}
+            </button>
           </div>
-
-          {showNew && (
-            <Card className="p-5 mb-6">
-              <h3 className="font-semibold mb-3">
-                {editingId ? "Editar plato" : "Nuevo plato"}
-              </h3>
-              <form onSubmit={handleNewOffer} className="space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <Label>Nombre</Label>
-                    <Input
-                      value={offName}
-                      onChange={(e) => setOffName(e.target.value)}
-                      required
-                    />
-                  </div>
-                  <div>
-                    <Label>Precio ($)</Label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      value={offPrice}
-                      onChange={(e) => setOffPrice(e.target.value)}
-                      required
-                    />
-                  </div>
-                  <div className="sm:col-span-2">
-                    <Label>Categoría</Label>
-                    <select
-                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                      value={offCategory}
-                      onChange={(e) => setOffCategory(e.target.value)}
-                    >
-                      {categories.length === 0 && (
-                        <option value="otras">otras</option>
-                      )}
-                      {categories.map((c) => (
-                        <option key={c.id} value={c.name}>
-                          {c.name}
-                        </option>
-                      ))}
-                      {offCategory &&
-                        !categories.some((c) => c.name === offCategory) &&
-                        offCategory !== "otras" && (
-                          <option value={offCategory}>{offCategory}</option>
-                        )}
-                    </select>
-                    {categories.length === 0 && (
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Creá categorías abajo para organizar tu menú por
-                        secciones.
-                      </p>
-                    )}
-                  </div>
-                  <div className="sm:col-span-2">
-                    <Label>Foto del plato (opcional)</Label>
-                    <Input
-                      type="file"
-                      accept="image/*"
-                      onChange={(e) => {
-                        const f = e.target.files?.[0] || null;
-                        setOffFile(f);
-                        if (f) readPreview(f, setOffPreview);
-                      }}
-                    />
-                    {offPreview && (
-                      <img
-                        src={offPreview}
-                        alt="Vista previa"
-                        className="mt-2 h-24 w-full object-cover rounded-lg"
-                      />
-                    )}
-                  </div>
-                  <div className="sm:col-span-2">
-                    <Label>Descripción</Label>
-                    <Textarea
-                      value={offDesc}
-                      onChange={(e) => setOffDesc(e.target.value)}
-                    />
-                  </div>
-                </div>
-                <Button type="submit" disabled={saving}>
-                  {saving
-                    ? "Guardando..."
-                    : editingId
-                    ? "Guardar cambios"
-                    : "Agregar al menú"}
-                </Button>
-              </form>
-            </Card>
-          )}
-
-          <div className="space-y-3">
-            {offers.length === 0 ? (
-              <p className="text-gray-500 text-sm">
-                Todavía no cargaste platos. ¡Agregá tu primer plato!
-              </p>
-            ) : (
-              offers.map((offer) => (
-                <Card
-                  key={offer.id}
-                  className="p-4 flex items-center justify-between gap-4"
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    {offer.image_url ? (
-                      <img
-                        src={offer.image_url}
-                        alt={offer.name}
-                        className="h-14 w-14 rounded-lg object-cover flex-shrink-0"
-                      />
-                    ) : (
-                      <div className="h-14 w-14 rounded-lg bg-accent flex items-center justify-center flex-shrink-0">
-                        <span className="font-display text-xl font-bold text-primary/60">
-                          {offer.name.charAt(0)}
-                        </span>
-                      </div>
-                    )}
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium">{offer.name}</span>
-                        {offer.featured_today && (
-                          <Badge className="bg-sun/20 text-ink">
-                            Hoy
-                          </Badge>
-                        )}
-                        {!offer.available && (
-                          <Badge variant="secondary">Pausado</Badge>
-                        )}
-                      </div>
-                      <p className="text-sm text-gray-500 mt-1">
-                        ${Number(offer.price).toLocaleString("es-AR")}
-                        {offer.category && ` · ${offer.category}`}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 flex-shrink-0 flex-wrap justify-end">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => startEdit(offer)}
-                    >
-                      Editar
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => toggleFeatured(offer)}
-                    >
-                      {offer.featured_today ? "Quitar de Hoy" : "Destacar Hoy"}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => toggleAvailable(offer)}
-                    >
-                      {offer.available ? "Pausar" : "Activar"}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-red-600"
-                      onClick={() => deleteOffer(offer)}
-                    >
-                      Eliminar
-                    </Button>
-                  </div>
-                </Card>
-              ))
-            )}
-          </div>
-        </>
+        </nav>
       )}
 
-      {tab === "orders" && (
-        <div className="space-y-4">
-          {orders.length === 0 ? (
-            <p className="text-gray-500 text-center py-12">
-              Todavía no recibiste pedidos. Compartí tu micrositio para arrancar.
-            </p>
-          ) : (
-            orders.map((order) => (
-              <Card key={order.id} className="p-5">
-                <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-                  <div>
-                    <p className="font-semibold">{order.customer_name}</p>
-                    <p className="text-sm text-gray-500">
-                      <a
-                        href={`https://wa.me/${order.customer_phone.replace(
-                          /[^0-9]/g,
-                          ""
-                        )}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-primary"
-                      >
-                        {order.customer_phone}
-                      </a>
-                      {order.method === "delivery"
-                        ? ` · A domicilio: ${order.customer_address || "sin dirección"}`
-                        : " · Retira en el local"}
-                    </p>
-                  </div>
-                  <Badge className={STATUS_COLORS[order.status]}>
-                    {STATUS_LABELS[order.status]}
-                  </Badge>
-                </div>
-                <div className="border-t pt-3 mb-3">
-                  {(order.items || []).map((item, i) => (
-                    <p key={i} className="text-sm flex justify-between">
-                      <span>
-                        {item.qty}x {item.name}
-                      </span>
-                      <span>
-                        ${Number(item.price * item.qty).toLocaleString("es-AR")}
-                      </span>
-                    </p>
-                  ))}
-                  <div className="border-t mt-2 pt-2 flex justify-between font-bold">
-                    <span>Total</span>
-                    <span>${Number(order.total).toLocaleString("es-AR")}</span>
-                  </div>
-                </div>
-                <p className="text-xs text-gray-400 mb-3">
-                  {new Date(order.created_at).toLocaleString("es-AR")}
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {order.status === "new" && (
-                    <Button
-                      size="sm"
-                      onClick={() => updateOrderStatus(order, "confirmed")}
-                    >
-                      Confirmar
-                    </Button>
-                  )}
-                  {order.status === "confirmed" && (
-                    <Button
-                      size="sm"
-                      onClick={() => updateOrderStatus(order, "completed")}
-                    >
-                      Completar
-                    </Button>
-                  )}
-                  {order.status !== "cancelled" &&
-                    order.status !== "completed" && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="text-red-600"
-                        onClick={() => updateOrderStatus(order, "cancelled")}
-                      >
-                        Cancelar
-                      </Button>
-                    )}
-                </div>
-              </Card>
-            ))
-          )}
-        </div>
-      )}
-      </>
-    )}
-
+      {/* Share modal */}
       {shareOpen && vendor.slug && (
-        <div
-          className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
-          onClick={() => setShareOpen(false)}
-        >
-          <div
-            className="bg-white rounded-2xl p-6 max-w-sm w-full text-center"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 className="font-display text-xl font-semibold mb-1">
-              Compartí tu vidriera
-            </h3>
-            <p className="text-sm text-gray-500 mb-4">
-              El QR lleva directo a tu micrositio en {ZONE.name}.
-            </p>
-            {qrDataUrl ? (
-              <img
-                src={qrDataUrl}
-                alt="QR de mi micrositio"
-                className="mx-auto w-56 h-56 mb-4"
-              />
-            ) : (
-              <div className="mx-auto w-56 h-56 mb-4 bg-gray-100 animate-pulse rounded-lg" />
-            )}
-            <p className="text-xs text-gray-500 break-all mb-4">
-              {window.location.origin}/tienda/{vendor.slug}
-            </p>
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={() => setShareOpen(false)}>
+          <div className="bg-card rounded-2xl p-6 max-w-sm w-full text-center" onClick={(e) => e.stopPropagation()}>
+            <h3 className="font-display text-xl font-semibold mb-1">Compartí tu vidriera</h3>
+            <p className="text-sm text-muted-foreground mb-4">El QR lleva directo a tu micrositio.</p>
+            {qrDataUrl ? <img src={qrDataUrl} alt="QR" className="mx-auto w-48 h-48 mb-4" /> : <div className="mx-auto w-48 h-48 mb-4 bg-muted animate-pulse rounded-lg" />}
+            <p className="text-xs text-muted-foreground break-all mb-4">{window.location.origin}/tienda/{vendor.slug}</p>
             <div className="flex gap-2">
-              <Button className="flex-1" onClick={copyLink}>
-                {copied ? "¡Link copiado!" : "Copiar link"}
-              </Button>
-              <Button
-                variant="outline"
-                className="flex-1"
-                onClick={() => setShareOpen(false)}
-              >
-                Cerrar
-              </Button>
+              <Button className="flex-1" onClick={copyLink}>{copied ? "¡Copiado!" : "Copiar link"}</Button>
+              <Button variant="outline" className="flex-1" onClick={() => setShareOpen(false)}>Cerrar</Button>
             </div>
           </div>
         </div>

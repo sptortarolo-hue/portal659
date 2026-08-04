@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: conecta-mos
+    name: semorfa-app
     env: node
     plan: hobby
     buildCommand: npm run build

@@ -4,33 +4,33 @@
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   --font-display: var(--font-fraunces), ui-serif, Georgia, serif;
 
-  --color-background: #faf6f0;
-  --color-foreground: #2b2118;
+  --color-background: #faf7f2;
+  --color-foreground: #171717;
 
   --color-card: #ffffff;
-  --color-card-foreground: #2b2118;
+  --color-card-foreground: #171717;
 
-  --color-primary: #ea580c;
+  --color-primary: #ff6b00;
   --color-primary-foreground: #ffffff;
 
-  --color-secondary: #f3e9dd;
-  --color-secondary-foreground: #7c3f1d;
+  --color-secondary: #ffedd5;
+  --color-secondary-foreground: #9a3412;
 
-  --color-muted: #f1e8dc;
-  --color-muted-foreground: #8a7466;
+  --color-muted: #f1ece6;
+  --color-muted-foreground: #6b6259;
 
-  --color-accent: #fde8c8;
-  --color-accent-foreground: #b45309;
+  --color-accent: #ffe0b3;
+  --color-accent-foreground: #7c2d12;
 
   --color-destructive: #dc2626;
   --color-destructive-foreground: #ffffff;
 
-  --color-border: #e7d9c8;
-  --color-input: #e7d9c8;
-  --color-ring: #ea580c;
+  --color-border: #e9e0d6;
+  --color-input: #e9e0d6;
+  --color-ring: #ff6b00;
 
-  --color-cream: #faf6f0;
-  --color-ink: #2b2118;
+  --color-cream: #faf7f2;
+  --color-ink: #171717;
   --color-whatsapp: #25d366;
   --color-whatsapp-dark: #128c7e;
 }

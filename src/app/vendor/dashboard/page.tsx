@@ -216,7 +216,7 @@ export default function VendorDashboard() {
     return (
       <main className="container mx-auto px-4 py-20 max-w-lg text-center">
         <h1 className="font-display text-3xl font-semibold mb-4">
-          Tu local en conectaMOS
+          Tu local en SeMorfa
         </h1>
         <p className="text-gray-600 mb-6">
           Registrá tu local gastronómico para armar tu menú y recibir pedidos

@@ -37,20 +37,21 @@ export default async function HomePage() {
 
   return (
     <main>
-      <section className="bg-gradient-to-b from-accent via-cream to-background border-b border-border">
-        <div className="container mx-auto px-4 py-16 text-center">
+      <section className="bg-[#171717] text-white border-b border-[#171717]">
+        <div className="container mx-auto px-4 py-20 text-center">
           <p className="text-xs font-semibold tracking-widest uppercase text-primary mb-4">
-            Del barrio para tu mesa · {PRIMARY_NEIGHBORHOOD.name}
+            El delivery de nuestro barrio · {PRIMARY_NEIGHBORHOOD.name}
           </p>
-          <h1 className="font-display text-5xl font-semibold tracking-tight sm:text-6xl">
-            La galería gastronómica de tu barrio
+          <h1 className="font-display text-4xl font-semibold tracking-tight sm:text-5xl lg:text-6xl max-w-4xl mx-auto">
+            Donde las aplicaciones grandes no llegan,{" "}
+            <span className="text-primary">nosotros te salvamos la cena</span>
           </h1>
-          <p className="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">
+          <p className="mt-6 text-lg text-white/80 max-w-2xl mx-auto">
             Pedí comida casera y regional directo a los productores de{" "}
             {PRIMARY_NEIGHBORHOOD.name}. Sin comisiones, sin intermediarios:
             el pedido cae en el WhatsApp del local.
           </p>
-          <div className="mt-8 flex flex-wrap justify-center gap-3">
+          <div className="mt-10 flex flex-wrap justify-center gap-3">
             <Link
               href="#locales"
               className="rounded-md bg-primary text-primary-foreground px-6 py-3 text-sm font-medium hover:bg-primary/90"
@@ -59,7 +60,7 @@ export default async function HomePage() {
             </Link>
             <Link
               href="/register"
-              className="rounded-md border border-border bg-card px-6 py-3 text-sm font-medium hover:bg-accent"
+              className="rounded-md border border-white/30 bg-white/10 px-6 py-3 text-sm font-medium hover:bg-white/20"
             >
               ¿Tenés un local? Sumate gratis
             </Link>

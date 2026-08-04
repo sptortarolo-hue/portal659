@@ -17,9 +17,9 @@ const fraunces = Fraunces({
 });
 
 export const metadata: Metadata = {
-  title: "conectaMOS — Gastronomía de barrio",
+  title: "SeMorfa App — El delivery de nuestro barrio",
   description:
-    "La galería gastronómica de tu barrio. Pedí comida casera y regional directo a los productores de la zona.",
+    "SeMorfa App, la galería gastronómica de tu barrio. Pedí comida casera y regional directo a los productores de la zona: el pedido cae en el WhatsApp del local, sin comisiones.",
 };
 
 export default function RootLayout({
@@ -38,8 +38,8 @@ export default function RootLayout({
           <CartButton />
           <CartDrawer />
           <footer className="border-t border-border py-6 text-center text-sm text-muted-foreground bg-card">
-            © {new Date().getFullYear()} conectaMOS — La galería gastronómica de
-            tu barrio · 0% comisión
+            © {new Date().getFullYear()} SeMorfa App — El delivery de nuestro
+            barrio · 0% comisión
           </footer>
         </CartProvider>
       </body>

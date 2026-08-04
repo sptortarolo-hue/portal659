@@ -1,5 +1,9 @@
-# conectaMOS v2 - Setup Script
-# Run this after creating your Supabase project and applying the migration
+# SeMorfa App - Setup Script
+# Run this after creating your Supabase project and applying the migrations
+#
+# ⚠️ OJO: estas claves apuntan al Supabase REMOTO (sthumnpqhynybyxrnznp) y
+# están commiteadas. Para desarrollo local usá `supabase start` + scripts/seed.mjs,
+# y considerá rotar la service_role key si el repo es público.
 
 # 1. Set Supabase environment variables
 $env:NEXT_PUBLIC_SUPABASE_URL = "https://sthumnpqhynybyxrnznp.supabase.co"
@@ -14,19 +18,20 @@ npm run dev
 
 # === SUPABASE SETUP (do this first) ===
 # 1. Go to https://supabase.com/dashboard
-# 2. Create project "conecta-mos"
+# 2. Create project "semorfa"
 # 3. Go to SQL Editor -> New query
-# 4. Paste everything from: supabase/migrations/001_init.sql
+# 4. Paste migrations 001, 002 and 003 from supabase/migrations/ (in order)
 # 5. Click Run
 
 # === RENDER DEPLOY (do this second) ===
 # 1. Go to https://render.com/dash
 # 2. New -> Web Service
 # 3. Connect repo: sptortarolo-hue/conectaMOS-v2
-# 4. Plan: Hobby (free)
-# 5. Build Command: npm run build
-# 6. Start Command: npm run start
-# 7. Add these Environment Variables:
+# 4. Name: semorfa-app
+# 5. Plan: Hobby (free)
+# 6. Build Command: npm run build
+# 7. Start Command: npm run start
+# 8. Add these Environment Variables:
 #    NEXT_PUBLIC_SUPABASE_URL = https://sthumnpqhynybyxrnznp.supabase.co
 #    NEXT_PUBLIC_SUPABASE_ANON_KEY = sb_publishable_32FmyVDn4oMdQgNvLnl-Ow_iTpuTKeo
 #    SUPABASE_SERVICE_ROLE_KEY = sb_secret_EfTByTLakzb3Cli0jvIxhg_KPRi_cbK

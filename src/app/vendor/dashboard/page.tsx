@@ -49,6 +49,12 @@ type Order = {
   created_at: string;
 };
 
+type MenuCategory = {
+  id: string;
+  name: string;
+  position: number;
+};
+
 const CATEGORIES = [
   "empanadas",
   "pizzas",
@@ -115,6 +121,13 @@ export default function VendorDashboard() {
   const [offPreview, setOffPreview] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
+  // Menu categories
+  const [categories, setCategories] = useState<MenuCategory[]>([]);
+  const [newCatName, setNewCatName] = useState("");
+  const [editingCatId, setEditingCatId] = useState<string | null>(null);
+  const [editingCatName, setEditingCatName] = useState("");
+  const [catBusy, setCatBusy] = useState(false);
+
   // Share modal
   const [shareOpen, setShareOpen] = useState(false);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
@@ -144,14 +157,16 @@ export default function VendorDashboard() {
   }
 
   async function loadData() {
-    const [meRes, offersRes, ordersRes] = await Promise.all([
+    const [meRes, offersRes, ordersRes, catsRes] = await Promise.all([
       fetch("/api/vendor/me"),
       fetch("/api/vendor/offers"),
       fetch("/api/vendor/orders"),
+      fetch("/api/vendor/categories"),
     ]);
     const me = await meRes.json();
     const off = await offersRes.json();
     const ord = await ordersRes.json();
+    const cats = await catsRes.json();
 
     if (me.error === "No autenticado") {
       router.push("/login");
@@ -171,6 +186,14 @@ export default function VendorDashboard() {
     }
     if (off.offers) setOffers(off.offers);
     if (ord.orders) setOrders(ord.orders);
+    if (cats.categories) {
+      setCategories(cats.categories);
+      setOffCategory((c) =>
+        cats.categories.some((x: MenuCategory) => x.name === c)
+          ? c
+          : cats.categories[0]?.name || "otras"
+      );
+    }
     setLoading(false);
   }
 
@@ -361,6 +384,63 @@ export default function VendorDashboard() {
       body: JSON.stringify({ status }),
     });
     loadOrdersOnly();
+  }
+
+  async function addCategory(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newCatName.trim() || catBusy) return;
+    setCatBusy(true);
+    const res = await fetch("/api/vendor/categories", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: newCatName }),
+    });
+    if (res.ok) {
+      setNewCatName("");
+      loadData();
+    }
+    setCatBusy(false);
+  }
+
+  async function renameCategory() {
+    if (!editingCatId || !editingCatName.trim() || catBusy) return;
+    setCatBusy(true);
+    await fetch(`/api/vendor/categories/${editingCatId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: editingCatName }),
+    });
+    setEditingCatId(null);
+    setCatBusy(false);
+    loadData();
+  }
+
+  async function deleteCategory(cat: MenuCategory) {
+    if (!window.confirm(`¿Eliminar la categoría "${cat.name}"? Los platos quedan sin categoría.`)) {
+      return;
+    }
+    await fetch(`/api/vendor/categories/${cat.id}`, { method: "DELETE" });
+    loadData();
+  }
+
+  async function moveCategory(cat: MenuCategory, dir: -1 | 1) {
+    const idx = categories.findIndex((c) => c.id === cat.id);
+    const target = idx + dir;
+    if (target < 0 || target >= categories.length) return;
+    const reordered = [...categories];
+    const [moved] = reordered.splice(idx, 1);
+    reordered.splice(target, 0, moved);
+    setCategories(reordered.map((c, i) => ({ ...c, position: i })));
+    await Promise.all(
+      reordered.map((c, i) =>
+        fetch(`/api/vendor/categories/${c.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ position: i }),
+        })
+      )
+    );
+    loadData();
   }
 
   async function openShare() {
@@ -667,6 +747,110 @@ export default function VendorDashboard() {
             </form>
           </Card>
 
+          <Card className="p-5 mb-6">
+            <h2 className="font-semibold mb-1">Categorías del menú</h2>
+            <p className="text-sm text-muted-foreground mb-4">
+              Separá tu menú en secciones (por ejemplo: Empanadas, Pizzas,
+              Bebidas). En tu vidriera se muestran en este orden.
+            </p>
+            <form onSubmit={addCategory} className="flex gap-2 mb-4">
+              <Input
+                placeholder="Nueva categoría (ej: Bebidas)"
+                value={newCatName}
+                onChange={(e) => setNewCatName(e.target.value)}
+              />
+              <Button type="submit" size="sm" disabled={catBusy || !newCatName.trim()}>
+                Agregar
+              </Button>
+            </form>
+            {categories.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Todavía no creaste categorías. Agregá una para empezar.
+              </p>
+            ) : (
+              <ul className="space-y-2">
+                {categories.map((cat, i) => (
+                  <li
+                    key={cat.id}
+                    className="flex flex-wrap items-center gap-2 border border-border rounded-lg px-3 py-2"
+                  >
+                    {editingCatId === cat.id ? (
+                      <>
+                        <Input
+                          className="h-8 max-w-[240px]"
+                          value={editingCatName}
+                          onChange={(e) => setEditingCatName(e.target.value)}
+                          autoFocus
+                        />
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={catBusy}
+                          onClick={() => renameCategory()}
+                        >
+                          Guardar
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setEditingCatId(null)}
+                        >
+                          Cancelar
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        <span className="font-medium flex-1 min-w-0 truncate">
+                          {cat.name}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {offers.filter((o) => o.category === cat.name).length}{" "}
+                          platos
+                        </span>
+                      </>
+                    )}
+                    <div className="flex items-center gap-1 ml-auto">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={i === 0}
+                        onClick={() => moveCategory(cat, -1)}
+                      >
+                        ↑
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={i === categories.length - 1}
+                        onClick={() => moveCategory(cat, 1)}
+                      >
+                        ↓
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          setEditingCatId(cat.id);
+                          setEditingCatName(cat.name);
+                        }}
+                      >
+                        Editar
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-red-600 hover:text-red-700"
+                        onClick={() => deleteCategory(cat)}
+                      >
+                        Eliminar
+                      </Button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold">Tu menú ({offers.length})</h2>
             <Button
@@ -712,12 +896,26 @@ export default function VendorDashboard() {
                       value={offCategory}
                       onChange={(e) => setOffCategory(e.target.value)}
                     >
-                      {CATEGORIES.map((c) => (
-                        <option key={c} value={c} className="capitalize">
-                          {c}
+                      {categories.length === 0 && (
+                        <option value="otras">otras</option>
+                      )}
+                      {categories.map((c) => (
+                        <option key={c.id} value={c.name}>
+                          {c.name}
                         </option>
                       ))}
+                      {offCategory &&
+                        !categories.some((c) => c.name === offCategory) &&
+                        offCategory !== "otras" && (
+                          <option value={offCategory}>{offCategory}</option>
+                        )}
                     </select>
+                    {categories.length === 0 && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Creá categorías abajo para organizar tu menú por
+                        secciones.
+                      </p>
+                    )}
                   </div>
                   <div className="sm:col-span-2">
                     <Label>Foto del plato (opcional)</Label>

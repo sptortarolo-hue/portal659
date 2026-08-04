@@ -276,6 +276,54 @@ const SEED_PRODUCTS = [
     category: "asado",
     neighborhood: "garibaldi",
   },
+  // Bebidas (un plato por local para demo de categorías)
+  {
+    id: "11111111-2222-4333-8444-555566667000",
+    vendor_id: "d9e03587-3484-42c6-b7dd-c185e0c6085c",
+    name: "Gaseosa 1.5L",
+    description: "Coca-Cola, Sprite o Fanta bien fría",
+    price: 2500,
+    category: "bebidas",
+    neighborhood: "sicardi",
+  },
+  {
+    id: "22222222-3333-4444-8555-666677778111",
+    vendor_id: "3be25ae4-b24b-4f4d-9556-0894ff31da66",
+    name: "Vino tinto x1L",
+    description: "Malbec de bodega local",
+    price: 6500,
+    category: "bebidas",
+    neighborhood: "sicardi",
+  },
+  {
+    id: "33333333-4444-4555-8666-777788889222",
+    vendor_id: "27813e79-b06a-4420-993f-540d3547b242",
+    name: "Cerveza artesanal x1L",
+    description: "Rubia o negra de barrio",
+    price: 4000,
+    category: "bebidas",
+    neighborhood: "sicardi",
+  },
+  {
+    id: "44444444-5555-4666-8777-888899990333",
+    vendor_id: "b1a2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+    name: "Gaseosa 1.5L",
+    description: "Coca-Cola, Sprite o Fanta bien fría",
+    price: 2500,
+    category: "bebidas",
+    neighborhood: "garibaldi",
+  },
+];
+
+const SEED_CATEGORIES = [
+  { vendor_id: "d9e03587-3484-42c6-b7dd-c185e0c6085c", name: "Empanadas", position: 0 },
+  { vendor_id: "d9e03587-3484-42c6-b7dd-c185e0c6085c", name: "Bebidas", position: 1 },
+  { vendor_id: "3be25ae4-b24b-4f4d-9556-0894ff31da66", name: "Pastas", position: 0 },
+  { vendor_id: "3be25ae4-b24b-4f4d-9556-0894ff31da66", name: "Bebidas", position: 1 },
+  { vendor_id: "27813e79-b06a-4420-993f-540d3547b242", name: "Pizzas", position: 0 },
+  { vendor_id: "27813e79-b06a-4420-993f-540d3547b242", name: "Bebidas", position: 1 },
+  { vendor_id: "b1a2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d", name: "Asado", position: 0 },
+  { vendor_id: "b1a2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d", name: "Bebidas", position: 1 },
 ];
 
 const SEED_ORDERS = [
@@ -390,6 +438,15 @@ async function seed() {
     process.exit(1);
   }
   console.log(`✔ ${SEED_PRODUCTS.length} platos`);
+
+  const { error: categoryError } = await supabase
+    .from("vendor_categories")
+    .insert(SEED_CATEGORIES);
+  if (categoryError) {
+    console.log(`❌ categories: ${categoryError.message}`);
+    process.exit(1);
+  }
+  console.log(`✔ ${SEED_CATEGORIES.length} categorías`);
 
   const { error: orderError } = await supabase.from("orders").insert(SEED_ORDERS);
   if (orderError) {

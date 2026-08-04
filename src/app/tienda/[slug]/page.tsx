@@ -60,6 +60,13 @@ export default async function TiendaPage({
           </div>
         )}
         <div className="p-6">
+          {v.logo_url && (
+            <img
+              src={v.logo_url}
+              alt={`Logo de ${v.store_name}`}
+              className="h-16 w-16 rounded-full object-cover mb-3 border-2 border-white shadow"
+            />
+          )}
           <h1 className="font-display text-4xl font-semibold">
             {v.store_name}
           </h1>

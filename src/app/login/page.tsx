@@ -32,7 +32,11 @@ export default function LoginPage() {
     if (!res.ok) {
       setMessage(data.error || "Error al iniciar sesión");
     } else {
-      router.push("/");
+      router.push(
+        data.session?.user?.user_metadata?.role === "vendor"
+          ? "/vendor/dashboard"
+          : "/"
+      );
     }
     setLoading(false);
   }

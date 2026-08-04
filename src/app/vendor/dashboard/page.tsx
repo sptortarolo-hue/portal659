@@ -23,6 +23,7 @@ type Vendor = {
   hours: string | null;
   description: string | null;
   image_url: string | null;
+  logo_url: string | null;
 };
 
 type Offer = {
@@ -100,6 +101,8 @@ export default function VendorDashboard() {
   const [description, setDescription] = useState("");
   const [storeFile, setStoreFile] = useState<File | null>(null);
   const [storePreview, setStorePreview] = useState<string | null>(null);
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
 
   // Offer form
   const [showNew, setShowNew] = useState(false);
@@ -150,6 +153,11 @@ export default function VendorDashboard() {
     const off = await offersRes.json();
     const ord = await ordersRes.json();
 
+    if (me.error === "No autenticado") {
+      router.push("/login");
+      return;
+    }
+
     if (me.vendor) {
       setVendor(me.vendor);
       setStoreName(me.vendor.store_name);
@@ -159,6 +167,7 @@ export default function VendorDashboard() {
       setHours(me.vendor.hours || "");
       setDescription(me.vendor.description || "");
       setStorePreview(me.vendor.image_url || null);
+      setLogoPreview(me.vendor.logo_url || null);
     }
     if (off.offers) setOffers(off.offers);
     if (ord.orders) setOrders(ord.orders);
@@ -228,10 +237,16 @@ export default function VendorDashboard() {
     setMsg("");
 
     let imageUrl = vendor?.image_url || null;
+    let logoUrl = vendor?.logo_url || null;
     if (storeFile) {
       const url = await uploadImage(storeFile, "vendors");
       if (url) imageUrl = url;
       else setMsg("No se pudo subir la imagen");
+    }
+    if (logoFile) {
+      const url = await uploadImage(logoFile, "vendors");
+      if (url) logoUrl = url;
+      else setMsg("No se pudo subir el logo");
     }
 
     const res = await fetch("/api/vendor/me", {
@@ -246,6 +261,7 @@ export default function VendorDashboard() {
         hours,
         description,
         image_url: imageUrl,
+        logo_url: logoUrl,
       }),
     });
     const data = await res.json();
@@ -253,6 +269,7 @@ export default function VendorDashboard() {
     else {
       setVendor(data.vendor);
       setStoreFile(null);
+      setLogoFile(null);
       setMsg("Local guardado");
     }
     setSaving(false);
@@ -467,6 +484,25 @@ export default function VendorDashboard() {
               />
             )}
           </div>
+          <div>
+            <Label>Logo del local (cuadrado, opcional)</Label>
+            <Input
+              type="file"
+              accept="image/*"
+              onChange={(e) => {
+                const f = e.target.files?.[0] || null;
+                setLogoFile(f);
+                if (f) readPreview(f, setLogoPreview);
+              }}
+            />
+            {logoPreview && (
+              <img
+                src={logoPreview}
+                alt="Vista previa del logo"
+                className="mt-2 h-20 w-20 object-cover rounded-full border border-border"
+              />
+            )}
+          </div>
           {msg && <p className="text-sm text-red-600">{msg}</p>}
           <Button type="submit" className="w-full" disabled={saving}>
             {saving ? "Guardando..." : "Registrar mi local"}
@@ -480,9 +516,9 @@ export default function VendorDashboard() {
     <main className="container mx-auto px-4 py-8 max-w-4xl">
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div className="flex items-center gap-4 min-w-0">
-          {vendor.image_url ? (
+          {vendor.logo_url || vendor.image_url ? (
             <img
-              src={vendor.image_url}
+              src={vendor.logo_url || vendor.image_url || ""}
               alt={vendor.store_name}
               className="h-14 w-14 rounded-full object-cover"
             />
@@ -594,6 +630,25 @@ export default function VendorDashboard() {
                     src={storePreview}
                     alt="Vista previa"
                     className="mt-2 h-24 w-full object-cover rounded-lg"
+                  />
+                )}
+              </div>
+              <div>
+                <Label>Logo del local (cuadrado)</Label>
+                <Input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0] || null;
+                    setLogoFile(f);
+                    if (f) readPreview(f, setLogoPreview);
+                  }}
+                />
+                {logoPreview && (
+                  <img
+                    src={logoPreview}
+                    alt="Vista previa del logo"
+                    className="mt-2 h-20 w-20 object-cover rounded-full border border-border"
                   />
                 )}
               </div>

@@ -128,7 +128,7 @@ export default async function HomePage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {vendors.map((v: any) => (
               <Link key={v.id} href={`/tienda/${v.slug}`} className="block">
-                <Card className="hover:shadow-lg transition-shadow cursor-pointer overflow-hidden">
+                <Card className="relative hover:shadow-lg transition-shadow cursor-pointer overflow-hidden">
                   {v.image_url ? (
                     <div className="h-32 w-full">
                       <img
@@ -143,6 +143,13 @@ export default async function HomePage() {
                         {v.store_name.charAt(0)}
                       </span>
                     </div>
+                  )}
+                  {v.logo_url && (
+                    <img
+                      src={v.logo_url}
+                      alt={`Logo de ${v.store_name}`}
+                      className="absolute left-4 top-4 h-14 w-14 rounded-full object-cover border-2 border-white shadow"
+                    />
                   )}
                   <CardContent className="p-5">
                     <h3 className="font-display text-xl font-semibold">

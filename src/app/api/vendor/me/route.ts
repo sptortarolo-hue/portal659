@@ -54,6 +54,7 @@ export async function POST(request: Request) {
     hours,
     description,
     image_url,
+    logo_url,
     category,
   } = body;
 
@@ -78,6 +79,7 @@ export async function POST(request: Request) {
     hours: hours || null,
     description: description || null,
     image_url: image_url || null,
+    logo_url: logo_url || null,
     category: category || "otras",
     slug: existing?.slug || slugify(store_name),
   };

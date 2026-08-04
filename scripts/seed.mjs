@@ -101,6 +101,9 @@ const SEED_VENDORS = [
     address: "Calle 49 y 22, Sicardi",
     hours: "Mar a Dom · 17:00 a 23:00",
     description: "Empanadas caseras al horno, receta de la abuela.",
+    payment_methods: "Efectivo, Débito",
+    delivery_options: "ambos",
+    instagram: "@lasempanadasmoria",
   },
   {
     id: "3be25ae4-b24b-4f4d-9556-0894ff31da66",
@@ -114,6 +117,9 @@ const SEED_VENDORS = [
     address: "Calle 51 y 18, Sicardi",
     hours: "Jue a Dom · 11:00 a 15:00",
     description: "Pastas frescas hechas a mano todos los jueves.",
+    payment_methods: "Efectivo, Débito, Mercado Pago",
+    delivery_options: "retiro",
+    instagram: "@pastasrossi",
   },
   {
     id: "27813e79-b06a-4420-993f-540d3547b242",
@@ -127,6 +133,9 @@ const SEED_VENDORS = [
     address: "Calle 50 y 20, Sicardi",
     hours: "Vie, Sáb y Dom · 19:00 a 00:00",
     description: "Pizzas a la piedra con masa madre de 48 horas.",
+    payment_methods: "Efectivo, Débito, Mercado Pago",
+    delivery_options: "ambos",
+    facebook: "pizzalapiedrasicardi",
   },
   {
     id: "b1a2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
@@ -140,6 +149,8 @@ const SEED_VENDORS = [
     address: "Calle 7 y 32, Garibaldi",
     hours: "Mar a Dom · 11:00 a 14:00 y 20:00 a 23:00",
     description: "Pollos al spiedo y milanesas caseras de la esquina.",
+    payment_methods: "Efectivo",
+    delivery_options: "ambos",
   },
   {
     id: "c5d6e7f8-0001-4000-8000-000000000001",
@@ -153,6 +164,9 @@ const SEED_VENDORS = [
     address: "Calle 46 y 25, Sicardi",
     hours: "Lun a Sáb · 8:00 a 20:00",
     description: "Frutas y verduras de la quinta, todos los días.",
+    payment_methods: "Efectivo, Mercado Pago",
+    delivery_options: "ambos",
+    instagram: "@lahuertasicardi",
   },
   {
     id: "c5d6e7f8-0002-4000-8000-000000000002",
@@ -166,6 +180,10 @@ const SEED_VENDORS = [
     address: "Sicardi y alrededores",
     hours: "Lun a Sáb · 8:00 a 18:00",
     description: "Instalaciones, arreglos y urgencias eléctricas en el barrio.",
+    services_list: "Instalaciones eléctricas, Reparaciones, Urgencias 24hs, Tableros, Iluminación",
+    service_area: "Sicardi, Garibaldi y alrededores",
+    free_estimate: true,
+    delivery_options: "domicilio",
   },
 ];
 
@@ -501,6 +519,13 @@ async function seed() {
       hours: v.hours,
       description: v.description,
       verified: true,
+      payment_methods: v.payment_methods || null,
+      delivery_options: v.delivery_options || "ambos",
+      instagram: v.instagram || null,
+      facebook: v.facebook || null,
+      services_list: v.services_list || null,
+      service_area: v.service_area || null,
+      free_estimate: v.free_estimate !== false,
     });
     if (error) {
       console.log(`❌ vendor ${v.slug}: ${error.message}`);

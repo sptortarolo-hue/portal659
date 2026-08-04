@@ -112,10 +112,50 @@ export default async function TiendaPage({
                 Dirección: {v.address}
               </span>
             )}
+            {v.payment_methods && (
+              <span className="rounded-full bg-muted px-3 py-1 text-muted-foreground">
+                {v.payment_methods}
+              </span>
+            )}
+            {v.delivery_options && v.delivery_options !== "ambos" && (
+              <span className="rounded-full bg-accent px-3 py-1 text-accent-foreground">
+                {v.delivery_options === "retiro" ? "Solo retiro" : "Solo a domicilio"}
+              </span>
+            )}
             {v.neighborhood && (
               <span className="rounded-full bg-muted px-3 py-1 text-muted-foreground capitalize">
                 {v.neighborhood}
               </span>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-3 mt-3">
+            {v.phone && (
+              <a
+                href={`tel:${v.phone}`}
+                className="text-sm text-primary hover:underline"
+              >
+                Tel: {v.phone}
+              </a>
+            )}
+            {v.instagram && (
+              <a
+                href={v.instagram.startsWith("http") ? v.instagram : `https://instagram.com/${v.instagram.replace("@", "")}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm text-primary hover:underline"
+              >
+                Instagram
+              </a>
+            )}
+            {v.facebook && (
+              <a
+                href={v.facebook.startsWith("http") ? v.facebook : `https://facebook.com/${v.facebook}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm text-primary hover:underline"
+              >
+                Facebook
+              </a>
             )}
           </div>
           {waNumber && (
@@ -136,10 +176,27 @@ export default async function TiendaPage({
           <h2 className="font-display text-2xl font-semibold mb-2">
             Servicio del barrio
           </h2>
-          <p className="text-muted-foreground max-w-md mx-auto">
-            Este comercio ofrece un servicio en el barrio. Escribile por
-            WhatsApp para consultar disponibilidad y coordinar el trabajo.
-          </p>
+          {v.services_list && (
+            <p className="text-muted-foreground max-w-md mx-auto mb-2">
+              {v.services_list}
+            </p>
+          )}
+          {v.service_area && (
+            <p className="text-sm text-muted-foreground max-w-md mx-auto mb-1">
+              Zona: {v.service_area}
+            </p>
+          )}
+          {v.free_estimate && (
+            <p className="text-sm text-primary font-medium max-w-md mx-auto mb-4">
+              Presupuesto sin compromiso
+            </p>
+          )}
+          {!v.services_list && (
+            <p className="text-muted-foreground max-w-md mx-auto">
+              Este comercio ofrece un servicio en el barrio. Escribile por
+              WhatsApp para consultar disponibilidad y coordinar el trabajo.
+            </p>
+          )}
           {waNumber && (
             <a
               href={`https://wa.me/${waNumber}?text=${encodeURIComponent(waText)}`}

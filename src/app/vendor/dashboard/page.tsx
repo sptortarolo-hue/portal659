@@ -111,6 +111,7 @@ export default function VendorDashboard() {
   const [storeCategory, setStoreCategory] = useState("otras");
   const [storeVertical, setStoreVertical] = useState("gastronomia");
   const [whatsapp, setWhatsapp] = useState("");
+  const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
   const [hours, setHours] = useState("");
   const [description, setDescription] = useState("");
@@ -118,6 +119,13 @@ export default function VendorDashboard() {
   const [storePreview, setStorePreview] = useState<string | null>(null);
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [instagram, setInstagram] = useState("");
+  const [facebook, setFacebook] = useState("");
+  const [paymentMethods, setPaymentMethods] = useState("");
+  const [deliveryOptions, setDeliveryOptions] = useState("ambos");
+  const [servicesList, setServicesList] = useState("");
+  const [serviceArea, setServiceArea] = useState("");
+  const [freeEstimate, setFreeEstimate] = useState(true);
 
   // Offer form
   const [showNew, setShowNew] = useState(false);
@@ -188,11 +196,19 @@ export default function VendorDashboard() {
       setStoreCategory(me.vendor.category || "otras");
       setStoreVertical(me.vendor.vertical || "gastronomia");
       setWhatsapp(me.vendor.whatsapp || "");
+      setPhone(me.vendor.phone || "");
       setAddress(me.vendor.address || "");
       setHours(me.vendor.hours || "");
       setDescription(me.vendor.description || "");
       setStorePreview(me.vendor.image_url || null);
       setLogoPreview(me.vendor.logo_url || null);
+      setInstagram(me.vendor.instagram || "");
+      setFacebook(me.vendor.facebook || "");
+      setPaymentMethods(me.vendor.payment_methods || "");
+      setDeliveryOptions(me.vendor.delivery_options || "ambos");
+      setServicesList(me.vendor.services_list || "");
+      setServiceArea(me.vendor.service_area || "");
+      setFreeEstimate(me.vendor.free_estimate !== false);
     }
     if (off.offers) setOffers(off.offers);
     if (ord.orders) setOrders(ord.orders);
@@ -291,11 +307,19 @@ export default function VendorDashboard() {
         category: storeCategory,
         vertical: storeVertical,
         whatsapp,
+        phone,
         address,
         hours,
         description,
         image_url: imageUrl,
         logo_url: logoUrl,
+        instagram,
+        facebook,
+        payment_methods: paymentMethods,
+        delivery_options: deliveryOptions,
+        services_list: servicesList,
+        service_area: serviceArea,
+        free_estimate: freeEstimate,
       }),
     });
     const data = await res.json();
@@ -571,6 +595,50 @@ export default function VendorDashboard() {
             />
           </div>
           <div>
+            <Label>Teléfono directo (opcional)</Label>
+            <Input
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="2215550000"
+            />
+          </div>
+          <div>
+            <Label>Instagram (opcional)</Label>
+            <Input
+              value={instagram}
+              onChange={(e) => setInstagram(e.target.value)}
+              placeholder="@tulocal"
+            />
+          </div>
+          <div>
+            <Label>Facebook (opcional)</Label>
+            <Input
+              value={facebook}
+              onChange={(e) => setFacebook(e.target.value)}
+              placeholder="https://facebook.com/tulocal"
+            />
+          </div>
+          <div>
+            <Label>Medios de pago</Label>
+            <Input
+              value={paymentMethods}
+              onChange={(e) => setPaymentMethods(e.target.value)}
+              placeholder="Efectivo, Débito, Mercado Pago"
+            />
+          </div>
+          <div>
+            <Label>Entrega</Label>
+            <select
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              value={deliveryOptions}
+              onChange={(e) => setDeliveryOptions(e.target.value)}
+            >
+              <option value="ambos">Retiro y domicilio</option>
+              <option value="retiro">Solo retiro en local</option>
+              <option value="domicilio">Solo a domicilio</option>
+            </select>
+          </div>
+          <div>
             <Label>Foto del local (opcional)</Label>
             <Input
               type="file"
@@ -728,6 +796,50 @@ export default function VendorDashboard() {
             onChange={(e) => setDescription(e.target.value)}
           />
         </div>
+        <div>
+          <Label>Teléfono directo</Label>
+          <Input
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            placeholder="2215550000"
+          />
+        </div>
+        <div>
+          <Label>Instagram</Label>
+          <Input
+            value={instagram}
+            onChange={(e) => setInstagram(e.target.value)}
+            placeholder="@tulocal"
+          />
+        </div>
+        <div>
+          <Label>Facebook</Label>
+          <Input
+            value={facebook}
+            onChange={(e) => setFacebook(e.target.value)}
+            placeholder="https://facebook.com/tulocal"
+          />
+        </div>
+        <div>
+          <Label>Medios de pago</Label>
+          <Input
+            value={paymentMethods}
+            onChange={(e) => setPaymentMethods(e.target.value)}
+            placeholder="Efectivo, Débito, Mercado Pago"
+          />
+        </div>
+        <div>
+          <Label>Entrega</Label>
+          <select
+            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+            value={deliveryOptions}
+            onChange={(e) => setDeliveryOptions(e.target.value)}
+          >
+            <option value="ambos">Retiro y domicilio</option>
+            <option value="retiro">Solo retiro en local</option>
+            <option value="domicilio">Solo a domicilio</option>
+          </select>
+        </div>
         <div className="sm:col-span-2">
           <Button type="submit" size="sm" disabled={saving}>
             {saving ? "Guardando..." : "Guardar comercio"}
@@ -799,9 +911,42 @@ export default function VendorDashboard() {
             <h2 className="font-semibold mb-3">Tu vidriera de servicio</h2>
             <p className="text-sm text-muted-foreground mb-4">
               Los vecinos entran a tu vidriera y te escriben directo por
-              WhatsApp para consultarte. Sin menú ni precios: vos coordinás
-              cada trabajo.
+              WhatsApp para consultarte. Completá los datos de tu servicio
+              para que te encuentren fácil.
             </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+              <div className="sm:col-span-2">
+                <Label>Servicios que ofrecés</Label>
+                <Input
+                  value={servicesList}
+                  onChange={(e) => setServicesList(e.target.value)}
+                  placeholder="Instalaciones, reparaciones, urgencias"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Separá cada servicio con coma
+                </p>
+              </div>
+              <div>
+                <Label>Zona de cobertura</Label>
+                <Input
+                  value={serviceArea}
+                  onChange={(e) => setServiceArea(e.target.value)}
+                  placeholder="Sicardi, Garibaldi y alrededores"
+                />
+              </div>
+              <div className="flex items-center gap-2 pt-6">
+                <input
+                  type="checkbox"
+                  id="free-estimate"
+                  checked={freeEstimate}
+                  onChange={(e) => setFreeEstimate(e.target.checked)}
+                  className="h-4 w-4 rounded border-border"
+                />
+                <Label htmlFor="free-estimate" className="cursor-pointer">
+                  Presupuesto sin compromiso
+                </Label>
+              </div>
+            </div>
             <div className="flex flex-wrap gap-2">
               <Button onClick={openShare} size="sm">
                 Compartí tu QR

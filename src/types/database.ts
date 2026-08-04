@@ -32,6 +32,14 @@ export type Vendor = {
   vertical: Vertical;
   neighborhood: string | null;
   whatsapp: string | null;
+  phone: string | null;
+  instagram: string | null;
+  facebook: string | null;
+  payment_methods: string | null;
+  delivery_options: string | null;
+  services_list: string | null;
+  service_area: string | null;
+  free_estimate: boolean | null;
   accepting_quotes: boolean;
   verified: boolean;
   hours: string | null;

@@ -46,7 +46,7 @@ Convertir la app de un MVP gastronómico ("SeMorfa") en **Portal 659**: el centr
 
 ## Decisiones tomadas
 
-- Marca: **Portal 659** (Avenida 659 = Sicardi + Garibaldi). Identidad: verde pino `#1f4d32` + amarillo sol `#f5b800`, tipografía blanca sobre verde.
+- Marca: **Portal 659** (Avenida 659 = Sicardi + Garibaldi). Identidad: indigo `#4f46e5` + lima `#a3e635`, fondos blancos, pills de color por vertical.
 - Monetización: documentada, **postergada** hasta completar el multicommerce.
 - Servicios: **solo contacto por WhatsApp**, sin precios ni pedidos.
 - Primero comercio, Info del barrio después.

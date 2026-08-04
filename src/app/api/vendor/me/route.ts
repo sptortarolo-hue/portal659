@@ -50,6 +50,7 @@ export async function POST(request: Request) {
     store_name,
     neighborhood,
     whatsapp,
+    phone,
     address,
     hours,
     description,
@@ -57,6 +58,13 @@ export async function POST(request: Request) {
     logo_url,
     category,
     vertical,
+    instagram,
+    facebook,
+    payment_methods,
+    delivery_options,
+    services_list,
+    service_area,
+    free_estimate,
   } = body;
 
   if (!store_name || !neighborhood) {
@@ -81,6 +89,7 @@ export async function POST(request: Request) {
     store_name,
     neighborhood,
     whatsapp: whatsapp || null,
+    phone: phone || null,
     address: address || null,
     hours: hours || null,
     description: description || null,
@@ -89,6 +98,13 @@ export async function POST(request: Request) {
     category: category || "otras",
     vertical: resolvedVertical,
     slug: existing?.slug || slugify(store_name),
+    instagram: instagram || null,
+    facebook: facebook || null,
+    payment_methods: payment_methods || null,
+    delivery_options: delivery_options || "ambos",
+    services_list: services_list || null,
+    service_area: service_area || null,
+    free_estimate: free_estimate !== false,
   };
 
   if (existing) {

@@ -8,15 +8,17 @@ export const dynamic = "force-dynamic";
 export default async function TiendaPage({
   params,
 }: {
-  params: { slug: string };
+  params: Promise<{ slug: string }>;
 }) {
   const supabase = getSupabase();
   if (!supabase) notFound();
 
+  const { slug } = await params;
+
   const { data: vendor } = await supabase
     .from("vendors")
     .select("*")
-    .eq("slug", params.slug)
+    .eq("slug", slug)
     .maybeSingle();
 
   if (!vendor) notFound();

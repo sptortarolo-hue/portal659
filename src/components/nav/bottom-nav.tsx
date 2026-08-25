@@ -16,7 +16,7 @@ export function BottomNav() {
   const { count, setOpen } = useCart();
 
   return (
-    <nav className="sm:hidden fixed bottom-0 inset-x-0 bg-card border-t border-border z-50 safe-area-bottom">
+    <nav className="sm:hidden fixed bottom-0 inset-x-0 bg-card border-t border-border z-50" style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
       <div className="flex items-center justify-around h-14">
         {NAV_ITEMS.map((item) => {
           const active = pathname === item.href;
@@ -36,6 +36,7 @@ export function BottomNav() {
         <button
           onClick={() => setOpen(true)}
           className="relative flex flex-col items-center gap-0.5 py-1 px-2 min-w-[48px] text-[11px] font-medium text-muted-foreground"
+          type="button"
         >
           <span className="text-xl">🛒</span>
           Carrito

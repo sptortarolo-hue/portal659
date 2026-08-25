@@ -1,7 +1,7 @@
 import { getSupabase } from "@/lib/supabase";
 import { NextResponse } from "next/server";
 
-const TIPOS = ["gastronomia", "almacen", "servicio", "comprador"] as const;
+const TIPOS = ["gastronomia", "comercio", "servicio", "moda", "salud", "varios", "mascotas", "comprador"] as const;
 
 export async function POST(request: Request) {
   const supabase = getSupabase();

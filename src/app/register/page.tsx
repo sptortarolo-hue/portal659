@@ -8,6 +8,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Logo } from "@/components/brand/logo";
 
+const TIPO_OPTIONS = [
+  { value: "gastronomia", label: "Gastronomía (rotisería, pizzas, comida casera)" },
+  { value: "comercio", label: "Comercio del barrio (almacén, verdulería, carnicería, kiosco)" },
+  { value: "servicio", label: "Servicio u oficio (electricista, plomero, jardinería)" },
+  { value: "moda", label: "Ropa y accesorios (indumentaria, calzado, bijouterie)" },
+  { value: "salud", label: "Salud y bienestar (farmacia, peluquería, estética, veterinaria)" },
+  { value: "varios", label: "Varios (librería, ferretería, limpieza, floristería)" },
+  { value: "mascotas", label: "Mascotas (pet shop, peluquería canina, veterinaria)" },
+  { value: "comprador", label: "Solo quiero pedir" },
+] as const;
+
 export default function RegisterPage() {
   const router = useRouter();
   const [name, setName] = useState("");
@@ -93,16 +104,11 @@ export default function RegisterPage() {
             value={tipo}
             onChange={(e) => setTipo(e.target.value)}
           >
-            <option value="gastronomia">
-              Comida (rotisería, pizzas, comida casera)
-            </option>
-            <option value="almacen">
-              Almacén (verdulería, carnicería, kiosco)
-            </option>
-            <option value="servicio">
-              Servicio u oficio (electricista, plomero, jardinería)
-            </option>
-            <option value="comprador">Solo quiero pedir</option>
+            {TIPO_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
           </select>
         </div>
 
@@ -123,7 +129,7 @@ export default function RegisterPage() {
         </Button>
       </form>
 
-      <p className="text-center text-sm text-gray-500 mt-4">
+      <p className="text-center text-sm text-muted-foreground mt-4">
         ¿Ya tenés cuenta?{" "}
         <Link
           href="/login"

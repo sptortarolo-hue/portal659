@@ -1,0 +1,25 @@
+▲ Next.js 16.2.12 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://172.28.160.1:3000
+- Environments: .env.local
+✓ Ready in 482ms
+
+ GET /mis-pedidos 200 in 558ms (next.js: 215ms, application-code: 343ms)
+ GET /api/notifications 200 in 216ms (next.js: 101ms, application-code: 116ms)
+ GET /api/notifications 200 in 87ms (next.js: 4ms, application-code: 83ms)
+ GET /api/notifications 200 in 86ms (next.js: 1940µs, application-code: 84ms)
+ GET /api/notifications 200 in 88ms (next.js: 3ms, application-code: 86ms)
+ GET /api/notifications 200 in 94ms (next.js: 8ms, application-code: 86ms)
+ GET /api/notifications 200 in 95ms (next.js: 3ms, application-code: 93ms)
+ GET /api/notifications 200 in 112ms (next.js: 4ms, application-code: 108ms)
+ GET / 200 in 489ms (next.js: 64ms, application-code: 425ms)
+ GET /api/notifications 200 in 99ms (next.js: 6ms, application-code: 93ms)
+✓ Compiled in 1342ms
+ GET /mis-pedidos 200 in 1902ms (next.js: 1319ms, application-code: 583ms)
+ GET /mis-pedidos 200 in 497ms (next.js: 36ms, application-code: 461ms)
+ GET /mis-pedidos 200 in 498ms (next.js: 389ms, application-code: 109ms)
+ GET /mis-pedidos 200 in 499ms (next.js: 89ms, application-code: 410ms)
+ GET /mis-pedidos 200 in 577ms (next.js: 16ms, application-code: 561ms)
+ GET /mis-pedidos 200 in 536ms (next.js: 4ms, application-code: 532ms)
+✓ Compiled in 138ms
+ GET /mis-pedidos 200 in 120ms (next.js: 72ms, application-code: 48ms)

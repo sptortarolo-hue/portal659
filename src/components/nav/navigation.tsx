@@ -1,8 +1,9 @@
+"use client";
+
 import Link from "next/link";
 import { UserMenu } from "./user-menu";
 import { Logo } from "@/components/brand/logo";
 import { SearchBar } from "./search-bar";
-import { NotificationBell } from "./notification-bell";
 
 export function Navigation() {
   return (
@@ -14,7 +15,6 @@ export function Navigation() {
         <div className="flex-1 min-w-0">
           <SearchBar />
         </div>
-        <NotificationBell />
         <UserMenu />
       </div>
     </nav>

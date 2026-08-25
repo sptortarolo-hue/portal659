@@ -15,9 +15,21 @@ export default function LoginPage() {
   const [mode, setMode] = useState<Mode>("password");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
+  const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
+
+  function validate(): boolean {
+    const e: typeof errors = {};
+    if (!email) e.email = "Ingresá tu email";
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) e.email = "Email inválido";
+    if (mode === "password" && !password) e.password = "Ingresá tu contraseña";
+    else if (mode === "password" && password.length < 6) e.password = "Mínimo 6 caracteres";
+    setErrors(e);
+    return Object.keys(e).length === 0;
+  }
 
   async function handlePasswordLogin(e: React.FormEvent) {
     e.preventDefault();
+    if (!validate()) return;
     setLoading(true);
     setMessage("");
 
@@ -43,6 +55,7 @@ export default function LoginPage() {
 
   async function handleMagicLink(e: React.FormEvent) {
     e.preventDefault();
+    if (!validate()) return;
     setLoading(true);
     setMessage("");
 
@@ -84,8 +97,9 @@ export default function LoginPage() {
             placeholder="tu@email.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            required
+            className={errors.email ? "border-red-300" : ""}
           />
+          {errors.email && <p className="text-xs text-red-600 mt-1">{errors.email}</p>}
         </div>
 
         {mode === "password" && (
@@ -97,8 +111,9 @@ export default function LoginPage() {
               placeholder="••••••••"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              required
+              className={errors.password ? "border-red-300" : ""}
             />
+            {errors.password && <p className="text-xs text-red-600 mt-1">{errors.password}</p>}
           </div>
         )}
 
@@ -123,7 +138,7 @@ export default function LoginPage() {
         </Button>
       </form>
 
-      <p className="text-center text-sm text-gray-500 mt-4">
+      <p className="text-center text-sm text-muted-foreground mt-4">
         {mode === "password" ? (
           <>
             ¿Prefieres un link mágico?{" "}

@@ -1,0 +1,277 @@
+"use client";
+
+import { useState, useCallback } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { CollapsibleSection } from "@/components/ui/collapsible-section";
+import { DropdownMenu } from "@/components/ui/dropdown-menu";
+import { Switch } from "@/components/ui/switch";
+import { QuantityInput } from "@/components/ui/quantity-input";
+import { ImageCropModal } from "@/components/ui/image-crop-modal";
+
+type Offer = {
+  id: string;
+  name: string;
+  description: string | null;
+  price: number;
+  category: string | null;
+  available: boolean;
+  featured_today: boolean;
+  image_url: string | null;
+  stock: number | null;
+  stock_low_threshold: number | null;
+  promo_price: number | null;
+};
+
+type Modifier = {
+  id: string;
+  product_id: string;
+  group_name: string;
+  options: { label: string; price_mod: number }[];
+  required: boolean;
+  max_selections: number;
+  position: number;
+};
+
+type MenuCategory = { id: string; name: string; position: number };
+
+type SharedProps = {
+  vendor: any;
+  offers: Offer[];
+  categories: MenuCategory[];
+  msg: string;
+  setMsg: (m: string) => void;
+  reload: () => void;
+  saveVendor: (data: Record<string, unknown>) => Promise<void>;
+  uploading: boolean;
+};
+
+type OfferFormProps = {
+  categories: MenuCategory[];
+  editingId: string | null;
+  offName: string;
+  setOffName: (v: string) => void;
+  offDesc: string;
+  setOffDesc: (v: string) => void;
+  offPrice: string;
+  setOffPrice: (v: string) => void;
+  offCategory: string;
+  setOffCategory: (v: string) => void;
+  offFile: File | null;
+  setOffFile: (f: File | null) => void;
+  offPreview: string | null;
+  setOffPreview: (v: string | null) => void;
+  saving: boolean;
+  onSubmit: (e: React.FormEvent) => void;
+  onCrop?: (target: "offer") => void;
+  showStock?: boolean;
+  offStock?: number;
+  setOffStock?: (v: number) => void;
+  offPromoPrice?: string;
+  setOffPromoPrice?: (v: string) => void;
+  offStockLowThreshold?: number;
+  setOffStockLowThreshold?: (v: number) => void;
+};
+
+export function OfferForm({
+  categories,
+  editingId,
+  offName, setOffName,
+  offDesc, setOffDesc,
+  offPrice, setOffPrice,
+  offCategory, setOffCategory,
+  offFile, setOffFile,
+  offPreview, setOffPreview,
+  saving, onSubmit, onCrop,
+  showStock,
+  offStock = 0, setOffStock,
+  offPromoPrice = "", setOffPromoPrice,
+  offStockLowThreshold = 5, setOffStockLowThreshold,
+}: OfferFormProps) {
+  return (
+    <Card className="p-4 mb-4">
+      <h3 className="font-semibold mb-3">{editingId ? "Editar plato" : "Nuevo plato"}</h3>
+      <form onSubmit={onSubmit} className="space-y-3">
+        <div className="grid grid-cols-2 gap-3">
+          <div><Label>Nombre</Label><Input value={offName} onChange={(e) => setOffName(e.target.value)} required /></div>
+          <div><Label>Precio ($)</Label><Input type="number" step="0.01" value={offPrice} onChange={(e) => setOffPrice(e.target.value)} required /></div>
+        </div>
+        {showStock && setOffPromoPrice && (
+          <div><Label>Precio promo ($)</Label><Input type="number" step="0.01" value={offPromoPrice} onChange={(e) => setOffPromoPrice(e.target.value)} placeholder="Precio de oferta" /></div>
+        )}
+        <div><Label>Categoría</Label><select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={offCategory} onChange={(e) => setOffCategory(e.target.value)}>{categories.length === 0 && <option value="otras">otras</option>}{categories.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}</select></div>
+        {showStock && setOffStock && setOffStockLowThreshold && (
+          <div className="grid grid-cols-2 gap-3">
+            <div><Label>Stock</Label><QuantityInput value={offStock} onChange={setOffStock} min={0} /></div>
+            <div><Label>Umbral bajo stock</Label><Input type="number" min={0} value={offStockLowThreshold} onChange={(e) => { const v = parseInt(e.target.value, 10); if (!isNaN(v) && v >= 0) setOffStockLowThreshold(v); }} /></div>
+          </div>
+        )}
+        <div><Label>Foto</Label><Input type="file" accept="image/*" onChange={(e) => { const f = e.target.files?.[0] || null; if (f && onCrop) { const src = URL.createObjectURL(f); setOffFile(f); setOffPreview(src); } else if (f) { setOffFile(f); setOffPreview(URL.createObjectURL(f)); } }} />{offPreview && <img src={offPreview} alt="Preview" className="mt-2 h-20 w-full object-cover rounded-lg" />}</div>
+        <div><Label>Descripción</Label><Textarea value={offDesc} onChange={(e) => setOffDesc(e.target.value)} /></div>
+        <Button type="submit" disabled={saving} className="w-full">{saving ? "Guardando..." : editingId ? "Guardar" : "Agregar"}</Button>
+      </form>
+    </Card>
+  );
+}
+
+export function OfferList({ offers, onEdit, onToggleFeatured, onToggleAvailable, onDelete }: {
+  offers: Offer[];
+  onEdit: (o: Offer) => void;
+  onToggleFeatured: (o: Offer) => void;
+  onToggleAvailable: (o: Offer) => void;
+  onDelete: (o: Offer) => void;
+}) {
+  return (
+    <div className="space-y-3">
+      {offers.length === 0 ? (
+        <p className="text-muted-foreground text-sm text-center py-8">Todavía no cargaste platos.</p>
+      ) : (
+        offers.map((offer) => (
+          <Card key={offer.id} className="p-3">
+            <div className="flex items-center gap-3">
+              {offer.image_url ? (
+                <img src={offer.image_url} alt={offer.name} className="h-12 w-12 rounded-lg object-cover flex-shrink-0" />
+              ) : (
+                <div className="h-12 w-12 rounded-lg bg-accent flex items-center justify-center flex-shrink-0"><span className="font-bold text-primary/60">{offer.name.charAt(0)}</span></div>
+              )}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <span className="font-medium text-sm truncate">{offer.name}</span>
+                  {offer.featured_today && <Badge className="bg-sun/20 text-ink text-[10px] px-1.5 py-0">Hoy</Badge>}
+                  {!offer.available && <Badge variant="secondary" className="text-[10px] px-1.5 py-0">Pausado</Badge>}
+                  {offer.stock !== null && offer.stock <= (offer.stock_low_threshold || 5) && (
+                    <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
+                      {offer.stock === 0 ? "Sin stock" : `Stock: ${offer.stock}`}
+                    </Badge>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {offer.promo_price ? (
+                    <><span className="line-through">${Number(offer.price).toLocaleString("es-AR")}</span> <span className="text-primary font-medium">${Number(offer.promo_price).toLocaleString("es-AR")}</span></>
+                  ) : (
+                    <>${Number(offer.price).toLocaleString("es-AR")}</>
+                  )}
+                  {offer.category && ` · ${offer.category}`}
+                </p>
+              </div>
+              <div className="hidden sm:flex items-center gap-1 flex-shrink-0">
+                <Button variant="outline" size="sm" onClick={() => onEdit(offer)}>Editar</Button>
+                <Button variant="outline" size="sm" onClick={() => onToggleFeatured(offer)}>{offer.featured_today ? "Quitar" : "Destacar"}</Button>
+                <Button variant="outline" size="sm" onClick={() => onToggleAvailable(offer)}>{offer.available ? "Pausar" : "Activar"}</Button>
+                <Button variant="ghost" size="sm" className="text-red-600" onClick={() => onDelete(offer)}>Eliminar</Button>
+              </div>
+              <div className="sm:hidden flex-shrink-0">
+                <DropdownMenu
+                  trigger={<span className="text-xl">⋯</span>}
+                  items={[
+                    { label: "Editar", icon: "✏️", onClick: () => onEdit(offer) },
+                    { label: offer.featured_today ? "Quitar de Hoy" : "Destacar Hoy", icon: "⭐", onClick: () => onToggleFeatured(offer) },
+                    { label: offer.available ? "Pausar" : "Activar", icon: offer.available ? "⏸️" : "▶️", onClick: () => onToggleAvailable(offer) },
+                    { label: "Eliminar", icon: "🗑️", onClick: () => onDelete(offer), destructive: true },
+                  ]}
+                />
+              </div>
+            </div>
+          </Card>
+        ))
+      )}
+    </div>
+  );
+}
+
+export function CategoryManager({ categories, onAdd, onRename, onDelete, onMove }: {
+  categories: MenuCategory[];
+  onAdd: (name: string) => void;
+  onRename: (id: string, name: string) => void;
+  onDelete: (cat: MenuCategory) => void;
+  onMove: (cat: MenuCategory, dir: -1 | 1) => void;
+}) {
+  const [newName, setNewName] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState("");
+
+  return (
+    <CollapsibleSection icon="📂" title={`Categorías (${categories.length})`}>
+      <form onSubmit={(e) => { e.preventDefault(); if (newName.trim()) { onAdd(newName.trim()); setNewName(""); } }} className="flex gap-2 mb-3">
+        <Input placeholder="Nueva categoría" value={newName} onChange={(e) => setNewName(e.target.value)} />
+        <Button type="submit" size="sm" disabled={!newName.trim()}>+</Button>
+      </form>
+      {categories.length === 0 ? (
+        <p className="text-sm text-muted-foreground">Creá categorías para organizar tu menú.</p>
+      ) : (
+        <ul className="space-y-2">
+          {categories.map((cat, i) => (
+            <li key={cat.id} className="flex items-center gap-2 border border-border rounded-lg px-3 py-2">
+              {editingId === cat.id ? (
+                <>
+                  <Input className="h-8 flex-1" value={editingName} onChange={(e) => setEditingName(e.target.value)} autoFocus />
+                  <Button size="sm" variant="outline" onClick={() => { onRename(cat.id, editingName); setEditingId(null); }}>OK</Button>
+                  <Button size="sm" variant="ghost" onClick={() => setEditingId(null)}>✕</Button>
+                </>
+              ) : (
+                <>
+                  <span className="font-medium flex-1 min-w-0 truncate">{cat.name}</span>
+                  <Button size="sm" variant="ghost" disabled={i === 0} onClick={() => onMove(cat, -1)}>↑</Button>
+                  <Button size="sm" variant="ghost" disabled={i === categories.length - 1} onClick={() => onMove(cat, 1)}>↓</Button>
+                  <Button size="sm" variant="ghost" onClick={() => { setEditingId(cat.id); setEditingName(cat.name); }}>✏️</Button>
+                  <Button size="sm" variant="ghost" className="text-red-600" onClick={() => onDelete(cat)}>🗑️</Button>
+                </>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </CollapsibleSection>
+  );
+}
+
+export function LivePreview({ storeName, storePreview, vendor, logoPreview, description, hours, address, paymentMethods, whatsapp, isService }: {
+  storeName: string;
+  storePreview: string | null;
+  vendor: any;
+  logoPreview: string | null;
+  description: string;
+  hours: string;
+  address: string;
+  paymentMethods: string[];
+  whatsapp: string;
+  isService: boolean;
+}) {
+  return (
+    <div className="rounded-2xl overflow-hidden border border-border bg-card">
+      {storePreview || vendor.image_url ? (
+        <div className="h-28 w-full"><img src={storePreview || vendor.image_url || ""} alt="" className="w-full h-full object-cover" /></div>
+      ) : (
+        <div className="h-28 w-full bg-gradient-to-br from-secondary to-accent flex items-center justify-center"><span className="font-display text-4xl font-bold text-primary/30">{(storeName || vendor.store_name || "?").charAt(0)}</span></div>
+      )}
+      <div className="p-4">
+        <div className="flex items-center gap-3 mb-2">
+          {logoPreview || vendor.logo_url ? (
+            <img src={logoPreview || vendor.logo_url || ""} alt="" className="h-10 w-10 rounded-full object-cover border-2 border-white shadow -mt-8 relative" />
+          ) : (
+            <div className="h-10 w-10 rounded-full bg-accent flex items-center justify-center border-2 border-white shadow -mt-8 relative"><span className="font-bold text-primary text-sm">{(storeName || vendor.store_name || "?").charAt(0)}</span></div>
+          )}
+          <div className="min-w-0">
+            <p className="font-semibold text-sm truncate">{storeName || vendor.store_name}</p>
+            <p className="text-[10px] text-muted-foreground">Vista previa de tu micrositio</p>
+          </div>
+        </div>
+        {description && <p className="text-xs text-muted-foreground line-clamp-2 mb-2">{description}</p>}
+        <div className="flex flex-wrap gap-1.5 text-[10px]">
+          {hours && <span className="rounded-full bg-muted px-2 py-0.5 text-muted-foreground">🕐 {hours}</span>}
+          {address && <span className="rounded-full bg-muted px-2 py-0.5 text-muted-foreground">📍 {address}</span>}
+          {paymentMethods.length > 0 && <span className="rounded-full bg-muted px-2 py-0.5 text-muted-foreground">💳 {paymentMethods.join(", ")}</span>}
+        </div>
+        {whatsapp && (
+          <div className="mt-3 inline-flex items-center gap-1 rounded-md bg-whatsapp/10 text-whatsapp px-3 py-1.5 text-xs font-medium">
+            📱 WhatsApp {isService ? "de consulta" : "de pedidos"}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

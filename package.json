@@ -2,12 +2,14 @@
   "name": "portal-659",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "description": "El centro comercial de tu barrio: micrositios por comercio, pedidos por WhatsApp, 0% comisión",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test": "jest"
   },
   "dependencies": {
     "@radix-ui/react-alert-dialog": "^1.1.15",
@@ -21,17 +23,23 @@
     "@radix-ui/react-toast": "^1.2.7",
     "@supabase/supabase-js": "^2.45.0",
     "@tailwindcss/postcss": "^4.3.3",
+    "@upstash/ratelimit": "^2.0.8",
+    "@upstash/redis": "^1.38.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
     "lucide-react": "^0.460.0",
+    "maplibre-gl": "^6.2.0",
     "next": "^16.0.0",
+    "node-thermal-printer": "^4.6.0",
     "qrcode": "^1.5.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "react-easy-crop": "^6.2.3",
     "tailwind-merge": "^2.6.0"
   },
   "devDependencies": {
+    "@types/jest": "^30.0.0",
     "@types/node": "^22.0.0",
     "@types/qrcode": "^1.5.6",
     "@types/react": "^19.0.0",
@@ -39,8 +47,10 @@
     "autoprefixer": "^10.4.20",
     "eslint": "^9.0.0",
     "eslint-config-next": "^16.0.0",
+    "jest": "^30.4.2",
     "postcss": "^8.4.41",
     "tailwindcss": "^4.0.0",
+    "ts-jest": "^29.4.12",
     "typescript": "^5.7.0"
   }
 }

@@ -28,9 +28,23 @@ export async function PATCH(
   }
 
   const body = await request.json();
+  const allowedFields = [
+    "name", "description", "price", "category", "image_url",
+    "available", "featured_today", "stock", "promo_price",
+    "stock_low_threshold", "currency", "neighborhood", "type", "unit",
+    "has_variants",
+  ] as const;
+  const safeUpdate: Record<string, unknown> = {};
+  for (const key of allowedFields) {
+    if (key in body) safeUpdate[key] = body[key];
+  }
+  if (Object.keys(safeUpdate).length === 0) {
+    return NextResponse.json({ error: "No hay campos válidos para actualizar" }, { status: 400 });
+  }
+
   const { data, error } = await supabase
     .from("products")
-    .update(body)
+    .update(safeUpdate)
     .eq("id", params.id)
     .eq("vendor_id", vendorId)
     .select()

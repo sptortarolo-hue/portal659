@@ -28,20 +28,20 @@ export function OfferCard({
     <Link href={`/tienda/${storeSlug}`} className="block h-full">
       <Card
         className={cn(
-          "h-full hover:shadow-lg transition-shadow cursor-pointer overflow-hidden",
+          "h-full hover:shadow-xl transition-all duration-200 hover:-translate-y-1 cursor-pointer overflow-hidden",
           featured && "ring-2 ring-sun"
         )}
       >
         {imageUrl ? (
-          <div className="aspect-video bg-muted">
+          <div className="h-40 bg-muted overflow-hidden">
             <img
               src={imageUrl}
               alt={name}
-              className="w-full h-full object-cover"
+              className="w-full h-full object-cover transition-transform duration-300 hover:scale-105"
             />
           </div>
         ) : (
-          <div className="aspect-video bg-gradient-to-br from-secondary to-accent flex items-center justify-center">
+          <div className="h-40 bg-gradient-to-br from-secondary to-accent flex items-center justify-center">
             <span className="font-display text-5xl font-bold text-primary/60">
               {name.charAt(0)}
             </span>

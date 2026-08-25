@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCart } from "@/lib/cart";
-import { useTheme } from "@/components/ui/theme-provider";
 
 const NAV_ITEMS = [
   { href: "/", label: "Inicio", icon: "🏠" },
@@ -15,15 +14,9 @@ const NAV_ITEMS = [
 export function BottomNav() {
   const pathname = usePathname();
   const { count, setOpen } = useCart();
-  const { theme, setTheme, resolved } = useTheme();
-
-  const cycleTheme = () => {
-    const next = theme === "light" ? "dark" : theme === "dark" ? "system" : "light";
-    setTheme(next);
-  };
 
   return (
-    <nav className="sm:hidden fixed bottom-0 inset-x-0 bg-card/95 backdrop-blur-sm border-t border-border z-50">
+    <nav className="sm:hidden fixed bottom-0 inset-x-0 bg-card border-t border-border z-50 safe-area-bottom">
       <div className="flex items-center justify-around h-14">
         {NAV_ITEMS.map((item) => {
           const active = pathname === item.href;
@@ -31,34 +24,26 @@ export function BottomNav() {
             <Link
               key={item.href}
               href={item.href}
-              className={`flex flex-col items-center gap-0.5 px-3 py-1 text-[10px] font-medium transition-colors ${
+              className={`flex flex-col items-center gap-0.5 py-1 px-2 min-w-[48px] text-[11px] font-medium transition-colors ${
                 active ? "text-primary" : "text-muted-foreground"
               }`}
             >
-              <span className="text-lg">{item.icon}</span>
+              <span className="text-xl">{item.icon}</span>
               {item.label}
             </Link>
           );
         })}
         <button
           onClick={() => setOpen(true)}
-          className="relative flex flex-col items-center gap-0.5 px-3 py-1 text-[10px] font-medium text-muted-foreground"
+          className="relative flex flex-col items-center gap-0.5 py-1 px-2 min-w-[48px] text-[11px] font-medium text-muted-foreground"
         >
-          <span className="text-lg">🛒</span>
+          <span className="text-xl">🛒</span>
           Carrito
           {count > 0 && (
-            <span className="absolute -top-0.5 right-1 flex items-center justify-center h-4 min-w-4 rounded-full bg-primary text-primary-foreground text-[9px] font-bold px-1">
+            <span className="absolute top-0 right-0 flex items-center justify-center h-4 min-w-4 rounded-full bg-primary text-primary-foreground text-[9px] font-bold px-1">
               {count}
             </span>
           )}
-        </button>
-        <button
-          onClick={cycleTheme}
-          className="flex flex-col items-center gap-0.5 px-3 py-1 text-[10px] font-medium text-muted-foreground"
-          title={resolved === "dark" ? "Modo claro" : "Modo oscuro"}
-        >
-          <span className="text-lg">{resolved === "dark" ? "🌙" : "☀️"}</span>
-          {resolved === "dark" ? "Noche" : "Día"}
         </button>
       </div>
     </nav>

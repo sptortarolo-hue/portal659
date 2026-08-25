@@ -6,12 +6,12 @@ async function getVendor(request: Request) {
   if (!supabase) return { supabase: null, vendorId: null };
   const { data: user } = await supabase.auth.getUser();
   if (!user?.user) return { supabase, vendorId: null };
-  const { data: vendor } = await supabase
+  const { data: vendors } = await supabase
     .from("vendors")
     .select("id")
-    .eq("user_id", user.user.id)
-    .single();
-  return { supabase, vendorId: vendor?.id || null };
+    .eq("user_id", user.user.id);
+  const vendorId = vendors && vendors.length > 0 ? vendors[0].id : null;
+  return { supabase, vendorId };
 }
 
 export async function GET(request: Request) {

@@ -1,0 +1,531 @@
+"use client";
+
+import { useEffect, useCallback, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import {
+  ORDER_STATUS_LABELS,
+  ORDER_STATUS_COLORS,
+  buildClientWhatsAppUrl,
+} from "@/lib/order-utils";
+import { buildModifiedOrderMessage } from "@/lib/whatsapp-message";
+import type { Order, OrderStatus, OrderItem, Product as DBProduct } from "@/types/database";
+
+const STEP_ORDER: OrderStatus[] = ["new", "confirmed", "preparing", "ready", "sent", "completed"];
+
+function getNextStatus(current: OrderStatus, method?: "delivery" | "pickup"): OrderStatus | null {
+  if (current === "ready" && method === "pickup") return "completed";
+  const flow: Record<OrderStatus, OrderStatus> = {
+    new: "confirmed",
+    confirmed: "preparing",
+    preparing: "ready",
+    ready: "sent",
+    sent: "completed",
+    completed: "completed",
+    cancelled: "cancelled",
+  };
+  return flow[current] || null;
+}
+
+function getActionButtonLabel(next: OrderStatus): string {
+  const labels: Record<OrderStatus, string> = {
+    confirmed: "Aceptar",
+    preparing: "Empezar a preparar",
+    ready: "Marcar como listo",
+    sent: "Enviar",
+    completed: "Marcar como entregado",
+    new: "Aceptar",
+    cancelled: "Cancelar",
+  };
+  return labels[next] || next;
+}
+
+type Props = {
+  order: Order;
+  vendorName: string;
+  onClose: () => void;
+  onAction: (order: Order, status: OrderStatus) => void;
+  onModify?: (orderId: string, items: OrderItem[], modificationNotes: string) => Promise<boolean>;
+  offers?: DBProduct[];
+};
+
+export default function OrderDetailModal({ order, vendorName, onClose, onAction, onModify, offers = [] }: Props) {
+  const [editing, setEditing] = useState(false);
+  const [editItems, setEditItems] = useState<OrderItem[]>([]);
+  const [modNotes, setModNotes] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [productSearch, setProductSearch] = useState("");
+  const [showProductPicker, setShowProductPicker] = useState(false);
+  const [printing, setPrinting] = useState(false);
+  const [printStatus, setPrintStatus] = useState<"ok" | "error" | null>(null);
+
+  const isCancelled = order.status === "cancelled";
+  const isCompleted = order.status === "completed";
+  const isTerminal = isCancelled || isCompleted;
+  const canModify = order.status === "new" && !isTerminal;
+  const statusIdx = STEP_ORDER.indexOf(order.status as OrderStatus);
+  const nextStatus = getNextStatus(order.status as OrderStatus, order.method);
+
+  const customerPhone = order.customer_phone?.replace(/\D/g, "");
+  const contactWhatsApp = customerPhone ? `https://wa.me/${customerPhone}` : null;
+  const showWhatsApp =
+    (order.method === "delivery" && order.status === "sent") ||
+    (order.method === "pickup" && order.status === "ready");
+  const waUrl = showWhatsApp ? buildClientWhatsAppUrl(order.status as OrderStatus, order, vendorName) : null;
+
+  const startEditing = useCallback(() => {
+    setEditItems(JSON.parse(JSON.stringify(order.items || [])));
+    setModNotes("");
+    setProductSearch("");
+    setShowProductPicker(false);
+    setEditing(true);
+  }, [order.items]);
+
+  const updateItemQty = (index: number, qty: number) => {
+    if (qty < 1) return removeItem(index);
+    setEditItems((prev) => prev.map((item, i) => (i === index ? { ...item, qty } : item)));
+  };
+
+  const removeItem = (index: number) => {
+    setEditItems((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const addProduct = (product: DBProduct) => {
+    setEditItems((prev) => [
+      ...prev,
+      {
+        product_id: product.id,
+        name: product.name,
+        price: product.promo_price ?? product.price,
+        qty: 1,
+        modifiers: [],
+      },
+    ]);
+  };
+
+  const availableProducts = offers.filter(
+    (p) =>
+      p.available &&
+      !editItems.some((i) => i.product_id === p.id) &&
+      p.name.toLowerCase().includes(productSearch.toLowerCase())
+  );
+
+  const newTotal = editItems.reduce((sum, item) => {
+    const modPrice = item.modifiers?.reduce((s, m) => s + (typeof m === "object" ? 0 : 0), 0) || 0;
+    return sum + (item.price + modPrice) * item.qty;
+  }, 0);
+
+  const handleSaveModification = async () => {
+    if (!onModify || editItems.length === 0) return false;
+    setSaving(true);
+    const ok = await onModify(order.id, editItems, modNotes);
+    setSaving(false);
+    if (ok) {
+      setEditing(false);
+      return true;
+    }
+    return false;
+  };
+
+  const sendModifiedWhatsApp = () => {
+    const msg = buildModifiedOrderMessage({
+      vendorName,
+      items: editItems,
+      total: newTotal,
+      customerName: order.customer_name,
+      orderId: order.id,
+      modificationNotes: modNotes || undefined,
+      address: order.customer_address || undefined,
+    });
+    const phone = customerPhone;
+    if (phone) {
+      window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, "_blank");
+    }
+  };
+
+  async function handlePrint() {
+    setPrinting(true);
+    setPrintStatus(null);
+    try {
+      const res = await fetch("/api/print", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId: order.id }),
+      });
+      const data = await res.json();
+      setPrintStatus(data.ok || data.skipped ? "ok" : "error");
+    } catch {
+      setPrintStatus("error");
+    }
+    setPrinting(false);
+    setTimeout(() => setPrintStatus(null), 3000);
+  }
+
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    if (e.key === "Escape" && !editing) onClose();
+  }, [onClose, editing]);
+
+  useEffect(() => {
+    document.addEventListener("keydown", handleKeyDown);
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      document.body.style.overflow = "";
+    };
+  }, [handleKeyDown]);
+
+  const created = new Date(order.created_at);
+  const elapsed = Math.floor((Date.now() - created.getTime()) / 60000);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/50" />
+      <div
+        className="relative bg-card w-full sm:max-w-lg sm:rounded-2xl rounded-t-2xl max-h-[85vh] overflow-y-auto animate-slide-up"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="sticky top-0 bg-card border-b border-border px-4 py-3 flex items-center justify-between z-10">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="font-mono text-xs text-muted-foreground">#{order.id.slice(0, 8)}</span>
+            <Badge className={ORDER_STATUS_COLORS[order.status as OrderStatus]}>
+              {ORDER_STATUS_LABELS[order.status as OrderStatus]}
+            </Badge>
+            {order.modification_notes && !editing && (
+              <Badge variant="outline" className="text-[9px] px-1.5 py-0">Editado</Badge>
+            )}
+          </div>
+          <button onClick={onClose} className="p-1 rounded-lg hover:bg-muted transition-colors text-lg">
+            ✕
+          </button>
+        </div>
+
+        <div className="px-4 py-4 space-y-4">
+          {/* Customer info */}
+          <div className="space-y-1">
+            <p className="font-semibold text-sm">{order.customer_name}</p>
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <a
+                href={`https://wa.me/${customerPhone}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary hover:underline"
+              >
+                {order.customer_phone}
+              </a>
+              <span>·</span>
+              <span>{order.method === "delivery" ? "🛵 Delivery" : "🏪 Retiro"}</span>
+            </div>
+            {order.method === "delivery" && order.customer_address && (
+              <p className="text-xs text-muted-foreground">📍 {order.customer_address}</p>
+            )}
+          </div>
+
+          {/* Progress steps */}
+          {!isCancelled && !editing && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-0">
+                {STEP_ORDER.map((step, idx) => {
+                  const done = idx <= statusIdx;
+                  const isCurrent = idx === statusIdx;
+                  return (
+                    <div key={step} className="flex items-center flex-1">
+                      <div className="flex flex-col items-center flex-1">
+                        <div
+                          className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold transition-all duration-300 ${
+                            done
+                              ? "bg-primary text-primary-foreground"
+                              : "bg-muted text-muted-foreground"
+                          } ${isCurrent ? "ring-2 ring-primary/30 ring-offset-2 ring-offset-card" : ""}`}
+                        >
+                          {done ? "✓" : idx + 1}
+                        </div>
+                        <p className={`text-[9px] mt-1 text-center leading-tight ${done ? "text-primary font-medium" : "text-muted-foreground/50"}`}>
+                          {ORDER_STATUS_LABELS[step]}
+                        </p>
+                      </div>
+                      {idx < STEP_ORDER.length - 1 && (
+                        <div className={`h-0.5 w-full -mt-3 ${idx < statusIdx ? "bg-primary" : "bg-muted"}`} />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="text-[10px] text-muted-foreground text-center">
+                {elapsed} min · {order.estimated_minutes ? `~${Math.max(0, order.estimated_minutes - elapsed)} min restantes` : "Sin estimado"}
+              </p>
+            </div>
+          )}
+
+          {isCancelled && (
+            <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-center">
+              <p className="text-xs text-red-600 font-medium">Pedido cancelado</p>
+            </div>
+          )}
+
+          {/* Items - View mode */}
+          {!editing && (
+            <div>
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Productos</h3>
+              <div className="space-y-1.5">
+                {(order.items || []).map((item, i) => (
+                  <div key={i} className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-sm">
+                        <span className="font-bold">{item.qty}x</span> {item.name}
+                      </p>
+                      {item.modifiers && item.modifiers.length > 0 && (
+                        <p className="text-[10px] text-muted-foreground/70 pl-5">
+                          ({item.modifiers.join(", ")})
+                        </p>
+                      )}
+                    </div>
+                    <span className="text-sm font-medium whitespace-nowrap">
+                      ${(item.price * item.qty).toLocaleString("es-AR")}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Items - Edit mode */}
+          {editing && (
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Editar productos</h3>
+                <button onClick={() => setEditing(false)} className="text-xs text-muted-foreground hover:text-foreground">
+                  Cancelar edicion
+                </button>
+              </div>
+              <div className="space-y-2">
+                {editItems.map((item, i) => (
+                  <div key={i} className="flex items-center gap-2 p-2 rounded-lg border border-border bg-background">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{item.name}</p>
+                      {item.modifiers && item.modifiers.length > 0 && (
+                        <p className="text-[10px] text-muted-foreground/70">
+                          ({item.modifiers.join(", ")})
+                        </p>
+                      )}
+                      <p className="text-[10px] text-muted-foreground">${item.price.toLocaleString("es-AR")} c/u</p>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => updateItemQty(i, item.qty - 1)}
+                        className="w-7 h-7 rounded-lg border border-border bg-muted flex items-center justify-center text-sm font-bold"
+                      >
+                        -
+                      </button>
+                      <span className="w-6 text-center text-sm font-bold">{item.qty}</span>
+                      <button
+                        onClick={() => updateItemQty(i, item.qty + 1)}
+                        className="w-7 h-7 rounded-lg border border-border bg-muted flex items-center justify-center text-sm font-bold"
+                      >
+                        +
+                      </button>
+                      <button
+                        onClick={() => removeItem(i)}
+                        className="w-7 h-7 rounded-lg border border-red-200 bg-red-50 flex items-center justify-center text-sm text-red-600"
+                      >
+                        x
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Product picker */}
+              <div className="mt-3 border border-border rounded-lg overflow-hidden">
+                <button
+                  onClick={() => setShowProductPicker((p) => !p)}
+                  className="w-full flex items-center justify-between px-3 py-2 text-xs font-medium text-primary hover:bg-muted transition-colors"
+                >
+                  <span>{showProductPicker ? "Ocultar menu" : "+ Agregar producto del menu"}</span>
+                  <span className="text-muted-foreground">{showProductPicker ? "▲" : "▼"}</span>
+                </button>
+                {showProductPicker && (
+                  <div className="border-t border-border">
+                    <div className="px-3 py-2">
+                      <input
+                        type="text"
+                        value={productSearch}
+                        onChange={(e) => setProductSearch(e.target.value)}
+                        placeholder="Buscar producto..."
+                        className="w-full px-2.5 py-1.5 text-xs rounded-md border border-input bg-background"
+                      />
+                    </div>
+                    <div className="max-h-48 overflow-y-auto">
+                      {availableProducts.length === 0 && (
+                        <p className="px-3 py-2 text-xs text-muted-foreground">No se encontraron productos</p>
+                      )}
+                      {availableProducts.map((product) => (
+                        <button
+                          key={product.id}
+                          onClick={() => addProduct(product)}
+                          className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-muted/50 transition-colors text-left"
+                        >
+                          {product.image_url ? (
+                            <img
+                              src={product.image_url}
+                              alt={product.name}
+                              className="w-9 h-9 rounded-md object-cover flex-shrink-0"
+                            />
+                          ) : (
+                            <div className="w-9 h-9 rounded-md bg-muted flex items-center justify-center text-sm flex-shrink-0">
+                              📷
+                            </div>
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-medium truncate">{product.name}</p>
+                            {product.category && (
+                              <p className="text-[10px] text-muted-foreground">{product.category}</p>
+                            )}
+                          </div>
+                          <span className="text-xs font-semibold whitespace-nowrap">
+                            ${(product.promo_price ?? product.price).toLocaleString("es-AR")}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="mt-3">
+                <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+                  Observaciones de modificacion
+                </label>
+                <textarea
+                  value={modNotes}
+                  onChange={(e) => setModNotes(e.target.value)}
+                  placeholder="Ej: Pizza no disponible, se reemplazo por empanadas..."
+                  className="mt-1 w-full h-16 px-3 text-xs rounded-lg border border-input bg-background resize-none"
+                />
+              </div>
+
+              <div className="flex items-center justify-between mt-3 p-2 rounded-lg bg-muted">
+                <span className="text-sm font-semibold">Nuevo total</span>
+                <span className="text-lg font-bold text-primary">${newTotal.toLocaleString("es-AR")}</span>
+              </div>
+            </div>
+          )}
+
+          {/* Modification notes (view) */}
+          {!editing && order.modification_notes && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+              <p className="text-[10px] font-semibold text-blue-700 mb-0.5">Modificado:</p>
+              <p className="text-xs text-blue-600">{order.modification_notes}</p>
+            </div>
+          )}
+
+          {/* Notes */}
+          {order.notes && !editing && (
+            <div className="bg-warm/30 rounded-lg px-3 py-2">
+              <p className="text-[10px] font-semibold text-muted-foreground mb-0.5">Notas del cliente:</p>
+              <p className="text-xs text-muted-foreground/70">{order.notes}</p>
+            </div>
+          )}
+
+          {/* Payment + total */}
+          {!editing && (
+            <div className="border-t border-border pt-3 space-y-2">
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>
+                  {order.payment_method === "efectivo" && "💵 Efectivo"}
+                  {order.payment_method === "transferencia" && "🏦 Transferencia"}
+                  {order.payment_method === "whatsapp" && "📱 Coordinar"}
+                </span>
+                <span>{created.toLocaleDateString("es-AR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-semibold">Total</span>
+                <span className="text-lg font-bold text-primary">${Number(order.total).toLocaleString("es-AR")}</span>
+              </div>
+            </div>
+          )}
+
+          {/* Actions */}
+          {!isTerminal && !editing && (
+            <div className="space-y-2 pt-2">
+              {canModify && (
+                <Button variant="outline" className="w-full" onClick={startEditing}>
+                  ✏️ Modificar pedido
+                </Button>
+              )}
+              {nextStatus && (
+                <Button
+                  className="w-full"
+                  onClick={() => { onAction(order, nextStatus); onClose(); }}
+                >
+                  {getActionButtonLabel(nextStatus)}
+                </Button>
+              )}
+              <button
+                onClick={handlePrint}
+                disabled={printing}
+                className={`w-full h-10 rounded-xl font-bold text-sm border active:scale-[0.98] transition-all ${
+                  printStatus === "ok"
+                    ? "bg-green-50 text-green-700 border-green-300"
+                    : printStatus === "error"
+                    ? "bg-red-50 text-red-600 border-red-300"
+                    : "bg-background text-foreground border-border hover:bg-muted"
+                }`}
+              >
+                {printing ? "🖨️ Imprimiendo..." : printStatus === "ok" ? "✅ Impreso" : printStatus === "error" ? "❌ Error al imprimir" : "🖨️ Imprimir comanda"}
+              </button>
+              {waUrl && (
+                <a href={waUrl} target="_blank" rel="noopener noreferrer" className="block">
+                  <Button variant="outline" className="w-full border-green-200 bg-green-50 text-green-700 hover:bg-green-100">
+                    Enviar WhatsApp al cliente
+                  </Button>
+                </a>
+              )}
+              {contactWhatsApp && (
+                <a href={contactWhatsApp} target="_blank" rel="noopener noreferrer" className="block">
+                  <Button variant="outline" className="w-full border-green-200 bg-green-50 text-green-700 hover:bg-green-100">
+                    Contactar por WhatsApp
+                  </Button>
+                </a>
+              )}
+              <Button
+                variant="outline"
+                className="w-full text-red-600 border-red-200 hover:bg-red-50"
+                onClick={() => { onAction(order, "cancelled"); onClose(); }}
+              >
+                Cancelar pedido
+              </Button>
+            </div>
+          )}
+
+          {/* Edit mode actions */}
+          {editing && (
+            <div className="space-y-2 pt-2">
+              <Button
+                className="w-full"
+                disabled={saving || editItems.length === 0}
+                onClick={handleSaveModification}
+              >
+                {saving ? "Guardando..." : "Guardar cambios"}
+              </Button>
+              <Button
+                variant="outline"
+                className="w-full border-green-200 bg-green-50 text-green-700 hover:bg-green-100"
+                disabled={editItems.length === 0}
+                onClick={async () => {
+                  const ok = await handleSaveModification();
+                  if (ok) sendModifiedWhatsApp();
+                }}
+              >
+                Guardar y enviar WhatsApp al cliente
+              </Button>
+              <Button variant="ghost" className="w-full" onClick={() => setEditing(false)}>
+                Cancelar
+              </Button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -52,12 +52,12 @@ jobs:
       - name: Generate deploy files
         run: |
           IMAGE_TAG="${{ env.IMAGE }}:${{ github.sha }}"
-          cat > /tmp/.env.production << EOF
+          cat > /tmp/.env.production << 'ENVEOF'
           NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
           SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           NEXT_PUBLIC_SITE_URL=http://${{ secrets.VPS_HOST }}
-          EOF
+          ENVEOF
           cat > /tmp/docker-compose.yml << EOF
           services:
             app:
@@ -98,6 +98,7 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           script_stop: true
+          command_timeout: 20m
           script: |
             mkdir -p /opt/portal659
             cd /opt/portal659

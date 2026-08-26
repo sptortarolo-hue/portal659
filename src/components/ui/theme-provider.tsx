@@ -26,13 +26,13 @@ function getSystemTheme(): "light" | "dark" {
 }
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>("system");
+  const [theme, setThemeState] = useState<Theme>("dark");
   const [resolved, setResolved] = useState<"light" | "dark">("light");
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     const stored = localStorage.getItem("portal659-theme") as Theme | null;
-    const initial = stored || "system";
+    const initial = stored || "dark";
     setThemeState(initial);
     setResolved(initial === "system" ? getSystemTheme() : initial);
     setMounted(true);

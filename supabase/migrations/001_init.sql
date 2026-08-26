@@ -87,10 +87,10 @@ create table if not exists messages (
 );
 
 insert into neighborhoods (slug, name, lat, lng) values
-  ('sicardi', 'Sicardi', -34.713, -58.410),
-  ('garibaldi', 'Garibaldi', -34.717, -58.407),
-  ('arana', 'Arana', -34.720, -58.413),
-  ('correas', 'Correas', -34.724, -58.416);
+  ('sicardi', 'Sicardi', -34.986, -57.858),
+  ('garibaldi', 'Garibaldi', -35.000, -57.850),
+  ('arana', 'Arana', -34.997, -57.893),
+  ('correas', 'Correas', -35.049, -57.850);
 
 insert into categories (slug, name, description) values
   ('reformas', 'Reformas y construcción', 'Plomería, electricidad, pintura, albañilería'),

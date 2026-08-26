@@ -93,14 +93,16 @@ insert into neighborhoods (slug, name, lat, lng) values
   ('sicardi', 'Sicardi', -34.986, -57.858),
   ('garibaldi', 'Garibaldi', -35.000, -57.850),
   ('arana', 'Arana', -34.997, -57.893),
-  ('correas', 'Correas', -35.049, -57.850);
+  ('correas', 'Correas', -35.049, -57.850)
+on conflict (slug) do update set name = excluded.name, lat = excluded.lat, lng = excluded.lng;
 
 insert into categories (slug, name, description) values
   ('reformas', 'Reformas y construcción', 'Plomería, electricidad, pintura, albañilería'),
   ('limpieza', 'Limpieza y mantenimiento', 'Limpieza de hogar, oficinas, locales'),
   ('transporte', 'Transporte y mudanzas', 'Camiones, mudanzas, fletes'),
   ('belleza', 'Belleza y estética', 'Peluquería, manicuría, depilación'),
-  ('comida', 'Comida', 'Delivery, catering, rotisería');
+  ('comida', 'Comida', 'Delivery, catering, rotisería')
+on conflict (slug) do update set name = excluded.name, description = excluded.description;
 
 create policy "Productos visibles para todos"
   on products for select

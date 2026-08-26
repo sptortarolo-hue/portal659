@@ -1,0 +1,82 @@
+name: Deploy Portal 659
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+env:
+  APP_DIR: /opt/portal659
+
+jobs:
+  deploy:
+    name: Deploy to VPS
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.VPS_SSH_KEY }}
+
+      - name: Add host key
+        run: ssh-keyscan -H -p 8277 ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Test SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          port: 8277
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: echo "SSH OK"
+
+      - name: Create .env.production
+        run: |
+          cat > .env.production << EOF
+          NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          NEXT_PUBLIC_SITE_URL=http://${{ secrets.VPS_HOST }}
+          EOF
+
+      - name: Create deploy tar
+        run: |
+          tar czf deploy.tar.gz \
+            docker-compose.yml Dockerfile nginx.conf \
+            .env.production \
+            src/ public/ \
+            package.json package-lock.json \
+            tsconfig.json next.config.ts \
+            eslint.config.mjs postcss.config.js
+
+      - name: Upload to VPS
+        run: |
+          scp -P 8277 -o StrictHostKeyChecking=no deploy.tar.gz \
+            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/tmp/deploy.tar.gz
+
+      - name: Deploy on VPS
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          port: 8277
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script_stop: true
+          script: |
+            mkdir -p /opt/portal659
+            cd /opt/portal659
+            tar xzf /tmp/deploy.tar.gz
+            docker compose down 2>/dev/null || true
+            docker compose up -d --build
+            rm /tmp/deploy.tar.gz
+            sleep 15
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:80)
+            echo "=== Deploy status: $STATUS ==="
+
+      - name: Notify
+        if: success()
+        run: echo "✅ Deploy completado — http://${{ secrets.VPS_HOST }}"

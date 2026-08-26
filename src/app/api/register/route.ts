@@ -27,10 +27,13 @@ export async function POST(request: Request) {
 
   const selected = TIPOS.includes(tipo) ? tipo : "gastronomia";
 
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || request.headers.get("origin") || "http://localhost:3000";
+
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
     options: {
+      emailRedirectTo: siteUrl,
       data: {
         first_name: firstName,
         last_name: lastName,

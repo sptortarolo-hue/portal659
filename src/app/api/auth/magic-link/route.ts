@@ -19,7 +19,7 @@ export async function POST(request: Request) {
   const { error } = await supabase.auth.signInWithOtp({
     email,
     options: {
-      emailRedirectTo: `${request.headers.get("origin") || "https://portal-659.vercel.app"}/`,
+      emailRedirectTo: `${request.headers.get("origin") || process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"}/`,
     },
   });
 

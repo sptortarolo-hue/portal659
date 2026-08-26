@@ -1,7 +1,7 @@
 import { getSupabase } from "@/lib/supabase";
 import { NextResponse } from "next/server";
 
-const TIPOS = ["gastronomia", "comercio", "servicio", "moda", "salud", "varios", "mascotas", "comprador"] as const;
+const TIPOS = ["gastronomia", "comercio", "servicio", "moda", "salud", "varios", "mascotas"] as const;
 
 export async function POST(request: Request) {
   const supabase = getSupabase();
@@ -9,9 +9,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Error de conexión" }, { status: 503 });
   }
 
-  const { email, password, name, tipo } = await request.json();
+  const { email, password, firstName, lastName, whatsapp, tipo } = await request.json();
 
-  if (!email || !password || !name) {
+  if (!email || !password || !firstName || !lastName || !whatsapp) {
     return NextResponse.json(
       { error: "Faltan datos requeridos" },
       { status: 400 }
@@ -26,14 +26,19 @@ export async function POST(request: Request) {
   }
 
   const selected = TIPOS.includes(tipo) ? tipo : "gastronomia";
-  const role = selected === "comprador" ? "buyer" : "vendor";
-  const vertical = selected === "comprador" ? "otro" : selected;
 
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
     options: {
-      data: { full_name: name, role, vertical },
+      data: {
+        first_name: firstName,
+        last_name: lastName,
+        full_name: `${firstName} ${lastName}`,
+        whatsapp,
+        role: "vendor",
+        vertical: selected,
+      },
     },
   });
 

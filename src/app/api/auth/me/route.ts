@@ -18,6 +18,9 @@ export async function GET(request: Request) {
       id: data.user.id,
       email: data.user.email,
       name: data.user.user_metadata?.full_name || data.user.email,
+      firstName: data.user.user_metadata?.first_name || "",
+      lastName: data.user.user_metadata?.last_name || "",
+      whatsapp: data.user.user_metadata?.whatsapp || "",
     },
   });
 }

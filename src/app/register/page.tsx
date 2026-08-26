@@ -16,12 +16,13 @@ const TIPO_OPTIONS = [
   { value: "salud", label: "Salud y bienestar (farmacia, peluquería, estética, veterinaria)" },
   { value: "varios", label: "Varios (librería, ferretería, limpieza, floristería)" },
   { value: "mascotas", label: "Mascotas (pet shop, peluquería canina, veterinaria)" },
-  { value: "comprador", label: "Solo quiero pedir" },
 ] as const;
 
 export default function RegisterPage() {
   const router = useRouter();
-  const [name, setName] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [whatsapp, setWhatsapp] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [tipo, setTipo] = useState("gastronomia");
@@ -36,7 +37,7 @@ export default function RegisterPage() {
     const res = await fetch("/api/register", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password, name, tipo }),
+      body: JSON.stringify({ email, password, firstName, lastName, whatsapp, tipo }),
     });
 
     const data = await res.json();
@@ -62,14 +63,38 @@ export default function RegisterPage() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <Label htmlFor="firstName">Nombre</Label>
+            <Input
+              id="firstName"
+              type="text"
+              placeholder="Tu nombre"
+              value={firstName}
+              onChange={(e) => setFirstName(e.target.value)}
+              required
+            />
+          </div>
+          <div>
+            <Label htmlFor="lastName">Apellido</Label>
+            <Input
+              id="lastName"
+              type="text"
+              placeholder="Tu apellido"
+              value={lastName}
+              onChange={(e) => setLastName(e.target.value)}
+              required
+            />
+          </div>
+        </div>
         <div>
-          <Label htmlFor="name">Nombre completo</Label>
+          <Label htmlFor="whatsapp">WhatsApp</Label>
           <Input
-            id="name"
-            type="text"
-            placeholder="Tu nombre"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
+            id="whatsapp"
+            type="tel"
+            placeholder="Ej: 11 5555 1234"
+            value={whatsapp}
+            onChange={(e) => setWhatsapp(e.target.value)}
             required
           />
         </div>

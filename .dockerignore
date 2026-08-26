@@ -1,0 +1,15 @@
+node_modules
+.next
+.git
+.github
+*.md
+.env*
+docker-compose*.yml
+Dockerfile
+.dockerignore
+.vscode
+.idea
+coverage
+tests
+jest.config.*
+eslint.config.mjs

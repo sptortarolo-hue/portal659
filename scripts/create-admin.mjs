@@ -62,7 +62,7 @@ async function main() {
       console.error("Error creando vendor:", vendorError.message);
       process.exit(1);
     }
-    console.log("Admin creado con éxito!");
+    console.log("Admin creado con exito!");
   } else {
     console.log("Usuario encontrado:", user.id);
 
@@ -107,7 +107,7 @@ async function main() {
   }
 
   console.log("\nEmail:", email);
-  console.log("Contraseña:", password);
+  console.log("Contrasena:", password);
   console.log("URL:", url);
 }
 

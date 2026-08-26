@@ -13,33 +13,25 @@ jobs:
       contents: read
       packages: write
 
-    env:
-      IMAGE: ghcr.io/sptortarolo-hue/conectamos-v2
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Login to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build & Push Docker image
+      - name: Build Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
-          push: true
-          tags: |
-            ${{ env.IMAGE }}:${{ github.sha }}
-            ${{ env.IMAGE }}:latest
+          push: false
+          load: true
+          tags: conectamos-app:latest
           build-args: |
             NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
             NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
             NEXT_PUBLIC_SITE_URL=http://${{ secrets.VPS_HOST }}
           provenance: false
+
+      - name: Save Docker image
+        run: docker save conectamos-app:latest | gzip > /tmp/app-image.tar.gz
 
       - name: Setup SSH
         uses: webfactory/ssh-agent@v0.9.0
@@ -49,19 +41,28 @@ jobs:
       - name: Add host key
         run: ssh-keyscan -H -p 8277 ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
 
-      - name: Generate deploy files
+      - name: Prepare VPS
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          port: 8277
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script_stop: true
+          script: mkdir -p /opt/portal659
+
+      - name: Generate config files
         run: |
-          IMAGE_TAG="${{ env.IMAGE }}:${{ github.sha }}"
           cat > /tmp/.env.production << 'ENVEOF'
           NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
           SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           NEXT_PUBLIC_SITE_URL=http://${{ secrets.VPS_HOST }}
           ENVEOF
-          cat > /tmp/docker-compose.yml << EOF
+          cat > /tmp/docker-compose.yml << 'DCEOF'
           services:
             app:
-              image: ${IMAGE_TAG}
+              image: conectamos-app:latest
               container_name: portal659
               restart: unless-stopped
               env_file:
@@ -84,13 +85,17 @@ jobs:
                 - portal659
           networks:
             portal659:
-          EOF
+          DCEOF
 
       - name: Upload to VPS
         run: |
           scp -P 8277 -o StrictHostKeyChecking=no /tmp/.env.production /tmp/docker-compose.yml nginx.conf ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/opt/portal659/
 
-      - name: Prepare VPS & Deploy
+      - name: Upload Docker image to VPS
+        run: |
+          scp -P 8277 -o StrictHostKeyChecking=no /tmp/app-image.tar.gz ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/tmp/app-image.tar.gz
+
+      - name: Deploy on VPS
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VPS_HOST }}
@@ -98,13 +103,12 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           script_stop: true
-          command_timeout: 20m
+          command_timeout: 15m
           script: |
-            mkdir -p /opt/portal659
             cd /opt/portal659
-            docker login ghcr.io -u ${{ github.actor }} -p ${{ secrets.GITHUB_TOKEN }}
+            docker load < /tmp/app-image.tar.gz
+            rm /tmp/app-image.tar.gz
             docker compose down 2>/dev/null || true
-            docker compose pull
             docker compose up -d
             docker image prune -f
             sleep 10

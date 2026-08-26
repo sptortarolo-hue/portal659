@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -85,6 +86,9 @@ export default function LoginPage() {
             className={errors.password ? "border-red-300" : ""}
           />
           {errors.password && <p className="text-xs text-red-600 mt-1">{errors.password}</p>}
+          <Link href="/recuperar" className="text-xs text-primary hover:underline mt-1 inline-block">
+            ¿Olvidaste tu contraseña?
+          </Link>
         </div>
 
         {message && (

@@ -1,120 +1,21 @@
-name: Deploy Portal 659
+name: Deploy to VPS
 
 on:
   push:
     branches: [master]
-  workflow_dispatch:
 
 jobs:
   deploy:
-    name: Build & Deploy to VPS
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Build Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          push: false
-          load: true
-          tags: conectamos-app:latest
-          build-args: |
-            NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-            NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-            NEXT_PUBLIC_SITE_URL=http://${{ secrets.VPS_HOST }}
-          provenance: false
-
-      - name: Save Docker image
-        run: docker save conectamos-app:latest | gzip > /tmp/app-image.tar.gz
-
-      - name: Setup SSH
-        uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: ${{ secrets.VPS_SSH_KEY }}
-
-      - name: Add host key
-        run: ssh-keyscan -H -p 8277 ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
-
-      - name: Prepare VPS
-        uses: appleboy/ssh-action@v1.0.3
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.VPS_HOST }}
-          port: 8277
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          script_stop: true
-          script: mkdir -p /opt/portal659
-
-      - name: Generate config files
-        run: |
-          cat > /tmp/.env.production << 'ENVEOF'
-          NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-          NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-          SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          NEXT_PUBLIC_SITE_URL=http://${{ secrets.VPS_HOST }}
-          ENVEOF
-          cat > /tmp/docker-compose.yml << 'DCEOF'
-          services:
-            app:
-              image: conectamos-app:latest
-              container_name: portal659
-              restart: unless-stopped
-              env_file:
-                - .env.production
-              expose:
-                - "3000"
-              networks:
-                - portal659
-            nginx:
-              image: nginx:alpine
-              container_name: portal659-nginx
-              restart: unless-stopped
-              ports:
-                - "80:80"
-              volumes:
-                - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
-              depends_on:
-                - app
-              networks:
-                - portal659
-          networks:
-            portal659:
-          DCEOF
-
-      - name: Upload to VPS
-        run: |
-          scp -P 8277 -o StrictHostKeyChecking=no /tmp/.env.production /tmp/docker-compose.yml nginx.conf ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/opt/portal659/
-
-      - name: Upload Docker image to VPS
-        run: |
-          scp -P 8277 -o StrictHostKeyChecking=no /tmp/app-image.tar.gz ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/tmp/app-image.tar.gz
-
-      - name: Deploy on VPS
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          port: 8277
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          script_stop: true
-          command_timeout: 15m
           script: |
             cd /opt/portal659
-            docker load < /tmp/app-image.tar.gz
-            rm /tmp/app-image.tar.gz
-            docker compose down 2>/dev/null || true
-            docker compose up -d
-            docker image prune -f
-            sleep 10
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:80)
-            echo "=== Deploy status: $STATUS ==="
-
-      - name: Notify
-        if: success()
-        run: echo "Deploy completado — http://${{ secrets.VPS_HOST }}"
+            git pull
+            docker compose down
+            docker compose up -d --build

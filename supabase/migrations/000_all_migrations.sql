@@ -104,14 +104,17 @@ insert into categories (slug, name, description) values
   ('comida', 'Comida', 'Delivery, catering, rotisería')
 on conflict (slug) do update set name = excluded.name, description = excluded.description;
 
+drop policy if exists "Productos visibles para todos" on products;
 create policy "Productos visibles para todos"
   on products for select
   using (available = true);
 
+drop policy if exists "Vendedores pueden insertar sus productos" on products;
 create policy "Vendedores pueden insertar sus productos"
   on products for insert
   with check (auth.uid() = vendor_id);
 
+drop policy if exists "Vendedores pueden actualizar sus productos" on products;
 create policy "Vendedores pueden actualizar sus productos"
   on products for update
   using (
@@ -167,6 +170,7 @@ insert into categories (slug, name, description) values
 drop policy if exists "Vendedores pueden insertar sus productos" on products;
 drop policy if exists "Vendedores pueden actualizar sus productos" on products;
 
+drop policy if exists "Vendedores insertan sus productos" on products;
 create policy "Vendedores insertan sus productos"
   on products for insert
   with check (
@@ -177,6 +181,7 @@ create policy "Vendedores insertan sus productos"
     )
   );
 
+drop policy if exists "Vendedores actualizan sus productos" on products;
 create policy "Vendedores actualizan sus productos"
   on products for update
   using (
@@ -187,6 +192,7 @@ create policy "Vendedores actualizan sus productos"
     )
   );
 
+drop policy if exists "Vendedores eliminan sus productos" on products;
 create policy "Vendedores eliminan sus productos"
   on products for delete
   using (
@@ -198,6 +204,7 @@ create policy "Vendedores eliminan sus productos"
   );
 
 -- El vendedor ve todos sus productos (incluidos los pausados)
+drop policy if exists "Vendedores ven sus productos" on products;
 create policy "Vendedores ven sus productos"
   on products for select
   using (
@@ -211,6 +218,7 @@ create policy "Vendedores ven sus productos"
 -- Política de lectura pública de pedidos del propio vendedor
 alter table orders enable row level security;
 drop policy if exists "Vendedores ven sus pedidos" on orders;
+drop policy if exists "Vendedores ven sus pedidos" on orders;
 create policy "Vendedores ven sus pedidos"
   on orders for select
   using (
@@ -221,6 +229,7 @@ create policy "Vendedores ven sus pedidos"
     )
   );
 
+drop policy if exists "Cualquiera puede crear un pedido" on orders;
 drop policy if exists "Cualquiera puede crear un pedido" on orders;
 create policy "Cualquiera puede crear un pedido"
   on orders for insert
@@ -246,10 +255,12 @@ alter table messages enable row level security;
 
 -- Profiles: cada usuario ve y edita su propio perfil
 drop policy if exists "Usuario ve su perfil" on profiles;
+drop policy if exists "Usuario ve su perfil" on profiles;
 create policy "Usuario ve su perfil"
   on profiles for select
   using (id = auth.uid());
 
+drop policy if exists "Usuario actualiza su perfil" on profiles;
 drop policy if exists "Usuario actualiza su perfil" on profiles;
 create policy "Usuario actualiza su perfil"
   on profiles for update
@@ -257,15 +268,18 @@ create policy "Usuario actualiza su perfil"
 
 -- Vendors: lectura pública (home y micrositio) + el dueño administra su local
 drop policy if exists "Vendedores visibles para todos" on vendors;
+drop policy if exists "Vendedores visibles para todos" on vendors;
 create policy "Vendedores visibles para todos"
   on vendors for select
   using (true);
 
 drop policy if exists "Vendedor ve su propio local" on vendors;
+drop policy if exists "Vendedor ve su propio local" on vendors;
 create policy "Vendedor ve su propio local"
   on vendors for select
   using (user_id = auth.uid());
 
+drop policy if exists "Vendedor edita su propio local" on vendors;
 drop policy if exists "Vendedor edita su propio local" on vendors;
 create policy "Vendedor edita su propio local"
   on vendors for update
@@ -273,10 +287,12 @@ create policy "Vendedor edita su propio local"
 
 -- Barrios y categorías: lectura pública
 drop policy if exists "Barrios visibles para todos" on neighborhoods;
+drop policy if exists "Barrios visibles para todos" on neighborhoods;
 create policy "Barrios visibles para todos"
   on neighborhoods for select
   using (true);
 
+drop policy if exists "Categorías visibles para todos" on categories;
 drop policy if exists "Categorías visibles para todos" on categories;
 create policy "Categorías visibles para todos"
   on categories for select
@@ -317,6 +333,7 @@ values (
 on conflict (id) do nothing;
 
 -- Lectura pública de las imágenes (el upload va por el server con service_role)
+drop policy if exists "Public read menu-images" on storage.objects;
 drop policy if exists "Public read menu-images" on storage.objects;
 create policy "Public read menu-images"
   on storage.objects for select
@@ -378,10 +395,12 @@ create unique index if not exists vendor_categories_vendor_name_key
 alter table public.vendor_categories enable row level security;
 
 drop policy if exists "Categorías del local visibles para todos" on public.vendor_categories;
+drop policy if exists "Categorías del local visibles para todos" on public.vendor_categories;
 create policy "Categorías del local visibles para todos"
   on public.vendor_categories for select
   using (true);
 
+drop policy if exists "Vendedor gestiona sus categorías" on public.vendor_categories;
 drop policy if exists "Vendedor gestiona sus categorías" on public.vendor_categories;
 create policy "Vendedor gestiona sus categorías"
   on public.vendor_categories for all
@@ -516,20 +535,24 @@ ALTER TABLE public.vendor_gallery ENABLE ROW LEVEL SECURITY;
 
 DO $$ BEGIN
   DROP POLICY IF EXISTS "Vendors manage own modifiers" ON public.product_modifiers;
+drop policy if exists "Vendors manage own modifiers" on public.product_modifiers;
   CREATE POLICY "Vendors manage own modifiers" ON public.product_modifiers
     USING (product_id IN (SELECT id FROM public.products WHERE vendor_id IN (SELECT id FROM public.vendors WHERE user_id = auth.uid())));
 
   DROP POLICY IF EXISTS "Public read modifiers" ON public.product_modifiers;
+drop policy if exists "Public read modifiers" on public.product_modifiers;
   CREATE POLICY "Public read modifiers" ON public.product_modifiers FOR SELECT USING (true);
 EXCEPTION WHEN undefined_object OR duplicate_object THEN NULL;
 END $$;
 
 DO $$ BEGIN
   DROP POLICY IF EXISTS "Vendors manage own gallery" ON public.vendor_gallery;
+drop policy if exists "Vendors manage own gallery" on public.vendor_gallery;
   CREATE POLICY "Vendors manage own gallery" ON public.vendor_gallery
     USING (vendor_id IN (SELECT id FROM public.vendors WHERE user_id = auth.uid()));
 
   DROP POLICY IF EXISTS "Public read gallery" ON public.vendor_gallery;
+drop policy if exists "Public read gallery" on public.vendor_gallery;
   CREATE POLICY "Public read gallery" ON public.vendor_gallery FOR SELECT USING (true);
 EXCEPTION WHEN undefined_object OR duplicate_object THEN NULL;
 END $$;
@@ -555,7 +578,11 @@ CREATE INDEX IF NOT EXISTS idx_reviews_product ON reviews(product_id);
 
 ALTER TABLE reviews ENABLE ROW LEVEL SECURITY;
 
+drop policy if exists "Cualquiera puede leer reseñas" on reviews;
+drop policy if exists "Cualquiera puede leer reseñas" on reviews;
 CREATE POLICY "Cualquiera puede leer reseñas" ON reviews FOR SELECT USING (true);
+drop policy if exists "Usuarios autenticados pueden insertar reseñas" on reviews;
+drop policy if exists "Usuarios autenticados pueden insertar reseñas" on reviews;
 CREATE POLICY "Usuarios autenticados pueden insertar reseñas" ON reviews FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
 
 -- Pedidos: agregar customer_id para que el comprador pueda ver sus pedidos
@@ -595,12 +622,18 @@ CREATE INDEX IF NOT EXISTS idx_notifications_unread ON notifications(user_id, re
 
 ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
 
+drop policy if exists "Usuarios ven sus notificaciones" on notifications;
+drop policy if exists "Usuarios ven sus notificaciones" on notifications;
 CREATE POLICY "Usuarios ven sus notificaciones" ON notifications
   FOR SELECT USING (auth.uid() = user_id);
 
+drop policy if exists "Sistema puede insertar notificaciones" on notifications;
+drop policy if exists "Sistema puede insertar notificaciones" on notifications;
 CREATE POLICY "Sistema puede insertar notificaciones" ON notifications
   FOR INSERT WITH CHECK (true);
 
+drop policy if exists "Usuarios pueden marcar como leídas" on notifications;
+drop policy if exists "Usuarios pueden marcar como leídas" on notifications;
 CREATE POLICY "Usuarios pueden marcar como leídas" ON notifications
   FOR UPDATE USING (auth.uid() = user_id);
 
@@ -621,12 +654,18 @@ CREATE INDEX IF NOT EXISTS idx_favorites_user ON favorites(user_id);
 
 ALTER TABLE favorites ENABLE ROW LEVEL SECURITY;
 
+drop policy if exists "Usuarios ven sus favoritos" on favorites;
+drop policy if exists "Usuarios ven sus favoritos" on favorites;
 CREATE POLICY "Usuarios ven sus favoritos" ON favorites
   FOR SELECT USING (auth.uid() = user_id);
 
+drop policy if exists "Usuarios pueden agregar favoritos" on favorites;
+drop policy if exists "Usuarios pueden agregar favoritos" on favorites;
 CREATE POLICY "Usuarios pueden agregar favoritos" ON favorites
   FOR INSERT WITH CHECK (auth.uid() = user_id);
 
+drop policy if exists "Usuarios pueden eliminar favoritos" on favorites;
+drop policy if exists "Usuarios pueden eliminar favoritos" on favorites;
 CREATE POLICY "Usuarios pueden eliminar favoritos" ON favorites
   FOR DELETE USING (auth.uid() = user_id);
 
@@ -718,6 +757,8 @@ END $$;
 
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Vendors can insert status log' AND tablename = 'order_status_log') THEN
+drop policy if exists "Vendors can insert status log" on order_status_log;
+drop policy if exists "Vendors can insert status log" on order_status_log;
     CREATE POLICY "Vendors can insert status log" ON order_status_log
       FOR INSERT
       WITH CHECK (
@@ -734,6 +775,8 @@ END $$;
 
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Anyone can read order log' AND tablename = 'order_status_log') THEN
+drop policy if exists "Anyone can read order log" on order_status_log;
+drop policy if exists "Anyone can read order log" on order_status_log;
     CREATE POLICY "Anyone can read order log" ON order_status_log
       FOR SELECT
       USING (true);
@@ -747,6 +790,7 @@ END $$;
 -- Policy: vendors can update their own orders
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Vendedores actualizan sus pedidos' AND tablename = 'orders') THEN
+drop policy if exists "Vendedores actualizan sus pedidos" on orders;
     CREATE POLICY "Vendedores actualizan sus pedidos"
       ON orders FOR UPDATE
       USING (
@@ -842,9 +886,11 @@ ALTER TABLE public.product_images ENABLE ROW LEVEL SECURITY;
 
 DO $$ BEGIN
   DROP POLICY IF EXISTS "Public read variants" ON public.product_variants;
+drop policy if exists "Public read variants" on public.product_variants;
   CREATE POLICY "Public read variants" ON public.product_variants FOR SELECT USING (true);
 
   DROP POLICY IF EXISTS "Vendors manage own variants" ON public.product_variants;
+drop policy if exists "Vendors manage own variants" on public.product_variants;
   CREATE POLICY "Vendors manage own variants" ON public.product_variants
     USING (product_id IN (SELECT id FROM public.products WHERE vendor_id IN (SELECT id FROM public.vendors WHERE user_id = auth.uid())))
     WITH CHECK (product_id IN (SELECT id FROM public.products WHERE vendor_id IN (SELECT id FROM public.vendors WHERE user_id = auth.uid())));
@@ -853,10 +899,12 @@ END $$;
 
 DO $$ BEGIN
   DROP POLICY IF EXISTS "Public read product images" ON public.product_images;
+drop policy if exists "Public read product images" on public.product_images;
   CREATE POLICY "Public read product images" ON public.product_images FOR SELECT
     USING (true);
 
   DROP POLICY IF EXISTS "Vendors manage own product images" ON public.product_images;
+drop policy if exists "Vendors manage own product images" on public.product_images;
   CREATE POLICY "Vendors manage own product images" ON public.product_images
     USING (product_id IN (SELECT id FROM public.products WHERE vendor_id IN (SELECT id FROM public.vendors WHERE user_id = auth.uid())))
     WITH CHECK (product_id IN (SELECT id FROM public.products WHERE vendor_id IN (SELECT id FROM public.vendors WHERE user_id = auth.uid())));

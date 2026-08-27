@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 export function LogoMark({ className }: { className?: string }) {
   return (
     <Image
-      src="/logoP659.jpeg"
+      src="/logoP659.png"
       alt="Portal 659"
       width={48}
       height={48}

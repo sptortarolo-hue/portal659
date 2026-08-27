@@ -11,27 +11,20 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Create source tarball
-        run: |
-          tar -czf portal659-src.tar.gz \
-            --exclude='node_modules' \
-            --exclude='.next' \
-            --exclude='.git' \
-            --exclude='portal659-src.tar.gz' \
-            .
+      - name: Package source
+        run: tar -czf deploy-pack --exclude='node_modules' --exclude='.next' --exclude='.git' .
 
-      - name: Upload to VPS
+      - name: Upload source to VPS
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: 8277
-          source: "portal659-src.tar.gz"
-          target: "/tmp/portal659-deploy"
-          strip_components: 0
+          source: "deploy-pack"
+          target: "/tmp/deploy-pack"
 
-      - name: Deploy on VPS
+      - name: Deploy
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.VPS_HOST }}
@@ -43,33 +36,23 @@ jobs:
             set -e
 
             # Guardar .env
-            cp /opt/portal659/.env /tmp/portal659.env.bak 2>/dev/null || true
+            cp /opt/portal659/.env /tmp/.env.bak 2>/dev/null || true
 
-            # El scp-action extrae el tarball en /tmp/portal659-deploy/
-            # Mover archivos al directorio de deploy
+            # Limpiar y extraer
             rm -rf /opt/portal659
             mkdir -p /opt/portal659
-            cp -a /tmp/portal659-deploy/* /opt/portal659/ 2>/dev/null || true
-            cp -a /tmp/portal659-deploy/.[!.]* /opt/portal659/ 2>/dev/null || true
+            tar -xzf /tmp/deploy-pack -C /opt/portal659 --strip-components=1
 
             # Restaurar .env
-            cp /tmp/portal659.env.bak /opt/portal659/.env 2>/dev/null || true
+            cp /tmp/.env.bak /opt/portal659/.env 2>/dev/null || true
 
-            # Asegurar .env
             cd /opt/portal659
-            if [ ! -f ".env" ]; then
-              echo "NEXT_PUBLIC_SITE_URL=https://www.portal659.com.ar" > .env
-            fi
             sed -i 's|NEXT_PUBLIC_SITE_URL=.*|NEXT_PUBLIC_SITE_URL=https://www.portal659.com.ar|' .env
-            grep -q "NEXT_PUBLIC_SUPABASE_URL" .env || echo "NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}" >> .env
-            grep -q "NEXT_PUBLIC_SUPABASE_ANON_KEY" .env || echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}" >> .env
-            grep -q "SUPABASE_SERVICE_ROLE_KEY" .env || echo "SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" >> .env
             grep -q "RESEND_API_KEY" .env || echo "RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}" >> .env
 
-            # Reconstruir y levantar
+            # Reconstruir
             docker compose down
             docker compose up -d --build
 
-            # Limpiar
-            rm -rf /tmp/portal659-deploy /tmp/portal659.env.bak
+            rm -f /tmp/deploy-pack /tmp/.env.bak
             echo "Deploy completado!"

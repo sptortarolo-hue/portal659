@@ -17,25 +17,21 @@ jobs:
           port: 8277
           command_timeout: 20m
           script: |
-            cd /opt/portal659
-            cp .env /tmp/.env.bak 2>/dev/null || true
-
             cd /tmp
             SHA=$(curl -fsSL -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" https://api.github.com/repos/sptortarolo-hue/portal659/commits/master | grep '"sha"' | head -1 | cut -d'"' -f4)
             curl -fsSL -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" -o code.tgz "https://api.github.com/repos/sptortarolo-hue/portal659/tarball/$SHA"
-
             rm -rf /opt/portal659
             mkdir -p /opt/portal659
             tar -xzf code.tgz -C /opt/portal659 --strip-components=1
 
-            cp /tmp/.env.bak /opt/portal659/.env 2>/dev/null || true
+            echo 'NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}' > /opt/portal659/.env
+            echo 'NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}' >> /opt/portal659/.env
+            echo 'SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}' >> /opt/portal659/.env
+            echo 'NEXT_PUBLIC_SITE_URL=https://www.portal659.com.ar' >> /opt/portal659/.env
+            echo 'RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}' >> /opt/portal659/.env
 
             cd /opt/portal659
-            sed -i 's|NEXT_PUBLIC_SITE_URL=.*|NEXT_PUBLIC_SITE_URL=https://www.portal659.com.ar|' .env
-            grep -q "RESEND_API_KEY" .env || echo "RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}" >> .env
-
             docker compose down
             docker compose up -d --build
-
-            rm -f /tmp/code.tgz /tmp/.env.bak
+            rm -f /tmp/code.tgz
             echo "Deploy completado!"

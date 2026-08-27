@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ImageCropModal } from "@/components/ui/image-crop-modal";
-import { DEFAULT_NEIGHBORHOOD } from "@/lib/config";
+import { DEFAULT_ZONE } from "@/lib/config";
 import { buildClientWhatsAppUrl, ORDER_STATUS_COLORS } from "@/lib/order-utils";
 import OrderDetailModal from "@/components/dashboard/order-detail-modal";
 import DashboardGastro from "@/components/dashboard/dashboard-gastro";
@@ -192,7 +192,7 @@ export default function VendorDashboard() {
     const res = await fetch("/api/vendor/me", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...data, neighborhood: DEFAULT_NEIGHBORHOOD.slug }),
+      body: JSON.stringify({ ...data, neighborhood: DEFAULT_ZONE.neighborhoods[0] }),
     });
     const result = await res.json().catch(() => ({ error: "Error de conexión" }));
     if (result.error) setMsg(result.error);

@@ -86,16 +86,11 @@ export async function getAuthUser(request: Request): Promise<AuthUser | null> {
   const decoded = await verifyAccessToken(token);
   if (!decoded?.userId) return null;
 
-  const user = await queryOne<{ id: string; email: string; full_name: string | null; role: string; verified: boolean }>(
-    `SELECT id, email, full_name, role, verified FROM profiles WHERE id = $1`,
+  const user = await queryOne<{ id: string; email: string; full_name: string | null; role: string; verified: boolean; is_admin: boolean }>(
+    `SELECT id, email, full_name, role, verified, is_admin FROM profiles WHERE id = $1`,
     [decoded.userId]
   );
   if (!user) return null;
-
-  const vendor = await queryOne<{ is_admin: boolean }>(
-    `SELECT is_admin FROM vendors WHERE user_id = $1 LIMIT 1`,
-    [user.id]
-  );
 
   return {
     id: user.id,
@@ -103,7 +98,7 @@ export async function getAuthUser(request: Request): Promise<AuthUser | null> {
     full_name: user.full_name,
     role: user.role,
     verified: user.verified,
-    is_admin: vendor?.is_admin === true,
+    is_admin: user.is_admin === true,
   };
 }
 

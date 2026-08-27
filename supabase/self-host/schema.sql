@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS profiles (
   phone text,
   whatsapp text,
   role text CHECK (role IN ('buyer', 'vendor', 'admin')) DEFAULT 'buyer',
+  is_admin boolean DEFAULT false,
   verified boolean DEFAULT false,
   email_confirmed boolean DEFAULT false,
   created_at timestamptz DEFAULT now(),
@@ -414,7 +415,7 @@ ALTER TABLE vendors ADD COLUMN IF NOT EXISTS lng double precision;
 CREATE OR REPLACE FUNCTION get_most_ordered_products(
   p_days int DEFAULT 7,
   p_limit int DEFAULT 5,
-  p_zone text DEFAULT NULL
+  p_zone text[] DEFAULT NULL
 )
 RETURNS TABLE(
   product_id text,
@@ -440,7 +441,7 @@ AS $$
     AND o.status NOT IN ('cancelled')
     AND (item->>'product_id') IS NOT NULL
     AND (item->>'product_id') != ''
-    AND (p_zone IS NULL OR v.neighborhood = p_zone)
+    AND (p_zone IS NULL OR v.neighborhood = ANY(p_zone))
   GROUP BY item->>'product_id', item->>'name', v.store_name, v.slug, v.vertical
   ORDER BY total_qty DESC
   LIMIT p_limit;
@@ -574,7 +575,7 @@ CREATE INDEX IF NOT EXISTS idx_orders_channel ON public.orders(channel);
 -- ============================================================
 CREATE TABLE IF NOT EXISTS public.info_items (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  zone text NOT NULL DEFAULT 'sicardi',
+  zone text NOT NULL DEFAULT 'sicardi-garibaldi',
   category text NOT NULL CHECK (category IN ('transporte', 'utilidades', 'horarios', 'noticias')),
   title text NOT NULL,
   body text,

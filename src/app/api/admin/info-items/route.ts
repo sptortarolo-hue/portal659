@@ -1,18 +1,18 @@
 import { NextResponse } from "next/server";
 import { isAdmin } from "@/lib/admin-utils";
 import { queryMany, queryOne, query } from "@/lib/db";
-import { NEIGHBORHOODS } from "@/lib/config";
+import { ZONES } from "@/lib/config";
 
 const CATEGORIES = ["transporte", "utilidades", "horarios", "noticias"];
-const ZONES = NEIGHBORHOODS.map((n) => n.slug);
+const ZONE_SLUGS = ZONES.map((z) => z.slug);
 
 type ValidResult = { error: string } | { item: Record<string, unknown> };
 
 function validItem(body: Record<string, unknown>): ValidResult {
   const { zone, category, title, body: text, tags, active, sort } = body;
-  const normalizedZone = (zone as string) || "sicardi";
+  const normalizedZone = (zone as string) || ZONE_SLUGS[0];
   const normalizedCategory = (category as string) || "";
-  if (!ZONES.includes(normalizedZone)) {
+  if (!ZONE_SLUGS.includes(normalizedZone)) {
     return { error: "Zona inválida" };
   }
   if (!CATEGORIES.includes(normalizedCategory)) {

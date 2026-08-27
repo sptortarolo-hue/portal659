@@ -3,20 +3,22 @@
 -- Ejecutar UNA vez en el Postgres de producción (psql o cliente SQL).
 -- Es IDEMPOTENTE: se puede correr varias veces sin romper nada.
 --
--- Hace 3 cosas:
---   1) Agrega la columna info_items.zone (default 'sicardi').
+-- Hace 4 cosas:
+--   1) Agrega la columna info_items.zone (default 'sicardi-garibaldi').
 --   2) Reemplaza la constraint UNIQUE (category,title) por
 --      UNIQUE (zone,category,title) para permitir el mismo ítem
---      en distintos barrios.
---   3) Recrea get_most_ordered_products() con filtro por zona.
+--      en distintas zonas.
+--   3) Recrea get_most_ordered_products() con filtro por zona (array text[]).
+--   4) Agrega columna is_admin a profiles (admin sin negocio).
+--   5) Backfill info_items existentes a zone='sicardi-garibaldi'.
 -- ============================================================
 
 BEGIN;
 
 -- ============================================================
--- 1. Columna zone en info_items
+-- 1. Columna zone en info_items (default 'sicardi-garibaldi')
 -- ============================================================
-ALTER TABLE public.info_items ADD COLUMN IF NOT EXISTS zone text NOT NULL DEFAULT 'sicardi';
+ALTER TABLE public.info_items ADD COLUMN IF NOT EXISTS zone text NOT NULL DEFAULT 'sicardi-garibaldi';
 
 -- ============================================================
 -- 2. Constraint única: de (category,title) → (zone,category,title)
@@ -45,12 +47,12 @@ ALTER TABLE public.info_items
   ADD CONSTRAINT info_items_zone_category_title_key UNIQUE (zone, category, title);
 
 -- ============================================================
--- 3. Función get_most_ordered_products con filtro por zona
+-- 3. Función get_most_ordered_products con filtro por zona (array text[])
 -- ============================================================
 CREATE OR REPLACE FUNCTION get_most_ordered_products(
   p_days int DEFAULT 7,
   p_limit int DEFAULT 5,
-  p_zone text DEFAULT NULL
+  p_zone text[] DEFAULT NULL
 )
 RETURNS TABLE(
   product_id text,
@@ -76,14 +78,24 @@ AS $$
     AND o.status NOT IN ('cancelled')
     AND (item->>'product_id') IS NOT NULL
     AND (item->>'product_id') != ''
-    AND (p_zone IS NULL OR v.neighborhood = p_zone)
+    AND (p_zone IS NULL OR v.neighborhood = ANY(p_zone))
   GROUP BY item->>'product_id', item->>'name', v.store_name, v.slug, v.vertical
   ORDER BY total_qty DESC
   LIMIT p_limit;
 $$;
 
 -- ============================================================
--- (Opcional) Seed de la Alerta Vecinal para otros barrios
+-- 4. Agregar is_admin a profiles (para admin sin negocio)
+-- ============================================================
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS is_admin boolean DEFAULT false;
+
+-- ============================================================
+-- 5. Backfill info_items existentes a zone='sicardi-garibaldi'
+-- ============================================================
+UPDATE public.info_items SET zone = 'sicardi-garibaldi' WHERE zone = 'sicardi';
+
+-- ============================================================
+-- (Opcional) Seed de la Alerta Vecinal para otras zonas
 -- Descomentá el bloque que quieras para precargar Arana/Correas.
 -- ============================================================
 -- INSERT INTO public.info_items (zone, category, title, body, tags, sort) VALUES

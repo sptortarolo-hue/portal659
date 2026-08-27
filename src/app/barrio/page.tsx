@@ -28,9 +28,9 @@ export default async function BarrioPage() {
   const items = await queryMany<InfoItem>(
     `SELECT id, category, title, body, tags, sort, updated_at
      FROM info_items
-     WHERE active = true AND zone = $1
+     WHERE active = true AND zone = ANY($1)
      ORDER BY sort ASC, created_at ASC`,
-    [zone.slug]
+    [[zone.slug, ...zone.neighborhoods.filter((n) => n !== zone.slug)]]
   );
 
   const grouped = CATEGORY_ORDER.map((cat) => ({

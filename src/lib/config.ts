@@ -1,31 +1,44 @@
-export type Neighborhood = {
+export type Zone = {
   slug: string;
   name: string;
+  neighborhoods: string[];
   active: boolean;
 };
 
-/** Nombre de la cookie donde se guarda el barrio seleccionado. */
+/** Nombre de la cookie donde se guarda la zona seleccionada. */
 export const ZONE_COOKIE = "portal659-zone";
 
-export const NEIGHBORHOODS: Neighborhood[] = [
-  { slug: "sicardi", name: "Sicardi", active: true },
-  { slug: "garibaldi", name: "Garibaldi", active: true },
-  { slug: "arana", name: "Arana", active: false },
-  { slug: "correas", name: "Correas", active: false },
+export const ZONES: Zone[] = [
+  {
+    slug: "sicardi-garibaldi",
+    name: "Sicardi y Garibaldi",
+    neighborhoods: ["sicardi", "garibaldi"],
+    active: true,
+  },
+  {
+    slug: "arana",
+    name: "Arana",
+    neighborhoods: ["arana"],
+    active: false,
+  },
+  {
+    slug: "correas",
+    name: "Correas",
+    neighborhoods: ["correas"],
+    active: false,
+  },
 ];
 
-/** Barrios visibles/activos para el selector de zona. */
-export const ACTIVE_NEIGHBORHOODS = NEIGHBORHOODS.filter((n) => n.active);
+/** Zonas visibles/activas para el selector. */
+export const ACTIVE_ZONES = ZONES.filter((z) => z.active);
+
+export const DEFAULT_ZONE: Zone = ZONES[0];
 
 export const ZONE = {
-  slugs: ACTIVE_NEIGHBORHOODS.map((n) => n.slug),
-  name: ACTIVE_NEIGHBORHOODS.map((n) => n.name).join(" y "),
+  slug: DEFAULT_ZONE.slug,
+  name: DEFAULT_ZONE.name,
+  slugs: DEFAULT_ZONE.neighborhoods,
 } as const;
-
-export const DEFAULT_NEIGHBORHOOD = {
-  slug: "sicardi",
-  name: "Sicardi",
-};
 
 export const VERTICALS = [
   {

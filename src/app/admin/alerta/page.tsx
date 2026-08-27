@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import DeleteConfirmModal from "@/components/admin/delete-confirm-modal";
-import { NEIGHBORHOODS } from "@/lib/config";
+import { ZONES } from "@/lib/config";
 import { Plus, Trash2, Pencil, ChevronUp, ChevronDown, Megaphone, X, Check } from "lucide-react";
 
 type InfoItem = {
@@ -28,7 +28,7 @@ const CATEGORIES = [
   { value: "noticias", label: "Avisos", color: "bg-violet-50 text-violet-700" },
 ];
 
-const EMPTY_FORM = { id: "", zone: "sicardi", category: "transporte", title: "", body: "", tags: "" };
+const EMPTY_FORM = { id: "", zone: ZONES[0].slug, category: "transporte", title: "", body: "", tags: "" };
 
 export default function AdminAlertaPage() {
   const [items, setItems] = useState<InfoItem[]>([]);
@@ -93,7 +93,7 @@ export default function AdminAlertaPage() {
     setEditing(true);
     setForm({
       id: item.id,
-      zone: item.zone || "sicardi",
+      zone: item.zone || ZONES[0].slug,
       category: item.category,
       title: item.title,
       body: item.body || "",
@@ -162,8 +162,8 @@ export default function AdminAlertaPage() {
               value={form.zone}
               onChange={(e) => setForm({ ...form, zone: e.target.value })}
             >
-              {NEIGHBORHOODS.map((n) => (
-                <option key={n.slug} value={n.slug}>{n.name}</option>
+              {ZONES.map((z) => (
+                <option key={z.slug} value={z.slug}>{z.name}</option>
               ))}
             </select>
           </div>
@@ -243,7 +243,7 @@ export default function AdminAlertaPage() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-primary/10 text-primary">
-                        {NEIGHBORHOODS.find((n) => n.slug === item.zone)?.name || item.zone}
+                        {ZONES.find((z) => z.slug === item.zone)?.name || item.zone}
                       </span>
                       <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${cat?.color || "bg-muted"}`}>
                         {cat?.label || item.category}

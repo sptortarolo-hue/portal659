@@ -12,7 +12,7 @@ export const POST = withRateLimit(async (request: Request) => {
 
   const booking = await queryOne<{ id: string }>(
     `INSERT INTO bookings (vendor_id, product_id, customer_id, product_name, booking_date, booking_time, notes, status)
-     VALUES ($1, $1, 'anonymous', $2, $3, $4, $5, 'pending') RETURNING id`,
+     VALUES ($1, NULL, NULL, $2, $3, $4, $5, 'pending') RETURNING id`,
     [vendorId, productName || null, bookingDate, bookingTime, notes || null]
   );
 

@@ -17,13 +17,13 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json();
-  const { name, slug, vertical } = body;
+  const { name, slug } = body;
 
   if (!name) return NextResponse.json({ error: "name es requerido" }, { status: 400 });
 
   const category = await queryOne<Record<string, unknown>>(
-    `INSERT INTO categories (name, slug, vertical) VALUES ($1, $2, $3) RETURNING *`,
-    [name, slug || name.toLowerCase().replace(/\s+/g, "-"), vertical || null]
+    `INSERT INTO categories (name, slug) VALUES ($1, $2) RETURNING *`,
+    [name, slug || name.toLowerCase().replace(/\s+/g, "-")]
   );
 
   return NextResponse.json({ category });

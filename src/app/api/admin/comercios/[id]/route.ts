@@ -45,7 +45,20 @@ export async function PATCH(
   }
 
   const body = await request.json();
-  await query(`UPDATE vendors SET ${buildSetClauses(body)} WHERE id = $1`, buildValues(id, body));
+  const allowed = [
+    "store_name", "slug", "category", "vertical", "neighborhood", "whatsapp", "phone",
+    "instagram", "facebook", "description", "address", "hours", "location", "image_url",
+    "logo_url", "payment_methods", "delivery_options", "services_list", "service_area",
+    "free_estimate", "accepting_quotes", "verified", "featured", "is_admin",
+    "prep_time_min", "urgent_enabled", "lat", "lng",
+  ];
+  const clean: Record<string, unknown> = {};
+  for (const k of Object.keys(body)) {
+    if (allowed.includes(k)) clean[k] = body[k];
+  }
+  const cols = Object.keys(clean);
+  if (cols.length === 0) return NextResponse.json({ ok: true });
+  await query(`UPDATE vendors SET ${buildSetClauses(clean)} WHERE id = $1`, buildValues(id, clean));
   return NextResponse.json({ ok: true });
 }
 

@@ -45,7 +45,6 @@ export default function AdminConfigPage() {
     await patchConfig("category", editingCategory.id, {
       name: editingCategory.name,
       slug: editingCategory.slug || slugify(editingCategory.name),
-      vertical: editingCategory.vertical || null,
     });
     setEditingCategory(null);
   }
@@ -190,20 +189,6 @@ export default function AdminConfigPage() {
                         className="h-8"
                         placeholder="Nombre"
                       />
-                      <select
-                        className="h-8 rounded-md border border-input bg-background px-2 text-sm"
-                        value={editingCategory.vertical || ""}
-                        onChange={(e) => setEditingCategory({ ...editingCategory, vertical: e.target.value })}
-                      >
-                        <option value="">General</option>
-                        <option value="gastronomia">Gastronomía</option>
-                        <option value="comercio">Comercio</option>
-                        <option value="servicio">Servicio</option>
-                        <option value="moda">Moda</option>
-                        <option value="salud">Salud</option>
-                        <option value="varios">Varios</option>
-                        <option value="mascotas">Mascotas</option>
-                      </select>
                       <button onClick={saveCategoryEdit} className="p-1.5 rounded hover:bg-green-50 transition-colors">
                         <Check className="h-4 w-4 text-green-600" />
                       </button>
@@ -237,20 +222,6 @@ export default function AdminConfigPage() {
                 onChange={(e) => setNewCategory({ ...newCategory, name: e.target.value, slug: e.target.value.toLowerCase().replace(/\s+/g, "-") })}
                 className="flex-1"
               />
-              <select
-                className="h-9 rounded-md border border-input bg-background px-3 text-sm"
-                value={newCategory.vertical}
-                onChange={(e) => setNewCategory({ ...newCategory, vertical: e.target.value })}
-              >
-                <option value="">General</option>
-                <option value="gastronomia">Gastronomía</option>
-                <option value="comercio">Comercio</option>
-                <option value="servicio">Servicio</option>
-                <option value="moda">Moda</option>
-                <option value="salud">Salud</option>
-                <option value="varios">Varios</option>
-                <option value="mascotas">Mascotas</option>
-              </select>
               <Button onClick={addCategory} size="sm" disabled={!newCategory.name}>
                 <Plus className="h-4 w-4 mr-1" /> Agregar
               </Button>

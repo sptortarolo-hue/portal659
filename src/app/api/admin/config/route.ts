@@ -28,13 +28,20 @@ export async function PATCH(request: Request) {
   }
 
   const table = type === "neighborhood" ? "neighborhoods" : "categories";
+  const allowed = type === "neighborhood"
+    ? ["name", "slug", "lat", "lng"]
+    : ["name", "slug", "description"];
 
-  const cols = Object.keys(updateData);
+  const clean: Record<string, unknown> = {};
+  for (const k of Object.keys(updateData)) {
+    if (allowed.includes(k)) clean[k] = updateData[k];
+  }
+  const cols = Object.keys(clean);
   if (cols.length === 0) return NextResponse.json({ ok: true });
   const setClauses = cols.map((k, i) => `${k} = $${i + 2}`).join(", ");
   await query(
     `UPDATE ${table} SET ${setClauses} WHERE slug = $1`,
-    [id, ...Object.values(updateData)]
+    [id, ...Object.values(clean)]
   );
 
   return NextResponse.json({ ok: true });

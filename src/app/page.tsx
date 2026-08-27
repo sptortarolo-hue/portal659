@@ -72,16 +72,15 @@ export default async function HomePage() {
             className="font-display text-4xl font-semibold tracking-tight sm:text-5xl lg:text-6xl max-w-4xl mx-auto text-white animate-fade-in-up"
             style={{ animationDelay: "0.1s" }}
           >
-            El centro comercial de tu barrio,{" "}
+            El centro comercial del barrio,{" "}
             <span className="text-sun">en tu pantalla</span>
           </h1>
           <p
             className="mt-6 text-lg text-white/80 max-w-2xl mx-auto animate-fade-in-up"
             style={{ animationDelay: "0.2s" }}
           >
-            Gastronomía, comercio, servicios, moda, salud y más de {ZONE.name}
-            en un solo lugar. Pedís o consultás, y todo cae directo al WhatsApp
-            del comercio.
+            Gastronomía, comercio, servicios, moda, salud y más en un solo
+            lugar. Elegís - Consultas - Pedís y Disfrutas.
           </p>
           <div
             className="mt-10 flex flex-wrap justify-center gap-3 animate-fade-in-up"

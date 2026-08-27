@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { buildComandaWhatsApp } from "@/lib/whatsapp-message";
 import { formatPhone, isValidPhone } from "@/lib/order-utils";
+import { OrderSummaryModal } from "@/components/cart/order-summary-modal";
 
 type VendorTransfer = {
   transfer_cbu: string | null;
@@ -35,6 +36,8 @@ export default function CheckoutPage() {
   const [mpConfigured, setMpConfigured] = useState(false);
   const [vendorInfo, setVendorInfo] = useState<VendorTransfer | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
+  const [showSummary, setShowSummary] = useState(false);
+  const [pendingOrder, setPendingOrder] = useState<{ orderId: string; message: string; waNumber: string } | null>(null);
 
   useEffect(() => {
     fetch("/api/payments").then(r => r.json()).then(d => setMpConfigured(d.configured)).catch(() => {});
@@ -169,12 +172,21 @@ export default function CheckoutPage() {
     });
 
     const waNumber = v.whatsapp.replace(/[^0-9]/g, "");
+    setPendingOrder({ orderId: data.orderId || "", message, waNumber });
+    setShowSummary(true);
+    setLoading(false);
+  }
+
+  function confirmSend() {
+    if (!pendingOrder) return;
+    setLoading(true);
     window.open(
-      `https://wa.me/${waNumber}?text=${encodeURIComponent(message)}`,
+      `https://wa.me/${pendingOrder.waNumber}?text=${encodeURIComponent(pendingOrder.message)}`,
       "_blank"
     );
-
     clear();
+    setShowSummary(false);
+    setPendingOrder(null);
     setDone(true);
     setLoading(false);
   }
@@ -413,6 +425,24 @@ export default function CheckoutPage() {
             : "El pedido se envía al WhatsApp del local. Sin registro, sin pagar online: el local te pasa el total y coordinás el pago directo."}
         </p>
       </form>
+
+      <OrderSummaryModal
+        open={showSummary}
+        onClose={() => { setShowSummary(false); }}
+        onConfirm={confirmSend}
+        vendorName={v.storeName}
+        items={items.map((i) => ({
+          name: i.name,
+          price: i.price + (i.modifiers || []).reduce((s, m) => s + m.price_mod, 0),
+          qty: i.qty,
+          modifiers: (i.modifiers || []).map((m) => m.label),
+        }))}
+        total={total}
+        method={method}
+        address={method === "delivery" ? address : undefined}
+        paymentMethod={paymentMethod}
+        loading={loading}
+      />
     </main>
   );
 }

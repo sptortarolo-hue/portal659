@@ -6,6 +6,7 @@ import { createClient } from "@supabase/supabase-js";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Modal } from "@/components/ui/modal";
 import { useCart } from "@/lib/cart";
 import {
   formatPhone,
@@ -152,6 +153,11 @@ export default function MisPedidosPage() {
   const [error, setError] = useState("");
   const [searched, setSearched] = useState(false);
   const [realtimeConnected, setRealtimeConnected] = useState(false);
+  const [reorderConfirm, setReorderConfirm] = useState<{
+    order: Order & { vendors?: { store_name: string; slug: string; whatsapp: string } | null };
+    vendorSlug: string;
+    vendorWhatsapp: string;
+  } | null>(null);
   const channelRef = useRef<ReturnType<ReturnType<typeof createClient>["channel"]> | null>(null);
 
   const fetchOrders = useCallback(async (phoneNumber: string) => {
@@ -223,17 +229,39 @@ export default function MisPedidosPage() {
   }
 
   function handleReorder(order: Order & { vendors?: { store_name: string; slug: string; whatsapp: string } | null }, vendorSlug: string, vendorWhatsapp: string) {
-    const cartItems = order.items.map((item) => ({
-      offerId: `reorder-${order.id}-${item.name}`,
-      name: item.name,
-      price: item.price,
-      qty: item.qty,
-      modifiers: (item.modifiers || []).map((m) => ({ group: "", label: m, price_mod: 0 })),
-    }));
+    setReorderConfirm({ order, vendorSlug, vendorWhatsapp });
+  }
+
+  async function confirmReorder() {
+    if (!reorderConfirm) return;
+    const { order, vendorSlug, vendorWhatsapp } = reorderConfirm;
+
+    // Try to map items to real product IDs from the vendor's current catalog
+    let vendorProducts: { id: string; name: string; price: number; promo_price: number | null }[] = [];
+    try {
+      const res = await fetch(`/api/vendor/offers?vendor_id=${order.vendor_id}`);
+      const data = await res.json();
+      vendorProducts = data.products || data.offers || [];
+    } catch {}
+
+    const cartItems = order.items.map((item) => {
+      const match = vendorProducts.find(
+        (p) => p.name.toLowerCase().trim() === item.name.toLowerCase().trim()
+      );
+      return {
+        offerId: match ? match.id : `reorder-${order.id}-${item.name}`,
+        name: item.name,
+        price: match ? (match.promo_price ?? match.price) : item.price,
+        qty: item.qty,
+        modifiers: (item.modifiers || []).map((m) => ({ group: "", label: m, price_mod: 0 })),
+      };
+    });
+
     loadOrder(
       { id: order.vendor_id, slug: vendorSlug, storeName: order.vendors?.store_name || "Local", whatsapp: vendorWhatsapp },
       cartItems
     );
+    setReorderConfirm(null);
     router.push(`/tienda/${vendorSlug}`);
   }
 
@@ -291,6 +319,52 @@ export default function MisPedidosPage() {
           </p>
         </div>
       )}
+
+      <Modal
+        open={!!reorderConfirm}
+        onClose={() => setReorderConfirm(null)}
+        title="Volver a pedir"
+        footer={
+          <>
+            <button
+              onClick={() => setReorderConfirm(null)}
+              className="flex-1 rounded-xl border border-border py-3 text-sm font-medium hover:bg-muted transition-colors"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={confirmReorder}
+              className="flex-1 rounded-xl bg-primary text-primary-foreground py-3 text-sm font-semibold hover:bg-primary/90 transition-colors"
+            >
+              Agregar al carrito
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Se reemplazará tu carrito actual con los items de este pedido.
+          </p>
+          {reorderConfirm && (
+            <div className="space-y-1.5">
+              {reorderConfirm.order.items.map((item, i) => (
+                <div key={i} className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">
+                    {item.qty}x {item.name}
+                  </span>
+                  <span className="font-medium tabular-nums">
+                    ${(item.price * item.qty).toLocaleString("es-AR")}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="border-t border-border pt-2 flex justify-between font-bold text-sm">
+            <span>Total</span>
+            <span>${reorderConfirm ? Number(reorderConfirm.order.total).toLocaleString("es-AR") : "0"}</span>
+          </div>
+        </div>
+      </Modal>
     </main>
   );
 }

@@ -11,6 +11,7 @@ import { BookingForm } from "@/components/services/booking-form";
 import { StickyWhatsApp } from "@/components/store/sticky-whatsapp";
 import { VariantSelector } from "@/components/store/variant-selector";
 import { ProductCard } from "@/components/store/product-card";
+import { VendorShareButton } from "@/components/store/vendor-share-button";
 import type { Metadata } from "next";
 
 export const dynamic = "force-dynamic";
@@ -222,6 +223,7 @@ const modifiersByProduct: Record<string, any[]> = {};
               {v.store_name}
             </h1>
             <FavoriteButton vendorId={v.id} />
+            <VendorShareButton slug={v.slug} storeName={v.store_name} />
           </div>
           {v.description && (
             <p className="text-muted-foreground mt-2">{v.description}</p>

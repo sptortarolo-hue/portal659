@@ -4,6 +4,7 @@ import { ZONE, VERTICALS } from "@/lib/config";
 import { OfferCard } from "@/components/offers/offer-card";
 import { HorizontalCarousel } from "@/components/ui/horizontal-carousel";
 import { VendorCard } from "@/components/store/vendor-card";
+import { MostOrderedSection } from "@/components/home/most-ordered-section";
 import type { Vendor, Product } from "@/types/database";
 
 type OfferWithVendor = Product & {
@@ -159,6 +160,9 @@ export default async function HomePage() {
           </HorizontalCarousel>
         </section>
       )}
+
+      {/* Most ordered */}
+      <MostOrderedSection />
 
       {/* Vendors by vertical with carousels */}
       {VERTICALS.map((vert) => {

@@ -16,9 +16,38 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           port: 8277
           script: |
+            set -e
+
+            # Si no existe el directorio o no es un repo git, clonar
+            if [ ! -d "/opt/portal659/.git" ]; then
+              echo "Repo no encontrado, clonando..."
+              # Guardar .env si existe
+              if [ -f "/opt/portal659/.env" ]; then
+                cp /opt/portal659/.env /tmp/portal659.env.bak
+              fi
+              rm -rf /opt/portal659
+              git clone https://github.com/sptortarolo-hue/conectaMOS-v2.git /opt/portal659
+              # Restaurar .env
+              if [ -f "/tmp/portal659.env.bak" ]; then
+                mv /tmp/portal659.env.bak /opt/portal659/.env
+              fi
+            else
+              cd /opt/portal659
+              git fetch origin
+              git reset --hard origin/master
+              git clean -fd
+            fi
+
             cd /opt/portal659
-            git pull
+
+            # Asegurar .env
+            if [ ! -f ".env" ]; then
+              echo "NEXT_PUBLIC_SITE_URL=https://www.portal659.com.ar" > .env
+            fi
             sed -i 's|NEXT_PUBLIC_SITE_URL=.*|NEXT_PUBLIC_SITE_URL=https://www.portal659.com.ar|' .env
-            grep -q "RESEND_API_KEY" .env || echo "RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}" >> .env
+            grep -q "RESEND_API_KEY" .env && true || echo "RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}" >> .env
+
+            # Reconstruir
             docker compose down
             docker compose up -d --build
+            echo "Deploy completado!"

@@ -15,7 +15,7 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: 8277
-          command_timeout: 20m
+          command_timeout: 30m
           script: |
             cd /tmp
             SHA=$(curl -fsSL -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" https://api.github.com/repos/sptortarolo-hue/portal659/commits/master | grep '"sha"' | head -1 | cut -d'"' -f4)

@@ -8,47 +8,65 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          NEXT_PUBLIC_SITE_URL: https://www.portal659.com.ar
+
+      - name: Create tarball
+        run: tar -czf /tmp/portal659.tar.gz .next node_modules package.json public
+
       - name: Deploy via SSH
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: 8277
+          source: "/tmp/portal659.tar.gz"
+          target: "/tmp/portal659.tar.gz"
+
+      - name: Extract and restart on VPS
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: 8277
-          command_timeout: 20m
+          command_timeout: 10m
           script: |
             set -e
 
-            # Si no existe el directorio o no es un repo git, clonar
-            if [ ! -d "/opt/portal659/.git" ]; then
-              echo "Repo no encontrado, clonando..."
-              # Guardar .env si existe
-              if [ -f "/opt/portal659/.env" ]; then
-                cp /opt/portal659/.env /tmp/portal659.env.bak
-              fi
-              rm -rf /opt/portal659
-              git clone https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/sptortarolo-hue/conectamos-v2.git /opt/portal659
-              # Restaurar .env
-              if [ -f "/tmp/portal659.env.bak" ]; then
-                mv /tmp/portal659.env.bak /opt/portal659/.env
-              fi
-            else
-              cd /opt/portal659
-              git fetch origin
-              git reset --hard origin/master
-              git clean -fd
-            fi
-
             cd /opt/portal659
 
+            # Guardar .env
+            cp .env /tmp/portal659.env.bak 2>/dev/null || true
+
+            # Extraer build sobre el directorio existente
+            tar -xzf /tmp/portal659.tar.gz -C /opt/portal659
+
+            # Restaurar .env
+            cp /tmp/portal659.env.bak .env 2>/dev/null || true
+
             # Asegurar .env
-            if [ ! -f ".env" ]; then
-              echo "NEXT_PUBLIC_SITE_URL=https://www.portal659.com.ar" > .env
-            fi
             sed -i 's|NEXT_PUBLIC_SITE_URL=.*|NEXT_PUBLIC_SITE_URL=https://www.portal659.com.ar|' .env
             grep -q "RESEND_API_KEY" .env && true || echo "RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}" >> .env
 
-            # Reconstruir
+            # Reiniciar
             docker compose down
-            docker compose up -d --build
+            docker compose up -d
+            rm -f /tmp/portal659.tar.gz /tmp/portal659.env.bak
             echo "Deploy completado!"

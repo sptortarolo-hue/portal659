@@ -3,6 +3,7 @@ import { getSupabase } from "@/lib/supabase";
 import { ZONE, VERTICALS } from "@/lib/config";
 import { OfferCard } from "@/components/offers/offer-card";
 import { HorizontalCarousel } from "@/components/ui/horizontal-carousel";
+import { VendorCard } from "@/components/store/vendor-card";
 import type { Vendor, Product } from "@/types/database";
 
 type OfferWithVendor = Product & {
@@ -25,7 +26,7 @@ export default async function HomePage() {
 
   const { data: vendors } = await supabase
     .from("vendors")
-    .select("*")
+    .select("*, hours")
     .in("neighborhood", ZONE.slugs)
     .order("created_at", { ascending: false });
 
@@ -193,53 +194,17 @@ export default async function HomePage() {
             ) : (
               <HorizontalCarousel>
                 {list.map((v) => (
-                  <Link
+                  <VendorCard
                     key={v.id}
-                    href={`/tienda/${v.slug}`}
-                    className="min-w-[260px] max-w-[300px] snap-start block group"
-                  >
-                    <div className="relative rounded-2xl border border-border bg-card overflow-hidden hover:shadow-xl transition-all duration-200 hover:-translate-y-1">
-                      {v.image_url ? (
-                        <div className="h-36 overflow-hidden">
-                          <img
-                            src={v.image_url}
-                            alt={v.store_name}
-                            className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-                          />
-                        </div>
-                      ) : (
-                        <div className="h-36 bg-gradient-to-br from-secondary to-accent flex items-center justify-center">
-                          <span className="font-display text-4xl font-bold text-primary/50">
-                            {v.store_name.charAt(0)}
-                          </span>
-                        </div>
-                      )}
-                      {v.logo_url && (
-                        <img
-                          src={v.logo_url}
-                          alt={`Logo de ${v.store_name}`}
-                          className="absolute left-3 top-3 h-12 w-12 rounded-full object-cover border-2 border-white shadow-md"
-                        />
-                      )}
-                      <div className="p-4">
-                        <h3 className="font-display text-base font-semibold truncate">
-                          {v.store_name}
-                        </h3>
-                        {v.description && (
-                          <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
-                            {v.description}
-                          </p>
-                        )}
-                        <div className="flex items-center justify-between mt-3">
-                          <p className="text-xs text-primary font-medium">
-                            {v.vertical === "servicio"
-                              ? "Ver y contactar →"
-                              : "Ver y pedir →"}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </Link>
+                    id={v.id}
+                    slug={v.slug}
+                    store_name={v.store_name}
+                    image_url={v.image_url}
+                    logo_url={v.logo_url}
+                    description={v.description}
+                    vertical={v.vertical}
+                    hours={(v as any).hours}
+                  />
                 ))}
               </HorizontalCarousel>
             )}

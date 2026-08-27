@@ -11,6 +11,7 @@ import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { ThemeProvider } from "@/components/ui/theme-provider";
 import { ScrollToTop } from "@/components/ui/scroll-to-top";
 import { BottomNav } from "@/components/nav/bottom-nav";
+import { OnboardingOverlay } from "@/components/onboarding/onboarding-overlay";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -66,6 +67,7 @@ export default function RootLayout({
           <CartProvider>
             <ToastProvider>
               <ServiceWorkerRegistration />
+              <OnboardingOverlay />
               <Navigation />
               <ErrorBoundary>
                 <main className="flex-1 pb-20">{children}</main>

@@ -18,20 +18,11 @@ jobs:
           command_timeout: 20m
           script: |
             cd /opt/portal659
-
             cp .env /tmp/.env.bak 2>/dev/null || true
 
             cd /tmp
-            curl -fsSL -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-              -H "Accept: application/vnd.github.v3.raw" \
-              "https://api.github.com/repos/sptortarolo-hue/conectaMOS-v2/tarball/$(curl -fsSL -H 'Authorization: token ${{ secrets.GITHUB_TOKEN }}' https://api.github.com/repos/sptortarolo-hue/conectaMOS-v2/commits/master | grep '"sha"' | head -1 | cut -d'"' -f4)" \
-              -o code.tgz 2>/dev/null
-
-            SHA=$(curl -fsSL -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" https://api.github.com/repos/sptortarolo-hue/conectaMOS-v2/commits/master | grep '"sha"' | head -1 | cut -d'"' -f4)
-
-            curl -fsSL -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-              -o code.tgz \
-              "https://api.github.com/repos/sptortarolo-hue/conectaMOS-v2/tarball/$SHA"
+            SHA=$(curl -fsSL -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" https://api.github.com/repos/sptortarolo-hue/portal659/commits/master | grep '"sha"' | head -1 | cut -d'"' -f4)
+            curl -fsSL -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" -o code.tgz "https://api.github.com/repos/sptortarolo-hue/portal659/tarball/$SHA"
 
             rm -rf /opt/portal659
             mkdir -p /opt/portal659

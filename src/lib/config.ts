@@ -52,7 +52,7 @@ export const VERTICALS = [
   {
     slug: "comercio",
     name: "Comercio del Barrio",
-    description: "Almacenes, verdulerías, carnicerías, kioscos y todo lo que se vende cerca",
+    description: "Almacenes, verdulerías, carnicerías, kioscos, librerías, ferreterías, floristerías, pet shops, veterinarias y todo lo que se vende cerca",
     emoji: "🏪",
     color: "vert-comercio",
     hex: "#10b981",
@@ -76,25 +76,9 @@ export const VERTICALS = [
   {
     slug: "salud",
     name: "Salud y Bienestar",
-    description: "Farmacia, peluquería, estética, veterinaria y más",
+    description: "Farmacia, peluquería, estética y más",
     emoji: "💊",
     color: "vert-salud",
     hex: "#ec4899",
-  },
-  {
-    slug: "varios",
-    name: "Varios",
-    description: "Librería, ferretería, limpieza, floristería y otros",
-    emoji: "📦",
-    color: "vert-varios",
-    hex: "#f59e0b",
-  },
-  {
-    slug: "mascotas",
-    name: "Mascotas",
-    description: "Pet shop, peluquería canina, veterinaria y alimentos para mascotas",
-    emoji: "🐾",
-    color: "vert-mascotas",
-    hex: "#14b8a6",
   },
 ] as const;

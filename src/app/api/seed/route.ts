@@ -115,7 +115,7 @@ export async function GET() {
     {
       email: "vendedor9@test.com", password: "test123456", full_name: "Papelería Don Pencas",
       phone: "2215550109", store_name: "Papelería Don Pencas", slug: "papeleria-don-pencas",
-      category: "librería", vertical: "varios", whatsapp: "5492215550109", neighborhood: "garibaldi",
+      category: "librería", vertical: "comercio", whatsapp: "5492215550109", neighborhood: "garibaldi",
       address: "Calle 50 y 20, Garibaldi", hours: "Lun a Vie · 9:00 a 18:00",
       description: "Librería y papelería con todo para la escuela y la oficina.",
       payment_methods: "Efectivo, Débito", delivery_options: "retiro",
@@ -128,7 +128,7 @@ export async function GET() {
     {
       email: "vendedor10@test.com", password: "test123456", full_name: "Pet Shop Los Patines",
       phone: "2215550110", store_name: "Pet Shop Los Patines", slug: "pet-shop-los-patines",
-      category: "pet shop", vertical: "mascotas", whatsapp: "5492215550110", neighborhood: "sicardi",
+      category: "pet shop", vertical: "comercio", whatsapp: "5492215550110", neighborhood: "sicardi",
       address: "Calle 47 y 23, Sicardi", hours: "Lun a Sáb · 9:00 a 19:00",
       description: "Todo para tu mascota: alimentos, accesorios, peluquería y más.",
       payment_methods: "Efectivo, Débito, Mercado Pago", delivery_options: "ambos", instagram: "@petshoplospatines",

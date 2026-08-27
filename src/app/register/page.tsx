@@ -10,12 +10,10 @@ import { Logo } from "@/components/brand/logo";
 
 const TIPO_OPTIONS = [
   { value: "gastronomia", label: "Gastronomía (rotisería, pizzas, comida casera)" },
-  { value: "comercio", label: "Comercio del barrio (almacén, verdulería, carnicería, kiosco)" },
+  { value: "comercio", label: "Comercio del barrio (almacén, verdulería, carnicería, kiosco, librería, ferretería, floristería, pet shop, veterinaria)" },
   { value: "servicio", label: "Servicio u oficio (electricista, plomero, jardinería)" },
   { value: "moda", label: "Ropa y accesorios (indumentaria, calzado, bijouterie)" },
-  { value: "salud", label: "Salud y bienestar (farmacia, peluquería, estética, veterinaria)" },
-  { value: "varios", label: "Varios (librería, ferretería, limpieza, floristería)" },
-  { value: "mascotas", label: "Mascotas (pet shop, peluquería canina, veterinaria)" },
+  { value: "salud", label: "Salud y bienestar (farmacia, peluquería, estética)" },
 ] as const;
 
 export default function RegisterPage() {

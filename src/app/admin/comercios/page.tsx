@@ -44,8 +44,6 @@ const VERTICAL_COLORS: Record<string, string> = {
   servicio: "bg-sky-100 text-sky-700",
   moda: "bg-violet-100 text-violet-700",
   salud: "bg-pink-100 text-pink-700",
-  varios: "bg-amber-100 text-amber-700",
-  mascotas: "bg-teal-100 text-teal-700",
 };
 
 export default function AdminComerciosPage() {

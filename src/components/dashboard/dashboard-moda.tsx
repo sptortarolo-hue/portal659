@@ -36,8 +36,6 @@ const VERTICAL_OPTIONS = [
   { value: "comercio", label: "Comercio del barrio" },
   { value: "servicio", label: "Servicio u oficio" },
   { value: "salud", label: "Salud y bienestar" },
-  { value: "varios", label: "Varios" },
-  { value: "mascotas", label: "Mascotas" },
   { value: "otro", label: "Otro" },
 ];
 

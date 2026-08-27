@@ -214,8 +214,6 @@ export default function AdminUsuariosPage() {
                     <option value="servicio">Servicio</option>
                     <option value="moda">Moda</option>
                     <option value="salud">Salud</option>
-                    <option value="varios">Varios</option>
-                    <option value="mascotas">Mascotas</option>
                   </select>
                 </div>
               </div>

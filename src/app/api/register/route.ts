@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { withTransaction } from "@/lib/db";
 import { hashPassword } from "@/lib/auth";
 
-const TIPOS = ["gastronomia", "comercio", "servicio", "moda", "salud", "varios", "mascotas"] as const;
+const TIPOS = ["gastronomia", "comercio", "servicio", "moda", "salud"] as const;
 
 export async function POST(request: Request) {
   const { email, password, firstName, lastName, whatsapp, tipo } = await request.json();

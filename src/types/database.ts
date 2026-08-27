@@ -11,8 +11,6 @@ export type Vertical =
   | "servicio"
   | "moda"
   | "salud"
-  | "varios"
-  | "mascotas"
   | "otro";
 
 export type PlanSlug = "gratuito" | "pedidos" | "gestion";

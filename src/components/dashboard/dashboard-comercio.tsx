@@ -51,23 +51,19 @@ type Props = {
 
 const VERTICAL_OPTIONS = [
   { value: "gastronomia", label: "Gastronomía (comida, rotisería)" },
-  { value: "comercio", label: "Comercio del barrio (almacén, verdulería, carnicería, kiosco)" },
+  { value: "comercio", label: "Comercio del barrio (almacén, verdulería, carnicería, kiosco, librería, ferretería, floristería, pet shop, veterinaria)" },
   { value: "servicio", label: "Servicio u oficio (sin menú)" },
   { value: "moda", label: "Ropa y accesorios" },
-  { value: "salud", label: "Salud y bienestar (farmacia, peluquería, veterinaria)" },
-  { value: "varios", label: "Varios (librería, ferretería, limpieza, mascotas)" },
-  { value: "mascotas", label: "Mascotas (pet shop, peluquería canina, veterinaria)" },
+  { value: "salud", label: "Salud y bienestar (farmacia, peluquería)" },
   { value: "otro", label: "Otro" },
 ] as const;
 
 const CATEGORY_SUGGESTIONS: Record<string, string[]> = {
   gastronomia: ["empanadas", "pizzas", "pastas", "asado", "postres", "regional", "rotisería", "comida casera", "otras"],
-  comercio: ["verdulería", "carnicería", "pollajería", "kiosco", "almacén", "fiambrería", "panadería", "licorería", "ferretería", "librería", "farmacia", "droguería", "otros"],
+  comercio: ["verdulería", "carnicería", "pollajería", "kiosco", "almacén", "fiambrería", "panadería", "licorería", "ferretería", "librería", "farmacia", "droguería", "floristería", "pet shop", "peluquería canina", "veterinaria", "alimentos", "accesorios", "guardería", "papelería", "óptica", "otros"],
   servicio: ["electricista", "plomero", "jardinería", "pintura", "albañilería", "mudanza", "limpieza", "seguridad", "otros"],
   moda: ["ropa", "calzado", "accesorios", "bijouterie", "bolsos", "confección", "sastrería", "otros"],
-  salud: ["farmacia", "peluquería", "estética", "veterinaria", "gimnasio", "consultorio", "otros"],
-  varios: ["librería", "ferretería", "limpieza", "floristería", "papelería", "óptica", "otros"],
-  mascotas: ["pet shop", "peluquería canina", "veterinaria", "alimentos", "accesorios", "guardería", "otros"],
+  salud: ["farmacia", "peluquería", "estética", "gimnasio", "consultorio", "otros"],
   otro: ["otros"],
 };
 

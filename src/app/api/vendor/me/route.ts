@@ -58,7 +58,7 @@ export async function POST(request: Request) {
     auto_print,
   } = body;
 
-  const VALID_VERTICALS = ["gastronomia", "comercio", "servicio", "moda", "salud", "varios", "mascotas", "otro"];
+  const VALID_VERTICALS = ["gastronomia", "comercio", "servicio", "moda", "salud", "otro"];
   const resolvedVertical = VALID_VERTICALS.includes(vertical)
     ? vertical
     : "gastronomia";

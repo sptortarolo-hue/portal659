@@ -31,8 +31,6 @@ const VERTICAL_OPTIONS = [
   { value: "servicio", label: "Servicio" },
   { value: "moda", label: "Ropa y Accesorios" },
   { value: "salud", label: "Salud y Bienestar" },
-  { value: "varios", label: "Varios" },
-  { value: "mascotas", label: "Mascotas" },
   { value: "otro", label: "Otro" },
 ];
 
@@ -52,7 +50,7 @@ export default function DashboardGenerico({
   vendor, offers, categories, msg, setMsg, reload, saveVendor, uploading, onCrop,
 }: Props) {
   const [storeName, setStoreName] = useState("");
-  const [storeVertical, setStoreVertical] = useState("varios");
+  const [storeVertical, setStoreVertical] = useState("comercio");
   const [storeCategory, setStoreCategory] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
   const [phone, setPhone] = useState("");
@@ -81,7 +79,7 @@ export default function DashboardGenerico({
   useEffect(() => {
     if (!vendor) return;
     setStoreName(vendor.store_name || "");
-    setStoreVertical(vendor.vertical || "varios");
+    setStoreVertical(vendor.vertical || "comercio");
     setStoreCategory(vendor.category || "");
     setWhatsapp(vendor.whatsapp || "");
     setPhone(vendor.phone || "");

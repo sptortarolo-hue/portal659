@@ -31,7 +31,7 @@ jobs:
             echo 'RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}' >> /opt/portal659/.env
 
             cd /opt/portal659
-            docker compose down
             docker compose up -d --build
+            docker image prune -f
             rm -f /tmp/code.tgz
             echo "Deploy completado!"

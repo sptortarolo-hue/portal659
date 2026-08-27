@@ -1,60 +1,60 @@
 # Portal 659 — El centro comercial de tu barrio
 
-Galería gastronómica hiperlocal. Cada local tiene su micrositio, el cliente arma el pedido sin registrarse y cae directo al WhatsApp del local. 0% comisión.
-
-"Donde las aplicaciones grandes no llegan, nosotros te salvamos la cena."
+Hub multicommerce hiperlocal (Sicardi + Garibaldi; Arana/Correas en configuración). Cada local tiene su micrositio, el cliente arma el pedido sin registrarse y cae directo al WhatsApp del local. **0% comisión**.
 
 ## Stack
 
 - **Next.js 16** (App Router + React 19 + TypeScript, Turbopack)
-- **Supabase** (PostgreSQL + Auth)
-- **Tailwind CSS v4**
-- **Render.com** (deploy, vía Docker)
+- **PostgreSQL** (self-host, contenedor `postgres:15-alpine`)
+- **Auth**: JWT propio (`jose`) + `argon2`, tabla `profiles`
+- **Tailwind CSS v4** + shadcn/ui
+- **Deploy**: GitHub Actions → VPS (docker compose: app + db + nginx)
 
-## Zona activa (MVP)
+> **Importante:** el proyecto **no usa Supabase**. Es PostgreSQL plano con auth propio y storage a disco.
 
-- **Sicardi y Garibaldi** (se muestran juntos como una única zona)
-- Arana y Correas quedan para más adelante (no se muestran)
+## Zonas (Sprint 5 — multizona)
+
+- **Sicardi y Garibaldi** (zona activa por defecto)
+- **Arana y Correas**: definidas en `src/lib/config.ts` con `active: false` (se activan desde ahí).
 
 ## Desarrollo local
 
-Requisitos: Docker Desktop (WSL2), Supabase CLI, Node 20+.
+Requisitos: Docker + Node 20+.
 
 ```bash
 npm install
-supabase start            # arranca API en 127.0.0.1:54321, Studio en 54323
-npm run dev               # app en http://localhost:3000
-node scripts/seed.mjs     # datos de demo (usuarios + locales + menú + pedidos)
+
+# 1. Levantar Postgres con el esquema (Docker)
+docker compose up -d db
+
+# 2. Crear .env.local (ver DEPLOYMENT.md para todas las vars)
+DATABASE_URL=postgres://portal659:TU_PASS@localhost:5432/portal659
+JWT_SECRET=clave-local-de-desarrollo
+NEXT_PUBLIC_SITE_URL=http://localhost:3000
+UPLOAD_DIR=./uploads
+
+# 3. Seed de datos de prueba (requiere la app corriendo)
+npm run dev          # app en http://localhost:3000 (en otra terminal)
+node scripts/seed.mjs
 ```
 
-`.env.local` debe apuntar al Supabase local (`NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321`).
-
-### Usuarios de prueba
-
-| Rol | Email | Password |
-|---|---|---|
-| Comprador | comprador@test.com | test123456 |
-| Vendedor (María) | vendedor1@test.com | test123456 |
-| Vendedor (Rossi) | vendedor2@test.com | test123456 |
-| Vendedor (Pizza) | vendedor3@test.com | test123456 |
+El esquema inicial se aplica automáticamente en el primer arranque del contenedor `db` desde `supabase/self-host/schema.sql`.
 
 ## Despliegue
 
-Ver **[DEPLOYMENT.md](DEPLOYMENT.md)** para el paso a paso (Supabase remoto + Render).
+Ver **[DEPLOYMENT.md](DEPLOYMENT.md)**.
 
-En resumen:
-1. Aplicar migraciones `supabase/migrations/001_init.sql`, `002_gastronomy.sql` y `003_rls_grants.sql` al proyecto remoto
-2. Configurar Web Service en Render (`semorfa-app`) con las env vars de Supabase
-3. Listo
+En resumen: push a `master` dispara GitHub Actions "Deploy to VPS" (docker compose con `app` + `db` + `nginx`). Las variables van en los secrets del repo.
 
 ## Estructura
 
 ```
 src/
-  app/          → App Router pages (micrositios en /tienda/[slug])
+  app/          → App Router pages (micrositios en /tienda/[slug], /perfil, /admin)
   components/   → UI + feature components (brand, nav, cart, offers)
-  lib/          → Supabase client, cart, config
-supabase/       → Migraciones SQL + config local
+  lib/          → db (pg), auth (JWT), config, zone, plans
+supabase/
+  self-host/    → schema.sql (esquema canónico), seed-admin.sql, migraciones de app
+  migrations/   → historial de migraciones (001-028, folder heredado de Supabase)
 scripts/seed.mjs → Seed de datos de demo
-render.yaml     → Configuración de deploy en Render
 ```

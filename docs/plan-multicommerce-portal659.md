@@ -14,7 +14,7 @@ Convertir la app de un MVP gastronómico ("SeMorfa") en **Portal 659**: el centr
 
 ## Fase 1 — Núcleo multicommerce (implementado)
 
-1. **Migración `007_vendor_vertical.sql`**: `vendors.vertical` (`gastronomia | almacen | servicio | otro`, default `gastronomia`). Aplicar con `supabase db push`.
+1. **Migración `007_vendor_vertical.sql`**: `vendors.vertical` (`gastronomia | almacen | servicio | otro`, default `gastronomia`). Aplicar contra el Postgres self-host (`docker exec -i portal659-db psql ...`).
 2. **Registro**: selector "¿Qué tipo de emprendimiento tenés?" (Comida / Almacén / Servicio / Solo quiero pedir). `role` + `vertical` en `user_metadata`; `comprador` → role `buyer`.
 3. **Dashboard**: select "Tipo de comercio" en onboarding y configuración. Vertical `servicio` oculta menú/categorías/pedidos y muestra la "vidriera de servicio" (config + QR + "Compartí tu QR").
 4. **Micrositio** (`/tienda/[slug]`): `servicio` → layout de contacto con botón "Consultar por WhatsApp" (sin carrito ni precios).

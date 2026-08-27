@@ -6,7 +6,7 @@ propio VPS, junto a la app y nginx, vía Docker Compose.
 ## Requisitos previos
 - Un VPS con **Ubuntu/Debian**, Docker y Docker Compose instalados (mínimo 1 GB RAM).
 - Dominio apuntando al VPS (DNS → IP del VPS) para el sitio.
-- Repositorio GitHub `sptortarolo-hue/conectaMOS-v2`.
+- Repositorio GitHub `sptortarolo-hue/portal659`.
 
 ## Paso 1: Variables de entorno
 
@@ -99,6 +99,7 @@ Secrets requeridos en el repositorio:
 - `RESEND_API_KEY`, `FROM_EMAIL`
 - `MP_ACCESS_TOKEN`, `MP_PUBLIC_KEY`, `MP_WEBHOOK_SECRET`
 - `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`
+- `NEXT_PUBLIC_GOOGLE_MAPS_KEY`
 
 ## Desarrollo local
 

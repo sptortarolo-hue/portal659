@@ -1,223 +1,108 @@
 # Portal 659 — Checklist Producción
 
-## 1. Supabase (Producción)
+Stack real: **Next.js + PostgreSQL self-host (Docker) + nginx**, desplegado por **GitHub Actions a un VPS**. No usa Supabase ni Vercel.
 
-### Crear proyecto
-- [ ] Ir a https://supabase.com y crear proyecto
-- [ ] Copiar URL del proyecto (ej: `https://xxxxx.supabase.co`)
-- [ ] Copiar `anon key` y `service_role key`
+## 1. Infraestructura
 
-### Configurar variables de entorno
+- [ ] VPS (Ubuntu/Debian, mínimo 1 GB RAM) con Docker + Docker Compose.
+- [ ] Dominio apuntando al VPS (DNS → IP). HTTPS por Cloudflare (el contenedor nginx escucha en el puerto 80).
+- [ ] Repositorio GitHub `sptortarolo-hue/portal659`.
+
+### Contenedores (docker-compose.yml)
+| Servicio | Imagen | Rol |
+|---|---|---|
+| `app` | portal659-app (Next.js) | App en puerto 3000 (interno) |
+| `db` | postgres:15-alpine | PostgreSQL, esquema en `supabase/self-host/schema.sql` |
+| `nginx` | nginx:alpine | Proxy, puerto 80 |
+
+## 2. Variables de entorno (VPS `.env` + secrets de GitHub Actions)
+
+```dotenv
+# Postgres
+POSTGRES_DB=portal659
+POSTGRES_USER=portal659
+POSTGRES_PASSWORD=poné-una-contraseña-fuerte
+
+# App (runtime)
+DATABASE_URL=postgres://portal659:TU_PASS@db:5432/portal659   # host = db (red Docker)
+JWT_SECRET=generá-una-clave-larga-y-aleatoria
+NEXT_PUBLIC_SITE_URL=https://www.portal659.com.ar
+UPLOAD_DIR=/app/uploads
+
+# Mercado Pago
+MP_ACCESS_TOKEN=
+MP_PUBLIC_KEY=
+MP_WEBHOOK_SECRET=
+
+# Resend
+RESEND_API_KEY=
+FROM_EMAIL=Portal 659 <noreply@tu-dominio.com>
+
+# Upstash Redis (rate limiting)
+UPSTASH_REDIS_REST_URL=
+UPSTASH_REDIS_REST_TOKEN=
+
+# Google Maps
+NEXT_PUBLIC_GOOGLE_MAPS_KEY=
+```
+
+En local van en `.env.local`; en el VPS se regeneran desde los secrets en el deploy (ver `deploy.yml`).
+
+## 3. Deploy (GitHub Actions)
+
+- Push a `master` → workflow `Deploy to VPS` (`appleboy/ssh-action`, puerto 8277).
+- Descarga el código en `/opt/portal659`, escribe el `.env` desde los secrets y hace `docker compose up -d --build`.
+- Sin downtime + healthcheck (`/api/health`): si un contenedor cae, `restart: unless-stopped` lo levanta; si el host reinicia, los contenedores existentes vuelven solos.
+
+### Secrets requeridos
+`VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY`, `DATABASE_URL`, `JWT_SECRET`, `POSTGRES_PASSWORD`, `NEXT_PUBLIC_SITE_URL`, `RESEND_API_KEY`, `FROM_EMAIL`, `MP_*`, `UPSTASH_REDIS_*`, `NEXT_PUBLIC_GOOGLE_MAPS_KEY`.
+
+## 4. Usuario administrador
+
 ```bash
-# .env.local (producción)
-NEXT_PUBLIC_SUPABASE_URL=https://TU-PROYECTO.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
-SUPABASE_SERVICE_ROLE_KEY=eyJ...
+docker compose up -d db
+# con DATABASE_URL apuntando a localhost:
+node scripts/create-admin-v2.mjs admin@tudominio.com "TuPasswordSegura" "Nombre Admin"
+# o vía SQL en el contenedor:
+docker exec -i portal659-db psql -U portal659 -d portal659 -f supabase/self-host/seed-admin.sql
 ```
 
-### Aplicar migraciones
-- [ ] Copiar archivos de `supabase/migrations/` al SQL Editor de Supabase
-- [ ] Ejecutar en orden: 001 → 015
-- [ ] Verificar que todas las tablas existen
+`isAdmin` usa `profiles.is_admin`. El admin entra en `/admin`.
 
-### Configurar Storage
-- [ ] Crear bucket `vendor-images`
-- [ ] Hacerlo público (para que se vean las fotos)
-- [ ] Configurar políticas de upload (solo usuarios autenticados)
+## 5. Verificación post-deploy
 
-### Configurar Auth
-- [ ] Habilitar Email/Password login
-- [ ] (Opcional) Habilitar Magic Link
-- [ ] Configurar URL de redirección: `https://tudominio.com`
+- [ ] `https://www.portal659.com.ar/api/health` → `{"status":"ok","db":true}`
+- [ ] Home, `/login`, `/register`, `/buscar`, `/tienda/[slug]`, `/checkout`, `/mis-pedidos`, `/vendor/dashboard`, `/admin`, `/perfil`
+- [ ] Login/logout desde el menú (☰) funciona
+- [ ] Mi perfil edita nombre/teléfono/WhatsApp/barrio
 
----
+## 6. Monitoreo y logs
 
-## 2. Variables de Entorno
+- Logs de app: `docker compose logs -f app`
+- Logs de Postgres: `docker compose logs -f db`
+- Healthcheck configurado en `app` (wget a `/api/health`); nginx arranca solo si `app` está healthy.
 
-### Requeridas
+## 7. Backup
+
 ```bash
-# Supabase
-NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
-SUPABASE_SERVICE_ROLE_KEY=eyJ...
-
-# App
-NEXT_PUBLIC_SITE_URL=https://tudominio.com
+docker exec portal659-db pg_dump -U portal659 -d portal659 > backup.sql
+# o dentro del contenedor db
+docker exec portal659-db pg_dump -U portal659 portal659 > /backups/portal659-$(date +%F).sql
 ```
 
-### Opcionales (funcionalidades extra)
-```bash
-# Mercado Pago (pagos online)
-MP_ACCESS_TOKEN=APP_USR-...
-MP_PUBLIC_KEY=APP_USR-...
+## 8. Costos estimados
 
-# Resend (emails transaccionales)
-RESEND_API_KEY=re_...
+| Servicio | Costo |
+|---|---|
+| VPS (1 GB RAM) | ~US$5-6/mes |
+| Cloudflare (DNS/CDN) | Gratis |
+| Mercado Pago | % por transacción |
+| Resend | Free (100 emails/día) |
+| Dominio | ~US$10/año |
 
-# Google Maps (mapa de locales)
-NEXT_PUBLIC_GOOGLE_MAPS_KEY=AIza...
-```
+## 9. Roadmap
 
----
-
-## 3. Deploy (Vercel)
-
-### Pasos
-1. [ ] Crear cuenta en https://vercel.com
-2. [ ] Conectar repositorio de GitHub
-3. [ ] Configurar variables de entorno en Vercel Dashboard
-4. [ ] Deploy automático
-
-### Configuración Vercel
-```
-Framework Preset: Next.js
-Build Command: next build
-Output Directory: .next
-Node.js Version: 20.x
-```
-
-### Dominio personalizado
-- [ ] Comprar dominio (ej: portal659.com)
-- [ ] Agregar dominio en Vercel
-- [ ] Configurar DNS (CNAME → cname.vercel-dns.com)
-- [ ] Habilitar HTTPS automático
-
----
-
-## 4. Dominio y SSL
-
-### Opciones de dominio
-- **Gratis**: `portal659.vercel.app` (generado por Vercel)
-- **Personalizado**: `portal659.com` (~$10/año en Namecheap/GoDaddy)
-
-### SSL
-- Vercel genera certificado SSL automáticamente
-- No hay que configurar nada
-
----
-
-## 5. Seed de Datos Iniciales
-
-### Después de deploy, ejecutar en Supabase
-```sql
--- Crear comprador de prueba
--- (se crea al registrarse)
-
--- Crear vendedores de prueba
--- Ejecutar: POST /api/seed
-
--- O insertar manualmente:
-INSERT INTO vendors (user_id, store_name, slug, vertical, neighborhood, whatsapp, description)
-VALUES
-  ('UUID_DEL_USUARIO', 'Mi Local', 'mi-local', 'gastronomia', 'Sicardi', '2215550000', 'Descripción del local');
-```
-
-### Modifier de ejemplo
-```sql
-INSERT INTO product_modifiers (product_id, group_name, options, required, max_selections, position)
-VALUES
-  ('UUID_PRODUCTO', 'Tamaño', '[{"label":"Individual","price_mod":0},{"label":"Familiar","price_mod":3000}]'::jsonb, true, 1, 1);
-```
-
----
-
-## 6. Verificación Post-Deploy
-
-### URLs a testear
-- [ ] `https://tudominio.com` — Home
-- [ ] `https://tudominio.com/login` — Login
-- [ ] `https://tudominio.com/register` — Registro
-- [ ] `https://tudominio.com/buscar?q=pizza` — Búsqueda
-- [ ] `https://tudominio.com/tienda/SLUG` — Micrositio
-- [ ] `https://tudominio.com/checkout` — Checkout
-- [ ] `https://tudominio.com/mis-pedidos` — Tracking
-- [ ] `https://tudominio.com/vendor/dashboard` — Dashboard vendedor
-- [ ] `https://tudominio.com/admin` — Admin
-
-### APIs a testear
-- [ ] `GET /api/health` — Health check
-- [ ] `GET /api/reviews?vendor_id=xxx` — Reviews
-- [ ] `GET /api/favorites` — Favoritos
-- [ ] `GET /api/notifications` — Notificaciones
-
-### Features a verificar
-- [ ] Login/logout funciona
-- [ ] Registro de vendedor crea vendor
-- [ ] Login de vendedor muestra dashboard
-- [ ] Crear producto aparece en micrositio
-- [ ] Agregar al carrito funciona
-- [ ] Checkout envía WhatsApp
-- [ ] Reseñas se guardan
-- [ ] Favoritos togglean
-- [ ] Notificaciones aparecen
-- [ ] Admin muestra datos (con vendedor1@test.com)
-- [ ] Modificadores aparecen en platos gastronómicos
-- [ ] Stock bajo muestra badge "¡Últimas!"
-- [ ] Promo price muestra tachado
-
----
-
-## 7. Monitoring
-
-### Logs
-- Vercel Dashboard → Logs (ver errores en tiempo real)
-- Supabase Dashboard → Logs → Postgres (ver queries lentas)
-
-### Métricas
-- Vercel Analytics (gratis) — visitas, performance
-- Supabase Dashboard — conexiones activas, almacenamiento
-
-### Alertas
-- [ ] Configurar alerta de errores en Vercel
-- [ ] Monitorear uso de Supabase (plan gratuito: 500MB DB, 1GB storage)
-
----
-
-## 8. Backup
-
-### Supabase
-- Backups automáticos diarios (plan gratuito: 7 días)
-- [ ] Verificar en Dashboard → Database → Backups
-
-### Manual
-```bash
-# Exportar DB
-pg_dump -h db.xxx.supabase.co -U postgres -d postgres > backup.sql
-```
-
----
-
-## 9. Costos Estimados
-
-| Servicio | Plan | Costo |
-|----------|------|-------|
-| Vercel | Hobby | Gratis |
-| Supabase | Free | Gratis |
-| Dominio | (opcional) | ~$10/año |
-| Mercado Pago | (por transacción) | 4.79% + $0.30/txn |
-| Resend | Free | 100 emails/día gratis |
-
-**Total mínimo: $0/mes** (sin dominio ni pagos online)
-**Total con dominio: ~$1/mes**
-
----
-
-## 10. Roadmap Futuro
-
-### Prioridad Alta
 - [ ] Tests E2E (Playwright)
-- [ ] CI/CD pipeline (GitHub Actions)
 - [ ] Error tracking (Sentry)
-- [ ] Analytics de negocio (chart de pedidos por día en dashboard)
-
-### Prioridad Media
-- [ ] Multi-idioma (i18n)
-- [ ] Dark mode
-- [ ] Push notifications (web)
-- [ ] Mapa de locales (Google Maps)
-
-### Prioridad Baja
-- [ ] App móvil (React Native / Expo)
-- [ ] Sistema de cupones
-- [ ] Programa de fidelidad
-- [ ] Chat vendedor-comprador
+- [ ] Push notifications (web / PWA)
+- [ ] Más zonas activas (Arana, Correas)

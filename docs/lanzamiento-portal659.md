@@ -62,6 +62,5 @@ Estrategia: primero máxima cantidad de servicios (multicommerce completo), mone
 
 ## Notas de seguridad pendientes
 
-- `setup.ps1` tiene la `SUPABASE_SERVICE_ROLE_KEY` del proyecto remoto commiteada → rotarla antes de que el repo sea público
-- El push a GitHub expone la contraseña vieja ya commiteada en el historial
-- `/api/seed` (GET) queda expuesto en producción → bloquearlo
+- Revisar secretos commiteados en el historial de git (`JWT_SECRET`, passwords de DB, claves de Mercado Pago) si el repo llega a ser público.
+- `/api/seed` (GET) queda expuesto en producción → bloquearlo.

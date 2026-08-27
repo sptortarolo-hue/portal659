@@ -105,7 +105,7 @@ export default async function HomePage() {
 
       {/* Categorías grandes */}
       <section className="container mx-auto px-4 py-8" id="categorias">
-        <div className="grid grid-cols-4 sm:grid-cols-7 gap-3">
+        <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
           {VERTICALS.map((vert, i) => (
             <a
               key={vert.slug}

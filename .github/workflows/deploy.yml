@@ -26,7 +26,7 @@ jobs:
                 cp /opt/portal659/.env /tmp/portal659.env.bak
               fi
               rm -rf /opt/portal659
-              git clone https://github.com/sptortarolo-hue/conectaMOS-v2.git /opt/portal659
+              git clone https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/sptortarolo-hue/conectaMOS-v2.git /opt/portal659
               # Restaurar .env
               if [ -f "/tmp/portal659.env.bak" ]; then
                 mv /tmp/portal659.env.bak /opt/portal659/.env

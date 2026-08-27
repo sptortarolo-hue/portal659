@@ -8,35 +8,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Package source
-        run: |
-          mkdir -p .deploy
-          tar -czf .deploy/pack.tgz --exclude='node_modules' --exclude='.next' --exclude='.git' --exclude='.deploy' .
-
-      - name: Backup .env on VPS
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          port: 8277
-          script: cp /opt/portal659/.env /tmp/.env.bak 2>/dev/null || true
-
-      - name: Upload source to VPS
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          port: 8277
-          source: ".deploy/pack.tgz"
-          target: "/tmp/pack.tgz"
-          rm: false
-
-      - name: Deploy on VPS
+      - name: Deploy
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.VPS_HOST }}
@@ -45,23 +17,34 @@ jobs:
           port: 8277
           command_timeout: 20m
           script: |
-            set -e
+            cd /opt/portal659
 
-            # Extraer codigo fuente
+            cp .env /tmp/.env.bak 2>/dev/null || true
+
+            cd /tmp
+            curl -fsSL -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+              -H "Accept: application/vnd.github.v3.raw" \
+              "https://api.github.com/repos/sptortarolo-hue/conectaMOS-v2/tarball/$(curl -fsSL -H 'Authorization: token ${{ secrets.GITHUB_TOKEN }}' https://api.github.com/repos/sptortarolo-hue/conectaMOS-v2/commits/master | grep '"sha"' | head -1 | cut -d'"' -f4)" \
+              -o code.tgz 2>/dev/null
+
+            SHA=$(curl -fsSL -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" https://api.github.com/repos/sptortarolo-hue/conectaMOS-v2/commits/master | grep '"sha"' | head -1 | cut -d'"' -f4)
+
+            curl -fsSL -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+              -o code.tgz \
+              "https://api.github.com/repos/sptortarolo-hue/conectaMOS-v2/tarball/$SHA"
+
             rm -rf /opt/portal659
             mkdir -p /opt/portal659
-            tar -xzf /tmp/pack.tgz -C /opt/portal659 --strip-components=1
+            tar -xzf code.tgz -C /opt/portal659 --strip-components=1
 
-            # Restaurar .env
             cp /tmp/.env.bak /opt/portal659/.env 2>/dev/null || true
 
             cd /opt/portal659
             sed -i 's|NEXT_PUBLIC_SITE_URL=.*|NEXT_PUBLIC_SITE_URL=https://www.portal659.com.ar|' .env
             grep -q "RESEND_API_KEY" .env || echo "RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}" >> .env
 
-            # Reconstruir
             docker compose down
             docker compose up -d --build
 
-            rm -f /tmp/pack.tgz /tmp/.env.bak
+            rm -f /tmp/code.tgz /tmp/.env.bak
             echo "Deploy completado!"

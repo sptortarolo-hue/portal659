@@ -23,6 +23,7 @@ export default function PerfilPage() {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
   const [error, setError] = useState("");
+  const [email, setEmail] = useState("");
   const [form, setForm] = useState({
     full_name: "",
     phone: "",
@@ -39,6 +40,7 @@ export default function PerfilPage() {
           return;
         }
         const u: MeUser = data.user;
+        setEmail(u.email);
         setForm({
           full_name: u.full_name || "",
           phone: u.phone || "",
@@ -92,8 +94,8 @@ export default function PerfilPage() {
 
       <form onSubmit={handleSubmit} className="bg-card border border-border rounded-2xl p-6 space-y-4">
         <div className="rounded-xl bg-muted px-4 py-3 text-sm text-muted-foreground">
-          <span className="block text-xs font-medium text-foreground mb-0.5">Email (no editable)</span>
-          <span>{form.email === undefined ? "" : ""} — conectado por magic link</span>
+          <span className="block text-xs font-medium text-foreground mb-0.5">Email</span>
+          <span>{email}</span>
         </div>
 
         <div>

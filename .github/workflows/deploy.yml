@@ -12,19 +12,30 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Package source
-        run: tar -czf deploy-pack --exclude='node_modules' --exclude='.next' --exclude='.git' .
+        run: tar -czf /tmp/pack.tgz --exclude='node_modules' --exclude='.next' --exclude='.git' .
 
-      - name: Upload source to VPS
+      - name: Backup .env on VPS
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: 8277
+          script: cp /opt/portal659/.env /tmp/.env.bak 2>/dev/null || true
+
+      - name: Upload and extract on VPS
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: 8277
-          source: "deploy-pack"
-          target: "/tmp/deploy-pack"
+          source: "/tmp/pack.tgz"
+          target: "/opt/portal659"
+          strip_components: 1
+          rm: true
 
-      - name: Deploy
+      - name: Restore .env and rebuild
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.VPS_HOST }}
@@ -34,25 +45,11 @@ jobs:
           command_timeout: 20m
           script: |
             set -e
-
-            # Guardar .env
-            cp /opt/portal659/.env /tmp/.env.bak 2>/dev/null || true
-
-            # Limpiar y extraer
-            rm -rf /opt/portal659
-            mkdir -p /opt/portal659
-            tar -xzf /tmp/deploy-pack -C /opt/portal659 --strip-components=1
-
-            # Restaurar .env
             cp /tmp/.env.bak /opt/portal659/.env 2>/dev/null || true
-
             cd /opt/portal659
             sed -i 's|NEXT_PUBLIC_SITE_URL=.*|NEXT_PUBLIC_SITE_URL=https://www.portal659.com.ar|' .env
             grep -q "RESEND_API_KEY" .env || echo "RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}" >> .env
-
-            # Reconstruir
             docker compose down
             docker compose up -d --build
-
-            rm -f /tmp/deploy-pack /tmp/.env.bak
+            rm -f /tmp/.env.bak /tmp/pack.tgz
             echo "Deploy completado!"

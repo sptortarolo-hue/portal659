@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,7 +13,6 @@ const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 export default function ResetPasswordPage() {
-  const searchParams = useSearchParams();
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -34,14 +32,15 @@ export default function ResetPasswordPage() {
   }, []);
 
   useEffect(() => {
-    const code = searchParams.get("code");
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get("code");
     if (code) {
       verifyToken(code);
     } else {
       setError("No se encontró el código de recuperación.");
       setChecking(false);
     }
-  }, [searchParams, verifyToken]);
+  }, [verifyToken]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

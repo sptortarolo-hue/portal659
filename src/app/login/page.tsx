@@ -43,6 +43,7 @@ export default function LoginPage() {
     if (!res.ok) {
       setMessage(data.error || "Error al iniciar sesión");
     } else {
+      window.dispatchEvent(new Event("auth-changed"));
       router.push(
         data.session?.user?.user_metadata?.role === "vendor"
           ? "/vendor/dashboard"

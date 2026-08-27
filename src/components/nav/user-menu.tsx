@@ -12,9 +12,18 @@ export function UserMenu() {
   const { theme, setTheme, resolved } = useTheme();
 
   useEffect(() => {
-    fetch("/api/admin").then((r) => {
-      if (r.ok) setIsAdmin(true);
-    }).catch(() => {});
+    function checkAdmin() {
+      fetch("/api/admin", { credentials: "include" })
+        .then((r) => { if (r.ok) setIsAdmin(true); else setIsAdmin(false); })
+        .catch(() => setIsAdmin(false));
+    }
+    checkAdmin();
+    window.addEventListener("focus", checkAdmin);
+    window.addEventListener("auth-changed", checkAdmin);
+    return () => {
+      window.removeEventListener("focus", checkAdmin);
+      window.removeEventListener("auth-changed", checkAdmin);
+    };
   }, []);
 
   useEffect(() => {
@@ -35,7 +44,14 @@ export function UserMenu() {
   return (
     <div className="relative" ref={menuRef}>
       <button
-        onClick={() => setMenuOpen(!menuOpen)}
+        onClick={() => {
+          setMenuOpen(!menuOpen);
+          if (!menuOpen) {
+            fetch("/api/admin", { credentials: "include" })
+              .then((r) => { if (r.ok) setIsAdmin(true); })
+              .catch(() => {});
+          }
+        }}
         className="w-10 h-10 flex items-center justify-center rounded-full bg-muted hover:bg-primary/10 active:bg-primary/20 transition-colors text-lg"
         aria-label="Menú"
       >

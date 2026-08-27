@@ -1,4 +1,5 @@
 import { queryMany } from "@/lib/db";
+import { getZone } from "@/lib/zone";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
@@ -23,11 +24,13 @@ type InfoItem = {
 };
 
 export default async function BarrioPage() {
+  const zone = await getZone();
   const items = await queryMany<InfoItem>(
     `SELECT id, category, title, body, tags, sort, updated_at
      FROM info_items
-     WHERE active = true
-     ORDER BY sort ASC, created_at ASC`
+     WHERE active = true AND zone = $1
+     ORDER BY sort ASC, created_at ASC`,
+    [zone.slug]
   );
 
   const grouped = CATEGORY_ORDER.map((cat) => ({
@@ -42,7 +45,7 @@ export default async function BarrioPage() {
           <span className="text-3xl">🏘️</span>
           <h1 className="font-display text-3xl font-semibold mt-2">Info del barrio</h1>
           <p className="text-muted-foreground text-sm mt-2 max-w-md mx-auto">
-            La Alerta Vecinal de Sicardi y Garibaldi: transporte, utilidades, horarios y avisos
+            La Alerta Vecinal de {zone.name}: transporte, utilidades, horarios y avisos
             curados por la comunidad.
           </p>
         </div>

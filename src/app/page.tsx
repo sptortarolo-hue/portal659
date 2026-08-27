@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { queryMany } from "@/lib/db";
-import { ZONE, VERTICALS } from "@/lib/config";
+import { VERTICALS } from "@/lib/config";
+import { getZone } from "@/lib/zone";
 import { OfferCard } from "@/components/offers/offer-card";
 import { HorizontalCarousel } from "@/components/ui/horizontal-carousel";
 import { VendorCard } from "@/components/store/vendor-card";
@@ -20,18 +21,19 @@ export const metadata = {
 };
 
 export default async function HomePage() {
+  const zone = await getZone();
   const vendors = await queryMany<Vendor>(
-    `SELECT * FROM vendors WHERE neighborhood = ANY($1) ORDER BY created_at DESC`,
-    [ZONE.slugs]
+    `SELECT * FROM vendors WHERE neighborhood = $1 ORDER BY created_at DESC`,
+    [zone.slug]
   );
 
   const offers = await queryMany<OfferWithVendor>(
     `SELECT p.*, json_build_object('id', v.id, 'slug', v.slug, 'store_name', v.store_name, 'vertical', v.vertical) AS vendors
      FROM products p
      JOIN vendors v ON v.id = p.vendor_id
-     WHERE p.neighborhood = ANY($1) AND p.available = true
+     WHERE p.neighborhood = $1 AND p.available = true
      ORDER BY p.featured_today DESC, p.created_at DESC`,
-    [ZONE.slugs]
+    [zone.slug]
   );
 
   const featured =
@@ -64,7 +66,7 @@ export default async function HomePage() {
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_80%,rgba(255,255,255,0.08),transparent_50%)]" />
         <div className="container mx-auto px-4 py-16 sm:py-24 text-center relative z-10">
           <p className="text-xs font-semibold tracking-widest uppercase text-sun mb-4 animate-fade-in-up">
-            {ZONE.name} · 0% comisión
+            {zone.name} · 0% comisión
           </p>
           <h1
             className="font-display text-4xl font-semibold tracking-tight sm:text-5xl lg:text-6xl max-w-4xl mx-auto text-white animate-fade-in-up"
@@ -133,7 +135,7 @@ export default async function HomePage() {
                   La oferta de hoy
                 </h2>
                 <p className="text-sm text-muted-foreground">
-                  Lo que los comercios de {ZONE.name} te recomiendan hoy
+                  Lo que los comercios de {zone.name} te recomiendan hoy
                 </p>
               </div>
             </div>
@@ -171,7 +173,7 @@ export default async function HomePage() {
                   Destacados del barrio
                 </h2>
                 <p className="text-sm text-muted-foreground">
-                  Comercios que la comunidad elige en {ZONE.name}
+                  Comercios que la comunidad elige en {zone.name}
                 </p>
               </div>
             </div>

@@ -1,14 +1,20 @@
 import { NextResponse } from "next/server";
 import { isAdmin } from "@/lib/admin-utils";
 import { queryMany, queryOne, query } from "@/lib/db";
+import { NEIGHBORHOODS } from "@/lib/config";
 
 const CATEGORIES = ["transporte", "utilidades", "horarios", "noticias"];
+const ZONES = NEIGHBORHOODS.map((n) => n.slug);
 
 type ValidResult = { error: string } | { item: Record<string, unknown> };
 
 function validItem(body: Record<string, unknown>): ValidResult {
-  const { category, title, body: text, tags, active, sort } = body;
+  const { zone, category, title, body: text, tags, active, sort } = body;
+  const normalizedZone = (zone as string) || "sicardi";
   const normalizedCategory = (category as string) || "";
+  if (!ZONES.includes(normalizedZone)) {
+    return { error: "Zona inválida" };
+  }
   if (!CATEGORIES.includes(normalizedCategory)) {
     return { error: "Categoría inválida" };
   }
@@ -17,6 +23,7 @@ function validItem(body: Record<string, unknown>): ValidResult {
   }
   return {
     item: {
+      zone: normalizedZone,
       category: normalizedCategory,
       title: (title as string).trim(),
       body: typeof text === "string" ? text : null,
@@ -58,10 +65,10 @@ export async function POST(request: Request) {
 
   try {
     const created = await queryOne<Record<string, unknown>>(
-      `INSERT INTO info_items (category, title, body, tags, active, sort)
-       VALUES ($1, $2, $3, $4, $5, $6)
+      `INSERT INTO info_items (zone, category, title, body, tags, active, sort)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
        RETURNING *`,
-      [item.category, item.title, item.body, item.tags, item.active, item.sort]
+      [item.zone, item.category, item.title, item.body, item.tags, item.active, item.sort]
     );
     return NextResponse.json({ item: created });
   } catch (e) {
@@ -91,11 +98,11 @@ export async function PATCH(request: Request) {
   try {
     const updated = await queryOne<Record<string, unknown>>(
       `UPDATE info_items
-       SET category = $1, title = $2, body = $3, tags = $4, active = $5, sort = $6,
+       SET zone = $1, category = $2, title = $3, body = $4, tags = $5, active = $6, sort = $7,
            updated_at = now()
-       WHERE id = $7
+       WHERE id = $8
        RETURNING *`,
-      [item.category, item.title, item.body, item.tags, item.active, item.sort, id]
+      [item.zone, item.category, item.title, item.body, item.tags, item.active, item.sort, id]
     );
     return NextResponse.json({ item: updated });
   } catch (e) {

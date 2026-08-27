@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { UserMenu } from "./user-menu";
 import { NotificationBell } from "./notification-bell";
+import { ZoneSelector } from "./zone-selector";
 import { Logo } from "@/components/brand/logo";
 import { SearchBar } from "./search-bar";
 
@@ -13,6 +14,7 @@ export function Navigation() {
         <Link href="/" aria-label="Portal 659 — Inicio" className="flex-shrink-0">
           <Logo />
         </Link>
+        <ZoneSelector />
         <div className="flex-1 min-w-0">
           <SearchBar />
         </div>

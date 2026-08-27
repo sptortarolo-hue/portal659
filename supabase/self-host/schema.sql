@@ -413,7 +413,8 @@ ALTER TABLE vendors ADD COLUMN IF NOT EXISTS lng double precision;
 -- ============================================================
 CREATE OR REPLACE FUNCTION get_most_ordered_products(
   p_days int DEFAULT 7,
-  p_limit int DEFAULT 5
+  p_limit int DEFAULT 5,
+  p_zone text DEFAULT NULL
 )
 RETURNS TABLE(
   product_id text,
@@ -439,6 +440,7 @@ AS $$
     AND o.status NOT IN ('cancelled')
     AND (item->>'product_id') IS NOT NULL
     AND (item->>'product_id') != ''
+    AND (p_zone IS NULL OR v.neighborhood = p_zone)
   GROUP BY item->>'product_id', item->>'name', v.store_name, v.slug, v.vertical
   ORDER BY total_qty DESC
   LIMIT p_limit;
@@ -572,6 +574,7 @@ CREATE INDEX IF NOT EXISTS idx_orders_channel ON public.orders(channel);
 -- ============================================================
 CREATE TABLE IF NOT EXISTS public.info_items (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  zone text NOT NULL DEFAULT 'sicardi',
   category text NOT NULL CHECK (category IN ('transporte', 'utilidades', 'horarios', 'noticias')),
   title text NOT NULL,
   body text,
@@ -580,7 +583,7 @@ CREATE TABLE IF NOT EXISTS public.info_items (
   sort integer NOT NULL DEFAULT 0,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (category, title)
+  UNIQUE (zone, category, title)
 );
 
 ALTER TABLE public.reviews ADD COLUMN IF NOT EXISTS reply text;

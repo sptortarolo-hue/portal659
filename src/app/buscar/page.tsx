@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { queryMany } from "@/lib/db";
 import { VERTICALS } from "@/lib/config";
+import { getZone } from "@/lib/zone";
 import { Card, CardContent } from "@/components/ui/card";
 
 export const dynamic = "force-dynamic";
@@ -10,6 +11,7 @@ export default async function BuscarPage({
 }: {
   searchParams: Promise<{ q?: string; vertical?: string }>;
 }) {
+  const zone = await getZone();
   const { q, vertical } = await searchParams;
   const query = (q || "").trim();
 
@@ -32,17 +34,17 @@ export default async function BuscarPage({
   let [vendors, products] = await Promise.all([
     queryMany<Record<string, unknown>>(
       `SELECT * FROM vendors
-       WHERE store_name ILIKE $1 OR description ILIKE $1 OR category ILIKE $1 OR services_list ILIKE $1
+       WHERE neighborhood = $2 AND (store_name ILIKE $1 OR description ILIKE $1 OR category ILIKE $1 OR services_list ILIKE $1)
        ORDER BY store_name`,
-      [pattern]
+      [pattern, zone.slug]
     ),
     queryMany<Record<string, unknown>>(
       `SELECT p.*, json_build_object('id', v.id, 'slug', v.slug, 'store_name', v.store_name, 'vertical', v.vertical, 'image_url', v.image_url) AS vendors
        FROM products p
        JOIN vendors v ON v.id = p.vendor_id
-       WHERE p.available = true AND (p.name ILIKE $1 OR p.description ILIKE $1 OR p.category ILIKE $1)
+       WHERE p.available = true AND p.neighborhood = $2 AND (p.name ILIKE $1 OR p.description ILIKE $1 OR p.category ILIKE $1)
        ORDER BY p.name`,
-      [pattern]
+      [pattern, zone.slug]
     ),
   ]);
 

@@ -1,7 +1,31 @@
+export type Neighborhood = {
+  slug: string;
+  name: string;
+  active: boolean;
+};
+
+/** Nombre de la cookie donde se guarda el barrio seleccionado. */
+export const ZONE_COOKIE = "portal659-zone";
+
+export const NEIGHBORHOODS: Neighborhood[] = [
+  { slug: "sicardi", name: "Sicardi", active: true },
+  { slug: "garibaldi", name: "Garibaldi", active: true },
+  { slug: "arana", name: "Arana", active: false },
+  { slug: "correas", name: "Correas", active: false },
+];
+
+/** Barrios visibles/activos para el selector de zona. */
+export const ACTIVE_NEIGHBORHOODS = NEIGHBORHOODS.filter((n) => n.active);
+
 export const ZONE = {
-  slugs: ["sicardi", "garibaldi"],
-  name: "Sicardi y Garibaldi",
+  slugs: ACTIVE_NEIGHBORHOODS.map((n) => n.slug),
+  name: ACTIVE_NEIGHBORHOODS.map((n) => n.name).join(" y "),
 } as const;
+
+export const DEFAULT_NEIGHBORHOOD = {
+  slug: "sicardi",
+  name: "Sicardi",
+};
 
 export const VERTICALS = [
   {
@@ -60,14 +84,4 @@ export const VERTICALS = [
     color: "vert-mascotas",
     hex: "#14b8a6",
   },
-] as const;
-
-export const DEFAULT_NEIGHBORHOOD = {
-  slug: "sicardi",
-  name: "Sicardi",
-};
-
-export const NEIGHBORHOODS = [
-  { slug: "sicardi", name: "Sicardi", active: true },
-  { slug: "garibaldi", name: "Garibaldi", active: true },
 ] as const;

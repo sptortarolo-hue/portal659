@@ -11,62 +11,65 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
+      - name: Create source tarball
+        run: |
+          tar -czf portal659-src.tar.gz \
+            --exclude='node_modules' \
+            --exclude='.next' \
+            --exclude='.git' \
+            --exclude='portal659-src.tar.gz' \
+            .
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build
-        run: npm run build
-        env:
-          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-          NEXT_PUBLIC_SITE_URL: https://www.portal659.com.ar
-
-      - name: Create tarball
-        run: tar -czf portal659.tar.gz .next node_modules package.json public
-
-      - name: Upload to VPS via SCP
+      - name: Upload to VPS
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: 8277
-          source: "portal659.tar.gz"
-          target: "/tmp/portal659.tar.gz"
+          source: "portal659-src.tar.gz"
+          target: "/tmp/portal659-deploy"
+          strip_components: 0
 
-      - name: Extract and restart on VPS
+      - name: Deploy on VPS
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: 8277
-          command_timeout: 15m
+          command_timeout: 20m
           script: |
             set -e
 
-            cd /opt/portal659
-
             # Guardar .env
-            cp .env /tmp/portal659.env.bak 2>/dev/null || true
+            cp /opt/portal659/.env /tmp/portal659.env.bak 2>/dev/null || true
 
-            # Extraer build
-            tar -xzf /tmp/portal659.tar.gz -C /opt/portal659
+            # El scp-action extrae el tarball en /tmp/portal659-deploy/
+            # Mover archivos al directorio de deploy
+            rm -rf /opt/portal659
+            mkdir -p /opt/portal659
+            cp -a /tmp/portal659-deploy/* /opt/portal659/ 2>/dev/null || true
+            cp -a /tmp/portal659-deploy/.[!.]* /opt/portal659/ 2>/dev/null || true
 
             # Restaurar .env
-            cp /tmp/portal659.env.bak .env 2>/dev/null || true
+            cp /tmp/portal659.env.bak /opt/portal659/.env 2>/dev/null || true
 
             # Asegurar .env
+            cd /opt/portal659
+            if [ ! -f ".env" ]; then
+              echo "NEXT_PUBLIC_SITE_URL=https://www.portal659.com.ar" > .env
+            fi
             sed -i 's|NEXT_PUBLIC_SITE_URL=.*|NEXT_PUBLIC_SITE_URL=https://www.portal659.com.ar|' .env
-            grep -q "RESEND_API_KEY" .env && true || echo "RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}" >> .env
+            grep -q "NEXT_PUBLIC_SUPABASE_URL" .env || echo "NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}" >> .env
+            grep -q "NEXT_PUBLIC_SUPABASE_ANON_KEY" .env || echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}" >> .env
+            grep -q "SUPABASE_SERVICE_ROLE_KEY" .env || echo "SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" >> .env
+            grep -q "RESEND_API_KEY" .env || echo "RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}" >> .env
 
-            # Reiniciar
+            # Reconstruir y levantar
             docker compose down
-            docker compose up -d
-            rm -f /tmp/portal659.tar.gz /tmp/portal659.env.bak
+            docker compose up -d --build
+
+            # Limpiar
+            rm -rf /tmp/portal659-deploy /tmp/portal659.env.bak
             echo "Deploy completado!"

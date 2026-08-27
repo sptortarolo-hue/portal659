@@ -73,7 +73,8 @@ export default async function HomePage() {
             className="font-display text-4xl font-semibold tracking-tight sm:text-5xl lg:text-6xl max-w-4xl mx-auto text-white animate-fade-in-up"
             style={{ animationDelay: "0.1s" }}
           >
-            El centro comercial del barrio,{" "}
+            El centro comercial del barrio
+            <br />
             <span className="text-sun">en tu pantalla</span>
           </h1>
           <p

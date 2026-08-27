@@ -160,6 +160,7 @@ export type Vendor = {
   free_estimate: boolean | null;
   accepting_quotes: boolean;
   verified: boolean;
+  featured?: boolean;
   hours: string | null;
   location: string | null;
   address: string | null;
@@ -217,6 +218,9 @@ export type Review = {
   customer_name: string;
   rating: number;
   comment: string | null;
+  reply: string | null;
+  reply_by: string | null;
+  replied_at: string | null;
   created_at: string;
 };
 

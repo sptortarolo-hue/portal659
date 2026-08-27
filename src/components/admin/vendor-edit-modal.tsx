@@ -18,6 +18,7 @@ interface VendorData {
   whatsapp: string;
   address: string;
   verified: boolean;
+  featured?: boolean;
   is_admin: boolean;
 }
 
@@ -37,6 +38,7 @@ export default function VendorEditModal({ open, vendor, onClose, onSave }: Vendo
     phone: "",
     whatsapp: "",
     address: "",
+    featured: false,
   });
   const [loading, setLoading] = useState(false);
 
@@ -50,6 +52,7 @@ export default function VendorEditModal({ open, vendor, onClose, onSave }: Vendo
         phone: vendor.phone || "",
         whatsapp: vendor.whatsapp || "",
         address: vendor.address || "",
+        featured: !!vendor.featured,
       });
     }
   }, [vendor]);
@@ -131,6 +134,16 @@ export default function VendorEditModal({ open, vendor, onClose, onSave }: Vendo
             <Label htmlFor="ve-addr">Dirección</Label>
             <Input id="ve-addr" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
           </div>
+
+          <label className="flex items-center gap-3 pt-1 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={form.featured}
+              onChange={(e) => setForm({ ...form, featured: e.target.checked })}
+              className="h-4 w-4 accent-primary"
+            />
+            <span className="text-sm">⭐ Destacar en el inicio (sección "Destacados del barrio")</span>
+          </label>
 
           <div className="flex gap-3 pt-2">
             <Button type="button" variant="outline" className="flex-1" onClick={onClose} disabled={loading}>

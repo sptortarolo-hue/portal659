@@ -75,6 +75,13 @@ export function UserMenu() {
             <span>📦</span> Mis pedidos
           </Link>
           <Link
+            href="/favoritos"
+            className="flex items-center gap-3 px-4 py-3 text-sm text-foreground hover:bg-muted transition-colors"
+            onClick={() => setMenuOpen(false)}
+          >
+            <span>❤️</span> Mis favoritos
+          </Link>
+          <Link
             href="/vendor/dashboard"
             className="flex items-center gap-3 px-4 py-3 text-sm text-foreground hover:bg-muted transition-colors"
             onClick={() => setMenuOpen(false)}

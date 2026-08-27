@@ -90,6 +90,12 @@ export function ReviewList({ vendorId }: ReviewListProps) {
             {r.comment && (
               <p className="text-sm text-muted-foreground">{r.comment}</p>
             )}
+            {r.reply && (
+              <div className="mt-2 rounded-xl bg-primary/5 border border-primary/10 p-3">
+                <p className="text-xs font-medium text-primary mb-1">Respuesta de {r.reply_by || "el comercio"}</p>
+                <p className="text-sm">{r.reply}</p>
+              </div>
+            )}
           </div>
         ))}
       </div>

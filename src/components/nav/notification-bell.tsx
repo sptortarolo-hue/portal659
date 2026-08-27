@@ -18,12 +18,24 @@ export function NotificationBell() {
   const [unread, setUnread] = useState(0);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [authed, setAuthed] = useState<boolean | null>(null);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    fetchNotifs();
-    const interval = setInterval(fetchNotifs, 30000);
-    return () => clearInterval(interval);
+    fetch("/api/auth/me")
+      .then((r) => r.json())
+      .then((data) => {
+        if (!data.user) {
+          setAuthed(false);
+          setLoading(false);
+          return;
+        }
+        setAuthed(true);
+        fetchNotifs();
+        const interval = setInterval(fetchNotifs, 30000);
+        return () => clearInterval(interval);
+      })
+      .catch(() => setLoading(false));
   }, []);
 
   useEffect(() => {
@@ -56,7 +68,7 @@ export function NotificationBell() {
     setUnread(0);
   }
 
-  if (loading) return null;
+  if (loading || authed === false) return null;
 
   return (
     <div className="relative" ref={ref}>

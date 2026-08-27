@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { UserMenu } from "./user-menu";
+import { NotificationBell } from "./notification-bell";
 import { Logo } from "@/components/brand/logo";
 import { SearchBar } from "./search-bar";
 
@@ -15,7 +16,8 @@ export function Navigation() {
         <div className="flex-1 min-w-0">
           <SearchBar />
         </div>
-        <UserMenu />
+        <NotificationBell />
+          <UserMenu />
       </div>
     </nav>
   );

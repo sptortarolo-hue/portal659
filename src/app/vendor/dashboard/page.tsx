@@ -17,6 +17,7 @@ import DashboardServicio from "@/components/dashboard/dashboard-servicio";
 import DashboardGenerico from "@/components/dashboard/dashboard-generico";
 import DashboardModa from "@/components/dashboard/dashboard-moda";
 import { VendorAnalytics } from "@/components/dashboard/vendor-analytics";
+import { VendorReviews } from "@/components/vendor/vendor-reviews";
 import ComandaKDS from "@/components/dashboard/comanda-kds";
 import { playNewOrderSound, resumeAudioContext } from "@/lib/sounds";
 import { resolveVendorPlan, daysLeft } from "@/lib/plans";
@@ -96,7 +97,7 @@ export default function VendorDashboard() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [variants, setVariants] = useState<ProductVariant[]>([]);
   const [productImages, setProductImages] = useState<ProductImage[]>([]);
-  const [tab, setTab] = useState<"config" | "menu" | "orders" | "comanda" | "analytics" | "pos" | "mesas">("config");
+  const [tab, setTab] = useState<"config" | "menu" | "orders" | "comanda" | "analytics" | "pos" | "mesas" | "reviews">("config");
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState("");
   const [plans, setPlans] = useState<Plan[]>([]);
@@ -556,6 +557,7 @@ export default function VendorDashboard() {
           <Button variant={tab === "pos" ? "default" : "outline"} size="sm" onClick={() => setTab("pos")}>🛒 Mostrador</Button>
           <Button variant={tab === "mesas" ? "default" : "outline"} size="sm" onClick={() => setTab("mesas")} disabled={!isGastro}>🍽️ Mesas</Button>
           <Button variant={tab === "analytics" ? "default" : "outline"} size="sm" onClick={() => setTab("analytics")}>Estadísticas</Button>
+          <Button variant={tab === "reviews" ? "default" : "outline"} size="sm" onClick={() => setTab("reviews")}>⭐ Reseñas</Button>
         </div>
       </div>
 
@@ -662,6 +664,16 @@ export default function VendorDashboard() {
                 />
               )}
             </div>
+            <div className={tab === "reviews" ? "" : "hidden"}>
+              {effectivePlan.can("reviews_manage") ? (
+                <VendorReviews />
+              ) : (
+                <PlanLock
+                  title="Respondé tus reseñas"
+                  description="Leé las opiniones de tus clientes y respondélas en público. Disponible en los planes de pago."
+                />
+              )}
+            </div>
           </>
         )}
       </div>
@@ -690,6 +702,9 @@ export default function VendorDashboard() {
             </button>
             <button onClick={() => setTab("analytics")} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors ${tab === "analytics" ? "text-primary" : "text-muted-foreground"}`}>
               <span className="text-lg">📊</span>Stats
+            </button>
+            <button onClick={() => setTab("reviews")} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors ${tab === "reviews" ? "text-primary" : "text-muted-foreground"}`}>
+              <span className="text-lg">⭐</span>Reseñas
             </button>
           </div>
         </nav>

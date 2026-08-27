@@ -198,8 +198,34 @@ const modifiersByProduct: Record<string, any[]> = {};
     : `Hola ${v.store_name}! Quiero hacer un pedido.`;
   const waUrl = `https://wa.me/${waNumber}?text=${encodeURIComponent(waText)}`;
 
+  const { data: reviewsInfo } = await supabase
+    .from("reviews")
+    .select("rating")
+    .eq("vendor_id", v.id);
+  const reviewCount = reviewsInfo?.length || 0;
+  const avgRating = reviewCount > 0
+    ? reviewsInfo!.reduce((s: number, r: any) => s + Number(r.rating), 0) / reviewCount
+    : null;
+
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://www.portal659.com.ar";
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "LocalBusiness",
+    name: v.store_name,
+    url: `${siteUrl}/tienda/${v.slug}`,
+    image: v.image_url || v.logo_url || undefined,
+    ...(v.address ? { address: { "@type": "PostalAddress", streetAddress: v.address, addressLocality: "Sicardi, La Plata" } } : {}),
+    ...(v.whatsapp ? { telephone: v.whatsapp } : {}),
+    ...(avgRating != null ? { aggregateRating: { "@type": "AggregateRating", ratingValue: Number(avgRating.toFixed(1)), reviewCount } } : {}),
+    ...(v.instagram ? { sameAs: [v.instagram.startsWith("http") ? v.instagram : `https://instagram.com/${v.instagram.replace("@", "")}`] } : {}),
+  };
+
   return (
     <main className="pb-28">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
       {/* Full-width cover */}
       <div className="relative h-56 sm:h-72 w-full">
         {v.image_url ? (
@@ -235,6 +261,11 @@ const modifiersByProduct: Record<string, any[]> = {};
             {planBadge && planBadge !== "Gratuito" && (
               <Badge variant="secondary" className="rounded-full text-[10px]">
                 {planBadge}
+              </Badge>
+            )}
+            {v.verified && (
+              <Badge className="rounded-full bg-blue-600/90 text-white text-[10px]">
+                ✓ Verificado
               </Badge>
             )}
             <FavoriteButton vendorId={v.id} />

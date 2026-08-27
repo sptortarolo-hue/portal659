@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import Link from "next/link";
 import { Inter, Fraunces } from "next/font/google";
 import "./globals.css";
 import { Navigation } from "@/components/nav/navigation";
@@ -31,6 +32,7 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "https://www.portal659.com.ar"),
   title: "Portal 659 — El centro comercial de tu barrio",
   description:
     "Portal 659: el centro comercial de Sicardi y Garibaldi en tu pantalla. Comida, almacenes y servicios del barrio, con pedido o contacto directo por WhatsApp y 0% comisión.",
@@ -41,6 +43,17 @@ export const metadata: Metadata = {
     description: "Comida, almacenes y servicios del barrio, con pedido o contacto directo por WhatsApp.",
     type: "website",
     locale: "es_AR",
+    siteName: "Portal 659",
+    url: "/",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Portal 659 — El centro comercial de tu barrio",
+    description: "Comida, almacenes y servicios del barrio, con pedido o contacto directo por WhatsApp.",
+  },
+  robots: {
+    index: true,
+    follow: true,
   },
   manifest: "/manifest.json",
 };
@@ -77,8 +90,16 @@ export default function RootLayout({
               <ScrollToTop />
               <BottomNav />
               <footer className="border-t border-border py-6 text-center text-sm text-muted-foreground bg-card">
-                © {new Date().getFullYear()} Portal 659 — El centro comercial de
-                tu barrio · 0% comisión
+                <div className="container mx-auto px-4 flex flex-col sm:flex-row items-center justify-center gap-2">
+                  <span>© {new Date().getFullYear()} Portal 659 — El centro comercial de tu barrio · 0% comisión</span>
+                  <span className="hidden sm:inline text-border">·</span>
+                  <div className="flex items-center gap-3">
+                    <Link href="/" className="hover:text-foreground transition-colors">Inicio</Link>
+                    <Link href="/buscar" className="hover:text-foreground transition-colors">Comercios</Link>
+                    <Link href="/barrio" className="hover:text-foreground transition-colors">Info del barrio</Link>
+                    <Link href="/planes" className="hover:text-foreground transition-colors">Planes</Link>
+                  </div>
+                </div>
               </footer>
             </ToastProvider>
           </CartProvider>

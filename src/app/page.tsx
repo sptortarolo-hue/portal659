@@ -13,6 +13,12 @@ type OfferWithVendor = Product & {
 
 export const dynamic = "force-dynamic";
 
+export const metadata = {
+  title: "Portal 659 — El centro comercial de tu barrio",
+  description:
+    "Comercios de Sicardi y Garibaldi en una sola pantalla: gastronomía, almacenes, moda y servicios. Pedí por WhatsApp directo y 0% comisión. Descubrí la oferta de hoy y la info del barrio.",
+};
+
 export default async function HomePage() {
   const supabase = getSupabase();
   if (!supabase) {
@@ -47,6 +53,7 @@ export default async function HomePage() {
     (offers as OfferWithVendor[] | null)?.filter(
       (o) => !o.featured_today && o.vendors?.vertical !== "servicio"
     ) || [];
+  const destacados = (vendors || []).filter((v) => v.featured);
 
   const verticalSlug = (v: Vendor): string => {
     const valid: string[] = VERTICALS.map((v) => v.slug);
@@ -163,6 +170,40 @@ export default async function HomePage() {
 
       {/* Most ordered */}
       <MostOrderedSection />
+
+      {/* Destacados del barrio */}
+      {destacados.length > 0 && (
+        <section className="container mx-auto px-4 py-8" id="destacados">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">⭐</span>
+              <div>
+                <h2 className="font-display text-2xl font-semibold">
+                  Destacados del barrio
+                </h2>
+                <p className="text-sm text-muted-foreground">
+                  Comercios que la comunidad elige en {ZONE.name}
+                </p>
+              </div>
+            </div>
+          </div>
+          <HorizontalCarousel>
+            {destacados.map((v) => (
+              <VendorCard
+                key={v.id}
+                id={v.id}
+                slug={v.slug}
+                store_name={v.store_name}
+                image_url={v.image_url}
+                logo_url={v.logo_url}
+                description={v.description}
+                vertical={v.vertical}
+                hours={(v as any).hours}
+              />
+            ))}
+          </HorizontalCarousel>
+        </section>
+      )}
 
       {/* Vendors by vertical with carousels */}
       {VERTICALS.map((vert) => {

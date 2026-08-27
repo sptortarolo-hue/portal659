@@ -2,6 +2,7 @@ import { getServiceClient } from "@/lib/supabase";
 import { NextResponse } from "next/server";
 import { withRateLimit } from "@/lib/api-wrapper";
 import { sendEmail, orderConfirmationEmail } from "@/lib/email";
+import { resolveVendorPlan } from "@/lib/plans";
 
 export const POST = withRateLimit(async (request: Request) => {
   const supabase = getServiceClient();
@@ -28,6 +29,24 @@ export const POST = withRateLimit(async (request: Request) => {
       { error: "Faltan datos requeridos" },
       { status: 400 }
     );
+  }
+
+  // Gating: el carrito/checkout requiere un plan con la feature cart activa
+  const { data: vendorRow } = await supabase
+    .from("vendors")
+    .select("vertical, plan_id, plan_status, plan_expires_at, trial_ends_at")
+    .eq("id", vendorId)
+    .single();
+
+  if (vendorRow) {
+    const { data: planRows } = await supabase.from("plans").select("*");
+    const plan = resolveVendorPlan(vendorRow, planRows || []);
+    if (!plan.can("cart")) {
+      return NextResponse.json(
+        { error: "Este comercio no acepta pedidos online por ahora. Consultalo directamente por WhatsApp." },
+        { status: 403 }
+      );
+    }
   }
 
   const { data, error } = await supabase.from("orders").insert({

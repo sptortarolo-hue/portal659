@@ -82,6 +82,13 @@ export function UserMenu() {
             <span>🏪</span> Mi cuenta
           </Link>
           <Link
+            href="/planes"
+            className="flex items-center gap-3 px-4 py-3 text-sm text-foreground hover:bg-muted transition-colors"
+            onClick={() => setMenuOpen(false)}
+          >
+            <span>💳</span> Planes
+          </Link>
+          <Link
             href="/login"
             className="flex items-center gap-3 px-4 py-3 text-sm text-foreground hover:bg-muted transition-colors"
             onClick={() => setMenuOpen(false)}

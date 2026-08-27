@@ -20,8 +20,8 @@ AS $$
     v.store_name,
     v.slug AS store_slug,
     v.vertical AS store_vertical
-  FROM orders o,
-       jsonb_array_elements(o.items) AS item
+  FROM orders o
+  CROSS JOIN LATERAL jsonb_array_elements(o.items) AS item
   JOIN vendors v ON v.id = o.vendor_id
   WHERE o.created_at > now() - (p_days || ' days')::interval
     AND o.status NOT IN ('cancelled')

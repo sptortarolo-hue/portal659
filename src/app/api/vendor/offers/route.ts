@@ -1,25 +1,26 @@
 import { getAuthSupabase } from "@/lib/auth-utils";
+import { resolveVendorPlan } from "@/lib/plans";
 import { NextResponse } from "next/server";
 
 async function getVendor(request: Request) {
   const supabase = getAuthSupabase(request);
-  if (!supabase) return { supabase: null, vendorId: null };
+  if (!supabase) return { supabase: null, vendor: null };
   const { data: user } = await supabase.auth.getUser();
-  if (!user?.user) return { supabase, vendorId: null };
+  if (!user?.user) return { supabase, vendor: null };
   const { data: vendor } = await supabase
     .from("vendors")
-    .select("id, neighborhood")
+    .select("id, neighborhood, vertical, plan_id, plan_status, plan_expires_at, trial_ends_at")
     .eq("user_id", user.user.id)
     .single();
-  return { supabase, vendorId: vendor?.id || null, neighborhood: vendor?.neighborhood || null };
+  return { supabase, vendor };
 }
 
 export async function GET(request: Request) {
-  const { supabase, vendorId } = await getVendor(request);
+  const { supabase, vendor } = await getVendor(request);
   if (!supabase) {
     return NextResponse.json({ error: "Error de conexión" }, { status: 503 });
   }
-  if (!vendorId) {
+  if (!vendor) {
     return NextResponse.json(
       { error: "No tenés un local registrado" },
       { status: 403 }
@@ -29,7 +30,7 @@ export async function GET(request: Request) {
   const { data, error } = await supabase
     .from("products")
     .select("*")
-    .eq("vendor_id", vendorId)
+    .eq("vendor_id", vendor.id)
     .order("created_at", { ascending: false });
 
   if (error) {
@@ -40,11 +41,11 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const { supabase, vendorId, neighborhood } = await getVendor(request);
+  const { supabase, vendor } = await getVendor(request);
   if (!supabase) {
     return NextResponse.json({ error: "Error de conexión" }, { status: 503 });
   }
-  if (!vendorId) {
+  if (!vendor) {
     return NextResponse.json(
       { error: "No tenés un local registrado" },
       { status: 403 }
@@ -62,16 +63,35 @@ export async function POST(request: Request) {
     );
   }
 
+  // Límite de productos según plan
+  const { data: plans } = await supabase.from("plans").select("*");
+  const plan = resolveVendorPlan(vendor, plans || []);
+  if (plan.maxProducts != null) {
+    const { count } = await supabase
+      .from("products")
+      .select("id", { count: "exact", head: true })
+      .eq("vendor_id", vendor.id);
+    if ((count || 0) >= plan.maxProducts) {
+      return NextResponse.json(
+        {
+          error: `Tu plan permite hasta ${plan.maxProducts} productos. Actualizá a Gestión integral para productos ilimitados.`,
+          code: "plan_limit",
+        },
+        { status: 403 }
+      );
+    }
+  }
+
   const { data, error } = await supabase
     .from("products")
     .insert({
-      vendor_id: vendorId,
+      vendor_id: vendor.id,
       name,
       description: description || null,
       price: parseFloat(price),
       currency: "ARS",
       category: category || "otras",
-      neighborhood: neighborhood,
+      neighborhood: vendor.neighborhood,
       type: "food",
       available: true,
       featured_today: !!featured_today,

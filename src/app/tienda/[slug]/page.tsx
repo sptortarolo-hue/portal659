@@ -1,4 +1,5 @@
 import { getSupabase } from "@/lib/supabase";
+import { resolveVendorPlan } from "@/lib/plans";
 import { notFound } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { AddToCartButton } from "@/components/offers/add-to-cart-button";
@@ -80,6 +81,14 @@ export default async function TiendaPage({
     .eq("available", true)
     .order("featured_today", { ascending: false })
     .order("name", { ascending: true });
+
+  const { data: planRows } = await supabase
+    .from("plans")
+    .select("*")
+    .order("sort", { ascending: true });
+  const effectivePlan = resolveVendorPlan(vendor as any, planRows || []);
+  const acceptsCart = effectivePlan.can("cart");
+  const planBadge = effectivePlan.plan?.badge ?? null;
 
   const { data: cats } = await supabase
     .from("vendor_categories")
@@ -187,6 +196,7 @@ const modifiersByProduct: Record<string, any[]> = {};
   const waText = isService
     ? `Hola ${v.store_name}! Quiero consultar por tu servicio.`
     : `Hola ${v.store_name}! Quiero hacer un pedido.`;
+  const waUrl = `https://wa.me/${waNumber}?text=${encodeURIComponent(waText)}`;
 
   return (
     <main className="pb-28">
@@ -222,6 +232,11 @@ const modifiersByProduct: Record<string, any[]> = {};
             <h1 className="font-display text-3xl font-semibold">
               {v.store_name}
             </h1>
+            {planBadge && planBadge !== "Gratuito" && (
+              <Badge variant="secondary" className="rounded-full text-[10px]">
+                {planBadge}
+              </Badge>
+            )}
             <FavoriteButton vendorId={v.id} />
             <VendorShareButton slug={v.slug} storeName={v.store_name} />
           </div>
@@ -398,6 +413,8 @@ const modifiersByProduct: Record<string, any[]> = {};
                               images={imagesByProduct[o.id] || []}
                               vendor={vendorBrief}
                               modifiers={modifiersByProduct[o.id]}
+                              acceptsCart={acceptsCart}
+                              consultHref={waUrl}
                             />
                           );
                         }
@@ -455,6 +472,15 @@ const modifiersByProduct: Record<string, any[]> = {};
                               <div className="border-t pt-3">
                                 {totalStock <= 0 ? (
                                   <p className="text-sm font-medium text-red-600 text-center py-2">Sin stock por el momento</p>
+                                ) : !acceptsCart ? (
+                                  <a
+                                    href={waUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="block rounded-md px-3 py-2 text-sm font-medium text-center bg-primary text-primary-foreground hover:bg-primary/90"
+                                  >
+                                    Consultar por WhatsApp
+                                  </a>
                                 ) : (
                                   <VariantSelector
                                     productId={o.id}
@@ -526,6 +552,16 @@ const modifiersByProduct: Record<string, any[]> = {};
                               </span>
                             )}
                             {(!o.stock_low_threshold || o.stock == null || o.stock > 0) && (
+                            !acceptsCart ? (
+                              <a
+                                href={waUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="rounded-md px-3 py-1.5 text-sm font-medium text-center bg-primary text-primary-foreground hover:bg-primary/90"
+                              >
+                                Consultar
+                              </a>
+                            ) : (
                               <AddToCartButton
                                 offerId={o.id}
                                 name={o.name}
@@ -533,7 +569,8 @@ const modifiersByProduct: Record<string, any[]> = {};
                                 vendor={vendorBrief}
                                 modifiers={modifiersByProduct[o.id]}
                               />
-                            )}
+                            )
+                          )}
                           </div>
                         </div>
                         );
@@ -541,7 +578,7 @@ const modifiersByProduct: Record<string, any[]> = {};
                     </div>
                   </section>
                 ))}
-                <CartInlineSummary />
+                {acceptsCart && <CartInlineSummary />}
               </>
             )}
           </>

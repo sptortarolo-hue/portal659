@@ -1,4 +1,4 @@
-import { getSupabase } from "@/lib/supabase";
+import { getServiceClient } from "@/lib/supabase";
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 
@@ -45,13 +45,71 @@ export async function POST(request: Request) {
       const payment = await res.json();
 
       if (payment.status === "approved") {
-        const supabase = getSupabase();
+        const supabase = getServiceClient();
         if (!supabase) return NextResponse.json({ ok: true });
 
         const externalRef = payment.external_reference;
-        if (externalRef?.startsWith("portal659_")) {
+
+        // Rama suscripción: portal659_sub_{vendorId}_{planSlug}_{periodStart}
+        if (externalRef?.startsWith("portal659_sub_")) {
           const parts = externalRef.split("_");
-          const vendorId = parts[1];
+          const vendorId = parts[2];
+          const planSlug = parts[3];
+          if (vendorId && planSlug) {
+            const { data: plan } = await supabase
+              .from("plans")
+              .select("id, name")
+              .eq("slug", planSlug)
+              .single();
+
+            if (plan) {
+              const { data: vendor } = await supabase
+                .from("vendors")
+                .select("user_id, plan_expires_at")
+                .eq("id", vendorId)
+                .single();
+
+              const base = vendor?.plan_expires_at
+                ? Math.max(Date.now(), new Date(vendor.plan_expires_at).getTime())
+                : Date.now();
+              const periodStart = new Date(base).toISOString();
+              const periodEnd = new Date(base + 30 * 24 * 60 * 60 * 1000).toISOString();
+
+              await supabase
+                .from("vendors")
+                .update({
+                  plan_id: plan.id,
+                  plan_status: "active",
+                  plan_expires_at: periodEnd,
+                })
+                .eq("id", vendorId);
+
+              await supabase.from("vendor_subscriptions").insert({
+                vendor_id: vendorId,
+                plan_id: plan.id,
+                status: "active",
+                current_period_start: periodStart,
+                current_period_end: periodEnd,
+                note: `Pago Mercado Pago aprobado — 1 mes ${plan.name}`,
+              });
+
+              if (vendor?.user_id) {
+                await supabase.from("notifications").insert({
+                  user_id: vendor.user_id,
+                  title: "¡Suscripción activada!",
+                  body: `Tu plan ${plan.name} está activo por 1 mes (pago MP).`,
+                  type: "payment",
+                  link: "/vendor/suscripcion",
+                });
+              }
+            }
+          }
+
+          return NextResponse.json({ ok: true });
+        }
+
+        const parts = externalRef.split("_");
+        const vendorId = parts[1];
 
           const items = payment.additional_info?.items || [];
           await supabase.from("orders").insert({
@@ -84,7 +142,6 @@ export async function POST(request: Request) {
               link: "/vendor/dashboard",
             });
           }
-        }
       }
     } catch {
       // Mercado Pago reintenta, no fallar

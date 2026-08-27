@@ -146,6 +146,100 @@ export async function printComanda(
   }
 }
 
+export async function printReceipt(
+  order: Order,
+  vendor: { store_name: string; printer_ip: string | null; printer_port: number | null; paper_size: string | null },
+  extra?: { tableName?: string; subLabel?: string }
+): Promise<{ success: boolean; error?: string }> {
+  await loadModule();
+
+  if (!ThermalPrinter || !PrinterTypes) {
+    return { success: false, error: "Módulo de impresión no disponible" };
+  }
+
+  if (!vendor.printer_ip) {
+    return { success: false, error: "IP de impresora no configurada" };
+  }
+
+  const width = vendor.paper_size === "58mm" ? 32 : 48;
+  const port = vendor.printer_port || 9100;
+  const separator = width >= 48 ? "========================================" : "================================";
+
+  try {
+    const printer = new ThermalPrinter({
+      type: PrinterTypes.EPSON,
+      interface: `tcp://${vendor.printer_ip}:${port}`,
+      width,
+      options: { timeout: 5000 },
+    });
+
+    const now = new Date();
+    const dateStr = now.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" });
+    const timeStr = now.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
+
+    printer.alignCenter();
+    printer.bold(true);
+    printer.setTextSize(1, 1);
+    printer.println(vendor.store_name);
+    printer.setTextSize(0, 0);
+    printer.bold(false);
+    printer.println("TICKET");
+    if (extra?.tableName) printer.println(`Mesa: ${extra.tableName}`);
+    if (extra?.subLabel) printer.println(extra.subLabel);
+    printer.println(separator);
+
+    printer.alignLeft();
+    printer.bold(true);
+    printer.println(`Pedido #${order.id.slice(0, 8)}`);
+    printer.bold(false);
+    printer.println(`${dateStr} ${timeStr}`);
+    printer.println(separator);
+
+    for (const item of order.items) {
+      const itemLines = formatItemLine(item, width);
+      for (const line of itemLines) {
+        printer.println(line);
+      }
+    }
+
+    printer.println(separator);
+
+    printer.alignRight();
+    printer.bold(true);
+    printer.setTextSize(1, 1);
+    printer.println(`TOTAL: $${Number(order.total).toLocaleString("es-AR")}`);
+    printer.setTextSize(0, 0);
+    printer.bold(false);
+
+    printer.alignLeft();
+    const paymentStr =
+      order.payment_method === "efectivo" ? "Efectivo" :
+      order.payment_method === "transferencia" ? "Transferencia" :
+      order.payment_method === "whatsapp" ? "Coordinado" :
+      "Tarjeta/Online";
+    const paidStr = order.paid_at ? "PAGADO" : "PENDIENTE";
+    printer.println("");
+    printer.bold(order.paid_at ? true : false);
+    printer.println(`Pago: ${paymentStr} — ${paidStr}`);
+    printer.bold(false);
+
+    if (order.customer_name && order.channel !== "app") {
+      printer.println(`Cliente: ${order.customer_name}`);
+    }
+
+    printer.println("");
+    printer.alignCenter();
+    printer.println(separator);
+    printer.cut();
+
+    await printer.execute();
+    return { success: true };
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : "Error desconocido";
+    return { success: false, error: msg };
+  }
+}
+
 export async function printTest(
   vendor: { store_name: string; printer_ip: string | null; printer_port: number | null; paper_size: string | null }
 ): Promise<{ success: boolean; error?: string }> {

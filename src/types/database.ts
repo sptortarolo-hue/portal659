@@ -15,6 +15,65 @@ export type Vertical =
   | "mascotas"
   | "otro";
 
+export type PlanSlug = "gratuito" | "pedidos" | "gestion";
+
+export type PlanStatus = "gratuito" | "trial" | "active" | "expired" | "cancelled";
+
+export type PlanFeatures = {
+  info: boolean;
+  cart: boolean;
+  emits_orders: boolean;
+  mp_payments: boolean;
+  kds: boolean;
+  printer: boolean;
+  variants: boolean;
+  modifiers: boolean;
+  urgent: boolean;
+  pos: boolean;
+  mesas: boolean;
+  reviews_manage: boolean;
+  analytics_days: number;
+  priority: boolean;
+};
+
+export type Plan = {
+  id: string;
+  slug: PlanSlug;
+  name: string;
+  description: string | null;
+  price_monthly: number;
+  max_products: number | null;
+  features: PlanFeatures;
+  badge: string | null;
+  popular: boolean;
+  sort: number;
+  created_at: string;
+};
+
+export type VendorSubscription = {
+  id: string;
+  vendor_id: string;
+  plan_id: string;
+  status: "trial" | "active" | "expired" | "cancelled";
+  started_at: string;
+  current_period_start: string;
+  current_period_end: string | null;
+  note: string | null;
+  created_at: string;
+};
+
+export type VendorTable = {
+  id: string;
+  vendor_id: string;
+  name: string;
+  capacity: number;
+  status: "libre" | "ocupada" | "reservada";
+  position: number;
+  created_at: string;
+};
+
+export type OrderChannel = "app" | "mostrador" | "mesa";
+
 export type ProductModifier = {
   id: string;
   product_id: string;
@@ -116,6 +175,10 @@ export type Vendor = {
   auto_print: boolean;
   lat?: number | null;
   lng?: number | null;
+  plan_id: string | null;
+  plan_status: PlanStatus;
+  plan_expires_at: string | null;
+  trial_ends_at: string | null;
   created_at: string;
 };
 
@@ -174,6 +237,9 @@ export type Order = {
   notes: string | null;
   modification_notes: string | null;
   estimated_minutes: number | null;
+  channel: OrderChannel;
+  table_id: string | null;
+  paid_at: string | null;
   created_at: string;
   updated_at: string;
 };

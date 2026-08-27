@@ -18,6 +18,8 @@ type Props = {
   images?: any[];
   vendor: VendorBrief;
   modifiers?: any[];
+  acceptsCart?: boolean;
+  consultHref?: string;
 };
 
 function variantSummary(vars: any[]) {
@@ -32,7 +34,7 @@ function variantSummary(vars: any[]) {
   return { min, max, baseMin, best };
 }
 
-export function ProductCard({ product, variants = [], images = [], vendor, modifiers }: Props) {
+export function ProductCard({ product, variants = [], images = [], vendor, modifiers, acceptsCart = true, consultHref }: Props) {
   const [open, setOpen] = useState(false);
   const [activeImg, setActiveImg] = useState(0);
 
@@ -176,6 +178,15 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
               <div className="border-t border-border pt-4">
                 {outStock ? (
                   <p className="text-sm font-medium text-red-600 text-center py-3">Sin stock por el momento</p>
+                ) : !acceptsCart ? (
+                  <a
+                    href={consultHref}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block w-full rounded-md px-3 py-2 text-sm font-medium text-center bg-primary text-primary-foreground hover:bg-primary/90"
+                  >
+                    Consultar por WhatsApp
+                  </a>
                 ) : hasVariants ? (
                   <VariantSelector productId={product.id} name={product.name} variants={variants} vendor={vendor} />
                 ) : (

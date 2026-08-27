@@ -1,0 +1,230 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+
+type Product = {
+  id: string;
+  name: string;
+  price: number;
+  promo_price: number | null;
+  available: boolean;
+};
+
+type LineItem = {
+  product_id: string;
+  name: string;
+  price: number;
+  qty: number;
+};
+
+type MostradorOrder = {
+  id: string;
+  total: number;
+  payment_method: string;
+  paid_at: string | null;
+  status: string;
+  created_at: string;
+  customer_name?: string;
+};
+
+const PAYMENT_OPTIONS = [
+  { key: "efectivo", label: "💵 Efectivo" },
+  { key: "transferencia", label: "🏦 Transferencia" },
+  { key: "tarjeta", label: "💳 Tarjeta" },
+  { key: "mixto", label: "🪙 Mixto" },
+];
+
+export function Mostrador() {
+  const [products, setProducts] = useState<Product[]>([]);
+  const [items, setItems] = useState<LineItem[]>([]);
+  const [payment, setPayment] = useState("efectivo");
+  const [customerName, setCustomerName] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [recent, setRecent] = useState<MostradorOrder[]>([]);
+  const [query, setQuery] = useState("");
+
+  const total = useMemo(() => items.reduce((s, i) => s + i.price * i.qty, 0), [items]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const [offRes, ordRes] = await Promise.all([
+          fetch("/api/vendor/offers"),
+          fetch("/api/vendor/orders"),
+        ]);
+        const off = await offRes.json();
+        const ord = await ordRes.json();
+        const today = new Date().toDateString();
+        setProducts((off.offers || []).filter((o: any) => o.available !== false));
+        setRecent(
+          (ord.orders || [])
+            .filter((o: any) => o.channel === "mostrador")
+            .filter((o: any) => new Date(o.created_at).toDateString() === today)
+            .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+        );
+      } catch { /* noop */ } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  const filtered = useMemo(() => {
+    const q = query.toLowerCase();
+    return products.filter((p) => !q || p.name.toLowerCase().includes(q));
+  }, [products, query]);
+
+  function add(p: Product) {
+    setItems((prev) => {
+      const found = prev.find((i) => i.product_id === p.id);
+      if (found) return prev.map((i) => (i.product_id === p.id ? { ...i, qty: i.qty + 1 } : i));
+      return [...prev, { product_id: p.id, name: p.name, price: p.promo_price != null ? Number(p.promo_price) : Number(p.price), qty: 1 }];
+    });
+  }
+
+  function changeQty(id: string, delta: number) {
+    setItems((prev) =>
+      prev
+        .map((i) => (i.product_id === id ? { ...i, qty: i.qty + delta } : i))
+        .filter((i) => i.qty > 0)
+    );
+  }
+
+  async function charge(print: boolean) {
+    if (items.length === 0) return;
+    setSaving(true);
+    setMsg("");
+    const res = await fetch("/api/vendor/pos/order", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items, total, paymentMethod: payment, customerName: customerName || "Mostrador" }),
+    });
+    const data = await res.json();
+    if (!data.ok) {
+      setMsg(data.error || "No se pudo registrar el pedido");
+      setSaving(false);
+      return;
+    }
+    if (print) {
+      fetch("/api/print", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId: data.orderId, type: "ticket" }),
+      }).catch(() => {});
+    }
+    setMsg(`Cobrado $${Number(total).toLocaleString("es-AR")}${print ? " · ticket impreso" : ""}`);
+    setItems([]);
+    setCustomerName("");
+    setSaving(false);
+    setRecent((prev) =>
+      [{ id: data.orderId, total, payment_method: payment, paid_at: new Date().toISOString(), status: "new", created_at: new Date().toISOString() }, ...prev].slice(0, 20)
+    );
+  }
+
+  if (loading) return <p className="text-sm text-muted-foreground">Cargando mostrador...</p>;
+
+  return (
+    <div className="space-y-4">
+      {msg && <p className="text-sm text-green-600 bg-green-50 rounded-lg px-3 py-2">{msg}</p>}
+
+      <div className="grid sm:grid-cols-[1fr_320px] gap-4">
+        <div className="space-y-2">
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Buscar producto..."
+            className="w-full h-10 px-3 text-sm rounded-xl border border-input bg-background"
+          />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[50vh] overflow-y-auto pr-1">
+            {filtered.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => add(p)}
+                className="text-left rounded-xl border border-border bg-card p-3 hover:border-primary/50 hover:shadow-sm transition-all active:scale-[0.98]"
+              >
+                <p className="text-sm font-medium truncate">{p.name}</p>
+                <p className="text-xs text-muted-foreground font-semibold tabular-nums">
+                  ${Number(p.promo_price ?? p.price).toLocaleString("es-AR")}
+                </p>
+              </button>
+            ))}
+            {filtered.length === 0 && <p className="text-xs text-muted-foreground col-span-2 text-center py-6">Sin productos</p>}
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-border bg-card p-4 flex flex-col">
+          <h3 className="font-display font-semibold text-sm mb-2">Pedido actual</h3>
+          <div className="flex-1 space-y-1.5 min-h-16">
+            {items.length === 0 && <p className="text-xs text-muted-foreground text-center py-6">Tocá productos para armar el pedido</p>}
+            {items.map((i) => (
+              <div key={i.product_id} className="flex items-center gap-2 text-sm">
+                <span className="flex-1 truncate">{i.name}</span>
+                <div className="flex items-center gap-1">
+                  <button onClick={() => changeQty(i.product_id, -1)} className="h-6 w-6 rounded-md bg-muted hover:bg-accent">−</button>
+                  <span className="w-5 text-center tabular-nums">{i.qty}</span>
+                  <button onClick={() => changeQty(i.product_id, 1)} className="h-6 w-6 rounded-md bg-muted hover:bg-accent">+</button>
+                </div>
+                <span className="w-16 text-right tabular-nums">${(i.price * i.qty).toLocaleString("es-AR")}</span>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-3 space-y-2 pt-3 border-t border-border">
+            <input
+              type="text"
+              value={customerName}
+              onChange={(e) => setCustomerName(e.target.value)}
+              placeholder="Nombre del cliente (opcional)"
+              className="w-full h-9 px-3 text-xs rounded-lg border border-input bg-background"
+            />
+            <div className="flex flex-wrap gap-1.5">
+              {PAYMENT_OPTIONS.map((o) => (
+                <button
+                  key={o.key}
+                  onClick={() => setPayment(o.key)}
+                  className={`rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                    payment === o.key ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                  }`}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center justify-between pt-1">
+              <span className="text-sm font-semibold">Total</span>
+              <span className="font-display font-bold text-lg tabular-nums">${total.toLocaleString("es-AR")}</span>
+            </div>
+            <Button className="w-full" disabled={items.length === 0 || saving} onClick={() => charge(true)}>
+              {saving ? "Cobrando..." : "Cobrar e imprimir ticket"}
+            </Button>
+            <Button className="w-full" variant="outline" disabled={items.length === 0 || saving} onClick={() => charge(false)}>
+              Cobrar sin ticket
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {recent.length > 0 && (
+        <div className="rounded-2xl border border-border bg-card p-4">
+          <h3 className="font-display font-semibold text-sm mb-3">Ventas de hoy en mostrador</h3>
+          <div className="space-y-1.5">
+            {recent.map((o) => (
+              <div key={o.id} className="flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2">
+                  <Badge variant="secondary" className="text-[9px]">{o.payment_method}</Badge>
+                  <span className="text-muted-foreground">{o.customer_name || "Mostrador"}</span>
+                  <span className="text-muted-foreground/60">{new Date(o.created_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}</span>
+                </div>
+                <span className="font-semibold tabular-nums">${Number(o.total).toLocaleString("es-AR")}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

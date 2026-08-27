@@ -19,7 +19,12 @@ import DashboardModa from "@/components/dashboard/dashboard-moda";
 import { VendorAnalytics } from "@/components/dashboard/vendor-analytics";
 import ComandaKDS from "@/components/dashboard/comanda-kds";
 import { playNewOrderSound, resumeAudioContext } from "@/lib/sounds";
-import type { ProductModifier, VendorGallery, Booking, Vertical, Product as DBProduct, Order, ProductVariant, ProductImage, OrderItem } from "@/types/database";
+import { resolveVendorPlan, daysLeft } from "@/lib/plans";
+import { PlanBanner } from "@/components/vendor/plan-banner";
+import { PlanLock } from "@/components/vendor/plan-lock";
+import { Mostrador } from "@/components/vendor/mostrador";
+import { Mesas } from "@/components/vendor/mesas";
+import type { ProductModifier, VendorGallery, Booking, Vertical, Product as DBProduct, Order, ProductVariant, ProductImage, OrderItem, PlanStatus, Plan } from "@/types/database";
 
 type Vendor = {
   id: string;
@@ -53,6 +58,10 @@ type Vendor = {
   printer_port: number | null;
   paper_size: string | null;
   auto_print: boolean;
+  plan_id: string | null;
+  plan_status: PlanStatus;
+  plan_expires_at: string | null;
+  trial_ends_at: string | null;
   created_at: string;
 };
 
@@ -87,9 +96,10 @@ export default function VendorDashboard() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [variants, setVariants] = useState<ProductVariant[]>([]);
   const [productImages, setProductImages] = useState<ProductImage[]>([]);
-  const [tab, setTab] = useState<"config" | "menu" | "orders" | "comanda" | "analytics">("config");
+  const [tab, setTab] = useState<"config" | "menu" | "orders" | "comanda" | "analytics" | "pos" | "mesas">("config");
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState("");
+  const [plans, setPlans] = useState<Plan[]>([]);
   const [shareOpen, setShareOpen] = useState(false);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -121,7 +131,7 @@ export default function VendorDashboard() {
   }
 
   async function loadData() {
-    const [meRes, offersRes, ordersRes, catsRes, modsRes, galRes, bkRes, variantsRes, imagesRes] = await Promise.all([
+    const [meRes, offersRes, ordersRes, catsRes, modsRes, galRes, bkRes, variantsRes, imagesRes, plansRes] = await Promise.all([
       fetch("/api/vendor/me"),
       fetch("/api/vendor/offers"),
       fetch("/api/vendor/orders"),
@@ -131,6 +141,7 @@ export default function VendorDashboard() {
       fetch("/api/vendor/bookings").catch(() => ({ json: () => ({ bookings: [] }) })),
       fetch("/api/vendor/variants").catch(() => ({ json: () => ({ variants: [] }) })),
       fetch("/api/vendor/product-images").catch(() => ({ json: () => ({ images: [] }) })),
+      fetch("/api/subscriptions/plans").catch(() => ({ json: () => ({ plans: [] }) })),
     ]);
     const me = await meRes.json();
     const off = await offersRes.json();
@@ -141,6 +152,7 @@ export default function VendorDashboard() {
     const bk = await bkRes.json();
     const varData = await variantsRes.json();
     const imagesData = await imagesRes.json();
+    const plansData = await plansRes.json();
 
     if (me.error === "No autenticado") { router.push("/login"); return; }
     if (me.vendor) setVendor(me.vendor);
@@ -152,6 +164,7 @@ export default function VendorDashboard() {
     if (bk.bookings) setBookings(bk.bookings);
     if (varData.variants) setVariants(varData.variants);
     if (imagesData.images) setProductImages(imagesData.images);
+    if (plansData.plans) setPlans(plansData.plans);
     setLoading(false);
   }
 
@@ -325,6 +338,20 @@ export default function VendorDashboard() {
   const isGastro = vendor?.vertical === "gastronomia";
   const isComercio = vendor?.vertical === "comercio";
   const isModa = vendor?.vertical === "moda";
+
+  const effectivePlan = resolveVendorPlan(vendor, plans);
+  const overLimit =
+    effectivePlan.maxProducts != null && offers.length > effectivePlan.maxProducts;
+  const planBannerData = {
+    slug: effectivePlan.slug,
+    status: effectivePlan.status,
+    name: effectivePlan.plan?.name ?? null,
+    eligibleForPaid: effectivePlan.eligibleForPaid,
+    trialDaysLeft: effectivePlan.trialActive ? daysLeft(effectivePlan.trialEndsAt) : undefined,
+    products: offers.length,
+    maxProducts: effectivePlan.maxProducts,
+    overLimit,
+  } as const;
 
   const dashboardProps = { vendor, offers, categories, modifiers, gallery, bookings, msg, setMsg, reload: loadData, saveVendor, uploading: false, onCrop: openCrop };
 
@@ -518,12 +545,16 @@ export default function VendorDashboard() {
 
       {msg && <div className="container mx-auto px-4 pt-3"><p className="text-sm text-green-600 bg-green-50 rounded-lg px-3 py-2">{msg}</p></div>}
 
+      <PlanBanner plan={planBannerData as any} />
+
       <div className="hidden sm:block container mx-auto px-4 mt-4">
         <div className="flex gap-2 mb-4">
           <Button variant={tab === "config" ? "default" : "outline"} size="sm" onClick={() => setTab("config")}>Configuración</Button>
           <Button variant={tab === "menu" ? "default" : "outline"} size="sm" onClick={() => setTab("menu")}>Menú ({offers.length})</Button>
           <Button variant={tab === "orders" ? "default" : "outline"} size="sm" onClick={() => setTab("orders")}>Pedidos ({orders.length})</Button>
           <Button variant={tab === "comanda" ? "default" : "outline"} size="sm" onClick={() => setTab("comanda")}>🍳 Comanda</Button>
+          <Button variant={tab === "pos" ? "default" : "outline"} size="sm" onClick={() => setTab("pos")}>🛒 Mostrador</Button>
+          <Button variant={tab === "mesas" ? "default" : "outline"} size="sm" onClick={() => setTab("mesas")} disabled={!isGastro}>🍽️ Mesas</Button>
           <Button variant={tab === "analytics" ? "default" : "outline"} size="sm" onClick={() => setTab("analytics")}>Estadísticas</Button>
         </div>
       </div>
@@ -590,12 +621,46 @@ export default function VendorDashboard() {
             </div>
             <div className={tab === "orders" ? "" : "hidden"}>{ordersContent}</div>
             <div className={tab === "comanda" ? "" : "hidden"}>
-              {accessToken && vendor && (
-                <ComandaKDS vendorId={vendor.id} vendorName={vendor.store_name} accessToken={accessToken} supabaseClient={getBrowserClient()} />
+              {effectivePlan.can("kds") ? (
+                accessToken && vendor && (
+                  <ComandaKDS vendorId={vendor.id} vendorName={vendor.store_name} accessToken={accessToken} supabaseClient={getBrowserClient()} />
+                )
+              ) : (
+                <PlanLock
+                  title="Comanda para tu cocina"
+                  description="Vos y tu cocina ven los pedidos en orden en este plan. Forma parte del plan Gestión integral."
+                />
+              )}
+            </div>
+            <div className={tab === "pos" ? "" : "hidden"}>
+              {effectivePlan.can("pos") ? (
+                <Mostrador />
+              ) : (
+                <PlanLock
+                  title="Mostrador"
+                  description="Armá pedidos y cobrá en el local con impresión de ticket. Parte del plan Gestión integral."
+                />
+              )}
+            </div>
+            <div className={tab === "mesas" ? "" : "hidden"}>
+              {effectivePlan.can("mesas") ? (
+                <Mesas />
+              ) : (
+                <PlanLock
+                  title="Gestión de mesas"
+                  description="Abrí, cargá consumiciones y cobrá tus mesas. Parte del plan Gestión integral."
+                />
               )}
             </div>
             <div className={tab === "analytics" ? "" : "hidden"}>
-              <VendorAnalytics />
+              {effectivePlan.analyticsDays > 0 ? (
+                <VendorAnalytics />
+              ) : (
+                <PlanLock
+                  title="Estadísticas"
+                  description="Ventas por día, productos más pedidos y más. Disponible en los planes de pago."
+                />
+              )}
             </div>
           </>
         )}
@@ -616,6 +681,12 @@ export default function VendorDashboard() {
             <button onClick={() => setTab("comanda")} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors relative ${tab === "comanda" ? "text-primary" : "text-muted-foreground"}`}>
               <span className="text-lg">🍳</span>Comanda
               {orders.filter((o) => o.status === "new").length > 0 && <span className="absolute top-1 right-1/3 -translate-x-4 bg-red-500 text-white text-[9px] rounded-full h-4 w-4 flex items-center justify-center">{orders.filter((o) => o.status === "new").length}</span>}
+            </button>
+            <button onClick={() => setTab("pos")} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors relative ${tab === "pos" ? "text-primary" : "text-muted-foreground"}`}>
+              <span className="text-lg">🛒</span>Mostrador
+            </button>
+            <button onClick={() => setTab("mesas")} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors ${tab === "mesas" ? "text-primary" : "text-muted-foreground"}`}>
+              <span className="text-lg">🍽️</span>Mesas
             </button>
             <button onClick={() => setTab("analytics")} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors ${tab === "analytics" ? "text-primary" : "text-muted-foreground"}`}>
               <span className="text-lg">📊</span>Stats

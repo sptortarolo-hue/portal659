@@ -24,6 +24,17 @@ type Vendor = {
   is_admin: boolean;
   logo_url: string | null;
   created_at: string;
+  plan_id: string | null;
+  plan_status: string;
+  plan_expires_at: string | null;
+  trial_ends_at: string | null;
+};
+
+type Plan = {
+  id: string;
+  slug: string;
+  name: string;
+  badge: string | null;
 };
 
 const VERTICAL_COLORS: Record<string, string> = {
@@ -43,6 +54,14 @@ export default function AdminComerciosPage() {
   const [deleteVendor, setDeleteVendor] = useState<Vendor | null>(null);
   const [filterVertical, setFilterVertical] = useState("");
   const [filterVerified, setFilterVerified] = useState("");
+  const [plans, setPlans] = useState<Plan[]>([]);
+
+  useEffect(() => {
+    fetch("/api/subscriptions/plans")
+      .then((r) => r.json())
+      .then((d) => setPlans(d.plans || []))
+      .catch(() => setPlans([]));
+  }, []);
 
   const fetchVendors = useCallback(async () => {
     setLoading(true);
@@ -76,6 +95,22 @@ export default function AdminComerciosPage() {
       body: JSON.stringify({ vendorId: id, action: "toggle_admin" }),
     });
     fetchVendors();
+  }
+
+  async function handleSetPlan(id: string, planSlug: string) {
+    await fetch("/api/admin/comercios", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ vendorId: id, action: "set_plan", planSlug, days: 30 }),
+    });
+    fetchVendors();
+  }
+
+  function planInfo(v: Vendor) {
+    const plan = plans.find((p) => p.id === v.plan_id);
+    const visible =
+      v.plan_status === "trial" || v.plan_status === "active" || v.plan_status === "expired";
+    return { plan: plan || plans.find((p) => p.slug === "gratuito"), visible, status: v.plan_status };
   }
 
   async function handleSaveVendor(data: Partial<Vendor>) {
@@ -135,6 +170,29 @@ export default function AdminComerciosPage() {
       label: "Barrio",
       sortable: true,
       render: (v) => <span className="text-sm">{v.neighborhood || "-"}</span>,
+    },
+    {
+      key: "plan",
+      label: "Plan",
+      render: (v) => {
+        const info = planInfo(v);
+        const status =
+          v.plan_status === "trial"
+            ? { label: "Prueba", cls: "bg-sun/20 text-ink" }
+            : v.plan_status === "active"
+              ? { label: "Activo", cls: "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300" }
+              : v.plan_status === "expired"
+                ? { label: "Vencido", cls: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300" }
+                : null;
+        return (
+          <div className="flex items-center gap-1.5">
+            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${v.plan_status === "gratuito" ? "bg-muted text-muted-foreground" : "bg-primary/10 text-primary"}`}>
+              {info.plan?.name ?? "Gratuito"}
+            </span>
+            {status && <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${status.cls}`}>{status.label}</span>}
+          </div>
+        );
+      },
     },
     {
       key: "verified",
@@ -218,6 +276,17 @@ export default function AdminComerciosPage() {
               >
                 {v.is_admin ? "Admin" : "Admin"}
               </button>
+              <select
+                value={v.plan_id ?? ""}
+                onChange={(e) => handleSetPlan(v.id, e.target.value)}
+                className="text-xs px-2 py-1 rounded-md border border-border bg-background text-muted-foreground"
+                title="Cambiar plan (30 días)"
+              >
+                <option value="" disabled>Plan...</option>
+                {plans.map((p) => (
+                  <option key={p.id} value={p.slug}>{p.name}</option>
+                ))}
+              </select>
               <button onClick={() => setEditVendor(v)} className="p-1.5 rounded-md hover:bg-muted transition-colors">
                 <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
               </button>

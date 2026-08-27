@@ -1,6 +1,6 @@
 import { getAuthSupabase } from "@/lib/auth-utils";
 import { NextResponse } from "next/server";
-import { printComanda, printTest } from "@/lib/thermal-printer";
+import { printComanda, printReceipt, printTest } from "@/lib/thermal-printer";
 import type { Order } from "@/types/database";
 
 export async function POST(request: Request) {
@@ -15,7 +15,7 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json();
-  const { orderId, test } = body;
+  const { orderId, test, type, tableName, subLabel } = body;
 
   const { data: vendor } = await supabase
     .from("vendors")
@@ -51,6 +51,12 @@ export async function POST(request: Request) {
   }
 
   const order = orderRows[0] as Order;
+
+  if (type === "ticket") {
+    const result = await printReceipt(order, vendor, { tableName, subLabel });
+    return NextResponse.json(result);
+  }
+
   const result = await printComanda(order, vendor);
   return NextResponse.json(result);
 }

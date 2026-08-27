@@ -1,4 +1,5 @@
 import { gateRequest, gateError } from "@/lib/subscription-gate";
+import { queryOne, query } from "@/lib/db";
 import { NextResponse } from "next/server";
 
 const PAYMENT_METHODS = ["efectivo", "transferencia", "tarjeta", "mixto", "whatsapp"] as const;
@@ -23,18 +24,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Faltan productos o total" }, { status: 400 });
   }
 
-  const { data: table } = await gate.supabase
-    .from("tables")
-    .select("id, name, status")
-    .eq("id", tableId)
-    .eq("vendor_id", gate.vendor.id)
-    .single();
-
+  const table = await queryOne<Record<string, any>>(
+    `SELECT id, name, status FROM tables WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
+    [tableId, gate.vendor.id]
+  );
   if (!table) return NextResponse.json({ error: "Mesa no encontrada" }, { status: 404 });
 
   // Si la mesa está libre, se abre automáticamente al cargar la primera consumición
   if (table.status !== "ocupada") {
-    await gate.supabase.from("tables").update({ status: "ocupada" }).eq("id", table.id);
+    await query(`UPDATE tables SET status = 'ocupada' WHERE id = $1`, [table.id]);
   }
 
   const payment = (PAYMENT_METHODS as readonly string[]).includes(paymentMethod)
@@ -49,26 +47,22 @@ export async function POST(request: Request) {
     modifiers: Array.isArray(i.modifiers) && i.modifiers.length > 0 ? i.modifiers : undefined,
   }));
 
-  const { data, error } = await gate.supabase
-    .from("orders")
-    .insert({
-      vendor_id: gate.vendor.id,
-      customer_name: table.name,
-      customer_phone: gate.vendor.whatsapp || "",
-      customer_address: null,
-      method: "pickup",
-      payment_method: payment,
-      items: normalizedItems,
-      total: Number(total),
-      status: "new",
-      channel: "mesa",
-      table_id: table.id,
-      notes: notes || null,
-    })
-    .select()
-    .single();
+  const order = await queryOne<Record<string, any>>(
+    `INSERT INTO orders (vendor_id, customer_name, customer_phone, customer_address, method, payment_method, items, total, status, channel, table_id, notes)
+     VALUES ($1, $2, $3, $4, 'pickup', $5, $6, $7, 'new', 'mesa', $8, $9)
+     RETURNING *`,
+    [
+      gate.vendor.id,
+      table.name,
+      gate.vendor.whatsapp || "",
+      null,
+      payment,
+      JSON.stringify(normalizedItems),
+      Number(total),
+      table.id,
+      notes || null,
+    ]
+  );
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
-  return NextResponse.json({ ok: true, orderId: data.id, order: data, table });
+  return NextResponse.json({ ok: true, orderId: order?.id, order, table });
 }

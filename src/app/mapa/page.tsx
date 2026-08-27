@@ -1,4 +1,4 @@
-import { getSupabase } from "@/lib/supabase";
+import { queryMany } from "@/lib/db";
 import { ZONE, VERTICALS } from "@/lib/config";
 import { MapPageClient } from "@/components/map/map-page-client";
 import type { Vendor } from "@/types/database";
@@ -6,19 +6,10 @@ import type { Vendor } from "@/types/database";
 export const dynamic = "force-dynamic";
 
 export default async function MapaPage() {
-  const supabase = getSupabase();
-
-  let vendors: Vendor[] = [];
-
-  if (supabase) {
-    const { data } = await supabase
-      .from("vendors")
-      .select("*")
-      .in("neighborhood", ZONE.slugs)
-      .order("store_name");
-
-    vendors = (data as Vendor[]) || [];
-  }
+  const vendors = await queryMany<Vendor>(
+    `SELECT * FROM vendors WHERE neighborhood = ANY($1) ORDER BY store_name`,
+    [ZONE.slugs]
+  );
 
   const vendorsWithCoords = vendors.filter(
     (v) => v.location && v.location.trim() !== ""

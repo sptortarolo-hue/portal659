@@ -1,4 +1,4 @@
-import { getSupabase } from "@/lib/supabase";
+import { queryOne } from "@/lib/db";
 import { NextResponse } from "next/server";
 
 // Mercado Pago Preference API
@@ -22,16 +22,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Faltan datos" }, { status: 400 });
   }
 
-  const supabase = getSupabase();
-  if (!supabase) {
-    return NextResponse.json({ error: "Error de conexión" }, { status: 503 });
-  }
-
-  const { data: vendor } = await supabase
-    .from("vendors")
-    .select("store_name, slug")
-    .eq("id", vendorId)
-    .single();
+  const vendor = await queryOne<{ store_name: string; slug: string }>(
+    `SELECT store_name, slug FROM vendors WHERE id = $1 LIMIT 1`,
+    [vendorId]
+  );
 
   try {
     const preference = {

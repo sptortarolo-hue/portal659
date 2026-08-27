@@ -1,41 +1,39 @@
-import { getAuthSupabase } from "@/lib/auth-utils";
+import { getVendorByRequest } from "@/lib/vendor-utils";
+import { queryMany, queryOne } from "@/lib/db";
 import { NextResponse } from "next/server";
 
 export async function GET(request: Request) {
-  const supabase = getAuthSupabase(request);
-  if (!supabase) return NextResponse.json({ error: "Error de conexión" }, { status: 503 });
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
-
-  const { data: vendor } = await supabase.from("vendors").select("id").eq("user_id", user.id).maybeSingle();
+  const { vendor } = await getVendorByRequest(request);
   if (!vendor) return NextResponse.json({ modifiers: [] });
 
   const { searchParams } = new URL(request.url);
   const productId = searchParams.get("product_id");
 
-  let query = supabase
-    .from("product_modifiers")
-    .select("*")
-    .order("position", { ascending: true });
-
   if (productId) {
-    query = query.eq("product_id", productId);
-  } else {
-    const { data: products } = await supabase.from("products").select("id").eq("vendor_id", vendor.id);
-    const ids = (products || []).map((p: any) => p.id);
-    if (ids.length === 0) return NextResponse.json({ modifiers: [] });
-    query = query.in("product_id", ids);
+    const modifiers = await queryMany<Record<string, unknown>>(
+      `SELECT * FROM product_modifiers WHERE product_id = $1 ORDER BY position ASC`,
+      [productId]
+    );
+    return NextResponse.json({ modifiers: modifiers || [] });
   }
 
-  const { data: modifiers } = await query;
+  const products = await queryMany<{ id: string }>(
+    `SELECT id FROM products WHERE vendor_id = $1`,
+    [vendor.id]
+  );
+  const ids = (products || []).map((p) => p.id);
+  if (ids.length === 0) return NextResponse.json({ modifiers: [] });
+
+  const modifiers = await queryMany<Record<string, unknown>>(
+    `SELECT * FROM product_modifiers WHERE product_id = ANY($1) ORDER BY position ASC`,
+    [ids]
+  );
   return NextResponse.json({ modifiers: modifiers || [] });
 }
 
 export async function POST(request: Request) {
-  const supabase = getAuthSupabase(request);
-  if (!supabase) return NextResponse.json({ error: "Error de conexión" }, { status: 503 });
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
+  const { vendor } = await getVendorByRequest(request);
+  if (!vendor) return NextResponse.json({ error: "Vendor no encontrado" }, { status: 404 });
 
   const body = await request.json();
   const { product_id, group_name, options, required, max_selections } = body;
@@ -44,27 +42,22 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Faltan datos" }, { status: 400 });
   }
 
-  const { data: vendor } = await supabase.from("vendors").select("id").eq("user_id", user.id).maybeSingle();
-  if (!vendor) return NextResponse.json({ error: "Vendor no encontrado" }, { status: 404 });
-
-  const { data: product } = await supabase.from("products").select("id").eq("id", product_id).eq("vendor_id", vendor.id).maybeSingle();
+  const product = await queryOne<{ id: string }>(
+    `SELECT id FROM products WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
+    [product_id, vendor.id]
+  );
   if (!product) return NextResponse.json({ error: "Producto no encontrado" }, { status: 404 });
 
-  const { count } = await supabase.from("product_modifiers").select("*", { count: "exact", head: true }).eq("product_id", product_id);
+  const countRow = await queryOne<{ c: number }>(
+    `SELECT count(*)::int AS c FROM product_modifiers WHERE product_id = $1`,
+    [product_id]
+  );
 
-  const { data, error } = await supabase
-    .from("product_modifiers")
-    .insert({
-      product_id,
-      group_name,
-      options: options || [],
-      required: required || false,
-      max_selections: max_selections || 1,
-      position: count || 0,
-    })
-    .select()
-    .single();
+  const modifier = await queryOne<Record<string, unknown>>(
+    `INSERT INTO product_modifiers (product_id, group_name, options, required, max_selections, position)
+     VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+    [product_id, group_name, options || [], required || false, max_selections || 1, countRow?.c || 0]
+  );
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ modifier: data });
+  return NextResponse.json({ modifier });
 }

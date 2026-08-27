@@ -1,4 +1,5 @@
-import { getAuthSupabase } from "@/lib/auth-utils";
+import { getAuthUser } from "@/lib/auth";
+import { query, queryOne } from "@/lib/db";
 import { NextResponse } from "next/server";
 
 function slugify(text: string): string {
@@ -11,36 +12,22 @@ function slugify(text: string): string {
     .slice(0, 50);
 }
 
-async function getAuth(request: Request) {
-  const supabase = getAuthSupabase(request);
-  if (!supabase) return { supabase: null, user: null };
-  const { data } = await supabase.auth.getUser();
-  return { supabase, user: data?.user || null };
-}
-
 export async function GET(request: Request) {
-  const { supabase, user } = await getAuth(request);
-  if (!supabase) {
-    return NextResponse.json({ error: "Error de conexión" }, { status: 503 });
-  }
+  const user = await getAuthUser(request);
   if (!user) {
     return NextResponse.json({ error: "No autenticado" }, { status: 401 });
   }
 
-  const { data: vendor } = await supabase
-    .from("vendors")
-    .select("*")
-    .eq("user_id", user.id)
-    .maybeSingle();
+  const vendor = await queryOne<Record<string, unknown>>(
+    `SELECT * FROM vendors WHERE user_id = $1 LIMIT 1`,
+    [user.id]
+  );
 
   return NextResponse.json({ vendor });
 }
 
 export async function POST(request: Request) {
-  const { supabase, user } = await getAuth(request);
-  if (!supabase) {
-    return NextResponse.json({ error: "Error de conexión" }, { status: 503 });
-  }
+  const user = await getAuthUser(request);
   if (!user) {
     return NextResponse.json({ error: "No autenticado" }, { status: 401 });
   }
@@ -76,11 +63,10 @@ export async function POST(request: Request) {
     ? vertical
     : "gastronomia";
 
-  const { data: existing } = await supabase
-    .from("vendors")
-    .select("id, slug")
-    .eq("user_id", user.id)
-    .maybeSingle();
+  const existing = await queryOne<{ id: string; slug: string }>(
+    `SELECT id, slug FROM vendors WHERE user_id = $1 LIMIT 1`,
+    [user.id]
+  );
 
   if (!existing && (!store_name || !neighborhood)) {
     return NextResponse.json(
@@ -115,41 +101,38 @@ export async function POST(request: Request) {
   if (auto_print !== undefined) payload.auto_print = auto_print === true;
 
   if (existing) {
-    const { data, error } = await supabase
-      .from("vendors")
-      .update(payload)
-      .eq("id", existing.id)
-      .select()
-      .single();
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    const setClauses: string[] = [];
+    const values: unknown[] = [existing.id];
+    let idx = 2;
+    for (const [key, val] of Object.entries(payload)) {
+      setClauses.push(`${key} = $${idx}`);
+      values.push(val);
+      idx++;
     }
-    return NextResponse.json({ vendor: data });
+
+    const vendor = await queryOne<Record<string, unknown>>(
+      `UPDATE vendors SET ${setClauses.join(", ")} WHERE id = $1 RETURNING *`,
+      values
+    );
+
+    return NextResponse.json({ vendor });
   }
 
-  const { data, error } = await supabase
-    .from("vendors")
-    .insert({ user_id: user.id, ...payload })
-    .select()
-    .single();
+  const keys = Object.keys(payload);
+  const cols = keys.map((k) => `"${k}"`).join(", ");
+  const placeholders = keys.map((_, i) => `$${i + 2}`).join(", ");
+  const values = keys.map((k) => payload[k]);
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
+  const vendor = await queryOne<Record<string, unknown>>(
+    `INSERT INTO vendors (user_id, ${cols}) VALUES ($1, ${placeholders}) RETURNING *`,
+    [user.id, ...values]
+  );
 
-  const { error: profileError } = await supabase
-    .from("profiles")
-    .upsert({
-      id: user.id,
-      email: user.email,
-      full_name: user.user_metadata?.full_name || null,
-      role: "vendor",
-    });
+  await query(
+    `INSERT INTO profiles (id, email, full_name, role) VALUES ($1, $2, $3, 'vendor')
+     ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email, full_name = EXCLUDED.full_name, role = 'vendor'`,
+    [user.id, user.email, user.full_name]
+  );
 
-  if (profileError) {
-    return NextResponse.json({ error: profileError.message }, { status: 500 });
-  }
-
-  return NextResponse.json({ vendor: data });
+  return NextResponse.json({ vendor });
 }

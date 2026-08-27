@@ -1,34 +1,43 @@
 import { NextResponse } from "next/server";
-import { getAuthSupabase } from "@/lib/auth-utils";
 import { isAdmin } from "@/lib/admin-utils";
+import { queryMany, query } from "@/lib/db";
 
 export async function GET(request: Request) {
   if (!(await isAdmin(request))) {
     return NextResponse.json({ error: "No autorizado" }, { status: 403 });
   }
 
-  const supabase = getAuthSupabase(request)!;
   const url = new URL(request.url);
-
   const rating = url.searchParams.get("rating");
   const vendorId = url.searchParams.get("vendor_id");
   const search = url.searchParams.get("search");
 
-  let query = supabase
-    .from("reviews")
-    .select("*, vendors(store_name, slug)")
-    .order("created_at", { ascending: false });
+  const conditions: string[] = [];
+  const params: unknown[] = [];
 
-  if (rating) query = query.eq("rating", parseInt(rating));
-  if (vendorId) query = query.eq("vendor_id", vendorId);
+  if (rating) {
+    params.push(parseInt(rating));
+    conditions.push(`r.rating = $${params.length}`);
+  }
+  if (vendorId) {
+    params.push(vendorId);
+    conditions.push(`r.vendor_id = $${params.length}`);
+  }
   if (search) {
-    query = query.or(`customer_name.ilike.%${search}%,comment.ilike.%${search}%`);
+    params.push(`%${search}%`);
+    conditions.push(`(r.customer_name ILIKE $${params.length} OR r.comment ILIKE $${params.length})`);
   }
 
-  const { data, error } = await query;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
-  return NextResponse.json({ reviews: data || [] });
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+  const reviews = await queryMany<Record<string, unknown>>(
+    `SELECT r.*, v.store_name, v.slug
+     FROM reviews r
+     LEFT JOIN vendors v ON v.id = r.vendor_id
+     ${whereClause}
+     ORDER BY r.created_at DESC`,
+    params
+  );
+  return NextResponse.json({ reviews });
 }
 
 export async function DELETE(request: Request) {
@@ -43,9 +52,6 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: "reviewId es requerido" }, { status: 400 });
   }
 
-  const supabase = getAuthSupabase(request)!;
-  const { error } = await supabase.from("reviews").delete().eq("id", reviewId);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
+  await query(`DELETE FROM reviews WHERE id = $1`, [reviewId]);
   return NextResponse.json({ ok: true });
 }

@@ -1,22 +1,11 @@
-import { getSupabase } from "@/lib/supabase";
 import { NextResponse } from "next/server";
+import { queryMany } from "@/lib/db";
 
-export const revalidate = 60;
+export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const supabase = getSupabase();
-  if (!supabase) {
-    return NextResponse.json({ error: "Error de conexión" }, { status: 503 });
-  }
-
-  const { data, error } = await supabase
-    .from("plans")
-    .select("*")
-    .order("sort", { ascending: true });
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
-  return NextResponse.json({ plans: data || [] });
+  const plans = await queryMany(
+    `SELECT * FROM plans ORDER BY sort ASC`
+  );
+  return NextResponse.json({ plans });
 }

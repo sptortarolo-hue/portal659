@@ -1,11 +1,10 @@
-import { getAuthSupabase, getUserId } from "@/lib/auth-utils";
+import { getAuthUser } from "./auth";
+import { queryMany, queryOne } from "./db";
 import { resolveVendorPlan, type EffectivePlan } from "@/lib/plans";
 import type { Plan, Vendor } from "@/types/database";
-import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type GateSuccess = {
   ok: true;
-  supabase: SupabaseClient;
   user: { id: string };
   vendor: Vendor;
   plans: Plan[];
@@ -14,7 +13,6 @@ export type GateSuccess = {
 
 export type GateFailure = {
   ok: false;
-  supabase: SupabaseClient | null;
   error: string;
   status: number;
 };
@@ -22,30 +20,25 @@ export type GateFailure = {
 export type GateResult = GateSuccess | GateFailure;
 
 export async function gateRequest(request: Request): Promise<GateResult> {
-  const supabase = getAuthSupabase(request);
-  if (!supabase) {
-    return { ok: false, supabase: null, error: "Error de conexión", status: 503 };
+  const authUser = await getAuthUser(request);
+  if (!authUser) {
+    return { ok: false, error: "No autenticado", status: 401 };
   }
 
-  const userId = await getUserId(supabase);
-  if (!userId) {
-    return { ok: false, supabase, error: "No autenticado", status: 401 };
-  }
+  const userId = authUser.id;
 
-  const [vendorRes, plansRes] = await Promise.all([
-    supabase.from("vendors").select("*").eq("user_id", userId).maybeSingle(),
-    supabase.from("plans").select("*").order("sort", { ascending: true }),
+  const [vendor, plans] = await Promise.all([
+    queryOne<Vendor>(`SELECT * FROM vendors WHERE user_id = $1 LIMIT 1`, [userId]),
+    queryMany<Plan>(`SELECT * FROM plans ORDER BY sort ASC`),
   ]);
 
-  const vendor = vendorRes.data;
   if (!vendor) {
-    return { ok: false, supabase, error: "No tenés un local registrado", status: 403 };
+    return { ok: false, error: "No tenés un local registrado", status: 403 };
   }
 
-  const plans = plansRes.data || [];
   const plan = resolveVendorPlan(vendor, plans);
 
-  return { ok: true, supabase, user: { id: userId }, vendor, plans, plan };
+  return { ok: true, user: { id: userId }, vendor, plans, plan };
 }
 
 export function gateError(result: GateFailure) {

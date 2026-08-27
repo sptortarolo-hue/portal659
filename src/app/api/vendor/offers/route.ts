@@ -1,77 +1,48 @@
-import { getAuthSupabase } from "@/lib/auth-utils";
+import { getVendorByRequest } from "@/lib/vendor-utils";
+import { queryMany, queryOne } from "@/lib/db";
 import { resolveVendorPlan } from "@/lib/plans";
 import { NextResponse } from "next/server";
-
-async function getVendor(request: Request) {
-  const supabase = getAuthSupabase(request);
-  if (!supabase) return { supabase: null, vendor: null };
-  const { data: user } = await supabase.auth.getUser();
-  if (!user?.user) return { supabase, vendor: null };
-  const { data: vendor } = await supabase
-    .from("vendors")
-    .select("id, neighborhood, vertical, plan_id, plan_status, plan_expires_at, trial_ends_at")
-    .eq("user_id", user.user.id)
-    .single();
-  return { supabase, vendor };
-}
+import type { Plan, Vendor } from "@/types/database";
 
 export async function GET(request: Request) {
-  const { supabase, vendor } = await getVendor(request);
-  if (!supabase) {
-    return NextResponse.json({ error: "Error de conexión" }, { status: 503 });
-  }
+  const { vendor } = await getVendorByRequest(request);
   if (!vendor) {
-    return NextResponse.json(
-      { error: "No tenés un local registrado" },
-      { status: 403 }
-    );
+    return NextResponse.json({ error: "No tenés un local registrado" }, { status: 403 });
   }
 
-  const { data, error } = await supabase
-    .from("products")
-    .select("*")
-    .eq("vendor_id", vendor.id)
-    .order("created_at", { ascending: false });
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
-  return NextResponse.json({ offers: data });
+  const offers = await queryMany<Record<string, unknown>>(
+    `SELECT * FROM products WHERE vendor_id = $1 ORDER BY created_at DESC`,
+    [vendor.id]
+  );
+  return NextResponse.json({ offers });
 }
 
 export async function POST(request: Request) {
-  const { supabase, vendor } = await getVendor(request);
-  if (!supabase) {
-    return NextResponse.json({ error: "Error de conexión" }, { status: 503 });
-  }
+  const { vendor } = await getVendorByRequest(request);
   if (!vendor) {
-    return NextResponse.json(
-      { error: "No tenés un local registrado" },
-      { status: 403 }
-    );
+    return NextResponse.json({ error: "No tenés un local registrado" }, { status: 403 });
   }
 
+  const fullVendor = await queryOne<Vendor>(
+    `SELECT * FROM vendors WHERE id = $1 LIMIT 1`,
+    [vendor.id]
+  );
   const body = await request.json();
-  const { name, description, price, category, featured_today, image_url } =
-    body;
+  const { name, description, price, category, featured_today, image_url } = body;
 
   if (!name || !price) {
-    return NextResponse.json(
-      { error: "El nombre y el precio son obligatorios" },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: "El nombre y el precio son obligatorios" }, { status: 400 });
   }
 
-  // Límite de productos según plan
-  const { data: plans } = await supabase.from("plans").select("*");
-  const plan = resolveVendorPlan(vendor, plans || []);
+  const plans = await queryMany<Plan>(`SELECT * FROM plans`);
+  const plan = resolveVendorPlan(fullVendor as Vendor, plans || []);
   if (plan.maxProducts != null) {
-    const { count } = await supabase
-      .from("products")
-      .select("id", { count: "exact", head: true })
-      .eq("vendor_id", vendor.id);
-    if ((count || 0) >= plan.maxProducts) {
+    const countRow = await queryOne<{ c: number }>(
+      `SELECT count(*)::int AS c FROM products WHERE vendor_id = $1`,
+      [vendor.id]
+    );
+    const count = countRow?.c || 0;
+    if (count >= plan.maxProducts) {
       return NextResponse.json(
         {
           error: `Tu plan permite hasta ${plan.maxProducts} productos. Actualizá a Gestión integral para productos ilimitados.`,
@@ -82,27 +53,20 @@ export async function POST(request: Request) {
     }
   }
 
-  const { data, error } = await supabase
-    .from("products")
-    .insert({
-      vendor_id: vendor.id,
+  const offer = await queryOne<Record<string, unknown>>(
+    `INSERT INTO products (vendor_id, name, description, price, currency, category, neighborhood, type, available, featured_today, image_url)
+     VALUES ($1, $2, $3, $4, 'ARS', $5, $6, 'food', true, $7, $8) RETURNING *`,
+    [
+      vendor.id,
       name,
-      description: description || null,
-      price: parseFloat(price),
-      currency: "ARS",
-      category: category || "otras",
-      neighborhood: vendor.neighborhood,
-      type: "food",
-      available: true,
-      featured_today: !!featured_today,
-      image_url: image_url || null,
-    })
-    .select()
-    .single();
+      description || null,
+      parseFloat(price),
+      category || "otras",
+      fullVendor?.neighborhood || null,
+      !!featured_today,
+      image_url || null,
+    ]
+  );
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
-  return NextResponse.json({ offer: data });
+  return NextResponse.json({ offer });
 }

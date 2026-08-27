@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import QRCode from "qrcode";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -77,14 +76,6 @@ const STATUS_LABELS: Record<Order["status"], string> = {
 const STATUS_COLORS: Record<Order["status"], string> = {
   new: "bg-sun/20 text-ink", confirmed: "bg-amber-100 text-amber-700", preparing: "bg-orange-100 text-orange-700", ready: "bg-green-100 text-green-700", sent: "bg-purple-100 text-purple-700", completed: "bg-gray-100 text-gray-500", cancelled: "bg-red-100 text-red-700",
 };
-
-let browserClient: SupabaseClient | null = null;
-function getBrowserClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
-  if (!browserClient) browserClient = createClient(url, key, { auth: { persistSession: false } });
-  return browserClient;
-}
 
 export default function VendorDashboard() {
   const router = useRouter();
@@ -185,38 +176,15 @@ export default function VendorDashboard() {
 
   useEffect(() => {
     if (!vendor?.id) return;
-    let channel: ReturnType<SupabaseClient["channel"]> | null = null;
-    const poll = setInterval(loadOrdersOnly, 30000);
+    // Obtener token para los endpoints protegidos (pedidos, comanda)
     (async () => {
       try {
         const { accessToken: token } = await fetch("/api/auth/token").then((r) => r.json());
-        if (!token) return;
-        setAccessToken(token);
-        const client = getBrowserClient();
-        client.realtime.setAuth(token);
-        channel = client
-          .channel(`orders-${vendor.id}`)
-          .on("postgres_changes", { event: "*", schema: "public", table: "orders", filter: `vendor_id=eq.${vendor.id}` }, (payload) => {
-            loadOrdersOnly();
-            if (payload.eventType === "INSERT") {
-              playNewOrderSound();
-              if ("Notification" in window && Notification.permission === "granted") {
-                const o = payload.new as Order;
-                new Notification("Nuevo pedido recibido", {
-                  body: `${o.customer_name} - $${Number(o.total).toLocaleString("es-AR")} · ${o.method === "delivery" ? "🛵 Domicilio" : "🏪 Retiro"}`,
-                  icon: "/icon.svg",
-                  tag: "portal659-order",
-                });
-              }
-            }
-          })
-          .subscribe();
+        if (token) setAccessToken(token);
       } catch { /* noop */ }
     })();
-    return () => {
-      clearInterval(poll);
-      if (channel) { try { getBrowserClient().removeChannel(channel); } catch { /* noop */ } }
-    };
+    const poll = setInterval(loadOrdersOnly, 15000);
+    return () => clearInterval(poll);
   }, [vendor?.id]);
 
   async function saveVendor(data: Record<string, unknown>) {
@@ -625,7 +593,7 @@ export default function VendorDashboard() {
             <div className={tab === "comanda" ? "" : "hidden"}>
               {effectivePlan.can("kds") ? (
                 accessToken && vendor && (
-                  <ComandaKDS vendorId={vendor.id} vendorName={vendor.store_name} accessToken={accessToken} supabaseClient={getBrowserClient()} />
+                  <ComandaKDS vendorId={vendor.id} vendorName={vendor.store_name} accessToken={accessToken} />
                 )
               ) : (
                 <PlanLock

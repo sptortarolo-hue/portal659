@@ -4,11 +4,12 @@ import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import DataTable, { Column } from "@/components/admin/data-table";
 import VendorEditModal from "@/components/admin/vendor-edit-modal";
+import VendorCreateModal from "@/components/admin/vendor-create-modal";
 import DeleteConfirmModal from "@/components/admin/delete-confirm-modal";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { VERTICALS } from "@/lib/config";
-import { Pencil, Trash2, ExternalLink } from "lucide-react";
+import { Pencil, Trash2, ExternalLink, Plus } from "lucide-react";
 
 type Vendor = {
   id: string;
@@ -55,6 +56,7 @@ export default function AdminComerciosPage() {
   const [filterVertical, setFilterVertical] = useState("");
   const [filterVerified, setFilterVerified] = useState("");
   const [plans, setPlans] = useState<Plan[]>([]);
+  const [createOpen, setCreateOpen] = useState(false);
 
   useEffect(() => {
     fetch("/api/subscriptions/plans")
@@ -132,6 +134,20 @@ export default function AdminComerciosPage() {
     });
     setDeleteVendor(null);
     fetchVendors();
+  }
+
+  async function handleCreateVendor(data: Record<string, string>) {
+    const res = await fetch("/api/admin/comercios", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    const json = await res.json();
+    if (!res.ok || json.error) {
+      return { error: json.error || "Error al crear el comercio" };
+    }
+    fetchVendors();
+    return {};
   }
 
   const columns: Column<Vendor>[] = [
@@ -221,7 +237,12 @@ export default function AdminComerciosPage() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="font-display text-2xl font-semibold">Comercios</h1>
-        <span className="text-sm text-muted-foreground">{vendors.length} comercios</span>
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-muted-foreground">{vendors.length} comercios</span>
+          <Button size="sm" onClick={() => setCreateOpen(true)}>
+            <Plus className="h-4 w-4 mr-1" /> Nuevo comercio
+          </Button>
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-3">
@@ -306,6 +327,12 @@ export default function AdminComerciosPage() {
         vendor={editVendor}
         onClose={() => setEditVendor(null)}
         onSave={handleSaveVendor}
+      />
+
+      <VendorCreateModal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onCreate={handleCreateVendor}
       />
 
       <DeleteConfirmModal

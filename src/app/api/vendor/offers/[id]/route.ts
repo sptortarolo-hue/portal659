@@ -1,29 +1,14 @@
-import { getAuthSupabase } from "@/lib/auth-utils";
+import { getVendorByRequest } from "@/lib/vendor-utils";
+import { queryOne } from "@/lib/db";
 import { NextResponse } from "next/server";
-
-async function getVendor(request: Request) {
-  const supabase = getAuthSupabase(request);
-  if (!supabase) return { supabase: null, vendorId: null };
-  const { data: user } = await supabase.auth.getUser();
-  if (!user?.user) return { supabase, vendorId: null };
-  const { data: vendor } = await supabase
-    .from("vendors")
-    .select("id")
-    .eq("user_id", user.user.id)
-    .single();
-  return { supabase, vendorId: vendor?.id || null };
-}
 
 export async function PATCH(
   request: Request,
   context: { params: Promise<{ id: string }> }
 ) {
   const params = await context.params;
-  const { supabase, vendorId } = await getVendor(request);
-  if (!supabase) {
-    return NextResponse.json({ error: "Error de conexión" }, { status: 503 });
-  }
-  if (!vendorId) {
+  const { vendor } = await getVendorByRequest(request);
+  if (!vendor) {
     return NextResponse.json({ error: "No autorizado" }, { status: 403 });
   }
 
@@ -34,6 +19,7 @@ export async function PATCH(
     "stock_low_threshold", "currency", "neighborhood", "type", "unit",
     "has_variants",
   ] as const;
+
   const safeUpdate: Record<string, unknown> = {};
   for (const key of allowedFields) {
     if (key in body) safeUpdate[key] = body[key];
@@ -42,19 +28,21 @@ export async function PATCH(
     return NextResponse.json({ error: "No hay campos válidos para actualizar" }, { status: 400 });
   }
 
-  const { data, error } = await supabase
-    .from("products")
-    .update(safeUpdate)
-    .eq("id", params.id)
-    .eq("vendor_id", vendorId)
-    .select()
-    .single();
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  const setClauses: string[] = [];
+  const values: unknown[] = [params.id, vendor.id];
+  let idx = 3;
+  for (const [key, val] of Object.entries(safeUpdate)) {
+    setClauses.push(`${key} = $${idx}`);
+    values.push(val);
+    idx++;
   }
 
-  return NextResponse.json({ offer: data });
+  const offer = await queryOne<Record<string, unknown>>(
+    `UPDATE products SET ${setClauses.join(", ")} WHERE id = $1 AND vendor_id = $2 RETURNING *`,
+    values
+  );
+
+  return NextResponse.json({ offer });
 }
 
 export async function DELETE(
@@ -62,23 +50,15 @@ export async function DELETE(
   context: { params: Promise<{ id: string }> }
 ) {
   const params = await context.params;
-  const { supabase, vendorId } = await getVendor(request);
-  if (!supabase) {
-    return NextResponse.json({ error: "Error de conexión" }, { status: 503 });
-  }
-  if (!vendorId) {
+  const { vendor } = await getVendorByRequest(request);
+  if (!vendor) {
     return NextResponse.json({ error: "No autorizado" }, { status: 403 });
   }
 
-  const { error } = await supabase
-    .from("products")
-    .delete()
-    .eq("id", params.id)
-    .eq("vendor_id", vendorId);
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
+  await queryOne(
+    `DELETE FROM products WHERE id = $1 AND vendor_id = $2 RETURNING id`,
+    [params.id, vendor.id]
+  );
 
   return NextResponse.json({ ok: true });
 }

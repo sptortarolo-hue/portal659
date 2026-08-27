@@ -1,11 +1,8 @@
-import { getServiceClient } from "@/lib/supabase";
+import { query, queryMany, queryOne } from "@/lib/db";
 import { NextResponse } from "next/server";
 import { withRateLimit } from "@/lib/api-wrapper";
 
 export const POST = withRateLimit(async (request: Request) => {
-  const supabase = getServiceClient();
-  if (!supabase) return NextResponse.json({ error: "Error de conexión" }, { status: 503 });
-
   const body = await request.json();
   const { vendorId, customerName, customerPhone, serviceName, description, preferredDate, preferredTime } = body;
 
@@ -13,52 +10,37 @@ export const POST = withRateLimit(async (request: Request) => {
     return NextResponse.json({ error: "Faltan datos requeridos" }, { status: 400 });
   }
 
-  const { data, error } = await supabase.from("quotes").insert({
-    vendor_id: vendorId,
-    customer_name: customerName,
-    customer_phone: customerPhone,
-    service_name: serviceName || null,
-    description,
-    preferred_date: preferredDate || null,
-    preferred_time: preferredTime || null,
-    status: "pending",
-  }).select("id").single();
+  const quote = await queryOne<{ id: string }>(
+    `INSERT INTO quotes (vendor_id, customer_name, customer_phone, service_name, description, preferred_date, preferred_time, status)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending') RETURNING id`,
+    [vendorId, customerName, customerPhone, serviceName || null, description, preferredDate || null, preferredTime || null]
+  );
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
-  const { data: vendor } = await supabase
-    .from("vendors")
-    .select("user_id, store_name")
-    .eq("id", vendorId)
-    .single();
+  const vendor = await queryOne<{ user_id: string }>(
+    `SELECT user_id, store_name FROM vendors WHERE id = $1 LIMIT 1`,
+    [vendorId]
+  );
 
   if (vendor?.user_id) {
-    await supabase.from("notifications").insert({
-      user_id: vendor.user_id,
-      title: "Nuevo presupuesto solicitado",
-      body: `${customerName} solicitó presupuesto: "${description.slice(0, 80)}${description.length > 80 ? '...' : ''}"`,
-      type: "quote",
-      link: "/vendor/dashboard",
-    });
+    const desc = `${description.slice(0, 80)}${description.length > 80 ? "..." : ""}`;
+    await query(
+      `INSERT INTO notifications (user_id, title, body, type, link)
+       VALUES ($1, $2, $3, 'quote', '/vendor/dashboard')`,
+      [vendor.user_id, "Nuevo presupuesto solicitado", `${customerName} solicitó presupuesto: "${desc}"`]
+    );
   }
 
-  return NextResponse.json({ ok: true, quoteId: data?.id });
+  return NextResponse.json({ ok: true, quoteId: quote?.id });
 }, { maxRequests: 10 });
 
 export async function GET(request: Request) {
-  const supabase = getServiceClient();
-  if (!supabase) return NextResponse.json({ error: "Error de conexión" }, { status: 503 });
-
   const { searchParams } = new URL(request.url);
   const vendorId = searchParams.get("vendorId");
   if (!vendorId) return NextResponse.json({ error: "Missing vendorId" }, { status: 400 });
 
-  const { data, error } = await supabase
-    .from("quotes")
-    .select("*")
-    .eq("vendor_id", vendorId)
-    .order("created_at", { ascending: false });
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ quotes: data });
+  const quotes = await queryMany<Record<string, unknown>>(
+    `SELECT * FROM quotes WHERE vendor_id = $1 ORDER BY created_at DESC`,
+    [vendorId]
+  );
+  return NextResponse.json({ quotes });
 }

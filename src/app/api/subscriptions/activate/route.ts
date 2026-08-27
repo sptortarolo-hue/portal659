@@ -1,17 +1,11 @@
-import { getAuthSupabase, getUserId } from "@/lib/auth-utils";
-import { getServiceClient } from "@/lib/supabase";
+import { getUserId } from "@/lib/auth-utils";
+import { query, queryOne } from "@/lib/db";
 import { NextResponse } from "next/server";
 
 const TRIAL_DAYS = 30;
 
 export async function POST(request: Request) {
-  const supabase = getAuthSupabase(request);
-  if (!supabase) return NextResponse.json({ error: "Error de conexión" }, { status: 503 });
-
-  const db = getServiceClient();
-  if (!db) return NextResponse.json({ error: "Error de conexión" }, { status: 503 });
-
-  const userId = await getUserId(supabase);
+  const userId = await getUserId(request);
   if (!userId) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
 
   const { planSlug } = await request.json();
@@ -20,11 +14,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Plan inválido" }, { status: 400 });
   }
 
-  const { data: vendor } = await supabase
-    .from("vendors")
-    .select("id, vertical, plan_id, plan_status, plan_expires_at, trial_ends_at")
-    .eq("user_id", userId)
-    .maybeSingle();
+  const vendor = await queryOne<{
+    id: string;
+    vertical: string;
+    plan_id: string | null;
+    plan_status: string | null;
+    plan_expires_at: string | null;
+    trial_ends_at: string | null;
+  }>(
+    `SELECT id, vertical, plan_id, plan_status, plan_expires_at, trial_ends_at FROM vendors WHERE user_id = $1 LIMIT 1`,
+    [userId]
+  );
 
   if (!vendor) return NextResponse.json({ error: "No tenés un local" }, { status: 403 });
 
@@ -55,40 +55,23 @@ export async function POST(request: Request) {
     );
   }
 
-  const { data: plan } = await supabase
-    .from("plans")
-    .select("id, slug, name")
-    .eq("slug", planSlug)
-    .single();
+  const plan = await queryOne<{ id: string; slug: string; name: string }>(
+    `SELECT id, slug, name FROM plans WHERE slug = $1 LIMIT 1`,
+    [planSlug]
+  );
 
   if (!plan) return NextResponse.json({ error: "Plan no encontrado" }, { status: 404 });
 
-  const { error: updateError } = await db
-    .from("vendors")
-    .update({
-      plan_id: plan.id,
-      plan_status: "trial",
-      trial_ends_at: trialEnds,
-      plan_expires_at: trialEnds,
-    })
-    .eq("id", vendor.id);
+  await query(
+    `UPDATE vendors SET plan_id = $1, plan_status = 'trial', trial_ends_at = $2, plan_expires_at = $2 WHERE id = $3`,
+    [plan.id, trialEnds, vendor.id]
+  );
 
-  if (updateError) {
-    return NextResponse.json({ error: updateError.message }, { status: 500 });
-  }
-
-  const { error: subError } = await db.from("vendor_subscriptions").insert({
-    vendor_id: vendor.id,
-    plan_id: plan.id,
-    status: "trial",
-    current_period_start: new Date(now).toISOString(),
-    current_period_end: trialEnds,
-    note: `Trial ${TRIAL_DAYS} días — ${plan.name}`,
-  });
-
-  if (subError) {
-    return NextResponse.json({ error: subError.message }, { status: 500 });
-  }
+  await query(
+    `INSERT INTO vendor_subscriptions (vendor_id, plan_id, status, current_period_start, current_period_end, note)
+     VALUES ($1, $2, 'trial', $3, $4, $5)`,
+    [vendor.id, plan.id, new Date(now).toISOString(), trialEnds, `Trial ${TRIAL_DAYS} días — ${plan.name}`]
+  );
 
   return NextResponse.json({
     ok: true,

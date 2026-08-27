@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Store, Users, Star, Settings } from "lucide-react";
+import { LayoutDashboard, Store, Users, Star, Settings, Megaphone } from "lucide-react";
 
 const ITEMS = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
   { href: "/admin/comercios", label: "Comercios", icon: Store },
   { href: "/admin/usuarios", label: "Usuarios", icon: Users },
   { href: "/admin/resenas", label: "Reseñas", icon: Star },
+  { href: "/admin/alerta", label: "Alerta", icon: Megaphone },
   { href: "/admin/config", label: "Config", icon: Settings },
 ];
 

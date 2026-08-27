@@ -1,13 +1,8 @@
-import { getSupabase, getServiceClient } from "@/lib/supabase";
-import { getAuthSupabase, getUserId } from "@/lib/auth-utils";
+import { getUserId } from "@/lib/auth-utils";
+import { query, queryMany, queryOne } from "@/lib/db";
 import { NextResponse } from "next/server";
 
 export async function GET(request: Request) {
-  const supabase = getSupabase();
-  if (!supabase) {
-    return NextResponse.json({ error: "Error de conexión" }, { status: 503 });
-  }
-
   const { searchParams } = new URL(request.url);
   const vendorId = searchParams.get("vendor_id");
 
@@ -15,16 +10,10 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "vendor_id requerido" }, { status: 400 });
   }
 
-  const { data, error } = await supabase
-    .from("reviews")
-    .select("*")
-    .eq("vendor_id", vendorId)
-    .order("created_at", { ascending: false })
-    .limit(50);
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
+  const data = await queryMany<{ rating: number }>(
+    `SELECT * FROM reviews WHERE vendor_id = $1 ORDER BY created_at DESC LIMIT 50`,
+    [vendorId]
+  );
 
   const avg = data && data.length > 0
     ? data.reduce((sum, r) => sum + r.rating, 0) / data.length
@@ -34,12 +23,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const authSupabase = getAuthSupabase(request);
-  if (!authSupabase) {
-    return NextResponse.json({ error: "Error de conexión" }, { status: 503 });
-  }
-
-  const userId = await getUserId(authSupabase);
+  const userId = await getUserId(request);
   if (!userId) {
     return NextResponse.json({ error: "Debés estar logueado para reseñar" }, { status: 401 });
   }
@@ -51,49 +35,32 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Datos inválidos" }, { status: 400 });
   }
 
-  // Verificar que el usuario tiene un pedido completado en este local
-  const svc = getServiceClient();
-  if (svc) {
-    const { data: hasOrder } = await svc
-      .from("orders")
-      .select("id")
-      .eq("customer_id", userId)
-      .eq("vendor_id", vendorId)
-      .eq("status", "completed")
-      .limit(1)
-      .maybeSingle();
+  const hasOrder = await queryOne<{ id: string }>(
+    `SELECT id FROM orders WHERE customer_id = $1 AND vendor_id = $2 AND status = 'completed' LIMIT 1`,
+    [userId, vendorId]
+  );
 
-    if (!hasOrder) {
-      return NextResponse.json(
-        { error: "Debés tener un pedido completado en este local para dejar una reseña" },
-        { status: 403 }
-      );
-    }
+  if (!hasOrder) {
+    return NextResponse.json(
+      { error: "Debés tener un pedido completado en este local para dejar una reseña" },
+      { status: 403 }
+    );
   }
 
-  const { data: existing } = await authSupabase
-    .from("reviews")
-    .select("id")
-    .eq("vendor_id", vendorId)
-    .eq("customer_id", userId)
-    .maybeSingle();
+  const existing = await queryOne<{ id: string }>(
+    `SELECT id FROM reviews WHERE vendor_id = $1 AND customer_id = $2 LIMIT 1`,
+    [vendorId, userId]
+  );
 
   if (existing) {
     return NextResponse.json({ error: "Ya dejaste una reseña en este local" }, { status: 409 });
   }
 
-  const { error } = await authSupabase.from("reviews").insert({
-    vendor_id: vendorId,
-    product_id: productId || null,
-    customer_id: userId,
-    customer_name: customerName,
-    rating,
-    comment: comment || null,
-  });
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
+  await query(
+    `INSERT INTO reviews (vendor_id, product_id, customer_id, customer_name, rating, comment)
+     VALUES ($1, $2, $3, $4, $5, $6)`,
+    [vendorId, productId || null, userId, customerName, rating, comment || null]
+  );
 
   return NextResponse.json({ ok: true });
 }

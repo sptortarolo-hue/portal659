@@ -1,14 +1,13 @@
-import { getAuthSupabase, getUserId } from "@/lib/auth-utils";
+import { getUserId } from "@/lib/auth-utils";
+import { queryMany, queryOne } from "@/lib/db";
 import { NextResponse } from "next/server";
+import type { Plan } from "@/types/database";
 
 const PERIOD_DAYS = 30;
 const MP_ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN;
 
 export async function POST(request: Request) {
-  const supabase = getAuthSupabase(request);
-  if (!supabase) return NextResponse.json({ error: "Error de conexión" }, { status: 503 });
-
-  const userId = await getUserId(supabase);
+  const userId = await getUserId(request);
   if (!userId) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
 
   const body = await request.json();
@@ -16,13 +15,21 @@ export async function POST(request: Request) {
     ? body.planSlug
     : null;
 
-  const { data: vendor } = await supabase
-    .from("vendors")
-    .select(
-      "id, vertical, whatsapp, transfer_cbu, transfer_alias, transfer_qr_url, plan_id, plan_status, plan_expires_at, trial_ends_at"
-    )
-    .eq("user_id", userId)
-    .maybeSingle();
+  const vendor = await queryOne<{
+    id: string;
+    vertical: string;
+    whatsapp: string | null;
+    transfer_cbu: string | null;
+    transfer_alias: string | null;
+    transfer_qr_url: string | null;
+    plan_id: string | null;
+    plan_status: string | null;
+    plan_expires_at: string | null;
+    trial_ends_at: string | null;
+  }>(
+    `SELECT id, vertical, whatsapp, transfer_cbu, transfer_alias, transfer_qr_url, plan_id, plan_status, plan_expires_at, trial_ends_at FROM vendors WHERE user_id = $1 LIMIT 1`,
+    [userId]
+  );
 
   if (!vendor) return NextResponse.json({ error: "No tenés un local" }, { status: 403 });
   if (vendor.vertical !== "gastronomia") {
@@ -32,10 +39,10 @@ export async function POST(request: Request) {
     );
   }
 
-  const { data: plans } = await supabase
-    .from("plans")
-    .select("*")
-    .in("slug", ["pedidos", "gestion"]);
+  const plans = await queryMany<Plan>(
+    `SELECT * FROM plans WHERE slug = ANY($1)`,
+    [["pedidos", "gestion"]]
+  );
 
   const planList = plans || [];
   const plan = planSlug

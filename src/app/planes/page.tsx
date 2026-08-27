@@ -1,5 +1,6 @@
-import { getSupabase } from "@/lib/supabase";
+import { queryMany } from "@/lib/db";
 import { formatPrice } from "@/lib/plans";
+import type { Plan } from "@/types/database";
 import { PlanesCta } from "@/components/subscription/planes-cta";
 import { Badge } from "@/components/ui/badge";
 
@@ -38,14 +39,9 @@ const FEATURE_ORDER = [
 ];
 
 export default async function PlanesPage() {
-  const supabase = getSupabase();
-  if (!supabase) {
-    return <main className="container mx-auto px-4 py-8 text-center text-muted-foreground">Error de conexión</main>;
-  }
-  const { data: plans } = await supabase
-    .from("plans")
-    .select("*")
-    .order("sort", { ascending: true });
+  const plans = await queryMany<Plan>(
+    `SELECT * FROM plans ORDER BY sort ASC`
+  );
 
   const list = plans || [];
 

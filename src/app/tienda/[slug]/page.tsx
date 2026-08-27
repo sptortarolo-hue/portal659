@@ -1,4 +1,4 @@
-import { getSupabase } from "@/lib/supabase";
+import { queryOne, queryMany } from "@/lib/db";
 import { resolveVendorPlan } from "@/lib/plans";
 import { notFound } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
@@ -22,15 +22,11 @@ export async function generateMetadata({
 }: {
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
-  const supabase = getSupabase();
-  if (!supabase) return {};
-
   const { slug } = await params;
-  const { data: vendor } = await supabase
-    .from("vendors")
-    .select("store_name, description, image_url, logo_url, neighborhood, vertical")
-    .eq("slug", slug)
-    .maybeSingle();
+  const vendor = await queryOne<any>(
+    `SELECT * FROM vendors WHERE slug = $1 LIMIT 1`,
+    [slug]
+  );
 
   if (!vendor) return {};
 
@@ -61,55 +57,43 @@ export default async function TiendaPage({
 }: {
   params: Promise<{ slug: string }>;
 }) {
-  const supabase = getSupabase();
-  if (!supabase) notFound();
-
   const { slug } = await params;
 
-  const { data: vendor } = await supabase
-    .from("vendors")
-    .select("*")
-    .eq("slug", slug)
-    .maybeSingle();
-
+  const vendor = await queryOne<any>(
+    `SELECT * FROM vendors WHERE slug = $1 LIMIT 1`,
+    [slug]
+  );
   if (!vendor) notFound();
 
-  const { data: offers } = await supabase
-    .from("products")
-    .select("*")
-    .eq("vendor_id", vendor.id)
-    .eq("available", true)
-    .order("featured_today", { ascending: false })
-    .order("name", { ascending: true });
+  const offers = await queryMany<any>(
+    `SELECT * FROM products WHERE vendor_id = $1 AND available = true ORDER BY featured_today DESC, name ASC`,
+    [vendor.id]
+  );
 
-  const { data: planRows } = await supabase
-    .from("plans")
-    .select("*")
-    .order("sort", { ascending: true });
+  const planRows = await queryMany<any>(
+    `SELECT * FROM plans ORDER BY sort ASC`
+  );
   const effectivePlan = resolveVendorPlan(vendor as any, planRows || []);
   const acceptsCart = effectivePlan.can("cart");
   const planBadge = effectivePlan.plan?.badge ?? null;
 
-  const { data: cats } = await supabase
-    .from("vendor_categories")
-    .select("*")
-    .eq("vendor_id", vendor.id)
-    .order("position", { ascending: true });
+  const cats = await queryMany<any>(
+    `SELECT * FROM vendor_categories WHERE vendor_id = $1 ORDER BY position ASC`,
+    [vendor.id]
+  );
 
-  const { data: gallery } = await supabase
-    .from("vendor_gallery")
-    .select("*")
-    .eq("vendor_id", vendor.id)
-    .order("position", { ascending: true });
+  const gallery = await queryMany<any>(
+    `SELECT * FROM vendor_gallery WHERE vendor_id = $1 ORDER BY position ASC`,
+    [vendor.id]
+  );
 
   const productIds = offers?.map((o: any) => o.id) || [];
-  const { data: allModifiers } = productIds.length > 0
-    ? await supabase
-        .from("product_modifiers")
-        .select("*")
-        .in("product_id", productIds)
-        .order("position", { ascending: true })
-    : { data: null };
+  const allModifiers = productIds.length > 0
+    ? await queryMany<any>(
+        `SELECT * FROM product_modifiers WHERE product_id = ANY($1) ORDER BY position ASC`,
+        [productIds]
+      )
+    : [];
 
 const modifiersByProduct: Record<string, any[]> = {};
   if (allModifiers) {
@@ -121,13 +105,12 @@ const modifiersByProduct: Record<string, any[]> = {};
 
   // Variantes (solo si algún producto las tiene — moda / indumentaria)
   const variantProductIds = offers?.filter((o: any) => o.has_variants).map((o: any) => o.id) || [];
-  const { data: allVariants } = variantProductIds.length > 0
-    ? await supabase
-        .from("product_variants")
-        .select("*")
-        .in("product_id", variantProductIds)
-        .order("position", { ascending: true })
-    : { data: null };
+  const allVariants = variantProductIds.length > 0
+    ? await queryMany<any>(
+        `SELECT * FROM product_variants WHERE product_id = ANY($1) ORDER BY position ASC`,
+        [variantProductIds]
+      )
+    : [];
   const variantsByProduct: Record<string, any[]> = {};
   if (allVariants) {
     for (const v of allVariants) {
@@ -136,13 +119,12 @@ const modifiersByProduct: Record<string, any[]> = {};
     }
   }
 
-  const { data: allProductImages } = variantProductIds.length > 0
-    ? await supabase
-        .from("product_images")
-        .select("*")
-        .in("product_id", variantProductIds)
-        .order("position", { ascending: true })
-    : { data: null };
+  const allProductImages = variantProductIds.length > 0
+    ? await queryMany<any>(
+        `SELECT * FROM product_images WHERE product_id = ANY($1) ORDER BY position ASC`,
+        [variantProductIds]
+      )
+    : [];
   const imagesByProduct: Record<string, any[]> = {};
   if (allProductImages) {
     for (const img of allProductImages) {
@@ -198,10 +180,10 @@ const modifiersByProduct: Record<string, any[]> = {};
     : `Hola ${v.store_name}! Quiero hacer un pedido.`;
   const waUrl = `https://wa.me/${waNumber}?text=${encodeURIComponent(waText)}`;
 
-  const { data: reviewsInfo } = await supabase
-    .from("reviews")
-    .select("rating")
-    .eq("vendor_id", v.id);
+  const reviewsInfo = await queryMany<{ rating: number }>(
+    `SELECT rating FROM reviews WHERE vendor_id = $1`,
+    [v.id]
+  );
   const reviewCount = reviewsInfo?.length || 0;
   const avgRating = reviewCount > 0
     ? reviewsInfo!.reduce((s: number, r: any) => s + Number(r.rating), 0) / reviewCount

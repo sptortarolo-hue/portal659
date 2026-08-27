@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { Button } from "@/components/ui/button";
 import {
   timeAgo,
@@ -17,7 +16,6 @@ type Props = {
   vendorId: string;
   vendorName: string;
   accessToken: string;
-  supabaseClient: SupabaseClient;
 };
 
 function useTimer() {
@@ -275,7 +273,7 @@ function TicketCard({
   );
 }
 
-export default function ComandaKDS({ vendorId, vendorName, accessToken, supabaseClient }: Props) {
+export default function ComandaKDS({ vendorId, vendorName, accessToken }: Props) {
   const [orders, setOrders] = useState<Order[]>([]);
   const [activeTab, setActiveTab] = useState<OrderStatus | "all">("new");
   const [loading, setLoading] = useState(true);
@@ -317,30 +315,50 @@ export default function ComandaKDS({ vendorId, vendorName, accessToken, supabase
 
   useEffect(() => { fetchOrders(); }, []);
 
+  // Polling: detecta pedidos nuevos y cambios de estado (reemplaza realtime)
   useEffect(() => {
     if (!accessToken) return;
-    supabaseClient.realtime.setAuth(accessToken);
-    const channel = supabaseClient
-      .channel(`comanda-${vendorId}`)
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "orders", filter: `vendor_id=eq.${vendorId}` }, (payload) => {
-        if (soundEnabledRef.current) playNewOrderSound();
-        vibrate([100, 50, 100]);
-        const order = payload.new as Order;
-        notifyRef.current("Nuevo pedido", `${order.customer_name} - $${Number(order.total).toLocaleString("es-AR")}`);
-        setOrders((prev) => [order, ...prev]);
-      })
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "orders", filter: `vendor_id=eq.${vendorId}` }, (payload) => {
-        const updated = payload.new as Order;
-        setOrders((prev) => prev.map((o) => (o.id === updated.id ? { ...o, ...updated } : o)));
-        if (updated.status === "ready" && soundEnabledRef.current) {
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch("/api/vendor/orders", {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        const data = await res.json();
+        if (!data.orders) return;
+        const next = data.orders as Order[];
+        const nextIds = new Set(next.map((o) => o.id));
+        const prevMap = new Map(ordersRef.current.map((o) => [o.id, o.status]));
+
+        // Pedidos nuevos
+        const fresh = next.filter((o) => !prevMap.has(o.id));
+        if (fresh.length > 0) {
+          if (soundEnabledRef.current) playNewOrderSound();
+          vibrate([100, 50, 100]);
+          fresh.forEach((order) => {
+            notifyRef.current("Nuevo pedido", `${order.customer_name} - $${Number(order.total).toLocaleString("es-AR")}`);
+          });
+          setOrders((prev) => [...fresh, ...prev.filter((o) => !nextIds.has(o.id))]);
+        }
+
+        // Cambios de estado (notificación cuando pasa a "ready")
+        const statusChanges = next.filter((o) => prevMap.has(o.id) && prevMap.get(o.id) !== o.status);
+        const ready = statusChanges.find((o) => o.status === "ready");
+        if (ready && soundEnabledRef.current) {
           playOrderReadySound();
           vibrate([200, 100, 200]);
-          notifyRef.current("Pedido listo", `${updated.customer_name} - #${updated.id.slice(0, 8)}`);
+          notifyRef.current("Pedido listo", `${ready.customer_name} - #${ready.id.slice(0, 8)}`);
         }
-      })
-      .subscribe();
-    return () => { channel.unsubscribe(); };
-  }, [vendorId, accessToken]);
+        if (fresh.length > 0 || statusChanges.length > 0) {
+          setOrders((prev) => {
+            const merged = next.map((o) => prev.find((p) => p.id === o.id) ? { ...prev.find((p) => p.id === o.id)!, ...o } : o);
+            const mergedIds = new Set(merged.map((o) => o.id));
+            return [...merged, ...prev.filter((o) => !mergedIds.has(o.id))];
+          });
+        }
+      } catch {}
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [accessToken]);
 
   useEffect(() => {
     if (activeTab !== "new") return;

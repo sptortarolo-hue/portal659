@@ -1,48 +1,51 @@
-import { getAuthSupabase, getUserId } from "@/lib/auth-utils";
 import { NextResponse } from "next/server";
-
-async function isAdmin(request: Request): Promise<boolean> {
-  const supabase = getAuthSupabase(request);
-  if (!supabase) return false;
-  const userId = await getUserId(supabase);
-  if (!userId) return false;
-  const { data } = await supabase
-    .from("vendors")
-    .select("is_admin")
-    .eq("user_id", userId)
-    .maybeSingle();
-  return data?.is_admin === true;
-}
+import { isAdmin } from "@/lib/admin-utils";
+import { queryMany, queryOne, query } from "@/lib/db";
 
 export async function GET(request: Request) {
   if (!(await isAdmin(request))) {
     return NextResponse.json({ error: "No autorizado" }, { status: 403 });
   }
 
-  const supabase = getAuthSupabase(request)!;
-
-  const [vendorsRes, ordersRes, reviewsRes, productsRes] = await Promise.all([
-    supabase.from("vendors").select("*").order("created_at", { ascending: false }),
-    supabase.from("orders").select("*, vendors(store_name)").order("created_at", { ascending: false }).limit(100),
-    supabase.from("reviews").select("*, vendors(store_name)").order("created_at", { ascending: false }).limit(50),
-    supabase.from("products").select("id, name, price, available, vendor_id").order("created_at", { ascending: false }),
+  const [vendors, orders, reviews, products] = await Promise.all([
+    queryMany(
+      `SELECT * FROM vendors ORDER BY created_at DESC`
+    ),
+    queryMany<Record<string, unknown>>(
+      `SELECT o.*, v.store_name FROM orders o
+       LEFT JOIN vendors v ON v.id = o.vendor_id
+       ORDER BY o.created_at DESC LIMIT 100`
+    ),
+    queryMany<Record<string, unknown>>(
+      `SELECT r.*, v.store_name FROM reviews r
+       LEFT JOIN vendors v ON v.id = r.vendor_id
+       ORDER BY r.created_at DESC LIMIT 50`
+    ),
+    queryMany<Record<string, unknown>>(
+      `SELECT id, name, price, available, vendor_id FROM products
+       ORDER BY created_at DESC`
+    ),
   ]);
 
-  const totalProducts = productsRes.data?.length || 0;
-  const totalRevenue = ordersRes.data?.filter((o: any) => o.status !== "cancelled").reduce((s: number, o: any) => s + Number(o.total), 0) || 0;
-  const avgRating = reviewsRes.data && reviewsRes.data.length > 0
-    ? reviewsRes.data.reduce((s: number, r: any) => s + r.rating, 0) / reviewsRes.data.length
-    : 0;
+  const totalProducts = products.length;
+  const totalRevenue =
+    orders
+      .filter((o: any) => o.status !== "cancelled")
+      .reduce((s: number, o: any) => s + Number(o.total), 0) || 0;
+  const avgRating =
+    reviews.length > 0
+      ? reviews.reduce((s: number, r: any) => s + r.rating, 0) / reviews.length
+      : 0;
 
   return NextResponse.json({
-    vendors: vendorsRes.data || [],
-    orders: ordersRes.data || [],
-    reviews: reviewsRes.data || [],
+    vendors,
+    orders,
+    reviews,
     stats: {
-      totalVendors: vendorsRes.data?.length || 0,
-      totalOrders: ordersRes.data?.length || 0,
+      totalVendors: vendors.length,
+      totalOrders: orders.length,
       totalProducts,
-      totalReviews: reviewsRes.data?.length || 0,
+      totalReviews: reviews.length,
       totalRevenue,
       avgRating: Math.round(avgRating * 10) / 10,
     },
@@ -61,19 +64,23 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "Datos inválidos" }, { status: 400 });
   }
 
-  const supabase = getAuthSupabase(request)!;
-
   if (action === "toggle_verified") {
-    const { data: vendor } = await supabase.from("vendors").select("verified").eq("id", vendorId).single();
+    const vendor = await queryOne<{ verified: boolean }>(
+      `SELECT verified FROM vendors WHERE id = $1`,
+      [vendorId]
+    );
     if (!vendor) return NextResponse.json({ error: "Vendor no encontrado" }, { status: 404 });
-    await supabase.from("vendors").update({ verified: !vendor.verified }).eq("id", vendorId);
+    await query(`UPDATE vendors SET verified = $1 WHERE id = $2`, [!vendor.verified, vendorId]);
     return NextResponse.json({ ok: true });
   }
 
   if (action === "toggle_admin") {
-    const { data: vendor } = await supabase.from("vendors").select("is_admin").eq("id", vendorId).single();
+    const vendor = await queryOne<{ is_admin: boolean }>(
+      `SELECT is_admin FROM vendors WHERE id = $1`,
+      [vendorId]
+    );
     if (!vendor) return NextResponse.json({ error: "Vendor no encontrado" }, { status: 404 });
-    await supabase.from("vendors").update({ is_admin: !vendor.is_admin }).eq("id", vendorId);
+    await query(`UPDATE vendors SET is_admin = $1 WHERE id = $2`, [!vendor.is_admin, vendorId]);
     return NextResponse.json({ ok: true });
   }
 

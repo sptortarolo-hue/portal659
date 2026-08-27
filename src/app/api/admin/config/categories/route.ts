@@ -1,17 +1,14 @@
 import { NextResponse } from "next/server";
-import { getAuthSupabase } from "@/lib/auth-utils";
 import { isAdmin } from "@/lib/admin-utils";
+import { queryMany, queryOne, query } from "@/lib/db";
 
 export async function GET(request: Request) {
   if (!(await isAdmin(request))) {
     return NextResponse.json({ error: "No autorizado" }, { status: 403 });
   }
 
-  const supabase = getAuthSupabase(request)!;
-  const { data, error } = await supabase.from("categories").select("*").order("name");
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
-  return NextResponse.json({ categories: data || [] });
+  const categories = await queryMany(`SELECT * FROM categories ORDER BY name`);
+  return NextResponse.json({ categories });
 }
 
 export async function POST(request: Request) {
@@ -24,15 +21,12 @@ export async function POST(request: Request) {
 
   if (!name) return NextResponse.json({ error: "name es requerido" }, { status: 400 });
 
-  const supabase = getAuthSupabase(request)!;
-  const { data, error } = await supabase
-    .from("categories")
-    .insert({ name, slug: slug || name.toLowerCase().replace(/\s+/g, "-"), vertical: vertical || null })
-    .select()
-    .single();
+  const category = await queryOne<Record<string, unknown>>(
+    `INSERT INTO categories (name, slug, vertical) VALUES ($1, $2, $3) RETURNING *`,
+    [name, slug || name.toLowerCase().replace(/\s+/g, "-"), vertical || null]
+  );
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ category: data });
+  return NextResponse.json({ category });
 }
 
 export async function DELETE(request: Request) {
@@ -45,9 +39,6 @@ export async function DELETE(request: Request) {
 
   if (!id) return NextResponse.json({ error: "id es requerido" }, { status: 400 });
 
-  const supabase = getAuthSupabase(request)!;
-  const { error } = await supabase.from("categories").delete().eq("id", id);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
+  await query(`DELETE FROM categories WHERE slug = $1`, [id]);
   return NextResponse.json({ ok: true });
 }

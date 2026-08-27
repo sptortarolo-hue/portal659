@@ -1,36 +1,21 @@
-import { getServiceClient } from "@/lib/supabase";
-import { getAuthSupabase } from "@/lib/auth-utils";
+import { getVendorByRequest } from "@/lib/vendor-utils";
 import { NextResponse } from "next/server";
+import { mkdir, writeFile } from "fs/promises";
+import path from "path";
+import { randomBytes } from "crypto";
 
 const MAX_SIZE = 5 * 1024 * 1024;
 
 export async function POST(request: Request) {
-  const supabase = getAuthSupabase(request);
-  if (!supabase) {
-    return NextResponse.json({ error: "Error de conexión" }, { status: 503 });
-  }
-
-  const { data: userData } = await supabase.auth.getUser();
-  if (!userData?.user) {
+  const { userId, vendor } = await getVendorByRequest(request);
+  if (!userId) {
     return NextResponse.json({ error: "No autenticado" }, { status: 401 });
   }
-  const userId = userData.user.id;
-
-  const { data: vendor } = await supabase
-    .from("vendors")
-    .select("id")
-    .eq("user_id", userId)
-    .maybeSingle();
   if (!vendor) {
     return NextResponse.json(
       { error: "Necesitás un local registrado para subir imágenes" },
       { status: 403 }
     );
-  }
-
-  const service = getServiceClient();
-  if (!service) {
-    return NextResponse.json({ error: "Error de configuración" }, { status: 503 });
   }
 
   const form = await request.formData();
@@ -47,19 +32,18 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "La imagen debe pesar menos de 5 MB" }, { status: 400 });
   }
 
+  const buffer = Buffer.from(await file.arrayBuffer());
+
   const ext = (file.name.split(".").pop() || "jpg")
     .toLowerCase()
     .replace(/[^a-z0-9]/g, "");
-  const path = `${folder}/${userId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+  const filename = `${Date.now()}-${randomBytes(6).toString("hex")}.${ext}`;
 
-  const { error } = await service.storage
-    .from("menu-images")
-    .upload(path, file, { contentType: file.type, upsert: false });
+  const uploadRoot = process.env.UPLOAD_DIR || path.join(process.cwd(), "uploads");
+  const dir = path.join(uploadRoot, folder, userId);
+  await mkdir(dir, { recursive: true });
+  await writeFile(path.join(dir, filename), buffer);
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
-  const url = `${process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL}/storage/v1/object/public/menu-images/${path}`;
+  const url = `${process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"}/uploads/${folder}/${userId}/${filename}`;
   return NextResponse.json({ url });
 }

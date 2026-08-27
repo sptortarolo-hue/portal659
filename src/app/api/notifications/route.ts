@@ -1,32 +1,22 @@
-import { getAuthSupabase, getUserId } from "@/lib/auth-utils";
+import { getUserId } from "@/lib/auth-utils";
+import { queryMany, query } from "@/lib/db";
 import { NextResponse } from "next/server";
 
 export async function GET(request: Request) {
-  const supabase = getAuthSupabase(request);
-  if (!supabase) return NextResponse.json({ error: "Error de conexión" }, { status: 503 });
-
-  const userId = await getUserId(supabase);
+  const userId = await getUserId(request);
   if (!userId) return NextResponse.json({ notifications: [], unread: 0 });
 
-  const { data, error } = await supabase
-    .from("notifications")
-    .select("*")
-    .eq("user_id", userId)
-    .order("created_at", { ascending: false })
-    .limit(30);
+  const notifications = await queryMany<Record<string, unknown>>(
+    `SELECT * FROM notifications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 30`,
+    [userId]
+  );
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
-  const unread = (data || []).filter((n: any) => !n.read).length;
-
-  return NextResponse.json({ notifications: data || [], unread });
+  const unread = notifications.filter((n: any) => !n.read).length;
+  return NextResponse.json({ notifications, unread });
 }
 
 export async function POST(request: Request) {
-  const supabase = getAuthSupabase(request);
-  if (!supabase) return NextResponse.json({ error: "Error de conexión" }, { status: 503 });
-
-  const userId = await getUserId(supabase);
+  const userId = await getUserId(request);
   if (!userId) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
 
   const body = await request.json();
@@ -34,41 +24,25 @@ export async function POST(request: Request) {
 
   if (!title) return NextResponse.json({ error: "Título requerido" }, { status: 400 });
 
-  const { error } = await supabase.from("notifications").insert({
-    user_id: userId,
-    title,
-    body: notifBody || null,
-    type: type || "info",
-    link: link || null,
-  });
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  await query(
+    `INSERT INTO notifications (user_id, title, body, type, link) VALUES ($1, $2, $3, $4, $5)`,
+    [userId, title, notifBody || null, type || "info", link || null]
+  );
 
   return NextResponse.json({ ok: true });
 }
 
 export async function PATCH(request: Request) {
-  const supabase = getAuthSupabase(request);
-  if (!supabase) return NextResponse.json({ error: "Error de conexión" }, { status: 503 });
-
-  const userId = await getUserId(supabase);
+  const userId = await getUserId(request);
   if (!userId) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
 
   const body = await request.json();
   const { notificationId, markAll } = body;
 
   if (markAll) {
-    await supabase
-      .from("notifications")
-      .update({ read: true })
-      .eq("user_id", userId)
-      .eq("read", false);
+    await query(`UPDATE notifications SET read = true WHERE user_id = $1 AND read = false`, [userId]);
   } else if (notificationId) {
-    await supabase
-      .from("notifications")
-      .update({ read: true })
-      .eq("id", notificationId)
-      .eq("user_id", userId);
+    await query(`UPDATE notifications SET read = true WHERE id = $1 AND user_id = $2`, [notificationId, userId]);
   }
 
   return NextResponse.json({ ok: true });

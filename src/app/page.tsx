@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getSupabase } from "@/lib/supabase";
+import { queryMany } from "@/lib/db";
 import { ZONE, VERTICALS } from "@/lib/config";
 import { OfferCard } from "@/components/offers/offer-card";
 import { HorizontalCarousel } from "@/components/ui/horizontal-carousel";
@@ -20,37 +20,26 @@ export const metadata = {
 };
 
 export default async function HomePage() {
-  const supabase = getSupabase();
-  if (!supabase) {
-    return (
-      <main className="container mx-auto px-4 py-8 text-center">
-        <p className="text-red-600">
-          Error de configuración. Verificá las variables de entorno.
-        </p>
-      </main>
-    );
-  }
+  const vendors = await queryMany<Vendor>(
+    `SELECT * FROM vendors WHERE neighborhood = ANY($1) ORDER BY created_at DESC`,
+    [ZONE.slugs]
+  );
 
-  const { data: vendors } = await supabase
-    .from("vendors")
-    .select("*, hours")
-    .in("neighborhood", ZONE.slugs)
-    .order("created_at", { ascending: false });
-
-  const { data: offers } = await supabase
-    .from("products")
-    .select("*, vendors(id, slug, store_name, vertical)")
-    .in("neighborhood", ZONE.slugs)
-    .eq("available", true)
-    .order("featured_today", { ascending: false })
-    .order("created_at", { ascending: false });
+  const offers = await queryMany<OfferWithVendor>(
+    `SELECT p.*, json_build_object('id', v.id, 'slug', v.slug, 'store_name', v.store_name, 'vertical', v.vertical) AS vendors
+     FROM products p
+     JOIN vendors v ON v.id = p.vendor_id
+     WHERE p.neighborhood = ANY($1) AND p.available = true
+     ORDER BY p.featured_today DESC, p.created_at DESC`,
+    [ZONE.slugs]
+  );
 
   const featured =
-    (offers as OfferWithVendor[] | null)?.filter(
+    (offers || [])?.filter(
       (o) => o.featured_today && o.vendors?.vertical !== "servicio"
     ) || [];
   const rest =
-    (offers as OfferWithVendor[] | null)?.filter(
+    (offers || [])?.filter(
       (o) => !o.featured_today && o.vendors?.vertical !== "servicio"
     ) || [];
   const destacados = (vendors || []).filter((v) => v.featured);

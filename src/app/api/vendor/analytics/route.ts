@@ -1,24 +1,21 @@
-import { getAuthSupabase, getUserId } from "@/lib/auth-utils";
+import { getAuthUser } from "@/lib/auth";
+import { queryMany, queryOne } from "@/lib/db";
 import { resolveVendorPlan } from "@/lib/plans";
 import { NextResponse } from "next/server";
+import type { Plan, Vendor } from "@/types/database";
 
 export async function GET(request: Request) {
-  const supabase = getAuthSupabase(request);
-  if (!supabase) return NextResponse.json({ error: "Error de conexión" }, { status: 503 });
+  const authUser = await getAuthUser(request);
+  if (!authUser) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
 
-  const userId = await getUserId(supabase);
-  if (!userId) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
-
-  const { data: vendor } = await supabase
-    .from("vendors")
-    .select("id, vertical, plan_id, plan_status, plan_expires_at, trial_ends_at")
-    .eq("user_id", userId)
-    .single();
-
+  const vendor = await queryOne<Vendor>(
+    `SELECT id, vertical, plan_id, plan_status, plan_expires_at, trial_ends_at FROM vendors WHERE user_id = $1 LIMIT 1`,
+    [authUser.id]
+  );
   if (!vendor) return NextResponse.json({ error: "No tenés un local" }, { status: 403 });
 
-  const { data: plans } = await supabase.from("plans").select("*");
-  const plan = resolveVendorPlan(vendor, plans || []);
+  const plans = await queryMany<Plan>(`SELECT * FROM plans`);
+  const plan = resolveVendorPlan(vendor, plans);
 
   if (plan.analyticsDays <= 0) {
     return NextResponse.json(
@@ -28,30 +25,22 @@ export async function GET(request: Request) {
   }
 
   const vendorId = vendor.id;
-
   const since = new Date(Date.now() - plan.analyticsDays * 24 * 60 * 60 * 1000).toISOString();
 
-  const [ordersRes, productsRes, reviewsRes] = await Promise.all([
-    supabase
-      .from("orders")
-      .select("id, items, total, status, created_at")
-      .eq("vendor_id", vendorId)
-      .gte("created_at", since)
-      .order("created_at", { ascending: false }),
-    supabase
-      .from("products")
-      .select("id, name, price, available, stock, stock_low_threshold")
-      .eq("vendor_id", vendorId),
-    supabase
-      .from("reviews")
-      .select("rating, comment, customer_name, created_at")
-      .eq("vendor_id", vendorId)
-      .order("created_at", { ascending: false }),
+  const [orders, products, reviews] = await Promise.all([
+    queryMany<Record<string, any>>(
+      `SELECT id, items, total, status, created_at FROM orders WHERE vendor_id = $1 AND created_at >= $2 ORDER BY created_at DESC`,
+      [vendorId, since]
+    ),
+    queryMany<Record<string, any>>(
+      `SELECT id, name, price, available, stock, stock_low_threshold FROM products WHERE vendor_id = $1`,
+      [vendorId]
+    ),
+    queryMany<Record<string, any>>(
+      `SELECT rating, comment, customer_name, created_at FROM reviews WHERE vendor_id = $1 ORDER BY created_at DESC`,
+      [vendorId]
+    ),
   ]);
-
-  const orders = ordersRes.data || [];
-  const products = productsRes.data || [];
-  const reviews = reviewsRes.data || [];
 
   const activeOrders = orders.filter((o) => o.status === "new" || o.status === "confirmed" || o.status === "preparing" || o.status === "ready" || o.status === "sent");
   const completedOrders = orders.filter((o) => o.status === "completed");
@@ -64,7 +53,6 @@ export async function GET(request: Request) {
     ? reviews.reduce((s, r) => s + r.rating, 0) / reviews.length
     : 0;
 
-  // Product sales count
   const productSales: Record<string, { name: string; count: number; revenue: number }> = {};
   for (const order of completedOrders) {
     for (const item of order.items || []) {
@@ -78,7 +66,6 @@ export async function GET(request: Request) {
     .sort((a, b) => b.revenue - a.revenue)
     .slice(0, 10);
 
-  // Orders by day (last 30 days)
   const now = new Date();
   const days30Ago = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
   const ordersByDay: Record<string, { count: number; revenue: number }> = {};
@@ -94,7 +81,6 @@ export async function GET(request: Request) {
     }
   }
 
-  // Low stock products
   const lowStock = products.filter(
     (p) => p.stock_low_threshold != null && p.stock != null && p.stock <= p.stock_low_threshold
   );

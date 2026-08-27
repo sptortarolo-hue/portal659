@@ -1,34 +1,45 @@
 import { NextResponse } from "next/server";
-import { getAuthSupabase, getUserId } from "@/lib/auth-utils";
-import { getServiceClient } from "@/lib/supabase";
 import { isAdmin } from "@/lib/admin-utils";
+import { queryMany, queryOne, query, withTransaction } from "@/lib/db";
 
 export async function GET(request: Request) {
   if (!(await isAdmin(request))) {
     return NextResponse.json({ error: "No autorizado" }, { status: 403 });
   }
 
-  const supabase = getAuthSupabase(request)!;
   const url = new URL(request.url);
-
   const vertical = url.searchParams.get("vertical");
   const neighborhood = url.searchParams.get("neighborhood");
   const verified = url.searchParams.get("verified");
   const search = url.searchParams.get("search");
 
-  let query = supabase.from("vendors").select("*").order("created_at", { ascending: false });
+  const conditions: string[] = [];
+  const params: unknown[] = [];
 
-  if (vertical) query = query.eq("vertical", vertical);
-  if (neighborhood) query = query.eq("neighborhood", neighborhood);
-  if (verified !== null && verified !== undefined) query = query.eq("verified", verified === "true");
+  if (vertical) {
+    params.push(vertical);
+    conditions.push(`vertical = $${params.length}`);
+  }
+  if (neighborhood) {
+    params.push(neighborhood);
+    conditions.push(`neighborhood = $${params.length}`);
+  }
+  if (verified !== null && verified !== undefined) {
+    params.push(verified === "true");
+    conditions.push(`verified = $${params.length}`);
+  }
   if (search) {
-    query = query.or(`store_name.ilike.%${search}%,slug.ilike.%${search}%`);
+    params.push(`%${search}%`);
+    const q = `store_name ILIKE $${params.length} OR slug ILIKE $${params.length}`;
+    conditions.push(`(${q})`);
   }
 
-  const { data, error } = await query;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
-  return NextResponse.json({ vendors: data || [] });
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+  const vendors = await queryMany(
+    `SELECT * FROM vendors ${whereClause} ORDER BY created_at DESC`,
+    params
+  );
+  return NextResponse.json({ vendors });
 }
 
 export async function POST(request: Request) {
@@ -43,25 +54,28 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "store_name y user_id son requeridos" }, { status: 400 });
   }
 
-  const supabase = getServiceClient();
-  if (!supabase) return NextResponse.json({ error: "Error de conexión" }, { status: 503 });
+  const vendor = await queryOne<Record<string, unknown>>(
+    `INSERT INTO vendors (
+       user_id, store_name, slug, vertical, neighborhood,
+       description, phone, whatsapp, address, verified, is_admin
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+     RETURNING *`,
+    [
+      user_id,
+      store_name,
+      slug || store_name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, ""),
+      vertical || "gastronomia",
+      neighborhood || "sicardi",
+      description || "",
+      phone || "",
+      whatsapp || "",
+      address || "",
+      false,
+      false,
+    ]
+  );
 
-  const { data, error } = await supabase.from("vendors").insert({
-    user_id,
-    store_name,
-    slug: slug || store_name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, ""),
-    vertical: vertical || "gastronomia",
-    neighborhood: neighborhood || "sicardi",
-    description: description || "",
-    phone: phone || "",
-    whatsapp: whatsapp || "",
-    address: address || "",
-    verified: false,
-    is_admin: false,
-  }).select().single();
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ vendor: data });
+  return NextResponse.json({ vendor });
 }
 
 export async function PATCH(request: Request) {
@@ -76,28 +90,28 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "vendorId es requerido" }, { status: 400 });
   }
 
-  const supabase = getServiceClient();
-  if (!supabase) return NextResponse.json({ error: "Error de conexión" }, { status: 503 });
-
   if (action === "toggle_verified") {
-    const { data: vendor } = await supabase.from("vendors").select("verified").eq("id", vendorId).single();
+    const vendor = await queryOne<{ verified: boolean }>(
+      `SELECT verified FROM vendors WHERE id = $1`,
+      [vendorId]
+    );
     if (!vendor) return NextResponse.json({ error: "Vendor no encontrado" }, { status: 404 });
-    const { error } = await supabase.from("vendors").update({ verified: !vendor.verified }).eq("id", vendorId);
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    await query(`UPDATE vendors SET verified = $1 WHERE id = $2`, [!vendor.verified, vendorId]);
     return NextResponse.json({ ok: true, verified: !vendor.verified });
   }
 
   if (action === "toggle_admin") {
-    const { data: vendor } = await supabase.from("vendors").select("is_admin").eq("id", vendorId).single();
+    const vendor = await queryOne<{ is_admin: boolean }>(
+      `SELECT is_admin FROM vendors WHERE id = $1`,
+      [vendorId]
+    );
     if (!vendor) return NextResponse.json({ error: "Vendor no encontrado" }, { status: 404 });
-    const { error } = await supabase.from("vendors").update({ is_admin: !vendor.is_admin }).eq("id", vendorId);
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    await query(`UPDATE vendors SET is_admin = $1 WHERE id = $2`, [!vendor.is_admin, vendorId]);
     return NextResponse.json({ ok: true, is_admin: !vendor.is_admin });
   }
 
   if (action === "update" && updateData) {
-    const { error } = await supabase.from("vendors").update(updateData).eq("id", vendorId);
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    await updateVendor(vendorId, updateData);
     return NextResponse.json({ ok: true });
   }
 
@@ -105,33 +119,28 @@ export async function PATCH(request: Request) {
     const { planSlug, days, note } = body;
     if (!planSlug) return NextResponse.json({ error: "planSlug es requerido" }, { status: 400 });
 
-    const { data: plans } = await supabase
-      .from("plans")
-      .select("id, slug, name")
-      .in("slug", ["gratuito", "pedidos", "gestion"]);
-    const plan = (plans || []).find((p) => p.slug === planSlug);
+    const plans = await queryMany<{ id: string; slug: string; name: string }>(
+      `SELECT id, slug, name FROM plans WHERE slug = ANY($1)`,
+      [["gratuito", "pedidos", "gestion"]]
+    );
+    const plan = plans.find((p) => p.slug === planSlug);
     if (!plan) return NextResponse.json({ error: "Plan inválido" }, { status: 400 });
 
     if (planSlug === "gratuito") {
-      const { error } = await supabase
-        .from("vendors")
-        .update({
-          plan_id: plan.id,
-          plan_status: "gratuito",
-          plan_expires_at: null,
-          trial_ends_at: null,
-        })
-        .eq("id", vendorId);
-      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      await query(
+        `UPDATE vendors
+         SET plan_id = $1, plan_status = 'gratuito', plan_expires_at = NULL, trial_ends_at = NULL
+         WHERE id = $2`,
+        [plan.id, vendorId]
+      );
       return NextResponse.json({ ok: true, plan: planSlug });
     }
 
     const periodDays = days && Number(days) > 0 ? Number(days) : 30;
-    const { data: vendor } = await supabase
-      .from("vendors")
-      .select("plan_expires_at")
-      .eq("id", vendorId)
-      .single();
+    const vendor = await queryOne<{ plan_expires_at: string | null }>(
+      `SELECT plan_expires_at FROM vendors WHERE id = $1`,
+      [vendorId]
+    );
 
     const base = vendor?.plan_expires_at
       ? Math.max(Date.now(), new Date(vendor.plan_expires_at).getTime())
@@ -139,24 +148,25 @@ export async function PATCH(request: Request) {
     const periodEnd = new Date(base + periodDays * 24 * 60 * 60 * 1000).toISOString();
     const periodStart = new Date(base).toISOString();
 
-    const { error: updateError } = await supabase
-      .from("vendors")
-      .update({
-        plan_id: plan.id,
-        plan_status: "active",
-        plan_expires_at: periodEnd,
-        trial_ends_at: null,
-      })
-      .eq("id", vendorId);
-    if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 });
-
-    await supabase.from("vendor_subscriptions").insert({
-      vendor_id: vendorId,
-      plan_id: plan.id,
-      status: "active",
-      current_period_start: periodStart,
-      current_period_end: periodEnd,
-      note: note || `Activado por administrador (${periodDays} días)`,
+    await withTransaction(async (tx) => {
+      await tx.queryVoid(
+        `UPDATE vendors
+         SET plan_id = $1, plan_status = 'active', plan_expires_at = $2, trial_ends_at = NULL
+         WHERE id = $3`,
+        [plan.id, periodEnd, vendorId]
+      );
+      await tx.queryVoid(
+        `INSERT INTO vendor_subscriptions (
+           vendor_id, plan_id, status, current_period_start, current_period_end, note
+         ) VALUES ($1, $2, 'active', $3, $4, $5)`,
+        [
+          vendorId,
+          plan.id,
+          periodStart,
+          periodEnd,
+          note || `Activado por administrador (${periodDays} días)`,
+        ]
+      );
     });
 
     return NextResponse.json({ ok: true, plan: planSlug, periodEnd });
@@ -177,10 +187,30 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: "vendorId es requerido" }, { status: 400 });
   }
 
-  const supabase = getServiceClient();
-  if (!supabase) return NextResponse.json({ error: "Error de conexión" }, { status: 503 });
-  const { error } = await supabase.from("vendors").delete().eq("id", vendorId);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
+  await query(`DELETE FROM vendors WHERE id = $1`, [vendorId]);
   return NextResponse.json({ ok: true });
+}
+
+async function updateVendor(vendorId: string, updateData: Record<string, unknown>) {
+  const allowed = [
+    "store_name", "slug", "vertical", "neighborhood", "description",
+    "phone", "whatsapp", "address", "logo_url", "image_url", "hours",
+    "instagram", "facebook", "payment_methods", "delivery_options",
+    "services_list", "service_area", "free_estimate", "featured",
+  ];
+  const safeUpdate: Record<string, unknown> = {};
+  for (const key of allowed) {
+    if (key in updateData) safeUpdate[key] = updateData[key];
+  }
+  if (Object.keys(safeUpdate).length === 0) return;
+
+  const setClauses: string[] = [];
+  const values: unknown[] = [vendorId];
+  let idx = 2;
+  for (const [key, val] of Object.entries(safeUpdate)) {
+    setClauses.push(`${key} = $${idx}`);
+    values.push(val);
+    idx++;
+  }
+  await query(`UPDATE vendors SET ${setClauses.join(", ")} WHERE id = $1`, values);
 }

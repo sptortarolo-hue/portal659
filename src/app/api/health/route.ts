@@ -1,21 +1,27 @@
+import { getPool } from "@/lib/db";
+
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   const vars = {
-    SUPABASE_URL: !!(
-      process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
-    ),
-    ANON_KEY: !!(
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY
-    ),
-    SERVICE_ROLE: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+    DATABASE_URL: !!process.env.DATABASE_URL,
+    JWT_SECRET: !!process.env.JWT_SECRET,
     NODE_ENV: process.env.NODE_ENV,
   };
 
-  const ok = vars.SUPABASE_URL && vars.ANON_KEY;
+  let db = false;
+  try {
+    const pool = getPool();
+    await pool.query("SELECT 1");
+    db = true;
+  } catch {
+    db = false;
+  }
+
+  const ok = vars.DATABASE_URL && db;
 
   return Response.json(
-    { status: ok ? "ok" : "missing vars", vars },
+    { status: ok ? "ok" : "missing vars", vars, db },
     { status: ok ? 200 : 503 }
   );
 }

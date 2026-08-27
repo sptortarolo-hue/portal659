@@ -1,4 +1,4 @@
-import { getSupabase } from "@/lib/supabase";
+import { queryMany } from "@/lib/db";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
@@ -23,17 +23,12 @@ type InfoItem = {
 };
 
 export default async function BarrioPage() {
-  const supabase = getSupabase();
-  const { data } = supabase
-    ? await supabase
-        .from("info_items")
-        .select("id, category, title, body, tags, sort, updated_at")
-        .eq("active", true)
-        .order("sort", { ascending: true })
-        .order("created_at", { ascending: true })
-    : { data: [] as InfoItem[] };
-
-  const items = (data || []) as InfoItem[];
+  const items = await queryMany<InfoItem>(
+    `SELECT id, category, title, body, tags, sort, updated_at
+     FROM info_items
+     WHERE active = true
+     ORDER BY sort ASC, created_at ASC`
+  );
 
   const grouped = CATEGORY_ORDER.map((cat) => ({
     meta: CATEGORY_META[cat],

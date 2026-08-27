@@ -1,4 +1,5 @@
 import { gateRequest, gateError } from "@/lib/subscription-gate";
+import { queryOne } from "@/lib/db";
 import { NextResponse } from "next/server";
 
 const PAYMENT_METHODS = ["efectivo", "transferencia", "tarjeta", "mixto", "whatsapp"] as const;
@@ -43,26 +44,22 @@ export async function POST(request: Request) {
 
   const now = new Date().toISOString();
 
-  const { data, error } = await gate.supabase
-    .from("orders")
-    .insert({
-      vendor_id: gate.vendor.id,
-      customer_name: customerName?.trim() || "Mostrador",
-      customer_phone: gate.vendor.whatsapp || "",
-      customer_address: null,
-      method: "pickup",
-      payment_method: payment,
-      items: normalizedItems,
-      total: Number(total),
-      status: "new",
-      channel: "mostrador",
-      paid_at: paid ? now : null,
-      notes: notes || null,
-    })
-    .select()
-    .single();
+  const order = await queryOne<Record<string, any>>(
+    `INSERT INTO orders (vendor_id, customer_name, customer_phone, customer_address, method, payment_method, items, total, status, channel, paid_at, notes)
+     VALUES ($1, $2, $3, $4, 'pickup', $5, $6, $7, 'new', 'mostrador', $8, $9)
+     RETURNING *`,
+    [
+      gate.vendor.id,
+      customerName?.trim() || "Mostrador",
+      gate.vendor.whatsapp || "",
+      null,
+      payment,
+      JSON.stringify(normalizedItems),
+      Number(total),
+      paid ? now : null,
+      notes || null,
+    ]
+  );
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
-  return NextResponse.json({ ok: true, orderId: data.id, order: data });
+  return NextResponse.json({ ok: true, orderId: order?.id, order });
 }

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getSupabase } from "@/lib/supabase";
+import { queryMany } from "@/lib/db";
 import { VERTICALS } from "@/lib/config";
 import { Card, CardContent } from "@/components/ui/card";
 
@@ -10,11 +10,10 @@ export default async function BuscarPage({
 }: {
   searchParams: Promise<{ q?: string; vertical?: string }>;
 }) {
-  const supabase = getSupabase();
   const { q, vertical } = await searchParams;
   const query = (q || "").trim();
 
-  if (!supabase || !query) {
+  if (!query) {
     return (
       <main className="container mx-auto px-4 py-12 text-center">
         <h1 className="font-display text-3xl font-semibold mb-4">Buscar</h1>
@@ -30,22 +29,22 @@ export default async function BuscarPage({
 
   const pattern = `%${query}%`;
 
-  const [vendorsRes, productsRes] = await Promise.all([
-    supabase
-      .from("vendors")
-      .select("*")
-      .or(`store_name.ilike.${pattern},description.ilike.${pattern},category.ilike.${pattern},services_list.ilike.${pattern}`)
-      .order("store_name"),
-    supabase
-      .from("products")
-      .select("*, vendors(id, slug, store_name, vertical, image_url)")
-      .eq("available", true)
-      .or(`name.ilike.${pattern},description.ilike.${pattern},category.ilike.${pattern}`)
-      .order("name"),
+  let [vendors, products] = await Promise.all([
+    queryMany<Record<string, unknown>>(
+      `SELECT * FROM vendors
+       WHERE store_name ILIKE $1 OR description ILIKE $1 OR category ILIKE $1 OR services_list ILIKE $1
+       ORDER BY store_name`,
+      [pattern]
+    ),
+    queryMany<Record<string, unknown>>(
+      `SELECT p.*, json_build_object('id', v.id, 'slug', v.slug, 'store_name', v.store_name, 'vertical', v.vertical, 'image_url', v.image_url) AS vendors
+       FROM products p
+       JOIN vendors v ON v.id = p.vendor_id
+       WHERE p.available = true AND (p.name ILIKE $1 OR p.description ILIKE $1 OR p.category ILIKE $1)
+       ORDER BY p.name`,
+      [pattern]
+    ),
   ]);
-
-  let vendors = vendorsRes.data || [];
-  let products = productsRes.data || [];
 
   if (vertical) {
     vendors = vendors.filter((v: any) => v.vertical === vertical);

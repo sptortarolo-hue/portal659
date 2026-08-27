@@ -1,45 +1,22 @@
-import { getAuthSupabase } from "@/lib/auth-utils";
+import { getVendorByRequest } from "@/lib/vendor-utils";
+import { queryOne, query } from "@/lib/db";
 import { NextResponse } from "next/server";
 
-async function getVendor(request: Request) {
-  const supabase = getAuthSupabase(request);
-  if (!supabase) return { supabase: null, vendorId: null };
-  const { data: user } = await supabase.auth.getUser();
-  if (!user?.user) return { supabase, vendorId: null };
-  const { data: vendor } = await supabase
-    .from("vendors")
-    .select("id")
-    .eq("user_id", user.user.id)
-    .single();
-  return { supabase, vendorId: vendor?.id || null };
-}
-
 export async function PATCH(request: Request, ctx: { params: Promise<{ id: string }> }) {
-  const { supabase, vendorId } = await getVendor(request);
-  if (!supabase) {
-    return NextResponse.json({ error: "Error de conexión" }, { status: 503 });
-  }
-  if (!vendorId) {
-    return NextResponse.json(
-      { error: "No tenés un local registrado" },
-      { status: 403 }
-    );
+  const { vendor } = await getVendorByRequest(request);
+  if (!vendor) {
+    return NextResponse.json({ error: "No tenés un local registrado" }, { status: 403 });
   }
 
   const { id } = await ctx.params;
   const body = await request.json();
 
-  const { data: existing } = await supabase
-    .from("vendor_categories")
-    .select("*")
-    .eq("id", id)
-    .eq("vendor_id", vendorId)
-    .single();
+  const existing = await queryOne<Record<string, unknown>>(
+    `SELECT * FROM vendor_categories WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
+    [id, vendor.id]
+  );
   if (!existing) {
-    return NextResponse.json(
-      { error: "Categoría no encontrada" },
-      { status: 404 }
-    );
+    return NextResponse.json({ error: "Categoría no encontrada" }, { status: 404 });
   }
 
   const patch: Record<string, unknown> = {};
@@ -50,68 +27,39 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
     patch.position = body.position;
   }
 
-  const { data, error } = await supabase
-    .from("vendor_categories")
-    .update(patch)
-    .eq("id", id)
-    .select()
-    .single();
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
+  const category = await queryOne<Record<string, unknown>>(
+    `UPDATE vendor_categories SET name = COALESCE($1, name), position = COALESCE($2, position) WHERE id = $3 RETURNING *`,
+    [patch.name ?? null, patch.position ?? null, id]
+  );
 
   if (patch.name && patch.name !== existing.name) {
-    await supabase
-      .from("products")
-      .update({ category: patch.name })
-      .eq("vendor_id", vendorId)
-      .ilike("category", existing.name);
+    await query(
+      `UPDATE products SET category = $1 WHERE vendor_id = $2 AND category ILIKE $3`,
+      [patch.name, vendor.id, existing.name as string]
+    );
   }
 
-  return NextResponse.json({ category: data });
+  return NextResponse.json({ category });
 }
 
 export async function DELETE(request: Request, ctx: { params: Promise<{ id: string }> }) {
-  const { supabase, vendorId } = await getVendor(request);
-  if (!supabase) {
-    return NextResponse.json({ error: "Error de conexión" }, { status: 503 });
-  }
-  if (!vendorId) {
-    return NextResponse.json(
-      { error: "No tenés un local registrado" },
-      { status: 403 }
-    );
+  const { vendor } = await getVendorByRequest(request);
+  if (!vendor) {
+    return NextResponse.json({ error: "No tenés un local registrado" }, { status: 403 });
   }
 
   const { id } = await ctx.params;
 
-  const { data: existing } = await supabase
-    .from("vendor_categories")
-    .select("name")
-    .eq("id", id)
-    .eq("vendor_id", vendorId)
-    .single();
+  const existing = await queryOne<{ name: string }>(
+    `SELECT name FROM vendor_categories WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
+    [id, vendor.id]
+  );
   if (!existing) {
-    return NextResponse.json(
-      { error: "Categoría no encontrada" },
-      { status: 404 }
-    );
+    return NextResponse.json({ error: "Categoría no encontrada" }, { status: 404 });
   }
 
-  const { error } = await supabase
-    .from("vendor_categories")
-    .delete()
-    .eq("id", id)
-    .eq("vendor_id", vendorId);
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
-  await supabase
-    .from("products")
-    .update({ category: "otras" })
-    .eq("vendor_id", vendorId)
-    .ilike("category", existing.name);
+  await query(`DELETE FROM vendor_categories WHERE id = $1 AND vendor_id = $2`, [id, vendor.id]);
+  await query(`UPDATE products SET category = 'otras' WHERE vendor_id = $1 AND category ILIKE $2`, [vendor.id, existing.name]);
 
   return NextResponse.json({ ok: true });
 }

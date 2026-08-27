@@ -1,15 +1,10 @@
-import { getServiceClient } from "@/lib/supabase";
+import { queryMany, queryOne, withTransaction } from "@/lib/db";
 import { NextResponse } from "next/server";
 import { withRateLimit } from "@/lib/api-wrapper";
 import { sendEmail, orderConfirmationEmail } from "@/lib/email";
 import { resolveVendorPlan } from "@/lib/plans";
 
 export const POST = withRateLimit(async (request: Request) => {
-  const supabase = getServiceClient();
-  if (!supabase) {
-    return NextResponse.json({ error: "Error de conexión" }, { status: 503 });
-  }
-
   const body = await request.json();
   const {
     vendorId,
@@ -32,15 +27,14 @@ export const POST = withRateLimit(async (request: Request) => {
   }
 
   // Gating: el carrito/checkout requiere un plan con la feature cart activa
-  const { data: vendorRow } = await supabase
-    .from("vendors")
-    .select("vertical, plan_id, plan_status, plan_expires_at, trial_ends_at")
-    .eq("id", vendorId)
-    .single();
+  const vendorRow = await queryOne<Record<string, unknown>>(
+    `SELECT vertical, plan_id, plan_status, plan_expires_at, trial_ends_at FROM vendors WHERE id = $1 LIMIT 1`,
+    [vendorId]
+  );
 
   if (vendorRow) {
-    const { data: planRows } = await supabase.from("plans").select("*");
-    const plan = resolveVendorPlan(vendorRow, planRows || []);
+    const planRows = await queryMany<Record<string, unknown>>(`SELECT * FROM plans`);
+    const plan = resolveVendorPlan(vendorRow as any, planRows as any);
     if (!plan.can("cart")) {
       return NextResponse.json(
         { error: "Este comercio no acepta pedidos online por ahora. Consultalo directamente por WhatsApp." },
@@ -49,50 +43,71 @@ export const POST = withRateLimit(async (request: Request) => {
     }
   }
 
-  const { data, error } = await supabase.from("orders").insert({
-    vendor_id: vendorId,
-    customer_id: customerId || null,
-    customer_name: customerName,
-    customer_phone: customerPhone,
-    customer_address: customerAddress || null,
-    method: method === "pickup" ? "pickup" : "delivery",
-    payment_method: paymentMethod || "whatsapp",
-    items,
-    total,
-    status: "new",
-    notes: notes || null,
-  }).select("id").single();
+  let orderId: string | undefined;
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  await withTransaction(async (tx) => {
+    const rows = await tx.query<{ id: string }>(
+      `INSERT INTO orders (vendor_id, customer_id, customer_name, customer_phone, customer_address, method, payment_method, items, total, status, notes)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'new', $10)
+       RETURNING id`,
+      [
+        vendorId,
+        customerId || null,
+        customerName,
+        customerPhone,
+        customerAddress || null,
+        method === "pickup" ? "pickup" : "delivery",
+        paymentMethod || "whatsapp",
+        items,
+        total,
+        notes || null,
+      ]
+    );
+    orderId = rows[0]?.id;
+
+    const vendor = await tx.queryOne<{ user_id: string }>(
+      `SELECT user_id FROM vendors WHERE id = $1 LIMIT 1`,
+      [vendorId]
+    );
+
+    if (vendor?.user_id) {
+      const itemCount = items.reduce((s: number, i: any) => s + i.qty, 0);
+      const paymentLabel = paymentMethod === "efectivo" ? "💵 Efectivo" : paymentMethod === "transferencia" ? "🏦 Transferencia" : "📱 Coordinar";
+      await tx.queryVoid(
+        `INSERT INTO notifications (user_id, title, body, type, link) VALUES ($1, $2, $3, $4, $5)`,
+        [
+          vendor.user_id,
+          "Nuevo pedido recibido",
+          `${customerName} hizo un pedido de ${itemCount} producto${itemCount > 1 ? "s" : ""} por $${Number(total).toLocaleString("es-AR")} · ${paymentLabel}`,
+          "order",
+          "/vendor/dashboard",
+        ]
+      );
+    }
+  });
+
+  if (!orderId) {
+    return NextResponse.json({ error: "Error al crear el pedido" }, { status: 500 });
   }
 
-  const { data: vendor } = await supabase
-    .from("vendors")
-    .select("user_id, store_name")
-    .eq("id", vendorId)
-    .single();
+  const vendor = await queryOne<{ user_id: string; store_name: string }>(
+    `SELECT user_id, store_name FROM vendors WHERE id = $1 LIMIT 1`,
+    [vendorId]
+  );
 
   if (vendor?.user_id) {
-    const itemCount = items.reduce((s: number, i: any) => s + i.qty, 0);
-    const paymentLabel = paymentMethod === "efectivo" ? "💵 Efectivo" : paymentMethod === "transferencia" ? "🏦 Transferencia" : "📱 Coordinar";
-    await supabase.from("notifications").insert({
-      user_id: vendor.user_id,
-      title: "Nuevo pedido recibido",
-      body: `${customerName} hizo un pedido de ${itemCount} producto${itemCount > 1 ? "s" : ""} por $${Number(total).toLocaleString("es-AR")} · ${paymentLabel}`,
-      type: "order",
-      link: "/vendor/dashboard",
-    });
-
-    const { data: userProfile } = await supabase.auth.admin.getUserById(vendor.user_id);
-    if (userProfile?.user?.email) {
+    const userProfile = await queryOne<{ email: string }>(
+      `SELECT email FROM profiles WHERE id = $1 LIMIT 1`,
+      [vendor.user_id]
+    );
+    if (userProfile?.email) {
       const emailContent = orderConfirmationEmail(vendor.store_name, items, total);
       await sendEmail({
-        to: userProfile.user.email,
+        to: userProfile.email,
         ...emailContent,
       });
     }
   }
 
-  return NextResponse.json({ ok: true, orderId: data?.id });
+  return NextResponse.json({ ok: true, orderId });
 }, { maxRequests: 10 });

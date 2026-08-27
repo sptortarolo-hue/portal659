@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { X, LayoutDashboard, Store, Users, Star, FileText, Settings, LogOut } from "lucide-react";
+import { X, LayoutDashboard, Store, Users, Star, FileText, Settings, LogOut, Megaphone } from "lucide-react";
 
 const NAV_ITEMS = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
@@ -10,6 +10,7 @@ const NAV_ITEMS = [
   { href: "/admin/usuarios", label: "Usuarios", icon: Users },
   { href: "/admin/resenas", label: "Reseñas", icon: Star },
   { href: "/admin/auditoria", label: "Auditoría", icon: FileText },
+  { href: "/admin/alerta", label: "Alerta Vecinal", icon: Megaphone },
   { href: "/admin/config", label: "Configuración", icon: Settings },
 ];
 

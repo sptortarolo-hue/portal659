@@ -1,11 +1,8 @@
-import { getServiceClient } from "@/lib/supabase";
+import { query, queryOne } from "@/lib/db";
 import { NextResponse } from "next/server";
 import { withRateLimit } from "@/lib/api-wrapper";
 
 export const POST = withRateLimit(async (request: Request) => {
-  const supabase = getServiceClient();
-  if (!supabase) return NextResponse.json({ error: "Error de conexión" }, { status: 503 });
-
   const body = await request.json();
   const { vendorId, productName, bookingDate, bookingTime, notes, customerName, customerPhone } = body;
 
@@ -13,34 +10,28 @@ export const POST = withRateLimit(async (request: Request) => {
     return NextResponse.json({ error: "Faltan datos requeridos" }, { status: 400 });
   }
 
-  const { data, error } = await supabase.from("bookings").insert({
-    vendor_id: vendorId,
-    product_id: vendorId,
-    customer_id: "anonymous",
-    product_name: productName || null,
-    booking_date: bookingDate,
-    booking_time: bookingTime,
-    notes: notes || null,
-    status: "pending",
-  }).select("id").single();
+  const booking = await queryOne<{ id: string }>(
+    `INSERT INTO bookings (vendor_id, product_id, customer_id, product_name, booking_date, booking_time, notes, status)
+     VALUES ($1, $1, 'anonymous', $2, $3, $4, $5, 'pending') RETURNING id`,
+    [vendorId, productName || null, bookingDate, bookingTime, notes || null]
+  );
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
-  const { data: vendor } = await supabase
-    .from("vendors")
-    .select("user_id, store_name")
-    .eq("id", vendorId)
-    .single();
+  const vendor = await queryOne<{ user_id: string }>(
+    `SELECT user_id, store_name FROM vendors WHERE id = $1 LIMIT 1`,
+    [vendorId]
+  );
 
   if (vendor?.user_id) {
-    await supabase.from("notifications").insert({
-      user_id: vendor.user_id,
-      title: "Nuevo turno reservado",
-      body: `${customerName} reservó turno para ${bookingDate} a las ${bookingTime}${productName ? ` — ${productName}` : ""}`,
-      type: "booking",
-      link: "/vendor/dashboard",
-    });
+    await query(
+      `INSERT INTO notifications (user_id, title, body, type, link)
+       VALUES ($1, $2, $3, 'booking', '/vendor/dashboard')`,
+      [
+        vendor.user_id,
+        "Nuevo turno reservado",
+        `${customerName} reservó turno para ${bookingDate} a las ${bookingTime}${productName ? ` — ${productName}` : ""}`,
+      ]
+    );
   }
 
-  return NextResponse.json({ ok: true, bookingId: data?.id });
+  return NextResponse.json({ ok: true, bookingId: booking?.id });
 }, { maxRequests: 10 });

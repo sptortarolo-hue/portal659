@@ -1,23 +1,18 @@
 import { NextResponse } from "next/server";
-import { getAuthSupabase } from "@/lib/auth-utils";
 import { isAdmin } from "@/lib/admin-utils";
+import { queryMany, query } from "@/lib/db";
 
 export async function GET(request: Request) {
   if (!(await isAdmin(request))) {
     return NextResponse.json({ error: "No autorizado" }, { status: 403 });
   }
 
-  const supabase = getAuthSupabase(request)!;
-
-  const [neighborhoodsRes, categoriesRes] = await Promise.all([
-    supabase.from("neighborhoods").select("*").order("name"),
-    supabase.from("categories").select("*").order("name"),
+  const [neighborhoods, categories] = await Promise.all([
+    queryMany(`SELECT * FROM neighborhoods ORDER BY name`),
+    queryMany(`SELECT * FROM categories ORDER BY name`),
   ]);
 
-  return NextResponse.json({
-    neighborhoods: neighborhoodsRes.data || [],
-    categories: categoriesRes.data || [],
-  });
+  return NextResponse.json({ neighborhoods, categories });
 }
 
 export async function PATCH(request: Request) {
@@ -32,11 +27,15 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "type, id y data son requeridos" }, { status: 400 });
   }
 
-  const supabase = getAuthSupabase(request)!;
   const table = type === "neighborhood" ? "neighborhoods" : "categories";
 
-  const { error } = await supabase.from(table).update(updateData).eq("id", id);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  const cols = Object.keys(updateData);
+  if (cols.length === 0) return NextResponse.json({ ok: true });
+  const setClauses = cols.map((k, i) => `${k} = $${i + 2}`).join(", ");
+  await query(
+    `UPDATE ${table} SET ${setClauses} WHERE slug = $1`,
+    [id, ...Object.values(updateData)]
+  );
 
   return NextResponse.json({ ok: true });
 }

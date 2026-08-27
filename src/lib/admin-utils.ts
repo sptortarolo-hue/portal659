@@ -1,16 +1,14 @@
-import { getAuthSupabase, getUserId } from "./auth-utils";
+import { getAuthUser } from "./auth";
+import { queryOne } from "./db";
 
 export async function isAdmin(request: Request): Promise<boolean> {
-  const supabase = getAuthSupabase(request);
-  if (!supabase) return false;
-  const userId = await getUserId(supabase);
-  if (!userId) return false;
-  const { data } = await supabase
-    .from("vendors")
-    .select("is_admin")
-    .eq("user_id", userId)
-    .maybeSingle();
-  return data?.is_admin === true;
+  const user = await getAuthUser(request);
+  if (!user) return false;
+  const vendor = await queryOne<{ is_admin: boolean }>(
+    `SELECT is_admin FROM vendors WHERE user_id = $1 LIMIT 1`,
+    [user.id]
+  );
+  return vendor?.is_admin === true;
 }
 
 export async function requireAdmin(request: Request) {

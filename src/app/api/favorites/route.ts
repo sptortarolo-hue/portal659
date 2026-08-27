@@ -1,51 +1,41 @@
-import { getAuthSupabase, getUserId } from "@/lib/auth-utils";
+import { getUserId } from "@/lib/auth-utils";
+import { queryMany, queryOne, query } from "@/lib/db";
 import { NextResponse } from "next/server";
 
 export async function GET(request: Request) {
-  const supabase = getAuthSupabase(request);
-  if (!supabase) return NextResponse.json({ favorites: [] });
-
-  const userId = await getUserId(supabase);
+  const userId = await getUserId(request);
   if (!userId) return NextResponse.json({ favorites: [] });
 
-  const { data } = await supabase
-    .from("favorites")
-    .select("vendor_id, vendors(id, store_name, slug, logo_url, vertical, neighborhood)")
-    .eq("user_id", userId)
-    .order("created_at", { ascending: false });
+  const favorites = await queryMany<Record<string, unknown>>(
+    `SELECT f.vendor_id, json_build_object('id', v.id, 'store_name', v.store_name, 'slug', v.slug, 'logo_url', v.logo_url, 'vertical', v.vertical, 'neighborhood', v.neighborhood) AS vendors
+     FROM favorites f
+     JOIN vendors v ON v.id = f.vendor_id
+     WHERE f.user_id = $1
+     ORDER BY f.created_at DESC`,
+    [userId]
+  );
 
-  return NextResponse.json({ favorites: data || [] });
+  return NextResponse.json({ favorites });
 }
 
 export async function POST(request: Request) {
-  const supabase = getAuthSupabase(request);
-  if (!supabase) return NextResponse.json({ error: "Error de conexión" }, { status: 503 });
-
-  const userId = await getUserId(supabase);
+  const userId = await getUserId(request);
   if (!userId) return NextResponse.json({ error: "Debés estar logueado" }, { status: 401 });
 
   const body = await request.json();
   const { vendorId } = body;
   if (!vendorId) return NextResponse.json({ error: "vendorId requerido" }, { status: 400 });
 
-  const { data: existing } = await supabase
-    .from("favorites")
-    .select("id")
-    .eq("user_id", userId)
-    .eq("vendor_id", vendorId)
-    .maybeSingle();
+  const existing = await queryOne<{ id: string }>(
+    `SELECT id FROM favorites WHERE user_id = $1 AND vendor_id = $2 LIMIT 1`,
+    [userId, vendorId]
+  );
 
   if (existing) {
-    await supabase.from("favorites").delete().eq("id", existing.id);
+    await query(`DELETE FROM favorites WHERE id = $1`, [existing.id]);
     return NextResponse.json({ ok: true, favorited: false });
   }
 
-  const { error } = await supabase.from("favorites").insert({
-    user_id: userId,
-    vendor_id: vendorId,
-  });
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
+  await query(`INSERT INTO favorites (user_id, vendor_id) VALUES ($1, $2)`, [userId, vendorId]);
   return NextResponse.json({ ok: true, favorited: true });
 }

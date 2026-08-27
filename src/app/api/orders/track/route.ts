@@ -1,14 +1,9 @@
-import { getServiceClient } from "@/lib/supabase";
+import { queryMany } from "@/lib/db";
 import { NextResponse } from "next/server";
 import { withRateLimit } from "@/lib/api-wrapper";
 import { formatPhone, isValidPhone } from "@/lib/order-utils";
 
 export const GET = withRateLimit(async (request: Request) => {
-  const supabase = getServiceClient();
-  if (!supabase) {
-    return NextResponse.json({ error: "Error de conexión" }, { status: 503 });
-  }
-
   const { searchParams } = new URL(request.url);
   const rawPhone = searchParams.get("phone");
 
@@ -23,17 +18,22 @@ export const GET = withRateLimit(async (request: Request) => {
 
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
-  const { data, error } = await supabase
-    .from("orders")
-    .select("*, vendors(store_name, slug, whatsapp, phone, prep_time_min)")
-    .eq("customer_phone", phone)
-    .gte("created_at", sevenDaysAgo)
-    .order("created_at", { ascending: false })
-    .limit(20);
+  const orders = await queryMany<Record<string, unknown>>(
+    `SELECT o.*,
+            jsonb_build_object(
+              'store_name', v.store_name,
+              'slug', v.slug,
+              'whatsapp', v.whatsapp,
+              'phone', v.phone,
+              'prep_time_min', v.prep_time_min
+            ) AS vendors
+     FROM orders o
+     LEFT JOIN vendors v ON v.id = o.vendor_id
+     WHERE o.customer_phone = $1 AND o.created_at >= $2
+     ORDER BY o.created_at DESC
+     LIMIT 20`,
+    [phone, sevenDaysAgo]
+  );
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
-  return NextResponse.json({ orders: data || [] });
+  return NextResponse.json({ orders: orders || [] });
 }, { maxRequests: 15 });

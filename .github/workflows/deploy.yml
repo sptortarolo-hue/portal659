@@ -24,11 +24,18 @@ jobs:
             mkdir -p /opt/portal659
             tar -xzf code.tgz -C /opt/portal659 --strip-components=1
 
-            echo 'NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}' > /opt/portal659/.env
-            echo 'NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}' >> /opt/portal659/.env
-            echo 'SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}' >> /opt/portal659/.env
+            echo 'DATABASE_URL=${{ secrets.DATABASE_URL }}' > /opt/portal659/.env
+            echo 'JWT_SECRET=${{ secrets.JWT_SECRET }}' >> /opt/portal659/.env
             echo 'NEXT_PUBLIC_SITE_URL=https://www.portal659.com.ar' >> /opt/portal659/.env
+            echo 'POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}' >> /opt/portal659/.env
+            echo 'UPLOAD_DIR=/app/uploads' >> /opt/portal659/.env
             echo 'RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}' >> /opt/portal659/.env
+            echo 'FROM_EMAIL=${{ secrets.FROM_EMAIL }}' >> /opt/portal659/.env
+            echo 'MP_ACCESS_TOKEN=${{ secrets.MP_ACCESS_TOKEN }}' >> /opt/portal659/.env
+            echo 'MP_PUBLIC_KEY=${{ secrets.MP_PUBLIC_KEY }}' >> /opt/portal659/.env
+            echo 'MP_WEBHOOK_SECRET=${{ secrets.MP_WEBHOOK_SECRET }}' >> /opt/portal659/.env
+            echo 'UPSTASH_REDIS_REST_URL=${{ secrets.UPSTASH_REDIS_REST_URL }}' >> /opt/portal659/.env
+            echo 'UPSTASH_REDIS_REST_TOKEN=${{ secrets.UPSTASH_REDIS_REST_TOKEN }}' >> /opt/portal659/.env
 
             cd /opt/portal659
             docker compose up -d --build

@@ -1,41 +1,48 @@
 import { NextResponse } from "next/server";
-import { getAuthSupabase } from "@/lib/auth-utils";
 import { isAdmin } from "@/lib/admin-utils";
+import { queryMany } from "@/lib/db";
 
 export async function GET(request: Request) {
   if (!(await isAdmin(request))) {
     return NextResponse.json({ error: "No autorizado" }, { status: 403 });
   }
 
-  const supabase = getAuthSupabase(request)!;
   const url = new URL(request.url);
-
   const vendorId = url.searchParams.get("vendor_id");
   const dateFrom = url.searchParams.get("date_from");
   const dateTo = url.searchParams.get("date_to");
   const status = url.searchParams.get("status");
 
-  let query = supabase
-    .from("order_status_log")
-    .select("*, orders(total, customer_name, vendors(store_name))")
-    .order("created_at", { ascending: false })
-    .limit(200);
+  const conditions: string[] = [];
+  const params: unknown[] = [];
 
   if (vendorId) {
-    query = query.eq("order_id", vendorId);
+    params.push(vendorId);
+    conditions.push(`osl.order_id = $${params.length}`);
   }
   if (dateFrom) {
-    query = query.gte("created_at", dateFrom);
+    params.push(dateFrom);
+    conditions.push(`osl.created_at >= $${params.length}`);
   }
   if (dateTo) {
-    query = query.lte("created_at", dateTo);
+    params.push(dateTo);
+    conditions.push(`osl.created_at <= $${params.length}`);
   }
   if (status) {
-    query = query.eq("new_status", status);
+    params.push(status);
+    conditions.push(`osl.status = $${params.length}`);
   }
 
-  const { data, error } = await query;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
-  return NextResponse.json({ logs: data || [] });
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+  const logs = await queryMany<Record<string, unknown>>(
+    `SELECT osl.*, o.total, o.customer_name, v.store_name
+     FROM order_status_log osl
+     LEFT JOIN orders o ON o.id = osl.order_id
+     LEFT JOIN vendors v ON v.id = o.vendor_id
+     ${whereClause}
+     ORDER BY osl.created_at DESC
+     LIMIT 200`,
+    params
+  );
+  return NextResponse.json({ logs });
 }

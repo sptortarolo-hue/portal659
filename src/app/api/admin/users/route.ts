@@ -1,73 +1,68 @@
-import { getAuthSupabase, getUserId } from "@/lib/auth-utils";
-import { getServiceClient } from "@/lib/supabase";
+import { isAdmin } from "@/lib/admin-utils";
+import { hashPassword } from "@/lib/auth";
+import { queryMany, queryOne, query, withTransaction } from "@/lib/db";
 import { NextResponse } from "next/server";
-
-async function isAdmin(request: Request): Promise<boolean> {
-  const supabase = getAuthSupabase(request);
-  if (!supabase) return false;
-  const userId = await getUserId(supabase);
-  if (!userId) return false;
-  const { data } = await supabase
-    .from("vendors")
-    .select("is_admin")
-    .eq("user_id", userId)
-    .maybeSingle();
-  return data?.is_admin === true;
-}
 
 export async function GET(request: Request) {
   if (!(await isAdmin(request))) {
     return NextResponse.json({ error: "No autorizado" }, { status: 403 });
   }
 
-  const serviceClient = getServiceClient();
-  if (!serviceClient) {
-    return NextResponse.json({ error: "Error de conexión" }, { status: 503 });
-  }
-
   const url = new URL(request.url);
-  const page = parseInt(url.searchParams.get("page") || "1");
-  const perPage = parseInt(url.searchParams.get("per_page") || "50");
+  const page = Math.max(1, parseInt(url.searchParams.get("page") || "1"));
+  const perPage = Math.max(1, parseInt(url.searchParams.get("per_page") || "50"));
   const search = url.searchParams.get("search") || "";
 
-  const { data: authUsers, error } = await serviceClient.auth.admin.listUsers({
-    page,
-    perPage,
-  });
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
-  let users = authUsers.users.map((u) => ({
-    id: u.id,
-    email: u.email,
-    firstName: u.user_metadata?.first_name || "",
-    lastName: u.user_metadata?.last_name || "",
-    full_name: u.user_metadata?.full_name || u.email,
-    whatsapp: u.user_metadata?.whatsapp || "",
-    role: u.user_metadata?.role || "vendor",
-    vertical: u.user_metadata?.vertical || "",
-    email_confirmed: !!u.email_confirmed_at,
-    last_sign_in: u.last_sign_in_at,
-    created_at: u.created_at,
-  }));
+  const conditions: string[] = [];
+  const params: unknown[] = [];
 
   if (search) {
-    const q = search.toLowerCase();
-    users = users.filter(
-      (u) =>
-        u.email?.toLowerCase().includes(q) ||
-        u.full_name?.toLowerCase().includes(q) ||
-        u.firstName?.toLowerCase().includes(q) ||
-        u.lastName?.toLowerCase().includes(q) ||
-        u.whatsapp?.includes(q)
+    params.push(`%${search}%`);
+    conditions.push(
+      `(p.email ILIKE $${params.length} OR p.full_name ILIKE $${params.length} OR p.whatsapp ILIKE $${params.length})`
     );
   }
 
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+
+  const countRow = await queryOne<{ c: number }>(
+    `SELECT count(*)::int AS c FROM profiles p ${whereClause}`,
+    params
+  );
+
+  params.push(perPage, (page - 1) * perPage);
+  const rows = await queryMany<Record<string, unknown>>(
+    `SELECT p.id, p.email, p.full_name, p.whatsapp, p.role,
+            p.email_confirmed, p.created_at,
+            v.store_name, v.vertical, v.is_admin
+     FROM profiles p
+     LEFT JOIN vendors v ON v.user_id = p.id
+     ${whereClause}
+     ORDER BY p.created_at DESC
+     LIMIT $${params.length - 1} OFFSET $${params.length}`,
+    params
+  );
+
+  const users = rows.map((r) => {
+    const fullName = (r.full_name as string) || "";
+    const parts = fullName.split(" ").filter(Boolean);
+    return {
+      id: r.id,
+      email: r.email,
+      firstName: parts[0] || "",
+      lastName: parts.slice(1).join(" "),
+      full_name: fullName || r.email,
+      whatsapp: r.whatsapp || "",
+      role: r.role || "vendor",
+      vertical: r.vertical || "",
+      email_confirmed: !!r.email_confirmed,
+      created_at: r.created_at,
+    };
+  });
+
   return NextResponse.json({
     users,
-    total: authUsers.total || users.length,
+    total: countRow?.c || users.length,
     page,
     perPage,
   });
@@ -78,71 +73,38 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "No autorizado" }, { status: 403 });
   }
 
-  const serviceClient = getServiceClient();
-  if (!serviceClient) {
-    return NextResponse.json({ error: "Error de conexión" }, { status: 503 });
-  }
-
   const { email, password, firstName, lastName, whatsapp, role, vertical } = await request.json();
 
   if (!email || !password || !firstName || !lastName) {
     return NextResponse.json({ error: "Faltan datos requeridos" }, { status: 400 });
   }
 
-  const { data, error } = await serviceClient.auth.admin.createUser({
-    email,
-    password,
-    email_confirm: true,
-    user_metadata: {
-      first_name: firstName,
-      last_name: lastName,
-      full_name: `${firstName} ${lastName}`,
-      whatsapp: whatsapp || "",
-      role: role || "vendor",
-      vertical: vertical || "gastronomia",
-    },
+  const passwordHash = await hashPassword(password);
+  const fullName = `${firstName} ${lastName}`;
+
+  const user = await withTransaction(async (tx) => {
+    const created = await tx.queryOne<{ id: string; email: string }>(
+      `INSERT INTO profiles (email, password_hash, full_name, whatsapp, role, email_confirmed)
+       VALUES ($1, $2, $3, $4, $5, true)
+       RETURNING id, email`,
+      [email, passwordHash, fullName, whatsapp || "", role || "vendor"]
+    );
+    if (!created) throw new Error("No se pudo crear el usuario");
+
+    await tx.queryVoid(
+      `INSERT INTO vendors (user_id, store_name, vertical, verified, is_admin)
+       VALUES ($1, $2, $3, true, false)`,
+      [created.id, firstName, vertical || "gastronomia"]
+    );
+    return created;
   });
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
-  return NextResponse.json({ ok: true, user: { id: data.user.id, email: data.user.email } });
-}
-
-export async function DELETE(request: Request) {
-  if (!(await isAdmin(request))) {
-    return NextResponse.json({ error: "No autorizado" }, { status: 403 });
-  }
-
-  const serviceClient = getServiceClient();
-  if (!serviceClient) {
-    return NextResponse.json({ error: "Error de conexión" }, { status: 503 });
-  }
-
-  const { userId } = await request.json();
-
-  if (!userId) {
-    return NextResponse.json({ error: "userId requerido" }, { status: 400 });
-  }
-
-  const { error } = await serviceClient.auth.admin.deleteUser(userId);
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, user: { id: user.id, email: user.email } });
 }
 
 export async function PATCH(request: Request) {
   if (!(await isAdmin(request))) {
     return NextResponse.json({ error: "No autorizado" }, { status: 403 });
-  }
-
-  const serviceClient = getServiceClient();
-  if (!serviceClient) {
-    return NextResponse.json({ error: "Error de conexión" }, { status: 503 });
   }
 
   const { userId, firstName, lastName, whatsapp, role, vertical } = await request.json();
@@ -151,21 +113,49 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "userId requerido" }, { status: 400 });
   }
 
-  const updates: Record<string, string> = {};
-  if (firstName !== undefined) updates.first_name = firstName;
-  if (lastName !== undefined) updates.last_name = lastName;
-  if (whatsapp !== undefined) updates.whatsapp = whatsapp;
-  if (role !== undefined) updates.role = role;
-  if (vertical !== undefined) updates.vertical = vertical;
-  updates.full_name = `${firstName || ""} ${lastName || ""}`.trim();
+  const profileUpdates: Record<string, unknown> = {};
+  if (firstName !== undefined || lastName !== undefined) {
+    profileUpdates.full_name = `${firstName || ""} ${lastName || ""}`.trim();
+  }
+  if (whatsapp !== undefined) profileUpdates.whatsapp = whatsapp;
+  if (role !== undefined) profileUpdates.role = role;
 
-  const { error } = await serviceClient.auth.admin.updateUserById(userId, {
-    user_metadata: updates,
+  await withTransaction(async (tx) => {
+    if (Object.keys(profileUpdates).length > 0) {
+      const setClauses = Object.keys(profileUpdates)
+        .map((k, i) => `${k} = $${i + 2}`)
+        .join(", ");
+      await tx.queryVoid(
+        `UPDATE profiles SET ${setClauses} WHERE id = $1`,
+        [userId, ...Object.values(profileUpdates)]
+      );
+    }
+    if (vertical !== undefined) {
+      await tx.queryVoid(
+        `UPDATE vendors SET vertical = $2 WHERE user_id = $1`,
+        [userId, vertical]
+      );
+    }
   });
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ ok: true });
+}
+
+export async function DELETE(request: Request) {
+  if (!(await isAdmin(request))) {
+    return NextResponse.json({ error: "No autorizado" }, { status: 403 });
   }
+
+  const { userId } = await request.json();
+
+  if (!userId) {
+    return NextResponse.json({ error: "userId requerido" }, { status: 400 });
+  }
+
+  await withTransaction(async (tx) => {
+    await tx.queryVoid(`DELETE FROM vendors WHERE user_id = $1`, [userId]);
+    await tx.queryVoid(`DELETE FROM profiles WHERE id = $1`, [userId]);
+  });
 
   return NextResponse.json({ ok: true });
 }

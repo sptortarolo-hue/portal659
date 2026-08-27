@@ -1,8 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@supabase/supabase-js";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -152,13 +151,11 @@ export default function MisPedidosPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [searched, setSearched] = useState(false);
-  const [realtimeConnected, setRealtimeConnected] = useState(false);
   const [reorderConfirm, setReorderConfirm] = useState<{
     order: Order & { vendors?: { store_name: string; slug: string; whatsapp: string } | null };
     vendorSlug: string;
     vendorWhatsapp: string;
   } | null>(null);
-  const channelRef = useRef<ReturnType<ReturnType<typeof createClient>["channel"]> | null>(null);
 
   const fetchOrders = useCallback(async (phoneNumber: string) => {
     setLoading(true);
@@ -181,40 +178,10 @@ export default function MisPedidosPage() {
   useEffect(() => {
     if (!searched || !phone) return;
 
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL || "",
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""
-    );
-
-    const channel = supabase
-      .channel(`track-${phone}`)
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "orders", filter: `customer_phone=eq.${phone}` },
-        (payload) => {
-          setOrders((prev) =>
-            prev.map((o) => (o.id === payload.new.id ? { ...o, ...payload.new } : o))
-          );
-        }
-      )
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "orders", filter: `customer_phone=eq.${phone}` },
-        (payload) => {
-          setOrders((prev) => [payload.new as Order, ...prev]);
-        }
-      )
-      .subscribe((status) => {
-        setRealtimeConnected(status === "SUBSCRIBED");
-      });
-
-    channelRef.current = channel;
-
-    return () => {
-      channel.unsubscribe();
-      channelRef.current = null;
-    };
-  }, [searched, phone]);
+    fetchOrders(phone);
+    const interval = setInterval(() => fetchOrders(phone), 15000);
+    return () => clearInterval(interval);
+  }, [searched, phone, fetchOrders]);
 
   function handleSearch(e: React.FormEvent) {
     e.preventDefault();
@@ -293,12 +260,10 @@ export default function MisPedidosPage() {
 
       {searched && (
         <div className="flex items-center gap-2 mb-4">
-          {realtimeConnected && (
-            <span className="flex items-center gap-1 text-[10px] text-green-600">
-              <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
-              Actualización en vivo
-            </span>
-          )}
+          <span className="flex items-center gap-1 text-[10px] text-green-600">
+            <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
+            Actualización automática
+          </span>
           <span className="text-[10px] text-muted-foreground/50">
             {orders.length} pedido{orders.length !== 1 ? "s" : ""}
           </span>

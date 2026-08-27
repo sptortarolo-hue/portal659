@@ -1,5 +1,5 @@
-import { getAuthSupabase } from "@/lib/auth-utils";
-import { getServiceClient } from "@/lib/supabase";
+import { getVendorByRequest } from "@/lib/vendor-utils";
+import { queryMany, queryOne, withTransaction } from "@/lib/db";
 import { NextResponse } from "next/server";
 import { canTransition } from "@/lib/order-utils";
 import type { OrderStatus } from "@/types/database";
@@ -13,31 +13,24 @@ const STATUS_LABELS: Record<string, string> = {
   cancelled: "cancelado",
 };
 
+const RETURN_COLUMNS =
+  "customer_phone, customer_name, total, payment_method, notes, modification_notes, method, items";
+
 export async function PATCH(
   request: Request,
   context: { params: Promise<{ id: string }> }
 ) {
   const params = await context.params;
 
-  const supabase = getAuthSupabase(request);
-  if (!supabase) {
-    return NextResponse.json({ error: "Error de conexión" }, { status: 503 });
-  }
-
-  const { data: user } = await supabase.auth.getUser();
-  if (!user?.user) {
-    return NextResponse.json({ error: "No autenticado" }, { status: 401 });
-  }
-
-  const { data: vendor } = await supabase
-    .from("vendors")
-    .select("id, store_name")
-    .eq("user_id", user.user.id)
-    .maybeSingle();
-
+  const { vendor } = await getVendorByRequest(request);
   if (!vendor) {
     return NextResponse.json({ error: "No autorizado" }, { status: 403 });
   }
+
+  const fullVendor = await queryOne<{ id: string; store_name: string }>(
+    `SELECT id, store_name FROM vendors WHERE id = $1 LIMIT 1`,
+    [vendor.id]
+  );
 
   const body = await request.json();
   const { status, estimated_minutes, items, modification_notes } = body;
@@ -48,17 +41,14 @@ export async function PATCH(
     return NextResponse.json({ error: "Estado inválido" }, { status: 400 });
   }
 
-  const { data: currentOrderRows, error: fetchErr } = await supabase
-    .from("orders")
-    .select("status")
-    .eq("id", params.id)
-    .eq("vendor_id", vendor.id);
+  const currentOrder = await queryOne<{ status: string }>(
+    `SELECT status FROM orders WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
+    [params.id, vendor.id]
+  );
 
-  if (fetchErr || !currentOrderRows || currentOrderRows.length === 0) {
+  if (!currentOrder) {
     return NextResponse.json({ error: "Pedido no encontrado" }, { status: 404 });
   }
-
-  const currentOrder = currentOrderRows[0];
 
   if (isModifyOnly && currentOrder.status !== "new") {
     return NextResponse.json(
@@ -80,45 +70,57 @@ export async function PATCH(
   if (items !== undefined) updateData.items = items;
   if (modification_notes !== undefined) updateData.modification_notes = modification_notes;
 
-  const { data: orderRows, error: updateErr } = await supabase
-    .from("orders")
-    .update(updateData)
-    .eq("id", params.id)
-    .eq("vendor_id", vendor.id)
-    .select("customer_phone, customer_name, total, payment_method, notes, modification_notes, method, items");
-
-  if (updateErr || !orderRows || orderRows.length === 0) {
-    return NextResponse.json({ error: updateErr?.message || "Error al actualizar" }, { status: 500 });
+  const setClauses: string[] = [];
+  const values: unknown[] = [params.id, vendor.id];
+  let idx = 3;
+  for (const [key, val] of Object.entries(updateData)) {
+    setClauses.push(`${key} = $${idx}`);
+    values.push(val);
+    idx++;
   }
 
-  const order = orderRows[0];
+  const order = await withTransaction(async (tx) => {
+    const orderRows = await tx.query<Record<string, unknown>>(
+      `UPDATE orders SET ${setClauses.join(", ")} WHERE id = $1 AND vendor_id = $2 RETURNING ${RETURN_COLUMNS}`,
+      values
+    );
+    if (orderRows.length === 0) {
+      return null;
+    }
 
-  if (status) {
-    await supabase.from("order_status_log").insert({
-      order_id: params.id,
-      status,
-    });
+    if (status) {
+      await tx.queryVoid(
+        `INSERT INTO order_status_log (order_id, status) VALUES ($1, $2)`,
+        [params.id, status]
+      );
+    }
+
+    return orderRows[0];
+  });
+
+  if (!order) {
+    return NextResponse.json({ error: "Error al actualizar" }, { status: 500 });
   }
 
   if (order && STATUS_LABELS[status] && order.customer_phone) {
     try {
-      const serviceClient = getServiceClient();
-      if (serviceClient) {
-        const { data: profiles } = await serviceClient.auth.admin.listUsers();
-        const customerProfile = profiles?.users?.find(
-          (u: { phone?: string; user_metadata?: Record<string, unknown> }) =>
-            u.phone === order.customer_phone || (u.user_metadata?.phone as string) === order.customer_phone
-        );
+      const customerProfile = await queryOne<{ id: string }>(
+        `SELECT id FROM profiles WHERE phone = $1 OR whatsapp = $1 LIMIT 1`,
+        [order.customer_phone as string]
+      );
 
-        if (customerProfile) {
-          await serviceClient.from("notifications").insert({
-            user_id: customerProfile.id,
-            title: `Tu pedido fue ${STATUS_LABELS[status]}`,
-            body: `${vendor.store_name} ${STATUS_LABELS[status]} tu pedido de $${Number(order.total).toLocaleString("es-AR")}`,
-            type: "order",
-            link: "/mis-pedidos",
-          });
-        }
+      if (customerProfile) {
+        await queryMany<Record<string, unknown>>(
+          `INSERT INTO notifications (user_id, title, body, type, link)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [
+            customerProfile.id,
+            `Tu pedido fue ${STATUS_LABELS[status]}`,
+            `${fullVendor?.store_name} ${STATUS_LABELS[status]} tu pedido de $${Number(order.total).toLocaleString("es-AR")}`,
+            "order",
+            "/mis-pedidos",
+          ]
+        );
       }
     } catch {
       // Notification is best-effort, don't fail the request

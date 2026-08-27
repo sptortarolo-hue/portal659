@@ -1,4 +1,5 @@
 import { gateRequest, gateError } from "@/lib/subscription-gate";
+import { queryMany, queryOne } from "@/lib/db";
 import { NextResponse } from "next/server";
 
 export async function GET(request: Request) {
@@ -12,16 +13,12 @@ export async function GET(request: Request) {
     );
   }
 
-  const { data, error } = await gate.supabase
-    .from("tables")
-    .select("*")
-    .eq("vendor_id", gate.vendor.id)
-    .order("position", { ascending: true })
-    .order("created_at", { ascending: true });
+  const tables = await queryMany<Record<string, unknown>>(
+    `SELECT * FROM tables WHERE vendor_id = $1 ORDER BY position ASC, created_at ASC`,
+    [gate.vendor.id]
+  );
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
-  return NextResponse.json({ tables: data || [] });
+  return NextResponse.json({ tables: tables || [] });
 }
 
 export async function POST(request: Request) {
@@ -42,19 +39,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "El nombre de la mesa es requerido" }, { status: 400 });
   }
 
-  const { data, error } = await gate.supabase
-    .from("tables")
-    .insert({
-      vendor_id: gate.vendor.id,
-      name: String(name).trim(),
-      capacity: capacity && Number(capacity) > 0 ? Number(capacity) : 4,
-      position: position != null ? Number(position) : 0,
-      status: "libre",
-    })
-    .select()
-    .single();
+  const table = await queryOne<Record<string, unknown>>(
+    `INSERT INTO tables (vendor_id, name, capacity, position, status)
+     VALUES ($1, $2, $3, $4, 'libre') RETURNING *`,
+    [
+      gate.vendor.id,
+      String(name).trim(),
+      capacity && Number(capacity) > 0 ? Number(capacity) : 4,
+      position != null ? Number(position) : 0,
+    ]
+  );
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
-  return NextResponse.json({ table: data });
+  return NextResponse.json({ table });
 }

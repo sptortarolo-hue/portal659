@@ -1,42 +1,38 @@
-import { getAuthSupabase, getUserId } from "@/lib/auth-utils";
+import { getUserId } from "@/lib/auth-utils";
+import { queryMany, queryOne } from "@/lib/db";
 import { resolveVendorPlan, daysLeft } from "@/lib/plans";
 import { NextResponse } from "next/server";
+import type { Plan, Vendor, VendorSubscription } from "@/types/database";
 
 export async function GET(request: Request) {
-  const supabase = getAuthSupabase(request);
-  if (!supabase) return NextResponse.json({ error: "Error de conexión" }, { status: 503 });
-
-  const userId = await getUserId(supabase);
+  const userId = await getUserId(request);
   if (!userId) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
 
-  const [vendorRes, plansRes, historyRes] = await Promise.all([
-    supabase.from("vendors").select("*").eq("user_id", userId).maybeSingle(),
-    supabase.from("plans").select("*").order("sort", { ascending: true }),
-    supabase
-      .from("vendor_subscriptions")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(24),
+  const [vendor, plans, history] = await Promise.all([
+    queryOne<Vendor>(`SELECT * FROM vendors WHERE user_id = $1 LIMIT 1`, [userId]),
+    queryMany<Plan>(`SELECT * FROM plans ORDER BY sort ASC`),
+    queryMany<VendorSubscription>(
+      `SELECT * FROM vendor_subscriptions ORDER BY created_at DESC LIMIT 24`
+    ),
   ]);
 
-  const vendor = vendorRes.data;
   if (!vendor) return NextResponse.json({ error: "No tenés un local" }, { status: 403 });
 
-  const plans = plansRes.data || [];
   const effective = resolveVendorPlan(vendor, plans);
 
-  const { count } = await supabase
-    .from("products")
-    .select("id", { count: "exact", head: true })
-    .eq("vendor_id", vendor.id);
+  const productCount = await queryOne<{ c: number }>(
+    `SELECT count(*)::int AS c FROM products WHERE vendor_id = $1`,
+    [vendor.id]
+  );
+  const count = productCount?.c || 0;
 
   const usage = {
-    products: count || 0,
+    products: count,
     maxProducts: effective.maxProducts,
-    overLimit: effective.maxProducts != null && (count || 0) > effective.maxProducts,
+    overLimit: effective.maxProducts != null && count > effective.maxProducts,
     percent: effective.maxProducts != null
-      ? Math.min(100, Math.round(((count || 0) / effective.maxProducts) * 100))
-      : (count || 0) > 0 ? 100 : 0,
+      ? Math.min(100, Math.round((count / effective.maxProducts) * 100))
+      : count > 0 ? 100 : 0,
   };
 
   return NextResponse.json({
@@ -61,6 +57,6 @@ export async function GET(request: Request) {
       hasTrial: effective.hasTrial,
     },
     usage,
-    history: historyRes.data || [],
+    history: history || [],
   });
 }

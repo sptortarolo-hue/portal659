@@ -1,4 +1,5 @@
 import { gateRequest, gateError } from "@/lib/subscription-gate";
+import { queryOne } from "@/lib/db";
 import { NextResponse } from "next/server";
 
 export async function PATCH(
@@ -22,17 +23,25 @@ export async function PATCH(
   }
   if (body.position !== undefined) payload.position = Number(body.position);
 
-  const { data, error } = await gate.supabase
-    .from("tables")
-    .update(payload)
-    .eq("id", id)
-    .eq("vendor_id", gate.vendor.id)
-    .select()
-    .single();
+  if (Object.keys(payload).length === 0) {
+    return NextResponse.json({ error: "No hay campos para actualizar" }, { status: 400 });
+  }
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  const setClauses: string[] = [];
+  const values: unknown[] = [id, gate.vendor.id];
+  let idx = 3;
+  for (const [key, val] of Object.entries(payload)) {
+    setClauses.push(`${key} = $${idx}`);
+    values.push(val);
+    idx++;
+  }
 
-  return NextResponse.json({ table: data });
+  const table = await queryOne<Record<string, unknown>>(
+    `UPDATE tables SET ${setClauses.join(", ")} WHERE id = $1 AND vendor_id = $2 RETURNING *`,
+    values
+  );
+
+  return NextResponse.json({ table });
 }
 
 export async function DELETE(
@@ -48,20 +57,16 @@ export async function DELETE(
   const { id } = await params;
 
   // Una mesa ocupada no se puede borrar
-  const { data: table } = await gate.supabase
-    .from("tables")
-    .select("status")
-    .eq("id", id)
-    .eq("vendor_id", gate.vendor.id)
-    .single();
+  const table = await queryOne<{ status: string }>(
+    `SELECT status FROM tables WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
+    [id, gate.vendor.id]
+  );
 
   if (!table) return NextResponse.json({ error: "Mesa no encontrada" }, { status: 404 });
   if (table.status === "ocupada") {
     return NextResponse.json({ error: "La mesa está ocupada. Cerrá la mesa antes de eliminarla." }, { status: 400 });
   }
 
-  const { error } = await gate.supabase.from("tables").delete().eq("id", id).eq("vendor_id", gate.vendor.id);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
+  await queryOne(`DELETE FROM tables WHERE id = $1 AND vendor_id = $2 RETURNING id`, [id, gate.vendor.id]);
   return NextResponse.json({ ok: true });
 }

@@ -27,7 +27,7 @@ self.addEventListener("activate", (event) => {
 });
 
 self.addEventListener("push", (event) => {
-  let data = { title: "Portal 659", body: "Tienes una notificación", icon: "/icon.svg", tag: "portal659" };
+  let data = { title: "Portal 659", body: "Tienes una notificación", icon: "/icons/icon-192.png", tag: "portal659" };
   try {
     if (event.data) {
       const json = event.data.json();
@@ -40,21 +40,24 @@ self.addEventListener("push", (event) => {
       body: data.body,
       icon: data.icon,
       tag: data.tag,
-      badge: "/icon.svg",
+      badge: "/icons/icon-192.png",
+      data: { url: data.link || "/" },
     })
   );
 });
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
+  const url = event.notification.data?.url || "/";
   event.waitUntil(
     clients.matchAll({ type: "window", includeUncontrolled: true }).then((windowClients) => {
       for (const client of windowClients) {
         if (client.url.includes(self.location.origin) && "focus" in client) {
+          client.navigate(url);
           return client.focus();
         }
       }
-      return clients.openWindow("/");
+      return clients.openWindow(url);
     })
   );
 });

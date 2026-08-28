@@ -115,7 +115,7 @@ export default async function BuscarPage({
                     <Card className="hover:shadow-lg transition-shadow cursor-pointer overflow-hidden">
                       {v.image_url ? (
                         <div className="h-28 w-full">
-                          <img src={v.image_url} alt={v.store_name} className="w-full h-full object-cover" />
+                          <img src={v.image_url} alt={v.store_name} loading="lazy" decoding="async" className="w-full h-full object-cover" />
                         </div>
                       ) : (
                         <div className="h-28 w-full bg-gradient-to-br from-secondary to-accent flex items-center justify-center">
@@ -147,7 +147,7 @@ export default async function BuscarPage({
                       <div className="flex items-center gap-3 p-4">
                         {p.image_url ? (
                           <div className="h-16 w-16 rounded-lg overflow-hidden flex-shrink-0">
-                            <img src={p.image_url} alt={p.name} className="w-full h-full object-cover" />
+                            <img src={p.image_url} alt={p.name} loading="lazy" decoding="async" className="w-full h-full object-cover" />
                           </div>
                         ) : (
                           <div className="h-16 w-16 rounded-lg bg-accent flex items-center justify-center flex-shrink-0">

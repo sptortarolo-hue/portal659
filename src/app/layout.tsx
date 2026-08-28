@@ -7,6 +7,7 @@ import { CartProvider } from "@/lib/cart";
 import { CartDrawer } from "@/components/cart/cart-drawer";
 import { CartFooter } from "@/components/cart/cart-footer";
 import { ServiceWorkerRegistration } from "@/components/pwa/service-worker-registration";
+import { PushSubscribe } from "@/components/pwa/push-subscribe";
 import { ToastProvider } from "@/lib/toast";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { ThemeProvider } from "@/components/ui/theme-provider";
@@ -66,6 +67,12 @@ export default function RootLayout({
   return (
     <html lang="es" suppressHydrationWarning>
       <head>
+        <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+        <meta name="apple-mobile-web-app-title" content="Portal659" />
+        <meta name="theme-color" content="#4f46e5" />
+        <meta name="mobile-web-app-capable" content="yes" />
         <script
           dangerouslySetInnerHTML={{
             __html: `(function(){try{var t=localStorage.getItem("portal659-theme");if(t!=="light")document.documentElement.classList.add("dark")}catch(e){}})()`,
@@ -80,6 +87,7 @@ export default function RootLayout({
           <CartProvider>
             <ToastProvider>
               <ServiceWorkerRegistration />
+              <PushSubscribe />
               <OnboardingOverlay />
               <Navigation />
               <ErrorBoundary>

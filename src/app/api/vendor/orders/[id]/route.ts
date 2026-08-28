@@ -1,6 +1,7 @@
 import { getVendorByRequest } from "@/lib/vendor-utils";
 import { queryMany, queryOne, withTransaction } from "@/lib/db";
 import { sendEmail, reviewRequestEmail } from "@/lib/email";
+import { sendPushToUser } from "@/lib/push";
 import { NextResponse } from "next/server";
 import { canTransition } from "@/lib/order-utils";
 import type { OrderStatus } from "@/types/database";
@@ -111,17 +112,16 @@ export async function PATCH(
       );
 
       if (customerProfile) {
+        const title = `Tu pedido fue ${STATUS_LABELS[status]}`;
+        const body = `${fullVendor?.store_name} ${STATUS_LABELS[status]} tu pedido de $${Number(order.total).toLocaleString("es-AR")}`;
+
         await queryMany<Record<string, unknown>>(
           `INSERT INTO notifications (user_id, title, body, type, link)
            VALUES ($1, $2, $3, $4, $5)`,
-          [
-            customerProfile.id,
-            `Tu pedido fue ${STATUS_LABELS[status]}`,
-            `${fullVendor?.store_name} ${STATUS_LABELS[status]} tu pedido de $${Number(order.total).toLocaleString("es-AR")}`,
-            "order",
-            "/mis-pedidos",
-          ]
+          [customerProfile.id, title, body, "order", "/mis-pedidos"]
         );
+
+        await sendPushToUser(customerProfile.id, { title, body, link: "/mis-pedidos" });
 
         if (status === "completed" && customerProfile.email) {
           const baseUrl = (process.env.NEXT_PUBLIC_SITE_URL || "").replace(/\/$/, "");

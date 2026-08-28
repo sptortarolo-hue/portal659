@@ -1,4 +1,5 @@
 import { query, queryOne } from "@/lib/db";
+import { sendPushToUser } from "@/lib/push";
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 
@@ -82,11 +83,14 @@ export async function POST(request: Request) {
               );
 
               if (vendor?.user_id) {
+                const title = "¡Suscripción activada!";
+                const body = `Tu plan ${plan.name} está activo por 1 mes (pago MP).`;
                 await query(
                   `INSERT INTO notifications (user_id, title, body, type, link)
                    VALUES ($1, $2, $3, 'payment', '/vendor/suscripcion')`,
-                  [vendor.user_id, "¡Suscripción activada!", `Tu plan ${plan.name} está activo por 1 mes (pago MP).`]
+                  [vendor.user_id, title, body]
                 );
+                await sendPushToUser(vendor.user_id, { title, body, link: "/vendor/suscripcion" });
               }
             }
           }
@@ -120,11 +124,14 @@ export async function POST(request: Request) {
         );
 
         if (vendor?.user_id) {
+          const title = "¡Pago aprobado!";
+          const body = `Nuevo pago de $${Number(payment.transaction_amount).toLocaleString("es-AR")} vía Mercado Pago`;
           await query(
             `INSERT INTO notifications (user_id, title, body, type, link)
              VALUES ($1, $2, $3, 'payment', '/vendor/dashboard')`,
-            [vendor.user_id, "¡Pago aprobado!", `Nuevo pago de $${Number(payment.transaction_amount).toLocaleString("es-AR")} vía Mercado Pago`]
+            [vendor.user_id, title, body]
           );
+          await sendPushToUser(vendor.user_id, { title, body, link: "/vendor/dashboard" });
         }
       }
     } catch {

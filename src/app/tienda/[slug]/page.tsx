@@ -330,7 +330,7 @@ const modifiersByProduct: Record<string, any[]> = {};
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               {gallery.map((g: any) => (
                 <div key={g.id} className="relative aspect-square rounded-xl overflow-hidden group cursor-pointer">
-                  <img src={g.image_url} alt={g.caption || ""} className="w-full h-full object-cover transition-transform group-hover:scale-105" />
+                  <img src={g.image_url} alt={g.caption || ""} loading="lazy" decoding="async" className="w-full h-full object-cover transition-transform group-hover:scale-105" />
                   {g.caption && (
                     <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent text-white text-xs px-3 py-2 opacity-0 group-hover:opacity-100 transition-opacity">
                       {g.caption}
@@ -444,11 +444,11 @@ const modifiersByProduct: Record<string, any[]> = {};
                               <div className="flex items-start gap-3">
                                 {oImages.length > 0 ? (
                                   <div className="h-20 w-20 rounded-xl overflow-hidden flex-shrink-0">
-                                    <img src={oImages[0].image_url} alt={o.name} className="w-full h-full object-cover" />
+                                    <img src={oImages[0].image_url} alt={o.name} loading="lazy" decoding="async" className="w-full h-full object-cover" />
                                   </div>
                                 ) : o.image_url ? (
                                   <div className="h-20 w-20 rounded-xl overflow-hidden flex-shrink-0">
-                                    <img src={o.image_url} alt={o.name} className="w-full h-full object-cover" />
+                                    <img src={o.image_url} alt={o.name} loading="lazy" decoding="async" className="w-full h-full object-cover" />
                                   </div>
                                 ) : (
                                   <div className="h-20 w-20 rounded-xl bg-accent flex items-center justify-center flex-shrink-0">
@@ -517,6 +517,8 @@ const modifiersByProduct: Record<string, any[]> = {};
                                 <img
                                   src={o.image_url}
                                   alt={o.name}
+                                  loading="lazy"
+                                  decoding="async"
                                   className="w-full h-full object-cover"
                                 />
                               </div>

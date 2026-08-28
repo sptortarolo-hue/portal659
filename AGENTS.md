@@ -39,7 +39,8 @@ Portal 659: "El centro comercial de tu barrio". Hub multicommerce hiperlocal (Si
   - No-gastro: solo Gratuito. Sin grandfather: todos arrancan Gratuito.
 - **Zonas (Sprint 5)**: `src/lib/zone.ts` + `ZONES`/`ACTIVE_ZONES`/`DEFAULT_ZONE`/`ZONE_COOKIE` en `src/lib/config.ts`. Cookie `portal659-zone`. Activa: `sicardi-garibaldi`; `arana`/`correas` definidas con `active:false`. `info_items.zone` y función con `p_zone` (migrate-sprint5-zone).
 - **Perfil de usuario**: tabla `profiles` (`full_name`, `phone`, `whatsapp`, `neighborhood`), separado de los datos del comercio (`vendors`). Página `/perfil`, API `/api/auth/me` (GET/PATCH).
-- **Variables de entorno (prod)**: `DATABASE_URL`, `JWT_SECRET`, `NEXT_PUBLIC_SITE_URL`, `UPLOAD_DIR`, `MP_ACCESS_TOKEN`, `MP_PUBLIC_KEY`, `MP_WEBHOOK_SECRET`, `RESEND_API_KEY`, `FROM_EMAIL`, `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`, `NEXT_PUBLIC_GOOGLE_MAPS_KEY`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`. En local `.env.local`.
+- **Variables de entorno (prod)**: `DATABASE_URL`, `JWT_SECRET`, `NEXT_PUBLIC_SITE_URL`, `UPLOAD_DIR`, `MP_ACCESS_TOKEN`, `MP_PUBLIC_KEY`, `MP_WEBHOOK_SECRET`, `RESEND_API_KEY`, `FROM_EMAIL`, `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`, `NEXT_PUBLIC_GOOGLE_MAPS_KEY`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`. En local `.env.local`.
+- **Push (Sprint 7)**: tabla `push_subscriptions` (migración `supabase/self-host/migrate-push-subscriptions.sql`), `src/lib/push.ts` (`sendPushToUser`), API `/api/push/config` + `/api/push/subscribe`, cliente `src/components/pwa/push-subscribe.tsx`. Claves VAPID en env. SW `/sw.js` muestra notificaciones y abre el link al hacer clic.
 - **Contenido `/barrio`**: tabla `info_items` (categorías transporte/utilidades/horarios/noticias), curado por seed.
 
 ## Estado
@@ -50,10 +51,14 @@ Portal 659: "El centro comercial de tu barrio". Hub multicommerce hiperlocal (Si
 - **Sprint 5 — Multizona** (commits `9678200`, `be2e7e4`, `812144b`, `4e2940d`): selector de barrio (cookie de zona), filtrado por zona en home/buscar/mapa/barrio/más pedidos, `info_items.zone`, `isAdmin` en `profiles.is_admin`.
 - **Gestión de usuarios**: página `/perfil` + `PATCH /api/auth/me` (editar nombre/teléfono/WhatsApp/barrio), `user-menu` distingue sesión y muestra **Mi perfil** + **Cerrar sesión**; login/register si está anónimo.
 - **Fix deploy** (commit `a48d6c7`): deploy sin downtime + healthcheck + auto-recuperación tras reboot.
+- **Sprint 6** (commit `0cd6496`): emails con Resend (bienvenida al registrarse, reseña al completar pedido), métricas de lanzamiento (`/admin/metricas` + `/api/admin/metrics`), material de campaña (`docs/campana-lanzamiento.md`), deploy manual (`workflow_dispatch`).
+- **Sprint 7 — App/PWA**: instalable (íconos PNG 192/512 + maskable + apple en `public/icons/`, manifest y meta tags), notificaciones push (tabla `push_subscriptions`, `sendPushToUser`, suscripción automática al loguear, push en estado de pedido y pago MP), optimización de rendimiento (lazy-load de imágenes en tarjetas y micrositio). Generador de íconos: `scripts/generate-icons.mjs`. **Multi-comercio avanzado diferido** (pedidos agregados/"combo del barrio") hasta validar el mercado.
 
 ### Pendiente operativo
 - Cargar valores reales de `DATABASE_URL`/`JWT_SECRET`/`POSTGRES_*`/`MP_*`/`UPSTASH_*`/`NEXT_PUBLIC_GOOGLE_MAPS_KEY` donde corresponda (env del VPS o `.env.local`).
 - Aplicar `supabase/self-host/migrate-sprint5-zone.sql` si la zona del Sprint 5 aún no está en la DB del contenedor.
+- Aplicar `supabase/self-host/migrate-push-subscriptions.sql` (tabla `push_subscriptions` del Sprint 7) contra el contenedor.
+- Cargar secrets `VAPID_*` y `RESEND_API_KEY`/`FROM_EMAIL` en GitHub para que el deploy las escriba al `.env`.
 - Reboot test del VPS (verificar que la web vuelve sola).
 
 ## Plan de sprints restantes (del plan original)
@@ -67,9 +72,9 @@ Portal 659: "El centro comercial de tu barrio". Hub multicommerce hiperlocal (Si
 - Deudas de seguridad: bloquear `/api/seed` en prod; revisar secretos commiteados en historial.
 
 ### Sprint 7 — App / PWA y optimizaciones
-- PWA instalable (manifest ya existe; service worker + offline básico + push).
-- Optimización de rendimiento y conversión (fotos, carga, cuellos de botella).
-- Multi-comercio avanzado si valida el mercado (pedidos agregados, "combo del barrio", colaboraciones).
+- PWA instalable (íconos PNG, manifest, SW + offline + push). **Hecho.**
+- Optimización de rendimiento y conversión (fotos, carga). **Hecho (lazy-load).**
+- **Multi-comercio avanzado: diferido** hasta validar el mercado (pedidos agregados, "combo del barrio", colaboraciones).
 
 ### Ideas del backlog (a priorizar)
 - Pagos online pulidos (MP): `payment_method` "mercadopago" formalizado, dirección en el pago, rechazos, link de pago manual para vendors sin carrito.

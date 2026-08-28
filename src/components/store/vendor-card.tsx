@@ -43,6 +43,8 @@ export function VendorCard({ id, slug, store_name, image_url, logo_url, descript
             <img
               src={image_url}
               alt={store_name}
+              loading="lazy"
+              decoding="async"
               className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
             />
           </div>
@@ -57,6 +59,8 @@ export function VendorCard({ id, slug, store_name, image_url, logo_url, descript
           <img
             src={logo_url}
             alt={`Logo de ${store_name}`}
+            loading="lazy"
+            decoding="async"
             className="absolute left-3 top-3 h-12 w-12 rounded-full object-cover border-2 border-white shadow-md"
           />
         )}

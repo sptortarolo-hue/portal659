@@ -1,9 +1,10 @@
 {
-  "name": "Portal 659",
+  "name": "Portal 659 — El centro comercial de tu barrio",
   "short_name": "Portal659",
-  "description": "El centro comercial de tu barrio",
+  "description": "El centro comercial de tu barrio: comida, comercios y servicios de Sicardi y Garibaldi en un solo lugar, directo a tu WhatsApp.",
   "id": "/",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#4f46e5",
@@ -11,15 +12,21 @@
   "categories": ["shopping", "food", "business"],
   "icons": [
     {
-      "src": "/icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
       "purpose": "maskable"
     }
   ]

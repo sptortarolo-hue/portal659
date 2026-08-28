@@ -42,6 +42,12 @@ UPSTASH_REDIS_REST_TOKEN=
 
 # --- Google Maps (geolocalización) ---
 NEXT_PUBLIC_GOOGLE_MAPS_KEY=
+
+# --- Web Push (notificaciones) ---
+# Generá con: node -e "console.log(require('web-push').generateVAPIDKeys())"
+VAPID_PUBLIC_KEY=
+VAPID_PRIVATE_KEY=
+VAPID_SUBJECT=mailto:noreply@tu-dominio.com
 ```
 
 > Importante: `DATABASE_URL` usa el host `db` (el nombre del servicio dentro de la red de
@@ -100,6 +106,7 @@ Secrets requeridos en el repositorio:
 - `MP_ACCESS_TOKEN`, `MP_PUBLIC_KEY`, `MP_WEBHOOK_SECRET`
 - `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`
 - `NEXT_PUBLIC_GOOGLE_MAPS_KEY`
+- `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`
 
 ## Desarrollo local
 

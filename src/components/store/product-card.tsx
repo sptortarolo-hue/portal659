@@ -79,7 +79,7 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
           className="relative w-full aspect-square overflow-hidden bg-accent/60 block"
         >
           {cover ? (
-            <img src={cover} alt={product.name} className="w-full h-full object-cover" />
+            <img src={cover} alt={product.name} loading="lazy" decoding="async" className="w-full h-full object-cover" />
           ) : (
             <div className="w-full h-full flex items-center justify-center">
               <span className="font-display text-6xl font-bold text-primary/25">{product.name.charAt(0)}</span>
@@ -137,7 +137,7 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
             <div className="p-4 space-y-4">
               <div className="rounded-xl overflow-hidden bg-accent aspect-[4/5] max-h-80">
                 {cover ? (
-                  <img src={cover} alt={product.name} className="w-full h-full object-cover" />
+                  <img src={cover} alt={product.name} loading="lazy" decoding="async" className="w-full h-full object-cover" />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center">
                     <span className="font-display text-6xl font-bold text-primary/25">{product.name.charAt(0)}</span>
@@ -154,7 +154,7 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
                       onClick={() => setActiveImg(i)}
                       className={`h-16 w-16 flex-shrink-0 rounded-lg overflow-hidden border-2 ${activeImg === i ? "border-primary" : "border-transparent"}`}
                     >
-                      <img src={img.image_url} alt="" className="w-full h-full object-cover" />
+                      <img src={img.image_url} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
                     </button>
                   ))}
                 </div>

@@ -31,10 +31,19 @@ export async function POST(request: Request) {
     [vendor.id]
   );
 
-  const category = await queryOne<Record<string, unknown>>(
-    `INSERT INTO vendor_categories (vendor_id, name, position) VALUES ($1, $2, $3) RETURNING *`,
-    [vendor.id, name.trim(), countRow?.c || 0]
-  );
+  try {
+    const category = await queryOne<Record<string, unknown>>(
+      `INSERT INTO vendor_categories (vendor_id, name, position) VALUES ($1, $2, $3) RETURNING *`,
+      [vendor.id, name.trim(), countRow?.c || 0]
+    );
 
-  return NextResponse.json({ category });
+    return NextResponse.json({ category });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Error al crear la categoría";
+    const isDuplicate = /duplicate|unique/i.test(msg);
+    return NextResponse.json(
+      { error: isDuplicate ? "Ya existe una categoría con ese nombre" : msg },
+      { status: 500 }
+    );
+  }
 }

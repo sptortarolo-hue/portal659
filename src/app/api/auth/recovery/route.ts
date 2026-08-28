@@ -18,7 +18,7 @@ export async function POST(request: Request) {
     [tokenHash, expires, email]
   );
 
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || request.headers.get("origin") || "http://localhost:3000";
+  const siteUrl = request.headers.get("origin") || process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 
   await sendEmail({
     to: email,

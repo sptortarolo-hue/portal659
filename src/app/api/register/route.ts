@@ -52,7 +52,7 @@ export async function POST(request: Request) {
     });
 
     // Emails best-effort
-    const baseUrl = (process.env.NEXT_PUBLIC_SITE_URL || "").replace(/\/$/, "");
+    const baseUrl = (request.headers.get("origin") || process.env.NEXT_PUBLIC_SITE_URL || "").replace(/\/$/, "");
     const confirmUrl = `${baseUrl}/auth/callback?token=${confirmToken}&type=signup`;
     const { subject, html } = confirmEmailEmail(confirmUrl);
     await sendEmail({ to: user.email, subject, html });

@@ -20,7 +20,7 @@ export async function POST(request: Request) {
 
   // El mail solo se envía si la cuenta sigue sin confirmar; devolvemos ok
   // siempre para no revelar si el email existe o ya está confirmado.
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || request.headers.get("origin") || "http://localhost:3000";
+  const siteUrl = request.headers.get("origin") || process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
   const confirmUrl = `${siteUrl}/auth/callback?token=${token}&type=signup`;
   const { subject, html } = confirmEmailEmail(confirmUrl);
   await sendEmail({ to: email, subject, html });

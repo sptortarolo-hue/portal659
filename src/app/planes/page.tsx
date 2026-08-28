@@ -1,5 +1,5 @@
 import { queryMany } from "@/lib/db";
-import { formatPrice } from "@/lib/plans";
+import { activePromo, formatPrice } from "@/lib/plans";
 import type { Plan } from "@/types/database";
 import { PlanesCta } from "@/components/subscription/planes-cta";
 import { Badge } from "@/components/ui/badge";
@@ -67,6 +67,7 @@ export default async function PlanesPage() {
         <div className="grid md:grid-cols-3 gap-4">
           {list.map((plan) => {
             const paid = plan.slug !== "gratuito";
+            const promo = activePromo(plan);
             const products = plan.max_products == null
               ? "Productos ilimitados"
               : `${plan.max_products} productos`;
@@ -107,11 +108,40 @@ export default async function PlanesPage() {
                 <p className="text-xs text-muted-foreground mt-0.5 min-h-8">{plan.description}</p>
 
                 <div className="mt-3 mb-4">
-                  <span className="font-display text-2xl font-bold">
-                    {plan.price_monthly === 0 ? "Gratis" : formatPrice(plan.price_monthly)}
-                  </span>
-                  {plan.price_monthly > 0 && (
-                    <span className="text-xs text-muted-foreground"> por mes</span>
+                  {promo ? (
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-display text-2xl font-bold">
+                        {formatPrice(promo.price)}
+                      </span>
+                      <span className="font-display text-lg font-semibold text-muted-foreground line-through">
+                        {formatPrice(promo.listPrice)}
+                      </span>
+                      <span className="inline-flex items-center rounded-full bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300 text-[11px] font-bold px-2 py-0.5">
+                        -{promo.offPct}%
+                      </span>
+                    </div>
+                  ) : (
+                    <span className="font-display text-2xl font-bold">
+                      {plan.price_monthly === 0 ? "Gratis" : formatPrice(plan.price_monthly)}
+                    </span>
+                  )}
+                  {paid && (
+                    <span className="text-xs text-muted-foreground">
+                      {" "}
+                      {promo
+                        ? `por mes · ${promo.months} ${promo.months === 1 ? "mes" : "meses"} por adelantado`
+                        : "por mes"}
+                    </span>
+                  )}
+                  {promo?.label && (
+                    <span className="block text-[11px] font-semibold text-red-500 mt-0.5">
+                      {promo.label}
+                    </span>
+                  )}
+                  {promo?.endsAt && (
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      Válido hasta {new Date(promo.endsAt).toLocaleDateString("es-AR")} para nuevos suscriptores
+                    </p>
                   )}
                   <p className="text-xs text-muted-foreground mt-0.5">{products}</p>
                 </div>

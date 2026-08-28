@@ -1,5 +1,6 @@
 import { getUserId } from "@/lib/auth-utils";
 import { queryMany, queryOne } from "@/lib/db";
+import { activePromo } from "@/lib/plans";
 import { NextResponse } from "next/server";
 import type { Plan } from "@/types/database";
 
@@ -66,12 +67,19 @@ export async function POST(request: Request) {
     }, { status: 400 });
   }
 
+  const isNewSubscriber = vendor.plan_status !== "active";
+  const promo = isNewSubscriber ? activePromo(plan) : null;
+
+  const billedMonths = promo ? promo.months : 1;
+  const periodDays = billedMonths * PERIOD_DAYS;
+  const chargeAmount = promo ? promo.price * promo.months : Number(plan.price_monthly);
+
   const base = Math.max(
     now,
     vendor.plan_expires_at ? new Date(vendor.plan_expires_at).getTime() : 0
   );
   const periodStart = new Date(base).toISOString();
-  const periodEnd = new Date(base + PERIOD_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  const periodEnd = new Date(base + periodDays * 24 * 60 * 60 * 1000).toISOString();
 
   const externalReference = `portal659_sub_${vendor.id}_${plan.slug}_${Math.floor(base / 1000)}`;
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
@@ -83,7 +91,7 @@ export async function POST(request: Request) {
       mode: "transfer",
       order: {
         plan: { id: plan.id, slug: plan.slug, name: plan.name },
-        amount: Number(plan.price_monthly),
+        amount: chargeAmount,
         periodStart,
         periodEnd,
         externalReference,
@@ -102,8 +110,10 @@ export async function POST(request: Request) {
     const preference = {
       items: [
         {
-          title: `Portal 659 — Plan ${plan.name} (1 mes)`,
-          unit_price: Number(plan.price_monthly),
+          title: promo
+            ? `Portal 659 — Plan ${plan.name} (${promo.months} ${promo.months === 1 ? "mes" : "meses"} promo)`
+            : `Portal 659 — Plan ${plan.name} (1 mes)`,
+          unit_price: chargeAmount,
           quantity: 1,
           currency_id: "ARS",
         },
@@ -139,7 +149,7 @@ export async function POST(request: Request) {
         initPoint: data.init_point,
         order: {
           plan: { id: plan.id, slug: plan.slug, name: plan.name },
-          amount: Number(plan.price_monthly),
+          amount: chargeAmount,
           periodStart,
           periodEnd,
           externalReference,

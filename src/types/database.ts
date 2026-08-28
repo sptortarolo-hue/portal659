@@ -46,6 +46,10 @@ export type Plan = {
   popular: boolean;
   sort: number;
   created_at: string;
+  promo_price: number | null;
+  promo_months: number | null;
+  promo_ends_at: string | null;
+  promo_label: string | null;
 };
 
 export type VendorSubscription = {

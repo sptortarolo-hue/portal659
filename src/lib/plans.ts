@@ -144,6 +144,41 @@ export function formatPrice(value: number | null): string {
   return `$${Number(value).toLocaleString("es-AR")}/mes`;
 }
 
+export type PlanPromo = {
+  price: number;
+  listPrice: number;
+  offPct: number;
+  months: number;
+  endsAt: string | null;
+  label: string | null;
+};
+
+export function activePromo(plan: Plan): PlanPromo | null {
+  const listPrice = Number(plan.price_monthly || 0);
+  const price = Number(plan.promo_price || 0);
+  const months = Number(plan.promo_months || 0);
+
+  const hasPromo =
+    listPrice > 0 &&
+    price > 0 &&
+    price < listPrice &&
+    months > 0;
+
+  if (!hasPromo) return null;
+
+  const now = Date.now();
+  if (plan.promo_ends_at && new Date(plan.promo_ends_at).getTime() <= now) return null;
+
+  return {
+    price,
+    listPrice,
+    offPct: Math.round((1 - price / listPrice) * 100),
+    months,
+    endsAt: plan.promo_ends_at,
+    label: plan.promo_label,
+  };
+}
+
 export function daysLeft(dateStr: string | null): number {
   if (!dateStr) return 0;
   const diff = new Date(dateStr).getTime() - Date.now();

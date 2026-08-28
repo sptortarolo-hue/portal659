@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { formatPrice, daysLeft } from "@/lib/plans";
+import { formatPrice, daysLeft, activePromo } from "@/lib/plans";
 import type { Plan, VendorSubscription } from "@/types/database";
 
 type MeResponse = {
@@ -235,6 +235,7 @@ export default function VendorSuscripcionPage() {
                   const current = eff.slug === plan.slug && (eff.status === "trial" || eff.status === "active");
                   const active = eff.status === "trial" || eff.status === "active";
                   const gated = active && !current;
+                  const promo = activePromo(plan);
                   return (
                     <div key={plan.id} className="rounded-2xl border border-border bg-card p-4 flex flex-col">
                       <div className="flex items-center justify-between">
@@ -243,8 +244,28 @@ export default function VendorSuscripcionPage() {
                       </div>
                       <p className="text-xs text-muted-foreground mt-1 mb-3">{PLAN_COPY[plan.slug]?.desc ?? plan.description}</p>
                       <div className="mb-3">
-                        <span className="font-display font-bold text-lg">{formatPrice(plan.price_monthly)}</span>
-                        <span className="text-xs text-muted-foreground"> · 30 días de prueba</span>
+                        {promo ? (
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-display font-bold text-lg">{formatPrice(promo.price)}</span>
+                            <span className="font-display text-base font-semibold text-muted-foreground line-through">
+                              {formatPrice(promo.listPrice)}
+                            </span>
+                            <span className="inline-flex items-center rounded-full bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300 text-[10px] font-bold px-1.5 py-0.5">
+                              -{promo.offPct}%
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="font-display font-bold text-lg">{formatPrice(plan.price_monthly)}</span>
+                        )}
+                        {promo ? (
+                          <p className="text-[11px] text-muted-foreground">
+                            {promo.months} {promo.months === 1 ? "mes" : "meses"} por adelantado
+                            {promo.endsAt ? ` · hasta ${new Date(promo.endsAt).toLocaleDateString("es-AR")}` : ""}{" "}
+                            para nuevos suscriptores
+                          </p>
+                        ) : (
+                          <span className="text-xs text-muted-foreground"> · 30 días de prueba</span>
+                        )}
                       </div>
                       <div className="mt-auto space-y-2">
                         {current ? (

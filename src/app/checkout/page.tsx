@@ -122,19 +122,41 @@ export default function CheckoutPage() {
     setLoading(true);
     setError("");
 
-    const cleanPhone = formatPhone(phone);
+    try {
+      const cleanPhone = formatPhone(phone);
 
-    const res = await fetch("/api/orders", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        vendorId: v.id,
-        customerName: name,
-        customerPhone: cleanPhone,
-        customerAddress: method === "delivery" ? address : null,
-        method,
-        paymentMethod,
-        customerId: userId || null,
+      const res = await fetch("/api/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          vendorId: v.id,
+          customerName: name,
+          customerPhone: cleanPhone,
+          customerAddress: method === "delivery" ? address : null,
+          method,
+          paymentMethod,
+          customerId: userId || null,
+          items: items.map((i) => ({
+            name: i.name,
+            price: i.price + (i.modifiers || []).reduce((s, m) => s + m.price_mod, 0),
+            qty: i.qty,
+            modifiers: (i.modifiers || []).map((m) => m.label),
+          })),
+          total,
+          notes: notes.trim() || null,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || data.error) {
+        setError(data.error || "Error al crear el pedido");
+        setLoading(false);
+        return;
+      }
+
+      const message = buildComandaWhatsApp({
+        vendorName: v.storeName,
         items: items.map((i) => ({
           name: i.name,
           price: i.price + (i.modifiers || []).reduce((s, m) => s + m.price_mod, 0),
@@ -142,39 +164,22 @@ export default function CheckoutPage() {
           modifiers: (i.modifiers || []).map((m) => m.label),
         })),
         total,
-        notes: notes.trim() || null,
-      }),
-    });
+        customerName: name,
+        customerPhone: cleanPhone,
+        method,
+        address: method === "delivery" ? address : undefined,
+        paymentMethod,
+        notes: notes.trim() || undefined,
+      });
 
-    const data = await res.json();
-
-    if (!res.ok || data.error) {
-      setError(data.error || "Error al crear el pedido");
+      const waNumber = (v.whatsapp || "").replace(/[^0-9]/g, "");
+      setPendingOrder({ orderId: data.orderId || "", message, waNumber });
+      setShowSummary(true);
       setLoading(false);
-      return;
+    } catch {
+      setLoading(false);
+      setError("Ocurrió un error al enviar el pedido. Probá de nuevo.");
     }
-
-    const message = buildComandaWhatsApp({
-      vendorName: v.storeName,
-      items: items.map((i) => ({
-        name: i.name,
-        price: i.price + (i.modifiers || []).reduce((s, m) => s + m.price_mod, 0),
-        qty: i.qty,
-        modifiers: (i.modifiers || []).map((m) => m.label),
-      })),
-      total,
-      customerName: name,
-      customerPhone: cleanPhone,
-      method,
-      address: method === "delivery" ? address : undefined,
-      paymentMethod,
-      notes: notes.trim() || undefined,
-    });
-
-    const waNumber = v.whatsapp.replace(/[^0-9]/g, "");
-    setPendingOrder({ orderId: data.orderId || "", message, waNumber });
-    setShowSummary(true);
-    setLoading(false);
   }
 
   function confirmSend() {

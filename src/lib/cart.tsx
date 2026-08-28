@@ -59,8 +59,21 @@ function loadCart(): CartState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return { vendor: null, items: [] };
-    const parsed = JSON.parse(raw);
-    if (parsed && Array.isArray(parsed.items)) return parsed;
+    const parsed = JSON.parse(raw) as CartState;
+    if (parsed && Array.isArray(parsed.items)) {
+      return {
+        vendor: parsed.vendor
+          ? {
+              id: parsed.vendor.id,
+              slug: parsed.vendor.slug || "",
+              storeName: parsed.vendor.storeName || "",
+              whatsapp: parsed.vendor.whatsapp || "",
+              vertical: parsed.vendor.vertical || null,
+            }
+          : null,
+        items: parsed.items,
+      };
+    }
   } catch { /* noop */ }
   return { vendor: null, items: [] };
 }

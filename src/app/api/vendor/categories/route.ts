@@ -16,12 +16,22 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  console.log("[categories] POST inicio");
   const { vendor } = await getVendorByRequest(request);
   if (!vendor) {
+    console.log("[categories] POST sin vendor (403)");
     return NextResponse.json({ error: "No tenés un local registrado" }, { status: 403 });
   }
 
-  const { name } = await request.json();
+  let body: any;
+  try {
+    body = await request.json();
+  } catch (e) {
+    console.log("[categories] POST json error", e);
+    return NextResponse.json({ error: "JSON inválido" }, { status: 400 });
+  }
+  const { name } = body;
+  console.log("[categories] POST vendorId=", vendor.id, "name=", name);
   if (!name || !name.trim()) {
     return NextResponse.json({ error: "El nombre de la categoría es obligatorio" }, { status: 400 });
   }
@@ -36,11 +46,13 @@ export async function POST(request: Request) {
       `INSERT INTO vendor_categories (vendor_id, name, position) VALUES ($1, $2, $3) RETURNING *`,
       [vendor.id, name.trim(), countRow?.c || 0]
     );
+    console.log("[categories] POST insert OK", category?.id);
 
     return NextResponse.json({ category });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Error al crear la categoría";
     const isDuplicate = /duplicate|unique/i.test(msg);
+    console.log("[categories] POST insert ERROR", msg);
     return NextResponse.json(
       { error: isDuplicate ? "Ya existe una categoría con ese nombre" : msg },
       { status: 500 }

@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { ShareButton } from "@/components/ui/share-button";
 
 type VendorShareButtonProps = {
@@ -8,7 +9,12 @@ type VendorShareButtonProps = {
 };
 
 export function VendorShareButton({ slug, storeName }: VendorShareButtonProps) {
-  const url = `${window.location.origin}/tienda/${slug}`;
+  const [url, setUrl] = useState("");
+
+  useEffect(() => {
+    setUrl(`${window.location.origin}/tienda/${slug}`);
+  }, [slug]);
+
   return (
     <ShareButton
       url={url}

@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import { ChipToggle } from "@/components/ui/chip-toggle";
 import { RadioCards } from "@/components/ui/radio-cards";
-import { OfferForm, OfferList, CategoryManager, LivePreview } from "./shared";
+import { OfferForm, OfferList, CategoryManager, LivePreview, apiJson } from "./shared";
 import type { Vendor, Product } from "@/types/database";
 
 const PAYMENT_OPTIONS = [
@@ -221,17 +221,18 @@ export default function DashboardGenerico({
       <CollapsibleSection icon="📦" title={`Catálogo (${offers.length})`} defaultOpen>
         <CategoryManager
           categories={categories}
-          onAdd={(name) => { fetch("/api/vendor/categories", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) }).then(() => reload()); }}
-          onRename={(id, name) => { fetch(`/api/vendor/categories/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) }).then(() => reload()); }}
-          onDelete={(cat) => { if (window.confirm(`¿Eliminar "${cat.name}"?`)) { fetch(`/api/vendor/categories/${cat.id}`, { method: "DELETE" }).then(() => reload()); } }}
-          onMove={(cat, dir) => {
-            const idx = categories.findIndex((c) => c.id === cat.id);
+onAdd={async (name) => { const r = await apiJson("/api/vendor/categories", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) }); if (!r.ok) setMsg(r.error || "No se pudo crear la categoría"); reload(); }}
+          onRename={async (id, name) => { const r = await apiJson(`/api/vendor/categories/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) }); if (!r.ok) setMsg(r.error || "No se pudo renombrar"); reload(); }}
+          onDelete={async (cat) => { if (window.confirm(`¿Eliminar "${cat.name}"?`)) { const r = await apiJson(`/api/vendor/categories/${cat.id}`, { method: "DELETE" }); if (!r.ok) setMsg(r.error || "No se pudo eliminar"); reload(); } }}
+          onMove={async (cat, dir) => {
+            const idx = categories.findIndex((c: any) => c.id === cat.id);
             const target = idx + dir;
             if (target < 0 || target >= categories.length) return;
             const reordered = [...categories];
             const [moved] = reordered.splice(idx, 1);
             reordered.splice(target, 0, moved);
-            Promise.all(reordered.map((c, i) => fetch(`/api/vendor/categories/${c.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ position: i }) }))).then(() => reload());
+            await Promise.all(reordered.map((c: any, i: number) => apiJson(`/api/vendor/categories/${c.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ position: i }) })));
+            reload();
           }}
         />
         <div className="flex items-center justify-between mt-2 mb-4">

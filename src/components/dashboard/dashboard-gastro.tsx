@@ -11,7 +11,7 @@ import { ChipToggle } from "@/components/ui/chip-toggle";
 import { RadioCards } from "@/components/ui/radio-cards";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { OfferForm, OfferList, CategoryManager, LivePreview } from "@/components/dashboard/shared";
+import { OfferForm, OfferList, CategoryManager, LivePreview, apiJson } from "@/components/dashboard/shared";
 import type { Vendor, Product, ProductModifier, VendorGallery } from "@/types/database";
 
 type Props = {
@@ -772,25 +772,28 @@ export default function DashboardGastro({
           <CategoryManager
             categories={categories}
             onAdd={async (name) => {
-              await fetch("/api/vendor/categories", {
+              const r = await apiJson("/api/vendor/categories", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ name }),
               });
+              if (!r.ok) setMsg(r.error || "No se pudo crear la categoría");
               reload();
             }}
             onRename={async (id, name) => {
-              await fetch(`/api/vendor/categories/${id}`, {
+              const r = await apiJson(`/api/vendor/categories/${id}`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ name }),
               });
+              if (!r.ok) setMsg(r.error || "No se pudo renombrar");
               reload();
             }}
             onDelete={async (cat) => {
-              await fetch(`/api/vendor/categories/${cat.id}`, {
+              const r = await apiJson(`/api/vendor/categories/${cat.id}`, {
                 method: "DELETE",
               });
+              if (!r.ok) setMsg(r.error || "No se pudo eliminar");
               reload();
             }}
             onMove={async (cat, dir) => {
@@ -802,7 +805,7 @@ export default function DashboardGastro({
               reordered.splice(target, 0, moved);
               await Promise.all(
                 reordered.map((c, i) =>
-                  fetch(`/api/vendor/categories/${c.id}`, {
+                  apiJson(`/api/vendor/categories/${c.id}`, {
                     method: "PATCH",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ position: i }),

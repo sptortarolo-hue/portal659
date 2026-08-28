@@ -10,6 +10,17 @@ import { Badge } from "@/components/ui/badge";
 import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import { DropdownMenu } from "@/components/ui/dropdown-menu";
 import { Switch } from "@/components/ui/switch";
+
+/** Hace un fetch a una API y devuelve ok + mensaje de error (si lo hay). */
+export async function apiJson(url: string, init?: RequestInit): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const res = await fetch(url, init);
+    const data = await res.json().catch(() => ({}));
+    return { ok: res.ok, error: data?.error };
+  } catch {
+    return { ok: false, error: "Error de red" };
+  }
+}
 import { QuantityInput } from "@/components/ui/quantity-input";
 import { ImageCropModal } from "@/components/ui/image-crop-modal";
 

@@ -17,6 +17,7 @@ import {
   OfferList,
   CategoryManager,
   LivePreview,
+  apiJson,
 } from "@/components/dashboard/shared";
 import type { Vendor, Product, ProductModifier } from "@/types/database";
 
@@ -733,32 +734,36 @@ export default function DashboardComercio({
         <div className="space-y-4">
           <CategoryManager
             categories={categories}
-            onAdd={(name) => {
-              fetch("/api/vendor/categories", {
+            onAdd={async (name) => {
+              const r = await apiJson("/api/vendor/categories", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ name }),
-              }).then(() => reload());
+              });
+              if (!r.ok) setMsg(r.error || "No se pudo crear la categoría");
+              reload();
             }}
-            onRename={(id, name) => {
-              fetch(`/api/vendor/categories/${id}`, {
+            onRename={async (id, name) => {
+              const r = await apiJson(`/api/vendor/categories/${id}`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ name }),
-              }).then(() => reload());
+              });
+              if (!r.ok) setMsg(r.error || "No se pudo renombrar");
+              reload();
             }}
-            onDelete={(cat) => {
+            onDelete={async (cat) => {
               if (
                 window.confirm(
                   `¿Eliminar "${cat.name}"? Los productos quedan sin categoría.`
                 )
               ) {
-                fetch(`/api/vendor/categories/${cat.id}`, {
-                  method: "DELETE",
-                }).then(() => reload());
+                const r = await apiJson(`/api/vendor/categories/${cat.id}`, { method: "DELETE" });
+                if (!r.ok) setMsg(r.error || "No se pudo eliminar");
+                reload();
               }
             }}
-            onMove={(cat, dir) => {
+            onMove={async (cat, dir) => {
               const idx = categories.findIndex(
                 (c: any) => c.id === cat.id
               );
@@ -767,15 +772,16 @@ export default function DashboardComercio({
               const reordered = [...categories];
               const [moved] = reordered.splice(idx, 1);
               reordered.splice(target, 0, moved);
-              Promise.all(
+              await Promise.all(
                 reordered.map((c: any, i: number) =>
-                  fetch(`/api/vendor/categories/${c.id}`, {
+                  apiJson(`/api/vendor/categories/${c.id}`, {
                     method: "PATCH",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ position: i }),
                   })
                 )
-              ).then(() => reload());
+              );
+              reload();
             }}
           />
 

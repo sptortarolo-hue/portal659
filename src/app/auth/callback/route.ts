@@ -37,5 +37,23 @@ export async function GET(request: Request) {
     return response;
   }
 
+  if (type === "signup") {
+    const tokenHash = createHash("sha256").update(token).digest("hex");
+    const profile = await queryOne<{ id: string }>(
+      `SELECT id FROM profiles WHERE confirm_token_hash = $1 AND confirm_token_expires > now() LIMIT 1`,
+      [tokenHash]
+    );
+    if (!profile) {
+      return NextResponse.redirect(`${origin}/login?error=invalid_confirmation`);
+    }
+
+    await queryOne(
+      `UPDATE profiles SET email_confirmed = true, confirm_token_hash = NULL, confirm_token_expires = NULL WHERE id = $1 RETURNING id`,
+      [profile.id]
+    );
+
+    return NextResponse.redirect(`${origin}/login?verified=1`);
+  }
+
   return NextResponse.redirect(`${origin}/login?error=invalid_type`);
 }

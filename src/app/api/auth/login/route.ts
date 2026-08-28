@@ -18,8 +18,9 @@ export async function POST(request: Request) {
     full_name: string | null;
     role: string;
     password_hash: string;
+    email_confirmed: boolean;
   }>(
-    `SELECT id, email, full_name, role, password_hash FROM profiles WHERE lower(email) = lower($1)`,
+    `SELECT id, email, full_name, role, password_hash, email_confirmed FROM profiles WHERE lower(email) = lower($1)`,
     [email]
   );
 
@@ -30,6 +31,13 @@ export async function POST(request: Request) {
   const ok = await verifyPassword(password, user.password_hash);
   if (!ok) {
     return NextResponse.json({ error: "Credenciales inválidas" }, { status: 401 });
+  }
+
+  if (user.email_confirmed === false) {
+    return NextResponse.json(
+      { error: "confirm_email", message: "Confirmá tu email para poder iniciar sesión." },
+      { status: 403 }
+    );
   }
 
   const accessToken = await signAccessToken({

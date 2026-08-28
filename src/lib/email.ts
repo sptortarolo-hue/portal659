@@ -83,6 +83,27 @@ export function welcomeEmail(storeName: string, micrositeUrl: string): { subject
   };
 }
 
+export function confirmEmailEmail(confirmUrl: string): { subject: string; html: string } {
+  return {
+    subject: "Confirmá tu email en Portal 659",
+    html: `
+      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px">
+        <h1 style="color:#4f46e5">Confirmá tu email</h1>
+        <p>Te registraste en <strong>Portal 659</strong>, el centro comercial de tu barrio.</p>
+        <p>Para terminar de crear tu cuenta, confirmá tu dirección de email:</p>
+        <p style="text-align:center;margin:24px 0">
+          <a href="${confirmUrl}" style="background:#4f46e5;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold">
+            Confirmar email
+          </a>
+        </p>
+        <p style="color:#666;font-size:14px">El enlace expira en 48 horas. Si no te registraste vos, podés ignorar este correo.</p>
+        <hr style="border:none;border-top:1px solid #eee;margin:20px 0">
+        <p style="color:#999;font-size:12px">Portal 659 — El centro comercial de tu barrio · 0% comisión</p>
+      </div>
+    `,
+  };
+}
+
 export function reviewRequestEmail(vendorName: string, reviewUrl: string): { subject: string; html: string } {
   return {
     subject: `¿Cómo estuvo tu pedido en ${vendorName}?`,

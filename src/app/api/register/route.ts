@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { withTransaction } from "@/lib/db";
 import { hashPassword } from "@/lib/auth";
-import { sendEmail, welcomeEmail } from "@/lib/email";
+import { sendEmail, welcomeEmail, confirmEmailEmail } from "@/lib/email";
+import { createHash, randomBytes } from "crypto";
 
 const TIPOS = ["gastronomia", "comercio", "servicio", "moda", "salud"] as const;
 
@@ -25,13 +26,17 @@ export async function POST(request: Request) {
   const selected = TIPOS.includes(tipo) ? tipo : "gastronomia";
   const passwordHash = await hashPassword(password);
 
+  const confirmToken = randomBytes(32).toString("hex");
+  const confirmTokenHash = createHash("sha256").update(confirmToken).digest("hex");
+  const confirmExpires = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(); // 48 h
+
   try {
     const user = await withTransaction(async (tx) => {
       const rows = await tx.query<{ id: string; email: string; full_name: string | null; role: string }>(
-        `INSERT INTO profiles (email, password_hash, full_name, phone, whatsapp, role, email_confirmed)
-         VALUES ($1, $2, $3, NULL, $4, 'vendor', true)
+        `INSERT INTO profiles (email, password_hash, full_name, phone, whatsapp, role, email_confirmed, confirm_token_hash, confirm_token_expires)
+         VALUES ($1, $2, $3, NULL, $4, 'vendor', false, $5, $6)
          RETURNING id, email, full_name, role`,
-        [email.toLowerCase().trim(), passwordHash, `${firstName} ${lastName}`, whatsapp]
+        [email.toLowerCase().trim(), passwordHash, `${firstName} ${lastName}`, whatsapp, confirmTokenHash, confirmExpires]
       );
 
       const userId = rows[0].id;
@@ -46,12 +51,16 @@ export async function POST(request: Request) {
       return { ...rows[0], slug: vendorRows[0]?.slug || "" };
     });
 
-    // Email de bienvenida (best-effort)
+    // Emails best-effort
     const baseUrl = (process.env.NEXT_PUBLIC_SITE_URL || "").replace(/\/$/, "");
+    const confirmUrl = `${baseUrl}/auth/callback?token=${confirmToken}&type=signup`;
+    const { subject, html } = confirmEmailEmail(confirmUrl);
+    await sendEmail({ to: user.email, subject, html });
+
     if (user.email && user.slug) {
       const microsite = `${baseUrl}/tienda/${user.slug}`;
-      const { subject, html } = welcomeEmail(user.full_name || firstName, microsite);
-      await sendEmail({ to: user.email, subject, html });
+      const welcome = welcomeEmail(user.full_name || firstName, microsite);
+      await sendEmail({ to: user.email, subject: welcome.subject, html: welcome.html });
     }
 
     return NextResponse.json({

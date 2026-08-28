@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -14,7 +14,21 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
+  const [verified, setVerified] = useState(false);
+  const [needsConfirmation, setNeedsConfirmation] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [resendMsg, setResendMsg] = useState("");
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("verified") === "1") {
+      setVerified(true);
+      setMessage("Email verificado. Ya podés iniciar sesión.");
+    } else if (params.get("error") === "invalid_confirmation") {
+      setMessage("El enlace de confirmación es inválido o expiró.");
+    }
+  }, []);
 
   function validate(): boolean {
     const e: typeof errors = {};
@@ -31,6 +45,7 @@ export default function LoginPage() {
     if (!validate()) return;
     setLoading(true);
     setMessage("");
+    setNeedsConfirmation(false);
 
     const res = await fetch("/api/auth/login", {
       method: "POST",
@@ -41,7 +56,12 @@ export default function LoginPage() {
     const data = await res.json();
 
     if (!res.ok) {
-      setMessage(data.error || "Error al iniciar sesión");
+      if (data.error === "confirm_email") {
+        setNeedsConfirmation(true);
+        setMessage(data.message || "Confirmá tu email para poder iniciar sesión.");
+      } else {
+        setMessage(data.error || "Error al iniciar sesión");
+      }
     } else {
       window.dispatchEvent(new Event("auth-changed"));
       router.push(
@@ -51,6 +71,23 @@ export default function LoginPage() {
       );
     }
     setLoading(false);
+  }
+
+  async function handleResend() {
+    if (!email) {
+      setResendMsg("Ingresá tu email para reenviar el enlace.");
+      return;
+    }
+    setResending(true);
+    setResendMsg("");
+    const res = await fetch("/api/auth/resend-confirm", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
+    });
+    await res.json();
+    setResendMsg("Te enviamos un nuevo enlace de confirmación. Revisá tu email.");
+    setResending(false);
   }
 
   return (
@@ -93,7 +130,21 @@ export default function LoginPage() {
         </div>
 
         {message && (
-          <p className="text-sm text-red-600">{message}</p>
+          <p className={`text-sm ${verified || resendMsg ? "text-green-600" : "text-red-600"}`}>{message}</p>
+        )}
+
+        {needsConfirmation && (
+          <div className="text-sm">
+            <button
+              type="button"
+              onClick={handleResend}
+              disabled={resending}
+              className="text-primary underline hover:no-underline disabled:opacity-60"
+            >
+              {resending ? "Reenviando..." : "¿No te llegó el mail? Reenviar verificación"}
+            </button>
+            {resendMsg && <p className="text-green-600 mt-1">{resendMsg}</p>}
+          </div>
         )}
 
         <Button type="submit" className="w-full" disabled={loading}>

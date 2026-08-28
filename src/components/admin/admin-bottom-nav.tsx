@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Store, Users, Star, Settings, Megaphone } from "lucide-react";
+import { LayoutDashboard, Store, Users, Star, Settings, Megaphone, BarChart3 } from "lucide-react";
 
 const ITEMS = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/admin/metricas", label: "Métricas", icon: BarChart3 },
   { href: "/admin/comercios", label: "Comercios", icon: Store },
   { href: "/admin/usuarios", label: "Usuarios", icon: Users },
   { href: "/admin/resenas", label: "Reseñas", icon: Star },

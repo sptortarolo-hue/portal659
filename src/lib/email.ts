@@ -62,6 +62,47 @@ export function orderConfirmationEmail(vendorName: string, items: any[], total: 
   };
 }
 
+export function welcomeEmail(storeName: string, micrositeUrl: string): { subject: string; html: string } {
+  return {
+    subject: `¡Bienvenido/a a Portal 659, ${storeName}!`,
+    html: `
+      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px">
+        <h1 style="color:#4f46e5">¡Tu vidriera está lista! 🎉</h1>
+        <p>Hola <strong>${storeName}</strong>, ya sos parte de Portal 659, el centro comercial de tu barrio.</p>
+        <p style="color:#666;font-size:14px">Tu micrositio ya está publicado. Compartí este link con tus clientes o mostrá tu QR:</p>
+        <p style="text-align:center;margin:24px 0">
+          <a href="${micrositeUrl}" style="background:#4f46e5;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold">
+            Ver mi micrositio
+          </a>
+        </p>
+        <p style="color:#666;font-size:14px">Completá tu perfil, subí tus fotos y empezá a recibir pedidos directo por WhatsApp.</p>
+        <hr style="border:none;border-top:1px solid #eee;margin:20px 0">
+        <p style="color:#999;font-size:12px">Portal 659 — El centro comercial de tu barrio · 0% comisión</p>
+      </div>
+    `,
+  };
+}
+
+export function reviewRequestEmail(vendorName: string, reviewUrl: string): { subject: string; html: string } {
+  return {
+    subject: `¿Cómo estuvo tu pedido en ${vendorName}?`,
+    html: `
+      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px">
+        <h1 style="color:#10b981">¿Cómo estuvo tu pedido? ⭐</h1>
+        <p>Tu pedido en <strong>${vendorName}</strong> fue entregado. Tu opinión ayuda a que el barrio elija mejor.</p>
+        <p style="text-align:center;margin:24px 0">
+          <a href="${reviewUrl}" style="background:#10b981;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold">
+            Dejar una reseña
+          </a>
+        </p>
+        <p style="color:#999;font-size:12px">Si tuviste algún problema, escribile al comercio por WhatsApp primero.</p>
+        <hr style="border:none;border-top:1px solid #eee;margin:20px 0">
+        <p style="color:#999;font-size:12px">Portal 659 — El centro comercial de tu barrio</p>
+      </div>
+    `,
+  };
+}
+
 export function orderReadyEmail(vendorName: string, total: number): { subject: string; html: string } {
   return {
     subject: `¡Tu pedido de ${vendorName} está listo!`,

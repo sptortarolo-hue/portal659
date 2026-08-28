@@ -1,5 +1,6 @@
 import { getVendorByRequest } from "@/lib/vendor-utils";
 import { queryMany, queryOne, withTransaction } from "@/lib/db";
+import { sendEmail, reviewRequestEmail } from "@/lib/email";
 import { NextResponse } from "next/server";
 import { canTransition } from "@/lib/order-utils";
 import type { OrderStatus } from "@/types/database";
@@ -27,8 +28,8 @@ export async function PATCH(
     return NextResponse.json({ error: "No autorizado" }, { status: 403 });
   }
 
-  const fullVendor = await queryOne<{ id: string; store_name: string }>(
-    `SELECT id, store_name FROM vendors WHERE id = $1 LIMIT 1`,
+  const fullVendor = await queryOne<{ id: string; store_name: string; slug: string | null }>(
+    `SELECT id, store_name, slug FROM vendors WHERE id = $1 LIMIT 1`,
     [vendor.id]
   );
 
@@ -104,8 +105,8 @@ export async function PATCH(
 
   if (order && STATUS_LABELS[status] && order.customer_phone) {
     try {
-      const customerProfile = await queryOne<{ id: string }>(
-        `SELECT id FROM profiles WHERE phone = $1 OR whatsapp = $1 LIMIT 1`,
+      const customerProfile = await queryOne<{ id: string; email: string | null }>(
+        `SELECT id, email FROM profiles WHERE phone = $1 OR whatsapp = $1 LIMIT 1`,
         [order.customer_phone as string]
       );
 
@@ -121,6 +122,13 @@ export async function PATCH(
             "/mis-pedidos",
           ]
         );
+
+        if (status === "completed" && customerProfile.email) {
+          const baseUrl = (process.env.NEXT_PUBLIC_SITE_URL || "").replace(/\/$/, "");
+          const reviewUrl = `${baseUrl}/tienda/${fullVendor?.slug || ""}`;
+          const { subject, html } = reviewRequestEmail(fullVendor?.store_name || "tu pedido", reviewUrl);
+          await sendEmail({ to: customerProfile.email, subject, html });
+        }
       }
     } catch {
       // Notification is best-effort, don't fail the request

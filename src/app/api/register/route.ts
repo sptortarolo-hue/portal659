@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { withTransaction } from "@/lib/db";
 import { hashPassword } from "@/lib/auth";
+import { sendEmail, welcomeEmail } from "@/lib/email";
 
 const TIPOS = ["gastronomia", "comercio", "servicio", "moda", "salud"] as const;
 
@@ -35,14 +36,23 @@ export async function POST(request: Request) {
 
       const userId = rows[0].id;
 
-      await tx.queryVoid(
+      const vendorRows = await tx.query<{ slug: string }>(
         `INSERT INTO vendors (user_id, store_name, vertical, neighborhood, whatsapp)
-         VALUES ($1, $2, $3, 'sicardi', $4)`,
+         VALUES ($1, $2, $3, 'sicardi', $4)
+         RETURNING slug`,
         [userId, firstName, selected, whatsapp]
       );
 
-      return rows[0];
+      return { ...rows[0], slug: vendorRows[0]?.slug || "" };
     });
+
+    // Email de bienvenida (best-effort)
+    const baseUrl = (process.env.NEXT_PUBLIC_SITE_URL || "").replace(/\/$/, "");
+    if (user.email && user.slug) {
+      const microsite = `${baseUrl}/tienda/${user.slug}`;
+      const { subject, html } = welcomeEmail(user.full_name || firstName, microsite);
+      await sendEmail({ to: user.email, subject, html });
+    }
 
     return NextResponse.json({
       user: {

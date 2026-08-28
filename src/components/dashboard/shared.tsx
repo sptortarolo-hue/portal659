@@ -77,7 +77,6 @@ type OfferFormProps = {
   offPreview: string | null;
   setOffPreview: (v: string | null) => void;
   saving: boolean;
-  onSubmit: (e: React.FormEvent) => void;
   onCrop?: (target: "offer") => void;
   showStock?: boolean;
   offStock?: number;
@@ -86,6 +85,7 @@ type OfferFormProps = {
   setOffPromoPrice?: (v: string) => void;
   offStockLowThreshold?: number;
   setOffStockLowThreshold?: (v: number) => void;
+  onSubmit: () => void;
 };
 
 export function OfferForm({
@@ -106,10 +106,10 @@ export function OfferForm({
   return (
     <Card className="p-4 mb-4">
       <h3 className="font-semibold mb-3">{editingId ? "Editar plato" : "Nuevo plato"}</h3>
-      <form onSubmit={onSubmit} className="space-y-3">
+      <div className="space-y-3">
         <div className="grid grid-cols-2 gap-3">
-          <div><Label>Nombre</Label><Input value={offName} onChange={(e) => setOffName(e.target.value)} required /></div>
-          <div><Label>Precio ($)</Label><Input type="number" step="0.01" value={offPrice} onChange={(e) => setOffPrice(e.target.value)} required /></div>
+          <div><Label>Nombre</Label><Input value={offName} onChange={(e) => setOffName(e.target.value)} required onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }} /></div>
+          <div><Label>Precio ($)</Label><Input type="number" step="0.01" value={offPrice} onChange={(e) => setOffPrice(e.target.value)} required onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }} /></div>
         </div>
         {showStock && setOffPromoPrice && (
           <div><Label>Precio promo ($)</Label><Input type="number" step="0.01" value={offPromoPrice} onChange={(e) => setOffPromoPrice(e.target.value)} placeholder="Precio de oferta" /></div>
@@ -123,8 +123,8 @@ export function OfferForm({
         )}
         <div><Label>Foto</Label><Input type="file" accept="image/*" onChange={(e) => { const f = e.target.files?.[0] || null; if (f && onCrop) { const src = URL.createObjectURL(f); setOffFile(f); setOffPreview(src); } else if (f) { setOffFile(f); setOffPreview(URL.createObjectURL(f)); } }} />{offPreview && <img src={offPreview} alt="Preview" className="mt-2 h-20 w-full object-cover rounded-lg" />}</div>
         <div><Label>Descripción</Label><Textarea value={offDesc} onChange={(e) => setOffDesc(e.target.value)} /></div>
-        <Button type="submit" disabled={saving} className="w-full">{saving ? "Guardando..." : editingId ? "Guardar" : "Agregar"}</Button>
-      </form>
+        <Button type="button" onClick={() => onSubmit()} disabled={saving} className="w-full">{saving ? "Guardando..." : editingId ? "Guardar" : "Agregar"}</Button>
+      </div>
     </Card>
   );
 }
@@ -205,12 +205,24 @@ export function CategoryManager({ categories, onAdd, onRename, onDelete, onMove 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
 
+  const addCategory = () => {
+    if (newName.trim()) {
+      onAdd(newName.trim());
+      setNewName("");
+    }
+  };
+
   return (
     <CollapsibleSection icon="📂" title={`Categorías (${categories.length})`}>
-      <form onSubmit={(e) => { e.preventDefault(); if (newName.trim()) { onAdd(newName.trim()); setNewName(""); } }} className="flex gap-2 mb-3">
-        <Input placeholder="Nueva categoría" value={newName} onChange={(e) => setNewName(e.target.value)} />
-        <Button type="submit" size="sm" disabled={!newName.trim()}>+</Button>
-      </form>
+      <div className="flex gap-2 mb-3">
+        <Input
+          placeholder="Nueva categoría"
+          value={newName}
+          onChange={(e) => setNewName(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addCategory(); } }}
+        />
+        <Button type="button" size="sm" disabled={!newName.trim()} onClick={addCategory}>+</Button>
+      </div>
       {categories.length === 0 ? (
         <p className="text-sm text-muted-foreground">Creá categorías para organizar tu menú.</p>
       ) : (
@@ -220,16 +232,16 @@ export function CategoryManager({ categories, onAdd, onRename, onDelete, onMove 
               {editingId === cat.id ? (
                 <>
                   <Input className="h-8 flex-1" value={editingName} onChange={(e) => setEditingName(e.target.value)} autoFocus />
-                  <Button size="sm" variant="outline" onClick={() => { onRename(cat.id, editingName); setEditingId(null); }}>OK</Button>
-                  <Button size="sm" variant="ghost" onClick={() => setEditingId(null)}>✕</Button>
+                  <Button type="button" size="sm" variant="outline" onClick={() => { onRename(cat.id, editingName); setEditingId(null); }}>OK</Button>
+                  <Button type="button" size="sm" variant="ghost" onClick={() => setEditingId(null)}>✕</Button>
                 </>
               ) : (
                 <>
                   <span className="font-medium flex-1 min-w-0 truncate">{cat.name}</span>
-                  <Button size="sm" variant="ghost" disabled={i === 0} onClick={() => onMove(cat, -1)}>↑</Button>
-                  <Button size="sm" variant="ghost" disabled={i === categories.length - 1} onClick={() => onMove(cat, 1)}>↓</Button>
-                  <Button size="sm" variant="ghost" onClick={() => { setEditingId(cat.id); setEditingName(cat.name); }}>✏️</Button>
-                  <Button size="sm" variant="ghost" className="text-red-600" onClick={() => onDelete(cat)}>🗑️</Button>
+                  <Button type="button" size="sm" variant="ghost" disabled={i === 0} onClick={() => onMove(cat, -1)}>↑</Button>
+                  <Button type="button" size="sm" variant="ghost" disabled={i === categories.length - 1} onClick={() => onMove(cat, 1)}>↓</Button>
+                  <Button type="button" size="sm" variant="ghost" onClick={() => { setEditingId(cat.id); setEditingName(cat.name); }}>✏️</Button>
+                  <Button type="button" size="sm" variant="ghost" className="text-red-600" onClick={() => onDelete(cat)}>🗑️</Button>
                 </>
               )}
             </li>

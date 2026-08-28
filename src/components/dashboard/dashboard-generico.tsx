@@ -120,8 +120,8 @@ export default function DashboardGenerico({
     setSaving(false);
   }
 
-  async function handleNewOffer(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleNewOffer(e?: React.FormEvent) {
+    e?.preventDefault();
     setSaving(true);
     let imageUrl = null;
     if (offFile) { imageUrl = await uploadImage(offFile, "offers"); }

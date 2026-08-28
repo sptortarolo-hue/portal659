@@ -271,8 +271,8 @@ export default function DashboardGastro({
     setOffStockLowThreshold(5);
   }
 
-  async function handleOfferSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleOfferSubmit(e?: React.FormEvent) {
+    e?.preventDefault();
     setSaving(true);
     setMsg("");
 

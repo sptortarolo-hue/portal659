@@ -89,7 +89,7 @@ export async function PATCH(
   const updateData: Record<string, unknown> = {};
   if (status) updateData.status = status;
   if (estimated_minutes !== undefined) updateData.estimated_minutes = estimated_minutes;
-  if (items !== undefined) updateData.items = items;
+  if (items !== undefined) updateData.items = JSON.stringify(items);
   if (modification_notes !== undefined) updateData.modification_notes = modification_notes;
 
   const setClauses: string[] = [];

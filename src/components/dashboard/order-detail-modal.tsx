@@ -51,7 +51,7 @@ type Props = {
   vendorName: string;
   onClose: () => void;
   onAction: (order: Order, status: OrderStatus) => void;
-  onModify?: (orderId: string, items: OrderItem[], modificationNotes: string) => Promise<boolean>;
+  onModify?: (orderId: string, items: OrderItem[], modificationNotes: string) => Promise<{ ok: boolean; error?: string }>;
   offers?: DBProduct[];
 };
 
@@ -64,6 +64,7 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
   const [showProductPicker, setShowProductPicker] = useState(false);
   const [printing, setPrinting] = useState(false);
   const [printStatus, setPrintStatus] = useState<"ok" | "error" | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const isCancelled = order.status === "cancelled";
   const isCompleted = order.status === "completed";
@@ -84,6 +85,7 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
     setModNotes("");
     setProductSearch("");
     setShowProductPicker(false);
+    setSaveError(null);
     setEditing(true);
   }, [order.items]);
 
@@ -121,16 +123,22 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
     return sum + (item.price + modPrice) * item.qty;
   }, 0);
 
-  const handleSaveModification = async () => {
-    if (!onModify || editItems.length === 0) return false;
-    setSaving(true);
-    const ok = await onModify(order.id, editItems, modNotes);
-    setSaving(false);
-    if (ok) {
-      setEditing(false);
-      return true;
+  const handleSaveModification = async (): Promise<{ ok: boolean; error?: string }> => {
+    if (!onModify || editItems.length === 0) {
+      return { ok: false, error: !onModify ? "No hay función para guardar" : "No hay productos" };
     }
-    return false;
+    setSaving(true);
+    setSaveError(null);
+    const result = await onModify(order.id, editItems, modNotes).catch((err) => {
+      return { ok: false, error: err instanceof Error ? err.message : "Error de red" };
+    });
+    setSaving(false);
+    if (!result.ok) {
+      setSaveError(result.error || "No se pudo guardar la modificación");
+    } else {
+      setEditing(false);
+    }
+    return result;
   };
 
   const sendModifiedWhatsApp = () => {
@@ -519,20 +527,26 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
           {/* Edit mode actions */}
           {editing && (
             <div className="space-y-2 pt-2">
+              {saveError && (
+                <p className="text-xs font-semibold text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                  ❌ {saveError}
+                </p>
+              )}
               <Button
                 className="w-full"
                 disabled={saving || editItems.length === 0}
-                onClick={handleSaveModification}
+                onClick={() => handleSaveModification()}
               >
                 {saving ? "Guardando..." : "Guardar cambios"}
               </Button>
               <Button
                 variant="outline"
                 className="w-full border-green-200 bg-green-50 text-green-700 hover:bg-green-100"
-                disabled={editItems.length === 0}
+                disabled={saving || editItems.length === 0 || !customerPhone}
+                title={!customerPhone ? "El pedido no tiene teléfono del cliente" : undefined}
                 onClick={async () => {
-                  const ok = await handleSaveModification();
-                  if (ok) sendModifiedWhatsApp();
+                  const result = await handleSaveModification();
+                  if (result.ok) sendModifiedWhatsApp();
                 }}
               >
                 Guardar y enviar WhatsApp al cliente

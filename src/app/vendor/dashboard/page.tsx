@@ -229,30 +229,45 @@ export default function VendorDashboard() {
     }
   }
 
-  async function modifyOrder(orderId: string, items: OrderItem[], modificationNotes: string): Promise<boolean> {
+  async function modifyOrder(
+    orderId: string,
+    items: OrderItem[],
+    modificationNotes: string
+  ): Promise<{ ok: boolean; error?: string }> {
     try {
-      const total = items.reduce((sum, item) => sum + item.price * item.qty, 0);
       const res = await fetch(`/api/vendor/orders/${orderId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ items, modification_notes: modificationNotes }),
       });
-      const data = await res.json();
-      if (data.error) {
-        setMsg(`Error: ${data.error}`);
-        return false;
+      const text = await res.text();
+      const data = (() => {
+        try {
+          return text ? JSON.parse(text) : {};
+        } catch {
+          return {};
+        }
+      })();
+      if (!res.ok || data.error) {
+        const err = data.error || data.message || (data.error_description as string) || `HTTP ${res.status}`;
+        setMsg(`Error: ${err}`);
+        return { ok: false, error: String(err) };
       }
+      const total = items.reduce((sum, item) => sum + item.price * item.qty, 0);
       setMsg(`Pedido #${orderId.slice(0, 8)} modificado`);
       setOrders((prev) =>
         prev.map((o) =>
           o.id === orderId ? { ...o, items, modification_notes: modificationNotes, total } : o
         )
       );
-      setSelectedOrder((prev) => prev && prev.id === orderId ? { ...prev, items, modification_notes: modificationNotes, total } : prev);
-      return true;
-    } catch {
-      setMsg("Error al modificar el pedido");
-      return false;
+      setSelectedOrder((prev) =>
+        prev && prev.id === orderId ? { ...prev, items, modification_notes: modificationNotes, total } : prev
+      );
+      return { ok: true };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Error al modificar el pedido";
+      setMsg(`Error: ${message}`);
+      return { ok: false, error: message };
     }
   }
 

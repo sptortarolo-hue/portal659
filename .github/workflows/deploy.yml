@@ -16,7 +16,7 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: 8277
-          command_timeout: 30m
+          command_timeout: 60m
           script: |
             cd /tmp
             SHA="${{ github.sha }}"
@@ -24,6 +24,13 @@ jobs:
             rm -rf /opt/portal659
             mkdir -p /opt/portal659
             tar -xzf code.tgz -C /opt/portal659 --strip-components=1
+
+            # Swap 2G si no existe (evita OOM al buildear Next.js en un VPS de 1GB)
+            SWAP_MB=$(free -m | awk '/^Swap:/{print $2}')
+            if [ "${SWAP_MB:-0}" -lt 2048 ] && [ ! -f /swapfile2 ]; then
+              fallocate -l 2G /swapfile2 && chmod 600 /swapfile2 && mkswap /swapfile2 && swapon /swapfile2
+              grep -q 'swapfile2' /etc/fstab || echo '/swapfile2 none swap sw 0 0' >> /etc/fstab
+            fi
 
             echo 'DATABASE_URL=${{ secrets.DATABASE_URL }}' > /opt/portal659/.env
             echo 'JWT_SECRET=${{ secrets.JWT_SECRET }}' >> /opt/portal659/.env
@@ -41,7 +48,9 @@ jobs:
             echo 'VAPID_PRIVATE_KEY=${{ secrets.VAPID_PRIVATE_KEY }}' >> /opt/portal659/.env
             echo 'VAPID_SUBJECT=${{ secrets.VAPID_SUBJECT }}' >> /opt/portal659/.env
             echo 'PRINT_BRIDGE_URL=http://printbridge:8791' >> /opt/portal659/.env
-            echo 'PRINT_BRIDGE_SECRET=${{ secrets.PRINT_BRIDGE_SECRET }}' >> /opt/portal659/.env
+            PB_SECRET='${{ secrets.PRINT_BRIDGE_SECRET }}'
+            if [ -z "$PB_SECRET" ]; then PB_SECRET=$(openssl rand -hex 24); fi
+            echo "PRINT_BRIDGE_SECRET=$PB_SECRET" >> /opt/portal659/.env
 
             cd /opt/portal659
             docker compose up -d --build

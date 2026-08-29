@@ -46,6 +46,10 @@ Ver **[DEPLOYMENT.md](DEPLOYMENT.md)**.
 
 En resumen: push a `master` dispara GitHub Actions "Deploy to VPS" (docker compose con `app` + `db` + `nginx`). Las variables van en los secrets del repo.
 
+## Impresión térmica
+
+Comandas/tickets a impresora EPOS/ESC por Wi-Fi usando un celular Android como puente (relay `services/print-bridge` + app `android/`). Estado actual, arquitectura, deploy y checklist de prueba: **[docs/impresion-termica.md](docs/impresion-termica.md)**.
+
 ## Estructura
 
 ```

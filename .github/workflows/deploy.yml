@@ -54,6 +54,9 @@ jobs:
 
             cd /opt/portal659
             docker compose up -d --build
+            # nginx cachea el DNS del upstream al arrancar: si 'app' se recrea con un IP
+            # nuevo, nginx apunta a un IP muerto y el sitio da 502. Restart = re-resuelve.
+            docker restart portal659-nginx
             docker image prune -f
             rm -f /tmp/code.tgz
             echo "Deploy completado!"

@@ -17,6 +17,8 @@ type Product = {
   price: number;
   promo_price: number | null;
   available: boolean;
+  image_url?: string | null;
+  category?: string | null;
 };
 
 type Order = {
@@ -42,6 +44,7 @@ export function Mesas() {
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState("");
   const [query, setQuery] = useState("");
+  const [activeCat, setActiveCat] = useState<string | null>(null);
   const [newTable, setNewTable] = useState("");
   const [renaming, setRenaming] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
@@ -77,8 +80,18 @@ export function Mesas() {
 
   const filtered = useMemo(() => {
     const q = query.toLowerCase();
-    return products.filter((p) => !q || p.name.toLowerCase().includes(q));
-  }, [products, query]);
+    return products.filter(
+      (p) =>
+        (!q || p.name.toLowerCase().includes(q)) &&
+        (!activeCat || p.category === activeCat)
+    );
+  }, [products, query, activeCat]);
+
+  const categories = useMemo(() => {
+    const set = new Set<string>();
+    products.forEach((p) => { if (p.category) set.add(p.category); });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "es"));
+  }, [products]);
 
   async function addTable() {
     if (!newTable.trim()) return;
@@ -284,16 +297,56 @@ export function Mesas() {
                 placeholder="Buscar y agregar producto..."
                 className="w-full h-9 px-3 text-xs rounded-lg border border-input bg-background mb-2"
               />
-              <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto">
+              {categories.length > 1 && (
+                <div className="flex gap-1.5 overflow-x-auto pb-1 mb-2 scrollbar-hide">
+                  <button
+                    onClick={() => setActiveCat(null)}
+                    className={`flex-shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                      activeCat === null ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                    }`}
+                  >
+                    Todos
+                  </button>
+                  {categories.map((c) => (
+                    <button
+                      key={c}
+                      onClick={() => setActiveCat(activeCat === c ? null : c)}
+                      className={`flex-shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                        activeCat === c ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                      }`}
+                    >
+                      {c}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5 max-h-40 overflow-y-auto pr-1">
                 {filtered.map((p) => (
                   <button
                     key={p.id}
                     onClick={() => addProduct(p)}
-                    className="rounded-lg border border-border bg-card px-2.5 py-1.5 text-xs hover:border-primary/50 transition-colors"
+                    className="text-left rounded-lg border border-border bg-card overflow-hidden hover:border-primary/50 transition-colors active:scale-[0.97]"
                   >
-                    {p.name} · <b>${Number(p.promo_price ?? p.price).toLocaleString("es-AR")}</b>
+                    <div className="aspect-square w-full bg-secondary">
+                      {p.image_url ? (
+                        <img src={p.image_url} alt={p.name} loading="lazy" decoding="async" className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <span className="font-display text-2xl font-bold text-primary/40">{p.name.charAt(0)}</span>
+                        </div>
+                      )}
+                    </div>
+                    <div className="p-1.5">
+                      <p className="text-[10px] font-medium truncate">{p.name}</p>
+                      <p className="text-[11px] font-semibold text-primary tabular-nums">
+                        ${Number(p.promo_price ?? p.price).toLocaleString("es-AR")}
+                      </p>
+                    </div>
                   </button>
                 ))}
+                {filtered.length === 0 && (
+                  <p className="text-[11px] text-muted-foreground col-span-full text-center py-4">Sin productos</p>
+                )}
               </div>
               {cart.length > 0 && (
                 <div className="mt-2 space-y-1">

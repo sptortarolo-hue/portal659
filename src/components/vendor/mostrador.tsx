@@ -10,6 +10,8 @@ type Product = {
   price: number;
   promo_price: number | null;
   available: boolean;
+  image_url?: string | null;
+  category?: string | null;
 };
 
 type LineItem = {
@@ -46,8 +48,15 @@ export function Mostrador() {
   const [msg, setMsg] = useState("");
   const [recent, setRecent] = useState<MostradorOrder[]>([]);
   const [query, setQuery] = useState("");
+  const [activeCat, setActiveCat] = useState<string | null>(null);
 
   const total = useMemo(() => items.reduce((s, i) => s + i.price * i.qty, 0), [items]);
+
+  const categories = useMemo(() => {
+    const set = new Set<string>();
+    products.forEach((p) => { if (p.category) set.add(p.category); });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "es"));
+  }, [products]);
 
   useEffect(() => {
     (async () => {
@@ -74,8 +83,12 @@ export function Mostrador() {
 
   const filtered = useMemo(() => {
     const q = query.toLowerCase();
-    return products.filter((p) => !q || p.name.toLowerCase().includes(q));
-  }, [products, query]);
+    return products.filter(
+      (p) =>
+        (!q || p.name.toLowerCase().includes(q)) &&
+        (!activeCat || p.category === activeCat)
+    );
+  }, [products, query, activeCat]);
 
   function add(p: Product) {
     setItems((prev) => {
@@ -139,20 +152,74 @@ export function Mostrador() {
             placeholder="Buscar producto..."
             className="w-full h-10 px-3 text-sm rounded-xl border border-input bg-background"
           />
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[50vh] overflow-y-auto pr-1">
+          {categories.length > 1 && (
+            <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
+              <button
+                onClick={() => setActiveCat(null)}
+                className={`flex-shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                  activeCat === null ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                }`}
+              >
+                Todos
+              </button>
+              {categories.map((c) => (
+                <button
+                  key={c}
+                  onClick={() => setActiveCat(activeCat === c ? null : c)}
+                  className={`flex-shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                    activeCat === c ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                  }`}
+                >
+                  {c}
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-[50vh] overflow-y-auto pr-1">
             {filtered.map((p) => (
               <button
                 key={p.id}
                 onClick={() => add(p)}
-                className="text-left rounded-xl border border-border bg-card p-3 hover:border-primary/50 hover:shadow-sm transition-all active:scale-[0.98]"
+                className="group text-left rounded-xl border border-border bg-card overflow-hidden hover:border-primary/50 hover:shadow-sm transition-all active:scale-[0.98]"
               >
-                <p className="text-sm font-medium truncate">{p.name}</p>
-                <p className="text-xs text-muted-foreground font-semibold tabular-nums">
-                  ${Number(p.promo_price ?? p.price).toLocaleString("es-AR")}
-                </p>
+                <div className="relative aspect-square">
+                  {p.image_url ? (
+                    <img
+                      src={p.image_url}
+                      alt={p.name}
+                      loading="lazy"
+                      decoding="async"
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-gradient-to-br from-secondary to-accent flex items-center justify-center">
+                      <span className="font-display text-4xl font-bold text-primary/40">
+                        {p.name.charAt(0)}
+                      </span>
+                    </div>
+                  )}
+                  {!p.available && (
+                    <span className="absolute top-2 left-2 rounded-full bg-red-500 text-white text-[9px] font-bold px-2 py-0.5">
+                      Agotado
+                    </span>
+                  )}
+                </div>
+                <div className="p-2">
+                  <p className="text-xs font-medium truncate">{p.name}</p>
+                  <div className="flex items-baseline gap-1 mt-0.5">
+                    <span className="text-sm font-semibold text-primary tabular-nums">
+                      ${Number(p.promo_price ?? p.price).toLocaleString("es-AR")}
+                    </span>
+                    {p.promo_price != null && (
+                      <span className="text-[10px] text-muted-foreground line-through">
+                        ${Number(p.price).toLocaleString("es-AR")}
+                      </span>
+                    )}
+                  </div>
+                </div>
               </button>
             ))}
-            {filtered.length === 0 && <p className="text-xs text-muted-foreground col-span-2 text-center py-6">Sin productos</p>}
+            {filtered.length === 0 && <p className="text-xs text-muted-foreground col-span-full text-center py-6">Sin productos</p>}
           </div>
         </div>
 

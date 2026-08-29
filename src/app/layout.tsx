@@ -91,7 +91,7 @@ export default function RootLayout({
               <OnboardingOverlay />
               <Navigation />
               <ErrorBoundary>
-                <main className="flex-1 pb-20">{children}</main>
+                <main className="flex-1 pb-28">{children}</main>
               </ErrorBoundary>
               <CartFooter />
               <CartDrawer />

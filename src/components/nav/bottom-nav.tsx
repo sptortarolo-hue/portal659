@@ -15,6 +15,14 @@ export function BottomNav() {
   const pathname = usePathname();
   const { count, setOpen } = useCart();
 
+  if (
+    pathname?.startsWith("/admin") ||
+    pathname?.startsWith("/vendor") ||
+    pathname?.startsWith("/tienda")
+  ) {
+    return null;
+  }
+
   return (
     <nav className="sm:hidden fixed bottom-0 inset-x-0 bg-card border-t border-border z-50" style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
       <div className="flex items-center justify-around h-14">

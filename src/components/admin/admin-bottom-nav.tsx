@@ -19,8 +19,8 @@ export default function AdminBottomNav() {
   const pathname = usePathname();
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 bg-card border-t border-border sm:hidden safe-area-inset">
-      <div className="flex items-center justify-around py-2">
+    <nav className="fixed bottom-0 left-0 right-0 z-40 bg-card border-t border-border sm:hidden" style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
+      <div className="flex items-center justify-around py-2 overflow-x-auto">
         {ITEMS.map((item) => {
           const isActive = pathname === item.href || (item.href !== "/admin" && pathname.startsWith(item.href));
           return (

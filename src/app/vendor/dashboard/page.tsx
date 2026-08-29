@@ -646,7 +646,7 @@ export default function VendorDashboard() {
         )}
       </div>
 
-      <nav className="sm:hidden fixed bottom-0 inset-x-0 bg-card/95 backdrop-blur-sm border-t border-border z-50">
+      <nav className="sm:hidden fixed bottom-0 inset-x-0 bg-card/95 backdrop-blur-sm border-t border-border z-50" style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
           <div className="flex">
             <button onClick={() => setTab("config")} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors ${tab === "config" ? "text-primary" : "text-muted-foreground"}`}>
               <span className="text-lg">⚙️</span>Config

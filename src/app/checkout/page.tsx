@@ -261,7 +261,7 @@ export default function CheckoutPage() {
       <form onSubmit={handleSubmit} className="space-y-4">
         {/* Name & Phone */}
         <div className="grid grid-cols-2 gap-3">
-          <div>
+          <div className="min-w-0">
             <Label htmlFor="name">Tu nombre</Label>
             <Input
               id="name"
@@ -271,7 +271,7 @@ export default function CheckoutPage() {
               required
             />
           </div>
-          <div>
+          <div className="min-w-0">
             <Label htmlFor="phone">Tu WhatsApp</Label>
             <Input
               id="phone"

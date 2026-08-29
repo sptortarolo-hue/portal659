@@ -443,16 +443,20 @@ onAdd={async (name) => { const r = await apiJson("/api/vendor/categories", { met
                     <Label className="text-sm">Variantes (color × talle)</Label>
                     <Button type="button" size="sm" variant="outline" onClick={addVariantRow}>+ Fila</Button>
                   </div>
-                  <div className="grid grid-cols-6 gap-2 text-xs font-medium text-muted-foreground px-1">
-                    <span>Color</span><span>Talle</span><span>Precio</span><span>Promo</span><span>Stock</span><span></span>
+                  <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 text-xs font-medium text-muted-foreground px-1">
+                    <span>Color</span><span>Talle</span><span>Precio</span><span className="hidden sm:block">Promo</span><span className="hidden sm:block">Stock</span><span></span>
                   </div>
                   {variantRows.map((row, i) => (
-                    <div key={i} className="grid grid-cols-6 gap-2 items-center">
+                    <div key={i} className="grid grid-cols-3 sm:grid-cols-6 gap-2 items-center">
                       <Input className="h-8" value={row.color} onChange={(e) => updateVariantRow(i, "color", e.target.value)} placeholder="Rojo" />
                       <Input className="h-8" value={row.talle} onChange={(e) => updateVariantRow(i, "talle", e.target.value)} placeholder="M" />
                       <Input className="h-8" type="number" value={row.price} onChange={(e) => updateVariantRow(i, "price", e.target.value)} />
-                      <Input className="h-8" type="number" value={row.promo} onChange={(e) => updateVariantRow(i, "promo", e.target.value)} placeholder="-" />
-                      <QuantityInput value={row.stock} onChange={(v) => updateVariantRow(i, "stock", v)} min={0} />
+                      <div className="hidden sm:block min-w-0">
+                        <Input className="h-8" type="number" value={row.promo} onChange={(e) => updateVariantRow(i, "promo", e.target.value)} placeholder="-" />
+                      </div>
+                      <div className="hidden sm:block min-w-0">
+                        <QuantityInput value={row.stock} onChange={(v) => updateVariantRow(i, "stock", v)} min={0} />
+                      </div>
                       <Button type="button" variant="ghost" size="sm" className="text-red-600" onClick={() => setVariantRows((prev) => prev.filter((_, idx) => idx !== i))}>🗑️</Button>
                     </div>
                   ))}

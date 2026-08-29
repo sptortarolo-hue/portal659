@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import QRCode from "qrcode";
 import { Button } from "@/components/ui/button";
@@ -78,6 +78,14 @@ const STATUS_COLORS: Record<Order["status"], string> = {
 };
 
 export default function VendorDashboard() {
+  return (
+    <Suspense fallback={<div className="container mx-auto px-4 py-8"><p className="text-muted-foreground">Cargando...</p></div>}>
+      <VendorDashboardInner />
+    </Suspense>
+  );
+}
+
+function VendorDashboardInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const impersonatingId = searchParams.get("as");

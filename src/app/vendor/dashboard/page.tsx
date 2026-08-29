@@ -88,7 +88,8 @@ export default function VendorDashboard() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [variants, setVariants] = useState<ProductVariant[]>([]);
   const [productImages, setProductImages] = useState<ProductImage[]>([]);
-  const [tab, setTab] = useState<"config" | "menu" | "orders" | "comanda" | "analytics" | "pos" | "mesas" | "reviews">("config");
+  const [tab, setTab] = useState<"config" | "menu" | "orders" | "comanda" | "analytics" | "pos" | "mesas" | "reviews">("orders");
+  const [moreOpen, setMoreOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState("");
   const [plans, setPlans] = useState<Plan[]>([]);
@@ -536,15 +537,20 @@ export default function VendorDashboard() {
       <PlanBanner plan={planBannerData as any} />
 
       <div className="hidden sm:block container mx-auto px-4 mt-4">
-        <div className="flex gap-2 mb-4">
-          <Button variant={tab === "config" ? "default" : "outline"} size="sm" onClick={() => setTab("config")}>Configuración</Button>
-          <Button variant={tab === "menu" ? "default" : "outline"} size="sm" onClick={() => setTab("menu")}>Menú ({offers.length})</Button>
-          <Button variant={tab === "orders" ? "default" : "outline"} size="sm" onClick={() => setTab("orders")}>Pedidos ({orders.length})</Button>
-          <Button variant={tab === "comanda" ? "default" : "outline"} size="sm" onClick={() => setTab("comanda")}>🍳 Comanda</Button>
-          <Button variant={tab === "pos" ? "default" : "outline"} size="sm" onClick={() => setTab("pos")}>🛒 Mostrador</Button>
-          <Button variant={tab === "mesas" ? "default" : "outline"} size="sm" onClick={() => setTab("mesas")} disabled={!isGastro}>🍽️ Mesas</Button>
-          <Button variant={tab === "analytics" ? "default" : "outline"} size="sm" onClick={() => setTab("analytics")}>Estadísticas</Button>
-          <Button variant={tab === "reviews" ? "default" : "outline"} size="sm" onClick={() => setTab("reviews")}>⭐ Reseñas</Button>
+        <div className="flex flex-wrap gap-2 mb-4 items-center">
+          <div className="flex flex-wrap gap-2">
+            <Button variant={tab === "orders" ? "default" : "outline"} size="sm" onClick={() => setTab("orders")}>Pedidos ({orders.length})</Button>
+            <Button variant={tab === "comanda" ? "default" : "outline"} size="sm" onClick={() => setTab("comanda")}>🍳 Comanda</Button>
+            <Button variant={tab === "pos" ? "default" : "outline"} size="sm" onClick={() => setTab("pos")}>🛒 Mostrador</Button>
+            <Button variant={tab === "mesas" ? "default" : "outline"} size="sm" onClick={() => setTab("mesas")} disabled={!isGastro}>🍽️ Mesas</Button>
+          </div>
+          <div className="mx-2 h-6 w-px bg-border" />
+          <div className="flex flex-wrap gap-2">
+            <Button variant={tab === "menu" ? "default" : "outline"} size="sm" onClick={() => setTab("menu")}>🍽️ Menú ({offers.length})</Button>
+            <Button variant={tab === "config" ? "default" : "outline"} size="sm" onClick={() => setTab("config")}>⚙️ Configuración</Button>
+            <Button variant={tab === "analytics" ? "default" : "outline"} size="sm" onClick={() => setTab("analytics")}>📊 Estadísticas</Button>
+            <Button variant={tab === "reviews" ? "default" : "outline"} size="sm" onClick={() => setTab("reviews")}>⭐ Reseñas</Button>
+          </div>
         </div>
       </div>
 
@@ -553,16 +559,24 @@ export default function VendorDashboard() {
         <div className="container mx-auto px-4 mt-4">
           <div className="grid grid-cols-5 gap-1.5 mb-4">
             {[
-              { label: "Nuevos", value: orders.filter((o) => o.status === "new").length, bg: "bg-status-new/10 dark:bg-status-new/20", text: "text-status-new" },
-              { label: "Aceptados", value: orders.filter((o) => o.status === "confirmed").length, bg: "bg-status-confirmed/10 dark:bg-status-confirmed/20", text: "text-status-confirmed" },
-              { label: "Preparando", value: orders.filter((o) => o.status === "preparing").length, bg: "bg-status-preparing/10 dark:bg-status-preparing/20", text: "text-status-preparing" },
-              { label: "Listos", value: orders.filter((o) => o.status === "ready").length, bg: "bg-status-ready/10 dark:bg-status-ready/20", text: "text-status-ready" },
-              { label: "Entregados", value: orders.filter((o) => o.status === "completed").length, bg: "bg-muted", text: "text-muted-foreground" },
+              { status: "new", label: "Nuevos", value: orders.filter((o) => o.status === "new").length, bg: "bg-status-new/10 dark:bg-status-new/20", text: "text-status-new" },
+              { status: "confirmed", label: "Aceptados", value: orders.filter((o) => o.status === "confirmed").length, bg: "bg-status-confirmed/10 dark:bg-status-confirmed/20", text: "text-status-confirmed" },
+              { status: "preparing", label: "Preparando", value: orders.filter((o) => o.status === "preparing").length, bg: "bg-status-preparing/10 dark:bg-status-preparing/20", text: "text-status-preparing" },
+              { status: "ready", label: "Listos", value: orders.filter((o) => o.status === "ready").length, bg: "bg-status-ready/10 dark:bg-status-ready/20", text: "text-status-ready" },
+              { status: "completed", label: "Entregados", value: orders.filter((o) => o.status === "completed").length, bg: "bg-muted", text: "text-muted-foreground" },
             ].map((stat) => (
-              <div key={stat.label} className={`rounded-xl ${stat.bg} p-2 text-center`}>
+              <button
+                key={stat.label}
+                type="button"
+                onClick={() => {
+                  setTab("orders");
+                  setOrderStatusFilter(stat.status);
+                }}
+                className={`rounded-xl ${stat.bg} p-2 text-center transition-all active:scale-[0.96] ${tab === "orders" && orderStatusFilter === stat.status ? "ring-2 ring-primary/40" : ""}`}
+              >
                 <div className={`text-lg font-bold ${stat.text} tabular-nums animate-count-up`}>{stat.value}</div>
                 <p className="text-[8px] sm:text-[9px] text-muted-foreground font-medium">{stat.label}</p>
-              </div>
+              </button>
             ))}
           </div>
         </div>
@@ -667,12 +681,6 @@ export default function VendorDashboard() {
 
       <nav className="sm:hidden fixed bottom-0 inset-x-0 bg-card/95 backdrop-blur-sm border-t border-border z-50" style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
           <div className="flex">
-            <button onClick={() => setTab("config")} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors ${tab === "config" ? "text-primary" : "text-muted-foreground"}`}>
-              <span className="text-lg">⚙️</span>Config
-            </button>
-            <button onClick={() => setTab("menu")} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors ${tab === "menu" ? "text-primary" : "text-muted-foreground"}`}>
-              <span className="text-lg">{isService ? "🔧" : "🍽️"}</span>{isService ? "Servicios" : "Menú"}
-            </button>
             <button onClick={() => setTab("orders")} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors relative ${tab === "orders" ? "text-primary" : "text-muted-foreground"}`}>
               <span className="text-lg">📦</span>Pedidos
               {orders.length > 0 && <span className="absolute top-1 right-1/3 -translate-x-4 bg-red-500 text-white text-[9px] rounded-full h-4 w-4 flex items-center justify-center">{orders.length}</span>}
@@ -687,14 +695,35 @@ export default function VendorDashboard() {
             <button onClick={() => setTab("mesas")} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors ${tab === "mesas" ? "text-primary" : "text-muted-foreground"}`}>
               <span className="text-lg">🍽️</span>Mesas
             </button>
-            <button onClick={() => setTab("analytics")} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors ${tab === "analytics" ? "text-primary" : "text-muted-foreground"}`}>
-              <span className="text-lg">📊</span>Stats
-            </button>
-            <button onClick={() => setTab("reviews")} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors ${tab === "reviews" ? "text-primary" : "text-muted-foreground"}`}>
-              <span className="text-lg">⭐</span>Reseñas
+            <button onClick={() => setMoreOpen((v) => !v)} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors ${["config", "menu", "analytics", "reviews"].includes(tab) ? "text-primary" : "text-muted-foreground"}`}>
+              <span className="text-lg">{moreOpen ? "✕" : "⋮"}</span>Más
             </button>
           </div>
         </nav>
+
+        {moreOpen && (
+          <div className="sm:hidden fixed inset-0 z-40 bg-black/50" onClick={() => setMoreOpen(false)} />
+        )}
+        {moreOpen && (
+          <div className="sm:hidden fixed bottom-0 inset-x-0 z-50 bg-card rounded-t-2xl border-t border-border p-4 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)] shadow-xl">
+            <button onClick={() => setMoreOpen(false)} className="mx-auto block w-10 h-1.5 bg-muted rounded-full mb-4" aria-label="Cerrar" />
+            <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wide mb-2">Administración</p>
+            <div className="grid grid-cols-2 gap-2">
+              <button onClick={() => { setTab("menu"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "menu" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
+                <span className="text-lg">{isService ? "🔧" : "🍽️"}</span>{isService ? "Servicios" : "Menú"} ({offers.length})
+              </button>
+              <button onClick={() => { setTab("config"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "config" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
+                <span className="text-lg">⚙️</span>Configuración
+              </button>
+              <button onClick={() => { setTab("analytics"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "analytics" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
+                <span className="text-lg">📊</span>Estadísticas
+              </button>
+              <button onClick={() => { setTab("reviews"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "reviews" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
+                <span className="text-lg">⭐</span>Reseñas
+              </button>
+            </div>
+          </div>
+        )}
 
       {shareOpen && vendor.slug && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={() => setShareOpen(false)}>

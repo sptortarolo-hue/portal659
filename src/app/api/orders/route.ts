@@ -45,6 +45,13 @@ export const POST = withRateLimit(async (request: Request) => {
 
   let orderId: string | undefined;
 
+  const normalizedItems = (Array.isArray(items) ? items : []).map((i: any) => ({
+    name: i.name,
+    price: Number(i.price),
+    qty: Number(i.qty) || 1,
+    modifiers: Array.isArray(i.modifiers) && i.modifiers.length > 0 ? i.modifiers : undefined,
+  }));
+
   await withTransaction(async (tx) => {
     const rows = await tx.query<{ id: string }>(
       `INSERT INTO orders (vendor_id, customer_id, customer_name, customer_phone, customer_address, method, payment_method, items, total, status, notes)
@@ -58,7 +65,7 @@ export const POST = withRateLimit(async (request: Request) => {
         customerAddress || null,
         method === "pickup" ? "pickup" : "delivery",
         paymentMethod || "whatsapp",
-        items,
+        JSON.stringify(normalizedItems),
         total,
         notes || null,
       ]
@@ -101,11 +108,10 @@ export const POST = withRateLimit(async (request: Request) => {
       [vendor.user_id]
     );
     if (userProfile?.email) {
-      const emailContent = orderConfirmationEmail(vendor.store_name, items, total);
-      await sendEmail({
-        to: userProfile.email,
-        ...emailContent,
-      });
+      const emailContent = orderConfirmationEmail(vendor.store_name, normalizedItems as any, Number(total));
+      Promise.resolve()
+        .then(() => sendEmail({ to: userProfile.email, ...emailContent }))
+        .catch(() => {});
     }
   }
 

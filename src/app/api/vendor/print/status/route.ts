@@ -1,5 +1,6 @@
 import { query, queryOne } from "@/lib/db";
 import { getAuthUser } from "@/lib/auth";
+import { getVendorByRequest } from "@/lib/vendor-utils";
 import { generatePrintToken } from "@/lib/print-token";
 import { NextResponse } from "next/server";
 
@@ -22,11 +23,17 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "No autenticado" }, { status: 401 });
   }
 
+  const { vendor: v } = await getVendorByRequest(request);
+
+  if (!v) {
+    return NextResponse.json({ error: "No autorizado" }, { status: 403 });
+  }
+
   const vendor = await queryOne<VendorPrintRow>(
     `SELECT id, print_mode, print_token, printer_ip, printer_port, paper_size, auto_print,
             last_print_at, last_print_ok, last_print_error
-     FROM vendors WHERE user_id = $1 LIMIT 1`,
-    [user.id]
+     FROM vendors WHERE id = $1 LIMIT 1`,
+    [v.id]
   );
 
   if (!vendor) {

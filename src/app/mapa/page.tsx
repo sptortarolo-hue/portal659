@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 export default async function MapaPage() {
   const zone = await getZone();
   const vendors = await queryMany<Vendor>(
-    `SELECT * FROM vendors WHERE neighborhood = ANY($1) ORDER BY store_name`,
+    `SELECT * FROM vendors WHERE visible = true AND neighborhood = ANY($1) ORDER BY store_name`,
     [zone.neighborhoods]
   );
 

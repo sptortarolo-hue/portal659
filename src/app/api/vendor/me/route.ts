@@ -1,5 +1,6 @@
 import { getAuthUser } from "@/lib/auth";
 import { query, queryOne } from "@/lib/db";
+import { getVendorByRequest } from "@/lib/vendor-utils";
 import { NextResponse } from "next/server";
 
 function slugify(text: string): string {
@@ -18,10 +19,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "No autenticado" }, { status: 401 });
   }
 
-  const vendor = await queryOne<Record<string, unknown>>(
-    `SELECT * FROM vendors WHERE user_id = $1 LIMIT 1`,
-    [user.id]
-  );
+  const { vendor } = await getVendorByRequest(request);
 
   return NextResponse.json({ vendor });
 }
@@ -64,10 +62,11 @@ export async function POST(request: Request) {
     ? vertical
     : "gastronomia";
 
-  const existing = await queryOne<{ id: string; slug: string }>(
-    `SELECT id, slug FROM vendors WHERE user_id = $1 LIMIT 1`,
-    [user.id]
-  );
+  const { vendor: existing } = await getVendorByRequest(request);
+
+  const existingSlug = existing
+    ? (await queryOne<{ slug: string }>(`SELECT slug FROM vendors WHERE id = $1 LIMIT 1`, [existing.id]))?.slug
+    : null;
 
   if (!existing && (!store_name || !neighborhood)) {
     return NextResponse.json(
@@ -88,7 +87,7 @@ export async function POST(request: Request) {
   if (logo_url !== undefined) payload.logo_url = logo_url || null;
   if (category !== undefined) payload.category = category || "otras";
   if (vertical !== undefined) payload.vertical = resolvedVertical;
-  if (store_name !== undefined) payload.slug = existing?.slug || slugify(store_name);
+  if (store_name !== undefined) payload.slug = existingSlug || slugify(store_name);
   if (instagram !== undefined) payload.instagram = instagram || null;
   if (facebook !== undefined) payload.facebook = facebook || null;
   if (payment_methods !== undefined) payload.payment_methods = payment_methods || null;

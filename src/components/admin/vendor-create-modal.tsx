@@ -23,7 +23,7 @@ export default function VendorCreateModal({ open, onClose, onCreate }: VendorCre
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [form, setForm] = useState({
-    user_id: "",
+    user_id: "sin_asignar",
     store_name: "",
     vertical: "gastronomia",
     neighborhood: "sicardi",
@@ -54,7 +54,7 @@ export default function VendorCreateModal({ open, onClose, onCreate }: VendorCre
     setLoading(true);
     setError("");
     const res = await onCreate({
-      user_id: form.user_id,
+      user_id: form.user_id === "sin_asignar" ? "" : form.user_id,
       store_name: form.store_name,
       vertical: form.vertical,
       neighborhood: form.neighborhood,
@@ -95,8 +95,8 @@ export default function VendorCreateModal({ open, onClose, onCreate }: VendorCre
               onChange={(e) => setForm({ ...form, user_id: e.target.value })}
               required
             >
-              <option value="" disabled>
-                {loadingUsers ? "Cargando usuarios..." : "Seleccioná un usuario"}
+              <option value="sin_asignar" disabled={false}>
+                {loadingUsers ? "Cargando usuarios..." : "— Sin asignar (modo llave en mano) —"}
               </option>
               {users.map((u) => (
                 <option key={u.id} value={u.id}>

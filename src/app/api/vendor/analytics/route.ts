@@ -1,5 +1,6 @@
 import { getAuthUser } from "@/lib/auth";
 import { queryMany, queryOne } from "@/lib/db";
+import { getVendorByRequest } from "@/lib/vendor-utils";
 import { resolveVendorPlan } from "@/lib/plans";
 import { NextResponse } from "next/server";
 import type { Plan, Vendor } from "@/types/database";
@@ -8,9 +9,12 @@ export async function GET(request: Request) {
   const authUser = await getAuthUser(request);
   if (!authUser) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
 
+  const { vendor: resolved } = await getVendorByRequest(request);
+  if (!resolved) return NextResponse.json({ error: "No tenés un local" }, { status: 403 });
+
   const vendor = await queryOne<Vendor>(
-    `SELECT id, vertical, plan_id, plan_status, plan_expires_at, trial_ends_at FROM vendors WHERE user_id = $1 LIMIT 1`,
-    [authUser.id]
+    `SELECT id, vertical, plan_id, plan_status, plan_expires_at, trial_ends_at FROM vendors WHERE id = $1 LIMIT 1`,
+    [resolved.id]
   );
   if (!vendor) return NextResponse.json({ error: "No tenés un local" }, { status: 403 });
 

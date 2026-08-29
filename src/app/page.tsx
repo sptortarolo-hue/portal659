@@ -23,7 +23,7 @@ export const metadata = {
 export default async function HomePage() {
   const zone = await getZone();
   const vendors = await queryMany<Vendor>(
-    `SELECT * FROM vendors WHERE neighborhood = ANY($1) ORDER BY created_at DESC`,
+    `SELECT * FROM vendors WHERE visible = true AND neighborhood = ANY($1) ORDER BY created_at DESC`,
     [zone.neighborhoods]
   );
 
@@ -31,7 +31,7 @@ export default async function HomePage() {
     `SELECT p.*, json_build_object('id', v.id, 'slug', v.slug, 'store_name', v.store_name, 'vertical', v.vertical) AS vendors
      FROM products p
      JOIN vendors v ON v.id = p.vendor_id
-     WHERE p.neighborhood = ANY($1) AND p.available = true
+     WHERE p.neighborhood = ANY($1) AND p.available = true AND v.visible = true
      ORDER BY p.featured_today DESC, p.created_at DESC`,
     [zone.neighborhoods]
   );

@@ -23,7 +23,7 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { slug } = await params;
   const vendor = await queryOne<any>(
-    `SELECT * FROM vendors WHERE slug = $1 LIMIT 1`,
+    `SELECT * FROM vendors WHERE slug = $1 AND visible = true LIMIT 1`,
     [slug]
   );
 
@@ -59,7 +59,7 @@ export default async function TiendaPage({
   const { slug } = await params;
 
   const vendor = await queryOne<any>(
-    `SELECT * FROM vendors WHERE slug = $1 LIMIT 1`,
+    `SELECT * FROM vendors WHERE slug = $1 AND visible = true LIMIT 1`,
     [slug]
   );
   if (!vendor) notFound();

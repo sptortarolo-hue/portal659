@@ -15,7 +15,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   ];
 
   const vendors = await queryMany<{ slug: string; created_at: string }>(
-    `SELECT slug, created_at FROM vendors ORDER BY created_at DESC`
+    `SELECT slug, created_at FROM vendors WHERE visible = true ORDER BY created_at DESC`
   );
 
   const storeRoutes: MetadataRoute.Sitemap = (vendors || []).map((v) => ({

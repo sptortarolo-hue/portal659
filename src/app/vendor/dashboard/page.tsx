@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import QRCode from "qrcode";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -79,6 +79,8 @@ const STATUS_COLORS: Record<Order["status"], string> = {
 
 export default function VendorDashboard() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const impersonatingId = searchParams.get("as");
   const [vendor, setVendor] = useState<Vendor | null>(null);
   const [offers, setOffers] = useState<Offer[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -162,6 +164,18 @@ export default function VendorDashboard() {
   }
 
   useEffect(() => { loadData(); }, []);
+
+  // Modo llave en mano: el admin abre el dashboard de un comercio sin dueño (?as=<vendorId>).
+  useEffect(() => {
+    if (impersonatingId) {
+      document.cookie = `portal659-admin-as=${impersonatingId}; path=/; max-age=7200; samesite=lax`;
+    }
+  }, [impersonatingId]);
+
+  function exitImpersonation() {
+    document.cookie = "portal659-admin-as=; path=/; max-age=0";
+    router.push("/admin/comercios");
+  }
 
   useEffect(() => {
     const onFirstClick = () => {
@@ -519,6 +533,18 @@ export default function VendorDashboard() {
 
   return (
     <main className="min-h-screen bg-background pb-20 sm:pb-8">
+      {impersonatingId && (
+        <div className="bg-amber-50 border-b border-amber-200">
+          <div className="container mx-auto px-4 py-2 flex items-center justify-between gap-3 text-sm text-amber-900">
+            <span className="flex items-center gap-2">
+              <span>🛠️</span> Estás cargando <strong>{vendor?.store_name || "este comercio"}</strong> como administrador (modo llave en mano)
+            </span>
+            <button onClick={exitImpersonation} className="text-xs font-semibold underline whitespace-nowrap">
+              Salir del modo edición
+            </button>
+          </div>
+        </div>
+      )}
       <div className="sticky top-0 z-40 bg-background border-b border-border">
         <div className="container mx-auto px-4 py-3 flex items-center gap-3">
           {vendor.logo_url || vendor.image_url ? (

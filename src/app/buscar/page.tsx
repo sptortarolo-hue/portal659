@@ -34,7 +34,7 @@ export default async function BuscarPage({
   let [vendors, products] = await Promise.all([
     queryMany<Record<string, unknown>>(
       `SELECT * FROM vendors
-       WHERE neighborhood = ANY($2) AND (store_name ILIKE $1 OR description ILIKE $1 OR category ILIKE $1 OR services_list ILIKE $1)
+       WHERE neighborhood = ANY($2) AND visible = true AND (store_name ILIKE $1 OR description ILIKE $1 OR category ILIKE $1 OR services_list ILIKE $1)
        ORDER BY store_name`,
       [pattern, zone.neighborhoods]
     ),
@@ -42,7 +42,7 @@ export default async function BuscarPage({
       `SELECT p.*, json_build_object('id', v.id, 'slug', v.slug, 'store_name', v.store_name, 'vertical', v.vertical, 'image_url', v.image_url) AS vendors
        FROM products p
        JOIN vendors v ON v.id = p.vendor_id
-       WHERE p.available = true AND p.neighborhood = ANY($2) AND (p.name ILIKE $1 OR p.description ILIKE $1 OR p.category ILIKE $1)
+       WHERE p.available = true AND p.neighborhood = ANY($2) AND v.visible = true AND (p.name ILIKE $1 OR p.description ILIKE $1 OR p.category ILIKE $1)
        ORDER BY p.name`,
       [pattern, zone.neighborhoods]
     ),

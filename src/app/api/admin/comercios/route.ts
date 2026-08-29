@@ -50,8 +50,8 @@ export async function POST(request: Request) {
   const body = await request.json();
   const { store_name, slug, vertical, neighborhood, description, phone, whatsapp, address, user_id } = body;
 
-  if (!store_name || !user_id) {
-    return NextResponse.json({ error: "store_name y user_id son requeridos" }, { status: 400 });
+  if (!store_name) {
+    return NextResponse.json({ error: "store_name es requerido" }, { status: 400 });
   }
 
   const vendor = await queryOne<Record<string, unknown>>(
@@ -61,7 +61,7 @@ export async function POST(request: Request) {
      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
      RETURNING *`,
     [
-      user_id,
+      user_id || null,
       store_name,
       slug || store_name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, ""),
       vertical || "gastronomia",
@@ -108,6 +108,22 @@ export async function PATCH(request: Request) {
     if (!vendor) return NextResponse.json({ error: "Vendor no encontrado" }, { status: 404 });
     await query(`UPDATE vendors SET is_admin = $1 WHERE id = $2`, [!vendor.is_admin, vendorId]);
     return NextResponse.json({ ok: true, is_admin: !vendor.is_admin });
+  }
+
+  if (action === "toggle_visible") {
+    const vendor = await queryOne<{ visible: boolean }>(
+      `SELECT visible FROM vendors WHERE id = $1`,
+      [vendorId]
+    );
+    if (!vendor) return NextResponse.json({ error: "Vendor no encontrado" }, { status: 404 });
+    await query(`UPDATE vendors SET visible = $1 WHERE id = $2`, [!vendor.visible, vendorId]);
+    return NextResponse.json({ ok: true, visible: !vendor.visible });
+  }
+
+  if (action === "assign_user") {
+    const { userId } = body;
+    await query(`UPDATE vendors SET user_id = $1 WHERE id = $2`, [userId || null, vendorId]);
+    return NextResponse.json({ ok: true, user_id: userId || null });
   }
 
   if (action === "update" && updateData) {
@@ -196,7 +212,7 @@ async function updateVendor(vendorId: string, updateData: Record<string, unknown
     "store_name", "slug", "vertical", "neighborhood", "description",
     "phone", "whatsapp", "address", "logo_url", "image_url", "hours",
     "instagram", "facebook", "payment_methods", "delivery_options",
-    "services_list", "service_area", "free_estimate", "featured",
+    "services_list", "service_area", "free_estimate", "featured", "visible",
   ];
   const safeUpdate: Record<string, unknown> = {};
   for (const key of allowed) {

@@ -23,6 +23,7 @@ type Vendor = {
   address: string;
   verified: boolean;
   is_admin: boolean;
+  visible: boolean;
   logo_url: string | null;
   created_at: string;
   plan_id: string | null;
@@ -97,6 +98,15 @@ export default function AdminComerciosPage() {
     fetchVendors();
   }
 
+  async function handleToggleVisible(id: string) {
+    await fetch("/api/admin/comercios", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ vendorId: id, action: "toggle_visible" }),
+    });
+    fetchVendors();
+  }
+
   async function handleSetPlan(id: string, planSlug: string) {
     await fetch("/api/admin/comercios", {
       method: "PATCH",
@@ -163,7 +173,9 @@ export default function AdminComerciosPage() {
             </div>
           )}
           <div>
-            <p className="font-medium text-sm">{v.store_name}</p>
+            <Link href={`/admin/comercios/${v.id}`} className="font-medium text-sm hover:underline">
+              {v.store_name}
+            </Link>
             <p className="text-xs text-muted-foreground">{v.slug}</p>
           </div>
         </div>
@@ -213,6 +225,11 @@ export default function AdminComerciosPage() {
       label: "Estado",
       render: (v) => (
         <div className="flex items-center gap-1">
+          {v.visible ? (
+            <span className="text-[10px] text-green-600 font-medium">&#9679; Visible</span>
+          ) : (
+            <span className="text-[10px] text-muted-foreground">&#9679; Oculto</span>
+          )}
           {v.verified && <span className="text-[10px] text-blue-600 font-medium">&#10003; Verificado</span>}
           {v.is_admin && <span className="text-[10px] text-amber-600 font-medium">Admin</span>}
           {!v.verified && !v.is_admin && <span className="text-[10px] text-muted-foreground">Pendiente</span>}
@@ -294,6 +311,15 @@ export default function AdminComerciosPage() {
                 }`}
               >
                 {v.is_admin ? "Admin" : "Admin"}
+              </button>
+              <button
+                onClick={() => handleToggleVisible(v.id)}
+                className={`text-xs px-2 py-1 rounded-md border transition-colors ${
+                  v.visible ? "border-green-300 bg-green-50 text-green-700" : "border-border text-muted-foreground hover:bg-muted"
+                }`}
+                title={v.visible ? "Ocultar de la página" : "Mostrar en la página"}
+              >
+                {v.visible ? "Visible" : "Oculto"}
               </button>
               <select
                 value={v.plan_id ?? ""}

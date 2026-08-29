@@ -278,7 +278,9 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
                 })}
               </div>
               <p className="text-[10px] text-muted-foreground text-center">
-                {elapsed} min · {order.estimated_minutes ? `~${Math.max(0, order.estimated_minutes - elapsed)} min restantes` : "Sin estimado"}
+                {isTerminal
+                  ? (order.status === "completed" ? `Tardó ${elapsed} min` : `${elapsed} min`)
+                  : `${elapsed} min · ${order.estimated_minutes ? `~${Math.max(0, order.estimated_minutes - elapsed)} min restantes` : "Sin estimado"}`}
               </p>
             </div>
           )}

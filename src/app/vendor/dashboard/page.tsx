@@ -431,9 +431,11 @@ export default function VendorDashboard() {
             const stepOrder = ["new", "confirmed", "preparing", "ready", "completed"] as const;
             const statusIdx = stepOrder.indexOf(order.status as any);
             const isCancelled = order.status === "cancelled";
+            const isCompleted = order.status === "completed";
+            const isTerminal = isCancelled || isCompleted;
             const elapsed = Math.floor((Date.now() - new Date(order.created_at).getTime()) / 60000);
             const remaining = order.estimated_minutes ? Math.max(0, order.estimated_minutes - elapsed) : null;
-            const isOverdue = remaining !== null && remaining <= 0 && !isCancelled;
+            const isOverdue = remaining !== null && remaining <= 0 && !isTerminal;
 
             return (
               <button
@@ -462,8 +464,8 @@ export default function VendorDashboard() {
                   <div className="text-right flex-shrink-0">
                     <span className="text-sm font-bold tabular-nums">${Number(order.total).toLocaleString("es-AR")}</span>
                     <p className={`text-[10px] font-medium ${isOverdue ? "text-red-500" : "text-muted-foreground"}`}>
-                      {elapsed} min
-                      {remaining !== null && !isOverdue && ` · ~${remaining} rest`}
+                      {isTerminal ? (order.status === "completed" ? `Tardó ${elapsed} min` : `${elapsed} min`) : `${elapsed} min`}
+                      {!isTerminal && remaining !== null && !isOverdue && ` · ~${remaining} rest`}
                     </p>
                   </div>
                 </div>

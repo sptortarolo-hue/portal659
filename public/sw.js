@@ -1,4 +1,4 @@
-const CACHE_NAME = "portal659-v4";
+const CACHE_NAME = "portal659-v5";
 const OFFLINE_URL = "/offline.html";
 
 self.addEventListener("install", (event) => {

@@ -157,6 +157,17 @@ export default function DashboardGastro({
 
   const [printerIp, setPrinterIp] = useState(vendor?.printer_ip || "");
   const [printerPort, setPrinterPort] = useState(String(vendor?.printer_port || 9100));
+  const [printMode, setPrintMode] = useState<"server" | "app">(
+    vendor?.print_mode === "app" ? "app" : "server"
+  );
+  const [agentOnline, setAgentOnline] = useState(false);
+  const [bridgeConfigured, setBridgeConfigured] = useState(false);
+  const [printToken, setPrintToken] = useState<string | null>(vendor?.print_token || null);
+  const [lastPrint, setLastPrint] = useState<{
+    at: string | null;
+    ok: boolean | null;
+    error: string | null;
+  }>({ at: null, ok: null, error: null });
 
   useEffect(() => {
     setStoreName(vendor?.store_name || "");
@@ -182,7 +193,74 @@ export default function DashboardGastro({
     setLogoPreview(vendor?.logo_url || null);
     setPrinterIp(vendor?.printer_ip || "");
     setPrinterPort(String(vendor?.printer_port || 9100));
+    setPrintMode(vendor?.print_mode === "app" ? "app" : "server");
+    setPrintToken(vendor?.print_token || null);
   }, [vendor]);
+
+  useEffect(() => {
+    if (printMode !== "app") return;
+    let mounted = true;
+    const poll = async () => {
+      try {
+        const res = await fetch("/api/vendor/print/status");
+        const data = await res.json();
+        if (!mounted || !data.vendor) return;
+        setAgentOnline(!!data.agent?.online);
+        setBridgeConfigured(!!data.bridgeConfigured);
+        setPrintToken(data.vendor.print_token || null);
+        setLastPrint({
+          at: data.vendor.last_print_at || null,
+          ok: data.vendor.last_print_ok ?? null,
+          error: data.vendor.last_print_error || null,
+        });
+      } catch {
+        /* relay sin configurar o error transitorio */
+      }
+    };
+    poll();
+    const interval = setInterval(poll, 6000);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, [printMode]);
+
+  const changePrintMode = async (mode: "server" | "app") => {
+    setPrintMode(mode);
+    await saveVendor({ print_mode: mode });
+    if (mode === "app") {
+      const res = await fetch("/api/vendor/print/status");
+      const data = await res.json().catch(() => null);
+      setPrintToken(data?.vendor?.print_token || printToken);
+    }
+  };
+
+  const regenerateToken = async () => {
+    const res = await fetch("/api/vendor/print/token", { method: "POST" });
+    const data = await res.json().catch(() => ({ error: "Error de red" }));
+    if (data.token) {
+      setPrintToken(data.token);
+      setMsg("✅ Token regenerado — pegá el nuevo token en la app Portal Print");
+    } else {
+      setMsg(`❌ ${data.error || "No se pudo regenerar el token"}`);
+    }
+  };
+
+  const testPrinter = async () => {
+    const res = await fetch("/api/print", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ test: true }),
+    });
+    const data = await res.json().catch(() => ({ error: "Respuesta inválida del servidor" }));
+    if (data.offline) {
+      setMsg("❌ La app Portal Print no está conectada (abrí la app en tu celu)");
+    } else if (data.ok) {
+      setMsg("✅ Impresión de prueba enviada");
+    } else {
+      setMsg(`❌ ${data.error || (data.reason ?? "Error al imprimir")}`);
+    }
+  };
 
   const handleSave = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
@@ -691,6 +769,135 @@ export default function DashboardGastro({
 
       <CollapsibleSection icon="🖨️" title="Impresora térmica">
         <div className="space-y-3">
+          <div>
+            <Label>Cómo imprime</Label>
+            <div className="grid grid-cols-2 gap-2 mt-1">
+              <button
+                type="button"
+                onClick={() => changePrintMode("app")}
+                className={`rounded-lg border-2 px-3 py-2 text-sm font-medium text-left transition-colors ${
+                  printMode === "app"
+                    ? "border-primary bg-primary/5 text-primary"
+                    : "border-border bg-card text-muted-foreground hover:border-primary/30"
+                }`}
+              >
+                📱 App en tu celu
+                <p className="text-[10px] font-normal mt-1 opacity-80">
+                  Impresora en la red local (recomendado)
+                </p>
+              </button>
+              <button
+                type="button"
+                onClick={() => changePrintMode("server")}
+                className={`rounded-lg border-2 px-3 py-2 text-sm font-medium text-left transition-colors ${
+                  printMode === "server"
+                    ? "border-primary bg-primary/5 text-primary"
+                    : "border-border bg-card text-muted-foreground hover:border-primary/30"
+                }`}
+              >
+                🖥️ Servidor (TCP)
+                <p className="text-[10px] font-normal mt-1 opacity-80">
+                  El VPS imprime directo a la impresora
+                </p>
+              </button>
+            </div>
+            <p className="text-[10px] text-muted-foreground/60 mt-1">
+              {printMode === "app"
+                ? "La app Portal Print (en tu celular, mismo Wi-Fi que la impresora) recibe el ticket y lo imprime. No hace falta abrir puertos ni IP pública."
+                : "El servidor envía el ticket por TCP directo. Requiere alcanzar la impresora desde el VPS (VPN o puerto reenviado)."}
+            </p>
+          </div>
+
+          {printMode === "app" && (
+            <>
+              <div className="flex items-start justify-between rounded-lg border p-3">
+                <div className="flex items-center gap-2">
+                  <span className={agentOnline ? "text-green-500" : "text-red-500"}>
+                    {agentOnline ? "🟢" : "🔴"}
+                  </span>
+                  <div>
+                    <p className="text-sm font-medium">
+                      {agentOnline ? "App conectada" : "App no conectada"}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground">
+                      {agentOnline
+                        ? "Impresión automática activa: los pedidos confirmados salen solos"
+                        : "Instalá y conectá la app abajo"}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <details className="rounded-lg border px-3 py-2 text-xs">
+                <summary className="cursor-pointer font-medium">
+                  📱 Configurar la app Portal Print
+                </summary>
+                <ol className="mt-2 space-y-1 list-decimal pl-4 text-muted-foreground">
+                  <li>
+                    Conectá el celular al <strong>mismo Wi-Fi</strong> que la impresora.
+                  </li>
+                  <li>
+                    Compilá e instalá la app <code className="bg-muted px-1 rounded">android/</code>{" "}
+                    (cantidad de pasos en su README).
+                  </li>
+                  <li>
+                    En la app pegá el <strong>token</strong> de abajo, guardá y conectá.
+                  </li>
+                  <li>
+                    Dejá la app <strong>abierta</strong> en el mostrador (enchufada) y tocá
+                    "Imprimir prueba".
+                  </li>
+                </ol>
+              </details>
+
+              {printToken && (
+                <div className="rounded-lg border p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label>Token de la app</Label>
+                    <button
+                      type="button"
+                      className="text-xs text-primary font-medium"
+                      onClick={() => {
+                        navigator.clipboard?.writeText(printToken).catch(() => undefined);
+                        setMsg("✅ Token copiado");
+                      }}
+                    >
+                      Copiar
+                    </button>
+                  </div>
+                  <p className="font-mono text-xs break-all bg-muted rounded px-2 py-1.5">
+                    {printToken}
+                  </p>
+                  <button
+                    type="button"
+                    className="text-xs text-destructive"
+                    onClick={regenerateToken}
+                  >
+                    Regenerar token
+                  </button>
+                </div>
+              )}
+
+              {!bridgeConfigured && (
+                <p className="text-[10px] text-amber-500">
+                  ⚠️ El relay de impresión aún no está configurado en el servidor
+                  (PRINT_BRIDGE_URL). Avisá al administrador.
+                </p>
+              )}
+
+              {lastPrint.at && (
+                <p className="text-[10px] text-muted-foreground/70">
+                  Última impresión: {new Date(lastPrint.at).toLocaleString("es-AR")} ·{" "}
+                  {lastPrint.ok === true
+                    ? "✅ OK"
+                    : lastPrint.ok === false
+                      ? `❌ ${lastPrint.error || "error"}`
+                      : ""}
+                </p>
+              )}
+            </>
+          )}
+
           <div className="flex items-center justify-between">
             <div>
               <Label>Impresión automática</Label>
@@ -747,21 +954,7 @@ export default function DashboardGastro({
               </div>
             </div>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            type="button"
-            onClick={async () => {
-              const res = await fetch("/api/print", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ test: true }),
-              });
-              const data = await res.json().catch(() => ({ error: "Respuesta inválida del servidor" }));
-              if (data.success) setMsg("✅ Impresión de prueba enviada");
-              else setMsg(`❌ ${data.error || "Error al imprimir"}`);
-            }}
-          >
+          <Button variant="outline" size="sm" type="button" onClick={testPrinter}>
             🖨️ Imprimir prueba
           </Button>
         </div>

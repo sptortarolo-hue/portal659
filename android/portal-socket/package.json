@@ -1,0 +1,25 @@
+{
+  "name": "portal-socket",
+  "version": "0.0.1",
+  "description": "Sockets TCP ESC/POS + descubrimiento de impresora en la LAN para la app Portal Print",
+  "private": true,
+  "type": "module",
+  "main": "dist/esm/index.js",
+  "types": "dist/esm/index.d.ts",
+  "files": ["dist/esm", "android"],
+  "capacitor": {
+    "android": {
+      "src": "android"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "peerDependencies": {
+    "@capacitor/core": "^6.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/core": "^6.1.0",
+    "typescript": "^5.5.0"
+  }
+}

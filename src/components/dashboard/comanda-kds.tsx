@@ -8,6 +8,10 @@ import {
   ORDER_STATUS_LABELS,
   KDS_COLUMNS,
   buildClientWhatsAppUrl,
+  orderCondition,
+  orderReadyLabel,
+  orderCompleteActionLabel,
+  CONDITION_META,
 } from "@/lib/order-utils";
 import { playNewOrderSound, playOrderReadySound, playUrgentSound, resumeAudioContext } from "@/lib/sounds";
 import type { Order, OrderStatus } from "@/types/database";
@@ -56,7 +60,9 @@ function getNextStatus(current: OrderStatus, method?: "delivery" | "pickup"): Or
   return flow[current] || null;
 }
 
-function getActionButtonLabel(next: OrderStatus): string {
+function getActionButtonLabel(next: OrderStatus, order: Order): string {
+  if (next === "ready") return orderReadyLabel(order);
+  if (next === "sent" || (next === "completed" && order.status === "ready")) return orderCompleteActionLabel(order);
   const labels: Record<OrderStatus, string> = {
     new: "Aceptar", confirmed: "Preparar", preparing: "Listo",
     ready: "Enviar", sent: "Entregado", completed: "Completado", cancelled: "Cancelar",
@@ -154,9 +160,11 @@ function TicketCard({
         vibrate([20]);
       } else {
         setPrintStatus("error");
+        window.open(`/vendor/imprimir/${order.id}`, "_blank", "noopener");
       }
     } catch {
       setPrintStatus("error");
+      window.open(`/vendor/imprimir/${order.id}`, "_blank", "noopener");
     }
     setPrinting(false);
     setTimeout(() => setPrintStatus(null), 3000);
@@ -176,10 +184,8 @@ function TicketCard({
       <div className="flex items-center justify-between mb-1.5">
         <div className="flex items-center gap-1.5">
           <span className="font-mono text-[11px] font-bold text-foreground/70">#{order.id.slice(0, 6)}</span>
-          <span className={`text-[9px] font-bold px-1 py-0.5 rounded ${
-            order.method === "delivery" ? "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-400" : "bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-400"
-          }`}>
-            {order.method === "delivery" ? "🛵" : "🏪"}
+          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${CONDITION_META[orderCondition(order)].pillClass}`}>
+            {CONDITION_META[orderCondition(order)].label}
           </span>
           {order.modification_notes && (
             <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-400">Editado</span>
@@ -264,7 +270,7 @@ function TicketCard({
           ) : (
             <button onClick={() => handleAction(nextStatus!)}
               className="flex-1 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 transition-colors active:scale-[0.97]">
-              {getActionButtonLabel(nextStatus!)}
+              {getActionButtonLabel(nextStatus!, order)}
             </button>
           )}
         </div>

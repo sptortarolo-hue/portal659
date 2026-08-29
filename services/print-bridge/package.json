@@ -1,0 +1,14 @@
+{
+  "name": "portal-print-bridge",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Relay WebSocket multi-vendor: entrega trabajos de impresión ESC/POS a la app Portal Print en la red local",
+  "scripts": {
+    "start": "node index.mjs",
+    "test": "node test/client.mjs"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+    <meta name="theme-color" content="#111827" />
+    <link rel="stylesheet" href="./styles.css" />
+    <title>Portal Print</title>
+  </head>
+  <body>
+    <main class="app">
+      <header>
+        <h1>🖨️ Portal Print</h1>
+        <p class="subtitle">Puente de impresión · Portal 659</p>
+        <div class="status-row">
+          <span class="pill"><span id="relayDot" class="dot" data-status="off">🔴</span> Relay</span>
+          <span class="pill"><span id="printerDot" class="dot" data-status="off">🔴</span> Impresora</span>
+        </div>
+      </header>
+
+      <section class="card">
+        <label for="serverUrl">Servidor</label>
+        <input id="serverUrl" type="url" placeholder="https://www.portal659.com.ar" autocomplete="off" />
+
+        <label for="token">Token del comercio</label>
+        <input id="token" type="text" placeholder="pp_..." autocomplete="off" />
+
+        <label for="printerIp">IP de la impresora</label>
+        <div class="row">
+          <input id="printerIp" type="text" placeholder="192.168.1.100" autocomplete="off" />
+          <button id="btnDiscover" class="ghost" type="button">🔍 Buscar</button>
+        </div>
+
+        <label for="printerPort">Puerto</label>
+        <input id="printerPort" type="number" value="9100" step="1" />
+
+        <div class="actions">
+          <button id="btnSave" type="button">Guardar</button>
+          <button id="btnConnect" type="button">Conectar</button>
+          <button id="btnTest" type="button" class="ghost">Probar impresión</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="hint">
+          <p><strong>¿Cómo funciona?</strong></p>
+          <p>
+            1. Configurá el <em>servidor</em> y tu <em>token</em> (sección Impresora del dashboard).
+            2. Dejá el celular en el <em>mismo Wi-Fi</em> que la impresora.
+            3. Conectá el relay y <strong>mantené esta app abierta</strong> en el mostrador
+            (idealmente enchufado). Los pedidos confirmados se imprimen solos.
+          </p>
+        </div>
+      </section>
+
+      <section class="card">
+        <div id="log" class="log" aria-live="polite"></div>
+      </section>
+    </main>
+    <script src="./main.js"></script>
+  </body>
+</html>

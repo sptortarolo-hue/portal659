@@ -1,7 +1,7 @@
-import { queryOne } from "@/lib/db";
+import { query, queryOne } from "@/lib/db";
 import { getVendorByRequest } from "@/lib/vendor-utils";
 import { NextResponse } from "next/server";
-import { printComanda, printReceipt, printTest } from "@/lib/thermal-printer";
+import { dispatchPrint, type PrinterVendor } from "@/lib/thermal-printer";
 import type { Order } from "@/types/database";
 
 export async function POST(request: Request) {
@@ -13,15 +13,9 @@ export async function POST(request: Request) {
   const body = await request.json();
   const { orderId, test, type, tableName, subLabel } = body;
 
-  const vendor = await queryOne<{
-    id: string;
-    store_name: string;
-    printer_ip: string | null;
-    printer_port: number | null;
-    paper_size: string | null;
-    auto_print: boolean | null;
-  }>(
-    `SELECT id, store_name, printer_ip, printer_port, paper_size, auto_print FROM vendors WHERE user_id = $1 LIMIT 1`,
+  const vendor = await queryOne<PrinterVendor>(
+    `SELECT id, store_name, printer_ip, printer_port, paper_size, print_mode, print_token
+     FROM vendors WHERE user_id = $1 LIMIT 1`,
     [userId]
   );
 
@@ -29,13 +23,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "No autorizado" }, { status: 403 });
   }
 
-  if (!vendor.printer_ip) {
-    return NextResponse.json({ ok: true, skipped: true, reason: "Impresora no configurada" });
-  }
-
   if (test) {
-    const result = await printTest(vendor);
-    return NextResponse.json(result);
+    const result = await dispatchPrint({ vendor, type: "test" });
+    await recordLastPrint(vendor.id, result);
+    return printResponse(result);
   }
 
   if (!orderId) {
@@ -51,11 +42,31 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "Pedido no encontrado" }, { status: 404 });
   }
 
-  if (type === "ticket") {
-    const result = await printReceipt(order, vendor, { tableName, subLabel });
-    return NextResponse.json(result);
-  }
+  const result = await dispatchPrint({
+    vendor,
+    order,
+    type: type === "ticket" ? "ticket" : "comanda",
+    extra: { tableName, subLabel },
+  });
+  await recordLastPrint(vendor.id, result);
+  return printResponse(result);
+}
 
-  const result = await printComanda(order, vendor);
-  return NextResponse.json(result);
+function printResponse(result: { ok: boolean; mode: string; skipped?: boolean; offline?: boolean; error?: string }) {
+  const body: Record<string, unknown> = { ok: result.ok, mode: result.mode };
+  if (result.skipped) body.reason = "Impresora no configurada";
+  if (result.offline) body.offline = true;
+  body.error = result.error;
+  return NextResponse.json(body);
+}
+
+async function recordLastPrint(
+  vendorId: string,
+  result: { ok: boolean; skipped?: boolean; error?: string }
+) {
+  if (result.skipped) return;
+  await query(
+    `UPDATE vendors SET last_print_at = now(), last_print_ok = $1, last_print_error = $2 WHERE id = $3`,
+    [result.ok, result.ok ? null : result.error || null, vendorId]
+  );
 }

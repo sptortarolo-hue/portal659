@@ -39,7 +39,8 @@ Portal 659: "El centro comercial de tu barrio". Hub multicommerce hiperlocal (Si
   - No-gastro: solo Gratuito. Sin grandfather: todos arrancan Gratuito.
 - **Zonas (Sprint 5)**: `src/lib/zone.ts` + `ZONES`/`ACTIVE_ZONES`/`DEFAULT_ZONE`/`ZONE_COOKIE` en `src/lib/config.ts`. Cookie `portal659-zone`. Activa: `sicardi-garibaldi`; `arana`/`correas` definidas con `active:false`. `info_items.zone` y función con `p_zone` (migrate-sprint5-zone).
 - **Perfil de usuario**: tabla `profiles` (`full_name`, `phone`, `whatsapp`, `neighborhood`), separado de los datos del comercio (`vendors`). Página `/perfil`, API `/api/auth/me` (GET/PATCH).
-- **Variables de entorno (prod)**: `DATABASE_URL`, `JWT_SECRET`, `NEXT_PUBLIC_SITE_URL`, `UPLOAD_DIR`, `MP_ACCESS_TOKEN`, `MP_PUBLIC_KEY`, `MP_WEBHOOK_SECRET`, `RESEND_API_KEY`, `FROM_EMAIL`, `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`, `NEXT_PUBLIC_GOOGLE_MAPS_KEY`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`. En local `.env.local`.
+- **Variables de entorno (prod)**: `DATABASE_URL`, `JWT_SECRET`, `NEXT_PUBLIC_SITE_URL`, `UPLOAD_DIR`, `MP_ACCESS_TOKEN`, `MP_PUBLIC_KEY`, `MP_WEBHOOK_SECRET`, `RESEND_API_KEY`, `FROM_EMAIL`, `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`, `NEXT_PUBLIC_GOOGLE_MAPS_KEY`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `PRINT_BRIDGE_URL`, `PRINT_BRIDGE_SECRET`. En local `.env.local`.
+- **Impresión térmica**: motor ESC/POS en `src/lib/thermal-printer.ts` (builders → `BufferResult`, `dispatchPrint` rutea modo `server` TCP directo vs `app` por relay). Relay `services/print-bridge` (HTTP :8791 `/push`→WS a la app Android `android/`). Tabla `vendors.print_mode/print_token/last_print*` (migración `supabase/self-host/migrate-print-bridge.sql`, aplicarla con `docker exec -i portal659-db psql -U portal659 -d portal659 -f ...`). Fallback por sistema en `/vendor/imprimir/[id]`.
 - **Push (Sprint 7)**: tabla `push_subscriptions` (migración `supabase/self-host/migrate-push-subscriptions.sql`), `src/lib/push.ts` (`sendPushToUser`), API `/api/push/config` + `/api/push/subscribe`, cliente `src/components/pwa/push-subscribe.tsx`. Claves VAPID en env. SW `/sw.js` muestra notificaciones y abre el link al hacer clic.
 - **Contenido `/barrio`**: tabla `info_items` (categorías transporte/utilidades/horarios/noticias), curado por seed.
 
@@ -58,7 +59,9 @@ Portal 659: "El centro comercial de tu barrio". Hub multicommerce hiperlocal (Si
 - Cargar valores reales de `DATABASE_URL`/`JWT_SECRET`/`POSTGRES_*`/`MP_*`/`UPSTASH_*`/`NEXT_PUBLIC_GOOGLE_MAPS_KEY` donde corresponda (env del VPS o `.env.local`).
 - Aplicar `supabase/self-host/migrate-sprint5-zone.sql` si la zona del Sprint 5 aún no está en la DB del contenedor.
 - Aplicar `supabase/self-host/migrate-push-subscriptions.sql` (tabla `push_subscriptions` del Sprint 7) contra el contenedor.
-- Cargar secrets `VAPID_*` y `RESEND_API_KEY`/`FROM_EMAIL` en GitHub para que el deploy las escriba al `.env`.
+- Aplicar `supabase/self-host/migrate-print-bridge.sql` (impresión térmica: `vendors.print_mode/print_token/last_print*`).
+- Cargar secrets `VAPID_*`, `PRINT_BRIDGE_SECRET` y `RESEND_API_KEY`/`FROM_EMAIL` en GitHub para que el deploy las escriba al `.env`.
+- Compilar el APK de Portal Print (Android): ver `android/README.md` (requiere Android SDK/JDK 17).
 - Reboot test del VPS (verificar que la web vuelve sola).
 
 ## Plan de sprints restantes (del plan original)

@@ -176,6 +176,11 @@ export type Vendor = {
   printer_port: number | null;
   paper_size: string | null;
   auto_print: boolean;
+  print_mode?: "server" | "app" | null;
+  print_token?: string | null;
+  last_print_at?: string | null;
+  last_print_ok?: boolean | null;
+  last_print_error?: string | null;
   lat?: number | null;
   lng?: number | null;
   plan_id: string | null;

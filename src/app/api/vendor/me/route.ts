@@ -56,6 +56,7 @@ export async function POST(request: Request) {
     printer_port,
     paper_size,
     auto_print,
+    print_mode,
   } = body;
 
   const VALID_VERTICALS = ["gastronomia", "comercio", "servicio", "moda", "salud", "otro"];
@@ -99,6 +100,7 @@ export async function POST(request: Request) {
   if (printer_port !== undefined) payload.printer_port = printer_port || 9100;
   if (paper_size !== undefined) payload.paper_size = paper_size || "80mm";
   if (auto_print !== undefined) payload.auto_print = auto_print === true;
+  if (print_mode !== undefined) payload.print_mode = print_mode === "app" ? "app" : "server";
 
   if (existing) {
     const setClauses: string[] = [];

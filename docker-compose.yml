@@ -28,6 +28,8 @@ services:
       - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY}
       - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY}
       - VAPID_SUBJECT=${VAPID_SUBJECT}
+      - PRINT_BRIDGE_URL=${PRINT_BRIDGE_URL:-http://printbridge:8791}
+      - PRINT_BRIDGE_SECRET=${PRINT_BRIDGE_SECRET}
     volumes:
       - uploads_data:/app/uploads
     expose:
@@ -37,6 +39,25 @@ services:
     depends_on:
       db:
         condition: service_healthy
+
+  printbridge:
+    build:
+      context: ./services/print-bridge
+    container_name: portal659-printbridge
+    restart: unless-stopped
+    environment:
+      - PORT=8791
+      - PRINT_BRIDGE_SECRET=${PRINT_BRIDGE_SECRET}
+    expose:
+      - "8791"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8791/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - portal659
 
   db:
     image: postgres:15-alpine

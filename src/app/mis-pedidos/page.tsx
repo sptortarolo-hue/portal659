@@ -15,15 +15,19 @@ import {
   progressPercent,
   ORDER_STATUS_LABELS,
   ORDER_STATUS_COLORS,
+  orderReadyLabel,
 } from "@/lib/order-utils";
 import type { Order, OrderStatus } from "@/types/database";
 
 const STEP_ORDER: OrderStatus[] = ["new", "confirmed", "preparing", "ready", "sent", "completed"];
 
-function Timeline({ status }: { status: OrderStatus }) {
+function Timeline({ status, method }: { status: OrderStatus; method: "delivery" | "pickup" }) {
   const currentIdx = STEP_ORDER.indexOf(status);
   const isCancelled = status === "cancelled";
   const pct = progressPercent(status);
+
+  const stepLabel = (step: OrderStatus) =>
+    step === "ready" ? orderReadyLabel({ channel: "app", method }) : ORDER_STATUS_LABELS[step];
 
   return (
     <div className="relative mt-3 mb-2">
@@ -43,7 +47,7 @@ function Timeline({ status }: { status: OrderStatus }) {
                 done ? "text-primary" : "text-muted-foreground/40"
               } ${i === currentIdx && !isCancelled ? "text-primary font-bold" : ""}`}
             >
-              {ORDER_STATUS_LABELS[step]}
+              {stepLabel(step)}
             </span>
           );
         })}
@@ -80,7 +84,7 @@ function OrderCard({ order, onReorder }: { order: Order & { vendors?: { store_na
           <p className="text-[11px] text-muted-foreground/60">{timeAgo(order.created_at)}</p>
         </div>
         <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${ORDER_STATUS_COLORS[order.status]}`}>
-          {ORDER_STATUS_LABELS[order.status]}
+          {order.status === "ready" ? orderReadyLabel(order) : ORDER_STATUS_LABELS[order.status]}
         </span>
       </div>
 
@@ -93,7 +97,7 @@ function OrderCard({ order, onReorder }: { order: Order & { vendors?: { store_na
         </div>
       )}
 
-      <Timeline status={order.status} />
+      <Timeline status={order.status} method={order.method} />
 
       <div className="mt-2 space-y-1">
         {order.items.map((item, i) => (

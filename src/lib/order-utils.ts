@@ -76,6 +76,55 @@ export const ORDER_STATUS_COLORS: Record<OrderStatus, string> = {
   cancelled: "bg-red-100 text-red-600 border-red-200",
 };
 
+export type OrderCondition = "delivery" | "retiro" | "mostrador" | "mesa";
+
+export function orderCondition(order: Pick<Order, "channel" | "method">): OrderCondition {
+  if (order.channel === "mostrador") return "mostrador";
+  if (order.channel === "mesa") return "mesa";
+  return order.method === "delivery" ? "delivery" : "retiro";
+}
+
+export const CONDITION_META: Record<OrderCondition, { label: string; emoji: string; pillClass: string }> = {
+  delivery: {
+    label: "Delivery",
+    emoji: "🛵",
+    pillClass: "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-400 dark:border-blue-900",
+  },
+  retiro: {
+    label: "Retira local",
+    emoji: "🏪",
+    pillClass: "bg-violet-100 text-violet-700 border-violet-200 dark:bg-violet-950 dark:text-violet-400 dark:border-violet-900",
+  },
+  mostrador: {
+    label: "Mostrador",
+    emoji: "🛎️",
+    pillClass: "bg-gray-100 text-gray-700 border-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700",
+  },
+  mesa: {
+    label: "Mesa",
+    emoji: "🍽️",
+    pillClass: "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-400 dark:border-amber-900",
+  },
+};
+
+export function orderReadyLabel(order: Pick<Order, "channel" | "method">): string {
+  switch (orderCondition(order)) {
+    case "delivery": return "Listo para envío";
+    case "retiro": return "Listo para retiro";
+    case "mostrador": return "Listo mostrador";
+    case "mesa": return "Listo mesa";
+  }
+}
+
+export function orderCompleteActionLabel(order: Pick<Order, "channel" | "method">): string {
+  switch (orderCondition(order)) {
+    case "delivery": return "Marcar como enviado";
+    case "retiro": return "Marcar como entregado";
+    case "mostrador": return "Entregar en mostrador";
+    case "mesa": return "Llevar a la mesa";
+  }
+}
+
 export const KDS_COLUMNS: { status: OrderStatus; label: string; emoji: string }[] = [
   { status: "new", label: "Nuevos", emoji: "🆕" },
   { status: "confirmed", label: "Aceptados", emoji: "✅" },

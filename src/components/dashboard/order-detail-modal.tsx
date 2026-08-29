@@ -7,6 +7,10 @@ import {
   ORDER_STATUS_LABELS,
   ORDER_STATUS_COLORS,
   buildClientWhatsAppUrl,
+  orderCondition,
+  orderReadyLabel,
+  orderCompleteActionLabel,
+  CONDITION_META,
 } from "@/lib/order-utils";
 import { buildModifiedOrderMessage } from "@/lib/whatsapp-message";
 import type { Order, OrderStatus, OrderItem, Product as DBProduct } from "@/types/database";
@@ -27,7 +31,9 @@ function getNextStatus(current: OrderStatus, method?: "delivery" | "pickup"): Or
   return flow[current] || null;
 }
 
-function getActionButtonLabel(next: OrderStatus): string {
+function getActionButtonLabel(next: OrderStatus, order: Order): string {
+  if (next === "ready") return orderReadyLabel(order);
+  if (next === "sent" || (next === "completed" && order.status === "ready")) return orderCompleteActionLabel(order);
   const labels: Record<OrderStatus, string> = {
     confirmed: "Aceptar",
     preparing: "Empezar a preparar",
@@ -153,12 +159,22 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
         body: JSON.stringify({ orderId: order.id }),
       });
       const data = await res.json();
-      setPrintStatus(data.ok || data.skipped ? "ok" : "error");
+      if (data.ok || data.skipped) {
+        setPrintStatus("ok");
+      } else {
+        setPrintStatus("error");
+        openSystemPrint();
+      }
     } catch {
       setPrintStatus("error");
+      openSystemPrint();
     }
     setPrinting(false);
     setTimeout(() => setPrintStatus(null), 3000);
+  }
+
+  function openSystemPrint() {
+    window.open(`/vendor/imprimir/${order.id}`, "_blank", "noopener");
   }
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
@@ -189,7 +205,7 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
           <div className="flex items-center gap-2 min-w-0">
             <span className="font-mono text-xs text-muted-foreground">#{order.id.slice(0, 8)}</span>
             <Badge className={ORDER_STATUS_COLORS[order.status as OrderStatus]}>
-              {ORDER_STATUS_LABELS[order.status as OrderStatus]}
+              {order.status === "ready" ? orderReadyLabel(order) : ORDER_STATUS_LABELS[order.status as OrderStatus]}
             </Badge>
             {order.modification_notes && !editing && (
               <Badge variant="outline" className="text-[9px] px-1.5 py-0">Editado</Badge>
@@ -214,7 +230,9 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
                 {order.customer_phone}
               </a>
               <span>·</span>
-              <span>{order.method === "delivery" ? "🛵 Delivery" : "🏪 Retiro"}</span>
+              <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border ${CONDITION_META[orderCondition(order)].pillClass}`}>
+                {CONDITION_META[orderCondition(order)].emoji} {CONDITION_META[orderCondition(order)].label}
+              </span>
             </div>
             {order.method === "delivery" && order.customer_address && (
               <p className="text-xs text-muted-foreground">📍 {order.customer_address}</p>
@@ -241,7 +259,7 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
                           {done ? "✓" : idx + 1}
                         </div>
                         <p className={`text-[9px] mt-1 text-center leading-tight ${done ? "text-primary font-medium" : "text-muted-foreground/50"}`}>
-                          {ORDER_STATUS_LABELS[step]}
+                          {step === "ready" ? orderReadyLabel(order) : ORDER_STATUS_LABELS[step]}
                         </p>
                       </div>
                       {idx < STEP_ORDER.length - 1 && (
@@ -458,7 +476,7 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
                   className="w-full"
                   onClick={() => { onAction(order, nextStatus); onClose(); }}
                 >
-                  {getActionButtonLabel(nextStatus)}
+                  {getActionButtonLabel(nextStatus, order)}
                 </Button>
               )}
               <button

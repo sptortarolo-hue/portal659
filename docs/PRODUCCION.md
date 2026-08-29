@@ -13,7 +13,14 @@ Stack real: **Next.js + PostgreSQL self-host (Docker) + nginx**, desplegado por 
 |---|---|---|
 | `app` | portal659-app (Next.js) | App en puerto 3000 (interno) |
 | `db` | postgres:15-alpine | PostgreSQL, esquema en `supabase/self-host/schema.sql` |
+| `printbridge` | services/print-bridge (node) | Relay WebSocket de impresión, puerto 8791 (interno) |
 | `nginx` | nginx:alpine | Proxy, puerto 80 |
+
+### Impresión térmica (print bridge)
+- El servidor arma el buffer ESC/POS (`src/lib/thermal-printer.ts`) y lo encola al relay HTTP `printbridge:8791` (POST `/push` con header `x-bridge-secret`).
+- La app **Portal Print** (carpeta `android/`, Capacitor) conecta por WebSocket saliente a `wss://tu-dominio/printbridge?token=PP_TOKEN` y manda los bytes por TCP 9100 a la impresora de la red local.
+- Token de comercio: se autogenera en `vendors.print_token` (patrón `pp_...`), se consulta/rota en el dashboard (sección Impresora) o por `GET/POST /api/vendor/print/{status,token}`.
+- Lateral: si no hay modo de impresión configurado, el botón abre `/vendor/imprimir/[id]` = impresión por el sistema (ventana de print del navegador, papel 58/80mm).
 
 ## 2. Variables de entorno (VPS `.env` + secrets de GitHub Actions)
 
@@ -44,6 +51,10 @@ UPSTASH_REDIS_REST_TOKEN=
 
 # Google Maps
 NEXT_PUBLIC_GOOGLE_MAPS_KEY=
+
+# Impresión (relay)
+PRINT_BRIDGE_URL=http://printbridge:8791   # host = printbridge (red Docker)
+PRINT_BRIDGE_SECRET=generá-otro-secreto-largo
 ```
 
 En local van en `.env.local`; en el VPS se regeneran desde los secrets en el deploy (ver `deploy.yml`).
@@ -55,7 +66,7 @@ En local van en `.env.local`; en el VPS se regeneran desde los secrets en el dep
 - Sin downtime + healthcheck (`/api/health`): si un contenedor cae, `restart: unless-stopped` lo levanta; si el host reinicia, los contenedores existentes vuelven solos.
 
 ### Secrets requeridos
-`VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY`, `DATABASE_URL`, `JWT_SECRET`, `POSTGRES_PASSWORD`, `NEXT_PUBLIC_SITE_URL`, `RESEND_API_KEY`, `FROM_EMAIL`, `MP_*`, `UPSTASH_REDIS_*`, `NEXT_PUBLIC_GOOGLE_MAPS_KEY`.
+`VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY`, `DATABASE_URL`, `JWT_SECRET`, `POSTGRES_PASSWORD`, `NEXT_PUBLIC_SITE_URL`, `RESEND_API_KEY`, `FROM_EMAIL`, `MP_*`, `UPSTASH_REDIS_*`, `NEXT_PUBLIC_GOOGLE_MAPS_KEY`, `PRINT_BRIDGE_SECRET`.
 
 ## 4. Usuario administrador
 

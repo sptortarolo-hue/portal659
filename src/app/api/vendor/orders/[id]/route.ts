@@ -18,6 +18,26 @@ const STATUS_LABELS: Record<string, string> = {
 const RETURN_COLUMNS =
   "customer_phone, customer_name, total, payment_method, notes, modification_notes, method, items";
 
+export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params;
+
+  const { vendor } = await getVendorByRequest(request);
+  if (!vendor) {
+    return NextResponse.json({ error: "No autorizado" }, { status: 403 });
+  }
+
+  const order = await queryOne<Record<string, unknown>>(
+    `SELECT * FROM orders WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
+    [params.id, vendor.id]
+  );
+
+  if (!order) {
+    return NextResponse.json({ error: "Pedido no encontrado" }, { status: 404 });
+  }
+
+  return NextResponse.json({ order });
+}
+
 export async function PATCH(
   request: Request,
   context: { params: Promise<{ id: string }> }

@@ -8,7 +8,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ImageCropModal } from "@/components/ui/image-crop-modal";
 import { DEFAULT_ZONE } from "@/lib/config";
-import { buildClientWhatsAppUrl, ORDER_STATUS_COLORS } from "@/lib/order-utils";
+import { buildClientWhatsAppUrl, ORDER_STATUS_COLORS, orderCondition, orderReadyLabel, CONDITION_META } from "@/lib/order-utils";
 import OrderDetailModal from "@/components/dashboard/order-detail-modal";
 import DashboardGastro from "@/components/dashboard/dashboard-gastro";
 import DashboardComercio from "@/components/dashboard/dashboard-comercio";
@@ -437,9 +437,11 @@ export default function VendorDashboard() {
                         ORDER_STATUS_COLORS[order.status]
                       }`}>
                         <span className="inline-block w-1.5 h-1.5 rounded-full bg-current" />
-                        {STATUS_LABELS[order.status]}
+                        {order.status === "ready" ? orderReadyLabel(order) : STATUS_LABELS[order.status]}
                       </span>
-                      <span className="text-xs">{order.method === "delivery" ? "🛵" : "🏪"}</span>
+                      <span className={`inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-full border ${CONDITION_META[orderCondition(order)].pillClass}`}>
+                        {CONDITION_META[orderCondition(order)].label}
+                      </span>
                     </div>
                   </div>
                   <div className="text-right flex-shrink-0">

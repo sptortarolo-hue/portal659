@@ -692,7 +692,7 @@ export default function VendorDashboard() {
               {orders.filter((o) => o.status === "new").length > 0 && <span className="absolute top-1 right-1/3 -translate-x-4 bg-red-500 text-white text-[9px] rounded-full h-4 w-4 flex items-center justify-center">{orders.filter((o) => o.status === "new").length}</span>}
             </button>
             <button onClick={() => setTab("pos")} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors relative ${tab === "pos" ? "text-primary" : "text-muted-foreground"}`}>
-              <span className="text-lg">🛒</span>Mostrador
+              <span className="text-lg">🖥️</span>Mostrador
             </button>
             <button onClick={() => setTab("mesas")} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors ${tab === "mesas" ? "text-primary" : "text-muted-foreground"}`}>
               <span className="text-lg">🍽️</span>Mesas

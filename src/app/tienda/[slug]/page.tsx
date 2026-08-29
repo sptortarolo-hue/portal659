@@ -3,7 +3,6 @@ import { resolveVendorPlan } from "@/lib/plans";
 import { notFound } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { AddToCartButton } from "@/components/offers/add-to-cart-button";
-import { CartInlineSummary } from "@/components/cart/cart-inline-summary";
 import { ReviewForm } from "@/components/reviews/review-form";
 import { ReviewList } from "@/components/reviews/review-list";
 import { FavoriteButton } from "@/components/favorites/favorite-button";
@@ -597,7 +596,6 @@ const modifiersByProduct: Record<string, any[]> = {};
                     </div>
                   </section>
                 ))}
-                {acceptsCart && <CartInlineSummary />}
               </>
             )}
           </>
@@ -610,8 +608,8 @@ const modifiersByProduct: Record<string, any[]> = {};
         </div>
       </div>
 
-      {/* Sticky WhatsApp CTA */}
-      {waNumber && (
+      {/* Sticky WhatsApp CTA: solo sin carrito (gratis) o para servicios */}
+      {waNumber && (!acceptsCart || isService) && (
         <StickyWhatsApp
           url={`https://wa.me/${waNumber}?text=${encodeURIComponent(waText)}`}
           isService={isService}

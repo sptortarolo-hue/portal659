@@ -19,7 +19,7 @@ jobs:
           command_timeout: 30m
           script: |
             cd /tmp
-            SHA=$(curl -fsSL -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" https://api.github.com/repos/sptortarolo-hue/portal659/commits/master | grep '"sha"' | head -1 | cut -d'"' -f4)
+            SHA="${{ github.sha }}"
             curl -fsSL -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" -o code.tgz "https://api.github.com/repos/sptortarolo-hue/portal659/tarball/$SHA"
             rm -rf /opt/portal659
             mkdir -p /opt/portal659

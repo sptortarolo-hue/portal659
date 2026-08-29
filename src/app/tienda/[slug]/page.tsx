@@ -236,22 +236,26 @@ const modifiersByProduct: Record<string, any[]> = {};
               className="h-16 w-16 rounded-full object-cover mb-3 border-2 border-white shadow-md"
             />
           )}
-          <div className="flex items-center gap-2">
-            <h1 className="font-display text-3xl font-semibold">
-              {v.store_name}
-            </h1>
-            {planBadge && planBadge !== "Gratuito" && (
-              <Badge variant="secondary" className="rounded-full text-[10px]">
-                {planBadge}
-              </Badge>
-            )}
-            {v.verified && (
-              <Badge className="rounded-full bg-blue-600/90 text-white text-[10px]">
-                ✓ Verificado
-              </Badge>
-            )}
-            <FavoriteButton vendorId={v.id} />
-            <VendorShareButton slug={v.slug} storeName={v.store_name} />
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
+            <div className="flex items-center gap-2 flex-wrap min-w-0">
+              <h1 className="font-display text-3xl font-semibold">
+                {v.store_name}
+              </h1>
+              {planBadge && planBadge !== "Gratuito" && (
+                <Badge variant="secondary" className="rounded-full text-[10px]">
+                  {planBadge}
+                </Badge>
+              )}
+              {v.verified && (
+                <Badge className="rounded-full bg-blue-600/90 text-white text-[10px]">
+                  ✓ Verificado
+                </Badge>
+              )}
+            </div>
+            <div className="flex items-center gap-2 ml-auto shrink-0">
+              <FavoriteButton vendorId={v.id} />
+              <VendorShareButton slug={v.slug} storeName={v.store_name} />
+            </div>
           </div>
           {v.description && (
             <p className="text-muted-foreground mt-2">{v.description}</p>

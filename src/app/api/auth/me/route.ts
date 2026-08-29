@@ -1,11 +1,18 @@
 import { NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
 import { query, queryOne } from "@/lib/db";
+import { getDeviceId } from "@/lib/device";
+import { mergeDeviceFavorites } from "@/lib/device-merge";
 
 export async function GET(request: Request) {
   const user = await getAuthUser(request);
   if (!user) {
     return NextResponse.json({ user: null });
+  }
+
+  const deviceId = getDeviceId(request);
+  if (deviceId) {
+    await mergeDeviceFavorites(user.id, deviceId);
   }
 
   const profile = await queryOne<{ phone: string | null; whatsapp: string | null; neighborhood: string | null }>(

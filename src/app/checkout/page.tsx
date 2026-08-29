@@ -38,6 +38,7 @@ export default function CheckoutPage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [showSummary, setShowSummary] = useState(false);
   const [pendingOrder, setPendingOrder] = useState<{ orderId: string; message: string; waNumber: string } | null>(null);
+  const [prefillInfo, setPrefillInfo] = useState<{ found: boolean; name?: string | null } | null>(null);
 
   useEffect(() => {
     fetch("/api/payments").then(r => r.json()).then(d => setMpConfigured(d.configured)).catch(() => {});
@@ -67,6 +68,23 @@ export default function CheckoutPage() {
 
   const v = vendor;
   const esModa = v.vertical === "moda";
+
+  async function lookupPhone() {
+    const clean = formatPhone(phone);
+    if (!isValidPhone(clean)) return;
+    try {
+      const res = await fetch(`/api/orders/last?phone=${encodeURIComponent(clean)}`);
+      const data = await res.json();
+      if (data.found) {
+        if (!name.trim()) setName(data.name || "");
+        setPrefillInfo({ found: true, name: data.name });
+      } else {
+        setPrefillInfo({ found: false });
+      }
+    } catch {
+      setPrefillInfo({ found: false });
+    }
+  }
 
   async function handleMercadoPago() {
     if (!name || !phone) return;
@@ -277,12 +295,25 @@ export default function CheckoutPage() {
               id="phone"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
-              onBlur={() => { if (phone) setPhone(formatPhone(phone)); }}
+              onBlur={() => {
+                if (phone) {
+                  const clean = formatPhone(phone);
+                  setPhone(clean);
+                  lookupPhone();
+                }
+              }}
               placeholder="2215550000"
               required
             />
           </div>
         </div>
+
+        {prefillInfo?.found && (
+          <div className="text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2 -mt-2 animate-fade-in-up">
+            👋 {prefillInfo.name ? `¡Hola de nuevo, ${prefillInfo.name}! ` : "¡Te reconocimos! "}
+            Completamos tus datos de anteriores pedidos.
+          </div>
+        )}
 
         {/* Delivery method */}
         <div>

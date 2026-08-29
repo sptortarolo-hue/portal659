@@ -1,4 +1,5 @@
 import { queryMany, queryOne, withTransaction } from "@/lib/db";
+import { getDeviceId } from "@/lib/device";
 import { NextResponse } from "next/server";
 import { withRateLimit } from "@/lib/api-wrapper";
 import { sendEmail, orderConfirmationEmail } from "@/lib/email";
@@ -53,9 +54,10 @@ export const POST = withRateLimit(async (request: Request) => {
   }));
 
   await withTransaction(async (tx) => {
+    const deviceId = getDeviceId(request);
     const rows = await tx.query<{ id: string }>(
-      `INSERT INTO orders (vendor_id, customer_id, customer_name, customer_phone, customer_address, method, payment_method, items, total, status, notes)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'new', $10)
+      `INSERT INTO orders (vendor_id, customer_id, customer_name, customer_phone, customer_address, method, payment_method, items, total, status, notes, device_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'new', $10, $11)
        RETURNING id`,
       [
         vendorId,
@@ -68,6 +70,7 @@ export const POST = withRateLimit(async (request: Request) => {
         JSON.stringify(normalizedItems),
         total,
         notes || null,
+        deviceId,
       ]
     );
     orderId = rows[0]?.id;

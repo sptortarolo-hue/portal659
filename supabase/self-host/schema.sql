@@ -132,11 +132,13 @@ CREATE TABLE IF NOT EXISTS orders (
   items jsonb NOT NULL DEFAULT '[]'::jsonb,
   total numeric(10, 2) NOT NULL DEFAULT 0,
   status text CHECK (status IN ('new', 'confirmed', 'completed', 'cancelled')) DEFAULT 'new',
+  device_id text,
   created_at timestamptz DEFAULT now()
 );
 
 CREATE INDEX IF NOT EXISTS orders_vendor_id_idx ON orders (vendor_id);
 CREATE INDEX IF NOT EXISTS orders_created_at_idx ON orders (created_at);
+CREATE INDEX IF NOT EXISTS idx_orders_device ON orders(device_id) WHERE device_id IS NOT NULL;
 
 -- ============================================================
 -- 003_rls_grants.sql  --> OMITIDO (no hay RLS ni roles Supabase)
@@ -280,12 +282,14 @@ CREATE INDEX IF NOT EXISTS idx_notifications_unread ON notifications(user_id, re
 -- ============================================================
 CREATE TABLE IF NOT EXISTS favorites (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL,
+  user_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+  device_id text,
   vendor_id UUID REFERENCES vendors(id) ON DELETE CASCADE,
-  created_at TIMESTAMPTZ DEFAULT now(),
-  UNIQUE(user_id, vendor_id)
+  created_at TIMESTAMPTZ DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS idx_favorites_user ON favorites(user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_favorites_user ON favorites(user_id, vendor_id) WHERE user_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_favorites_device ON favorites(device_id, vendor_id) WHERE device_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_favorites_device ON favorites(device_id);
 
 -- ============================================================
 -- 016_payment_quotes_bookings.sql

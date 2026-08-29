@@ -62,33 +62,17 @@ export default function FavoritosPage() {
     );
   }
 
-  if (loggedIn === false) {
-    return (
-      <main className="container mx-auto px-4 py-16 text-center max-w-md">
-        <span className="text-4xl">❤️</span>
-        <h1 className="font-display text-2xl font-semibold mt-3">Tus favoritos</h1>
-        <p className="text-sm text-muted-foreground mt-2">
-          Iniciá sesión para guardar tus comercios preferidos y volver a pedir con un toque.
-        </p>
-        <div className="flex gap-2 justify-center mt-5">
-          <Button asChild>
-            <Link href="/login">Iniciar sesión</Link>
-          </Button>
-          <Button variant="outline" asChild>
-            <Link href="/register">Crear cuenta</Link>
-          </Button>
-        </div>
-      </main>
-    );
-  }
-
   if (favorites.length === 0) {
     return (
       <main className="container mx-auto px-4 py-16 text-center max-w-md">
         <span className="text-4xl">🔖</span>
-        <h1 className="font-display text-2xl font-semibold mt-3">Todavía no tenés favoritos</h1>
+        <h1 className="font-display text-2xl font-semibold mt-3">
+          Todavía no tenés favoritos
+        </h1>
         <p className="text-sm text-muted-foreground mt-2">
-          Tocá el corazón en cualquier comercio para guardarlo acá.
+          {loggedIn === false
+            ? "Tocá el corazón en cualquier comercio para guardarlo en este dispositivo, sin necesidad de cuenta."
+            : "Tocá el corazón en cualquier comercio para guardarlo acá."}
         </p>
         <Button asChild className="mt-5">
           <Link href="/buscar">Explorar comercios</Link>
@@ -99,7 +83,19 @@ export default function FavoritosPage() {
 
   return (
     <main className="container mx-auto px-4 py-8 sm:py-12 max-w-6xl">
-      <h1 className="font-display text-3xl font-semibold mb-6">Mis favoritos</h1>
+      <h1 className="font-display text-3xl font-semibold mb-6">
+        {loggedIn === false ? "Tus favoritos" : "Mis favoritos"}
+      </h1>
+
+      {loggedIn === false && (
+        <div className="mb-6 rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-muted-foreground">
+          Se guardan en <b>este dispositivo</b>.{" "}
+          <Link href="/login" className="text-primary underline hover:text-primary/80">
+            Iniciá sesión
+          </Link>{" "}
+          para que se sincronicen en todas tus visitas.
+        </div>
+      )}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {favorites.map((f) => (
           <div key={f.vendor_id} className="relative">

@@ -352,6 +352,8 @@ export default function VendorDashboard() {
     <DashboardGenerico {...dashboardProps} />
   );
 
+  const activeOrders = orders.filter((o) => o.status !== "completed" && o.status !== "cancelled");
+
   const filteredOrders = orders.filter((o) => {
     if (orderStatusFilter !== "all" && o.status !== orderStatusFilter) return false;
     if (orderSearch) {
@@ -683,7 +685,7 @@ export default function VendorDashboard() {
           <div className="flex">
             <button onClick={() => setTab("orders")} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors relative ${tab === "orders" ? "text-primary" : "text-muted-foreground"}`}>
               <span className="text-lg">📦</span>Pedidos
-              {orders.length > 0 && <span className="absolute top-1 right-1/3 -translate-x-4 bg-red-500 text-white text-[9px] rounded-full h-4 w-4 flex items-center justify-center">{orders.length}</span>}
+              {activeOrders.length > 0 && <span className="absolute top-1 right-1/3 -translate-x-4 bg-red-500 text-white text-[9px] rounded-full h-4 w-4 flex items-center justify-center">{activeOrders.length}</span>}
             </button>
             <button onClick={() => setTab("comanda")} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors relative ${tab === "comanda" ? "text-primary" : "text-muted-foreground"}`}>
               <span className="text-lg">🍳</span>Comanda

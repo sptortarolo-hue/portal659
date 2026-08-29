@@ -171,13 +171,13 @@ function VendorDashboardInner() {
     setLoading(false);
   }
 
-  useEffect(() => { loadData(); }, []);
-
-  // Modo llave en mano: el admin abre el dashboard de un comercio sin dueño (?as=<vendorId>).
   useEffect(() => {
     if (impersonatingId) {
+      // Setear la cookie ANTES de cargar, para que los endpoints /api/vendor/* resuelvan el comercio impersonado.
       document.cookie = `portal659-admin-as=${impersonatingId}; path=/; max-age=7200; samesite=lax`;
     }
+    loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [impersonatingId]);
 
   function exitImpersonation() {

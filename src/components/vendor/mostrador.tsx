@@ -29,6 +29,7 @@ type MostradorOrder = {
   status: string;
   created_at: string;
   customer_name?: string;
+  pickup_number?: number | null;
 };
 
 const PAYMENT_OPTIONS = [
@@ -43,12 +44,16 @@ export function Mostrador() {
   const [items, setItems] = useState<LineItem[]>([]);
   const [payment, setPayment] = useState("efectivo");
   const [customerName, setCustomerName] = useState("");
+  const [method, setMethod] = useState<"pickup" | "delivery">("pickup");
+  const [customerPhone, setCustomerPhone] = useState("");
+  const [customerAddress, setCustomerAddress] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
   const [recent, setRecent] = useState<MostradorOrder[]>([]);
   const [query, setQuery] = useState("");
   const [activeCat, setActiveCat] = useState<string | null>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   const total = useMemo(() => items.reduce((s, i) => s + i.price * i.qty, 0), [items]);
 
@@ -106,174 +111,288 @@ export function Mostrador() {
     );
   }
 
-  async function charge(print: boolean) {
+  async function charge(withReceipt: boolean) {
     if (items.length === 0) return;
+
+    const isDelivery = method === "delivery";
+    if (isDelivery && !customerPhone.trim()) {
+      setMsg("El envío a domicilio requiere el teléfono del cliente");
+      return;
+    }
+
     setSaving(true);
     setMsg("");
     const res = await fetch("/api/vendor/pos/order", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ items, total, paymentMethod: payment, customerName: customerName || "Mostrador" }),
+      body: JSON.stringify({
+        items,
+        total,
+        paymentMethod: payment,
+        customerName: customerName || "Mostrador",
+        method,
+        customerPhone: isDelivery ? customerPhone : undefined,
+        customerAddress: isDelivery ? customerAddress : undefined,
+      }),
     });
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
     if (!data.ok) {
       setMsg(data.error || "No se pudo registrar el pedido");
       setSaving(false);
       return;
     }
-    if (print) {
+
+    // Siempre imprime comanda (va directo a preparación)
+    fetch("/api/print", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderId: data.orderId, type: "comanda" }),
+    }).catch(() => {});
+
+    // Comprobante de retiro (solo retiro en local + botón correspondiente)
+    if (withReceipt && !isDelivery) {
       fetch("/api/print", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderId: data.orderId, type: "ticket" }),
+        body: JSON.stringify({ orderId: data.orderId, type: "retiro" }),
       }).catch(() => {});
     }
-    setMsg(`Cobrado $${Number(total).toLocaleString("es-AR")}${print ? " · ticket impreso" : ""}`);
+
+    setMsg(
+      isDelivery
+        ? "Pedido a domicilio registrado"
+        : `Cobrado $${Number(total).toLocaleString("es-AR")}${withReceipt ? " · comprobante de retiro" : ""}`
+    );
     setItems([]);
     setCustomerName("");
+    setCustomerPhone("");
+    setCustomerAddress("");
+    setSheetOpen(false);
     setSaving(false);
     setRecent((prev) =>
-      [{ id: data.orderId, total, payment_method: payment, paid_at: new Date().toISOString(), status: "new", created_at: new Date().toISOString() }, ...prev].slice(0, 20)
+      [{ id: data.orderId, total, payment_method: payment, paid_at: new Date().toISOString(), status: "preparing", created_at: new Date().toISOString(), pickup_number: data.order?.pickup_number ?? null }, ...prev].slice(0, 20)
     );
   }
 
   if (loading) return <p className="text-sm text-muted-foreground">Cargando mostrador...</p>;
 
+  const productsGrid = (
+    <div className="space-y-2">
+      <input
+        type="text"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Buscar producto..."
+        className="w-full h-10 px-3 text-sm rounded-xl border border-input bg-background"
+      />
+      {categories.length > 1 && (
+        <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
+          <button
+            onClick={() => setActiveCat(null)}
+            className={`flex-shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+              activeCat === null ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+            }`}
+          >
+            Todos
+          </button>
+          {categories.map((c) => (
+            <button
+              key={c}
+              onClick={() => setActiveCat(activeCat === c ? null : c)}
+              className={`flex-shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                activeCat === c ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+              }`}
+            >
+              {c}
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-[50vh] overflow-y-auto pr-1">
+        {filtered.map((p) => (
+          <button
+            key={p.id}
+            onClick={() => add(p)}
+            className="group text-left rounded-xl border border-border bg-card overflow-hidden hover:border-primary/50 hover:shadow-sm transition-all active:scale-[0.98]"
+          >
+            <div className="relative aspect-square">
+              {p.image_url ? (
+                <img
+                  src={p.image_url}
+                  alt={p.name}
+                  loading="lazy"
+                  decoding="async"
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <div className="w-full h-full bg-gradient-to-br from-secondary to-accent flex items-center justify-center">
+                  <span className="font-display text-4xl font-bold text-primary/40">
+                    {p.name.charAt(0)}
+                  </span>
+                </div>
+              )}
+              {!p.available && (
+                <span className="absolute top-2 left-2 rounded-full bg-red-500 text-white text-[9px] font-bold px-2 py-0.5">
+                  Agotado
+                </span>
+              )}
+            </div>
+            <div className="p-2">
+              <p className="text-xs font-medium truncate">{p.name}</p>
+              <div className="flex items-baseline gap-1 mt-0.5">
+                <span className="text-sm font-semibold text-primary tabular-nums">
+                  ${Number(p.promo_price ?? p.price).toLocaleString("es-AR")}
+                </span>
+                {p.promo_price != null && (
+                  <span className="text-[10px] text-muted-foreground line-through">
+                    ${Number(p.price).toLocaleString("es-AR")}
+                  </span>
+                )}
+              </div>
+            </div>
+          </button>
+        ))}
+        {filtered.length === 0 && <p className="text-xs text-muted-foreground col-span-full text-center py-6">Sin productos</p>}
+      </div>
+    </div>
+  );
+
+  const orderSummary = (
+    <>
+      <div className="flex-1 space-y-1.5 min-h-16 overflow-y-auto">
+        {items.length === 0 && <p className="text-xs text-muted-foreground text-center py-6">Tocá productos para armar el pedido</p>}
+        {items.map((i) => (
+          <div key={i.product_id} className="flex items-center gap-2 text-sm">
+            <span className="flex-1 truncate">{i.name}</span>
+            <div className="flex items-center gap-1">
+              <button onClick={() => changeQty(i.product_id, -1)} className="h-6 w-6 rounded-md bg-muted hover:bg-accent">−</button>
+              <span className="w-5 text-center tabular-nums">{i.qty}</span>
+              <button onClick={() => changeQty(i.product_id, 1)} className="h-6 w-6 rounded-md bg-muted hover:bg-accent">+</button>
+            </div>
+            <span className="w-16 text-right tabular-nums">${(i.price * i.qty).toLocaleString("es-AR")}</span>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-3 space-y-2 pt-3 border-t border-border">
+        {/* Método de entrega */}
+        <div className="grid grid-cols-2 gap-1.5">
+          <button
+            onClick={() => setMethod("pickup")}
+            className={`rounded-lg py-1.5 text-xs font-medium border transition-colors ${
+              method === "pickup" ? "border-primary bg-primary/5 text-primary" : "border-border text-muted-foreground"
+            }`}
+          >
+            🛍️ Para retirar
+          </button>
+          <button
+            onClick={() => setMethod("delivery")}
+            className={`rounded-lg py-1.5 text-xs font-medium border transition-colors ${
+              method === "delivery" ? "border-primary bg-primary/5 text-primary" : "border-border text-muted-foreground"
+            }`}
+          >
+            🛵 Envío a domicilio
+          </button>
+        </div>
+
+        <input
+          type="text"
+          value={customerName}
+          onChange={(e) => setCustomerName(e.target.value)}
+          placeholder="Nombre del cliente (opcional)"
+          className="w-full h-9 px-3 text-xs rounded-lg border border-input bg-background"
+        />
+
+        {method === "delivery" && (
+          <>
+            <input
+              type="text"
+              value={customerPhone}
+              onChange={(e) => setCustomerPhone(e.target.value)}
+              placeholder="Teléfono del cliente *"
+              className="w-full h-9 px-3 text-xs rounded-lg border border-input bg-background"
+            />
+            <input
+              type="text"
+              value={customerAddress}
+              onChange={(e) => setCustomerAddress(e.target.value)}
+              placeholder="Dirección de entrega *"
+              className="w-full h-9 px-3 text-xs rounded-lg border border-input bg-background"
+            />
+          </>
+        )}
+
+        <div className="flex flex-wrap gap-1.5">
+          {PAYMENT_OPTIONS.map((o) => (
+            <button
+              key={o.key}
+              onClick={() => setPayment(o.key)}
+              className={`rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                payment === o.key ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+              }`}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex items-center justify-between pt-1">
+          <span className="text-sm font-semibold">Total</span>
+          <span className="font-display font-bold text-lg tabular-nums">${total.toLocaleString("es-AR")}</span>
+        </div>
+
+        <Button className="w-full" disabled={items.length === 0 || saving} onClick={() => charge(true)}>
+          {saving ? "Cobrando..." : method === "pickup" ? "Cobrar + comprobante de retiro" : "Cobrar y despachar"}
+        </Button>
+        <Button className="w-full" variant="outline" disabled={items.length === 0 || saving} onClick={() => charge(false)}>
+          {method === "pickup" ? "Cobrar sin comprobante" : "Cobrar sin imprimir comprobante"}
+        </Button>
+      </div>
+    </>
+  );
+
   return (
     <div className="space-y-4">
       {msg && <p className="text-sm text-green-600 bg-green-50 rounded-lg px-3 py-2">{msg}</p>}
 
-      <div className="grid sm:grid-cols-[1fr_320px] gap-4">
-        <div className="space-y-2">
-          <input
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Buscar producto..."
-            className="w-full h-10 px-3 text-sm rounded-xl border border-input bg-background"
-          />
-          {categories.length > 1 && (
-            <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
-              <button
-                onClick={() => setActiveCat(null)}
-                className={`flex-shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
-                  activeCat === null ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
-                }`}
-              >
-                Todos
-              </button>
-              {categories.map((c) => (
-                <button
-                  key={c}
-                  onClick={() => setActiveCat(activeCat === c ? null : c)}
-                  className={`flex-shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
-                    activeCat === c ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
-                  }`}
-                >
-                  {c}
-                </button>
-              ))}
-            </div>
-          )}
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-[50vh] overflow-y-auto pr-1">
-            {filtered.map((p) => (
-              <button
-                key={p.id}
-                onClick={() => add(p)}
-                className="group text-left rounded-xl border border-border bg-card overflow-hidden hover:border-primary/50 hover:shadow-sm transition-all active:scale-[0.98]"
-              >
-                <div className="relative aspect-square">
-                  {p.image_url ? (
-                    <img
-                      src={p.image_url}
-                      alt={p.name}
-                      loading="lazy"
-                      decoding="async"
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-full bg-gradient-to-br from-secondary to-accent flex items-center justify-center">
-                      <span className="font-display text-4xl font-bold text-primary/40">
-                        {p.name.charAt(0)}
-                      </span>
-                    </div>
-                  )}
-                  {!p.available && (
-                    <span className="absolute top-2 left-2 rounded-full bg-red-500 text-white text-[9px] font-bold px-2 py-0.5">
-                      Agotado
-                    </span>
-                  )}
-                </div>
-                <div className="p-2">
-                  <p className="text-xs font-medium truncate">{p.name}</p>
-                  <div className="flex items-baseline gap-1 mt-0.5">
-                    <span className="text-sm font-semibold text-primary tabular-nums">
-                      ${Number(p.promo_price ?? p.price).toLocaleString("es-AR")}
-                    </span>
-                    {p.promo_price != null && (
-                      <span className="text-[10px] text-muted-foreground line-through">
-                        ${Number(p.price).toLocaleString("es-AR")}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </button>
-            ))}
-            {filtered.length === 0 && <p className="text-xs text-muted-foreground col-span-full text-center py-6">Sin productos</p>}
-          </div>
-        </div>
+      <div className="grid sm:grid-cols-[1fr_340px] gap-4">
+        <div>{productsGrid}</div>
 
-        <div className="rounded-2xl border border-border bg-card p-4 flex flex-col">
+        {/* Desktop sidebar */}
+        <div className="hidden sm:flex rounded-2xl border border-border bg-card p-4 flex-col max-h-[70vh]">
           <h3 className="font-display font-semibold text-sm mb-2">Pedido actual</h3>
-          <div className="flex-1 space-y-1.5 min-h-16">
-            {items.length === 0 && <p className="text-xs text-muted-foreground text-center py-6">Tocá productos para armar el pedido</p>}
-            {items.map((i) => (
-              <div key={i.product_id} className="flex items-center gap-2 text-sm">
-                <span className="flex-1 truncate">{i.name}</span>
-                <div className="flex items-center gap-1">
-                  <button onClick={() => changeQty(i.product_id, -1)} className="h-6 w-6 rounded-md bg-muted hover:bg-accent">−</button>
-                  <span className="w-5 text-center tabular-nums">{i.qty}</span>
-                  <button onClick={() => changeQty(i.product_id, 1)} className="h-6 w-6 rounded-md bg-muted hover:bg-accent">+</button>
-                </div>
-                <span className="w-16 text-right tabular-nums">${(i.price * i.qty).toLocaleString("es-AR")}</span>
-              </div>
-            ))}
-          </div>
-
-          <div className="mt-3 space-y-2 pt-3 border-t border-border">
-            <input
-              type="text"
-              value={customerName}
-              onChange={(e) => setCustomerName(e.target.value)}
-              placeholder="Nombre del cliente (opcional)"
-              className="w-full h-9 px-3 text-xs rounded-lg border border-input bg-background"
-            />
-            <div className="flex flex-wrap gap-1.5">
-              {PAYMENT_OPTIONS.map((o) => (
-                <button
-                  key={o.key}
-                  onClick={() => setPayment(o.key)}
-                  className={`rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                    payment === o.key ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
-                  }`}
-                >
-                  {o.label}
-                </button>
-              ))}
-            </div>
-            <div className="flex items-center justify-between pt-1">
-              <span className="text-sm font-semibold">Total</span>
-              <span className="font-display font-bold text-lg tabular-nums">${total.toLocaleString("es-AR")}</span>
-            </div>
-            <Button className="w-full" disabled={items.length === 0 || saving} onClick={() => charge(true)}>
-              {saving ? "Cobrando..." : "Cobrar e imprimir ticket"}
-            </Button>
-            <Button className="w-full" variant="outline" disabled={items.length === 0 || saving} onClick={() => charge(false)}>
-              Cobrar sin ticket
-            </Button>
-          </div>
+          {orderSummary}
         </div>
       </div>
+
+      {/* Mobile bottom bar */}
+      {items.length > 0 && (
+        <div className="sm:hidden fixed bottom-14 left-0 right-0 z-40 px-3 pb-3">
+          <button
+            onClick={() => setSheetOpen(true)}
+            className="w-full flex items-center justify-between rounded-xl bg-primary text-primary-foreground px-4 py-3 shadow-lg"
+          >
+            <span className="text-sm font-semibold">{items.length} {items.length === 1 ? "producto" : "productos"}</span>
+            <span className="text-base font-bold">${total.toLocaleString("es-AR")}</span>
+          </button>
+        </div>
+      )}
+
+      {/* Mobile bottom sheet */}
+      {sheetOpen && (
+        <div className="sm:hidden fixed inset-0 z-50 bg-black/40" onClick={() => setSheetOpen(false)}>
+          <div
+            className="absolute bottom-0 left-0 right-0 max-h-[85vh] overflow-y-auto rounded-t-2xl bg-card p-4 flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-display font-semibold">Pedido actual</h3>
+              <button onClick={() => setSheetOpen(false)} className="p-1 rounded-lg hover:bg-muted">✕</button>
+            </div>
+            {orderSummary}
+          </div>
+        </div>
+      )}
 
       {recent.length > 0 && (
         <div className="rounded-2xl border border-border bg-card p-4">
@@ -283,6 +402,9 @@ export function Mostrador() {
               <div key={o.id} className="flex items-center justify-between text-xs">
                 <div className="flex items-center gap-2">
                   <Badge variant="secondary" className="text-[9px]">{o.payment_method}</Badge>
+                  {o.pickup_number != null && (
+                    <Badge className="text-[9px] bg-status-new/15 text-status-new">Retiro Nro. {o.pickup_number}</Badge>
+                  )}
                   <span className="text-muted-foreground">{o.customer_name || "Mostrador"}</span>
                   <span className="text-muted-foreground/60">{new Date(o.created_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}</span>
                 </div>

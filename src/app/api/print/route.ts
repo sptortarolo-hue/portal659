@@ -54,7 +54,7 @@ export async function POST(request: Request) {
   const result = await dispatchPrint({
     vendor,
     order,
-    type: type === "ticket" ? "ticket" : "comanda",
+    type: type === "ticket" ? "ticket" : type === "retiro" ? "retiro" : "comanda",
     extra: { tableName, subLabel },
   });
   await recordLastPrint(vendor.id, result);

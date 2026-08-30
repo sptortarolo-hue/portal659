@@ -13,7 +13,7 @@ export type PrinterVendor = {
   print_token?: string | null;
 };
 
-export type PrintJobType = "ticket" | "comanda" | "test";
+export type PrintJobType = "ticket" | "comanda" | "retiro" | "test";
 
 export type DispatchResult = {
   ok: boolean;
@@ -114,6 +114,13 @@ function composeComanda(printer: any, vendor: PrinterVendor, order: Order): void
   printer.bold(true);
   printer.println(`Pedido #${order.id.slice(0, 8)}`);
   printer.bold(false);
+  if (order.pickup_number != null) {
+    printer.setTextSize(1, 1);
+    printer.bold(true);
+    printer.println(`RETIRO Nro. ${order.pickup_number}`);
+    printer.bold(false);
+    printer.setTextSize(0, 0);
+  }
   printer.println(`${dateStr} ${timeStr}`);
   printer.println("----------------------------------------");
 
@@ -235,6 +242,34 @@ function composeReceipt(
   printer.cut();
 }
 
+function composeRetiroReceipt(printer: any, vendor: PrinterVendor, order: Order): void {
+  const width = vendor.paper_size === "58mm" ? 32 : 48;
+
+  printer.alignCenter();
+  printer.bold(true);
+  printer.setTextSize(1, 1);
+  printer.println(vendor.store_name || "");
+  printer.setTextSize(0, 0);
+  printer.println("RETIRO");
+  printer.bold(true);
+  printer.setTextSize(2, 2);
+  printer.println(`Nro. ${order.pickup_number ?? "--"}`);
+  printer.setTextSize(1, 1);
+  printer.bold(false);
+  printer.println(separatorFor(width));
+
+  printer.println("Retira tu pedido en el mostrador");
+  printer.println("con tu numero de retiro.");
+  printer.println("");
+
+  printer.println(separatorFor(width));
+  printer.println("www.portal659.com.ar");
+  printer.println("El centro comercial de tu barrio");
+  printer.println("");
+  printer.println(separatorFor(width));
+  printer.cut();
+}
+
 function composeTest(printer: any, vendor: PrinterVendor): void {
   const width = vendor.paper_size === "58mm" ? 32 : 48;
 
@@ -353,6 +388,37 @@ export async function buildTestBuffer(vendor: PrinterVendor): Promise<BufferResu
   }
 }
 
+export async function printRetiroReceipt(
+  order: Order,
+  vendor: PrinterVendor
+): Promise<{ success: boolean; error?: string }> {
+  const res = await createPrinter(vendor);
+  if (!res.ok) return { success: false, error: res.error };
+  if (!vendor.printer_ip) return { success: false, error: "IP de impresora no configurada" };
+  try {
+    composeRetiroReceipt(res.printer, vendor, order);
+    await res.printer.execute();
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: errorMsg(e) };
+  }
+}
+
+export async function buildRetiroReceiptBuffer(
+  vendor: PrinterVendor,
+  order: Order
+): Promise<BufferResult> {
+  const res = await createPrinter(vendor);
+  if (!res.ok) return { success: false, error: res.error };
+  try {
+    composeRetiroReceipt(res.printer, vendor, order);
+    const buffer = (await res.printer.getBuffer()) as Buffer;
+    return { success: true, buffer };
+  } catch (e) {
+    return { success: false, error: errorMsg(e) };
+  }
+}
+
 type BridgeJob = {
   type: string;
   payload: string;
@@ -428,10 +494,10 @@ export async function dispatchPrint(params: {
   const order = params.order;
 
   if (mode === "app") {
-    const built =
-      params.type === "ticket"
-        ? await buildReceiptBuffer(vendor, order, params.extra)
-        : await buildComandaBuffer(vendor, order);
+    let built: BufferResult;
+    if (params.type === "ticket") built = await buildReceiptBuffer(vendor, order, params.extra);
+    else if (params.type === "retiro") built = await buildRetiroReceiptBuffer(vendor, order);
+    else built = await buildComandaBuffer(vendor, order);
     if (!built.success) return { ok: false, mode, error: built.error };
     const pushed = await pushToBridge(
       vendor.print_token,
@@ -441,9 +507,9 @@ export async function dispatchPrint(params: {
   }
 
   if (!vendor.printer_ip) return { ok: true, mode, skipped: true };
-  const r =
-    params.type === "ticket"
-      ? await printReceipt(order, vendor, params.extra)
-      : await printComanda(order, vendor);
+  let r: { success: boolean; error?: string };
+  if (params.type === "ticket") r = await printReceipt(order, vendor, params.extra);
+  else if (params.type === "retiro") r = await printRetiroReceipt(order, vendor);
+  else r = await printComanda(order, vendor);
   return { ok: r.success, mode, error: r.error };
 }

@@ -472,7 +472,7 @@ function VendorDashboardInner() {
       ) : (
         <div className="space-y-2.5">
           {filteredOrders.map((order) => {
-            const stepOrder = ["new", "preparing", "ready", "completed"] as const;
+            const stepOrder = ["new", "preparing", "ready", "sent", "completed"] as const;
             const statusIdx = stepOrder.indexOf(order.status as any);
             const isCancelled = order.status === "cancelled";
             const isCompleted = order.status === "completed";
@@ -506,6 +506,11 @@ function VendorDashboardInner() {
                       <span className={`inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-full border ${CONDITION_META[orderCondition(order)].pillClass}`}>
                         {CONDITION_META[orderCondition(order)].label}
                       </span>
+                      {order.pickup_number != null && (
+                        <span className="inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-status-new/15 text-status-new border-status-new/20">
+                          🎫 Retiro Nro. {order.pickup_number}
+                        </span>
+                      )}
                       {order.payment_method === "transferencia" && order.channel === "app" && order.payment_status === "pending" && (
                         <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-amber-100 text-amber-700 border-amber-200">
                           🕐 Pago pendiente
@@ -643,6 +648,7 @@ function VendorDashboardInner() {
               { status: "new", label: "Nuevos", value: orders.filter((o) => o.status === "new").length, bg: "bg-status-new/10 dark:bg-status-new/20", text: "text-status-new" },
               { status: "preparing", label: "Preparando", value: orders.filter((o) => o.status === "preparing").length, bg: "bg-status-preparing/10 dark:bg-status-preparing/20", text: "text-status-preparing" },
               { status: "ready", label: "Listos", value: orders.filter((o) => o.status === "ready").length, bg: "bg-status-ready/10 dark:bg-status-ready/20", text: "text-status-ready" },
+              { status: "sent", label: "Enviados", value: orders.filter((o) => o.status === "sent").length, bg: "bg-status-sent/10 dark:bg-status-sent/20", text: "text-status-sent" },
               { status: "completed", label: "Entregados", value: orders.filter((o) => o.status === "completed").length, bg: "bg-muted", text: "text-muted-foreground" },
             ].map((stat) => (
               <button

@@ -56,9 +56,24 @@ export const POST = withRateLimit(async (request: Request) => {
   await withTransaction(async (tx) => {
     const deviceId = getDeviceId(request);
     const paymentStatus = (paymentMethod || "whatsapp") === "transferencia" ? "pending" : "paid";
+    const isPickup = method === "pickup";
+
+    let pickupNumber: number | null = null;
+    if (isPickup) {
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      const lastRow = await tx.queryOne<{ n: number }>(
+        `SELECT COALESCE(MAX(pickup_number), 0)::int AS n
+         FROM orders
+         WHERE vendor_id = $1 AND pickup_number IS NOT NULL AND created_at >= $2`,
+        [vendorId, todayStart.toISOString()]
+      );
+      pickupNumber = (lastRow?.n ?? 0) + 1;
+    }
+
     const rows = await tx.query<{ id: string }>(
-      `INSERT INTO orders (vendor_id, customer_id, customer_name, customer_phone, customer_address, method, payment_method, items, total, status, notes, device_id, payment_status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'new', $10, $11, $12)
+      `INSERT INTO orders (vendor_id, customer_id, customer_name, customer_phone, customer_address, method, payment_method, items, total, status, notes, device_id, payment_status, pickup_number)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'new', $10, $11, $12, $13)
        RETURNING id`,
       [
         vendorId,
@@ -66,13 +81,14 @@ export const POST = withRateLimit(async (request: Request) => {
         customerName,
         customerPhone,
         customerAddress || null,
-        method === "pickup" ? "pickup" : "delivery",
+        isPickup ? "pickup" : "delivery",
         paymentMethod || "whatsapp",
         JSON.stringify(normalizedItems),
         total,
         notes || null,
         deviceId,
         paymentStatus,
+        pickupNumber,
       ]
     );
     orderId = rows[0]?.id;

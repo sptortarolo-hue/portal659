@@ -258,6 +258,7 @@ export type Order = {
   table_id: string | null;
   paid_at: string | null;
   payment_status?: "paid" | "pending";
+  pickup_number?: number | null;
   created_at: string;
   updated_at: string;
 };

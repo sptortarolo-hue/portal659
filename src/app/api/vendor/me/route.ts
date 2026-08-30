@@ -19,7 +19,16 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "No autenticado" }, { status: 401 });
   }
 
-  const { vendor } = await getVendorByRequest(request);
+  const { vendor: resolved } = await getVendorByRequest(request);
+
+  if (!resolved) {
+    return NextResponse.json({ vendor: null });
+  }
+
+  const vendor = await queryOne<Record<string, unknown>>(
+    `SELECT * FROM vendors WHERE id = $1 LIMIT 1`,
+    [resolved.id]
+  );
 
   return NextResponse.json({ vendor });
 }

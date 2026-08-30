@@ -459,26 +459,31 @@ export default function DashboardGastro({
     }
     setModSaving(true);
     setMsg("");
-    const res = await fetch("/api/vendor/modifiers", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        product_id: newModProductId,
-        group_name: newModGroupName,
-        options: newModOptions,
-      }),
-    });
-    const data = await res.json();
-    if (data.error) {
-      setMsg(data.error);
-    } else {
-      setMsg("Modificador agregado");
-      setNewModProductId("");
-      setNewModGroupName("");
-      setNewModOptions([]);
-      reload();
+    try {
+      const res = await fetch("/api/vendor/modifiers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          product_id: newModProductId,
+          group_name: newModGroupName,
+          options: newModOptions,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.error) {
+        setMsg(data.error || "Error al guardar el modificador");
+      } else {
+        setMsg("Modificador agregado");
+        setNewModProductId("");
+        setNewModGroupName("");
+        setNewModOptions([]);
+        reload();
+      }
+    } catch {
+      setMsg("Error al guardar el modificador");
+    } finally {
+      setModSaving(false);
     }
-    setModSaving(false);
   }
 
   async function deleteModifier(modifier: Modifier) {

@@ -48,6 +48,17 @@ export async function POST(request: Request) {
   );
   if (!product) return NextResponse.json({ error: "Producto no encontrado" }, { status: 404 });
 
+  const normalizedOptions = (Array.isArray(options) ? options : [])
+    .map((o: any) => ({
+      label: String(o?.label ?? "").trim(),
+      price_mod: Number(o?.price_mod ?? o?.price ?? 0) || 0,
+    }))
+    .filter((o: any) => o.label !== "");
+
+  if (normalizedOptions.length === 0) {
+    return NextResponse.json({ error: "El modificador necesita al menos una opción válida" }, { status: 400 });
+  }
+
   const countRow = await queryOne<{ c: number }>(
     `SELECT count(*)::int AS c FROM product_modifiers WHERE product_id = $1`,
     [product_id]
@@ -56,7 +67,7 @@ export async function POST(request: Request) {
   const modifier = await queryOne<Record<string, unknown>>(
     `INSERT INTO product_modifiers (product_id, group_name, options, required, max_selections, position)
      VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-    [product_id, group_name, options || [], required || false, max_selections || 1, countRow?.c || 0]
+    [product_id, group_name, JSON.stringify(normalizedOptions), required || false, max_selections || 1, countRow?.c || 0]
   );
 
   return NextResponse.json({ modifier });

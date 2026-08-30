@@ -35,6 +35,7 @@ type Offer = {
   image_url: string | null;
   stock: number | null;
   stock_low_threshold: number | null;
+  stock_control?: boolean;
   promo_price: number | null;
 };
 
@@ -81,6 +82,8 @@ type OfferFormProps = {
   showStock?: boolean;
   offStock?: number;
   setOffStock?: (v: number) => void;
+  offStockControl?: boolean;
+  setOffStockControl?: (v: boolean) => void;
   offPromoPrice?: string;
   setOffPromoPrice?: (v: string) => void;
   offStockLowThreshold?: number;
@@ -100,6 +103,7 @@ export function OfferForm({
   saving, onSubmit, onCrop,
   showStock,
   offStock = 0, setOffStock,
+  offStockControl = false, setOffStockControl,
   offPromoPrice = "", setOffPromoPrice,
   offStockLowThreshold = 5, setOffStockLowThreshold,
 }: OfferFormProps) {
@@ -115,7 +119,21 @@ export function OfferForm({
           <div><Label>Precio promo ($)</Label><Input type="number" step="0.01" value={offPromoPrice} onChange={(e) => setOffPromoPrice(e.target.value)} placeholder="Precio de oferta" /></div>
         )}
         <div><Label>Categoría</Label><select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={offCategory} onChange={(e) => setOffCategory(e.target.value)}>{categories.length === 0 && <option value="otras">otras</option>}{categories.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}</select></div>
-        {showStock && setOffStock && setOffStockLowThreshold && (
+        {showStock && setOffStockControl && (
+          <div className="flex items-center justify-between">
+            <div>
+              <Label>Control de stock</Label>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Muestra y controla las unidades disponibles de este producto
+              </p>
+            </div>
+            <Switch
+              checked={offStockControl}
+              onCheckedChange={setOffStockControl}
+            />
+          </div>
+        )}
+        {showStock && offStockControl && setOffStock && setOffStockLowThreshold && (
           <div className="grid grid-cols-2 gap-3">
             <div><Label>Stock</Label><QuantityInput value={offStock} onChange={setOffStock} min={0} /></div>
             <div><Label>Umbral bajo stock</Label><Input type="number" min={0} value={offStockLowThreshold} onChange={(e) => { const v = parseInt(e.target.value, 10); if (!isNaN(v) && v >= 0) setOffStockLowThreshold(v); }} /></div>
@@ -294,6 +312,73 @@ export function LivePreview({ storeName, storePreview, vendor, logoPreview, desc
             📱 WhatsApp {isService ? "de consulta" : "de pedidos"}
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+export function TransferConfig({
+  vendor,
+  saveVendor,
+}: {
+  vendor: any;
+  saveVendor: (data: Record<string, unknown>) => Promise<void>;
+}) {
+  const [alias, setAlias] = useState<string>(vendor?.transfer_alias || "");
+  const [cbu, setCbu] = useState<string>(vendor?.transfer_cbu || "");
+  const [holder, setHolder] = useState<string>(vendor?.transfer_holder || "");
+  const [block, setBlock] = useState<boolean>(!!vendor?.block_unpaid_orders);
+
+  return (
+    <div className="space-y-3 rounded-xl border border-border p-3">
+      <div>
+        <Label>Alias (CBU)</Label>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          Lo ves en tu home banking. Ej: super.mi.barrio
+        </p>
+        <Input
+          className="mt-1"
+          value={alias}
+          onChange={(e) => setAlias(e.target.value)}
+          onBlur={() => saveVendor({ transfer_alias: alias || null })}
+        />
+      </div>
+      <div>
+        <Label>CBU</Label>
+        <Input
+          className="mt-1"
+          value={cbu}
+          onChange={(e) => setCbu(e.target.value)}
+          onBlur={() => saveVendor({ transfer_cbu: cbu || null })}
+          placeholder="0000000000000000000000"
+        />
+      </div>
+      <div>
+        <Label>Titular de la cuenta</Label>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          Nombre y apellido o razón social a nombre del cual se hace la transferencia
+        </p>
+        <Input
+          className="mt-1"
+          value={holder}
+          onChange={(e) => setHolder(e.target.value)}
+          onBlur={() => saveVendor({ transfer_holder: holder || null })}
+        />
+      </div>
+      <div className="flex items-center justify-between pt-1 border-t border-border">
+        <div>
+          <Label>Bloquear hasta confirmar pago</Label>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            No deja avanzar (aceptar/preparar) un pedido pendiente hasta marcar el pago como recibido
+          </p>
+        </div>
+        <Switch
+          checked={block}
+          onCheckedChange={(v) => {
+            setBlock(v);
+            saveVendor({ block_unpaid_orders: v });
+          }}
+        />
       </div>
     </div>
   );

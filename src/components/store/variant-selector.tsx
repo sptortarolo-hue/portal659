@@ -17,16 +17,17 @@ type Props = {
     whatsapp: string;
     vertical?: string | null;
   };
+  stockControl?: boolean;
 };
 
-export function VariantSelector({ productId, name, variants, vendor }: Props) {
+export function VariantSelector({ productId, name, variants, vendor, stockControl = true }: Props) {
   const { addItem } = useCart();
   const { addToast } = useToast();
   const [color, setColor] = useState<string | null>(null);
   const [talle, setTalle] = useState<string | null>(null);
   const [added, setAdded] = useState(false);
 
-  const slowStock = variants.some((v) => (v.stock ?? 0) > 0 && (v.stock ?? 0) <= 5);
+  const slowStock = stockControl && variants.some((v) => (v.stock ?? 0) > 0 && (v.stock ?? 0) <= 5);
 
   const colors = useMemo(() => Array.from(new Set(variants.map((v) => v.color).filter(Boolean))).sort(), [variants]);
   const talles = useMemo(() => Array.from(new Set(variants.map((v) => v.talle).filter(Boolean))).sort(), [variants]);
@@ -35,12 +36,12 @@ export function VariantSelector({ productId, name, variants, vendor }: Props) {
   const availableTalles = Array.from(new Set(withColor.map((v) => v.talle).filter(Boolean))).sort();
 
   const current = variants.find((v) => v.color === color && v.talle === talle) || null;
-  const outOfStock = current != null && (current.stock ?? 0) <= 0;
+  const outOfStock = stockControl && current != null && (current.stock ?? 0) <= 0;
 
   const price = current ? (current.promo != null ? current.promo : current.price) : null;
   const promo = current?.promo != null ? -Math.round((1 - current.promo / current.price) * 100) : null;
 
-  const totalStock = variants.reduce((acc, v) => acc + (v.stock ?? 0), 0);
+  const totalStock = stockControl ? variants.reduce((acc, v) => acc + (v.stock ?? 0), 0) : 1;
 
   function handleAdd() {
     if (!current || outOfStock) return;
@@ -66,7 +67,7 @@ export function VariantSelector({ productId, name, variants, vendor }: Props) {
           <div className="flex flex-wrap gap-1.5">
             {colors.map((c) => {
               const cStock = variants.filter((v) => v.color === c).reduce((a, v) => a + (v.stock ?? 0), 0);
-              const cOut = cStock <= 0;
+              const cOut = stockControl && cStock <= 0;
               return (
                 <button
                   key={c}
@@ -96,7 +97,7 @@ export function VariantSelector({ productId, name, variants, vendor }: Props) {
             {(color ? availableTalles : talles).map((t) => {
               const scope = color ? variants.filter((v) => v.color === color && v.talle === t) : variants.filter((v) => v.talle === t);
               const tStock = scope.reduce((a, v) => a + (v.stock ?? 0), 0);
-              const tOut = tStock <= 0;
+              const tOut = stockControl && tStock <= 0;
               return (
                 <button
                   key={t}

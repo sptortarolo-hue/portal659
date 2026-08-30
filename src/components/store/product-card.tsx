@@ -47,8 +47,9 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
   const totalStock = hasVariants
     ? variants.reduce((a, v) => a + (v.stock ?? 0), 0)
     : (product.stock ?? 0);
-  const outStock = totalStock <= 0;
-  const lowStock = !outStock && totalStock <= (hasVariants ? 5 : (product.stock_low_threshold ?? 5));
+  const stockControl = product.stock_control !== false;
+  const outStock = stockControl && totalStock <= 0;
+  const lowStock = stockControl && !outStock && totalStock <= (hasVariants ? 5 : (product.stock_low_threshold ?? 5));
 
   const bestDiscount = hasVariants
     ? variantBestDiscount(variants)
@@ -188,7 +189,7 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
                     Consultar por WhatsApp
                   </a>
                 ) : hasVariants ? (
-                  <VariantSelector productId={product.id} name={product.name} variants={variants} vendor={vendor} />
+                  <VariantSelector productId={product.id} name={product.name} variants={variants} vendor={vendor} stockControl={product.stock_control !== false} />
                 ) : (
                   <AddToCartButton
                     offerId={product.id}

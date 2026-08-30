@@ -6,13 +6,13 @@ import { Badge } from "@/components/ui/badge";
 import {
   ORDER_STATUS_LABELS,
   ORDER_STATUS_COLORS,
-  buildClientWhatsAppUrl,
+  buildContextualWhatsApp,
   orderCondition,
   orderReadyLabel,
   orderCompleteActionLabel,
   CONDITION_META,
 } from "@/lib/order-utils";
-import { buildModifiedOrderMessage } from "@/lib/whatsapp-message";
+import { buildModifiedOrderMessage, buildTransferInstructionsMessage } from "@/lib/whatsapp-message";
 import type { Order, OrderStatus, OrderItem, Product as DBProduct } from "@/types/database";
 
 const STEP_ORDER: OrderStatus[] = ["new", "confirmed", "preparing", "ready", "sent", "completed"];
@@ -53,9 +53,13 @@ type Props = {
   onAction: (order: Order, status: OrderStatus) => void;
   onModify?: (orderId: string, items: OrderItem[], modificationNotes: string) => Promise<{ ok: boolean; error?: string }>;
   offers?: DBProduct[];
+  canPrint?: boolean;
+  transfer?: { alias: string | null; cbu: string | null; holder: string | null };
+  blockUnpaid?: boolean;
+  onMarkPaid?: (orderId: string) => void;
 };
 
-export default function OrderDetailModal({ order, vendorName, onClose, onAction, onModify, offers = [] }: Props) {
+export default function OrderDetailModal({ order, vendorName, onClose, onAction, onModify, offers = [], canPrint = true, transfer, blockUnpaid = false, onMarkPaid }: Props) {
   const [editing, setEditing] = useState(false);
   const [editItems, setEditItems] = useState<OrderItem[]>([]);
   const [modNotes, setModNotes] = useState("");
@@ -75,10 +79,26 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
 
   const customerPhone = order.customer_phone?.replace(/\D/g, "");
   const contactWhatsApp = customerPhone ? `https://wa.me/${customerPhone}` : null;
-  const showWhatsApp =
-    (order.method === "delivery" && order.status === "sent") ||
-    (order.method === "pickup" && order.status === "ready");
-  const waUrl = showWhatsApp ? buildClientWhatsAppUrl(order.status as OrderStatus, order, vendorName) : null;
+
+  const isTransferAppPending =
+    order.payment_method === "transferencia" &&
+    order.channel === "app" &&
+    order.payment_status === "pending";
+
+  const transferInstructions = isTransferAppPending
+    ? buildTransferInstructionsMessage({
+        vendorName,
+        customerName: order.customer_name,
+        orderId: order.id,
+        total: Number(order.total),
+        alias: transfer?.alias || "",
+        cbu: transfer?.cbu || undefined,
+        holder: transfer?.holder || "",
+      })
+    : null;
+
+  const contextualWa = buildContextualWhatsApp(order, vendorName, transfer, () => transferInstructions);
+  const isBlockedByPayment = blockUnpaid && isTransferAppPending;
 
   const startEditing = useCallback(() => {
     setEditItems(JSON.parse(JSON.stringify(order.items || [])));
@@ -217,6 +237,9 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
             </Badge>
             {order.modification_notes && !editing && (
               <Badge variant="outline" className="text-[9px] px-1.5 py-0">Editado</Badge>
+            )}
+            {isTransferAppPending && (
+              <Badge variant="outline" className="text-[9px] px-1.5 py-0 bg-amber-100 text-amber-700">🕐 Pago pendiente</Badge>
             )}
           </div>
           <button onClick={onClose} className="p-1 rounded-lg hover:bg-muted transition-colors text-lg">
@@ -481,31 +504,83 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
                   ✏️ Modificar pedido
                 </Button>
               )}
-              {nextStatus && (
-                <Button
-                  className="w-full"
-                  onClick={() => { onAction(order, nextStatus); onClose(); }}
-                >
-                  {getActionButtonLabel(nextStatus, order)}
-                </Button>
+              {isTransferAppPending && (
+                <div className="rounded-lg border border-amber-300 bg-amber-50 text-amber-800 px-3 py-2 text-xs space-y-1.5">
+                  <p className="font-semibold">🕐 Pago pendiente ({order.payment_status})</p>
+                  <p className="text-amber-700">
+                    Transferí los datos al cliente y confirmá el depósito antes de avanzar.
+                  </p>
+                  {onMarkPaid && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full border-green-300 bg-green-50 text-green-700 hover:bg-green-100"
+                      onClick={() => onMarkPaid(order.id)}
+                    >
+                      ✓ Marcar como pagado
+                    </Button>
+                  )}
+                </div>
               )}
-              <button
-                onClick={handlePrint}
-                disabled={printing}
-                className={`w-full h-10 rounded-xl font-bold text-sm border active:scale-[0.98] transition-all ${
-                  printStatus === "ok"
-                    ? "bg-green-50 text-green-700 border-green-300"
-                    : printStatus === "error"
-                    ? "bg-red-50 text-red-600 border-red-300"
-                    : "bg-background text-foreground border-border hover:bg-muted"
-                }`}
-              >
-                {printing ? "🖨️ Imprimiendo..." : printStatus === "ok" ? "✅ Impreso" : printStatus === "error" ? "❌ Error al imprimir" : "🖨️ Imprimir comanda"}
-              </button>
-              {waUrl && (
-                <a href={waUrl} target="_blank" rel="noopener noreferrer" className="block">
+              {nextStatus && (
+                isBlockedByPayment ? (
+                  <div className="w-full">
+                    <button
+                      type="button"
+                      onClick={() => { window.location.href = "/planes"; }}
+                      disabled
+                      className="w-full h-10 rounded-xl font-bold text-sm border border-border text-muted-foreground bg-muted/50 flex items-center justify-center gap-2 cursor-not-allowed opacity-70"
+                    >
+                      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 1a5 5 0 00-5 5v3H6a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V11a2 2 0 00-2-2h-1V6a5 5 0 00-5-5zm-3 8V6a3 3 0 116 0v3H9z" />
+                      </svg>
+                      {getActionButtonLabel(nextStatus, order)} — esperando pago
+                    </button>
+                  </div>
+                ) : (
+                  <Button
+                    className="w-full"
+                    onClick={() => { onAction(order, nextStatus); onClose(); }}
+                  >
+                    {getActionButtonLabel(nextStatus, order)}
+                  </Button>
+                )
+              )}
+              {canPrint ? (
+                <button
+                  onClick={handlePrint}
+                  disabled={printing}
+                  className={`w-full h-10 rounded-xl font-bold text-sm border active:scale-[0.98] transition-all ${
+                    printStatus === "ok"
+                      ? "bg-green-50 text-green-700 border-green-300"
+                      : printStatus === "error"
+                      ? "bg-red-50 text-red-600 border-red-300"
+                      : "bg-background text-foreground border-border hover:bg-muted"
+                  }`}
+                >
+                  {printing ? "🖨️ Imprimiendo..." : printStatus === "ok" ? "✅ Impreso" : printStatus === "error" ? "❌ Error al imprimir" : "🖨️ Imprimir comanda"}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => { window.location.href = "/planes"; }}
+                  className="w-full h-10 rounded-xl font-bold text-sm border border-border text-muted-foreground bg-muted/50 flex items-center justify-center gap-2 cursor-pointer opacity-70"
+                >
+                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 1a5 5 0 00-5 5v3H6a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V11a2 2 0 00-2-2h-1V6a5 5 0 00-5-5zm-3 8V6a3 3 0 116 0v3H9z" />
+                  </svg>
+                  Imprimir comanda — Exclusivo plan Gestión
+                </button>
+              )}
+              {!canPrint && (
+                <p className="text-[11px] text-center text-muted-foreground">
+                  Actualizá a <a href="/planes" className="text-primary font-medium underline">Gestión integral</a> para imprimir comandas
+                </p>
+              )}
+              {contextualWa && (
+                <a href={contextualWa.url} target="_blank" rel="noopener noreferrer" className="block">
                   <Button variant="outline" className="w-full border-green-200 bg-green-50 text-green-700 hover:bg-green-100">
-                    Enviar WhatsApp al cliente
+                    {contextualWa.label}
                   </Button>
                 </a>
               )}

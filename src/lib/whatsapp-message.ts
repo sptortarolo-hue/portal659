@@ -129,7 +129,35 @@ export function buildModifiedOrderMessage(params: {
     modLine,
     addressLine,
     "",
-    "Si esta todo bien, respondeme *SI* para confirmar.",
-    sep,
+      "Si esta todo bien, respondeme *SI* para confirmar.",
+      sep,
+    ].filter((l) => l !== null && l !== undefined && l !== "").join("\n");
+}
+
+export function buildTransferInstructionsMessage(params: {
+  vendorName: string;
+  customerName: string;
+  orderId: string;
+  total: number;
+  alias: string;
+  holder: string;
+  cbu?: string;
+}): string {
+  const id = params.orderId.slice(0, 8);
+  const credentials = params.cbu
+    ? `*Alias:* ${params.alias}\n*CBU:* ${params.cbu}`
+    : `*Alias:* ${params.alias}`;
+  return [
+    `Hola ${params.customerName}! 👋`,
+    `Tu pedido *#${id}* de ${params.vendorName} está pendiente de pago.`,
+    "",
+    `Total a transferir: *$${params.total.toLocaleString("es-AR")}*`,
+    "",
+    `${credentials}`,
+    params.holder ? `*Titular:* ${params.holder}` : "",
+    "",
+    "Hacé la transferencia por el *monto exacto* y, si podés, poné el *N° de pedido como referencia*.",
+    "Después *enviame el comprobante por este chat* y apenas lo confirmemos arrancamos tu pedido. 🙌",
   ].filter((l) => l !== null && l !== undefined && l !== "").join("\n");
 }
+

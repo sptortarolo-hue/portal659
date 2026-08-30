@@ -49,27 +49,46 @@ export async function PATCH(
     return NextResponse.json({ error: "No autorizado" }, { status: 403 });
   }
 
-  const fullVendor = await queryOne<{ id: string; store_name: string; slug: string | null }>(
-    `SELECT id, store_name, slug FROM vendors WHERE id = $1 LIMIT 1`,
+  const fullVendor = await queryOne<{ id: string; store_name: string; slug: string | null; block_unpaid_orders: boolean }>(
+    `SELECT id, store_name, slug, block_unpaid_orders FROM vendors WHERE id = $1 LIMIT 1`,
     [vendor.id]
   );
 
   const body = await request.json();
-  const { status, estimated_minutes, items, modification_notes } = body;
+  const { status, estimated_minutes, items, modification_notes, payment_status } = body;
 
-  const isModifyOnly = !status && (items !== undefined || modification_notes !== undefined);
+  const isModifyOnly = !status && !payment_status && (items !== undefined || modification_notes !== undefined);
 
   if (status && !["new", "confirmed", "preparing", "ready", "sent", "completed", "cancelled"].includes(status)) {
     return NextResponse.json({ error: "Estado inválido" }, { status: 400 });
   }
 
-  const currentOrder = await queryOne<{ status: string }>(
-    `SELECT status FROM orders WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
+  if (payment_status && !["paid", "pending"].includes(payment_status)) {
+    return NextResponse.json({ error: "Estado de pago inválido" }, { status: 400 });
+  }
+
+  const currentOrder = await queryOne<{ status: string; payment_status: string; payment_method: string; channel: string }>(
+    `SELECT status, payment_status, payment_method, channel FROM orders WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
     [params.id, vendor.id]
   );
 
   if (!currentOrder) {
     return NextResponse.json({ error: "Pedido no encontrado" }, { status: 404 });
+  }
+
+  const ADVANCE_STATUSES = ["confirmed", "preparing", "ready", "sent", "completed"];
+  if (
+    status &&
+    fullVendor?.block_unpaid_orders &&
+    currentOrder.payment_method === "transferencia" &&
+    currentOrder.channel === "app" &&
+    currentOrder.payment_status === "pending" &&
+    ADVANCE_STATUSES.includes(status)
+  ) {
+    return NextResponse.json(
+      { error: "Primero confirmá el pago (marcá el pedido como pagado) para avanzar", code: "payment_pending" },
+      { status: 403 }
+    );
   }
 
   if (isModifyOnly && currentOrder.status !== "new") {
@@ -91,6 +110,10 @@ export async function PATCH(
   if (estimated_minutes !== undefined) updateData.estimated_minutes = estimated_minutes;
   if (items !== undefined) updateData.items = JSON.stringify(items);
   if (modification_notes !== undefined) updateData.modification_notes = modification_notes;
+  if (payment_status !== undefined) {
+    updateData.payment_status = payment_status;
+    if (payment_status === "paid") updateData.paid_at = new Date().toISOString();
+  }
 
   const setClauses: string[] = [];
   const values: unknown[] = [params.id, vendor.id];

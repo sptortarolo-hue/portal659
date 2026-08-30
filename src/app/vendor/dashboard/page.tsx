@@ -240,7 +240,7 @@ function VendorDashboardInner() {
       }
       setMsg(`Pedido #${order.id.slice(0, 8)} → ${STATUS_LABELS[status]}`);
       loadOrdersOnly();
-      if (status === "confirmed") {
+      if (status === "confirmed" && effectivePlan.can("printer")) {
         fetch("/api/print", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -249,6 +249,26 @@ function VendorDashboardInner() {
       }
     } catch {
       setMsg("Error al actualizar el pedido");
+    }
+  }
+
+  async function markOrderPaid(orderId: string) {
+    try {
+      const res = await fetch(`/api/vendor/orders/${orderId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ payment_status: "paid" }),
+      });
+      const data = await res.json();
+      if (data.error) {
+        setMsg(`Error: ${data.error}`);
+        return;
+      }
+      setMsg(`Pago del pedido #${orderId.slice(0, 8)} confirmado`);
+      setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, payment_status: "paid", paid_at: new Date().toISOString() } : o)));
+      setSelectedOrder((prev) => (prev && prev.id === orderId ? { ...prev, payment_status: "paid", paid_at: new Date().toISOString() } : prev));
+    } catch {
+      setMsg("Error al confirmar el pago");
     }
   }
 
@@ -463,10 +483,13 @@ function VendorDashboardInner() {
             const isOverdue = remaining !== null && remaining <= 0 && !isTerminal;
 
             return (
-              <button
+              <div
                 key={order.id}
+                role="button"
+                tabIndex={0}
                 onClick={() => setSelectedOrder(order)}
-                className={`w-full text-left p-3.5 rounded-xl border-2 transition-all active:scale-[0.98] ${
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelectedOrder(order); } }}
+                className={`w-full text-left p-3.5 rounded-xl border-2 transition-all active:scale-[0.98] cursor-pointer ${
                   isOverdue ? "border-red-400 bg-red-50 dark:bg-red-950/20" : "border-border bg-card hover:border-primary/40 hover:shadow-sm"
                 }`}
               >
@@ -484,6 +507,11 @@ function VendorDashboardInner() {
                       <span className={`inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-full border ${CONDITION_META[orderCondition(order)].pillClass}`}>
                         {CONDITION_META[orderCondition(order)].label}
                       </span>
+                      {order.payment_method === "transferencia" && order.channel === "app" && order.payment_status === "pending" && (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-amber-100 text-amber-700 border-amber-200">
+                          🕐 Pago pendiente
+                        </span>
+                      )}
                     </div>
                   </div>
                   <div className="text-right flex-shrink-0">
@@ -529,9 +557,27 @@ function VendorDashboardInner() {
                     {order.payment_method === "whatsapp" && "📱 "}
                     {new Date(order.created_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}
                   </span>
-                  <span className="text-primary font-semibold">Ver detalle →</span>
+                  <div className="flex items-center gap-2">
+                    {order.customer_phone && (() => {
+                      const digits = order.customer_phone.replace(/\D/g, "");
+                      if (!digits) return null;
+                      return (
+                        <a
+                          href={`https://wa.me/${digits}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          title="Ir a WhatsApp"
+                          className="inline-flex items-center justify-center gap-1 rounded-md border border-green-200 bg-green-50 text-green-700 px-2 py-0.5 font-semibold hover:bg-green-100"
+                        >
+                          💬
+                        </a>
+                      );
+                    })()}
+                    <span className="text-primary font-semibold">Ver detalle →</span>
+                  </div>
                 </div>
-              </button>
+              </div>
             );
           })}
         </div>
@@ -788,6 +834,14 @@ function VendorDashboardInner() {
           onAction={(order, status) => updateOrderStatus(order, status)}
           onModify={modifyOrder}
           offers={offers}
+          canPrint={effectivePlan.can("printer")}
+          transfer={{
+            alias: (vendor as any)?.transfer_alias || null,
+            cbu: (vendor as any)?.transfer_cbu || null,
+            holder: (vendor as any)?.transfer_holder || null,
+          }}
+          blockUnpaid={!!(vendor as any)?.block_unpaid_orders}
+          onMarkPaid={markOrderPaid}
         />
       )}
     </main>

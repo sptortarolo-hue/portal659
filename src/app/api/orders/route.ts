@@ -55,9 +55,10 @@ export const POST = withRateLimit(async (request: Request) => {
 
   await withTransaction(async (tx) => {
     const deviceId = getDeviceId(request);
+    const paymentStatus = (paymentMethod || "whatsapp") === "transferencia" ? "pending" : "paid";
     const rows = await tx.query<{ id: string }>(
-      `INSERT INTO orders (vendor_id, customer_id, customer_name, customer_phone, customer_address, method, payment_method, items, total, status, notes, device_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'new', $10, $11)
+      `INSERT INTO orders (vendor_id, customer_id, customer_name, customer_phone, customer_address, method, payment_method, items, total, status, notes, device_id, payment_status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'new', $10, $11, $12)
        RETURNING id`,
       [
         vendorId,
@@ -71,6 +72,7 @@ export const POST = withRateLimit(async (request: Request) => {
         total,
         notes || null,
         deviceId,
+        paymentStatus,
       ]
     );
     orderId = rows[0]?.id;

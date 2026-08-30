@@ -179,8 +179,7 @@ export function buildOrderWhatsAppMessage(params: {
   address?: string;
   paymentMethod?: string;
   notes?: string;
-}): string {
-  const lines = params.items.map((i) => {
+}): string {  const lines = params.items.map((i) => {
     const modStr = i.modifiers && i.modifiers.length > 0
       ? ` (${i.modifiers.join(", ")})`
       : "";
@@ -207,4 +206,73 @@ export function buildOrderWhatsAppMessage(params: {
     notesLine,
     paymentLine,
   ].filter(Boolean).join("\n");
+}
+
+export type ContextualWaResult = {
+  url: string;
+  label: string;
+  variant?: "transfer" | "info" | "libre";
+};
+
+export function buildContextualWhatsApp(
+  order: Order,
+  vendorName: string,
+  transfer?: { alias: string | null; cbu: string | null; holder: string | null },
+  resolveTransferMessage?: () => string | null,
+): ContextualWaResult | null {
+  const phone = order.customer_phone?.replace(/\D/g, "");
+  if (!phone) return null;
+
+  const isTransferApp =
+    order.payment_method === "transferencia" &&
+    order.channel === "app" &&
+    order.payment_status === "pending";
+
+  if (isTransferApp) {
+    const msg = resolveTransferMessage && resolveTransferMessage();
+    if (msg && transfer?.alias) {
+      return {
+        url: `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`,
+        label: "💸 Datos de pago (WA)",
+        variant: "transfer",
+      };
+    }
+  }
+
+  if (["ready", "sent", "completed"].includes(order.status)) {
+    const url = buildClientWhatsAppUrl(order.status, order, vendorName);
+    if (url) {
+      const label =
+        order.status === "ready"
+          ? order.method === "pickup"
+            ? "🛵 Avisar retiro"
+            : "🛵 Avisar envío"
+          : order.status === "sent"
+            ? "🚚 Avisar envío"
+            : "✅ Avisar entrega";
+      return { url, label, variant: "info" };
+    }
+  }
+
+  if (["new", "confirmed", "preparing"].includes(order.status)) {
+    const stageLabel =
+      order.status === "new"
+        ? "📨 Avisar recibido"
+        : order.status === "confirmed"
+          ? "✅ Confirmar pedido"
+          : "👨‍🍳 Avisar preparando";
+    const stageMsg =
+      order.status === "new"
+        ? `Hola ${order.customer_name}! Recibimos tu pedido #${order.id.slice(0, 8)} de ${vendorName}. Ya lo estamos viendo. 🙌`
+        : order.status === "confirmed"
+          ? `Hola ${order.customer_name}! Tu pedido #${order.id.slice(0, 8)} de ${vendorName} fue confirmado. Enseguida lo arrancamos.`
+          : `Hola ${order.customer_name}! Tu pedido #${order.id.slice(0, 8)} de ${vendorName} ya lo estamos preparando. Te avisamos cuando esté. 🍳`;
+    return {
+      url: `https://wa.me/${phone}?text=${encodeURIComponent(stageMsg)}`,
+      label: stageLabel,
+      variant: "info",
+    };
+  }
+
+  return null;
 }

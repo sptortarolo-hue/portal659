@@ -114,6 +114,7 @@ export type Product = {
   image_url: string | null;
   stock: number | null;
   stock_low_threshold: number | null;
+  stock_control?: boolean;
   promo_price: number | null;
   available: boolean;
   featured_today: boolean;
@@ -183,6 +184,11 @@ export type Vendor = {
   last_print_error?: string | null;
   lat?: number | null;
   lng?: number | null;
+  transfer_alias?: string | null;
+  transfer_cbu?: string | null;
+  transfer_holder?: string | null;
+  transfer_qr_url?: string | null;
+  block_unpaid_orders?: boolean;
   plan_id: string | null;
   plan_status: PlanStatus;
   plan_expires_at: string | null;
@@ -251,6 +257,7 @@ export type Order = {
   channel: OrderChannel;
   table_id: string | null;
   paid_at: string | null;
+  payment_status?: "paid" | "pending";
   created_at: string;
   updated_at: string;
 };

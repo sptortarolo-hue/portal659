@@ -29,6 +29,9 @@ export async function POST(request: Request) {
   );
   const body = await request.json();
   const { name, description, price, category, featured_today, image_url } = body;
+  const stock = body.stock ?? null;
+  const stock_low_threshold = body.stock_low_threshold ?? null;
+  const stock_control = body.stock_control ?? false;
 
   if (!name || !price) {
     return NextResponse.json({ error: "El nombre y el precio son obligatorios" }, { status: 400 });
@@ -54,8 +57,8 @@ export async function POST(request: Request) {
   }
 
   const offer = await queryOne<Record<string, unknown>>(
-    `INSERT INTO products (vendor_id, name, description, price, currency, category, neighborhood, type, available, featured_today, image_url)
-     VALUES ($1, $2, $3, $4, 'ARS', $5, $6, 'food', true, $7, $8) RETURNING *`,
+    `INSERT INTO products (vendor_id, name, description, price, currency, category, neighborhood, type, available, featured_today, image_url, stock, stock_low_threshold, stock_control)
+     VALUES ($1, $2, $3, $4, 'ARS', $5, $6, 'food', true, $7, $8, $9, $10, $11) RETURNING *`,
     [
       vendor.id,
       name,
@@ -65,6 +68,9 @@ export async function POST(request: Request) {
       fullVendor?.neighborhood || null,
       !!featured_today,
       image_url || null,
+      stock,
+      stock_low_threshold,
+      stock_control,
     ]
   );
 

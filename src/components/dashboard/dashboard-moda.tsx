@@ -13,7 +13,7 @@ import { Switch } from "@/components/ui/switch";
 import { QuantityInput } from "@/components/ui/quantity-input";
 import { ChipToggle } from "@/components/ui/chip-toggle";
 import { RadioCards } from "@/components/ui/radio-cards";
-import { LivePreview, CategoryManager, apiJson } from "@/components/dashboard/shared";
+import { LivePreview, CategoryManager, apiJson, TransferConfig } from "@/components/dashboard/shared";
 import type { Vendor, Product, ProductVariant, ProductImage } from "@/types/database";
 
 const PAYMENT_OPTIONS = [
@@ -383,6 +383,9 @@ export default function DashboardModa({
         <div className="space-y-4">
           <div><Label className="mb-2 block">Medios de pago</Label><ChipToggle options={PAYMENT_OPTIONS} value={paymentMethods} onChange={setPaymentMethods} /></div>
           <div><Label className="mb-2 block">Entrega</Label><RadioCards options={DELIVERY_OPTIONS} value={deliveryOptions} onChange={setDeliveryOptions} /></div>
+          {paymentMethods.includes("Transferencia") && (
+            <TransferConfig vendor={vendor} saveVendor={saveVendor} />
+          )}
         </div>
       </CollapsibleSection>
 

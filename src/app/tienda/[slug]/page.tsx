@@ -439,6 +439,7 @@ const modifiersByProduct: Record<string, any[]> = {};
                         if (oVariants.length > 0) {
                           const range = variantRange(oVariants);
                           const totalStock = oVariants.reduce((a, v: any) => a + (v.stock ?? 0), 0);
+                          const stockControl = o.stock_control !== false;
                           return (
                             <div
                               key={o.id}
@@ -486,7 +487,7 @@ const modifiersByProduct: Record<string, any[]> = {};
                                 </div>
                               </div>
                               <div className="border-t pt-3">
-                                {totalStock <= 0 ? (
+                                {stockControl && totalStock <= 0 ? (
                                   <p className="text-sm font-medium text-red-600 text-center py-2">Sin stock por el momento</p>
                                 ) : !acceptsCart ? (
                                   <a
@@ -503,6 +504,7 @@ const modifiersByProduct: Record<string, any[]> = {};
                                     name={o.name}
                                     variants={oVariants}
                                     vendor={vendorBrief}
+                                    stockControl={o.stock_control !== false}
                                   />
                                 )}
                               </div>
@@ -540,10 +542,10 @@ const modifiersByProduct: Record<string, any[]> = {};
                                     Hoy
                                   </Badge>
                                 )}
-                                {o.stock_low_threshold != null && o.stock != null && o.stock <= 0 && (
+                                {o.stock_control !== false && o.stock_low_threshold != null && o.stock != null && o.stock <= 0 && (
                                   <Badge variant="secondary" className="bg-red-100 text-red-700 text-[10px]">Sin stock</Badge>
                                 )}
-                                {o.stock_low_threshold != null && o.stock != null && o.stock > 0 && o.stock <= o.stock_low_threshold && (
+                                {o.stock_control !== false && o.stock_low_threshold != null && o.stock != null && o.stock > 0 && o.stock <= o.stock_low_threshold && (
                                   <Badge variant="secondary" className="bg-amber-100 text-amber-700 text-[10px]">¡Últimas!</Badge>
                                 )}
                               </div>
@@ -569,7 +571,7 @@ const modifiersByProduct: Record<string, any[]> = {};
                                 ${Number(o.price).toLocaleString("es-AR")}
                               </span>
                             )}
-                            {(!o.stock_low_threshold || o.stock == null || o.stock > 0) && (
+                            {(o.stock_control === false || !o.stock_low_threshold || o.stock == null || o.stock > 0) && (
                             !acceptsCart ? (
                               <a
                                 href={waUrl}

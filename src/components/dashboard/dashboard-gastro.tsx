@@ -11,7 +11,7 @@ import { ChipToggle } from "@/components/ui/chip-toggle";
 import { RadioCards } from "@/components/ui/radio-cards";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { OfferForm, OfferList, CategoryManager, LivePreview, apiJson } from "@/components/dashboard/shared";
+import { OfferForm, OfferList, CategoryManager, LivePreview, apiJson, TransferConfig } from "@/components/dashboard/shared";
 import type { Vendor, Product, ProductModifier, VendorGallery } from "@/types/database";
 
 type Props = {
@@ -51,6 +51,7 @@ type Offer = {
   image_url: string | null;
   stock: number | null;
   stock_low_threshold: number | null;
+  stock_control?: boolean;
   promo_price: number | null;
 };
 
@@ -142,6 +143,7 @@ export default function DashboardGastro({
   const [showOfferForm, setShowOfferForm] = useState(false);
 
   const [offStock, setOffStock] = useState<number>(0);
+  const [offStockControl, setOffStockControl] = useState<boolean>(false);
   const [offPromoPrice, setOffPromoPrice] = useState("");
   const [offStockLowThreshold, setOffStockLowThreshold] = useState<number>(5);
 
@@ -345,6 +347,7 @@ export default function DashboardGastro({
     setOffPreview(null);
     setShowOfferForm(false);
     setOffStock(0);
+    setOffStockControl(false);
     setOffPromoPrice("");
     setOffStockLowThreshold(5);
   }
@@ -370,9 +373,10 @@ export default function DashboardGastro({
       price: Number(offPrice),
       category: offCategory,
       image_url: imageUrl,
-      stock: offStock,
+      stock: offStockControl ? offStock : null,
+      stock_control: offStockControl,
       promo_price: offPromoPrice ? Number(offPromoPrice) : null,
-      stock_low_threshold: offStockLowThreshold,
+      stock_low_threshold: offStockControl ? offStockLowThreshold : null,
     };
 
     let res: Response;
@@ -409,6 +413,7 @@ export default function DashboardGastro({
     setOffFile(null);
     setOffPreview(offer.image_url || null);
     setOffStock(offer.stock ?? 0);
+    setOffStockControl(!!offer.stock_control);
     setOffPromoPrice(offer.promo_price ? String(offer.promo_price) : "");
     setOffStockLowThreshold(offer.stock_low_threshold ?? 5);
     setShowOfferForm(true);
@@ -719,6 +724,9 @@ export default function DashboardGastro({
               onChange={setDeliveryOptions}
             />
           </div>
+          {paymentMethods.includes("Transferencia") && (
+            <TransferConfig vendor={vendor} saveVendor={saveVendor} />
+          )}
         </div>
       </CollapsibleSection>
 
@@ -1052,6 +1060,8 @@ export default function DashboardGastro({
               showStock
               offStock={offStock}
               setOffStock={setOffStock}
+              offStockControl={offStockControl}
+              setOffStockControl={setOffStockControl}
               offPromoPrice={offPromoPrice}
               setOffPromoPrice={setOffPromoPrice}
               offStockLowThreshold={offStockLowThreshold}

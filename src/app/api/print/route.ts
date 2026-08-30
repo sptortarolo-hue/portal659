@@ -1,8 +1,9 @@
-import { query, queryOne } from "@/lib/db";
+import { query, queryOne, queryMany } from "@/lib/db";
 import { getVendorByRequest } from "@/lib/vendor-utils";
 import { NextResponse } from "next/server";
 import { dispatchPrint, type PrinterVendor } from "@/lib/thermal-printer";
-import type { Order } from "@/types/database";
+import { resolveVendorPlan } from "@/lib/plans";
+import type { Order, Plan, Vendor } from "@/types/database";
 
 export async function POST(request: Request) {
   const { userId } = await getVendorByRequest(request);
@@ -13,14 +14,22 @@ export async function POST(request: Request) {
   const body = await request.json();
   const { orderId, test, type, tableName, subLabel } = body;
 
-  const vendor = await queryOne<PrinterVendor>(
-    `SELECT id, store_name, printer_ip, printer_port, paper_size, print_mode, print_token
-     FROM vendors WHERE user_id = $1 LIMIT 1`,
+  const vendor = await queryOne<PrinterVendor & Vendor>(
+    `SELECT * FROM vendors WHERE user_id = $1 LIMIT 1`,
     [userId]
   );
 
   if (!vendor) {
     return NextResponse.json({ ok: false, error: "No autorizado" }, { status: 403 });
+  }
+
+  const plans = await queryMany<Plan>(`SELECT * FROM plans`);
+  const plan = resolveVendorPlan(vendor, plans || []);
+  if (!plan.can("printer")) {
+    return NextResponse.json(
+      { ok: false, error: "Impresión exclusiva del plan Gestión integral", code: "plan_limit" },
+      { status: 403 }
+    );
   }
 
   if (test) {

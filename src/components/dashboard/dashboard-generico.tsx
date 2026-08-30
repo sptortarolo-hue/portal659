@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import { ChipToggle } from "@/components/ui/chip-toggle";
 import { RadioCards } from "@/components/ui/radio-cards";
-import { OfferForm, OfferList, CategoryManager, LivePreview, apiJson } from "./shared";
+import { OfferForm, OfferList, CategoryManager, LivePreview, apiJson, TransferConfig } from "./shared";
 import type { Vendor, Product } from "@/types/database";
 
 const PAYMENT_OPTIONS = [
@@ -213,6 +213,9 @@ export default function DashboardGenerico({
         <div className="space-y-4">
           <div><Label className="mb-2 block">Medios de pago</Label><ChipToggle options={PAYMENT_OPTIONS} value={paymentMethods} onChange={setPaymentMethods} /></div>
           <div><Label className="mb-2 block">Entrega</Label><RadioCards options={DELIVERY_OPTIONS} value={deliveryOptions} onChange={setDeliveryOptions} /></div>
+          {paymentMethods.includes("Transferencia") && (
+            <TransferConfig vendor={vendor} saveVendor={saveVendor} />
+          )}
         </div>
       </CollapsibleSection>
 

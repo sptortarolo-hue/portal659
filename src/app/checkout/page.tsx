@@ -14,6 +14,7 @@ import { OrderSummaryModal } from "@/components/cart/order-summary-modal";
 type VendorTransfer = {
   transfer_cbu: string | null;
   transfer_alias: string | null;
+  transfer_holder: string | null;
   transfer_qr_url: string | null;
   whatsapp: string | null;
   store_name: string;
@@ -425,11 +426,20 @@ export default function CheckoutPage() {
                 <p className="font-mono text-sm font-medium bg-card px-3 py-1.5 rounded-lg border border-border mt-0.5">{vendorInfo.transfer_alias}</p>
               </div>
             )}
+            {vendorInfo.transfer_holder && (
+              <div>
+                <p className="text-xs text-muted-foreground">Titular</p>
+                <p className="text-sm font-medium bg-card px-3 py-1.5 rounded-lg border border-border mt-0.5">{vendorInfo.transfer_holder}</p>
+              </div>
+            )}
             {vendorInfo.transfer_qr_url && (
               <div className="flex justify-center pt-2">
                 <img src={vendorInfo.transfer_qr_url} alt="QR Transferencia" className="h-40 rounded-xl border border-border" />
               </div>
             )}
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Transferí el <strong>monto exacto</strong> del pedido. Al confirmar te enviamos los datos por WhatsApp, donde vas a coordinar todo con el comercio (incluido mandarle el comprobante).
+            </p>
           </div>
         )}
 

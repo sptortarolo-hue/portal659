@@ -64,6 +64,10 @@ export async function POST(request: Request) {
     paper_size,
     auto_print,
     print_mode,
+    transfer_alias,
+    transfer_cbu,
+    transfer_holder,
+    block_unpaid_orders,
   } = body;
 
   const VALID_VERTICALS = ["gastronomia", "comercio", "servicio", "moda", "salud", "otro"];
@@ -109,6 +113,10 @@ export async function POST(request: Request) {
   if (paper_size !== undefined) payload.paper_size = paper_size || "80mm";
   if (auto_print !== undefined) payload.auto_print = auto_print === true;
   if (print_mode !== undefined) payload.print_mode = print_mode === "app" ? "app" : "server";
+  if (transfer_alias !== undefined) payload.transfer_alias = transfer_alias || null;
+  if (transfer_cbu !== undefined) payload.transfer_cbu = transfer_cbu || null;
+  if (transfer_holder !== undefined) payload.transfer_holder = transfer_holder || null;
+  if (block_unpaid_orders !== undefined) payload.block_unpaid_orders = block_unpaid_orders === true;
 
   if (existing) {
     const setClauses: string[] = [];

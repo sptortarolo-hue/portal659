@@ -18,6 +18,7 @@ import {
   CategoryManager,
   LivePreview,
   apiJson,
+  TransferConfig,
 } from "@/components/dashboard/shared";
 import type { Vendor, Product, ProductModifier } from "@/types/database";
 
@@ -735,6 +736,9 @@ export default function DashboardComercio({
               onChange={setDeliveryOptions}
             />
           </div>
+          {paymentMethods.includes("Transferencia") && (
+            <TransferConfig vendor={vendor} saveVendor={saveVendor} />
+          )}
         </div>
       </CollapsibleSection>
 

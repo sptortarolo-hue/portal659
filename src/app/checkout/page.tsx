@@ -11,16 +11,6 @@ import { buildComandaWhatsApp } from "@/lib/whatsapp-message";
 import { formatPhone, isValidPhone } from "@/lib/order-utils";
 import { OrderSummaryModal } from "@/components/cart/order-summary-modal";
 
-type VendorTransfer = {
-  transfer_cbu: string | null;
-  transfer_alias: string | null;
-  transfer_holder: string | null;
-  transfer_qr_url: string | null;
-  whatsapp: string | null;
-  store_name: string;
-  vertical?: string | null;
-};
-
 export default function CheckoutPage() {
   const router = useRouter();
   const { vendor, items, total, clear } = useCart();
@@ -35,7 +25,6 @@ export default function CheckoutPage() {
   const [done, setDone] = useState(false);
   const [error, setError] = useState("");
   const [mpConfigured, setMpConfigured] = useState(false);
-  const [vendorInfo, setVendorInfo] = useState<VendorTransfer | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [showSummary, setShowSummary] = useState(false);
   const [pendingOrder, setPendingOrder] = useState<{ orderId: string; message: string; waNumber: string } | null>(null);
@@ -44,12 +33,6 @@ export default function CheckoutPage() {
   useEffect(() => {
     fetch("/api/payments").then(r => r.json()).then(d => setMpConfigured(d.configured)).catch(() => {});
     fetch("/api/auth/me").then(r => r.json()).then(d => { if (d.user?.id) setUserId(d.user.id); }).catch(() => {});
-    if (vendor?.id) {
-      fetch(`/api/vendor/transfer-info?id=${vendor.id}`)
-        .then(r => r.json())
-        .then(d => setVendorInfo(d.vendor))
-        .catch(() => {});
-    }
   }, [vendor?.id]);
 
   if (!vendor || items.length === 0) {
@@ -411,34 +394,11 @@ export default function CheckoutPage() {
         </div>
 
         {/* Transfer info */}
-        {paymentMethod === "transferencia" && vendorInfo && (vendorInfo.transfer_cbu || vendorInfo.transfer_alias) && (
-          <div className="rounded-2xl border border-fresh bg-fresh/30 p-5 space-y-3 animate-fade-in-up">
-            <p className="font-medium text-fresh-foreground text-sm">Datos de transferencia:</p>
-            {vendorInfo.transfer_cbu && (
-              <div>
-                <p className="text-xs text-muted-foreground">CBU</p>
-                <p className="font-mono text-sm font-medium bg-card px-3 py-1.5 rounded-lg border border-border mt-0.5">{vendorInfo.transfer_cbu}</p>
-              </div>
-            )}
-            {vendorInfo.transfer_alias && (
-              <div>
-                <p className="text-xs text-muted-foreground">Alias</p>
-                <p className="font-mono text-sm font-medium bg-card px-3 py-1.5 rounded-lg border border-border mt-0.5">{vendorInfo.transfer_alias}</p>
-              </div>
-            )}
-            {vendorInfo.transfer_holder && (
-              <div>
-                <p className="text-xs text-muted-foreground">Titular</p>
-                <p className="text-sm font-medium bg-card px-3 py-1.5 rounded-lg border border-border mt-0.5">{vendorInfo.transfer_holder}</p>
-              </div>
-            )}
-            {vendorInfo.transfer_qr_url && (
-              <div className="flex justify-center pt-2">
-                <img src={vendorInfo.transfer_qr_url} alt="QR Transferencia" className="h-40 rounded-xl border border-border" />
-              </div>
-            )}
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              Transferí el <strong>monto exacto</strong> del pedido. Al confirmar te enviamos los datos por WhatsApp, donde vas a coordinar todo con el comercio (incluido mandarle el comprobante).
+        {paymentMethod === "transferencia" && (
+          <div className="rounded-2xl border border-fresh bg-fresh/30 p-5 animate-fade-in-up">
+            <p className="font-medium text-fresh-foreground text-sm">🏦 Transferencia</p>
+            <p className="text-xs text-muted-foreground leading-relaxed mt-1">
+              Al confirmar el pedido, el comercio te contacta por WhatsApp con los datos de la cuenta y el monto exacto a transferir. Ahí coordinás todo directo con ellos, incluido el envío del comprobante.
             </p>
           </div>
         )}

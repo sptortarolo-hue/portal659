@@ -1,7 +1,7 @@
 import type { Order, OrderStatus } from "@/types/database";
 
 const VALID_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
-  new: ["confirmed", "cancelled"],
+  new: ["preparing", "cancelled"],
   confirmed: ["preparing", "cancelled"],
   preparing: ["ready", "cancelled"],
   ready: ["sent", "completed", "cancelled"],
@@ -127,7 +127,6 @@ export function orderCompleteActionLabel(order: Pick<Order, "channel" | "method"
 
 export const KDS_COLUMNS: { status: OrderStatus; label: string; emoji: string }[] = [
   { status: "new", label: "Nuevos", emoji: "🆕" },
-  { status: "confirmed", label: "Aceptados", emoji: "✅" },
   { status: "preparing", label: "Preparando", emoji: "🍳" },
   { status: "ready", label: "Listos", emoji: "📦" },
   { status: "sent", label: "Enviados", emoji: "🚚" },
@@ -254,19 +253,15 @@ export function buildContextualWhatsApp(
     }
   }
 
-  if (["new", "confirmed", "preparing"].includes(order.status)) {
+  if (["new", "preparing"].includes(order.status)) {
     const stageLabel =
       order.status === "new"
         ? "📨 Avisar recibido"
-        : order.status === "confirmed"
-          ? "✅ Confirmar pedido"
-          : "👨‍🍳 Avisar preparando";
+        : "✅ Avisar confirmado y preparando";
     const stageMsg =
       order.status === "new"
         ? `Hola ${order.customer_name}! Recibimos tu pedido #${order.id.slice(0, 8)} de ${vendorName}. Ya lo estamos viendo. 🙌`
-        : order.status === "confirmed"
-          ? `Hola ${order.customer_name}! Tu pedido #${order.id.slice(0, 8)} de ${vendorName} fue confirmado. Enseguida lo arrancamos.`
-          : `Hola ${order.customer_name}! Tu pedido #${order.id.slice(0, 8)} de ${vendorName} ya lo estamos preparando. Te avisamos cuando esté. 🍳`;
+        : `Hola ${order.customer_name}! Tu pedido #${order.id.slice(0, 8)} de ${vendorName} fue confirmado y ya está en preparación. Te avisamos cuando esté. 🍳`;
     return {
       url: `https://wa.me/${phone}?text=${encodeURIComponent(stageMsg)}`,
       label: stageLabel,

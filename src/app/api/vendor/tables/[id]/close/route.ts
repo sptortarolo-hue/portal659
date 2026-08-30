@@ -29,7 +29,7 @@ export async function POST(
   }
 
   const orders = await queryMany<Record<string, any>>(
-    `SELECT id, total, status, paid_at FROM orders WHERE vendor_id = $1 AND table_id = $2 AND status != 'cancelled'`,
+    `SELECT id, total, status, paid_at FROM orders WHERE vendor_id = $1 AND table_id = $2 AND status NOT IN ('cancelled', 'completed')`,
     [gate.vendor.id, table.id]
   );
 

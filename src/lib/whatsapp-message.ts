@@ -142,11 +142,15 @@ export function buildTransferInstructionsMessage(params: {
   alias: string;
   holder: string;
   cbu?: string;
+  blocked?: boolean;
 }): string {
   const id = params.orderId.slice(0, 8);
   const credentials = params.cbu
     ? `*Alias:* ${params.alias}\n*CBU:* ${params.cbu}`
     : `*Alias:* ${params.alias}`;
+  const closing = params.blocked
+    ? "Después *enviame el comprobante por este chat* y apenas lo confirmemos arrancamos tu pedido. 🙌"
+    : "Después *enviame el comprobante por este chat*. 🙌";
   return [
     `Hola ${params.customerName}! 👋`,
     `Tu pedido *#${id}* de ${params.vendorName} está pendiente de pago.`,
@@ -156,8 +160,8 @@ export function buildTransferInstructionsMessage(params: {
     `${credentials}`,
     params.holder ? `*Titular:* ${params.holder}` : "",
     "",
-    "Hacé la transferencia por el *monto exacto* y, si podés, poné el *N° de pedido como referencia*.",
-    "Después *enviame el comprobante por este chat* y apenas lo confirmemos arrancamos tu pedido. 🙌",
+    "Hacé la transferencia por el *monto exacto*.",
+    closing,
   ].filter((l) => l !== null && l !== undefined && l !== "").join("\n");
 }
 

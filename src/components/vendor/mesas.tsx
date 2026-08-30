@@ -28,6 +28,7 @@ type Order = {
   total: number;
   status: string;
   created_at: string;
+  paid_at?: string | null;
 };
 
 const PAYMENT_OPTIONS = [
@@ -72,8 +73,23 @@ export function Mesas() {
 
   useEffect(() => { load(); }, [load]);
 
+  // Cuenta activa: solo consumiciones en curso (no liquidadas ni canceladas).
+  // Al cerrar la mesa esas pasan a 'completed' (comprobante histórico) y dejan
+  // de sumar al reabrir: reabrir siempre arranca en cero (modelo "cuenta abierta").
   const openOrders = useMemo(
-    () => (selected ? orders.filter((o) => o.table_id === selected.id && o.status !== "cancelled") : []),
+    () =>
+      selected
+        ? orders.filter(
+            (o) => o.table_id === selected.id && o.status !== "cancelled" && o.status !== "completed"
+          )
+        : [],
+    [orders, selected]
+  );
+  const closedOrders = useMemo(
+    () =>
+      selected
+        ? orders.filter((o) => o.table_id === selected.id && o.status === "completed")
+        : [],
     [orders, selected]
   );
   const selectedTotal = openOrders.reduce((s, o) => s + Number(o.total), 0);
@@ -203,7 +219,7 @@ export function Mesas() {
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5">
         {tables.map((t) => {
           const occupied = t.status === "ocupada";
-          const tableOrders = orders.filter((o) => o.table_id === t.id && o.status !== "cancelled");
+          const tableOrders = orders.filter((o) => o.table_id === t.id && o.status !== "cancelled" && o.status !== "completed");
           const subtotal = tableOrders.reduce((s, o) => s + Number(o.total), 0);
           return (
             <div
@@ -287,6 +303,24 @@ export function Mesas() {
               <p className="text-xs text-muted-foreground">Mesa ocupada sin consumiciones registradas.</p>
             )}
           </div>
+
+          {closedOrders.length > 0 && (
+            <div className="mt-3">
+              <p className="text-[10px] font-semibold text-muted-foreground mb-1.5 uppercase tracking-wide">
+                Cuentas cerradas ({closedOrders.length})
+              </p>
+              <div className="space-y-1.5 opacity-70">
+                {closedOrders.map((o) => (
+                  <div key={o.id} className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">
+                      {o.paid_at ? new Date(o.paid_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }) : new Date(o.created_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })} · #{o.id.slice(0, 6)}
+                    </span>
+                    <span className="font-semibold tabular-nums">${Number(o.total).toLocaleString("es-AR")}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="mt-3 pt-3 border-t border-border grid sm:grid-cols-[1fr_auto] gap-3">
             <div>

@@ -104,7 +104,7 @@ export async function POST(request: Request) {
         const items = payment.additional_info?.items || [];
         await query(
           `INSERT INTO orders (vendor_id, customer_name, customer_phone, customer_address, method, items, total, status)
-           VALUES ($1, $2, $3, NULL, 'delivery', $4, $5, 'confirmed')`,
+           VALUES ($1, $2, $3, NULL, 'delivery', $4, $5, 'new')`,
           [
             vendorId,
             payment.payer?.first_name || "Cliente MP",

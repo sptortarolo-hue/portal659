@@ -15,12 +15,12 @@ import {
 import { buildModifiedOrderMessage, buildTransferInstructionsMessage } from "@/lib/whatsapp-message";
 import type { Order, OrderStatus, OrderItem, Product as DBProduct } from "@/types/database";
 
-const STEP_ORDER: OrderStatus[] = ["new", "confirmed", "preparing", "ready", "sent", "completed"];
+const STEP_ORDER: OrderStatus[] = ["new", "preparing", "ready", "sent", "completed"];
 
 function getNextStatus(current: OrderStatus, method?: "delivery" | "pickup"): OrderStatus | null {
   if (current === "ready" && method === "pickup") return "completed";
   const flow: Record<OrderStatus, OrderStatus> = {
-    new: "confirmed",
+    new: "preparing",
     confirmed: "preparing",
     preparing: "ready",
     ready: "sent",
@@ -32,10 +32,10 @@ function getNextStatus(current: OrderStatus, method?: "delivery" | "pickup"): Or
 }
 
 function getActionButtonLabel(next: OrderStatus, order: Order): string {
+  if (order.status === "new") return "Aceptar y empezar a preparar";
   if (next === "ready") return orderReadyLabel(order);
   if (next === "sent" || (next === "completed" && order.status === "ready")) return orderCompleteActionLabel(order);
-  const labels: Record<OrderStatus, string> = {
-    confirmed: "Aceptar",
+  const labels: Partial<Record<OrderStatus, string>> = {
     preparing: "Empezar a preparar",
     ready: "Marcar como listo",
     sent: "Enviar",
@@ -94,6 +94,7 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
         alias: transfer?.alias || "",
         cbu: transfer?.cbu || undefined,
         holder: transfer?.holder || "",
+        blocked: blockUnpaid,
       })
     : null;
 
@@ -546,36 +547,40 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
                   </Button>
                 )
               )}
-              {canPrint ? (
-                <button
-                  onClick={handlePrint}
-                  disabled={printing}
-                  className={`w-full h-10 rounded-xl font-bold text-sm border active:scale-[0.98] transition-all ${
-                    printStatus === "ok"
-                      ? "bg-green-50 text-green-700 border-green-300"
-                      : printStatus === "error"
-                      ? "bg-red-50 text-red-600 border-red-300"
-                      : "bg-background text-foreground border-border hover:bg-muted"
-                  }`}
-                >
-                  {printing ? "🖨️ Imprimiendo..." : printStatus === "ok" ? "✅ Impreso" : printStatus === "error" ? "❌ Error al imprimir" : "🖨️ Imprimir comanda"}
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => { window.location.href = "/planes"; }}
-                  className="w-full h-10 rounded-xl font-bold text-sm border border-border text-muted-foreground bg-muted/50 flex items-center justify-center gap-2 cursor-pointer opacity-70"
-                >
-                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12 1a5 5 0 00-5 5v3H6a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V11a2 2 0 00-2-2h-1V6a5 5 0 00-5-5zm-3 8V6a3 3 0 116 0v3H9z" />
-                  </svg>
-                  Imprimir comanda — Exclusivo plan Gestión
-                </button>
-              )}
-              {!canPrint && (
-                <p className="text-[11px] text-center text-muted-foreground">
-                  Actualizá a <a href="/planes" className="text-primary font-medium underline">Gestión integral</a> para imprimir comandas
-                </p>
+              {order.status !== "new" && (
+                <>
+                  {canPrint ? (
+                    <button
+                      onClick={handlePrint}
+                      disabled={printing}
+                      className={`w-full h-10 rounded-xl font-bold text-sm border active:scale-[0.98] transition-all ${
+                        printStatus === "ok"
+                          ? "bg-green-50 text-green-700 border-green-300"
+                          : printStatus === "error"
+                          ? "bg-red-50 text-red-600 border-red-300"
+                          : "bg-background text-foreground border-border hover:bg-muted"
+                      }`}
+                    >
+                      {printing ? "🖨️ Imprimiendo..." : printStatus === "ok" ? "✅ Impreso" : printStatus === "error" ? "❌ Error al imprimir" : "🖨️ Imprimir comanda"}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => { window.location.href = "/planes"; }}
+                      className="w-full h-10 rounded-xl font-bold text-sm border border-border text-muted-foreground bg-muted/50 flex items-center justify-center gap-2 cursor-pointer opacity-70"
+                    >
+                      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 1a5 5 0 00-5 5v3H6a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V11a2 2 0 00-2-2h-1V6a5 5 0 00-5-5zm-3 8V6a3 3 0 116 0v3H9z" />
+                      </svg>
+                      Imprimir comanda — Exclusivo plan Gestión
+                    </button>
+                  )}
+                  {!canPrint && (
+                    <p className="text-[11px] text-center text-muted-foreground">
+                      Actualizá a <a href="/planes" className="text-primary font-medium underline">Gestión integral</a> para imprimir comandas
+                    </p>
+                  )}
+                </>
               )}
               {contextualWa && (
                 <a href={contextualWa.url} target="_blank" rel="noopener noreferrer" className="block">

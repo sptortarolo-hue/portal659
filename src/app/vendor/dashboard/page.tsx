@@ -225,7 +225,7 @@ function VendorDashboardInner() {
   async function updateOrderStatus(order: Order, status: Order["status"]) {
     try {
       const payload: Record<string, unknown> = { status };
-      if (status === "confirmed") {
+      if (status === "preparing") {
         payload.estimated_minutes = 30;
       }
       const res = await fetch(`/api/vendor/orders/${order.id}`, {
@@ -240,7 +240,7 @@ function VendorDashboardInner() {
       }
       setMsg(`Pedido #${order.id.slice(0, 8)} → ${STATUS_LABELS[status]}`);
       loadOrdersOnly();
-      if (status === "confirmed" && effectivePlan.can("printer")) {
+      if (status === "preparing" && effectivePlan.can("printer")) {
         fetch("/api/print", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -410,7 +410,6 @@ function VendorDashboardInner() {
 
   const statusTabs = [
     { key: "new", label: "Nuevos", count: orders.filter((o) => o.status === "new").length },
-    { key: "confirmed", label: "Aceptados", count: orders.filter((o) => o.status === "confirmed").length },
     { key: "preparing", label: "Preparando", count: orders.filter((o) => o.status === "preparing").length },
     { key: "ready", label: "Listos", count: orders.filter((o) => o.status === "ready").length },
     { key: "sent", label: "Enviados", count: orders.filter((o) => o.status === "sent").length },
@@ -473,7 +472,7 @@ function VendorDashboardInner() {
       ) : (
         <div className="space-y-2.5">
           {filteredOrders.map((order) => {
-            const stepOrder = ["new", "confirmed", "preparing", "ready", "completed"] as const;
+            const stepOrder = ["new", "preparing", "ready", "completed"] as const;
             const statusIdx = stepOrder.indexOf(order.status as any);
             const isCancelled = order.status === "cancelled";
             const isCompleted = order.status === "completed";
@@ -642,7 +641,6 @@ function VendorDashboardInner() {
           <div className="grid grid-cols-5 gap-1.5 mb-4">
             {[
               { status: "new", label: "Nuevos", value: orders.filter((o) => o.status === "new").length, bg: "bg-status-new/10 dark:bg-status-new/20", text: "text-status-new" },
-              { status: "confirmed", label: "Aceptados", value: orders.filter((o) => o.status === "confirmed").length, bg: "bg-status-confirmed/10 dark:bg-status-confirmed/20", text: "text-status-confirmed" },
               { status: "preparing", label: "Preparando", value: orders.filter((o) => o.status === "preparing").length, bg: "bg-status-preparing/10 dark:bg-status-preparing/20", text: "text-status-preparing" },
               { status: "ready", label: "Listos", value: orders.filter((o) => o.status === "ready").length, bg: "bg-status-ready/10 dark:bg-status-ready/20", text: "text-status-ready" },
               { status: "completed", label: "Entregados", value: orders.filter((o) => o.status === "completed").length, bg: "bg-muted", text: "text-muted-foreground" },

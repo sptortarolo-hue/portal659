@@ -19,7 +19,7 @@ import {
 } from "@/lib/order-utils";
 import type { Order, OrderStatus } from "@/types/database";
 
-const STEP_ORDER: OrderStatus[] = ["new", "confirmed", "preparing", "ready", "sent", "completed"];
+const STEP_ORDER: OrderStatus[] = ["new", "preparing", "ready", "sent", "completed"];
 
 function Timeline({ status, method }: { status: OrderStatus; method: "delivery" | "pickup" }) {
   const currentIdx = STEP_ORDER.indexOf(status);

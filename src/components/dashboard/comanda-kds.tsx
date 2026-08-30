@@ -55,12 +55,13 @@ function vibrate(pattern: number[]) {
 function getNextStatus(current: OrderStatus, method?: "delivery" | "pickup"): OrderStatus | null {
   if (current === "ready" && method === "pickup") return "completed";
   const flow: Record<string, OrderStatus> = {
-    new: "confirmed", confirmed: "preparing", preparing: "ready", ready: "sent", sent: "completed",
+    new: "preparing", preparing: "ready", ready: "sent", sent: "completed",
   };
   return flow[current] || null;
 }
 
 function getActionButtonLabel(next: OrderStatus, order: Order): string {
+  if (order.status === "new") return "Aceptar y empezar a preparar";
   if (next === "ready") return orderReadyLabel(order);
   if (next === "sent" || (next === "completed" && order.status === "ready")) return orderCompleteActionLabel(order);
   const labels: Record<OrderStatus, string> = {
@@ -241,7 +242,7 @@ function TicketCard({
           <p className="text-xs font-bold text-foreground">${Number(order.total).toLocaleString("es-AR")}</p>
         </div>
         <div className="flex items-center gap-1 flex-shrink-0">
-          {!isTerminal && (
+          {!isTerminal && order.status !== "new" && (
             <button
               onClick={(e) => { e.stopPropagation(); handlePrint(); }}
               className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground"
@@ -380,7 +381,7 @@ export default function ComandaKDS({ vendorId, vendorName, accessToken }: Props)
   }, [activeTab]);
 
   async function handleAction(orderId: string, status: OrderStatus) {
-    const estimated = status === "confirmed" ? 30 : undefined;
+    const estimated = status === "preparing" ? 30 : undefined;
     setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, status } : o)));
     try {
       await fetch(`/api/vendor/orders/${orderId}`, {
@@ -388,7 +389,7 @@ export default function ComandaKDS({ vendorId, vendorName, accessToken }: Props)
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
         body: JSON.stringify({ status, estimated_minutes: estimated }),
       });
-      if (status === "confirmed") {
+      if (status === "preparing") {
         fetch("/api/print", {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
@@ -435,7 +436,6 @@ export default function ComandaKDS({ vendorId, vendorName, accessToken }: Props)
 
   const tabs: { key: OrderStatus | "all"; label: string; emoji: string; count: number }[] = [
     { key: "new", label: "Nuevos", emoji: "🆕", count: columnOrders("new").length },
-    { key: "confirmed", label: "Aceptados", emoji: "✅", count: columnOrders("confirmed").length },
     { key: "preparing", label: "Preparando", emoji: "🍳", count: columnOrders("preparing").length },
     { key: "ready", label: "Listos", emoji: "📦", count: columnOrders("ready").length },
     { key: "all", label: "Todos", emoji: "📋", count: activeCount },

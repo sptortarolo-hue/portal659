@@ -93,7 +93,7 @@ export function VendorAnalytics() {
                   <span className="font-medium">${Number(o.total).toLocaleString("es-AR")}</span>
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
-                  {o.status === "new" ? "🆕 Nuevo" : o.status === "confirmed" ? "✅ Confirmado" : o.status === "preparing" ? "🍳 Preparando" : "📦 Listo"} · {new Date(o.created_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}
+                  {o.status === "new" ? "🆕 Nuevo" : o.status === "preparing" ? "🍳 Preparando" : "📦 Listo"} · {new Date(o.created_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}
                 </p>
               </div>
             ))}

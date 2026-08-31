@@ -63,6 +63,31 @@ export default function AdminComercioDetailPage() {
     setMsg(assignedUserId ? "Dueño asignado." : "Dueño desasignado (queda sin asignar).");
   }
 
+  const [resetting, setResetting] = useState(false);
+
+  async function resetOrders() {
+    if (!confirm(`¿Eliminar TODOS los pedidos y poner las mesas en libre de "${vendor?.store_name}"?`)) return;
+    if (!confirm("Esta acción es definitiva y no se puede deshacer. ¿Continuar?")) return;
+    setResetting(true);
+    try {
+      const res = await fetch(`/api/admin/comercios/${id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "reset_orders" }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setMsg(`Pedidos y contadores inicializados: ${data.ordersDeleted} pedido(s) eliminado(s), ${data.tablesReset} mesa(s) en libre.`);
+      } else {
+        setMsg(data.error || "No se pudo inicializar");
+      }
+    } catch {
+      setMsg("Error al inicializar pedidos");
+    } finally {
+      setResetting(false);
+    }
+  }
+
   if (loading) {
     return <div className="space-y-3"><div className="h-16 rounded-xl bg-muted animate-pulse" /></div>;
   }
@@ -164,6 +189,19 @@ export default function AdminComercioDetailPage() {
           <div><span className="text-muted-foreground">Dirección:</span> {vendor.address || "-"}</div>
           <div><span className="text-muted-foreground">Registro:</span> {new Date(vendor.created_at).toLocaleDateString("es-AR")}</div>
         </div>
+      </div>
+
+      {/* Inicializar pedidos y contadores */}
+      <div className="rounded-xl border border-red-200 bg-red-50/40 dark:bg-red-950/20 dark:border-red-900 p-4 space-y-3">
+        <h2 className="font-semibold text-sm uppercase tracking-wide text-red-600">Inicializar pedidos y contadores</h2>
+        <p className="text-xs text-muted-foreground">
+          Elimina los pedidos cargados y deja todas las mesas en libre. Útil para sacar los datos de
+          prueba antes de arrancar. Se conserva el catálogo (productos) y el plan del comercio.
+        </p>
+        <Button size="sm" variant="outline" className="border-red-300 text-red-600 hover:bg-red-50 dark:hover:bg-red-950" onClick={resetOrders} disabled={resetting}>
+          {resetting && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+          Inicializar pedidos
+        </Button>
       </div>
     </div>
   );

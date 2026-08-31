@@ -26,12 +26,22 @@ export function Logo({
   className?: string;
   markClassName?: string;
 }) {
+  // El logo es un PNG panorámico (aproximadamente 1.74:1). Controlamos la
+  // altura y dejamos el ancho automático para que no se deforme.
+  // En auth se pasa markClassName con "h-14" (logo más grande); en el nav se
+  // usa el default (h-8).
+  const isLarge = markClassName?.includes("h-14") ?? false;
+  const height = isLarge ? 44 : 28;
+
   return (
-    <span className={cn("inline-flex items-center gap-2", className)}>
-      <LogoMark className={markClassName ?? "h-8 w-8 text-primary"} />
-      <span className="font-display text-2xl font-semibold tracking-tight">
-        Portal <span className="text-primary">659</span>
-      </span>
+    <span className={cn("inline-flex items-center", className)}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src="/logo.png"
+        alt="Portal 659"
+        style={{ height, width: "auto" }}
+        className="object-contain"
+      />
     </span>
   );
 }

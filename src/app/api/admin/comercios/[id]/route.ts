@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { isAdmin } from "@/lib/admin-utils";
-import { queryOne, queryMany, query } from "@/lib/db";
+import { queryOne, queryMany, query, withTransaction } from "@/lib/db";
 
 export async function GET(
   request: Request,
@@ -29,6 +29,58 @@ export async function GET(
   );
 
   return NextResponse.json({ vendor: { ...vendor, products } });
+}
+
+export async function POST(
+  request: Request,
+  ctx: { params: Promise<{ id: string }> }
+) {
+  if (!(await isAdmin(request))) {
+    return NextResponse.json({ error: "No autorizado" }, { status: 403 });
+  }
+
+  const { id } = await ctx.params;
+  if (!id) {
+    return NextResponse.json({ error: "ID requerido" }, { status: 400 });
+  }
+
+  const body = await request.json();
+  const action = body?.action;
+
+  if (action === "reset_orders") {
+    const vendor = await queryOne<{ id: string; user_id: string | null }>(
+      `SELECT id, user_id FROM vendors WHERE id = $1 LIMIT 1`,
+      [id]
+    );
+    if (!vendor) {
+      return NextResponse.json({ error: "Comercio no encontrado" }, { status: 404 });
+    }
+
+    const result = await withTransaction(async (tx) => {
+      // Borra los pedidos del vendor (order_status_log se borra en cascada por FK).
+      const deleted = await tx.query<{ id: string }>(
+        `DELETE FROM orders WHERE vendor_id = $1 RETURNING id`,
+        [id]
+      );
+      // Pone todas las mesas en libre.
+      const tables = await tx.query<{ id: string }>(
+        `UPDATE tables SET status = 'libre' WHERE vendor_id = $1 RETURNING id`,
+        [id]
+      );
+      // Notificaciones de pedido/pago del dueño (best-effort).
+      if (vendor.user_id) {
+        await tx.queryVoid(
+          `DELETE FROM notifications WHERE user_id = $1 AND type IN ('order', 'payment', 'review')`,
+          [vendor.user_id]
+        );
+      }
+      return { ordersDeleted: deleted.length, tablesReset: tables.length };
+    });
+
+    return NextResponse.json({ ok: true, ...result });
+  }
+
+  return NextResponse.json({ error: "Acción desconocida" }, { status: 400 });
 }
 
 export async function PATCH(

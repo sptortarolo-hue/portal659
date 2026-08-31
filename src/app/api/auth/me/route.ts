@@ -20,6 +20,18 @@ export async function GET(request: Request) {
     [user.id]
   );
 
+  const vendor = await queryOne<{
+    id: string;
+    slug: string;
+    store_name: string;
+    logo_url: string | null;
+    image_url: string | null;
+    vertical: string | null;
+  }>(
+    `SELECT id, slug, store_name, logo_url, image_url, vertical FROM vendors WHERE user_id = $1 LIMIT 1`,
+    [user.id]
+  );
+
   return NextResponse.json({
     user: {
       id: user.id,
@@ -32,6 +44,7 @@ export async function GET(request: Request) {
       is_admin: user.is_admin,
       role: user.role,
     },
+    vendor: vendor || null,
   });
 }
 

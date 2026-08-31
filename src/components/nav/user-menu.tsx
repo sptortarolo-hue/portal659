@@ -13,10 +13,20 @@ type MeUser = {
   is_admin: boolean;
 };
 
+type MeVendor = {
+  id: string;
+  slug: string;
+  store_name: string;
+  logo_url: string | null;
+  image_url: string | null;
+  vertical: string | null;
+};
+
 export function UserMenu() {
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [user, setUser] = useState<MeUser | null>(null);
+  const [vendor, setVendor] = useState<MeVendor | null>(null);
   const [loading, setLoading] = useState(true);
   const menuRef = useRef<HTMLDivElement>(null);
   const { theme, setTheme, resolved } = useTheme();
@@ -27,6 +37,7 @@ export function UserMenu() {
         .then((r) => r.json())
         .then((data) => {
           setUser(data.user || null);
+          setVendor(data.vendor || null);
           setLoading(false);
         })
         .catch(() => setLoading(false));
@@ -67,15 +78,21 @@ export function UserMenu() {
   }
 
   const isAdmin = user?.is_admin === true;
+  const vendorImg = vendor?.logo_url || vendor?.image_url || null;
 
   return (
     <div className="relative" ref={menuRef}>
       <button
         onClick={() => setMenuOpen(!menuOpen)}
-        className="w-10 h-10 flex items-center justify-center rounded-full bg-muted hover:bg-primary/10 active:bg-primary/20 transition-colors text-lg"
+        className="h-10 flex items-center gap-1.5 rounded-full bg-muted hover:bg-primary/10 active:bg-primary/20 transition-colors text-sm font-medium pl-1 pr-3"
         aria-label="Menú"
       >
-        ☰
+        {vendorImg ? (
+          <img src={vendorImg} alt={vendor?.store_name || "Mi comercio"} className="h-8 w-8 rounded-full object-cover flex-shrink-0" />
+        ) : (
+          <span className="w-8 h-8 flex items-center justify-center rounded-full bg-primary/10 text-primary text-lg">☰</span>
+        )}
+        <span className="hidden sm:inline">Menú</span>
       </button>
       {menuOpen && (
         <div className="absolute right-0 top-full mt-2 w-56 bg-card border border-border rounded-xl shadow-lg py-2 z-50 animate-fade-in-up">

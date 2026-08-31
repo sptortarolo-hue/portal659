@@ -16,16 +16,84 @@ export default async function BuscarPage({
   const { q, vertical } = await searchParams;
   const query = (q || "").trim();
 
+  const allVendors = await queryMany<Record<string, unknown>>(
+    `SELECT * FROM vendors
+     WHERE neighborhood = ANY($1) AND visible = true
+     ORDER BY store_name`,
+    [zone.neighborhoods]
+  );
+
   if (!query) {
+    const list = (vertical ? allVendors.filter((v: any) => v.vertical === vertical) : allVendors) as any[];
     return (
-      <main className="container mx-auto px-4 py-12 text-center">
-        <h1 className="font-display text-3xl font-semibold mb-4">Buscar</h1>
-        <p className="text-muted-foreground">
-          Escribí algo en la barra de búsqueda para encontrar comercios y productos.
-        </p>
-        <Link href="/" className="text-primary text-sm mt-4 inline-block hover:underline">
-          Volver al inicio
-        </Link>
+      <main className="container mx-auto px-4 py-8 max-w-4xl">
+        <div className="mb-6">
+          <h1 className="font-display text-3xl font-semibold mb-2">Explorar comercios</h1>
+          <p className="text-muted-foreground text-sm">
+            Comercios de {zone.name} · elegí una categoría para filtrar
+          </p>
+        </div>
+
+        {/* Vertical filters */}
+        <div className="flex flex-wrap gap-2 mb-8">
+          <Link
+            href="/buscar"
+            className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+              !vertical ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:border-primary hover:text-primary"
+            }`}
+          >
+            Todos
+          </Link>
+          {VERTICALS.map((vert) => (
+            <Link
+              key={vert.slug}
+              href={`/buscar?vertical=${vert.slug}`}
+              className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                vertical === vert.slug
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "border-border text-muted-foreground hover:border-primary hover:text-primary"
+              }`}
+            >
+              {vert.emoji} {vert.name}
+            </Link>
+          ))}
+        </div>
+
+        {list.length === 0 ? (
+          <div className="text-center py-16">
+            <p className="text-6xl mb-4">🏪</p>
+            <p className="text-lg font-medium mb-2">Todavía no hay comercios en esta categoría</p>
+            <p className="text-sm text-muted-foreground mb-6">Probá con otra categoría o volvé a todos.</p>
+            <Link href="/buscar" className="rounded-full bg-primary text-primary-foreground px-5 py-2.5 text-sm font-medium hover:bg-primary/90">
+              Ver todos
+            </Link>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {list.map((v: any) => (
+              <Link key={v.id} href={`/tienda/${v.slug}`} className="block">
+                <Card className="hover:shadow-lg transition-shadow cursor-pointer overflow-hidden h-full">
+                  {v.image_url ? (
+                    <div className="h-28 w-full">
+                      <ProductImage src={v.image_url} name={v.store_name} vertical={v.vertical} alt={v.store_name} className="w-full h-full object-cover" />
+                    </div>
+                  ) : (
+                    <div className="h-28 w-full flex items-center justify-center overflow-hidden">
+                      <ProductImage src={null} name={v.store_name} vertical={v.vertical} alt={v.store_name} className="w-full h-full" iconClassName="h-10 w-10" />
+                    </div>
+                  )}
+                  <CardContent className="p-4">
+                    <h3 className="font-semibold">{v.store_name}</h3>
+                    {v.description && <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{v.description}</p>}
+                    <p className="text-xs text-primary mt-2 font-medium">
+                      {v.vertical === "servicio" ? "Ver y contactar →" : "Ver y pedir →"}
+                    </p>
+                  </CardContent>
+                </Card>
+              </Link>
+            ))}
+          </div>
+        )}
       </main>
     );
   }

@@ -18,7 +18,7 @@ const SLIDES = [
   {
     emoji: "🛒",
     title: "Pedí en segundos",
-    text: "Armá tu pedido, revisalo y mandalo. Sin注册, sin comisiones, sin vueltas.",
+    text: "Armá tu pedido, revisalo y mandalo. Sin registro, sin comisiones, sin vueltas.",
   },
 ];
 

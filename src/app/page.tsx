@@ -97,7 +97,7 @@ export default async function HomePage() {
               href="/register"
               className="rounded-full border border-white/30 bg-white/10 px-8 py-3 text-sm font-medium hover:bg-white/20 transition-all"
             >
-              Sumá tu comercio gratis
+              Creá tu comercio gratis
             </Link>
           </div>
         </div>

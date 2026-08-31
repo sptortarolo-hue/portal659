@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 const TRENDING = ["Pizza", "Empanadas", "Verdulería", "Farmacia", "Electricista", "Mascotas"];
@@ -8,10 +8,8 @@ const TRENDING = ["Pizza", "Empanadas", "Verdulería", "Farmacia", "Electricista
 export function SearchBar() {
   const router = useRouter();
   const [query, setQuery] = useState("");
-  const [expanded, setExpanded] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [history, setHistory] = useState<string[]>([]);
-  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     try {
@@ -19,10 +17,6 @@ export function SearchBar() {
       if (saved) setHistory(JSON.parse(saved));
     } catch { /* noop */ }
   }, []);
-
-  useEffect(() => {
-    if (expanded && inputRef.current) inputRef.current.focus();
-  }, [expanded]);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -57,7 +51,6 @@ export function SearchBar() {
 
   const input = (
     <input
-      ref={inputRef}
       type="text"
       value={query}
       onChange={(e) => { setQuery(e.target.value); setShowSuggestions(true); }}
@@ -128,53 +121,36 @@ export function SearchBar() {
       </div>
 
       {/* Mobile */}
-      <div className="md:hidden">
-        {expanded ? (
-          <form onSubmit={handleSubmit} className="flex items-center gap-2 relative">
-            <div className="relative flex-1">
-              <svg className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-              {input}
-            </div>
-            <button type="button" onClick={() => { setExpanded(false); setQuery(""); setShowSuggestions(false); }} className="text-muted-foreground text-xs">
-              Cancelar
-            </button>
+      <div className="md:hidden flex-1 min-w-0 relative">
+        <form onSubmit={handleSubmit} className="relative w-full">
+          <svg className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          {input}
+        </form>
 
-            {showSuggestions && (
-              <div className="absolute top-full left-0 right-0 mt-2 border border-border rounded-xl bg-card shadow-lg z-50 py-2 max-h-60 overflow-y-auto">
-                {!query && history.length > 0 && (
-                  <div className="px-3 pb-2">
-                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Recientes</p>
-                    {history.slice(0, 5).map((h) => (
-                      <button key={h} onMouseDown={() => handleSelect(h)} className="w-full text-left px-2 py-1.5 text-sm rounded-lg hover:bg-muted">
-                        {h}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                <div className="px-3 pt-1 border-t border-border">
-                  <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Tendencias</p>
-                  {TRENDING.slice(0, 4).map((t) => (
-                    <button key={t} onMouseDown={() => handleSelect(t)} className="w-full text-left px-2 py-1.5 text-sm rounded-lg hover:bg-muted flex items-center gap-2">
-                      <span className="text-xs">🔥</span>
-                      {t}
-                    </button>
-                  ))}
-                </div>
+        {showSuggestions && (
+          <div className="absolute top-full left-0 right-0 mt-2 border border-border rounded-xl bg-card shadow-lg z-50 py-2 max-h-60 overflow-y-auto">
+            {!query && history.length > 0 && (
+              <div className="px-3 pb-2">
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Recientes</p>
+                {history.slice(0, 5).map((h) => (
+                  <button key={h} onMouseDown={() => handleSelect(h)} className="w-full text-left px-2 py-1.5 text-sm rounded-lg hover:bg-muted">
+                    {h}
+                  </button>
+                ))}
               </div>
             )}
-          </form>
-        ) : (
-          <button
-            onClick={() => setExpanded(true)}
-            className="h-9 w-9 flex items-center justify-center rounded-full hover:bg-muted"
-            aria-label="Buscar"
-          >
-            <svg className="h-5 w-5 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-          </button>
+            <div className="px-3 pt-1 border-t border-border">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Tendencias</p>
+              {TRENDING.slice(0, 4).map((t) => (
+                <button key={t} onMouseDown={() => handleSelect(t)} className="w-full text-left px-2 py-1.5 text-sm rounded-lg hover:bg-muted flex items-center gap-2">
+                  <span className="text-xs">🔥</span>
+                  {t}
+                </button>
+              ))}
+            </div>
+          </div>
         )}
       </div>
     </>

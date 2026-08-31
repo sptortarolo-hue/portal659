@@ -14,6 +14,7 @@ const TIPO_OPTIONS = [
   { value: "servicio", label: "Servicio u oficio (electricista, plomero, jardinería)" },
   { value: "moda", label: "Ropa y accesorios (indumentaria, calzado, bijouterie)" },
   { value: "salud", label: "Salud y bienestar (farmacia, peluquería, estética)" },
+  { value: "otro", label: "Otro" },
 ] as const;
 
 export default function RegisterPage() {
@@ -54,9 +55,9 @@ export default function RegisterPage() {
     <main className="container mx-auto px-4 py-20 max-w-md">
       <div className="flex flex-col items-center mb-8">
         <Logo markClassName="h-14 w-14 text-primary" />
-        <h1 className="font-display text-4xl font-semibold mt-4">Crear cuenta</h1>
+        <h1 className="font-display text-4xl font-semibold mt-4">Creá tu comercio gratis</h1>
         <p className="text-muted-foreground mt-2">
-          Sumate al centro comercial de tu barrio
+          Registrate y armá tu vidriera en Portal 659 en minutos
         </p>
       </div>
 
@@ -148,7 +149,7 @@ export default function RegisterPage() {
         )}
 
         <Button type="submit" className="w-full" disabled={loading}>
-          {loading ? "Creando cuenta..." : "Crear cuenta"}
+          {loading ? "Creando tu comercio..." : "Crear mi comercio gratis"}
         </Button>
       </form>
 

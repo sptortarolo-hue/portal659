@@ -259,7 +259,7 @@ export function Mostrador() {
 
   const orderSummary = (
     <>
-      <div className="flex-1 space-y-1.5 min-h-16 overflow-y-auto">
+      <div className="flex-1 space-y-1.5 min-h-0 overflow-y-auto">
         {items.length === 0 && <p className="text-xs text-muted-foreground text-center py-6">Tocá productos para armar el pedido</p>}
         {items.map((i) => (
           <div key={i.product_id} className="flex items-center gap-2 text-sm">

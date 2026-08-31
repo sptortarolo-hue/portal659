@@ -64,11 +64,8 @@ export default function LoginPage() {
       }
     } else {
       window.dispatchEvent(new Event("auth-changed"));
-      router.push(
-        data.session?.user?.user_metadata?.role === "vendor"
-          ? "/vendor/dashboard"
-          : "/"
-      );
+      const role = data.user?.role || data.session?.user?.user_metadata?.role;
+      router.push(role === "vendor" ? "/vendor/dashboard" : "/");
     }
     setLoading(false);
   }

@@ -1,6 +1,7 @@
 import { getUserId } from "@/lib/auth-utils";
 import { queryMany, queryOne } from "@/lib/db";
 import { activePromo } from "@/lib/plans";
+import { getSiteUrl } from "@/lib/site-url";
 import { NextResponse } from "next/server";
 import type { Plan } from "@/types/database";
 
@@ -82,7 +83,7 @@ export async function POST(request: Request) {
   const periodEnd = new Date(base + periodDays * 24 * 60 * 60 * 1000).toISOString();
 
   const externalReference = `portal659_sub_${vendor.id}_${plan.slug}_${Math.floor(base / 1000)}`;
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+  const siteUrl = getSiteUrl();
 
   // Sin Mercado Pago configurado → transferencia manual (el admin activa con set_plan)
   if (!MP_ACCESS_TOKEN) {

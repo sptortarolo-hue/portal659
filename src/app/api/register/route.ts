@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { withTransaction } from "@/lib/db";
 import { hashPassword } from "@/lib/auth";
 import { sendEmail, welcomeEmail, confirmEmailEmail } from "@/lib/email";
+import { getSiteUrl } from "@/lib/site-url";
 import { createHash, randomBytes } from "crypto";
 
 const TIPOS = ["gastronomia", "comercio", "servicio", "moda", "salud"] as const;
@@ -45,14 +46,14 @@ export async function POST(request: Request) {
         `INSERT INTO vendors (user_id, store_name, vertical, neighborhood, whatsapp)
          VALUES ($1, $2, $3, 'sicardi', $4)
          RETURNING slug`,
-        [userId, firstName, selected, whatsapp]
+        [userId, `${firstName} ${lastName}`.trim(), selected, whatsapp]
       );
 
       return { ...rows[0], slug: vendorRows[0]?.slug || "" };
     });
 
     // Emails best-effort
-    const baseUrl = (request.headers.get("origin") || process.env.NEXT_PUBLIC_SITE_URL || "").replace(/\/$/, "");
+    const baseUrl = getSiteUrl(request);
     const confirmUrl = `${baseUrl}/auth/callback?token=${confirmToken}&type=signup`;
     const { subject, html } = confirmEmailEmail(confirmUrl);
     await sendEmail({ to: user.email, subject, html });

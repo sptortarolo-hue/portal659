@@ -2,6 +2,7 @@ import { getVendorByRequest } from "@/lib/vendor-utils";
 import { queryMany, queryOne, withTransaction } from "@/lib/db";
 import { sendEmail, reviewRequestEmail } from "@/lib/email";
 import { sendPushToUser } from "@/lib/push";
+import { getSiteUrl } from "@/lib/site-url";
 import { NextResponse } from "next/server";
 import { canTransition } from "@/lib/order-utils";
 import type { OrderStatus } from "@/types/database";
@@ -167,7 +168,7 @@ export async function PATCH(
         await sendPushToUser(customerProfile.id, { title, body, link: "/mis-pedidos" });
 
         if (status === "completed" && customerProfile.email) {
-          const baseUrl = (process.env.NEXT_PUBLIC_SITE_URL || "").replace(/\/$/, "");
+          const baseUrl = getSiteUrl();
           const reviewUrl = `${baseUrl}/tienda/${fullVendor?.slug || ""}`;
           const { subject, html } = reviewRequestEmail(fullVendor?.store_name || "tu pedido", reviewUrl);
           await sendEmail({ to: customerProfile.email, subject, html });

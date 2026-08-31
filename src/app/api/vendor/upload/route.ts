@@ -1,4 +1,5 @@
 import { getVendorByRequest } from "@/lib/vendor-utils";
+import { getSiteUrl } from "@/lib/site-url";
 import { NextResponse } from "next/server";
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
@@ -44,6 +45,6 @@ export async function POST(request: Request) {
   await mkdir(dir, { recursive: true });
   await writeFile(path.join(dir, filename), buffer);
 
-  const url = `${process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"}/uploads/${folder}/${userId}/${filename}`;
+  const url = `${getSiteUrl()}/uploads/${folder}/${userId}/${filename}`;
   return NextResponse.json({ url });
 }

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createHash, randomBytes } from "crypto";
 import { query } from "@/lib/db";
 import { sendEmail, confirmEmailEmail } from "@/lib/email";
+import { getSiteUrl } from "@/lib/site-url";
 
 export async function POST(request: Request) {
   const { email } = await request.json();
@@ -20,7 +21,7 @@ export async function POST(request: Request) {
 
   // El mail solo se envía si la cuenta sigue sin confirmar; devolvemos ok
   // siempre para no revelar si el email existe o ya está confirmado.
-  const siteUrl = request.headers.get("origin") || process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+  const siteUrl = getSiteUrl(request);
   const confirmUrl = `${siteUrl}/auth/callback?token=${token}&type=signup`;
   const { subject, html } = confirmEmailEmail(confirmUrl);
   await sendEmail({ to: email, subject, html });

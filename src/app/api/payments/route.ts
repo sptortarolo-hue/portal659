@@ -1,4 +1,5 @@
 import { queryOne } from "@/lib/db";
+import { getSiteUrl } from "@/lib/site-url";
 import { NextResponse } from "next/server";
 
 // Mercado Pago Preference API
@@ -47,12 +48,12 @@ export async function POST(request: Request) {
       },
       external_reference: `portal659_${vendorId}_${Date.now()}`,
       back_urls: {
-        success: `${process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"}/checkout?payment=success`,
-        failure: `${process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"}/checkout?payment=failure`,
-        pending: `${process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"}/checkout?payment=pending`,
+        success: `${getSiteUrl()}/checkout?payment=success`,
+        failure: `${getSiteUrl()}/checkout?payment=failure`,
+        pending: `${getSiteUrl()}/checkout?payment=pending`,
       },
       auto_return: "approved",
-      notification_url: `${process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"}/api/webhooks/mercadopago`,
+      notification_url: `${getSiteUrl()}/api/webhooks/mercadopago`,
     };
 
     const res = await fetch("https://api.mercadopago.com/checkout/preferences", {

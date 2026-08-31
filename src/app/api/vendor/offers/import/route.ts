@@ -123,30 +123,31 @@ export async function POST(request: Request) {
 
   const form = await request.formData();
   const action = (form.get("action") as string) || "analyze";
-  const file = form.get("file");
-  if (!file || !(file instanceof File)) {
-    return NextResponse.json({ error: "Subí un archivo .xlsx" }, { status: 400 });
-  }
-  if (file.size > MAX_SIZE) {
-    return NextResponse.json({ error: "El archivo supera los 5 MB" }, { status: 400 });
-  }
-  if (!ALLOWED_TYPES.includes(file.type) && !file.name.toLowerCase().endsWith(".xlsx")) {
-    return NextResponse.json({ error: "Solo se admiten archivos .xlsx" }, { status: 400 });
-  }
-
-  const buf = Buffer.from(await file.arrayBuffer());
-  let rows: Record<string, unknown>[];
-  try {
-    rows = await parseWorkbook(buf);
-  } catch {
-    return NextResponse.json({ error: "No se pudo leer el Excel. Verificá que sea .xlsx válido." }, { status: 400 });
-  }
-  if (rows.length === 0) {
-    return NextResponse.json({ error: "El Excel está vacío o no tiene filas con datos" }, { status: 400 });
-  }
 
   // ============ FASE ANALYZE ============
   if (action === "analyze") {
+    const file = form.get("file");
+    if (!file || !(file instanceof File)) {
+      return NextResponse.json({ error: "Subí un archivo .xlsx" }, { status: 400 });
+    }
+    if (file.size > MAX_SIZE) {
+      return NextResponse.json({ error: "El archivo supera los 5 MB" }, { status: 400 });
+    }
+    if (!ALLOWED_TYPES.includes(file.type) && !file.name.toLowerCase().endsWith(".xlsx")) {
+      return NextResponse.json({ error: "Solo se admiten archivos .xlsx" }, { status: 400 });
+    }
+
+    const buf = Buffer.from(await file.arrayBuffer());
+    let rows: Record<string, unknown>[];
+    try {
+      rows = await parseWorkbook(buf);
+    } catch {
+      return NextResponse.json({ error: "No se pudo leer el Excel. Verificá que sea .xlsx válido." }, { status: 400 });
+    }
+    if (rows.length === 0) {
+      return NextResponse.json({ error: "El Excel está vacío o no tiene filas con datos" }, { status: 400 });
+    }
+
     const existingCats = await queryMany<{ name: string }>(
       `SELECT name FROM vendor_categories WHERE vendor_id = $1`,
       [vendor.id]

@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import { AddToCartButton } from "@/components/offers/add-to-cart-button";
 import { VariantSelector } from "./variant-selector";
+import { ProductImage } from "@/components/product-image";
 
 type VendorBrief = {
   id: string;
@@ -80,11 +81,9 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
           className="relative w-full aspect-square overflow-hidden bg-accent/60 block"
         >
           {cover ? (
-            <img src={cover} alt={product.name} loading="lazy" decoding="async" className="w-full h-full object-cover" />
+            <ProductImage src={cover} name={product.name} category={product.category} vertical={vendor.vertical} alt={product.name} className="w-full h-full object-cover" />
           ) : (
-            <div className="w-full h-full flex items-center justify-center">
-              <span className="font-display text-6xl font-bold text-primary/25">{product.name.charAt(0)}</span>
-            </div>
+            <ProductImage src={null} name={product.name} category={product.category} vertical={vendor.vertical} alt={product.name} className="w-full h-full" iconClassName="h-16 w-16" />
           )}
 
           {bestDiscount != null && (
@@ -138,11 +137,9 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
             <div className="p-4 space-y-4">
               <div className="rounded-xl overflow-hidden bg-accent aspect-[4/5] max-h-80">
                 {cover ? (
-                  <img src={cover} alt={product.name} loading="lazy" decoding="async" className="w-full h-full object-cover" />
+                  <ProductImage src={cover} name={product.name} category={product.category} vertical={vendor.vertical} alt={product.name} className="w-full h-full object-cover" />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center">
-                    <span className="font-display text-6xl font-bold text-primary/25">{product.name.charAt(0)}</span>
-                  </div>
+                  <ProductImage src={null} name={product.name} category={product.category} vertical={vendor.vertical} alt={product.name} className="w-full h-full" iconClassName="h-24 w-24" />
                 )}
               </div>
 

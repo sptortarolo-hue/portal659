@@ -2,6 +2,7 @@ import { queryOne, queryMany } from "@/lib/db";
 import { resolveVendorPlan } from "@/lib/plans";
 import { notFound } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
+import { ProductImage } from "@/components/product-image";
 import { AddToCartButton } from "@/components/offers/add-to-cart-button";
 import { ReviewForm } from "@/components/reviews/review-form";
 import { ReviewList } from "@/components/reviews/review-list";
@@ -210,17 +211,9 @@ const modifiersByProduct: Record<string, any[]> = {};
       {/* Full-width cover */}
       <div className="relative h-56 sm:h-72 w-full">
         {v.image_url ? (
-          <img
-            src={v.image_url}
-            alt={v.store_name}
-            className="w-full h-full object-cover"
-          />
+          <ProductImage src={v.image_url} name={v.store_name} vertical={v.vertical} alt={v.store_name} className="w-full h-full object-cover" />
         ) : (
-          <div className="w-full h-full bg-gradient-to-br from-primary/20 via-secondary to-accent flex items-center justify-center">
-            <span className="font-display text-8xl font-bold text-primary/30">
-              {v.store_name.charAt(0)}
-            </span>
-          </div>
+          <ProductImage src={null} name={v.store_name} vertical={v.vertical} alt={v.store_name} className="w-full h-full" iconClassName="h-24 w-24" />
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
       </div>
@@ -448,15 +441,15 @@ const modifiersByProduct: Record<string, any[]> = {};
                               <div className="flex items-start gap-3">
                                 {oImages.length > 0 ? (
                                   <div className="h-20 w-20 rounded-xl overflow-hidden flex-shrink-0">
-                                    <img src={oImages[0].image_url} alt={o.name} loading="lazy" decoding="async" className="w-full h-full object-cover" />
+                                    <ProductImage src={oImages[0].image_url} name={o.name} category={o.category} vertical={v.vertical} alt={o.name} className="w-full h-full object-cover" />
                                   </div>
                                 ) : o.image_url ? (
                                   <div className="h-20 w-20 rounded-xl overflow-hidden flex-shrink-0">
-                                    <img src={o.image_url} alt={o.name} loading="lazy" decoding="async" className="w-full h-full object-cover" />
+                                    <ProductImage src={o.image_url} name={o.name} category={o.category} vertical={v.vertical} alt={o.name} className="w-full h-full object-cover" />
                                   </div>
                                 ) : (
-                                  <div className="h-20 w-20 rounded-xl bg-accent flex items-center justify-center flex-shrink-0">
-                                    <span className="font-display text-3xl font-bold text-primary/50">{o.name.charAt(0)}</span>
+                                  <div className="h-20 w-20 rounded-xl flex items-center justify-center flex-shrink-0 overflow-hidden">
+                                    <ProductImage src={null} name={o.name} category={o.category} vertical={v.vertical} alt={o.name} className="w-full h-full" iconClassName="h-8 w-8" />
                                   </div>
                                 )}
                                 <div className="min-w-0 flex-1">
@@ -519,19 +512,11 @@ const modifiersByProduct: Record<string, any[]> = {};
                           <div className="flex items-start gap-3 min-w-0">
                             {o.image_url ? (
                               <div className="h-20 w-20 rounded-xl overflow-hidden flex-shrink-0">
-                                <img
-                                  src={o.image_url}
-                                  alt={o.name}
-                                  loading="lazy"
-                                  decoding="async"
-                                  className="w-full h-full object-cover"
-                                />
+                                <ProductImage src={o.image_url} name={o.name} category={o.category} vertical={v.vertical} alt={o.name} className="w-full h-full object-cover" />
                               </div>
                             ) : (
-                              <div className="h-20 w-20 rounded-xl bg-accent flex items-center justify-center flex-shrink-0">
-                                <span className="font-display text-3xl font-bold text-primary/50">
-                                  {o.name.charAt(0)}
-                                </span>
+                              <div className="h-20 w-20 rounded-xl flex items-center justify-center flex-shrink-0 overflow-hidden">
+                                <ProductImage src={null} name={o.name} category={o.category} vertical={v.vertical} alt={o.name} className="w-full h-full" iconClassName="h-8 w-8" />
                               </div>
                             )}
                             <div className="min-w-0">

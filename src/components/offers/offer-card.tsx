@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { ProductImage } from "@/components/product-image";
 
 type OfferCardProps = {
   name: string;
@@ -12,6 +13,7 @@ type OfferCardProps = {
   storeSlug: string;
   featured?: boolean;
   imageUrl?: string | null;
+  vertical?: string | null;
 };
 
 export function OfferCard({
@@ -23,6 +25,7 @@ export function OfferCard({
   storeSlug,
   featured,
   imageUrl,
+  vertical,
 }: OfferCardProps) {
   return (
     <Link href={`/tienda/${storeSlug}`} className="block h-full">
@@ -34,19 +37,26 @@ export function OfferCard({
       >
         {imageUrl ? (
           <div className="h-40 bg-muted overflow-hidden">
-            <img
+            <ProductImage
               src={imageUrl}
+              name={name}
+              category={category}
+              vertical={vertical}
               alt={name}
-              loading="lazy"
-              decoding="async"
               className="w-full h-full object-cover transition-transform duration-300 hover:scale-105"
             />
           </div>
         ) : (
-          <div className="h-40 bg-gradient-to-br from-secondary to-accent flex items-center justify-center">
-            <span className="font-display text-5xl font-bold text-primary/60">
-              {name.charAt(0)}
-            </span>
+          <div className="h-40 flex items-center justify-center">
+            <ProductImage
+              src={null}
+              name={name}
+              category={category}
+              vertical={vertical}
+              alt={name}
+              className="w-full h-full"
+              iconClassName="h-12 w-12"
+            />
           </div>
         )}
         <CardHeader className="pb-2">

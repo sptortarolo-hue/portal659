@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { isOpenNow, openStatusText } from "@/lib/open-hours";
+import { ProductImage } from "@/components/product-image";
 
 type VendorCardProps = {
   id: string;
@@ -40,19 +41,24 @@ export function VendorCard({ id, slug, store_name, image_url, logo_url, descript
       <div className="relative rounded-2xl border border-border bg-card overflow-hidden hover:shadow-xl transition-all duration-200 hover:-translate-y-1">
         {image_url ? (
           <div className="h-36 overflow-hidden">
-            <img
+            <ProductImage
               src={image_url}
+              name={store_name}
+              vertical={vertical}
               alt={store_name}
-              loading="lazy"
-              decoding="async"
               className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
             />
           </div>
         ) : (
-          <div className="h-36 bg-gradient-to-br from-secondary to-accent flex items-center justify-center">
-            <span className="font-display text-4xl font-bold text-primary/50">
-              {store_name.charAt(0)}
-            </span>
+          <div className="h-36 flex items-center justify-center">
+            <ProductImage
+              src={null}
+              name={store_name}
+              vertical={vertical}
+              alt={store_name}
+              className="w-full h-full"
+              iconClassName="h-12 w-12"
+            />
           </div>
         )}
         {logo_url && (

@@ -3,6 +3,7 @@ import { queryMany } from "@/lib/db";
 import { VERTICALS } from "@/lib/config";
 import { getZone } from "@/lib/zone";
 import { Card, CardContent } from "@/components/ui/card";
+import { ProductImage } from "@/components/product-image";
 
 export const dynamic = "force-dynamic";
 
@@ -147,11 +148,11 @@ export default async function BuscarPage({
                       <div className="flex items-center gap-3 p-4">
                         {p.image_url ? (
                           <div className="h-16 w-16 rounded-lg overflow-hidden flex-shrink-0">
-                            <img src={p.image_url} alt={p.name} loading="lazy" decoding="async" className="w-full h-full object-cover" />
+                            <ProductImage src={p.image_url} name={p.name} category={p.category} vertical={p.vendors?.vertical} alt={p.name} className="w-full h-full object-cover" />
                           </div>
                         ) : (
-                          <div className="h-16 w-16 rounded-lg bg-accent flex items-center justify-center flex-shrink-0">
-                            <span className="font-display text-2xl font-bold text-primary/40">{p.name.charAt(0)}</span>
+                          <div className="h-16 w-16 rounded-lg flex items-center justify-center flex-shrink-0 overflow-hidden">
+                            <ProductImage src={null} name={p.name} category={p.category} vertical={p.vendors?.vertical} alt={p.name} className="w-full h-full" iconClassName="h-7 w-7" />
                           </div>
                         )}
                         <div className="min-w-0 flex-1">

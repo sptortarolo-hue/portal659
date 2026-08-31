@@ -40,7 +40,8 @@
     "react-easy-crop": "^6.2.3",
     "recharts": "^3.10.1",
     "tailwind-merge": "^2.6.0",
-    "web-push": "^3.6.7"
+    "web-push": "^3.6.7",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",

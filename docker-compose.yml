@@ -30,6 +30,7 @@ services:
       - VAPID_SUBJECT=${VAPID_SUBJECT}
       - PRINT_BRIDGE_URL=${PRINT_BRIDGE_URL:-http://printbridge:8791}
       - PRINT_BRIDGE_SECRET=${PRINT_BRIDGE_SECRET}
+      - LLM_API_KEY=${LLM_API_KEY}
     volumes:
       - uploads_data:/app/uploads
     expose:

@@ -152,6 +152,7 @@ export default async function HomePage() {
                   storeSlug={o.vendors?.slug || ""}
                   featured
                   imageUrl={o.image_url}
+                  vertical={o.vendors?.vertical || null}
                 />
               </div>
             ))}
@@ -266,6 +267,7 @@ export default async function HomePage() {
                   storeName={o.vendors?.store_name || ""}
                   storeSlug={o.vendors?.slug || ""}
                   imageUrl={o.image_url}
+                  vertical={o.vendors?.vertical || null}
                 />
               </div>
             ))}

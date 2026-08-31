@@ -12,6 +12,7 @@ import { RadioCards } from "@/components/ui/radio-cards";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { OfferForm, OfferList, CategoryManager, LivePreview, apiJson, TransferConfig } from "@/components/dashboard/shared";
+import { MenuImportModal } from "@/components/dashboard/menu-import";
 import type { Vendor, Product, ProductModifier, VendorGallery } from "@/types/database";
 
 type Props = {
@@ -141,6 +142,7 @@ export default function DashboardGastro({
   const [offPreview, setOffPreview] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [showOfferForm, setShowOfferForm] = useState(false);
+  const [showImport, setShowImport] = useState(false);
 
   const [offStock, setOffStock] = useState<number>(0);
   const [offStockControl, setOffStockControl] = useState<boolean>(false);
@@ -1026,16 +1028,26 @@ export default function DashboardGastro({
             <h3 className="font-semibold text-sm">
               Platos ({offers.length})
             </h3>
-            <Button
-              type="button"
-              size="sm"
-              onClick={() => {
-                if (showOfferForm && !editingId) resetOfferForm();
-                else setShowOfferForm(!showOfferForm);
-              }}
-            >
-              {editingId ? "Cancelar" : "+ Plato"}
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setShowImport(true)}
+              >
+                📥 Importar Excel
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => {
+                  if (showOfferForm && !editingId) resetOfferForm();
+                  else setShowOfferForm(!showOfferForm);
+                }}
+              >
+                {editingId ? "Cancelar" : "+ Plato"}
+              </Button>
+            </div>
           </div>
 
           {showOfferForm && (
@@ -1078,6 +1090,17 @@ export default function DashboardGastro({
           />
         </div>
       </CollapsibleSection>
+
+      <MenuImportModal
+        open={showImport}
+        onClose={() => setShowImport(false)}
+        onImported={(sum) => {
+          reload();
+          setMsg(
+            `Menú importado: ${sum.imported} platos nuevos, ${sum.updated} actualizados, ${sum.createdCategories.length} categorías creadas.`
+          );
+        }}
+      />
 
       <CollapsibleSection icon="⚙️" title="Modificadores">
         <div className="space-y-4">

@@ -193,6 +193,7 @@ export function Mesas() {
       setTables((prev) => prev.map((x) => (x.id === selected.id ? { ...x, status: "libre" } : x)));
       setSelected(null);
       setCart([]);
+      await load();
       setMsg(`Mesa cobrada: $${Number(data.total).toLocaleString("es-AR")}`);
     } else setMsg(data.error || "No se pudo cerrar la mesa");
     setTimeout(() => setMsg(""), 3000);

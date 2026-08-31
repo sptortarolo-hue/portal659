@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { UserMenu } from "./user-menu";
 import { NotificationBell } from "./notification-bell";
 import { ZoneSelector } from "./zone-selector";
@@ -8,9 +9,14 @@ import { Logo } from "@/components/brand/logo";
 import { SearchBar } from "./search-bar";
 
 export function Navigation() {
+  const pathname = usePathname();
+  const isBackoffice =
+    pathname?.startsWith("/vendor") || pathname?.startsWith("/admin");
+
   return (
     <nav className="border-b border-border bg-card/80 backdrop-blur-sm sticky top-0 z-50">
-      <div className="container mx-auto px-3 sm:px-4 h-14 sm:h-16 flex items-center gap-2">
+      {/* Desktop: una sola fila (igual que antes) */}
+      <div className="hidden sm:flex container mx-auto px-4 h-16 items-center gap-2">
         <Link href="/" aria-label="Portal 659 — Inicio" className="flex-shrink-0">
           <Logo />
         </Link>
@@ -19,7 +25,30 @@ export function Navigation() {
           <SearchBar />
         </div>
         <NotificationBell />
+        <UserMenu />
+      </div>
+
+      {/* Mobile */}
+      <div className="sm:hidden">
+        {/* Fila 1: logo + espacio + campana + menú */}
+        <div className="container mx-auto px-3 h-14 flex items-center gap-2">
+          <Link href="/" aria-label="Portal 659 — Inicio" className="flex-shrink-0">
+            <Logo />
+          </Link>
+          <div className="flex-1" />
+          <NotificationBell />
           <UserMenu />
+        </div>
+
+        {/* Fila 2: solo en el sitio público (no backoffice) */}
+        {!isBackoffice && (
+          <div className="container mx-auto px-3 pb-2 flex items-center gap-2">
+            <ZoneSelector />
+            <div className="flex-1 min-w-0">
+              <SearchBar />
+            </div>
+          </div>
+        )}
       </div>
     </nav>
   );

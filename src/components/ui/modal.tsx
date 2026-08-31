@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 
 type ModalProps = {
   open: boolean;
@@ -24,7 +25,7 @@ export function Modal({ open, onClose, title, children, footer }: ModalProps) {
 
   if (!open) return null;
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in-up"
       onClick={onClose}
@@ -54,5 +55,5 @@ export function Modal({ open, onClose, title, children, footer }: ModalProps) {
         )}
       </div>
     </div>
-  );
+  , document.body);
 }

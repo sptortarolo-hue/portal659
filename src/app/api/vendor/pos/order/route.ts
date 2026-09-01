@@ -74,7 +74,7 @@ export async function POST(request: Request) {
     [
       gate.vendor.id,
       customerName?.trim() || "Mostrador",
-      isDelivery ? customerPhoneClean : (gate.vendor.whatsapp || ""),
+      isDelivery ? customerPhoneClean : "",
       isDelivery ? (customerAddress?.trim() || null) : null,
       isDelivery ? "delivery" : "pickup",
       payment,

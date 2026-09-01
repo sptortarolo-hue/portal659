@@ -77,7 +77,7 @@ export async function PATCH(
     return NextResponse.json({ error: "Pedido no encontrado" }, { status: 404 });
   }
 
-  const ADVANCE_STATUSES = ["confirmed", "preparing", "ready", "sent", "completed"];
+  const ADVANCE_STATUSES = ["preparing", "ready", "sent", "completed"];
   if (
     status &&
     fullVendor?.block_unpaid_orders &&

@@ -101,20 +101,42 @@ export async function POST(request: Request) {
         const parts = externalRef.split("_");
         const vendorId = parts[1];
 
+        const metadata = payment.metadata || {};
+        const isPickup = metadata.delivery_method === "pickup";
+        const customerPhone = metadata.customer_phone || payment.payer?.phone?.number || "";
+        const customerAddress = metadata.customer_address || null;
+
+        // Número de retiro correlativo por día (solo si es retiro en local).
+        let pickupNumber: number | null = null;
+        if (isPickup) {
+          const todayStart = new Date();
+          todayStart.setHours(0, 0, 0, 0);
+          const lastRow = await queryOne<{ n: number }>(
+            `SELECT COALESCE(MAX(pickup_number), 0)::int AS n
+             FROM orders
+             WHERE vendor_id = $1 AND pickup_number IS NOT NULL AND created_at >= $2`,
+            [vendorId, todayStart.toISOString()]
+          );
+          pickupNumber = (lastRow?.n ?? 0) + 1;
+        }
+
         const items = payment.additional_info?.items || [];
         await query(
-          `INSERT INTO orders (vendor_id, customer_name, customer_phone, customer_address, method, items, total, status)
-           VALUES ($1, $2, $3, NULL, 'delivery', $4, $5, 'new')`,
+          `INSERT INTO orders (vendor_id, customer_name, customer_phone, customer_address, method, items, total, status, pickup_number)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, 'new', $8)`,
           [
             vendorId,
             payment.payer?.first_name || "Cliente MP",
-            payment.payer?.phone?.number || "",
+            customerPhone,
+            customerAddress,
+            isPickup ? "pickup" : "delivery",
             JSON.stringify(items.map((i: any) => ({
               name: i.title,
               price: Number(i.unit_price),
               qty: Number(i.quantity),
             }))),
             payment.transaction_amount,
+            pickupNumber,
           ]
         );
 

@@ -208,7 +208,7 @@ export function Mostrador() {
     setSheetOpen(false);
     setSaving(false);
     setRecent((prev) =>
-      [{ id: data.orderId, total, payment_method: payment, paid_at: new Date().toISOString(), status: "preparing", created_at: new Date().toISOString(), pickup_number: data.order?.pickup_number ?? null }, ...prev].slice(0, 20)
+      [{ id: data.orderId, total: Number(data.order?.total ?? total), payment_method: data.order?.payment_method ?? payment, paid_at: data.order?.paid_at ?? new Date().toISOString(), status: data.order?.status ?? "preparing", created_at: data.order?.created_at ?? new Date().toISOString(), pickup_number: data.order?.pickup_number ?? null }, ...prev].slice(0, 20)
     );
   }
 

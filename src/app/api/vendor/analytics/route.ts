@@ -20,18 +20,14 @@ export async function GET(request: Request) {
 
   const plans = await queryMany<Plan>(`SELECT * FROM plans`);
   const plan = resolveVendorPlan(vendor, plans);
-
-  // Plan gratuito: sin datos, solo la invitación a suscribirse.
-  if (plan.analyticsDays <= 0) {
-    return NextResponse.json({
-      locked: true,
-      plan: { slug: plan.slug, analyticsDays: plan.analyticsDays, eligibleForPaid: plan.eligibleForPaid },
-    });
-  }
+  const analyticsDays = plan.analyticsDays;
 
   const vendorId = vendor.id;
-  const analyticsDays = plan.analyticsDays;
-  const since = new Date(Date.now() - analyticsDays * 24 * 60 * 60 * 1000).toISOString();
+
+  // Siempre traemos pedidos recientes (para el panel "Hoy" y comparativo), y el
+  // histórico completo para los planes pagos.
+  const lookback = Math.max(analyticsDays, 30); // mínimo 30 días para comparativo
+  const since = new Date(Date.now() - lookback * 24 * 60 * 60 * 1000).toISOString();
 
   const [orders, products, reviews] = await Promise.all([
     queryMany<Record<string, any>>(
@@ -48,16 +44,51 @@ export async function GET(request: Request) {
     ),
   ]);
 
-  const activeOrders = orders.filter((o) => ["new", "confirmed", "preparing", "ready", "sent"].includes(o.status));
   const completedOrders = orders.filter((o) => o.status === "completed");
-  const cancelledOrders = orders.filter((o) => o.status === "cancelled");
-
   const totalRevenue = completedOrders.reduce((s, o) => s + Number(o.total), 0);
   const avgOrderValue = completedOrders.length > 0 ? Math.round(totalRevenue / completedOrders.length) : 0;
-
   const avgRating = reviews.length > 0 ? reviews.reduce((s, r) => s + r.rating, 0) / reviews.length : 0;
 
-  // Top productos por unidades vendidas y facturación
+  // Panel "Hoy"
+  const now = new Date();
+  const todayKey = now.toISOString().split("T")[0];
+  const todayOrders = orders.filter((o) => o.created_at.split("T")[0] === todayKey);
+  const todayCompleted = todayOrders.filter((o) => o.status === "completed");
+  const todayRevenue = todayCompleted.reduce((s, o) => s + Number(o.total), 0);
+  const today = {
+    orders: todayOrders.length,
+    revenue: todayRevenue,
+    avgOrderValue: todayCompleted.length > 0 ? Math.round(todayRevenue / todayCompleted.length) : 0,
+  };
+
+  // Comparativo vs semana anterior (solo si hay plan pago)
+  const weekAgoStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const weekAgoEnd = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+  const thisWeek = orders.filter((o) => o.status === "completed" && new Date(o.created_at) >= weekAgoStart);
+  const prevWeek = orders.filter((o) => o.status === "completed" && new Date(o.created_at) >= weekAgoEnd && new Date(o.created_at) < weekAgoStart);
+  const thisWeekRevenue = thisWeek.reduce((s, o) => s + Number(o.total), 0);
+  const prevWeekRevenue = prevWeek.reduce((s, o) => s + Number(o.total), 0);
+  const revenueDelta = prevWeekRevenue > 0 ? Math.round(((thisWeekRevenue - prevWeekRevenue) / prevWeekRevenue) * 100) : null;
+  const ordersDelta = prevWeek.length > 0 ? Math.round(((thisWeek.length - prevWeek.length) / prevWeek.length) * 100) : null;
+
+  // Insight: día pico de la semana (últimos 7 días)
+  const dayCounts: Record<string, number> = {};
+  for (const o of orders) {
+    if (new Date(o.created_at) < weekAgoStart) continue;
+    const dow = new Date(o.created_at).getDay();
+    dayCounts[dow] = (dayCounts[dow] || 0) + 1;
+  }
+  const DAY_NAMES = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
+  let peakDay: string | null = null;
+  let peakCount = 0;
+  for (const [dow, c] of Object.entries(dayCounts)) {
+    if (c > peakCount) {
+      peakCount = c;
+      peakDay = DAY_NAMES[Number(dow)];
+    }
+  }
+
+  // Insight: producto más vendido
   const productSales: Record<string, { name: string; count: number; revenue: number }> = {};
   for (const order of completedOrders) {
     for (const item of order.items || []) {
@@ -67,12 +98,37 @@ export async function GET(request: Request) {
       productSales[key].revenue += item.price * item.qty;
     }
   }
-  const topProducts = Object.values(productSales)
-    .sort((a, b) => b.revenue - a.revenue)
-    .slice(0, 10);
+  const topProduct = Object.values(productSales).sort((a, b) => b.revenue - a.revenue)[0] || null;
 
-  // Pedidos por día (últimos N días)
-  const now = new Date();
+  const insights: string[] = [];
+  if (revenueDelta != null) {
+    insights.push(
+      revenueDelta >= 0
+        ? `Ventas de esta semana ${revenueDelta}% vs la anterior.`
+        : `Ventas de esta semana cayeron ${Math.abs(revenueDelta)}% vs la anterior.`
+    );
+  }
+  if (peakDay && peakCount > 0) insights.push(`${peakDay} es tu día con más pedidos.`);
+  if (topProduct) insights.push(`Tu producto más vendido es ${topProduct.name} (${topProduct.count} un.).`);
+
+  // Solo computar el detalle histórico completo para planes pagos
+  const isPaid = analyticsDays > 0;
+
+  const responseBase: Record<string, any> = {
+    plan: { slug: plan.slug, analyticsDays },
+    today,
+    comparison: { revenueDelta, ordersDelta },
+  };
+
+  if (!isPaid) {
+    // Gratuito: solo el panel "Hoy" (+ insights livianos de ventas).
+    return NextResponse.json({ ...responseBase, insights });
+  }
+
+  const activeOrders = orders.filter((o) => ["new", "preparing", "ready", "sent"].includes(o.status));
+  const cancelledOrders = orders.filter((o) => o.status === "cancelled");
+
+  // Pedidos por día
   const ordersByDay: Record<string, { count: number; revenue: number }> = {};
   for (let i = analyticsDays - 1; i >= 0; i--) {
     const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
@@ -87,69 +143,74 @@ export async function GET(request: Request) {
     }
   }
 
-  // Pedidos por canal (app vs mostrador vs mesa)
   const byChannel: Record<string, number> = {};
   for (const o of orders) {
     const c = o.channel || "app";
     byChannel[c] = (byChannel[c] || 0) + 1;
   }
 
-  // Retiro vs domicilio
   const byMethod: Record<string, number> = {};
   for (const o of completedOrders) {
     const m = o.method || "delivery";
     byMethod[m] = (byMethod[m] || 0) + 1;
   }
 
-  // Pedidos por horario (horas pico) - avanzado
-  const ordersByHour: Record<string, number> = {};
-  for (const o of orders) {
-    const hour = o.created_at.split("T")[1]?.slice(0, 2) || "00";
-    ordersByHour[hour] = (ordersByHour[hour] || 0) + 1;
-  }
-  const topHours = Object.entries(ordersByHour)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5)
-    .map(([hour, count]) => ({ hour, count }));
-
-  // Clientes recurrentes vs nuevos (por customer_id)
-  const customerCounts: Record<string, number> = {};
-  let withCustomer = 0;
-  for (const o of completedOrders) {
-    if (o.customer_id) {
-      withCustomer++;
-      customerCounts[o.customer_id] = (customerCounts[o.customer_id] || 0) + 1;
-    }
-  }
-  const recurringCustomers = Object.values(customerCounts).filter((c) => c > 1).length;
-  const newCustomers = Object.keys(customerCounts).length - recurringCustomers;
-
-  // Ventas por categoría de producto (avanzado)
-  const productCategory: Record<string, string> = {};
-  for (const p of products) productCategory[p.name] = p.category || "Sin categoría";
-  const byCategory: Record<string, { count: number; revenue: number }> = {};
-  for (const order of completedOrders) {
-    for (const item of order.items || []) {
-      const cat = productCategory[item.name] || "Sin categoría";
-      if (!byCategory[cat]) byCategory[cat] = { count: 0, revenue: 0 };
-      byCategory[cat].count += item.qty;
-      byCategory[cat].revenue += item.price * item.qty;
-    }
-  }
+  const topProducts = Object.values(productSales)
+    .sort((a, b) => b.revenue - a.revenue)
+    .slice(0, 10);
 
   const lowStock = products.filter(
     (p) => p.stock_low_threshold != null && p.stock != null && p.stock <= p.stock_low_threshold
   );
 
-  // Panel "hoy"
-  const todayKey = now.toISOString().split("T")[0];
-  const todayOrders = orders.filter((o) => o.created_at.split("T")[0] === todayKey);
-  const todayCompleted = todayOrders.filter((o) => o.status === "completed");
-  const todayRevenue = todayCompleted.reduce((s, o) => s + Number(o.total), 0);
+  // ==== Avanzado: solo Gestión ====
+  const isGest = analyticsDays >= 99999;
+  const advanced: Record<string, any> = {};
+
+  if (isGest) {
+    // Horas pico
+    const ordersByHour: Record<string, number> = {};
+    for (const o of orders) {
+      const hour = o.created_at.split("T")[1]?.slice(0, 2) || "00";
+      ordersByHour[hour] = (ordersByHour[hour] || 0) + 1;
+    }
+    advanced.topHours = Object.entries(ordersByHour)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([hour, count]) => ({ hour, count }));
+
+    // Clientes recurrentes vs nuevos
+    const customerCounts: Record<string, number> = {};
+    let withCustomer = 0;
+    for (const o of completedOrders) {
+      if (o.customer_id) {
+        withCustomer++;
+        customerCounts[o.customer_id] = (customerCounts[o.customer_id] || 0) + 1;
+      }
+    }
+    const recurringCustomers = Object.values(customerCounts).filter((c) => c > 1).length;
+    const newCustomers = Object.keys(customerCounts).length - recurringCustomers;
+    advanced.customers = { new: newCustomers, recurring: recurringCustomers, withAccount: withCustomer };
+
+    // Ventas por categoría
+    const productCategory: Record<string, string> = {};
+    for (const p of products) productCategory[p.name] = p.category || "Sin categoría";
+    const byCategory: Record<string, { count: number; revenue: number }> = {};
+    for (const order of completedOrders) {
+      for (const item of order.items || []) {
+        const cat = productCategory[item.name] || "Sin categoría";
+        if (!byCategory[cat]) byCategory[cat] = { count: 0, revenue: 0 };
+        byCategory[cat].count += item.qty;
+        byCategory[cat].revenue += item.price * item.qty;
+      }
+    }
+    advanced.byCategory = Object.entries(byCategory)
+      .map(([category, data]) => ({ category, ...data }))
+      .sort((a, b) => b.revenue - a.revenue);
+  }
 
   return NextResponse.json({
-    locked: false,
-    plan: { slug: plan.slug, analyticsDays },
+    ...responseBase,
     summary: {
       totalOrders: orders.length,
       activeOrders: activeOrders.length,
@@ -166,11 +227,6 @@ export async function GET(request: Request) {
       totalReviews: reviews.length,
       avgRating: Math.round(avgRating * 10) / 10,
     },
-    today: {
-      orders: todayOrders.length,
-      revenue: todayRevenue,
-      avgOrderValue: todayCompleted.length > 0 ? Math.round(todayRevenue / todayCompleted.length) : 0,
-    },
     topProducts,
     ordersByDay: Object.entries(ordersByDay).map(([date, data]) => ({ date, ...data })),
     recentReviews: reviews.slice(0, 5),
@@ -184,10 +240,7 @@ export async function GET(request: Request) {
     })),
     byChannel,
     byMethod,
-    topHours,
-    customers: { new: newCustomers, recurring: recurringCustomers, withAccount: withCustomer },
-    byCategory: Object.entries(byCategory)
-      .map(([category, data]) => ({ category, ...data }))
-      .sort((a, b) => b.revenue - a.revenue),
+    insights,
+    ...advanced,
   });
 }

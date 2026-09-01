@@ -26,18 +26,15 @@ export function Logo({
   className?: string;
   markClassName?: string;
 }) {
-  // El logo es un PNG panorámico (16:9). En el nav ocupa toda la altura de la
-  // barra (h-full) y el ancho sigue su proporción. En auth (markClassName
-  // con "h-14") se usa una altura fija mayor.
   const isLarge = markClassName?.includes("h-14") ?? false;
 
   return (
     <span className={cn("inline-flex items-center", isLarge ? "h-auto" : "h-full", className)}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
-        src="/logo.png"
+        src="/LogoP659v5.png"
         alt="Portal 659"
-        className={cn("object-contain", isLarge ? "h-12 w-auto" : "h-full w-auto")}
+        className={cn("object-contain", isLarge ? "h-14 w-auto" : "h-full w-auto")}
       />
     </span>
   );

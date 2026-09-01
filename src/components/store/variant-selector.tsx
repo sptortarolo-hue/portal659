@@ -16,6 +16,8 @@ type Props = {
     storeName: string;
     whatsapp: string;
     vertical?: string | null;
+    deliveryFee?: number | null;
+    freeDeliveryMin?: number | null;
   };
   stockControl?: boolean;
 };
@@ -50,7 +52,7 @@ export function VariantSelector({ productId, name, variants, vendor, stockContro
     if (current.talle) mods.push({ group: "Talle", label: current.talle, price_mod: 0 });
     // price_mod 0: el precio ya está definido en el producto según variante.
     const switched = addItem(
-      { id: vendor.id, slug: vendor.slug, storeName: vendor.storeName, whatsapp: vendor.whatsapp, vertical: vendor.vertical },
+      { id: vendor.id, slug: vendor.slug, storeName: vendor.storeName, whatsapp: vendor.whatsapp, vertical: vendor.vertical, deliveryFee: vendor.deliveryFee ?? null, freeDeliveryMin: vendor.freeDeliveryMin ?? null },
       { offerId: productId, name, price: price!, qty: 1, modifiers: mods }
     );
     addToast(`${name} (${current.color} / ${current.talle}) agregado al carrito`);

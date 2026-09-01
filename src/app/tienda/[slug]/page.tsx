@@ -173,6 +173,8 @@ const modifiersByProduct: Record<string, any[]> = {};
     storeName: v.store_name,
     whatsapp: v.whatsapp || "",
     vertical: v.vertical,
+    deliveryFee: v.delivery_fee != null ? Number(v.delivery_fee) : null,
+    freeDeliveryMin: v.free_delivery_min != null ? Number(v.free_delivery_min) : null,
   };
   const waNumber = (v.whatsapp || "").replace(/[^0-9]/g, "");
   const waText = isService

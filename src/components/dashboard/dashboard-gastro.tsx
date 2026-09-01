@@ -11,8 +11,9 @@ import { ChipToggle } from "@/components/ui/chip-toggle";
 import { RadioCards } from "@/components/ui/radio-cards";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { OfferForm, OfferList, CategoryManager, LivePreview, apiJson, TransferConfig } from "@/components/dashboard/shared";
+import { OfferForm, OfferList, CategoryManager, LivePreview, apiJson, TransferConfig, DeliveryFeeConfig } from "@/components/dashboard/shared";
 import { MenuImportModal } from "@/components/dashboard/menu-import";
+import { HoursEditor } from "@/components/dashboard/hours-editor";
 import type { Vendor, Product, ProductModifier, VendorGallery } from "@/types/database";
 
 type Props = {
@@ -359,7 +360,9 @@ export default function DashboardGastro({
     setSaving(true);
     setMsg("");
 
-    let imageUrl = null;
+    let imageUrl = editingId
+      ? (offers.find((o) => o.id === editingId)?.image_url || null)
+      : null;
     if (offFile) {
       const fd = new FormData();
       fd.append("file", offFile);
@@ -600,11 +603,7 @@ export default function DashboardGastro({
           </div>
           <div>
             <Label>Horarios</Label>
-            <Input
-              value={hours}
-              onChange={(e) => setHours(e.target.value)}
-              placeholder="Mar a Dom 12-22h"
-            />
+            <HoursEditor value={hours} onChange={setHours} />
           </div>
         </div>
       </CollapsibleSection>
@@ -718,6 +717,9 @@ export default function DashboardGastro({
               onChange={setPaymentMethods}
             />
           </div>
+          {paymentMethods.includes("Transferencia") && (
+            <TransferConfig vendor={vendor} saveVendor={saveVendor} />
+          )}
           <div>
             <Label className="mb-2 block">Entrega</Label>
             <RadioCards
@@ -726,8 +728,8 @@ export default function DashboardGastro({
               onChange={setDeliveryOptions}
             />
           </div>
-          {paymentMethods.includes("Transferencia") && (
-            <TransferConfig vendor={vendor} saveVendor={saveVendor} />
+          {deliveryOptions !== "retiro" && (
+            <DeliveryFeeConfig vendor={vendor} saveVendor={saveVendor} />
           )}
         </div>
       </CollapsibleSection>

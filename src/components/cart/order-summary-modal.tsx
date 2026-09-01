@@ -16,6 +16,7 @@ type OrderSummaryModalProps = {
   vendorName: string;
   items: SummaryItem[];
   total: number;
+  deliveryFee?: number;
   method: "delivery" | "pickup";
   address?: string;
   paymentMethod?: string;
@@ -29,6 +30,7 @@ export function OrderSummaryModal({
   vendorName,
   items,
   total,
+  deliveryFee = 0,
   method,
   address,
   paymentMethod,
@@ -89,6 +91,12 @@ export function OrderSummaryModal({
           })}
         </div>
 
+        {deliveryFee > 0 && (
+          <div className="border-t border-border pt-3 flex justify-between text-sm text-muted-foreground">
+            <span>Envío</span>
+            <span className="tabular-nums">${deliveryFee.toLocaleString("es-AR")}</span>
+          </div>
+        )}
         <div className="border-t border-border pt-3 flex justify-between font-bold">
           <span>Total</span>
           <span>${total.toLocaleString("es-AR")}</span>

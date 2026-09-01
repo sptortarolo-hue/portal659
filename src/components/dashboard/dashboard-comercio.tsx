@@ -19,7 +19,9 @@ import {
   LivePreview,
   apiJson,
   TransferConfig,
+  DeliveryFeeConfig,
 } from "@/components/dashboard/shared";
+import { HoursEditor } from "@/components/dashboard/hours-editor";
 import type { Vendor, Product, ProductModifier } from "@/types/database";
 
 type Offer = {
@@ -624,11 +626,7 @@ export default function DashboardComercio({
           </div>
           <div>
             <Label>Horarios</Label>
-            <Input
-              value={hours}
-              onChange={(e) => setHours(e.target.value)}
-              placeholder="Mar a Dom 12-22h"
-            />
+            <HoursEditor value={hours} onChange={setHours} />
           </div>
         </div>
       </CollapsibleSection>
@@ -728,6 +726,9 @@ export default function DashboardComercio({
               onChange={setPaymentMethods}
             />
           </div>
+          {paymentMethods.includes("Transferencia") && (
+            <TransferConfig vendor={vendor} saveVendor={saveVendor} />
+          )}
           <div>
             <Label className="mb-2 block">Entrega</Label>
             <RadioCards
@@ -736,8 +737,8 @@ export default function DashboardComercio({
               onChange={setDeliveryOptions}
             />
           </div>
-          {paymentMethods.includes("Transferencia") && (
-            <TransferConfig vendor={vendor} saveVendor={saveVendor} />
+          {deliveryOptions !== "retiro" && (
+            <DeliveryFeeConfig vendor={vendor} saveVendor={saveVendor} />
           )}
         </div>
       </CollapsibleSection>

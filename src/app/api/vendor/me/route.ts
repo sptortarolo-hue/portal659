@@ -56,6 +56,8 @@ export async function POST(request: Request) {
     facebook,
     payment_methods,
     delivery_options,
+    delivery_fee,
+    free_delivery_min,
     services_list,
     service_area,
     free_estimate,
@@ -105,6 +107,8 @@ export async function POST(request: Request) {
   if (facebook !== undefined) payload.facebook = facebook || null;
   if (payment_methods !== undefined) payload.payment_methods = payment_methods || null;
   if (delivery_options !== undefined) payload.delivery_options = delivery_options || "ambos";
+  if (delivery_fee !== undefined) payload.delivery_fee = delivery_fee != null && delivery_fee !== "" ? Number(delivery_fee) : null;
+  if (free_delivery_min !== undefined) payload.free_delivery_min = free_delivery_min != null && free_delivery_min !== "" ? Number(free_delivery_min) : null;
   if (services_list !== undefined) payload.services_list = services_list || null;
   if (service_area !== undefined) payload.service_area = service_area || null;
   if (free_estimate !== undefined) payload.free_estimate = free_estimate !== false;

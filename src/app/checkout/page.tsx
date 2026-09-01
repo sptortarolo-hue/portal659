@@ -30,6 +30,15 @@ export default function CheckoutPage() {
   const [pendingOrder, setPendingOrder] = useState<{ orderId: string; message: string; waNumber: string } | null>(null);
   const [prefillInfo, setPrefillInfo] = useState<{ found: boolean; name?: string | null } | null>(null);
 
+  const deliveryFee =
+  vendor &&
+  method === "delivery" &&
+  vendor.deliveryFee != null &&
+  !(vendor.freeDeliveryMin != null && total >= Number(vendor.freeDeliveryMin))
+    ? Number(vendor.deliveryFee)
+    : 0;
+  const grandTotal = total + deliveryFee;
+
   useEffect(() => {
     fetch("/api/payments").then(r => r.json()).then(d => setMpConfigured(d.configured)).catch(() => {});
     fetch("/api/auth/me").then(r => r.json()).then(d => { if (d.user?.id) setUserId(d.user.id); }).catch(() => {});
@@ -91,7 +100,7 @@ export default function CheckoutPage() {
           price: i.price + (i.modifiers || []).reduce((s, m) => s + m.price_mod, 0),
           qty: i.qty,
         })),
-        total,
+        total: grandTotal,
         customerName: name,
         customerPhone: cleanPhone,
         customerAddress: method === "delivery" ? address : null,
@@ -144,7 +153,7 @@ export default function CheckoutPage() {
             qty: i.qty,
             modifiers: (i.modifiers || []).map((m) => m.label),
           })),
-          total,
+          total: grandTotal,
           notes: notes.trim() || null,
         }),
       });
@@ -165,7 +174,7 @@ export default function CheckoutPage() {
           qty: i.qty,
           modifiers: (i.modifiers || []).map((m) => m.label),
         })),
-        total,
+        total: grandTotal,
         customerName: name,
         customerPhone: cleanPhone,
         method,
@@ -227,7 +236,7 @@ export default function CheckoutPage() {
       </h1>
       <p className="text-muted-foreground text-sm mb-6">
         Con <span className="font-medium">{v.storeName}</span> · {items.length} items ·{" "}
-        <span className="font-bold text-foreground">${total.toLocaleString("es-AR")}</span>
+        <span className="font-bold text-foreground">${grandTotal.toLocaleString("es-AR")}</span>
       </p>
 
       {/* Order summary */}
@@ -254,9 +263,21 @@ export default function CheckoutPage() {
             </div>
           );
         })}
-        <div className="border-t border-border pt-3 mt-2 flex justify-between font-bold text-lg">
-          <span>Total</span>
-          <span>${total.toLocaleString("es-AR")}</span>
+        <div className="border-t border-border pt-3 mt-2 space-y-1">
+          <div className="flex justify-between text-sm text-muted-foreground">
+            <span>Subtotal</span>
+            <span>${total.toLocaleString("es-AR")}</span>
+          </div>
+          {deliveryFee > 0 && (
+            <div className="flex justify-between text-sm text-muted-foreground">
+              <span>Envío</span>
+              <span>${deliveryFee.toLocaleString("es-AR")}</span>
+            </div>
+          )}
+          <div className="flex justify-between font-bold text-lg">
+            <span>Total</span>
+            <span>${grandTotal.toLocaleString("es-AR")}</span>
+          </div>
         </div>
       </div>
 
@@ -443,7 +464,8 @@ export default function CheckoutPage() {
           qty: i.qty,
           modifiers: (i.modifiers || []).map((m) => m.label),
         }))}
-        total={total}
+        total={grandTotal}
+        deliveryFee={deliveryFee}
         method={method}
         address={method === "delivery" ? address : undefined}
         paymentMethod={paymentMethod}

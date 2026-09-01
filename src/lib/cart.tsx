@@ -29,6 +29,8 @@ export type CartVendor = {
   storeName: string;
   whatsapp: string;
   vertical?: string | null;
+  deliveryFee?: number | null;
+  freeDeliveryMin?: number | null;
 };
 
 type CartState = {
@@ -69,6 +71,8 @@ function loadCart(): CartState {
               storeName: parsed.vendor.storeName || "",
               whatsapp: parsed.vendor.whatsapp || "",
               vertical: parsed.vendor.vertical || null,
+              deliveryFee: parsed.vendor.deliveryFee ?? null,
+              freeDeliveryMin: parsed.vendor.freeDeliveryMin ?? null,
             }
           : null,
         items: parsed.items,

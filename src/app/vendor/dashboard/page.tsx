@@ -470,7 +470,7 @@ function VendorDashboardInner() {
           <p className="text-xs text-muted-foreground mt-1">Los pedidos apareceran cuando un cliente compre</p>
         </div>
       ) : (
-        <div className="space-y-2.5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
           {filteredOrders.map((order) => {
             const stepOrder = ["new", "preparing", "ready", "sent", "completed"] as const;
             const statusIdx = stepOrder.indexOf(order.status as any);
@@ -668,7 +668,7 @@ function VendorDashboardInner() {
         </div>
       )}
 
-      <div className="container mx-auto px-4 mt-4 max-w-2xl">
+      <div className={`container mx-auto px-4 mt-4 ${["orders", "comanda", "pos", "mesas", "analytics"].includes(tab) ? "max-w-7xl" : "max-w-2xl"}`}>
         {isService ? (
           <div className="space-y-4">{configContent}</div>
         ) : (
@@ -742,14 +742,7 @@ function VendorDashboardInner() {
               )}
             </div>
             <div className={tab === "analytics" ? "" : "hidden"}>
-              {effectivePlan.analyticsDays > 0 ? (
-                <VendorAnalytics />
-              ) : (
-                <PlanLock
-                  title="Estadísticas"
-                  description="Ventas por día, productos más pedidos y más. Disponible en los planes de pago."
-                />
-              )}
+              <VendorAnalytics />
             </div>
             <div className={tab === "reviews" ? "" : "hidden"}>
               {effectivePlan.can("reviews_manage") ? (

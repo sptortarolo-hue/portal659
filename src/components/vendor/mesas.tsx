@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { ModifierPicker } from "@/components/offers/modifier-picker";
 
 type Table = {
   id: string;
@@ -10,6 +11,19 @@ type Table = {
   capacity: number;
   status: "libre" | "ocupada" | "reservada";
 };
+
+type ModifierOption = { label: string; price_mod: number };
+type ProductModifier = {
+  id: string;
+  product_id: string;
+  group_name: string;
+  options: ModifierOption[];
+  required: boolean;
+  max_selections: number;
+  position: number;
+  created_at: string;
+};
+type CartModifier = { group: string; label: string; price_mod: number };
 
 type Product = {
   id: string;
@@ -19,6 +33,7 @@ type Product = {
   available: boolean;
   image_url?: string | null;
   category?: string | null;
+  modifiers?: ProductModifier[];
 };
 
 type Order = {
@@ -50,7 +65,9 @@ export function Mesas() {
   const [renaming, setRenaming] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [selected, setSelected] = useState<Table | null>(null);
-  const [cart, setCart] = useState<{ product_id: string; name: string; price: number; qty: number }[]>([]);
+  const [cart, setCart] = useState<{ product_id: string; name: string; price: number; qty: number; modifiers?: CartModifier[] }[]>([]);
+  const [modifiersMap, setModifiersMap] = useState<Record<string, ProductModifier[]>>({});
+  const [pickerProduct, setPickerProduct] = useState<Product | null>(null);
   const [payment, setPayment] = useState("efectivo");
 
   const load = useCallback(async () => {
@@ -65,7 +82,13 @@ export function Mesas() {
       const p = await pRes.json();
       if (t.tables) setTables(t.tables);
       if (o.orders) setOrders(o.orders);
-      if (p.offers) setProducts((p.offers || []).filter((x: any) => x.available !== false));
+      if (p.offers) {
+        const modsMap = p.modifiersByProduct || {};
+        setModifiersMap(modsMap);
+        setProducts((p.offers || [])
+          .filter((x: any) => x.available !== false)
+          .map((x: any) => ({ ...x, modifiers: modsMap[x.id] || [] })));
+      }
     } catch { /* noop */ } finally {
       setLoading(false);
     }
@@ -150,11 +173,26 @@ export function Mesas() {
   }
 
   function addProduct(p: Product) {
+    const mods = modifiersMap[p.id] || [];
+    if (mods.length > 0) {
+      setPickerProduct(p);
+      return;
+    }
+    addLine(p, Number(p.promo_price ?? p.price), []);
+  }
+
+  function addLine(p: Product, unitPrice: number, modifiers?: CartModifier[]) {
     setCart((prev) => {
-      const found = prev.find((i) => i.product_id === p.id);
-      if (found) return prev.map((i) => (i.product_id === p.id ? { ...i, qty: i.qty + 1 } : i));
-      return [{ product_id: p.id, name: p.name, price: p.promo_price != null ? Number(p.promo_price) : Number(p.price), qty: 1 }, ...prev];
+      const key = `${p.id}|${(modifiers || []).map((m) => m.label).sort().join(",")}`;
+      const found = prev.find((i) => `${i.product_id}|${(i.modifiers || []).map((m) => m.label).sort().join(",")}` === key);
+      if (found) return prev.map((i) => (i.product_id === found.product_id ? { ...i, qty: i.qty + 1 } : i));
+      return [{ product_id: p.id, name: p.name, price: unitPrice, qty: 1, modifiers }, ...prev];
     });
+  }
+
+  function handleModConfirm(selected: CartModifier[], finalPrice: number) {
+    if (pickerProduct) addLine(pickerProduct, finalPrice, selected);
+    setPickerProduct(null);
   }
 
   async function addConsumicion() {
@@ -164,7 +202,7 @@ export function Mesas() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         tableId: selected.id,
-        items: cart,
+        items: cart.map((i) => ({ ...i, modifiers: (i.modifiers || []).map((m) => m.label) })),
         total: cart.reduce((s, i) => s + i.price * i.qty, 0),
         paymentMethod: payment,
       }),
@@ -323,8 +361,8 @@ export function Mesas() {
             </div>
           )}
 
-          <div className="mt-3 pt-3 border-t border-border grid sm:grid-cols-[1fr_auto] gap-3">
-            <div>
+          <div className="mt-3 pt-3 border-t border-border grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_auto] gap-3">
+            <div className="min-w-0">
               <input
                 type="text"
                 value={query}
@@ -376,6 +414,9 @@ export function Mesas() {
                       <p className="text-[11px] font-semibold text-primary tabular-nums">
                         ${Number(p.promo_price ?? p.price).toLocaleString("es-AR")}
                       </p>
+                      {(modifiersMap[p.id] || []).length > 0 && (
+                        <span className="inline-block text-[9px] font-medium text-primary/70">+ opciones</span>
+                      )}
                     </div>
                   </button>
                 ))}
@@ -394,7 +435,7 @@ export function Mesas() {
                 </div>
               )}
             </div>
-            <div className="flex flex-col justify-between gap-2 min-w-40">
+            <div className="flex flex-col justify-between gap-2 sm:min-w-40">
               <div className="flex flex-wrap gap-1">
                 {PAYMENT_OPTIONS.map((o) => (
                   <button
@@ -417,6 +458,16 @@ export function Mesas() {
             </div>
           </div>
         </div>
+      )}
+
+      {pickerProduct && (
+        <ModifierPicker
+          modifiers={modifiersMap[pickerProduct.id] || []}
+          productName={pickerProduct.name}
+          basePrice={Number(pickerProduct.promo_price ?? pickerProduct.price)}
+          onConfirm={handleModConfirm}
+          onCancel={() => setPickerProduct(null)}
+        />
       )}
     </div>
   );

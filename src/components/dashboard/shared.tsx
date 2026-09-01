@@ -383,3 +383,50 @@ export function TransferConfig({
     </div>
   );
 }
+
+export function DeliveryFeeConfig({
+  vendor,
+  saveVendor,
+}: {
+  vendor: any;
+  saveVendor: (data: Record<string, unknown>) => Promise<void>;
+}) {
+  const [fee, setFee] = useState<string>(vendor?.delivery_fee != null ? String(vendor.delivery_fee) : "");
+  const [freeMin, setFreeMin] = useState<string>(vendor?.free_delivery_min != null ? String(vendor.free_delivery_min) : "");
+
+  return (
+    <div className="space-y-3 rounded-xl border border-border p-3">
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <Label>Costo de envío ($)</Label>
+          <Input
+            className="mt-1"
+            type="number"
+            inputMode="decimal"
+            min="0"
+            placeholder="0"
+            value={fee}
+            onChange={(e) => setFee(e.target.value)}
+            onBlur={() => saveVendor({ delivery_fee: fee === "" ? null : Number(fee) })}
+          />
+        </div>
+        <div>
+          <Label>Envío gratis desde ($)</Label>
+          <Input
+            className="mt-1"
+            type="number"
+            inputMode="decimal"
+            min="0"
+            placeholder="—"
+            value={freeMin}
+            onChange={(e) => setFreeMin(e.target.value)}
+            onBlur={() => saveVendor({ free_delivery_min: freeMin === "" ? null : Number(freeMin) })}
+          />
+        </div>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Si el pedido a domicilio supera el monto de &quot;Envío gratis desde&quot;, no se cobra el costo de envío.
+      </p>
+    </div>
+  );
+}

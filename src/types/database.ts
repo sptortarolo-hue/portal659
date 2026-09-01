@@ -158,6 +158,8 @@ export type Vendor = {
   facebook: string | null;
   payment_methods: string | null;
   delivery_options: string | null;
+  delivery_fee?: number | null;
+  free_delivery_min?: number | null;
   services_list: string | null;
   service_area: string | null;
   free_estimate: boolean | null;

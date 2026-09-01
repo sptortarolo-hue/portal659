@@ -14,7 +14,24 @@ export async function GET(request: Request) {
     `SELECT * FROM products WHERE vendor_id = $1 ORDER BY created_at DESC`,
     [vendor.id]
   );
-  return NextResponse.json({ offers });
+
+  const productIds = offers?.map((o) => o.id as string) || [];
+  const allModifiers =
+    productIds.length > 0
+      ? await queryMany<Record<string, unknown>>(
+          `SELECT * FROM product_modifiers WHERE product_id = ANY($1) ORDER BY position ASC`,
+          [productIds]
+        )
+      : [];
+
+  const modifiersByProduct: Record<string, Record<string, unknown>[]> = {};
+  for (const mod of allModifiers) {
+    const pid = mod.product_id as string;
+    if (!modifiersByProduct[pid]) modifiersByProduct[pid] = [];
+    modifiersByProduct[pid].push(mod);
+  }
+
+  return NextResponse.json({ offers, modifiersByProduct });
 }
 
 export async function POST(request: Request) {

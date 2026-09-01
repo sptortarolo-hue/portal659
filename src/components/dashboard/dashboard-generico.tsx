@@ -8,7 +8,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import { ChipToggle } from "@/components/ui/chip-toggle";
 import { RadioCards } from "@/components/ui/radio-cards";
-import { OfferForm, OfferList, CategoryManager, LivePreview, apiJson, TransferConfig } from "./shared";
+import { OfferForm, OfferList, CategoryManager, LivePreview, apiJson, TransferConfig, DeliveryFeeConfig } from "./shared";
+import { HoursEditor } from "@/components/dashboard/hours-editor";
 import type { Vendor, Product } from "@/types/database";
 
 const PAYMENT_OPTIONS = [
@@ -123,7 +124,7 @@ export default function DashboardGenerico({
   async function handleNewOffer(e?: React.FormEvent) {
     e?.preventDefault();
     setSaving(true);
-    let imageUrl = null;
+    let imageUrl = editingId && !offFile ? (offPreview && offPreview.startsWith("/") ? offPreview : null) : null;
     if (offFile) { imageUrl = await uploadImage(offFile, "offers"); }
     const payload = { name: offName, description: offDesc, price: Number(offPrice), category: offCategory, image_url: imageUrl };
     if (editingId) {
@@ -180,7 +181,7 @@ export default function DashboardGenerico({
       <CollapsibleSection icon="📍" title="Ubicación y horarios">
         <div className="space-y-3">
           <div><Label>Dirección</Label><Input value={address} onChange={(e) => setAddress(e.target.value)} /></div>
-          <div><Label>Horarios</Label><Input value={hours} onChange={(e) => setHours(e.target.value)} /></div>
+          <div><Label>Horarios</Label><HoursEditor value={hours} onChange={setHours} /></div>
         </div>
       </CollapsibleSection>
 
@@ -212,9 +213,12 @@ export default function DashboardGenerico({
       <CollapsibleSection icon="💳" title="Pago y entrega">
         <div className="space-y-4">
           <div><Label className="mb-2 block">Medios de pago</Label><ChipToggle options={PAYMENT_OPTIONS} value={paymentMethods} onChange={setPaymentMethods} /></div>
-          <div><Label className="mb-2 block">Entrega</Label><RadioCards options={DELIVERY_OPTIONS} value={deliveryOptions} onChange={setDeliveryOptions} /></div>
           {paymentMethods.includes("Transferencia") && (
             <TransferConfig vendor={vendor} saveVendor={saveVendor} />
+          )}
+          <div><Label className="mb-2 block">Entrega</Label><RadioCards options={DELIVERY_OPTIONS} value={deliveryOptions} onChange={setDeliveryOptions} /></div>
+          {deliveryOptions !== "retiro" && (
+            <DeliveryFeeConfig vendor={vendor} saveVendor={saveVendor} />
           )}
         </div>
       </CollapsibleSection>

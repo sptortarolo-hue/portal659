@@ -52,7 +52,7 @@ export async function GET(request: Request) {
       [profile.id]
     );
 
-    return NextResponse.redirect(`${origin}/login?verified=1`);
+    return NextResponse.redirect(`${origin}/verificado`);
   }
 
   return NextResponse.redirect(`${origin}/login?error=invalid_type`);

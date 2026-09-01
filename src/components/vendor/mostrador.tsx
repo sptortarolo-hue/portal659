@@ -3,6 +3,20 @@
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { ModifierPicker } from "@/components/offers/modifier-picker";
+
+type ModifierOption = { label: string; price_mod: number };
+type ProductModifier = {
+  id: string;
+  product_id: string;
+  group_name: string;
+  options: ModifierOption[];
+  required: boolean;
+  max_selections: number;
+  position: number;
+  created_at: string;
+};
+type CartModifier = { group: string; label: string; price_mod: number };
 
 type Product = {
   id: string;
@@ -12,6 +26,7 @@ type Product = {
   available: boolean;
   image_url?: string | null;
   category?: string | null;
+  modifiers?: ProductModifier[];
 };
 
 type LineItem = {
@@ -19,6 +34,7 @@ type LineItem = {
   name: string;
   price: number;
   qty: number;
+  modifiers?: CartModifier[];
 };
 
 type MostradorOrder = {
@@ -54,6 +70,8 @@ export function Mostrador() {
   const [query, setQuery] = useState("");
   const [activeCat, setActiveCat] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [modifiersMap, setModifiersMap] = useState<Record<string, ProductModifier[]>>({});
+  const [pickerProduct, setPickerProduct] = useState<Product | null>(null);
 
   const total = useMemo(() => items.reduce((s, i) => s + i.price * i.qty, 0), [items]);
 
@@ -73,7 +91,12 @@ export function Mostrador() {
         const off = await offRes.json();
         const ord = await ordRes.json();
         const today = new Date().toDateString();
-        setProducts((off.offers || []).filter((o: any) => o.available !== false));
+        const modsMap = off.modifiersByProduct || {};
+        setModifiersMap(modsMap);
+        setProducts((off.offers || [])
+          .filter((o: any) => o.available !== false)
+          .map((o: any) => ({ ...o, modifiers: modsMap[o.id] || [] }))
+        );
         setRecent(
           (ord.orders || [])
             .filter((o: any) => o.channel === "mostrador")
@@ -96,11 +119,26 @@ export function Mostrador() {
   }, [products, query, activeCat]);
 
   function add(p: Product) {
+    const mods = modifiersMap[p.id] || [];
+    if (mods.length > 0) {
+      setPickerProduct(p);
+      return;
+    }
+    addLine(p, 1, Number(p.promo_price ?? p.price), []);
+  }
+
+  function addLine(p: Product, qty: number, unitPrice: number, modifiers?: CartModifier[]) {
     setItems((prev) => {
-      const found = prev.find((i) => i.product_id === p.id);
-      if (found) return prev.map((i) => (i.product_id === p.id ? { ...i, qty: i.qty + 1 } : i));
-      return [...prev, { product_id: p.id, name: p.name, price: p.promo_price != null ? Number(p.promo_price) : Number(p.price), qty: 1 }];
+      const key = `${p.id}|${(modifiers || []).map((m) => m.label).sort().join(",")}`;
+      const found = prev.find((i) => `${i.product_id}|${(i.modifiers || []).map((m) => m.label).sort().join(",")}` === key);
+      if (found) return prev.map((i) => (i.product_id === found.product_id ? { ...i, qty: i.qty + qty } : i));
+      return [...prev, { product_id: p.id, name: p.name, price: unitPrice, qty, modifiers }];
     });
+  }
+
+  function handleModConfirm(selected: CartModifier[], finalPrice: number) {
+    if (pickerProduct) addLine(pickerProduct, 1, finalPrice, selected);
+    setPickerProduct(null);
   }
 
   function changeQty(id: string, delta: number) {
@@ -126,7 +164,7 @@ export function Mostrador() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        items,
+        items: items.map((i) => ({ ...i, modifiers: (i.modifiers || []).map((m) => m.label) })),
         total,
         paymentMethod: payment,
         customerName: customerName || "Mostrador",
@@ -208,7 +246,7 @@ export function Mostrador() {
           ))}
         </div>
       )}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-[50vh] overflow-y-auto pr-1">
+      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-2 max-h-[50vh] overflow-y-auto pr-1">
         {filtered.map((p) => (
           <button
             key={p.id}
@@ -249,6 +287,9 @@ export function Mostrador() {
                   </span>
                 )}
               </div>
+              {(modifiersMap[p.id] || []).length > 0 && (
+                <span className="inline-block mt-0.5 text-[9px] font-medium text-primary/70">+ opciones</span>
+              )}
             </div>
           </button>
         ))}
@@ -262,8 +303,15 @@ export function Mostrador() {
       <div className="flex-1 space-y-1.5 min-h-0 overflow-y-auto">
         {items.length === 0 && <p className="text-xs text-muted-foreground text-center py-6">Tocá productos para armar el pedido</p>}
         {items.map((i) => (
-          <div key={i.product_id} className="flex items-center gap-2 text-sm">
-            <span className="flex-1 truncate">{i.name}</span>
+          <div key={`${i.product_id}|${(i.modifiers || []).map((m) => m.label).join(",")}`} className="flex items-center gap-2 text-sm">
+            <span className="flex-1 truncate">
+              {i.name}
+              {(i.modifiers || []).length > 0 && (
+                <span className="block text-[10px] text-muted-foreground truncate">
+                  {(i.modifiers || []).map((m) => m.label).join(", ")}
+                </span>
+              )}
+            </span>
             <div className="flex items-center gap-1">
               <button onClick={() => changeQty(i.product_id, -1)} className="h-6 w-6 rounded-md bg-muted hover:bg-accent">−</button>
               <span className="w-5 text-center tabular-nums">{i.qty}</span>
@@ -355,8 +403,8 @@ export function Mostrador() {
     <div className="space-y-4">
       {msg && <p className="text-sm text-green-600 bg-green-50 rounded-lg px-3 py-2">{msg}</p>}
 
-      <div className="grid sm:grid-cols-[1fr_340px] gap-4">
-        <div>{productsGrid}</div>
+      <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_340px] gap-4">
+        <div className="min-w-0">{productsGrid}</div>
 
         {/* Desktop sidebar */}
         <div className="hidden sm:flex rounded-2xl border border-border bg-card p-4 flex-col max-h-[70vh]">
@@ -413,6 +461,16 @@ export function Mostrador() {
             ))}
           </div>
         </div>
+      )}
+
+      {pickerProduct && (
+        <ModifierPicker
+          modifiers={modifiersMap[pickerProduct.id] || []}
+          productName={pickerProduct.name}
+          basePrice={Number(pickerProduct.promo_price ?? pickerProduct.price)}
+          onConfirm={handleModConfirm}
+          onCancel={() => setPickerProduct(null)}
+        />
       )}
     </div>
   );

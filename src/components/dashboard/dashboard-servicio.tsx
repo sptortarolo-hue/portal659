@@ -2,6 +2,7 @@
 
 import { useState, useRef } from "react";
 import { LivePreview } from "@/components/dashboard/shared";
+import { HoursEditor } from "@/components/dashboard/hours-editor";
 import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
@@ -250,7 +251,7 @@ export default function DashboardServicio({
           </div>
           <div>
             <Label>Horarios</Label>
-            <Input value={hours} onChange={(e) => setHours(e.target.value)} placeholder="Mar a Vie 8-18h" />
+            <HoursEditor value={hours} onChange={setHours} />
           </div>
           <Button onClick={handleSaveAll} className="w-full" disabled={uploading}>
             {uploading ? "Guardando..." : "Guardar cambios"}

@@ -17,6 +17,8 @@ type AddToCartButtonProps = {
     storeName: string;
     whatsapp: string;
     vertical?: string | null;
+    deliveryFee?: number | null;
+    freeDeliveryMin?: number | null;
   };
   modifiers?: ProductModifier[];
 };

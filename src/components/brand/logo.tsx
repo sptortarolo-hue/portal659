@@ -34,7 +34,7 @@ export function Logo({
       <img
         src="/LogoP659v5.png"
         alt="Portal 659"
-        className={cn("object-contain mix-blend-multiply dark:mix-blend-screen", isLarge ? "h-14 w-auto" : "h-full w-auto")}
+        className={cn("object-contain", isLarge ? "h-14 w-auto" : "h-full w-auto")}
       />
     </span>
   );

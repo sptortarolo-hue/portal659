@@ -17,7 +17,7 @@ export function Navigation() {
     <nav className="border-b border-border bg-card/80 backdrop-blur-sm sticky top-0 z-50">
       {/* Desktop: una sola fila (igual que antes) */}
       <div className="hidden sm:flex container mx-auto px-4 h-16 items-center gap-2">
-        <Link href="/" aria-label="Portal 659 — Inicio" className="flex-shrink-0">
+        <Link href="/" aria-label="Portal 659 — Inicio" className="flex-shrink-0 h-full flex items-center">
           <Logo />
         </Link>
         <ZoneSelector />
@@ -32,7 +32,7 @@ export function Navigation() {
       <div className="sm:hidden">
         {/* Fila 1: logo + espacio + campana + menú */}
         <div className="container mx-auto px-3 h-14 flex items-center gap-2">
-          <Link href="/" aria-label="Portal 659 — Inicio" className="flex-shrink-0">
+          <Link href="/" aria-label="Portal 659 — Inicio" className="flex-shrink-0 h-full flex items-center">
             <Logo />
           </Link>
           <div className="flex-1" />

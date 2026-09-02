@@ -35,6 +35,27 @@ function errorMsg(e: unknown): string {
   return e instanceof Error ? e.message : "Error desconocido";
 }
 
+const AR_TZ = "America/Argentina/Buenos_Aires";
+
+function formatArgDate(d: Date): string {
+  return d.toLocaleDateString("es-AR", {
+    timeZone: AR_TZ,
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+}
+
+function formatArgTime(d: Date): string {
+  return d.toLocaleTimeString("es-AR", {
+    timeZone: AR_TZ,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    hourCycle: "h23",
+  });
+}
+
 function padRight(str: string, len: number): string {
   if (str.length >= len) return str.slice(0, len);
   return str + " ".repeat(len - str.length);
@@ -94,12 +115,22 @@ function separatorFor(width: number): string {
   return width >= 48 ? "========================================" : "================================";
 }
 
+function composeFooter(printer: any, width: number): void {
+  const separator = separatorFor(width);
+  printer.alignCenter();
+  printer.println(separator);
+  printer.println("www.portal659.com.ar");
+  printer.println("El centro comercial de tu barrio");
+  printer.println("");
+  printer.println(separator);
+}
+
 function composeComanda(printer: any, vendor: PrinterVendor, order: Order): void {
   const width = vendor.paper_size === "58mm" ? 32 : 48;
 
   const now = new Date();
-  const dateStr = now.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" });
-  const timeStr = now.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
+  const dateStr = formatArgDate(now);
+  const timeStr = formatArgTime(now);
 
   printer.alignCenter();
   printer.bold(true);
@@ -124,11 +155,11 @@ function composeComanda(printer: any, vendor: PrinterVendor, order: Order): void
   printer.println(`${dateStr} ${timeStr}`);
   printer.println("----------------------------------------");
 
-  const methodStr = order.method === "delivery" ? "🛵 Delivery" : "🏪 Retiro en local";
+  const methodStr = order.method === "delivery" ? "Delivery" : "Retiro en local";
   const paymentStr =
-    order.payment_method === "efectivo" ? "💵 Efectivo" :
-    order.payment_method === "transferencia" ? "🏦 Transferencia" :
-    "📱 Coordinar";
+    order.payment_method === "efectivo" ? "Efectivo" :
+    order.payment_method === "transferencia" ? "Transferencia" :
+    "Coordinar";
   printer.println(`${methodStr}  |  ${paymentStr}`);
   printer.println("----------------------------------------");
 
@@ -168,8 +199,7 @@ function composeComanda(printer: any, vendor: PrinterVendor, order: Order): void
   }
 
   printer.println("");
-  printer.alignCenter();
-  printer.println(separator);
+  composeFooter(printer, width);
   printer.cut();
 }
 
@@ -183,8 +213,8 @@ function composeReceipt(
   const separator = separatorFor(width);
 
   const now = new Date();
-  const dateStr = now.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" });
-  const timeStr = now.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
+  const dateStr = formatArgDate(now);
+  const timeStr = formatArgTime(now);
 
   printer.alignCenter();
   printer.bold(true);
@@ -237,13 +267,13 @@ function composeReceipt(
   }
 
   printer.println("");
-  printer.alignCenter();
-  printer.println(separator);
+  composeFooter(printer, width);
   printer.cut();
 }
 
 function composeRetiroReceipt(printer: any, vendor: PrinterVendor, order: Order): void {
   const width = vendor.paper_size === "58mm" ? 32 : 48;
+  const separator = separatorFor(width);
 
   printer.alignCenter();
   printer.bold(true);
@@ -254,19 +284,17 @@ function composeRetiroReceipt(printer: any, vendor: PrinterVendor, order: Order)
   printer.bold(true);
   printer.setTextSize(2, 2);
   printer.println(`Nro. ${order.pickup_number ?? "--"}`);
-  printer.setTextSize(1, 1);
+  printer.setTextSize(0, 0);
   printer.bold(false);
-  printer.println(separatorFor(width));
+  printer.println(separator);
 
   printer.println("Retira tu pedido en el mostrador");
-  printer.println("con tu numero de retiro.");
-  printer.println("");
-
-  printer.println(separatorFor(width));
+  printer.println("con tu numero.");
+  printer.println(separator);
   printer.println("www.portal659.com.ar");
   printer.println("El centro comercial de tu barrio");
-  printer.println("");
-  printer.println(separatorFor(width));
+  printer.println(separator);
+
   printer.cut();
 }
 
@@ -290,8 +318,7 @@ function composeTest(printer: any, vendor: PrinterVendor): void {
   printer.println(`Ancho: ${vendor.paper_size || "80mm"}`);
   printer.println("Relay: Portal Print disponible");
   printer.println("");
-  printer.alignCenter();
-  printer.println(separatorFor(width));
+  composeFooter(printer, width);
   printer.cut();
 }
 

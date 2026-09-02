@@ -15,3 +15,6 @@ portal659-twa/build/
 portal659-twa/*.apk
 portal659-twa/*.aab
 portal659-twa/*.idsig
+
+# Portal Print (app Capacitor) — proyecto nativo gradle generado (+ keystore.properties con secretos)
+android/android/

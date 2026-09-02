@@ -849,13 +849,24 @@ export default function DashboardGastro({
                 <summary className="cursor-pointer font-medium">
                   📱 Configurar la app Portal Print
                 </summary>
+
+                <a
+                  href="/downloads/portal-print.apk"
+                  download="portal-print.apk"
+                  className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-primary text-primary-foreground px-4 py-2.5 text-sm font-semibold hover:bg-primary/90 active:scale-[0.98] transition-all"
+                >
+                  📥 Descargar la app (Android)
+                </a>
+                <p className="text-[10px] text-muted-foreground/70 mt-1.5">
+                  Habilitá {`"Instalar apps desconocidas"`} cuando lo pida el navegador.
+                </p>
+
                 <ol className="mt-2 space-y-1 list-decimal pl-4 text-muted-foreground">
                   <li>
                     Conectá el celular al <strong>mismo Wi-Fi</strong> que la impresora.
                   </li>
                   <li>
-                    Compilá e instalá la app <code className="bg-muted px-1 rounded">android/</code>{" "}
-                    (cantidad de pasos en su README).
+                    Descargá e instalá la app tocando el botón de arriba.
                   </li>
                   <li>
                     En la app pegá el <strong>token</strong> de abajo, guardá y conectá.

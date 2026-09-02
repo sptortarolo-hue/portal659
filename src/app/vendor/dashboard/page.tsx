@@ -8,7 +8,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ImageCropModal } from "@/components/ui/image-crop-modal";
 import { DEFAULT_ZONE } from "@/lib/config";
-import { buildClientWhatsAppUrl, ORDER_STATUS_COLORS, orderCondition, orderReadyLabel, CONDITION_META } from "@/lib/order-utils";
+import { buildClientWhatsAppUrl, ORDER_STATUS_COLORS, orderCondition, orderReadyLabel, orderNeedsKitchen, CONDITION_META } from "@/lib/order-utils";
 import OrderDetailModal from "@/components/dashboard/order-detail-modal";
 import DashboardGastro from "@/components/dashboard/dashboard-gastro";
 import DashboardComercio from "@/components/dashboard/dashboard-comercio";
@@ -240,7 +240,7 @@ function VendorDashboardInner() {
       }
       setMsg(`Pedido #${order.id.slice(0, 8)} → ${STATUS_LABELS[status]}`);
       loadOrdersOnly();
-      if (status === "preparing" && effectivePlan.can("printer")) {
+      if (status === "preparing" && effectivePlan.can("printer") && orderNeedsKitchen(order)) {
         fetch("/api/print", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -562,7 +562,7 @@ function VendorDashboardInner() {
                     {new Date(order.created_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}
                   </span>
                   <div className="flex items-center gap-2">
-                    {order.customer_phone && (() => {
+                    {order.customer_phone && order.channel !== "mostrador" && order.channel !== "mesa" && (() => {
                       const digits = order.customer_phone.replace(/\D/g, "");
                       if (!digits) return null;
                       return (
@@ -766,7 +766,7 @@ function VendorDashboardInner() {
             </button>
             <button onClick={() => setTab("comanda")} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors relative ${tab === "comanda" ? "text-primary" : "text-muted-foreground"}`}>
               <span className="text-lg">🍳</span>Comanda
-              {orders.filter((o) => o.status === "new").length > 0 && <span className="absolute top-1 right-1/3 -translate-x-4 bg-red-500 text-white text-[9px] rounded-full h-4 w-4 flex items-center justify-center">{orders.filter((o) => o.status === "new").length}</span>}
+              {orders.filter((o) => o.status === "new" && orderNeedsKitchen(o)).length > 0 && <span className="absolute top-1 right-1/3 -translate-x-4 bg-red-500 text-white text-[9px] rounded-full h-4 w-4 flex items-center justify-center">{orders.filter((o) => o.status === "new" && orderNeedsKitchen(o)).length}</span>}
             </button>
             <button onClick={() => setTab("pos")} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors relative ${tab === "pos" ? "text-primary" : "text-muted-foreground"}`}>
               <span className="text-lg">🖥️</span>Mostrador

@@ -271,6 +271,7 @@ export type OrderItem = {
   price: number;
   qty: number;
   modifiers?: string[];
+  requires_prep?: boolean;
 };
 
 export type OrderStatusLog = {

@@ -37,6 +37,7 @@ type Offer = {
   stock_low_threshold: number | null;
   stock_control?: boolean;
   promo_price: number | null;
+  requires_prep?: boolean;
 };
 
 type Modifier = {
@@ -88,6 +89,9 @@ type OfferFormProps = {
   setOffPromoPrice?: (v: string) => void;
   offStockLowThreshold?: number;
   setOffStockLowThreshold?: (v: number) => void;
+  showPrep?: boolean;
+  offRequiresPrep?: boolean;
+  setOffRequiresPrep?: (v: boolean) => void;
   onSubmit: () => void;
 };
 
@@ -106,6 +110,8 @@ export function OfferForm({
   offStockControl = false, setOffStockControl,
   offPromoPrice = "", setOffPromoPrice,
   offStockLowThreshold = 5, setOffStockLowThreshold,
+  showPrep = false,
+  offRequiresPrep = true, setOffRequiresPrep,
 }: OfferFormProps) {
   return (
     <Card className="p-4 mb-4">
@@ -119,6 +125,20 @@ export function OfferForm({
           <div><Label>Precio promo ($)</Label><Input type="number" step="0.01" value={offPromoPrice} onChange={(e) => setOffPromoPrice(e.target.value)} placeholder="Precio de oferta" /></div>
         )}
         <div><Label>Categoría</Label><select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={offCategory} onChange={(e) => setOffCategory(e.target.value)}>{categories.length === 0 && <option value="otras">otras</option>}{categories.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}</select></div>
+        {showPrep && setOffRequiresPrep && (
+          <div className="flex items-center justify-between">
+            <div>
+              <Label>Requiere elaboración</Label>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Si lo apagás (bebidas, packs ya hechos), un pedido de solo estos ítems no entra a cocina ni imprime comanda
+              </p>
+            </div>
+            <Switch
+              checked={offRequiresPrep}
+              onCheckedChange={setOffRequiresPrep}
+            />
+          </div>
+        )}
         {showStock && setOffStockControl && (
           <div className="flex items-center justify-between">
             <div>

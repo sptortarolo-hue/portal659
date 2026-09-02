@@ -33,6 +33,7 @@ type Product = {
   available: boolean;
   image_url?: string | null;
   category?: string | null;
+  requires_prep?: boolean;
   modifiers?: ProductModifier[];
 };
 
@@ -65,7 +66,7 @@ export function Mesas() {
   const [renaming, setRenaming] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [selected, setSelected] = useState<Table | null>(null);
-  const [cart, setCart] = useState<{ product_id: string; name: string; price: number; qty: number; modifiers?: CartModifier[] }[]>([]);
+  const [cart, setCart] = useState<{ product_id: string; name: string; price: number; qty: number; requires_prep: boolean; modifiers?: CartModifier[] }[]>([]);
   const [modifiersMap, setModifiersMap] = useState<Record<string, ProductModifier[]>>({});
   const [pickerProduct, setPickerProduct] = useState<Product | null>(null);
   const [payment, setPayment] = useState("efectivo");
@@ -185,8 +186,8 @@ export function Mesas() {
     setCart((prev) => {
       const key = `${p.id}|${(modifiers || []).map((m) => m.label).sort().join(",")}`;
       const found = prev.find((i) => `${i.product_id}|${(i.modifiers || []).map((m) => m.label).sort().join(",")}` === key);
-      if (found) return prev.map((i) => (i.product_id === found.product_id ? { ...i, qty: i.qty + 1 } : i));
-      return [{ product_id: p.id, name: p.name, price: unitPrice, qty: 1, modifiers }, ...prev];
+      if (found) return prev.map((i) => (i === found ? { ...i, qty: i.qty + 1 } : i));
+      return [{ product_id: p.id, name: p.name, price: unitPrice, qty: 1, requires_prep: p.requires_prep !== false, modifiers }, ...prev];
     });
   }
 

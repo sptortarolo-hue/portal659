@@ -10,6 +10,7 @@ import {
   orderCondition,
   orderReadyLabel,
   orderCompleteActionLabel,
+  orderNeedsKitchen,
   CONDITION_META,
 } from "@/lib/order-utils";
 import { buildModifiedOrderMessage, buildTransferInstructionsMessage } from "@/lib/whatsapp-message";
@@ -78,7 +79,9 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
   const nextStatus = getNextStatus(order.status as OrderStatus, order.method);
 
   const customerPhone = order.customer_phone?.replace(/\D/g, "");
-  const contactWhatsApp = customerPhone ? `https://wa.me/${customerPhone}` : null;
+  // Mostrador y mesa son ventas presenciales: sin WhatsApp del cliente.
+  const isCounterChannel = order.channel === "mostrador" || order.channel === "mesa";
+  const contactWhatsApp = customerPhone && !isCounterChannel ? `https://wa.me/${customerPhone}` : null;
 
   const isTransferAppPending =
     order.payment_method === "transferencia" &&
@@ -98,7 +101,7 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
       })
     : null;
 
-  const contextualWa = buildContextualWhatsApp(order, vendorName, transfer, () => transferInstructions);
+  const contextualWa = isCounterChannel ? null : buildContextualWhatsApp(order, vendorName, transfer, () => transferInstructions);
   const isBlockedByPayment = blockUnpaid && isTransferAppPending;
 
   const startEditing = useCallback(() => {
@@ -547,7 +550,7 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
                   </Button>
                 )
               )}
-              {order.status !== "new" && (
+              {order.status !== "new" && orderNeedsKitchen(order) && (
                 <>
                   {canPrint ? (
                     <button
@@ -621,18 +624,20 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
               >
                 {saving ? "Guardando..." : "Guardar cambios"}
               </Button>
-              <Button
-                variant="outline"
-                className="w-full border-green-200 bg-green-50 text-green-700 hover:bg-green-100"
-                disabled={saving || editItems.length === 0 || !customerPhone}
-                title={!customerPhone ? "El pedido no tiene teléfono del cliente" : undefined}
-                onClick={async () => {
-                  const result = await handleSaveModification();
-                  if (result.ok) sendModifiedWhatsApp();
-                }}
-              >
-                Guardar y enviar WhatsApp al cliente
-              </Button>
+              {!isCounterChannel && (
+                <Button
+                  variant="outline"
+                  className="w-full border-green-200 bg-green-50 text-green-700 hover:bg-green-100"
+                  disabled={saving || editItems.length === 0 || !customerPhone}
+                  title={!customerPhone ? "El pedido no tiene teléfono del cliente" : undefined}
+                  onClick={async () => {
+                    const result = await handleSaveModification();
+                    if (result.ok) sendModifiedWhatsApp();
+                  }}
+                >
+                  Guardar y enviar WhatsApp al cliente
+                </Button>
+              )}
               <Button variant="ghost" className="w-full" onClick={() => setEditing(false)}>
                 Cancelar
               </Button>

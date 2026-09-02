@@ -45,6 +45,7 @@ export async function POST(request: Request) {
     price: Number(i.price),
     qty: Number(i.qty) || 1,
     modifiers: Array.isArray(i.modifiers) && i.modifiers.length > 0 ? i.modifiers : undefined,
+    requires_prep: i.requires_prep !== false,
   }));
 
   const order = await queryOne<Record<string, any>>(

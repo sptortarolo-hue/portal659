@@ -55,6 +55,7 @@ type Offer = {
   stock_low_threshold: number | null;
   stock_control?: boolean;
   promo_price: number | null;
+  requires_prep?: boolean;
 };
 
 const CATEGORY_SUGGESTIONS: Record<string, string[]> = {
@@ -149,6 +150,7 @@ export default function DashboardGastro({
   const [offStockControl, setOffStockControl] = useState<boolean>(false);
   const [offPromoPrice, setOffPromoPrice] = useState("");
   const [offStockLowThreshold, setOffStockLowThreshold] = useState<number>(5);
+  const [offRequiresPrep, setOffRequiresPrep] = useState<boolean>(true);
 
   const [galleryUploading, setGalleryUploading] = useState(false);
   const galleryFileRef = useRef<HTMLInputElement>(null);
@@ -353,6 +355,7 @@ export default function DashboardGastro({
     setOffStockControl(false);
     setOffPromoPrice("");
     setOffStockLowThreshold(5);
+    setOffRequiresPrep(true);
   }
 
   async function handleOfferSubmit(e?: React.FormEvent) {
@@ -382,6 +385,7 @@ export default function DashboardGastro({
       stock_control: offStockControl,
       promo_price: offPromoPrice ? Number(offPromoPrice) : null,
       stock_low_threshold: offStockControl ? offStockLowThreshold : null,
+      requires_prep: offRequiresPrep,
     };
 
     let res: Response;
@@ -421,6 +425,7 @@ export default function DashboardGastro({
     setOffStockControl(!!offer.stock_control);
     setOffPromoPrice(offer.promo_price ? String(offer.promo_price) : "");
     setOffStockLowThreshold(offer.stock_low_threshold ?? 5);
+    setOffRequiresPrep(offer.requires_prep !== false);
     setShowOfferForm(true);
     setMsg("");
   }
@@ -1126,6 +1131,9 @@ export default function DashboardGastro({
               setOffPromoPrice={setOffPromoPrice}
               offStockLowThreshold={offStockLowThreshold}
               setOffStockLowThreshold={setOffStockLowThreshold}
+              showPrep
+              offRequiresPrep={offRequiresPrep}
+              setOffRequiresPrep={setOffRequiresPrep}
             />
           )}
 

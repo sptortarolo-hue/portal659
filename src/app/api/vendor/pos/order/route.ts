@@ -49,7 +49,15 @@ export async function POST(request: Request) {
     price: Number(i.price),
     qty: Number(i.qty) || 1,
     modifiers: Array.isArray(i.modifiers) && i.modifiers.length > 0 ? i.modifiers : undefined,
+    requires_prep: i.requires_prep !== false,
   }));
+
+  // Si ningún ítem requiere elaboración (p. ej. solo bebidas), el pedido no entra
+  // al flow de cocina. Mostrador pickup sin cocina se cobra y queda completado;
+  // si necesita cocina queda "preparing". Delivery siempre queda "preparing"
+  // (hay que despacharlo). Mesa se mantiene "new" (tabla abierta).
+  const needsKitchen = normalizedItems.some((i) => i.requires_prep !== false);
+  const status = isDelivery || needsKitchen ? "preparing" : "completed";
 
   const now = new Date().toISOString();
 
@@ -69,7 +77,7 @@ export async function POST(request: Request) {
 
   const order = await queryOne<Record<string, any>>(
     `INSERT INTO orders (vendor_id, customer_name, customer_phone, customer_address, method, payment_method, items, total, status, channel, paid_at, notes, pickup_number)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'preparing', 'mostrador', $9, $10, $11)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'mostrador', $10, $11, $12)
      RETURNING *`,
     [
       gate.vendor.id,
@@ -80,6 +88,7 @@ export async function POST(request: Request) {
       payment,
       JSON.stringify(normalizedItems),
       Number(total),
+      status,
       now,
       notes || null,
       pickupNumber,

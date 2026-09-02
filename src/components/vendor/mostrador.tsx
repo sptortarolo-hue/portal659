@@ -26,6 +26,7 @@ type Product = {
   available: boolean;
   image_url?: string | null;
   category?: string | null;
+  requires_prep?: boolean;
   modifiers?: ProductModifier[];
 };
 
@@ -34,6 +35,7 @@ type LineItem = {
   name: string;
   price: number;
   qty: number;
+  requires_prep: boolean;
   modifiers?: CartModifier[];
 };
 
@@ -46,6 +48,7 @@ type MostradorOrder = {
   created_at: string;
   customer_name?: string;
   pickup_number?: number | null;
+  method?: string;
 };
 
 const PAYMENT_OPTIONS = [
@@ -72,6 +75,10 @@ export function Mostrador() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [modifiersMap, setModifiersMap] = useState<Record<string, ProductModifier[]>>({});
   const [pickerProduct, setPickerProduct] = useState<Product | null>(null);
+  const [convertOrderId, setConvertOrderId] = useState<string | null>(null);
+  const [convertPhone, setConvertPhone] = useState("");
+  const [convertAddress, setConvertAddress] = useState("");
+  const [converting, setConverting] = useState(false);
 
   const total = useMemo(() => items.reduce((s, i) => s + i.price * i.qty, 0), [items]);
 
@@ -131,8 +138,8 @@ export function Mostrador() {
     setItems((prev) => {
       const key = `${p.id}|${(modifiers || []).map((m) => m.label).sort().join(",")}`;
       const found = prev.find((i) => `${i.product_id}|${(i.modifiers || []).map((m) => m.label).sort().join(",")}` === key);
-      if (found) return prev.map((i) => (i.product_id === found.product_id ? { ...i, qty: i.qty + qty } : i));
-      return [...prev, { product_id: p.id, name: p.name, price: unitPrice, qty, modifiers }];
+      if (found) return prev.map((i) => (i === found ? { ...i, qty: i.qty + qty } : i));
+      return [...prev, { product_id: p.id, name: p.name, price: unitPrice, qty, requires_prep: p.requires_prep !== false, modifiers }];
     });
   }
 
@@ -158,6 +165,9 @@ export function Mostrador() {
       return;
     }
 
+    // Solo entra a cocina si al menos un ítem requiere elaboración.
+    const needsKitchen = items.some((i) => i.requires_prep !== false);
+
     setSaving(true);
     setMsg("");
     const res = await fetch("/api/vendor/pos/order", {
@@ -180,23 +190,29 @@ export function Mostrador() {
       return;
     }
 
-    // Siempre imprime comanda (va directo a preparación) y, recién al terminar,
-    // el comprobante de retiro (evita mandar dos trabajos concurrentes a la impresora).
-    fetch("/api/print", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ orderId: data.orderId, type: "comanda" }),
-    })
-      .then(() => {
-        if (withReceipt && !isDelivery) {
-          return fetch("/api/print", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ orderId: data.orderId, type: "retiro" }),
-          });
-        }
+    // Imprime comanda solo si requiere cocina; recién al terminar imprime el
+    // comprobante de retiro (evita dos trabajos concurrentes a la impresora).
+    const printRetiro = (): Promise<void> => {
+      if (withReceipt && !isDelivery) {
+        return fetch("/api/print", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ orderId: data.orderId, type: "retiro" }),
+        }).then(() => {});
+      }
+      return Promise.resolve();
+    };
+    if (needsKitchen) {
+      fetch("/api/print", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId: data.orderId, type: "comanda" }),
       })
-      .catch(() => {});
+        .then(printRetiro)
+        .catch(() => {});
+    } else {
+      printRetiro().catch(() => {});
+    }
 
     setMsg(
       isDelivery
@@ -210,8 +226,43 @@ export function Mostrador() {
     setSheetOpen(false);
     setSaving(false);
     setRecent((prev) =>
-      [{ id: data.orderId, total: Number(data.order?.total ?? total), payment_method: data.order?.payment_method ?? payment, paid_at: data.order?.paid_at ?? new Date().toISOString(), status: data.order?.status ?? "preparing", created_at: data.order?.created_at ?? new Date().toISOString(), pickup_number: data.order?.pickup_number ?? null }, ...prev].slice(0, 20)
+      [{ id: data.orderId, total: Number(data.order?.total ?? total), payment_method: data.order?.payment_method ?? payment, paid_at: data.order?.paid_at ?? new Date().toISOString(), status: data.order?.status ?? "preparing", created_at: data.order?.created_at ?? new Date().toISOString(), pickup_number: data.order?.pickup_number ?? null, method: data.order?.method ?? method }, ...prev].slice(0, 20)
     );
+  }
+
+  // El cliente no quiere esperar más en el mostrador: convertir el pedido a domicilio.
+  async function convertToDelivery(orderId: string) {
+    if (!convertPhone.trim()) {
+      setMsg("Ingresá el teléfono del cliente para el envío");
+      return;
+    }
+    setConverting(true);
+    setMsg("");
+    try {
+      const res = await fetch(`/api/vendor/orders/${orderId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ method: "delivery", customer_phone: convertPhone.trim(), customer_address: convertAddress.trim() || null }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.error) {
+        setMsg(data.error || "No se pudo convertir a domicilio");
+      } else {
+        setRecent((prev) =>
+          prev.map((o) =>
+            o.id === orderId ? { ...o, method: "delivery", pickup_number: null } : o
+          )
+        );
+        setConvertOrderId(null);
+        setConvertPhone("");
+        setConvertAddress("");
+        setMsg("Pedido convertido a envío a domicilio");
+      }
+    } catch {
+      setMsg("Error de conexión al convertir");
+    } finally {
+      setConverting(false);
+    }
   }
 
   if (loading) return <p className="text-sm text-muted-foreground">Cargando mostrador...</p>;
@@ -449,19 +500,69 @@ export function Mostrador() {
         <div className="rounded-2xl border border-border bg-card p-4">
           <h3 className="font-display font-semibold text-sm mb-3">Ventas de hoy en mostrador</h3>
           <div className="space-y-1.5">
-            {recent.map((o) => (
-              <div key={o.id} className="flex items-center justify-between text-xs">
-                <div className="flex items-center gap-2">
-                  <Badge variant="secondary" className="text-[9px]">{o.payment_method}</Badge>
-                  {o.pickup_number != null && (
-                    <Badge className="text-[9px] bg-status-new/15 text-status-new">Retiro Nro. {o.pickup_number}</Badge>
+            {recent.map((o) => {
+              const canConvert =
+                (o.method !== "delivery") &&
+                o.status !== "completed" &&
+                o.status !== "cancelled";
+              return (
+                <div key={o.id} className="space-y-2">
+                  <div className="flex items-center justify-between text-xs gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Badge variant="secondary" className="text-[9px]">{o.payment_method}</Badge>
+                      {o.method === "delivery" ? (
+                        <Badge className="text-[9px] bg-blue-100 text-blue-700">🛵 A domicilio</Badge>
+                      ) : o.pickup_number != null ? (
+                        <Badge className="text-[9px] bg-status-new/15 text-status-new">Retiro Nro. {o.pickup_number}</Badge>
+                      ) : null}
+                      <span className="text-muted-foreground truncate">{o.customer_name || "Mostrador"}</span>
+                      <span className="text-muted-foreground/60">{new Date(o.created_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}</span>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      {canConvert && (
+                        <button
+                          type="button"
+                          title="Convertir a envío a domicilio"
+                          onClick={() => {
+                            if (convertOrderId === o.id) { setConvertOrderId(null); return; }
+                            setConvertOrderId(o.id); setConvertPhone(""); setConvertAddress("");
+                          }}
+                          className="h-6 w-6 rounded-md bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100 flex items-center justify-center text-xs"
+                        >
+                          🛵
+                        </button>
+                      )}
+                      <span className="font-semibold tabular-nums">${Number(o.total).toLocaleString("es-AR")}</span>
+                    </div>
+                  </div>
+                  {convertOrderId === o.id && (
+                    <div className="rounded-lg border border-blue-200 bg-blue-50/50 p-2 space-y-1.5">
+                      <p className="text-[10px] font-semibold text-blue-800">Enviar este pedido a domicilio</p>
+                      <input
+                        type="tel"
+                        value={convertPhone}
+                        onChange={(e) => setConvertPhone(e.target.value)}
+                        placeholder="Teléfono del cliente *"
+                        className="w-full h-8 px-2 text-xs rounded-lg border border-input bg-background"
+                      />
+                      <input
+                        type="text"
+                        value={convertAddress}
+                        onChange={(e) => setConvertAddress(e.target.value)}
+                        placeholder="Dirección de entrega (opcional)"
+                        className="w-full h-8 px-2 text-xs rounded-lg border border-input bg-background"
+                      />
+                      <div className="flex gap-1.5">
+                        <Button size="sm" className="h-7 text-xs flex-1" disabled={converting} onClick={() => convertToDelivery(o.id)}>
+                          {converting ? "..." : "Confirmar envío"}
+                        </Button>
+                        <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setConvertOrderId(null)}>Cancelar</Button>
+                      </div>
+                    </div>
                   )}
-                  <span className="text-muted-foreground">{o.customer_name || "Mostrador"}</span>
-                  <span className="text-muted-foreground/60">{new Date(o.created_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}</span>
                 </div>
-                <span className="font-semibold tabular-nums">${Number(o.total).toLocaleString("es-AR")}</span>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

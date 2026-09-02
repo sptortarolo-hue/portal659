@@ -11,6 +11,7 @@ import {
   orderCondition,
   orderReadyLabel,
   orderCompleteActionLabel,
+  orderNeedsKitchen,
   CONDITION_META,
 } from "@/lib/order-utils";
 import { playNewOrderSound, playOrderReadySound, playUrgentSound, resumeAudioContext } from "@/lib/sounds";
@@ -125,7 +126,9 @@ function TicketCard({
   const showWhatsApp =
     (order.method === "delivery" && order.status === "sent") ||
     (order.method === "pickup" && order.status === "ready");
-  const waUrl = showWhatsApp ? buildClientWhatsAppUrl(order.status, order, vendorName) : null;
+  // Mostrador y mesa son ventas presenciales: no tienen WhatsApp del cliente.
+  const isCounterChannel = order.channel === "mostrador" || order.channel === "mesa";
+  const waUrl = showWhatsApp && !isCounterChannel ? buildClientWhatsAppUrl(order.status, order, vendorName) : null;
 
   const [undoVisible, setUndoVisible] = useState(false);
   const [printing, setPrinting] = useState(false);
@@ -242,7 +245,7 @@ function TicketCard({
           <p className="text-xs font-bold text-foreground">${Number(order.total).toLocaleString("es-AR")}</p>
         </div>
         <div className="flex items-center gap-1 flex-shrink-0">
-          {!isTerminal && order.status !== "new" && (
+          {!isTerminal && order.status !== "new" && orderNeedsKitchen(order) && (
             <button
               onClick={(e) => { e.stopPropagation(); handlePrint(); }}
               className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground"
@@ -311,7 +314,8 @@ export default function ComandaKDS({ vendorId, vendorName, accessToken }: Props)
       if (data.orders) {
         setOrders((prev) => {
           const prevMap = new Map(prev.map((o) => [o.id, o.status]));
-          const next = data.orders as Order[];
+          // La comanda solo muestra pedidos que requieren elaboración de cocina.
+          const next = (data.orders as Order[]).filter(orderNeedsKitchen);
           next.forEach((o) => previousStatusRef.current.set(o.id, prevMap.get(o.id) || o.status));
           return next;
         });
@@ -332,7 +336,8 @@ export default function ComandaKDS({ vendorId, vendorName, accessToken }: Props)
         });
         const data = await res.json();
         if (!data.orders) return;
-        const next = data.orders as Order[];
+        // La comanda solo ve pedidos que requieren elaboración de cocina.
+        const next = (data.orders as Order[]).filter(orderNeedsKitchen);
         const nextIds = new Set(next.map((o) => o.id));
         const prevMap = new Map(ordersRef.current.map((o) => [o.id, o.status]));
 
@@ -389,7 +394,8 @@ export default function ComandaKDS({ vendorId, vendorName, accessToken }: Props)
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
         body: JSON.stringify({ status, estimated_minutes: estimated }),
       });
-      if (status === "preparing") {
+      const order = ordersRef.current.find((o) => o.id === orderId);
+      if (status === "preparing" && order && orderNeedsKitchen(order)) {
         fetch("/api/print", {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },

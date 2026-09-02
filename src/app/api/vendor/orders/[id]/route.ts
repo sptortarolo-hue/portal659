@@ -17,7 +17,7 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 const RETURN_COLUMNS =
-  "customer_phone, customer_name, total, payment_method, notes, modification_notes, method, items";
+  "customer_phone, customer_name, customer_address, total, payment_method, notes, modification_notes, method, items, pickup_number";
 
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   const params = await context.params;
@@ -57,6 +57,17 @@ export async function PATCH(
 
   const body = await request.json();
   const { status, estimated_minutes, items, modification_notes, payment_status } = body;
+  const method = body.method;
+  const customer_phone = body.customer_phone;
+  const customer_address = body.customer_address;
+
+  // Conversión de mostrador pickup → delivery en el medio del circuito.
+  const isConvertDelivery =
+    method === "delivery" &&
+    !status &&
+    !payment_status &&
+    items === undefined &&
+    modification_notes === undefined;
 
   const isModifyOnly = !status && !payment_status && (items !== undefined || modification_notes !== undefined);
 
@@ -99,6 +110,25 @@ export async function PATCH(
     );
   }
 
+  if (isConvertDelivery) {
+    if (currentOrder.channel !== "mostrador") {
+      return NextResponse.json(
+        { error: "Solo se puede convertir a domicilio un pedido de mostrador" },
+        { status: 400 }
+      );
+    }
+    if (currentOrder.status === "completed" || currentOrder.status === "cancelled") {
+      return NextResponse.json(
+        { error: "No se puede convertir un pedido ya finalizado" },
+        { status: 400 }
+      );
+    }
+    const phoneClean = typeof customer_phone === "string" ? customer_phone.trim() : "";
+    if (!phoneClean) {
+      return NextResponse.json({ error: "El envío a domicilio requiere el teléfono del cliente" }, { status: 400 });
+    }
+  }
+
   if (status && !canTransition(currentOrder.status as OrderStatus, status as OrderStatus)) {
     return NextResponse.json(
       { error: `No se puede pasar de "${currentOrder.status}" a "${status}"` },
@@ -111,6 +141,12 @@ export async function PATCH(
   if (estimated_minutes !== undefined) updateData.estimated_minutes = estimated_minutes;
   if (items !== undefined) updateData.items = JSON.stringify(items);
   if (modification_notes !== undefined) updateData.modification_notes = modification_notes;
+  if (isConvertDelivery) {
+    updateData.method = "delivery";
+    updateData.customer_phone = (customer_phone as string).trim();
+    updateData.customer_address = typeof customer_address === "string" && customer_address.trim() ? customer_address.trim() : null;
+    updateData.pickup_number = null; // ya no es retiro: libera el número comprobante
+  }
   if (payment_status !== undefined) {
     updateData.payment_status = payment_status;
     if (payment_status === "paid") updateData.paid_at = new Date().toISOString();
@@ -148,7 +184,14 @@ export async function PATCH(
     return NextResponse.json({ error: "Error al actualizar" }, { status: 500 });
   }
 
-  if (order && STATUS_LABELS[status] && order.customer_phone) {
+  // Notificaciones al cliente solo tienen sentido cuando hay un cliente real
+  // esperando novedades (online o mostrador→delivery). Mesa y mostrador-retiro
+  // son presenciales y guardan el WhatsApp del propio comercio.
+  const isCounterPickup =
+    currentOrder.channel === "mesa" ||
+    (currentOrder.channel === "mostrador" && order.method !== "delivery");
+
+  if (order && STATUS_LABELS[status] && order.customer_phone && !isCounterPickup) {
     try {
       const customerProfile = await queryOne<{ id: string; email: string | null }>(
         `SELECT id, email FROM profiles WHERE phone = $1 OR whatsapp = $1 LIMIT 1`,

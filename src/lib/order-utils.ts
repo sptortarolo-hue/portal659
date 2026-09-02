@@ -1,5 +1,16 @@
 import type { Order, OrderStatus } from "@/types/database";
 
+/**
+ * True si el pedido tiene al menos un ítem que requiere elaboración de cocina.
+ * Ítems antiguos sin el flag se tratan como "requieren cocina" (compatible).
+ * Un pedido de solo bebidas/packs (mostrador/mesa) no entra al flow de cocina.
+ */
+export function orderNeedsKitchen(
+  order: Pick<Order, "items">
+): boolean {
+  return (order.items || []).some((i) => i?.requires_prep !== false);
+}
+
 const VALID_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
   new: ["preparing", "cancelled"],
   confirmed: ["preparing", "cancelled"],

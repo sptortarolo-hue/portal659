@@ -17,7 +17,7 @@ export async function PATCH(
     "name", "description", "price", "category", "image_url",
     "available", "featured_today", "stock", "promo_price",
     "stock_low_threshold", "currency", "neighborhood", "type", "unit",
-    "has_variants", "stock_control",
+    "has_variants", "stock_control", "requires_prep",
   ] as const;
 
   const safeUpdate: Record<string, unknown> = {};

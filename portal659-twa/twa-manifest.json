@@ -1,0 +1,38 @@
+{
+  "packageId": "ar.portal659.app",
+  "host": "www.portal659.com.ar",
+  "name": "Portal 659",
+  "launcherName": "Portal659",
+  "display": "standalone",
+  "themeColor": "#4f46e5",
+  "themeColorDark": "#000000",
+  "navigationColor": "#ffffff",
+  "navigationColorDark": "#000000",
+  "navigationDividerColor": "#ffffff",
+  "navigationDividerColorDark": "#000000",
+  "backgroundColor": "#ffffff",
+  "enableNotifications": true,
+  "startUrl": "/",
+  "iconUrl": "https://www.portal659.com.ar/icons/icon-512.png",
+  "maskableIconUrl": "https://www.portal659.com.ar/icons/icon-512-maskable.png",
+  "splashScreenFadeOutDuration": 300,
+  "signingKey": {
+    "path": "C:\\Users\\IPS\\portal659-keystore\\portal659-release.keystore",
+    "alias": "portal659"
+  },
+  "appVersion": "1.0.0",
+  "appVersionCode": 1,
+  "shortcuts": [],
+  "generatorApp": "bubblewrap-cli",
+  "webManifestUrl": "https://www.portal659.com.ar/manifest.json",
+  "fallbackType": "customtabs",
+  "features": {},
+  "alphaDependencies": {
+    "enabled": false
+  },
+  "enableSiteSettingsShortcut": true,
+  "isChromeOSOnly": false,
+  "isMetaQuest": false,
+  "fullScopeUrl": "https://www.portal659.com.ar/",
+  "minSdkVersion": 21
+}

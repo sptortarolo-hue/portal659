@@ -7,3 +7,11 @@ dist/
 build/
 pass DB.txt
 *.tsbuildinfo
+
+# Portal 659 app Android (TWA) — artefactos de build (el proyecto fuente sí se versiona)
+portal659-twa/.gradle/
+portal659-twa/app/build/
+portal659-twa/build/
+portal659-twa/*.apk
+portal659-twa/*.aab
+portal659-twa/*.idsig

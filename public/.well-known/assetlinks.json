@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "ar.portal659.app",
+      "sha256_cert_fingerprints": [
+        "E6:4E:FA:E3:57:DA:67:27:2E:62:24:F5:F7:F3:48:08:8C:34:F1:F6:80:71:A1:A4:42:8A:14:FA:F6:BD:A8:4E"
+      ]
+    }
+  }
+]

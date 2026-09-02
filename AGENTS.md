@@ -64,6 +64,26 @@ Portal 659: "El centro comercial de tu barrio". Hub multicommerce hiperlocal (Si
 - Compilar el APK de Portal Print (Android): ver `android/README.md` (requiere Android SDK/JDK 17).
 - Reboot test del VPS (verificar que la web vuelve sola).
 
+## App Android para Play Store (TWA)
+
+- Enfoque: **TWA (Trusted Web Activity)** vía Bubblewrap. Envuelve la PWA de `www.portal659.com.ar`; reutiliza auth JWT, zona (cookie), push web y Mercado Pago sin cambios. Misma app para clientes y panel vendor.
+- Proyecto: `portal659-twa/` (`twa-manifest.json` + proyecto Android generado). **No** confundir con `android/` (app de impresión Portal Print).
+- AppId `ar.portal659.app`, nombre "Portal 659", `startUrl` `/`, compileSdk/target 36, minSdk 21.
+- **Digital Asset Links**: `public/.well-known/assetlinks.json` ya creado con el SHA-256 de la **upload key**. ⚠️ Si se habilita **Play App Signing**, Google re-firma con su propia key: reemplazar el fingerprint por el SHA-256 del "App signing key certificate" de Play Console (Setup → App signing) antes de verificar con Digital Asset Links.
+- **Keystore (upload key)**: `C:\Users\IPS\portal659-keystore\portal659-release.keystore` (alias `portal659`), credenciales en `keystore-credentials.txt` del mismo folder. **No se versiona**; respaldarla: perderla impide actualizar la app.
+- **Requisitos de build en la máquina**: JDK 17 (Bubblewrap lo exige; se instaló Temurin 17 y un junction `C:\Users\IPS\jdk17` → ruta sin espacios, porque Bubblewrap arma comandos con shell y rutas con espacios rompen el sign). SDK Android en `C:\Users\IPS\AppData\Local\Android\Sdk` con `build-tools;36.1.0` (exigido por Bubblewrap) + junction `tools` → `cmdline-tools\latest` (validación vieja del SDK).
+- Config de Bubblewrap: `C:\Users\IPS\.bubblewrap\config.json` (`jdkPath`, `androidSdkPath`).
+- **Cómo regenerar/compilar**:
+  ```
+  # 1) regenerar el proyecto Android desde twa-manifest.json (no interactivo)
+  node _generate-twa.cjs            # dentro de portal659-twa/
+  # 2) compilar AAB + APK firmados (usa passwords de env, no pregunta)
+  $env:BUBBLEWRAP_KEYSTORE_PASSWORD="..."; $env:BUBBLEWRAP_KEY_PASSWORD="..."
+  bubblewrap build                  # dentro de portal659-twa/
+  ```
+  Salidas: `app-release-bundle.aab` (subir a Play) y `app-release-signed.apk` (instalar directo).
+- `bubblewrap init` es interactivo y falla en shells sin TTY; por eso se genera el proyecto con `_generate-twa.cjs` (llama a `@bubblewrap/core` `TwaGenerator`) y el build usa las env vars de password.
+
 ## Plan de sprints restantes (del plan original)
 
 > Alcances a confirmar con el usuario antes de implementar (como se hizo en Sprints 4 y 5).

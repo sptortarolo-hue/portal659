@@ -20,8 +20,9 @@ Portal 659: "El centro comercial de tu barrio". Hub multicommerce hiperlocal (Si
 - Helpers de aplicación: `supabase/self-host/seed-admin.sql` (crear admin) y `supabase/self-host/migrate-sprint5-zone.sql`.
 - **Aplicar SQL**: NO hay SQL editor de Supabase. Se corre contra el contenedor:
   ```
-  docker exec -i portal659-db psql -U <POSTGRES_USER> -d <POSTGRES_DB> -f <archivo.sql>
-  # o para un fragmento:
+  # El archivo vive en el HOST (ej. /opt/portal659), no adentro del contenedor:
+  # pasarlo por stdin, o usar -c para un SQL suelto.
+  docker exec -i portal659-db psql -U <POSTGRES_USER> -d <POSTGRES_DB> < supabase/self-host/<archivo.sql>
   docker exec -i portal659-db psql -U <POSTGRES_USER> -d <POSTGRES_DB> -c "<SQL>"
   ```
   (usuario/db por defecto `portal659`; ver `POSTGRES_USER`/`POSTGRES_DB`).

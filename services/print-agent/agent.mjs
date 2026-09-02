@@ -1,42 +1,79 @@
 /**
- * Print Agent — versión para PC (Windows/Linux) del puente Portal Print.
+ * Portal Print Agent — versión para PC (Windows/Linux/macOS).
  *
  * Se conecta al relay de Portal 659 por WebSocket saliente y envía los jobs al
  * puerto TCP de la impresora ESC/POS de la LAN (ej. TP85-NET en 9100).
  *
  * Uso:
- *   node agent.mjs                       # lee agent.config.json al lado
- *   node agent.mjs --config ./mi.json    # otro archivo de config
+ *   portal-print-agent.exe                → corre con agent.config.json
+ *   portal-print-agent.exe                → primera vez sin config: asistente interactivo
+ *   portal-print-agent.exe --setup        → reconfigura (cambió la IP o el token)
+ *   portal-print-agent.exe --config x.json
  *
- * Requisitos: Node.js >= 22 (WebSocket nativo). Sin npm install.
+ * Requisitos: ninguno (el .exe es autónomo; no hace falta instalar Node ni nada).
  */
 import net from "node:net";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import * as readline from "node:readline";
 
 const DIR = dirname(fileURLToPath(import.meta.url));
 
-function readConfig() {
+function cfgPathFromArgs() {
   const idx = process.argv.indexOf("--config");
-  const path = idx >= 0 ? process.argv[idx + 1] : join(DIR, "agent.config.json");
-  try {
-    return JSON.parse(readFileSync(path, "utf8"));
-  } catch (e) {
-    console.error(`No pude leer la config (${path}): ${e.message}`);
-    console.error("Creala con: { \"serverUrl\": \"https://www.portal659.com.ar\", \"token\": \"...\", \"printerIp\": \"192.168.1.100\", \"printerPort\": 9100 }");
-    process.exit(1);
-  }
+  return idx >= 0 ? process.argv[idx + 1] : join(DIR, "agent.config.json");
 }
 
-const cfg = readConfig();
+function ask(rl, question) {
+  return new Promise((resolve) => rl.question(question, (a) => resolve(a.trim())));
+}
+
+async function interactiveSetup(path) {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  console.log("\n=== Portal Print — Configuración inicial ===\n");
+  console.log("Pegá el token que ves en tu dashboard (Comercio → Impresora → App en tu celu).");
+  const token = await ask(rl, "\nToken: ");
+  console.log("\nAhora la IP de la impresora (ejemplo: 192.168.1.50).");
+  console.log("Si no la sabés, en la TP85 el ticket de autotest la imprime (se enciende con el botón FEED apretado).");
+  const printerIp = await ask(rl, "IP de la impresora: ");
+  const printerPortIn = await ask(rl, "Puerto (enter = 9100): ");
+  rl.close();
+
+  const config = {
+    serverUrl: "https://www.portal659.com.ar",
+    token,
+    printerIp,
+    printerPort: Number(printerPortIn) || 9100,
+  };
+  writeFileSync(path, JSON.stringify(config, null, 2));
+  console.log(`\n✅ Configuración guardada en ${config.printerIp}:${config.printerPort}`);
+  console.log("Desde ahora, con solo abrir este programa ya imprime. Cerrá esta ventana si querés.\n");
+  return config;
+}
+
+async function readOrCreateConfig(path) {
+  if (existsSync(path)) {
+    try {
+      return JSON.parse(readFileSync(path, "utf8"));
+    } catch (e) {
+      console.error(`La config está rota (${e.message}). Borrando y reconfigurando...`);
+    }
+  }
+  return interactiveSetup(path);
+}
+
+const isSetup = process.argv.includes("--setup");
+const cfgPath = cfgPathFromArgs();
+const cfg = isSetup ? await interactiveSetup(cfgPath) : await readOrCreateConfig(cfgPath);
+
 const SERVER = (cfg.serverUrl || "https://www.portal659.com.ar").replace(/\/+$/, "");
 const TOKEN = cfg.token || "";
 const PRINTER_IP = cfg.printerIp || "";
 const PRINTER_PORT = Number(cfg.printerPort) || 9100;
 
 if (!TOKEN) {
-  console.error("Falta el token en agent.config.json (copialo del dashboard → Impresora).");
+  console.error("Falta el token en la configuración. Corrá de nuevo con --setup.");
   process.exit(1);
 }
 
@@ -69,19 +106,18 @@ function printToTcp(ip, port, dataBase64, jobId, ws) {
 }
 
 let ws = null;
-(function connect() {
-  const url = wsUrl();
+function connect() {
   console.log(`[agent] conectando a ${SERVER}/printbridge ...`);
-  ws = new WebSocket(url);
+  ws = new WebSocket(wsUrl());
 
-  ws.onopen = () => console.log("[agent] conectado al relay");
+  ws.onopen = () => console.log("[agent] 🟢 conectado al relay — imprimirá solo");
   ws.onmessage = (ev) => {
     try {
       const msg = JSON.parse(String(ev.data || ""));
       if (msg.type === "job" && msg.jobId) {
         handleJob(msg);
       } else if (msg.type === "hello") {
-        console.log("[agent] hello del relay");
+        console.log("[agent] relay dice hello");
       }
     } catch {}
   };
@@ -90,7 +126,7 @@ let ws = null;
     setTimeout(connect, 5000);
   };
   ws.onerror = () => ws.close();
-})();
+}
 
 function handleJob(msg) {
   const job = msg.job ?? {};
@@ -103,3 +139,5 @@ function handleJob(msg) {
   }
   printToTcp(ip, port, job.payload, msg.jobId, ws);
 }
+
+connect();

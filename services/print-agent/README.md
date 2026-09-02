@@ -1,52 +1,30 @@
-# Portal Print Agent (Windows/Linux/macOS)
+# Portal Print Agent (PC — Windows/Linux/macOS)
 
-Versión de PC del puente de impresión. Levanta el mismo WebSocket al relay de Portal 659
-que la app Android y manda los jobs ESC/POS al TCP 9100 de la impresora en la LAN.
+Programa que recibe los tickets del portal y los manda a la impresora térmica ESC/POS
+directamente por la red local (TCP 9100). Es el equivalente en PC de la app Android
+"Portal Print": ambos se conectan al mismo relay con el mismo token.
 
-## Requisitos
+## Para el comercio (uso directo, sin instalar nada)
 
-- Node.js >= 22 (tiene WebSocket global, sin npm install).
-- La impresora (ej. Union TP85-NET) en la misma red que la PC, TCP 9100 abierto.
+1. Descargá `portal-print-agent.exe` desde el dashboard:
+   sección **Impresora → 💻 Descargar para PC**.
+2. Doble clic al archivo.
+3. La primera vez pregunta: **token** (lo copiás del dashboard, lo ves abajo de esa sección) y
+   **IP de la impresora** (la TP85 la muestra en su ticket de autotest; suele ser 192.168.1.x).
+4. A partir de ahí, cada vez que el archivo se ejecute, imprime solo.
 
-## Configurar
+- Si cambia la IP de la impresora o el token: `portal-print-agent.exe --setup`.
+- Para que arranque al prender la PC:
+  ```
+  Win + R  →  shell:startup  →  pegá el .exe ahí
+  ```
+  o programá una tarea:
+  ```
+  schtasks /create /tn "Portal Print" /sc onlogon /rl highest /tr "\"C:\ruta\portal-print-agent.exe\""
+  ```
 
-1. Copiá `agent.config.example.json` → `agent.config.json` en la misma carpeta y editá:
-   - `token`: el de la sección **Impresora** del dashboard del comercio (modo "App en tu celu" funciona igual, el PC y el celular pueden compartir el mismo token — cada uno es un cliente del relay; ambos reciben los jobs).
-   - `printerIp`: la IP de la impresora en la red (ej. `192.168.1.100`). La TP85 la reporta al encender en su propio ticket de autotest, o probá `192.168.x.100...` en la consola si está con DHCP con reserva.
-   - `printerPort`: `9100` (default ESC/POS).
+## Para desarrolladores
 
-## Probar manual
-
-```
-node agent.mjs
-```
-
-Deberías ver `[agent] conectado al relay`. Luego probá "Imprimir prueba" desde la sección
-Impresora del dashboard — el ticket sale por la impresora.
-
-## Que arranque solo al prender la PC
-
-**Opción A — carpeta Inicio (más simple):**
-1. Presioná `Win + R`, escribí `shell:startup` y Enter.
-2. Copiá `autostart.bat` ahí (o atajo).
-3. Reiniciá — el agente aparece minimizado al abrir sesión.
-
-**Opción B — Task Scheduler (más robusto, sin carpeta Inicio):**
-```
-schtasks /create /tn "PortalPrintAgent" /sc onlogon /rl highest /tr "\"C:\ruta\a\node.exe\" \"C:\ruta\print-agent\agent.mjs\""
-```
-(corre sin mostrar la ventana si apuntás a `node.exe` directamente con `wscript` o con un .vbs wrapper).
-
-## Sin Node instalado: EXE único
-
-Desde esta misma carpeta, con Bun instalado en tu PC de trabajo:
-```
-bun build agent.mjs --compile --outfile portal-print-agent.exe
-```
-El `.exe` resultante es standalone (sin Node): basta ponerlo con el `agent.config.json` al lado.
-
-## Nota
-
-El agente NUNCA imprime nada por sí solo; solo recibe jobs del relay (`/push`) y los ejecuta.
-Idem al app Android, es seguro tener ambos live a la vez (mismo token): el relay entrega de forma
-mutable a cualquiera de los conectados por token — el primero que lo toma lo imprime.
+- Código fuente: `services/print-agent/agent.mjs` (Node 22+ con WebSocket global nativo, sin npm install).
+- Build del EXE: `bun build agent.mjs --compile --target=bun-windows-x64 --outfile portal-print-agent.exe`.
+- Test E2E (relay real + agente + capturador TCP): `node test/e2e.mjs` desde esta carpeta.

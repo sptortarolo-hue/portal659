@@ -57,7 +57,8 @@ TCP 9100 a la impresora dentro de la red local del comercio.
 | Historia del pedido | `src/app/api/vendor/orders/[id]/route.ts` | `GET` pedido individual (para el fallback) |
 | Relay | `services/print-bridge/` | HTTP :8791 (`/health`, `/status?token=`, `/push`) + WS `/printbridge?token=` |
 | App Android | `android/` (+ plugin `portal-socket`) | Conecta saliente al relay, imprime por TCP, descubre impresoras en la LAN |
-| UI dashboard | `src/components/dashboard/dashboard-gastro.tsx` | Selector de modo (App/Server), estado del agente, token, test |
+| Agente PC | `services/print-agent/agent.mjs` | Lo mismo que la app pero para Windows/Linux/macOS (EXE portable, generado con `bun build --compile`); sirve para el mostrador con impresora LAN |
+| UI dashboard | `src/components/dashboard/dashboard-gastro.tsx` | Selector de modo (App/Server), estado del agente, token, botones de descarga APK + EXE del PC, test |
 | Fallback | `src/app/vendor/imprimir/[id]/page.tsx` | Impresión por el equipo (ventana print del navegador, 58/80mm) cuando no hay térmico configurado |
 
 Detalles técnicos clave:
@@ -131,6 +132,14 @@ curl -s -X POST http://localhost:8791/push \
 
 Resultado esperado: `{"ok":true,"jobId":"...","offline":false}` y el capturador recibe los bytes.
 (`npm run e2e` en `services/print-bridge` corre esto automáticamente: **PASS verificado**.)
+
+La app es la misma por relay que el agente PC (mismo protocolo y token); el agente PC tiene E2E propio: `cd services/print-agent && node test/e2e.mjs`.
+
+## Cola de impresión
+
+Si la app/agente están desconectados, `/push` ya no pierde el pedido: **encola** (interno, por token, hasta 100 por comercio) y responde `{ok:true, queued:true}`. Cuando el cliente se reconecta, el relay le manda los pendientes en orden (FIFO). reintentos con backoff 5s entre fallos de impresión; descarta tras 8 fallos (para no atasur). El índice de cola aparece en `GET /status?token=...` como `queued`.
+
+**Vive en memoria** del relay: un `docker restart` del contenedor `printbridge` vacía la cola. No crítico para la mayoría de comercios (un ticket perdido por reinicio del VPS es raro); si después lo necesitamos persistir, basta serializar `pending` a un volumen.
 
 ## Estado del deploy
 

@@ -18,3 +18,6 @@ portal659-twa/*.idsig
 
 # Portal Print (app Capacitor) — proyecto nativo gradle generado (+ keystore.properties con secretos)
 android/android/
+
+# EXE del agente PC (se compila y sube al VPS manualmente; no versionar binarios grandes)
+services/print-agent/*.exe

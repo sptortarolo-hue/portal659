@@ -32,7 +32,7 @@ export function Logo({
     <span className={cn("inline-flex items-center", isLarge ? "h-auto" : "h-full", className)}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
-        src="/LogoP659v5.png"
+        src="/logo.png"
         alt="Portal 659"
         className={cn("object-contain", isLarge ? "h-14 w-auto" : "h-full w-auto")}
       />

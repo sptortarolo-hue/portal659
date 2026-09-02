@@ -144,6 +144,52 @@ public class PortalSocketPlugin extends Plugin {
     call.resolve();
   }
 
+  /** Lee/escribe la flag "activo por reinicio o apagado por usuario". */
+  private boolean isEnabledPersisted() {
+    return getContext().getSharedPreferences("portalprint", Context.MODE_PRIVATE)
+      .getBoolean("enabled", true);
+  }
+  private void setEnabledPersisted(boolean v) {
+    getContext().getSharedPreferences("portalprint", Context.MODE_PRIVATE)
+      .edit().putBoolean("enabled", v).apply();
+  }
+
+  /** Detiene todo: mismo efecto de "apagar el negocio" (WS se cierrel, FG service termina). */
+  @PluginMethod
+  public void setActive(PluginCall call) {
+    boolean active = call.getBoolean("active", true);
+    Context ctx = getContext();
+
+    if (!active) {
+      // Cierra servicio + suelta la pantalla
+      Intent svc = new Intent(ctx, PortalPrintService.class);
+      ctx.stopService(svc);
+      getActivity().runOnUiThread(() -> {
+        Window window = getActivity().getWindow();
+        if (window != null) window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+      });
+    } else {
+      // Reinicia el servicio si está habilitado
+      Intent svc = new Intent(ctx, PortalPrintService.class);
+      if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+        ctx.startForegroundService(svc);
+      } else {
+        ctx.startService(svc);
+      }
+    }
+
+    setEnabledPersisted(active);
+    call.resolve();
+  }
+
+  /** Para que la app sepa si está apagado por el usuario. */
+  @PluginMethod
+  public void isEnabled(PluginCall call) {
+    JSObject result = new JSObject();
+    result.put("enabled", isEnabledPersisted());
+    call.resolve(result);
+  }
+
   /** Pide el permiso POST_NOTIFICATIONS (Android 13+) para que se vea la notif fija del FG service. */
   @PluginMethod
   public void requestNotifPermission(PluginCall call) {

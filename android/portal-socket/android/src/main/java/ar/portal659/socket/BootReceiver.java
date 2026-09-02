@@ -10,18 +10,23 @@ import android.os.Build;
  * a aparecer sin tocar nada (el WS se reconecta al abrir la app desde la notificación).
  */
 public class BootReceiver extends BroadcastReceiver {
-    @Override
+@Override
     public void onReceive(Context context, Intent intent) {
-        if (intent == null || intent.getAction() == null) return;
-        String action = intent.getAction();
-        if (!Intent.ACTION_BOOT_COMPLETED.equals(action) && !"android.intent.action.QUICKBOOT_POWERON".equals(action)) {
-            return;
-        }
-        Intent svc = new Intent(context, PortalPrintService.class);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            context.startForegroundService(svc);
-        } else {
-            context.startService(svc);
-        }
+      if (intent == null || intent.getAction() == null) return;
+      String action = intent.getAction();
+      if (!Intent.ACTION_BOOT_COMPLETED.equals(action) && !"android.intent.action.QUICKBOOT_POWERON".equals(action)) {
+        return;
+      }
+      // Solo arranca si el usuario había dejado "activado" el agente.
+      boolean enabled = context.getSharedPreferences("portalprint", Context.MODE_PRIVATE)
+        .getBoolean("enabled", true);
+      if (!enabled) return;
+
+      Intent svc = new Intent(context, PortalPrintService.class);
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        context.startForegroundService(svc);
+      } else {
+        context.startService(svc);
+      }
     }
 }

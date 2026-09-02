@@ -24,4 +24,10 @@ export class PortalSocketWeb implements PortalSocketPlugin {
   async requestBatteryExemption(): Promise<void> {
     /* no-op */
   }
+  async setActive(_opts: { active: boolean }): Promise<void> {
+    /* no-op */
+  }
+  async isEnabled(): Promise<{ enabled: boolean }> {
+    return { enabled: true };
+  }
 }

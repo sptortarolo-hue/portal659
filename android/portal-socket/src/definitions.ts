@@ -39,6 +39,13 @@ export interface PortalSocketPlugin {
   /** Pide el permiso POST_NOTIFICATIONS (Android 13+) para mostrar la notificación fija. */
   requestNotifPermission(): Promise<void>;
 
-  /** Abre el diálogo del sistema para excluir la app de la optimización de batería. */
-  requestBatteryExemption(): Promise<void>;
+  /**
+   * Activa o desativa completamente la app: cierra el WS, suelta la pantalla
+   * y detiene el foreground service. El persistido como usuario hace que al
+   * reiniciar el celular, el servicio solo arranque si está activo (enabled=true).
+   */
+  setActive(options: { active: boolean }): Promise<void>;
+
+  /** Devuelve si el modo "activo" está habilitado (persistida). */
+  isEnabled(): Promise<{ enabled: boolean }>;
 }

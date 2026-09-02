@@ -13,6 +13,7 @@ const state = {
   ws: null as WebSocket | null,
   connected: false,
   lastError: null as string | null,
+  stopped: false,             // el usuario detuvo la impresión a propósito
 };
 
 const els = {
@@ -24,10 +25,13 @@ const els = {
   btnDiscover: document.getElementById("btnDiscover") as HTMLButtonElement,
   btnTest: document.getElementById("btnTest") as HTMLButtonElement,
   btnSave: document.getElementById("btnSave") as HTMLButtonElement,
+  btnStop: document.getElementById("btnStop") as HTMLButtonElement,
   relayDot: document.getElementById("relayDot") as HTMLSpanElement,
   printerDot: document.getElementById("printerDot") as HTMLSpanElement,
   log: document.getElementById("log") as HTMLDivElement,
 };
+
+const STOP_KEY = "portalPrint.stopped";
 
 function load(): Settings {
   const raw = localStorage.getItem(STORAGE_KEY);
@@ -150,19 +154,46 @@ function disconnectRelay() {
   setRelay("offline");
 }
 
+async function stopPrint() {
+  state.stopped = true;
+  try { localStorage.setItem(STOP_KEY, "1"); } catch {}
+  disconnectRelay();
+  try { await PortalSocket.keepAwake({ enabled: false }); } catch {}
+  try {
+    await PortalSocket.setActive({ active: false });
+  } catch {}
+  updateStopBtn();
+  log("Impresión detenida. Al reiniciar el celu NO vuelve a arrancar sola.", "error");
+}
+
+async function resumePrint() {
+  state.stopped = false;
+  try { localStorage.removeItem(STOP_KEY); } catch {}
+  try { await PortalSocket.keepAwake({ enabled: true }); } catch {}
+  try {
+    await PortalSocket.setActive({ active: true });
+  } catch {}
+  updateStopBtn();
+  if (getSettings().token && getSettings().serverUrl) {
+    connectRelay();
+  }
+  log("Impresión reactivada", "ok");
+}
+
 // Reconexión con backoff exponencial (1s, 2s, 4s, 8s... máximo 30s).
 let reconnectDelay = 1000;
 function scheduleReconnect() {
+  if (state.stopped) return; // si está apagado, no reconecta
   reconnectDelay = Math.min(reconnectDelay * 2, 30000);
   log(`Relay desconectado · reintento en ${Math.round(reconnectDelay / 1000)}s`, "error");
   setTimeout(() => {
-    if (!state.connected) connectRelay();
+    if (!state.connected && !state.stopped) connectRelay();
   }, reconnectDelay);
 }
 
 // Guardián: si el socket está cerrado/sin respuesta (corte silencioso de red), reconecta.
 setInterval(() => {
-  if (!state.connected && getSettings().token) {
+  if (!state.connected && !state.stopped && getSettings().token) {
     connectRelay();
   }
 }, 10000);
@@ -264,9 +295,13 @@ function bind() {
     save();
     log("Configuración guardada", "ok");
   });
+  els.btnStop.addEventListener("click", () => {
+    if (state.stopped) resumePrint();
+    else stopPrint();
+  });
   els.printerPort.addEventListener("change", save);
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible" && !state.connected && getSettings().token) {
+    if (document.visibilityState === "visible" && !state.connected && !state.stopped && getSettings().token) {
       connectRelay();
     }
   });
@@ -278,14 +313,25 @@ async function init() {
   els.token.value = settings.token;
   els.printerIp.value = settings.printerIp;
   els.printerPort.value = String(settings.printerPort);
+
+  // Recupero del estado "apagado" (si el usuario cerró el negocio)
+  try { state.stopped = localStorage.getItem(STOP_KEY) === "1"; } catch {}
   bind();
-  await PortalSocket.keepAwake({ enabled: true });
+  updateStopBtn();
+
+  await PortalSocket.keepAwake({ enabled: !state.stopped });
   // Permiso de notificaciones (Android 13+): si ya está concedido o denegado permanente, no abre popup.
   try { await PortalSocket.requestNotifPermission(); } catch {}
   log("Portal Print listo. Conectá el relay e imprimirá los pedidos de forma automática.");
-  if (settings.token && settings.serverUrl) {
+  if (!state.stopped && settings.token && settings.serverUrl) {
     connectRelay();
   }
+}
+
+function updateStopBtn() {
+  els.btnStop.textContent = state.stopped ? "▶ Iniciar" : "✕ Detener";
+  els.btnStop.classList.toggle("ghost", state.stopped);
+  els.btnStop.classList.toggle("danger", !state.stopped);
 }
 
 // Primer uso: pedir exclusion de optimizacion de bateria (de persistencia del relay en background).

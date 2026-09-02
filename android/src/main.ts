@@ -280,10 +280,22 @@ async function init() {
   els.printerPort.value = String(settings.printerPort);
   bind();
   await PortalSocket.keepAwake({ enabled: true });
+  // Permiso de notificaciones (Android 13+): si ya está concedido o denegado permanente, no abre popup.
+  try { await PortalSocket.requestNotifPermission(); } catch {}
   log("Portal Print listo. Conectá el relay e imprimirá los pedidos de forma automática.");
   if (settings.token && settings.serverUrl) {
     connectRelay();
   }
 }
+
+// Primer uso: pedir exclusion de optimizacion de bateria (de persistencia del relay en background).
+window.addEventListener("load", () => {
+  try {
+    if (localStorage.getItem("portalPrint.askedBattery") !== "1") {
+      localStorage.setItem("portalPrint.askedBattery", "1");
+      PortalSocket.requestBatteryExemption().catch(() => {});
+    }
+  } catch {}
+});
 
 init();

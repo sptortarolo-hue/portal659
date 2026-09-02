@@ -428,10 +428,11 @@ export function Mostrador() {
 
       {/* Mobile bottom sheet */}
       {sheetOpen && (
-        <div className="sm:hidden fixed inset-0 z-50 bg-black/40" onClick={() => setSheetOpen(false)}>
+        <div className="sm:hidden fixed inset-0 z-[60] bg-black/40" onClick={() => setSheetOpen(false)}>
           <div
             className="absolute bottom-0 left-0 right-0 max-h-[85vh] overflow-y-auto rounded-t-2xl bg-card p-4 flex flex-col"
             onClick={(e) => e.stopPropagation()}
+            style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 1rem)" }}
           >
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-display font-semibold">Pedido actual</h3>

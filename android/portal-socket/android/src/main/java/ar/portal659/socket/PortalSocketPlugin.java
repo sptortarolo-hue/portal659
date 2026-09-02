@@ -144,6 +144,40 @@ public class PortalSocketPlugin extends Plugin {
     call.resolve();
   }
 
+  /** Pide el permiso POST_NOTIFICATIONS (Android 13+) para que se vea la notif fija del FG service. */
+  @PluginMethod
+  public void requestNotifPermission(PluginCall call) {
+    if (android.os.Build.VERSION.SDK_INT >= 33) {
+      getActivity().requestPermissions(
+        new String[] { "android.permission.POST_NOTIFICATIONS" },
+        42659
+      );
+    }
+    call.resolve();
+  }
+
+  /** Abre el diálogo oficial de Android para excluir la app de la optimización de batería. */
+  @PluginMethod
+  public void requestBatteryExemption(PluginCall call) {
+    try {
+      Context ctx = getContext();
+      Intent intent = new Intent(
+        android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+        android.net.Uri.parse("package:" + ctx.getPackageName())
+      );
+      ctx.startActivity(intent);
+      call.resolve();
+    } catch (Exception e) {
+      // Fallback a los ajustes generales de batería
+      try {
+        getContext().startActivity(new Intent(android.provider.Settings.ACTION_SETTINGS));
+        call.resolve();
+      } catch (Exception e2) {
+        call.reject("No se pudo abrir la configuración de batería: " + e2.getMessage());
+      }
+    }
+  }
+
   private String localSubnet() {
     Context context = getContext();
     ConnectivityManager cm = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);

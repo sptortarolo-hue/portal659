@@ -1,15 +1,40 @@
 # Portal Print — app Android (puente de impresión)
 
 App Android (Capacitor + plugin de sockets propio) que imprime a la impresora térmica
-(Union TP85-NET) por TCP en la red local. Se conecta **saliente** al relay de Portal 659
-(`services/print-bridge`), por lo que **no hace falta abrir puertos en el router ni IP pública**:
+(Union TP85-NET, Ethernet 58/80mm) por TCP en la red local. Se conecta **saliente** al relay
+`services/print-bridge`, por lo que **no hace falta abrir puertos en el router ni IP pública**:
 funciona detrás de NAT/CGNAT y con IP dinámica.
 
-Requisitos del día a día:
+## Cómo se distribuye hoy
+**Descargá el APK desde la app web**: dashboard del comercio → sección **Impresora** → botón
+"📥 Descargar la app (Android)" (URL: `https://www.portal659.com.ar/downloads/portal-print.apk`).
+Está firmado con una keystore estable; no hace falta compilar nada local.
 
+## Funcionamiento
+
+- El celular se **conecta solo al relay** con el token (misma red por WS) e imprime los pedidos.
+- **Autorreconexión** con backoff exponencial (1s → 30s máximo) + guardián de reconn cada 10s si el
+  relay está cerrado.
+- **ForegroundService**pone la **notificación fija** en la barra ("Portal Print activo") — Android ya
+  no la mata por batería.
+- **Array de jobs pendientes** en el relay: si la app está caida, los pedidos se acumulan y al reconectar
+  llegan en orden.
+- **Arranque al encender el celular**: si reiniciás el celular, el sistema levanta el FG service
+  solo; la notificación aparece y al tocarla abre la app (y al abrir la app se reconecta solo).
+
+Requisitos del día a día:
 - El celular en el **mismo Wi-Fi** que la impresora.
-- La app **abierta en primer plano** en el mostrador (idealmente enchufada; se mantiene con
-  la pantalla encendida automáticamente). Los pedidos confirmados se imprimen solos.
+- La app idealmente **en primer plano** en el mostrador (enchufada) — los pedidos confirmados se
+  imprimen solos. Con el FG service también funciona si la minimizás.
+
+## Estructura
+
+```
+android/
+├─ portal-socket/        plugin Capacitor "PortalSocket" (TCP + descubrimiento + FG service)
+├─ src/main.ts           lógica de la app (relay WebSocket + impresión)
+└─ www/                  índice y estilos (web asset de Capacitor)
+```
 
 ## Estructura
 

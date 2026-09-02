@@ -1,0 +1,11 @@
+{
+  "name": "portal-print-agent",
+  "private": true,
+  "type": "module",
+  "version": "1.0.0",
+  "description": "Agente de impresión para PC (relé WebSocket → impresora TCP ESC/POS)",
+  "scripts": {
+    "start": "node agent.mjs",
+    "build:exe": "bun build agent.mjs --compile --outfile portal-print-agent.exe"
+  }
+}

@@ -1,6 +1,7 @@
 package ar.portal659.socket;
 
 import android.content.Context;
+import android.content.Intent;
 import android.net.ConnectivityManager;
 import android.net.LinkAddress;
 import android.net.LinkProperties;
@@ -127,6 +128,19 @@ public class PortalSocketPlugin extends Plugin {
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
       }
     });
+    // Además de mantener la pantalla, levantamos el foreground service para que
+    // Android no mate el proceso (y con él el WebSocket al relay).
+    Context ctx = getContext();
+    Intent svc = new Intent(ctx, PortalPrintService.class);
+    if (enabled) {
+      if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+        ctx.startForegroundService(svc);
+      } else {
+        ctx.startService(svc);
+      }
+    } else {
+      ctx.stopService(svc);
+    }
     call.resolve();
   }
 

@@ -67,21 +67,44 @@ async function run() {
   const cwd = dirname(dirname(fileURLToPath(import.meta.url)));
 
   const relay = spawnNode(["index.mjs"], { PORT: String(RELAY_PORT), PRINT_BRIDGE_SECRET: SECRET }, cwd);
-  const client = spawnNode(["test/client.mjs", "--server", `ws://127.0.0.1:${RELAY_PORT}`, "--token", TOKEN, "--listen", String(CAPTURE_PORT)], {}, cwd);
 
   try {
-    console.log("[e2e] esperando agent conectado...");
-    const agentUp = await waitFor(() => client.getOut().includes("conectado"));
-    if (!agentUp) {
-      console.error("[e2e] FAIL: el agente falso no conectó\n--- salida agente ---\n" + client.getOut());
+    // 1) Push SIN cliente conectado: el relay debe encolar el job (no perderlo).
+    console.log("[e2e] push sin cliente conectado (debe encolar)...");
+    await sleep(400); // el relay tarda un pelín en levantar
+    const payloadQueudable = await buildTestBuffer();
+    const resQueued = await fetch(`${BASE}/push`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-bridge-secret": SECRET },
+      body: JSON.stringify({
+        token: TOKEN,
+        job: { type: "test", payload: payloadQueudable, printerIp: "127.0.0.1", printerPort: CAPTURE_PORT, width: 48 },
+      }),
+    });
+    const queuedData = await resQueued.json();
+    if (!queuedData.ok || !queuedData.queued) {
+      console.error("[e2e] FAIL: el push offline no se encoló:", JSON.stringify(queuedData));
       process.exitCode = 1;
       return;
     }
+    console.log("[e2e] job encolado ok:", JSON.stringify(queuedData));
 
-    console.log("[e2e] generando buffer ESC/POS...");
+    // 2) Ahora conecta el cliente: debe recibir el job pendiente y capturarlo por TCP.
+    const client = spawnNode(["test/client.mjs", "--server", `ws://127.0.0.1:${RELAY_PORT}`, "--token", TOKEN, "--listen", String(CAPTURE_PORT)], {}, cwd);
+
+    console.log("[e2e] esperando que el job encolado llegue al cliente...");
+    const acked = await waitFor(() => client.getOut().includes("ack ok"));
+    const captured = await waitFor(() => /\[tcp-capture\] recibidos \d+ bytes/.test(client.getOut()));
+    if (!acked || !captured) {
+      console.error(`[e2e] FAIL (cola): ${!acked ? "sin ack" : "sin captura TCP"}\n--- salida agente ---\n${client.getOut()}`);
+      process.exitCode = 1;
+      return;
+    }
+    console.log("[e2e] cola: job pendiente entregado y ack ok");
+
+    // 3) Push online normal (como antes): llega directo sin encolar.
+    console.log("[e2e] push online directo...");
     const payload = await buildTestBuffer();
-
-    console.log("[e2e] enviando /push...");
     const res = await fetch(`${BASE}/push`, {
       method: "POST",
       headers: { "content-type": "application/json", "x-bridge-secret": SECRET },
@@ -91,27 +114,25 @@ async function run() {
       }),
     });
     const data = await res.json();
-    if (!data.ok) {
-      console.error("[e2e] FAIL: /push respondió", JSON.stringify(data));
+    if (!data.ok || data.queued) {
+      console.error("[e2e] FAIL: /push online respondió", JSON.stringify(data));
       process.exitCode = 1;
       return;
     }
-    console.log("[e2e] /push ok:", JSON.stringify(data));
+    console.log("[e2e] /push online ok:", JSON.stringify(data));
 
-    const acked = await waitFor(() => client.getOut().includes("ack ok"));
-    const captured = await waitFor(() => /\[tcp-capture\] recibidos \d+ bytes/.test(client.getOut()));
-    if (!acked || !captured) {
-      console.error(`[e2e] FAIL: ${!acked ? "sin ack" : "sin captura TCP"}\n--- salida agente ---\n${client.getOut()}`);
+    const acked2 = await waitFor(() => (client.getOut().match(/ack ok/g) || []).length >= 2);
+    if (!acked2) {
+      console.error("[e2e] FAIL: el segundo push (online) no tuvo ack\n--- salida agente ---\n" + client.getOut());
       process.exitCode = 1;
       return;
     }
-    console.log("[e2e] PASS: relay + agente + impresión TCP verificados");
+    console.log("[e2e] PASS: cola + entrega directa + captura TCP verificados");
   } catch (e) {
     console.error("[e2e] FAIL:", e.message);
     process.exitCode = 1;
   } finally {
     relay.child.kill();
-    client.child.kill();
     process.exit(process.exitCode ?? 0);
   }
 }

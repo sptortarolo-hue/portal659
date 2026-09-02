@@ -112,6 +112,7 @@ async function connectRelay() {
 
   ws.onopen = () => {
     state.connected = true;
+    reconnectDelay = 1000; // reset del backoff
     setRelay("online");
     log("Conectado al relay", "ok");
   };
@@ -133,8 +134,7 @@ async function connectRelay() {
     state.connected = false;
     setRelay("offline");
     if (state.ws === ws) {
-      log("Relay desconectado · reintento en 3s", "error");
-      setTimeout(connectRelay, 3000);
+      scheduleReconnect();
     }
   };
   ws.onerror = () => ws.close();
@@ -149,6 +149,23 @@ function disconnectRelay() {
   }
   setRelay("offline");
 }
+
+// Reconexión con backoff exponencial (1s, 2s, 4s, 8s... máximo 30s).
+let reconnectDelay = 1000;
+function scheduleReconnect() {
+  reconnectDelay = Math.min(reconnectDelay * 2, 30000);
+  log(`Relay desconectado · reintento en ${Math.round(reconnectDelay / 1000)}s`, "error");
+  setTimeout(() => {
+    if (!state.connected) connectRelay();
+  }, reconnectDelay);
+}
+
+// Guardián: si el socket está cerrado/sin respuesta (corte silencioso de red), reconecta.
+setInterval(() => {
+  if (!state.connected && getSettings().token) {
+    connectRelay();
+  }
+}, 10000);
 
 async function handleJob(msg: any) {
   const job = msg.job ?? msg;

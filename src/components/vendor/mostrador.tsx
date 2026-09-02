@@ -180,21 +180,23 @@ export function Mostrador() {
       return;
     }
 
-    // Siempre imprime comanda (va directo a preparación)
+    // Siempre imprime comanda (va directo a preparación) y, recién al terminar,
+    // el comprobante de retiro (evita mandar dos trabajos concurrentes a la impresora).
     fetch("/api/print", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ orderId: data.orderId, type: "comanda" }),
-    }).catch(() => {});
-
-    // Comprobante de retiro (solo retiro en local + botón correspondiente)
-    if (withReceipt && !isDelivery) {
-      fetch("/api/print", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderId: data.orderId, type: "retiro" }),
-      }).catch(() => {});
-    }
+    })
+      .then(() => {
+        if (withReceipt && !isDelivery) {
+          return fetch("/api/print", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ orderId: data.orderId, type: "retiro" }),
+          });
+        }
+      })
+      .catch(() => {});
 
     setMsg(
       isDelivery

@@ -10,6 +10,7 @@ const MAX_JOB_ATTEMPTS = 8;
 
 const clients = new Map(); // token -> { ws, token, lastSeen }
 const pending = new Map(); // token -> [{ id, job, attempts, enqueuedAt }]
+const deliverLocks = new Map(); // token -> Promise (serializa entregas directas a la misma impresora)
 
 function hasAuth(req) {
   if (!SECRET) return true;
@@ -78,7 +79,7 @@ const server = createServer(async (req, res) => {
       });
     }
 
-    const result = await sendJob(client, item2job(job));
+    const result = await withTokenLock(token, () => sendJob(client, item2job(job)));
     writeJson(res, 200, { ok: result.ok, jobId: result.jobId, offline: false, error: result.error });
     return;
   }
@@ -100,6 +101,19 @@ function enqueueJob(token, job) {
 
 function item2job(job) {
   return { id: randomUUID(), job, attempts: 0 };
+}
+
+// Serializa las entregas directas por token: dos /push concurrentes a la misma
+// impresora se imprimen de a una, sin abrir conexiones simultáneas.
+async function withTokenLock(token, fn) {
+  const prev = deliverLocks.get(token) || Promise.resolve();
+  const run = prev.then(() => fn());
+  const settled = run.then(() => {}, () => {});
+  deliverLocks.set(token, settled);
+  settled.then(() => {
+    if (deliverLocks.get(token) === settled) deliverLocks.delete(token);
+  });
+  return run;
 }
 
 const flushing = new Set(); // tokens con un flush en curso (evita entregas paralelas)

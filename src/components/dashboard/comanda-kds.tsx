@@ -205,7 +205,7 @@ function TicketCard({
 
       {/* Items */}
       <div className="space-y-0.5 mb-1.5">
-        {order.items.slice(0, 4).map((item, i) => (
+        {(order.items || []).slice(0, 4).map((item, i) => (
           <div key={i} className="flex items-start gap-1 text-[13px] leading-tight">
             <span className="font-bold text-foreground tabular-nums min-w-[22px]">{item.qty}x</span>
             <span className="text-foreground font-medium truncate">{item.name}</span>
@@ -216,7 +216,7 @@ function TicketCard({
             )}
           </div>
         ))}
-        {order.items.length > 4 && (
+        {(order.items || []).length > 4 && (
           <p className="text-[10px] text-muted-foreground pl-7">+{order.items.length - 4} más</p>
         )}
       </div>
@@ -283,6 +283,7 @@ export default function ComandaKDS({ vendorId, vendorName, accessToken }: Props)
   const [orders, setOrders] = useState<Order[]>([]);
   const [activeTab, setActiveTab] = useState<OrderStatus | "all">("new");
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [pullDistance, setPullDistance] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
@@ -302,9 +303,14 @@ export default function ComandaKDS({ vendorId, vendorName, accessToken }: Props)
   const previousStatusRef = useRef<Map<string, OrderStatus>>(new Map());
 
   async function fetchOrders() {
+    // Timeout: si la red queda colgada (p. ej. conexión móvil suspendida),
+    // mostramos error con reintento en lugar de un spinner eterno.
+    const ac = new AbortController();
+    const timeout = setTimeout(() => ac.abort(), 8000);
     try {
       const res = await fetch("/api/vendor/orders", {
         headers: { Authorization: `Bearer ${accessToken}` },
+        signal: ac.signal,
       });
       const data = await res.json();
       if (data.orders) {
@@ -316,7 +322,12 @@ export default function ComandaKDS({ vendorId, vendorName, accessToken }: Props)
           return next;
         });
       }
-    } catch {}
+      setLoadError(false);
+    } catch {
+      setLoadError(true);
+    } finally {
+      clearTimeout(timeout);
+    }
     setLoading(false);
   }
 
@@ -447,6 +458,17 @@ export default function ComandaKDS({ vendorId, vendorName, accessToken }: Props)
     return (
       <div className="flex items-center justify-center py-12">
         <div className="h-6 w-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (loadError && orders.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 py-12 text-center">
+        <p className="text-sm text-muted-foreground">No se pudo cargar la comanda. Revisá tu conexión.</p>
+        <Button variant="outline" size="sm" onClick={() => { setLoading(true); fetchOrders(); }}>
+          Reintentar
+        </Button>
       </div>
     );
   }

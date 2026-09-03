@@ -60,6 +60,7 @@ export function Mesas() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [msg, setMsg] = useState("");
   const [query, setQuery] = useState("");
   const [activeCat, setActiveCat] = useState<string | null>(null);
@@ -73,11 +74,15 @@ export function Mesas() {
   const [payment, setPayment] = useState("efectivo");
 
   const load = useCallback(async () => {
+    // Timeout: si la red queda colgada (p. ej. conexión móvil suspendida),
+    // mostramos error con reintento en lugar de un spinner/"Cargando" eterno.
+    const ac = new AbortController();
+    const timeout = setTimeout(() => ac.abort(), 8000);
     try {
       const [tRes, oRes, pRes] = await Promise.all([
-        fetch("/api/vendor/tables"),
-        fetch("/api/vendor/orders"),
-        fetch("/api/vendor/offers"),
+        fetch("/api/vendor/tables", { signal: ac.signal }),
+        fetch("/api/vendor/orders", { signal: ac.signal }),
+        fetch("/api/vendor/offers", { signal: ac.signal }),
       ]);
       const t = await tRes.json();
       const o = await oRes.json();
@@ -91,7 +96,11 @@ export function Mesas() {
           .filter((x: any) => x.available !== false)
           .map((x: any) => ({ ...x, modifiers: modsMap[x.id] || [] })));
       }
-    } catch { /* noop */ } finally {
+      setLoadError(false);
+    } catch {
+      setLoadError(true);
+    } finally {
+      clearTimeout(timeout);
       setLoading(false);
     }
   }, []);
@@ -244,6 +253,17 @@ export function Mesas() {
 
   if (loading) return <p className="text-sm text-muted-foreground">Cargando mesas...</p>;
 
+  if (loadError) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 py-10 text-center">
+        <p className="text-sm text-muted-foreground">No se pudieron cargar las mesas. Revisá tu conexión.</p>
+        <Button variant="outline" size="sm" onClick={() => { setLoading(true); load(); }}>
+          Reintentar
+        </Button>
+      </div>
+    );
+  }
+
   // Catálogo compartido: buscador + pastillas + grilla de productos.
   const catalogBlock = (gridClass: string) => (
     <div className="min-w-0 space-y-2">
@@ -327,7 +347,7 @@ export function Mesas() {
             <span className="font-semibold tabular-nums">${Number(o.total).toLocaleString("es-AR")}</span>
           </div>
           <div className="text-xs space-y-0.5">
-            {o.items.map((i, idx) => (
+            {(o.items || []).map((i, idx) => (
               <p key={idx} className="text-muted-foreground">
                 {i.qty}x {i.name}
                 {i.modifiers && i.modifiers.length > 0 && <span className="text-red-500"> ({i.modifiers.join(", ")})</span>}

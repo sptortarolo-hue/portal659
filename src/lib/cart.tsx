@@ -105,19 +105,14 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     setHydrated(true);
   }, []);
 
-  // El carrito se cierra con el botón atrás del navegador o gesto de Android:
-  // al abrir empujamos un estado en el historial y escuchamos popstate.
+  // Si el usuario navega para atrás (botón/gesto del navegador o Android),
+  // cerramos el carrito abierto. NO se toca history.pushState/history.back:
+  // mutar el historial confunde al App Router de Next y dejaba la app tildada.
   useEffect(() => {
     if (!open) return;
-    history.pushState({ portal659Cart: true }, "");
     const onPop = () => setOpen(false);
     window.addEventListener("popstate", onPop);
-    return () => {
-      window.removeEventListener("popstate", onPop);
-      // Al cerrar, si nuestro estado todavía está en el tope deshacemos el push
-      // para no dejar una entrada fantasma en el historial.
-      if (history.state && history.state.portal659Cart) history.back();
-    };
+    return () => window.removeEventListener("popstate", onPop);
   }, [open, setOpen]);
 
   const addItem = useCallback((newVendor: CartVendor, item: CartItem): boolean => {

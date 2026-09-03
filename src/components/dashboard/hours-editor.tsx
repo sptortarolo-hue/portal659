@@ -135,11 +135,10 @@ export function HoursEditor({
   }, [value]);
 
   function update(idx: number, patch: Partial<DayConfig>) {
-    setCfg((prev) => {
-      const next = prev.map((c, i) => (i === idx ? { ...c, ...patch } : c));
-      onChange(serialize(next));
-      return next;
-    });
+    // Los updaters de setState deben ser puros: notificar al padre por fuera.
+    const next = cfg.map((c, i) => (i === idx ? { ...c, ...patch } : c));
+    setCfg(next);
+    onChange(serialize(next));
   }
 
   return (

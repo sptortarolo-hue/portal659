@@ -12,6 +12,7 @@ import {
   orderReadyLabel,
   orderCompleteActionLabel,
   orderNeedsKitchen,
+  nextStatusFor,
   CONDITION_META,
 } from "@/lib/order-utils";
 import { playNewOrderSound, playOrderReadySound, playUrgentSound, resumeAudioContext } from "@/lib/sounds";
@@ -53,16 +54,11 @@ function vibrate(pattern: number[]) {
   try { navigator.vibrate?.(pattern); } catch {}
 }
 
-function getNextStatus(current: OrderStatus, method?: "delivery" | "pickup"): OrderStatus | null {
-  if (current === "ready" && method === "pickup") return "completed";
-  const flow: Record<string, OrderStatus> = {
-    new: "preparing", preparing: "ready", ready: "sent", sent: "completed",
-  };
-  return flow[current] || null;
-}
-
 function getActionButtonLabel(next: OrderStatus, order: Order): string {
-  if (order.status === "new") return "Aceptar y empezar a preparar";
+  // Mostrador/mesa saltean "preparar": del estado nuevo pasan a "Listo p/ entregar".
+  if (order.status === "new") {
+    return next === "ready" ? `✅ ${orderReadyLabel(order)}` : "Aceptar y empezar a preparar";
+  }
   if (next === "ready") return orderReadyLabel(order);
   if (next === "sent" || (next === "completed" && order.status === "ready")) return orderCompleteActionLabel(order);
   const labels: Record<OrderStatus, string> = {
@@ -119,7 +115,7 @@ function TicketCard({
   const isOverdue = remaining !== null && remaining <= 0 && order.status !== "completed" && order.status !== "cancelled";
   const isUrgent = remaining !== null && remaining <= 5 && remaining > 0;
   const timeColor = getTimeColor(elapsed, order.estimated_minutes);
-  const nextStatus = getNextStatus(order.status, order.method);
+  const nextStatus = nextStatusFor(order.status, order.method, false, order.channel);
   const canAct = nextStatus && canTransition(order.status, nextStatus);
   const isTerminal = order.status === "completed" || order.status === "cancelled";
 

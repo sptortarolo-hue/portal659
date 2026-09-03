@@ -39,8 +39,9 @@ export async function PATCH(request: Request) {
   const cols = Object.keys(clean);
   if (cols.length === 0) return NextResponse.json({ ok: true });
   const setClauses = cols.map((k, i) => `${k} = $${i + 2}`).join(", ");
+  // `id` es el uuid de la fila (la página lo envía como "id").
   await query(
-    `UPDATE ${table} SET ${setClauses} WHERE slug = $1`,
+    `UPDATE ${table} SET ${setClauses} WHERE id = $1`,
     [id, ...Object.values(clean)]
   );
 

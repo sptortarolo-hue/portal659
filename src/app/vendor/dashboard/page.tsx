@@ -679,7 +679,7 @@ function VendorDashboardInner() {
         </div>
       )}
 
-      <div className={`container mx-auto px-4 mt-4 ${["orders", "comanda", "pos", "mesas", "analytics"].includes(tab) ? "max-w-7xl" : "max-w-2xl"}`}>
+      <div className={`px-4 mt-4 ${tab === "comanda" ? "w-full max-w-none" : `container mx-auto ${["orders", "pos", "mesas", "analytics"].includes(tab) ? "max-w-7xl" : "max-w-2xl"}`}`}>
         {isService ? (
           <div className="space-y-4">{configContent}</div>
         ) : (

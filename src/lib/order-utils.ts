@@ -14,7 +14,9 @@ export function orderNeedsKitchen(
 const VALID_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
   // "confirmed" (aceptación explícita) lo usa el vertical moda; gastronomía
   // salta directo de new a preparing (su UI nunca emite "confirmed").
-  new: ["confirmed", "preparing", "cancelled"],
+  // Mostrador/mesa saltean "preparación": de new pasan directo a ready
+  // ("Listo p/ entregar"); la cocina igual los ve en la comanda.
+  new: ["confirmed", "preparing", "ready", "cancelled"],
   confirmed: ["preparing", "cancelled"],
   preparing: ["ready", "cancelled"],
   ready: ["sent", "completed", "cancelled"],
@@ -111,13 +113,21 @@ export function flowSteps(isModa: boolean): OrderStatus[] {
     : ["new", "preparing", "ready", "sent", "completed"];
 }
 
-/** Próximo estado del pedido según el flow del vertical. `null` en estados terminales. */
+/**
+ * Próximo estado del pedido según el flow del vertical/canal.
+ * - Mostrador/mesa: `new` salta directo a `ready` ("Listo p/ entregar").
+ * - Moda (app): `new` → `confirmed` (aceptación explícita) → empaquetado.
+ * - Gastro/app: `new` → `preparing`.
+ * `null` en estados terminales.
+ */
 export function nextStatusFor(
   status: OrderStatus,
   method?: "delivery" | "pickup",
-  isModa: boolean = false
+  isModa: boolean = false,
+  channel?: Order["channel"]
 ): OrderStatus | null {
   if (status === "ready" && method === "pickup") return "completed";
+  if ((channel === "mostrador" || channel === "mesa") && status === "new") return "ready";
   switch (status) {
     case "new":
       return isModa ? "confirmed" : "preparing";

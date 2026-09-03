@@ -41,6 +41,6 @@ export async function DELETE(request: Request) {
 
   if (!id) return NextResponse.json({ error: "id es requerido" }, { status: 400 });
 
-  await query(`DELETE FROM neighborhoods WHERE slug = $1`, [id]);
+  await query(`DELETE FROM neighborhoods WHERE id = $1`, [id]);
   return NextResponse.json({ ok: true });
 }

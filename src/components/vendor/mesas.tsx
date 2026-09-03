@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import { ModifierPicker } from "@/components/offers/modifier-picker";
 
 type Table = {
@@ -238,7 +239,108 @@ export function Mesas() {
     setTimeout(() => setMsg(""), 3000);
   }
 
+  const cartCount = cart.reduce((s, i) => s + i.qty, 0);
+  const cartTotal = cart.reduce((s, i) => s + i.price * i.qty, 0);
+
   if (loading) return <p className="text-sm text-muted-foreground">Cargando mesas...</p>;
+
+  // Catálogo compartido: buscador + pastillas + grilla de productos.
+  const catalogBlock = (gridClass: string) => (
+    <div className="min-w-0 space-y-2">
+      <div className="flex items-center gap-2">
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Buscar y agregar producto..."
+          className="flex-1 h-9 px-3 text-xs rounded-lg border border-input bg-background"
+        />
+        {cartCount > 0 && (
+          <Badge className="h-9 px-3 text-xs tabular-nums">🛒 {cartCount}</Badge>
+        )}
+      </div>
+      {categories.length > 1 && (
+        <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
+          <button
+            onClick={() => setActiveCat(null)}
+            className={`flex-shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors ${
+              activeCat === null ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+            }`}
+          >
+            Todos
+          </button>
+          {categories.map((c) => (
+            <button
+              key={c}
+              onClick={() => setActiveCat(activeCat === c ? null : c)}
+              className={`flex-shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                activeCat === c ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+              }`}
+            >
+              {c}
+            </button>
+          ))}
+        </div>
+      )}
+      <div className={`grid grid-cols-3 gap-1.5 ${gridClass}`}>
+        {filtered.map((p) => (
+          <button
+            key={p.id}
+            onClick={() => addProduct(p)}
+            className="text-left rounded-lg border border-border bg-card overflow-hidden hover:border-primary/50 transition-colors active:scale-[0.97]"
+          >
+            <div className="aspect-square w-full bg-secondary">
+              {p.image_url ? (
+                <img src={p.image_url} alt={p.name} loading="lazy" decoding="async" className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center">
+                  <span className="font-display text-2xl font-bold text-primary/40">{p.name.charAt(0)}</span>
+                </div>
+              )}
+            </div>
+            <div className="p-1.5">
+              <p className="text-[10px] font-medium truncate">{p.name}</p>
+              <p className="text-[11px] font-semibold text-primary tabular-nums">
+                ${Number(p.promo_price ?? p.price).toLocaleString("es-AR")}
+              </p>
+              {(modifiersMap[p.id] || []).length > 0 && (
+                <span className="inline-block text-[9px] font-medium text-primary/70">+ opciones</span>
+              )}
+            </div>
+          </button>
+        ))}
+        {filtered.length === 0 && (
+          <p className="text-[11px] text-muted-foreground col-span-full text-center py-4">Sin productos</p>
+        )}
+      </div>
+    </div>
+  );
+
+  const consumicionesBlock = (compact: boolean) => (
+    <div className={`space-y-2 ${compact ? "" : ""}`}>
+      {openOrders.map((o) => (
+        <div key={o.id} className="rounded-xl bg-muted/50 p-3">
+          <div className="flex items-center justify-between text-xs mb-1">
+            <span className="text-muted-foreground">
+              {new Date(o.created_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })} · #{o.id.slice(0, 6)}
+            </span>
+            <span className="font-semibold tabular-nums">${Number(o.total).toLocaleString("es-AR")}</span>
+          </div>
+          <div className="text-xs space-y-0.5">
+            {o.items.map((i, idx) => (
+              <p key={idx} className="text-muted-foreground">
+                {i.qty}x {i.name}
+                {i.modifiers && i.modifiers.length > 0 && <span className="text-red-500"> ({i.modifiers.join(", ")})</span>}
+              </p>
+            ))}
+          </div>
+        </div>
+      ))}
+      {openOrders.length === 0 && selected?.status === "ocupada" && (
+        <p className="text-xs text-muted-foreground">Mesa ocupada sin consumiciones registradas.</p>
+      )}
+    </div>
+  );
 
   return (
     <div className="space-y-4">
@@ -291,142 +393,141 @@ export function Mesas() {
       </div>
 
       {selected && (
-        <div className="rounded-2xl border border-border bg-card p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="font-display font-semibold">{selected.name}</h3>
-            <div className="flex items-center gap-2">
-              {renaming === selected.id ? (
-                <input
-                  autoFocus
-                  value={renameValue}
-                  onChange={(e) => setRenameValue(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && renameTable(selected)}
-                  onBlur={() => setRenaming(null)}
-                  className="h-8 px-2 text-xs rounded-lg border border-input bg-background w-32"
-                />
-              ) : (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => { setRenaming(selected.id); setRenameValue(selected.name); }}
-                >
-                  Renombrar
-                </Button>
-              )}
-              {selected.status === "libre" && (
-                <Button variant="ghost" size="sm" onClick={() => deleteTable(selected)}>Eliminar</Button>
-              )}
-              <Button variant="outline" size="sm" onClick={() => setSelected(null)}>Cerrar</Button>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            {openOrders.map((o) => (
-              <div key={o.id} className="rounded-xl bg-muted/50 p-3">
-                <div className="flex items-center justify-between text-xs mb-1">
-                  <span className="text-muted-foreground">
-                    {new Date(o.created_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })} · #{o.id.slice(0, 6)}
-                  </span>
-                  <span className="font-semibold tabular-nums">${Number(o.total).toLocaleString("es-AR")}</span>
-                </div>
-                <div className="text-xs space-y-0.5">
-                  {o.items.map((i, idx) => (
-                    <p key={idx} className="text-muted-foreground">
-                      {i.qty}x {i.name}
-                      {i.modifiers && i.modifiers.length > 0 && <span className="text-red-500"> ({i.modifiers.join(", ")})</span>}
-                    </p>
-                  ))}
-                </div>
-              </div>
-            ))}
-            {openOrders.length === 0 && selected.status === "ocupada" && (
-              <p className="text-xs text-muted-foreground">Mesa ocupada sin consumiciones registradas.</p>
-            )}
-          </div>
-
-          {closedOrders.length > 0 && (
-            <div className="mt-3">
-              <p className="text-[10px] font-semibold text-muted-foreground mb-1.5 uppercase tracking-wide">
-                Cuentas cerradas ({closedOrders.length})
-              </p>
-              <div className="space-y-1.5 opacity-70">
-                {closedOrders.map((o) => (
-                  <div key={o.id} className="flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground">
-                      {o.paid_at ? new Date(o.paid_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }) : new Date(o.created_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })} · #{o.id.slice(0, 6)}
-                    </span>
-                    <span className="font-semibold tabular-nums">${Number(o.total).toLocaleString("es-AR")}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div className="mt-3 pt-3 border-t border-border grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_auto] gap-3">
-            <div className="min-w-0">
-              <input
-                type="text"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Buscar y agregar producto..."
-                className="w-full h-9 px-3 text-xs rounded-lg border border-input bg-background mb-2"
-              />
-              {categories.length > 1 && (
-                <div className="flex gap-1.5 overflow-x-auto pb-1 mb-2 scrollbar-hide">
-                  <button
-                    onClick={() => setActiveCat(null)}
-                    className={`flex-shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                      activeCat === null ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
-                    }`}
+        <>
+          {/* ============ Desktop (sm+): panel inline ============ */}
+          <div className="hidden sm:block rounded-2xl border border-border bg-card p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-display font-semibold">{selected.name}</h3>
+              <div className="flex items-center gap-2">
+                {renaming === selected.id ? (
+                  <input
+                    autoFocus
+                    value={renameValue}
+                    onChange={(e) => setRenameValue(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && renameTable(selected)}
+                    onBlur={() => setRenaming(null)}
+                    className="h-8 px-2 text-xs rounded-lg border border-input bg-background w-32"
+                  />
+                ) : (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => { setRenaming(selected.id); setRenameValue(selected.name); }}
                   >
-                    Todos
-                  </button>
-                  {categories.map((c) => (
+                    Renombrar
+                  </Button>
+                )}
+                {selected.status === "libre" && (
+                  <Button variant="ghost" size="sm" onClick={() => deleteTable(selected)}>Eliminar</Button>
+                )}
+                <Button variant="outline" size="sm" onClick={() => setSelected(null)}>Cerrar</Button>
+              </div>
+            </div>
+
+            {consumicionesBlock(false)}
+
+            {closedOrders.length > 0 && (
+              <div className="mt-3">
+                <CollapsibleSection icon="🧾" title={`Cuentas cerradas (${closedOrders.length})`} defaultOpen={false}>
+                  <div className="space-y-1.5 opacity-70">
+                    {closedOrders.map((o) => (
+                      <div key={o.id} className="flex items-center justify-between text-xs">
+                        <span className="text-muted-foreground">
+                          {o.paid_at ? new Date(o.paid_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }) : new Date(o.created_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })} · #{o.id.slice(0, 6)}
+                        </span>
+                        <span className="font-semibold tabular-nums">${Number(o.total).toLocaleString("es-AR")}</span>
+                      </div>
+                    ))}
+                  </div>
+                </CollapsibleSection>
+              </div>
+            )}
+
+            <div className="mt-3 grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_auto] gap-3">
+              <div className="min-w-0">
+                {catalogBlock("sm:grid-cols-4 max-h-52 overflow-y-auto pr-1")}
+                {cart.length > 0 && (
+                  <div className="mt-2 space-y-1">
+                    {cart.map((i) => (
+                      <div key={i.product_id} className="flex items-center justify-between text-xs">
+                        <span>{i.qty}x {i.name}</span>
+                        <span className="tabular-nums">${(i.price * i.qty).toLocaleString("es-AR")}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="flex flex-col justify-between gap-2 sm:min-w-40">
+                <div className="flex flex-wrap gap-1">
+                  {PAYMENT_OPTIONS.map((o) => (
                     <button
-                      key={c}
-                      onClick={() => setActiveCat(activeCat === c ? null : c)}
-                      className={`flex-shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                        activeCat === c ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
-                      }`}
+                      key={o.key}
+                      onClick={() => setPayment(o.key)}
+                      className={`rounded-full px-2 py-1 text-[10px] font-medium ${payment === o.key ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}
                     >
-                      {c}
+                      {o.label}
                     </button>
                   ))}
                 </div>
-              )}
-              <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5 max-h-40 overflow-y-auto pr-1">
-                {filtered.map((p) => (
-                  <button
-                    key={p.id}
-                    onClick={() => addProduct(p)}
-                    className="text-left rounded-lg border border-border bg-card overflow-hidden hover:border-primary/50 transition-colors active:scale-[0.97]"
-                  >
-                    <div className="aspect-square w-full bg-secondary">
-                      {p.image_url ? (
-                        <img src={p.image_url} alt={p.name} loading="lazy" decoding="async" className="w-full h-full object-cover" />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center">
-                          <span className="font-display text-2xl font-bold text-primary/40">{p.name.charAt(0)}</span>
-                        </div>
-                      )}
-                    </div>
-                    <div className="p-1.5">
-                      <p className="text-[10px] font-medium truncate">{p.name}</p>
-                      <p className="text-[11px] font-semibold text-primary tabular-nums">
-                        ${Number(p.promo_price ?? p.price).toLocaleString("es-AR")}
-                      </p>
-                      {(modifiersMap[p.id] || []).length > 0 && (
-                        <span className="inline-block text-[9px] font-medium text-primary/70">+ opciones</span>
-                      )}
-                    </div>
-                  </button>
-                ))}
-                {filtered.length === 0 && (
-                  <p className="text-[11px] text-muted-foreground col-span-full text-center py-4">Sin productos</p>
-                )}
+                <div className="flex items-center justify-between text-sm">
+                  <span>Total mesa</span>
+                  <b className="tabular-nums">${(selectedTotal + cartTotal).toLocaleString("es-AR")}</b>
+                </div>
+                <Button size="sm" disabled={cart.length === 0} onClick={addConsumicion}>Agregar consumición</Button>
+                <Button size="sm" variant="default" disabled={openOrders.length === 0 && cart.length === 0} onClick={closeTable}>
+                  Cobrar y cerrar mesa
+                </Button>
               </div>
+            </div>
+          </div>
+
+          {/* ============ Mobile: modal pantalla completa ============ */}
+          <div className="sm:hidden fixed inset-0 z-[60] bg-background flex flex-col">
+            <header className="flex items-center gap-2 border-b border-border px-3 py-3">
+              <button
+                onClick={() => setSelected(null)}
+                className="shrink-0 h-8 w-8 rounded-full hover:bg-muted flex items-center justify-center text-muted-foreground"
+                aria-label="Volver"
+              >
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+              <div className="flex-1 min-w-0">
+                <h3 className="font-display font-semibold leading-tight truncate">{selected.name}</h3>
+                <p className="text-[11px] text-muted-foreground">
+                  {selected.status === "ocupada" ? "Ocupada" : "Libre"} · ${selectedTotal.toLocaleString("es-AR")}
+                </p>
+              </div>
+              {selected.status === "libre" && (
+                <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => deleteTable(selected)}>Eliminar</Button>
+              )}
+            </header>
+
+            <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
+              {openOrders.length > 0 && consumicionesBlock(false)}
+
+              {closedOrders.length > 0 && (
+                <CollapsibleSection icon="🧾" title={`Cuentas cerradas (${closedOrders.length})`} defaultOpen={false}>
+                  <div className="space-y-1.5 opacity-70">
+                    {closedOrders.map((o) => (
+                      <div key={o.id} className="flex items-center justify-between text-xs">
+                        <span className="text-muted-foreground">
+                          {o.paid_at ? new Date(o.paid_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }) : new Date(o.created_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })} · #{o.id.slice(0, 6)}
+                        </span>
+                        <span className="font-semibold tabular-nums">${Number(o.total).toLocaleString("es-AR")}</span>
+                      </div>
+                    ))}
+                  </div>
+                </CollapsibleSection>
+              )}
+
+              {catalogBlock("max-h-none")}
+            </div>
+
+            <footer className="border-t border-border px-3 pt-2 pb-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] space-y-2 bg-card">
               {cart.length > 0 && (
-                <div className="mt-2 space-y-1">
+                <div className="max-h-28 overflow-y-auto space-y-1">
                   {cart.map((i) => (
                     <div key={i.product_id} className="flex items-center justify-between text-xs">
                       <span>{i.qty}x {i.name}</span>
@@ -435,8 +536,6 @@ export function Mesas() {
                   ))}
                 </div>
               )}
-            </div>
-            <div className="flex flex-col justify-between gap-2 sm:min-w-40">
               <div className="flex flex-wrap gap-1">
                 {PAYMENT_OPTIONS.map((o) => (
                   <button
@@ -450,15 +549,19 @@ export function Mesas() {
               </div>
               <div className="flex items-center justify-between text-sm">
                 <span>Total mesa</span>
-                <b className="tabular-nums">${(selectedTotal + cart.reduce((s, i) => s + i.price * i.qty, 0)).toLocaleString("es-AR")}</b>
+                <b className="tabular-nums">${(selectedTotal + cartTotal).toLocaleString("es-AR")}</b>
               </div>
-              <Button size="sm" disabled={cart.length === 0} onClick={addConsumicion}>Agregar consumición</Button>
-              <Button size="sm" variant="default" disabled={openOrders.length === 0 && cart.length === 0} onClick={closeTable}>
-                Cobrar y cerrar mesa
-              </Button>
-            </div>
+              <div className="grid grid-cols-1 gap-2">
+                <Button size="sm" disabled={cart.length === 0} onClick={addConsumicion}>
+                  Agregar consumición {cartCount > 0 ? `(${cartCount})` : ""}
+                </Button>
+                <Button size="sm" variant="default" disabled={openOrders.length === 0 && cart.length === 0} onClick={closeTable}>
+                  Cobrar y cerrar mesa
+                </Button>
+              </div>
+            </footer>
           </div>
-        </div>
+        </>
       )}
 
       {pickerProduct && (

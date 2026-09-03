@@ -5,6 +5,20 @@ import { resolveVendorPlan } from "@/lib/plans";
 import { NextResponse } from "next/server";
 import type { Plan, Vendor } from "@/types/database";
 
+const TZ_AR = "America/Argentina/Buenos_Aires";
+
+/** Día civil en horario argentino. node-pg devuelve Date (no string) → normalizar. */
+function dayKey(value: string | Date): string {
+  const d = typeof value === "string" ? new Date(value) : value;
+  return d.toLocaleDateString("en-CA", { timeZone: TZ_AR }); // "YYYY-MM-DD"
+}
+
+/** Hora 0-23 en horario argentino. */
+function hourKey(value: string | Date): string {
+  const d = typeof value === "string" ? new Date(value) : value;
+  return d.toLocaleString("en-GB", { hour: "2-digit", hour12: false, timeZone: TZ_AR });
+}
+
 export async function GET(request: Request) {
   const authUser = await getAuthUser(request);
   if (!authUser) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
@@ -51,8 +65,8 @@ export async function GET(request: Request) {
 
   // Panel "Hoy"
   const now = new Date();
-  const todayKey = now.toISOString().split("T")[0];
-  const todayOrders = orders.filter((o) => o.created_at.split("T")[0] === todayKey);
+  const todayKey = dayKey(now);
+  const todayOrders = orders.filter((o) => dayKey(o.created_at) === todayKey);
   const todayCompleted = todayOrders.filter((o) => o.status === "completed");
   const todayRevenue = todayCompleted.reduce((s, o) => s + Number(o.total), 0);
   const today = {
@@ -132,11 +146,11 @@ export async function GET(request: Request) {
   const ordersByDay: Record<string, { count: number; revenue: number }> = {};
   for (let i = analyticsDays - 1; i >= 0; i--) {
     const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
-    const key = d.toISOString().split("T")[0];
+    const key = dayKey(d);
     ordersByDay[key] = { count: 0, revenue: 0 };
   }
   for (const order of completedOrders) {
-    const key = order.created_at.split("T")[0];
+    const key = dayKey(order.created_at);
     if (ordersByDay[key]) {
       ordersByDay[key].count++;
       ordersByDay[key].revenue += Number(order.total);
@@ -171,7 +185,7 @@ export async function GET(request: Request) {
     // Horas pico
     const ordersByHour: Record<string, number> = {};
     for (const o of orders) {
-      const hour = o.created_at.split("T")[1]?.slice(0, 2) || "00";
+      const hour = hourKey(o.created_at);
       ordersByHour[hour] = (ordersByHour[hour] || 0) + 1;
     }
     advanced.topHours = Object.entries(ordersByHour)

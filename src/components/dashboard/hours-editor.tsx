@@ -6,8 +6,8 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 
 type DayConfig = {
-  open: string; // "12:00"
-  close: string; // "22:00"
+  open: string; // "09:00" (24h)
+  close: string; // "18:00"
   closed: boolean;
 };
 
@@ -27,94 +27,93 @@ function defaultConfig(): DayConfig[] {
   return DAYS.map(() => ({ open: "09:00", close: "18:00", closed: true }));
 }
 
-function fmt(t: string): string {
-  if (!t) return "";
-  const [h, m] = t.split(":");
-  const hh = parseInt(h, 10);
-  return `${hh}:${m || "00"}`;
+function norm(s: string): string {
+  return s
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "");
 }
 
-function hourLabel(t: string): string {
-  if (!t) return "";
-  const [h, m] = t.split(":");
-  const hh = parseInt(h, 10);
-  const mm = m ? parseInt(m, 10) : 0;
-  const period = hh >= 12 ? "PM" : "AM";
-  const h12 = hh % 12 === 0 ? 12 : hh % 12;
-  return mm ? `${h12}:${String(mm).padStart(2, "0")} ${period}` : `${h12} ${period}`;
+// ^ La clase [̀-ͯ] son los diacríticos combinantes U+0300–U+036F.
+
+// Tokens de día aceptados (normalizados, sin acentos) → índice en ORDER (0=lun..6=dom)
+const DAY_INDEX: Record<string, number> = {
+  lun: 0, lunes: 0,
+  mar: 1, martes: 1,
+  mie: 2, miercoles: 2,
+  jue: 3, jueves: 3,
+  vie: 4, viernes: 4,
+  sab: 5, sabado: 5,
+  dom: 6, domingo: 6,
+};
+
+function pad2(n: number): string {
+  return String(n).padStart(2, "0");
 }
 
-/** Parsea el texto actual (formato open-hours) a config por día. */
+function to24(hStr: string, mStr: string | undefined, meridian?: string): string {
+  let h = parseInt(hStr, 10);
+  if (Number.isNaN(h)) h = 9;
+  if (meridian === "pm" && h < 12) h += 12;
+  if (meridian === "am" && h === 12) h = 0;
+  return `${pad2(h)}:${pad2(parseInt(mStr || "0", 10) || 0)}`;
+}
+
+/**
+ * Días mencionados en una parte de texto ("lun a vie", "sáb", sin días → todos).
+ * Devuelve índices de ORDER. Dos días → rango inclusivo (lun a vie = lun..vie).
+ */
+function daysInPart(part: string): number[] {
+  const t = norm(part);
+  const found: number[] = [];
+  for (const [token, idx] of Object.entries(DAY_INDEX)) {
+    if (new RegExp(`\\b${token}\\b`).test(t) && !found.includes(idx)) found.push(idx);
+  }
+  found.sort((a, b) => a - b);
+  if (found.length === 2) {
+    const out: number[] = [];
+    for (let i = found[0]; i <= found[1]; i++) out.push(i);
+    return out;
+  }
+  if (found.length > 0) return found;
+  return [0, 1, 2, 3, 4, 5, 6]; // sin día explícito: aplica a todos
+}
+
+/** Parsea el texto "open-hours" a config por día. Tolera formatos legacy. */
 function parseHours(text: string | null | undefined): DayConfig[] {
   const cfg = defaultConfig();
   if (!text) return cfg;
 
-  const s = text.toLowerCase().trim();
-  // marcar abiertos: rango simple sin día (aplica a todos) o por día
-  const hasGlobal = /^\d{1,2}/.test(s.replace(/^.*?(\d)/, "$1"));
-  const globalRange = s.match(/(\d{1,2}):?(\d{0,2})\s*[-–]\s*(\d{1,2}):?(\d{0,2})/i);
-
-  // dividir en partes por coma
-  const parts = s.split(/[,;]\s*/);
-  for (const part of parts) {
+  const parts = text.toLowerCase().split(/[,;]\s*/);
+  for (const rawPart of parts) {
+    const part = rawPart.trim();
     if (!part) continue;
-    if (part.includes("cerrado") || part.includes("no.") || part === "n/a") continue;
+    if (part.includes("cerrado") || part === "n/a") continue;
 
-    const range = part.match(/(\d{1,2}):?(\d{0,2})\s*[-–a]\s*(\d{1,2}):?(\d{0,2})/i);
+    // rango horario: "9:00-18:00", "9 am-6 pm", "9 a 18"
+    const range = part.match(
+      /(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*(?:[-–]|\ba\b)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i
+    );
     if (!range) continue;
-    const open = fmt(`${range[1]}:${range[2] || "00"}`);
-    const close = fmt(`${range[3]}:${range[4] || "00"}`);
 
-    // detectar días en la parte
-    const dayKeys = ORDER.filter((dk) => part.includes(dk));
-    const dayName = part.match(/lunes|martes|mi[ée]rcoles|jueves|viernes|s[aá]bado|domingo|(lun|mar|mi[eé]|jue|vie|s[aá]b|dom)/i);
-    let target: string[] = [];
-    if (dayName) {
-      const full = dayName[0].toLowerCase();
-      const found = ORDER.find((dk) => dk === full || (full.length > 3 ? dk.includes(full.slice(0, 3)) : full === dk));
-      if (found) target.push(found);
-    } else if (dayKeys.length) {
-      target = dayKeys;
-    } else if (globalRange) {
-      target = ORDER;
-    } else {
-      target = ORDER;
-    }
-    for (const dk of target) {
-      const idx = ORDER.indexOf(dk);
-      if (idx >= 0) {
-        cfg[idx] = { open, close, closed: false };
-      }
+    const open = to24(range[1], range[2], range[3]?.toLowerCase());
+    const close = to24(range[4], range[5], range[6]?.toLowerCase());
+
+    for (const idx of daysInPart(part)) {
+      cfg[idx] = { open, close, closed: false };
     }
   }
   return cfg;
 }
 
-/** Serializa la config a texto compatible con open-hours.ts. */
+/** Serializa a texto estable, compatible con open-hours.isOpenNow: "lun: 09:00-18:00, ..." */
 function serialize(cfg: DayConfig[]): string {
-  const segs: { start: number; end: number; open: string; close: string }[] = [];
-  let i = 0;
-  while (i < 7) {
-    if (cfg[i].closed) {
-      i++;
-      continue;
-    }
-    const open = cfg[i].open;
-    const close = cfg[i].close;
-    let j = i;
-    while (j + 1 < 7 && !cfg[j + 1].closed && cfg[j + 1].open === open && cfg[j + 1].close === close) j++;
-    segs.push({ start: i, end: j, open, close });
-    i = j + 1;
-  }
-  if (segs.length === 0) return "";
-  return segs
-    .map((seg) => {
-      const startLabel = ORDER[seg.start];
-      const endLabel = ORDER[seg.end];
-      const days = seg.start === seg.end ? startLabel : `${startLabel} a ${endLabel}`;
-      return `${days} ${hourLabel(seg.open)}-${hourLabel(seg.close)}`;
-    })
-    .join(", ");
+  const parts: string[] = [];
+  cfg.forEach((d, i) => {
+    if (d.closed) return;
+    parts.push(`${ORDER[i]}: ${d.open}-${d.close}`);
+  });
+  return parts.join(", ");
 }
 
 export function HoursEditor({
@@ -126,14 +125,21 @@ export function HoursEditor({
 }) {
   const [cfg, setCfg] = useState<DayConfig[]>(() => parseHours(value));
 
+  // Re-sincronizar solo cuando el valor externo realmente cambió
+  // (evita el loop serialize→parse que corrompía los días en cada edición).
   useEffect(() => {
-    setCfg(parseHours(value));
+    setCfg((prev) => {
+      const next = parseHours(value);
+      return JSON.stringify(next) === JSON.stringify(prev) ? prev : next;
+    });
   }, [value]);
 
   function update(idx: number, patch: Partial<DayConfig>) {
-    const next = cfg.map((c, i) => (i === idx ? { ...c, ...patch } : c));
-    setCfg(next);
-    onChange(serialize(next));
+    setCfg((prev) => {
+      const next = prev.map((c, i) => (i === idx ? { ...c, ...patch } : c));
+      onChange(serialize(next));
+      return next;
+    });
   }
 
   return (

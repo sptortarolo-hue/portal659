@@ -299,7 +299,7 @@ export function Mostrador() {
           ))}
         </div>
       )}
-      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-2 max-h-[50vh] overflow-y-auto pr-1">
+      <div className="grid grid-cols-3 sm:grid-cols-3 xl:grid-cols-4 gap-2">
         {filtered.map((p) => (
           <button
             key={p.id}
@@ -479,18 +479,25 @@ export function Mostrador() {
         </div>
       )}
 
-      {/* Mobile bottom sheet */}
+      {/* Mobile fullscreen modal del pedido */}
       {sheetOpen && (
-        <div className="sm:hidden fixed inset-0 z-[60] bg-black/40" onClick={() => setSheetOpen(false)}>
-          <div
-            className="absolute bottom-0 left-0 right-0 max-h-[85vh] overflow-y-auto rounded-t-2xl bg-card p-4 flex flex-col"
-            onClick={(e) => e.stopPropagation()}
-            style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 1rem)" }}
-          >
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="font-display font-semibold">Pedido actual</h3>
-              <button onClick={() => setSheetOpen(false)} className="p-1 rounded-lg hover:bg-muted">✕</button>
+        <div className="sm:hidden fixed inset-0 z-[60] bg-background flex flex-col">
+          <header className="flex items-center justify-between border-b border-border px-3 py-3">
+            <div>
+              <h3 className="font-display font-semibold leading-tight">Pedido actual</h3>
+              <p className="text-[11px] text-muted-foreground">{items.length} {items.length === 1 ? "producto" : "productos"} · ${total.toLocaleString("es-AR")}</p>
             </div>
+            <button
+              onClick={() => setSheetOpen(false)}
+              className="h-8 w-8 rounded-full hover:bg-muted flex items-center justify-center text-muted-foreground"
+              aria-label="Volver al catálogo"
+            >
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </header>
+          <div className="flex-1 overflow-y-auto p-4 flex flex-col">
             {orderSummary}
           </div>
         </div>

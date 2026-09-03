@@ -8,7 +8,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ImageCropModal } from "@/components/ui/image-crop-modal";
 import { DEFAULT_ZONE } from "@/lib/config";
-import { buildClientWhatsAppUrl, ORDER_STATUS_COLORS, orderCondition, orderReadyLabel, orderNeedsKitchen, CONDITION_META } from "@/lib/order-utils";
+import { buildClientWhatsAppUrl, ORDER_STATUS_COLORS, MODA_STATUS_LABELS, flowSteps, orderCondition, orderReadyLabel, orderNeedsKitchen, CONDITION_META } from "@/lib/order-utils";
 import OrderDetailModal from "@/components/dashboard/order-detail-modal";
 import DashboardGastro from "@/components/dashboard/dashboard-gastro";
 import DashboardComercio from "@/components/dashboard/dashboard-comercio";
@@ -225,7 +225,8 @@ function VendorDashboardInner() {
   async function updateOrderStatus(order: Order, status: Order["status"]) {
     try {
       const payload: Record<string, unknown> = { status };
-      if (status === "preparing") {
+      // Gastronomía estima minutos de cocina; moda no maneja tiempos en minutos.
+      if (status === "preparing" && !isModa) {
         payload.estimated_minutes = 30;
       }
       const res = await fetch(`/api/vendor/orders/${order.id}`, {
@@ -238,7 +239,7 @@ function VendorDashboardInner() {
         setMsg(`Error: ${data.error}`);
         return;
       }
-      setMsg(`Pedido #${order.id.slice(0, 8)} → ${STATUS_LABELS[status]}`);
+      setMsg(`Pedido #${order.id.slice(0, 8)} → ${statusLabels[status]}`);
       loadOrdersOnly();
       if (status === "preparing" && effectivePlan.can("printer") && orderNeedsKitchen(order)) {
         fetch("/api/print", {
@@ -366,6 +367,10 @@ function VendorDashboardInner() {
   const isComercio = vendor?.vertical === "comercio";
   const isModa = vendor?.vertical === "moda";
 
+  // Moda: labels y pasos del flow con aceptación explícita ("Empaquetando", etc.).
+  const statusLabels: Record<Order["status"], string> = isModa ? MODA_STATUS_LABELS : STATUS_LABELS;
+  const stepOrder = flowSteps(isModa);
+
   const effectivePlan = resolveVendorPlan(vendor, plans);
   const overLimit =
     effectivePlan.maxProducts != null && offers.length > effectivePlan.maxProducts;
@@ -410,7 +415,9 @@ function VendorDashboardInner() {
 
   const statusTabs = [
     { key: "new", label: "Nuevos", count: orders.filter((o) => o.status === "new").length },
-    { key: "preparing", label: "Preparando", count: orders.filter((o) => o.status === "preparing").length },
+    // "Confirmados" solo existe en el flow de moda (aceptación explícita).
+    ...(isModa ? [{ key: "confirmed", label: "Confirmados", count: orders.filter((o) => o.status === "confirmed").length }] : []),
+    { key: "preparing", label: isModa ? "Empaquetando" : "Preparando", count: orders.filter((o) => o.status === "preparing").length },
     { key: "ready", label: "Listos", count: orders.filter((o) => o.status === "ready").length },
     { key: "sent", label: "Enviados", count: orders.filter((o) => o.status === "sent").length },
     { key: "completed", label: "Completados", count: orders.filter((o) => o.status === "completed").length },
@@ -472,7 +479,6 @@ function VendorDashboardInner() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
           {filteredOrders.map((order) => {
-            const stepOrder = ["new", "preparing", "ready", "sent", "completed"] as const;
             const statusIdx = stepOrder.indexOf(order.status as any);
             const isCancelled = order.status === "cancelled";
             const isCompleted = order.status === "completed";
@@ -501,7 +507,7 @@ function VendorDashboardInner() {
                         ORDER_STATUS_COLORS[order.status]
                       }`}>
                         <span className="inline-block w-1.5 h-1.5 rounded-full bg-current" />
-                        {order.status === "ready" ? orderReadyLabel(order) : STATUS_LABELS[order.status]}
+                        {order.status === "ready" ? orderReadyLabel(order) : statusLabels[order.status]}
                       </span>
                       <span className={`inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-full border ${CONDITION_META[orderCondition(order)].pillClass}`}>
                         {CONDITION_META[orderCondition(order)].label}
@@ -626,9 +632,14 @@ function VendorDashboardInner() {
         <div className="flex flex-wrap gap-2 mb-4 items-center">
           <div className="flex flex-wrap gap-2">
             <Button variant={tab === "orders" ? "default" : "outline"} size="sm" onClick={() => setTab("orders")}>Pedidos ({orders.length})</Button>
-            <Button variant={tab === "comanda" ? "default" : "outline"} size="sm" onClick={() => setTab("comanda")}>🍳 Comanda</Button>
+            {/* Comanda y Mesas son de cocina/salón: solo gastronomía. Moda opera con Pedidos + Mostrador. */}
+            {!isModa && (
+              <Button variant={tab === "comanda" ? "default" : "outline"} size="sm" onClick={() => setTab("comanda")}>🍳 Comanda</Button>
+            )}
             <Button variant={tab === "pos" ? "default" : "outline"} size="sm" onClick={() => setTab("pos")}>🛒 Mostrador</Button>
-            <Button variant={tab === "mesas" ? "default" : "outline"} size="sm" onClick={() => setTab("mesas")} disabled={!isGastro}>🍽️ Mesas</Button>
+            {!isModa && (
+              <Button variant={tab === "mesas" ? "default" : "outline"} size="sm" onClick={() => setTab("mesas")} disabled={!isGastro}>🍽️ Mesas</Button>
+            )}
           </div>
           <div className="mx-2 h-6 w-px bg-border" />
           <div className="flex flex-wrap gap-2">
@@ -646,7 +657,7 @@ function VendorDashboardInner() {
           <div className="grid grid-cols-5 gap-1.5 mb-4">
             {[
               { status: "new", label: "Nuevos", value: orders.filter((o) => o.status === "new").length, bg: "bg-status-new/10 dark:bg-status-new/20", text: "text-status-new" },
-              { status: "preparing", label: "Preparando", value: orders.filter((o) => o.status === "preparing").length, bg: "bg-status-preparing/10 dark:bg-status-preparing/20", text: "text-status-preparing" },
+              { status: "preparing", label: isModa ? "Empaquetando" : "Preparando", value: orders.filter((o) => o.status === "preparing").length, bg: "bg-status-preparing/10 dark:bg-status-preparing/20", text: "text-status-preparing" },
               { status: "ready", label: "Listos", value: orders.filter((o) => o.status === "ready").length, bg: "bg-status-ready/10 dark:bg-status-ready/20", text: "text-status-ready" },
               { status: "sent", label: "Enviados", value: orders.filter((o) => o.status === "sent").length, bg: "bg-status-sent/10 dark:bg-status-sent/20", text: "text-status-sent" },
               { status: "completed", label: "Entregados", value: orders.filter((o) => o.status === "completed").length, bg: "bg-muted", text: "text-muted-foreground" },
@@ -727,7 +738,9 @@ function VendorDashboardInner() {
               ) : (
                 <PlanLock
                   title="Mostrador"
-                  description="Armá pedidos y cobrá en el local con impresión de ticket. Parte del plan Gestión integral."
+                  description={isModa
+                    ? "Vas a poder armar ventas y cobrarlas en el local. Lo estamos habilitando para tu rubro."
+                    : "Armá pedidos y cobrá en el local con impresión de ticket. Parte del plan Gestión integral."}
                 />
               )}
             </div>
@@ -764,16 +777,20 @@ function VendorDashboardInner() {
               <span className="text-lg">📦</span>Pedidos
               {activeOrders.length > 0 && <span className="absolute top-1 right-1/3 -translate-x-4 bg-red-500 text-white text-[9px] rounded-full h-4 w-4 flex items-center justify-center">{activeOrders.length}</span>}
             </button>
-            <button onClick={() => setTab("comanda")} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors relative ${tab === "comanda" ? "text-primary" : "text-muted-foreground"}`}>
-              <span className="text-lg">🍳</span>Comanda
-              {orders.filter((o) => o.status === "new" && orderNeedsKitchen(o)).length > 0 && <span className="absolute top-1 right-1/3 -translate-x-4 bg-red-500 text-white text-[9px] rounded-full h-4 w-4 flex items-center justify-center">{orders.filter((o) => o.status === "new" && orderNeedsKitchen(o)).length}</span>}
-            </button>
+            {!isModa && (
+              <button onClick={() => setTab("comanda")} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors relative ${tab === "comanda" ? "text-primary" : "text-muted-foreground"}`}>
+                <span className="text-lg">🍳</span>Comanda
+                {orders.filter((o) => o.status === "new" && orderNeedsKitchen(o)).length > 0 && <span className="absolute top-1 right-1/3 -translate-x-4 bg-red-500 text-white text-[9px] rounded-full h-4 w-4 flex items-center justify-center">{orders.filter((o) => o.status === "new" && orderNeedsKitchen(o)).length}</span>}
+              </button>
+            )}
             <button onClick={() => setTab("pos")} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors relative ${tab === "pos" ? "text-primary" : "text-muted-foreground"}`}>
               <span className="text-lg">🖥️</span>Mostrador
             </button>
-            <button onClick={() => setTab("mesas")} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors ${tab === "mesas" ? "text-primary" : "text-muted-foreground"}`}>
-              <span className="text-lg">🍽️</span>Mesas
-            </button>
+            {!isModa && (
+              <button onClick={() => setTab("mesas")} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors ${tab === "mesas" ? "text-primary" : "text-muted-foreground"}`}>
+                <span className="text-lg">🍽️</span>Mesas
+              </button>
+            )}
             <button onClick={() => setMoreOpen((v) => !v)} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors ${["config", "menu", "analytics", "reviews"].includes(tab) ? "text-primary" : "text-muted-foreground"}`}>
               <span className="text-lg">{moreOpen ? "✕" : "⋮"}</span>Más
             </button>
@@ -827,6 +844,7 @@ function VendorDashboardInner() {
         <OrderDetailModal
           order={selectedOrder}
           vendorName={vendor?.store_name || ""}
+          isModa={isModa}
           onClose={() => setSelectedOrder(null)}
           onAction={(order, status) => updateOrderStatus(order, status)}
           onModify={modifyOrder}

@@ -12,7 +12,9 @@ export function orderNeedsKitchen(
 }
 
 const VALID_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
-  new: ["preparing", "cancelled"],
+  // "confirmed" (aceptación explícita) lo usa el vertical moda; gastronomía
+  // salta directo de new a preparing (su UI nunca emite "confirmed").
+  new: ["confirmed", "preparing", "cancelled"],
   confirmed: ["preparing", "cancelled"],
   preparing: ["ready", "cancelled"],
   ready: ["sent", "completed", "cancelled"],
@@ -86,6 +88,51 @@ export const ORDER_STATUS_COLORS: Record<OrderStatus, string> = {
   completed: "bg-gray-100 text-gray-500 border-gray-200",
   cancelled: "bg-red-100 text-red-600 border-red-200",
 };
+
+// Moda (indumentaria): el pedido se acepta/rechaza por stock y se empaqueta;
+// no hay cocina. Los estados son los mismos, cambian los nombres visibles.
+export const MODA_STATUS_LABELS: Record<OrderStatus, string> = {
+  new: "Por aceptar",
+  confirmed: "Aceptado",
+  preparing: "Empaquetando",
+  ready: "Listo",
+  sent: "En camino",
+  completed: "Entregado",
+  cancelled: "Cancelado",
+};
+
+export function statusLabel(status: OrderStatus, isModa: boolean): string {
+  return isModa ? MODA_STATUS_LABELS[status] : ORDER_STATUS_LABELS[status];
+}
+
+export function flowSteps(isModa: boolean): OrderStatus[] {
+  return isModa
+    ? ["new", "confirmed", "preparing", "ready", "sent", "completed"]
+    : ["new", "preparing", "ready", "sent", "completed"];
+}
+
+/** Próximo estado del pedido según el flow del vertical. `null` en estados terminales. */
+export function nextStatusFor(
+  status: OrderStatus,
+  method?: "delivery" | "pickup",
+  isModa: boolean = false
+): OrderStatus | null {
+  if (status === "ready" && method === "pickup") return "completed";
+  switch (status) {
+    case "new":
+      return isModa ? "confirmed" : "preparing";
+    case "confirmed":
+      return "preparing";
+    case "preparing":
+      return "ready";
+    case "ready":
+      return "sent";
+    case "sent":
+      return "completed";
+    default:
+      return null;
+  }
+}
 
 export type OrderCondition = "delivery" | "retiro" | "mostrador" | "mesa";
 
@@ -229,6 +276,7 @@ export function buildContextualWhatsApp(
   vendorName: string,
   transfer?: { alias: string | null; cbu: string | null; holder: string | null },
   resolveTransferMessage?: () => string | null,
+  isModa: boolean = false,
 ): ContextualWaResult | null {
   const phone = order.customer_phone?.replace(/\D/g, "");
   if (!phone) return null;
@@ -264,15 +312,18 @@ export function buildContextualWhatsApp(
     }
   }
 
-  if (["new", "preparing"].includes(order.status)) {
+  if (["new", "confirmed", "preparing"].includes(order.status)) {
+    const confirmMsg = isModa
+      ? `Hola ${order.customer_name}! Tu pedido #${order.id.slice(0, 8)} de ${vendorName} fue confirmado y ya lo estamos empaquetando. Te avisamos cuando esté. 📦`
+      : `Hola ${order.customer_name}! Tu pedido #${order.id.slice(0, 8)} de ${vendorName} fue confirmado y ya está en preparación. Te avisamos cuando esté. 🍳`;
     const stageLabel =
       order.status === "new"
         ? "📨 Avisar recibido"
-        : "✅ Avisar confirmado y preparando";
+        : "✅ Avisar confirmado";
     const stageMsg =
       order.status === "new"
         ? `Hola ${order.customer_name}! Recibimos tu pedido #${order.id.slice(0, 8)} de ${vendorName}. Ya lo estamos viendo. 🙌`
-        : `Hola ${order.customer_name}! Tu pedido #${order.id.slice(0, 8)} de ${vendorName} fue confirmado y ya está en preparación. Te avisamos cuando esté. 🍳`;
+        : confirmMsg;
     return {
       url: `https://wa.me/${phone}?text=${encodeURIComponent(stageMsg)}`,
       label: stageLabel,

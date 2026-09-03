@@ -267,6 +267,8 @@ export type Order = {
 
 export type OrderItem = {
   product_id?: string;
+  /** Variante (moda: color+talle). Permite descontar/reponer stock. */
+  variant_id?: string;
   name: string;
   price: number;
   qty: number;

@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { withRateLimit } from "@/lib/api-wrapper";
 import { sendEmail, orderConfirmationEmail } from "@/lib/email";
 import { resolveVendorPlan } from "@/lib/plans";
+import { adjustStockForItems, OutOfStockError } from "@/lib/stock";
 
 export const POST = withRateLimit(async (request: Request) => {
   const body = await request.json();
@@ -45,18 +46,25 @@ export const POST = withRateLimit(async (request: Request) => {
   }
 
   let orderId: string | undefined;
-
+  // Guardamos product_id/variant_id para poder reservar (y reponer) stock.
   const normalizedItems = (Array.isArray(items) ? items : []).map((i: any) => ({
+    product_id: typeof i.offerId === "string" ? i.offerId : undefined,
+    variant_id: typeof i.variantId === "string" ? i.variantId : undefined,
     name: i.name,
     price: Number(i.price),
     qty: Number(i.qty) || 1,
     modifiers: Array.isArray(i.modifiers) && i.modifiers.length > 0 ? i.modifiers : undefined,
   }));
 
-  await withTransaction(async (tx) => {
+  try {
+    await withTransaction(async (tx) => {
     const deviceId = getDeviceId(request);
     const paymentStatus = (paymentMethod || "whatsapp") === "transferencia" ? "pending" : "paid";
     const isPickup = method === "pickup";
+
+    // Reserva de stock (moda: variantes o productos con stock_control);
+    // se repone si el pedido se cancela/rechaza. Lanza OutOfStockError → 409.
+    await adjustStockForItems(tx, normalizedItems, "decrement");
 
     let pickupNumber: number | null = null;
     if (isPickup) {
@@ -112,7 +120,13 @@ export const POST = withRateLimit(async (request: Request) => {
         ]
       );
     }
-  });
+    });
+  } catch (e) {
+    if (e instanceof OutOfStockError) {
+      return NextResponse.json({ error: e.message }, { status: 409 });
+    }
+    throw e;
+  }
 
   if (!orderId) {
     return NextResponse.json({ error: "Error al crear el pedido" }, { status: 500 });

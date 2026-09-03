@@ -18,9 +18,14 @@ export const PLAN_SLUGS: PlanSlug[] = ["gratuito", "pedidos", "gestion"];
 export const PAID_PLAN_SLUGS: PlanSlug[] = ["pedidos", "gestion"];
 
 export const GASTRO_VERTICAL = "gastronomia";
+export const MODA_VERTICAL = "moda";
 
 export function isGastroVendor(vendor: Pick<Vendor, "vertical">): boolean {
   return vendor.vertical === GASTRO_VERTICAL;
+}
+
+export function isModaVendor(vendor: Pick<Vendor, "vertical">): boolean {
+  return vendor.vertical === MODA_VERTICAL;
 }
 
 export type FeatureKey = keyof PlanFeatures;
@@ -40,6 +45,15 @@ const GRATUITO_FEATURES: PlanFeatures = {
   reviews_manage: false,
   analytics_days: 0,
   priority: false,
+};
+
+// Moda (indumentaria) vende con carrito + pedidos desde el micrositio.
+// No usa cocina (kds), mesas ni POS por ahora: la definición de planes
+// pagos para moda queda pendiente (ver AGENTS.md).
+const MODA_FEATURES: PlanFeatures = {
+  ...GRATUITO_FEATURES,
+  cart: true,
+  emits_orders: true,
 };
 
 export function featureOf(plan: Plan | null | undefined, feature: FeatureKey): boolean {
@@ -115,6 +129,7 @@ export function resolveVendorPlan(
   const eligibleForPaid = isGastroVendor(vendor);
 
   const can = (feature: FeatureKey): boolean => {
+    if (isModaVendor(vendor)) return MODA_FEATURES[feature] === true;
     if (!eligibleForPaid) return GRATUITO_FEATURES[feature] === true;
     return featureOf(
       trialActive || active ? plan : null,

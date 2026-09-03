@@ -45,6 +45,15 @@ export async function POST(request: Request) {
         customer_phone: customerPhone,
         customer_address: customerAddress || "",
         delivery_method: method || "delivery",
+        // JSON string: referencias para descontar stock al aprobarse el pago.
+        stock_items: JSON.stringify(
+          items.map((i: any) => ({
+            variant_id: typeof i.variantId === "string" ? i.variantId : null,
+            product_id: typeof i.offerId === "string" ? i.offerId : null,
+            qty: Number(i.qty) || 1,
+            name: i.name,
+          }))
+        ),
       },
       external_reference: `portal659_${vendorId}_${Date.now()}`,
       back_urls: {

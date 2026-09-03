@@ -17,6 +17,8 @@ export type CartModifier = {
 
 export type CartItem = {
   offerId: string;
+  /** Variante elegida (moda): se usa para reservar/reponer stock. */
+  variantId?: string;
   name: string;
   price: number;
   qty: number;

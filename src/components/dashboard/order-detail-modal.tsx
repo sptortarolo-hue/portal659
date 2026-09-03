@@ -4,36 +4,24 @@ import { useEffect, useCallback, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
-  ORDER_STATUS_LABELS,
   ORDER_STATUS_COLORS,
   buildContextualWhatsApp,
   orderCondition,
   orderReadyLabel,
   orderCompleteActionLabel,
   orderNeedsKitchen,
+  statusLabel,
+  flowSteps,
+  nextStatusFor,
   CONDITION_META,
 } from "@/lib/order-utils";
 import { buildModifiedOrderMessage, buildTransferInstructionsMessage } from "@/lib/whatsapp-message";
 import type { Order, OrderStatus, OrderItem, Product as DBProduct } from "@/types/database";
 
-const STEP_ORDER: OrderStatus[] = ["new", "preparing", "ready", "sent", "completed"];
-
-function getNextStatus(current: OrderStatus, method?: "delivery" | "pickup"): OrderStatus | null {
-  if (current === "ready" && method === "pickup") return "completed";
-  const flow: Record<OrderStatus, OrderStatus> = {
-    new: "preparing",
-    confirmed: "preparing",
-    preparing: "ready",
-    ready: "sent",
-    sent: "completed",
-    completed: "completed",
-    cancelled: "cancelled",
-  };
-  return flow[current] || null;
-}
-
-function getActionButtonLabel(next: OrderStatus, order: Order): string {
-  if (order.status === "new") return "Aceptar y empezar a preparar";
+function getActionButtonLabel(next: OrderStatus, order: Order, isModa: boolean): string {
+  // Moda: el primer paso es aceptar/rechazar (control de stock); después se empaqueta.
+  if (order.status === "new") return isModa ? "✓ Aceptar pedido" : "Aceptar y empezar a preparar";
+  if (order.status === "confirmed") return isModa ? "📦 Empezar a empaquetar" : "Empezar a preparar";
   if (next === "ready") return orderReadyLabel(order);
   if (next === "sent" || (next === "completed" && order.status === "ready")) return orderCompleteActionLabel(order);
   const labels: Partial<Record<OrderStatus, string>> = {
@@ -58,9 +46,10 @@ type Props = {
   transfer?: { alias: string | null; cbu: string | null; holder: string | null };
   blockUnpaid?: boolean;
   onMarkPaid?: (orderId: string) => void;
+  isModa?: boolean;
 };
 
-export default function OrderDetailModal({ order, vendorName, onClose, onAction, onModify, offers = [], canPrint = true, transfer, blockUnpaid = false, onMarkPaid }: Props) {
+export default function OrderDetailModal({ order, vendorName, onClose, onAction, onModify, offers = [], canPrint = true, transfer, blockUnpaid = false, onMarkPaid, isModa = false }: Props) {
   const [editing, setEditing] = useState(false);
   const [editItems, setEditItems] = useState<OrderItem[]>([]);
   const [modNotes, setModNotes] = useState("");
@@ -75,8 +64,9 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
   const isCompleted = order.status === "completed";
   const isTerminal = isCancelled || isCompleted;
   const canModify = order.status === "new" && !isTerminal;
+  const STEP_ORDER = flowSteps(isModa);
   const statusIdx = STEP_ORDER.indexOf(order.status as OrderStatus);
-  const nextStatus = getNextStatus(order.status as OrderStatus, order.method);
+  const nextStatus = nextStatusFor(order.status as OrderStatus, order.method, isModa);
 
   const customerPhone = order.customer_phone?.replace(/\D/g, "");
   // Mostrador y mesa son ventas presenciales: sin WhatsApp del cliente.
@@ -101,7 +91,7 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
       })
     : null;
 
-  const contextualWa = isCounterChannel ? null : buildContextualWhatsApp(order, vendorName, transfer, () => transferInstructions);
+  const contextualWa = isCounterChannel ? null : buildContextualWhatsApp(order, vendorName, transfer, () => transferInstructions, isModa);
   const isBlockedByPayment = blockUnpaid && isTransferAppPending;
 
   const startEditing = useCallback(() => {
@@ -237,7 +227,7 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
           <div className="flex items-center gap-2 min-w-0">
             <span className="font-mono text-xs text-muted-foreground">#{order.id.slice(0, 8)}</span>
             <Badge className={ORDER_STATUS_COLORS[order.status as OrderStatus]}>
-              {order.status === "ready" ? orderReadyLabel(order) : ORDER_STATUS_LABELS[order.status as OrderStatus]}
+              {order.status === "ready" ? orderReadyLabel(order) : statusLabel(order.status as OrderStatus, isModa)}
             </Badge>
             {order.modification_notes && !editing && (
               <Badge variant="outline" className="text-[9px] px-1.5 py-0">Editado</Badge>
@@ -294,7 +284,7 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
                           {done ? "✓" : idx + 1}
                         </div>
                         <p className={`text-[9px] mt-1 text-center leading-tight ${done ? "text-primary font-medium" : "text-muted-foreground/50"}`}>
-                          {step === "ready" ? orderReadyLabel(order) : ORDER_STATUS_LABELS[step]}
+                          {step === "ready" ? orderReadyLabel(order) : statusLabel(step, isModa)}
                         </p>
                       </div>
                       {idx < STEP_ORDER.length - 1 && (
@@ -538,7 +528,7 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
                       <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
                         <path d="M12 1a5 5 0 00-5 5v3H6a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V11a2 2 0 00-2-2h-1V6a5 5 0 00-5-5zm-3 8V6a3 3 0 116 0v3H9z" />
                       </svg>
-                      {getActionButtonLabel(nextStatus, order)} — esperando pago
+                      {getActionButtonLabel(nextStatus, order, isModa)} — esperando pago
                     </button>
                   </div>
                 ) : (
@@ -546,7 +536,7 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
                     className="w-full"
                     onClick={() => { onAction(order, nextStatus); onClose(); }}
                   >
-                    {getActionButtonLabel(nextStatus, order)}
+                    {getActionButtonLabel(nextStatus, order, isModa)}
                   </Button>
                 )
               )}
@@ -604,7 +594,8 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
                 className="w-full text-red-600 border-red-200 hover:bg-red-50"
                 onClick={() => { onAction(order, "cancelled"); onClose(); }}
               >
-                Cancelar pedido
+                {/* En moda, cancelar antes de empaquetar = rechazar (sin stock, etc.) */}
+                {isModa && (order.status === "new" || order.status === "confirmed") ? "Rechazar pedido" : "Cancelar pedido"}
               </Button>
             </div>
           )}

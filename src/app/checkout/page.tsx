@@ -96,6 +96,8 @@ export default function CheckoutPage() {
       body: JSON.stringify({
         vendorId: v.id,
         items: items.map((i) => ({
+          offerId: i.offerId,
+          variantId: i.variantId,
           name: i.name,
           price: i.price + (i.modifiers || []).reduce((s, m) => s + m.price_mod, 0),
           qty: i.qty,
@@ -148,6 +150,8 @@ export default function CheckoutPage() {
           paymentMethod,
           customerId: userId || null,
           items: items.map((i) => ({
+            offerId: i.offerId,
+            variantId: i.variantId,
             name: i.name,
             price: i.price + (i.modifiers || []).reduce((s, m) => s + m.price_mod, 0),
             qty: i.qty,

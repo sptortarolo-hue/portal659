@@ -1,4 +1,5 @@
-import { query, queryOne } from "@/lib/db";
+import { query, queryOne, withTransaction } from "@/lib/db";
+import { adjustStockForItems } from "@/lib/stock";
 import { sendPushToUser } from "@/lib/push";
 import { NextResponse } from "next/server";
 import crypto from "crypto";
@@ -121,24 +122,36 @@ export async function POST(request: Request) {
         }
 
         const items = payment.additional_info?.items || [];
-        await query(
-          `INSERT INTO orders (vendor_id, customer_name, customer_phone, customer_address, method, items, total, status, pickup_number)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, 'new', $8)`,
-          [
-            vendorId,
-            payment.payer?.first_name || "Cliente MP",
-            customerPhone,
-            customerAddress,
-            isPickup ? "pickup" : "delivery",
-            JSON.stringify(items.map((i: any) => ({
-              name: i.title,
-              price: Number(i.unit_price),
-              qty: Number(i.quantity),
-            }))),
-            payment.transaction_amount,
-            pickupNumber,
-          ]
-        );
+        await withTransaction(async (tx) => {
+          await tx.queryVoid(
+            `INSERT INTO orders (vendor_id, customer_name, customer_phone, customer_address, method, items, total, status, pickup_number)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, 'new', $8)`,
+            [
+              vendorId,
+              payment.payer?.first_name || "Cliente MP",
+              customerPhone,
+              customerAddress,
+              isPickup ? "pickup" : "delivery",
+              JSON.stringify(items.map((i: any) => ({
+                name: i.title,
+                price: Number(i.unit_price),
+                qty: Number(i.quantity),
+              }))),
+              payment.transaction_amount,
+              pickupNumber,
+            ]
+          );
+
+          // Reservar stock (viene en metadata de la preferencia). Si no alcanza,
+          // el pedido entra igual: el pago ya fue aprobado por MP.
+          try {
+            const raw = (metadata as Record<string, unknown>).stock_items;
+            const stockItems = typeof raw === "string" ? JSON.parse(raw) : [];
+            await adjustStockForItems(tx, stockItems, "decrement");
+          } catch {
+            // best-effort: ver nota arriba
+          }
+        });
 
         const vendor = await queryOne<{ user_id: string }>(
           `SELECT user_id, store_name FROM vendors WHERE id = $1 LIMIT 1`,

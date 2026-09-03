@@ -13,21 +13,21 @@ import {
   timeAgo,
   estimatedRemaining,
   progressPercent,
-  ORDER_STATUS_LABELS,
   ORDER_STATUS_COLORS,
+  statusLabel,
+  flowSteps,
   orderReadyLabel,
 } from "@/lib/order-utils";
 import type { Order, OrderStatus } from "@/types/database";
 
-const STEP_ORDER: OrderStatus[] = ["new", "preparing", "ready", "sent", "completed"];
-
-function Timeline({ status, method }: { status: OrderStatus; method: "delivery" | "pickup" }) {
-  const currentIdx = STEP_ORDER.indexOf(status);
+function Timeline({ status, method, isModa }: { status: OrderStatus; method: "delivery" | "pickup"; isModa?: boolean }) {
+  const stepOrder = flowSteps(!!isModa);
+  const currentIdx = stepOrder.indexOf(status);
   const isCancelled = status === "cancelled";
   const pct = progressPercent(status);
 
   const stepLabel = (step: OrderStatus) =>
-    step === "ready" ? orderReadyLabel({ channel: "app", method }) : ORDER_STATUS_LABELS[step];
+    step === "ready" ? orderReadyLabel({ channel: "app", method }) : statusLabel(step, !!isModa);
 
   return (
     <div className="relative mt-3 mb-2">
@@ -38,7 +38,7 @@ function Timeline({ status, method }: { status: OrderStatus; method: "delivery" 
         />
       </div>
       <div className="flex justify-between mt-1.5">
-        {STEP_ORDER.map((step, i) => {
+        {stepOrder.map((step, i) => {
           const done = i <= currentIdx && !isCancelled;
           return (
             <span
@@ -56,7 +56,7 @@ function Timeline({ status, method }: { status: OrderStatus; method: "delivery" 
   );
 }
 
-function OrderCard({ order, onReorder }: { order: Order & { vendors?: { store_name: string; slug: string; whatsapp: string; phone: string; prep_time_min: number | null } | null }; onReorder: (order: Order & { vendors?: { store_name: string; slug: string; whatsapp: string } | null }, vendorSlug: string, vendorWhatsapp: string) => void }) {
+function OrderCard({ order, onReorder }: { order: Order & { vendors?: { store_name: string; slug: string; whatsapp: string; phone: string; prep_time_min: number | null; vertical?: string } | null }; onReorder: (order: Order & { vendors?: { store_name: string; slug: string; whatsapp: string } | null }, vendorSlug: string, vendorWhatsapp: string) => void }) {
   const [countdown, setCountdown] = useState<number | null>(null);
 
   useEffect(() => {
@@ -73,6 +73,7 @@ function OrderCard({ order, onReorder }: { order: Order & { vendors?: { store_na
   }, [order.estimated_minutes, order.status, order.created_at]);
 
   const vendor = order.vendors;
+  const isModa = vendor?.vertical === "moda";
   const isDone = order.status === "completed" || order.status === "cancelled";
   const phone = vendor?.whatsapp || vendor?.phone || "";
 
@@ -84,7 +85,7 @@ function OrderCard({ order, onReorder }: { order: Order & { vendors?: { store_na
           <p className="text-[11px] text-muted-foreground/60">{timeAgo(order.created_at)}</p>
         </div>
         <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${ORDER_STATUS_COLORS[order.status]}`}>
-          {order.status === "ready" ? orderReadyLabel(order) : ORDER_STATUS_LABELS[order.status]}
+          {order.status === "ready" ? orderReadyLabel(order) : statusLabel(order.status, isModa)}
         </span>
       </div>
 
@@ -97,7 +98,7 @@ function OrderCard({ order, onReorder }: { order: Order & { vendors?: { store_na
         </div>
       )}
 
-      <Timeline status={order.status} method={order.method} />
+      <Timeline status={order.status} method={order.method} isModa={isModa} />
 
       <div className="mt-2 space-y-1">
         {order.items.map((item, i) => (
@@ -221,6 +222,7 @@ export default function MisPedidosPage() {
       );
       return {
         offerId: match ? match.id : `reorder-${order.id}-${item.name}`,
+        variantId: item.variant_id,
         name: item.name,
         price: match ? (match.promo_price ?? match.price) : item.price,
         qty: item.qty,

@@ -25,7 +25,8 @@ export const GET = withRateLimit(async (request: Request) => {
               'slug', v.slug,
               'whatsapp', v.whatsapp,
               'phone', v.phone,
-              'prep_time_min', v.prep_time_min
+              'prep_time_min', v.prep_time_min,
+              'vertical', v.vertical
             ) AS vendors
      FROM orders o
      LEFT JOIN vendors v ON v.id = o.vendor_id

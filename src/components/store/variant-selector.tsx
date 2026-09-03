@@ -53,7 +53,7 @@ export function VariantSelector({ productId, name, variants, vendor, stockContro
     // price_mod 0: el precio ya está definido en el producto según variante.
     const switched = addItem(
       { id: vendor.id, slug: vendor.slug, storeName: vendor.storeName, whatsapp: vendor.whatsapp, vertical: vendor.vertical, deliveryFee: vendor.deliveryFee ?? null, freeDeliveryMin: vendor.freeDeliveryMin ?? null },
-      { offerId: productId, name, price: price!, qty: 1, modifiers: mods }
+      { offerId: productId, variantId: current.id, name, price: price!, qty: 1, modifiers: mods }
     );
     addToast(`${name} (${current.color} / ${current.talle}) agregado al carrito`);
     setAdded(true);

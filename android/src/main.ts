@@ -329,9 +329,9 @@ async function init() {
 }
 
 function updateStopBtn() {
-  els.btnStop.textContent = state.stopped ? "▶ Iniciar" : "✕ Detener";
-  els.btnStop.classList.toggle("ghost", state.stopped);
-  els.btnStop.classList.toggle("danger", !state.stopped);
+  els.btnStop.textContent = state.stopped ? "▶️  Iniciar impresión" : "⏹️  Detener impresión";
+  els.btnStop.classList.toggle("stopped", state.stopped);
+  els.btnStop.classList.toggle("running", !state.stopped);
 }
 
 // Primer uso: pedir exclusion de optimizacion de bateria (de persistencia del relay en background).

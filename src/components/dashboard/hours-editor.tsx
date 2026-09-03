@@ -140,26 +140,29 @@ export function HoursEditor({
     <div className="space-y-2">
       {cfg.map((day, idx) => (
         <div key={ORDER[idx]} className="flex items-center gap-2">
-          <div className="w-20 text-sm">{DAYS[idx].label}</div>
-          <div className="flex items-center gap-2">
+          <div className="w-9 sm:w-20 flex-shrink-0 text-sm">
+            <span className="sm:hidden">{DAYS[idx].label.slice(0, 3)}</span>
+            <span className="hidden sm:inline">{DAYS[idx].label}</span>
+          </div>
+          <div className="flex flex-1 items-center gap-1.5 min-w-0">
             <Input
               type="time"
-              className="h-9 w-28"
+              className="h-9 min-w-0 flex-1 px-1.5 sm:px-3 text-xs sm:text-sm"
               value={day.open}
               disabled={day.closed}
               onChange={(e) => update(idx, { open: e.target.value })}
             />
-            <span className="text-muted-foreground">a</span>
+            <span className="text-muted-foreground flex-shrink-0">a</span>
             <Input
               type="time"
-              className="h-9 w-28"
+              className="h-9 min-w-0 flex-1 px-1.5 sm:px-3 text-xs sm:text-sm"
               value={day.close}
               disabled={day.closed}
               onChange={(e) => update(idx, { close: e.target.value })}
             />
           </div>
-          <div className="flex items-center gap-1.5 ml-auto">
-            <Label className="text-xs text-muted-foreground">Cerrado</Label>
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            <Label className="hidden sm:inline text-xs text-muted-foreground">Cerrado</Label>
             <Switch checked={day.closed} onCheckedChange={(v) => update(idx, { closed: v })} />
           </div>
         </div>

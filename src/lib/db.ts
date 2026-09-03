@@ -20,9 +20,16 @@ export function getPool(): Pool {
     global.__dbPool = new Pool({
       connectionString: url,
       max: 10,
-      idleTimeoutMillis: 30000,
+      // Cierra conexiones idle antes de que el NAT de docker las mate: sin esto
+      // el pool reusaba sockets zombies y los requests quedaban colgados hasta
+      // el timeout de TCP del kernel (causa del dashboard "tildado").
+      idleTimeoutMillis: 10000,
       connectionTimeoutMillis: 5000,
+      keepAlive: true,
+      keepAliveInitialDelayMillis: 10000,
     });
+    // Las conexiones idle que fallan (ej. NAT murió) se descartan sin crashear.
+    global.__dbPool.on("error", () => {});
   }
   return global.__dbPool;
 }

@@ -115,7 +115,7 @@ function TicketCard({
   const isOverdue = remaining !== null && remaining <= 0 && order.status !== "completed" && order.status !== "cancelled";
   const isUrgent = remaining !== null && remaining <= 5 && remaining > 0;
   const timeColor = getTimeColor(elapsed, order.estimated_minutes);
-  const nextStatus = nextStatusFor(order.status, order.method, false, order.channel);
+  const nextStatus = nextStatusFor(order.status, order.method, false, order.channel, orderNeedsKitchen(order));
   const canAct = nextStatus && canTransition(order.status, nextStatus);
   const isTerminal = order.status === "completed" || order.status === "cancelled";
 

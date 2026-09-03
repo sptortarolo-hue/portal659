@@ -115,7 +115,9 @@ export function flowSteps(isModa: boolean): OrderStatus[] {
 
 /**
  * Próximo estado del pedido según el flow del vertical/canal.
- * - Mostrador/mesa: `new` salta directo a `ready` ("Listo p/ entregar").
+ * - Mostrador/mesa SIN cocina (solo bebidas/packs): `new` salta a `ready`
+ *   (2 pasos: "Listo p/ entregar"), sin pasar por comanda.
+ * - Mostrador/mesa CON cocina: flow normal (`new` → `preparing` → ...).
  * - Moda (app): `new` → `confirmed` (aceptación explícita) → empaquetado.
  * - Gastro/app: `new` → `preparing`.
  * `null` en estados terminales.
@@ -124,10 +126,16 @@ export function nextStatusFor(
   status: OrderStatus,
   method?: "delivery" | "pickup",
   isModa: boolean = false,
-  channel?: Order["channel"]
+  channel?: Order["channel"],
+  needsKitchen: boolean = true
 ): OrderStatus | null {
   if (status === "ready" && method === "pickup") return "completed";
-  if ((channel === "mostrador" || channel === "mesa") && status === "new") return "ready";
+  if (
+    (channel === "mostrador" || channel === "mesa") &&
+    status === "new" &&
+    !needsKitchen
+  )
+    return "ready";
   switch (status) {
     case "new":
       return isModa ? "confirmed" : "preparing";

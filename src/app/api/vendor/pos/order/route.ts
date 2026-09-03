@@ -52,12 +52,12 @@ export async function POST(request: Request) {
     requires_prep: i.requires_prep !== false,
   }));
 
-  // Si ningún ítem requiere elaboración (p. ej. solo bebidas), el pedido no entra
-  // al flow de cocina: mostrador pickup sin cocina se cobra y queda completado.
-  // Con cocina o delivery nace en "new"; desde ahí mostrador salta directo a
-  // "ready" ("Listo p/ entregar") sin pasar por "preparación".
+  // Pedidos CON cocina o delivery nacen en "preparing" y entran al flow
+  // normal de la comanda (hay que prepararlos/despacharlos). Pedidos de
+  // mostrador/mesa SIN nada de cocina (solo bebidas/packs) no van a la
+  // comanda y usan el flow corto de 2 pasos: new → ready ("Listo").
   const needsKitchen = normalizedItems.some((i) => i.requires_prep !== false);
-  const status = isDelivery || needsKitchen ? "new" : "completed";
+  const status = needsKitchen || isDelivery ? "preparing" : "new";
 
   const now = new Date().toISOString();
 

@@ -19,8 +19,13 @@ import { buildModifiedOrderMessage, buildTransferInstructionsMessage } from "@/l
 import type { Order, OrderStatus, OrderItem, Product as DBProduct } from "@/types/database";
 
 function getActionButtonLabel(next: OrderStatus, order: Order, isModa: boolean): string {
-  // Mostrador/mesa saltean "preparar": del estado nuevo pasan a "Listo p/ entregar".
-  if (order.status === "new" && (order.channel === "mostrador" || order.channel === "mesa")) {
+  // Mostrador/mesa SIN cocina (solo bebidas/packs): del estado nuevo pasan
+  // directo a "Listo p/ entregar" (flow de 2 pasos).
+  if (
+    order.status === "new" &&
+    (order.channel === "mostrador" || order.channel === "mesa") &&
+    !orderNeedsKitchen(order)
+  ) {
     return `✅ ${orderReadyLabel(order)}`;
   }
   // Moda: el primer paso es aceptar/rechazar (control de stock); después se empaqueta.
@@ -70,7 +75,7 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
   const canModify = order.status === "new" && !isTerminal;
   const STEP_ORDER = flowSteps(isModa);
   const statusIdx = STEP_ORDER.indexOf(order.status as OrderStatus);
-  const nextStatus = nextStatusFor(order.status as OrderStatus, order.method, isModa, order.channel);
+  const nextStatus = nextStatusFor(order.status as OrderStatus, order.method, isModa, order.channel, orderNeedsKitchen(order));
 
   const customerPhone = order.customer_phone?.replace(/\D/g, "");
   // Mostrador y mesa son ventas presenciales: sin WhatsApp del cliente.

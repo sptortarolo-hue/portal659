@@ -206,6 +206,27 @@ export function Mesas() {
     setPickerProduct(null);
   }
 
+  // +/- en la lista del pedido de la mesa; llegar a 0 elimina la línea.
+  function changeQty(productId: string, delta: number) {
+    setCart((prev) =>
+      prev
+        .map((i) => (i.product_id === productId ? { ...i, qty: i.qty + delta } : i))
+        .filter((i) => i.qty > 0)
+    );
+  }
+
+  const cartLine = (i: (typeof cart)[number]) => (
+    <div key={`${i.product_id}|${(i.modifiers || []).map((m) => m.label).join(",")}`} className="flex items-center gap-2 text-xs">
+      <span className="flex-1 truncate">{i.name}</span>
+      <div className="flex items-center gap-1">
+        <button type="button" onClick={() => changeQty(i.product_id, -1)} className="h-6 w-6 rounded-md bg-muted hover:bg-accent">−</button>
+        <span className="w-5 text-center tabular-nums">{i.qty}</span>
+        <button type="button" onClick={() => changeQty(i.product_id, 1)} className="h-6 w-6 rounded-md bg-muted hover:bg-accent">+</button>
+      </div>
+      <span className="w-14 text-right tabular-nums">${(i.price * i.qty).toLocaleString("es-AR")}</span>
+    </div>
+  );
+
   async function addConsumicion() {
     if (!selected || cart.length === 0) return;
     const res = await fetch("/api/vendor/pos/consumicion", {
@@ -468,12 +489,7 @@ export function Mesas() {
                 {catalogBlock("sm:grid-cols-4 max-h-52 overflow-y-auto pr-1")}
                 {cart.length > 0 && (
                   <div className="mt-2 space-y-1">
-                    {cart.map((i) => (
-                      <div key={i.product_id} className="flex items-center justify-between text-xs">
-                        <span>{i.qty}x {i.name}</span>
-                        <span className="tabular-nums">${(i.price * i.qty).toLocaleString("es-AR")}</span>
-                      </div>
-                    ))}
+                    {cart.map(cartLine)}
                   </div>
                 )}
               </div>
@@ -548,12 +564,7 @@ export function Mesas() {
             <footer className="border-t border-border px-3 pt-2 pb-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] space-y-2 bg-card">
               {cart.length > 0 && (
                 <div className="max-h-28 overflow-y-auto space-y-1">
-                  {cart.map((i) => (
-                    <div key={i.product_id} className="flex items-center justify-between text-xs">
-                      <span>{i.qty}x {i.name}</span>
-                      <span className="tabular-nums">${(i.price * i.qty).toLocaleString("es-AR")}</span>
-                    </div>
-                  ))}
+                  {cart.map(cartLine)}
                 </div>
               )}
               <div className="flex flex-wrap gap-1">

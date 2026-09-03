@@ -269,36 +269,39 @@ export function Mostrador() {
 
   const productsGrid = (
     <div className="space-y-2">
-      <input
-        type="text"
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        placeholder="Buscar producto..."
-        className="w-full h-10 px-3 text-sm rounded-xl border border-input bg-background"
-      />
-      {categories.length > 1 && (
-        <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
-          <button
-            onClick={() => setActiveCat(null)}
-            className={`flex-shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
-              activeCat === null ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
-            }`}
-          >
-            Todos
-          </button>
-          {categories.map((c) => (
+      {/* Buscador + categorías fijas arriba en mobile (debajo del header del dashboard) */}
+      <div className="sticky top-16 z-30 -mx-4 px-4 py-2 bg-background sm:static sm:mx-0 sm:px-0 sm:py-0">
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Buscar producto..."
+          className="w-full h-10 px-3 text-sm rounded-xl border border-input bg-background"
+        />
+        {categories.length > 1 && (
+          <div className="flex gap-1.5 overflow-x-auto pb-1 pt-2 scrollbar-hide">
             <button
-              key={c}
-              onClick={() => setActiveCat(activeCat === c ? null : c)}
+              onClick={() => setActiveCat(null)}
               className={`flex-shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
-                activeCat === c ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                activeCat === null ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
               }`}
             >
-              {c}
+              Todos
             </button>
-          ))}
-        </div>
-      )}
+            {categories.map((c) => (
+              <button
+                key={c}
+                onClick={() => setActiveCat(activeCat === c ? null : c)}
+                className={`flex-shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                  activeCat === c ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                }`}
+              >
+                {c}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
       <div className="grid grid-cols-3 sm:grid-cols-3 xl:grid-cols-4 gap-2">
         {filtered.map((p) => (
           <button
@@ -482,19 +485,27 @@ export function Mostrador() {
       {/* Mobile fullscreen modal del pedido */}
       {sheetOpen && (
         <div className="sm:hidden fixed inset-0 z-[60] bg-background flex flex-col">
-          <header className="flex items-center justify-between border-b border-border px-3 py-3">
-            <div>
+          <header className="relative flex items-center border-b border-border px-3 py-3">
+            {/* Volver/agregar más productos: mismo patrón que el modal de Mesas */}
+            <button
+              onClick={() => setSheetOpen(false)}
+              className="shrink-0 h-8 w-8 rounded-full hover:bg-muted flex items-center justify-center text-muted-foreground"
+              aria-label="Volver y agregar más productos"
+            >
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <div className="flex-1 min-w-0 text-center">
               <h3 className="font-display font-semibold leading-tight">Pedido actual</h3>
               <p className="text-[11px] text-muted-foreground">{items.length} {items.length === 1 ? "producto" : "productos"} · ${total.toLocaleString("es-AR")}</p>
             </div>
             <button
-              onClick={() => setSheetOpen(false)}
-              className="h-8 w-8 rounded-full hover:bg-muted flex items-center justify-center text-muted-foreground"
-              aria-label="Volver al catálogo"
+              onClick={() => setItems([])}
+              disabled={items.length === 0}
+              className="shrink-0 h-8 px-2 rounded-lg text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-40"
             >
-              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
+              Limpiar
             </button>
           </header>
           <div className="flex-1 overflow-y-auto p-4 flex flex-col">

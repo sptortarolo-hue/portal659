@@ -99,6 +99,14 @@ function VendorDashboardInner() {
   const [variants, setVariants] = useState<ProductVariant[]>([]);
   const [productImages, setProductImages] = useState<ProductImage[]>([]);
   const [tab, setTab] = useState<"config" | "menu" | "orders" | "comanda" | "analytics" | "pos" | "mesas" | "reviews">("orders");
+  // Las pestañas pesadas (fetch propio: comanda, mostrador, mesas, analytics,
+  // reviews) se montan recién cuando el usuario las abre por primera vez.
+  // Así el arranque del dashboard hace ~12 requests en vez de ~20 y el pool
+  // de la DB no se satura (causa del "no se pudo cargar" en Comanda/Mesas).
+  const [mountedTabs, setMountedTabs] = useState<Set<string>>(new Set(["orders", "menu", "config"]));
+  useEffect(() => {
+    setMountedTabs((prev) => (prev.has(tab) ? prev : new Set(prev).add(tab)));
+  }, [tab]);
   const [moreOpen, setMoreOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState("");
@@ -720,53 +728,63 @@ function VendorDashboardInner() {
               </div>
             </div>
             <div className={tab === "orders" ? "" : "hidden"}>{ordersContent}</div>
-            <div className={tab === "comanda" ? "" : "hidden"}>
-              {effectivePlan.can("kds") ? (
-                accessToken && vendor && (
-                  <ComandaKDS vendorId={vendor.id} vendorName={vendor.store_name} accessToken={accessToken} />
-                )
-              ) : (
-                <PlanLock
-                  title="Comanda para tu cocina"
-                  description="Vos y tu cocina ven los pedidos en orden en este plan. Forma parte del plan Gestión integral."
-                />
-              )}
-            </div>
-            <div className={tab === "pos" ? "" : "hidden"}>
-              {effectivePlan.can("pos") ? (
-                <Mostrador />
-              ) : (
-                <PlanLock
-                  title="Mostrador"
-                  description={isModa
-                    ? "Vas a poder armar ventas y cobrarlas en el local. Lo estamos habilitando para tu rubro."
-                    : "Armá pedidos y cobrá en el local con impresión de ticket. Parte del plan Gestión integral."}
-                />
-              )}
-            </div>
-            <div className={tab === "mesas" ? "" : "hidden"}>
-              {effectivePlan.can("mesas") ? (
-                <Mesas />
-              ) : (
-                <PlanLock
-                  title="Gestión de mesas"
-                  description="Abrí, cargá consumiciones y cobrá tus mesas. Parte del plan Gestión integral."
-                />
-              )}
-            </div>
-            <div className={tab === "analytics" ? "" : "hidden"}>
-              <VendorAnalytics />
-            </div>
-            <div className={tab === "reviews" ? "" : "hidden"}>
-              {effectivePlan.can("reviews_manage") ? (
-                <VendorReviews />
-              ) : (
-                <PlanLock
-                  title="Respondé tus reseñas"
-                  description="Leé las opiniones de tus clientes y respondélas en público. Disponible en los planes de pago."
-                />
-              )}
-            </div>
+            {mountedTabs.has("comanda") && (
+              <div className={tab === "comanda" ? "" : "hidden"}>
+                {effectivePlan.can("kds") ? (
+                  accessToken && vendor && (
+                    <ComandaKDS vendorId={vendor.id} vendorName={vendor.store_name} accessToken={accessToken} />
+                  )
+                ) : (
+                  <PlanLock
+                    title="Comanda para tu cocina"
+                    description="Vos y tu cocina ven los pedidos en orden en este plan. Forma parte del plan Gestión integral."
+                  />
+                )}
+              </div>
+            )}
+            {mountedTabs.has("pos") && (
+              <div className={tab === "pos" ? "" : "hidden"}>
+                {effectivePlan.can("pos") ? (
+                  <Mostrador />
+                ) : (
+                  <PlanLock
+                    title="Mostrador"
+                    description={isModa
+                      ? "Vas a poder armar ventas y cobrarlas en el local. Lo estamos habilitando para tu rubro."
+                      : "Armá pedidos y cobrá en el local con impresión de ticket. Parte del plan Gestión integral."}
+                  />
+                )}
+              </div>
+            )}
+            {mountedTabs.has("mesas") && (
+              <div className={tab === "mesas" ? "" : "hidden"}>
+                {effectivePlan.can("mesas") ? (
+                  <Mesas />
+                ) : (
+                  <PlanLock
+                    title="Gestión de mesas"
+                    description="Abrí, cargá consumiciones y cobrá tus mesas. Parte del plan Gestión integral."
+                  />
+                )}
+              </div>
+            )}
+            {mountedTabs.has("analytics") && (
+              <div className={tab === "analytics" ? "" : "hidden"}>
+                <VendorAnalytics />
+              </div>
+            )}
+            {mountedTabs.has("reviews") && (
+              <div className={tab === "reviews" ? "" : "hidden"}>
+                {effectivePlan.can("reviews_manage") ? (
+                  <VendorReviews />
+                ) : (
+                  <PlanLock
+                    title="Respondé tus reseñas"
+                    description="Leé las opiniones de tus clientes y respondélas en público. Disponible en los planes de pago."
+                  />
+                )}
+              </div>
+            )}
           </>
         )}
       </div>

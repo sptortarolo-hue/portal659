@@ -56,7 +56,7 @@ export function ModifierPicker({
     .every((m) => (selected[m.group_name] || []).length > 0);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50">
       <div className="bg-card rounded-2xl border border-border p-6 w-full max-w-sm mx-4 max-h-[80vh] overflow-y-auto">
         <h3 className="font-display text-lg font-semibold mb-1">{productName}</h3>
         <p className="text-sm text-muted-foreground mb-4">

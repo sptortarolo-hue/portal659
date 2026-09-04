@@ -56,6 +56,12 @@ Portal 659: "El centro comercial de tu barrio". Hub multicommerce hiperlocal (Si
 - **Horarios (config)**: `src/components/dashboard/hours-editor.tsx` renderiza filas compactas en mobile (día abreviado, inputs time con `flex-1 min-w-0`, label "Cerrado" solo en desktop) — ya no se sale de pantalla.
 - **WhatsApp en mesa/mostrador**: esos flows no tienen WA del cliente — no hay link ni "Avisar por WhatsApp" en Comanda, lista de pedidos ni detalle, y las transiciones de estado no disparan notificaciones/push al cliente (guard en `orders/[id]` PATCH; `customer_phone` de mesa/mostrador guarda el WA del comercio).
 - **Mostrador → delivery**: en "Ventas de hoy" (Mostrador), un pedido pickup no finalizado puede convertirse a domicilio (botón 🛵 → teléfono [+ dirección]) vía `PATCH /api/vendor/orders/[id]` con `method:'delivery'` (pone `pickup_number=null`; no suma delivery_fee).
+- **Tema**: claro por default (`layout.tsx` script + `theme-provider` default `light`); el toggle de oscuro persiste en `localStorage("portal659-theme")`.
+- **Horarios** (`hours-editor.tsx` + `open-hours.ts`): formato `"lun: 09:00-13:00 y 17:00-22:00"` — 2 franjas por día (jornada cortada) + "Copiar a todos" por fila. Parser tolera legacy (`9 am-6 pm`, `lun a vie 9-18`). `isOpenNow()` cliente usa TZ local; `isOpenNowInTz(str, "America/Argentina/Buenos_Aires", at?)` server (el VPS corre UTC).
+- **Abierto/Cerrado online**: `vendors.open_override` boolean nullable (migración `supabase/self-host/migrate-open-override.sql`): `null`=seguir horarios, `true`=forzar abierto, `false`=forzar cerrado. Toggle en el header del dashboard (`open-toggle.tsx`). `isStoreOpen(vendor)` (override gana) alimenta badges de micrositio/cards/home y **`POST /api/orders` rechaza con 409 si está cerrado**.
+- **Mesas**: el tipo de impresión `precuenta` (motor `thermal-printer.ts` + `POST /api/print`) imprime la cuenta abierta (ítems + total, leyenda "no es comprobante de pago"). UI mobile de mesa en **2 pantallas**: catálogo (buscador+chips sticky) → barra "🧾 Detalle de la mesa" → cuenta (consumiciones, carrito, pago, "Precuenta", "Cobrado y cerrar"). Carrito con `−/+` por línea.
+- **Analytics**: `analytics_days=99999` del plan Gestión es "ilimitado"; la ruta capea loops a 366 días y el fetch de reviews a 100 (antes O(100k) colgaba la pestaña). El cliente valida `r.ok && d.today` antes de renderizar (un 401 en JSON crasheaba el dashboard).
+- **Pool pg** (`db.ts`): `keepAlive:true` + `keepAliveInitialDelayMillis:10s` + `idleTimeoutMillis:10s` + handler de `error` que descarta (antes se colgaban requests al reusar sockets que el NAT de docker mató → Comanda/Mesas "no se pudo cargar"). Dashboard monta pestañas `comanda/pos/mesas/analytics/reviews` solo cuando se abren (`mountedTabs`).
 - **Contenido `/barrio`**: tabla `info_items` (categorías transporte/utilidades/horarios/noticias), curado por seed.
 
 ## Estado
@@ -75,6 +81,7 @@ Portal 659: "El centro comercial de tu barrio". Hub multicommerce hiperlocal (Si
 - Aplicar `supabase/self-host/migrate-push-subscriptions.sql` (tabla `push_subscriptions` del Sprint 7) contra el contenedor.
 - Aplicar `supabase/self-host/migrate-print-bridge.sql` (impresión térmica: `vendors.print_mode/print_token/last_print*`).
 - Aplicar `supabase/self-host/migrate-requires-prep.sql` (columna `products.requires_prep`).
+- Aplicar `supabase/self-host/migrate-open-override.sql` (columna `vendors.open_override` — toggle Abierto/Cerrado del comercio).
 - Cargar secrets `VAPID_*`, `PRINT_BRIDGE_SECRET` y `RESEND_API_KEY`/`FROM_EMAIL` en GitHub para que el deploy las escriba al `.env`.
 - Compilar el APK de Portal Print (Android): ver `android/README.md` (requiere Android SDK/JDK 17).
 - Reboot test del VPS (verificar que la web vuelve sola).

@@ -656,7 +656,7 @@ function VendorDashboardInner() {
           )}
           <div className="flex-1 min-w-0">
             <h1 className="font-semibold text-sm truncate">{vendor.store_name}</h1>
-            {vendor.slug && <a href={`/tienda/${vendor.slug}`} target="_blank" rel="noopener noreferrer" className="text-xs text-primary">Ver mi micrositio →</a>}
+            {vendor.slug && <a href={`/tienda/${vendor.slug}`} target="_blank" rel="noopener noreferrer" className="hidden sm:inline text-xs text-primary">Ver mi micrositio →</a>}
           </div>
           <OpenToggle vendor={vendor} onSaved={(v) => setVendor(v)} />
           <Button variant="outline" size="sm" onClick={openShare} className="flex-shrink-0">Compartir</Button>
@@ -877,9 +877,21 @@ function VendorDashboardInner() {
             <p className="text-sm text-muted-foreground mb-4">El QR lleva directo a tu micrositio.</p>
             {qrDataUrl ? <img src={qrDataUrl} alt="QR" className="mx-auto w-48 h-48 mb-4" /> : <div className="mx-auto w-48 h-48 mb-4 bg-skeleton rounded-lg" />}
             <p className="text-xs text-muted-foreground break-all mb-4">{window.location.origin}/tienda/{vendor.slug}</p>
-            <div className="flex gap-2">
-              <Button className="flex-1" onClick={copyLink}>{copied ? "¡Copiado!" : "Copiar link"}</Button>
-              <Button variant="outline" className="flex-1" onClick={() => setShareOpen(false)}>Cerrar</Button>
+            <div className="space-y-2">
+              <a
+                href={`https://wa.me/?text=${encodeURIComponent(
+                  `Mirá el menú de ${vendor.store_name} en Portal 659 🛍️\n${window.location.origin}/tienda/${vendor.slug}?menu=1\n\nPedí directo por WhatsApp — 0% comisión`
+                )}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block w-full rounded-xl bg-green-500 text-white text-sm font-medium py-2.5 hover:bg-green-600 transition-colors"
+              >
+                📲 Compartir menú por WhatsApp
+              </a>
+              <div className="flex gap-2">
+                <Button className="flex-1" onClick={copyLink}>{copied ? "¡Copiado!" : "Copiar link"}</Button>
+                <Button variant="outline" className="flex-1" onClick={() => setShareOpen(false)}>Cerrar</Button>
+              </div>
             </div>
           </div>
         </div>

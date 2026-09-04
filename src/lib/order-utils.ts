@@ -155,9 +155,12 @@ export function nextStatusFor(
 export type OrderCondition = "delivery" | "retiro" | "mostrador" | "mesa";
 
 export function orderCondition(order: Pick<Order, "channel" | "method">): OrderCondition {
+  // El envío a domicilio gana sobre el canal: un pedido de mostrador con
+  // method='delivery' se despacha (flow de envío), no se entrega en mostrador.
+  if (order.method === "delivery") return "delivery";
   if (order.channel === "mostrador") return "mostrador";
   if (order.channel === "mesa") return "mesa";
-  return order.method === "delivery" ? "delivery" : "retiro";
+  return "retiro";
 }
 
 export const CONDITION_META: Record<OrderCondition, { label: string; emoji: string; pillClass: string }> = {

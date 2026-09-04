@@ -214,7 +214,9 @@ export default function ImprimirPedidoPage() {
 
 function orderConditionFallback(order: Order): "delivery" | "retiro" | "mostrador" | "mesa" {
   const channel = (order as any).channel as string | undefined;
+  // El envío a domicilio gana sobre el canal (mostrador delivery se despacha).
+  if ((order as any).method === "delivery") return "delivery";
   if (channel === "mostrador") return "mostrador";
   if (channel === "mesa") return "mesa";
-  return (order as any).method === "delivery" ? "delivery" : "retiro";
+  return "retiro";
 }

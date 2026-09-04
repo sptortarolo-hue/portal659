@@ -92,24 +92,28 @@ export function OpenToggle({ vendor, onSaved }: { vendor: Vendor; onSaved: (v: V
               ? "Abierto" // resolvió abierto según horarios
               : "Cerrado"}
       </Button>
-      {isManual ? (
-        <button
-          type="button"
-          className="text-[10px] text-muted-foreground hover:text-foreground underline"
-          onClick={() => save(null)}
-        >
-          Seguir horarios
-        </button>
-      ) : (
-        <span className="text-[10px] text-muted-foreground">
-          Según horarios — tocá para forzar
-        </span>
-      )}
-      {err && (
-        <span className="text-[10px] text-red-500">
-          No se pudo guardar. ¿Aplicaste la migración open_override en la base?
-        </span>
-      )}
+      {/* El subtexto solo en desktop: en mobile el header no tiene lugar y
+          quedaba en 2 líneas (nav alargado). */}
+      <div className="hidden sm:block">
+        {isManual ? (
+          <button
+            type="button"
+            className="text-[10px] text-muted-foreground hover:text-foreground underline"
+            onClick={() => save(null)}
+          >
+            Seguir horarios
+          </button>
+        ) : (
+          <span className="text-[10px] text-muted-foreground">
+            Según horarios — tocá para forzar
+          </span>
+        )}
+        {err && (
+          <span className="text-[10px] text-red-500">
+            No se pudo guardar. ¿Aplicaste la migración open_override en la base?
+          </span>
+        )}
+      </div>
     </div>
   );
 }

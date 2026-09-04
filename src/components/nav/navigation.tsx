@@ -7,6 +7,7 @@ import { NotificationBell } from "./notification-bell";
 import { ZoneSelector } from "./zone-selector";
 import { Logo } from "@/components/brand/logo";
 import { SearchBar } from "./search-bar";
+import { InstallAppButton } from "./install-app-button";
 
 export function Navigation() {
   const pathname = usePathname();
@@ -24,18 +25,20 @@ export function Navigation() {
         <div className="flex-1 min-w-0">
           <SearchBar />
         </div>
+        <InstallAppButton />
         <NotificationBell />
         <UserMenu />
       </div>
 
       {/* Mobile */}
       <div className="sm:hidden">
-        {/* Fila 1: logo + espacio + campana + menú */}
+        {/* Fila 1: logo + espacio + app + campana + menú */}
         <div className="container mx-auto px-3 h-14 flex items-center gap-2">
           <Link href="/" aria-label="Portal 659 — Inicio" className="flex-shrink-0 h-full flex items-center">
             <Logo />
           </Link>
           <div className="flex-1" />
+          <InstallAppButton />
           <NotificationBell />
           <UserMenu />
         </div>
@@ -44,9 +47,6 @@ export function Navigation() {
         {!isBackoffice && (
           <div className="container mx-auto px-3 pb-2 flex items-center gap-2">
             <ZoneSelector />
-            <div className="flex-1 min-w-0">
-              <SearchBar />
-            </div>
           </div>
         )}
       </div>

@@ -4,7 +4,9 @@ import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { AddToCartButton } from "@/components/offers/add-to-cart-button";
 import { ProductImage } from "@/components/product-image";
-import type { ProductModifier } from "@/types/database";
+import { useCart, type CartModifier } from "@/lib/cart";
+import { useToast } from "@/lib/toast";
+import type { ProductModifier, ModifierOption } from "@/types/database";
 
 type VendorBrief = {
   id: string;
@@ -38,16 +40,76 @@ type Props = {
 
 /**
  * Fila de producto del menú gastro.
- * Mobile: tocás la fila → ficha fullscreen (foto grande, descripción,
- * modificadores, agregar/consultar, botón volver). Desktop: fila actual con
- * botón directo (sin modal), como se venía usando.
+ * Mobile: tocás la fila → ficha fullscreen con foto 4:5 (estrategia Instagram:
+ * foto completa + relleno blureado), modificadores inline, selector de cantidad
+ * y "Agregar al pedido" que cierra la ficha y vuelve al menú.
+ * Desktop: fila actual con botón directo (sin modal).
  */
 export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart = true, consultHref }: Props) {
   const [open, setOpen] = useState(false);
+  const { addItem } = useCart();
+  const { addToast } = useToast();
 
-  const price = product.promo_price != null ? Number(product.promo_price) : Number(product.price);
+  // Estado inline de la ficha mobile (modificadores + cantidad).
+  const [selected, setSelected] = useState<Record<string, ModifierOption[]>>({});
+  const [qty, setQty] = useState(1);
+
+  const basePrice = product.promo_price != null ? Number(product.promo_price) : Number(product.price);
   const stockControl = product.stock_control !== false;
   const outStock = stockControl && (product.stock ?? 0) <= 0;
+
+  const modTotal = Object.values(selected)
+    .flat()
+    .reduce((s, o) => s + Number(o.price_mod || 0), 0);
+  const unitTotal = basePrice + modTotal;
+  const grandTotal = unitTotal * qty;
+
+  const allRequiredMet = modifiers
+    .filter((m) => m.required)
+    .every((m) => (selected[m.group_name] || []).length > 0);
+
+  function toggleOption(groupName: string, option: ModifierOption, max: number) {
+    setSelected((prev) => {
+      const current = prev[groupName] || [];
+      const exists = current.find((o) => o.label === option.label);
+      let next: ModifierOption[];
+      if (exists) {
+        next = current.filter((o) => o.label !== option.label);
+      } else {
+        if (current.length >= max) return prev;
+        next = [...current, option];
+      }
+      return { ...prev, [groupName]: next };
+    });
+  }
+
+  function openSheet() {
+    // Reset del estado al abrir (no arrastrar lo de la vez anterior).
+    setSelected({});
+    setQty(1);
+    setOpen(true);
+  }
+
+  function handleAdd() {
+    const flat: CartModifier[] = [];
+    for (const [group, opts] of Object.entries(selected)) {
+      for (const o of opts) flat.push({ group, label: o.label, price_mod: o.price_mod });
+    }
+    const switched = addItem(vendor, {
+      offerId: product.id,
+      name: product.name,
+      price: basePrice,
+      qty,
+      modifiers: flat.length > 0 ? flat : undefined,
+    });
+    addToast(
+      switched
+        ? "Se limpió el carrito anterior (solo podés pedir de un local a la vez)"
+        : `${product.name} agregado al carrito`
+    );
+    setOpen(false); // cierra la ficha y vuelve al menú
+    setQty(1);
+  }
 
   // Desktop: fila compacta con botón directo (comportamiento actual).
   const desktopRow = (
@@ -84,7 +146,7 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
         )}
         {!outStock &&
           (acceptsCart ? (
-            <AddToCartButton offerId={product.id} name={product.name} price={price} vendor={vendor} modifiers={modifiers} />
+            <AddToCartButton offerId={product.id} name={product.name} price={basePrice} vendor={vendor} modifiers={modifiers} />
           ) : (
             <a href={consultHref} target="_blank" rel="noopener noreferrer" className="rounded-md px-3 py-1.5 text-sm font-medium text-center bg-primary text-primary-foreground hover:bg-primary/90">Consultar</a>
           ))}
@@ -96,7 +158,7 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
   const mobileRow = (
     <button
       type="button"
-      onClick={() => setOpen(true)}
+      onClick={openSheet}
       className="sm:hidden w-full text-left border border-border rounded-xl p-3 bg-card flex items-center gap-3 active:scale-[0.99] transition-transform"
     >
       {product.image_url ? (
@@ -132,6 +194,33 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
     </button>
   );
 
+  // Imagen 4:5 con estrategia Instagram: foto completa en object-contain sobre
+  // un fondo con la misma imagen blureada en cover (rellena lo que sobra).
+  const imageBlock = product.image_url ? (
+    <div className="aspect-[4/5] w-full overflow-hidden relative bg-accent">
+      <ProductImage
+        src={product.image_url}
+        name={product.name}
+        category={product.category}
+        vertical={vendor.vertical}
+        alt={product.name}
+        className="absolute inset-0 w-full h-full object-cover blur-lg scale-110"
+      />
+      <ProductImage
+        src={product.image_url}
+        name={product.name}
+        category={product.category}
+        vertical={vendor.vertical}
+        alt={product.name}
+        className="relative w-full h-full object-contain"
+      />
+    </div>
+  ) : (
+    <div className="aspect-[4/5] w-full bg-accent flex items-center justify-center">
+      <ProductImage src={null} name={product.name} category={product.category} vertical={vendor.vertical} alt={product.name} className="w-full h-full" iconClassName="h-20 w-20" />
+    </div>
+  );
+
   return (
     <>
       {desktopRow}
@@ -154,13 +243,7 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
           </header>
 
           <div className="flex-1 overflow-y-auto">
-            <div className="aspect-[4/3] w-full bg-accent">
-              {product.image_url ? (
-                <ProductImage src={product.image_url} name={product.name} category={product.category} vertical={vendor.vertical} alt={product.name} className="w-full h-full object-cover" />
-              ) : (
-                <ProductImage src={null} name={product.name} category={product.category} vertical={vendor.vertical} alt={product.name} className="w-full h-full" iconClassName="h-20 w-20" />
-              )}
-            </div>
+            {imageBlock}
 
             <div className="p-4 space-y-3">
               <div className="flex items-center justify-between gap-2">
@@ -184,13 +267,101 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
               {outStock && (
                 <p className="text-sm font-medium text-red-600 text-center py-2">Sin stock por el momento</p>
               )}
+
+              {/* Modificadores INLINE (sin overlay) */}
+              {!outStock && acceptsCart && modifiers.length > 0 && (
+                <div className="border-t border-border pt-3 space-y-4">
+                  {modifiers.map((mod) => {
+                    const groupSelected = selected[mod.group_name] || [];
+                    return (
+                      <div key={mod.id}>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm font-medium">{mod.group_name}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {mod.required ? "Obligatorio" : "Opcional"}
+                            {mod.max_selections > 1 && ` · Hasta ${mod.max_selections}`}
+                          </span>
+                        </div>
+                        <div className="space-y-1.5">
+                          {mod.options.map((opt) => {
+                            const isChecked = groupSelected.some((o) => o.label === opt.label);
+                            return (
+                              <button
+                                key={opt.label}
+                                type="button"
+                                onClick={() => toggleOption(mod.group_name, opt, mod.max_selections)}
+                                className={`w-full flex items-center justify-between rounded-lg border px-3 py-2 text-sm transition-colors ${
+                                  isChecked ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"
+                                }`}
+                              >
+                                <span className="flex items-center gap-2">
+                                  <span
+                                    className={`h-4 w-4 rounded-full border flex items-center justify-center flex-shrink-0 ${
+                                      isChecked ? "border-primary bg-primary" : "border-muted-foreground"
+                                    }`}
+                                  >
+                                    {isChecked && (
+                                      <svg className="h-2.5 w-2.5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                        <path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" />
+                                      </svg>
+                                    )}
+                                  </span>
+                                  {opt.label}
+                                </span>
+                                {Number(opt.price_mod) > 0 && (
+                                  <span className="text-muted-foreground">+${Number(opt.price_mod).toLocaleString("es-AR")}</span>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
 
-          <footer className="border-t border-border px-4 pt-3 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)] bg-card">
+          <footer className="border-t border-border px-4 pt-3 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)] bg-card space-y-2">
             {!outStock &&
               (acceptsCart ? (
-                <AddToCartButton offerId={product.id} name={product.name} price={price} vendor={vendor} modifiers={modifiers} />
+                <>
+                  {/* Cantidad */}
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">Cantidad</span>
+                    <div className="flex items-center border border-border rounded-lg">
+                      <button
+                        type="button"
+                        onClick={() => setQty((q) => Math.max(1, q - 1))}
+                        className="h-9 w-9 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted rounded-l-lg transition-colors"
+                        aria-label="Menos"
+                      >
+                        −
+                      </button>
+                      <span className="w-10 text-center text-sm font-medium tabular-nums">{qty}</span>
+                      <button
+                        type="button"
+                        onClick={() => setQty((q) => q + 1)}
+                        className="h-9 w-9 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted rounded-r-lg transition-colors"
+                        aria-label="Más"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Total + Agregar */}
+                  <button
+                    type="button"
+                    onClick={handleAdd}
+                    disabled={!allRequiredMet}
+                    className="w-full rounded-xl bg-primary text-primary-foreground text-sm font-semibold py-3 hover:bg-primary/90 transition-colors active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Agregar al pedido · ${grandTotal.toLocaleString("es-AR")}
+                    {modifiers.length > 0 && !allRequiredMet && " (faltan opciones)"}
+                  </button>
+                </>
               ) : (
                 <a href={consultHref} target="_blank" rel="noopener noreferrer" className="block w-full rounded-xl bg-primary text-primary-foreground text-center text-sm font-medium py-3 hover:bg-primary/90 transition-colors">
                   Consultar por WhatsApp

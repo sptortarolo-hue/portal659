@@ -39,8 +39,11 @@ export async function GET(request: Request) {
   const vendorId = vendor.id;
 
   // Siempre traemos pedidos recientes (para el panel "Hoy" y comparativo), y el
-  // histórico completo para los planes pagos.
-  const lookback = Math.max(analyticsDays, 30); // mínimo 30 días para comparativo
+  // histórico para los planes pagos. Cap a 1 año: con Gestión analyticsDays es
+  // 99999 ("ilimitado") y sin tope el loop de días abajo era O(100k) de
+  // Intl.toLocaleDateString — llevaba varios segundos de CPU por request y el
+  // cliente mostraba "tildado".
+  const lookback = Math.min(Math.max(analyticsDays, 30), 366); // 30-366 días
   const since = new Date(Date.now() - lookback * 24 * 60 * 60 * 1000).toISOString();
 
   const [orders, products, reviews] = await Promise.all([
@@ -53,7 +56,7 @@ export async function GET(request: Request) {
       [vendorId]
     ),
     queryMany<Record<string, any>>(
-      `SELECT rating, comment, customer_name, created_at FROM reviews WHERE vendor_id = $1 ORDER BY created_at DESC`,
+      `SELECT rating, comment, customer_name, created_at FROM reviews WHERE vendor_id = $1 ORDER BY created_at DESC LIMIT 100`,
       [vendorId]
     ),
   ]);
@@ -142,9 +145,11 @@ export async function GET(request: Request) {
   const activeOrders = orders.filter((o) => ["new", "preparing", "ready", "sent"].includes(o.status));
   const cancelledOrders = orders.filter((o) => o.status === "cancelled");
 
-  // Pedidos por día
+  // Pedidos por día (cap: el loop nunca recorre más de 366 días aunque
+  // plan Gestion declare analytics_days=99999 "ilimitado")
+  const daysToShow = Math.min(Math.max(analyticsDays, 0), 366);
   const ordersByDay: Record<string, { count: number; revenue: number }> = {};
-  for (let i = analyticsDays - 1; i >= 0; i--) {
+  for (let i = daysToShow - 1; i >= 0; i--) {
     const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
     const key = dayKey(d);
     ordersByDay[key] = { count: 0, revenue: 0 };

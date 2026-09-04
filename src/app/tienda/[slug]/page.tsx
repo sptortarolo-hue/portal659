@@ -1,5 +1,6 @@
 import { queryOne, queryMany } from "@/lib/db";
 import { resolveVendorPlan } from "@/lib/plans";
+import { isStoreOpen } from "@/lib/open-hours";
 import { notFound } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { ProductImage } from "@/components/product-image";
@@ -257,6 +258,16 @@ const modifiersByProduct: Record<string, any[]> = {};
 
           {/* Tags */}
           <div className="flex flex-wrap gap-2 mt-4">
+            {(() => {
+              const openNow = isStoreOpen(v as any);
+              return openNow !== null ? (
+                <span className={`rounded-full px-3 py-1 text-sm font-medium ${
+                  openNow ? "bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400" : "bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400"
+                }`}>
+                  {openNow ? "🟢 Abierto ahora" : "🔴 Cerrado"}
+                </span>
+              ) : null;
+            })()}
             {v.prep_time_min && (
               <span className="rounded-full bg-primary/10 text-primary px-3 py-1 text-sm font-medium">
                 ⏱️ {v.prep_time_min} min

@@ -198,6 +198,7 @@ export default async function HomePage() {
                 description={v.description}
                 vertical={v.vertical}
                 hours={v.hours}
+                open_override={(v as any).open_override ?? null}
               />
             ))}
           </HorizontalCarousel>
@@ -242,6 +243,7 @@ export default async function HomePage() {
                   description={v.description}
                   vertical={v.vertical}
                   hours={v.hours}
+                  open_override={(v as any).open_override ?? null}
                 />
               ))}
             </HorizontalCarousel>

@@ -70,6 +70,7 @@ export async function POST(request: Request) {
     transfer_cbu,
     transfer_holder,
     block_unpaid_orders,
+    open_override,
   } = body;
 
   const VALID_VERTICALS = ["gastronomia", "comercio", "servicio", "moda", "salud", "otro"];
@@ -121,6 +122,8 @@ export async function POST(request: Request) {
   if (transfer_cbu !== undefined) payload.transfer_cbu = transfer_cbu || null;
   if (transfer_holder !== undefined) payload.transfer_holder = transfer_holder || null;
   if (block_unpaid_orders !== undefined) payload.block_unpaid_orders = block_unpaid_orders === true;
+  // Sobrescritura manual de apertura: true=abierto, false=cerrado, null=seguir horarios.
+  if (open_override !== undefined) payload.open_override = open_override === null ? null : open_override === true;
 
   if (existing) {
     const setClauses: string[] = [];

@@ -59,22 +59,74 @@ function daysForToken(token: string): number[] {
 }
 
 export function isOpenNow(hoursStr: string | null | undefined): boolean | null {
+  const now = new Date();
+  return isOpenWithClock(hoursStr, now.getDay(), now.getHours() * 60 + now.getMinutes());
+}
+
+export function openStatusText(isOpen: boolean | null): string {
+  if (isOpen === true) return "Abierto ahora";
+  if (isOpen === false) return "Cerrado";
+  return "Horarios no disponibles";
+}
+
+export const TZ_AR = "America/Argentina/Buenos_Aires";
+
+/**
+ * Abierto/cerrado con timezone explícito. El server del VPS corre en UTC; sin
+ * esto el check del lado servidor (/api/orders, micrositio SSR) usaba hora UTC
+ * y fallaba 3hs corridas. `null` si no hay horario interpretable.
+ * `at` es para tests (inyecciones de hora) — en producción nunca se pasa.
+ */
+export function isOpenNowInTz(
+  hoursStr: string | null | undefined,
+  timeZone: string,
+  at?: Date
+): boolean | null {
+  if (!hoursStr) return null;
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(at ?? new Date());
+  const wd = parts.find((p) => p.type === "weekday")?.value || "";
+  const h = parseInt(parts.find((p) => p.type === "hour")?.value || "0", 10) % 24;
+  const m = parseInt(parts.find((p) => p.type === "minute")?.value || "0", 10);
+  const dayMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+  return isOpenWithClock(hoursStr, dayMap[wd] ?? 0, h * 60 + m);
+}
+
+/** Override manual gana; si es null/undefined se resuelve por horarios. */
+export function isStoreOpen(
+  vendor: { hours?: string | null; open_override?: boolean | null },
+  timeZone: string = TZ_AR
+): boolean | null {
+  if (vendor.open_override === true) return true;
+  if (vendor.open_override === false) return false;
+  return isOpenNowInTz(vendor.hours ?? null, timeZone);
+}
+
+function isOpenWithClock(hoursStr: string | null | undefined, currentDay: number, currentMinutes: number): boolean | null {
   if (!hoursStr) return null;
   const s = hoursStr.toLowerCase().trim();
   if (s.includes("24") || s.includes("todo el día") || s.includes("siempre")) return true;
   if (s === "cerrado" || s === "n/a") return false;
 
-  const now = new Date();
-  const currentDay = now.getDay();
-  const currentMinutes = now.getHours() * 60 + now.getMinutes();
-
   // Partes con día explícito: "lun: 09:00-18:00" (formato del editor),
+  // "lun: 09:00-13:00 y 17:00-22:00" (2 franjas horarias del día),
   // "lun a vie 9-18", "lunes 9 am - 6 pm", etc.
   const dayParts = s.split(/[,;]\s*/);
   let sawDayPart = false;
 
   for (const part of dayParts) {
-    if (!part || part.includes("cerrado") || part === "n/a") continue;
+    if (!part) continue;
+    // Marcamos "hay config por días" aunque el día esté cerrado ("dom: cerrado"),
+    // para distinguir "hoy cerrado explícito" (false) de "sin horarios" (null).
+    if (part.includes("cerrado") || part === "n/a") {
+      if (daysForToken(part).length > 0) sawDayPart = true;
+      continue;
+    }
     const m = part.match(
       /([a-záéíóúñ\s]+?)\s*:?\s*(\d{1,2}:?\d{0,2}(?:\s*(?:am|pm))?)\s*(?:[-–]|\ba\b)\s*(\d{1,2}:?\d{0,2}(?:\s*(?:am|pm))?)/i
     );
@@ -84,20 +136,32 @@ export function isOpenNow(hoursStr: string | null | undefined): boolean | null {
     sawDayPart = true;
     if (!days.includes(currentDay)) continue;
 
+    const checks: [number, number][] = [];
     const openMin = toMinutes(m[2]);
     const closeMin = toMinutes(m[3]);
-    if (openMin === null || closeMin === null) continue;
-    if (closeMin > openMin) {
-      if (currentMinutes >= openMin && currentMinutes < closeMin) return true;
-    } else {
-      if (currentMinutes >= openMin || currentMinutes < closeMin) return true;
+    if (openMin !== null && closeMin !== null) checks.push([openMin, closeMin]);
+
+    // Segundo rango opcional: "... y 17:00-22:00" (jornada cortada)
+    const m2 = part.match(
+      /\by\s+(\d{1,2}:?\d{0,2}(?:\s*(?:am|pm))?)\s*(?:[-–]|\ba\b)\s*(\d{1,2}:?\d{0,2}(?:\s*(?:am|pm))?)/i
+    );
+    if (m2) {
+      const open2 = toMinutes(m2[1]);
+      const close2 = toMinutes(m2[2]);
+      if (open2 !== null && close2 !== null) checks.push([open2, close2]);
+    }
+
+    for (const [open, close] of checks) {
+      if (close > open) {
+        if (currentMinutes >= open && currentMinutes < close) return true;
+      } else {
+        if (currentMinutes >= open || currentMinutes < close) return true;
+      }
     }
   }
 
-  // Si el texto tiene partes por día y ninguna cubrió hoy → está cerrado.
   if (sawDayPart) return false;
 
-  // Formato simple sin día: "9-18" aplica a todos los días.
   const simpleRange = s.match(/(\d{1,2}:?\d{0,2}(?:\s*(?:am|pm))?)\s*(?:[-–]|\ba\b)\s*(\d{1,2}:?\d{0,2}(?:\s*(?:am|pm))?)/i);
   if (simpleRange) {
     const openMin = toMinutes(simpleRange[1]);
@@ -115,8 +179,3 @@ export function isOpenNow(hoursStr: string | null | undefined): boolean | null {
   return null;
 }
 
-export function openStatusText(isOpen: boolean | null): string {
-  if (isOpen === true) return "Abierto ahora";
-  if (isOpen === false) return "Cerrado";
-  return "Horarios no disponibles";
-}

@@ -81,16 +81,36 @@ function TodayPanel({ today }: { today: AnalyticsData["today"] }) {
 export function VendorAnalytics() {
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
 
-  useEffect(() => {
+  const load = () => {
+    setLoading(true);
+    setError(false);
     fetch("/api/vendor/analytics")
-      .then((r) => r.json())
-      .then((d) => { setData(d); setLoading(false); })
-      .catch(() => setLoading(false));
-  }, []);
+      .then(async (r) => {
+        const d = await r.json().catch(() => null);
+        // Solo aceptamos la respuesta si es exitosa y trae la estructura esperada
+        // (un 401/403 con { error } NO son datos válidos: rompían el render y
+        // dejaban el dashboard "tildado" por un TypeError en el cliente).
+        if (r.ok && d && d.today) setData(d);
+        else setError(true);
+      })
+      .catch(() => setError(true))
+      .finally(() => setLoading(false));
+  };
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(load, []);
 
   if (loading) return <p className="text-muted-foreground text-sm">Cargando estadísticas...</p>;
-  if (!data) return <p className="text-muted-foreground text-sm">No se pudieron cargar las estadísticas.</p>;
+  if (error || !data) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 py-10 text-center">
+        <p className="text-sm text-muted-foreground">No se pudieron cargar las estadísticas. Revisá tu conexión.</p>
+        <button onClick={load} className="text-sm font-medium text-primary underline">Reintentar</button>
+      </div>
+    );
+  }
 
   const analyticsDays = data.plan?.analyticsDays ?? 0;
   const isPaid = analyticsDays > 0;

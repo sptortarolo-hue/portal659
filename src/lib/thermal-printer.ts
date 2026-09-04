@@ -13,7 +13,7 @@ export type PrinterVendor = {
   print_token?: string | null;
 };
 
-export type PrintJobType = "ticket" | "comanda" | "retiro" | "test";
+export type PrintJobType = "ticket" | "comanda" | "retiro" | "test" | "precuenta";
 
 export type DispatchResult = {
   ok: boolean;
@@ -298,6 +298,62 @@ function composeRetiroReceipt(printer: any, vendor: PrinterVendor, order: Order)
   printer.cut();
 }
 
+function composePrecuenta(
+  printer: any,
+  vendor: PrinterVendor,
+  tableName: string,
+  items: { name: string; price: number; qty: number; modifiers?: string[] }[],
+  total: number
+): void {
+  const width = vendor.paper_size === "58mm" ? 32 : 48;
+  const separator = separatorFor(width);
+
+  const now = new Date();
+  const dateStr = formatArgDate(now);
+  const timeStr = formatArgTime(now);
+
+  printer.alignCenter();
+  printer.bold(true);
+  printer.setTextSize(1, 1);
+  printer.println(vendor.store_name);
+  printer.setTextSize(0, 0);
+  printer.bold(false);
+  printer.println("PRECUENTA");
+  printer.println("(no es comprobante de pago)");
+  printer.println(separator);
+
+  printer.alignLeft();
+  printer.bold(true);
+  printer.println(`Mesa: ${tableName}`);
+  printer.bold(false);
+  printer.println(`${dateStr} ${timeStr}`);
+  printer.println(separator);
+
+  for (const item of items) {
+    const itemLines = formatItemLine(item, width);
+    for (const line of itemLines) {
+      printer.println(line);
+    }
+  }
+
+  printer.println(separator);
+
+  printer.alignRight();
+  printer.bold(true);
+  printer.setTextSize(1, 1);
+  printer.println(`TOTAL: $${Number(total).toLocaleString("es-AR")}`);
+  printer.setTextSize(0, 0);
+  printer.bold(false);
+
+  printer.alignLeft();
+  printer.println("");
+  printer.println("Gracias! Confirma el pago");
+  printer.println("en caja para cerrar la cuenta.");
+  printer.println("");
+  composeFooter(printer, width);
+  printer.cut();
+}
+
 function composeTest(printer: any, vendor: PrinterVendor): void {
   const width = vendor.paper_size === "58mm" ? 32 : 48;
 
@@ -446,6 +502,41 @@ export async function buildRetiroReceiptBuffer(
   }
 }
 
+export async function printPrecuenta(
+  vendor: PrinterVendor,
+  tableName: string,
+  items: { name: string; price: number; qty: number; modifiers?: string[] }[],
+  total: number
+): Promise<{ success: boolean; error?: string }> {
+  const res = await createPrinter(vendor);
+  if (!res.ok) return { success: false, error: res.error };
+  if (!vendor.printer_ip) return { success: false, error: "IP de impresora no configurada" };
+  try {
+    composePrecuenta(res.printer, vendor, tableName, items, total);
+    await res.printer.execute();
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: errorMsg(e) };
+  }
+}
+
+export async function buildPrecuentaBuffer(
+  vendor: PrinterVendor,
+  tableName: string,
+  items: { name: string; price: number; qty: number; modifiers?: string[] }[],
+  total: number
+): Promise<BufferResult> {
+  const res = await createPrinter(vendor);
+  if (!res.ok) return { success: false, error: res.error };
+  try {
+    composePrecuenta(res.printer, vendor, tableName, items, total);
+    const buffer = (await res.printer.getBuffer()) as Buffer;
+    return { success: true, buffer };
+  } catch (e) {
+    return { success: false, error: errorMsg(e) };
+  }
+}
+
 type BridgeJob = {
   type: string;
   payload: string;
@@ -500,7 +591,12 @@ export async function dispatchPrint(params: {
   vendor: PrinterVendor;
   order?: Order;
   type: PrintJobType;
-  extra?: { tableName?: string; subLabel?: string };
+  extra?: {
+    tableName?: string;
+    subLabel?: string;
+    items?: { name: string; price: number; qty: number; modifiers?: string[] }[];
+    total?: number;
+  };
 }): Promise<DispatchResult> {
   const { vendor } = params;
   const mode: "server" | "app" = vendor.print_mode === "app" ? "app" : "server";
@@ -514,6 +610,22 @@ export async function dispatchPrint(params: {
     }
     if (!vendor.printer_ip) return { ok: true, mode, skipped: true };
     const r = await printTest(vendor);
+    return { ok: r.success, mode, error: r.error };
+  }
+
+  // Precuenta de mesa: detalle de la cuenta antes de cerrar (no es un pedido).
+  if (params.type === "precuenta") {
+    const tableName = params.extra?.tableName || "Mesa";
+    const items = params.extra?.items || [];
+    const total = params.extra?.total ?? 0;
+    if (mode === "app") {
+      const built = await buildPrecuentaBuffer(vendor, tableName, items, total);
+      if (!built.success) return { ok: false, mode, error: built.error };
+      const pushed = await pushToBridge(vendor.print_token, bridgeJob("precuenta", built.buffer, vendor));
+      return { ok: pushed.ok, mode, offline: pushed.offline, error: pushed.error };
+    }
+    if (!vendor.printer_ip) return { ok: true, mode, skipped: true };
+    const r = await printPrecuenta(vendor, tableName, items, total);
     return { ok: r.success, mode, error: r.error };
   }
 

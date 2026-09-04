@@ -24,6 +24,7 @@ import { PlanBanner } from "@/components/vendor/plan-banner";
 import { PlanLock } from "@/components/vendor/plan-lock";
 import { Mostrador } from "@/components/vendor/mostrador";
 import { Mesas } from "@/components/vendor/mesas";
+import { OpenToggle } from "@/components/vendor/open-toggle";
 import type { ProductModifier, VendorGallery, Booking, Vertical, Product as DBProduct, Order, ProductVariant, ProductImage, OrderItem, PlanStatus, Plan } from "@/types/database";
 
 type Vendor = {
@@ -628,6 +629,7 @@ function VendorDashboardInner() {
             <h1 className="font-semibold text-sm truncate">{vendor.store_name}</h1>
             {vendor.slug && <a href={`/tienda/${vendor.slug}`} target="_blank" rel="noopener noreferrer" className="text-xs text-primary">Ver mi micrositio →</a>}
           </div>
+          <OpenToggle vendor={vendor} onSaved={(v) => setVendor(v)} />
           <Button variant="outline" size="sm" onClick={openShare} className="flex-shrink-0">Compartir</Button>
         </div>
       </div>

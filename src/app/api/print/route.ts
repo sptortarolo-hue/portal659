@@ -12,7 +12,7 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json();
-  const { orderId, test, type, tableName, subLabel } = body;
+  const { orderId, test, type, tableName, subLabel, items, total } = body;
 
   const vendor = await queryOne<PrinterVendor & Vendor>(
     `SELECT * FROM vendors WHERE user_id = $1 LIMIT 1`,
@@ -34,6 +34,20 @@ export async function POST(request: Request) {
 
   if (test) {
     const result = await dispatchPrint({ vendor, type: "test" });
+    await recordLastPrint(vendor.id, result);
+    return printResponse(result);
+  }
+
+  // Precuenta de mesa: no es un pedido; solo ítems + total + nombre de mesa.
+  if (type === "precuenta") {
+    if (!Array.isArray(items) || items.length === 0 || !total) {
+      return NextResponse.json({ ok: false, error: "items y total requeridos" }, { status: 400 });
+    }
+    const result = await dispatchPrint({
+      vendor,
+      type: "precuenta",
+      extra: { tableName, items, total: Number(total) },
+    });
     await recordLastPrint(vendor.id, result);
     return printResponse(result);
   }

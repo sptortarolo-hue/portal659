@@ -5,6 +5,7 @@ import { withRateLimit } from "@/lib/api-wrapper";
 import { sendEmail, orderConfirmationEmail } from "@/lib/email";
 import { resolveVendorPlan } from "@/lib/plans";
 import { adjustStockForItems, OutOfStockError } from "@/lib/stock";
+import { isStoreOpen } from "@/lib/open-hours";
 
 export const POST = withRateLimit(async (request: Request) => {
   const body = await request.json();
@@ -30,7 +31,7 @@ export const POST = withRateLimit(async (request: Request) => {
 
   // Gating: el carrito/checkout requiere un plan con la feature cart activa
   const vendorRow = await queryOne<Record<string, unknown>>(
-    `SELECT vertical, plan_id, plan_status, plan_expires_at, trial_ends_at FROM vendors WHERE id = $1 LIMIT 1`,
+    `SELECT vertical, plan_id, plan_status, plan_expires_at, trial_ends_at, hours, open_override FROM vendors WHERE id = $1 LIMIT 1`,
     [vendorId]
   );
 
@@ -41,6 +42,17 @@ export const POST = withRateLimit(async (request: Request) => {
       return NextResponse.json(
         { error: "Este comercio no acepta pedidos online por ahora. Consultalo directamente por WhatsApp." },
         { status: 403 }
+      );
+    }
+
+    // Abierto/cerrado: el override manual del comercio gana; si no hay override
+    // se resuelve por los horarios cargados (timezone Argentina: el server
+    // corre en UTC). Cerrado → no se aceptan pedidos online.
+    const openNow = isStoreOpen(vendorRow as any);
+    if (openNow === false) {
+      return NextResponse.json(
+        { error: "El comercio está cerrado en este momento. Probá cuando abra o escribile por WhatsApp." },
+        { status: 409 }
       );
     }
   }

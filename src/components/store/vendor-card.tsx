@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { isOpenNow, openStatusText } from "@/lib/open-hours";
+import { isStoreOpen, openStatusText } from "@/lib/open-hours";
 import { ProductImage } from "@/components/product-image";
 
 type VendorCardProps = {
@@ -14,9 +14,10 @@ type VendorCardProps = {
   description?: string | null;
   vertical?: string | null;
   hours?: string | null;
+  open_override?: boolean | null;
 };
 
-export function VendorCard({ id, slug, store_name, image_url, logo_url, description, vertical, hours }: VendorCardProps) {
+export function VendorCard({ id, slug, store_name, image_url, logo_url, description, vertical, hours, open_override }: VendorCardProps) {
   const [avgRating, setAvgRating] = useState<number | null>(null);
   const [reviewCount, setReviewCount] = useState(0);
 
@@ -32,7 +33,7 @@ export function VendorCard({ id, slug, store_name, image_url, logo_url, descript
       .catch(() => {});
   }, [id]);
 
-  const isOpen = isOpenNow(hours);
+  const isOpen = isStoreOpen({ hours, open_override });
 
   if (!slug) return null;
 

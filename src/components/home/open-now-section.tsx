@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { isOpenNow } from "@/lib/open-hours";
+import { isStoreOpen } from "@/lib/open-hours";
 import { HorizontalCarousel } from "@/components/ui/horizontal-carousel";
 import { VendorCard } from "@/components/store/vendor-card";
 import type { Vendor } from "@/types/database";
@@ -16,7 +16,7 @@ export function OpenNowSection({ vendors }: { vendors: Vendor[] }) {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    setOpen(vendors.filter((v) => isOpenNow(v.hours) === true));
+    setOpen(vendors.filter((v) => isStoreOpen(v) === true));
     setReady(true);
   }, [vendors]);
 
@@ -46,6 +46,7 @@ export function OpenNowSection({ vendors }: { vendors: Vendor[] }) {
             description={v.description}
             vertical={v.vertical}
             hours={v.hours}
+            open_override={v.open_override ?? null}
           />
         ))}
       </HorizontalCarousel>

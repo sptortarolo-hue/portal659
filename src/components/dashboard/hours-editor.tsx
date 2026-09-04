@@ -4,10 +4,12 @@ import { useEffect, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
 
+// Hasta 2 franjas por día (horario cortado: mañana + tarde/noche).
+type DayShift = { open: string; close: string }; // "09:00" / "13:00" (24h)
 type DayConfig = {
-  open: string; // "09:00" (24h)
-  close: string; // "18:00"
+  shifts: DayShift[]; // 1 o 2
   closed: boolean;
 };
 
@@ -24,7 +26,7 @@ const DAYS: { key: string; label: string }[] = [
 const ORDER: string[] = DAYS.map((d) => d.key);
 
 function defaultConfig(): DayConfig[] {
-  return DAYS.map(() => ({ open: "09:00", close: "18:00", closed: true }));
+  return DAYS.map(() => ({ shifts: [{ open: "09:00", close: "18:00" }], closed: true }));
 }
 
 function norm(s: string): string {
@@ -79,7 +81,9 @@ function daysInPart(part: string): number[] {
   return [0, 1, 2, 3, 4, 5, 6]; // sin día explícito: aplica a todos
 }
 
-/** Parsea el texto "open-hours" a config por día. Tolera formatos legacy. */
+const RANGE_RE = /(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*(?:[-–]|\ba\b)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i;
+
+/** Parsea el texto "open-hours" a config por día. Tolera legacy y 2 franjas ("y"). */
 function parseHours(text: string | null | undefined): DayConfig[] {
   const cfg = defaultConfig();
   if (!text) return cfg;
@@ -90,28 +94,33 @@ function parseHours(text: string | null | undefined): DayConfig[] {
     if (!part) continue;
     if (part.includes("cerrado") || part === "n/a") continue;
 
-    // rango horario: "9:00-18:00", "9 am-6 pm", "9 a 18"
-    const range = part.match(
-      /(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*(?:[-–]|\ba\b)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i
-    );
-    if (!range) continue;
-
-    const open = to24(range[1], range[2], range[3]?.toLowerCase());
-    const close = to24(range[4], range[5], range[6]?.toLowerCase());
+    // Segmentos separados por "y": jornada cortada (09-13 y 17-22).
+    const segments = part.split(/\by\b/i).filter((s) => s.trim().length > 0);
+    const shifts: DayShift[] = [];
+    for (const seg of segments) {
+      const range = seg.match(RANGE_RE);
+      if (!range) continue;
+      const open = to24(range[1], range[2], range[3]?.toLowerCase());
+      const close = to24(range[4], range[5], range[6]?.toLowerCase());
+      shifts.push({ open, close });
+      if (shifts.length === 2) break;
+    }
+    if (shifts.length === 0) continue;
 
     for (const idx of daysInPart(part)) {
-      cfg[idx] = { open, close, closed: false };
+      cfg[idx] = { shifts: shifts.map((s) => ({ ...s })), closed: false };
     }
   }
   return cfg;
 }
 
-/** Serializa a texto estable, compatible con open-hours.isOpenNow: "lun: 09:00-18:00, ..." */
+/** Serializa a texto estable, compatible con open-hours.isOpenNow. */
 function serialize(cfg: DayConfig[]): string {
   const parts: string[] = [];
   cfg.forEach((d, i) => {
     if (d.closed) return;
-    parts.push(`${ORDER[i]}: ${d.open}-${d.close}`);
+    const segs = d.shifts.map((s) => `${s.open}-${s.close}`).join(" y ");
+    parts.push(`${ORDER[i]}: ${segs}`);
   });
   return parts.join(", ");
 }
@@ -134,42 +143,91 @@ export function HoursEditor({
     });
   }, [value]);
 
-  function update(idx: number, patch: Partial<DayConfig>) {
-    // Los updaters de setState deben ser puros: notificar al padre por fuera.
-    const next = cfg.map((c, i) => (i === idx ? { ...c, ...patch } : c));
+  function commit(next: DayConfig[]) {
     setCfg(next);
     onChange(serialize(next));
+  }
+
+  function updateShift(idx: number, shiftIdx: number, patch: Partial<DayShift>) {
+    const next = cfg.map((c, i) =>
+      i !== idx
+        ? c
+        : { ...c, shifts: c.shifts.map((s, j) => (j === shiftIdx ? { ...s, ...patch } : s)) }
+    );
+    commit(next);
+  }
+
+  function toggleClosed(idx: number, closed: boolean) {
+    commit(cfg.map((c, i) => (i === idx ? { ...c, closed } : c)));
+  }
+
+  function addShift(idx: number) {
+    commit(cfg.map((c, i) => (i === idx ? { ...c, shifts: [...c.shifts, { open: "17:00", close: "22:00" }] } : c)));
+  }
+
+  function removeShift(idx: number) {
+    commit(cfg.map((c, i) => (i === idx ? { ...c, shifts: c.shifts.slice(0, 1) } : c)));
+  }
+
+  function copyToAll(idx: number) {
+    const src = cfg[idx];
+    commit(cfg.map(() => ({ shifts: src.shifts.map((s) => ({ ...s })), closed: src.closed })));
   }
 
   return (
     <div className="space-y-2">
       {cfg.map((day, idx) => (
-        <div key={ORDER[idx]} className="flex items-center gap-2">
-          <div className="w-9 sm:w-20 flex-shrink-0 text-sm">
-            <span className="sm:hidden">{DAYS[idx].label.slice(0, 3)}</span>
-            <span className="hidden sm:inline">{DAYS[idx].label}</span>
+        <div key={ORDER[idx]} className="rounded-xl border border-border bg-card p-2.5 space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="w-16 sm:w-20 flex-shrink-0 text-sm font-medium truncate">{DAYS[idx].label}</span>
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                <Switch checked={!day.closed} onCheckedChange={(v) => toggleClosed(idx, !v)} />
+                <Label className="text-xs text-muted-foreground">{day.closed ? "Cerrado" : "Abierto"}</Label>
+              </div>
+            </div>
+            <div className="flex items-center gap-1 flex-shrink-0">
+              {!day.closed && day.shifts.length < 2 && (
+                <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => addShift(idx)} title="Agregar segunda franja (horario cortado)">
+                  + Tarde
+                </Button>
+              )}
+              <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => copyToAll(idx)} title="Copiar este día a toda la semana">
+                Copiar a todos
+              </Button>
+            </div>
           </div>
-          <div className="flex flex-1 items-center gap-1.5 min-w-0">
-            <Input
-              type="time"
-              className="h-9 min-w-0 flex-1 px-1.5 sm:px-3 text-xs sm:text-sm"
-              value={day.open}
-              disabled={day.closed}
-              onChange={(e) => update(idx, { open: e.target.value })}
-            />
-            <span className="text-muted-foreground flex-shrink-0">a</span>
-            <Input
-              type="time"
-              className="h-9 min-w-0 flex-1 px-1.5 sm:px-3 text-xs sm:text-sm"
-              value={day.close}
-              disabled={day.closed}
-              onChange={(e) => update(idx, { close: e.target.value })}
-            />
-          </div>
-          <div className="flex items-center gap-1.5 flex-shrink-0">
-            <Label className="hidden sm:inline text-xs text-muted-foreground">Cerrado</Label>
-            <Switch checked={day.closed} onCheckedChange={(v) => update(idx, { closed: v })} />
-          </div>
+
+          {!day.closed && day.shifts.map((shift, sIdx) => (
+            <div key={sIdx} className="flex items-center gap-1.5 min-w-0 pl-1">
+              {day.shifts.length === 2 && (
+                <span className="text-[10px] text-muted-foreground w-14 flex-shrink-0">{sIdx === 0 ? "Mañana" : "Tarde"}</span>
+              )}
+              <Input
+                type="time"
+                className="h-9 min-w-0 flex-1 px-1.5 sm:px-3 text-xs sm:text-sm"
+                value={shift.open}
+                onChange={(e) => updateShift(idx, sIdx, { open: e.target.value })}
+              />
+              <span className="text-muted-foreground flex-shrink-0">a</span>
+              <Input
+                type="time"
+                className="h-9 min-w-0 flex-1 px-1.5 sm:px-3 text-xs sm:text-sm"
+                value={shift.close}
+                onChange={(e) => updateShift(idx, sIdx, { close: e.target.value })}
+              />
+              {day.shifts.length === 2 && (
+                <button
+                  type="button"
+                  onClick={() => removeShift(idx)}
+                  className="h-7 w-7 rounded-md text-muted-foreground hover:text-red-600 hover:bg-red-50 flex items-center justify-center flex-shrink-0"
+                  aria-label="Quitar esta franja"
+                >
+                  ×
+                </button>
+              )}
+            </div>
+          ))}
         </div>
       ))}
       <p className="text-xs text-muted-foreground mt-1">

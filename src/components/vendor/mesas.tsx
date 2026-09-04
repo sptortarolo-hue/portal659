@@ -72,6 +72,10 @@ export function Mesas() {
   const [modifiersMap, setModifiersMap] = useState<Record<string, ProductModifier[]>>({});
   const [pickerProduct, setPickerProduct] = useState<Product | null>(null);
   const [payment, setPayment] = useState("efectivo");
+  // Mobile: la mesa se divide en 2 pantallas — "catalog" (sticky buscador +
+  // pastillas + grilla) y "detail" (cuenta: consumiciones, precuenta, cobro).
+  const [mobileView, setMobileView] = useState<"catalog" | "detail">("catalog");
+  const [printingTicket, setPrintingTicket] = useState(false);
 
   const load = useCallback(async () => {
     // Timeout: si la red queda colgada (p. ej. conexión móvil suspendida),
@@ -272,6 +276,42 @@ export function Mesas() {
   const cartCount = cart.reduce((s, i) => s + i.qty, 0);
   const cartTotal = cart.reduce((s, i) => s + i.price * i.qty, 0);
 
+  // Precuenta de la mesa (ticket térmico, sin cerrar): incluye lo ya cargado
+  // más el carrito pendiente. No cierra ni cobra.
+  async function printPrecuenta() {
+    if (!selected || (openOrders.length === 0 && cart.length === 0)) return;
+    const items = [
+      ...openOrders.flatMap((o) => (o.items || [])),
+      ...cart.map((i) => ({
+        name: i.name,
+        price: i.price,
+        qty: i.qty,
+        modifiers: (i.modifiers || []).map((m) => m.label),
+      })),
+    ];
+    setPrintingTicket(true);
+    try {
+      const res = await fetch("/api/print", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "precuenta",
+          tableName: selected.name,
+          items,
+          total: selectedTotal + cartTotal,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (data.ok) setMsg("🖨️ Precuenta enviada a la impresora");
+      else setMsg(data.reason || data.error || "No se pudo imprimir la precuenta");
+    } catch {
+      setMsg("Error de conexión al imprimir");
+    } finally {
+      setPrintingTicket(false);
+      setTimeout(() => setMsg(""), 3000);
+    }
+  }
+
   if (loading) return <p className="text-sm text-muted-foreground">Cargando mesas...</p>;
 
   if (loadError) {
@@ -407,7 +447,7 @@ export function Mesas() {
           return (
             <div
               key={t.id}
-              onClick={() => setSelected(t)}
+                onClick={() => { setSelected(t); setMobileView("catalog"); }}
               className={`rounded-2xl border-2 p-3 cursor-pointer transition-all active:scale-[0.98] ${
                 occupied ? "border-primary bg-primary/5" : "border-border bg-card"
               } ${selected?.id === t.id ? "ring-2 ring-primary" : ""}`}
@@ -510,18 +550,28 @@ export function Mesas() {
                   <b className="tabular-nums">${(selectedTotal + cartTotal).toLocaleString("es-AR")}</b>
                 </div>
                 <Button size="sm" disabled={cart.length === 0} onClick={addConsumicion}>Agregar consumición</Button>
-                <Button size="sm" variant="default" disabled={openOrders.length === 0 && cart.length === 0} onClick={closeTable}>
-                  Cobrar y cerrar mesa
-                </Button>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={printingTicket || (openOrders.length === 0 && cart.length === 0)}
+                    onClick={printPrecuenta}
+                  >
+                    {printingTicket ? "Imprimiendo..." : "🖨️ Precuenta"}
+                  </Button>
+                  <Button size="sm" variant="default" disabled={openOrders.length === 0 && cart.length === 0} onClick={closeTable}>
+                    Cobrar y cerrar
+                  </Button>
+                </div>
               </div>
             </div>
           </div>
 
-          {/* ============ Mobile: modal pantalla completa ============ */}
+          {/* ============ Mobile: modal pantalla completa, 2 vistas ============ */}
           <div className="sm:hidden fixed inset-0 z-[60] bg-background flex flex-col">
             <header className="flex items-center gap-2 border-b border-border px-3 py-3">
               <button
-                onClick={() => setSelected(null)}
+                onClick={() => (mobileView === "detail" ? setMobileView("catalog") : setSelected(null))}
                 className="shrink-0 h-8 w-8 rounded-full hover:bg-muted flex items-center justify-center text-muted-foreground"
                 aria-label="Volver"
               >
@@ -530,67 +580,194 @@ export function Mesas() {
                 </svg>
               </button>
               <div className="flex-1 min-w-0">
-                <h3 className="font-display font-semibold leading-tight truncate">{selected.name}</h3>
+                <h3 className="font-display font-semibold leading-tight truncate">
+                  {mobileView === "catalog" ? selected.name : `Cuenta · ${selected.name}`}
+                </h3>
                 <p className="text-[11px] text-muted-foreground">
-                  {selected.status === "ocupada" ? "Ocupada" : "Libre"} · ${selectedTotal.toLocaleString("es-AR")}
+                  {selected.status === "ocupada" ? "Ocupada" : "Libre"} · ${(selectedTotal + cartTotal).toLocaleString("es-AR")}
                 </p>
               </div>
-              {selected.status === "libre" && (
+              {selected.status === "libre" && openOrders.length === 0 && cart.length === 0 && (
                 <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => deleteTable(selected)}>Eliminar</Button>
               )}
             </header>
 
-            <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
-              {openOrders.length > 0 && consumicionesBlock(false)}
+            {mobileView === "catalog" ? (
+              <>
+                {/* Vista A — catálogo: buscador + pastelas STICKY, grilla con espacio */}
+                <div className="sticky top-0 z-10 bg-background border-b border-border/50 px-3 pt-2 pb-2 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={query}
+                      onChange={(e) => setQuery(e.target.value)}
+                      placeholder="Buscar y agregar producto..."
+                      className="flex-1 h-10 px-3 text-sm rounded-xl border border-input bg-background"
+                    />
+                    {cartCount > 0 && (
+                      <Badge className="h-10 px-3 text-xs tabular-nums">🛒 {cartCount}</Badge>
+                    )}
+                  </div>
+                  {categories.length > 1 && (
+                    <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
+                      <button
+                        onClick={() => setActiveCat(null)}
+                        className={`flex-shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                          activeCat === null ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                        }`}
+                      >
+                        Todos
+                      </button>
+                      {categories.map((c) => (
+                        <button
+                          key={c}
+                          onClick={() => setActiveCat(activeCat === c ? null : c)}
+                          className={`flex-shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                            activeCat === c ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                          }`}
+                        >
+                          {c}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
 
-              {closedOrders.length > 0 && (
-                <CollapsibleSection icon="🧾" title={`Cuentas cerradas (${closedOrders.length})`} defaultOpen={false}>
-                  <div className="space-y-1.5 opacity-70">
-                    {closedOrders.map((o) => (
-                      <div key={o.id} className="flex items-center justify-between text-xs">
-                        <span className="text-muted-foreground">
-                          {o.paid_at ? new Date(o.paid_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }) : new Date(o.created_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })} · #{o.id.slice(0, 6)}
+                <div className="flex-1 overflow-y-auto px-3 pt-2pb-4">
+                  <div className="grid grid-cols-3 gap-2">
+                    {filtered.map((p) => (
+                      <button
+                        key={p.id}
+                        onClick={() => addProduct(p)}
+                        className="text-left rounded-lg border border-border bg-card overflow-hidden hover:border-primary/50 transition-colors active:scale-[0.97]"
+                      >
+                        <div className="aspect-square w-full bg-secondary">
+                          {p.image_url ? (
+                            <img src={p.image_url} alt={p.name} loading="lazy" decoding="async" className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center">
+                              <span className="font-display text-2xl font-bold text-primary/40">{p.name.charAt(0)}</span>
+                            </div>
+                          )}
+                        </div>
+                        <div className="p-1.5">
+                          <p className="text-[10px] font-medium truncate">{p.name}</p>
+                          <p className="text-[11px] font-semibold text-primary tabular-nums">
+                            ${Number(p.promo_price ?? p.price).toLocaleString("es-AR")}
+                          </p>
+                          {(modifiersMap[p.id] || []).length > 0 && (
+                            <span className="inline-block text-[9px] font-medium text-primary/70">+ opciones</span>
+                          )}
+                        </div>
+                      </button>
+                    ))}
+                    {filtered.length === 0 && (
+                      <p className="text-[11px] text-muted-foreground col-span-full text-center py-6">Sin productos</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Barra a la vista "cuenta": resume lo que lleva la mesa */}
+                <footer className="border-t border-border px-3 pt-2 pb-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] bg-card">
+                  <button
+                    onClick={() => setMobileView("detail")}
+                    className="w-full flex items-center justify-between rounded-xl bg-primary text-primary-foreground px-4 py-3 shadow-lg active:scale-[0.98] transition-transform"
+                  >
+                    <span className="text-sm font-semibold">
+                      🧾 Detalle de la mesa
+                      {cartCount > 0 && (
+                        <span className="ml-1 text-[11px] opacity-90">
+                          · {cartCount} sin cargar
                         </span>
-                        <span className="font-semibold tabular-nums">${Number(o.total).toLocaleString("es-AR")}</span>
+                      )}
+                    </span>
+                    <span className="text-base font-bold tabular-nums">
+                      ${(selectedTotal + cartTotal).toLocaleString("es-AR")}
+                    </span>
+                  </button>
+                </footer>
+              </>
+            ) : (
+              <>
+                {/* Vista B — cuenta: consumiciones abiertas + pedido nuevo + cobro */}
+                <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wide font-semibold text-muted-foreground mb-1.5">
+                      Consumiciones de la mesa ({openOrders.length})
+                    </p>
+                    {openOrders.length > 0 ? consumicionesBlock(false) : (
+                      <p className="text-xs text-muted-foreground">Todavía no se cargaron consumiciones.</p>
+                    )}
+                  </div>
+
+                  {cart.length > 0 && (
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wide font-semibold text-muted-foreground mb-1.5">
+                        Por cargar ({cartCount})
+                      </p>
+                      <div className="space-y-1.5">{cart.map(cartLine)}</div>
+                    </div>
+                  )}
+
+                  {closedOrders.length > 0 && (
+                    <CollapsibleSection icon="🧾" title={`Cuentas cerradas (${closedOrders.length})`} defaultOpen={false}>
+                      <div className="space-y-1.5 opacity-70">
+                        {closedOrders.map((o) => (
+                          <div key={o.id} className="flex items-center justify-between text-xs">
+                            <span className="text-muted-foreground">
+                              {o.paid_at ? new Date(o.paid_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }) : new Date(o.created_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })} · #{o.id.slice(0, 6)}
+                            </span>
+                            <span className="font-semibold tabular-nums">${Number(o.total).toLocaleString("es-AR")}</span>
+                          </div>
+                        ))}
                       </div>
+                    </CollapsibleSection>
+                  )}
+                </div>
+
+                <footer className="border-t border-border px-3 pt-2 pb-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] space-y-2 bg-card">
+                  <div className="flex flex-wrap gap-1">
+                    {PAYMENT_OPTIONS.map((o) => (
+                      <button
+                        key={o.key}
+                        onClick={() => setPayment(o.key)}
+                        className={`rounded-full px-2 py-1 text-[10px] font-medium ${payment === o.key ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}
+                      >
+                        {o.label}
+                      </button>
                     ))}
                   </div>
-                </CollapsibleSection>
-              )}
-
-              {catalogBlock("max-h-none")}
-            </div>
-
-            <footer className="border-t border-border px-3 pt-2 pb-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] space-y-2 bg-card">
-              {cart.length > 0 && (
-                <div className="max-h-28 overflow-y-auto space-y-1">
-                  {cart.map(cartLine)}
-                </div>
-              )}
-              <div className="flex flex-wrap gap-1">
-                {PAYMENT_OPTIONS.map((o) => (
-                  <button
-                    key={o.key}
-                    onClick={() => setPayment(o.key)}
-                    className={`rounded-full px-2 py-1 text-[10px] font-medium ${payment === o.key ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}
-                  >
-                    {o.label}
-                  </button>
-                ))}
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span>Total mesa</span>
-                <b className="tabular-nums">${(selectedTotal + cartTotal).toLocaleString("es-AR")}</b>
-              </div>
-              <div className="grid grid-cols-1 gap-2">
-                <Button size="sm" disabled={cart.length === 0} onClick={addConsumicion}>
-                  Agregar consumición {cartCount > 0 ? `(${cartCount})` : ""}
-                </Button>
-                <Button size="sm" variant="default" disabled={openOrders.length === 0 && cart.length === 0} onClick={closeTable}>
-                  Cobrar y cerrar mesa
-                </Button>
-              </div>
-            </footer>
+                  <div className="flex items-center justify-between text-sm">
+                    <span>Total a cobrar</span>
+                    <b className="tabular-nums">${(selectedTotal + cartTotal).toLocaleString("es-AR")}</b>
+                  </div>
+                  <div className="grid grid-cols-1 gap-1.5">
+                    {cart.length > 0 && (
+                      <Button size="sm" variant="secondary" onClick={addConsumicion}>
+                        ➕ Cargar a la mesa ({cartCount} ítem{cartCount === 1 ? "" : "s"})
+                      </Button>
+                    )}
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={printingTicket || (openOrders.length === 0 && cart.length === 0)}
+                        onClick={printPrecuenta}
+                      >
+                        {printingTicket ? "Imprimiendo..." : "🖨️ Precuenta"}
+                      </Button>
+                      <Button
+                        size="sm"
+                        disabled={openOrders.length === 0 && cart.length === 0}
+                        onClick={closeTable}
+                      >
+                        Cobrado y cerrar
+                      </Button>
+                    </div>
+                  </div>
+                </footer>
+              </>
+            )}
           </div>
         </>
       )}

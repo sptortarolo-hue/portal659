@@ -167,6 +167,8 @@ export type Vendor = {
   verified: boolean;
   featured?: boolean;
   hours: string | null;
+  /** Sobrescritura manual de apertura: null=por horarios, true=abierto, false=cerrado. */
+  open_override?: boolean | null;
   location: string | null;
   address: string | null;
   description: string | null;

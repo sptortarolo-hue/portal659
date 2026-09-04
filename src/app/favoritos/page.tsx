@@ -108,6 +108,7 @@ export default function FavoritosPage() {
               description={f.vendors.description}
               vertical={f.vendors.vertical}
               hours={f.vendors.hours}
+              open_override={(f.vendors as any).open_override ?? null}
             />
             <Button
               variant="ghost"

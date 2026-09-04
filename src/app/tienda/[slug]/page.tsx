@@ -16,6 +16,7 @@ import { ProductCard } from "@/components/store/product-card";
 import { GastroProductRow } from "@/components/store/gastro-product-row";
 import { WhatsAppShareButton } from "@/components/store/whatsapp-share-button";
 import { ScrollToMenu } from "@/components/store/scroll-to-menu";
+import { ScrollToProduct } from "@/components/store/scroll-to-product";
 import { VendorShareButton } from "@/components/store/vendor-share-button";
 import type { Metadata } from "next";
 
@@ -213,6 +214,7 @@ const modifiersByProduct: Record<string, any[]> = {};
   return (
     <main className="pb-28">
       <ScrollToMenu />
+      <ScrollToProduct />
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}

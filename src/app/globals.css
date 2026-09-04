@@ -70,6 +70,7 @@
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
+    overflow-x: hidden;
   }
 
   ::selection {
@@ -244,6 +245,18 @@ html.dark {
   max-height: calc(100vh - 12rem);
   overflow-y: auto;
   overscroll-behavior-y: contain;
+}
+
+/* Destacado del producto (oferta de hoy al llegar del link): anillo ámbar
+   pulsante que se desvanece. Se quita solo con JS a los ~2.6s. */
+.oferta-highlight {
+  animation: oferta-pulse 0.9s ease-in-out 3;
+  border-radius: 0.75rem;
+}
+@keyframes oferta-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.75); }
+  70% { box-shadow: 0 0 0 12px rgba(245, 158, 11, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
 }
 
 /* MapLibre overrides */

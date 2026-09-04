@@ -11,6 +11,7 @@ type OfferCardProps = {
   category: string | null;
   storeName: string;
   storeSlug: string;
+  offerId?: string;
   featured?: boolean;
   imageUrl?: string | null;
   vertical?: string | null;
@@ -23,12 +24,16 @@ export function OfferCard({
   category,
   storeName,
   storeSlug,
+  offerId,
   featured,
   imageUrl,
   vertical,
 }: OfferCardProps) {
+  const href = offerId
+    ? `/tienda/${storeSlug}?menu=1&oferta=${encodeURIComponent(offerId)}`
+    : `/tienda/${storeSlug}?menu=1`;
   return (
-    <Link href={`/tienda/${storeSlug}`} className="block h-full">
+    <Link href={href} className="block h-full">
       <Card
         className={cn(
           "h-full hover:shadow-xl transition-all duration-200 hover:-translate-y-1 cursor-pointer overflow-hidden",

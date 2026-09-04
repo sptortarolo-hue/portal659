@@ -508,7 +508,7 @@ export function Mostrador() {
               Limpiar
             </button>
           </header>
-          <div className="flex-1 overflow-y-auto p-4 flex flex-col">
+          <div className="flex-1 overflow-y-auto p-4 flex flex-col pb-[calc(env(safe-area-inset-bottom,0px)+1rem)]">
             {orderSummary}
           </div>
         </div>

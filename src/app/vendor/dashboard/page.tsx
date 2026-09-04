@@ -886,7 +886,7 @@ function VendorDashboardInner() {
                 rel="noopener noreferrer"
                 className="block w-full rounded-xl bg-green-500 text-white text-sm font-medium py-2.5 hover:bg-green-600 transition-colors"
               >
-                📲 Compartir menú por WhatsApp
+                📲 Compartir menú
               </a>
               <div className="flex gap-2">
                 <Button className="flex-1" onClick={copyLink}>{copied ? "¡Copiado!" : "Copiar link"}</Button>

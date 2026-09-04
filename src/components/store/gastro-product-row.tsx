@@ -113,7 +113,7 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
 
   // Desktop: fila compacta con botón directo (comportamiento actual).
   const desktopRow = (
-    <div className="hidden sm:flex border border-border rounded-xl p-4 bg-card items-start justify-between gap-4 hover:shadow-md transition-shadow">
+    <div id={`product-${product.id}`} className="hidden sm:flex border border-border rounded-xl p-4 bg-card items-start justify-between gap-4 hover:shadow-md transition-shadow scroll-mt-24">
       <div className="flex items-start gap-3 min-w-0">
         {product.image_url ? (
           <div className="h-20 w-20 rounded-xl overflow-hidden flex-shrink-0">
@@ -158,8 +158,9 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
   const mobileRow = (
     <button
       type="button"
+      id={`product-${product.id}`}
       onClick={openSheet}
-      className="sm:hidden w-full text-left border border-border rounded-xl p-3 bg-card flex items-center gap-3 active:scale-[0.99] transition-transform"
+      className="sm:hidden w-full text-left border border-border rounded-xl p-3 bg-card flex items-center gap-3 active:scale-[0.99] transition-transform scroll-mt-16"
     >
       {product.image_url ? (
         <div className="h-16 w-16 rounded-xl overflow-hidden flex-shrink-0">
@@ -194,10 +195,10 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
     </button>
   );
 
-  // Imagen 4:5 con estrategia Instagram: foto completa en object-contain sobre
-  // un fondo con la misma imagen blureada en cover (rellena lo que sobra).
+  // Imagen 45% de la altura vertical con estrategia Instagram: foto completa en
+  // object-contain sobre un fondo con la misma imagen blureada en cover.
   const imageBlock = product.image_url ? (
-    <div className="aspect-[4/5] w-full overflow-hidden relative bg-accent">
+    <div className="h-[45vh] w-full overflow-hidden relative bg-accent">
       <ProductImage
         src={product.image_url}
         name={product.name}
@@ -216,7 +217,7 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
       />
     </div>
   ) : (
-    <div className="aspect-[4/5] w-full bg-accent flex items-center justify-center">
+    <div className="h-[45vh] w-full bg-accent flex items-center justify-center">
       <ProductImage src={null} name={product.name} category={product.category} vertical={vendor.vertical} alt={product.name} className="w-full h-full" iconClassName="h-20 w-20" />
     </div>
   );

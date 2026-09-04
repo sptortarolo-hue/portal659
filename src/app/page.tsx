@@ -155,6 +155,7 @@ export default async function HomePage() {
                   category={o.category}
                   storeName={o.vendors?.store_name || ""}
                   storeSlug={o.vendors?.slug || ""}
+                  offerId={o.id}
                   featured
                   imageUrl={o.image_url}
                   vertical={o.vendors?.vertical || null}

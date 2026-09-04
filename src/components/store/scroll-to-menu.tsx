@@ -12,6 +12,8 @@ export function ScrollToMenu() {
 
   useEffect(() => {
     if (params.get("menu") !== "1") return;
+    // Si hay oferta puntual, el scroll lo maneja ScrollToProduct.
+    if (params.get("oferta")) return;
     const id = window.setTimeout(() => {
       const el = document.getElementById("menu");
       if (!el) return;

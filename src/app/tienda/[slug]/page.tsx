@@ -17,6 +17,8 @@ import { GastroProductRow } from "@/components/store/gastro-product-row";
 import { WhatsAppShareButton } from "@/components/store/whatsapp-share-button";
 import { ScrollToMenu } from "@/components/store/scroll-to-menu";
 import { ScrollToProduct } from "@/components/store/scroll-to-product";
+import { IrAComprarButton } from "@/components/store/ir-a-comprar-button";
+import { CategoryNav } from "@/components/store/category-nav";
 import { VendorShareButton } from "@/components/store/vendor-share-button";
 import type { Metadata } from "next";
 
@@ -256,6 +258,7 @@ const modifiersByProduct: Record<string, any[]> = {};
               )}
             </div>
             <div className="flex items-center gap-2 ml-auto shrink-0">
+              {!isService && !isModa && (offers?.length || 0) > 0 && <IrAComprarButton />}
               <FavoriteButton vendorId={v.id} />
               <WhatsAppShareButton slug={v.slug} storeName={v.store_name} />
               <VendorShareButton slug={v.slug} storeName={v.store_name} />
@@ -415,19 +418,7 @@ const modifiersByProduct: Record<string, any[]> = {};
               </p>
             ) : (
               <>
-                {sections.length > 0 && (
-                  <nav className="sticky top-[104px] sm:top-16 z-30 -mx-4 px-4 py-2 bg-background/95 backdrop-blur-sm border-b border-border flex gap-2 overflow-x-auto mb-6">
-                    {sections.map((s, i) => (
-                      <a
-                        key={s.name}
-                        href={`#seccion-${i}`}
-                        className="whitespace-nowrap rounded-full border border-border bg-card px-4 py-1.5 text-sm font-medium text-muted-foreground hover:border-primary hover:text-primary"
-                      >
-                        {s.name}
-                      </a>
-                    ))}
-                  </nav>
-                )}
+                {sections.length > 0 && <CategoryNav sections={sections} />}
                 {sections.map((s, i) => (
                   <section key={s.name} id={`seccion-${i}`} className="mb-10 scroll-mt-[136px] sm:scroll-mt-24">
                     <h3 className="font-display text-xl font-semibold mb-4 border-b border-border pb-2">

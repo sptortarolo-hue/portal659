@@ -50,7 +50,7 @@ export function MostOrderedSection() {
         {items.map((item) => (
           <Link
             key={item.product_id}
-            href={`/tienda/${item.store_slug}`}
+            href={`/tienda/${item.store_slug}?menu=1&oferta=${encodeURIComponent(item.product_id)}`}
             className="min-w-[220px] max-w-[260px] snap-start block group"
           >
             <div className="rounded-2xl border border-border bg-card p-4 hover:shadow-xl transition-all duration-200 hover:-translate-y-1">

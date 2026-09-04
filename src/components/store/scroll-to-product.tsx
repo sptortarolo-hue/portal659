@@ -33,10 +33,11 @@ export function ScrollToProduct() {
   }, [params]);
 
   function doScroll(el: HTMLElement, id: string) {
-    const isMobile = window.innerWidth < 640;
-    const offset = isMobile ? 60 : 90;
-    const top = el.getBoundingClientRect().top + window.scrollY - offset;
-    window.scrollTo({ top, behavior: "smooth" });
+    // Centrar el producto en el medio vertical de la pantalla.
+    const rect = el.getBoundingClientRect();
+    const top = window.scrollY + rect.top - (window.innerHeight - rect.height) / 2;
+    const max = (document.scrollingElement?.scrollHeight ?? 0) - window.innerHeight;
+    window.scrollTo({ top: Math.max(0, Math.min(top, max)), behavior: "smooth" });
     setHighlightId(id);
     window.setTimeout(() => setHighlightId(null), 2600);
   }

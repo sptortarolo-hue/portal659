@@ -113,7 +113,7 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
 
   // Desktop: fila compacta con botón directo (comportamiento actual).
   const desktopRow = (
-    <div id={`product-${product.id}`} className="hidden sm:flex border border-border rounded-xl p-4 bg-card items-start justify-between gap-4 hover:shadow-md transition-shadow scroll-mt-24">
+    <div className="hidden sm:flex border border-border rounded-xl p-4 bg-card items-start justify-between gap-4 hover:shadow-md transition-shadow scroll-mt-24">
       <div className="flex items-start gap-3 min-w-0">
         {product.image_url ? (
           <div className="h-20 w-20 rounded-xl overflow-hidden flex-shrink-0">
@@ -158,7 +158,6 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
   const mobileRow = (
     <button
       type="button"
-      id={`product-${product.id}`}
       onClick={openSheet}
       className="sm:hidden w-full text-left border border-border rounded-xl p-3 bg-card flex items-center gap-3 active:scale-[0.99] transition-transform scroll-mt-16"
     >
@@ -223,7 +222,7 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
   );
 
   return (
-    <>
+    <div id={`product-${product.id}`} className="scroll-mt-16 sm:scroll-mt-24">
       {desktopRow}
       {mobileRow}
 
@@ -371,6 +370,6 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
           </footer>
         </div>
       )}
-    </>
+    </div>
   );
 }

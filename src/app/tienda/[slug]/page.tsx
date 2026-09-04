@@ -437,16 +437,17 @@ const modifiersByProduct: Record<string, any[]> = {};
                       {s.items.map((o: any) => {
                         if (isModa) {
                           return (
-                            <ProductCard
-                              key={o.id}
-                              product={o}
-                              variants={variantsByProduct[o.id] || []}
-                              images={imagesByProduct[o.id] || []}
-                              vendor={vendorBrief}
-                              modifiers={modifiersByProduct[o.id]}
-                              acceptsCart={acceptsCart}
-                              consultHref={waUrl}
-                            />
+                            <div key={o.id} id={`product-${o.id}`} className="scroll-mt-16 sm:scroll-mt-24">
+                              <ProductCard
+                                product={o}
+                                variants={variantsByProduct[o.id] || []}
+                                images={imagesByProduct[o.id] || []}
+                                vendor={vendorBrief}
+                                modifiers={modifiersByProduct[o.id]}
+                                acceptsCart={acceptsCart}
+                                consultHref={waUrl}
+                              />
+                            </div>
                           );
                         }
                         const oVariants = variantsByProduct[o.id] || [];
@@ -458,7 +459,8 @@ const modifiersByProduct: Record<string, any[]> = {};
                           return (
                             <div
                               key={o.id}
-                              className="border border-border rounded-xl p-4 bg-card space-y-3"
+                              id={`product-${o.id}`}
+                              className="border border-border rounded-xl p-4 bg-card space-y-3 scroll-mt-16 sm:scroll-mt-24"
                             >
                               <div className="flex items-start gap-3">
                                 {oImages.length > 0 ? (

@@ -32,13 +32,12 @@ export function Navigation() {
 
       {/* Mobile */}
       <div className="sm:hidden">
-        {/* Fila 1: logo + espacio + app + campana + menú */}
+        {/* Fila 1: logo + espacio + campana + menú */}
         <div className="container mx-auto px-3 h-14 flex items-center gap-2">
           <Link href="/" aria-label="Portal 659 — Inicio" className="flex-shrink-0 h-full flex items-center">
             <Logo />
           </Link>
           <div className="flex-1" />
-          <InstallAppButton />
           <NotificationBell />
           <UserMenu />
         </div>
@@ -47,6 +46,7 @@ export function Navigation() {
         {!isBackoffice && (
           <div className="container mx-auto px-3 pb-2 flex items-center gap-2">
             <ZoneSelector />
+            <InstallAppButton />
           </div>
         )}
       </div>

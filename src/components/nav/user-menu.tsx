@@ -13,6 +13,12 @@ type MeUser = {
   is_admin: boolean;
 };
 
+type MeStaff = {
+  role: string;
+  store_name: string;
+  vendor_id: string;
+};
+
 type MeVendor = {
   id: string;
   slug: string;
@@ -27,6 +33,7 @@ export function UserMenu() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [user, setUser] = useState<MeUser | null>(null);
   const [vendor, setVendor] = useState<MeVendor | null>(null);
+  const [staff, setStaff] = useState<MeStaff | null>(null);
   const [loading, setLoading] = useState(true);
   const menuRef = useRef<HTMLDivElement>(null);
   const { theme, setTheme, resolved } = useTheme();
@@ -38,6 +45,7 @@ export function UserMenu() {
         .then((data) => {
           setUser(data.user || null);
           setVendor(data.vendor || null);
+          setStaff(data.staff || null);
           setLoading(false);
         })
         .catch(() => setLoading(false));
@@ -131,13 +139,23 @@ export function UserMenu() {
               >
                 <span>❤️</span> Mis favoritos
               </Link>
-              <Link
-                href="/vendor/dashboard"
-                className="flex items-center gap-3 px-4 py-3 text-sm text-foreground hover:bg-muted transition-colors"
-                onClick={() => setMenuOpen(false)}
-              >
-                <span>🏪</span> Mi comercio
-              </Link>
+              {staff ? (
+                <Link
+                  href="/vendor/dashboard"
+                  className="flex items-center gap-3 px-4 py-3 text-sm text-foreground hover:bg-muted transition-colors"
+                  onClick={() => setMenuOpen(false)}
+                >
+                  <span>🛵</span> Mi reparto
+                </Link>
+              ) : (
+                <Link
+                  href="/vendor/dashboard"
+                  className="flex items-center gap-3 px-4 py-3 text-sm text-foreground hover:bg-muted transition-colors"
+                  onClick={() => setMenuOpen(false)}
+                >
+                  <span>🏪</span> Mi comercio
+                </Link>
+              )}
               <Link
                 href="/planes"
                 className="flex items-center gap-3 px-4 py-3 text-sm text-foreground hover:bg-muted transition-colors"
@@ -180,6 +198,13 @@ export function UserMenu() {
                 onClick={() => setMenuOpen(false)}
               >
                 <span>🏪</span> Sumá tu comercio
+              </Link>
+              <Link
+                href="/vincular"
+                className="flex items-center gap-3 px-4 py-3 text-sm text-foreground hover:bg-muted transition-colors"
+                onClick={() => setMenuOpen(false)}
+              >
+                <span>🛵</span> Unirme como repartidor
               </Link>
             </>
           )}

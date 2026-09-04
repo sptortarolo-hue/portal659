@@ -32,6 +32,20 @@ export async function GET(request: Request) {
     [user.id]
   );
 
+  // Staff (repartidor): si no es dueño pero está vinculado activo a un comercio.
+  const staff = await queryOne<{
+    role: string;
+    store_name: string;
+    vendor_id: string;
+  }>(
+    `SELECT vs.role, v.store_name, v.id AS vendor_id
+     FROM vendor_staff vs
+     JOIN vendors v ON v.id = vs.vendor_id
+     WHERE vs.profile_id = $1 AND vs.status = 'active' AND vs.role = 'delivery'
+     LIMIT 1`,
+    [user.id]
+  );
+
   return NextResponse.json({
     user: {
       id: user.id,
@@ -45,6 +59,7 @@ export async function GET(request: Request) {
       role: user.role,
     },
     vendor: vendor || null,
+    staff: staff || null,
   });
 }
 

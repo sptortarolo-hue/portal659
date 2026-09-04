@@ -47,9 +47,9 @@ export async function getVendorByRequest(request: Request): Promise<{
   );
   if (vendor) return { userId: user.id, vendor, staffRole: null };
 
-  // No es dueño: ¿es repartidor vinculado por código?
+  // No es dueño: ¿es repartidor vinculado por código y activo?
   const staff = await queryOne<{ vendor_id: string; role: string }>(
-    `SELECT vendor_id, role FROM vendor_staff WHERE profile_id = $1 LIMIT 1`,
+    `SELECT vendor_id, role FROM vendor_staff WHERE profile_id = $1 AND status = 'active' LIMIT 1`,
     [user.id]
   );
   if (staff) {

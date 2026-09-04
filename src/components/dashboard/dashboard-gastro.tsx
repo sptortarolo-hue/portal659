@@ -828,7 +828,7 @@ export default function DashboardGastro({
       </CollapsibleSection>
 
       <CollapsibleSection icon="🛵" title="Equipo / Repartidor">
-        <StaffManager />
+        <StaffManager storeName={vendor?.store_name} />
       </CollapsibleSection>
 
       <CollapsibleSection icon="🖨️" title="Impresora térmica">

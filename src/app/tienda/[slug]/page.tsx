@@ -13,6 +13,9 @@ import { BookingForm } from "@/components/services/booking-form";
 import { StickyWhatsApp } from "@/components/store/sticky-whatsapp";
 import { VariantSelector } from "@/components/store/variant-selector";
 import { ProductCard } from "@/components/store/product-card";
+import { GastroProductRow } from "@/components/store/gastro-product-row";
+import { WhatsAppShareButton } from "@/components/store/whatsapp-share-button";
+import { ScrollToMenu } from "@/components/store/scroll-to-menu";
 import { VendorShareButton } from "@/components/store/vendor-share-button";
 import type { Metadata } from "next";
 
@@ -33,7 +36,9 @@ export async function generateMetadata({
 
   const title = `${vendor.store_name} — Portal 659`;
   const description = vendor.description || `${vendor.store_name} en ${vendor.neighborhood || "tu barrio"}. Pedí por WhatsApp o delivery.`;
-  const imageUrl = vendor.image_url || vendor.logo_url;
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://www.portal659.com.ar";
+  // Tarjeta generada (banner + logo + leyenda) para que WhatsApp la muestre al pegar el link.
+  const shareImage = `${siteUrl}/api/share/tienda/${slug}`;
 
   return {
     title,
@@ -41,14 +46,14 @@ export async function generateMetadata({
     openGraph: {
       title,
       description,
-      images: imageUrl ? [{ url: imageUrl, width: 1200, height: 630 }] : undefined,
+      images: [{ url: shareImage, width: 1200, height: 630 }],
       type: "website",
     },
     twitter: {
       card: "summary_large_image",
       title,
       description,
-      images: imageUrl ? [imageUrl] : undefined,
+      images: [shareImage],
     },
   };
 }
@@ -207,6 +212,7 @@ const modifiersByProduct: Record<string, any[]> = {};
 
   return (
     <main className="pb-28">
+      <ScrollToMenu />
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
@@ -249,6 +255,7 @@ const modifiersByProduct: Record<string, any[]> = {};
             </div>
             <div className="flex items-center gap-2 ml-auto shrink-0">
               <FavoriteButton vendorId={v.id} />
+              <WhatsAppShareButton slug={v.slug} storeName={v.store_name} />
               <VendorShareButton slug={v.slug} storeName={v.store_name} />
             </div>
           </div>
@@ -399,15 +406,15 @@ const modifiersByProduct: Record<string, any[]> = {};
         ) : (
           <>
             {/* Menu sections */}
-            <h2 className="font-display text-2xl font-semibold mt-6 mb-4">{isModa ? "Catálogo" : "Menú"}</h2>
+            <h2 id="menu" className="font-display text-2xl font-semibold mt-6 mb-4 scroll-mt-[104px] sm:scroll-mt-16">{isModa ? "Catálogo" : "Menú"}</h2>
             {sections.length === 0 ? (
               <p className="text-muted-foreground text-center py-12">
                 Este local todavía no cargó su menú.
               </p>
             ) : (
               <>
-                {sections.length > 1 && (
-                  <nav className="sticky top-16 z-30 -mx-4 px-4 py-2 bg-background/95 backdrop-blur-sm border-b border-border flex gap-2 overflow-x-auto mb-6">
+                {sections.length > 0 && (
+                  <nav className="sticky top-[104px] sm:top-16 z-30 -mx-4 px-4 py-2 bg-background/95 backdrop-blur-sm border-b border-border flex gap-2 overflow-x-auto mb-6">
                     {sections.map((s, i) => (
                       <a
                         key={s.name}
@@ -420,7 +427,7 @@ const modifiersByProduct: Record<string, any[]> = {};
                   </nav>
                 )}
                 {sections.map((s, i) => (
-                  <section key={s.name} id={`seccion-${i}`} className="mb-10 scroll-mt-24">
+                  <section key={s.name} id={`seccion-${i}`} className="mb-10 scroll-mt-[136px] sm:scroll-mt-24">
                     <h3 className="font-display text-xl font-semibold mb-4 border-b border-border pb-2">
                       {s.name}
                     </h3>
@@ -518,79 +525,14 @@ const modifiersByProduct: Record<string, any[]> = {};
                           );
                         }
                         return (
-                        <div
+                        <GastroProductRow
                           key={o.id}
-                          className="border border-border rounded-xl p-4 bg-card flex items-start justify-between gap-4 hover:shadow-md transition-shadow"
-                        >
-                          <div className="flex items-start gap-3 min-w-0">
-                            {o.image_url ? (
-                              <div className="h-20 w-20 rounded-xl overflow-hidden flex-shrink-0">
-                                <ProductImage src={o.image_url} name={o.name} category={o.category} vertical={v.vertical} alt={o.name} className="w-full h-full object-cover" />
-                              </div>
-                            ) : (
-                              <div className="h-20 w-20 rounded-xl flex items-center justify-center flex-shrink-0 overflow-hidden">
-                                <ProductImage src={null} name={o.name} category={o.category} vertical={v.vertical} alt={o.name} className="w-full h-full" iconClassName="h-8 w-8" />
-                              </div>
-                            )}
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-2">
-                                <p className="font-semibold leading-tight">{o.name}</p>
-                                {o.featured_today && (
-                                  <Badge className="bg-sun text-ink hover:bg-sun">
-                                    Hoy
-                                  </Badge>
-                                )}
-                                {o.stock_control !== false && o.stock_low_threshold != null && o.stock != null && o.stock <= 0 && (
-                                  <Badge variant="secondary" className="bg-red-100 text-red-700 text-[10px]">Sin stock</Badge>
-                                )}
-                                {o.stock_control !== false && o.stock_low_threshold != null && o.stock != null && o.stock > 0 && o.stock <= o.stock_low_threshold && (
-                                  <Badge variant="secondary" className="bg-amber-100 text-amber-700 text-[10px]">¡Últimas!</Badge>
-                                )}
-                              </div>
-                              {o.description && (
-                                <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
-                                  {o.description}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                          <div className="flex flex-col items-end gap-2 flex-shrink-0">
-                            {o.promo_price ? (
-                              <div className="text-right">
-                                <span className="font-bold text-primary">
-                                  ${Number(o.promo_price).toLocaleString("es-AR")}
-                                </span>
-                                <span className="block text-xs text-muted-foreground line-through">
-                                  ${Number(o.price).toLocaleString("es-AR")}
-                                </span>
-                              </div>
-                            ) : (
-                              <span className="font-bold">
-                                ${Number(o.price).toLocaleString("es-AR")}
-                              </span>
-                            )}
-                            {(o.stock_control === false || !o.stock_low_threshold || o.stock == null || o.stock > 0) && (
-                            !acceptsCart ? (
-                              <a
-                                href={waUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="rounded-md px-3 py-1.5 text-sm font-medium text-center bg-primary text-primary-foreground hover:bg-primary/90"
-                              >
-                                Consultar
-                              </a>
-                            ) : (
-                              <AddToCartButton
-                                offerId={o.id}
-                                name={o.name}
-                                price={o.promo_price ? Number(o.promo_price) : Number(o.price)}
-                                vendor={vendorBrief}
-                                modifiers={modifiersByProduct[o.id]}
-                              />
-                            )
-                          )}
-                          </div>
-                        </div>
+                          product={o}
+                          vendor={vendorBrief}
+                          modifiers={modifiersByProduct[o.id] || []}
+                          acceptsCart={acceptsCart}
+                          consultHref={waUrl}
+                        />
                         );
                       })}
                     </div>

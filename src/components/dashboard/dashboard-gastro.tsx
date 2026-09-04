@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { OfferForm, OfferList, CategoryManager, LivePreview, apiJson, TransferConfig, DeliveryFeeConfig } from "@/components/dashboard/shared";
 import { MenuImportModal } from "@/components/dashboard/menu-import";
 import { HoursEditor } from "@/components/dashboard/hours-editor";
+import { StaffManager } from "@/components/vendor/staff-manager";
 import type { Vendor, Product, ProductModifier, VendorGallery } from "@/types/database";
 
 type Props = {
@@ -175,6 +176,10 @@ export default function DashboardGastro({
     ok: boolean | null;
     error: string | null;
   }>({ at: null, ok: null, error: null });
+  const [printQueue, setPrintQueue] = useState<{ id: string; type: string; enqueuedAt: number }[]>(
+    []
+  );
+  const [queueLoading, setQueueLoading] = useState(false);
 
   useEffect(() => {
     setStoreName(vendor?.store_name || "");
@@ -267,6 +272,39 @@ export default function DashboardGastro({
     } else {
       setMsg(`❌ ${data.error || (data.reason ?? "Error al imprimir")}`);
     }
+  };
+
+  const loadPrintQueue = async () => {
+    setQueueLoading(true);
+    try {
+      const res = await fetch("/api/vendor/print/queue");
+      const data = await res.json().catch(() => null);
+      setPrintQueue(data?.jobs || []);
+    } catch {
+      setPrintQueue([]);
+    } finally {
+      setQueueLoading(false);
+    }
+  };
+
+  const cancelPrintJob = async (jobId: string) => {
+    const res = await fetch(`/api/vendor/print/queue?id=${encodeURIComponent(jobId)}`, {
+      method: "DELETE",
+    });
+    const data = await res.json().catch(() => ({}));
+    if (data.ok) setMsg("🗑️ Trabajo cancelado de la cola");
+    else setMsg(`❌ ${data.error || "No se pudo cancelar el trabajo"}`);
+    setTimeout(() => setMsg(""), 2500);
+    loadPrintQueue();
+  };
+
+  const clearPrintQueue = async () => {
+    const res = await fetch("/api/vendor/print/queue", { method: "DELETE" });
+    const data = await res.json().catch(() => ({}));
+    if (data.ok) setMsg(`🧹 Cola vaciada (${data.removed ?? "0"} trabajos descartados)`);
+    else setMsg(`❌ ${data.error || "No se pudo vaciar la cola"}`);
+    setTimeout(() => setMsg(""), 2500);
+    loadPrintQueue();
   };
 
   const handleSave = useCallback(async (e: React.FormEvent) => {
@@ -789,6 +827,10 @@ export default function DashboardGastro({
         </div>
       </CollapsibleSection>
 
+      <CollapsibleSection icon="🛵" title="Equipo / Repartidor">
+        <StaffManager />
+      </CollapsibleSection>
+
       <CollapsibleSection icon="🖨️" title="Impresora térmica">
         <div className="space-y-3">
           <div>
@@ -1025,6 +1067,53 @@ export default function DashboardGastro({
           <Button variant="outline" size="sm" type="button" onClick={testPrinter}>
             🖨️ Imprimir prueba
           </Button>
+
+          {printMode === "app" && (
+            <div className="rounded-lg border p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>Cola de impresión</Label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    className="text-xs text-primary font-medium"
+                    onClick={loadPrintQueue}
+                  >
+                    {queueLoading ? "Cargando..." : "Actualizar"}
+                  </button>
+                  {printQueue.length > 0 && (
+                    <button type="button" className="text-xs text-destructive font-medium" onClick={clearPrintQueue}>
+                      Vaciar cola
+                    </button>
+                  )}
+                </div>
+              </div>
+              {printQueue.length === 0 ? (
+                <p className="text-[11px] text-muted-foreground">No hay trabajos esperando a la app.</p>
+              ) : (
+                <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                  {printQueue.map((job) => (
+                    <div key={job.id} className="flex items-center justify-between rounded-lg bg-muted/60 px-2 py-1.5">
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium">
+                          {job.type === "comanda" ? "🍳 Comanda" : job.type === "retiro" ? "🎫 Retiro" : job.type === "precuenta" ? "🧾 Precuenta" : job.type === "ticket" ? "🧾 Ticket" : job.type === "test" ? "🧪 Prueba" : job.type}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground">
+                          {new Date(job.enqueuedAt).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        className="text-xs text-destructive font-medium flex-shrink-0"
+                        onClick={() => cancelPrintJob(job.id)}
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </CollapsibleSection>
 

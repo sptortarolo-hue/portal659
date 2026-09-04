@@ -24,6 +24,7 @@ const DAYS: { key: string; label: string }[] = [
 ];
 
 const ORDER: string[] = DAYS.map((d) => d.key);
+const DAY_ABBR: Record<string, string> = { lun: "Lun", mar: "Mar", mié: "Mié", jue: "Jue", vie: "Vie", sáb: "Sáb", dom: "Dom" };
 
 function defaultConfig(): DayConfig[] {
   return DAYS.map(() => ({ shifts: [{ open: "09:00", close: "18:00" }], closed: true }));
@@ -36,9 +37,6 @@ function norm(s: string): string {
     .replace(/[̀-ͯ]/g, "");
 }
 
-// ^ La clase [̀-ͯ] son los diacríticos combinantes U+0300–U+036F.
-
-// Tokens de día aceptados (normalizados, sin acentos) → índice en ORDER (0=lun..6=dom)
 const DAY_INDEX: Record<string, number> = {
   lun: 0, lunes: 0,
   mar: 1, martes: 1,
@@ -61,10 +59,6 @@ function to24(hStr: string, mStr: string | undefined, meridian?: string): string
   return `${pad2(h)}:${pad2(parseInt(mStr || "0", 10) || 0)}`;
 }
 
-/**
- * Días mencionados en una parte de texto ("lun a vie", "sáb", sin días → todos).
- * Devuelve índices de ORDER. Dos días → rango inclusivo (lun a vie = lun..vie).
- */
 function daysInPart(part: string): number[] {
   const t = norm(part);
   const found: number[] = [];
@@ -78,12 +72,11 @@ function daysInPart(part: string): number[] {
     return out;
   }
   if (found.length > 0) return found;
-  return [0, 1, 2, 3, 4, 5, 6]; // sin día explícito: aplica a todos
+  return [0, 1, 2, 3, 4, 5, 6];
 }
 
 const RANGE_RE = /(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*(?:[-–]|\ba\b)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i;
 
-/** Parsea el texto "open-hours" a config por día. Tolera legacy y 2 franjas ("y"). */
 function parseHours(text: string | null | undefined): DayConfig[] {
   const cfg = defaultConfig();
   if (!text) return cfg;
@@ -94,7 +87,6 @@ function parseHours(text: string | null | undefined): DayConfig[] {
     if (!part) continue;
     if (part.includes("cerrado") || part === "n/a") continue;
 
-    // Segmentos separados por "y": jornada cortada (09-13 y 17-22).
     const segments = part.split(/\by\b/i).filter((s) => s.trim().length > 0);
     const shifts: DayShift[] = [];
     for (const seg of segments) {
@@ -114,7 +106,6 @@ function parseHours(text: string | null | undefined): DayConfig[] {
   return cfg;
 }
 
-/** Serializa a texto estable, compatible con open-hours.isOpenNow. */
 function serialize(cfg: DayConfig[]): string {
   const parts: string[] = [];
   cfg.forEach((d, i) => {
@@ -123,6 +114,47 @@ function serialize(cfg: DayConfig[]): string {
     parts.push(`${ORDER[i]}: ${segs}`);
   });
   return parts.join(", ");
+}
+
+type ShiftFieldProps = {
+  label: string | null;
+  shift: DayShift;
+  onOpen: (v: string) => void;
+  onClose: (v: string) => void;
+  onRemove?: () => void;
+};
+
+function ShiftField({ label, shift, onOpen, onClose, onRemove }: ShiftFieldProps) {
+  return (
+    <div className="flex items-center gap-1.5 w-full">
+      {label && <span className="text-[10px] text-muted-foreground w-12 flex-shrink-0 text-right">{label}</span>}
+      <Input
+        type="time"
+        className="h-9 min-w-0 flex-1 px-1.5 text-xs sm:text-sm"
+        value={shift.open}
+        onChange={(e) => onOpen(e.target.value)}
+        aria-label={label ? `${label} apertura` : "Apertura"}
+      />
+      <span className="text-muted-foreground flex-shrink-0 text-xs">a</span>
+      <Input
+        type="time"
+        className="h-9 min-w-0 flex-1 px-1.5 text-xs sm:text-sm"
+        value={shift.close}
+        onChange={(e) => onClose(e.target.value)}
+        aria-label={label ? `${label} cierre` : "Cierre"}
+      />
+      {onRemove && (
+        <button
+          type="button"
+          onClick={onRemove}
+          className="h-7 w-7 rounded-md text-muted-foreground hover:text-red-600 hover:bg-red-50 flex items-center justify-center flex-shrink-0"
+          aria-label="Quitar franja"
+        >
+          ×
+        </button>
+      )}
+    </div>
+  );
 }
 
 export function HoursEditor({
@@ -134,8 +166,6 @@ export function HoursEditor({
 }) {
   const [cfg, setCfg] = useState<DayConfig[]>(() => parseHours(value));
 
-  // Re-sincronizar solo cuando el valor externo realmente cambió
-  // (evita el loop serialize→parse que corrompía los días en cada edición).
   useEffect(() => {
     setCfg((prev) => {
       const next = parseHours(value);
@@ -149,12 +179,13 @@ export function HoursEditor({
   }
 
   function updateShift(idx: number, shiftIdx: number, patch: Partial<DayShift>) {
-    const next = cfg.map((c, i) =>
-      i !== idx
-        ? c
-        : { ...c, shifts: c.shifts.map((s, j) => (j === shiftIdx ? { ...s, ...patch } : s)) }
+    commit(
+      cfg.map((c, i) =>
+        i !== idx
+          ? c
+          : { ...c, shifts: c.shifts.map((s, j) => (j === shiftIdx ? { ...s, ...patch } : s)) }
+      )
     );
-    commit(next);
   }
 
   function toggleClosed(idx: number, closed: boolean) {
@@ -177,57 +208,57 @@ export function HoursEditor({
   return (
     <div className="space-y-2">
       {cfg.map((day, idx) => (
-        <div key={ORDER[idx]} className="rounded-xl border border-border bg-card p-2.5 space-y-2">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="w-16 sm:w-20 flex-shrink-0 text-sm font-medium truncate">{DAYS[idx].label}</span>
-              <div className="flex items-center gap-1.5 flex-shrink-0">
-                <Switch checked={!day.closed} onCheckedChange={(v) => toggleClosed(idx, !v)} />
-                <Label className="text-xs text-muted-foreground">{day.closed ? "Cerrado" : "Abierto"}</Label>
-              </div>
-            </div>
-            <div className="flex items-center gap-1 flex-shrink-0">
-              {!day.closed && day.shifts.length < 2 && (
-                <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => addShift(idx)} title="Agregar segunda franja (horario cortado)">
-                  + Tarde
-                </Button>
-              )}
-              <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => copyToAll(idx)} title="Copiar este día a toda la semana">
-                Copiar a todos
-              </Button>
-            </div>
-          </div>
-
-          {!day.closed && day.shifts.map((shift, sIdx) => (
-            <div key={sIdx} className="flex items-center gap-1.5 min-w-0 pl-1">
-              {day.shifts.length === 2 && (
-                <span className="text-[10px] text-muted-foreground w-14 flex-shrink-0">{sIdx === 0 ? "Mañana" : "Tarde"}</span>
-              )}
-              <Input
-                type="time"
-                className="h-9 min-w-0 flex-1 px-1.5 sm:px-3 text-xs sm:text-sm"
-                value={shift.open}
-                onChange={(e) => updateShift(idx, sIdx, { open: e.target.value })}
-              />
-              <span className="text-muted-foreground flex-shrink-0">a</span>
-              <Input
-                type="time"
-                className="h-9 min-w-0 flex-1 px-1.5 sm:px-3 text-xs sm:text-sm"
-                value={shift.close}
-                onChange={(e) => updateShift(idx, sIdx, { close: e.target.value })}
-              />
-              {day.shifts.length === 2 && (
+        <div key={ORDER[idx]} className="rounded-xl border border-border bg-card p-3 space-y-2.5">
+          {/* Línea 1: nombre + switch cerrado (mobile) / todo en una fila (desktop) */}
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+            <div className="flex items-center justify-between sm:justify-start sm:gap-2">
+              <span className="text-sm font-medium">
+                <span className="sm:hidden">{DAY_ABBR[ORDER[idx]]}</span>
+                <span className="hidden sm:inline">{DAYS[idx].label}</span>
+              </span>
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5">
+                  <Switch checked={!day.closed} onCheckedChange={(v) => toggleClosed(idx, !v)} />
+                </div>
                 <button
                   type="button"
-                  onClick={() => removeShift(idx)}
-                  className="h-7 w-7 rounded-md text-muted-foreground hover:text-red-600 hover:bg-red-50 flex items-center justify-center flex-shrink-0"
-                  aria-label="Quitar esta franja"
+                  className="text-[11px] text-muted-foreground hover:text-primary font-medium"
+                  onClick={() => copyToAll(idx)}
+                  title="Copiar a toda la semana"
                 >
-                  ×
+                  ⧉ Copiar
+                </button>
+              </div>
+            </div>
+            <span className={`text-[11px] sm:ml-auto ${day.closed ? "text-muted-foreground" : "text-primary font-medium"}`}>
+              {day.closed ? "Cerrado" : "Abierto"}
+            </span>
+          </div>
+
+          {/* Línea 2+: franjas de horario (solo si está abierto) */}
+          {!day.closed && (
+            <div className="space-y-2">
+              {day.shifts.map((shift, sIdx) => (
+                <ShiftField
+                  key={sIdx}
+                  label={day.shifts.length === 2 ? (sIdx === 0 ? "Mañana" : "Tarde") : null}
+                  shift={shift}
+                  onOpen={(v) => updateShift(idx, sIdx, { open: v })}
+                  onClose={(v) => updateShift(idx, sIdx, { close: v })}
+                  onRemove={day.shifts.length === 2 ? () => removeShift(idx) : undefined}
+                />
+              ))}
+              {day.shifts.length < 2 && (
+                <button
+                  type="button"
+                  className="text-[11px] text-primary font-medium"
+                  onClick={() => addShift(idx)}
+                >
+                  + Agregar franja (tarde/noche)
                 </button>
               )}
             </div>
-          ))}
+          )}
         </div>
       ))}
       <p className="text-xs text-muted-foreground mt-1">

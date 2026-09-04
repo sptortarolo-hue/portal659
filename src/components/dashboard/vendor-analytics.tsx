@@ -249,19 +249,21 @@ export function VendorAnalytics() {
           {ordersByDay.some((d) => d.count > 0) && (
             <div>
               <h3 className="font-medium text-sm mb-2">Pedidos {periodLabel}</h3>
-              <div className="flex items-end gap-px h-20">
-                {ordersByDay.map((d) => {
-                  const maxCount = Math.max(...ordersByDay.map((x) => x.count), 1);
-                  const height = d.count > 0 ? Math.max((d.count / maxCount) * 100, 8) : 2;
-                  return (
-                    <div
-                      key={d.date}
-                      className="flex-1 bg-primary/80 rounded-t min-w-[2px]"
-                      style={{ height: `${height}%` }}
-                      title={`${d.date}: ${d.count} pedidos ($${d.revenue.toLocaleString("es-AR")})`}
-                    />
-                  );
-                })}
+              <div className="overflow-x-auto -mx-4 px-4">
+                <div className="flex items-end gap-px h-20" style={{ minWidth: `${ordersByDay.length * 8}px` }}>
+                  {ordersByDay.map((d) => {
+                    const maxCount = Math.max(...ordersByDay.map((x) => x.count), 1);
+                    const height = d.count > 0 ? Math.max((d.count / maxCount) * 100, 8) : 2;
+                    return (
+                      <div
+                        key={d.date}
+                        className="bg-primary/80 rounded-t"
+                        style={{ height: `${height}%`, width: "7px", flexShrink: 0 }}
+                        title={`${d.date}: ${d.count} pedidos ($${d.revenue.toLocaleString("es-AR")})`}
+                      />
+                    );
+                  })}
+                </div>
               </div>
             </div>
           )}

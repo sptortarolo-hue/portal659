@@ -21,3 +21,9 @@ android/android/
 
 # EXE del agente PC (se compila y sube al VPS manualmente; no versionar binarios grandes)
 services/print-agent/*.exe
+
+# Video promocional generado localmente (artefactos de build)
+promo-video/
+
+# Flyer promocional generado localmente (artefactos de build)
+promo-flyer/

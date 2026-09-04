@@ -44,6 +44,52 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  // Listar la cola pendiente de un token.
+  if (url.pathname === "/queue" && req.method === "GET") {
+    if (!hasAuth(req)) return writeJson(res, 403, { error: "forbidden" });
+    const token = url.searchParams.get("token") ?? "";
+    const arr = pending.get(token) || [];
+    writeJson(res, 200, {
+      jobs: arr.map((item) => ({
+        id: item.id,
+        type: item.job?.type ?? "unknown",
+        enqueuedAt: item.enqueuedAt,
+        attempts: item.attempts,
+      })),
+      count: arr.length,
+    });
+    return;
+  }
+
+  // Vaciar toda la cola de un token.
+  if (url.pathname === "/queue" && req.method === "DELETE") {
+    if (!hasAuth(req)) return writeJson(res, 403, { error: "forbidden" });
+    const token = url.searchParams.get("token") ?? "";
+    const arr = pending.get(token) || [];
+    pending.delete(token);
+    console.log(`[relay] cola ${token} vaciada (${arr.length} jobs descartados)`);
+    writeJson(res, 200, { ok: true, removed: arr.length });
+    return;
+  }
+
+  // Cancelar un trabajo puntual de la cola (solo si sigue pendiente; si está
+  // en plena entrega a la app no se puede cancelar de forma segura).
+  if (url.pathname.startsWith("/queue/") && req.method === "DELETE") {
+    if (!hasAuth(req)) return writeJson(res, 403, { error: "forbidden" });
+    const token = url.searchParams.get("token") ?? "";
+    const jobId = url.pathname.slice("/queue/".length);
+    const arr = pending.get(token) || [];
+    const idx = arr.findIndex((item) => item.id === jobId);
+    if (idx === -1) {
+      return writeJson(res, 404, { ok: false, error: "Trabajo no encontrado en la cola" });
+    }
+    const [removed] = arr.splice(idx, 1);
+    if (arr.length === 0) pending.delete(token);
+    console.log(`[relay] job ${removed.id} cancelado de la cola ${token}`);
+    writeJson(res, 200, { ok: true, id: removed.id });
+    return;
+  }
+
   if (url.pathname === "/push" && req.method === "POST") {
     if (!hasAuth(req)) return writeJson(res, 403, { error: "forbidden" });
 

@@ -25,6 +25,7 @@ import { PlanLock } from "@/components/vendor/plan-lock";
 import { Mostrador } from "@/components/vendor/mostrador";
 import { Mesas } from "@/components/vendor/mesas";
 import { OpenToggle } from "@/components/vendor/open-toggle";
+import { DeliveryBoard } from "@/components/vendor/delivery-board";
 import type { ProductModifier, VendorGallery, Booking, Vertical, Product as DBProduct, Order, ProductVariant, ProductImage, OrderItem, PlanStatus, Plan } from "@/types/database";
 
 type Vendor = {
@@ -91,6 +92,8 @@ function VendorDashboardInner() {
   const searchParams = useSearchParams();
   const impersonatingId = searchParams.get("as");
   const [vendor, setVendor] = useState<Vendor | null>(null);
+  const [staffRole, setStaffRole] = useState<"owner" | "delivery" | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
   const [offers, setOffers] = useState<Offer[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [categories, setCategories] = useState<MenuCategory[]>([]);
@@ -168,6 +171,8 @@ function VendorDashboardInner() {
 
     if (me.error === "No autenticado") { router.push("/login"); return; }
     if (me.vendor) setVendor(me.vendor);
+    if (me.staffRole) setStaffRole(me.staffRole);
+    if (me.userId) setUserId(me.userId);
     if (off.offers) setOffers(off.offers);
     if (ord.orders) setOrders(ord.orders);
     if (cats.categories) setCategories(cats.categories);
@@ -360,6 +365,30 @@ function VendorDashboardInner() {
   }
 
   if (loading) return <main className="container mx-auto px-4 py-8"><p className="text-muted-foreground">Cargando...</p></main>;
+
+  // Repartidor: vista acotada solo al módulo de entrega.
+  if (staffRole === "delivery") {
+    return (
+      <main className="min-h-screen bg-background">
+        <div className="sticky top-0 z-40 bg-background border-b border-border">
+          <div className="container mx-auto px-4 py-3 flex items-center gap-3">
+            {vendor && (vendor.logo_url || vendor.image_url) ? (
+              <img src={vendor.logo_url || vendor.image_url || ""} alt={vendor.store_name} className="h-10 w-10 rounded-full object-cover flex-shrink-0" />
+            ) : (
+              <div className="h-10 w-10 rounded-full bg-accent flex items-center justify-center flex-shrink-0"><span className="font-bold text-primary">🛵</span></div>
+            )}
+            <div className="flex-1 min-w-0">
+              <h1 className="font-semibold text-sm truncate">{vendor?.store_name || "Entregas"}</h1>
+              <p className="text-xs text-muted-foreground">Módulo del repartidor</p>
+            </div>
+          </div>
+        </div>
+        <div className="container mx-auto px-4 py-4 pb-24">
+          {vendor && <DeliveryBoard vendorId={vendor.id} userId={userId} />}
+        </div>
+      </main>
+    );
+  }
 
   if (!vendor) {
     return (

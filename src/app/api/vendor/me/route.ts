@@ -19,10 +19,10 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "No autenticado" }, { status: 401 });
   }
 
-  const { vendor: resolved } = await getVendorByRequest(request);
+  const { vendor: resolved, staffRole } = await getVendorByRequest(request);
 
   if (!resolved) {
-    return NextResponse.json({ vendor: null });
+    return NextResponse.json({ vendor: null, staffRole, userId: user.id });
   }
 
   const vendor = await queryOne<Record<string, unknown>>(
@@ -30,7 +30,7 @@ export async function GET(request: Request) {
     [resolved.id]
   );
 
-  return NextResponse.json({ vendor });
+  return NextResponse.json({ vendor, staffRole, userId: user.id });
 }
 
 export async function POST(request: Request) {

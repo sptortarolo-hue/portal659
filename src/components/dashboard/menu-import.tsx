@@ -9,6 +9,7 @@ type EditableItem = {
   price: string;
   category: string;
   description: string;
+  group?: string;
   modifiers?: { desc: string; price_mod: number }[];
 };
 
@@ -141,9 +142,10 @@ export function MenuImportModal({ open, onClose, onImported }: Props) {
           <p className="text-sm text-muted-foreground">
             Subí un archivo <strong>.xlsx</strong> con columnas{" "}
             <strong>nombre, precio, categoría y descripción</strong> (en cualquier orden o nombre). Opcionalmente
-            podés agregar columnas <strong>"Modificante 1 descripción"</strong> + <strong>"Modificante 1 precio"</strong>,{" "}
+            podés agregar una columna <strong>"Grupo"</strong> y columnas{" "}
+            <strong>"Modificante 1 descripción"</strong> + <strong>"Modificante 1 precio"</strong>,{" "}
             <strong>"Modificante 2 descripción"</strong> + <strong>"Modificante 2 precio"</strong>, etc. — se cargan
-            como opciones del producto. Primero se analiza y te mostramos un preview editable antes de importar.
+            como grupo de opciones del producto. Primero se analiza y te mostramos un preview editable antes de importar.
           </p>
           <label className="block">
             <span className="text-sm font-medium">Archivo Excel</span>
@@ -218,7 +220,12 @@ export function MenuImportModal({ open, onClose, onImported }: Props) {
                       </td>
                       <td className="p-1">
                         {it.modifiers && it.modifiers.length > 0 ? (
-                          <div className="flex flex-wrap gap-1">
+                          <div className="flex flex-wrap items-center gap-1">
+                            {it.group && (
+                              <span className="inline-flex items-center text-[10px] font-medium text-primary">
+                                {it.group}:
+                              </span>
+                            )}
                             {it.modifiers.map((m, mi) => (
                               <span key={mi} className="inline-flex items-center gap-1 text-[10px] rounded-full bg-muted px-2 py-0.5 text-muted-foreground">
                                 {m.desc}

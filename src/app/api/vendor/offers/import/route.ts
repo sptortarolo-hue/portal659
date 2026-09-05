@@ -20,6 +20,7 @@ type CleanedItem = {
   price: number;
   category?: string | null;
   description?: string | null;
+  group?: string | null;
   modifiers?: { desc: string; price_mod: number }[];
 };
 
@@ -32,7 +33,13 @@ const HEADER_ALIASES: Record<"name" | "price" | "category" | "description", stri
 };
 
 function normKey(k: string): string {
-  return String(k).trim().toLowerCase().replace(/[\s_-]+/g, "").replace(/[^\p{L}\p{N}$]+/gu, "");
+  return String(k)
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[\s_-]+/g, "")
+    .replace(/[^\p{L}\p{N}$]+/gu, "");
 }
 
 function fieldForHeader(raw: string): keyof typeof HEADER_ALIASES | null {
@@ -65,6 +72,17 @@ function modifierKeyForHeader(raw: string): string | null {
 }
 
 /**
+ * Detecta un encabezado de grupo de modificantes: "Grupo".
+ * Devuelve la key "grupo" o null.
+ */
+function groupKeyForHeader(raw: string): "grupo" | null {
+  const k = normKey(raw);
+  if (!k) return null;
+  if (k === "grupo" || k === "grupomodificantes" || k === "grupodeopciones" || k === "grupomodificador") return "grupo";
+  return null;
+}
+
+/**
  * Lee la primera hoja como array de arrays y detecta la fila de encabezado
  * (la primera donde aparezcan headers de nombre + precio). Devuelve objetos
  * `{ header: valor }` para las filas de datos que siguen.
@@ -94,8 +112,13 @@ async function parseWorkbook(buf: Buffer): Promise<Record<string, unknown>[]> {
         if (field === "name") hasName = true;
         if (field === "price") hasPrice = true;
       } else {
-        const modKey = modifierKeyForHeader(rows[i][c]);
-        if (modKey) fields[c] = modKey;
+        const groupKey = groupKeyForHeader(rows[i][c]);
+        if (groupKey) {
+          fields[c] = groupKey;
+        } else {
+          const modKey = modifierKeyForHeader(rows[i][c]);
+          if (modKey) fields[c] = modKey;
+        }
       }
     }
     if (hasName && hasPrice) {
@@ -221,6 +244,7 @@ export async function POST(request: Request) {
         price: it.price,
         category: it.category || "",
         description: it.description || "",
+        group: it.group || "",
         modifiers: it.modifiers || [],
       })),
     });
@@ -338,7 +362,8 @@ export async function POST(request: Request) {
         }
 
         // Modificantes del producto (columnas "Modificante N descripción/precio").
-        // Un solo grupo "Opciones" con todas las opciones detectadas.
+        // Un solo grupo (columna "Grupo" o "Opciones" por defecto) con todas las opciones detectadas.
+        const groupName = (it.group || "").trim() || "Opciones";
         const opts = (Array.isArray(it.modifiers) ? it.modifiers : [])
           .map((m) => ({ label: String(m.desc ?? "").trim(), price_mod: Number(m.price_mod) || 0 }))
           .filter((o) => o.label !== "");
@@ -352,15 +377,15 @@ export async function POST(request: Request) {
             if (!hasMods || hasMods.c === 0) {
               await tx.queryVoid(
                 `INSERT INTO product_modifiers (product_id, group_name, options, required, max_selections, position)
-                 VALUES ($1, 'Opciones', $2, false, 1, 0)`,
-                [productId, JSON.stringify(opts)]
+                 VALUES ($1, $2, $3, false, 1, 0)`,
+                [productId, groupName, JSON.stringify(opts)]
               );
             }
           } else {
             await tx.queryVoid(
               `INSERT INTO product_modifiers (product_id, group_name, options, required, max_selections, position)
-               VALUES ($1, 'Opciones', $2, false, 1, 0)`,
-              [productId, JSON.stringify(opts)]
+               VALUES ($1, $2, $3, false, 1, 0)`,
+              [productId, groupName, JSON.stringify(opts)]
             );
           }
         }

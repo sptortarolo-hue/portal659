@@ -166,6 +166,28 @@ export default function DashboardGenerico({
     reload();
   }
 
+  const offerFormNode = (
+    <OfferForm
+      categories={categories}
+      editingId={editingId}
+      offName={offName}
+      setOffName={setOffName}
+      offDesc={offDesc}
+      setOffDesc={setOffDesc}
+      offPrice={offPrice}
+      setOffPrice={setOffPrice}
+      offCategory={offCategory}
+      setOffCategory={setOffCategory}
+      offFile={offFile}
+      setOffFile={setOffFile}
+      offPreview={offPreview}
+      setOffPreview={setOffPreview}
+      saving={saving}
+      onSubmit={handleNewOffer}
+      onClose={() => { setShowNew(false); setEditingId(null); }}
+    />
+  );
+
   return (
     <form onSubmit={handleSave} className="space-y-4">
       <LivePreview storeName={storeName} storePreview={storePreview} vendor={vendor} logoPreview={logoPreview} description={description} hours={hours} address={address} paymentMethods={paymentMethods} whatsapp={whatsapp} isService={false} />
@@ -246,10 +268,16 @@ onAdd={async (name) => { const r = await apiJson("/api/vendor/categories", { met
           <h3 className="font-semibold text-sm">Productos</h3>
           <Button size="sm" onClick={() => { setShowNew(!showNew); setEditingId(null); }}>{showNew ? "Cancelar" : "+ Producto"}</Button>
         </div>
-        {showNew && (
-          <OfferForm categories={categories} editingId={editingId} offName={offName} setOffName={setOffName} offDesc={offDesc} setOffDesc={setOffDesc} offPrice={offPrice} setOffPrice={setOffPrice} offCategory={offCategory} setOffCategory={setOffCategory} offFile={offFile} setOffFile={setOffFile} offPreview={offPreview} setOffPreview={setOffPreview} saving={saving} onSubmit={handleNewOffer} />
-        )}
-        <OfferList offers={offers} onEdit={startEdit} onToggleFeatured={toggleFeatured} onToggleAvailable={toggleAvailable} onDelete={deleteOffer} />
+        {showNew && !editingId && offerFormNode}
+        <OfferList
+          offers={offers}
+          onEdit={startEdit}
+          onToggleFeatured={toggleFeatured}
+          onToggleAvailable={toggleAvailable}
+          onDelete={deleteOffer}
+          editingId={editingId}
+          editForm={editingId ? offerFormNode : undefined}
+        />
       </CollapsibleSection>
     </form>
   );

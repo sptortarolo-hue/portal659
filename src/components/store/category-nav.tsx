@@ -1,14 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 /**
  * Nav sticky de categorías del menú con scroll spy: la pill de la sección
  * visible se pinta activa mientras se scrollea (y al hacer click scrollea a la
- * sección, dejándola bajo el nav).
+ * sección, dejándola bajo el nav). La pill activa se mantiene visible con un
+ * scroll automático horizontal dentro del nav.
  */
 export function CategoryNav({ sections }: { sections: { name: string }[] }) {
   const [active, setActive] = useState(0);
+  const navRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     const observers: IntersectionObserver[] = [];
@@ -31,6 +33,12 @@ export function CategoryNav({ sections }: { sections: { name: string }[] }) {
     return () => observers.forEach((o) => o.disconnect());
   }, [sections]);
 
+  useEffect(() => {
+    if (!navRef.current) return;
+    const pill = navRef.current.querySelector<HTMLButtonElement>(`[data-index="${active}"]`);
+    pill?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
+  }, [active]);
+
   function goTo(i: number) {
     const el = document.getElementById(`seccion-${i}`);
     if (!el) return;
@@ -41,11 +49,12 @@ export function CategoryNav({ sections }: { sections: { name: string }[] }) {
   }
 
   return (
-    <nav className="sticky top-[104px] sm:top-16 z-30 -mx-4 px-4 py-2 bg-background/95 backdrop-blur-sm border-b border-border flex gap-2 overflow-x-auto mb-6">
+    <nav ref={navRef} className="sticky top-[104px] sm:top-16 z-30 -mx-4 px-4 py-2 bg-background/95 backdrop-blur-sm border-b border-border flex gap-2 overflow-x-auto mb-6">
       {sections.map((s, i) => (
         <button
           key={s.name}
           type="button"
+          data-index={i}
           onClick={() => goTo(i)}
           className={`whitespace-nowrap rounded-full border px-4 py-1.5 text-sm font-medium transition-colors ${
             active === i

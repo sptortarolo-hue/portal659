@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
+import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -93,6 +94,7 @@ type OfferFormProps = {
   offRequiresPrep?: boolean;
   setOffRequiresPrep?: (v: boolean) => void;
   onSubmit: () => void;
+  onClose?: () => void;
 };
 
 export function OfferForm({
@@ -112,10 +114,16 @@ export function OfferForm({
   offStockLowThreshold = 5, setOffStockLowThreshold,
   showPrep = false,
   offRequiresPrep = true, setOffRequiresPrep,
+  onClose,
 }: OfferFormProps) {
   return (
     <Card className="p-4 mb-4">
-      <h3 className="font-semibold mb-3">{editingId ? "Editar plato" : "Nuevo plato"}</h3>
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="font-semibold">{editingId ? "Editar plato" : "Nuevo plato"}</h3>
+        {onClose && (
+          <Button type="button" variant="ghost" size="sm" onClick={onClose}>✕</Button>
+        )}
+      </div>
       <div className="space-y-3">
         <div className="grid grid-cols-2 gap-3">
           <div><Label>Nombre</Label><Input value={offName} onChange={(e) => setOffName(e.target.value)} required onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }} /></div>
@@ -167,65 +175,84 @@ export function OfferForm({
   );
 }
 
-export function OfferList({ offers, onEdit, onToggleFeatured, onToggleAvailable, onDelete }: {
+export function OfferList({ offers, onEdit, onToggleFeatured, onToggleAvailable, onDelete, editingId, editForm }: {
   offers: Offer[];
   onEdit: (o: Offer) => void;
   onToggleFeatured: (o: Offer) => void;
   onToggleAvailable: (o: Offer) => void;
   onDelete: (o: Offer) => void;
+  editingId?: string | null;
+  editForm?: ReactNode;
 }) {
+  const editAnchorRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!editingId || !editForm) return;
+    const t = setTimeout(() => {
+      editAnchorRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }, 60);
+    return () => clearTimeout(t);
+  }, [editingId, editForm]);
+
   return (
     <div className="space-y-3">
       {offers.length === 0 ? (
         <p className="text-muted-foreground text-sm text-center py-8">Todavía no cargaste platos.</p>
       ) : (
         offers.map((offer) => (
-          <Card key={offer.id} className="p-3">
-            <div className="flex items-center gap-3">
-              {offer.image_url ? (
-                <img src={offer.image_url} alt={offer.name} className="h-12 w-12 rounded-lg object-cover flex-shrink-0" />
-              ) : (
-                <div className="h-12 w-12 rounded-lg bg-accent flex items-center justify-center flex-shrink-0"><span className="font-bold text-primary/60">{offer.name.charAt(0)}</span></div>
-              )}
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-1.5">
-                  <span className="font-medium text-sm truncate">{offer.name}</span>
-                  {offer.featured_today && <Badge className="bg-sun/20 text-ink text-[10px] px-1.5 py-0">Hoy</Badge>}
-                  {!offer.available && <Badge variant="secondary" className="text-[10px] px-1.5 py-0">Pausado</Badge>}
-                  {offer.stock !== null && offer.stock <= (offer.stock_low_threshold || 5) && (
-                    <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
-                      {offer.stock === 0 ? "Sin stock" : `Stock: ${offer.stock}`}
-                    </Badge>
-                  )}
+          <div key={offer.id}>
+            <Card className="p-3">
+              <div className="flex items-center gap-3">
+                {offer.image_url ? (
+                  <img src={offer.image_url} alt={offer.name} className="h-12 w-12 rounded-lg object-cover flex-shrink-0" />
+                ) : (
+                  <div className="h-12 w-12 rounded-lg bg-accent flex items-center justify-center flex-shrink-0"><span className="font-bold text-primary/60">{offer.name.charAt(0)}</span></div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-medium text-sm truncate">{offer.name}</span>
+                    {offer.featured_today && <Badge className="bg-sun/20 text-ink text-[10px] px-1.5 py-0">Hoy</Badge>}
+                    {!offer.available && <Badge variant="secondary" className="text-[10px] px-1.5 py-0">Pausado</Badge>}
+                    {offer.stock !== null && offer.stock <= (offer.stock_low_threshold || 5) && (
+                      <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
+                        {offer.stock === 0 ? "Sin stock" : `Stock: ${offer.stock}`}
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {offer.promo_price ? (
+                      <><span className="line-through">${Number(offer.price).toLocaleString("es-AR")}</span> <span className="text-primary font-medium">${Number(offer.promo_price).toLocaleString("es-AR")}</span></>
+                    ) : (
+                      <>${Number(offer.price).toLocaleString("es-AR")}</>
+                    )}
+                    {offer.category && ` · ${offer.category}`}
+                  </p>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  {offer.promo_price ? (
-                    <><span className="line-through">${Number(offer.price).toLocaleString("es-AR")}</span> <span className="text-primary font-medium">${Number(offer.promo_price).toLocaleString("es-AR")}</span></>
-                  ) : (
-                    <>${Number(offer.price).toLocaleString("es-AR")}</>
-                  )}
-                  {offer.category && ` · ${offer.category}`}
-                </p>
+                <div className="hidden sm:flex items-center gap-1 flex-shrink-0">
+                  <Button variant="outline" size="sm" onClick={() => onEdit(offer)}>Editar</Button>
+                  <Button variant="outline" size="sm" onClick={() => onToggleFeatured(offer)}>{offer.featured_today ? "Quitar" : "Destacar"}</Button>
+                  <Button variant="outline" size="sm" onClick={() => onToggleAvailable(offer)}>{offer.available ? "Pausar" : "Activar"}</Button>
+                  <Button variant="ghost" size="sm" className="text-red-600" onClick={() => onDelete(offer)}>Eliminar</Button>
+                </div>
+                <div className="sm:hidden flex-shrink-0">
+                  <DropdownMenu
+                    trigger={<span className="text-xl">⋯</span>}
+                    items={[
+                      { label: "Editar", icon: "✏️", onClick: () => onEdit(offer) },
+                      { label: offer.featured_today ? "Quitar de Hoy" : "Destacar Hoy", icon: "⭐", onClick: () => onToggleFeatured(offer) },
+                      { label: offer.available ? "Pausar" : "Activar", icon: offer.available ? "⏸️" : "▶️", onClick: () => onToggleAvailable(offer) },
+                      { label: "Eliminar", icon: "🗑️", onClick: () => onDelete(offer), destructive: true },
+                    ]}
+                  />
+                </div>
               </div>
-              <div className="hidden sm:flex items-center gap-1 flex-shrink-0">
-                <Button variant="outline" size="sm" onClick={() => onEdit(offer)}>Editar</Button>
-                <Button variant="outline" size="sm" onClick={() => onToggleFeatured(offer)}>{offer.featured_today ? "Quitar" : "Destacar"}</Button>
-                <Button variant="outline" size="sm" onClick={() => onToggleAvailable(offer)}>{offer.available ? "Pausar" : "Activar"}</Button>
-                <Button variant="ghost" size="sm" className="text-red-600" onClick={() => onDelete(offer)}>Eliminar</Button>
+            </Card>
+            {editingId === offer.id && editForm && (
+              <div ref={editAnchorRef} className="mt-2">
+                {editForm}
               </div>
-              <div className="sm:hidden flex-shrink-0">
-                <DropdownMenu
-                  trigger={<span className="text-xl">⋯</span>}
-                  items={[
-                    { label: "Editar", icon: "✏️", onClick: () => onEdit(offer) },
-                    { label: offer.featured_today ? "Quitar de Hoy" : "Destacar Hoy", icon: "⭐", onClick: () => onToggleFeatured(offer) },
-                    { label: offer.available ? "Pausar" : "Activar", icon: offer.available ? "⏸️" : "▶️", onClick: () => onToggleAvailable(offer) },
-                    { label: "Eliminar", icon: "🗑️", onClick: () => onDelete(offer), destructive: true },
-                  ]}
-                />
-              </div>
-            </div>
-          </Card>
+            )}
+          </div>
         ))
       )}
     </div>

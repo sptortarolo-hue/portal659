@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -335,6 +335,90 @@ export default function DashboardModa({
     }
   }
 
+  const editAnchorRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!editingId || !showForm) return;
+    const t = setTimeout(() => {
+      editAnchorRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }, 60);
+    return () => clearTimeout(t);
+  }, [editingId, showForm]);
+
+  const offerFormNode = (
+    <Card className="p-4 mb-4">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="font-semibold">{editingId ? "Editar producto" : "Nuevo producto"}</h3>
+        <Button variant="ghost" size="sm" onClick={() => { resetOfferForm(); setShowForm(false); }}>✕</Button>
+      </div>
+      <div className="space-y-3">
+        <div className="grid grid-cols-2 gap-3">
+          <div><Label>Nombre</Label><Input value={offName} onChange={(e) => setOffName(e.target.value)} required /></div>
+          <div><Label>Precio ($)</Label><Input type="number" step="0.01" value={offPrice} onChange={(e) => setOffPrice(e.target.value)} required /></div>
+        </div>
+        <div><Label>Precio promo ($)</Label><Input type="number" step="0.01" value={offPromoPrice} onChange={(e) => setOffPromoPrice(e.target.value)} placeholder="Vacío si no está en oferta" /></div>
+        <div><Label>Categoría</Label><select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={offCategory} onChange={(e) => setOffCategory(e.target.value)}>{categories.length === 0 && <option value="ropa">ropa</option>}{categories.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}</select></div>
+        <div className="flex items-center gap-2">
+          <Switch checked={offHasVariants} onCheckedChange={setOffHasVariants} />
+          <span className="text-sm text-muted-foreground">Usar variantes (color × talle)</span>
+        </div>
+        {!offHasVariants && (
+          <div className="grid grid-cols-2 gap-3">
+            <div><Label>Stock</Label><QuantityInput value={offStock} onChange={setOffStock} min={0} /></div>
+            <div><Label>Umbral bajo stock</Label><Input type="number" min={0} value={offStockLowThreshold} onChange={(e) => { const v = parseInt(e.target.value, 10); if (!isNaN(v) && v >= 0) setOffStockLowThreshold(v); }} /></div>
+          </div>
+        )}
+
+        {offHasVariants && (
+          <div className="border border-border rounded-lg p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <Label className="text-sm">Variantes (color × talle)</Label>
+              <Button type="button" size="sm" variant="outline" onClick={addVariantRow}>+ Fila</Button>
+            </div>
+            <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 text-xs font-medium text-muted-foreground px-1">
+              <span>Color</span><span>Talle</span><span>Precio</span><span className="hidden sm:block">Promo</span><span className="hidden sm:block">Stock</span><span></span>
+            </div>
+            {variantRows.map((row, i) => (
+              <div key={i} className="grid grid-cols-3 sm:grid-cols-6 gap-2 items-center">
+                <Input className="h-8" value={row.color} onChange={(e) => updateVariantRow(i, "color", e.target.value)} placeholder="Rojo" />
+                <Input className="h-8" value={row.talle} onChange={(e) => updateVariantRow(i, "talle", e.target.value)} placeholder="M" />
+                <Input className="h-8" type="number" value={row.price} onChange={(e) => updateVariantRow(i, "price", e.target.value)} />
+                <div className="hidden sm:block min-w-0">
+                  <Input className="h-8" type="number" value={row.promo} onChange={(e) => updateVariantRow(i, "promo", e.target.value)} placeholder="-" />
+                </div>
+                <div className="hidden sm:block min-w-0">
+                  <QuantityInput value={row.stock} onChange={(v) => updateVariantRow(i, "stock", v)} min={0} />
+                </div>
+                <Button type="button" variant="ghost" size="sm" className="text-red-600" onClick={() => setVariantRows((prev) => prev.filter((_, idx) => idx !== i))}>🗑️</Button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div><Label>Fotos del producto</Label>
+          <Input type="file" accept="image/*" multiple onChange={(e) => handleGalleryUpload(e.target.files)} />
+          {galleryUrls.length > 0 && (
+            <div className="flex gap-2 mt-2 flex-wrap">
+              {galleryUrls.map((url, i) => (
+                <div key={i} className="relative h-16 w-16 rounded-lg overflow-hidden group">
+                  <img src={url} alt="" className="w-full h-full object-cover" />
+                  <button type="button" onClick={() => setGalleryUrls((prev) => prev.filter((_, idx) => idx !== i))} className="absolute top-0 right-0 bg-black/60 text-white text-xs h-4 w-4 rounded-full">✕</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div><Label>Foto principal</Label><Input type="file" accept="image/*" onChange={(e) => handleOfferFileSelect(e.target.files?.[0] || null)} />{offPreview && <img src={offPreview} alt="" className="mt-2 h-16 w-full object-cover rounded-lg" />}</div>
+        </div>
+
+        <div><Label>Descripción</Label><Textarea value={offDesc} onChange={(e) => setOffDesc(e.target.value)} /></div>
+        <Button type="button" onClick={() => handleOfferSubmit()} disabled={saving} className="w-full">{saving ? "Guardando..." : editingId ? "Guardar" : "Agregar"}</Button>
+      </div>
+    </Card>
+  );
+
   return (
     <>
     <form onSubmit={handleSave} className="space-y-4">
@@ -420,79 +504,7 @@ onAdd={async (name) => { const r = await apiJson("/api/vendor/categories", { met
           <Button size="sm" onClick={() => { resetOfferForm(); setShowForm(true); }}>+ Producto</Button>
         </div>
 
-        {showForm && (
-          <Card className="p-4 mb-4">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="font-semibold">{editingId ? "Editar producto" : "Nuevo producto"}</h3>
-              <Button variant="ghost" size="sm" onClick={() => { resetOfferForm(); setShowForm(false); }}>✕</Button>
-            </div>
-            <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div><Label>Nombre</Label><Input value={offName} onChange={(e) => setOffName(e.target.value)} required /></div>
-                <div><Label>Precio ($)</Label><Input type="number" step="0.01" value={offPrice} onChange={(e) => setOffPrice(e.target.value)} required /></div>
-              </div>
-              <div><Label>Precio promo ($)</Label><Input type="number" step="0.01" value={offPromoPrice} onChange={(e) => setOffPromoPrice(e.target.value)} placeholder="Vacío si no está en oferta" /></div>
-              <div><Label>Categoría</Label><select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={offCategory} onChange={(e) => setOffCategory(e.target.value)}>{categories.length === 0 && <option value="ropa">ropa</option>}{categories.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}</select></div>
-              <div className="flex items-center gap-2">
-                <Switch checked={offHasVariants} onCheckedChange={setOffHasVariants} />
-                <span className="text-sm text-muted-foreground">Usar variantes (color × talle)</span>
-              </div>
-              {!offHasVariants && (
-                <div className="grid grid-cols-2 gap-3">
-                  <div><Label>Stock</Label><QuantityInput value={offStock} onChange={setOffStock} min={0} /></div>
-                  <div><Label>Umbral bajo stock</Label><Input type="number" min={0} value={offStockLowThreshold} onChange={(e) => { const v = parseInt(e.target.value, 10); if (!isNaN(v) && v >= 0) setOffStockLowThreshold(v); }} /></div>
-                </div>
-              )}
-
-              {offHasVariants && (
-                <div className="border border-border rounded-lg p-3 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-sm">Variantes (color × talle)</Label>
-                    <Button type="button" size="sm" variant="outline" onClick={addVariantRow}>+ Fila</Button>
-                  </div>
-                  <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 text-xs font-medium text-muted-foreground px-1">
-                    <span>Color</span><span>Talle</span><span>Precio</span><span className="hidden sm:block">Promo</span><span className="hidden sm:block">Stock</span><span></span>
-                  </div>
-                  {variantRows.map((row, i) => (
-                    <div key={i} className="grid grid-cols-3 sm:grid-cols-6 gap-2 items-center">
-                      <Input className="h-8" value={row.color} onChange={(e) => updateVariantRow(i, "color", e.target.value)} placeholder="Rojo" />
-                      <Input className="h-8" value={row.talle} onChange={(e) => updateVariantRow(i, "talle", e.target.value)} placeholder="M" />
-                      <Input className="h-8" type="number" value={row.price} onChange={(e) => updateVariantRow(i, "price", e.target.value)} />
-                      <div className="hidden sm:block min-w-0">
-                        <Input className="h-8" type="number" value={row.promo} onChange={(e) => updateVariantRow(i, "promo", e.target.value)} placeholder="-" />
-                      </div>
-                      <div className="hidden sm:block min-w-0">
-                        <QuantityInput value={row.stock} onChange={(v) => updateVariantRow(i, "stock", v)} min={0} />
-                      </div>
-                      <Button type="button" variant="ghost" size="sm" className="text-red-600" onClick={() => setVariantRows((prev) => prev.filter((_, idx) => idx !== i))}>🗑️</Button>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <div><Label>Fotos del producto</Label>
-                <Input type="file" accept="image/*" multiple onChange={(e) => handleGalleryUpload(e.target.files)} />
-                {galleryUrls.length > 0 && (
-                  <div className="flex gap-2 mt-2 flex-wrap">
-                    {galleryUrls.map((url, i) => (
-                      <div key={i} className="relative h-16 w-16 rounded-lg overflow-hidden group">
-                        <img src={url} alt="" className="w-full h-full object-cover" />
-                        <button type="button" onClick={() => setGalleryUrls((prev) => prev.filter((_, idx) => idx !== i))} className="absolute top-0 right-0 bg-black/60 text-white text-xs h-4 w-4 rounded-full">✕</button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div><Label>Foto principal</Label><Input type="file" accept="image/*" onChange={(e) => handleOfferFileSelect(e.target.files?.[0] || null)} />{offPreview && <img src={offPreview} alt="" className="mt-2 h-16 w-full object-cover rounded-lg" />}</div>
-              </div>
-
-              <div><Label>Descripción</Label><Textarea value={offDesc} onChange={(e) => setOffDesc(e.target.value)} /></div>
-              <Button type="button" onClick={() => handleOfferSubmit()} disabled={saving} className="w-full">{saving ? "Guardando..." : editingId ? "Guardar" : "Agregar"}</Button>
-            </div>
-          </Card>
-        )}
+        {showForm && !editingId && offerFormNode}
 
         <div className="space-y-3">
           {offers.length === 0 ? (
@@ -502,7 +514,8 @@ onAdd={async (name) => { const r = await apiJson("/api/vendor/categories", { met
               const prodVariants = variantsByProduct()[offer.id] || [];
               const prodImages = imagesByProduct()[offer.id] || [];
               return (
-                <Card key={offer.id} className="p-3">
+                <div key={offer.id}>
+                <Card className="p-3">
                   <div className="flex items-center gap-3">
                     {offer.image_url || prodImages[0] ? (
                       <img src={offer.image_url || prodImages[0]} alt={offer.name} className="h-12 w-12 rounded-lg object-cover flex-shrink-0" />
@@ -546,6 +559,12 @@ onAdd={async (name) => { const r = await apiJson("/api/vendor/categories", { met
                     </div>
                   </div>
                 </Card>
+                {editingId === offer.id && showForm && offerFormNode && (
+                  <div ref={editAnchorRef} className="mt-2">
+                    {offerFormNode}
+                  </div>
+                )}
+              </div>
               );
             })
           )}

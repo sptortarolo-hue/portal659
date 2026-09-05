@@ -591,6 +591,41 @@ export default function DashboardGastro({
     groupedModifiers[mod.product_id].push(mod);
   });
 
+  const offerFormNode = (
+    <OfferForm
+      categories={categories}
+      editingId={editingId}
+      offName={offName}
+      setOffName={setOffName}
+      offDesc={offDesc}
+      setOffDesc={setOffDesc}
+      offPrice={offPrice}
+      setOffPrice={setOffPrice}
+      offCategory={offCategory}
+      setOffCategory={setOffCategory}
+      offFile={offFile}
+      setOffFile={setOffFile}
+      offPreview={offPreview}
+      setOffPreview={setOffPreview}
+      saving={saving}
+      onSubmit={handleOfferSubmit}
+      onCrop={() => onCrop("offer")}
+      showStock
+      offStock={offStock}
+      setOffStock={setOffStock}
+      offStockControl={offStockControl}
+      setOffStockControl={setOffStockControl}
+      offPromoPrice={offPromoPrice}
+      setOffPromoPrice={setOffPromoPrice}
+      offStockLowThreshold={offStockLowThreshold}
+      setOffStockLowThreshold={setOffStockLowThreshold}
+      showPrep
+      offRequiresPrep={offRequiresPrep}
+      setOffRequiresPrep={setOffRequiresPrep}
+      onClose={resetOfferForm}
+    />
+  );
+
   return (
     <form onSubmit={handleSave} className="space-y-4">
       <LivePreview
@@ -1183,48 +1218,17 @@ export default function DashboardGastro({
                 type="button"
                 size="sm"
                 onClick={() => {
-                  if (showOfferForm && !editingId) resetOfferForm();
-                  else setShowOfferForm(!showOfferForm);
+                  if (editingId) resetOfferForm();
+                  else if (showOfferForm) resetOfferForm();
+                  else setShowOfferForm(true);
                 }}
               >
-                {editingId ? "Cancelar" : "+ Plato"}
+                {editingId ? "Cancelar" : showOfferForm ? "Cancelar" : "+ Plato"}
               </Button>
             </div>
           </div>
 
-          {showOfferForm && (
-            <OfferForm
-              categories={categories}
-              editingId={editingId}
-              offName={offName}
-              setOffName={setOffName}
-              offDesc={offDesc}
-              setOffDesc={setOffDesc}
-              offPrice={offPrice}
-              setOffPrice={setOffPrice}
-              offCategory={offCategory}
-              setOffCategory={setOffCategory}
-              offFile={offFile}
-              setOffFile={setOffFile}
-              offPreview={offPreview}
-              setOffPreview={setOffPreview}
-              saving={saving}
-              onSubmit={handleOfferSubmit}
-              onCrop={() => onCrop("offer")}
-              showStock
-              offStock={offStock}
-              setOffStock={setOffStock}
-              offStockControl={offStockControl}
-              setOffStockControl={setOffStockControl}
-              offPromoPrice={offPromoPrice}
-              setOffPromoPrice={setOffPromoPrice}
-              offStockLowThreshold={offStockLowThreshold}
-              setOffStockLowThreshold={setOffStockLowThreshold}
-              showPrep
-              offRequiresPrep={offRequiresPrep}
-              setOffRequiresPrep={setOffRequiresPrep}
-            />
-          )}
+          {showOfferForm && !editingId && offerFormNode}
 
           <OfferList
             offers={offers}
@@ -1232,6 +1236,8 @@ export default function DashboardGastro({
             onToggleFeatured={toggleFeatured}
             onToggleAvailable={toggleAvailable}
             onDelete={deleteOffer}
+            editingId={editingId}
+            editForm={editingId ? offerFormNode : undefined}
           />
         </div>
       </CollapsibleSection>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -195,6 +195,7 @@ export default function DashboardComercio({
     setOffStock(0);
     setOffPromoPrice("");
     setOffStockLowThreshold(5);
+    setShowForm(false);
   }
 
   function startEdit(offer: any) {
@@ -403,7 +404,8 @@ export default function DashboardComercio({
             offerThresholds[offer.id] ?? offer.stock_low_threshold ?? 5;
 
           return (
-            <Card key={offer.id} className="p-3">
+            <div key={offer.id}>
+            <Card className="p-3">
               <div className="flex items-center gap-3">
                 {offer.image_url ? (
                   <img
@@ -544,10 +546,153 @@ export default function DashboardComercio({
                 </div>
               </div>
             </Card>
+              {editingId === offer.id && offerFormNode && (
+                <div ref={editAnchorRef} className="mt-2">
+                  {offerFormNode}
+                </div>
+              )}
+            </div>
           );
         })
       )}
     </div>
+  );
+
+  const editAnchorRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!editingId || !showForm) return;
+    const t = setTimeout(() => {
+      editAnchorRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }, 60);
+    return () => clearTimeout(t);
+  }, [editingId, showForm]);
+
+  const offerFormNode = (
+    <Card className="p-4">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="font-semibold">
+          {editingId ? "Editar producto" : "Nuevo producto"}
+        </h3>
+        <Button type="button" variant="ghost" size="sm" onClick={() => resetOfferForm()}>
+          ✕
+        </Button>
+      </div>
+      <div className="space-y-3">
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <Label>Nombre</Label>
+            <Input
+              value={offName}
+              onChange={(e) => setOffName(e.target.value)}
+              required
+            />
+          </div>
+          <div>
+            <Label>Precio ($)</Label>
+            <Input
+              type="number"
+              step="0.01"
+              value={offPrice}
+              onChange={(e) => setOffPrice(e.target.value)}
+              required
+            />
+          </div>
+        </div>
+        <div>
+          <Label>Precio promo ($)</Label>
+          <Input
+            type="number"
+            step="0.01"
+            value={offPromoPrice}
+            onChange={(e) => setOffPromoPrice(e.target.value)}
+            placeholder="Precio de oferta del día"
+          />
+        </div>
+        <div>
+          <Label>Categoría</Label>
+          <select
+            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+            value={offCategory}
+            onChange={(e) => setOffCategory(e.target.value)}
+          >
+            {categories.length === 0 && (
+              <option value="otros">otros</option>
+            )}
+            {categories.map((c: any) => (
+              <option key={c.id} value={c.name}>
+                {c.name}
+              </option>
+            ))}
+            {offCategory &&
+              !categories.some((c: any) => c.name === offCategory) &&
+              offCategory !== "otros" && (
+                <option value={offCategory}>{offCategory}</option>
+              )}
+          </select>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <Label>Stock</Label>
+            <QuantityInput
+              value={offStock}
+              onChange={setOffStock}
+              min={0}
+            />
+          </div>
+          <div>
+            <Label>Umbral bajo stock</Label>
+            <Input
+              type="number"
+              min={0}
+              value={offStockLowThreshold}
+              onChange={(e) => {
+                const v = parseInt(e.target.value, 10);
+                if (!isNaN(v) && v >= 0) setOffStockLowThreshold(v);
+              }}
+            />
+          </div>
+        </div>
+        <div>
+          <Label>Foto</Label>
+          <Input
+            type="file"
+            accept="image/*"
+            onChange={(e) =>
+              handleOfferFileSelect(
+                e.target.files?.[0] || null
+              )
+            }
+          />
+          {offPreview && (
+            <img
+              src={offPreview}
+              alt="Preview"
+              className="mt-2 h-20 w-full object-cover rounded-lg"
+            />
+          )}
+        </div>
+        <div>
+          <Label>Descripción</Label>
+          <Textarea
+            value={offDesc}
+            onChange={(e) => setOffDesc(e.target.value)}
+          />
+        </div>
+        <Button
+          type="button"
+          onClick={() => handleOfferSubmit()}
+          disabled={saving}
+          className="w-full"
+        >
+          {saving
+            ? "Guardando..."
+            : editingId
+              ? "Guardar"
+              : "Agregar"}
+        </Button>
+      </div>
+    </Card>
   );
 
   return (
@@ -810,135 +955,15 @@ export default function DashboardComercio({
               type="button"
               size="sm"
               onClick={() => {
-                if (showForm && !editingId) resetOfferForm();
-                setShowForm(!showForm);
+                if (editingId || showForm) resetOfferForm();
+                else setShowForm(true);
               }}
             >
-              {editingId ? "Cancelar" : "+ Producto"}
+              {editingId || showForm ? "Cancelar" : "+ Producto"}
             </Button>
           </div>
 
-          {showForm && (
-            <Card className="p-4">
-              <h3 className="font-semibold mb-3">
-                {editingId ? "Editar producto" : "Nuevo producto"}
-              </h3>
-              <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label>Nombre</Label>
-                    <Input
-                      value={offName}
-                      onChange={(e) => setOffName(e.target.value)}
-                      required
-                    />
-                  </div>
-                  <div>
-                    <Label>Precio ($)</Label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      value={offPrice}
-                      onChange={(e) => setOffPrice(e.target.value)}
-                      required
-                    />
-                  </div>
-                </div>
-                <div>
-                  <Label>Precio promo ($)</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={offPromoPrice}
-                    onChange={(e) => setOffPromoPrice(e.target.value)}
-                    placeholder="Precio de oferta del día"
-                  />
-                </div>
-                <div>
-                  <Label>Categoría</Label>
-                  <select
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                    value={offCategory}
-                    onChange={(e) => setOffCategory(e.target.value)}
-                  >
-                    {categories.length === 0 && (
-                      <option value="otros">otros</option>
-                    )}
-                    {categories.map((c: any) => (
-                      <option key={c.id} value={c.name}>
-                        {c.name}
-                      </option>
-                    ))}
-                    {offCategory &&
-                      !categories.some((c: any) => c.name === offCategory) &&
-                      offCategory !== "otros" && (
-                        <option value={offCategory}>{offCategory}</option>
-                      )}
-                  </select>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label>Stock</Label>
-                    <QuantityInput
-                      value={offStock}
-                      onChange={setOffStock}
-                      min={0}
-                    />
-                  </div>
-                  <div>
-                    <Label>Umbral bajo stock</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      value={offStockLowThreshold}
-                      onChange={(e) => {
-                        const v = parseInt(e.target.value, 10);
-                        if (!isNaN(v) && v >= 0) setOffStockLowThreshold(v);
-                      }}
-                    />
-                  </div>
-                </div>
-                <div>
-                  <Label>Foto</Label>
-                  <Input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) =>
-                      handleOfferFileSelect(
-                        e.target.files?.[0] || null
-                      )
-                    }
-                  />
-                  {offPreview && (
-                    <img
-                      src={offPreview}
-                      alt="Preview"
-                      className="mt-2 h-20 w-full object-cover rounded-lg"
-                    />
-                  )}
-                </div>
-                <div>
-                  <Label>Descripción</Label>
-                  <Textarea
-                    value={offDesc}
-                    onChange={(e) => setOffDesc(e.target.value)}
-                  />
-                </div>
-                <Button
-                  type="button"
-                  onClick={() => handleOfferSubmit()}
-                  disabled={saving}
-                  className="w-full"
-                >
-                  {saving
-                    ? "Guardando..."
-                    : editingId
-                      ? "Guardar"
-                      : "Agregar"}
-                </Button>
-              </div>
-            </Card>
-          )}
+          {showForm && !editingId && offerFormNode}
 
           {offerListContent}
         </div>

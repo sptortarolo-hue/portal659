@@ -214,7 +214,7 @@ const modifiersByProduct: Record<string, any[]> = {};
   };
 
   return (
-    <main className="pb-28">
+    <main className="pb-28 overflow-x-clip">
       <ScrollToMenu />
       <ScrollToProduct />
       <script

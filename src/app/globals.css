@@ -67,14 +67,6 @@
 }
 
 @layer base {
-  html,
-  body {
-    /* Evita scroll horizontal accidental SIN romper position:sticky
-       (un overflow-x: hidden en body/html crea contenedor de scroll y el nav
-       sticky deja de anclarse al viewport). clip preserva el sticky. */
-    overflow-x: clip;
-  }
-
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);

@@ -260,6 +260,7 @@ export default function DashboardModa({
       promo_price: offPromoPrice ? Number(offPromoPrice) : null,
       stock_low_threshold: offStockLowThreshold,
       has_variants: offHasVariants,
+      stock_control: offHasVariants,
     };
 
     let res: Response;

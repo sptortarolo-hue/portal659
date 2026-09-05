@@ -279,7 +279,7 @@ const modifiersByProduct: Record<string, any[]> = {};
                 {!isService && !isModa && (offers?.length || 0) > 0 && <IrAComprarButton />}
               </span>
               <FavoriteButton vendorId={v.id} />
-              <WhatsAppShareButton slug={v.slug} storeName={v.store_name} />
+              <WhatsAppShareButton slug={v.slug} storeName={v.store_name} isModa={isModa} />
               <VendorShareButton slug={v.slug} storeName={v.store_name} />
             </div>
           </div>

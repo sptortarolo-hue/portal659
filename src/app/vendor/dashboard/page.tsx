@@ -685,7 +685,7 @@ function VendorDashboardInner() {
           </div>
           <div className="mx-2 h-6 w-px bg-border" />
           <div className="flex flex-wrap gap-2">
-            <Button variant={tab === "menu" ? "default" : "outline"} size="sm" onClick={() => setTab("menu")}>🍽️ Menú ({offers.length})</Button>
+            <Button variant={tab === "menu" ? "default" : "outline"} size="sm" onClick={() => setTab("menu")}>{isModa ? "👗 Catálogo" : "🍽️ Menú"} ({offers.length})</Button>
             <Button variant={tab === "config" ? "default" : "outline"} size="sm" onClick={() => setTab("config")}>⚙️ Configuración</Button>
             <Button variant={tab === "analytics" ? "default" : "outline"} size="sm" onClick={() => setTab("analytics")}>📊 Estadísticas</Button>
             <Button variant={tab === "reviews" ? "default" : "outline"} size="sm" onClick={() => setTab("reviews")}>⭐ Reseñas</Button>
@@ -729,7 +729,7 @@ function VendorDashboardInner() {
             <div className={tab === "config" ? "" : "hidden"}>{configContent}</div>
             <div className={tab === "menu" ? "" : "hidden"}>
               <div className="space-y-4">
-                <h2 className="font-display text-xl font-semibold">Menú y catálogo</h2>
+                <h2 className="font-display text-xl font-semibold">{isModa ? "Catálogo" : "Menú y catálogo"}</h2>
                 {offers.map((offer) => (
                   <Card key={offer.id} className="p-3">
                     <div className="flex items-center gap-3">
@@ -858,7 +858,7 @@ function VendorDashboardInner() {
             <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wide mb-2">Administración</p>
             <div className="grid grid-cols-2 gap-2">
               <button onClick={() => { setTab("menu"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "menu" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
-                <span className="text-lg">{isService ? "🔧" : "🍽️"}</span>{isService ? "Servicios" : "Menú"} ({offers.length})
+                <span className="text-lg">{isService ? "🔧" : isModa ? "👗" : "🍽️"}</span>{isService ? "Servicios" : isModa ? "Catálogo" : "Menú"} ({offers.length})
               </button>
               <button onClick={() => { setTab("config"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "config" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
                 <span className="text-lg">⚙️</span>Configuración
@@ -883,13 +883,13 @@ function VendorDashboardInner() {
             <div className="space-y-2">
               <a
                 href={`https://wa.me/?text=${encodeURIComponent(
-                  `Mirá el menú de ${vendor.store_name} en Portal 659 🛍️\n${window.location.origin}/tienda/${vendor.slug}?menu=1\n\nPedí directo por WhatsApp — 0% comisión`
+                  `Mirá el ${isModa ? "catálogo" : "menú"} de ${vendor.store_name} en Portal 659 🛍️\n${window.location.origin}/tienda/${vendor.slug}?menu=1\n\nPedí directo por WhatsApp — 0% comisión`
                 )}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="block w-full rounded-xl bg-green-500 text-white text-sm font-medium py-2.5 hover:bg-green-600 transition-colors"
               >
-                📲 Compartir menú
+                📲 {isModa ? "Compartir tienda" : "Compartir menú"}
               </a>
               <div className="flex gap-2">
                 <Button className="flex-1" onClick={copyLink}>{copied ? "¡Copiado!" : "Copiar link"}</Button>

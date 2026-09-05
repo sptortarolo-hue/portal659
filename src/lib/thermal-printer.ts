@@ -143,16 +143,19 @@ function composeComanda(printer: any, vendor: PrinterVendor, order: Order): void
 
   printer.alignLeft();
   printer.bold(true);
-  printer.println(`Pedido #${order.id.slice(0, 8)}`);
+  printer.println(`${dateStr} ${timeStr}`);
   printer.bold(false);
+  // Número universal del pedido del día (grande, para cantar a cocina/caja).
   if (order.pickup_number != null) {
-    printer.setTextSize(1, 1);
+    printer.alignCenter();
+    printer.setTextSize(2, 2);
     printer.bold(true);
-    printer.println(`RETIRO Nro. ${order.pickup_number}`);
+    const m = order.method === "delivery" ? "ENVIO" : "RETIRO";
+    printer.println(`${m} Nro. ${order.pickup_number}`);
     printer.bold(false);
     printer.setTextSize(0, 0);
+    printer.alignLeft();
   }
-  printer.println(`${dateStr} ${timeStr}`);
   printer.println("----------------------------------------");
 
   const methodStr = order.method === "delivery" ? "Delivery" : "Retiro en local";

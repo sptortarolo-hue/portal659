@@ -250,7 +250,7 @@ export function Mostrador() {
       } else {
         setRecent((prev) =>
           prev.map((o) =>
-            o.id === orderId ? { ...o, method: "delivery", pickup_number: null } : o
+            o.id === orderId ? { ...o, method: "delivery" } : o
           )
         );
         setConvertOrderId(null);
@@ -528,11 +528,12 @@ export function Mostrador() {
                   <div className="flex items-center justify-between text-xs gap-2">
                     <div className="flex items-center gap-2 min-w-0">
                       <Badge variant="secondary" className="text-[9px]">{o.payment_method}</Badge>
-                      {o.method === "delivery" ? (
+                      {o.pickup_number != null && (
+                        <Badge className="text-[9px] bg-status-new/15 text-status-new">Nro. {o.pickup_number}</Badge>
+                      )}
+                      {o.method === "delivery" && (
                         <Badge className="text-[9px] bg-blue-100 text-blue-700">🛵 A domicilio</Badge>
-                      ) : o.pickup_number != null ? (
-                        <Badge className="text-[9px] bg-status-new/15 text-status-new">Retiro Nro. {o.pickup_number}</Badge>
-                      ) : null}
+                      )}
                       <span className="text-muted-foreground truncate">{o.customer_name || "Mostrador"}</span>
                       <span className="text-muted-foreground/60">{new Date(o.created_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}</span>
                     </div>

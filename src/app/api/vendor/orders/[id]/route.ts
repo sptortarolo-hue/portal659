@@ -23,27 +23,29 @@ function customerNotificationText(
   status: string,
   isModa: boolean,
   storeName: string | undefined,
-  total: number
+  total: number,
+  pickupNumber: number | null
 ): { title: string; body: string } | null {
   const totalStr = `$${Number(total).toLocaleString("es-AR")}`;
+  const numStr = pickupNumber != null ? ` Nro. ${pickupNumber}` : "";
   if (!isModa) {
     const label = STATUS_LABELS[status];
     if (!label) return null;
-    return { title: `Tu pedido fue ${label}`, body: `${storeName} ${label} tu pedido de ${totalStr}` };
+    return { title: `Tu pedido${numStr} fue ${label}`, body: `${storeName} ${label} tu pedido${numStr} de ${totalStr}` };
   }
   switch (status) {
     case "confirmed":
-      return { title: "¡Pedido aceptado!", body: `${storeName} aceptó tu pedido de ${totalStr} y ya lo está empaquetando` };
+      return { title: `¡Pedido${numStr} aceptado!`, body: `${storeName} aceptó tu pedido${numStr} de ${totalStr} y ya lo está empaquetando` };
     case "preparing":
-      return { title: "Estamos empaquetando tu pedido", body: `${storeName} está empaquetando tu pedido de ${totalStr}` };
+      return { title: `Estamos empaquetando tu pedido${numStr}`, body: `${storeName} está empaquetando tu pedido${numStr} de ${totalStr}` };
     case "ready":
-      return { title: "¡Tu pedido está listo!", body: `${storeName} ya tiene listo tu pedido de ${totalStr}. Si elegiste retiro, ya podés pasar a buscarlo` };
+      return { title: `¡Tu pedido${numStr} está listo!`, body: `${storeName} ya tiene listo tu pedido${numStr} de ${totalStr}. Si elegiste retiro, ya podés pasar a buscarlo` };
     case "sent":
-      return { title: "¡Tu pedido va en camino!", body: `${storeName} despachó tu pedido de ${totalStr}` };
+      return { title: `¡Tu pedido${numStr} va en camino!`, body: `${storeName} despachó tu pedido${numStr} de ${totalStr}` };
     case "completed":
-      return { title: "¡Tu pedido fue entregado!", body: `Gracias por comprarle a ${storeName}` };
+      return { title: `¡Tu pedido${numStr} fue entregado!`, body: `Gracias por comprarle a ${storeName}` };
     case "cancelled":
-      return { title: "Tu pedido fue cancelado", body: `${storeName} canceló tu pedido de ${totalStr}` };
+      return { title: `Tu pedido${numStr} fue cancelado`, body: `${storeName} canceló tu pedido${numStr} de ${totalStr}` };
     default:
       return null;
   }
@@ -181,7 +183,8 @@ export async function PATCH(
         updateData.method = "delivery";
         updateData.customer_phone = (customer_phone as string).trim();
         updateData.customer_address = typeof customer_address === "string" && customer_address.trim() ? customer_address.trim() : null;
-        updateData.pickup_number = null; // ya no es retiro: libera el número comprobante
+        // pickup_number se mantiene igual: es el número universal del pedido
+        // del día, y al convertir a delivery no debe "saltar" de nombre.
       }
       if (payment_status !== undefined) {
         updateData.payment_status = payment_status;
@@ -268,7 +271,8 @@ export async function PATCH(
     status,
     fullVendor?.vertical === "moda",
     fullVendor?.store_name,
-    Number(order.total)
+    Number(order.total),
+    order.pickup_number as number | null
   );
 
   if (order && pushText && order.customer_phone && !isCounterPickup) {

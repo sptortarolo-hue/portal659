@@ -1,5 +1,6 @@
 import { gateRequest, gateError } from "@/lib/subscription-gate";
-import { queryOne, query } from "@/lib/db";
+import { queryOne, query, withTransaction } from "@/lib/db";
+import { nextOrderNumber } from "@/lib/order-number";
 import { NextResponse } from "next/server";
 
 const PAYMENT_METHODS = ["efectivo", "transferencia", "tarjeta", "mixto", "whatsapp"] as const;
@@ -75,22 +76,27 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, orderId: order?.id, order, table });
   }
 
-  const order = await queryOne<Record<string, any>>(
-    `INSERT INTO orders (vendor_id, customer_name, customer_phone, customer_address, method, payment_method, items, total, status, channel, table_id, notes)
-     VALUES ($1, $2, $3, $4, 'pickup', $5, $6, $7, 'new', 'mesa', $8, $9)
-     RETURNING *`,
-    [
-      gate.vendor.id,
-      table.name,
-      gate.vendor.whatsapp || "",
-      null,
-      payment,
-      JSON.stringify(normalizedItems),
-      Number(total),
-      table.id,
-      notes || null,
-    ]
-  );
+  const order = await withTransaction(async (tx) => {
+    // Número universal de pedido diario (mesas también lo producten).
+    const pickupNumber = await nextOrderNumber(tx, gate.vendor.id);
+    return tx.queryOne<Record<string, any>>(
+      `INSERT INTO orders (vendor_id, customer_name, customer_phone, customer_address, method, payment_method, items, total, status, channel, table_id, notes, pickup_number)
+       VALUES ($1, $2, $3, $4, 'pickup', $5, $6, $7, 'new', 'mesa', $8, $9, $10)
+       RETURNING *`,
+      [
+        gate.vendor.id,
+        table.name,
+        gate.vendor.whatsapp || "",
+        null,
+        payment,
+        JSON.stringify(normalizedItems),
+        Number(total),
+        table.id,
+        notes || null,
+        pickupNumber,
+      ]
+    );
+  });
 
   return NextResponse.json({ ok: true, orderId: order?.id, order, table });
 }

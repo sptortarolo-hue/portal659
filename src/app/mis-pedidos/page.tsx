@@ -118,7 +118,7 @@ function OrderCard({ order, onReorder }: { order: Order & { vendors?: { store_na
         <span className="font-bold text-sm">${Number(order.total).toLocaleString("es-AR")}</span>
         {phone && !isDone && (
           <a
-            href={`https://wa.me/${phone.replace(/[^0-9]/g, "")}?text=${encodeURIComponent(`Hola! Quiero consultar por mi pedido #${order.id.slice(0, 8)}`)}`}
+            href={`https://wa.me/${phone.replace(/[^0-9]/g, "")}?text=${encodeURIComponent(`Hola! Quiero consultar por mi pedido ${order.pickup_number != null ? `Nro. ${order.pickup_number}` : `#${order.id.slice(0, 8)}`}`)}`}
             target="_blank"
             rel="noopener noreferrer"
             className="text-[11px] font-medium text-green-600 hover:text-green-700"

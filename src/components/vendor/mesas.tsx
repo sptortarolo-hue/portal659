@@ -46,6 +46,7 @@ type Order = {
   status: string;
   created_at: string;
   paid_at?: string | null;
+  pickup_number?: number | null;
 };
 
 const PAYMENT_OPTIONS = [
@@ -403,7 +404,7 @@ export function Mesas() {
         <div key={o.id} className="rounded-xl bg-muted/50 p-3">
           <div className="flex items-center justify-between text-xs mb-1">
             <span className="text-muted-foreground">
-              {new Date(o.created_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })} · #{o.id.slice(0, 6)}
+              {new Date(o.created_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })} · {o.pickup_number != null ? `Nro. ${o.pickup_number}` : `#${o.id.slice(0, 6)}`}
             </span>
             <span className="font-semibold tabular-nums">${Number(o.total).toLocaleString("es-AR")}</span>
           </div>
@@ -514,7 +515,7 @@ export function Mesas() {
                     {closedOrders.map((o) => (
                       <div key={o.id} className="flex items-center justify-between text-xs">
                         <span className="text-muted-foreground">
-                          {o.paid_at ? new Date(o.paid_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }) : new Date(o.created_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })} · #{o.id.slice(0, 6)}
+                          {o.paid_at ? new Date(o.paid_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }) : new Date(o.created_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })} · {o.pickup_number != null ? `Nro. ${o.pickup_number}` : `#${o.id.slice(0, 6)}`}
                         </span>
                         <span className="font-semibold tabular-nums">${Number(o.total).toLocaleString("es-AR")}</span>
                       </div>
@@ -715,7 +716,7 @@ export function Mesas() {
                         {closedOrders.map((o) => (
                           <div key={o.id} className="flex items-center justify-between text-xs">
                             <span className="text-muted-foreground">
-                              {o.paid_at ? new Date(o.paid_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }) : new Date(o.created_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })} · #{o.id.slice(0, 6)}
+                          {o.paid_at ? new Date(o.paid_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }) : new Date(o.created_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })} · {o.pickup_number != null ? `Nro. ${o.pickup_number}` : `#${o.id.slice(0, 6)}`}
                             </span>
                             <span className="font-semibold tabular-nums">${Number(o.total).toLocaleString("es-AR")}</span>
                           </div>

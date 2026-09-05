@@ -7,6 +7,7 @@ import { resolveVendorPlan } from "@/lib/plans";
 import { adjustStockForItems, OutOfStockError } from "@/lib/stock";
 import { isStoreOpen } from "@/lib/open-hours";
 import { PricingError, resolveOrderPricing } from "@/lib/pricing";
+import { nextOrderNumber } from "@/lib/order-number";
 import type { OrderItem } from "@/types/database";
 
 export const POST = withRateLimit(async (request: Request) => {
@@ -86,18 +87,10 @@ export const POST = withRateLimit(async (request: Request) => {
       // se repone si el pedido se cancela/rechaza. Lanza OutOfStockError → 409.
       await adjustStockForItems(tx, resolvedItems, "decrement");
 
-      let pickupNumber: number | null = null;
-      if (isPickup) {
-        const lastRow = await tx.queryOne<{ n: number }>(
-          `SELECT COALESCE(MAX(pickup_number), 0)::int AS n
-           FROM orders
-           WHERE vendor_id = $1 AND pickup_number IS NOT NULL
-             AND (created_at AT TIME ZONE 'America/Argentina/Buenos_Aires')::date
-                 = (now() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date`,
-          [vendorId]
-        );
-        pickupNumber = (lastRow?.n ?? 0) + 1;
-      }
+      // Número de pedido correlativo del día (universal: aplica a todos los
+      // canales y métodos, para transmitir pedidos al humano "envío Nro 4",
+      // "retiro Nro 2"...). Se serializa con advisory lock => no duplica.
+      const pickupNumber = await nextOrderNumber(tx, vendorId);
 
       const rows = await tx.query<{ id: string }>(
         `INSERT INTO orders (vendor_id, customer_id, customer_name, customer_phone, customer_address, method, payment_method, items, total, status, notes, device_id, payment_status, pickup_number)
@@ -133,7 +126,7 @@ export const POST = withRateLimit(async (request: Request) => {
           [
             vendor.user_id,
             "Nuevo pedido recibido",
-            `${customerName} hizo un pedido de ${resolvedItemsCount} producto${resolvedItemsCount > 1 ? "s" : ""} por $${resolvedTotal.toLocaleString("es-AR")} · ${paymentLabel}`,
+            `Nro. ${pickupNumber} · ${customerName} hizo un pedido de ${resolvedItemsCount} producto${resolvedItemsCount > 1 ? "s" : ""} por $${resolvedTotal.toLocaleString("es-AR")} · ${paymentLabel}`,
             "order",
             "/vendor/dashboard",
           ]

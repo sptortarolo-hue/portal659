@@ -183,7 +183,7 @@ function TicketCard({
       {/* Header */}
       <div className="flex items-center justify-between mb-1.5">
         <div className="flex items-center gap-1.5">
-          <span className="font-mono text-[11px] font-bold text-foreground/70">#{order.id.slice(0, 6)}</span>
+          <span className="font-mono text-[13px] font-extrabold text-foreground">{order.pickup_number != null ? `Nro. ${order.pickup_number}` : `#${order.id.slice(0, 6)}`}</span>
           <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${CONDITION_META[orderCondition(order)].pillClass}`}>
             {CONDITION_META[orderCondition(order)].label}
           </span>
@@ -365,7 +365,7 @@ export default function ComandaKDS({ vendorId, vendorName, accessToken }: Props)
         if (ready && soundEnabledRef.current) {
           playOrderReadySound();
           vibrate([200, 100, 200]);
-          notifyRef.current("Pedido listo", `${ready.customer_name} - #${ready.id.slice(0, 8)}`);
+          notifyRef.current("Pedido listo", `${ready.customer_name} - Nro. ${ready.pickup_number ?? ready.id.slice(0, 8)}`);
         }
         if (fresh.length > 0 || statusChanges.length > 0) {
           setOrders((prev) => {

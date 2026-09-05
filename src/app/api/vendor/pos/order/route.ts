@@ -1,5 +1,6 @@
 import { gateRequest, gateError } from "@/lib/subscription-gate";
-import { queryOne } from "@/lib/db";
+import { queryOne, withTransaction } from "@/lib/db";
+import { nextOrderNumber } from "@/lib/order-number";
 import { NextResponse } from "next/server";
 
 const PAYMENT_METHODS = ["efectivo", "transferencia", "tarjeta", "mixto", "whatsapp"] as const;
@@ -61,39 +62,30 @@ export async function POST(request: Request) {
 
   const now = new Date().toISOString();
 
-  // Número de retiro correlativo por día (solo para retiro en local).
-  let pickupNumber: number | null = null;
-  if (!isDelivery) {
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
-    const lastRow = await queryOne<{ n: number }>(
-      `SELECT COALESCE(MAX(pickup_number), 0)::int AS n
-       FROM orders
-       WHERE vendor_id = $1 AND pickup_number IS NOT NULL AND created_at >= $2`,
-      [gate.vendor.id, todayStart.toISOString()]
+  // Número de pedido diario universal (mostrador/delivery): además de
+  // referenciarlo a la caja, el pedido queda con su número de oraculo en tickets.
+  const order = await withTransaction(async (tx) => {
+    const pickupNumber = await nextOrderNumber(tx, gate.vendor.id);
+    return tx.queryOne<Record<string, any>>(
+      `INSERT INTO orders (vendor_id, customer_name, customer_phone, customer_address, method, payment_method, items, total, status, channel, paid_at, notes, pickup_number)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'mostrador', $10, $11, $12)
+       RETURNING *`,
+      [
+        gate.vendor.id,
+        customerName?.trim() || "Mostrador",
+        isDelivery ? customerPhoneClean : "",
+        isDelivery ? (customerAddress?.trim() || null) : null,
+        isDelivery ? "delivery" : "pickup",
+        payment,
+        JSON.stringify(normalizedItems),
+        Number(total),
+        status,
+        now,
+        notes || null,
+        pickupNumber,
+      ]
     );
-    pickupNumber = (lastRow?.n ?? 0) + 1;
-  }
-
-  const order = await queryOne<Record<string, any>>(
-    `INSERT INTO orders (vendor_id, customer_name, customer_phone, customer_address, method, payment_method, items, total, status, channel, paid_at, notes, pickup_number)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'mostrador', $10, $11, $12)
-     RETURNING *`,
-    [
-      gate.vendor.id,
-      customerName?.trim() || "Mostrador",
-      isDelivery ? customerPhoneClean : "",
-      isDelivery ? (customerAddress?.trim() || null) : null,
-      isDelivery ? "delivery" : "pickup",
-      payment,
-      JSON.stringify(normalizedItems),
-      Number(total),
-      status,
-      now,
-      notes || null,
-      pickupNumber,
-    ]
-  );
+  });
 
   return NextResponse.json({ ok: true, orderId: order?.id, order });
 }

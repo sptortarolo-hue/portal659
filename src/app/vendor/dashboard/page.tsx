@@ -253,7 +253,7 @@ function VendorDashboardInner() {
         setMsg(`Error: ${data.error}`);
         return;
       }
-      setMsg(`Pedido #${order.id.slice(0, 8)} → ${statusLabels[status]}`);
+      setMsg(`Pedido Nro. ${order.pickup_number ?? order.id.slice(0, 8)} → ${statusLabels[status]}`);
       loadOrdersOnly();
       if (status === "preparing" && effectivePlan.can("printer") && orderNeedsKitchen(order)) {
         fetch("/api/print", {
@@ -279,7 +279,7 @@ function VendorDashboardInner() {
         setMsg(`Error: ${data.error}`);
         return;
       }
-      setMsg(`Pago del pedido #${orderId.slice(0, 8)} confirmado`);
+      setMsg(`Pago confirmado · Nro. ${orders.find((o) => o.id === orderId)?.pickup_number ?? orderId.slice(0, 8)}`);
       setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, payment_status: "paid", paid_at: new Date().toISOString() } : o)));
       setSelectedOrder((prev) => (prev && prev.id === orderId ? { ...prev, payment_status: "paid", paid_at: new Date().toISOString() } : prev));
     } catch {
@@ -315,7 +315,7 @@ function VendorDashboardInner() {
       // El server devuelve items/total recalculados: usar esos (precios DB, no locales).
       const resolvedItems = (data.order?.items as OrderItem[] | undefined) ?? items;
       const resolvedNotes = (data.order?.modification_notes as string | null | undefined) ?? modificationNotes;
-      setMsg(`Pedido #${orderId.slice(0, 8)} modificado`);
+      setMsg(`Pedido ${orders.find((o) => o.id === orderId)?.pickup_number != null ? `Nro. ${orders.find((o) => o.id === orderId)?.pickup_number}` : `#${orderId.slice(0, 8)}`} modificado`);
       setOrders((prev) =>
         prev.map((o) =>
           o.id === orderId ? { ...o, items: resolvedItems, modification_notes: resolvedNotes ?? null, total } : o
@@ -555,7 +555,7 @@ function VendorDashboardInner() {
                       </span>
                       {order.pickup_number != null && (
                         <span className="inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-status-new/15 text-status-new border-status-new/20">
-                          🎫 Retiro Nro. {order.pickup_number}
+                          Nro. {order.pickup_number}
                         </span>
                       )}
                       {order.payment_method === "transferencia" && order.channel === "app" && order.payment_status === "pending" && (

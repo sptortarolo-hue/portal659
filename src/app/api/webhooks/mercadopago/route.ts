@@ -1,6 +1,7 @@
 import { queryOne, withTransaction } from "@/lib/db";
 import { adjustStockForItems } from "@/lib/stock";
 import { sendPushToUser } from "@/lib/push";
+import { nextOrderNumber } from "@/lib/order-number";
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 
@@ -215,18 +216,8 @@ export async function POST(request: Request) {
       const claimed = await claimPaymentId(paymentId, tx);
       if (!claimed) return false;
 
-      let pickupNumber: number | null = null;
-      if (isPickup) {
-        const lastRow = await tx.queryOne<{ n: number }>(
-          `SELECT COALESCE(MAX(pickup_number), 0)::int AS n
-           FROM orders
-           WHERE vendor_id = $1 AND pickup_number IS NOT NULL
-             AND (created_at AT TIME ZONE 'America/Argentina/Buenos_Aires')::date
-                 = (now() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date`,
-          [vendorId]
-        );
-        pickupNumber = (lastRow?.n ?? 0) + 1;
-      }
+      // Número de pedido diario universal (mismo que el canal app/mostrador).
+      const pickupNumber = await nextOrderNumber(tx, vendorId);
 
       const paymentTotal = Number(payment.transaction_amount);
       await tx.queryVoid(

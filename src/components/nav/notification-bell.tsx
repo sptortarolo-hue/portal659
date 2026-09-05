@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
+import { createPortal } from "react-dom";
 
 type Notification = {
   id: string;
@@ -19,7 +20,10 @@ export function NotificationBell() {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [authed, setAuthed] = useState<boolean | null>(null);
+  const [panelTop, setPanelTop] = useState(0);
   const ref = useRef<HTMLDivElement>(null);
+  const bellRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetch("/api/auth/me")
@@ -40,7 +44,10 @@ export function NotificationBell() {
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      if (ref.current?.contains(t)) return;
+      if (panelRef.current?.contains(t)) return;
+      setOpen(false);
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
@@ -68,12 +75,54 @@ export function NotificationBell() {
     setUnread(0);
   }
 
+  function toggleOpen() {
+    if (!open) {
+      const r = bellRef.current?.getBoundingClientRect();
+      setPanelTop(r ? r.bottom + 8 : 0);
+    }
+    setOpen(!open);
+  }
+
+  const panelContent = (
+    <>
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+        <span className="font-medium text-sm">Notificaciones</span>
+        {unread > 0 && (
+          <button onClick={markAllRead} className="text-xs text-primary hover:underline">
+            Marcar todo leído
+          </button>
+        )}
+      </div>
+      {notifications.length === 0 ? (
+        <p className="text-sm text-muted-foreground text-center py-8">Sin notificaciones</p>
+      ) : (
+        notifications.map((n) => (
+          <Link
+            key={n.id}
+            href={n.link || "#"}
+            onClick={() => setOpen(false)}
+            className={`block px-4 py-3 border-b border-border last:border-0 hover:bg-muted/50 ${
+              !n.read ? "bg-primary/5" : ""
+            }`}
+          >
+            <p className="text-sm font-medium leading-tight">{n.title}</p>
+            {n.body && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{n.body}</p>}
+            <p className="text-[10px] text-muted-foreground mt-1">
+              {new Date(n.created_at).toLocaleDateString("es-AR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+            </p>
+          </Link>
+        ))
+      )}
+    </>
+  );
+
   if (loading || authed === false) return null;
 
   return (
     <div className="relative" ref={ref}>
       <button
-        onClick={() => setOpen(!open)}
+        ref={bellRef}
+        onClick={toggleOpen}
         className="relative p-2 text-muted-foreground hover:text-foreground"
       >
         <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -87,36 +136,24 @@ export function NotificationBell() {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-2 w-[min(20rem,calc(100vw-1.5rem))] border border-border rounded-xl bg-card shadow-lg z-50 max-h-96 overflow-y-auto">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-            <span className="font-medium text-sm">Notificaciones</span>
-            {unread > 0 && (
-              <button onClick={markAllRead} className="text-xs text-primary hover:underline">
-                Marcar todo leído
-              </button>
-            )}
+        <>
+          {/* Desktop: dropdown anclado a la campana */}
+          <div className="hidden sm:block absolute right-0 top-full mt-2 w-80 border border-border rounded-xl bg-card shadow-lg z-50 max-h-96 overflow-y-auto">
+            {panelContent}
           </div>
-          {notifications.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-8">Sin notificaciones</p>
-          ) : (
-            notifications.map((n) => (
-              <Link
-                key={n.id}
-                href={n.link || "#"}
-                onClick={() => setOpen(false)}
-                className={`block px-4 py-3 border-b border-border last:border-0 hover:bg-muted/50 ${
-                  !n.read ? "bg-primary/5" : ""
-                }`}
-              >
-                <p className="text-sm font-medium leading-tight">{n.title}</p>
-                {n.body && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{n.body}</p>}
-                <p className="text-[10px] text-muted-foreground mt-1">
-                  {new Date(n.created_at).toLocaleDateString("es-AR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
-                </p>
-              </Link>
-            ))
+
+          {/* Mobile: full-width borde a borde, anclado debajo de la campana */}
+          {createPortal(
+            <div
+              ref={panelRef}
+              className="sm:hidden fixed inset-x-0 border-y border-border bg-card shadow-lg z-[60] max-h-[60vh] overflow-y-auto"
+              style={{ top: panelTop }}
+            >
+              {panelContent}
+            </div>,
+            document.body
           )}
-        </div>
+        </>
       )}
     </div>
   );

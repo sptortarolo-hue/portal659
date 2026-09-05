@@ -211,6 +211,29 @@ export const KDS_COLUMNS: { status: OrderStatus; label: string; emoji: string }[
   { status: "sent", label: "Enviados", emoji: "🚚" },
 ];
 
+/** Etiqueta visible del número de pedido diario (ej. "Nro. 12" para comanda, "Retiro Nro. 7" para retiros). */
+export function orderNumberLabel(order: Pick<Order, "channel" | "method"> & { pickup_number?: number | null; table_name?: string | null }): string {
+  const n = order.pickup_number;
+  if (n == null) return "Nro. ?";
+
+  const channel = order.channel;
+
+  // Formato único (cantar al caja): número corto y claro por canal.
+  if (channel === "mesa") return `Mesa ${order.table_name || "—"} · Nro. ${n}`;
+  if (channel === "mostrador") {
+    if (order.method === "delivery") return `Envío Nro. ${n}`;
+    return `Mostrador Nro. ${n}`;
+  }
+  // app / otros
+  if (order.method === "delivery") return `Envío Nro. ${n}`;
+  return `Retiro Nro. ${n}`;
+}
+
+/** Versión corta pensada para chips pequeños: "Nro. 7" (o "#a1b2c3d4" si no hay número). */
+export function orderNumberShort(order: Pick<Order, "id"> & { pickup_number?: number | null }): string {
+  return order.pickup_number != null ? `Nro. ${order.pickup_number}` : `#${order.id.slice(0, 8)}`;
+}
+
 export function buildClientWhatsAppMessage(
   status: OrderStatus,
   order: Order,

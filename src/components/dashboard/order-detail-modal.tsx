@@ -180,14 +180,14 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
     }
   };
 
-  async function handlePrint() {
+  async function handlePrint(type: "comanda" | "ticket" = "comanda") {
     setPrinting(true);
     setPrintStatus(null);
     try {
       const res = await fetch("/api/print", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderId: order.id }),
+        body: JSON.stringify({ orderId: order.id, type }),
       });
       const data = await res.json();
       if (data.ok || data.skipped) {
@@ -234,7 +234,7 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
         {/* Header */}
         <div className="sticky top-0 bg-card border-b border-border px-4 py-3 flex items-center justify-between z-10">
           <div className="flex items-center gap-2 min-w-0">
-            <span className="font-mono text-xs text-muted-foreground">#{order.id.slice(0, 8)}</span>
+            <span className="font-mono text-sm font-bold text-foreground">{order.pickup_number != null ? `Nro. ${order.pickup_number}` : `#${order.id.slice(0, 8)}`}</span>
             <Badge className={ORDER_STATUS_COLORS[order.status as OrderStatus]}>
               {order.status === "ready" ? orderReadyLabel(order) : statusLabel(order.status as OrderStatus, isModa)}
             </Badge>
@@ -553,7 +553,7 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
                 <>
                   {canPrint ? (
                     <button
-                      onClick={handlePrint}
+                      onClick={() => handlePrint()}
                       disabled={printing}
                       className={`w-full h-10 rounded-xl font-bold text-sm border active:scale-[0.98] transition-all ${
                         printStatus === "ok"
@@ -606,6 +606,30 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
                 {/* En moda, cancelar antes de empaquetar = rechazar (sin stock, etc.) */}
                 {isModa && (order.status === "new" || order.status === "confirmed") ? "Rechazar pedido" : "Cancelar pedido"}
               </Button>
+            </div>
+          )}
+
+          {/* Completed: reimprimir ticket (recibo) */}
+          {isCompleted && !editing && (
+            <div className="space-y-2 pt-2 border-t border-border">
+              {canPrint ? (
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  disabled={printing}
+                  onClick={() => handlePrint("ticket")}
+                >
+                  {printing ? "🖨️ Imprimiendo..." : printStatus === "ok" ? "✅ Impreso" : printStatus === "error" ? "❌ Error al imprimir" : "🖨️ Reimprimir ticket"}
+                </Button>
+              ) : (
+                <Button
+                  variant="outline"
+                  className="w-full opacity-70"
+                  onClick={() => { window.location.href = "/planes"; }}
+                >
+                  🖨️ Reimprimir ticket — Exclusivo plan Gestión
+                </Button>
+              )}
             </div>
           )}
 

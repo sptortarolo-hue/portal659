@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { queryOne } from "@/lib/db";
 import { verifyPassword, signAccessToken } from "@/lib/auth";
+import { withRateLimit } from "@/lib/api-wrapper";
 
-export async function POST(request: Request) {
+export const POST = withRateLimit(async (request: Request) => {
   const { email, password } = await request.json();
 
   if (!email || !password) {
@@ -69,4 +70,4 @@ export async function POST(request: Request) {
   response.cookies.set("sb-refresh-token", accessToken, cookieOpts);
 
   return response;
-}
+}, { maxRequests: 15 });

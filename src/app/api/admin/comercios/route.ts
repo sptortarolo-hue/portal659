@@ -101,13 +101,18 @@ export async function PATCH(request: Request) {
   }
 
   if (action === "toggle_admin") {
-    const vendor = await queryOne<{ is_admin: boolean }>(
-      `SELECT is_admin FROM vendors WHERE id = $1`,
+    const vendor = await queryOne<{ is_admin: boolean; user_id: string | null }>(
+      `SELECT is_admin, user_id FROM vendors WHERE id = $1`,
       [vendorId]
     );
     if (!vendor) return NextResponse.json({ error: "Vendor no encontrado" }, { status: 404 });
-    await query(`UPDATE vendors SET is_admin = $1 WHERE id = $2`, [!vendor.is_admin, vendorId]);
-    return NextResponse.json({ ok: true, is_admin: !vendor.is_admin });
+    const next = !vendor.is_admin;
+    await query(`UPDATE vendors SET is_admin = $1 WHERE id = $2`, [next, vendorId]);
+    // El permiso real está en profiles.is_admin (getAuthUser lee de profiles).
+    if (vendor.user_id) {
+      await query(`UPDATE profiles SET is_admin = $1 WHERE id = $2`, [next, vendor.user_id]);
+    }
+    return NextResponse.json({ ok: true, is_admin: next });
   }
 
   if (action === "toggle_visible") {

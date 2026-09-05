@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { queryOne } from "@/lib/db";
 import { verifyPassword, signAccessToken } from "@/lib/auth";
+import { withRateLimit } from "@/lib/api-wrapper";
 
 function normalizePhone(input: string): string {
   return (input || "").replace(/\D/g, "").trim();
@@ -8,7 +9,7 @@ function normalizePhone(input: string): string {
 
 // Login del repartidor: teléfono + contraseña.
 // Solo entra si su vínculo está activo (status='active').
-export async function POST(request: Request) {
+export const POST = withRateLimit(async (request: Request) => {
   const body = await request.json().catch(() => ({}));
   const phone = normalizePhone(String(body.phone ?? ""));
   const password = String(body.password ?? "");
@@ -69,4 +70,4 @@ export async function POST(request: Request) {
   response.cookies.set("sb-access-token", accessToken, cookieOpts);
   response.cookies.set("sb-refresh-token", accessToken, cookieOpts);
   return response;
-}
+}, { maxRequests: 15 });

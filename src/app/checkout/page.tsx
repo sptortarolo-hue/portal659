@@ -170,6 +170,7 @@ export default function CheckoutPage() {
         return;
       }
 
+      const waTotal = typeof data.total === "number" ? data.total : grandTotal;
       const message = buildComandaWhatsApp({
         vendorName: v.storeName,
         items: items.map((i) => ({
@@ -178,7 +179,7 @@ export default function CheckoutPage() {
           qty: i.qty,
           modifiers: (i.modifiers || []).map((m) => m.label),
         })),
-        total: grandTotal,
+        total: waTotal,
         customerName: name,
         customerPhone: cleanPhone,
         method,

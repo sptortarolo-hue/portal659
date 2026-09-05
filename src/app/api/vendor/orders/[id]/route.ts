@@ -6,6 +6,7 @@ import { getSiteUrl } from "@/lib/site-url";
 import { NextResponse } from "next/server";
 import { canTransition } from "@/lib/order-utils";
 import { adjustStockForItems, OutOfStockError } from "@/lib/stock";
+import { PricingError, resolveOrderPricing } from "@/lib/pricing";
 import type { OrderItem, OrderStatus } from "@/types/database";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -82,13 +83,14 @@ export async function PATCH(
     return NextResponse.json({ error: "No autorizado" }, { status: 403 });
   }
 
-  const fullVendor = await queryOne<{ id: string; store_name: string; slug: string | null; block_unpaid_orders: boolean; vertical: string }>(
-    `SELECT id, store_name, slug, block_unpaid_orders, vertical FROM vendors WHERE id = $1 LIMIT 1`,
+  const fullVendor = await queryOne<{ id: string; store_name: string; slug: string | null; block_unpaid_orders: boolean; vertical: string; delivery_fee: number | null; free_delivery_min: number | null }>(
+    `SELECT id, store_name, slug, block_unpaid_orders, vertical, delivery_fee, free_delivery_min FROM vendors WHERE id = $1 LIMIT 1`,
     [vendor.id]
   );
 
   const body = await request.json();
-  const { status, estimated_minutes, items, modification_notes, payment_status } = body;
+  const { status, estimated_minutes, modification_notes, payment_status } = body;
+  const rawItems = body.items; // validado/recomputado server-side si viene
   const method = body.method;
   const customer_phone = body.customer_phone;
   const customer_address = body.customer_address;
@@ -98,10 +100,10 @@ export async function PATCH(
     method === "delivery" &&
     !status &&
     !payment_status &&
-    items === undefined &&
+    rawItems === undefined &&
     modification_notes === undefined;
 
-  const isModifyOnly = !status && !payment_status && (items !== undefined || modification_notes !== undefined);
+  const isModifyOnly = !status && !payment_status && (rawItems !== undefined || modification_notes !== undefined);
 
   if (status && !["new", "confirmed", "preparing", "ready", "sent", "completed", "cancelled"].includes(status)) {
     return NextResponse.json({ error: "Estado inválido" }, { status: 400 });
@@ -111,8 +113,8 @@ export async function PATCH(
     return NextResponse.json({ error: "Estado de pago inválido" }, { status: 400 });
   }
 
-  const currentOrder = await queryOne<{ status: string; payment_status: string; payment_method: string; channel: string; items: OrderItem[] | null }>(
-    `SELECT status, payment_status, payment_method, channel, items FROM orders WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
+  const currentOrder = await queryOne<{ status: string; payment_status: string; payment_method: string; channel: string; method: string; items: OrderItem[] | null }>(
+    `SELECT status, payment_status, payment_method, channel, method, items FROM orders WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
     [params.id, vendor.id]
   );
 
@@ -168,39 +170,57 @@ export async function PATCH(
     );
   }
 
-  const updateData: Record<string, unknown> = {};
-  if (status) updateData.status = status;
-  if (estimated_minutes !== undefined) updateData.estimated_minutes = estimated_minutes;
-  if (items !== undefined) updateData.items = JSON.stringify(items);
-  if (modification_notes !== undefined) updateData.modification_notes = modification_notes;
-  if (isConvertDelivery) {
-    updateData.method = "delivery";
-    updateData.customer_phone = (customer_phone as string).trim();
-    updateData.customer_address = typeof customer_address === "string" && customer_address.trim() ? customer_address.trim() : null;
-    updateData.pickup_number = null; // ya no es retiro: libera el número comprobante
-  }
-  if (payment_status !== undefined) {
-    updateData.payment_status = payment_status;
-    if (payment_status === "paid") updateData.paid_at = new Date().toISOString();
-  }
-
-  const setClauses: string[] = [];
-  const values: unknown[] = [params.id, vendor.id];
-  let idx = 3;
-  for (const [key, val] of Object.entries(updateData)) {
-    setClauses.push(`${key} = $${idx}`);
-    values.push(val);
-    idx++;
-  }
-
   let order: Record<string, unknown> | null = null;
   try {
     order = await withTransaction(async (tx) => {
-      // Modificación de ítems (solo en "new"): se devuelve el stock viejo y se
-      // reserva el nuevo. Solo canal app (mostrador/mesa no reservaron stock).
-      if (isModifyOnly && currentOrder.channel === "app") {
-        await adjustStockForItems(tx, currentOrder.items, "increment");
-        await adjustStockForItems(tx, items as OrderItem[], "decrement");
+      const updateData: Record<string, unknown> = {};
+      if (status) updateData.status = status;
+      if (estimated_minutes !== undefined) updateData.estimated_minutes = estimated_minutes;
+      if (modification_notes !== undefined) updateData.modification_notes = modification_notes;
+      if (isConvertDelivery) {
+        updateData.method = "delivery";
+        updateData.customer_phone = (customer_phone as string).trim();
+        updateData.customer_address = typeof customer_address === "string" && customer_address.trim() ? customer_address.trim() : null;
+        updateData.pickup_number = null; // ya no es retiro: libera el número comprobante
+      }
+      if (payment_status !== undefined) {
+        updateData.payment_status = payment_status;
+        if (payment_status === "paid") updateData.paid_at = new Date().toISOString();
+      }
+
+      // Modificación de ítems: los precios/total se recalculan server-side
+      // (desde la DB, no desde el body) para que el pedido quede coherente y
+      // el cliente no pueda forzar un precio.
+      if (isModifyOnly && rawItems !== undefined) {
+        const pricing = await resolveOrderPricing({
+          tx,
+          vendorId: vendor.id,
+          items: rawItems,
+          method: currentOrder.method,
+          deliveryFee: fullVendor?.delivery_fee,
+          freeDeliveryMin: fullVendor?.free_delivery_min,
+        });
+        updateData.items = JSON.stringify(pricing.items);
+        updateData.total = pricing.total;
+
+        // Re-stock del pedido viejo + reserva del nuevo (solo canal app; los
+        // canales presenciales no habían reservado stock al crear).
+        if (currentOrder.channel === "app") {
+          await adjustStockForItems(tx, currentOrder.items, "increment");
+          await adjustStockForItems(tx, pricing.items, "decrement");
+        }
+      }
+
+      const setClauses: string[] = [];
+      const values: unknown[] = [params.id, vendor.id];
+      let idx = 3;
+      for (const [key, val] of Object.entries(updateData)) {
+        setClauses.push(`${key} = $${idx}`);
+        values.push(val);
+        idx++;
+      }
+      if (setClauses.length === 0) {
+        throw new PricingError("Nada para actualizar");
       }
 
       const orderRows = await tx.query<Record<string, unknown>>(

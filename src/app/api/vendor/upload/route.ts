@@ -29,6 +29,11 @@ export async function POST(request: Request) {
   if (!file.type.startsWith("image/")) {
     return NextResponse.json({ error: "El archivo debe ser una imagen" }, { status: 400 });
   }
+  // NO permitimos SVG: se sirven con el mismo origen y un SVG con <script>
+  // sería un XSS si alguien abre la URL directamente.
+  if (file.type === "image/svg+xml" || (file.name || "").toLowerCase().endsWith(".svg")) {
+    return NextResponse.json({ error: "El formato SVG no está permitido por seguridad (usá JPG/PNG/WEBP)" }, { status: 400 });
+  }
   if (file.size > MAX_SIZE) {
     return NextResponse.json({ error: "La imagen debe pesar menos de 5 MB" }, { status: 400 });
   }

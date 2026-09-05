@@ -1,5 +1,5 @@
 import { getVendorByRequest } from "@/lib/vendor-utils";
-import { queryMany, queryOne, query } from "@/lib/db";
+import { queryMany, queryOne, withTransaction } from "@/lib/db";
 import { NextResponse } from "next/server";
 
 export async function GET(request: Request) {
@@ -49,8 +49,6 @@ export async function PUT(request: Request) {
   );
   if (!product) return NextResponse.json({ error: "Producto no encontrado" }, { status: 404 });
 
-  await query(`DELETE FROM product_variants WHERE product_id = $1`, [product_id]);
-
   const rows = (variants as any[]).map((v, i) => ({
     product_id,
     color: String(v.color || "").trim(),
@@ -62,13 +60,18 @@ export async function PUT(request: Request) {
     position: i,
   }));
 
-  for (const row of rows) {
-    await query(
-      `INSERT INTO product_variants (product_id, color, talle, price, promo, stock, sku, position)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-      [row.product_id, row.color, row.talle, row.price, row.promo, row.stock, row.sku, row.position]
-    );
-  }
+  // Transacción atómica: si un INSERT falla en el medio, no quedan variantes
+  // parciales (antes iba DELETE + INSERT sueltos y un fallo corrompía el menú).
+  await withTransaction(async (tx) => {
+    await tx.queryVoid(`DELETE FROM product_variants WHERE product_id = $1`, [product_id]);
+    for (const row of rows) {
+      await tx.queryVoid(
+        `INSERT INTO product_variants (product_id, color, talle, price, promo, stock, sku, position)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [row.product_id, row.color, row.talle, row.price, row.promo, row.stock, row.sku, row.position]
+      );
+    }
+  });
 
   return NextResponse.json({ ok: true });
 }

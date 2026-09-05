@@ -311,15 +311,18 @@ function VendorDashboardInner() {
         setMsg(`Error: ${err}`);
         return { ok: false, error: String(err) };
       }
-      const total = items.reduce((sum, item) => sum + item.price * item.qty, 0);
+      const total = Number(data.order?.total ?? items.reduce((sum, item) => sum + item.price * item.qty, 0));
+      // El server devuelve items/total recalculados: usar esos (precios DB, no locales).
+      const resolvedItems = (data.order?.items as OrderItem[] | undefined) ?? items;
+      const resolvedNotes = (data.order?.modification_notes as string | null | undefined) ?? modificationNotes;
       setMsg(`Pedido #${orderId.slice(0, 8)} modificado`);
       setOrders((prev) =>
         prev.map((o) =>
-          o.id === orderId ? { ...o, items, modification_notes: modificationNotes, total } : o
+          o.id === orderId ? { ...o, items: resolvedItems, modification_notes: resolvedNotes ?? null, total } : o
         )
       );
       setSelectedOrder((prev) =>
-        prev && prev.id === orderId ? { ...prev, items, modification_notes: modificationNotes, total } : prev
+        prev && prev.id === orderId ? { ...prev, items: resolvedItems, modification_notes: resolvedNotes ?? null, total } : prev
       );
       return { ok: true };
     } catch (err) {

@@ -7,7 +7,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "No autorizado" }, { status: 403 });
   }
 
-  const [vendors, orders, reviews, products] = await Promise.all([
+  const [vendors, orders, reviews, products, stats] = await Promise.all([
     queryMany(
       `SELECT * FROM vendors ORDER BY created_at DESC`
     ),
@@ -21,21 +21,28 @@ export async function GET(request: Request) {
        LEFT JOIN vendors v ON v.id = r.vendor_id
        ORDER BY r.created_at DESC LIMIT 50`
     ),
+    // Para listados podemos dejarlo en una cantidad razonable.
     queryMany<Record<string, unknown>>(
       `SELECT id, name, price, available, vendor_id FROM products
-       ORDER BY created_at DESC`
+       ORDER BY created_at DESC LIMIT 500`
+    ),
+    // Agregados: totales reales desde SQL, no desde el subset de arriba.
+    queryOne<{
+      total_orders: string;
+      total_products: string;
+      total_reviews: string;
+      total_revenue: string | null;
+      avg_rating: string | null;
+    }>(
+      `SELECT
+         (SELECT COUNT(*)::bigint FROM orders)       AS total_orders,
+         (SELECT COUNT(*)::bigint FROM products)     AS total_products,
+         (SELECT COUNT(*)::bigint FROM reviews)      AS total_reviews,
+         (SELECT COALESCE(SUM(total)::numeric, 0)
+            FROM orders WHERE status = 'completed')  AS total_revenue,
+         (SELECT ROUND(AVG(rating)::numeric, 1) FROM reviews) AS avg_rating`
     ),
   ]);
-
-  const totalProducts = products.length;
-  const totalRevenue =
-    orders
-      .filter((o: any) => o.status !== "cancelled")
-      .reduce((s: number, o: any) => s + Number(o.total), 0) || 0;
-  const avgRating =
-    reviews.length > 0
-      ? reviews.reduce((s: number, r: any) => s + r.rating, 0) / reviews.length
-      : 0;
 
   return NextResponse.json({
     vendors,
@@ -43,11 +50,11 @@ export async function GET(request: Request) {
     reviews,
     stats: {
       totalVendors: vendors.length,
-      totalOrders: orders.length,
-      totalProducts,
-      totalReviews: reviews.length,
-      totalRevenue,
-      avgRating: Math.round(avgRating * 10) / 10,
+      totalOrders: Number(stats?.total_orders ?? 0),
+      totalProducts: Number(stats?.total_products ?? 0),
+      totalReviews: Number(stats?.total_reviews ?? 0),
+      totalRevenue: Number(stats?.total_revenue ?? 0),     // solo pedidos entregados
+      avgRating: Number(stats?.avg_rating ?? 0),
     },
   });
 }
@@ -75,13 +82,18 @@ export async function PATCH(request: Request) {
   }
 
   if (action === "toggle_admin") {
-    const vendor = await queryOne<{ is_admin: boolean }>(
-      `SELECT is_admin FROM vendors WHERE id = $1`,
+    const vendor = await queryOne<{ is_admin: boolean; user_id: string | null }>(
+      `SELECT is_admin, user_id FROM vendors WHERE id = $1`,
       [vendorId]
     );
     if (!vendor) return NextResponse.json({ error: "Vendor no encontrado" }, { status: 404 });
-    await query(`UPDATE vendors SET is_admin = $1 WHERE id = $2`, [!vendor.is_admin, vendorId]);
-    return NextResponse.json({ ok: true });
+    const next = !vendor.is_admin;
+    await query(`UPDATE vendors SET is_admin = $1 WHERE id = $2`, [next, vendorId]);
+    // El permiso real está en profiles.is_admin: sincronizar.
+    if (vendor.user_id) {
+      await query(`UPDATE profiles SET is_admin = $1 WHERE id = $2`, [next, vendor.user_id]);
+    }
+    return NextResponse.json({ ok: true, is_admin: next });
   }
 
   return NextResponse.json({ error: "Acción inválida" }, { status: 400 });

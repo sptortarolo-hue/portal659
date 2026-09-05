@@ -3,8 +3,9 @@ import { createHash, randomBytes } from "crypto";
 import { query } from "@/lib/db";
 import { sendEmail } from "@/lib/email";
 import { getSiteUrl } from "@/lib/site-url";
+import { withRateLimit } from "@/lib/api-wrapper";
 
-export async function POST(request: Request) {
+export const POST = withRateLimit(async (request: Request) => {
   const { email } = await request.json();
   if (!email) {
     return NextResponse.json({ error: "Email es requerido" }, { status: 400 });
@@ -37,4 +38,4 @@ export async function POST(request: Request) {
   });
 
   return NextResponse.json({ ok: true });
-}
+}, { maxRequests: 10 });

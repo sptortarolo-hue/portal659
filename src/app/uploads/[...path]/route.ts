@@ -33,12 +33,19 @@ export async function GET(
   try {
     const data = await readFile(full);
     const ext = (path.extname(full) || "").replace(".", "").toLowerCase();
-    return new NextResponse(data, {
-      headers: {
-        "Content-Type": MIME[ext] || "application/octet-stream",
-        "Cache-Control": "public, max-age=31536000, immutable",
-      },
-    });
+    // nosniff: si el navegador huele un tipo de contenido distinto, no lo usa.
+    const headers: Record<string, string> = {
+      "Content-Type": MIME[ext] || "application/octet-stream",
+      "Cache-Control": "public, max-age=31536000, immutable",
+      "X-Content-Type-Options": "nosniff",
+    };
+    // SVG: por las dudas (un SVG con script sería XSS del mismo origen) no se
+    // renderiza inline, sino que fuerza descarga.
+    if (ext === "svg") {
+      headers["Content-Type"] = "image/svg+xml";
+      headers["Content-Disposition"] = "attachment; filename=\"file.svg\"";
+    }
+    return new NextResponse(data, { headers });
   } catch {
     return new NextResponse("Not found", { status: 404 });
   }

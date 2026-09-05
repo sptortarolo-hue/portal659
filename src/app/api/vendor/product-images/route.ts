@@ -1,5 +1,5 @@
 import { getVendorByRequest } from "@/lib/vendor-utils";
-import { queryMany, queryOne, query } from "@/lib/db";
+import { queryMany, queryOne, withTransaction } from "@/lib/db";
 import { NextResponse } from "next/server";
 
 export async function GET(request: Request) {
@@ -49,19 +49,19 @@ export async function PUT(request: Request) {
   );
   if (!product) return NextResponse.json({ error: "Producto no encontrado" }, { status: 404 });
 
-  await query(`DELETE FROM product_images WHERE product_id = $1`, [product_id]);
-
   const rows = (images as string[])
     .filter((url) => url && url.trim())
     .map((url, i) => ({ product_id, image_url: url.trim(), position: i }));
 
-  if (rows.length === 0) return NextResponse.json({ ok: true });
-
-  for (const row of rows) {
-    await query(
-      `INSERT INTO product_images (product_id, image_url, position) VALUES ($1, $2, $3)`,
-      [row.product_id, row.image_url, row.position]
-    );
-  }
+  // Atomicidad: si un INSERT falla a mitad, las imágenes no quedan corruptas.
+  await withTransaction(async (tx) => {
+    await tx.queryVoid(`DELETE FROM product_images WHERE product_id = $1`, [product_id]);
+    for (const row of rows) {
+      await tx.queryVoid(
+        `INSERT INTO product_images (product_id, image_url, position) VALUES ($1, $2, $3)`,
+        [row.product_id, row.image_url, row.position]
+      );
+    }
+  });
   return NextResponse.json({ ok: true });
 }

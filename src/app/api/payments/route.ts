@@ -1,6 +1,9 @@
-import { queryOne } from "@/lib/db";
+import { queryMany, queryOne } from "@/lib/db";
 import { getSiteUrl } from "@/lib/site-url";
 import { NextResponse } from "next/server";
+import { resolveVendorPlan } from "@/lib/plans";
+import { isStoreOpen } from "@/lib/open-hours";
+import { PricingError, resolveOrderPricing } from "@/lib/pricing";
 
 // Mercado Pago Preference API
 // Docs: https://www.mercadopago.com.ar/developers/en/docs/checkout-pro/landing
@@ -17,20 +20,54 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json();
-  const { vendorId, items, total, customerName, customerPhone, customerAddress, method } = body;
+  const { vendorId, items, customerName, customerPhone, customerAddress, method } = body;
 
-  if (!vendorId || !items || !total) {
+  if (!vendorId || !items || !Array.isArray(items) || items.length === 0) {
     return NextResponse.json({ error: "Faltan datos" }, { status: 400 });
   }
 
-  const vendor = await queryOne<{ store_name: string; slug: string }>(
-    `SELECT store_name, slug FROM vendors WHERE id = $1 LIMIT 1`,
+  const vendor = await queryOne<Record<string, unknown>>(
+    `SELECT id, store_name, slug, vertical, plan_id, plan_status, plan_expires_at, trial_ends_at, hours, open_override, delivery_fee, free_delivery_min FROM vendors WHERE id = $1 LIMIT 1`,
     [vendorId]
   );
+  if (!vendor) {
+    return NextResponse.json({ error: "Comercio no encontrado" }, { status: 404 });
+  }
+
+  // Mismo gating que pedidos online: plan con cart + abierto.
+  const plans = await queryMany<Record<string, unknown>>(`SELECT * FROM plans`);
+  const plan = resolveVendorPlan(vendor as any, plans as any);
+  if (!plan.can("cart")) {
+    return NextResponse.json(
+      { error: "Este comercio no acepta pagos online por ahora." },
+      { status: 403 }
+    );
+  }
+  if (isStoreOpen(vendor as any) === false) {
+    return NextResponse.json({ error: "El comercio está cerrado ahora." }, { status: 409 });
+  }
+
+  // Precios/stock/monedas se computan desde la base, nunca del cliente.
+  let pricing;
+  try {
+    pricing = await resolveOrderPricing({
+      tx: { query: queryMany },
+      vendorId,
+      items,
+      method,
+      deliveryFee: (vendor as any).delivery_fee,
+      freeDeliveryMin: (vendor as any).free_delivery_min,
+    });
+  } catch (e) {
+    if (e instanceof PricingError) {
+      return NextResponse.json({ error: e.message }, { status: 400 });
+    }
+    throw e;
+  }
 
   try {
     const preference = {
-      items: items.map((i: any) => ({
+      items: pricing.items.map((i) => ({
         title: i.name,
         unit_price: i.price,
         quantity: i.qty,
@@ -45,13 +82,14 @@ export async function POST(request: Request) {
         customer_phone: customerPhone,
         customer_address: customerAddress || "",
         delivery_method: method || "delivery",
-        // JSON string: referencias para descontar stock al aprobarse el pago.
+        // items resueltos server-side: las ids vienen de la DB.
         stock_items: JSON.stringify(
-          items.map((i: any) => ({
-            variant_id: typeof i.variantId === "string" ? i.variantId : null,
-            product_id: typeof i.offerId === "string" ? i.offerId : null,
-            qty: Number(i.qty) || 1,
+          pricing.items.map((i) => ({
+            variant_id: i.variant_id || null,
+            product_id: i.product_id || null,
+            qty: i.qty,
             name: i.name,
+            price: i.price,
           }))
         ),
       },
@@ -81,6 +119,7 @@ export async function POST(request: Request) {
         preferenceId: data.id,
         initPoint: data.init_point,
         sandboxInitPoint: data.sandbox_init_point,
+        total: pricing.total,
       });
     }
 

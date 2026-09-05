@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 import { createHash } from "crypto";
 import { queryOne, query } from "@/lib/db";
 import { hashPassword } from "@/lib/auth";
+import { withRateLimit } from "@/lib/api-wrapper";
 
-export async function POST(request: Request) {
+export const POST = withRateLimit(async (request: Request) => {
   const { token, password } = await request.json();
 
   if (!token || !password) {
@@ -30,4 +31,4 @@ export async function POST(request: Request) {
   );
 
   return NextResponse.json({ ok: true });
-}
+}, { maxRequests: 10 });

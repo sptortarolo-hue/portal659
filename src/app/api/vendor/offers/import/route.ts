@@ -20,6 +20,7 @@ type CleanedItem = {
   price: number;
   category?: string | null;
   description?: string | null;
+  modifiers?: { desc: string; price_mod: number }[];
 };
 
 // Headers reconocidos por campo (para detectar la fila de encabezado y mapear)
@@ -49,6 +50,21 @@ function fieldForHeader(raw: string): keyof typeof HEADER_ALIASES | null {
 }
 
 /**
+ * Detecta un encabezado de modificante: "Modificante 1 descripcion" / "Modificante 1 precio".
+ * Devuelve la key (`mod1_desc`, `mod1_price`) o null.
+ */
+function modifierKeyForHeader(raw: string): string | null {
+  const k = normKey(raw);
+  if (!k) return null;
+  const m = k.match(/^modificante(\d+)(desc|precio|price|descripcion)$/);
+  if (!m) return null;
+  const n = m[1];
+  const kind = m[2];
+  if (kind === "desc" || kind === "descripcion") return `mod${n}_desc`;
+  return `mod${n}_price`;
+}
+
+/**
  * Lee la primera hoja como array de arrays y detecta la fila de encabezado
  * (la primera donde aparezcan headers de nombre + precio). Devuelve objetos
  * `{ header: valor }` para las filas de datos que siguen.
@@ -66,9 +82,9 @@ async function parseWorkbook(buf: Buffer): Promise<Record<string, unknown>[]> {
 
   // detectar fila de encabezado
   let headerRowIdx = -1;
-  let headerMap: number[] = []; // index de columna -> campo
+  let headerMap: (number | string)[] = []; // index de columna -> campo (1-4) o key de modificante
   for (let i = 0; i < rows.length && headerRowIdx < 0; i++) {
-    const fields: number[] = [];
+    const fields: (number | string)[] = [];
     let hasName = false;
     let hasPrice = false;
     for (let c = 0; c < rows[i].length; c++) {
@@ -77,6 +93,9 @@ async function parseWorkbook(buf: Buffer): Promise<Record<string, unknown>[]> {
         fields[c] = field === "name" ? 1 : field === "price" ? 2 : field === "category" ? 3 : 4;
         if (field === "name") hasName = true;
         if (field === "price") hasPrice = true;
+      } else {
+        const modKey = modifierKeyForHeader(rows[i][c]);
+        if (modKey) fields[c] = modKey;
       }
     }
     if (hasName && hasPrice) {
@@ -107,7 +126,14 @@ async function parseWorkbook(buf: Buffer): Promise<Record<string, unknown>[]> {
       const val = rows[i][c];
       if (val != null && val !== "") nonEmpty = true;
       const field = headerMap[c];
-      const key = field ? HEADER_ALIASES[(field === 1 ? "name" : field === 2 ? "price" : field === 3 ? "category" : "description") as keyof typeof HEADER_ALIASES][0] : (headers[c] || `col${c}`);
+      let key: string;
+      if (typeof field === "number") {
+        key = HEADER_ALIASES[(field === 1 ? "name" : field === 2 ? "price" : field === 3 ? "category" : "description") as keyof typeof HEADER_ALIASES][0];
+      } else if (field) {
+        key = field; // "mod1_desc", "mod1_price", ...
+      } else {
+        key = headers[c] || `col${c}`;
+      }
       obj[key] = val;
     }
     if (nonEmpty) out.push(obj);
@@ -195,6 +221,7 @@ export async function POST(request: Request) {
         price: it.price,
         category: it.category || "",
         description: it.description || "",
+        modifiers: it.modifiers || [],
       })),
     });
   }
@@ -283,16 +310,20 @@ export async function POST(request: Request) {
           [vendor.id, name]
         );
 
+        let productId: string;
+
         if (existing) {
           await tx.queryVoid(
             `UPDATE products SET price = $1, category = $2, description = $3, available = true WHERE id = $4`,
             [price, (it.category || "").trim() || "otras", it.description || null, existing.id]
           );
+          productId = existing.id;
           updated++;
         } else {
-          await tx.queryVoid(
+          const rows = await tx.query<{ id: string }>(
             `INSERT INTO products (vendor_id, name, description, price, currency, category, neighborhood, type, available, featured_today)
-             VALUES ($1, $2, $3, $4, 'ARS', $5, $6, 'food', true, false)`,
+             VALUES ($1, $2, $3, $4, 'ARS', $5, $6, 'food', true, false)
+             RETURNING id`,
             [
               vendor.id,
               name,
@@ -302,7 +333,36 @@ export async function POST(request: Request) {
               fullVendor?.neighborhood || null,
             ]
           );
+          productId = rows[0]?.id ?? "";
           imported++;
+        }
+
+        // Modificantes del producto (columnas "Modificante N descripción/precio").
+        // Un solo grupo "Opciones" con todas las opciones detectadas.
+        const opts = (Array.isArray(it.modifiers) ? it.modifiers : [])
+          .map((m) => ({ label: String(m.desc ?? "").trim(), price_mod: Number(m.price_mod) || 0 }))
+          .filter((o) => o.label !== "");
+        if (opts.length > 0) {
+          if (existing) {
+            // Solo si el producto aún no tiene modificantes (no duplicar al re-importar).
+            const hasMods = await tx.queryOne<{ c: number }>(
+              `SELECT count(*)::int AS c FROM product_modifiers WHERE product_id = $1`,
+              [productId]
+            );
+            if (!hasMods || hasMods.c === 0) {
+              await tx.queryVoid(
+                `INSERT INTO product_modifiers (product_id, group_name, options, required, max_selections, position)
+                 VALUES ($1, 'Opciones', $2, false, 1, 0)`,
+                [productId, JSON.stringify(opts)]
+              );
+            }
+          } else {
+            await tx.queryVoid(
+              `INSERT INTO product_modifiers (product_id, group_name, options, required, max_selections, position)
+               VALUES ($1, 'Opciones', $2, false, 1, 0)`,
+              [productId, JSON.stringify(opts)]
+            );
+          }
         }
       }
       return { imported, updated };

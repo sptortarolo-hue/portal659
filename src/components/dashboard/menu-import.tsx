@@ -9,6 +9,7 @@ type EditableItem = {
   price: string;
   category: string;
   description: string;
+  modifiers?: { desc: string; price_mod: number }[];
 };
 
 type AnalyzeResult = {
@@ -139,8 +140,10 @@ export function MenuImportModal({ open, onClose, onImported }: Props) {
         >
           <p className="text-sm text-muted-foreground">
             Subí un archivo <strong>.xlsx</strong> con columnas{" "}
-            <strong>nombre, precio, categoría y descripción</strong> (en cualquier orden o nombre). Primero
-            se analiza y te mostramos un preview editable antes de importar.
+            <strong>nombre, precio, categoría y descripción</strong> (en cualquier orden o nombre). Opcionalmente
+            podés agregar columnas <strong>"Modificante 1 descripción"</strong> + <strong>"Modificante 1 precio"</strong>,{" "}
+            <strong>"Modificante 2 descripción"</strong> + <strong>"Modificante 2 precio"</strong>, etc. — se cargan
+            como opciones del producto. Primero se analiza y te mostramos un preview editable antes de importar.
           </p>
           <label className="block">
             <span className="text-sm font-medium">Archivo Excel</span>
@@ -184,12 +187,13 @@ export function MenuImportModal({ open, onClose, onImported }: Props) {
                     <th className="p-2 font-medium">Nombre</th>
                     <th className="p-2 w-24 font-medium">Precio</th>
                     <th className="p-2 w-32 font-medium">Categoría</th>
+                    <th className="p-2 font-medium">Opciones</th>
                     <th className="p-2 w-8"></th>
                   </tr>
                 </thead>
                 <tbody>
                   {items.map((it, i) => (
-                    <tr key={i} className="border-b border-border last:border-0">
+                    <tr key={i} className="border-b border-border last:border-0 align-top">
                       <td className="p-1">
                         <input
                           className="w-full rounded-md border border-input bg-transparent px-2 py-1 text-sm"
@@ -211,6 +215,20 @@ export function MenuImportModal({ open, onClose, onImported }: Props) {
                           value={it.category}
                           onChange={(e) => updateItem(i, "category", e.target.value)}
                         />
+                      </td>
+                      <td className="p-1">
+                        {it.modifiers && it.modifiers.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {it.modifiers.map((m, mi) => (
+                              <span key={mi} className="inline-flex items-center gap-1 text-[10px] rounded-full bg-muted px-2 py-0.5 text-muted-foreground">
+                                {m.desc}
+                                {Number(m.price_mod) > 0 && <span className="text-primary font-medium">+${Number(m.price_mod).toLocaleString("es-AR")}</span>}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-muted-foreground/60">—</span>
+                        )}
                       </td>
                       <td className="p-1 text-center">
                         <button

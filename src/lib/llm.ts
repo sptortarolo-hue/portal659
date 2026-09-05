@@ -10,6 +10,8 @@ export type CleanedMenuItem = {
   description?: string | null;
   price: number;
   category?: string | null;
+  /** Opciones del modificante (columna "Modificante N descripción/precio" del Excel). */
+  modifiers?: { desc: string; price_mod: number }[];
 };
 
 export type CleanMenuResult = {
@@ -93,6 +95,34 @@ function cleanMenuByRules(rows: Row[]): CleanedMenuItem[] {
     const item: CleanedMenuItem = { name, price: price ?? 0 };
     if (category) item.category = category;
     if (description) item.description = description;
+
+    // Modificantes: columnas "Modificante N descripcion" / "Modificante N precio"
+    // (nombres que arma parseWorkbook como mod1_desc, mod1_price, mod2_desc, ...).
+    const mods: { desc: string; price_mod: number }[] = [];
+    const modByN: Record<number, { desc?: string; price_mod?: number }> = {};
+    for (const [k, v] of Object.entries(row)) {
+      const key = String(k).trim().toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+      const m = key.match(/^mod(\d+)(desc|price)$/);
+      if (!m) continue;
+      const n = Number(m[1]);
+      const kind = m[2];
+      if (!modByN[n]) modByN[n] = {};
+      if (kind === "desc") {
+        const s = toString(v);
+        if (s) modByN[n].desc = s;
+      } else {
+        const p = toNumber(v);
+        if (p != null) modByN[n].price_mod = p;
+      }
+    }
+    for (const n of Object.keys(modByN)
+      .map(Number)
+      .sort((a, b) => a - b)) {
+      const m = modByN[n];
+      if (m.desc) mods.push({ desc: m.desc, price_mod: m.price_mod ?? 0 });
+    }
+    if (mods.length > 0) item.modifiers = mods;
+
     items.push(item);
   }
   return items;
@@ -108,13 +138,14 @@ async function cleanMenuWithLlm(
 
   const system = `Sos un asistente que limpia y estructura el menú de un comercio gastronómico a partir de filas de una planilla de Excel. Devolvés SOLO un JSON válido (sin texto adicional) con forma:
 
-[{"name": string, "price": number, "category": string|null, "description": string|null}, ...]
+[{"name": string, "price": number, "category": string|null, "description": string|null, "modifiers": [{"desc": string, "price_mod": number}]}, ...]
 
 Reglas:
 - "name": nombre del plato (obligatorio). Si una fila no tiene nombre claro, omitila.
 - "price": número sin símbolos ni separadores. Si viene "1.500" interpretalo como 1500. Coma es decimal.
 - "category": categoría del menú. Usa una de las existentes si matchea (case-insensitive), si no una nueva breve (ej. "Pizzas", "Bebidas").
 - "description": descripción limpia, o null si no hay.
+- "modifiers": opciones del modificante. Vienen de columnas "Modificante N descripcion" y "Modificante N precio" de la fila (claves mod1_desc/mod1_price, etc.). Armá un arreglo con la descripción y su precio (0 si no hay precio). Si no hay ninguna, dejá [].
 - Ignorá filas vacías, títulos de sección duplicados, o totales.
 - No inventes precios: si no hay precio claro, pon 0.`;
 
@@ -156,6 +187,17 @@ Reglas:
       if (cat) item.category = cat;
       const desc = toString(it?.description);
       if (desc) item.description = desc;
+      const mods = Array.isArray(it?.modifiers)
+        ? it.modifiers
+            .map((m: any) => {
+              const d = toString(m?.desc);
+              if (!d) return null;
+              const p = toNumber(String(m?.price_mod ?? m?.price ?? ""));
+              return { desc: d, price_mod: p ?? 0 };
+            })
+            .filter((m: any): m is { desc: string; price_mod: number } => m !== null)
+        : [];
+      if (mods.length > 0) item.modifiers = mods;
       return item;
     })
     .filter((x): x is CleanedMenuItem => x !== null);

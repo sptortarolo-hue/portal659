@@ -234,11 +234,28 @@ const modifiersByProduct: Record<string, any[]> = {};
       <div className="container mx-auto px-4 max-w-4xl">
         {/* Store info card */}
         <div className="-mt-12 relative z-10 rounded-2xl border border-border bg-card p-6 shadow-lg">
+          {/* Mobile: fila logo (izq) + Ir a comprar al extremo opuesto (der), misma altura */}
+          <div className="flex sm:hidden items-center justify-between mb-3">
+            {v.logo_url ? (
+              <img
+                src={v.logo_url}
+                alt={`Logo de ${v.store_name}`}
+                className="h-12 w-12 rounded-full object-cover border-2 border-white shadow-md"
+              />
+            ) : (
+              <div className="h-12 w-12 rounded-full bg-accent flex items-center justify-center">
+                <span className="font-bold text-primary">{v.store_name.charAt(0)}</span>
+              </div>
+            )}
+            {!isService && !isModa && (offers?.length || 0) > 0 && <IrAComprarButton />}
+          </div>
+
+          {/* Desktop: logo sigue arriba como siempre */}
           {v.logo_url && (
             <img
               src={v.logo_url}
               alt={`Logo de ${v.store_name}`}
-              className="h-16 w-16 rounded-full object-cover mb-3 border-2 border-white shadow-md"
+              className="hidden sm:block h-16 w-16 rounded-full object-cover mb-3 border-2 border-white shadow-md"
             />
           )}
           <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
@@ -258,7 +275,9 @@ const modifiersByProduct: Record<string, any[]> = {};
               )}
             </div>
             <div className="flex items-center gap-2 ml-auto shrink-0">
-              {!isService && !isModa && (offers?.length || 0) > 0 && <IrAComprarButton />}
+              <span className="hidden sm:inline-flex">
+                {!isService && !isModa && (offers?.length || 0) > 0 && <IrAComprarButton />}
+              </span>
               <FavoriteButton vendorId={v.id} />
               <WhatsAppShareButton slug={v.slug} storeName={v.store_name} />
               <VendorShareButton slug={v.slug} storeName={v.store_name} />

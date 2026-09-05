@@ -34,9 +34,16 @@ export function CategoryNav({ sections }: { sections: { name: string }[] }) {
   }, [sections]);
 
   useEffect(() => {
-    if (!navRef.current) return;
-    const pill = navRef.current.querySelector<HTMLButtonElement>(`[data-index="${active}"]`);
-    pill?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
+    const nav = navRef.current;
+    if (!nav) return;
+    const pill = nav.querySelector<HTMLButtonElement>(`[data-index="${active}"]`);
+    if (!pill) return;
+    // Scroll horizontal SOLO del nav (sin tocar el scroll de la página, para
+    // no cortar el smooth-scroll de ScrollToProduct de ?oferta=ID).
+    const pr = pill.getBoundingClientRect();
+    const nr = nav.getBoundingClientRect();
+    const left = nav.scrollLeft + (pr.left - nr.left) - (nav.clientWidth - pr.width) / 2;
+    nav.scrollTo({ left, behavior: "smooth" });
   }, [active]);
 
   function goTo(i: number) {

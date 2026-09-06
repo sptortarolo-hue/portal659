@@ -2,6 +2,8 @@
 
 Guía paso a paso para darse de alta como comercio gastronómico en Portal 659.
 
+> **Solo gastronomía** — Estos manuales están pensados para comercios de comida. Próximamente sumamos guías para otras verticales.
+
 ---
 
 ## 1. Entrá a Portal 659

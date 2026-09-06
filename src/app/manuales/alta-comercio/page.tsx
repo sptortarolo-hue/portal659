@@ -14,9 +14,12 @@ export default function AltaComercioPage() {
         <Logo markClassName="h-9 w-9 text-primary" />
         <h1 className="font-display text-2xl font-semibold">Alta del comercio gastronómico</h1>
       </div>
-      <p className="text-muted-foreground mb-8 text-sm">
+      <p className="text-muted-foreground mb-4 text-sm">
         Guía paso a paso para darse de alta como comercio gastronómico en Portal 659.
       </p>
+      <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-xl px-4 py-3 text-sm mb-8">
+        <strong>Solo gastronomía</strong> — Próximamente sumamos guías para otras verticales.
+      </div>
 
       <section className="space-y-8 text-sm leading-relaxed text-foreground">
 

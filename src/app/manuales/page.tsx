@@ -13,9 +13,12 @@ export default function ManualesPage() {
         <Logo markClassName="h-9 w-9 text-primary" />
         <h1 className="font-display text-2xl font-semibold">Manuales del comercio</h1>
       </div>
-      <p className="text-muted-foreground mb-8">
+      <p className="text-muted-foreground mb-4">
         Guías completas para darte de alta y gestionar tus pedidos en Portal 659.
       </p>
+      <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-xl px-4 py-3 text-sm mb-8">
+        <strong>Solo gastronomía</strong> — Estos manuales están pensados para comercios de comida. Próximamente sumamos guías para otras verticales.
+      </div>
 
       <div className="space-y-4">
         <Link

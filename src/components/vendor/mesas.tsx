@@ -222,7 +222,7 @@ export function Mesas() {
 
   const cartLine = (i: (typeof cart)[number]) => (
     <div key={`${i.product_id}|${(i.modifiers || []).map((m) => m.label).join(",")}`} className="flex items-center gap-2 text-xs">
-      <span className="flex-1 truncate">{i.name}</span>
+      <span className="flex-1 line-clamp-2">{i.name}</span>
       <div className="flex items-center gap-1">
         <button type="button" onClick={() => changeQty(i.product_id, -1)} className="h-6 w-6 rounded-md bg-muted hover:bg-accent">−</button>
         <span className="w-5 text-center tabular-nums">{i.qty}</span>
@@ -381,7 +381,7 @@ export function Mesas() {
               )}
             </div>
             <div className="p-1.5">
-              <p className="text-[10px] font-medium truncate">{p.name}</p>
+              <p className="text-[10px] font-medium line-clamp-2">{p.name}</p>
               <p className="text-[11px] font-semibold text-primary tabular-nums">
                 ${Number(p.promo_price ?? p.price).toLocaleString("es-AR")}
               </p>
@@ -652,7 +652,7 @@ export function Mesas() {
                           )}
                         </div>
                         <div className="p-1.5">
-                          <p className="text-[10px] font-medium truncate">{p.name}</p>
+                          <p className="text-[10px] font-medium line-clamp-2">{p.name}</p>
                           <p className="text-[11px] font-semibold text-primary tabular-nums">
                             ${Number(p.promo_price ?? p.price).toLocaleString("es-AR")}
                           </p>

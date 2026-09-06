@@ -332,7 +332,7 @@ export function Mostrador() {
               )}
             </div>
             <div className="p-2">
-              <p className="text-xs font-medium truncate">{p.name}</p>
+              <p className="text-xs font-medium line-clamp-2">{p.name}</p>
               <div className="flex items-baseline gap-1 mt-0.5">
                 <span className="text-sm font-semibold text-primary tabular-nums">
                   ${Number(p.promo_price ?? p.price).toLocaleString("es-AR")}
@@ -360,7 +360,7 @@ export function Mostrador() {
         {items.length === 0 && <p className="text-xs text-muted-foreground text-center py-6">Tocá productos para armar el pedido</p>}
         {items.map((i) => (
           <div key={`${i.product_id}|${(i.modifiers || []).map((m) => m.label).join(",")}`} className="flex items-center gap-2 text-sm">
-            <span className="flex-1 truncate">
+            <span className="flex-1 line-clamp-2">
               {i.name}
               {(i.modifiers || []).length > 0 && (
                 <span className="block text-[10px] text-muted-foreground truncate">

@@ -2,6 +2,8 @@
 
 Guía completa para recibir, gestionar y despachar pedidos gastronómicos en Portal 659.
 
+> **Solo gastronomía** — Estos manuales están pensados para comercios de comida. Próximamente sumamos guías para otras verticales.
+
 ---
 
 ## 1. ¿Cómo llegan los pedidos?

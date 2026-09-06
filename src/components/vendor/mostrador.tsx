@@ -79,6 +79,7 @@ export function Mostrador() {
   const [convertPhone, setConvertPhone] = useState("");
   const [convertAddress, setConvertAddress] = useState("");
   const [converting, setConverting] = useState(false);
+  const [notes, setNotes] = useState("");
 
   const total = useMemo(() => items.reduce((s, i) => s + i.price * i.qty, 0), [items]);
 
@@ -181,6 +182,7 @@ export function Mostrador() {
         method,
         customerPhone: isDelivery ? customerPhone : undefined,
         customerAddress: isDelivery ? customerAddress : undefined,
+        notes: notes.trim() || null,
       }),
     });
     const data = await res.json().catch(() => ({}));
@@ -223,6 +225,7 @@ export function Mostrador() {
     setCustomerName("");
     setCustomerPhone("");
     setCustomerAddress("");
+    setNotes("");
     setSheetOpen(false);
     setSaving(false);
     setRecent((prev) =>
@@ -404,6 +407,14 @@ export function Mostrador() {
           value={customerName}
           onChange={(e) => setCustomerName(e.target.value)}
           placeholder="Nombre del cliente (opcional)"
+          className="w-full h-9 px-3 text-xs rounded-lg border border-input bg-background"
+        />
+
+        <input
+          type="text"
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          placeholder="📝 Instrucciones especiales (ej: sin cebolla, extra picante, cortar al medio)"
           className="w-full h-9 px-3 text-xs rounded-lg border border-input bg-background"
         />
 

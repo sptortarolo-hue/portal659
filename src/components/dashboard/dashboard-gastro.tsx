@@ -178,6 +178,14 @@ export default function DashboardGastro({
   );
   const [queueLoading, setQueueLoading] = useState(false);
 
+  const [printerSectionOpen, setPrinterSectionOpen] = useState(false);
+
+  useEffect(() => {
+    const handler = () => setPrinterSectionOpen(true);
+    window.addEventListener("portal:open-printer-config", handler);
+    return () => window.removeEventListener("portal:open-printer-config", handler);
+  }, []);
+
   useEffect(() => {
     setStoreName(vendor?.store_name || "");
     setStoreCategory(vendor?.category || "otras");
@@ -849,7 +857,7 @@ export default function DashboardGastro({
         <StaffManager storeName={vendor?.store_name} />
       </CollapsibleSection>
 
-      <CollapsibleSection icon="🖨️" title="Impresora térmica">
+      <CollapsibleSection id="printer-config" icon="🖨️" title="Impresora térmica" open={printerSectionOpen} onToggle={setPrinterSectionOpen}>
         <div className="space-y-3">
           <div>
             <Label>Cómo imprime</Label>

@@ -655,22 +655,29 @@ function VendorDashboardInner() {
       )}
       <div className="sticky top-0 z-40 bg-background border-b border-border">
 		<div className="container mx-auto px-4 py-3 flex items-center gap-3">
+          {/* Logo: oculto en mobile para que entren los controles (el ícono de sesión ya lo representa) */}
           {vendor.logo_url || vendor.image_url ? (
-            <img src={vendor.logo_url || vendor.image_url || ""} alt={vendor.store_name} className="h-10 w-10 rounded-full object-cover flex-shrink-0" />
+            <img src={vendor.logo_url || vendor.image_url || ""} alt={vendor.store_name} className="hidden sm:block h-10 w-10 rounded-full object-cover flex-shrink-0" />
           ) : (
-            <div className="h-10 w-10 rounded-full bg-accent flex items-center justify-center flex-shrink-0"><span className="font-bold text-primary">{vendor.store_name.charAt(0)}</span></div>
+            <div className="hidden sm:flex h-10 w-10 rounded-full bg-accent items-center justify-center flex-shrink-0"><span className="font-bold text-primary">{vendor.store_name.charAt(0)}</span></div>
           )}
           <div className="flex-1 min-w-0">
             <h1 className="font-semibold text-sm truncate hidden sm:block">{vendor.store_name}</h1>
             {vendor.slug && <a href={`/tienda/${vendor.slug}`} target="_blank" rel="noopener noreferrer" className="hidden sm:inline text-xs text-primary">Ver mi micrositio →</a>}
           </div>
+          <OpenToggle vendor={vendor} onSaved={(v) => setVendor(v)} />
           {isGastro && (
             <>
               <PrepTimeControl vendor={vendor} onSaved={(v) => setVendor(v)} />
-              <PrinterStatus vendor={vendor} onOpenConfig={() => setTab("config")} />
+              <PrinterStatus vendor={vendor} onOpenConfig={() => {
+                setTab("config");
+                window.dispatchEvent(new Event("portal:open-printer-config"));
+                window.setTimeout(() => {
+                  document.getElementById("printer-config")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                }, 120);
+              }} />
             </>
           )}
-          <OpenToggle vendor={vendor} onSaved={(v) => setVendor(v)} />
           <Button variant="outline" size="sm" onClick={openShare} className="flex-shrink-0">Compartir</Button>
         </div>
       </div>

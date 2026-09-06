@@ -8,20 +8,35 @@ export function CollapsibleSection({
   defaultOpen = false,
   badge,
   children,
+  open,
+  onToggle,
+  id,
 }: {
   icon: string;
   title: string;
   defaultOpen?: boolean;
   badge?: string;
   children: React.ReactNode;
+  /** Controlado (si se pasa, gana sobre el estado interno). */
+  open?: boolean;
+  onToggle?: (open: boolean) => void;
+  id?: string;
 }) {
-  const [open, setOpen] = useState(defaultOpen);
+  const [internalOpen, setInternalOpen] = useState(defaultOpen);
+  const isControlled = open !== undefined;
+  const currentOpen = isControlled ? open : internalOpen;
+
+  const handleClick = () => {
+    const next = !currentOpen;
+    if (!isControlled) setInternalOpen(next);
+    onToggle?.(next);
+  };
 
   return (
-    <div className="border border-border rounded-xl overflow-hidden bg-card">
+    <div id={id} className="border border-border rounded-xl overflow-hidden bg-card scroll-mt-24">
       <button
         type="button"
-        onClick={() => setOpen(!open)}
+        onClick={handleClick}
         className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-muted/50 transition-colors"
       >
         <span className="text-lg">{icon}</span>
@@ -33,7 +48,7 @@ export function CollapsibleSection({
         )}
         <svg
           className={`h-4 w-4 text-muted-foreground transition-transform duration-200 ${
-            open ? "rotate-180" : ""
+            currentOpen ? "rotate-180" : ""
           }`}
           fill="none"
           viewBox="0 0 24 24"
@@ -43,7 +58,7 @@ export function CollapsibleSection({
           <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
         </svg>
       </button>
-      {open && <div className="px-4 pb-4 pt-1 border-t border-border">{children}</div>}
+      {currentOpen && <div className="px-4 pb-4 pt-1 border-t border-border">{children}</div>}
     </div>
   );
 }

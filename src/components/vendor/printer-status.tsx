@@ -68,8 +68,8 @@ export function PrinterStatus({ vendor, onOpenConfig }: { vendor: Vendor; onOpen
       title={`Estado de impresora: ${label}. Tocá para configurar.`}
       className="flex-shrink-0 flex items-center gap-1 rounded-lg border border-border px-2 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted transition-colors"
     >
+      <span>🖨️</span>
       <span>{DOT[state]}</span>
-      <span className="hidden sm:inline">🖨️</span>
     </button>
   );
 }

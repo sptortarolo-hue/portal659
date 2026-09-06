@@ -22,6 +22,7 @@ type Props = {
   vendorId: string;
   vendorName: string;
   accessToken: string;
+  prepTimeMin?: number | null;
 };
 
 function useTimer() {
@@ -279,7 +280,7 @@ function TicketCard({
   );
 }
 
-export default function ComandaKDS({ vendorId, vendorName, accessToken }: Props) {
+export default function ComandaKDS({ vendorId, vendorName, accessToken, prepTimeMin = null }: Props) {
   const [orders, setOrders] = useState<Order[]>([]);
   const [activeTab, setActiveTab] = useState<OrderStatus | "all">("new");
   const [loading, setLoading] = useState(true);
@@ -393,7 +394,7 @@ export default function ComandaKDS({ vendorId, vendorName, accessToken }: Props)
   }, [activeTab]);
 
   async function handleAction(orderId: string, status: OrderStatus) {
-    const estimated = status === "preparing" ? 30 : undefined;
+    const estimated = status === "preparing" ? (prepTimeMin ?? 30) : undefined;
     setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, status } : o)));
     try {
       await fetch(`/api/vendor/orders/${orderId}`, {

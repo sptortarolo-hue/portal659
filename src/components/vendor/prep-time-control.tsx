@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Vendor } from "@/types/database";
 
-const PRESETS = [15, 30, 45, 60, 90];
+const PRESETS = [15, 20, 25, 30, 40, 50, 60];
 
 /**
  * Control de demora (tiempo estimado) en el header del dashboard.
@@ -14,7 +14,8 @@ export function PrepTimeControl({ vendor, onSaved }: { vendor: Vendor; onSaved: 
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  const prep = (vendor as any).prep_time_min ?? null;
+  // Default 30 min: el tiempo de preparación nunca queda sin valor.
+  const prep = (vendor as any).prep_time_min ?? 30;
 
   useEffect(() => {
     function onDoc(e: MouseEvent) {
@@ -51,18 +52,15 @@ export function PrepTimeControl({ vendor, onSaved }: { vendor: Vendor; onSaved: 
         type="button"
         onClick={() => setOpen(!open)}
         disabled={saving}
-        title={prep ? `Demora: ${prep} min` : "Control de demora (desactivada)"}
-        className={`rounded-lg border px-2 py-1.5 text-xs font-medium transition-colors ${
-          prep != null
-            ? "border-green-500 text-green-700 dark:text-green-400"
-            : "border-border text-muted-foreground"
-        }`}
+        title={prep ? `Tiempo de preparación: ${prep} min` : "Definí el tiempo de preparación"}
+        className={`rounded-lg border px-2 py-1.5 text-xs font-medium transition-colors border-green-500 text-green-700 dark:text-green-400`}
       >
-        ⏱️ {prep != null ? `${prep}m` : <span className="hidden sm:inline">Demora</span>}
+        ⏱️ {prep}m
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-1 z-50 w-36 rounded-xl border border-border bg-card shadow-lg p-1.5">
+        <div className="absolute right-0 top-full mt-1 z-50 w-40 rounded-xl border border-border bg-card shadow-lg p-1.5">
+          <p className="px-2 pt-1 pb-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Tiempo de preparación</p>
           {PRESETS.map((m) => (
             <button
               key={m}
@@ -75,15 +73,6 @@ export function PrepTimeControl({ vendor, onSaved }: { vendor: Vendor; onSaved: 
               {m} min
             </button>
           ))}
-          <button
-            type="button"
-            onClick={() => save(null)}
-            className={`w-full rounded-md px-3 py-1.5 text-sm text-left transition-colors ${
-              prep == null ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
-            }`}
-          >
-            Sin demora
-          </button>
         </div>
       )}
     </div>

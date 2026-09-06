@@ -94,7 +94,7 @@ const DELIVERY_OPTIONS = [
   { label: "Ambos", value: "ambos", icon: "🔄", desc: "" },
 ];
 
-const PREP_TIME_OPTIONS = [30, 45, 60, 90];
+const PREP_TIME_OPTIONS = [15, 20, 25, 30, 40, 50, 60];
 
 export default function DashboardGastro({
   vendor,
@@ -124,9 +124,6 @@ export default function DashboardGastro({
       : []
   );
   const [deliveryOptions, setDeliveryOptions] = useState(vendor?.delivery_options || "ambos");
-  const [prepTimeEnabled, setPrepTimeEnabled] = useState(
-    vendor?.prep_time_min !== null && vendor?.prep_time_min !== undefined
-  );
   const [prepTimeMin, setPrepTimeMin] = useState(
     vendor?.prep_time_min || 30
   );
@@ -197,9 +194,6 @@ export default function DashboardGastro({
         : []
     );
     setDeliveryOptions(vendor?.delivery_options || "ambos");
-    setPrepTimeEnabled(
-      vendor?.prep_time_min !== null && vendor?.prep_time_min !== undefined
-    );
     setPrepTimeMin(vendor?.prep_time_min || 30);
     setStorePreview(vendor?.image_url || null);
     setLogoPreview(vendor?.logo_url || null);
@@ -324,7 +318,7 @@ export default function DashboardGastro({
       facebook,
       payment_methods: paymentMethods.join(", "),
       delivery_options: deliveryOptions,
-      prep_time_min: prepTimeEnabled ? prepTimeMin : null,
+      prep_time_min: prepTimeMin,
     };
 
     if (storeFile) {
@@ -376,7 +370,7 @@ export default function DashboardGastro({
   }, [
     storeName, storeCategory, address, hours, description,
     whatsapp, phone, instagram, facebook, paymentMethods,
-    deliveryOptions, prepTimeEnabled, prepTimeMin,
+    deliveryOptions, prepTimeMin,
     storeFile, logoFile, saveVendor, setMsg,
   ]);
 
@@ -812,30 +806,20 @@ export default function DashboardGastro({
         </div>
       </CollapsibleSection>
 
-      <CollapsibleSection icon="⏱️" title="Control de demora">
+      <CollapsibleSection icon="⏱️" title="Tiempo de preparación">
         <div className="space-y-3">
-          <div className="flex items-center justify-between">
             <div>
-              <Label>Mostrar tiempo estimado</Label>
+              <Label>Tiempo de preparación</Label>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Aparece como &quot;Demora: X min&quot; en tu micrositio
+                Aparece como &quot;⏱️ X min&quot; en tu micrositio y cuenta como referencia del pedido.
               </p>
-            </div>
-            <Switch
-              checked={prepTimeEnabled}
-              onCheckedChange={setPrepTimeEnabled}
-            />
-          </div>
-          {prepTimeEnabled && (
-            <div>
-              <Label>Tiempo estimado (minutos)</Label>
-              <div className="flex gap-2 mt-2">
+              <div className="flex flex-wrap gap-2 mt-2">
                 {PREP_TIME_OPTIONS.map((min) => (
                   <button
                     key={min}
                     type="button"
                     onClick={() => setPrepTimeMin(min)}
-                    className={`flex-1 rounded-lg border-2 px-3 py-2 text-sm font-medium transition-colors ${
+                    className={`flex-1 min-w-0 rounded-lg border-2 px-3 py-2 text-sm font-medium transition-colors ${
                       prepTimeMin === min
                         ? "border-primary bg-primary/5 text-primary"
                         : "border-border bg-card text-muted-foreground hover:border-primary/30"
@@ -855,10 +839,9 @@ export default function DashboardGastro({
                 />
               </div>
               <p className="text-xs text-muted-foreground mt-1 text-center">
-                ⏱️ Demora: {prepTimeMin} min
+                ⏱️ {prepTimeMin} min
               </p>
             </div>
-          )}
         </div>
       </CollapsibleSection>
 

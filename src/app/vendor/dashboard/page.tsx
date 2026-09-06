@@ -241,9 +241,10 @@ function VendorDashboardInner() {
   async function updateOrderStatus(order: Order, status: Order["status"]) {
     try {
       const payload: Record<string, unknown> = { status };
-      // Gastronomía estima minutos de cocina; moda no maneja tiempos en minutos.
+      // Gastronomía estima minutos de cocina desde la demora configurada (sin hardcodeo);
+      // moda no maneja tiempos en minutos.
       if (status === "preparing" && !isModa) {
-        payload.estimated_minutes = 30;
+        payload.estimated_minutes = (vendor?.prep_time_min ?? 30) || 30;
       }
       const res = await fetch(`/api/vendor/orders/${order.id}`, {
         method: "PATCH",
@@ -774,7 +775,7 @@ function VendorDashboardInner() {
               <div className={tab === "comanda" ? "" : "hidden"}>
                 {effectivePlan.can("kds") ? (
                   accessToken && vendor && (
-                    <ComandaKDS vendorId={vendor.id} vendorName={vendor.store_name} accessToken={accessToken} />
+                    <ComandaKDS vendorId={vendor.id} vendorName={vendor.store_name} accessToken={accessToken} prepTimeMin={vendor.prep_time_min ?? null} />
                   )
                 ) : (
                   <PlanLock

@@ -56,6 +56,24 @@ export default function ManualesPage() {
             </div>
           </div>
         </Link>
+
+        <Link
+          href="/manuales/impresora"
+          className="block p-6 rounded-2xl border border-border bg-card hover:border-primary/40 hover:shadow-sm transition-all"
+        >
+          <div className="flex items-start gap-4">
+            <span className="text-3xl">🖨️</span>
+            <div>
+              <h2 className="font-semibold text-lg mb-1">Impresora térmica</h2>
+              <p className="text-sm text-muted-foreground">
+                Configuración e instalación de impresora: app Android, agente PC y servidor TCP.
+              </p>
+              <span className="text-primary text-sm font-medium mt-2 inline-block">
+                Ver manual →
+              </span>
+            </div>
+          </div>
+        </Link>
       </div>
     </main>
   );

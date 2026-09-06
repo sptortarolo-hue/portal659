@@ -25,6 +25,8 @@ import { PlanLock } from "@/components/vendor/plan-lock";
 import { Mostrador } from "@/components/vendor/mostrador";
 import { Mesas } from "@/components/vendor/mesas";
 import { OpenToggle } from "@/components/vendor/open-toggle";
+import { PrepTimeControl } from "@/components/vendor/prep-time-control";
+import { PrinterStatus } from "@/components/vendor/printer-status";
 import { DeliveryBoard } from "@/components/vendor/delivery-board";
 import type { ProductModifier, VendorGallery, Booking, Vertical, Product as DBProduct, Order, ProductVariant, ProductImage, OrderItem, PlanStatus, Plan } from "@/types/database";
 
@@ -651,16 +653,22 @@ function VendorDashboardInner() {
         </div>
       )}
       <div className="sticky top-0 z-40 bg-background border-b border-border">
-        <div className="container mx-auto px-4 py-3 flex items-center gap-3">
+		<div className="container mx-auto px-4 py-3 flex items-center gap-3">
           {vendor.logo_url || vendor.image_url ? (
             <img src={vendor.logo_url || vendor.image_url || ""} alt={vendor.store_name} className="h-10 w-10 rounded-full object-cover flex-shrink-0" />
           ) : (
             <div className="h-10 w-10 rounded-full bg-accent flex items-center justify-center flex-shrink-0"><span className="font-bold text-primary">{vendor.store_name.charAt(0)}</span></div>
           )}
           <div className="flex-1 min-w-0">
-            <h1 className="font-semibold text-sm truncate">{vendor.store_name}</h1>
+            <h1 className="font-semibold text-sm truncate hidden sm:block">{vendor.store_name}</h1>
             {vendor.slug && <a href={`/tienda/${vendor.slug}`} target="_blank" rel="noopener noreferrer" className="hidden sm:inline text-xs text-primary">Ver mi micrositio →</a>}
           </div>
+          {isGastro && (
+            <>
+              <PrepTimeControl vendor={vendor} onSaved={(v) => setVendor(v)} />
+              <PrinterStatus vendor={vendor} onOpenConfig={() => setTab("config")} />
+            </>
+          )}
           <OpenToggle vendor={vendor} onSaved={(v) => setVendor(v)} />
           <Button variant="outline" size="sm" onClick={openShare} className="flex-shrink-0">Compartir</Button>
         </div>

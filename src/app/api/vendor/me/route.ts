@@ -71,6 +71,7 @@ export async function POST(request: Request) {
     transfer_holder,
     block_unpaid_orders,
     open_override,
+    prep_time_min,
   } = body;
 
   const VALID_VERTICALS = ["gastronomia", "comercio", "servicio", "moda", "salud", "otro"];
@@ -124,6 +125,8 @@ export async function POST(request: Request) {
   if (block_unpaid_orders !== undefined) payload.block_unpaid_orders = block_unpaid_orders === true;
   // Sobrescritura manual de apertura: true=abierto, false=cerrado, null=seguir horarios.
   if (open_override !== undefined) payload.open_override = open_override === null ? null : open_override === true;
+  // Control de demora (estimado de preparación). null = desactivado, número = minutos.
+  if (prep_time_min !== undefined) payload.prep_time_min = prep_time_min === null ? null : Number(prep_time_min);
 
   if (existing) {
     const setClauses: string[] = [];

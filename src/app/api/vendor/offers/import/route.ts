@@ -106,19 +106,25 @@ async function parseWorkbook(buf: Buffer): Promise<Record<string, unknown>[]> {
     let hasName = false;
     let hasPrice = false;
     for (let c = 0; c < rows[i].length; c++) {
+      // Columnas específicas (modificantes/grupo) se chequean antes que los
+      // campos genéricos: "Modificante 1 Descripción" contiene "descriptción" y
+      // "Modificante 1 Precio" contiene "precio" — si evaluamos fieldForHeader
+      // primero, esas columnas terminan pisando el precio/descripción del plato.
+      const groupKey = groupKeyForHeader(rows[i][c]);
+      if (groupKey) {
+        fields[c] = groupKey;
+        continue;
+      }
+      const modKey = modifierKeyForHeader(rows[i][c]);
+      if (modKey) {
+        fields[c] = modKey;
+        continue;
+      }
       const field = fieldForHeader(rows[i][c]);
       if (field) {
         fields[c] = field === "name" ? 1 : field === "price" ? 2 : field === "category" ? 3 : 4;
         if (field === "name") hasName = true;
         if (field === "price") hasPrice = true;
-      } else {
-        const groupKey = groupKeyForHeader(rows[i][c]);
-        if (groupKey) {
-          fields[c] = groupKey;
-        } else {
-          const modKey = modifierKeyForHeader(rows[i][c]);
-          if (modKey) fields[c] = modKey;
-        }
       }
     }
     if (hasName && hasPrice) {

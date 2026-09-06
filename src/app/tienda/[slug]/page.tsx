@@ -19,6 +19,7 @@ import { ScrollToMenu } from "@/components/store/scroll-to-menu";
 import { ScrollToProduct } from "@/components/store/scroll-to-product";
 import { IrAComprarButton } from "@/components/store/ir-a-comprar-button";
 import { CategoryNav } from "@/components/store/category-nav";
+import { StickyStoreBar } from "@/components/store/sticky-store-bar";
 import { VendorShareButton } from "@/components/store/vendor-share-button";
 import type { Metadata } from "next";
 
@@ -231,9 +232,12 @@ const modifiersByProduct: Record<string, any[]> = {};
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
       </div>
 
+      {/* Barra de marca fija (solo mobile): aparece al scrollear más allá del header */}
+      <StickyStoreBar logoUrl={v.logo_url} storeName={v.store_name} />
+
       <div className="container mx-auto px-4 max-w-4xl">
         {/* Store info card */}
-        <div className="-mt-12 relative z-10 rounded-2xl border border-border bg-card p-6 shadow-lg">
+        <div id="store-header" className="-mt-12 relative z-10 rounded-2xl border border-border bg-card p-6 shadow-lg">
           {/* Mobile: fila logo (izq) + Ir a comprar al extremo opuesto (der), misma altura */}
           <div className="flex sm:hidden items-center justify-between mb-3">
             {v.logo_url ? (

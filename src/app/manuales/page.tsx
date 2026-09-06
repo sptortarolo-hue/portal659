@@ -92,6 +92,24 @@ export default function ManualesPage() {
             </div>
           </div>
         </Link>
+
+        <Link
+          href="/manuales/mesas"
+          className="block p-6 rounded-2xl border border-border bg-card hover:border-primary/40 hover:shadow-sm transition-all"
+        >
+          <div className="flex items-start gap-4">
+            <span className="text-3xl">🪑</span>
+            <div>
+              <h2 className="font-semibold text-lg mb-1">Mesas</h2>
+              <p className="text-sm text-muted-foreground">
+                Gestión de mesas, consumiciones, precuentas y cobro.
+              </p>
+              <span className="text-primary text-sm font-medium mt-2 inline-block">
+                Ver manual →
+              </span>
+            </div>
+          </div>
+        </Link>
       </div>
     </main>
   );

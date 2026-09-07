@@ -186,6 +186,10 @@ export type Vendor = {
   last_print_at?: string | null;
   last_print_ok?: boolean | null;
   last_print_error?: string | null;
+  print_logo?: boolean | null;
+  print_address?: boolean | null;
+  print_phone?: boolean | null;
+  print_social?: boolean | null;
   lat?: number | null;
   lng?: number | null;
   transfer_alias?: string | null;

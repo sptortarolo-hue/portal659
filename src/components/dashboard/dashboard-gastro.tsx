@@ -1046,6 +1046,64 @@ export default function DashboardGastro({
               onCheckedChange={(v) => saveVendor({ auto_print: v })}
             />
           </div>
+
+          <div className="rounded-xl border bg-card p-4 space-y-3">
+            <div>
+              <Label className="text-sm font-semibold">Configuración de ticket</Label>
+              <p className="text-[11px] text-muted-foreground mt-0.5">
+                Qué sale en el encabezado de todos los documentos impresos. El nombre del
+                local y el pie de página siempre se imprimen.
+              </p>
+            </div>
+            <div className="flex items-center justify-between">
+              <div>
+                <Label>Logo del comercio</Label>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Redondo, junto al nombre (cargalo en Datos del local)
+                </p>
+              </div>
+              <Switch
+                checked={vendor?.print_logo ?? true}
+                onCheckedChange={(v) => saveVendor({ print_logo: v })}
+              />
+            </div>
+            <div className="flex items-center justify-between">
+              <div>
+                <Label>Dirección</Label>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  La dirección que cargaste en Datos del local
+                </p>
+              </div>
+              <Switch
+                checked={vendor?.print_address ?? true}
+                onCheckedChange={(v) => saveVendor({ print_address: v })}
+              />
+            </div>
+            <div className="flex items-center justify-between">
+              <div>
+                <Label>Teléfono / WhatsApp</Label>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Los números de contacto del local
+                </p>
+              </div>
+              <Switch
+                checked={vendor?.print_phone ?? true}
+                onCheckedChange={(v) => saveVendor({ print_phone: v })}
+              />
+            </div>
+            <div className="flex items-center justify-between">
+              <div>
+                <Label>Redes sociales</Label>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Instagram y Facebook del local
+                </p>
+              </div>
+              <Switch
+                checked={vendor?.print_social ?? true}
+                onCheckedChange={(v) => saveVendor({ print_social: v })}
+              />
+            </div>
+          </div>
           <div>
             <Label>IP de la impresora</Label>
             <Input

@@ -72,6 +72,10 @@ export async function POST(request: Request) {
     block_unpaid_orders,
     open_override,
     prep_time_min,
+    print_logo,
+    print_address,
+    print_phone,
+    print_social,
   } = body;
 
   const VALID_VERTICALS = ["gastronomia", "comercio", "servicio", "moda", "salud", "otro"];
@@ -127,6 +131,10 @@ export async function POST(request: Request) {
   if (open_override !== undefined) payload.open_override = open_override === null ? null : open_override === true;
   // Control de demora (estimado de preparación). Default 30 min: nunca queda null.
   if (prep_time_min !== undefined) payload.prep_time_min = prep_time_min == null ? 30 : Number(prep_time_min);
+  if (print_logo !== undefined) payload.print_logo = print_logo === true;
+  if (print_address !== undefined) payload.print_address = print_address === true;
+  if (print_phone !== undefined) payload.print_phone = print_phone === true;
+  if (print_social !== undefined) payload.print_social = print_social === true;
 
   if (existing) {
     const setClauses: string[] = [];

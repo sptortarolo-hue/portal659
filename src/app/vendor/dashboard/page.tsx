@@ -196,6 +196,22 @@ function VendorDashboardInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [impersonatingId]);
 
+  // Vuelta del OAuth de Mercado Pago: mostrar feedback al comercio y limpiar la URL.
+  useEffect(() => {
+    if (!searchParams) return;
+    const mp = searchParams.get("mp");
+    if (!mp) return;
+    if (mp === "connected") {
+      setMsg("✅ Mercado Pago conectado — los cobros online ahora entran directo a tu cuenta");
+    } else if (mp === "error") {
+      setMsg("❌ No se pudo conectar Mercado Pago. Probá de nuevo desde la sección de pagos.");
+    }
+    const url = new URL(window.location.href);
+    url.searchParams.delete("mp");
+    url.searchParams.delete("reason");
+    window.history.replaceState({}, "", url.toString());
+  }, [searchParams]);
+
   function exitImpersonation() {
     document.cookie = "portal659-admin-as=; path=/; max-age=0";
     router.push("/admin/comercios");

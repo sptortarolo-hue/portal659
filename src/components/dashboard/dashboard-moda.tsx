@@ -14,6 +14,7 @@ import { QuantityInput } from "@/components/ui/quantity-input";
 import { ChipToggle } from "@/components/ui/chip-toggle";
 import { RadioCards } from "@/components/ui/radio-cards";
 import { LivePreview, CategoryManager, apiJson, TransferConfig, DeliveryFeeConfig } from "@/components/dashboard/shared";
+import { MpConnectCard } from "@/components/dashboard/mp-connect-card";
 import { HoursEditor } from "@/components/dashboard/hours-editor";
 import type { Vendor, Product, ProductVariant, ProductImage } from "@/types/database";
 
@@ -471,6 +472,10 @@ export default function DashboardModa({
           {paymentMethods.includes("Transferencia") && (
             <TransferConfig vendor={vendor} saveVendor={saveVendor} />
           )}
+          <MpConnectCard
+            mpUserId={(vendor as any)?.mp_user_id ?? null}
+            mpConnectedAt={(vendor as any)?.mp_connected_at ?? null}
+          />
           <div><Label className="mb-2 block">Entrega</Label><RadioCards options={DELIVERY_OPTIONS} value={deliveryOptions} onChange={setDeliveryOptions} /></div>
           {deliveryOptions !== "retiro" && (
             <DeliveryFeeConfig vendor={vendor} saveVendor={saveVendor} />

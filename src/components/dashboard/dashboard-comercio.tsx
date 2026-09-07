@@ -21,6 +21,7 @@ import {
   TransferConfig,
   DeliveryFeeConfig,
 } from "@/components/dashboard/shared";
+import { MpConnectCard } from "@/components/dashboard/mp-connect-card";
 import { HoursEditor } from "@/components/dashboard/hours-editor";
 import type { Vendor, Product, ProductModifier } from "@/types/database";
 
@@ -874,6 +875,10 @@ export default function DashboardComercio({
           {paymentMethods.includes("Transferencia") && (
             <TransferConfig vendor={vendor} saveVendor={saveVendor} />
           )}
+          <MpConnectCard
+            mpUserId={(vendor as any)?.mp_user_id ?? null}
+            mpConnectedAt={(vendor as any)?.mp_connected_at ?? null}
+          />
           <div>
             <Label className="mb-2 block">Entrega</Label>
             <RadioCards

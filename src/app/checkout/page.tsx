@@ -40,7 +40,11 @@ export default function CheckoutPage() {
   const grandTotal = total + deliveryFee;
 
   useEffect(() => {
-    fetch("/api/payments").then(r => r.json()).then(d => setMpConfigured(d.configured)).catch(() => {});
+    if (!vendor?.id) return;
+    fetch(`/api/payments?vendorId=${encodeURIComponent(vendor.id)}`)
+      .then(r => r.json())
+      .then(d => setMpConfigured(d.configured))
+      .catch(() => setMpConfigured(false));
     fetch("/api/auth/me").then(r => r.json()).then(d => { if (d.user?.id) setUserId(d.user.id); }).catch(() => {});
   }, [vendor?.id]);
 

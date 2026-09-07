@@ -42,6 +42,9 @@ jobs:
             echo 'MP_ACCESS_TOKEN=${{ secrets.MP_ACCESS_TOKEN }}' >> /opt/portal659/.env
             echo 'MP_PUBLIC_KEY=${{ secrets.MP_PUBLIC_KEY }}' >> /opt/portal659/.env
             echo 'MP_WEBHOOK_SECRET=${{ secrets.MP_WEBHOOK_SECRET }}' >> /opt/portal659/.env
+            echo 'MP_CLIENT_ID=${{ secrets.MP_CLIENT_ID }}' >> /opt/portal659/.env
+            echo 'MP_CLIENT_SECRET=${{ secrets.MP_CLIENT_SECRET }}' >> /opt/portal659/.env
+            echo 'MP_TOKEN_KEY=${{ secrets.MP_TOKEN_KEY }}' >> /opt/portal659/.env
             echo 'UPSTASH_REDIS_REST_URL=${{ secrets.UPSTASH_REDIS_REST_URL }}' >> /opt/portal659/.env
             echo 'UPSTASH_REDIS_REST_TOKEN=${{ secrets.UPSTASH_REDIS_REST_TOKEN }}' >> /opt/portal659/.env
             echo 'VAPID_PUBLIC_KEY=${{ secrets.VAPID_PUBLIC_KEY }}' >> /opt/portal659/.env

@@ -182,6 +182,13 @@ export type Vendor = {
   paper_size: string | null;
   auto_print: boolean;
   print_mode?: "server" | "app" | null;
+  /** Mercado Pago multi-market (OAuth por comercio). §5 docs/mp-multimarket-plan.md */
+  mp_user_id?: number | null;
+  mp_access_token?: string | null;
+  mp_refresh_token?: string | null;
+  mp_public_key?: string | null;
+  mp_expires_at?: string | null;
+  mp_connected_at?: string | null;
   print_token?: string | null;
   last_print_at?: string | null;
   last_print_ok?: boolean | null;

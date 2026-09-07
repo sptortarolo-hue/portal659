@@ -12,6 +12,7 @@ import { RadioCards } from "@/components/ui/radio-cards";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { OfferForm, OfferList, CategoryManager, LivePreview, apiJson, TransferConfig, DeliveryFeeConfig } from "@/components/dashboard/shared";
+import { MpConnectCard } from "@/components/dashboard/mp-connect-card";
 import { MenuImportModal } from "@/components/dashboard/menu-import";
 import { HoursEditor } from "@/components/dashboard/hours-editor";
 import { StaffManager } from "@/components/vendor/staff-manager";
@@ -800,6 +801,10 @@ export default function DashboardGastro({
           {paymentMethods.includes("Transferencia") && (
             <TransferConfig vendor={vendor} saveVendor={saveVendor} />
           )}
+          <MpConnectCard
+            mpUserId={(vendor as any)?.mp_user_id ?? null}
+            mpConnectedAt={(vendor as any)?.mp_connected_at ?? null}
+          />
           <div>
             <Label className="mb-2 block">Entrega</Label>
             <RadioCards

@@ -1,73 +1,44 @@
-import { queryMany, queryOne } from "@/lib/db";
+import { queryOne } from "@/lib/db";
 import { getSiteUrl } from "@/lib/site-url";
+import { getVendorMpToken, type VendorMpRow } from "@/lib/mp-oauth";
 import { NextResponse } from "next/server";
-import { resolveVendorPlan } from "@/lib/plans";
-import { isStoreOpen } from "@/lib/open-hours";
-import { PricingError, resolveOrderPricing } from "@/lib/pricing";
 
-// Mercado Pago Preference API
+// Mercado Pago Preference API (multi-market: cada comercio cobra con SU cuenta)
 // Docs: https://www.mercadopago.com.ar/developers/en/docs/checkout-pro/landing
 
-const MP_ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN;
-const MP_PUBLIC_KEY = process.env.MP_PUBLIC_KEY;
-
 export async function POST(request: Request) {
-  if (!MP_ACCESS_TOKEN) {
-    return NextResponse.json(
-      { error: "Pasarela de pagos no configurada. Configurá MP_ACCESS_TOKEN en .env.local" },
-      { status: 503 }
-    );
-  }
-
   const body = await request.json();
-  const { vendorId, items, customerName, customerPhone, customerAddress, method } = body;
+  const { vendorId, items, total, customerName, customerPhone, customerAddress, method } = body;
 
-  if (!vendorId || !items || !Array.isArray(items) || items.length === 0) {
+  if (!vendorId || !items || !total) {
     return NextResponse.json({ error: "Faltan datos" }, { status: 400 });
   }
 
-  const vendor = await queryOne<Record<string, unknown>>(
-    `SELECT id, store_name, slug, vertical, plan_id, plan_status, plan_expires_at, trial_ends_at, hours, open_override, delivery_fee, free_delivery_min FROM vendors WHERE id = $1 LIMIT 1`,
+  const vendor = await queryOne<
+    { store_name: string; slug: string } & VendorMpRow
+  >(
+    `SELECT id, store_name, slug, mp_user_id, mp_access_token, mp_refresh_token, mp_public_key, mp_expires_at, mp_connected_at
+     FROM vendors WHERE id = $1 LIMIT 1`,
     [vendorId]
   );
+
   if (!vendor) {
     return NextResponse.json({ error: "Comercio no encontrado" }, { status: 404 });
   }
 
-  // Mismo gating que pedidos online: plan con cart + abierto.
-  const plans = await queryMany<Record<string, unknown>>(`SELECT * FROM plans`);
-  const plan = resolveVendorPlan(vendor as any, plans as any);
-  if (!plan.can("cart")) {
+  // Cobros online siempre con la cuenta del COMERCIO (multi-tenant).
+  // Si no está conectado, no hay pago online (la torta no la come el portal).
+  const mpToken = await getVendorMpToken(vendor);
+  if (!mpToken) {
     return NextResponse.json(
-      { error: "Este comercio no acepta pagos online por ahora." },
-      { status: 403 }
+      { error: "El comercio todavía no conectó Mercado Pago", code: "vendor_not_connected" },
+      { status: 409 }
     );
-  }
-  if (isStoreOpen(vendor as any) === false) {
-    return NextResponse.json({ error: "El comercio está cerrado ahora." }, { status: 409 });
-  }
-
-  // Precios/stock/monedas se computan desde la base, nunca del cliente.
-  let pricing;
-  try {
-    pricing = await resolveOrderPricing({
-      tx: { query: queryMany },
-      vendorId,
-      items,
-      method,
-      deliveryFee: (vendor as any).delivery_fee,
-      freeDeliveryMin: (vendor as any).free_delivery_min,
-    });
-  } catch (e) {
-    if (e instanceof PricingError) {
-      return NextResponse.json({ error: e.message }, { status: 400 });
-    }
-    throw e;
   }
 
   try {
     const preference = {
-      items: pricing.items.map((i) => ({
+      items: items.map((i: any) => ({
         title: i.name,
         unit_price: i.price,
         quantity: i.qty,
@@ -82,22 +53,21 @@ export async function POST(request: Request) {
         customer_phone: customerPhone,
         customer_address: customerAddress || "",
         delivery_method: method || "delivery",
-        // items resueltos server-side: las ids vienen de la DB.
+        // JSON string: referencias para descontar stock al aprobarse el pago.
         stock_items: JSON.stringify(
-          pricing.items.map((i) => ({
-            variant_id: i.variant_id || null,
-            product_id: i.product_id || null,
-            qty: i.qty,
+          items.map((i: any) => ({
+            variant_id: typeof i.variantId === "string" ? i.variantId : null,
+            product_id: typeof i.offerId === "string" ? i.offerId : null,
+            qty: Number(i.qty) || 1,
             name: i.name,
-            price: i.price,
           }))
         ),
       },
       external_reference: `portal659_${vendorId}_${Date.now()}`,
       back_urls: {
-        success: `${getSiteUrl()}/checkout?payment=success`,
-        failure: `${getSiteUrl()}/checkout?payment=failure`,
-        pending: `${getSiteUrl()}/checkout?payment=pending`,
+        success: `${getSiteUrl()}/checkout?payment=success&vendor=${vendor.slug || vendorId}`,
+        failure: `${getSiteUrl()}/checkout?payment=failure&vendor=${vendor.slug || vendorId}`,
+        pending: `${getSiteUrl()}/checkout?payment=pending&vendor=${vendor.slug || vendorId}`,
       },
       auto_return: "approved",
       notification_url: `${getSiteUrl()}/api/webhooks/mercadopago`,
@@ -107,7 +77,7 @@ export async function POST(request: Request) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${MP_ACCESS_TOKEN}`,
+        Authorization: `Bearer ${mpToken}`,
       },
       body: JSON.stringify(preference),
     });
@@ -119,7 +89,6 @@ export async function POST(request: Request) {
         preferenceId: data.id,
         initPoint: data.init_point,
         sandboxInitPoint: data.sandbox_init_point,
-        total: pricing.total,
       });
     }
 
@@ -129,9 +98,20 @@ export async function POST(request: Request) {
   }
 }
 
-export async function GET() {
+// El checkout le pregunta "¿puedo cobrar online?" por un comercio dado.
+export async function GET(request: Request) {
+  const vendorId = new URL(request.url).searchParams.get("vendorId");
+  if (!vendorId) {
+    return NextResponse.json({ configured: false, reason: "vendorId requerido" }, { status: 400 });
+  }
+
+  const vendor = await queryOne<{ mp_user_id: number | null }>(
+    `SELECT mp_user_id FROM vendors WHERE id = $1 LIMIT 1`,
+    [vendorId]
+  );
+
   return NextResponse.json({
-    configured: !!MP_ACCESS_TOKEN,
-    publicKey: MP_PUBLIC_KEY || null,
+    configured: !!vendor?.mp_user_id,
+    publicKey: null,
   });
 }

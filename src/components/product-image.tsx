@@ -83,6 +83,8 @@ function pickIcon(name: string, category?: string | null, vertical?: string | nu
   return Package;
 }
 
+import { getProductEmojiImage } from "@/lib/product-emoji";
+
 export function ProductImage({
   src,
   name,
@@ -104,9 +106,27 @@ export function ProductImage({
     );
   }
 
-  const Icon = pickIcon(name, category, vertical);
-  const colors = (vertical && VERTICAL_COLORS[vertical]) || { bg: "bg-accent", fg: "text-muted-foreground" };
+  // Sin foto propia → imagen de referencia según nombre/categoría/vertical.
+  const emojiPath = getProductEmojiImage(name, category, vertical);
+  if (emojiPath) {
+    return (
+      <div className={`${className ?? "w-full h-full"} flex items-center justify-center bg-accent/30`}>
+        <img
+          src={emojiPath}
+          alt={alt}
+          loading="lazy"
+          decoding="async"
+          className="h-full w-full object-contain p-2"
+        />
+      </div>
+    );
+  }
 
+  const Icon = pickIcon(name, category, vertical);
+  const colors = (vertical && VERTICAL_COLORS[vertical]) || {
+    bg: "bg-accent",
+    fg: "text-muted-foreground",
+  };
   return (
     <div className={`${className ?? "w-full h-full"} flex items-center justify-center ${colors.bg}`}>
       <Icon className={iconClassName ?? "h-10 w-10"} strokeWidth={1.5} />

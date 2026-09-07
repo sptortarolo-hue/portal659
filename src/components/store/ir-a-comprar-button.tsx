@@ -10,7 +10,8 @@ export function IrAComprarButton() {
     const el = document.getElementById("menu");
     if (!el) return;
     const isMobile = window.innerWidth < 640;
-    const offset = isMobile ? 104 : 64;
+    // 152 = nav mobile (104) + barra de marca (48); desktop nav = 64.
+    const offset = isMobile ? 152 : 64;
     const top = el.getBoundingClientRect().top + window.scrollY - offset;
     window.scrollTo({ top, behavior: "smooth" });
   }

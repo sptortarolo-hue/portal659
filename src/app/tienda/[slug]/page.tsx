@@ -434,7 +434,7 @@ const modifiersByProduct: Record<string, any[]> = {};
         ) : (
           <>
             {/* Menu sections */}
-            <h2 id="menu" className="font-display text-2xl font-semibold mt-6 mb-4 scroll-mt-[104px] sm:scroll-mt-16">{isModa ? "Catálogo" : "Menú"}</h2>
+            <h2 id="menu" className="font-display text-2xl font-semibold mt-6 mb-4 scroll-mt-[152px] sm:scroll-mt-16">{isModa ? "Catálogo" : "Menú"}</h2>
             {sections.length === 0 ? (
               <p className="text-muted-foreground text-center py-12">
                 Este local todavía no cargó su menú.
@@ -443,7 +443,7 @@ const modifiersByProduct: Record<string, any[]> = {};
               <>
                 {sections.length > 0 && <CategoryNav sections={sections} />}
                 {sections.map((s, i) => (
-                  <section key={s.name} id={`seccion-${i}`} className="mb-10 scroll-mt-[136px] sm:scroll-mt-24">
+                  <section key={s.name} id={`seccion-${i}`} className="mb-10 scroll-mt-[184px] sm:scroll-mt-24">
                     <h3 className="font-display text-xl font-semibold mb-4 border-b border-border pb-2">
                       {s.name}
                     </h3>

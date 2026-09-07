@@ -50,13 +50,15 @@ export function CategoryNav({ sections }: { sections: { name: string }[] }) {
     const el = document.getElementById(`seccion-${i}`);
     if (!el) return;
     const isMobile = window.innerWidth < 640;
-    const offset = isMobile ? 136 : 96; // altura de nav + sticky pills
+    // 184 mobile: nav(104) + barra marca (48, cuando aparece) + pill row (~44),
+    // queda la sección visible debajo de todo el bloque fijo.
+    const offset = isMobile ? 184 : 96;
     const top = el.getBoundingClientRect().top + window.scrollY - offset;
     window.scrollTo({ top, behavior: "smooth" });
   }
 
   return (
-    <nav ref={navRef} className="sticky top-[104px] sm:top-16 z-30 -mx-4 px-4 py-2 bg-background/95 backdrop-blur-sm border-b border-border flex gap-2 overflow-x-auto mb-6">
+    <nav ref={navRef} className="sticky top-[152px] sm:top-16 z-30 -mx-4 px-4 py-2 bg-background/95 backdrop-blur-sm border-b border-border flex gap-2 overflow-x-auto mb-6">
       {sections.map((s, i) => (
         <button
           key={s.name}

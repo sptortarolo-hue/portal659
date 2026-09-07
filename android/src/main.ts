@@ -20,7 +20,6 @@ const els = {
   token: document.getElementById("token") as HTMLInputElement,
   printerIp: document.getElementById("printerIp") as HTMLInputElement,
   printerPort: document.getElementById("printerPort") as HTMLInputElement,
-  btnConnect: document.getElementById("btnConnect") as HTMLButtonElement,
   btnDiscover: document.getElementById("btnDiscover") as HTMLButtonElement,
   btnTest: document.getElementById("btnTest") as HTMLButtonElement,
   btnSave: document.getElementById("btnSave") as HTMLButtonElement,
@@ -31,6 +30,18 @@ const els = {
 };
 
 const active = { state: false };
+
+function updateStopBtn() {
+  if (active.state) {
+    els.btnStop.textContent = "⏹ Detener impresión";
+    els.btnStop.classList.remove("stopped");
+    els.btnStop.classList.add("running");
+  } else {
+    els.btnStop.textContent = "▶️  Iniciar impresión";
+    els.btnStop.classList.remove("running");
+    els.btnStop.classList.add("stopped");
+  }
+}
 
 function load(): Settings {
   const raw = localStorage.getItem(STORAGE_KEY);
@@ -83,6 +94,7 @@ async function startService() {
     await PortalSocket.saveConfig(getSettings());
     await PortalSocket.setActive({ active: true });
     active.state = true;
+    updateStopBtn();
     log("Servicio iniciado (funciona en segundo plano)", "ok");
   } catch (e: any) {
     log(`No se pudo iniciar: ${e?.message ?? e}`, "error");
@@ -93,6 +105,7 @@ async function stopService() {
   try {
     await PortalSocket.setActive({ active: false });
     active.state = false;
+    updateStopBtn();
     setRelay("offline");
     log("Detenido. No volverá a arrancar solo hasta que lo inicies.", "error");
   } catch (e: any) {
@@ -100,10 +113,23 @@ async function stopService() {
   }
 }
 
+async function toggleService() {
+  if (active.state) {
+    await stopService();
+  } else {
+    if (!getSettings().token) {
+      log("Falta el token (copialo del dashboard → Impresora)", "error");
+      return;
+    }
+    await startService();
+  }
+}
+
 async function refreshStatus() {
   try {
     const s = await PortalSocket.status();
     active.state = !!s.enabled;
+    updateStopBtn();
     setRelay(s.conn === "connected" ? "online" : "offline");
   } catch {}
 }
@@ -165,11 +191,7 @@ function bind() {
     await refreshStatus();
     log("Configuración guardada", "ok");
   });
-  els.btnConnect.addEventListener("click", () => {
-    if (getSettings().token) startService();
-    else log("Falta el token (copialo del dashboard → Impresora)", "error");
-  });
-  els.btnStop.addEventListener("click", stopService);
+  els.btnStop.addEventListener("click", toggleService);
   els.btnDiscover.addEventListener("click", discoverPrinter);
   els.btnTest.addEventListener("click", testPrint);
   els.printerPort.addEventListener("change", saveLocal);
@@ -187,6 +209,7 @@ async function init() {
   try {
     const s = await PortalSocket.status();
     active.state = !!s.enabled;
+    updateStopBtn();
     setRelay(s.conn === "connected" ? "online" : "offline");
   } catch {}
 

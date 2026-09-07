@@ -11,6 +11,7 @@ type MeUser = {
   email: string;
   name: string;
   is_admin: boolean;
+  role?: string;
 };
 
 type MeStaff = {
@@ -86,6 +87,7 @@ export function UserMenu() {
   }
 
   const isAdmin = user?.is_admin === true;
+  const isBuyer = user?.role === "buyer";
   const vendorImg = vendor?.logo_url || vendor?.image_url || null;
 
   return (
@@ -139,30 +141,34 @@ export function UserMenu() {
               >
                 <span>❤️</span> Mis favoritos
               </Link>
-              {staff ? (
-                <Link
-                  href="/vendor/dashboard"
-                  className="flex items-center gap-3 px-4 py-3 text-sm text-foreground hover:bg-muted transition-colors"
-                  onClick={() => setMenuOpen(false)}
-                >
-                  <span>🛵</span> Mi reparto
-                </Link>
-              ) : (
-                <Link
-                  href="/vendor/dashboard"
-                  className="flex items-center gap-3 px-4 py-3 text-sm text-foreground hover:bg-muted transition-colors"
-                  onClick={() => setMenuOpen(false)}
-                >
-                  <span>🏪</span> Mi comercio
-                </Link>
+              {!isBuyer && (
+                <>
+                  {staff ? (
+                    <Link
+                      href="/vendor/dashboard"
+                      className="flex items-center gap-3 px-4 py-3 text-sm text-foreground hover:bg-muted transition-colors"
+                      onClick={() => setMenuOpen(false)}
+                    >
+                      <span>🛵</span> Mi reparto
+                    </Link>
+                  ) : (
+                    <Link
+                      href="/vendor/dashboard"
+                      className="flex items-center gap-3 px-4 py-3 text-sm text-foreground hover:bg-muted transition-colors"
+                      onClick={() => setMenuOpen(false)}
+                    >
+                      <span>🏪</span> Mi comercio
+                    </Link>
+                  )}
+                  <Link
+                    href="/planes"
+                    className="flex items-center gap-3 px-4 py-3 text-sm text-foreground hover:bg-muted transition-colors"
+                    onClick={() => setMenuOpen(false)}
+                  >
+                    <span>💳</span> Planes
+                  </Link>
+                </>
               )}
-              <Link
-                href="/planes"
-                className="flex items-center gap-3 px-4 py-3 text-sm text-foreground hover:bg-muted transition-colors"
-                onClick={() => setMenuOpen(false)}
-              >
-                <span>💳</span> Planes
-              </Link>
               {isAdmin && (
                 <>
                   <div className="border-t border-border my-1" />
@@ -191,6 +197,13 @@ export function UserMenu() {
                 onClick={() => setMenuOpen(false)}
               >
                 <span>🔑</span> Iniciar sesión
+              </Link>
+              <Link
+                href="/registro"
+                className="flex items-center gap-3 px-4 py-3 text-sm text-foreground hover:bg-muted transition-colors"
+                onClick={() => setMenuOpen(false)}
+              >
+                <span>🙋</span> Crear mi cuenta
               </Link>
               <Link
                 href="/register"

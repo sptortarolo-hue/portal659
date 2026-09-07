@@ -61,6 +61,9 @@ export type VendorSubscription = {
   current_period_start: string;
   current_period_end: string | null;
   note: string | null;
+  payment_method: string | null;
+  amount: number | null;
+  paid_at: string | null;
   created_at: string;
 };
 
@@ -274,6 +277,7 @@ export type Order = {
   paid_at: string | null;
   payment_status?: "paid" | "pending";
   pickup_number?: number | null;
+  track_token?: string | null;
   created_at: string;
   updated_at: string;
 };

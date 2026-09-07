@@ -30,6 +30,8 @@ type Vendor = {
   plan_status: string;
   plan_expires_at: string | null;
   trial_ends_at: string | null;
+  paid_at: string | null;
+  payment_method: string | null;
 };
 
 type Plan = {
@@ -210,12 +212,26 @@ export default function AdminComerciosPage() {
               : v.plan_status === "expired"
                 ? { label: "Vencido", cls: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300" }
                 : null;
+        const paidLabel =
+          v.plan_status === "active" || v.plan_status === "trial"
+            ? v.paid_at
+              ? { label: "Pagado", cls: "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300" }
+              : { label: "Sin pagar", cls: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300" }
+            : null;
         return (
-          <div className="flex items-center gap-1.5">
-            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${v.plan_status === "gratuito" ? "bg-muted text-muted-foreground" : "bg-primary/10 text-primary"}`}>
-              {info.plan?.name ?? "Gratuito"}
-            </span>
-            {status && <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${status.cls}`}>{status.label}</span>}
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center gap-1.5">
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${v.plan_status === "gratuito" ? "bg-muted text-muted-foreground" : "bg-primary/10 text-primary"}`}>
+                {info.plan?.name ?? "Gratuito"}
+              </span>
+              {status && <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${status.cls}`}>{status.label}</span>}
+              {paidLabel && <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${paidLabel.cls}`}>{paidLabel.label}</span>}
+            </div>
+            {v.plan_expires_at && v.plan_status !== "gratuito" && (
+              <span className="text-[10px] text-muted-foreground">
+                Vence: {new Date(v.plan_expires_at).toLocaleDateString("es-AR")}
+              </span>
+            )}
           </div>
         );
       },

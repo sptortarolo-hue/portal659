@@ -87,6 +87,8 @@ Portal 659: "El centro comercial de tu barrio". Hub multicommerce hiperlocal (Si
 - En MP Developers: crear app con OAuth, Redirect URL `https://www.portal659.com.ar/api/mp/oauth/callback`, agregar `MP_CLIENT_ID` + `MP_CLIENT_SECRET` + `MP_TOKEN_KEY` (generada) a env/VPS (ver `docs/mp-multimarket-plan.md`).
 - Aplicar `supabase/self-host/migrate-open-override.sql` (columna `vendors.open_override` — toggle Abierto/Cerrado del comercio).
 - Aplicar `supabase/self-host/migrate-ticket-config.sql` (toggles de encabezado impreso: `vendors.print_logo/print_address/print_phone/print_social` — sin esto los tickets salen con todo activado por defecto igual, pero conviene correrla antes de tocar esos switches en el dashboard).
+- Aplicar `supabase/self-host/migrate-subscription-payments.sql` (campos de pago en `vendor_subscriptions`: `payment_method/amount/paid_at` — panel `/admin/suscripciones`).
+- Aplicar `supabase/self-host/migrate-order-track-token.sql` (columna `orders.track_token` — link de seguimiento público `/seguimiento/[token]` y cuenta comprador).
 - Cargar secrets `VAPID_*`, `PRINT_BRIDGE_SECRET` y `RESEND_API_KEY`/`FROM_EMAIL` en GitHub para que el deploy las escriba al `.env`.
 - Compilar el APK de Portal Print (Android): ver `android/README.md` (requiere Android SDK/JDK 17).
 - Reboot test del VPS (verificar que la web vuelve sola).

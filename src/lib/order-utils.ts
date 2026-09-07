@@ -33,6 +33,56 @@ export function formatPhone(input: string): string {
   return input.replace(/\D/g, "");
 }
 
+/**
+ * Normaliza un teléfono argentino a formato E.164 (+549XXXXXXXXXX para móvil,
+ * +54XXXXXXXXXX para fijo), compatible con WhatsApp y libphonenumber de Google.
+ * Acepta formatos: 2215550000, 1155550000, 92215550000, 5492215550000, +54 9 221 555-0000, etc.
+ */
+export function normalizePhoneAR(input: string): string {
+  const digits = input.replace(/\D/g, "");
+  if (!digits) return "";
+
+  // Si ya tiene código de país 54
+  if (digits.startsWith("54")) {
+    const rest = digits.slice(2);
+    // Móvil: 9 + código de área (2-4 dígitos) + número
+    if (rest.startsWith("9") && rest.length >= 11) {
+      return "+54" + rest;
+    }
+    // Fijo: código de área + número
+    if (rest.length >= 10) {
+      return "+54" + rest;
+    }
+    return "+54" + rest;
+  }
+
+  // Si empieza con 9, es móvil con prefijo 9 (formato local con 9)
+  if (digits.startsWith("9") && digits.length >= 11) {
+    return "+54" + digits;
+  }
+
+  // Código de área conocido (10 dígitos: código de área 2-4 dígitos + 8 dígitos)
+  // Códigos de área principales: 11, 221, 223, 261, 341, 351, 358, 376, 381, 385, 387, 388
+  const areaCodes = ["11", "221", "223", "261", "341", "351", "358", "376", "381", "385", "387", "388"];
+  for (const ac of areaCodes) {
+    if (digits.startsWith(ac) && digits.length === 10) {
+      // Fijo: +54 + código + número
+      return "+54" + digits;
+    }
+    if (digits.startsWith("9" + ac) && digits.length === 11) {
+      // Móvil con 9: +549 + código + número
+      return "+54" + digits;
+    }
+  }
+
+  // Heurística genérica: 10 dígitos -> asumir fijo, 11 con 9 -> móvil
+  if (digits.length === 10) return "+54" + digits;
+  if (digits.length === 11 && digits.startsWith("9")) return "+54" + digits;
+
+  // Fallback: devolver con +54
+  return "+54" + digits;
+}
+
 export function isValidPhone(phone: string): boolean {
   const clean = formatPhone(phone);
   return clean.length >= 10 && clean.length <= 15;

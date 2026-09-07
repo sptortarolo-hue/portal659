@@ -8,6 +8,7 @@ import { adjustStockForItems, OutOfStockError } from "@/lib/stock";
 import { isStoreOpen } from "@/lib/open-hours";
 import { PricingError, resolveOrderPricing } from "@/lib/pricing";
 import { nextOrderNumber } from "@/lib/order-number";
+import { randomBytes } from "crypto";
 import type { OrderItem } from "@/types/database";
 
 export const POST = withRateLimit(async (request: Request) => {
@@ -60,6 +61,7 @@ export const POST = withRateLimit(async (request: Request) => {
   }
 
   let orderId: string | undefined;
+  let trackToken: string | undefined;
   let resolvedItems: OrderItem[] = [];
   let resolvedTotal = 0;
   let resolvedItemsCount = 0;
@@ -92,9 +94,11 @@ export const POST = withRateLimit(async (request: Request) => {
       // "retiro Nro 2"...). Se serializa con advisory lock => no duplica.
       const pickupNumber = await nextOrderNumber(tx, vendorId);
 
+      trackToken = randomBytes(16).toString("hex");
+
       const rows = await tx.query<{ id: string }>(
-        `INSERT INTO orders (vendor_id, customer_id, customer_name, customer_phone, customer_address, method, payment_method, items, total, status, notes, device_id, payment_status, pickup_number)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'new', $10, $11, $12, $13)
+        `INSERT INTO orders (vendor_id, customer_id, customer_name, customer_phone, customer_address, method, payment_method, items, total, status, notes, device_id, payment_status, pickup_number, track_token)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'new', $10, $11, $12, $13, $14)
          RETURNING id`,
         [
           vendorId,
@@ -110,6 +114,7 @@ export const POST = withRateLimit(async (request: Request) => {
           deviceId,
           paymentStatus,
           pickupNumber,
+          trackToken,
         ]
       );
       orderId = rows[0]?.id;
@@ -165,5 +170,5 @@ export const POST = withRateLimit(async (request: Request) => {
     }
   }
 
-  return NextResponse.json({ ok: true, orderId, total: resolvedTotal });
+  return NextResponse.json({ ok: true, orderId, trackToken, total: resolvedTotal });
 }, { maxRequests: 10 });

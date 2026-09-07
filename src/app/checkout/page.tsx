@@ -27,8 +27,9 @@ export default function CheckoutPage() {
   const [mpConfigured, setMpConfigured] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const [showSummary, setShowSummary] = useState(false);
-  const [pendingOrder, setPendingOrder] = useState<{ orderId: string; message: string; waNumber: string } | null>(null);
+  const [pendingOrder, setPendingOrder] = useState<{ orderId: string; message: string; waNumber: string; trackToken?: string } | null>(null);
   const [prefillInfo, setPrefillInfo] = useState<{ found: boolean; name?: string | null } | null>(null);
+  const [doneTrackToken, setDoneTrackToken] = useState<string | null>(null);
 
   const deliveryFee =
   vendor &&
@@ -45,7 +46,15 @@ export default function CheckoutPage() {
       .then(r => r.json())
       .then(d => setMpConfigured(d.configured))
       .catch(() => setMpConfigured(false));
-    fetch("/api/auth/me").then(r => r.json()).then(d => { if (d.user?.id) setUserId(d.user.id); }).catch(() => {});
+    fetch("/api/auth/me")
+      .then((r) => r.json())
+      .then((d) => {
+        if (!d.user) return;
+        setUserId(d.user.id);
+        setName((prev) => prev || d.user.full_name || d.user.name || "");
+        setPhone((prev) => prev || d.user.whatsapp || d.user.phone || "");
+      })
+      .catch(() => {});
   }, [vendor?.id]);
 
   if (!vendor || items.length === 0) {
@@ -175,6 +184,8 @@ export default function CheckoutPage() {
       }
 
       const waTotal = typeof data.total === "number" ? data.total : grandTotal;
+      const baseUrl = (process.env.NEXT_PUBLIC_SITE_URL || window.location.origin).replace(/\/$/, "");
+      const trackUrl = data.trackToken ? `${baseUrl}/seguimiento/${data.trackToken}` : undefined;
       const message = buildComandaWhatsApp({
         vendorName: v.storeName,
         items: items.map((i) => ({
@@ -190,10 +201,11 @@ export default function CheckoutPage() {
         address: method === "delivery" ? address : undefined,
         paymentMethod,
         notes: notes.trim() || undefined,
+        trackUrl,
       });
 
       const waNumber = (v.whatsapp || "").replace(/[^0-9]/g, "");
-      setPendingOrder({ orderId: data.orderId || "", message, waNumber });
+      setPendingOrder({ orderId: data.orderId || "", message, waNumber, trackToken: data.trackToken });
       setShowSummary(true);
       setLoading(false);
     } catch {
@@ -210,6 +222,7 @@ export default function CheckoutPage() {
       "_blank"
     );
     clear();
+    setDoneTrackToken(pendingOrder.trackToken || null);
     setShowSummary(false);
     setPendingOrder(null);
     setDone(true);
@@ -228,10 +241,18 @@ export default function CheckoutPage() {
           <span className="font-medium">{v.storeName}</span>.
         </p>
         <p className="text-sm text-muted-foreground/70 mb-6">
-          Seguí el estado del pedido con tu número de WhatsApp en{" "}
+          Seguí el estado de tu pedido con tu número de WhatsApp en{" "}
           <button onClick={() => router.push("/mis-pedidos")} className="underline text-primary hover:text-primary/80">
             Mis pedidos
           </button>
+          {doneTrackToken && (
+            <>
+              {" · "}
+              <button onClick={() => router.push(`/seguimiento/${doneTrackToken}`)} className="underline text-primary hover:text-primary/80">
+                Ver seguimiento en vivo
+              </button>
+            </>
+          )}
         </p>
         <Button onClick={() => router.push("/")}>Seguir viendo ofertas</Button>
       </main>

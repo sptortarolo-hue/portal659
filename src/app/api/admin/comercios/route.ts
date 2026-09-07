@@ -36,7 +36,19 @@ export async function GET(request: Request) {
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
   const vendors = await queryMany(
-    `SELECT * FROM vendors ${whereClause} ORDER BY created_at DESC`,
+    `SELECT v.*,
+            sub.paid_at,
+            sub.payment_method
+     FROM vendors v
+     LEFT JOIN LATERAL (
+       SELECT s.paid_at, s.payment_method
+       FROM vendor_subscriptions s
+       WHERE s.vendor_id = v.id
+       ORDER BY s.created_at DESC
+       LIMIT 1
+     ) sub ON true
+     ${whereClause}
+     ORDER BY v.created_at DESC`,
     params
   );
   return NextResponse.json({ vendors });

@@ -56,7 +56,7 @@ function Timeline({ status, method, isModa }: { status: OrderStatus; method: "de
   );
 }
 
-function OrderCard({ order, onReorder }: { order: Order & { vendors?: { store_name: string; slug: string; whatsapp: string; phone: string; prep_time_min: number | null; vertical?: string } | null }; onReorder: (order: Order & { vendors?: { store_name: string; slug: string; whatsapp: string } | null }, vendorSlug: string, vendorWhatsapp: string) => void }) {
+function OrderCard({ order, onReorder }: { order: Order & { track_token?: string | null; vendors?: { store_name: string; slug: string; whatsapp: string; phone: string; prep_time_min: number | null; vertical?: string } | null }; onReorder: (order: Order & { vendors?: { store_name: string; slug: string; whatsapp: string } | null }, vendorSlug: string, vendorWhatsapp: string) => void }) {
   const [countdown, setCountdown] = useState<number | null>(null);
 
   useEffect(() => {
@@ -116,16 +116,26 @@ function OrderCard({ order, onReorder }: { order: Order & { vendors?: { store_na
 
       <div className="flex items-center justify-between mt-3 pt-2 border-t border-border">
         <span className="font-bold text-sm">${Number(order.total).toLocaleString("es-AR")}</span>
-        {phone && !isDone && (
-          <a
-            href={`https://wa.me/${phone.replace(/[^0-9]/g, "")}?text=${encodeURIComponent(`Hola! Quiero consultar por mi pedido ${order.pickup_number != null ? `Nro. ${order.pickup_number}` : `#${order.id.slice(0, 8)}`}`)}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[11px] font-medium text-green-600 hover:text-green-700"
-          >
-            Consultar por WhatsApp →
-          </a>
-        )}
+        <div className="flex items-center gap-3">
+          {order.track_token && !isDone && (
+            <a
+              href={`/seguimiento/${order.track_token}`}
+              className="text-[11px] font-medium text-primary hover:underline"
+            >
+              Seguimiento →
+            </a>
+          )}
+          {phone && !isDone && (
+            <a
+              href={`https://wa.me/${phone.replace(/[^0-9]/g, "")}?text=${encodeURIComponent(`Hola! Quiero consultar por mi pedido ${order.pickup_number != null ? `Nro. ${order.pickup_number}` : `#${order.id.slice(0, 8)}`}`)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[11px] font-medium text-green-600 hover:text-green-700"
+            >
+              Consultar por WhatsApp →
+            </a>
+          )}
+        </div>
       </div>
 
       {order.notes && (
@@ -161,6 +171,29 @@ export default function MisPedidosPage() {
     vendorSlug: string;
     vendorWhatsapp: string;
   } | null>(null);
+  const [authed, setAuthed] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((r) => r.json())
+      .then((d) => {
+        if (!d.user?.id) {
+          setAuthed(false);
+          return;
+        }
+        setAuthed(true);
+        fetch("/api/orders/mine")
+          .then((r) => r.json())
+          .then((m) => {
+            if (!m.error) {
+              setOrders(m.orders || []);
+              setSearched(true);
+            }
+          })
+          .catch(() => {});
+      })
+      .catch(() => setAuthed(false));
+  }, []);
 
   const fetchOrders = useCallback(async (phoneNumber: string) => {
     setLoading(true);
@@ -242,7 +275,9 @@ export default function MisPedidosPage() {
     <main className="container mx-auto px-4 py-8 max-w-md">
       <h1 className="font-display text-3xl font-semibold mb-1">Mis pedidos</h1>
       <p className="text-muted-foreground text-sm mb-6">
-        Ingresá tu número de WhatsApp para ver el estado de tus pedidos.
+        {authed
+          ? "Mostrando los pedidos asociados a tu cuenta."
+          : "Ingresá tu número de WhatsApp para ver el estado de tus pedidos."}
       </p>
 
       <form onSubmit={handleSearch} className="space-y-3 mb-6">

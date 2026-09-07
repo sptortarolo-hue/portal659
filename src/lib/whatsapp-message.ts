@@ -49,6 +49,7 @@ export function buildComandaWhatsApp(params: {
   paymentMethod?: string;
   notes?: string;
   orderId?: string;
+  trackUrl?: string;
 }): string {
   const sep = "------------------------------";
   const id = params.orderId ? params.orderId.slice(0, 8) : "--------";
@@ -72,6 +73,7 @@ export function buildComandaWhatsApp(params: {
 
   const notesLine = params.notes ? `\nNotas: ${params.notes}` : "";
   const addressLine = params.method === "delivery" && params.address ? `Dir: ${params.address}` : "";
+  const trackLine = params.trackUrl ? `\nSeguí tu pedido acá: ${params.trackUrl}` : "";
 
   return [
     `*${params.vendorName}*`,
@@ -89,6 +91,7 @@ export function buildComandaWhatsApp(params: {
     `Tel: ${params.customerPhone}`,
     addressLine,
     notesLine,
+    trackLine,
     "",
     sep,
   ].filter((l) => l !== null && l !== undefined).join("\n");

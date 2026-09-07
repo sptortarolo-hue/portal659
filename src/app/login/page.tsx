@@ -1,15 +1,17 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Logo } from "@/components/brand/logo";
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const next = searchParams.get("next");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -65,7 +67,8 @@ export default function LoginPage() {
     } else {
       window.dispatchEvent(new Event("auth-changed"));
       const role = data.user?.role;
-      router.push(role === "vendor" ? "/vendor/dashboard" : "/");
+      const safeNext = next && next.startsWith("/") ? next : null;
+      router.push(safeNext || (role === "vendor" ? "/vendor/dashboard" : "/"));
     }
     setLoading(false);
   }
@@ -92,7 +95,7 @@ export default function LoginPage() {
       <div className="flex flex-col items-center mb-8">
         <Logo markClassName="h-14 w-14 text-primary" />
         <p className="text-muted-foreground mt-3">
-          Iniciá sesión para administrar tu comercio y tus pedidos
+          Iniciá sesión para ver tus pedidos, favoritos y administrar tu comercio
         </p>
       </div>
 
@@ -149,5 +152,13 @@ export default function LoginPage() {
         </Button>
       </form>
     </main>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginForm />
+    </Suspense>
   );
 }

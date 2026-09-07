@@ -190,6 +190,45 @@ public class PortalSocketPlugin extends Plugin {
     call.resolve(result);
   }
 
+  private android.content.SharedPreferences prefs() {
+    return getContext().getSharedPreferences("portalprint", Context.MODE_PRIVATE);
+  }
+
+  /** Guarda la config del servicio nativo (serverUrl/token/printerIp/printerPort) y arranca si está activo. */
+  @PluginMethod
+  public void saveConfig(PluginCall call) {
+    String server = call.getString("serverUrl", "https://www.portal659.com.ar");
+    String token = call.getString("token", "");
+    String ip = call.getString("printerIp", "");
+    int port = call.getInt("printerPort", 9100);
+
+    prefs().edit()
+      .putString("serverUrl", server)
+      .putString("token", token)
+      .putString("printerIp", ip)
+      .putInt("printerPort", port)
+      .apply();
+
+    // (Re)arranca el servicio para tomar la nueva config.
+    Intent svc = new Intent(getContext(), PortalPrintService.class);
+    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+      getContext().startForegroundService(svc);
+    } else {
+      getContext().startService(svc);
+    }
+
+    call.resolve();
+  }
+
+  /** Estado actual del servicio (para pintar el dot verde/rojo en la UI). */
+  @PluginMethod
+  public void status(PluginCall call) {
+    JSObject result = new JSObject();
+    result.put("enabled", isEnabledPersisted());
+    result.put("conn", prefs().getString("connStatus", "unknown"));
+    call.resolve(result);
+  }
+
   /** Pide el permiso POST_NOTIFICATIONS (Android 13+) para que se vea la notif fija del FG service. */
   @PluginMethod
   public void requestNotifPermission(PluginCall call) {

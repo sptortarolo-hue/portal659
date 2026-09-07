@@ -12,39 +12,26 @@ Está firmado con una keystore estable; no hace falta compilar nada local.
 
 ## Funcionamiento
 
-- El celular se **conecta solo al relay** con el token (misma red por WS) e imprime los pedidos.
-- **Autorreconexión** con backoff exponencial (1s → 30s máximo) + guardián de reconn cada 10s si el
-  relay está cerrado.
-- **ForegroundService**pone la **notificación fija** en la barra ("Portal Print activo") — Android ya
-  no la mata por batería.
-- **Array de jobs pendientes** en el relay: si la app está caida, los pedidos se acumulan y al reconectar
-  llegan en orden.
-- **Arranque al encender el celular**: si reiniciás el celular, el sistema levanta el FG service
-  solo; la notificación aparece y al tocarla abre la app (y al abrir la app se reconecta solo).
+- El WebSocket del relay y la impresión TCP viven **en Java** (`PortalPrintService`), no en la
+  WebView. Por eso **funciona en segundo plano** con la pantalla apagada o la app cerrada.
+- **WakeLock + WifiLock + START_STICKY**: el proceso no se duerme ni se corta la red.
+- **Notificación fija** ("Portal Print activo") — Android no la mata por batería.
+- **Cola de jobs** en el relay: si el celu está caído, los pedidos se acumulan y al reconectar llegan en orden.
+- **BootReceiver**: al encender el celular se reconecta solo (salvo que hayas tocado "Detener").
+- Reconexión con backoff dentro del servicio nativo.
 
 Requisitos del día a día:
-- El celular en el **mismo Wi-Fi** que la impresora.
-- La app idealmente **en primer plano** en el mostrador (enchufada) — los pedidos confirmados se
-  imprimen solos. Con el FG service también funciona si la minimizás.
+- El celular en el **mismo Wi-Fi** que la impresora (recomendado **enchufado**).
+- La app **no necesita quedar abierta en primer plano**: con el servicio iniciado, imprime igual en segundo plano.
 
 ## Estructura
 
 ```
 android/
-├─ portal-socket/        plugin Capacitor "PortalSocket" (TCP + descubrimiento + FG service)
-├─ src/main.ts           lógica de la app (relay WebSocket + impresión)
-└─ www/                  índice y estilos (web asset de Capacitor)
-```
-
-## Estructura
-
-```
-android/
-├─ portal-socket/        plugin Capacitor "PortalSocket" (TCP + descubrimiento en la LAN)
-│  ├─ src/index.ts       registro del plugin (TS)
-│  ├─ src/definitions.ts API del plugin
-│  └─ android/           implementación Java (Socket / discover / keepAwake)
-├─ src/main.ts           lógica de la app (relay WebSocket + impresión)
+├─ portal-socket/        plugin Capacitor "PortalSocket"
+│  ├─ src/               TS (definiciones + registro)
+│  └─ android/           Java: PortalPrintService (WS OkHttp + TCP), PortalSocketPlugin, BootReceiver
+├─ src/main.ts           UI: config token/IP, iniciar/detener, estado en vivo
 └─ www/                  índice y estilos (web asset de Capacitor)
 ```
 
@@ -77,8 +64,8 @@ npm run apk
 
 El APK resultante se instala con orígenes desconocidos habilitados. Recomendado además:
 
-- Desactivar la optimización de batería para "Portal Print" (Ajustes → Batería).
-- Usar la app en modo pantalla siempre encendida (ya se hace solo con `PortalSocket.keepAwake`).
+- Desactivar la optimización de batería para "Portal Print" (el primer arranque lo pide solo).
+- En algunos fabricantes (Xiaomi, Samsung, Huawei) habilitar **autostart / "sin restricciones"**.
 
 ## Configuración en la app
 

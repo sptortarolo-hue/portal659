@@ -48,4 +48,22 @@ export interface PortalSocketPlugin {
 
   /** Devuelve si el modo "activo" está habilitado (persistida). */
   isEnabled(): Promise<{ enabled: boolean }>;
+
+  /** Guarda config nativa (serverUrl/token/printerIp/printerPort) y arranca el servicio. */
+  saveConfig(options: {
+    serverUrl: string;
+    token: string;
+    printerIp: string;
+    printerPort: number;
+  }): Promise<void>;
+
+  /** Estado actual del servicio (enabled + estado de conexión). */
+  status(): Promise<{ enabled: boolean; conn: string }>;
+}
+
+export interface SaveConfigOptions {
+  serverUrl: string;
+  token: string;
+  printerIp: string;
+  printerPort: number;
 }

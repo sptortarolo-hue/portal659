@@ -20,4 +20,5 @@ dependencies {
     implementation fileTree(dir: 'libs', include: ['*.jar'])
     api project(':capacitor-android')
     implementation "androidx.appcompat:appcompat:1.6.1"
+    api "com.squareup.okhttp3:okhttp:4.12.0"
 }

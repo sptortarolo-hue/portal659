@@ -5,6 +5,7 @@ import type {
   PortalSocketPlugin,
   PrintOptions,
   PrintResult,
+  SaveConfigOptions,
 } from "./definitions";
 
 export class PortalSocketWeb implements PortalSocketPlugin {
@@ -29,5 +30,11 @@ export class PortalSocketWeb implements PortalSocketPlugin {
   }
   async isEnabled(): Promise<{ enabled: boolean }> {
     return { enabled: true };
+  }
+  async saveConfig(_opts: SaveConfigOptions): Promise<void> {
+    /* no-op */
+  }
+  async status(): Promise<{ enabled: boolean; conn: string }> {
+    return { enabled: false, conn: "unknown" };
   }
 }

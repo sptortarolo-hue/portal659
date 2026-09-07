@@ -56,7 +56,7 @@ TCP 9100 a la impresora dentro de la red local del comercio.
 | Perfil vendor | `src/app/api/vendor/me/route.ts` | Guarda `print_mode` |
 | Historia del pedido | `src/app/api/vendor/orders/[id]/route.ts` | `GET` pedido individual (para el fallback) |
 | Relay | `services/print-bridge/` | HTTP :8791 (`/health`, `/status?token=`, `/push`) + WS `/printbridge?token=` |
-| App Android | `android/` (+ plugin `portal-socket`) | Conecta saliente al relay, imprime por TCP, descubre impresoras en la LAN |
+| App Android | `android/` (+ plugin `portal-socket`) | Conecta saliente al relay, imprime por TCP, descubre impresoras en la LAN. El WS vive **en Java** (`PortalPrintService`, OkHttp), por lo que persiste en segundo plano |
 | Agente PC | `services/print-agent/agent.mjs` | Lo mismo que la app pero para Windows/Linux/macOS (EXE portable, generado con `bun build --compile`); sirve para el mostrador con impresora LAN |
 | UI dashboard | `src/components/dashboard/dashboard-gastro.tsx` | Selector de modo (App/Server), estado del agente, token, botones de descarga APK + EXE del PC, test |
 | Fallback | `src/app/vendor/imprimir/[id]/page.tsx` | Impresión por el equipo (ventana print del navegador, 58/80mm) cuando no hay térmico configurado |

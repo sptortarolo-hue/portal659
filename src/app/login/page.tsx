@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Logo } from "@/components/brand/logo";
+import { checkArgPhone } from "@/lib/phone";
 
 function LoginForm() {
   const router = useRouter();
@@ -34,8 +35,17 @@ function LoginForm() {
 
   function validate(): boolean {
     const e: typeof errors = {};
-    if (!email) e.email = "Ingresá tu email";
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) e.email = "Email inválido";
+    if (!email) {
+      e.email = "Ingresá tu email o WhatsApp";
+    } else if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      // email válido
+    } else if (!email.includes("@")) {
+      // WhatsApp: debe ser un celular argentino válido
+      const c = checkArgPhone(email);
+      if (!c.ok) e.email = "WhatsApp inválido (celular)";
+    } else {
+      e.email = "Email inválido";
+    }
     if (!password) e.password = "Ingresá tu contraseña";
     else if (password.length < 6) e.password = "Mínimo 6 caracteres";
     setErrors(e);
@@ -101,11 +111,11 @@ function LoginForm() {
 
       <form onSubmit={handleLogin} className="space-y-4">
         <div>
-          <Label htmlFor="email">Correo electrónico</Label>
+          <Label htmlFor="email">Correo electrónico o WhatsApp</Label>
           <Input
             id="email"
-            type="email"
-            placeholder="tu@email.com"
+            type="text"
+            placeholder="tu@email.com o 11 5555 1234"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             className={errors.email ? "border-red-300" : ""}

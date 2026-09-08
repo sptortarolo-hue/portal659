@@ -2,19 +2,19 @@ import { NextResponse } from "next/server";
 import { queryOne } from "@/lib/db";
 import { hashPassword, signAccessToken } from "@/lib/auth";
 import { withRateLimit } from "@/lib/api-wrapper";
-import { normalizePhoneAR } from "@/lib/order-utils";
+import { toE164Plus, checkArgPhone } from "@/lib/phone";
 
 /**
- * Registro de comprador (cliente): cuenta opcional para guardar favoritos,
- * datos de contacto, pedidos y reseñas. No crea un comercio.
- * email_confirmed queda en true para no agregar fricción (cuenta liviana).
+ * Registro de comprador (cliente): cuenta para guardar favoritos, datos de
+ * contacto, pedidos y reseñas. No crea un comercio.
+ * - WhatsApp es obligatorio y válido (celular argentino). Se usa además para iniciar sesión.
  */
 export const POST = withRateLimit(async (request: Request) => {
-  const { email, password, fullName, phone } = await request.json();
+  const { email, password, firstName, lastName, whatsapp } = await request.json();
 
-  if (!email || !password || !fullName) {
+  if (!email || !password || !firstName || !lastName || !whatsapp) {
     return NextResponse.json(
-      { error: "Email, contraseña y nombre son requeridos" },
+      { error: "Completá nombre, apellido, email, contraseña y WhatsApp" },
       { status: 400 }
     );
   }
@@ -28,6 +28,16 @@ export const POST = withRateLimit(async (request: Request) => {
     return NextResponse.json({ error: "Email inválido" }, { status: 400 });
   }
 
+  // WhatsApp: solo celulares argentinos válidos.
+  const phoneCheck = checkArgPhone(String(whatsapp || ""));
+  if (!phoneCheck.ok) {
+    return NextResponse.json(
+      { error: "Ingresá un WhatsApp válido (celular argentino)" },
+      { status: 400 }
+    );
+  }
+  const phoneE164 = toE164Plus(whatsapp);
+
   const existing = await queryOne<{ id: string }>(
     `SELECT id FROM profiles WHERE lower(email) = lower($1) LIMIT 1`,
     [emailLower]
@@ -36,15 +46,22 @@ export const POST = withRateLimit(async (request: Request) => {
     return NextResponse.json({ error: "El email ya está registrado" }, { status: 409 });
   }
 
+  const existingPhone = await queryOne<{ id: string }>(
+    `SELECT id FROM profiles WHERE whatsapp = $1 OR phone = $1 LIMIT 1`,
+    [phoneE164]
+  );
+  if (existingPhone) {
+    return NextResponse.json({ error: "Ese WhatsApp ya está registrado" }, { status: 409 });
+  }
+
   const passwordHash = await hashPassword(password);
-  const phoneRaw = String(phone || "").trim();
-  const phoneClean = phoneRaw ? normalizePhoneAR(phoneRaw) : null;
+  const fullName = `${String(firstName).trim()} ${String(lastName).trim()}`.trim();
 
   const user = await queryOne<{ id: string; email: string; full_name: string | null; role: string }>(
     `INSERT INTO profiles (email, password_hash, full_name, phone, whatsapp, role, email_confirmed, verified)
      VALUES ($1, $2, $3, $4, $4, 'buyer', true, true)
      RETURNING id, email, full_name, role`,
-    [emailLower, passwordHash, String(fullName).trim(), phoneClean]
+    [emailLower, passwordHash, fullName, phoneE164]
   );
 
   if (!user) {

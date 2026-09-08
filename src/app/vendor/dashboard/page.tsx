@@ -17,6 +17,7 @@ import DashboardGenerico from "@/components/dashboard/dashboard-generico";
 import DashboardModa from "@/components/dashboard/dashboard-moda";
 import { VendorAnalytics } from "@/components/dashboard/vendor-analytics";
 import { VendorReviews } from "@/components/vendor/vendor-reviews";
+import { VendorOrderHistory } from "@/components/dashboard/vendor-order-history";
 import ComandaKDS from "@/components/dashboard/comanda-kds";
 import { playNewOrderSound, resumeAudioContext } from "@/lib/sounds";
 import { resolveVendorPlan, daysLeft } from "@/lib/plans";
@@ -104,7 +105,7 @@ function VendorDashboardInner() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [variants, setVariants] = useState<ProductVariant[]>([]);
   const [productImages, setProductImages] = useState<ProductImage[]>([]);
-  const [tab, setTab] = useState<"config" | "menu" | "orders" | "comanda" | "analytics" | "pos" | "mesas" | "reviews">("orders");
+  const [tab, setTab] = useState<"config" | "menu" | "orders" | "history" | "comanda" | "analytics" | "pos" | "mesas" | "reviews">("orders");
   // Las pestañas pesadas (fetch propio: comanda, mostrador, mesas, analytics,
   // reviews) se montan recién cuando el usuario las abre por primera vez.
   // Así el arranque del dashboard hace ~12 requests en vez de ~20 y el pool
@@ -125,7 +126,7 @@ function VendorDashboardInner() {
   const [cropAspect, setCropAspect] = useState(3 / 1);
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [orderSearch, setOrderSearch] = useState("");
-  const [orderStatusFilter, setOrderStatusFilter] = useState<string>("new");
+  const [orderStatusFilter, setOrderStatusFilter] = useState<string>("all");
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [cropTitle, setCropTitle] = useState("Ajustá tu foto");
   const [cropTarget, setCropTarget] = useState<"cover" | "logo" | "offer">("cover");
@@ -473,18 +474,6 @@ function VendorDashboardInner() {
     return true;
   });
 
-  const statusTabs = [
-    { key: "new", label: "Nuevos", count: orders.filter((o) => o.status === "new").length },
-    // "Confirmados" solo existe en el flow de moda (aceptación explícita).
-    ...(isModa ? [{ key: "confirmed", label: "Confirmados", count: orders.filter((o) => o.status === "confirmed").length }] : []),
-    { key: "preparing", label: isModa ? "Empaquetando" : "Preparando", count: orders.filter((o) => o.status === "preparing").length },
-    { key: "ready", label: "Listos", count: orders.filter((o) => o.status === "ready").length },
-    { key: "sent", label: "Enviados", count: orders.filter((o) => o.status === "sent").length },
-    { key: "completed", label: "Completados", count: orders.filter((o) => o.status === "completed").length },
-    { key: "cancelled", label: "Cancelados", count: orders.filter((o) => o.status === "cancelled").length },
-    { key: "all", label: "Todos", count: orders.length },
-  ];
-
   const ordersContent = (
     <div className="space-y-3">
       {/* Search */}
@@ -497,31 +486,6 @@ function VendorDashboardInner() {
           className="w-full h-10 pl-9 pr-3 text-sm rounded-xl border border-input bg-background"
         />
         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">🔍</span>
-      </div>
-
-      {/* Status tabs */}
-      <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-hide">
-        {statusTabs.map((st) => {
-          if (st.count === 0 && st.key !== "all") return null;
-          return (
-            <button
-              key={st.key}
-              onClick={() => setOrderStatusFilter(st.key)}
-              className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all ${
-                orderStatusFilter === st.key
-                  ? "bg-primary text-primary-foreground shadow-sm"
-                  : "bg-muted text-muted-foreground"
-              }`}
-            >
-              {st.label}
-              {st.count > 0 && (
-                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
-                  orderStatusFilter === st.key ? "bg-primary-foreground/20" : "bg-foreground/10"
-                }`}>{st.count}</span>
-              )}
-            </button>
-          );
-        })}
       </div>
 
       {/* Order list */}
@@ -720,6 +684,7 @@ function VendorDashboardInner() {
             <Button variant={tab === "menu" ? "default" : "outline"} size="sm" onClick={() => setTab("menu")}>{isModa ? "👗 Catálogo" : "🍽️ Menú"} ({offers.length})</Button>
             <Button variant={tab === "config" ? "default" : "outline"} size="sm" onClick={() => setTab("config")}>⚙️ Configuración</Button>
             <Button variant={tab === "analytics" ? "default" : "outline"} size="sm" onClick={() => setTab("analytics")}>📊 Estadísticas</Button>
+            <Button variant={tab === "history" ? "default" : "outline"} size="sm" onClick={() => setTab("history")}>📜 Histórico</Button>
             <Button variant={tab === "reviews" ? "default" : "outline"} size="sm" onClick={() => setTab("reviews")}>⭐ Reseñas</Button>
           </div>
         </div>
@@ -753,7 +718,7 @@ function VendorDashboardInner() {
         </div>
       )}
 
-      <div className={`px-4 mt-4 ${tab === "comanda" ? "w-full max-w-none" : `container mx-auto ${["orders", "pos", "mesas", "analytics"].includes(tab) ? "max-w-7xl" : "max-w-2xl"}`}`}>
+      <div className={`px-4 mt-4 ${tab === "comanda" ? "w-full max-w-none" : `container mx-auto ${["orders", "history", "pos", "mesas", "analytics"].includes(tab) ? "max-w-7xl" : "max-w-2xl"}`}`}>
         {isService ? (
           <div className="space-y-4">{configContent}</div>
         ) : (
@@ -851,6 +816,11 @@ function VendorDashboardInner() {
                 )}
               </div>
             )}
+            {mountedTabs.has("history") && (
+              <div className={tab === "history" ? "" : "hidden"}>
+                <VendorOrderHistory isModa={isModa} />
+              </div>
+            )}
           </>
         )}
       </div>
@@ -875,7 +845,7 @@ function VendorDashboardInner() {
                 <span className="text-lg">🍽️</span>Mesas
               </button>
             )}
-            <button onClick={() => setMoreOpen((v) => !v)} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors ${["config", "menu", "analytics", "reviews"].includes(tab) ? "text-primary" : "text-muted-foreground"}`}>
+            <button onClick={() => setMoreOpen((v) => !v)} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors ${["config", "menu", "analytics", "history", "reviews"].includes(tab) ? "text-primary" : "text-muted-foreground"}`}>
               <span className="text-lg">{moreOpen ? "✕" : "⋮"}</span>Más
             </button>
           </div>
@@ -897,6 +867,9 @@ function VendorDashboardInner() {
               </button>
               <button onClick={() => { setTab("analytics"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "analytics" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
                 <span className="text-lg">📊</span>Estadísticas
+              </button>
+              <button onClick={() => { setTab("history"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "history" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
+                <span className="text-lg">📜</span>Histórico de pedidos
               </button>
               <button onClick={() => { setTab("reviews"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "reviews" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
                 <span className="text-lg">⭐</span>Reseñas

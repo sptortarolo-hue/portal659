@@ -6,7 +6,9 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Logo } from "@/components/brand/logo";
+import { checkArgPhone, toE164Plus } from "@/lib/phone";
 
 const TIPO_OPTIONS = [
   { value: "gastronomia", label: "Gastronomía (rotisería, pizzas, comida casera)" },

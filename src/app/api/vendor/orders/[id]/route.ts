@@ -307,3 +307,40 @@ export async function PATCH(
 
   return NextResponse.json({ order });
 }
+
+export async function DELETE(
+  request: Request,
+  context: { params: Promise<{ id: string }> }
+) {
+  const params = await context.params;
+
+  const { vendor } = await getVendorByRequest(request);
+  if (!vendor) {
+    return NextResponse.json({ error: "No autorizado" }, { status: 403 });
+  }
+
+  const order = await queryOne<{ id: string; channel: string; status: string; items: OrderItem[] | null }>(
+    `SELECT id, channel, status, items FROM orders WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
+    [params.id, vendor.id]
+  );
+  if (!order) {
+    return NextResponse.json({ error: "Pedido no encontrado" }, { status: 404 });
+  }
+
+  await withTransaction(async (tx) => {
+    // Reponer stock reservado: si el pedido no está en estado terminal
+    // (cancelado ya repuso al cancelar; completado ya vendió el stock).
+    if (
+      order.channel === "app" &&
+      order.status !== "completed" &&
+      order.status !== "cancelled" &&
+      order.items &&
+      order.items.length > 0
+    ) {
+      await adjustStockForItems(tx, order.items, "increment");
+    }
+    await tx.queryVoid(`DELETE FROM orders WHERE id = $1 AND vendor_id = $2`, [params.id, vendor.id]);
+  });
+
+  return NextResponse.json({ ok: true });
+}

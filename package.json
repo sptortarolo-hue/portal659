@@ -30,6 +30,7 @@
     "date-fns": "^4.1.0",
     "exceljs": "^4.4.0",
     "jose": "^6.2.10",
+    "libphonenumber-js": "^1.13.12",
     "lucide-react": "^0.460.0",
     "maplibre-gl": "^6.2.0",
     "next": "^16.0.0",

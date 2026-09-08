@@ -4,13 +4,14 @@ import { hashPassword } from "@/lib/auth";
 import { sendEmail, welcomeEmail, confirmEmailEmail } from "@/lib/email";
 import { getSiteUrl } from "@/lib/site-url";
 import { createHash, randomBytes } from "crypto";
+import { checkArgPhone, toE164Plus } from "@/lib/phone";
 
 const TIPOS = ["gastronomia", "comercio", "servicio", "moda", "salud", "otro"] as const;
 
 export async function POST(request: Request) {
-  const { email, password, firstName, lastName, whatsapp, tipo } = await request.json();
+  const { email, password, firstName, lastName, storeName, whatsapp, tipo } = await request.json();
 
-  if (!email || !password || !firstName || !lastName || !whatsapp) {
+  if (!email || !password || !firstName || !lastName || !storeName || !whatsapp) {
     return NextResponse.json(
       { error: "Faltan datos requeridos" },
       { status: 400 }
@@ -24,6 +25,21 @@ export async function POST(request: Request) {
     );
   }
 
+  // WhatsApp obligatorio y válido (celular argentino).
+  const phoneCheck = checkArgPhone(String(whatsapp || ""));
+  if (!phoneCheck.ok) {
+    return NextResponse.json(
+      { error: "Ingresá un WhatsApp válido (celular argentino)" },
+      { status: 400 }
+    );
+  }
+  const phoneE164 = toE164Plus(whatsapp) || String(whatsapp).trim();
+
+  const storeNameClean = String(storeName).trim();
+  if (!storeNameClean) {
+    return NextResponse.json({ error: "Ingresá el nombre del local comercial" }, { status: 400 });
+  }
+
   const selected = TIPOS.includes(tipo) ? tipo : "gastronomia";
   const passwordHash = await hashPassword(password);
 
@@ -35,9 +51,9 @@ export async function POST(request: Request) {
     const user = await withTransaction(async (tx) => {
       const rows = await tx.query<{ id: string; email: string; full_name: string | null; role: string }>(
         `INSERT INTO profiles (email, password_hash, full_name, phone, whatsapp, role, email_confirmed, confirm_token_hash, confirm_token_expires)
-         VALUES ($1, $2, $3, NULL, $4, 'vendor', false, $5, $6)
+         VALUES ($1, $2, $3, $4, $4, 'vendor', false, $5, $6)
          RETURNING id, email, full_name, role`,
-        [email.toLowerCase().trim(), passwordHash, `${firstName} ${lastName}`, whatsapp, confirmTokenHash, confirmExpires]
+        [email.toLowerCase().trim(), passwordHash, `${String(firstName).trim()} ${String(lastName).trim()}`.trim(), phoneE164, confirmTokenHash, confirmExpires]
       );
 
       const userId = rows[0].id;
@@ -46,7 +62,7 @@ export async function POST(request: Request) {
         `INSERT INTO vendors (user_id, store_name, vertical, neighborhood, whatsapp)
          VALUES ($1, $2, $3, 'sicardi', $4)
          RETURNING slug`,
-        [userId, `${firstName} ${lastName}`.trim(), selected, whatsapp]
+        [userId, storeNameClean, selected, phoneE164]
       );
 
       return { ...rows[0], slug: vendorRows[0]?.slug || "" };
@@ -60,7 +76,7 @@ export async function POST(request: Request) {
 
     if (user.email && user.slug) {
       const microsite = `${baseUrl}/tienda/${user.slug}`;
-      const welcome = welcomeEmail(user.full_name || firstName, microsite);
+      const welcome = welcomeEmail(user.full_name || storeNameClean, microsite);
       await sendEmail({ to: user.email, subject: welcome.subject, html: welcome.html });
     }
 

@@ -23,22 +23,67 @@ export default function RegisterPage() {
   const router = useRouter();
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
+  const [storeName, setStoreName] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
   const [tipo, setTipo] = useState("gastronomia");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
+  const [phoneMsg, setPhoneMsg] = useState("");
+  const [phoneOk, setPhoneOk] = useState(false);
+
+  function updatePhone(raw: string) {
+    setWhatsapp(raw);
+    if (!raw) {
+      setPhoneMsg("");
+      setPhoneOk(false);
+      return;
+    }
+    const res = checkArgPhone(raw);
+    if (res.ok) {
+      setPhoneMsg(`Se usará ${res.formatted}`);
+      setPhoneOk(true);
+    } else if (res.invalid) {
+      setPhoneMsg(res.message);
+      setPhoneOk(false);
+    } else {
+      setPhoneMsg("");
+      setPhoneOk(false);
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setMessage("");
 
+    if (password !== confirm) {
+      setMessage("Las contraseñas no coinciden");
+      setLoading(false);
+      return;
+    }
+
+    const e164 = toE164Plus(whatsapp);
+    if (!e164) {
+      setMessage("Ingresá un WhatsApp válido (celular)");
+      setLoading(false);
+      return;
+    }
+
     const res = await fetch("/api/register", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password, firstName, lastName, whatsapp, tipo }),
+      body: JSON.stringify({
+        email,
+        password,
+        firstName,
+        lastName,
+        storeName,
+        whatsapp: e164,
+        tipo,
+      }),
     });
 
     const data = await res.json();
@@ -89,15 +134,36 @@ export default function RegisterPage() {
           </div>
         </div>
         <div>
+          <Label htmlFor="storeName">Nombre del local comercial</Label>
+          <Input
+            id="storeName"
+            type="text"
+            placeholder="Ej: Pizzería Don Pepe"
+            value={storeName}
+            onChange={(e) => setStoreName(e.target.value)}
+            required
+          />
+        </div>
+        <div>
           <Label htmlFor="whatsapp">WhatsApp</Label>
           <Input
             id="whatsapp"
             type="tel"
-            placeholder="Ej: 11 5555 1234"
+            placeholder="11 5555 1234"
             value={whatsapp}
-            onChange={(e) => setWhatsapp(e.target.value)}
+            onChange={(e) => updatePhone(e.target.value)}
+            className={
+              whatsapp && phoneOk === false && whatsapp.length >= 10
+                ? "border-red-300"
+                : phoneOk
+                  ? "border-green-400"
+                  : ""
+            }
             required
           />
+          {phoneMsg && (
+            <p className={`text-xs mt-1 ${phoneOk ? "text-green-600" : "text-red-500"}`}>{phoneMsg}</p>
+          )}
         </div>
         <div>
           <Label htmlFor="email">Correo electrónico</Label>
@@ -112,14 +178,26 @@ export default function RegisterPage() {
         </div>
         <div>
           <Label htmlFor="password">Contraseña</Label>
-          <Input
+          <PasswordInput
             id="password"
-            type="password"
             placeholder="Mínimo 6 caracteres"
             value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            onChange={setPassword}
             required
             minLength={6}
+            autoComplete="new-password"
+          />
+        </div>
+        <div>
+          <Label htmlFor="confirm">Repetí tu contraseña</Label>
+          <PasswordInput
+            id="confirm"
+            placeholder="Repetí tu contraseña"
+            value={confirm}
+            onChange={setConfirm}
+            required
+            minLength={6}
+            autoComplete="new-password"
           />
         </div>
         <div>

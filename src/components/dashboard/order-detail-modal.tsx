@@ -180,7 +180,7 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
     }
   };
 
-  async function handlePrint(type: "comanda" | "ticket" = "comanda") {
+  async function handlePrint(type: "comanda" | "ticket" | "despacho" = "comanda") {
     setPrinting(true);
     setPrintStatus(null);
     try {
@@ -539,6 +539,28 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
                       </svg>
                       {getActionButtonLabel(nextStatus, order, isModa)} — esperando pago
                     </button>
+                  </div>
+                ) : nextStatus === "sent" && order.method === "delivery" ? (
+                  // Delivery: dos acciones (marcar enviado o marcar + imprimir comprobante del repartidor).
+                  <div className="space-y-2">
+                    <Button
+                      className="w-full"
+                      onClick={() => { onAction(order, "sent"); onClose(); }}
+                    >
+                      {getActionButtonLabel(nextStatus, order, isModa)}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      disabled={printing}
+                      onClick={async () => {
+                        onAction(order, "sent");
+                        await handlePrint("despacho");
+                        onClose();
+                      }}
+                    >
+                      {printing ? "🖨️ Imprimiendo..." : "🖨️ Marcar como enviado + imprimir comprobante"}
+                    </Button>
                   </div>
                 ) : (
                   <Button

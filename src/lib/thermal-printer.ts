@@ -26,7 +26,7 @@ export type PrinterVendor = {
   print_social?: boolean | null;
 };
 
-export type PrintJobType = "ticket" | "comanda" | "retiro" | "test" | "precuenta";
+export type PrintJobType = "ticket" | "comanda" | "retiro" | "despacho" | "test" | "precuenta";
 
 export type DispatchResult = {
   ok: boolean;
@@ -577,6 +577,53 @@ async function composeRetiroReceipt(printer: any, vendor: PrinterVendor, order: 
   printer.cut();
 }
 
+/**
+ * Comprobante del repartidor (delivery): solo datos del envío, letra doble.
+ * Sin logo, sin datos del negocio, sin pie de portal, sin ítems ni total.
+ */
+async function composeDespacho(printer: any, order: Order): Promise<void> {
+  printer.alignCenter();
+  printer.setTextSize(1, 1);
+
+  printer.bold(true);
+  printer.println("ENVIO");
+  if (order.pickup_number != null) {
+    printer.setTextSize(2, 2);
+    printer.println(`Nro. ${order.pickup_number}`);
+    printer.setTextSize(1, 1);
+  }
+  printer.bold(false);
+  printer.println("");
+
+  printer.println(order.customer_name || "");
+  if (order.customer_phone) printer.println(`Tel. ${order.customer_phone}`);
+  printer.println("");
+
+  if (order.customer_address) {
+    printer.bold(true);
+    printer.println("ENTREGAR EN:");
+    printer.bold(false);
+    // Dirección en foco: la mostramos tal cual (puede ser multi-línea).
+    for (const line of String(order.customer_address).split("\n")) {
+      if (line.trim()) printer.println(line.trim());
+    }
+    printer.println("");
+  }
+
+  if (order.notes && order.notes.trim()) {
+    printer.bold(true);
+    printer.println("*** INSTRUCCIONES ***");
+    printer.bold(false);
+    for (const line of String(order.notes).split("\n")) {
+      if (line.trim()) printer.println(line.trim());
+    }
+    printer.println("");
+  }
+
+  printer.setTextSize(0, 0);
+  printer.cut();
+}
+
 async function composePrecuenta(
   printer: any,
   vendor: PrinterVendor,
@@ -773,6 +820,37 @@ export async function buildRetiroReceiptBuffer(
   }
 }
 
+export async function printDespacho(
+  order: Order,
+  vendor: PrinterVendor
+): Promise<{ success: boolean; error?: string }> {
+  const res = await createPrinter(vendor);
+  if (!res.ok) return { success: false, error: res.error };
+  if (!vendor.printer_ip) return { success: false, error: "IP de impresora no configurada" };
+  try {
+    await composeDespacho(res.printer, order);
+    await res.printer.execute();
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: errorMsg(e) };
+  }
+}
+
+export async function buildDespachoBuffer(
+  vendor: PrinterVendor,
+  order: Order
+): Promise<BufferResult> {
+  const res = await createPrinter(vendor);
+  if (!res.ok) return { success: false, error: res.error };
+  try {
+    await composeDespacho(res.printer, order);
+    const buffer = (await res.printer.getBuffer()) as Buffer;
+    return { success: true, buffer };
+  } catch (e) {
+    return { success: false, error: errorMsg(e) };
+  }
+}
+
 export async function printPrecuenta(
   vendor: PrinterVendor,
   tableName: string,
@@ -907,6 +985,7 @@ export async function dispatchPrint(params: {
     let built: BufferResult;
     if (params.type === "ticket") built = await buildReceiptBuffer(vendor, order, params.extra);
     else if (params.type === "retiro") built = await buildRetiroReceiptBuffer(vendor, order);
+    else if (params.type === "despacho") built = await buildDespachoBuffer(vendor, order);
     else built = await buildComandaBuffer(vendor, order);
     if (!built.success) return { ok: false, mode, error: built.error };
     const pushed = await pushToBridge(
@@ -920,6 +999,7 @@ export async function dispatchPrint(params: {
   let r: { success: boolean; error?: string };
   if (params.type === "ticket") r = await printReceipt(order, vendor, params.extra);
   else if (params.type === "retiro") r = await printRetiroReceipt(order, vendor);
+  else if (params.type === "despacho") r = await printDespacho(order, vendor);
   else r = await printComanda(order, vendor);
   return { ok: r.success, mode, error: r.error };
 }

@@ -197,10 +197,18 @@ export async function PATCH(
       // (desde la DB, no desde el body) para que el pedido quede coherente y
       // el cliente no pueda forzar un precio.
       if (isModifyOnly && rawItems !== undefined) {
+        // Los ítems llegan en formato OrderItem (product_id/variant_id). Se
+        // normalizan a la forma que espera resolveOrderPricing (offerId/variantId).
+        const priceItems = (Array.isArray(rawItems) ? rawItems : []).map((i: any) => ({
+          offerId: i.offerId ?? i.product_id ?? null,
+          variantId: i.variantId ?? i.variant_id ?? null,
+          qty: i.qty ?? 1,
+          modifiers: i.modifiers ?? undefined,
+        }));
         const pricing = await resolveOrderPricing({
           tx,
           vendorId: vendor.id,
-          items: rawItems,
+          items: priceItems,
           method: currentOrder.method,
           deliveryFee: fullVendor?.delivery_fee,
           freeDeliveryMin: fullVendor?.free_delivery_min,
@@ -254,6 +262,9 @@ export async function PATCH(
   } catch (e) {
     if (e instanceof OutOfStockError) {
       return NextResponse.json({ error: e.message }, { status: 409 });
+    }
+    if (e instanceof PricingError) {
+      return NextResponse.json({ error: e.message }, { status: 400 });
     }
     throw e;
   }

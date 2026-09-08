@@ -76,3 +76,40 @@ export function toE164Plus(raw: string | null | undefined): string | null {
   const e = toE164(raw);
   return e ? "+" + e : null;
 }
+
+/**
+ * Devuelve todas las variantes en dígitos de un teléfono argentino para
+ * matchear contra la DB sin importar el formato guardado:
+ *   - "549" + 10 dígitos  (E.164 móvil, formato WhatsApp)
+ *   - 10 dígitos          (nacional)
+ *   - "54" + 10 dígitos   (E.164 sin el 9 móvil, formato viejo)
+ *   - "9" + 10 dígitos    (marcación local móvil)
+ */
+export function phoneVariantsAR(raw: string | null | undefined): string[] {
+  const d = digits(raw || "");
+  if (!d) return [];
+
+  const e = toE164(raw || "");
+  if (e && e.length === 13) {
+    const core = e.slice(3); // 10 dígitos
+    return ["549" + core, core, "54" + core, "9" + core];
+  }
+
+  const out = new Set<string>([d]);
+  if (d.length === 10) {
+    out.add("54" + d);
+    out.add("549" + d);
+    out.add("9" + d);
+  } else if (d.startsWith("54") && d.length === 12) {
+    out.add(d.slice(2));
+    out.add("549" + d.slice(2));
+  } else if (d.startsWith("549") && d.length === 13) {
+    out.add(d.slice(3));
+    out.add("54" + d.slice(3));
+  } else if (d.startsWith("9") && d.length === 11) {
+    out.add(d.slice(1));
+    out.add("54" + d.slice(1));
+    out.add("549" + d.slice(1));
+  }
+  return Array.from(out);
+}

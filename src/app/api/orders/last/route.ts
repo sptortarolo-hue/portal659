@@ -1,7 +1,7 @@
 import { queryOne } from "@/lib/db";
 import { withRateLimit } from "@/lib/api-wrapper";
 import { isValidPhone } from "@/lib/order-utils";
-import { phoneVariants } from "@/lib/device-merge";
+import { phoneVariantsAR } from "@/lib/phone";
 import { NextResponse } from "next/server";
 
 export const GET = withRateLimit(async (request: Request) => {
@@ -16,7 +16,7 @@ export const GET = withRateLimit(async (request: Request) => {
     return NextResponse.json({ error: "Formato de teléfono inválido" }, { status: 400 });
   }
 
-  const variants = phoneVariants(rawPhone);
+  const variants = phoneVariantsAR(rawPhone);
 
   const last = await queryOne<{ customer_name: string | null; neighborhood: string | null }>(
     `SELECT customer_name, neighborhood

@@ -1,7 +1,8 @@
 import { queryMany } from "@/lib/db";
 import { NextResponse } from "next/server";
 import { withRateLimit } from "@/lib/api-wrapper";
-import { formatPhone, isValidPhone, normalizePhoneAR } from "@/lib/order-utils";
+import { formatPhone, isValidPhone } from "@/lib/order-utils";
+import { phoneVariantsAR } from "@/lib/phone";
 
 export const GET = withRateLimit(async (request: Request) => {
   const { searchParams } = new URL(request.url);
@@ -11,17 +12,15 @@ export const GET = withRateLimit(async (request: Request) => {
     return NextResponse.json({ error: "phone requerido" }, { status: 400 });
   }
 
-  // Normalizar a E.164 para display/perfil, pero buscar en orders con formatPhone (dígitos)
   const phoneDigits = formatPhone(rawPhone);
-  const phoneE164 = normalizePhoneAR(rawPhone);
   if (!isValidPhone(phoneDigits)) {
     return NextResponse.json({ error: "Formato de teléfono inválido" }, { status: 400 });
   }
 
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
-  // Buscar por customer_phone (guardado solo dígitos) y también por variantes E.164
-  const searchVariants = [phoneDigits, phoneE164.replace(/^\+/, "")];
+  // Buscar por dígitos: matchea customer_phone guardado en cualquier formato.
+  const searchVariants = phoneVariantsAR(rawPhone);
 
   const orders = await queryMany<Record<string, unknown>>(
     `SELECT o.*,
@@ -35,7 +34,7 @@ export const GET = withRateLimit(async (request: Request) => {
             ) AS vendors
      FROM orders o
      LEFT JOIN vendors v ON v.id = o.vendor_id
-     WHERE o.customer_phone = ANY($1) AND o.created_at >= $2
+     WHERE regexp_replace(o.customer_phone, '[^0-9]', '', 'g') = ANY($1) AND o.created_at >= $2
      ORDER BY o.created_at DESC
      LIMIT 20`,
     [searchVariants, sevenDaysAgo]

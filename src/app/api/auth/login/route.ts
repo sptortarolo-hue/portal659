@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { queryOne } from "@/lib/db";
 import { verifyPassword, signAccessToken } from "@/lib/auth";
 import { withRateLimit } from "@/lib/api-wrapper";
-import { toE164Plus, toE164 } from "@/lib/phone";
+import { phoneVariantsAR } from "@/lib/phone";
 
 export const POST = withRateLimit(async (request: Request) => {
   const { email, password } = await request.json();
@@ -31,11 +31,10 @@ export const POST = withRateLimit(async (request: Request) => {
       [identifier]
     );
   } else {
-    // WhatsApp: normalizamos ambos formatos (con/sin +) para matchear contra la base.
-    const plus = toE164Plus(identifier);
-    const plain = toE164(identifier);
-    const candidates = [plus, plain].filter(Boolean);
-    if (candidates.length) {
+    // WhatsApp: matcheamos por dígitos contra cualquier formato guardado
+    // (E.164 con/sin "+", con/sin el 9 móvil, o nacional sin prefijos).
+    const variants = phoneVariantsAR(identifier);
+    if (variants.length > 0) {
       user = await queryOne<{
         id: string;
         email: string;
@@ -45,8 +44,10 @@ export const POST = withRateLimit(async (request: Request) => {
         email_confirmed: boolean;
       }>(
         `SELECT id, email, full_name, role, password_hash, email_confirmed FROM profiles
-         WHERE whatsapp = ANY($1) OR phone = ANY($1) LIMIT 1`,
-        [candidates]
+         WHERE regexp_replace(whatsapp, '[^0-9]', '', 'g') = ANY($1)
+            OR regexp_replace(phone, '[^0-9]', '', 'g') = ANY($1)
+         LIMIT 1`,
+        [variants]
       );
     }
   }

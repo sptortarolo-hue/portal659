@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { queryOne } from "@/lib/db";
 import { hashPassword, signAccessToken } from "@/lib/auth";
 import { withRateLimit } from "@/lib/api-wrapper";
-import { toE164Plus, checkArgPhone } from "@/lib/phone";
+import { toE164Plus, checkArgPhone, phoneVariantsAR } from "@/lib/phone";
 
 /**
  * Registro de comprador (cliente): cuenta para guardar favoritos, datos de
@@ -46,9 +46,13 @@ export const POST = withRateLimit(async (request: Request) => {
     return NextResponse.json({ error: "El email ya está registrado" }, { status: 409 });
   }
 
+  const phoneVariants = phoneVariantsAR(whatsapp);
   const existingPhone = await queryOne<{ id: string }>(
-    `SELECT id FROM profiles WHERE whatsapp = $1 OR phone = $1 LIMIT 1`,
-    [phoneE164]
+    `SELECT id FROM profiles
+     WHERE regexp_replace(whatsapp, '[^0-9]', '', 'g') = ANY($1)
+        OR regexp_replace(phone, '[^0-9]', '', 'g') = ANY($1)
+     LIMIT 1`,
+    [phoneVariants]
   );
   if (existingPhone) {
     return NextResponse.json({ error: "Ese WhatsApp ya está registrado" }, { status: 409 });

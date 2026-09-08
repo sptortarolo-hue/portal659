@@ -7,6 +7,7 @@ import { NextResponse } from "next/server";
 import { canTransition } from "@/lib/order-utils";
 import { adjustStockForItems, OutOfStockError } from "@/lib/stock";
 import { PricingError, resolveOrderPricing } from "@/lib/pricing";
+import { phoneVariantsAR } from "@/lib/phone";
 import type { OrderItem, OrderStatus } from "@/types/database";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -277,9 +278,13 @@ export async function PATCH(
 
   if (order && pushText && order.customer_phone && !isCounterPickup) {
     try {
+      const phoneVariants = phoneVariantsAR(order.customer_phone as string);
       const customerProfile = await queryOne<{ id: string; email: string | null }>(
-        `SELECT id, email FROM profiles WHERE phone = $1 OR whatsapp = $1 LIMIT 1`,
-        [order.customer_phone as string]
+        `SELECT id, email FROM profiles
+         WHERE regexp_replace(phone, '[^0-9]', '', 'g') = ANY($1)
+            OR regexp_replace(whatsapp, '[^0-9]', '', 'g') = ANY($1)
+         LIMIT 1`,
+        [phoneVariants]
       );
 
       if (customerProfile) {

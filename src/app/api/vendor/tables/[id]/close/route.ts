@@ -40,7 +40,7 @@ export async function POST(
   const toUpdate = list.filter((o) => o.status !== "completed");
   if (toUpdate.length > 0) {
     await query(
-      `UPDATE orders SET status = 'completed', paid_at = $1 WHERE id = ANY($2)`,
+      `UPDATE orders SET status = 'completed', paid_at = $1, closed_at = $1 WHERE id = ANY($2)`,
       [now, toUpdate.map((o) => o.id)]
     );
   } else {

@@ -280,6 +280,8 @@ export type Order = {
   track_token?: string | null;
   created_at: string;
   updated_at: string;
+  /** Momento en que el pedido se cerró (completed/cancelled). Frena el cronómetro. */
+  closed_at?: string | null;
 };
 
 export type OrderItem = {

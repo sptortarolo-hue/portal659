@@ -507,7 +507,8 @@ function VendorDashboardInner() {
             const isCancelled = order.status === "cancelled";
             const isCompleted = order.status === "completed";
             const isTerminal = isCancelled || isCompleted;
-            const elapsed = Math.floor((Date.now() - new Date(order.created_at).getTime()) / 60000);
+            const endMs = isTerminal && order.closed_at ? new Date(order.closed_at).getTime() : Date.now();
+            const elapsed = Math.floor((endMs - new Date(order.created_at).getTime()) / 60000);
             const remaining = order.estimated_minutes ? Math.max(0, order.estimated_minutes - elapsed) : null;
             const isOverdue = remaining !== null && remaining <= 0 && !isTerminal;
 

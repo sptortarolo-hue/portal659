@@ -178,6 +178,7 @@ export async function PATCH(
     order = await withTransaction(async (tx) => {
       const updateData: Record<string, unknown> = {};
       if (status) updateData.status = status;
+      if (status === "completed" || status === "cancelled") updateData.closed_at = new Date().toISOString();
       if (estimated_minutes !== undefined) updateData.estimated_minutes = estimated_minutes;
       if (modification_notes !== undefined) updateData.modification_notes = modification_notes;
       if (isConvertDelivery) {

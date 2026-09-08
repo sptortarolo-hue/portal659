@@ -222,7 +222,9 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
   }, [handleKeyDown]);
 
   const created = new Date(order.created_at);
-  const elapsed = Math.floor((Date.now() - created.getTime()) / 60000);
+  const isFinal = order.status === "completed" || order.status === "cancelled";
+  const endMs = isFinal && order.closed_at ? new Date(order.closed_at).getTime() : Date.now();
+  const elapsed = Math.floor((endMs - created.getTime()) / 60000);
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center" onClick={onClose}>

@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { LivePreview } from "@/components/dashboard/shared";
 import { HoursEditor } from "@/components/dashboard/hours-editor";
+import { LocationPicker } from "./location-picker";
 import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
@@ -57,6 +58,8 @@ export default function DashboardServicio({
   const [storeName, setStoreName] = useState(vendor?.store_name || "");
   const [storeCategory, setStoreCategory] = useState(vendor?.category || "");
   const [address, setAddress] = useState(vendor?.address || "");
+  const [lat, setLat] = useState<number | null>(vendor?.lat ?? null);
+  const [lng, setLng] = useState<number | null>(vendor?.lng ?? null);
   const [hours, setHours] = useState(vendor?.hours || "");
   const [description, setDescription] = useState(vendor?.description || "");
   const [whatsapp, setWhatsapp] = useState(vendor?.whatsapp || "");
@@ -67,6 +70,27 @@ export default function DashboardServicio({
   const [serviceArea, setServiceArea] = useState(vendor?.service_area || "");
   const [freeEstimate, setFreeEstimate] = useState(vendor?.free_estimate !== false);
   const [urgentEnabled, setUrgentEnabled] = useState(vendor?.urgent_enabled === true);
+
+  useEffect(() => {
+    if (!vendor) return;
+    setStoreName(vendor.store_name || "");
+    setStoreCategory(vendor.category || "");
+    setAddress(vendor.address || "");
+    setLat(vendor.lat ?? null);
+    setLng(vendor.lng ?? null);
+    setHours(vendor.hours || "");
+    setDescription(vendor.description || "");
+    setWhatsapp(vendor.whatsapp || "");
+    setPhone(vendor.phone || "");
+    setInstagram(vendor.instagram || "");
+    setFacebook(vendor.facebook || "");
+    setServicesList(vendor.services_list || "");
+    setServiceArea(vendor.service_area || "");
+    setFreeEstimate(vendor.free_estimate !== false);
+    setUrgentEnabled(vendor.urgent_enabled === true);
+    setStorePreview(vendor.image_url || null);
+    setLogoPreview(vendor.logo_url || null);
+  }, [vendor]);
 
   const [storePreview, setStorePreview] = useState<string | null>(vendor?.image_url || null);
   const [logoPreview, setLogoPreview] = useState<string | null>(vendor?.logo_url || null);
@@ -99,6 +123,8 @@ export default function DashboardServicio({
       store_name: storeName,
       category: storeCategory,
       address,
+      lat,
+      lng,
       hours,
       description,
       whatsapp,
@@ -249,6 +275,15 @@ export default function DashboardServicio({
             <Label>Dirección</Label>
             <Input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Calle y número" />
           </div>
+          <LocationPicker
+            lat={lat}
+            lng={lng}
+            onChange={(newLat, newLng) => {
+              setLat(newLat);
+              setLng(newLng);
+            }}
+            neighborhood={vendor?.neighborhood}
+          />
           <div>
             <Label>Horarios</Label>
             <HoursEditor value={hours} onChange={setHours} />

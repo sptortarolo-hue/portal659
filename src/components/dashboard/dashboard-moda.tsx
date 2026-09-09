@@ -16,6 +16,7 @@ import { RadioCards } from "@/components/ui/radio-cards";
 import { LivePreview, CategoryManager, apiJson, TransferConfig, DeliveryFeeConfig } from "@/components/dashboard/shared";
 import { MpConnectCard } from "@/components/dashboard/mp-connect-card";
 import { HoursEditor } from "@/components/dashboard/hours-editor";
+import { LocationPicker } from "./location-picker";
 import type { Vendor, Product, ProductVariant, ProductImage } from "@/types/database";
 
 const PAYMENT_OPTIONS = [
@@ -80,6 +81,8 @@ export default function DashboardModa({
   const [storeVertical, setStoreVertical] = useState(vendor?.vertical || "moda");
   const [storeCategory, setStoreCategory] = useState(vendor?.category || "ropa");
   const [address, setAddress] = useState(vendor?.address || "");
+  const [lat, setLat] = useState<number | null>(vendor?.lat ?? null);
+  const [lng, setLng] = useState<number | null>(vendor?.lng ?? null);
   const [hours, setHours] = useState(vendor?.hours || "");
   const [description, setDescription] = useState(vendor?.description || "");
   const [whatsapp, setWhatsapp] = useState(vendor?.whatsapp || "");
@@ -96,6 +99,28 @@ export default function DashboardModa({
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
   const [msg2, setMsg2] = useState("");
+
+  useEffect(() => {
+    if (!vendor) return;
+    setStoreName(vendor.store_name || "");
+    setStoreVertical(vendor.vertical || "moda");
+    setStoreCategory(vendor.category || "ropa");
+    setAddress(vendor.address || "");
+    setLat(vendor.lat ?? null);
+    setLng(vendor.lng ?? null);
+    setHours(vendor.hours || "");
+    setDescription(vendor.description || "");
+    setWhatsapp(vendor.whatsapp || "");
+    setPhone(vendor.phone || "");
+    setInstagram(vendor.instagram || "");
+    setFacebook(vendor.facebook || "");
+    setPaymentMethods(
+      vendor.payment_methods ? vendor.payment_methods.split(", ").map((s: string) => s.trim()).filter(Boolean) : []
+    );
+    setDeliveryOptions(vendor.delivery_options || "ambos");
+    setStorePreview(vendor.image_url || null);
+    setLogoPreview(vendor.logo_url || null);
+  }, [vendor]);
 
   // ---- Oferta ----
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -157,6 +182,8 @@ export default function DashboardModa({
       whatsapp,
       phone,
       address,
+      lat,
+      lng,
       hours,
       description,
       image_url: imageUrl,
@@ -437,6 +464,7 @@ export default function DashboardModa({
       <CollapsibleSection icon="📍" title="Ubicación y horarios">
         <div className="space-y-3">
           <div><Label>Dirección</Label><Input value={address} onChange={(e) => setAddress(e.target.value)} /></div>
+          <LocationPicker lat={lat} lng={lng} onChange={(newLat, newLng) => { setLat(newLat); setLng(newLng); }} neighborhood={vendor?.neighborhood} />
           <div><Label>Horarios</Label><HoursEditor value={hours} onChange={setHours} /></div>
         </div>
       </CollapsibleSection>

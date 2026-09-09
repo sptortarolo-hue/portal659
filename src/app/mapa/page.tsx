@@ -14,7 +14,7 @@ export default async function MapaPage() {
   );
 
   const vendorsWithCoords = vendors.filter(
-    (v) => v.location && v.location.trim() !== ""
+    (v) => (v.lat != null && v.lng != null) || (v.location && v.location.trim() !== "")
   );
 
   return (

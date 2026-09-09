@@ -76,6 +76,8 @@ export async function POST(request: Request) {
     print_address,
     print_phone,
     print_social,
+    lat,
+    lng,
   } = body;
 
   const VALID_VERTICALS = ["gastronomia", "comercio", "servicio", "moda", "salud", "otro"];
@@ -135,6 +137,8 @@ export async function POST(request: Request) {
   if (print_address !== undefined) payload.print_address = print_address === true;
   if (print_phone !== undefined) payload.print_phone = print_phone === true;
   if (print_social !== undefined) payload.print_social = print_social === true;
+  if (lat !== undefined) payload.lat = lat != null && lat !== "" && !isNaN(Number(lat)) ? Number(lat) : null;
+  if (lng !== undefined) payload.lng = lng != null && lng !== "" && !isNaN(Number(lng)) ? Number(lng) : null;
 
   if (existing) {
     const setClauses: string[] = [];

@@ -54,6 +54,8 @@ type Vendor = {
   hours: string | null;
   location: string | null;
   address: string | null;
+  lat?: number | null;
+  lng?: number | null;
   description: string | null;
   image_url: string | null;
   logo_url: string | null;

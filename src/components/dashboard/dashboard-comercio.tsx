@@ -23,6 +23,7 @@ import {
 } from "@/components/dashboard/shared";
 import { MpConnectCard } from "@/components/dashboard/mp-connect-card";
 import { HoursEditor } from "@/components/dashboard/hours-editor";
+import { LocationPicker } from "./location-picker";
 import { DropdownMenu } from "@/components/ui/dropdown-menu";
 import { ModifierLibrary, ProductModifiersBlock } from "@/components/dashboard/modifier-editor";
 import type { Vendor, Product, ProductModifier } from "@/types/database";
@@ -104,6 +105,8 @@ export default function DashboardComercio({
   const [storeVertical, setStoreVertical] = useState(vendor?.vertical || "comercio");
   const [storeCategory, setStoreCategory] = useState(vendor?.category || "otros");
   const [address, setAddress] = useState(vendor?.address || "");
+  const [lat, setLat] = useState<number | null>(vendor?.lat ?? null);
+  const [lng, setLng] = useState<number | null>(vendor?.lng ?? null);
   const [hours, setHours] = useState(vendor?.hours || "");
   const [storePreview, setStorePreview] = useState<string | null>(vendor?.image_url || null);
   const [logoPreview, setLogoPreview] = useState<string | null>(vendor?.logo_url || null);
@@ -118,6 +121,30 @@ export default function DashboardComercio({
       : []
   );
   const [deliveryOptions, setDeliveryOptions] = useState(vendor?.delivery_options || "ambos");
+
+  useEffect(() => {
+    if (!vendor) return;
+    setStoreName(vendor.store_name || "");
+    setStoreVertical(vendor.vertical || "comercio");
+    setStoreCategory(vendor.category || "otros");
+    setAddress(vendor.address || "");
+    setLat(vendor.lat ?? null);
+    setLng(vendor.lng ?? null);
+    setHours(vendor.hours || "");
+    setStorePreview(vendor.image_url || null);
+    setLogoPreview(vendor.logo_url || null);
+    setDescription(vendor.description || "");
+    setWhatsapp(vendor.whatsapp || "");
+    setPhone(vendor.phone || "");
+    setInstagram(vendor.instagram || "");
+    setFacebook(vendor.facebook || "");
+    setPaymentMethods(
+      vendor.payment_methods
+        ? vendor.payment_methods.split(", ").map((s: string) => s.trim()).filter(Boolean)
+        : []
+    );
+    setDeliveryOptions(vendor.delivery_options || "ambos");
+  }, [vendor]);
 
   const [offName, setOffName] = useState("");
   const [offDesc, setOffDesc] = useState("");
@@ -154,6 +181,8 @@ export default function DashboardComercio({
           vertical: storeVertical,
           category: storeCategory,
           address,
+          lat,
+          lng,
           hours,
           description,
           whatsapp,
@@ -174,6 +203,8 @@ export default function DashboardComercio({
       storeVertical,
       storeCategory,
       address,
+      lat,
+      lng,
       hours,
       description,
       whatsapp,
@@ -789,6 +820,15 @@ export default function DashboardComercio({
               placeholder="Calle y número"
             />
           </div>
+          <LocationPicker
+            lat={lat}
+            lng={lng}
+            onChange={(newLat, newLng) => {
+              setLat(newLat);
+              setLng(newLng);
+            }}
+            neighborhood={vendor?.neighborhood}
+          />
           <div>
             <Label>Horarios</Label>
             <HoursEditor value={hours} onChange={setHours} />

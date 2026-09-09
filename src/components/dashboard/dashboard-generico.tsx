@@ -10,6 +10,7 @@ import { ChipToggle } from "@/components/ui/chip-toggle";
 import { RadioCards } from "@/components/ui/radio-cards";
 import { OfferForm, OfferList, CategoryManager, LivePreview, apiJson, TransferConfig, DeliveryFeeConfig } from "./shared";
 import { HoursEditor } from "@/components/dashboard/hours-editor";
+import { LocationPicker } from "./location-picker";
 import type { Vendor, Product } from "@/types/database";
 
 const PAYMENT_OPTIONS = [
@@ -56,6 +57,8 @@ export default function DashboardGenerico({
   const [whatsapp, setWhatsapp] = useState("");
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
+  const [lat, setLat] = useState<number | null>(null);
+  const [lng, setLng] = useState<number | null>(null);
   const [hours, setHours] = useState("");
   const [description, setDescription] = useState("");
   const [storeFile, setStoreFile] = useState<File | null>(null);
@@ -85,6 +88,8 @@ export default function DashboardGenerico({
     setWhatsapp(vendor.whatsapp || "");
     setPhone(vendor.phone || "");
     setAddress(vendor.address || "");
+    setLat(vendor.lat ?? null);
+    setLng(vendor.lng ?? null);
     setHours(vendor.hours || "");
     setDescription(vendor.description || "");
     setStorePreview(vendor.image_url || null);
@@ -115,6 +120,7 @@ export default function DashboardGenerico({
       store_name: storeName, vertical: storeVertical, category: storeCategory,
       whatsapp, phone, address, hours, description, image_url: imageUrl, logo_url: logoUrl,
       instagram, facebook, payment_methods: paymentMethods.join(", "), delivery_options: deliveryOptions,
+      lat, lng,
     });
     setStoreFile(null);
     setLogoFile(null);
@@ -203,6 +209,7 @@ export default function DashboardGenerico({
       <CollapsibleSection icon="📍" title="Ubicación y horarios">
         <div className="space-y-3">
           <div><Label>Dirección</Label><Input value={address} onChange={(e) => setAddress(e.target.value)} /></div>
+          <LocationPicker lat={lat} lng={lng} onChange={(newLat, newLng) => { setLat(newLat); setLng(newLng); }} neighborhood={vendor?.neighborhood} />
           <div><Label>Horarios</Label><HoursEditor value={hours} onChange={setHours} /></div>
         </div>
       </CollapsibleSection>

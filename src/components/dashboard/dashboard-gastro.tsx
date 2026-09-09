@@ -16,6 +16,7 @@ import { ModifierLibrary, ProductModifiersBlock } from "@/components/dashboard/m
 import { MpConnectCard } from "@/components/dashboard/mp-connect-card";
 import { MenuImportModal } from "@/components/dashboard/menu-import";
 import { HoursEditor } from "@/components/dashboard/hours-editor";
+import { LocationPicker } from "./location-picker";
 import { StaffManager } from "@/components/vendor/staff-manager";
 import type { Vendor, Product, ProductModifier, VendorGallery } from "@/types/database";
 
@@ -114,6 +115,8 @@ export default function DashboardGastro({
   const [storeName, setStoreName] = useState(vendor?.store_name || "");
   const [storeCategory, setStoreCategory] = useState(vendor?.category || "otras");
   const [address, setAddress] = useState(vendor?.address || "");
+  const [lat, setLat] = useState<number | null>(vendor?.lat ?? null);
+  const [lng, setLng] = useState<number | null>(vendor?.lng ?? null);
   const [hours, setHours] = useState(vendor?.hours || "");
   const [description, setDescription] = useState(vendor?.description || "");
   const [whatsapp, setWhatsapp] = useState(vendor?.whatsapp || "");
@@ -192,6 +195,8 @@ export default function DashboardGastro({
     setStoreName(vendor?.store_name || "");
     setStoreCategory(vendor?.category || "otras");
     setAddress(vendor?.address || "");
+    setLat(vendor?.lat ?? null);
+    setLng(vendor?.lng ?? null);
     setHours(vendor?.hours || "");
     setDescription(vendor?.description || "");
     setWhatsapp(vendor?.whatsapp || "");
@@ -320,6 +325,8 @@ export default function DashboardGastro({
       store_name: storeName,
       category: storeCategory,
       address,
+      lat,
+      lng,
       hours,
       description,
       whatsapp,
@@ -378,7 +385,7 @@ export default function DashboardGastro({
     setLogoFile(null);
     setSaving(false);
   }, [
-    storeName, storeCategory, address, hours, description,
+    storeName, storeCategory, address, lat, lng, hours, description,
     whatsapp, phone, instagram, facebook, paymentMethods,
     deliveryOptions, prepTimeMin,
     storeFile, logoFile, saveVendor, setMsg,
@@ -688,6 +695,15 @@ export default function DashboardGastro({
               placeholder="Calle y número"
             />
           </div>
+          <LocationPicker
+            lat={lat}
+            lng={lng}
+            onChange={(newLat, newLng) => {
+              setLat(newLat);
+              setLng(newLng);
+            }}
+            neighborhood={vendor?.neighborhood}
+          />
           <div>
             <Label>Horarios</Label>
             <HoursEditor value={hours} onChange={setHours} />

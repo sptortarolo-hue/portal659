@@ -374,25 +374,34 @@ export async function POST(request: Request) {
           .map((m) => ({ label: String(m.desc ?? "").trim(), price_mod: Number(m.price_mod) || 0 }))
           .filter((o) => o.label !== "");
         if (opts.length > 0) {
-          if (existing) {
-            // Solo si el producto aún no tiene modificantes (no duplicar al re-importar).
-            const hasMods = await tx.queryOne<{ c: number }>(
-              `SELECT count(*)::int AS c FROM product_modifiers WHERE product_id = $1`,
-              [productId]
+          // Grupo por producto importado (un solo grupo "Opciones"/"Grupo").
+          // Se busca/crea el grupo del vendor y se lo asigna al plato.
+          const vendorIdRow = await tx.queryOne<{ vendor_id: string }>(
+            `SELECT vendor_id FROM products WHERE id = $1`,
+            [productId]
+          );
+          const vendorId = vendorIdRow?.vendor_id || "";
+          if (vendorId) {
+            let group = await tx.queryOne<{ id: string }>(
+              `SELECT id FROM modifier_groups
+               WHERE vendor_id = $1 AND group_name = $2 AND options = $3::jsonb
+               LIMIT 1`,
+              [vendorId, groupName, JSON.stringify(opts)]
             );
-            if (!hasMods || hasMods.c === 0) {
-              await tx.queryVoid(
-                `INSERT INTO product_modifiers (product_id, group_name, options, required, max_selections, position)
-                 VALUES ($1, $2, $3, false, 1, 0)`,
-                [productId, groupName, JSON.stringify(opts)]
+            if (!group) {
+              group = await tx.queryOne<{ id: string }>(
+                `INSERT INTO modifier_groups (vendor_id, group_name, options, required, max_selections, is_variant)
+                 VALUES ($1, $2, $3, false, 1, false) RETURNING id`,
+                [vendorId, groupName, JSON.stringify(opts)]
               );
             }
-          } else {
-            await tx.queryVoid(
-              `INSERT INTO product_modifiers (product_id, group_name, options, required, max_selections, position)
-               VALUES ($1, $2, $3, false, 1, 0)`,
-              [productId, groupName, JSON.stringify(opts)]
-            );
+            if (group) {
+              await tx.queryVoid(
+                `INSERT INTO product_modifier_links (group_id, product_id, position)
+                 VALUES ($1, $2, 0) ON CONFLICT DO NOTHING`,
+                [group.id, productId]
+              );
+            }
           }
         }
       }

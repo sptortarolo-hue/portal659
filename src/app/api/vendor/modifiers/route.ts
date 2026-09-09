@@ -1,34 +1,74 @@
 import { getVendorByRequest } from "@/lib/vendor-utils";
-import { queryMany, queryOne } from "@/lib/db";
+import { queryMany, queryOne, withTransaction } from "@/lib/db";
 import { NextResponse } from "next/server";
+import type { ModifierOption } from "@/types/database";
 
+export const dynamic = "force-dynamic";
+
+function normalizeOptions(options: unknown): ModifierOption[] {
+  return (Array.isArray(options) ? options : [])
+    .map((o: any) => ({
+      label: String(o?.label ?? o?.name ?? "").trim(),
+      price_mod: Number(o?.price_mod ?? o?.price ?? 0) || 0,
+    }))
+    .filter((o) => o.label !== "");
+}
+
+/** Devuelve grupos del vendor + asignaciones por plato + listado plano (compat). */
 export async function GET(request: Request) {
   const { vendor } = await getVendorByRequest(request);
-  if (!vendor) return NextResponse.json({ modifiers: [] });
+  if (!vendor) return NextResponse.json({ groups: [], assignments: {}, modifiers: [] });
 
   const { searchParams } = new URL(request.url);
   const productId = searchParams.get("product_id");
 
+  let groups;
+  let links;
   if (productId) {
-    const modifiers = await queryMany<Record<string, unknown>>(
-      `SELECT * FROM product_modifiers WHERE product_id = $1 ORDER BY position ASC`,
+    groups = await queryMany<Record<string, unknown>>(
+      `SELECT g.*, l.position
+       FROM modifier_groups g
+       JOIN product_modifier_links l ON l.group_id = g.id
+       WHERE l.product_id = $1
+       ORDER BY (g.is_variant DESC), l.position ASC`,
       [productId]
     );
-    return NextResponse.json({ modifiers: modifiers || [] });
+    return NextResponse.json({ groups: groups || [], assignments: { [productId]: (groups || []).map((g) => g.id) }, modifiers: (groups || []).map((g) => ({ ...g, product_id: productId })) });
   }
 
-  const products = await queryMany<{ id: string }>(
-    `SELECT id FROM products WHERE vendor_id = $1`,
+  groups = await queryMany<Record<string, unknown>>(
+    `SELECT * FROM modifier_groups WHERE vendor_id = $1 ORDER BY (is_variant DESC), created_at ASC`,
     [vendor.id]
   );
-  const ids = (products || []).map((p) => p.id);
-  if (ids.length === 0) return NextResponse.json({ modifiers: [] });
-
-  const modifiers = await queryMany<Record<string, unknown>>(
-    `SELECT * FROM product_modifiers WHERE product_id = ANY($1) ORDER BY position ASC`,
-    [ids]
+  links = await queryMany<Record<string, unknown>>(
+    `SELECT l.product_id, l.group_id, l.position
+     FROM product_modifier_links l
+     JOIN modifier_groups g ON g.id = l.group_id
+     WHERE g.vendor_id = $1
+     ORDER BY (g.is_variant DESC), l.position ASC`,
+    [vendor.id]
   );
-  return NextResponse.json({ modifiers: modifiers || [] });
+
+  const productIdsByGroup: Record<string, string[]> = {};
+  const assignments: Record<string, string[]> = {};
+  const flat: Record<string, unknown>[] = [];
+
+  for (const l of links || []) {
+    const gid = l.group_id as string;
+    const pid = l.product_id as string;
+    (productIdsByGroup[gid] ||= []).push(pid);
+    (assignments[pid] ||= []).push(gid);
+    const group = (groups || []).find((g) => g.id === gid);
+    if (group) flat.push({ ...group, product_id: pid, position: l.position });
+  }
+
+  const groupsWithMeta = (groups || []).map((g) => ({
+    ...g,
+    product_ids: productIdsByGroup[g.id as string] || [],
+    products_count: (productIdsByGroup[g.id as string] || []).length,
+  }));
+
+  return NextResponse.json({ groups: groupsWithMeta, assignments, modifiers: flat });
 }
 
 export async function POST(request: Request) {
@@ -36,39 +76,37 @@ export async function POST(request: Request) {
   if (!vendor) return NextResponse.json({ error: "Vendor no encontrado" }, { status: 404 });
 
   const body = await request.json();
-  const { product_id, group_name, options, required, max_selections } = body;
+  const { group_name, options, required, max_selections, is_variant, product_ids } = body;
 
-  if (!product_id || !group_name) {
-    return NextResponse.json({ error: "Faltan datos" }, { status: 400 });
+  const name = String(group_name || "").trim();
+  const norm = normalizeOptions(options);
+  if (!name) return NextResponse.json({ error: "Indicá el nombre del grupo" }, { status: 400 });
+  if (norm.length === 0) return NextResponse.json({ error: "El grupo necesita al menos una opción válida" }, { status: 400 });
+
+  let cleanIds: string[] = [];
+  if (Array.isArray(product_ids) && product_ids.length > 0) {
+    const rows = await queryMany<{ id: string }>(
+      `SELECT id FROM products WHERE id = ANY($1) AND vendor_id = $2`,
+      [product_ids, vendor.id]
+    );
+    cleanIds = rows.map((r) => r.id);
   }
 
-  const product = await queryOne<{ id: string }>(
-    `SELECT id FROM products WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
-    [product_id, vendor.id]
-  );
-  if (!product) return NextResponse.json({ error: "Producto no encontrado" }, { status: 404 });
+  const group = await withTransaction(async (tx) => {
+    const g = await tx.queryOne<Record<string, unknown>>(
+      `INSERT INTO modifier_groups (vendor_id, group_name, options, required, max_selections, is_variant)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [vendor.id, name, JSON.stringify(norm), required === true, Number(max_selections) || 1, is_variant === true]
+    );
+    if (!g) throw new Error("No se pudo crear el grupo");
+    for (let i = 0; i < cleanIds.length; i++) {
+      await tx.queryVoid(
+        `INSERT INTO product_modifier_links (group_id, product_id, position) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+        [g.id, cleanIds[i], i]
+      );
+    }
+    return g;
+  });
 
-  const normalizedOptions = (Array.isArray(options) ? options : [])
-    .map((o: any) => ({
-      label: String(o?.label ?? "").trim(),
-      price_mod: Number(o?.price_mod ?? o?.price ?? 0) || 0,
-    }))
-    .filter((o: any) => o.label !== "");
-
-  if (normalizedOptions.length === 0) {
-    return NextResponse.json({ error: "El modificador necesita al menos una opción válida" }, { status: 400 });
-  }
-
-  const countRow = await queryOne<{ c: number }>(
-    `SELECT count(*)::int AS c FROM product_modifiers WHERE product_id = $1`,
-    [product_id]
-  );
-
-  const modifier = await queryOne<Record<string, unknown>>(
-    `INSERT INTO product_modifiers (product_id, group_name, options, required, max_selections, position)
-     VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-    [product_id, group_name, JSON.stringify(normalizedOptions), required || false, max_selections || 1, countRow?.c || 0]
-  );
-
-  return NextResponse.json({ modifier });
+  return NextResponse.json({ modifier: { ...group, product_ids: cleanIds } });
 }

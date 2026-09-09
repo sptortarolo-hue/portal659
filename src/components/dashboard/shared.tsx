@@ -175,7 +175,7 @@ export function OfferForm({
   );
 }
 
-export function OfferList({ offers, onEdit, onToggleFeatured, onToggleAvailable, onDelete, editingId, editForm }: {
+export function OfferList({ offers, onEdit, onToggleFeatured, onToggleAvailable, onDelete, editingId, editForm, onEditModifiers }: {
   offers: Offer[];
   onEdit: (o: Offer) => void;
   onToggleFeatured: (o: Offer) => void;
@@ -183,6 +183,7 @@ export function OfferList({ offers, onEdit, onToggleFeatured, onToggleAvailable,
   onDelete: (o: Offer) => void;
   editingId?: string | null;
   editForm?: ReactNode;
+  onEditModifiers?: (o: Offer) => void;
 }) {
   const editAnchorRef = useRef<HTMLDivElement>(null);
 
@@ -239,6 +240,7 @@ export function OfferList({ offers, onEdit, onToggleFeatured, onToggleAvailable,
                     trigger={<span className="text-xl">⋯</span>}
                     items={[
                       { label: "Editar", icon: "✏️", onClick: () => onEdit(offer) },
+                      { label: "Modificadores", icon: "⚙️", onClick: () => onEditModifiers ? onEditModifiers(offer) : onEdit(offer) },
                       { label: offer.featured_today ? "Quitar de Hoy" : "Destacar Hoy", icon: "⭐", onClick: () => onToggleFeatured(offer) },
                       { label: offer.available ? "Pausar" : "Activar", icon: offer.available ? "⏸️" : "▶️", onClick: () => onToggleAvailable(offer) },
                       { label: "Eliminar", icon: "🗑️", onClick: () => onDelete(offer), destructive: true },

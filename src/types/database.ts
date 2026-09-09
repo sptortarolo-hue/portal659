@@ -87,7 +87,23 @@ export type ProductModifier = {
   required: boolean;
   max_selections: number;
   position: number;
+  /** Grupo "Variante": aparece primero y debe elegirse una opción. */
+  is_variant?: boolean;
   created_at: string;
+};
+
+/** Grupo de modificadores definido una vez (muchos a muchos con productos). */
+export type ModifierGroup = {
+  id: string;
+  vendor_id: string;
+  group_name: string;
+  options: ModifierOption[];
+  required: boolean;
+  max_selections: number;
+  is_variant: boolean;
+  created_at: string;
+  product_ids?: string[];
+  products_count?: number;
 };
 
 export type ModifierOption = {

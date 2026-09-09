@@ -23,6 +23,8 @@ import {
 } from "@/components/dashboard/shared";
 import { MpConnectCard } from "@/components/dashboard/mp-connect-card";
 import { HoursEditor } from "@/components/dashboard/hours-editor";
+import { DropdownMenu } from "@/components/ui/dropdown-menu";
+import { ModifierLibrary, ProductModifiersBlock } from "@/components/dashboard/modifier-editor";
 import type { Vendor, Product, ProductModifier } from "@/types/database";
 
 type Offer = {
@@ -506,6 +508,18 @@ export default function DashboardComercio({
                     Eliminar
                   </Button>
                 </div>
+                <div className="sm:hidden flex-shrink-0">
+                  <DropdownMenu
+                    trigger={<span className="text-xl">⋯</span>}
+                    items={[
+                      { label: "Editar", icon: "✏️", onClick: () => startEdit(offer) },
+                      { label: "Modificadores", icon: "⚙️", onClick: () => startEdit(offer) },
+                      { label: offer.featured_today ? "Quitar de Hoy" : "Destacar Hoy", icon: "⭐", onClick: () => toggleFeatured(offer) },
+                      { label: offer.available ? "Pausar" : "Activar", icon: offer.available ? "⏸️" : "▶️", onClick: () => toggleAvailable(offer) },
+                      { label: "Eliminar", icon: "🗑️", onClick: () => deleteOffer(offer), destructive: true },
+                    ]}
+                  />
+                </div>
               </div>
 
               <div className="mt-3 pt-3 border-t border-border">
@@ -693,6 +707,11 @@ export default function DashboardComercio({
               : "Agregar"}
         </Button>
       </div>
+      {editingId && (
+        <div className="mt-3 border-t border-border pt-3">
+          <ProductModifiersBlock productId={editingId} productName={offName} />
+        </div>
+      )}
     </Card>
   );
 
@@ -975,79 +994,7 @@ export default function DashboardComercio({
       </CollapsibleSection>
 
       <CollapsibleSection icon="⚙️" title="Modificadores">
-        <div className="space-y-4">
-          {(modifiers || []).length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-4">
-              No tenés modificadores cargados. Los modificadores son extras como &quot;Tamaño&quot;, &quot;Extra queso&quot;, etc.
-            </p>
-          ) : (
-            Object.entries(groupedModifiers).map(([productId, mods]) => (
-              <Card key={productId} className="p-3">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-sm font-medium">{getProductName(productId)}</span>
-                  <Badge variant="secondary" className="text-[10px]">{mods.length} {mods.length === 1 ? "grupo" : "grupos"}</Badge>
-                </div>
-                <div className="space-y-2">
-                  {mods.map((mod: any) => (
-                    <div key={mod.id} className="border border-border rounded-lg px-3 py-2">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-sm font-medium">{mod.group_name}</span>
-                        <Button type="button" variant="ghost" size="sm" className="text-red-600 h-7 px-2" onClick={() => deleteModifier(mod)}>🗑️</Button>
-                      </div>
-                      <div className="flex flex-wrap gap-1">
-                        {(mod.options || []).map((opt: any, i: number) => (
-                          <span key={i} className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
-                            {opt.label}
-                            {opt.price_mod > 0 && <span className="text-primary">+${opt.price_mod}</span>}
-                            {opt.price_mod < 0 && <span className="text-red-600">${opt.price_mod}</span>}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </Card>
-            ))
-          )}
-          <Card className="p-4">
-            <h4 className="font-medium text-sm mb-3">Agregar modificador</h4>
-            <div className="space-y-3">
-              <div>
-                <Label>Producto</Label>
-                <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={newModProductId} onChange={(e) => setNewModProductId(e.target.value)}>
-                  <option value="">Seleccionar producto...</option>
-                  {offers.map((offer) => <option key={offer.id} value={offer.id}>{offer.name}</option>)}
-                </select>
-              </div>
-              <div>
-                <Label>Grupo (ej: Tamaño, Extras)</Label>
-                <Input value={newModGroupName} onChange={(e) => setNewModGroupName(e.target.value)} placeholder="Tamaño" />
-              </div>
-              <div>
-                <Label>Opciones</Label>
-                <div className="flex gap-2 mt-1">
-                  <Input value={newModOptionLabel} onChange={(e) => setNewModOptionLabel(e.target.value)} placeholder="Etiqueta" className="flex-1" />
-                  <Input type="number" step="0.01" value={newModOptionPrice} onChange={(e) => setNewModOptionPrice(e.target.value)} placeholder="Precio" className="w-24" />
-                  <Button type="button" size="sm" onClick={addModifierOption} disabled={!newModOptionLabel.trim()}>+</Button>
-                </div>
-                {newModOptions.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 mt-2">
-                    {newModOptions.map((opt, i) => (
-                      <span key={i} className="inline-flex items-center gap-1 rounded-full bg-primary/10 text-primary px-2.5 py-1 text-xs font-medium">
-                        {opt.label}
-                        {opt.price_mod !== 0 && <span>{opt.price_mod > 0 ? `+$${opt.price_mod}` : `-$${Math.abs(opt.price_mod)}`}</span>}
-                        <button type="button" onClick={() => removeModifierOption(i)} className="ml-0.5 hover:text-red-600">×</button>
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-              <Button type="button" className="w-full" disabled={modSaving || !newModProductId || !newModGroupName.trim() || newModOptions.length === 0} onClick={handleAddModifier}>
-                {modSaving ? "Guardando..." : "Agregar modificador"}
-              </Button>
-            </div>
-          </Card>
-        </div>
+        <ModifierLibrary products={offers.map((o) => ({ id: o.id, name: o.name }))} />
       </CollapsibleSection>
 
       {msg && (

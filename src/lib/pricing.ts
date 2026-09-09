@@ -102,11 +102,14 @@ export async function resolveOrderPricing(opts: {
   const productById = new Map(products.map((p) => [p.id, p]));
   const variantById = new Map(variants.map((v) => [v.id, v]));
 
-  // Mapa product_id -> label -> price_mod (desde product_modifiers.options JSONB).
+  // Mapa product_id -> label -> price_mod (desde modifier_groups.options JSONB).
   let modifierMap = new Map<string, Map<string, number>>();
   if (productIds.size) {
     const modRows = await tx.query<{ product_id: string; options: { label?: string; price_mod?: number }[] }>(
-      `SELECT product_id, options FROM product_modifiers WHERE product_id = ANY($1)`,
+      `SELECT l.product_id, g.options
+       FROM product_modifier_links l
+       JOIN modifier_groups g ON g.id = l.group_id
+       WHERE l.product_id = ANY($1)`,
       [[...productIds]]
     );
     modifierMap = new Map();

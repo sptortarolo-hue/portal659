@@ -19,7 +19,12 @@ export async function GET(request: Request) {
   const allModifiers =
     productIds.length > 0
       ? await queryMany<Record<string, unknown>>(
-          `SELECT * FROM product_modifiers WHERE product_id = ANY($1) ORDER BY position ASC`,
+          `SELECT g.id, g.group_name, g.options, g.required, g.max_selections, g.is_variant,
+                  l.product_id, l.position
+           FROM product_modifier_links l
+           JOIN modifier_groups g ON g.id = l.group_id
+           WHERE l.product_id = ANY($1)
+           ORDER BY (g.is_variant DESC), l.position ASC`,
           [productIds]
         )
       : [];

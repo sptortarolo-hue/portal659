@@ -55,6 +55,11 @@ export function ModifierPicker({
     .filter((m) => m.required)
     .every((m) => (selected[m.group_name] || []).length > 0);
 
+  // El grupo "Variante" (is_variant) siempre aparece primero y es obligatorio.
+  const orderedModifiers = [...modifiers].sort(
+    (a, b) => Number(b.is_variant || false) - Number(a.is_variant || false)
+  );
+
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50">
       <div className="bg-card rounded-2xl border border-border p-6 w-full max-w-sm mx-4 max-h-[80vh] overflow-y-auto">
@@ -63,15 +68,18 @@ export function ModifierPicker({
           Personalizá tu pedido
         </p>
 
-        {modifiers.map((mod) => {
+        {orderedModifiers.map((mod) => {
           const groupSelected = selected[mod.group_name] || [];
+          const isVariant = !!mod.is_variant;
           return (
-            <div key={mod.id} className="mb-4">
+            <div key={mod.id} className={`mb-4 ${isVariant ? "rounded-xl bg-primary/5 border border-primary/20 p-3 -mx-1" : ""}`}>
               <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium">{mod.group_name}</span>
+                <span className={`text-sm font-medium ${isVariant ? "text-primary" : ""}`}>
+                  {isVariant ? "⭐ Variante" : mod.group_name}
+                </span>
                 <span className="text-xs text-muted-foreground">
                   {mod.required ? "Obligatorio" : "Opcional"}
-                  {mod.max_selections > 1 && ` · Hasta ${mod.max_selections}`}
+                  {mod.max_selections > 1 ? ` · Hasta ${mod.max_selections}` : mod.required ? " · elegí 1" : ""}
                 </span>
               </div>
               <div className="space-y-1.5">

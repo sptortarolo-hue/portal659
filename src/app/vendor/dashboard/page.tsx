@@ -18,6 +18,7 @@ import DashboardModa from "@/components/dashboard/dashboard-moda";
 import { VendorAnalytics } from "@/components/dashboard/vendor-analytics";
 import { VendorReviews } from "@/components/vendor/vendor-reviews";
 import { VendorOrderHistory } from "@/components/dashboard/vendor-order-history";
+import { ProductManager } from "@/components/dashboard/product-manager";
 import ComandaKDS from "@/components/dashboard/comanda-kds";
 import { playNewOrderSound, resumeAudioContext } from "@/lib/sounds";
 import { resolveVendorPlan, daysLeft } from "@/lib/plans";
@@ -726,38 +727,12 @@ function VendorDashboardInner() {
           <>
             <div className={tab === "config" ? "" : "hidden"}>{configContent}</div>
             <div className={tab === "menu" ? "" : "hidden"}>
-              <div className="space-y-4">
-                <h2 className="font-display text-xl font-semibold">{isModa ? "Catálogo" : "Menú y catálogo"}</h2>
-                {offers.map((offer) => (
-                  <Card key={offer.id} className="p-3">
-                    <div className="flex items-center gap-3">
-                      {offer.image_url ? (
-                        <img src={offer.image_url} alt={offer.name} className="h-12 w-12 rounded-lg object-cover flex-shrink-0" />
-                      ) : (
-                        <div className="h-12 w-12 rounded-lg bg-accent flex items-center justify-center flex-shrink-0"><span className="font-bold text-primary/60">{offer.name.charAt(0)}</span></div>
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-medium text-sm truncate">{offer.name}</span>
-                          {offer.featured_today && <Badge className="bg-sun/20 text-ink text-[10px] px-1.5 py-0">Hoy</Badge>}
-                          {!offer.available && <Badge variant="secondary" className="text-[10px] px-1.5 py-0">Pausado</Badge>}
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          {offer.promo_price ? (
-                            <><span className="line-through">${Number(offer.price).toLocaleString("es-AR")}</span> <span className="text-primary font-medium">${Number(offer.promo_price).toLocaleString("es-AR")}</span></>
-                          ) : (
-                            <>${Number(offer.price).toLocaleString("es-AR")}</>
-                          )}
-                          {offer.category && ` · ${offer.category}`}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-1 flex-shrink-0">
-                        <Button variant="outline" size="sm" onClick={() => setTab("config")}>Editar</Button>
-                      </div>
-                    </div>
-                  </Card>
-                ))}
-              </div>
+              <ProductManager
+                isModa={isModa}
+                showStock
+                showPrep={!isModa}
+                onChanged={() => loadData()}
+              />
             </div>
             <div className={tab === "orders" ? "" : "hidden"}>{ordersContent}</div>
             {mountedTabs.has("comanda") && (

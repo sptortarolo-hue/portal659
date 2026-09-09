@@ -141,19 +141,41 @@ export async function POST(request: Request) {
   if (lng !== undefined) payload.lng = lng != null && lng !== "" && !isNaN(Number(lng)) ? Number(lng) : null;
 
   if (existing) {
-    const setClauses: string[] = [];
-    const values: unknown[] = [existing.id];
-    let idx = 2;
-    for (const [key, val] of Object.entries(payload)) {
-      setClauses.push(`${key} = $${idx}`);
-      values.push(val);
-      idx++;
-    }
+    let vendor: Record<string, unknown> | undefined;
+    try {
+      const setClauses: string[] = [];
+      const values: unknown[] = [existing.id];
+      let idx = 2;
+      for (const [key, val] of Object.entries(payload)) {
+        setClauses.push(`${key} = $${idx}`);
+        values.push(val);
+        idx++;
+      }
 
-    const vendor = await queryOne<Record<string, unknown>>(
-      `UPDATE vendors SET ${setClauses.join(", ")} WHERE id = $1 RETURNING *`,
-      values
-    );
+      vendor = await queryOne<Record<string, unknown>>(
+        `UPDATE vendors SET ${setClauses.join(", ")} WHERE id = $1 RETURNING *`,
+        values
+      );
+    } catch (err: any) {
+      if (err?.message?.includes("lat") || err?.message?.includes("lng")) {
+        delete payload.lat;
+        delete payload.lng;
+        const setClauses: string[] = [];
+        const values: unknown[] = [existing.id];
+        let idx = 2;
+        for (const [key, val] of Object.entries(payload)) {
+          setClauses.push(`${key} = $${idx}`);
+          values.push(val);
+          idx++;
+        }
+        vendor = await queryOne<Record<string, unknown>>(
+          `UPDATE vendors SET ${setClauses.join(", ")} WHERE id = $1 RETURNING *`,
+          values
+        );
+      } else {
+        throw err;
+      }
+    }
 
     return NextResponse.json({ vendor });
   }

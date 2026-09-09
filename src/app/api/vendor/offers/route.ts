@@ -16,18 +16,32 @@ export async function GET(request: Request) {
   );
 
   const productIds = offers?.map((o) => o.id as string) || [];
-  const allModifiers =
-    productIds.length > 0
-      ? await queryMany<Record<string, unknown>>(
-          `SELECT g.id, g.group_name, g.options, g.required, g.max_selections, g.is_variant,
-                  l.product_id, l.position
-           FROM product_modifier_links l
-           JOIN modifier_groups g ON g.id = l.group_id
-           WHERE l.product_id = ANY($1)
-           ORDER BY (g.is_variant DESC), l.position ASC`,
+  let allModifiers: Record<string, unknown>[] = [];
+  if (productIds.length > 0) {
+    try {
+      allModifiers = await queryMany<Record<string, unknown>>(
+        `SELECT g.id, g.group_name, g.options, g.required, g.max_selections, g.is_variant,
+                l.product_id, l.position
+         FROM product_modifier_links l
+         JOIN modifier_groups g ON g.id = l.group_id
+         WHERE l.product_id = ANY($1)
+         ORDER BY g.is_variant DESC, l.position ASC`,
+        [productIds]
+      );
+    } catch {
+      try {
+        allModifiers = await queryMany<Record<string, unknown>>(
+          `SELECT id, product_id, group_name, options, required, max_selections, position
+           FROM product_modifiers
+           WHERE product_id = ANY($1)
+           ORDER BY position ASC`,
           [productIds]
-        )
-      : [];
+        );
+      } catch {
+        allModifiers = [];
+      }
+    }
+  }
 
   const modifiersByProduct: Record<string, Record<string, unknown>[]> = {};
   for (const mod of allModifiers) {

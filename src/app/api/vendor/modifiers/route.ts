@@ -30,14 +30,14 @@ export async function GET(request: Request) {
        FROM modifier_groups g
        JOIN product_modifier_links l ON l.group_id = g.id
        WHERE l.product_id = $1
-       ORDER BY (g.is_variant DESC), l.position ASC`,
+       ORDER BY g.is_variant DESC, l.position ASC`,
       [productId]
     );
     return NextResponse.json({ groups: groups || [], assignments: { [productId]: (groups || []).map((g) => g.id) }, modifiers: (groups || []).map((g) => ({ ...g, product_id: productId })) });
   }
 
   groups = await queryMany<Record<string, unknown>>(
-    `SELECT * FROM modifier_groups WHERE vendor_id = $1 ORDER BY (is_variant DESC), created_at ASC`,
+    `SELECT * FROM modifier_groups WHERE vendor_id = $1 ORDER BY is_variant DESC, created_at ASC`,
     [vendor.id]
   );
   links = await queryMany<Record<string, unknown>>(
@@ -45,7 +45,7 @@ export async function GET(request: Request) {
      FROM product_modifier_links l
      JOIN modifier_groups g ON g.id = l.group_id
      WHERE g.vendor_id = $1
-     ORDER BY (g.is_variant DESC), l.position ASC`,
+     ORDER BY g.is_variant DESC, l.position ASC`,
     [vendor.id]
   );
 

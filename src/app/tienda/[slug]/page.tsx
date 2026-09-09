@@ -98,19 +98,34 @@ export default async function TiendaPage({
   );
 
   const productIds = offers?.map((o: any) => o.id) || [];
-  const allModifiers = productIds.length > 0
-    ? await queryMany<any>(
+  let allModifiers: any[] = [];
+  if (productIds.length > 0) {
+    try {
+      allModifiers = await queryMany<any>(
         `SELECT g.id, g.group_name, g.options, g.required, g.max_selections, g.is_variant,
                 l.product_id, l.position
          FROM product_modifier_links l
          JOIN modifier_groups g ON g.id = l.group_id
          WHERE l.product_id = ANY($1)
-         ORDER BY (g.is_variant DESC), l.position ASC`,
+         ORDER BY g.is_variant DESC, l.position ASC`,
         [productIds]
-      )
-    : [];
+      );
+    } catch {
+      try {
+        allModifiers = await queryMany<any>(
+          `SELECT id, product_id, group_name, options, required, max_selections, position
+           FROM product_modifiers
+           WHERE product_id = ANY($1)
+           ORDER BY position ASC`,
+          [productIds]
+        );
+      } catch {
+        allModifiers = [];
+      }
+    }
+  }
 
-const modifiersByProduct: Record<string, any[]> = {};
+  const modifiersByProduct: Record<string, any[]> = {};
   if (allModifiers) {
     for (const mod of allModifiers) {
       if (!modifiersByProduct[mod.product_id]) modifiersByProduct[mod.product_id] = [];
@@ -120,12 +135,17 @@ const modifiersByProduct: Record<string, any[]> = {};
 
   // Variantes (solo si algún producto las tiene — moda / indumentaria)
   const variantProductIds = offers?.filter((o: any) => o.has_variants).map((o: any) => o.id) || [];
-  const allVariants = variantProductIds.length > 0
-    ? await queryMany<any>(
+  let allVariants: any[] = [];
+  if (variantProductIds.length > 0) {
+    try {
+      allVariants = await queryMany<any>(
         `SELECT * FROM product_variants WHERE product_id = ANY($1) ORDER BY position ASC`,
         [variantProductIds]
-      )
-    : [];
+      );
+    } catch {
+      allVariants = [];
+    }
+  }
   const variantsByProduct: Record<string, any[]> = {};
   if (allVariants) {
     for (const v of allVariants) {
@@ -134,12 +154,17 @@ const modifiersByProduct: Record<string, any[]> = {};
     }
   }
 
-  const allProductImages = variantProductIds.length > 0
-    ? await queryMany<any>(
+  let allProductImages: any[] = [];
+  if (variantProductIds.length > 0) {
+    try {
+      allProductImages = await queryMany<any>(
         `SELECT * FROM product_images WHERE product_id = ANY($1) ORDER BY position ASC`,
         [variantProductIds]
-      )
-    : [];
+      );
+    } catch {
+      allProductImages = [];
+    }
+  }
   const imagesByProduct: Record<string, any[]> = {};
   if (allProductImages) {
     for (const img of allProductImages) {

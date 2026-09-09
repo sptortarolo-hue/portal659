@@ -150,43 +150,49 @@ function VendorDashboardInner() {
   }
 
   async function loadData() {
-    const [meRes, offersRes, ordersRes, catsRes, modsRes, galRes, bkRes, variantsRes, imagesRes, plansRes] = await Promise.all([
-      fetch("/api/vendor/me"),
-      fetch("/api/vendor/offers"),
-      fetch("/api/vendor/orders"),
-      fetch("/api/vendor/categories"),
-      fetch("/api/vendor/modifiers").catch(() => ({ json: () => ({ modifiers: [] }) })),
-      fetch("/api/vendor/gallery").catch(() => ({ json: () => ({ gallery: [] }) })),
-      fetch("/api/vendor/bookings").catch(() => ({ json: () => ({ bookings: [] }) })),
-      fetch("/api/vendor/variants").catch(() => ({ json: () => ({ variants: [] }) })),
-      fetch("/api/vendor/product-images").catch(() => ({ json: () => ({ images: [] }) })),
-      fetch("/api/subscriptions/plans").catch(() => ({ json: () => ({ plans: [] }) })),
-    ]);
-    const me = await meRes.json();
-    const off = await offersRes.json();
-    const ord = await ordersRes.json();
-    const cats = await catsRes.json();
-    const mods = await modsRes.json();
-    const gal = await galRes.json();
-    const bk = await bkRes.json();
-    const varData = await variantsRes.json();
-    const imagesData = await imagesRes.json();
-    const plansData = await plansRes.json();
+    try {
+      const [meRes, offersRes, ordersRes, catsRes, modsRes, galRes, bkRes, variantsRes, imagesRes, plansRes] = await Promise.all([
+        fetch("/api/vendor/me").catch(() => null),
+        fetch("/api/vendor/offers").catch(() => null),
+        fetch("/api/vendor/orders").catch(() => null),
+        fetch("/api/vendor/categories").catch(() => null),
+        fetch("/api/vendor/modifiers").catch(() => null),
+        fetch("/api/vendor/gallery").catch(() => null),
+        fetch("/api/vendor/bookings").catch(() => null),
+        fetch("/api/vendor/variants").catch(() => null),
+        fetch("/api/vendor/product-images").catch(() => null),
+        fetch("/api/subscriptions/plans").catch(() => null),
+      ]);
 
-    if (me.error === "No autenticado") { router.push("/login"); return; }
-    if (me.vendor) setVendor(me.vendor);
-    if (me.staffRole) setStaffRole(me.staffRole);
-    if (me.userId) setUserId(me.userId);
-    if (off.offers) setOffers(off.offers);
-    if (ord.orders) setOrders(ord.orders);
-    if (cats.categories) setCategories(cats.categories);
-    if (mods.modifiers) setModifiers(mods.modifiers);
-    if (gal.gallery) setGallery(gal.gallery);
-    if (bk.bookings) setBookings(bk.bookings);
-    if (varData.variants) setVariants(varData.variants);
-    if (imagesData.images) setProductImages(imagesData.images);
-    if (plansData.plans) setPlans(plansData.plans);
-    setLoading(false);
+      const me = meRes?.ok ? await meRes.json().catch(() => ({})) : (meRes?.status === 401 ? { error: "No autenticado" } : {});
+      const off = offersRes?.ok ? await offersRes.json().catch(() => ({})) : {};
+      const ord = ordersRes?.ok ? await ordersRes.json().catch(() => ({})) : {};
+      const cats = catsRes?.ok ? await catsRes.json().catch(() => ({})) : {};
+      const mods = modsRes?.ok ? await modsRes.json().catch(() => ({})) : {};
+      const gal = galRes?.ok ? await galRes.json().catch(() => ({})) : {};
+      const bk = bkRes?.ok ? await bkRes.json().catch(() => ({})) : {};
+      const varData = variantsRes?.ok ? await variantsRes.json().catch(() => ({})) : {};
+      const imagesData = imagesRes?.ok ? await imagesRes.json().catch(() => ({})) : {};
+      const plansData = plansRes?.ok ? await plansRes.json().catch(() => ({})) : {};
+
+      if (me.error === "No autenticado") { router.push("/login"); return; }
+      if (me.vendor) setVendor(me.vendor);
+      if (me.staffRole) setStaffRole(me.staffRole);
+      if (me.userId) setUserId(me.userId);
+      if (off.offers) setOffers(off.offers);
+      if (ord.orders) setOrders(ord.orders);
+      if (cats.categories) setCategories(cats.categories);
+      if (mods.modifiers) setModifiers(mods.modifiers);
+      if (gal.gallery) setGallery(gal.gallery);
+      if (bk.bookings) setBookings(bk.bookings);
+      if (varData.variants) setVariants(varData.variants);
+      if (imagesData.images) setProductImages(imagesData.images);
+      if (plansData.plans) setPlans(plansData.plans);
+    } catch (err) {
+      console.error("[dashboard] loadData error:", err);
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {

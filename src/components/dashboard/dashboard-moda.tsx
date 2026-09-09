@@ -311,11 +311,17 @@ export default function DashboardModa({
     } else {
       const productId = editingId ?? data.offer.id;
       if (offHasVariants) {
-        await fetch("/api/vendor/variants", {
+        const vr = await fetch("/api/vendor/variants", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ product_id: productId, variants: variantRows.map((r) => ({ color: r.color, talle: r.talle, price: r.price, promo: r.promo || null, stock: r.stock, sku: null })) }),
         });
+        const vdata = await vr.json().catch(() => ({}));
+        if (!vr.ok || vdata.error) {
+          setSaving(false);
+          setMsg2(vdata.error || "No se pudieron guardar las variantes");
+          return;
+        }
       }
       await fetch("/api/vendor/product-images", {
         method: "PUT",

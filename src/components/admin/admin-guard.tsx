@@ -8,8 +8,12 @@ export default function AdminGuard({ children }: { children: React.ReactNode }) 
   const [allowed, setAllowed] = useState<boolean | null>(null);
 
   useEffect(() => {
-    fetch("/api/admin")
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+    fetch("/api/admin", { credentials: "include", signal: controller.signal })
       .then((r) => {
+        clearTimeout(timeoutId);
         if (r.status === 403) {
           setAllowed(false);
           router.push("/");
@@ -18,6 +22,7 @@ export default function AdminGuard({ children }: { children: React.ReactNode }) 
         }
       })
       .catch(() => {
+        clearTimeout(timeoutId);
         setAllowed(false);
         router.push("/");
       });

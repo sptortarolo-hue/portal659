@@ -88,6 +88,7 @@ export async function POST(request: Request) {
     sameSite: "lax" as const,
     path: "/",
     maxAge: 60 * 60 * 24 * 7,
+    ...(!isLocal && { domain: ".portal659.com.ar" }),
   };
   response.cookies.set("sb-access-token", accessToken, cookieOpts);
   response.cookies.set("sb-refresh-token", accessToken, cookieOpts);

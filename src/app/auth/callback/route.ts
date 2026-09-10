@@ -31,7 +31,7 @@ export async function GET(request: Request) {
     const accessToken = await signAccessToken({ id: profile.id, email: profile.email, role: profile.role });
     const response = NextResponse.redirect(origin);
     const isLocal = process.env.NODE_ENV === "development";
-    const opts = { httpOnly: true, secure: !isLocal, sameSite: "lax" as const, path: "/", maxAge: 60 * 60 * 24 * 7 };
+    const opts = { httpOnly: true, secure: !isLocal, sameSite: "lax" as const, path: "/", maxAge: 60 * 60 * 24 * 7, ...(!isLocal && { domain: ".portal659.com.ar" }) };
     response.cookies.set("sb-access-token", accessToken, opts);
     response.cookies.set("sb-refresh-token", accessToken, opts);
     return response;

@@ -94,15 +94,12 @@ export const POST = withRateLimit(async (request: Request) => {
     maxAge: 60 * 60 * 24 * 7,
     ...(!isLocal && { domain: ".portal659.com.ar" }),
   };
+  // NOTA: no agregar un segundo set() con el mismo nombre para limpiar la
+  // variante host-only legacy: ResponseCookies usa un Map por nombre y el
+  // segundo set PISARÍA la cookie válida (rompe el login). El shadowing se
+  // resuelve del lado servidor en getAuthUser (prueba todos los candidatos).
   response.cookies.set("sb-access-token", accessToken, cookieOpts);
   response.cookies.set("sb-refresh-token", accessToken, cookieOpts);
-  if (!isLocal) {
-    // Matar la variante host-only legacy (cookie vieja sin Domain): es otra key
-    // y si sobrevive hace shadowing sobre la nueva con Domain.
-    const legacyClear = { httpOnly: true, secure: true, sameSite: "lax" as const, path: "/", maxAge: 0 };
-    response.cookies.set("sb-access-token", "", legacyClear);
-    response.cookies.set("sb-refresh-token", "", legacyClear);
-  }
 
   return response;
 }, { maxRequests: 15 });

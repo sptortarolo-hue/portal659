@@ -32,14 +32,10 @@ export async function GET(request: Request) {
     const response = NextResponse.redirect(origin);
     const isLocal = process.env.NODE_ENV === "development";
     const opts = { httpOnly: true, secure: !isLocal, sameSite: "lax" as const, path: "/", maxAge: 60 * 60 * 24 * 7, ...(!isLocal && { domain: ".portal659.com.ar" }) };
+    // NOTA: no agregar segundo set() con el mismo nombre (ResponseCookies pisa
+    // por nombre y rompería la sesión; ver login/route.ts).
     response.cookies.set("sb-access-token", accessToken, opts);
     response.cookies.set("sb-refresh-token", accessToken, opts);
-    if (!isLocal) {
-      // Matar la variante host-only legacy (ver login/route.ts).
-      const legacyClear = { httpOnly: true, secure: true, sameSite: "lax" as const, path: "/", maxAge: 0 };
-      response.cookies.set("sb-access-token", "", legacyClear);
-      response.cookies.set("sb-refresh-token", "", legacyClear);
-    }
     return response;
   }
 

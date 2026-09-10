@@ -86,10 +86,15 @@ export function extractAllTokens(request: Request): string[] {
   const auth = request.headers.get("authorization")?.replace("Bearer ", "").trim();
   if (auth) out.push(auth);
   const cookieHeader = request.headers.get("cookie") || "";
+  const cookieTokens: string[] = [];
   for (const m of cookieHeader.matchAll(/sb-access-token=([^;]*)/g)) {
     const t = (m[1] || "").trim();
-    if (t) out.push(t);
+    if (t) cookieTokens.push(t);
   }
+  // Las cookies con mismo path llegan en orden de creación (la más vieja
+  // primero): se prueban de la más nueva a la más vieja para preferir la
+  // sesión vigente cuando conviven variantes (host-only legacy + con Domain).
+  out.push(...cookieTokens.reverse());
   return out;
 }
 

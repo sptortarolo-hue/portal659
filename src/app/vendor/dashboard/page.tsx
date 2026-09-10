@@ -3,11 +3,12 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import QRCode from "qrcode";
+import { Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { ImageCropModal } from "@/components/ui/image-crop-modal";
 import { DEFAULT_ZONE } from "@/lib/config";
+import VendorSidebar from "@/components/vendor/vendor-sidebar";
+import { useKeyboardShortcuts } from "@/lib/use-keyboard-shortcuts";
 import { buildClientWhatsAppUrl, ORDER_STATUS_COLORS, MODA_STATUS_LABELS, flowSteps, orderCondition, orderReadyLabel, orderNeedsKitchen, CONDITION_META } from "@/lib/order-utils";
 import OrderDetailModal from "@/components/dashboard/order-detail-modal";
 import DashboardGastro from "@/components/dashboard/dashboard-gastro";
@@ -117,6 +118,7 @@ function VendorDashboardInner() {
   useEffect(() => {
     setMountedTabs((prev) => (prev.has(tab) ? prev : new Set(prev).add(tab)));
   }, [tab]);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState("");
@@ -137,6 +139,17 @@ function VendorDashboardInner() {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [cropTitle, setCropTitle] = useState("Ajustá tu foto");
   const [cropTarget, setCropTarget] = useState<"cover" | "logo" | "offer">("cover");
+
+  // Keyboard shortcuts: Ctrl+1-9 para tabs, Escape para cerrar modales
+  useKeyboardShortcuts({
+    onTabChange: (t) => setTab(t),
+    onEscape: () => {
+      if (selectedOrder) setSelectedOrder(null);
+      else if (shareOpen) setShareOpen(false);
+      else if (cropOpen) setCropOpen(false);
+    },
+    enabled: !loading && !!vendor,
+  });
 
   async function uploadImage(file: File, folder: string): Promise<string | null> {
     const fd = new FormData();
@@ -260,8 +273,53 @@ function VendorDashboardInner() {
         if (token) setAccessToken(token);
       } catch { /* noop */ }
     })();
-    const poll = setInterval(loadOrdersOnly, 15000);
-    return () => clearInterval(poll);
+  }, [vendor?.id]);
+
+  // SSE: pedidos en tiempo real
+  useEffect(() => {
+    if (!vendor?.id) return;
+    let closed = false;
+    let es: EventSource | null = null;
+    let reconnectTimeout: ReturnType<typeof setTimeout>;
+    let retryCount = 0;
+
+    function connect() {
+      es = new EventSource("/api/vendor/orders/stream");
+      es.onopen = () => { retryCount = 0; };
+      es.onmessage = (event) => {
+        if (closed) return;
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === "orders_update" && Array.isArray(data.orders)) {
+            setOrders((prev) => {
+              const map = new Map(prev.map((o) => [o.id, o]));
+              for (const order of data.orders) {
+                map.set(order.id, order);
+              }
+              return Array.from(map.values()).sort(
+                (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+              );
+            });
+          }
+        } catch { /* keepalive comment, ignore */ }
+      };
+      es.onerror = () => {
+        if (closed) return;
+        es?.close();
+        es = null;
+        const delay = Math.min(1000 * Math.pow(2, retryCount), 30000);
+        retryCount++;
+        reconnectTimeout = setTimeout(connect, delay);
+      };
+    }
+
+    connect();
+
+    return () => {
+      closed = true;
+      es?.close();
+      clearTimeout(reconnectTimeout);
+    };
   }, [vendor?.id]);
 
   async function saveVendor(data: Record<string, unknown>) {
@@ -645,196 +703,197 @@ function VendorDashboardInner() {
     </div>
   );
 
+  const kitchenCount = orders.filter((o) => o.status === "new" && orderNeedsKitchen(o)).length;
+  const activeOrderCount = activeOrders.length;
+  const menuCount = offers.length;
+
   return (
-    <main className="min-h-screen bg-background pb-20 sm:pb-8">
-      {impersonatingId && (
-        <div className="bg-amber-50 border-b border-amber-200">
-          <div className="container mx-auto px-4 py-2 flex items-center justify-between gap-3 text-sm text-amber-900">
-            <span className="flex items-center gap-2">
-              <span>🛠️</span> Estás cargando <strong>{vendor?.store_name || "este comercio"}</strong> como administrador (modo llave en mano)
-            </span>
-            <button onClick={exitImpersonation} className="text-xs font-semibold underline whitespace-nowrap">
-              Salir del modo edición
+    <div className="min-h-screen bg-background flex">
+      {/* Sidebar — desktop: always visible; mobile: slide-in */}
+      <VendorSidebar
+        open={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+        currentTab={tab}
+        onTabChange={(t) => setTab(t)}
+        orderCount={activeOrderCount}
+        kitchenCount={kitchenCount}
+        menuCount={menuCount}
+        storeName={vendor.store_name}
+        storeLogo={vendor.logo_url || vendor.image_url || null}
+        storeSlug={vendor.slug}
+        isGastro={isGastro}
+        isModa={isModa}
+      />
+
+      {/* Content area */}
+      <div className="flex-1 flex flex-col min-h-screen lg:ml-64">
+        {impersonatingId && (
+          <div className="bg-amber-50 border-b border-amber-200">
+            <div className="container mx-auto px-4 py-2 flex items-center justify-between gap-3 text-sm text-amber-900">
+              <span className="flex items-center gap-2">
+                <span>🛠️</span> Estás cargando <strong>{vendor?.store_name || "este comercio"}</strong> como administrador (modo llave en mano)
+              </span>
+              <button onClick={exitImpersonation} className="text-xs font-semibold underline whitespace-nowrap">
+                Salir del modo edición
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Sticky header */}
+        <div className="sticky top-0 z-30 bg-background border-b border-border">
+          <div className="px-4 py-3 flex items-center gap-3">
+            {/* Mobile hamburger */}
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="p-2 rounded-lg hover:bg-muted transition-colors lg:hidden"
+            >
+              <Menu className="h-5 w-5" />
             </button>
+            {/* Desktop: sidebar already shows logo/name, header shows controls only */}
+            <div className="flex-1 min-w-0" />
+            <OpenToggle vendor={vendor} onSaved={(v) => setVendor(v)} />
+            {isGastro && (
+              <>
+                <PrepTimeControl vendor={vendor} onSaved={(v) => setVendor(v)} />
+                <PrinterStatus vendor={vendor} onOpenConfig={() => {
+                  setTab("config");
+                  window.dispatchEvent(new Event("portal:open-printer-config"));
+                  window.setTimeout(() => {
+                    document.getElementById("printer-config")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                  }, 120);
+                }} />
+              </>
+            )}
+            <Button variant="outline" size="sm" onClick={openShare} className="flex-shrink-0">Compartir</Button>
           </div>
         </div>
-      )}
-      <div className="sticky top-0 z-40 bg-background border-b border-border">
-		<div className="container mx-auto px-4 py-3 flex items-center gap-3">
-          {/* Logo: oculto en mobile para que entren los controles (el ícono de sesión ya lo representa) */}
-          {vendor.logo_url || vendor.image_url ? (
-            <img src={vendor.logo_url || vendor.image_url || ""} alt={vendor.store_name} className="hidden sm:block h-10 w-10 rounded-full object-cover flex-shrink-0" />
-          ) : (
-            <div className="hidden sm:flex h-10 w-10 rounded-full bg-accent items-center justify-center flex-shrink-0"><span className="font-bold text-primary">{vendor.store_name.charAt(0)}</span></div>
-          )}
-          <div className="flex-1 min-w-0">
-            <h1 className="font-semibold text-sm truncate hidden sm:block">{vendor.store_name}</h1>
-            {vendor.slug && <a href={`/tienda/${vendor.slug}`} target="_blank" rel="noopener noreferrer" className="hidden sm:inline text-xs text-primary">Ver mi micrositio →</a>}
+
+        {msg && <div className="px-4 pt-3"><p className="text-sm text-green-600 bg-green-50 rounded-lg px-3 py-2">{msg}</p></div>}
+
+        <PlanBanner plan={planBannerData as any} />
+
+        {/* Stats bar — solo en tab de pedidos */}
+        {tab === "orders" && orders.length > 0 && (
+          <div className="px-4 mt-4">
+            <div className="grid grid-cols-5 gap-1.5 mb-4">
+              {[
+                { status: "new", label: "Nuevos", value: orders.filter((o) => o.status === "new").length, bg: "bg-status-new/10 dark:bg-status-new/20", text: "text-status-new" },
+                { status: "preparing", label: isModa ? "Empaquetando" : "Preparando", value: orders.filter((o) => o.status === "preparing").length, bg: "bg-status-preparing/10 dark:bg-status-preparing/20", text: "text-status-preparing" },
+                { status: "ready", label: "Listos", value: orders.filter((o) => o.status === "ready").length, bg: "bg-status-ready/10 dark:bg-status-ready/20", text: "text-status-ready" },
+                { status: "sent", label: "Enviados", value: orders.filter((o) => o.status === "sent").length, bg: "bg-status-sent/10 dark:bg-status-sent/20", text: "text-status-sent" },
+                { status: "completed", label: "Entregados", value: orders.filter((o) => o.status === "completed").length, bg: "bg-muted", text: "text-muted-foreground" },
+              ].map((stat) => (
+                <button
+                  key={stat.label}
+                  type="button"
+                  onClick={() => {
+                    setTab("orders");
+                    setOrderStatusFilter(stat.status);
+                  }}
+                  className={`rounded-xl ${stat.bg} p-2 text-center transition-all active:scale-[0.96] ${tab === "orders" && orderStatusFilter === stat.status ? "ring-2 ring-primary/40" : ""}`}
+                >
+                  <div className={`text-lg font-bold ${stat.text} tabular-nums animate-count-up`}>{stat.value}</div>
+                  <p className="text-[8px] sm:text-[9px] text-muted-foreground font-medium">{stat.label}</p>
+                </button>
+              ))}
+            </div>
           </div>
-          <OpenToggle vendor={vendor} onSaved={(v) => setVendor(v)} />
-          {isGastro && (
+        )}
+
+        {/* Tab content */}
+        <div className={`flex-1 px-4 mt-4 ${tab === "comanda" ? "w-full max-w-none" : `mx-auto w-full ${["orders", "history", "pos", "mesas", "analytics"].includes(tab) ? "max-w-7xl" : "max-w-4xl"}`}`}>
+          {isService ? (
+            <div className="space-y-4">{configContent}</div>
+          ) : (
             <>
-              <PrepTimeControl vendor={vendor} onSaved={(v) => setVendor(v)} />
-              <PrinterStatus vendor={vendor} onOpenConfig={() => {
-                setTab("config");
-                window.dispatchEvent(new Event("portal:open-printer-config"));
-                window.setTimeout(() => {
-                  document.getElementById("printer-config")?.scrollIntoView({ behavior: "smooth", block: "start" });
-                }, 120);
-              }} />
+              <div className={tab === "config" ? "" : "hidden"}>{configContent}</div>
+              <div className={tab === "menu" ? "" : "hidden"}>
+                <ProductManager
+                  isModa={isModa}
+                  showStock
+                  showPrep={!isModa}
+                  onChanged={() => loadData()}
+                />
+              </div>
+              <div className={tab === "orders" ? "" : "hidden"}>{ordersContent}</div>
+              {mountedTabs.has("comanda") && (
+                <div className={tab === "comanda" ? "" : "hidden"}>
+                  {effectivePlan.can("kds") ? (
+                    accessToken && vendor && (
+                      <ComandaKDS vendorId={vendor.id} vendorName={vendor.store_name} accessToken={accessToken} prepTimeMin={vendor.prep_time_min ?? null} />
+                    )
+                  ) : (
+                    <PlanLock
+                      title="Comanda para tu cocina"
+                      description="Vos y tu cocina ven los pedidos en orden en este plan. Forma parte del plan Gestión integral."
+                    />
+                  )}
+                </div>
+              )}
+              {mountedTabs.has("pos") && (
+                <div className={tab === "pos" ? "" : "hidden"}>
+                  {effectivePlan.can("pos") ? (
+                    <Mostrador />
+                  ) : (
+                    <PlanLock
+                      title="Mostrador"
+                      description={isModa
+                        ? "Vas a poder armar ventas y cobrarlas en el local. Lo estamos habilitando para tu rubro."
+                        : "Armá pedidos y cobrá en el local con impresión de ticket. Parte del plan Gestión integral."}
+                    />
+                  )}
+                </div>
+              )}
+              {mountedTabs.has("mesas") && (
+                <div className={tab === "mesas" ? "" : "hidden"}>
+                  {effectivePlan.can("mesas") ? (
+                    <Mesas />
+                  ) : (
+                    <PlanLock
+                      title="Gestión de mesas"
+                      description="Abrí, cargá consumiciones y cobrá tus mesas. Parte del plan Gestión integral."
+                    />
+                  )}
+                </div>
+              )}
+              {mountedTabs.has("analytics") && (
+                <div className={tab === "analytics" ? "" : "hidden"}>
+                  <VendorAnalytics />
+                </div>
+              )}
+              {mountedTabs.has("reviews") && (
+                <div className={tab === "reviews" ? "" : "hidden"}>
+                  {effectivePlan.can("reviews_manage") ? (
+                    <VendorReviews />
+                  ) : (
+                    <PlanLock
+                      title="Respondé tus reseñas"
+                      description="Leé las opiniones de tus clientes y respondélas en público. Disponible en los planes de pago."
+                    />
+                  )}
+                </div>
+              )}
+              {mountedTabs.has("history") && (
+                <div className={tab === "history" ? "" : "hidden"}>
+                  <VendorOrderHistory isModa={isModa} />
+                </div>
+              )}
             </>
           )}
-          <Button variant="outline" size="sm" onClick={openShare} className="flex-shrink-0">Compartir</Button>
         </div>
-      </div>
 
-      {msg && <div className="container mx-auto px-4 pt-3"><p className="text-sm text-green-600 bg-green-50 rounded-lg px-3 py-2">{msg}</p></div>}
-
-      <PlanBanner plan={planBannerData as any} />
-
-      <div className="hidden sm:block container mx-auto px-4 mt-4">
-        <div className="flex flex-wrap gap-2 mb-4 items-center">
-          <div className="flex flex-wrap gap-2">
-            <Button variant={tab === "orders" ? "default" : "outline"} size="sm" onClick={() => setTab("orders")}>Pedidos ({orders.length})</Button>
-            {/* Comanda y Mesas son de cocina/salón: solo gastronomía. Moda opera con Pedidos + Mostrador. */}
-            {!isModa && (
-              <Button variant={tab === "comanda" ? "default" : "outline"} size="sm" onClick={() => setTab("comanda")}>🍳 Comanda</Button>
-            )}
-            <Button variant={tab === "pos" ? "default" : "outline"} size="sm" onClick={() => setTab("pos")}>🛒 Mostrador</Button>
-            {!isModa && (
-              <Button variant={tab === "mesas" ? "default" : "outline"} size="sm" onClick={() => setTab("mesas")} disabled={!isGastro}>🍽️ Mesas</Button>
-            )}
-          </div>
-          <div className="mx-2 h-6 w-px bg-border" />
-          <div className="flex flex-wrap gap-2">
-            <Button variant={tab === "menu" ? "default" : "outline"} size="sm" onClick={() => setTab("menu")}>{isModa ? "👗 Catálogo" : "🍽️ Menú"} ({offers.length})</Button>
-            <Button variant={tab === "config" ? "default" : "outline"} size="sm" onClick={() => setTab("config")}>⚙️ Configuración</Button>
-            <Button variant={tab === "analytics" ? "default" : "outline"} size="sm" onClick={() => setTab("analytics")}>📊 Estadísticas</Button>
-            <Button variant={tab === "history" ? "default" : "outline"} size="sm" onClick={() => setTab("history")}>📜 Histórico</Button>
-            <Button variant={tab === "reviews" ? "default" : "outline"} size="sm" onClick={() => setTab("reviews")}>⭐ Reseñas</Button>
-          </div>
-        </div>
-      </div>
-
-      {/* Stats bar */}
-      {orders.length > 0 && (
-        <div className="container mx-auto px-4 mt-4">
-          <div className="grid grid-cols-5 gap-1.5 mb-4">
-            {[
-              { status: "new", label: "Nuevos", value: orders.filter((o) => o.status === "new").length, bg: "bg-status-new/10 dark:bg-status-new/20", text: "text-status-new" },
-              { status: "preparing", label: isModa ? "Empaquetando" : "Preparando", value: orders.filter((o) => o.status === "preparing").length, bg: "bg-status-preparing/10 dark:bg-status-preparing/20", text: "text-status-preparing" },
-              { status: "ready", label: "Listos", value: orders.filter((o) => o.status === "ready").length, bg: "bg-status-ready/10 dark:bg-status-ready/20", text: "text-status-ready" },
-              { status: "sent", label: "Enviados", value: orders.filter((o) => o.status === "sent").length, bg: "bg-status-sent/10 dark:bg-status-sent/20", text: "text-status-sent" },
-              { status: "completed", label: "Entregados", value: orders.filter((o) => o.status === "completed").length, bg: "bg-muted", text: "text-muted-foreground" },
-            ].map((stat) => (
-              <button
-                key={stat.label}
-                type="button"
-                onClick={() => {
-                  setTab("orders");
-                  setOrderStatusFilter(stat.status);
-                }}
-                className={`rounded-xl ${stat.bg} p-2 text-center transition-all active:scale-[0.96] ${tab === "orders" && orderStatusFilter === stat.status ? "ring-2 ring-primary/40" : ""}`}
-              >
-                <div className={`text-lg font-bold ${stat.text} tabular-nums animate-count-up`}>{stat.value}</div>
-                <p className="text-[8px] sm:text-[9px] text-muted-foreground font-medium">{stat.label}</p>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <div className={`px-4 mt-4 ${tab === "comanda" ? "w-full max-w-none" : `container mx-auto ${["orders", "history", "pos", "mesas", "analytics"].includes(tab) ? "max-w-7xl" : "max-w-2xl"}`}`}>
-        {isService ? (
-          <div className="space-y-4">{configContent}</div>
-        ) : (
-          <>
-            <div className={tab === "config" ? "" : "hidden"}>{configContent}</div>
-            <div className={tab === "menu" ? "" : "hidden"}>
-              <ProductManager
-                isModa={isModa}
-                showStock
-                showPrep={!isModa}
-                onChanged={() => loadData()}
-              />
-            </div>
-            <div className={tab === "orders" ? "" : "hidden"}>{ordersContent}</div>
-            {mountedTabs.has("comanda") && (
-              <div className={tab === "comanda" ? "" : "hidden"}>
-                {effectivePlan.can("kds") ? (
-                  accessToken && vendor && (
-                    <ComandaKDS vendorId={vendor.id} vendorName={vendor.store_name} accessToken={accessToken} prepTimeMin={vendor.prep_time_min ?? null} />
-                  )
-                ) : (
-                  <PlanLock
-                    title="Comanda para tu cocina"
-                    description="Vos y tu cocina ven los pedidos en orden en este plan. Forma parte del plan Gestión integral."
-                  />
-                )}
-              </div>
-            )}
-            {mountedTabs.has("pos") && (
-              <div className={tab === "pos" ? "" : "hidden"}>
-                {effectivePlan.can("pos") ? (
-                  <Mostrador />
-                ) : (
-                  <PlanLock
-                    title="Mostrador"
-                    description={isModa
-                      ? "Vas a poder armar ventas y cobrarlas en el local. Lo estamos habilitando para tu rubro."
-                      : "Armá pedidos y cobrá en el local con impresión de ticket. Parte del plan Gestión integral."}
-                  />
-                )}
-              </div>
-            )}
-            {mountedTabs.has("mesas") && (
-              <div className={tab === "mesas" ? "" : "hidden"}>
-                {effectivePlan.can("mesas") ? (
-                  <Mesas />
-                ) : (
-                  <PlanLock
-                    title="Gestión de mesas"
-                    description="Abrí, cargá consumiciones y cobrá tus mesas. Parte del plan Gestión integral."
-                  />
-                )}
-              </div>
-            )}
-            {mountedTabs.has("analytics") && (
-              <div className={tab === "analytics" ? "" : "hidden"}>
-                <VendorAnalytics />
-              </div>
-            )}
-            {mountedTabs.has("reviews") && (
-              <div className={tab === "reviews" ? "" : "hidden"}>
-                {effectivePlan.can("reviews_manage") ? (
-                  <VendorReviews />
-                ) : (
-                  <PlanLock
-                    title="Respondé tus reseñas"
-                    description="Leé las opiniones de tus clientes y respondélas en público. Disponible en los planes de pago."
-                  />
-                )}
-              </div>
-            )}
-            {mountedTabs.has("history") && (
-              <div className={tab === "history" ? "" : "hidden"}>
-                <VendorOrderHistory isModa={isModa} />
-              </div>
-            )}
-          </>
-        )}
-      </div>
-
-      <nav className="sm:hidden fixed bottom-0 inset-x-0 bg-card/95 backdrop-blur-sm border-t border-border z-50" style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
+        {/* Mobile bottom nav */}
+        <nav className="lg:hidden fixed bottom-0 inset-x-0 bg-card/95 backdrop-blur-sm border-t border-border z-50" style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
           <div className="flex">
             <button onClick={() => setTab("orders")} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors relative ${tab === "orders" ? "text-primary" : "text-muted-foreground"}`}>
               <span className="text-lg">📦</span>Pedidos
-              {activeOrders.length > 0 && <span className="absolute top-1 right-1/3 -translate-x-4 bg-red-500 text-white text-[9px] rounded-full h-4 w-4 flex items-center justify-center">{activeOrders.length}</span>}
+              {activeOrderCount > 0 && <span className="absolute top-1 right-1/3 -translate-x-4 bg-red-500 text-white text-[9px] rounded-full h-4 w-4 flex items-center justify-center">{activeOrderCount}</span>}
             </button>
             {!isModa && (
               <button onClick={() => setTab("comanda")} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors relative ${tab === "comanda" ? "text-primary" : "text-muted-foreground"}`}>
                 <span className="text-lg">🍳</span>Comanda
-                {orders.filter((o) => o.status === "new" && orderNeedsKitchen(o)).length > 0 && <span className="absolute top-1 right-1/3 -translate-x-4 bg-red-500 text-white text-[9px] rounded-full h-4 w-4 flex items-center justify-center">{orders.filter((o) => o.status === "new" && orderNeedsKitchen(o)).length}</span>}
+                {kitchenCount > 0 && <span className="absolute top-1 right-1/3 -translate-x-4 bg-red-500 text-white text-[9px] rounded-full h-4 w-4 flex items-center justify-center">{kitchenCount}</span>}
               </button>
             )}
             <button onClick={() => setTab("pos")} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors relative ${tab === "pos" ? "text-primary" : "text-muted-foreground"}`}>
@@ -852,15 +911,15 @@ function VendorDashboardInner() {
         </nav>
 
         {moreOpen && (
-          <div className="sm:hidden fixed inset-0 z-40 bg-black/50" onClick={() => setMoreOpen(false)} />
+          <div className="lg:hidden fixed inset-0 z-40 bg-black/50" onClick={() => setMoreOpen(false)} />
         )}
         {moreOpen && (
-          <div className="sm:hidden fixed bottom-0 inset-x-0 z-50 bg-card rounded-t-2xl border-t border-border p-4 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)] shadow-xl">
+          <div className="lg:hidden fixed bottom-0 inset-x-0 z-50 bg-card rounded-t-2xl border-t border-border p-4 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)] shadow-xl">
             <button onClick={() => setMoreOpen(false)} className="mx-auto block w-10 h-1.5 bg-muted rounded-full mb-4" aria-label="Cerrar" />
             <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wide mb-2">Administración</p>
             <div className="grid grid-cols-2 gap-2">
               <button onClick={() => { setTab("menu"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "menu" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
-                <span className="text-lg">{isService ? "🔧" : isModa ? "👗" : "🍽️"}</span>{isService ? "Servicios" : isModa ? "Catálogo" : "Menú"} ({offers.length})
+                <span className="text-lg">{isService ? "🔧" : isModa ? "👗" : "🍽️"}</span>{isService ? "Servicios" : isModa ? "Catálogo" : "Menú"} ({menuCount})
               </button>
               <button onClick={() => { setTab("config"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "config" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
                 <span className="text-lg">⚙️</span>Configuración
@@ -877,7 +936,9 @@ function VendorDashboardInner() {
             </div>
           </div>
         )}
+      </div>
 
+      {/* Modals (outside layout flow) */}
       {shareOpen && vendor.slug && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={() => setShareOpen(false)}>
           <div className="bg-card rounded-2xl p-6 max-w-sm w-full text-center" onClick={(e) => e.stopPropagation()}>
@@ -928,6 +989,6 @@ function VendorDashboardInner() {
           onMarkPaid={markOrderPaid}
         />
       )}
-    </main>
+    </div>
   );
 }

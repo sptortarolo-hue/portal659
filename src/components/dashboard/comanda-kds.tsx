@@ -265,12 +265,12 @@ function TicketCard({
         <div className="mt-2 flex gap-1.5">
           {undoVisible ? (
             <button onClick={handleUndo}
-              className="flex-1 py-1.5 rounded-lg bg-muted text-xs font-bold text-muted-foreground hover:bg-muted/80 transition-colors">
+              className="flex-1 py-2 sm:py-2.5 rounded-lg bg-muted text-xs sm:text-sm font-bold text-muted-foreground hover:bg-muted/80 transition-colors">
               ↩️ Deshacer
             </button>
           ) : (
             <button onClick={() => handleAction(nextStatus!)}
-              className="flex-1 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 transition-colors active:scale-[0.97]">
+              className="flex-1 py-2 sm:py-2.5 rounded-lg bg-primary text-primary-foreground text-xs sm:text-sm font-bold hover:bg-primary/90 transition-colors active:scale-[0.97]">
               {getActionButtonLabel(nextStatus!, order)}
             </button>
           )}
@@ -476,13 +476,29 @@ export default function ComandaKDS({ vendorId, vendorName, accessToken, prepTime
 
   const renderColumn = (status: OrderStatus, label: string, emoji: string) => {
     const items = columnOrders(status);
+    const avgMinutes = items.length > 0
+      ? Math.round(items.reduce((sum, o) => {
+          const elapsed = (now - new Date(o.created_at).getTime()) / 60000;
+          return sum + elapsed;
+        }, 0) / items.length)
+      : null;
+    const overdueCount = items.filter((o) => {
+      const remaining = o.estimated_minutes ? o.estimated_minutes - (now - new Date(o.created_at).getTime()) / 60000 : null;
+      return remaining !== null && remaining <= 0;
+    }).length;
     return (
       <div key={status} className="flex flex-col min-w-0">
-        <div className={`flex items-center gap-1.5 mb-2 px-1 ${getStatusBg(status)} rounded-lg py-1.5`}>
-          <span className="text-sm">{emoji}</span>
-          <span className="text-xs font-bold text-foreground">{label}</span>
+        <div className={`flex items-center gap-1.5 mb-2 px-2 ${getStatusBg(status)} rounded-lg py-2`}>
+          <span className="text-base">{emoji}</span>
+          <span className="text-sm font-bold text-foreground">{label}</span>
           {items.length > 0 && (
-            <span className="ml-auto text-[10px] font-bold bg-foreground/10 text-foreground px-1.5 py-0.5 rounded-full">{items.length}</span>
+            <span className="ml-auto text-xs font-bold bg-foreground/10 text-foreground px-2 py-0.5 rounded-full">{items.length}</span>
+          )}
+          {overdueCount > 0 && (
+            <span className="text-xs font-bold bg-red-500 text-white px-1.5 py-0.5 rounded-full animate-pulse">{overdueCount}</span>
+          )}
+          {avgMinutes !== null && (
+            <span className="text-[10px] text-muted-foreground ml-0.5">~{avgMinutes}m</span>
           )}
         </div>
         <div className="space-y-2 kds-kanban-column">
@@ -530,6 +546,19 @@ export default function ComandaKDS({ vendorId, vendorName, accessToken, prepTime
               🔔
             </button>
           )}
+          <button
+            onClick={() => {
+              if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(() => {});
+              } else {
+                document.exitFullscreen().catch(() => {});
+              }
+            }}
+            className="hidden sm:inline-flex text-xs px-2 py-1.5 rounded-lg bg-muted text-muted-foreground font-medium hover:bg-muted/80 transition-colors"
+            title="Pantalla completa"
+          >
+            ⛶
+          </button>
         </div>
       </div>
 

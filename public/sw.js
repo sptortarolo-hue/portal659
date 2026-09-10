@@ -1,4 +1,4 @@
-const CACHE_NAME = "portal659-v7";
+const CACHE_NAME = "portal659-v8";
 const OFFLINE_URL = "/offline.html";
 
 self.addEventListener("install", (event) => {
@@ -69,11 +69,19 @@ self.addEventListener("fetch", (event) => {
   if (request.url.includes("/api/")) return;
   if (request.url.includes("/_next/")) return;
 
+  // /admin: nunca cachear el documento. Referencia hashes de chunks que rotan
+  // en cada deploy; un HTML cacheado = ChunkLoadError / pantalla congelada.
+  // Solo red: si la red falla, que lo maneje la app (no HTML viejo).
+  let isAdminDoc = false;
+  try {
+    isAdminDoc = new URL(request.url).pathname.startsWith("/admin");
+  } catch {}
+
   event.respondWith(
     (async () => {
       try {
         const networkResponse = await fetch(request);
-        if (networkResponse && networkResponse.status === 200) {
+        if (!isAdminDoc && networkResponse && networkResponse.status === 200) {
           const cache = await caches.open(CACHE_NAME);
           cache.put(request, networkResponse.clone()).catch(() => {});
         }

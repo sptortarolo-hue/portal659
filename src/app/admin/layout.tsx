@@ -7,6 +7,10 @@ import AdminBottomNav from "@/components/admin/admin-bottom-nav";
 import { Menu, X } from "lucide-react";
 import Link from "next/link";
 
+// El HTML del admin no debe cachearse (ni Next ni CDN): referencia hashes de
+// chunks que rotan en cada deploy; un HTML viejo = ChunkLoadError permanente.
+export const dynamic = "force-dynamic";
+
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 

@@ -18,6 +18,7 @@ jobs:
           port: 8277
           command_timeout: 60m
           script: |
+            set -euo pipefail
             cd /tmp
             SHA="${{ github.sha }}"
             curl -fsSL -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" -o code.tgz "https://api.github.com/repos/sptortarolo-hue/portal659/tarball/$SHA"

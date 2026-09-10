@@ -5,6 +5,9 @@ RUN npm ci
 
 FROM node:22-alpine AS builder
 WORKDIR /app
+# El typecheck de Next excede el heap default (1GB RAM en el VPS) y Node
+# aborta con "heap out of memory". Dar más heap usa el swap del host.
+ENV NODE_OPTIONS=--max-old-space-size=2048
 ARG NEXT_PUBLIC_SITE_URL
 ENV NEXT_PUBLIC_SITE_URL=$NEXT_PUBLIC_SITE_URL
 COPY --from=deps /app/node_modules ./node_modules

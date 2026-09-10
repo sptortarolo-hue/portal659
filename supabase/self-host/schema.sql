@@ -461,6 +461,7 @@ CREATE TABLE IF NOT EXISTS public.plans (
   description text,
   price_monthly numeric(10,2) NOT NULL DEFAULT 0,
   max_products integer,
+  max_orders_month integer,
   features jsonb NOT NULL DEFAULT '{}'::jsonb,
   badge text,
   popular boolean NOT NULL DEFAULT false,
@@ -468,20 +469,20 @@ CREATE TABLE IF NOT EXISTS public.plans (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
-INSERT INTO public.plans (id, slug, name, description, price_monthly, max_products, features, badge, popular, sort) VALUES
+INSERT INTO public.plans (id, slug, name, description, price_monthly, max_products, max_orders_month, features, badge, popular, sort) VALUES
   ('6f000000-0000-4000-8000-000000000001', 'gratuito', 'Gratuito',
-   'Presencia en el directorio con ficha y catálogo informativo (3 productos).',
-   0, 3,
-   '{"info": true, "cart": false, "emits_orders": false, "mp_payments": false, "kds": false, "printer": false, "variants": false, "modifiers": false, "urgent": false, "pos": false, "mesas": false, "reviews_manage": false, "analytics_days": 0, "priority": false}'::jsonb,
+   'Carta completa con carrito y pedidos por la app (hasta 20 pedidos por mes).',
+   0, NULL, 20,
+   '{"info": true, "cart": true, "emits_orders": true, "mp_payments": false, "kds": false, "printer": false, "variants": false, "modifiers": false, "urgent": false, "pos": false, "mesas": false, "reviews_manage": false, "analytics_days": 0, "priority": false}'::jsonb,
    'Gratuito', false, 1),
   ('6f000000-0000-4000-8000-000000000002', 'pedidos', 'Pedidos',
-   'Carrito, checkout y pedidos por WhatsApp, cotizaciones y turnos (hasta 50 productos).',
-   4990, 50,
+   'Pedidos por la app sin límite mensual, analytics y gestión de reseñas.',
+   4990, NULL, NULL,
    '{"info": true, "cart": true, "emits_orders": true, "mp_payments": false, "kds": false, "printer": false, "variants": false, "modifiers": false, "urgent": false, "pos": false, "mesas": false, "reviews_manage": true, "analytics_days": 7, "priority": false}'::jsonb,
    'Pedidos', true, 2),
   ('6f000000-0000-4000-8000-000000000003', 'gestion', 'Gestión integral',
    'Todo lo anterior más gestión completa: estados de pedido, KDS, impresión, mostrador, mesas, cobro online y productos ilimitados.',
-   12990, NULL,
+   12990, NULL, NULL,
    '{"info": true, "cart": true, "emits_orders": true, "mp_payments": true, "kds": true, "printer": true, "variants": true, "modifiers": true, "urgent": true, "pos": true, "mesas": true, "reviews_manage": true, "analytics_days": 99999, "priority": true}'::jsonb,
    'Premium', false, 3)
 ON CONFLICT (id) DO UPDATE SET
@@ -490,6 +491,7 @@ ON CONFLICT (id) DO UPDATE SET
   description = EXCLUDED.description,
   price_monthly = EXCLUDED.price_monthly,
   max_products = EXCLUDED.max_products,
+  max_orders_month = EXCLUDED.max_orders_month,
   features = EXCLUDED.features,
   badge = EXCLUDED.badge,
   popular = EXCLUDED.popular,

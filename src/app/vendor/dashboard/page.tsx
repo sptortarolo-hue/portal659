@@ -121,6 +121,10 @@ function VendorDashboardInner() {
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState("");
   const [plans, setPlans] = useState<Plan[]>([]);
+  const [orderUsage, setOrderUsage] = useState<{ ordersThisMonth: number; maxOrdersMonth: number | null }>({
+    ordersThisMonth: 0,
+    maxOrdersMonth: null,
+  });
   const [shareOpen, setShareOpen] = useState(false);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -153,7 +157,7 @@ function VendorDashboardInner() {
 
   async function loadData() {
     try {
-      const [meRes, offersRes, ordersRes, catsRes, modsRes, galRes, bkRes, variantsRes, imagesRes, plansRes] = await Promise.all([
+      const [meRes, offersRes, ordersRes, catsRes, modsRes, galRes, bkRes, variantsRes, imagesRes, plansRes, subsMeRes] = await Promise.all([
         fetch("/api/vendor/me").catch(() => null),
         fetch("/api/vendor/offers").catch(() => null),
         fetch("/api/vendor/orders").catch(() => null),
@@ -164,6 +168,7 @@ function VendorDashboardInner() {
         fetch("/api/vendor/variants").catch(() => null),
         fetch("/api/vendor/product-images").catch(() => null),
         fetch("/api/subscriptions/plans").catch(() => null),
+        fetch("/api/subscriptions/me").catch(() => null),
       ]);
 
       const me = meRes?.ok ? await meRes.json().catch(() => ({})) : (meRes?.status === 401 ? { error: "No autenticado" } : {});
@@ -176,6 +181,7 @@ function VendorDashboardInner() {
       const varData = variantsRes?.ok ? await variantsRes.json().catch(() => ({})) : {};
       const imagesData = imagesRes?.ok ? await imagesRes.json().catch(() => ({})) : {};
       const plansData = plansRes?.ok ? await plansRes.json().catch(() => ({})) : {};
+      const subsMeData = subsMeRes?.ok ? await subsMeRes.json().catch(() => ({})) : {};
 
       if (me.error === "No autenticado") { router.push("/login"); return; }
       if (me.vendor) setVendor(me.vendor);
@@ -190,6 +196,12 @@ function VendorDashboardInner() {
       if (varData.variants) setVariants(varData.variants);
       if (imagesData.images) setProductImages(imagesData.images);
       if (plansData.plans) setPlans(plansData.plans);
+      if (subsMeData.usage) {
+        setOrderUsage({
+          ordersThisMonth: subsMeData.usage.ordersThisMonth ?? 0,
+          maxOrdersMonth: subsMeData.usage.maxOrdersMonth ?? null,
+        });
+      }
     } catch (err) {
       console.error("[dashboard] loadData error:", err);
     } finally {
@@ -453,6 +465,10 @@ function VendorDashboardInner() {
     products: offers.length,
     maxProducts: effectivePlan.maxProducts,
     overLimit,
+    ordersThisMonth: orderUsage.ordersThisMonth,
+    maxOrdersMonth: orderUsage.maxOrdersMonth,
+    ordersOverLimit:
+      orderUsage.maxOrdersMonth != null && orderUsage.ordersThisMonth >= orderUsage.maxOrdersMonth,
   } as const;
 
   const dashboardProps = { vendor, offers, categories, modifiers, gallery, bookings, msg, setMsg, reload: loadData, saveVendor, uploading: false, onCrop: openCrop };

@@ -30,6 +30,7 @@ export function isModaVendor(vendor: Pick<Vendor, "vertical">): boolean {
 
 export type FeatureKey = keyof PlanFeatures;
 
+// Features de los comercios SIN plan pago (no-gastro, servicios): solo contacto.
 const GRATUITO_FEATURES: PlanFeatures = {
   info: true,
   cart: false,
@@ -45,6 +46,15 @@ const GRATUITO_FEATURES: PlanFeatures = {
   reviews_manage: false,
   analytics_days: 0,
   priority: false,
+};
+
+// Features del plan Gratuito para gastronomía: carta completa + carrito +
+// pedidos por la app, con tope mensual de pedidos (max_orders_month).
+// También es el fallback de un plan pago vencido (sigue tomando pedidos con tope).
+const FREE_GASTRO_FEATURES: PlanFeatures = {
+  ...GRATUITO_FEATURES,
+  cart: true,
+  emits_orders: true,
 };
 
 // Moda (indumentaria) vende con carrito + pedidos desde el micrositio.
@@ -74,6 +84,7 @@ export type EffectivePlan = {
   can: (feature: FeatureKey) => boolean;
   analyticsDays: number;
   maxProducts: number | null;
+  maxOrdersMonth: number | null;
   hasTrial: boolean;
   trialEndsAt: string | null;
 };
@@ -116,8 +127,6 @@ export function resolveVendorPlan(
 
   const expired = !trialActive && !active && isPaid;
 
-  const effectiveFeatures = trialActive || active ? plan : GRATUITO_FEATURES;
-
   let status: PlanStatus;
   if (!isPaid) status = "gratuito";
   else if (trialActive) status = "trial";
@@ -131,11 +140,15 @@ export function resolveVendorPlan(
   const can = (feature: FeatureKey): boolean => {
     if (isModaVendor(vendor)) return MODA_FEATURES[feature] === true;
     if (!eligibleForPaid) return GRATUITO_FEATURES[feature] === true;
-    return featureOf(
-      trialActive || active ? plan : null,
-      feature
-    );
+    if (trialActive || active) return featureOf(plan, feature);
+    return FREE_GASTRO_FEATURES[feature] === true;
   };
+
+  // Límites (productos y pedidos/mes): para el gastro pago vigente se leen del
+  // plan; en cualquier otro caso (gratuito o pago vencido) se leen del plan
+  // "gratuito" para que el admin pueda configurar el tope sin tocar código.
+  const freePlanRow = plans.find((p) => p.slug === "gratuito") ?? null;
+  const limitRow = trialActive || active ? plan : freePlanRow;
 
   return {
     plan,
@@ -147,7 +160,8 @@ export function resolveVendorPlan(
     eligibleForPaid,
     can,
     analyticsDays: trialActive || active ? (plan?.features.analytics_days ?? 0) : 0,
-    maxProducts: trialActive || active ? (plan?.max_products ?? null) : GRATUITO_FEATURES.info ? 3 : 3,
+    maxProducts: limitRow?.max_products ?? null,
+    maxOrdersMonth: limitRow?.max_orders_month ?? null,
     hasTrial: trialEndsAt !== null && now < trialEndsAt,
     trialEndsAt: vendor.trial_ends_at,
   };

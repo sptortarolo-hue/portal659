@@ -41,6 +41,7 @@ export type Plan = {
   description: string | null;
   price_monthly: number;
   max_products: number | null;
+  max_orders_month: number | null;
   features: PlanFeatures;
   badge: string | null;
   popular: boolean;

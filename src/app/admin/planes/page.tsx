@@ -63,7 +63,10 @@ function PlanEditor({
 }) {
   const [draft, setDraft] = useState({
     name: plan.name,
+    description: plan.description ?? "",
     price_monthly: String(plan.price_monthly),
+    max_products: plan.max_products != null ? String(plan.max_products) : "",
+    max_orders_month: plan.max_orders_month != null ? String(plan.max_orders_month) : "",
     promo_price: plan.promo_price != null ? String(plan.promo_price) : "",
     promo_months: plan.promo_months != null ? String(plan.promo_months) : "",
     promo_ends_at: toDateTimeLocal(plan.promo_ends_at),
@@ -78,9 +81,12 @@ function PlanEditor({
   const currentPlan: Plan = {
     ...plan,
     name: draft.name,
+    description: draft.description || null,
     badge: draft.badge || null,
     popular: draft.popular,
     price_monthly: Number(draft.price_monthly) || 0,
+    max_products: draft.max_products ? Number(draft.max_products) : null,
+    max_orders_month: draft.max_orders_month ? Number(draft.max_orders_month) : null,
     promo_price: draft.promo_price ? Number(draft.promo_price) : null,
     promo_months: draft.promo_months ? Number(draft.promo_months) : null,
     promo_ends_at: draft.promo_ends_at ? new Date(draft.promo_ends_at).toISOString() : null,
@@ -98,7 +104,10 @@ function PlanEditor({
         id: plan.id,
         data: {
           name: draft.name,
+          description: draft.description || null,
           price_monthly: Number(draft.price_monthly) || 0,
+          max_products: draft.max_products ? Number(draft.max_products) : null,
+          max_orders_month: draft.max_orders_month ? Number(draft.max_orders_month) : null,
           promo_price: draft.promo_price ? Number(draft.promo_price) : null,
           promo_months: draft.promo_months ? Number(draft.promo_months) : null,
           promo_ends_at: draft.promo_ends_at ? new Date(draft.promo_ends_at).toISOString() : null,
@@ -158,6 +167,41 @@ function PlanEditor({
               min={0}
               value={draft.price_monthly}
               onChange={(e) => setDraft({ ...draft, price_monthly: e.target.value })}
+              className="mt-1"
+            />
+          </div>
+        </div>
+
+        <div>
+          <Label className="text-xs">Descripción (se muestra en la página pública)</Label>
+          <Input
+            value={draft.description}
+            onChange={(e) => setDraft({ ...draft, description: e.target.value })}
+            placeholder="Ej: Carta completa con carrito y hasta 20 pedidos por mes."
+            className="mt-1"
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <Label className="text-xs">Límite de productos</Label>
+            <Input
+              type="number"
+              min={0}
+              placeholder="Vacío = ilimitado"
+              value={draft.max_products}
+              onChange={(e) => setDraft({ ...draft, max_products: e.target.value })}
+              className="mt-1"
+            />
+          </div>
+          <div>
+            <Label className="text-xs">Límite de pedidos/mes</Label>
+            <Input
+              type="number"
+              min={0}
+              placeholder="Vacío = ilimitado"
+              value={draft.max_orders_month}
+              onChange={(e) => setDraft({ ...draft, max_orders_month: e.target.value })}
               className="mt-1"
             />
           </div>

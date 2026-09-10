@@ -13,6 +13,9 @@ export type PlanBannerData = {
   products: number;
   maxProducts: number | null;
   overLimit: boolean;
+  ordersThisMonth: number;
+  maxOrdersMonth: number | null;
+  ordersOverLimit: boolean;
 };
 
 type Props = {
@@ -33,7 +36,9 @@ export function PlanBanner({ plan }: Props) {
           <div className="min-w-0">
             <p className="text-sm font-semibold">Plan Gratuito</p>
             <p className="text-xs text-muted-foreground">
-              {plan.overLimit ? "Pasaste el límite de productos. Subí de plan para publicar todos." : "Probá 30 días gratis los planes de pedidos y gestión."}
+              {plan.ordersOverLimit
+                ? `Llegaste a los ${plan.maxOrdersMonth ?? ""} pedidos de este mes. Subí de plan para seguir recibiendo.`
+                : `${plan.ordersThisMonth} de ${plan.maxOrdersMonth ?? "∞"} pedidos este mes · Probá los planes de pedidos y gestión.`}
             </p>
           </div>
           <Badge className="flex-shrink-0 bg-primary text-primary-foreground">Ver planes →</Badge>
@@ -68,7 +73,7 @@ export function PlanBanner({ plan }: Props) {
         >
           <div className="min-w-0">
             <p className="text-sm font-semibold">Probando {plan.name} · {plan.trialDaysLeft ?? 0} días</p>
-            <p className="text-xs text-muted-foreground">{plan.products} de {plan.maxProducts ?? "∞"} productos publicados.</p>
+            <p className="text-xs text-muted-foreground">{plan.ordersThisMonth} pedidos este mes.</p>
           </div>
           <Badge className="flex-shrink-0 bg-sun text-ink">Suscripción →</Badge>
         </button>
@@ -84,9 +89,7 @@ export function PlanBanner({ plan }: Props) {
       >
         <div className="min-w-0">
           <p className="text-sm font-semibold text-green-700 dark:text-green-400">{plan.name} activo</p>
-          {plan.overLimit && (
-            <p className="text-xs text-muted-foreground">Subiste el límite de productos: {plan.products} en total.</p>
-          )}
+          <p className="text-xs text-muted-foreground">{plan.ordersThisMonth} pedidos este mes.</p>
         </div>
         <Badge className="flex-shrink-0 bg-green-600 text-white">Suscripción →</Badge>
       </button>

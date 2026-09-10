@@ -29,6 +29,9 @@ type MeResponse = {
     maxProducts: number | null;
     overLimit: boolean;
     percent: number;
+    ordersThisMonth: number;
+    maxOrdersMonth: number | null;
+    ordersOverLimit: boolean;
   };
   history: VendorSubscription[];
 };
@@ -36,7 +39,7 @@ type MeResponse = {
 const PLAN_COPY: Record<string, { title: string; desc: string }> = {
   pedidos: {
     title: "Pedidos",
-    desc: "Carrito, checkout por WhatsApp y 50 productos para tu gastronomía.",
+    desc: "Pedidos por la app sin límite mensual, analytics y gestión de reseñas.",
   },
   gestion: {
     title: "Gestión integral",
@@ -214,6 +217,31 @@ export default function VendorSuscripcionPage() {
             {me.usage.overLimit && (
               <p className="text-[11px] text-red-500 mt-1">
                 Pasaste el límite del plan. Algunos productos quedaron ocultos hasta que bajes el nivel o subas de plan.
+              </p>
+            )}
+          </div>
+
+          <div className="mt-4">
+            <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
+              <span>Pedidos este mes</span>
+              <span>
+                {me.usage.ordersThisMonth}
+                {me.usage.maxOrdersMonth != null ? ` de ${me.usage.maxOrdersMonth}` : " ilimitados"}
+              </span>
+            </div>
+            <div className="h-2 rounded-full bg-muted overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all ${me.usage.ordersOverLimit ? "bg-red-500" : "bg-primary"}`}
+                style={{
+                  width: `${me.usage.maxOrdersMonth != null
+                    ? Math.min(100, Math.round((me.usage.ordersThisMonth / me.usage.maxOrdersMonth) * 100))
+                    : 10}%`,
+                }}
+              />
+            </div>
+            {me.usage.ordersOverLimit && (
+              <p className="text-[11px] text-red-500 mt-1">
+                Llegaste al límite de pedidos de este mes. Subí de plan para seguir recibiendo pedidos.
               </p>
             )}
           </div>

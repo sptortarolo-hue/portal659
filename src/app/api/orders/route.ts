@@ -48,6 +48,28 @@ export const POST = withRateLimit(async (request: Request) => {
       );
     }
 
+    // Tope mensual de pedidos del plan (canal app, mes calendario, no cancelados).
+    // Aplica al Gratuito (20 por defecto); NULL = ilimitado (planes pagos).
+    if (plan.maxOrdersMonth != null) {
+      const monthCount = await queryOne<{ c: number }>(
+        `SELECT count(*)::int AS c FROM orders
+          WHERE vendor_id = $1 AND channel = 'app'
+            AND status <> 'cancelled'
+            AND created_at >= date_trunc('month', now())`,
+        [vendorId]
+      );
+      if ((monthCount?.c ?? 0) >= plan.maxOrdersMonth) {
+        return NextResponse.json(
+          {
+            error:
+              `Este comercio alcanzó su límite de ${plan.maxOrdersMonth} pedidos este mes. ` +
+              "Probá de nuevo el mes próximo o consultalo directo por WhatsApp.",
+          },
+          { status: 403 }
+        );
+      }
+    }
+
     // Abierto/cerrado: el override manual del comercio gana; si no hay override
     // se resuelve por los horarios cargados (timezone Argentina: el server
     // corre en UTC). Cerrado → no se aceptan pedidos online.

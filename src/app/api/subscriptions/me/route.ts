@@ -26,6 +26,15 @@ export async function GET(request: Request) {
   );
   const count = productCount?.c || 0;
 
+  const monthOrders = await queryOne<{ c: number }>(
+    `SELECT count(*)::int AS c FROM orders
+      WHERE vendor_id = $1 AND channel = 'app'
+        AND status <> 'cancelled'
+        AND created_at >= date_trunc('month', now())`,
+    [vendor.id]
+  );
+  const ordersThisMonth = monthOrders?.c || 0;
+
   const usage = {
     products: count,
     maxProducts: effective.maxProducts,
@@ -33,6 +42,10 @@ export async function GET(request: Request) {
     percent: effective.maxProducts != null
       ? Math.min(100, Math.round((count / effective.maxProducts) * 100))
       : count > 0 ? 100 : 0,
+    ordersThisMonth,
+    maxOrdersMonth: effective.maxOrdersMonth,
+    ordersOverLimit:
+      effective.maxOrdersMonth != null && ordersThisMonth >= effective.maxOrdersMonth,
   };
 
   return NextResponse.json({

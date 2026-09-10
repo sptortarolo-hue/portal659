@@ -71,6 +71,9 @@ export default async function PlanesPage() {
             const products = plan.max_products == null
               ? "Productos ilimitados"
               : `${plan.max_products} productos`;
+            const orderLimit = plan.max_orders_month != null
+              ? `Hasta ${plan.max_orders_month} pedidos por mes`
+              : "Pedidos ilimitados por mes";
             const analyticsLabel =
               plan.features.analytics_days != null && plan.features.analytics_days > 0
                 ? `Estadísticas (${plan.features.analytics_days} días)`
@@ -144,6 +147,7 @@ export default async function PlanesPage() {
                     </p>
                   )}
                   <p className="text-xs text-muted-foreground mt-0.5">{products}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{orderLimit}</p>
                 </div>
 
                 <ul className="space-y-2 mb-6 flex-1">

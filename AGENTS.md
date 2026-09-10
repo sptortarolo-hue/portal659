@@ -33,11 +33,12 @@ Portal 659: "El centro comercial de tu barrio". Hub multicommerce hiperlocal (Si
 - **Auth/guard**: `getAuthUser(request)` en `src/lib/auth.ts` devuelve `{ id, email, full_name, role, verified, is_admin }`. Guard de rutas server.
 - **isAdmin**: usa `profiles.is_admin` (no `vendors.is_admin`): el admin no necesita tener un comercio. Helper `isAdmin(request)` en `src/lib/admin-utils.ts`.
 - **Planes**: tabla `plans` + `plan_id/plan_status/plan_expires_at/trial_ends_at` en `vendors` + `vendor_subscriptions`. Resolución en `src/lib/plans.ts` (`resolveVendorPlan`, `can("feature")`, `analyticsDays`).
-- **Modelo de precios (Sprint 3)**:
-  - Gratuito: $0, todos; 3 productos; sin carrito (CTA WhatsApp).
-  - Nivel 1 Pedidos: solo gastronomía, $4.990, 50 productos, carrito + pedidos.
-  - Nivel 2 Gestión integral: solo gastronomía, $12.990, ilimitado + POS (Mostrador) + Mesas + Comanda (KDS).
-  - No-gastro: solo Gratuito. Sin grandfather: todos arrancan Gratuito.
+- **Modelo de precios (Sprint 3, actualizado Sprint 8)**:
+  - Gratuito: $0, gastronomía; carta completa (productos ilimitados) + carrito/checkout + **hasta `max_orders_month` pedidos por mes (default 20)**. Sin analytics.
+  - Nivel 1 Pedidos: solo gastronomía, $4.990, pedidos ilimitados + analytics 7 días + gestión de reseñas.
+  - Nivel 2 Gestión integral: solo gastronomía, $12.990, ilimitado + POS (Mostrador) + Mesas + Comanda (KDS) + impresión + cobro online.
+  - No-gastro: solo Gratuito (sin carrito: contacto). Sin grandfather: todos arrancan Gratuito.
+  - El tope de pedidos vive en `plans.max_orders_month` (migración `supabase/self-host/migrate-order-limit.sql`; NULL = ilimitado). Se aplica en `POST /api/orders` (cuenta pedidos `channel='app'` del mes calendario, no cancelados) y se muestra en el panel del comercio (dashboard/`/vendor/suscripcion`) y se configura en `/admin/planes` (precios, `max_products`, `max_orders_month`, descripción). El Gratuito para gastro se resuelve con `FREE_GASTRO_FEATURES` y el tope del plan `gratuito` (configurable por admin); un plan pago vencido cae a ese mismo fallback. Ver `docs/planes-portal659.md`.
   - **Excepción moda**: `MODA_FEATURES` en `src/lib/plans.ts` habilita `cart`+`emits_orders` gratis para `vertical='moda'` (viene de otra parte: la definición de planes pagos para moda —pos, límites, precios concordantes con gastro— quedó pendiente). `can("kds"|"mesas"|"pos"|"printer")` siguen en false para moda.
 - **Zonas (Sprint 5)**: `src/lib/zone.ts` + `ZONES`/`ACTIVE_ZONES`/`DEFAULT_ZONE`/`ZONE_COOKIE` en `src/lib/config.ts`. Cookie `portal659-zone`. Activa: `sicardi-garibaldi`; `arana`/`correas` definidas con `active:false`. `info_items.zone` y función con `p_zone` (migrate-sprint5-zone).
 - **Perfil de usuario**: tabla `profiles` (`full_name`, `phone`, `whatsapp`, `neighborhood`), separado de los datos del comercio (`vendors`). Página `/perfil`, API `/api/auth/me` (GET/PATCH).
@@ -82,6 +83,7 @@ Portal 659: "El centro comercial de tu barrio". Hub multicommerce hiperlocal (Si
 - Aplicar `supabase/self-host/migrate-sprint5-zone.sql` si la zona del Sprint 5 aún no está en la DB del contenedor.
 - Aplicar `supabase/self-host/migrate-push-subscriptions.sql` (tabla `push_subscriptions` del Sprint 7) contra el contenedor.
 - Aplicar `supabase/self-host/migrate-print-bridge.sql` (impresión térmica: `vendors.print_mode/print_token/last_print*`).
+- Aplicar `supabase/self-host/migrate-order-limit.sql` (columna `plans.max_orders_month` + gratuito carta completa con 20 pedidos/mes — nuevo modelo de planes Sprint 8, ver `docs/planes-portal659.md`).
 - Aplicar `supabase/self-host/migrate-requires-prep.sql` (columna `products.requires_prep`).
 - Aplicar `supabase/self-host/migrate-mp-oauth.sql` (columnas `vendors.mp_*` para MP multi-market).
 - En MP Developers: crear app con OAuth, Redirect URL `https://www.portal659.com.ar/api/mp/oauth/callback`, agregar `MP_CLIENT_ID` + `MP_CLIENT_SECRET` + `MP_TOKEN_KEY` (generada) a env/VPS (ver `docs/mp-multimarket-plan.md`).

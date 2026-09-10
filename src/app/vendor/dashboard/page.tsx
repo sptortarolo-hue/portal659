@@ -3,7 +3,28 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import QRCode from "qrcode";
-import { Menu, ExternalLink } from "lucide-react";
+import {
+  Menu,
+  ExternalLink,
+  Search,
+  AlertTriangle,
+  Home,
+  Package,
+  ChefHat,
+  Monitor,
+  Table,
+  MoreHorizontal,
+  X,
+  Wrench,
+  Shirt,
+  Utensils,
+  FileText,
+  BarChart,
+  History,
+  Star,
+  Banknote,
+  MessageSquare,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ImageCropModal } from "@/components/ui/image-crop-modal";
 import { DEFAULT_ZONE } from "@/lib/config";
@@ -11,6 +32,7 @@ import VendorSidebar from "@/components/vendor/vendor-sidebar";
 import { NotificationBell } from "@/components/nav/notification-bell";
 import { UserMenu } from "@/components/nav/user-menu";
 import { DashboardHome } from "@/components/dashboard/dashboard-home";
+import { OrdersKanban } from "@/components/dashboard/orders-kanban";
 import { useKeyboardShortcuts } from "@/lib/use-keyboard-shortcuts";
 import { buildClientWhatsAppUrl, ORDER_STATUS_COLORS, MODA_STATUS_LABELS, flowSteps, orderCondition, orderReadyLabel, orderNeedsKitchen, CONDITION_META } from "@/lib/order-utils";
 import OrderDetailModal from "@/components/dashboard/order-detail-modal";
@@ -164,12 +186,18 @@ function VendorDashboardInner() {
     return data.url || null;
   }
 
+  const [ordersLoading, setOrdersLoading] = useState(false);
+
   async function loadOrdersOnly() {
+    setOrdersLoading(true);
     try {
       const res = await fetch("/api/vendor/orders");
       const data = await res.json();
       if (data.orders) setOrders(data.orders);
     } catch { /* noop */ }
+    finally {
+      setOrdersLoading(false);
+    }
   }
 
   async function loadData() {
@@ -572,138 +600,158 @@ function VendorDashboardInner() {
           placeholder="Buscar nombre, teléfono o #ID..."
           className="w-full h-10 pl-9 pr-3 text-sm rounded-xl border border-input bg-background"
         />
-        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">🔍</span>
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm h-4 w-4" />
       </div>
 
-      {/* Order list */}
-      {filteredOrders.length === 0 && orders.length > 0 ? (
-        <div className="text-center py-12">
-          <div className="text-4xl mb-3">🔍</div>
-          <p className="text-muted-foreground text-sm">No se encontraron pedidos</p>
-        </div>
-      ) : filteredOrders.length === 0 ? (
-        <div className="text-center py-16">
-          <div className="text-4xl mb-3">📦</div>
-          <p className="text-muted-foreground font-medium">Todavia no recibiste pedidos</p>
-          <p className="text-xs text-muted-foreground mt-1">Los pedidos apareceran cuando un cliente compre</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-          {filteredOrders.map((order) => {
-            const statusIdx = stepOrder.indexOf(order.status as any);
-            const isCancelled = order.status === "cancelled";
-            const isCompleted = order.status === "completed";
-            const isTerminal = isCancelled || isCompleted;
-            const endMs = isTerminal && order.closed_at ? new Date(order.closed_at).getTime() : Date.now();
-            const elapsed = Math.floor((endMs - new Date(order.created_at).getTime()) / 60000);
-            const remaining = order.estimated_minutes ? Math.max(0, order.estimated_minutes - elapsed) : null;
-            const isOverdue = remaining !== null && remaining <= 0 && !isTerminal;
+      {/* Desktop: Kanban board */}
+      <div className="hidden lg:block">
+        <OrdersKanban
+          orders={filteredOrders}
+          isModa={isModa}
+          selectedOrder={selectedOrder}
+          onSelectOrder={setSelectedOrder}
+          onRefresh={loadOrdersOnly}
+          isLoading={ordersLoading}
+        />
+      </div>
 
-            return (
-              <div
-                key={order.id}
-                role="button"
-                tabIndex={0}
-                onClick={() => setSelectedOrder(order)}
-                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelectedOrder(order); } }}
-                className={`w-full text-left p-3.5 rounded-xl border-2 transition-all active:scale-[0.98] cursor-pointer ${
-                  isOverdue ? "border-red-400 bg-red-50 dark:bg-red-950/20" : "border-border bg-card hover:border-primary/40 hover:shadow-sm"
-                }`}
-              >
-                {/* Header row */}
-                <div className="flex items-start justify-between gap-2 mb-2">
-                  <div className="min-w-0">
-                    <p className="font-semibold text-sm truncate">{order.customer_name}</p>
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                      <span className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full ${
-                        ORDER_STATUS_COLORS[order.status]
-                      }`}>
-                        <span className="inline-block w-1.5 h-1.5 rounded-full bg-current" />
-                        {order.status === "ready" ? orderReadyLabel(order) : statusLabels[order.status]}
-                      </span>
-                      <span className={`inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-full border ${CONDITION_META[orderCondition(order)].pillClass}`}>
-                        {CONDITION_META[orderCondition(order)].label}
-                      </span>
-                      {order.pickup_number != null && (
-                        <span className="inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-status-new/15 text-status-new border-status-new/20">
-                          Nro. {order.pickup_number}
+      {/* Mobile: Grid list */}
+      <div className="lg:hidden">
+        {ordersLoading ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+            {[1, 2, 3, 4, 5, 6].map((i) => (
+              <div key={i} className="p-3.5 rounded-xl border border-skeleton bg-skeleton animate-pulse" />
+            ))}
+          </div>
+        ) : filteredOrders.length === 0 && orders.length > 0 ? (
+          <div className="text-center py-12">
+            <Search className="text-4xl mb-3 text-muted-foreground mx-auto" />
+            <p className="text-muted-foreground text-sm">No se encontraron pedidos</p>
+          </div>
+        ) : filteredOrders.length === 0 ? (
+          <div className="text-center py-16">
+            <Package className="text-4xl mb-3 text-muted-foreground mx-auto" />
+            <p className="text-muted-foreground font-medium">Todavía no recibiste pedidos</p>
+            <p className="text-xs text-muted-foreground mt-1">Los pedidos aparecerán cuando un cliente compre</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+            {filteredOrders.map((order) => {
+              const statusIdx = stepOrder.indexOf(order.status as any);
+              const isCancelled = order.status === "cancelled";
+              const isCompleted = order.status === "completed";
+              const isTerminal = isCancelled || isCompleted;
+              const endMs = isTerminal && order.closed_at ? new Date(order.closed_at).getTime() : Date.now();
+              const elapsed = Math.floor((endMs - new Date(order.created_at).getTime()) / 60000);
+              const remaining = order.estimated_minutes ? Math.max(0, order.estimated_minutes - elapsed) : null;
+              const isOverdue = remaining !== null && remaining <= 0 && !isTerminal;
+
+              return (
+                <div
+                  key={order.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setSelectedOrder(order)}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelectedOrder(order); } }}
+                  className={`w-full text-left p-3.5 rounded-xl border-2 transition-all active:scale-[0.98] cursor-pointer ${
+                    isOverdue ? "border-red-400 bg-red-50 dark:bg-red-950/20" : "border-border bg-card hover:border-primary/40 hover:shadow-sm"
+                  }`}
+                >
+                  {/* Header row */}
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-sm truncate">{order.customer_name}</p>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <span className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full ${
+                          ORDER_STATUS_COLORS[order.status]
+                        }`}>
+                          <span className="inline-block w-1.5 h-1.5 rounded-full bg-current" />
+                          {order.status === "ready" ? orderReadyLabel(order) : statusLabels[order.status]}
                         </span>
-                      )}
-                      {order.payment_method === "transferencia" && order.channel === "app" && order.payment_status === "pending" && (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-amber-100 text-amber-700 border-amber-200">
-                          🕐 Pago pendiente
+                        <span className={`inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-full border ${CONDITION_META[orderCondition(order)].pillClass}`}>
+                          {CONDITION_META[orderCondition(order)].label}
                         </span>
-                      )}
+                        {order.pickup_number != null && (
+                          <span className="inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-status-new/15 text-status-new border-status-new/20">
+                            Nro. {order.pickup_number}
+                          </span>
+                        )}
+                        {order.payment_method === "transferencia" && order.channel === "app" && order.payment_status === "pending" && (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-amber-100 text-amber-700 border-amber-200">
+                            <AlertTriangle className="h-2.5 w-2.5" /> Pago pendiente
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <span className="text-sm font-bold tabular-nums">${Number(order.total).toLocaleString("es-AR")}</span>
+                      <p className={`text-[10px] font-medium ${isOverdue ? "text-red-500" : "text-muted-foreground"}`}>
+                        {isTerminal ? (order.status === "completed" ? `Tardó ${elapsed} min` : `${elapsed} min`) : `${elapsed} min`}
+                        {!isTerminal && remaining !== null && !isOverdue && ` · ~${remaining} rest`}
+                      </p>
                     </div>
                   </div>
-                  <div className="text-right flex-shrink-0">
-                    <span className="text-sm font-bold tabular-nums">${Number(order.total).toLocaleString("es-AR")}</span>
-                    <p className={`text-[10px] font-medium ${isOverdue ? "text-red-500" : "text-muted-foreground"}`}>
-                      {isTerminal ? (order.status === "completed" ? `Tardó ${elapsed} min` : `${elapsed} min`) : `${elapsed} min`}
-                      {!isTerminal && remaining !== null && !isOverdue && ` · ~${remaining} rest`}
-                    </p>
-                  </div>
-                </div>
 
-                {/* Progress bar */}
-                {!isCancelled && (
-                  <div className="flex items-center gap-0.5 mb-2">
-                    {stepOrder.map((step, idx) => (
-                      <div key={step} className={`h-1.5 flex-1 rounded-full transition-all ${
-                        idx <= statusIdx ? "bg-primary" : "bg-muted"
-                      }`} />
-                    ))}
-                  </div>
-                )}
-
-                {/* Items preview */}
-                <div className="space-y-0.5 mb-2">
-                  {(order.items || []).slice(0, 2).map((item, i) => (
-                    <p key={i} className="text-xs text-muted-foreground truncate">
-                      {item.qty}x {item.name}
-                      {item.modifiers && item.modifiers.length > 0 && (
-                        <span className="text-red-500 font-medium"> ({item.modifiers.join(", ")})</span>
-                      )}
-                    </p>
-                  ))}
-                  {(order.items || []).length > 2 && (
-                    <p className="text-[10px] text-muted-foreground/50">+{order.items.length - 2} mas</p>
+                  {/* Progress bar */}
+                  {!isCancelled && (
+                    <div className="flex items-center gap-0.5 mb-2">
+                      {stepOrder.map((step, idx) => (
+                        <div key={step} className={`h-1.5 flex-1 rounded-full transition-all ${
+                          idx <= statusIdx ? "bg-primary" : "bg-muted"
+                        }`} />
+                      ))}
+                    </div>
                   )}
-                </div>
 
-                {/* Footer */}
-                <div className="flex items-center justify-between text-[10px] text-muted-foreground">
-                  <span>
-                    {order.payment_method === "efectivo" && "💵 "}
-                    {order.payment_method === "transferencia" && "🏦 "}
-                    {order.payment_method === "whatsapp" && "📱 "}
-                    {new Date(order.created_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}
-                  </span>
-                  <div className="flex items-center gap-2">
-                    {order.customer_phone && order.channel !== "mostrador" && order.channel !== "mesa" && (() => {
-                      const digits = order.customer_phone.replace(/\D/g, "");
-                      if (!digits) return null;
-                      return (
-                        <a
-                          href={`https://wa.me/${digits}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          onClick={(e) => e.stopPropagation()}
-                          title="Ir a WhatsApp"
-                          className="inline-flex items-center justify-center gap-1 rounded-md border border-green-200 bg-green-50 text-green-700 px-2 py-0.5 font-semibold hover:bg-green-100"
-                        >
-                          💬
-                        </a>
-                      );
-                    })()}
-                    <span className="text-primary font-semibold">Ver detalle →</span>
+                  {/* Items preview */}
+                  <div className="space-y-0.5 mb-2">
+                    {(order.items || []).slice(0, 2).map((item, i) => (
+                      <p key={i} className="text-xs text-muted-foreground truncate">
+                        {item.qty}x {item.name}
+                        {item.modifiers && item.modifiers.length > 0 && (
+                          <span className="text-red-500 font-medium"> ({item.modifiers.join(", ")})</span>
+                        )}
+                      </p>
+                    ))}
+                    {(order.items || []).length > 2 && (
+                      <p className="text-[10px] text-muted-foreground/50">+{order.items.length - 2} más</p>
+                    )}
+                  </div>
+
+                  {/* Footer */}
+                  <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                    <span>
+                      {order.payment_method === "efectivo" && <Banknote className="mr-1 h-3 w-3" />}
+                      {order.payment_method === "transferencia" && <Banknote className="mr-1 h-3 w-3" />}
+                      {order.payment_method === "whatsapp" && <MessageSquare className="mr-1 h-3 w-3" />}
+                      {new Date(order.created_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      {order.customer_phone && order.channel !== "mostrador" && order.channel !== "mesa" && (() => {
+                        const digits = order.customer_phone.replace(/\D/g, "");
+                        if (!digits) return null;
+                        return (
+                          <a
+                            href={`https://wa.me/${digits}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            title="Ir a WhatsApp"
+                            className="inline-flex items-center justify-center gap-1 rounded-md border border-green-200 bg-green-50 text-green-700 px-2 py-0.5 font-semibold hover:bg-green-100"
+                          >
+                            <MessageSquare className="h-3.5 w-3.5" />
+                          </a>
+                        );
+                      })()}
+                      <span className="text-primary font-semibold">Ver detalle →</span>
+                    </div>
                   </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 
@@ -767,17 +815,18 @@ function VendorDashboardInner() {
 
         {/* Sticky header */}
         <div className="sticky top-0 z-30 bg-background/95 backdrop-blur-sm border-b border-border">
-          <div className="flex items-center gap-3 px-4 py-2.5">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 sm:gap-3 px-3 sm:px-4 py-2 sm:py-2.5">
             {/* Mobile hamburger */}
             <button
               onClick={() => setSidebarOpen(true)}
               className="p-2 rounded-lg hover:bg-muted transition-colors lg:hidden flex-shrink-0"
+              aria-label="Abrir menú"
             >
               <Menu className="h-5 w-5" />
             </button>
 
             {/* Título de sección + contexto */}
-            <div className="flex-1 min-w-0">
+            <div className="flex-1 min-w-[104px] sm:min-w-0">
               <h1 className="text-sm font-semibold truncate leading-tight">{tabTitle}</h1>
               <p className="hidden sm:block text-[11px] text-muted-foreground leading-tight truncate">
                 {vendor.store_name} · {todayLabel}
@@ -963,28 +1012,28 @@ function VendorDashboardInner() {
         <nav className="lg:hidden fixed bottom-0 inset-x-0 bg-card/95 backdrop-blur-sm border-t border-border z-50" style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
           <div className="flex">
             <button onClick={() => setTab("hoy")} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors relative ${tab === "hoy" ? "text-primary" : "text-muted-foreground"}`}>
-              <span className="text-lg">🏠</span>Hoy
+              <Home className="h-5 w-5" />Hoy
             </button>
             <button onClick={() => setTab("orders")} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors relative ${tab === "orders" ? "text-primary" : "text-muted-foreground"}`}>
-              <span className="text-lg">📦</span>Pedidos
+              <Package className="h-5 w-5" />Pedidos
               {activeOrderCount > 0 && <span className="absolute top-1 right-1/3 -translate-x-4 bg-red-500 text-white text-[9px] rounded-full h-4 w-4 flex items-center justify-center">{activeOrderCount}</span>}
             </button>
             {!isModa && (
               <button onClick={() => setTab("comanda")} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors relative ${tab === "comanda" ? "text-primary" : "text-muted-foreground"}`}>
-                <span className="text-lg">🍳</span>Comanda
+                <ChefHat className="h-5 w-5" />Comanda
                 {kitchenCount > 0 && <span className="absolute top-1 right-1/3 -translate-x-4 bg-red-500 text-white text-[9px] rounded-full h-4 w-4 flex items-center justify-center">{kitchenCount}</span>}
               </button>
             )}
             <button onClick={() => setTab("pos")} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors relative ${tab === "pos" ? "text-primary" : "text-muted-foreground"}`}>
-              <span className="text-lg">🖥️</span>Mostrador
+              <Monitor className="h-5 w-5" />Mostrador
             </button>
             {!isModa && (
               <button onClick={() => setTab("mesas")} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors ${tab === "mesas" ? "text-primary" : "text-muted-foreground"}`}>
-                <span className="text-lg">🍽️</span>Mesas
+                <Table className="h-5 w-5" />Mesas
               </button>
             )}
             <button onClick={() => setMoreOpen((v) => !v)} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors ${["config", "menu", "analytics", "history", "reviews", "recetas"].includes(tab) ? "text-primary" : "text-muted-foreground"}`}>
-              <span className="text-lg">{moreOpen ? "✕" : "⋮"}</span>Más
+              <span className="text-lg">{moreOpen ? <X className="h-5 w-5" /> : <MoreHorizontal className="h-5 w-5" />}</span>Más
             </button>
           </div>
         </nav>
@@ -998,24 +1047,25 @@ function VendorDashboardInner() {
             <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wide mb-2">Administración</p>
             <div className="grid grid-cols-2 gap-2">
               <button onClick={() => { setTab("menu"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "menu" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
-                <span className="text-lg">{isService ? "🔧" : isModa ? "👗" : "🍽️"}</span>{isService ? "Servicios" : isModa ? "Catálogo" : "Menú"} ({menuCount})
+                {isService ? <Wrench className="h-5 w-5" /> : isModa ? <Shirt className="h-5 w-5" /> : <Utensils className="h-5 w-5" />}
+                {isService ? "Servicios" : isModa ? "Catálogo" : "Menú"} ({menuCount})
               </button>
               {isGastro && (
                 <button onClick={() => { setTab("recetas"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "recetas" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
-                  <span className="text-lg">🧾</span>Recetas
+                  <FileText className="h-5 w-5" />Recetas
                 </button>
               )}
               <button onClick={() => { setTab("config"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "config" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
-                <span className="text-lg">⚙️</span>Configuración
+                <Wrench className="h-5 w-5" />Configuración
               </button>
               <button onClick={() => { setTab("analytics"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "analytics" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
-                <span className="text-lg">📊</span>Estadísticas
+                <BarChart className="h-5 w-5" />Estadísticas
               </button>
               <button onClick={() => { setTab("history"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "history" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
-                <span className="text-lg">📜</span>Histórico de pedidos
+                <History className="h-5 w-5" />Histórico de pedidos
               </button>
               <button onClick={() => { setTab("reviews"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "reviews" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
-                <span className="text-lg">⭐</span>Reseñas
+                <Star className="h-5 w-5" />Reseñas
               </button>
             </div>
           </div>

@@ -48,6 +48,21 @@ const ORDER_STATUS_LABELS: Record<string, string> = {
   cancelled: "Cancelado",
 };
 
+/** Fetch con timeout: un endpoint colgado no puede congelar el panel. */
+async function fetchJson(url: string, ms = 8000): Promise<any | null> {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), ms);
+  try {
+    const r = await fetch(url, { credentials: "include", signal: controller.signal });
+    if (!r.ok) return null;
+    return await r.json().catch(() => null);
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(id);
+  }
+}
+
 export default function AdminDashboard() {
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -56,17 +71,15 @@ export default function AdminDashboard() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [adminRes, usersRes] = await Promise.all([
-        fetch("/api/admin"),
-        fetch("/api/admin/users?per_page=1"),
+      const [adminData, usersData] = await Promise.all([
+        fetchJson("/api/admin"),
+        fetchJson("/api/admin/users?per_page=1"),
       ]);
-      const adminData = await adminRes.json();
-      const usersData = await usersRes.json();
 
-      if (!adminData.error) {
+      if (adminData && !adminData.error) {
         setStats({
           ...adminData.stats,
-          totalUsers: usersData.total || 0,
+          totalUsers: usersData?.total || 0,
         });
         setOrders(adminData.orders || []);
         setVendors(adminData.vendors || []);

@@ -70,10 +70,27 @@ export async function verifyAccessToken(
 
 /** Extrae el token del request (header Authorization o cookie). */
 export function extractToken(request: Request): string | undefined {
-  return (
-    request.headers.get("authorization")?.replace("Bearer ", "") ||
-    request.headers.get("cookie")?.match(/sb-access-token=([^;]+)/)?.[1]
-  );
+  return extractAllTokens(request)[0];
+}
+
+/**
+ * Extrae TODOS los tokens candidatos del request.
+ * El navegador puede enviar varias cookies `sb-access-token` a la vez
+ * (ej. una host-only legacy sin `Domain` + la nueva con
+ * `Domain=.portal659.com.ar`): son keys distintas y coexisten.
+ * Se devuelven en orden (header primero) para que el llamador pruebe
+ * cada uno hasta encontrar uno válido.
+ */
+export function extractAllTokens(request: Request): string[] {
+  const out: string[] = [];
+  const auth = request.headers.get("authorization")?.replace("Bearer ", "").trim();
+  if (auth) out.push(auth);
+  const cookieHeader = request.headers.get("cookie") || "";
+  for (const m of cookieHeader.matchAll(/sb-access-token=([^;]*)/g)) {
+    const t = (m[1] || "").trim();
+    if (t) out.push(t);
+  }
+  return out;
 }
 
 /**
@@ -81,10 +98,17 @@ export function extractToken(request: Request): string | undefined {
  * Devuelve null si no hay sesión válida.
  */
 export async function getAuthUser(request: Request): Promise<AuthUser | null> {
-  const token = extractToken(request);
-  if (!token) return null;
-  const decoded = await verifyAccessToken(token);
-  if (!decoded?.userId) return null;
+  // Probar cada candidato hasta encontrar uno que verifique (ver extractAllTokens:
+  // puede haber una cookie host-only legacy conviviendo con la nueva con Domain).
+  let decoded: { userId: string; email?: string; role?: string } | null = null;
+  for (const token of extractAllTokens(request)) {
+    const d = await verifyAccessToken(token);
+    if (d?.userId) {
+      decoded = d;
+      break;
+    }
+  }
+  if (!decoded) return null;
 
   const user = await queryOne<{ id: string; email: string; full_name: string | null; role: string; verified: boolean; is_admin: boolean }>(
     `SELECT id, email, full_name, role, verified, is_admin FROM profiles WHERE id = $1`,

@@ -70,5 +70,11 @@ export const POST = withRateLimit(async (request: Request) => {
   };
   response.cookies.set("sb-access-token", accessToken, cookieOpts);
   response.cookies.set("sb-refresh-token", accessToken, cookieOpts);
+  if (!isLocal) {
+    // Matar la variante host-only legacy (ver login/route.ts).
+    const legacyClear = { httpOnly: true, secure: true, sameSite: "lax" as const, path: "/", maxAge: 0 };
+    response.cookies.set("sb-access-token", "", legacyClear);
+    response.cookies.set("sb-refresh-token", "", legacyClear);
+  }
   return response;
 }, { maxRequests: 15 });

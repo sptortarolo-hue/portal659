@@ -2,18 +2,19 @@
 
 import { useEffect, useCallback } from "react";
 
-type Tab = "config" | "menu" | "orders" | "history" | "comanda" | "analytics" | "pos" | "mesas" | "reviews";
+type Tab = "hoy" | "config" | "menu" | "orders" | "history" | "comanda" | "analytics" | "pos" | "mesas" | "reviews" | "recetas";
 
 const SHORTCUTS: { key: string; ctrl?: boolean; tab: Tab; label: string }[] = [
-  { key: "1", ctrl: true, tab: "orders", label: "Pedidos" },
-  { key: "2", ctrl: true, tab: "comanda", label: "Comanda" },
-  { key: "3", ctrl: true, tab: "pos", label: "Mostrador" },
-  { key: "4", ctrl: true, tab: "mesas", label: "Mesas" },
-  { key: "5", ctrl: true, tab: "menu", label: "Menú" },
-  { key: "6", ctrl: true, tab: "config", label: "Configuración" },
-  { key: "7", ctrl: true, tab: "analytics", label: "Estadísticas" },
-  { key: "8", ctrl: true, tab: "history", label: "Histórico" },
-  { key: "9", ctrl: true, tab: "reviews", label: "Reseñas" },
+  { key: "1", ctrl: true, tab: "hoy", label: "Hoy" },
+  { key: "2", ctrl: true, tab: "orders", label: "Pedidos" },
+  { key: "3", ctrl: true, tab: "comanda", label: "Comanda" },
+  { key: "4", ctrl: true, tab: "pos", label: "Mostrador" },
+  { key: "5", ctrl: true, tab: "mesas", label: "Mesas" },
+  { key: "6", ctrl: true, tab: "menu", label: "Menú" },
+  { key: "7", ctrl: true, tab: "config", label: "Configuración" },
+  { key: "8", ctrl: true, tab: "analytics", label: "Estadísticas" },
+  { key: "9", ctrl: true, tab: "history", label: "Histórico" },
+  { key: "0", ctrl: true, tab: "reviews", label: "Reseñas" },
 ];
 
 /**

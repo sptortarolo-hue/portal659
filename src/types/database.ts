@@ -32,6 +32,8 @@ export type PlanFeatures = {
   reviews_manage: boolean;
   analytics_days: number;
   priority: boolean;
+  /** Módulo Recetas/escandallo (gastronomía, plan Gestión integral). */
+  recipes: boolean;
 };
 
 export type Plan = {
@@ -110,6 +112,52 @@ export type ModifierGroup = {
 export type ModifierOption = {
   label: string;
   price_mod: number;
+};
+
+/** Unidad base de un insumo: peso (g), volumen (ml) o unidad (u). */
+export type IngredientUnit = "g" | "ml" | "u";
+
+/** Insumo / materia prima del módulo Recetas (escandallo). */
+export type Ingredient = {
+  id: string;
+  vendor_id: string;
+  name: string;
+  base_unit: IngredientUnit;
+  /** Costo por 1 unidad base, SIN IVA. */
+  cost_per_unit: number;
+  /** % de merma (0-100). */
+  waste_pct: number;
+  /** true = elaboración propia con sub-receta en recipes. */
+  is_elaborated: boolean;
+  notes: string | null;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+/** Cabecera de receta: un plato de carta (product_id) o un insumo
+ *  elaborado (ingredient_id). Exactamente uno de los dos. */
+export type Recipe = {
+  id: string;
+  vendor_id: string;
+  product_id: string | null;
+  ingredient_id: string | null;
+  /** Rinde: porciones (plato) o cantidad en unidad base (sub-receta). */
+  portions: number;
+  instructions: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+/** Línea de receta: insumo + cantidad NETA + unidad de la línea. */
+export type RecipeItem = {
+  id: string;
+  recipe_id: string;
+  ingredient_id: string;
+  qty_net: number;
+  unit: string;
+  position: number;
+  created_at: string;
 };
 
 export type VendorGallery = {

@@ -175,7 +175,7 @@ export function OfferForm({
   );
 }
 
-export function OfferList({ offers, onEdit, onToggleFeatured, onToggleAvailable, onDelete, editingId, editForm, onEditModifiers }: {
+export function OfferList({ offers, onEdit, onToggleFeatured, onToggleAvailable, onDelete, editingId, editForm, onEditModifiers, costByProduct }: {
   offers: Offer[];
   onEdit: (o: Offer) => void;
   onToggleFeatured: (o: Offer) => void;
@@ -184,6 +184,8 @@ export function OfferList({ offers, onEdit, onToggleFeatured, onToggleAvailable,
   editingId?: string | null;
   editForm?: ReactNode;
   onEditModifiers?: (o: Offer) => void;
+  /** Costo por plato (módulo Recetas): { [productId]: { cost, pct, status } }. */
+  costByProduct?: Record<string, { cost: number | null; pct: number | null; status: "ok" | "warn" | "bad" | "none" }>;
 }) {
   const editAnchorRef = useRef<HTMLDivElement>(null);
 
@@ -214,6 +216,24 @@ export function OfferList({ offers, onEdit, onToggleFeatured, onToggleAvailable,
                     <span className="font-medium text-sm truncate">{offer.name}</span>
                     {offer.featured_today && <Badge className="bg-sun/20 text-ink text-[10px] px-1.5 py-0">Hoy</Badge>}
                     {!offer.available && <Badge variant="secondary" className="text-[10px] px-1.5 py-0">Pausado</Badge>}
+                    {costByProduct?.[offer.id]?.cost !== null && costByProduct?.[offer.id]?.cost !== undefined && (
+                      <Badge
+                        className={`text-[10px] px-1.5 py-0 tabular-nums ${
+                          costByProduct[offer.id].status === "ok"
+                            ? "bg-green-100 text-green-700"
+                            : costByProduct[offer.id].status === "warn"
+                              ? "bg-amber-100 text-amber-700"
+                              : costByProduct[offer.id].status === "bad"
+                                ? "bg-red-100 text-red-700"
+                                : "bg-gray-100 text-gray-500"
+                        }`}
+                        title={`Costo ${costByProduct[offer.id].cost !== null ? `$${Number(costByProduct[offer.id].cost).toLocaleString("es-AR")}` : "—"}`}
+                      >
+                        {costByProduct[offer.id].pct !== null && costByProduct[offer.id].pct !== undefined
+                          ? `${Number(costByProduct[offer.id].pct).toLocaleString("es-AR")}%`
+                          : "Costo"}
+                      </Badge>
+                    )}
                     {offer.stock !== null && offer.stock <= (offer.stock_low_threshold || 5) && (
                       <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
                         {offer.stock === 0 ? "Sin stock" : `Stock: ${offer.stock}`}

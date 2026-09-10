@@ -91,6 +91,7 @@ Portal 659: "El centro comercial de tu barrio". Hub multicommerce hiperlocal (Si
 - Aplicar `supabase/self-host/migrate-ticket-config.sql` (toggles de encabezado impreso: `vendors.print_logo/print_address/print_phone/print_social` — sin esto los tickets salen con todo activado por defecto igual, pero conviene correrla antes de tocar esos switches en el dashboard).
 - Aplicar `supabase/self-host/migrate-subscription-payments.sql` (campos de pago en `vendor_subscriptions`: `payment_method/amount/paid_at` — panel `/admin/suscripciones`).
 - Aplicar `supabase/self-host/migrate-order-track-token.sql` (columna `orders.track_token` — link de seguimiento público `/seguimiento/[token]` y cuenta comprador).
+- Aplicar `supabase/self-host/migrate-recipes.sql` (módulo Recetas/escandallo gastro: `ingredients` + `recipes` + `recipe_items` + flag `recipes` en plan `gestion` — tab Recetas del dashboard, plan Gestión integral).
 - Cargar secrets `VAPID_*`, `PRINT_BRIDGE_SECRET` y `RESEND_API_KEY`/`FROM_EMAIL` en GitHub para que el deploy las escriba al `.env`.
 - Compilar el APK de Portal Print (Android): ver `android/README.md` (requiere Android SDK/JDK 17).
 - Reboot test del VPS (verificar que la web vuelve sola).

@@ -10,7 +10,7 @@ se paga cuando el negocio pide más.
 |---|---|---|---|---|
 | **Gratuito** | $0 | Carta completa (ilimitado) | **20** (configurable) | micrositio + QR + carrito + checkout por WhatsApp |
 | **Pedidos** | $4.990 | ilimitado | ilimitado | + analytics 7 días + gestión de reseñas |
-| **Gestión integral** | $12.990 | ilimitado | ilimitado | + POS (Mostrador) + Mesas + Comanda (KDS) + impresión + cobro online |
+| **Gestión integral** | $12.990 | ilimitado | ilimitado | + POS (Mostrador) + Mesas + Comanda (KDS) + impresión + cobro online + **Recetas/escandallo** |
 
 Reglas:
 
@@ -50,6 +50,22 @@ Editable por plan: `name`, `description`, `price_monthly`, `max_products` (vací
 ilimitado), `max_orders_month` (vacío = ilimitado), `badge`, `popular`, y la promo
 (`promo_price`, `promo_months`, `promo_ends_at`, `promo_label`). Aplicado vía
 `PATCH /api/admin/plans` (lista ALLOWED).
+
+## Módulo Recetas / escandallo (gastronomía, plan Gestión integral)
+
+- Feature flag `recipes` en `plans.features` (solo `gestion` en `true`; ver
+  `supabase/self-host/migrate-recipes.sql`). Gate con `can("recipes")` en APIs y tab.
+- Tablas: `ingredients` (insumo: unidad base g/ml/u, costo sin IVA, % merma,
+  `is_elaborated`), `recipes` (cabecera: un plato **o** un elaborado, con `portions`
+  = rinde), `recipe_items` (insumo + cantidad **neta** + unidad).
+- Aritmética en `src/lib/costing.ts` (pura, estilo Fudo): bruta = neta ÷ (1−merma),
+  línea = bruta × costo, total = Σ (+ recursión en sub-recetas con guardia
+  anti-ciclos), food-cost % = costo ÷ precio, semáforo 🟢<30 🟡30–35 🔴>35,
+  precio sugerido = costo ÷ food-cost objetivo.
+- El costo del plato **se deriva siempre** (no se persiste): al cambiar un insumo se
+  recalcula todo lo que lo usa. UI: tab **Recetas** (`RecipeManager`) + chip de
+  food-cost en el Menú. Alcance v1: solo costeo informativo (sin descuento de
+  stock al vender, sin CMV/teórico-vs-real — fase 2).
 
 ## Migración
 

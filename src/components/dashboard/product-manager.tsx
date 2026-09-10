@@ -29,13 +29,18 @@ type Props = {
   isModa?: boolean;
   showStock?: boolean;
   showPrep?: boolean;
+  /** Muestra el chip de food-cost por plato (requiere plan con recetas). */
+  showCosts?: boolean;
   onChanged?: () => void;
 };
 
+type CostInfo = { cost: number | null; pct: number | null; status: "ok" | "warn" | "bad" | "none" };
+
 /** Gestión completa de platos/productos (listado + ficha inline + modificadores), sin ir a Configuración. */
-export function ProductManager({ isModa = false, showStock = true, showPrep = false, onChanged }: Props) {
+export function ProductManager({ isModa = false, showStock = true, showPrep = false, showCosts = false, onChanged }: Props) {
   const [offers, setOffers] = useState<OfferRow[]>([]);
   const [categories, setCategories] = useState<MenuCategory[]>([]);
+  const [costByProduct, setCostByProduct] = useState<Record<string, CostInfo>>({});
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState("");
   const [saving, setSaving] = useState(false);
@@ -61,8 +66,19 @@ export function ProductManager({ isModa = false, showStock = true, showPrep = fa
     ]);
     if (o.offers) setOffers(o.offers);
     if (c.categories) setCategories(c.categories);
+    if (showCosts) {
+      // 403 si el plan no incluye recetas: se ignora y no se muestran chips.
+      const costs = await fetch("/api/vendor/recipes/costs").then((r) => (r.ok ? r.json() : null)).catch(() => null);
+      if (costs?.costs) {
+        const map: Record<string, CostInfo> = {};
+        for (const row of costs.costs) {
+          if (row.has_recipe) map[row.product_id] = { cost: row.cost, pct: row.food_cost_pct, status: row.status };
+        }
+        setCostByProduct(map);
+      }
+    }
     setLoading(false);
-  }, []);
+  }, [showCosts]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -232,6 +248,7 @@ export function ProductManager({ isModa = false, showStock = true, showPrep = fa
           editingId={editingId}
           editForm={editingId ? offerFormNode : undefined}
           onEditModifiers={(offer) => startEdit(offer)}
+          costByProduct={showCosts ? costByProduct : undefined}
         />
       )}
     </div>

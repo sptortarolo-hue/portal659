@@ -3,11 +3,14 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import QRCode from "qrcode";
-import { Menu } from "lucide-react";
+import { Menu, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ImageCropModal } from "@/components/ui/image-crop-modal";
 import { DEFAULT_ZONE } from "@/lib/config";
 import VendorSidebar from "@/components/vendor/vendor-sidebar";
+import { NotificationBell } from "@/components/nav/notification-bell";
+import { UserMenu } from "@/components/nav/user-menu";
+import { DashboardHome } from "@/components/dashboard/dashboard-home";
 import { useKeyboardShortcuts } from "@/lib/use-keyboard-shortcuts";
 import { buildClientWhatsAppUrl, ORDER_STATUS_COLORS, MODA_STATUS_LABELS, flowSteps, orderCondition, orderReadyLabel, orderNeedsKitchen, CONDITION_META } from "@/lib/order-utils";
 import OrderDetailModal from "@/components/dashboard/order-detail-modal";
@@ -19,6 +22,7 @@ import DashboardModa from "@/components/dashboard/dashboard-moda";
 import { VendorAnalytics } from "@/components/dashboard/vendor-analytics";
 import { VendorReviews } from "@/components/vendor/vendor-reviews";
 import { VendorOrderHistory } from "@/components/dashboard/vendor-order-history";
+import { RecipeManager } from "@/components/dashboard/recipe-manager";
 import { ProductManager } from "@/components/dashboard/product-manager";
 import ComandaKDS from "@/components/dashboard/comanda-kds";
 import { playNewOrderSound, resumeAudioContext } from "@/lib/sounds";
@@ -31,7 +35,7 @@ import { OpenToggle } from "@/components/vendor/open-toggle";
 import { PrepTimeControl } from "@/components/vendor/prep-time-control";
 import { PrinterStatus } from "@/components/vendor/printer-status";
 import { DeliveryBoard } from "@/components/vendor/delivery-board";
-import type { ProductModifier, VendorGallery, Booking, Vertical, Product as DBProduct, Order, ProductVariant, ProductImage, OrderItem, PlanStatus, Plan } from "@/types/database";
+import type { ProductModifier, VendorGallery, Booking, Vertical, Product as DBProduct, Order, ProductVariant, ProductImage, OrderItem, PlanStatus, Plan, Vendor as VendorDB } from "@/types/database";
 
 type Vendor = {
   id: string;
@@ -109,12 +113,12 @@ function VendorDashboardInner() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [variants, setVariants] = useState<ProductVariant[]>([]);
   const [productImages, setProductImages] = useState<ProductImage[]>([]);
-  const [tab, setTab] = useState<"config" | "menu" | "orders" | "history" | "comanda" | "analytics" | "pos" | "mesas" | "reviews">("orders");
+  const [tab, setTab] = useState<"hoy" | "config" | "menu" | "orders" | "history" | "comanda" | "analytics" | "pos" | "mesas" | "reviews" | "recetas">("hoy");
   // Las pestañas pesadas (fetch propio: comanda, mostrador, mesas, analytics,
   // reviews) se montan recién cuando el usuario las abre por primera vez.
   // Así el arranque del dashboard hace ~12 requests en vez de ~20 y el pool
   // de la DB no se satura (causa del "no se pudo cargar" en Comanda/Mesas).
-  const [mountedTabs, setMountedTabs] = useState<Set<string>>(new Set(["orders", "menu", "config"]));
+  const [mountedTabs, setMountedTabs] = useState<Set<string>>(new Set(["hoy", "orders", "menu", "config"]));
   useEffect(() => {
     setMountedTabs((prev) => (prev.has(tab) ? prev : new Set(prev).add(tab)));
   }, [tab]);
@@ -707,6 +711,25 @@ function VendorDashboardInner() {
   const activeOrderCount = activeOrders.length;
   const menuCount = offers.length;
 
+  const tabTitle =
+    tab === "menu" ? (isModa ? "Catálogo" : "Menú")
+    : tab === "hoy" ? "Hoy"
+    : tab === "orders" ? "Pedidos"
+    : tab === "comanda" ? "Comanda"
+    : tab === "pos" ? "Mostrador"
+    : tab === "mesas" ? "Mesas"
+    : tab === "recetas" ? "Recetas"
+    : tab === "analytics" ? "Estadísticas"
+    : tab === "history" ? "Histórico"
+    : tab === "reviews" ? "Reseñas"
+    : "Configuración";
+
+  const todayLabel = new Date().toLocaleDateString("es-AR", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  });
+
   return (
     <div className="min-h-screen bg-background flex">
       {/* Sidebar — desktop: always visible; mobile: slide-in */}
@@ -723,6 +746,8 @@ function VendorDashboardInner() {
         storeSlug={vendor.slug}
         isGastro={isGastro}
         isModa={isModa}
+        planName={effectivePlan.plan?.name ?? null}
+        planSlug={effectivePlan.plan?.slug ?? null}
       />
 
       {/* Content area */}
@@ -741,17 +766,24 @@ function VendorDashboardInner() {
         )}
 
         {/* Sticky header */}
-        <div className="sticky top-0 z-30 bg-background border-b border-border">
-          <div className="px-4 py-3 flex items-center gap-3">
+        <div className="sticky top-0 z-30 bg-background/95 backdrop-blur-sm border-b border-border">
+          <div className="flex items-center gap-3 px-4 py-2.5">
             {/* Mobile hamburger */}
             <button
               onClick={() => setSidebarOpen(true)}
-              className="p-2 rounded-lg hover:bg-muted transition-colors lg:hidden"
+              className="p-2 rounded-lg hover:bg-muted transition-colors lg:hidden flex-shrink-0"
             >
               <Menu className="h-5 w-5" />
             </button>
-            {/* Desktop: sidebar already shows logo/name, header shows controls only */}
-            <div className="flex-1 min-w-0" />
+
+            {/* Título de sección + contexto */}
+            <div className="flex-1 min-w-0">
+              <h1 className="text-sm font-semibold truncate leading-tight">{tabTitle}</h1>
+              <p className="hidden sm:block text-[11px] text-muted-foreground leading-tight truncate">
+                {vendor.store_name} · {todayLabel}
+              </p>
+            </div>
+
             <OpenToggle vendor={vendor} onSaved={(v) => setVendor(v)} />
             {isGastro && (
               <>
@@ -765,7 +797,21 @@ function VendorDashboardInner() {
                 }} />
               </>
             )}
-            <Button variant="outline" size="sm" onClick={openShare} className="flex-shrink-0">Compartir</Button>
+            {vendor.slug && (
+              <a
+                href={`/tienda/${vendor.slug}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hidden xl:inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted transition-colors flex-shrink-0"
+              >
+                <ExternalLink className="h-3.5 w-3.5" /> Micrositio
+              </a>
+            )}
+            <Button size="sm" onClick={openShare} className="flex-shrink-0">Compartir</Button>
+            <div className="hidden lg:flex items-center gap-1 flex-shrink-0">
+              <NotificationBell />
+              <UserMenu />
+            </div>
           </div>
         </div>
 
@@ -802,7 +848,7 @@ function VendorDashboardInner() {
         )}
 
         {/* Tab content */}
-        <div className={`flex-1 px-4 mt-4 ${tab === "comanda" ? "w-full max-w-none" : `mx-auto w-full ${["orders", "history", "pos", "mesas", "analytics"].includes(tab) ? "max-w-7xl" : "max-w-4xl"}`}`}>
+        <div className={`flex-1 px-4 mt-4 ${tab === "comanda" ? "w-full max-w-none" : `mx-auto w-full ${["orders", "history", "pos", "mesas", "analytics", "recetas", "hoy"].includes(tab) ? "max-w-7xl" : "max-w-4xl"}`}`}>
           {isService ? (
             <div className="space-y-4">{configContent}</div>
           ) : (
@@ -813,6 +859,7 @@ function VendorDashboardInner() {
                   isModa={isModa}
                   showStock
                   showPrep={!isModa}
+                  showCosts={isGastro}
                   onChanged={() => loadData()}
                 />
               </div>
@@ -857,6 +904,18 @@ function VendorDashboardInner() {
                   )}
                 </div>
               )}
+              {mountedTabs.has("recetas") && (
+                <div className={tab === "recetas" ? "" : "hidden"}>
+                  {isGastro && effectivePlan.can("recipes") ? (
+                    <RecipeManager />
+                  ) : (
+                    <PlanLock
+                      title="Recetas y costos"
+                      description="Cargá insumos con su merma, armá la receta de cada plato y conocé tu costo real y food cost. Parte del plan Gestión integral."
+                    />
+                  )}
+                </div>
+              )}
               {mountedTabs.has("analytics") && (
                 <div className={tab === "analytics" ? "" : "hidden"}>
                   <VendorAnalytics />
@@ -879,6 +938,23 @@ function VendorDashboardInner() {
                   <VendorOrderHistory isModa={isModa} />
                 </div>
               )}
+              {mountedTabs.has("hoy") && (
+                <div className={tab === "hoy" ? "" : "hidden"}>
+                  <DashboardHome
+                    vendor={vendor as unknown as VendorDB}
+                    isGastro={isGastro}
+                    isModa={isModa}
+                    isService={isService}
+                    orders={orders}
+                    bookings={bookings}
+                    offerCount={offers.length}
+                    can={effectivePlan.can}
+                    onNavigate={(t) => setTab(t)}
+                    onShare={openShare}
+                    onOpenOrder={(o) => setSelectedOrder(o)}
+                  />
+                </div>
+              )}
             </>
           )}
         </div>
@@ -886,6 +962,9 @@ function VendorDashboardInner() {
         {/* Mobile bottom nav */}
         <nav className="lg:hidden fixed bottom-0 inset-x-0 bg-card/95 backdrop-blur-sm border-t border-border z-50" style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
           <div className="flex">
+            <button onClick={() => setTab("hoy")} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors relative ${tab === "hoy" ? "text-primary" : "text-muted-foreground"}`}>
+              <span className="text-lg">🏠</span>Hoy
+            </button>
             <button onClick={() => setTab("orders")} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors relative ${tab === "orders" ? "text-primary" : "text-muted-foreground"}`}>
               <span className="text-lg">📦</span>Pedidos
               {activeOrderCount > 0 && <span className="absolute top-1 right-1/3 -translate-x-4 bg-red-500 text-white text-[9px] rounded-full h-4 w-4 flex items-center justify-center">{activeOrderCount}</span>}
@@ -904,7 +983,7 @@ function VendorDashboardInner() {
                 <span className="text-lg">🍽️</span>Mesas
               </button>
             )}
-            <button onClick={() => setMoreOpen((v) => !v)} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors ${["config", "menu", "analytics", "history", "reviews"].includes(tab) ? "text-primary" : "text-muted-foreground"}`}>
+            <button onClick={() => setMoreOpen((v) => !v)} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors ${["config", "menu", "analytics", "history", "reviews", "recetas"].includes(tab) ? "text-primary" : "text-muted-foreground"}`}>
               <span className="text-lg">{moreOpen ? "✕" : "⋮"}</span>Más
             </button>
           </div>
@@ -921,6 +1000,11 @@ function VendorDashboardInner() {
               <button onClick={() => { setTab("menu"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "menu" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
                 <span className="text-lg">{isService ? "🔧" : isModa ? "👗" : "🍽️"}</span>{isService ? "Servicios" : isModa ? "Catálogo" : "Menú"} ({menuCount})
               </button>
+              {isGastro && (
+                <button onClick={() => { setTab("recetas"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "recetas" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
+                  <span className="text-lg">🧾</span>Recetas
+                </button>
+              )}
               <button onClick={() => { setTab("config"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "config" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
                 <span className="text-lg">⚙️</span>Configuración
               </button>

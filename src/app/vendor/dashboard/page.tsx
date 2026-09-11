@@ -126,6 +126,7 @@ function VendorDashboardInner() {
   const impersonatingId = searchParams.get("as");
   const [vendor, setVendor] = useState<Vendor | null>(null);
   const [staffRole, setStaffRole] = useState<"owner" | "delivery" | null>(null);
+  const [previewSession, setPreviewSession] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const [offers, setOffers] = useState<Offer[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -229,6 +230,7 @@ function VendorDashboardInner() {
       const subsMeData = subsMeRes?.ok ? await subsMeRes.json().catch(() => ({})) : {};
 
       if (me.error === "No autenticado") { router.push("/login"); return; }
+      if (me.preview) setPreviewSession(true);
       if (me.vendor) setVendor(me.vendor);
       if (me.staffRole) setStaffRole(me.staffRole);
       if (me.userId) setUserId(me.userId);
@@ -944,6 +946,26 @@ function VendorDashboardInner() {
             </div>
           </div>
         </div>
+
+        {/* Sesión de prueba (link compartido, sin cuenta) */}
+        {previewSession && (
+          <div className="bg-violet-600 text-white">
+            <div className="px-4 py-2 flex items-center justify-between gap-3 text-xs font-medium">
+              <span className="min-w-0">🧪 Sesión de prueba — todo lo que hagas queda marcado como prueba.</span>
+              <button
+                onClick={async () => {
+                  try {
+                    await fetch("/api/preview/dashboard", { method: "DELETE" });
+                  } catch { /* noop */ }
+                  router.push("/");
+                }}
+                className="underline hover:no-underline whitespace-nowrap flex-shrink-0"
+              >
+                Salir
+              </button>
+            </div>
+          </div>
+        )}
 
         {msg && <div className="px-4 pt-3"><p className="text-sm text-green-600 bg-green-50 rounded-lg px-3 py-2">{msg}</p></div>}
 

@@ -64,11 +64,13 @@ export async function POST(request: Request) {
 
   // Número de pedido diario universal (mostrador/delivery): además de
   // referenciarlo a la caja, el pedido queda con su número de oraculo en tickets.
+  // En sesión de prueba todo nace marcado como prueba.
+  const previewOrder = gate.previewSession === true;
   const order = await withTransaction(async (tx) => {
     const pickupNumber = await nextOrderNumber(tx, gate.vendor.id);
     return tx.queryOne<Record<string, any>>(
-      `INSERT INTO orders (vendor_id, customer_name, customer_phone, customer_address, method, payment_method, items, total, status, channel, paid_at, notes, pickup_number)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'mostrador', $10, $11, $12)
+      `INSERT INTO orders (vendor_id, customer_name, customer_phone, customer_address, method, payment_method, items, total, status, channel, paid_at, notes, pickup_number, is_preview)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'mostrador', $10, $11, $12, $13)
        RETURNING *`,
       [
         gate.vendor.id,
@@ -83,6 +85,7 @@ export async function POST(request: Request) {
         now,
         notes || null,
         pickupNumber,
+        previewOrder,
       ]
     );
   });

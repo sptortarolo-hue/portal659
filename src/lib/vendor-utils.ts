@@ -1,5 +1,6 @@
 import { getAuthUser } from "./auth";
 import { queryOne } from "./db";
+import { getPreviewSessionVendorId } from "./preview-session";
 
 const ADMIN_AS_COOKIE = "portal659-admin-as";
 
@@ -22,15 +23,29 @@ export type StaffRole = "owner" | "delivery" | null;
  * - Owner: vendors.user_id = user.id.
  * - Staff: vendor_staff.profile_id = user.id (repartidor / delivery).
  * - Admin con `portal659-admin-as`: resuelve por id (modo llave en mano).
- * Devuelve también `staffRole` (null si es dueño, "delivery" si es repartidor).
+ * - Sesión de prueba (`portal659-preview-dashboard`): acceso temporal al
+ *   panel de UN comercio, sin cuenta. `previewSession: true`, `userId: null`.
+ * Devuelve también `staffRole` ("owner" para sesión de prueba, null si es
+ * dueño, "delivery" si es repartidor).
  */
 export async function getVendorByRequest(request: Request): Promise<{
   userId: string | null;
   vendor: { id: string; user_id: string | null } | null;
   staffRole: StaffRole;
+  previewSession: boolean;
 }> {
+  // Sesión de prueba: no requiere usuario registrado.
+  const previewVendorId = await getPreviewSessionVendorId(request);
+  if (previewVendorId) {
+    const vendor = await queryOne<{ id: string; user_id: string | null }>(
+      `SELECT id, user_id FROM vendors WHERE id = $1 LIMIT 1`,
+      [previewVendorId]
+    );
+    return { userId: null, vendor: vendor ?? null, staffRole: "owner", previewSession: true };
+  }
+
   const user = await getAuthUser(request);
-  if (!user) return { userId: null, vendor: null, staffRole: null };
+  if (!user) return { userId: null, vendor: null, staffRole: null, previewSession: false };
 
   const asVendorId = getCookie(request, ADMIN_AS_COOKIE);
   if (asVendorId && user.is_admin) {
@@ -38,14 +53,14 @@ export async function getVendorByRequest(request: Request): Promise<{
       `SELECT id, user_id FROM vendors WHERE id = $1 LIMIT 1`,
       [asVendorId]
     );
-    return { userId: user.id, vendor: vendor ?? null, staffRole: null };
+    return { userId: user.id, vendor: vendor ?? null, staffRole: null, previewSession: false };
   }
 
   const vendor = await queryOne<{ id: string; user_id: string }>(
     `SELECT id, user_id FROM vendors WHERE user_id = $1 LIMIT 1`,
     [user.id]
   );
-  if (vendor) return { userId: user.id, vendor, staffRole: null };
+  if (vendor) return { userId: user.id, vendor, staffRole: null, previewSession: false };
 
   // No es dueño: ¿es repartidor vinculado por código y activo?
   const staff = await queryOne<{ vendor_id: string; role: string }>(
@@ -61,8 +76,9 @@ export async function getVendorByRequest(request: Request): Promise<{
       userId: user.id,
       vendor: sv ?? null,
       staffRole: staff.role === "delivery" ? ("delivery" as const) : ("owner" as const),
+      previewSession: false,
     };
   }
 
-  return { userId: user.id, vendor: null, staffRole: null };
+  return { userId: user.id, vendor: null, staffRole: null, previewSession: false };
 }

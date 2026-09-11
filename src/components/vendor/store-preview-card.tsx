@@ -107,7 +107,7 @@ export function StorePreviewCard({
             <p className="text-[11px] font-semibold tracking-widest uppercase text-muted-foreground mb-2">
               Así se ve en la home
             </p>
-            <div className="max-w-[300px]">
+            <div className="w-full max-w-[300px] min-w-0">
               <VendorCard
                 id={vendor.id}
                 slug={vendor.slug}

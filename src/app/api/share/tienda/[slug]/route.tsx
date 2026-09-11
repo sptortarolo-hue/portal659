@@ -1,27 +1,40 @@
 import { ImageResponse } from "next/og";
 import { queryOne } from "@/lib/db";
 import { getSiteUrl } from "@/lib/site-url";
+import { isPreviewTokenValid } from "@/lib/preview";
 
 export const runtime = "nodejs";
 
 // Tarjeta de compartir (og:image) del micrositio: banner + logo + nombre + leyenda.
 // Al pegar el link en WhatsApp se ve esta imagen con el comercio.
+// Acepta ?preview=<token> para comercios ocultos (misma autorización que el
+// micrositio en prueba); la tarjeta sale con cinta "MODO PRUEBA".
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ slug: string }> }
 ) {
   const { slug } = await params;
+  const previewParam = new URL(request.url).searchParams.get("preview");
+
   const vendor = await queryOne<{
     store_name: string;
     image_url: string | null;
     logo_url: string | null;
     description: string | null;
+    visible: boolean;
+    preview_token: string | null;
+    preview_token_expires_at: string | null;
   }>(
-    `SELECT store_name, image_url, logo_url, description FROM vendors WHERE slug = $1 AND visible = true LIMIT 1`,
+    `SELECT store_name, image_url, logo_url, description, visible, preview_token, preview_token_expires_at FROM vendors WHERE slug = $1 LIMIT 1`,
     [slug]
   );
 
   if (!vendor) {
+    return new Response("Not found", { status: 404 });
+  }
+
+  const isPreview = !vendor.visible;
+  if (isPreview && !isPreviewTokenValid(vendor, previewParam)) {
     return new Response("Not found", { status: 404 });
   }
 
@@ -64,6 +77,23 @@ export async function GET(
             background: "linear-gradient(to top, rgba(0,0,0,0.78) 0%, rgba(0,0,0,0.25) 55%, rgba(0,0,0,0) 100%)",
           }}
         />
+        {isPreview && (
+          <div
+            style={{
+              position: "absolute",
+              top: 36,
+              right: 48,
+              background: "#fbbf24",
+              color: "#451a03",
+              fontSize: 24,
+              fontWeight: 800,
+              padding: "8px 20px",
+              borderRadius: 999,
+            }}
+          >
+            🧪 MODO PRUEBA
+          </div>
+        )}
         <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 24 }}>
           {logo && (
             <img

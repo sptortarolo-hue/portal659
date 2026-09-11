@@ -76,12 +76,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, orderId: order?.id, order, table });
   }
 
+  // En sesión de prueba todo nace marcado como prueba.
+  const previewOrder = gate.previewSession === true;
   const order = await withTransaction(async (tx) => {
     // Número universal de pedido diario (mesas también lo producten).
     const pickupNumber = await nextOrderNumber(tx, gate.vendor.id);
     return tx.queryOne<Record<string, any>>(
-      `INSERT INTO orders (vendor_id, customer_name, customer_phone, customer_address, method, payment_method, items, total, status, channel, table_id, notes, pickup_number)
-       VALUES ($1, $2, $3, $4, 'pickup', $5, $6, $7, 'new', 'mesa', $8, $9, $10)
+      `INSERT INTO orders (vendor_id, customer_name, customer_phone, customer_address, method, payment_method, items, total, status, channel, table_id, notes, pickup_number, is_preview)
+       VALUES ($1, $2, $3, $4, 'pickup', $5, $6, $7, 'new', 'mesa', $8, $9, $10, $11)
        RETURNING *`,
       [
         gate.vendor.id,
@@ -94,6 +96,7 @@ export async function POST(request: Request) {
         table.id,
         notes || null,
         pickupNumber,
+        previewOrder,
       ]
     );
   });

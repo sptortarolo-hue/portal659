@@ -72,7 +72,12 @@ export async function generateMetadata({
   const description = vendor.description || `${vendor.store_name} en ${vendor.neighborhood || "tu barrio"}. Pedí por WhatsApp o delivery.`;
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://www.portal659.com.ar";
   // Tarjeta generada (banner + logo + leyenda) para que WhatsApp la muestre al pegar el link.
-  const shareImage = `${siteUrl}/api/share/tienda/${slug}`;
+  // En preview se propaga el token para que la imagen también salga.
+  const previewTokenParam =
+    preview && typeof sp?.preview === "string" && sp.preview !== "1"
+      ? `?preview=${encodeURIComponent(sp.preview)}`
+      : "";
+  const shareImage = `${siteUrl}/api/share/tienda/${slug}${previewTokenParam}`;
 
   return {
     title,

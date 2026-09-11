@@ -14,12 +14,22 @@ function slugify(text: string): string {
 }
 
 export async function GET(request: Request) {
+  const { vendor: resolved, staffRole, previewSession, userId } =
+    await getVendorByRequest(request);
+
+  // Sesión de prueba: entra sin usuario registrado.
+  if (previewSession && resolved) {
+    const vendor = await queryOne<Record<string, unknown>>(
+      `SELECT * FROM vendors WHERE id = $1 LIMIT 1`,
+      [resolved.id]
+    );
+    return NextResponse.json({ vendor, staffRole, userId: null, preview: true });
+  }
+
   const user = await getAuthUser(request);
   if (!user) {
     return NextResponse.json({ error: "No autenticado" }, { status: 401 });
   }
-
-  const { vendor: resolved, staffRole } = await getVendorByRequest(request);
 
   if (!resolved) {
     return NextResponse.json({ vendor: null, staffRole, userId: user.id });
@@ -30,7 +40,7 @@ export async function GET(request: Request) {
     [resolved.id]
   );
 
-  return NextResponse.json({ vendor, staffRole, userId: user.id });
+  return NextResponse.json({ vendor, staffRole, userId: user.id, preview: previewSession });
 }
 
 export async function POST(request: Request) {

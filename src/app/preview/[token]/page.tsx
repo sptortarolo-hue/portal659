@@ -4,6 +4,7 @@ import { queryOne } from "@/lib/db";
 import { isPreviewTokenValid } from "@/lib/preview";
 import { PreviewBanner } from "@/components/store/preview-banner";
 import { VendorCard } from "@/components/store/vendor-card";
+import { PreviewDashboardButton } from "./enter-button";
 import { Button } from "@/components/ui/button";
 import type { Metadata } from "next";
 
@@ -35,7 +36,7 @@ export default async function PreviewPage({
   const micrositeUrl = `/tienda/${vendor.slug}?preview=${encodeURIComponent(token)}`;
 
   return (
-    <main className="pb-28">
+    <main className="pb-28 overflow-x-clip">
       <PreviewBanner />
       <div className="container mx-auto px-4 py-8 max-w-md">
         <p className="text-[11px] font-semibold tracking-widest uppercase text-muted-foreground mb-1">
@@ -44,7 +45,7 @@ export default async function PreviewPage({
         <h1 className="font-display text-2xl font-semibold mb-4">
           {vendor.store_name}
         </h1>
-        <div className="max-w-[300px]">
+        <div className="w-full max-w-[300px] min-w-0">
           <VendorCard
             id={vendor.id}
             slug={vendor.slug}
@@ -61,6 +62,9 @@ export default async function PreviewPage({
         <Button asChild className="w-full mt-6">
           <Link href={micrositeUrl}>Abrir micrositio en prueba</Link>
         </Button>
+        <div className="mt-3">
+          <PreviewDashboardButton token={token} />
+        </div>
         <p className="text-xs text-muted-foreground text-center mt-3">
           Este link es solo para probar. El comercio aún no es público.
         </p>

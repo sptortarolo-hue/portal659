@@ -48,8 +48,8 @@ const METHOD_LABEL: Record<string, string> = { pickup: "Retiro", delivery: "Domi
 
 function StatCard({ label, value, sub, color }: { label: string; value: React.ReactNode; sub?: string; color?: string }) {
   return (
-    <div className="border border-border rounded-xl p-3 bg-card text-center">
-      <p className={`text-xl font-bold ${color || ""}`}>{value}</p>
+    <div className="border border-border rounded-xl p-3 bg-card text-center min-w-0">
+      <p className={`text-lg sm:text-xl font-bold tabular-nums break-words ${color || ""}`}>{value}</p>
       <p className="text-[10px] text-muted-foreground mt-0.5">{label} {sub ? `· ${sub}` : ""}</p>
     </div>
   );

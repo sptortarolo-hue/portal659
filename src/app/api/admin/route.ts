@@ -35,11 +35,11 @@ export async function GET(request: Request) {
       avg_rating: string | null;
     }>(
       `SELECT
-         (SELECT COUNT(*)::bigint FROM orders)       AS total_orders,
+         (SELECT COUNT(*)::bigint FROM orders WHERE is_preview = false) AS total_orders,
          (SELECT COUNT(*)::bigint FROM products)     AS total_products,
          (SELECT COUNT(*)::bigint FROM reviews)      AS total_reviews,
          (SELECT COALESCE(SUM(total)::numeric, 0)
-            FROM orders WHERE status = 'completed')  AS total_revenue,
+            FROM orders WHERE status = 'completed' AND is_preview = false) AS total_revenue,
          (SELECT ROUND(AVG(rating)::numeric, 1) FROM reviews) AS avg_rating`
     ),
   ]);

@@ -246,6 +246,9 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
             {isTransferAppPending && (
               <Badge variant="outline" className="text-[9px] px-1.5 py-0 bg-amber-100 text-amber-700">🕐 Pago pendiente</Badge>
             )}
+            {order.is_preview && (
+              <Badge variant="outline" className="text-[9px] px-1.5 py-0 bg-violet-100 text-violet-700 font-bold">🧪 PRUEBA</Badge>
+            )}
           </div>
           <button onClick={onClose} className="p-1 rounded-lg hover:bg-muted transition-colors text-lg">
             ✕
@@ -327,7 +330,7 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
                 {(order.items || []).map((item, i) => (
                   <div key={i} className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="text-sm">
+                      <p className="text-sm break-words">
                         <span className="font-bold">{item.qty}x</span> {item.name}
                       </p>
                       {item.modifiers && item.modifiers.length > 0 && (
@@ -336,7 +339,7 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
                         </p>
                       )}
                     </div>
-                    <span className="text-sm font-medium whitespace-nowrap">
+                    <span className="text-sm font-medium whitespace-nowrap shrink-0">
                       ${(item.price * item.qty).toLocaleString("es-AR")}
                     </span>
                   </div>

@@ -273,7 +273,7 @@ export function Mostrador() {
   const productsGrid = (
     <div className="space-y-2">
       {/* Buscador + categorías fijas arriba en mobile (debajo del header del dashboard) */}
-      <div className="sticky top-16 z-30 -mx-4 px-4 py-2 bg-background sm:static sm:mx-0 sm:px-0 sm:py-0">
+      <div className="sticky top-24 z-30 -mx-4 px-4 py-2 bg-background sm:static sm:mx-0 sm:px-0 sm:py-0">
         <input
           type="text"
           value={query}
@@ -470,12 +470,12 @@ export function Mostrador() {
     <div className="space-y-4">
       {msg && <p className="text-sm text-green-600 bg-green-50 rounded-lg px-3 py-2">{msg}</p>}
 
-      <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_340px] gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_360px] gap-4 items-start">
         <div className="min-w-0">{productsGrid}</div>
 
-        {/* Desktop sidebar */}
-        <div className="hidden sm:flex rounded-2xl border border-border bg-card p-4 flex-col max-h-[70vh]">
-          <h3 className="font-display font-semibold text-sm mb-2">Pedido actual</h3>
+        {/* Desktop sidebar: fija a altura de pantalla con scroll interno */}
+        <div className="hidden sm:flex rounded-2xl border border-border bg-card p-4 flex-col max-h-[70vh] lg:sticky lg:top-24 lg:h-[calc(100vh-12rem)] lg:max-h-none">
+          <h3 className="font-display font-semibold text-sm mb-2 flex-shrink-0">Pedido actual</h3>
           {orderSummary}
         </div>
       </div>

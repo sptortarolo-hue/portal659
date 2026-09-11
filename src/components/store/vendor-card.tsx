@@ -15,9 +15,11 @@ type VendorCardProps = {
   vertical?: string | null;
   hours?: string | null;
   open_override?: boolean | null;
+  /** Destino del link (default: micrositio público). Útil en modo prueba. */
+  href?: string | null;
 };
 
-export function VendorCard({ id, slug, store_name, image_url, logo_url, description, vertical, hours, open_override }: VendorCardProps) {
+export function VendorCard({ id, slug, store_name, image_url, logo_url, description, vertical, hours, open_override, href }: VendorCardProps) {
   const [avgRating, setAvgRating] = useState<number | null>(null);
   const [reviewCount, setReviewCount] = useState(0);
 
@@ -38,7 +40,7 @@ export function VendorCard({ id, slug, store_name, image_url, logo_url, descript
   if (!slug) return null;
 
   return (
-    <Link href={`/tienda/${slug}`} className="min-w-[260px] max-w-[300px] snap-start block group">
+    <Link href={href ?? `/tienda/${slug}`} className="min-w-[260px] max-w-[300px] snap-start block group">
       <div className="relative rounded-2xl border border-border bg-card overflow-hidden hover:shadow-xl transition-all duration-200 hover:-translate-y-1">
         {image_url ? (
           <div className="h-36 overflow-hidden">

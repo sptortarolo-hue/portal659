@@ -123,12 +123,12 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
             className="absolute inset-x-0 bottom-0 max-h-[90vh] overflow-y-auto rounded-t-2xl bg-card sm:inset-0 sm:m-auto sm:max-w-md sm:h-fit sm:rounded-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="sticky top-0 z-10 flex items-center justify-between px-4 py-3 bg-card border-b border-border">
-              <p className="font-display font-semibold line-clamp-1">{product.name}</p>
+            <div className="sticky top-0 z-10 flex items-center justify-between gap-2 px-4 py-3 bg-card border-b border-border">
+              <p className="font-display font-semibold line-clamp-1 flex-1 min-w-0">{product.name}</p>
               <button
                 type="button"
                 onClick={() => { setOpen(false); setActiveImg(0); }}
-                className="h-8 w-8 rounded-full bg-muted flex items-center justify-center text-foreground hover:bg-accent"
+                className="h-8 w-8 shrink-0 rounded-full bg-muted flex items-center justify-center text-foreground hover:bg-accent"
               >
                 ✕
               </button>

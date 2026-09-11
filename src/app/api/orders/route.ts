@@ -8,6 +8,8 @@ import { adjustStockForItems, OutOfStockError } from "@/lib/stock";
 import { isStoreOpen } from "@/lib/open-hours";
 import { PricingError, resolveOrderPricing } from "@/lib/pricing";
 import { nextOrderNumber } from "@/lib/order-number";
+import { isPreviewTokenValid } from "@/lib/preview";
+import { getAuthUser } from "@/lib/auth";
 import { randomBytes } from "crypto";
 import type { OrderItem } from "@/types/database";
 
@@ -23,6 +25,8 @@ export const POST = withRateLimit(async (request: Request) => {
     customerId,
     items,
     notes,
+    isPreview,
+    previewToken,
   } = body;
 
   if (!vendorId || !customerName || !customerPhone || !items) {
@@ -34,9 +38,38 @@ export const POST = withRateLimit(async (request: Request) => {
 
   // Gating: el carrito/checkout requiere un plan con la feature cart activa
   const vendorRow = await queryOne<Record<string, unknown>>(
-    `SELECT vertical, plan_id, plan_status, plan_expires_at, trial_ends_at, hours, open_override, delivery_fee, free_delivery_min FROM vendors WHERE id = $1 LIMIT 1`,
+    `SELECT vertical, plan_id, plan_status, plan_expires_at, trial_ends_at, hours, open_override, delivery_fee, free_delivery_min, user_id, visible, preview_token, preview_token_expires_at FROM vendors WHERE id = $1 LIMIT 1`,
     [vendorId]
   );
+
+  // Pedidos de prueba: solo en comercios ocultos y con preview autorizado
+  // (token válido o sesión de dueño/admin). Nunca cuentan en topes/métricas.
+  let previewOrder = false;
+  if (isPreview) {
+    const hidden = vendorRow && (vendorRow as any).visible === false;
+    const tokenOk = isPreviewTokenValid(
+      {
+        preview_token: (vendorRow as any)?.preview_token ?? null,
+        preview_token_expires_at: (vendorRow as any)?.preview_token_expires_at ?? null,
+      },
+      typeof previewToken === "string" ? previewToken : null
+    );
+    let sessionOk = false;
+    if (!tokenOk) {
+      const me = await getAuthUser(request);
+      sessionOk =
+        !!me &&
+        (!!me.is_admin ||
+          (!!(vendorRow as any)?.user_id && (vendorRow as any).user_id === me.id));
+    }
+    if (!hidden || (!tokenOk && !sessionOk)) {
+      return NextResponse.json(
+        { error: "Pedido de prueba no autorizado para este comercio." },
+        { status: 403 }
+      );
+    }
+    previewOrder = true;
+  }
 
   if (vendorRow) {
     const planRows = await queryMany<Record<string, unknown>>(`SELECT * FROM plans`);
@@ -50,11 +83,13 @@ export const POST = withRateLimit(async (request: Request) => {
 
     // Tope mensual de pedidos del plan (canal app, mes calendario, no cancelados).
     // Aplica al Gratuito (20 por defecto); NULL = ilimitado (planes pagos).
-    if (plan.maxOrdersMonth != null) {
+    // Los pedidos de prueba nunca consumen cupo.
+    if (plan.maxOrdersMonth != null && !previewOrder) {
       const monthCount = await queryOne<{ c: number }>(
         `SELECT count(*)::int AS c FROM orders
           WHERE vendor_id = $1 AND channel = 'app'
             AND status <> 'cancelled'
+            AND is_preview = false
             AND created_at >= date_trunc('month', now())`,
         [vendorId]
       );
@@ -119,8 +154,8 @@ export const POST = withRateLimit(async (request: Request) => {
       trackToken = randomBytes(16).toString("hex");
 
       const rows = await tx.query<{ id: string }>(
-        `INSERT INTO orders (vendor_id, customer_id, customer_name, customer_phone, customer_address, method, payment_method, items, total, status, notes, device_id, payment_status, pickup_number, track_token)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'new', $10, $11, $12, $13, $14)
+        `INSERT INTO orders (vendor_id, customer_id, customer_name, customer_phone, customer_address, method, payment_method, items, total, status, notes, device_id, payment_status, pickup_number, track_token, is_preview)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'new', $10, $11, $12, $13, $14, $15)
          RETURNING id`,
         [
           vendorId,
@@ -137,6 +172,7 @@ export const POST = withRateLimit(async (request: Request) => {
           paymentStatus,
           pickupNumber,
           trackToken,
+          previewOrder,
         ]
       );
       orderId = rows[0]?.id;
@@ -152,7 +188,7 @@ export const POST = withRateLimit(async (request: Request) => {
           `INSERT INTO notifications (user_id, title, body, type, link) VALUES ($1, $2, $3, $4, $5)`,
           [
             vendor.user_id,
-            "Nuevo pedido recibido",
+            previewOrder ? "[PRUEBA] Nuevo pedido recibido" : "Nuevo pedido recibido",
             `Nro. ${pickupNumber} · ${customerName} hizo un pedido de ${resolvedItemsCount} producto${resolvedItemsCount > 1 ? "s" : ""} por $${resolvedTotal.toLocaleString("es-AR")} · ${paymentLabel}`,
             "order",
             "/vendor/dashboard",
@@ -186,6 +222,7 @@ export const POST = withRateLimit(async (request: Request) => {
     );
     if (userProfile?.email) {
       const emailContent = orderConfirmationEmail(vendor.store_name, resolvedItems as any, resolvedTotal);
+      if (previewOrder) emailContent.subject = `[PRUEBA] ${emailContent.subject}`;
       Promise.resolve()
         .then(() => sendEmail({ to: userProfile.email, ...emailContent }))
         .catch(() => {});

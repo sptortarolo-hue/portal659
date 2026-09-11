@@ -21,19 +21,49 @@ import { IrAComprarButton } from "@/components/store/ir-a-comprar-button";
 import { CategoryNav } from "@/components/store/category-nav";
 import { StickyStoreBar } from "@/components/store/sticky-store-bar";
 import { VendorShareButton } from "@/components/store/vendor-share-button";
+import { PreviewBanner } from "@/components/store/preview-banner";
+import { PreviewSessionSync } from "@/components/store/preview-session-sync";
+import { canPreviewVendor, getPreviewActor, isServingPreview } from "@/lib/preview";
 import type { Metadata } from "next";
 
 export const dynamic = "force-dynamic";
 
-export async function generateMetadata({
-  params,
-}: {
-  params: Promise<{ slug: string }>;
-}): Promise<Metadata> {
-  const { slug } = await params;
-  const vendor = await queryOne<any>(
+/**
+ * Carga el comercio: público si `visible = true`; si está oculto, solo en
+ * modo prueba para dueño/admin/token válido (`?preview=1` o `?preview=<token>`).
+ */
+async function loadVendorForRequest(slug: string, previewParam: string | null) {
+  const pub = await queryOne<any>(
     `SELECT * FROM vendors WHERE slug = $1 AND visible = true LIMIT 1`,
     [slug]
+  );
+  if (pub) return { vendor: pub, preview: false };
+
+  const hidden = await queryOne<any>(
+    `SELECT * FROM vendors WHERE slug = $1 LIMIT 1`,
+    [slug]
+  );
+  if (!hidden) return { vendor: null, preview: false };
+
+  const actor = await getPreviewActor();
+  if (!canPreviewVendor({ vendor: hidden, actor, tokenParam: previewParam })) {
+    return { vendor: null, preview: false };
+  }
+  return { vendor: hidden, preview: isServingPreview(hidden) };
+}
+
+export async function generateMetadata({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ slug: string }>;
+  searchParams: Promise<{ preview?: string }>;
+}): Promise<Metadata> {
+  const { slug } = await params;
+  const sp = await searchParams;
+  const { vendor, preview } = await loadVendorForRequest(
+    slug,
+    typeof sp?.preview === "string" ? sp.preview : null
   );
 
   if (!vendor) return {};
@@ -47,6 +77,8 @@ export async function generateMetadata({
   return {
     title,
     description,
+    // El modo prueba nunca se indexa.
+    ...(preview ? { robots: { index: false, follow: false } } : {}),
     openGraph: {
       title,
       description,
@@ -64,16 +96,18 @@ export async function generateMetadata({
 
 export default async function TiendaPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>;
+  searchParams: Promise<{ preview?: string }>;
 }) {
   const { slug } = await params;
-
-  const vendor = await queryOne<any>(
-    `SELECT * FROM vendors WHERE slug = $1 AND visible = true LIMIT 1`,
-    [slug]
-  );
+  const sp = await searchParams;
+  const previewParam = typeof sp?.preview === "string" ? sp.preview : null;
+  const { vendor, preview } = await loadVendorForRequest(slug, previewParam);
   if (!vendor) notFound();
+  // En preview con token compartible se propaga a sessionStorage para el checkout.
+  const previewToken = preview && previewParam && previewParam !== "1" ? previewParam : null;
 
   const offers = await queryMany<any>(
     `SELECT * FROM products WHERE vendor_id = $1 AND available = true ORDER BY featured_today DESC, name ASC`,
@@ -246,6 +280,8 @@ export default async function TiendaPage({
 
   return (
     <main className="pb-28 overflow-x-clip">
+      {preview && <PreviewBanner />}
+      {preview && <PreviewSessionSync vendorId={vendor.id} token={previewToken} />}
       <ScrollToMenu />
       <ScrollToProduct />
       <script

@@ -44,6 +44,9 @@ CREATE TABLE IF NOT EXISTS vendors (
   verified boolean DEFAULT false,
   hours text,
   location text,
+  preview_token text,
+  preview_token_expires_at timestamptz,
+  publish_requested_at timestamptz,
   created_at timestamptz DEFAULT now()
 );
 
@@ -134,6 +137,7 @@ CREATE TABLE IF NOT EXISTS orders (
   total numeric(10, 2) NOT NULL DEFAULT 0,
   status text CHECK (status IN ('new', 'confirmed', 'completed', 'cancelled')) DEFAULT 'new',
   device_id text,
+  is_preview boolean NOT NULL DEFAULT false,
   created_at timestamptz DEFAULT now()
 );
 

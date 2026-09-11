@@ -4,6 +4,10 @@ import { createContext, useContext, useEffect, useState } from "react";
 
 type Theme = "light" | "dark" | "system";
 
+const STORAGE_KEY = "portal659-theme-v2";
+// Breakpoint desktop (lg de Tailwind): a partir de acá el default es oscuro.
+const DESKTOP_QUERY = "(min-width: 1024px)";
+
 const ThemeContext = createContext<{
   theme: Theme;
   setTheme: (t: Theme) => void;
@@ -25,33 +29,63 @@ function getSystemTheme(): "light" | "dark" {
     : "light";
 }
 
+/** Default por viewport: desktop oscuro, mobile claro. */
+function getViewportTheme(): "light" | "dark" {
+  if (typeof window === "undefined") return "light";
+  return window.matchMedia(DESKTOP_QUERY).matches ? "dark" : "light";
+}
+
+function getStored(): Theme | null {
+  try {
+    return localStorage.getItem(STORAGE_KEY) as Theme | null;
+  } catch {
+    return null;
+  }
+}
+
+function applyResolved(r: "light" | "dark") {
+  if (r === "dark") {
+    document.documentElement.classList.add("dark");
+  } else {
+    document.documentElement.classList.remove("dark");
+  }
+}
+
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setThemeState] = useState<Theme>("light");
   const [resolved, setResolved] = useState<"light" | "dark">("light");
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    const stored = localStorage.getItem("portal659-theme") as Theme | null;
-    const initial = stored || "light";
+    // Elección explícita guardada gana; si no hay, default por viewport.
+    const initial = getStored() ?? getViewportTheme();
     setThemeState(initial);
-    setResolved(initial === "system" ? getSystemTheme() : initial);
+    const r = initial === "system" ? getSystemTheme() : initial;
+    setResolved(r);
+    applyResolved(r);
     setMounted(true);
   }, []);
 
   useEffect(() => {
     if (!mounted) return;
-
-    const resolved_ = theme === "system" ? getSystemTheme() : theme;
-    setResolved(resolved_);
-
-    if (resolved_ === "dark") {
-      document.documentElement.classList.add("dark");
-    } else {
-      document.documentElement.classList.remove("dark");
-    }
-
-    localStorage.setItem("portal659-theme", theme);
+    const r = theme === "system" ? getSystemTheme() : theme;
+    setResolved(r);
+    applyResolved(r);
   }, [theme, mounted]);
+
+  // Mientras no haya elección explícita, el tema sigue al viewport
+  // (rotar tablet, redimensionar ventana, devtools mobile/desktop).
+  useEffect(() => {
+    if (!mounted) return;
+    const mq = window.matchMedia(DESKTOP_QUERY);
+    const onViewport = () => {
+      if (!getStored()) {
+        setThemeState(getViewportTheme());
+      }
+    };
+    mq.addEventListener("change", onViewport);
+    return () => mq.removeEventListener("change", onViewport);
+  }, [mounted]);
 
   useEffect(() => {
     if (!mounted) return;
@@ -60,11 +94,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       if (theme === "system") {
         const next = getSystemTheme();
         setResolved(next);
-        if (next === "dark") {
-          document.documentElement.classList.add("dark");
-        } else {
-          document.documentElement.classList.remove("dark");
-        }
+        applyResolved(next);
       }
     };
     mq.addEventListener("change", handler);
@@ -72,6 +102,12 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   }, [theme, mounted]);
 
   function setTheme(t: Theme) {
+    // Solo la elección explícita del usuario se persiste.
+    try {
+      localStorage.setItem(STORAGE_KEY, t);
+    } catch {
+      /* noop */
+    }
     setThemeState(t);
   }
 

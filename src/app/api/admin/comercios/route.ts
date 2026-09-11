@@ -137,6 +137,26 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ ok: true, visible: !vendor.visible });
   }
 
+  // Publicación con aprobación: rechazar limpia la solicitud pendiente.
+  if (action === "clear_publish_request") {
+    await query(`UPDATE vendors SET publish_requested_at = NULL WHERE id = $1`, [vendorId]);
+    return NextResponse.json({ ok: true, requested: false });
+  }
+
+  // Aprobar publicación: visible + limpia la solicitud.
+  if (action === "approve_publish") {
+    const vendor = await queryOne<{ id: string }>(
+      `SELECT id FROM vendors WHERE id = $1`,
+      [vendorId]
+    );
+    if (!vendor) return NextResponse.json({ error: "Vendor no encontrado" }, { status: 404 });
+    await query(
+      `UPDATE vendors SET visible = true, publish_requested_at = NULL WHERE id = $1`,
+      [vendorId]
+    );
+    return NextResponse.json({ ok: true, visible: true });
+  }
+
   if (action === "assign_user") {
     const { userId } = body;
     await query(`UPDATE vendors SET user_id = $1 WHERE id = $2`, [userId || null, vendorId]);

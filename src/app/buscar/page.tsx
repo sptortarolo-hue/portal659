@@ -226,9 +226,9 @@ export default async function BuscarPage({
                         <div className="min-w-0 flex-1">
                           <p className="font-semibold text-sm truncate">{p.name}</p>
                           {p.description && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{p.description}</p>}
-                          <div className="flex items-center gap-2 mt-1">
-                            <span className="text-xs text-muted-foreground">{p.vendors?.store_name}</span>
-                            {p.category && <span className="text-xs text-muted-foreground">· {p.category}</span>}
+                          <div className="flex items-center gap-2 mt-1 min-w-0">
+                            <span className="text-xs text-muted-foreground truncate">{p.vendors?.store_name}</span>
+                            {p.category && <span className="text-xs text-muted-foreground truncate shrink-0">· {p.category}</span>}
                           </div>
                         </div>
                         <span className="font-bold text-sm flex-shrink-0">${Number(p.price).toLocaleString("es-AR")}</span>

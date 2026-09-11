@@ -25,19 +25,19 @@ export async function GET(request: Request) {
       queryMany<Record<string, unknown>>(
         `SELECT v.vertical,
                 count(DISTINCT v.id) AS vendors,
-                count(o.id) AS orders_total,
-                count(o.id) FILTER (WHERE o.status = 'completed') AS completed_total,
-                COALESCE(sum(o.total) FILTER (WHERE o.status = 'completed'), 0) AS revenue_total
+                count(o.id) FILTER (WHERE o.is_preview = false) AS orders_total,
+                count(o.id) FILTER (WHERE o.status = 'completed' AND o.is_preview = false) AS completed_total,
+                COALESCE(sum(o.total) FILTER (WHERE o.status = 'completed' AND o.is_preview = false), 0) AS revenue_total
          FROM vendors v
          LEFT JOIN orders o ON o.vendor_id = v.id
          GROUP BY v.vertical
          ORDER BY orders_total DESC`
       ),
       queryMany<Record<string, unknown>>(
-        `SELECT payment_method, count(*) AS n FROM orders GROUP BY payment_method ORDER BY n DESC`
+        `SELECT payment_method, count(*) AS n FROM orders WHERE is_preview = false GROUP BY payment_method ORDER BY n DESC`
       ),
       queryMany<Record<string, unknown>>(
-        `SELECT channel, count(*) AS n FROM orders GROUP BY channel ORDER BY n DESC`
+        `SELECT channel, count(*) AS n FROM orders WHERE is_preview = false GROUP BY channel ORDER BY n DESC`
       ),
       queryMany<Record<string, unknown>>(
         `SELECT
@@ -52,9 +52,9 @@ export async function GET(request: Request) {
       ),
       queryMany<Record<string, unknown>>(
         `SELECT
-           count(*) AS total,
-           count(*) FILTER (WHERE created_at >= now() - interval '7 days') AS last7,
-           count(*) FILTER (WHERE created_at >= now() - interval '30 days') AS last30
+           count(*) FILTER (WHERE is_preview = false) AS total,
+           count(*) FILTER (WHERE is_preview = false AND created_at >= now() - interval '7 days') AS last7,
+           count(*) FILTER (WHERE is_preview = false AND created_at >= now() - interval '30 days') AS last30
          FROM orders`
       ),
     ]);

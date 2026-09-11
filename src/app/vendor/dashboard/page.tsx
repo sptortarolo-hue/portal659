@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import QRCode from "qrcode";
 import {
@@ -307,6 +307,26 @@ function VendorDashboardInner() {
     })();
   }, [vendor?.id]);
 
+  // Ids ya vistos: para detectar pedidos nuevos que llegan por SSE y sonar.
+  const seenOrderIds = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    seenOrderIds.current = new Set(orders.map((o) => o.id));
+  }, [orders]);
+
+  // Backstop: si el SSE muere en silencio, recargar al volver a la pestaña.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible") loadOrdersOnly();
+    };
+    const onFocus = () => loadOrdersOnly();
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onFocus);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, []);
+
   // SSE: pedidos en tiempo real
   useEffect(() => {
     if (!vendor?.id) return;
@@ -323,9 +343,17 @@ function VendorDashboardInner() {
         try {
           const data = JSON.parse(event.data);
           if (data.type === "orders_update" && Array.isArray(data.orders)) {
+            const incoming = data.orders as Order[];
+            const hasFreshNew = incoming.some(
+              (o) => o.status === "new" && !seenOrderIds.current.has(o.id)
+            );
+            if (hasFreshNew) {
+              resumeAudioContext();
+              playNewOrderSound();
+            }
             setOrders((prev) => {
               const map = new Map(prev.map((o) => [o.id, o]));
-              for (const order of data.orders) {
+              for (const order of incoming) {
                 map.set(order.id, order);
               }
               return Array.from(map.values()).sort(
@@ -603,6 +631,31 @@ function VendorDashboardInner() {
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm h-4 w-4" />
       </div>
 
+      {/* Purga de pedidos de prueba */}
+      {orders.some((o) => o.is_preview) && (
+        <div className="flex items-center justify-between gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2">
+          <p className="text-xs font-medium text-violet-700">
+            🧪 Tenés {orders.filter((o) => o.is_preview).length} pedido{orders.filter((o) => o.is_preview).length === 1 ? "" : "s"} de prueba
+          </p>
+          <button
+            type="button"
+            onClick={async () => {
+              if (!window.confirm("¿Borrar todos los pedidos de prueba? Se repone el stock reservado.")) return;
+              const ids = orders.filter((o) => o.is_preview).map((o) => o.id);
+              for (const id of ids) {
+                try {
+                  await fetch(`/api/vendor/orders/${id}`, { method: "DELETE" });
+                } catch { /* noop */ }
+              }
+              loadOrdersOnly();
+            }}
+            className="text-xs font-semibold text-violet-700 underline hover:text-violet-900 flex-shrink-0"
+          >
+            Borrar pruebas
+          </button>
+        </div>
+      )}
+
       {/* Desktop: Kanban board */}
       <div className="hidden lg:block">
         <OrdersKanban
@@ -671,6 +724,11 @@ function VendorDashboardInner() {
                         <span className={`inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-full border ${CONDITION_META[orderCondition(order)].pillClass}`}>
                           {CONDITION_META[orderCondition(order)].label}
                         </span>
+                        {order.is_preview && (
+                          <span className="inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full border bg-violet-100 text-violet-700 border-violet-200">
+                            🧪 PRUEBA
+                          </span>
+                        )}
                         {order.pickup_number != null && (
                           <span className="inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-status-new/15 text-status-new border-status-new/20">
                             Nro. {order.pickup_number}
@@ -813,60 +871,84 @@ function VendorDashboardInner() {
           </div>
         )}
 
-        {/* Sticky header */}
+        {/* Sticky header: 2 filas en mobile, 1 en desktop */}
         <div className="sticky top-0 z-30 bg-background/95 backdrop-blur-sm border-b border-border">
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 sm:gap-3 px-3 sm:px-4 py-2 sm:py-2.5">
-            {/* Mobile hamburger */}
-            <button
-              onClick={() => setSidebarOpen(true)}
-              className="p-2 rounded-lg hover:bg-muted transition-colors lg:hidden flex-shrink-0"
-              aria-label="Abrir menú"
-            >
-              <Menu className="h-5 w-5" />
-            </button>
+          <div className="px-3 sm:px-4 py-2 sm:py-2.5">
+            {/* Fila 1: menú + título + compartir (+ controles en desktop) */}
+            <div className="flex items-center gap-2 sm:gap-3">
+              {/* Mobile hamburger */}
+              <button
+                onClick={() => setSidebarOpen(true)}
+                className="p-2 rounded-lg hover:bg-muted transition-colors lg:hidden flex-shrink-0"
+                aria-label="Abrir menú"
+              >
+                <Menu className="h-5 w-5" />
+              </button>
 
-            {/* Título de sección + contexto */}
-            <div className="flex-1 min-w-[104px] sm:min-w-0">
-              <h1 className="text-sm font-semibold truncate leading-tight">{tabTitle}</h1>
-              <p className="hidden sm:block text-[11px] text-muted-foreground leading-tight truncate">
-                {vendor.store_name} · {todayLabel}
-              </p>
+              {/* Título de sección + contexto */}
+              <div className="flex-1 min-w-[104px] sm:min-w-0">
+                <h1 className="text-sm font-semibold truncate leading-tight">{tabTitle}</h1>
+                <p className="text-[11px] text-muted-foreground leading-tight truncate">
+                  {vendor.store_name} · {todayLabel}
+                </p>
+              </div>
+
+              {/* Controles operativos: inline en desktop, en fila 2 en mobile */}
+              <span className="hidden sm:contents">
+                <OpenToggle vendor={vendor} onSaved={(v) => setVendor(v)} />
+                {isGastro && (
+                  <>
+                    <PrepTimeControl vendor={vendor} onSaved={(v) => setVendor(v)} />
+                    <PrinterStatus vendor={vendor} onOpenConfig={() => {
+                      setTab("config");
+                      window.dispatchEvent(new Event("portal:open-printer-config"));
+                      window.setTimeout(() => {
+                        document.getElementById("printer-config")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                      }, 120);
+                    }} />
+                  </>
+                )}
+              </span>
+              {vendor.slug && (
+                <a
+                  href={`/tienda/${vendor.slug}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hidden xl:inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted transition-colors flex-shrink-0"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" /> Micrositio
+                </a>
+              )}
+              <Button size="sm" onClick={openShare} className="flex-shrink-0">Compartir</Button>
+              <div className="hidden lg:flex items-center gap-1 flex-shrink-0">
+                <NotificationBell />
+                <UserMenu />
+              </div>
             </div>
 
-            <OpenToggle vendor={vendor} onSaved={(v) => setVendor(v)} />
-            {isGastro && (
-              <>
-                <PrepTimeControl vendor={vendor} onSaved={(v) => setVendor(v)} />
-                <PrinterStatus vendor={vendor} onOpenConfig={() => {
-                  setTab("config");
-                  window.dispatchEvent(new Event("portal:open-printer-config"));
-                  window.setTimeout(() => {
-                    document.getElementById("printer-config")?.scrollIntoView({ behavior: "smooth", block: "start" });
-                  }, 120);
-                }} />
-              </>
-            )}
-            {vendor.slug && (
-              <a
-                href={`/tienda/${vendor.slug}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hidden xl:inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted transition-colors flex-shrink-0"
-              >
-                <ExternalLink className="h-3.5 w-3.5" /> Micrositio
-              </a>
-            )}
-            <Button size="sm" onClick={openShare} className="flex-shrink-0">Compartir</Button>
-            <div className="hidden lg:flex items-center gap-1 flex-shrink-0">
-              <NotificationBell />
-              <UserMenu />
+            {/* Fila 2: controles operativos — solo mobile */}
+            <div className="sm:hidden flex items-center gap-2 overflow-x-auto pt-2">
+              <OpenToggle vendor={vendor} onSaved={(v) => setVendor(v)} />
+              {isGastro && (
+                <>
+                  <PrepTimeControl vendor={vendor} onSaved={(v) => setVendor(v)} />
+                  <PrinterStatus vendor={vendor} onOpenConfig={() => {
+                    setTab("config");
+                    window.dispatchEvent(new Event("portal:open-printer-config"));
+                    window.setTimeout(() => {
+                      document.getElementById("printer-config")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                    }, 120);
+                  }} />
+                </>
+              )}
             </div>
           </div>
         </div>
 
         {msg && <div className="px-4 pt-3"><p className="text-sm text-green-600 bg-green-50 rounded-lg px-3 py-2">{msg}</p></div>}
 
-        <PlanBanner plan={planBannerData as any} />
+        {/* Banner de suscripción — solo en Hoy */}
+        {tab === "hoy" && <PlanBanner plan={planBannerData as any} />}
 
         {/* Stats bar — solo en tab de pedidos */}
         {tab === "orders" && orders.length > 0 && (
@@ -1001,6 +1083,7 @@ function VendorDashboardInner() {
                     onNavigate={(t) => setTab(t)}
                     onShare={openShare}
                     onOpenOrder={(o) => setSelectedOrder(o)}
+                    onChanged={loadData}
                   />
                 </div>
               )}

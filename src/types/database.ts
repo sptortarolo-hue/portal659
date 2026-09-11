@@ -325,6 +325,12 @@ export type Vendor = {
   plan_status: PlanStatus;
   plan_expires_at: string | null;
   trial_ends_at: string | null;
+  /** Token secreto del link de preview compartible. NULL = sin preview compartido. */
+  preview_token?: string | null;
+  /** Expiración opcional del token de preview. NULL = sin expiración. */
+  preview_token_expires_at?: string | null;
+  /** Solicitud de publicación pendiente de aprobación del admin. */
+  publish_requested_at?: string | null;
   created_at: string;
 };
 
@@ -392,6 +398,8 @@ export type Order = {
   payment_status?: "paid" | "pending";
   pickup_number?: number | null;
   track_token?: string | null;
+  /** Pedido de prueba (modo preview). true = no cuenta en topes/métricas/ingresos. */
+  is_preview?: boolean;
   created_at: string;
   updated_at: string;
   /** Momento en que el pedido se cerró (completed/cancelled). Frena el cronómetro. */

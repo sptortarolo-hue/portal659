@@ -92,6 +92,8 @@ Portal 659: "El centro comercial de tu barrio". Hub multicommerce hiperlocal (Si
 - Aplicar `supabase/self-host/migrate-subscription-payments.sql` (campos de pago en `vendor_subscriptions`: `payment_method/amount/paid_at` — panel `/admin/suscripciones`).
 - Aplicar `supabase/self-host/migrate-order-track-token.sql` (columna `orders.track_token` — link de seguimiento público `/seguimiento/[token]` y cuenta comprador).
 - Aplicar `supabase/self-host/migrate-recipes.sql` (módulo Recetas/escandallo gastro: `ingredients` + `recipes` + `recipe_items` + flag `recipes` en plan `gestion` — tab Recetas del dashboard, plan Gestión integral).
+- Aplicar `supabase/self-host/migrate-preview.sql` (modo prueba compartible: `vendors.preview_token/preview_token_expires_at/publish_requested_at` + `orders.is_preview` — preview de micrositio con pedidos de prueba y publicación con aprobación del admin).
+- Aplicar `supabase/self-host/migrate-orders-updated-at.sql` (columna `orders.updated_at` + trigger que la actualiza en cada UPDATE — el SSE del dashboard filtra por `updated_at`; sin esto no llegan eventos).
 - Aplicar `supabase/self-host/migrate-purchases.sql` (módulo Compras: `suppliers` + `purchases` + `purchase_items` — sub-vista Compras del tab Recetas).
 - Cargar secrets `VAPID_*`, `PRINT_BRIDGE_SECRET` y `RESEND_API_KEY`/`FROM_EMAIL` en GitHub para que el deploy las escriba al `.env`.
 - Compilar el APK de Portal Print (Android): ver `android/README.md` (requiere Android SDK/JDK 17).

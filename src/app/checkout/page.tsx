@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { buildComandaWhatsApp } from "@/lib/whatsapp-message";
 import { formatPhone, isValidPhone } from "@/lib/order-utils";
 import { OrderSummaryModal } from "@/components/cart/order-summary-modal";
+import { readPreviewSession } from "@/components/store/preview-session-sync";
 
 export default function CheckoutPage() {
   const router = useRouter();
@@ -74,6 +75,9 @@ export default function CheckoutPage() {
 
   const v = vendor;
   const esModa = v.vertical === "moda";
+  // Modo prueba: el micrositio en preview guarda el contexto en sessionStorage.
+  const previewCtx = v?.id ? readPreviewSession(v.id) : null;
+  const isPreview = previewCtx !== null;
 
   async function lookupPhone() {
     const clean = formatPhone(phone);
@@ -93,6 +97,10 @@ export default function CheckoutPage() {
   }
 
   async function handleMercadoPago() {
+    if (isPreview) {
+      setError("Los pagos online están deshabilitados en modo prueba.");
+      return;
+    }
     if (!name || !phone) return;
     if (!isValidPhone(phone)) {
       setError("Ingresá un número de WhatsApp válido (10 a 15 dígitos)");
@@ -162,6 +170,8 @@ export default function CheckoutPage() {
           method,
           paymentMethod,
           customerId: userId || null,
+          isPreview,
+          previewToken: previewCtx?.token ?? null,
           items: items.map((i) => ({
             offerId: i.offerId,
             variantId: i.variantId,
@@ -184,9 +194,10 @@ export default function CheckoutPage() {
       }
 
       const waTotal = typeof data.total === "number" ? data.total : grandTotal;
+      const previewPrefix = isPreview ? "🧪 [PRUEBA] " : "";
       const baseUrl = (process.env.NEXT_PUBLIC_SITE_URL || window.location.origin).replace(/\/$/, "");
       const trackUrl = data.trackToken ? `${baseUrl}/seguimiento/${data.trackToken}` : undefined;
-      const message = buildComandaWhatsApp({
+      const waMessage = buildComandaWhatsApp({
         vendorName: v.storeName,
         items: items.map((i) => ({
           name: i.name,
@@ -200,9 +211,10 @@ export default function CheckoutPage() {
         method,
         address: method === "delivery" ? address : undefined,
         paymentMethod,
-        notes: notes.trim() || undefined,
-        trackUrl,
-      });
+          notes: notes.trim() || undefined,
+          trackUrl,
+        });
+      const message = previewPrefix + waMessage;
 
       const waNumber = (v.whatsapp || "").replace(/[^0-9]/g, "");
       setPendingOrder({ orderId: data.orderId || "", message, waNumber, trackToken: data.trackToken });
@@ -239,6 +251,11 @@ export default function CheckoutPage() {
         <p className="text-muted-foreground mb-4">
           Se abrió WhatsApp con tu pedido para{" "}
           <span className="font-medium">{v.storeName}</span>.
+          {isPreview && (
+            <span className="block mt-1 text-xs font-semibold text-amber-700">
+              🧪 Fue un pedido de prueba.
+            </span>
+          )}
         </p>
         <p className="text-sm text-muted-foreground/70 mb-6">
           Seguí el estado de tu pedido con tu número de WhatsApp en{" "}
@@ -312,6 +329,11 @@ export default function CheckoutPage() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
+        {isPreview && (
+          <div className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
+            🧪 Pedido de prueba — no se cobra online ni cuenta en tus métricas.
+          </div>
+        )}
         {/* Name & Phone */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="min-w-0">
@@ -465,7 +487,7 @@ export default function CheckoutPage() {
           {loading ? "Enviando pedido..." : "Confirmar pedido por WhatsApp"}
         </Button>
 
-        {mpConfigured && (
+        {mpConfigured && !isPreview && (
           <button
             type="button"
             onClick={handleMercadoPago}

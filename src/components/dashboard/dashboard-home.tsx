@@ -17,6 +17,7 @@ import {
   Calculator,
 } from "lucide-react";
 import type { Order, Booking, Vendor } from "@/types/database";
+import { StorePreviewCard } from "@/components/vendor/store-preview-card";
 import { statusLabel, orderNumberShort, orderCondition, CONDITION_META } from "@/lib/order-utils";
 import { isStoreOpen } from "@/lib/open-hours";
 import type { FeatureKey } from "@/lib/plans";
@@ -46,6 +47,7 @@ type Props = {
   onNavigate: (tab: DashboardTab) => void;
   onShare: () => void;
   onOpenOrder: (order: Order) => void;
+  onChanged?: () => void;
 };
 
 const STATUS_CHIP: Record<Order["status"], string> = {
@@ -137,6 +139,7 @@ export function DashboardHome({
   onNavigate,
   onShare,
   onOpenOrder,
+  onChanged,
 }: Props) {
   const sellsOrders = isGastro || isModa;
 
@@ -202,6 +205,7 @@ export function DashboardHome({
 
   return (
     <div className="space-y-5">
+      <StorePreviewCard vendor={vendor} onChanged={onChanged} />
       {sellsOrders ? (
         <>
           {/* KPIs */}

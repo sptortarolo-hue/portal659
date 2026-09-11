@@ -75,7 +75,7 @@ export default function RootLayout({
         <meta name="mobile-web-app-capable" content="yes" />
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=localStorage.getItem("portal659-theme");if(t==="dark"||(t==="system"&&matchMedia("(prefers-color-scheme: dark)").matches))document.documentElement.classList.add("dark")}catch(e){}})()`,
+            __html: `(function(){try{var t=localStorage.getItem("portal659-theme-v2");if(t==="dark"||(t==="system"&&matchMedia("(prefers-color-scheme: dark)").matches)||(!t&&matchMedia("(min-width: 1024px)").matches))document.documentElement.classList.add("dark")}catch(e){}})()`,
           }}
         />
       </head>

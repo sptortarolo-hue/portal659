@@ -76,6 +76,11 @@ function OrderCard({
             <span className={`inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-full border ${CONDITION_META[orderCondition(order)].pillClass}`}>
               {CONDITION_META[orderCondition(order)].label}
             </span>
+            {order.is_preview && (
+              <span className="inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full border bg-violet-100 text-violet-700 border-violet-200">
+                🧪 PRUEBA
+              </span>
+            )}
             {order.pickup_number != null && (
               <span className="inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-status-new/15 text-status-new border-status-new/20">
                 Nro. {order.pickup_number}

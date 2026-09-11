@@ -30,6 +30,7 @@ export async function GET(request: Request) {
     `SELECT count(*)::int AS c FROM orders
       WHERE vendor_id = $1 AND channel = 'app'
         AND status <> 'cancelled'
+        AND is_preview = false
         AND created_at >= date_trunc('month', now())`,
     [vendor.id]
   );

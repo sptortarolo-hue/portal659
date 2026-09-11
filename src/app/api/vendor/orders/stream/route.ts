@@ -29,8 +29,8 @@ export async function GET(request: Request) {
           const { rows } = await pool.query(
             `SELECT id, status, pickup_number, customer_name, total, channel,
                     method, payment_method, payment_status, estimated_minutes,
-                    created_at, closed_at, items, modification_notes,
-                    customer_phone, delivery_fee, address
+                    created_at, closed_at, updated_at, items, modification_notes,
+                    customer_phone, customer_address, is_preview
              FROM orders
              WHERE vendor_id = $1 AND updated_at > $2
              ORDER BY updated_at ASC

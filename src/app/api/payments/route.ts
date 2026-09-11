@@ -8,10 +8,18 @@ import { NextResponse } from "next/server";
 
 export async function POST(request: Request) {
   const body = await request.json();
-  const { vendorId, items, total, customerName, customerPhone, customerAddress, method } = body;
+  const { vendorId, items, total, customerName, customerPhone, customerAddress, method, isPreview } = body;
 
   if (!vendorId || !items || !total) {
     return NextResponse.json({ error: "Faltan datos" }, { status: 400 });
+  }
+
+  // En modo prueba nunca se cobra online con dinero real.
+  if (isPreview) {
+    return NextResponse.json(
+      { error: "Los pagos online están deshabilitados en modo prueba." },
+      { status: 400 }
+    );
   }
 
   const vendor = await queryOne<

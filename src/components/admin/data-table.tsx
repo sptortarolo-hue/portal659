@@ -84,7 +84,7 @@ export default function DataTable<T extends Record<string, any>>({
       )}
 
       <div className="overflow-x-auto border border-border rounded-xl">
-        <table className="w-full text-sm">
+        <table className="w-full min-w-[640px] text-sm">
           <thead>
             <tr className="border-b border-border bg-muted/50">
               {columns.map((col) => (

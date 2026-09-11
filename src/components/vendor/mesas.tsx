@@ -222,7 +222,7 @@ export function Mesas() {
 
   const cartLine = (i: (typeof cart)[number]) => (
     <div key={`${i.product_id}|${(i.modifiers || []).map((m) => m.label).join(",")}`} className="flex items-center gap-2 text-xs">
-      <span className="flex-1 line-clamp-2">{i.name}</span>
+      <span className="flex-1 min-w-0 line-clamp-2 break-words">{i.name}</span>
       <div className="flex items-center gap-1">
         <button type="button" onClick={() => changeQty(i.product_id, -1)} className="h-6 w-6 rounded-md bg-muted hover:bg-accent">−</button>
         <span className="w-5 text-center tabular-nums">{i.qty}</span>
@@ -328,8 +328,8 @@ export function Mesas() {
 
   // Catálogo compartido: buscador + pastillas + grilla de productos.
   const catalogBlock = (gridClass: string) => (
-    <div className="min-w-0 space-y-2">
-      <div className="flex items-center gap-2">
+    <div className="min-w-0 space-y-2 flex flex-col min-h-0 flex-1 lg:overflow-hidden">
+      <div className="flex items-center gap-2 flex-shrink-0">
         <input
           type="text"
           value={query}
@@ -342,7 +342,7 @@ export function Mesas() {
         )}
       </div>
       {categories.length > 1 && (
-        <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
+        <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide flex-shrink-0">
           <button
             onClick={() => setActiveCat(null)}
             className={`flex-shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors ${
@@ -364,7 +364,7 @@ export function Mesas() {
           ))}
         </div>
       )}
-      <div className={`grid grid-cols-3 gap-1.5 ${gridClass}`}>
+      <div className={`grid grid-cols-2 sm:grid-cols-3 gap-1.5 ${gridClass}`}>
         {filtered.map((p) => (
           <button
             key={p.id}
@@ -476,9 +476,9 @@ export function Mesas() {
 
       {selected && (
         <>
-          {/* ============ Desktop (sm+): panel inline ============ */}
-          <div className="hidden sm:block rounded-2xl border border-border bg-card p-4">
-            <div className="flex items-center justify-between mb-3">
+          {/* ============ Desktop (sm+): panel inline a altura de pantalla ============ */}
+          <div className="hidden sm:flex rounded-2xl border border-border bg-card p-4 flex-col lg:h-[calc(100vh-12rem)] lg:overflow-hidden">
+            <div className="flex items-center justify-between mb-3 flex-shrink-0">
               <h3 className="font-display font-semibold">{selected.name}</h3>
               <div className="flex items-center gap-2">
                 {renaming === selected.id ? (
@@ -506,35 +506,36 @@ export function Mesas() {
               </div>
             </div>
 
-            {consumicionesBlock(false)}
-
-            {closedOrders.length > 0 && (
-              <div className="mt-3">
-                <CollapsibleSection icon="🧾" title={`Cuentas cerradas (${closedOrders.length})`} defaultOpen={false}>
-                  <div className="space-y-1.5 opacity-70">
-                    {closedOrders.map((o) => (
-                      <div key={o.id} className="flex items-center justify-between text-xs">
-                        <span className="text-muted-foreground">
-                          {o.paid_at ? new Date(o.paid_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }) : new Date(o.created_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })} · {o.pickup_number != null ? `Nro. ${o.pickup_number}` : `#${o.id.slice(0, 6)}`}
-                        </span>
-                        <span className="font-semibold tabular-nums">${Number(o.total).toLocaleString("es-AR")}</span>
-                      </div>
-                    ))}
-                  </div>
-                </CollapsibleSection>
-              </div>
-            )}
-
-            <div className="mt-3 grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_auto] gap-3">
-              <div className="min-w-0">
-                {catalogBlock("sm:grid-cols-4 max-h-52 overflow-y-auto pr-1")}
+            <div className="mt-3 grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_auto] gap-3 flex-1 min-h-0">
+              <div className="min-w-0 flex flex-col min-h-0 lg:overflow-hidden">
+                {catalogBlock("sm:grid-cols-4 lg:grid-cols-5 flex-1 min-h-0 overflow-y-auto pr-1")}
                 {cart.length > 0 && (
-                  <div className="mt-2 space-y-1">
+                  <div className="mt-2 space-y-1 max-h-40 overflow-y-auto flex-shrink-0">
                     {cart.map(cartLine)}
                   </div>
                 )}
               </div>
-              <div className="flex flex-col justify-between gap-2 sm:min-w-40">
+              <div className="flex flex-col gap-2 sm:min-w-40 lg:w-80 flex-shrink-0 min-h-0">
+                <div className="min-h-0 overflow-y-auto space-y-3">
+                  {consumicionesBlock(false)}
+
+                  {closedOrders.length > 0 && (
+                    <div>
+                      <CollapsibleSection icon="🧾" title={`Cuentas cerradas (${closedOrders.length})`} defaultOpen={false}>
+                        <div className="space-y-1.5 opacity-70">
+                          {closedOrders.map((o) => (
+                            <div key={o.id} className="flex items-center justify-between text-xs">
+                              <span className="text-muted-foreground">
+                                {o.paid_at ? new Date(o.paid_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }) : new Date(o.created_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })} · {o.pickup_number != null ? `Nro. ${o.pickup_number}` : `#${o.id.slice(0, 6)}`}
+                              </span>
+                              <span className="font-semibold tabular-nums">${Number(o.total).toLocaleString("es-AR")}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </CollapsibleSection>
+                    </div>
+                  )}
+                </div>
                 <div className="flex flex-wrap gap-1">
                   {PAYMENT_OPTIONS.map((o) => (
                     <button
@@ -635,7 +636,7 @@ export function Mesas() {
                 </div>
 
                 <div className="flex-1 overflow-y-auto px-3 pt-2pb-4">
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                     {filtered.map((p) => (
                       <button
                         key={p.id}
@@ -714,11 +715,11 @@ export function Mesas() {
                     <CollapsibleSection icon="🧾" title={`Cuentas cerradas (${closedOrders.length})`} defaultOpen={false}>
                       <div className="space-y-1.5 opacity-70">
                         {closedOrders.map((o) => (
-                          <div key={o.id} className="flex items-center justify-between text-xs">
-                            <span className="text-muted-foreground">
+                          <div key={o.id} className="flex items-center justify-between gap-2 text-xs">
+                            <span className="text-muted-foreground min-w-0 truncate">
                           {o.paid_at ? new Date(o.paid_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }) : new Date(o.created_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })} · {o.pickup_number != null ? `Nro. ${o.pickup_number}` : `#${o.id.slice(0, 6)}`}
                             </span>
-                            <span className="font-semibold tabular-nums">${Number(o.total).toLocaleString("es-AR")}</span>
+                            <span className="font-semibold tabular-nums shrink-0">${Number(o.total).toLocaleString("es-AR")}</span>
                           </div>
                         ))}
                       </div>

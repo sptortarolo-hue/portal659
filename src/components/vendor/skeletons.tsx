@@ -83,7 +83,7 @@ export function MostradorSkeleton() {
             <SkeletonPulse key={i} className="h-7 w-20 rounded-full" />
           ))}
         </div>
-        <div className="grid grid-cols-3 sm:grid-cols-3 xl:grid-cols-4 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-2">
           {Array.from({ length: 12 }).map((_, i) => (
             <div key={i} className="rounded-xl border border-border bg-card p-2 space-y-2">
               <SkeletonPulse className="aspect-square w-full rounded-lg" />

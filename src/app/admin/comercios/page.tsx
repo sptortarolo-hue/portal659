@@ -32,6 +32,7 @@ type Vendor = {
   trial_ends_at: string | null;
   paid_at: string | null;
   payment_method: string | null;
+  publish_requested_at: string | null;
 };
 
 type Plan = {
@@ -56,6 +57,7 @@ export default function AdminComerciosPage() {
   const [deleteVendor, setDeleteVendor] = useState<Vendor | null>(null);
   const [filterVertical, setFilterVertical] = useState("");
   const [filterVerified, setFilterVerified] = useState("");
+  const [filterPending, setFilterPending] = useState(false);
   const [plans, setPlans] = useState<Plan[]>([]);
   const [createOpen, setCreateOpen] = useState(false);
 
@@ -105,6 +107,24 @@ export default function AdminComerciosPage() {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ vendorId: id, action: "toggle_visible" }),
+    });
+    fetchVendors();
+  }
+
+  async function handleApprovePublish(id: string) {
+    await fetch("/api/admin/comercios", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ vendorId: id, action: "approve_publish" }),
+    });
+    fetchVendors();
+  }
+
+  async function handleRejectPublish(id: string) {
+    await fetch("/api/admin/comercios", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ vendorId: id, action: "clear_publish_request" }),
     });
     fetchVendors();
   }
@@ -247,6 +267,9 @@ export default function AdminComerciosPage() {
             <span className="text-[10px] text-muted-foreground">&#9679; Oculto</span>
           )}
           {v.verified && <span className="text-[10px] text-blue-600 font-medium">&#10003; Verificado</span>}
+          {v.publish_requested_at && !v.visible && (
+            <span className="text-[10px] text-violet-700 font-bold">📩 Solicita publicar</span>
+          )}
           {v.is_admin && <span className="text-[10px] text-amber-600 font-medium">Admin</span>}
           {!v.verified && !v.is_admin && <span className="text-[10px] text-muted-foreground">Pendiente</span>}
         </div>
@@ -296,6 +319,16 @@ export default function AdminComerciosPage() {
           <option value="true">Verificados</option>
           <option value="false">No verificados</option>
         </select>
+        <button
+          onClick={() => setFilterPending((v) => !v)}
+          className={`h-9 rounded-md border px-3 text-sm transition-colors ${
+            filterPending
+              ? "border-violet-300 bg-violet-50 text-violet-700 font-semibold"
+              : "border-border text-muted-foreground hover:bg-muted"
+          }`}
+        >
+          📩 Pendientes ({vendors.filter((v) => v.publish_requested_at && !v.visible).length})
+        </button>
       </div>
 
       {loading ? (
@@ -305,13 +338,31 @@ export default function AdminComerciosPage() {
       ) : (
         <DataTable
           columns={columns}
-          data={vendors}
+          data={filterPending ? vendors.filter((v) => v.publish_requested_at && !v.visible) : vendors}
           searchPlaceholder="Buscar comercio..."
           searchKeys={["store_name", "slug", "neighborhood"]}
           pageSize={10}
           emptyMessage="No hay comercios"
           actions={(v) => (
             <div className="flex items-center gap-1 justify-end">
+              {v.publish_requested_at && !v.visible && (
+                <>
+                  <button
+                    onClick={() => handleApprovePublish(v.id)}
+                    className="text-xs px-2 py-1 rounded-md border border-green-300 bg-green-50 text-green-700 font-semibold"
+                    title="Publicar comercio"
+                  >
+                    Aprobar
+                  </button>
+                  <button
+                    onClick={() => handleRejectPublish(v.id)}
+                    className="text-xs px-2 py-1 rounded-md border border-border text-muted-foreground hover:bg-muted"
+                    title="Rechazar solicitud"
+                  >
+                    Rechazar
+                  </button>
+                </>
+              )}
               <button
                 onClick={() => handleToggleVerified(v.id)}
                 className={`text-xs px-2 py-1 rounded-md border transition-colors ${

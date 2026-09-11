@@ -10,7 +10,7 @@ export function CartDrawer() {
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/40 transition-opacity animate-fade-in-up"
+      className="fixed inset-0 z-[60] bg-black/40 transition-opacity animate-fade-in-up"
       onClick={() => setOpen(false)}
     >
       <div
@@ -126,7 +126,7 @@ export function CartDrawer() {
 
         {/* Footer */}
         {items.length > 0 && vendor && (
-          <div className="border-t border-border px-6 py-4 space-y-3 bg-card">
+          <div className="border-t border-border px-6 pt-4 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)] space-y-3 bg-card">
             <div className="flex items-center justify-between">
               <span className="text-sm text-muted-foreground">
                 {count} producto{count !== 1 ? "s" : ""}

@@ -48,7 +48,7 @@ export async function GET(request: Request) {
 
   const [orders, products, reviews] = await Promise.all([
     queryMany<Record<string, any>>(
-      `SELECT id, items, total, status, method, channel, customer_id, created_at, estimated_minutes FROM orders WHERE vendor_id = $1 AND created_at >= $2 ORDER BY created_at DESC`,
+      `SELECT id, items, total, status, method, channel, customer_id, created_at, estimated_minutes FROM orders WHERE vendor_id = $1 AND is_preview = false AND created_at >= $2 ORDER BY created_at DESC`,
       [vendorId, since]
     ),
     queryMany<Record<string, any>>(

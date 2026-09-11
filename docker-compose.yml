@@ -85,8 +85,13 @@ services:
     restart: unless-stopped
     ports:
       - "80:80"
+      - "443:443"
     volumes:
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      # Certificado Origin CA de Cloudflare (creado una vez en el VPS,
+      # fuera de /opt/portal659 que el deploy borra):
+      #   /opt/portal659-certs/origin.pem + origin.key
+      - /opt/portal659-certs:/etc/nginx/certs:ro
     depends_on:
       app:
         condition: service_healthy

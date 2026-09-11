@@ -64,6 +64,17 @@ jobs:
             echo 'LLM_API_KEY=${{ secrets.LLM_API_KEY }}' >> /opt/portal659/.env
 
             cd /opt/portal659
+            # Cert TLS para nginx :443. Si aún no pegaste el Origin CA de
+            # Cloudflare en /opt/portal659-certs, se genera un placeholder
+            # autofirmado para que nginx levante igual (el modo Strict se
+            # enciende recién con el cert real instalado).
+            mkdir -p /opt/portal659-certs
+            if [ ! -f /opt/portal659-certs/origin.pem ]; then
+              openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
+                -keyout /opt/portal659-certs/origin.key \
+                -out /opt/portal659-certs/origin.pem \
+                -subj "/CN=portal659.com.ar" 2>/dev/null
+            fi
             # Retry: absorbe carreras transitorias del daemon (ej. removal
             # of container ... is already in progress al recrear servicios).
             DEPLOYED=0

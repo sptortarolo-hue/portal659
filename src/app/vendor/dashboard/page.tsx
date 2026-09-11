@@ -895,8 +895,8 @@ function VendorDashboardInner() {
                 </p>
               </div>
 
-              {/* Controles operativos: inline en desktop, en fila 2 en mobile */}
-              <span className="hidden sm:contents">
+              {/* Controles operativos en desktop (fila 1) */}
+              <div className="hidden sm:flex items-center gap-3">
                 <OpenToggle vendor={vendor} onSaved={(v) => setVendor(v)} />
                 {isGastro && (
                   <>
@@ -910,7 +910,7 @@ function VendorDashboardInner() {
                     }} />
                   </>
                 )}
-              </span>
+              </div>
               {vendor.slug && (
                 <a
                   href={`/tienda/${vendor.slug}`}
@@ -929,7 +929,7 @@ function VendorDashboardInner() {
             </div>
 
             {/* Fila 2: controles operativos — solo mobile */}
-            <div className="sm:hidden flex items-center gap-2 overflow-x-auto pt-2">
+            <div className="flex sm:hidden items-center gap-2 overflow-x-auto pt-2">
               <OpenToggle vendor={vendor} onSaved={(v) => setVendor(v)} />
               {isGastro && (
                 <>

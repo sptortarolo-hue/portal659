@@ -370,11 +370,11 @@ export function LivePreview({ storeName, storePreview, vendor, logoPreview, desc
             <p className="text-[10px] text-muted-foreground">Vista previa de tu micrositio</p>
           </div>
         </div>
-        {description && <p className="text-xs text-muted-foreground line-clamp-2 mb-2">{description}</p>}
-        <div className="flex flex-wrap gap-1.5 text-[10px]">
-          {hours && <span className="rounded-full bg-muted px-2 py-0.5 text-muted-foreground">🕐 {hours}</span>}
-          {address && <span className="rounded-full bg-muted px-2 py-0.5 text-muted-foreground">📍 {address}</span>}
-          {paymentMethods.length > 0 && <span className="rounded-full bg-muted px-2 py-0.5 text-muted-foreground">💳 {paymentMethods.join(", ")}</span>}
+        {description && <p className="text-xs text-muted-foreground line-clamp-2 mb-2 break-words">{description}</p>}
+        <div className="flex flex-wrap gap-1.5 text-[10px] min-w-0">
+          {hours && <span className="rounded-full bg-muted px-2 py-0.5 text-muted-foreground max-w-full break-words">🕐 {hours}</span>}
+          {address && <span className="rounded-full bg-muted px-2 py-0.5 text-muted-foreground max-w-full break-words">📍 {address}</span>}
+          {paymentMethods.length > 0 && <span className="rounded-full bg-muted px-2 py-0.5 text-muted-foreground max-w-full break-words">💳 {paymentMethods.join(", ")}</span>}
         </div>
         {whatsapp && (
           <div className="mt-3 inline-flex items-center gap-1 rounded-md bg-whatsapp/10 text-whatsapp px-3 py-1.5 text-xs font-medium">

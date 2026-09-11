@@ -38,101 +38,175 @@ export async function GET(
     return new Response("Not found", { status: 404 });
   }
 
+  // Campos fijos (el narrowing de `vendor` no propaga a closures).
+  const storeName = vendor.store_name;
+  const imageUrl = vendor.image_url;
+  const logoUrl = vendor.logo_url;
+  const description = vendor.description;
+
   const siteUrl = getSiteUrl();
-  const banner = vendor.image_url || vendor.logo_url || null;
-  const logo = vendor.logo_url || null;
-  const legend = vendor.description || `Pedí por WhatsApp — Portal 659 · 0% comisión`;
+  const banner = imageUrl || logoUrl || null;
+  const logo = logoUrl;
+  const legend = description || `Pedí por WhatsApp — Portal 659 · 0% comisión`;
 
   const W = 1200;
   const H = 630;
 
-  // Fondo: imagen del banner si existe (remota), con degradé arriba para texto.
-  const backgroundImage = banner
-    ? `url(${banner})`
-    : `linear-gradient(135deg, #4f46e5 0%, #7c3aed 55%, #a855f7 100%)`;
-
-  return new ImageResponse(
-    (
+  function ribbon() {
+    if (!isPreview) return null;
+    return (
       <div
         style={{
-          width: W,
-          height: H,
-          display: "flex",
-          flexDirection: "column",
-          justifyContent: "flex-end",
-          alignItems: "flex-start",
-          padding: "48px 56px",
-          backgroundImage,
-          backgroundSize: "cover",
-          backgroundPosition: "center",
-          position: "relative",
-          fontFamily: "system-ui, sans-serif",
+          position: "absolute",
+          top: 36,
+          right: 48,
+          background: "#fbbf24",
+          color: "#451a03",
+          fontSize: 24,
+          fontWeight: 800,
+          padding: "8px 20px",
+          borderRadius: 999,
         }}
       >
-        {/* Degradé para legibilidad */}
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            background: "linear-gradient(to top, rgba(0,0,0,0.78) 0%, rgba(0,0,0,0.25) 55%, rgba(0,0,0,0) 100%)",
-          }}
-        />
-        {isPreview && (
+        MODO PRUEBA
+      </div>
+    );
+  }
+
+  function textBlock() {
+    return (
+      <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 24 }}>
+        <div style={{ display: "flex", flexDirection: "column", color: "#fff" }}>
+          <div style={{ fontSize: 52, fontWeight: 800, lineHeight: 1.05, maxWidth: 900 }}>
+            {storeName}
+          </div>
+          <div style={{ fontSize: 26, marginTop: 10, opacity: 0.92, maxWidth: 880 }}>
+            {legend}
+          </div>
           <div
             style={{
-              position: "absolute",
-              top: 36,
-              right: 48,
-              background: "#fbbf24",
-              color: "#451a03",
-              fontSize: 24,
-              fontWeight: 800,
-              padding: "8px 20px",
+              marginTop: 20,
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              fontSize: 22,
+              fontWeight: 600,
+              background: "rgba(255,255,255,0.16)",
+              padding: "10px 18px",
               borderRadius: 999,
+              width: "fit-content",
             }}
           >
-            🧪 MODO PRUEBA
-          </div>
-        )}
-        <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 24 }}>
-          {logo && (
-            <img
-              src={logo}
-              width={160}
-              height={160}
-              style={{ borderRadius: 999, objectFit: "cover", border: "4px solid rgba(255,255,255,0.9)" }}
-            />
-          )}
-          <div style={{ display: "flex", flexDirection: "column", color: "#fff" }}>
-            <div style={{ fontSize: 52, fontWeight: 800, lineHeight: 1.05, maxWidth: 900 }}>
-              {vendor.store_name}
-            </div>
-            <div style={{ fontSize: 26, marginTop: 10, opacity: 0.92, maxWidth: 880 }}>
-              {legend}
-            </div>
-            <div
-              style={{
-                marginTop: 20,
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                fontSize: 22,
-                fontWeight: 600,
-                background: "rgba(255,255,255,0.16)",
-                padding: "10px 18px",
-                borderRadius: 999,
-                width: "fit-content",
-              }}
-            >
-              🛍️ {siteUrl.replace(/^https?:\/\//, "").replace(/\/$/, "")} · Pedí directo por WhatsApp
-            </div>
+            {siteUrl.replace(/^https?:\/\//, "").replace(/\/$/, "")} · Pedí directo por WhatsApp
           </div>
         </div>
       </div>
-    ),
-    {
-      width: W,
-      height: H,
+    );
+  }
+
+  // Las imágenes remotas se validan ANTES de renderizar: si alguna falla,
+  // se usa la tarjeta solo con gradiente (el fetch dentro de ImageResponse
+  // puede fallar de forma asíncrona y tumbar toda la respuesta).
+  async function remoteOk(url: string | null): Promise<boolean> {
+    if (!url) return true;
+    try {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 6000);
+      const res = await fetch(url, { signal: ctrl.signal });
+      clearTimeout(t);
+      if (!res.ok) return false;
+      await res.arrayBuffer().catch(() => null);
+      return true;
+    } catch {
+      return false;
     }
-  );
+  }
+  const [bannerOk, logoOk] = await Promise.all([remoteOk(banner), remoteOk(logo)]);
+  const fullOk = bannerOk && logoOk;
+  if (!fullOk) {
+    console.error("[share] imagen remota no disponible, usando fallback", { slug, bannerOk, logoOk });
+  }
+
+  // Si las imágenes remotas fallan, el render completo revienta: fallback a
+  // tarjeta solo con gradiente para devolver siempre una imagen válida.
+  try {
+    if (!fullOk) throw new Error("remote image unavailable");
+    // Fondo: imagen del banner si existe (remota), con degradé arriba para texto.
+    const backgroundImage = banner
+      ? `url(${banner})`
+      : `linear-gradient(135deg, #4f46e5 0%, #7c3aed 55%, #a855f7 100%)`;
+
+    return new ImageResponse(
+      (
+        <div
+          style={{
+            width: W,
+            height: H,
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "flex-end",
+            alignItems: "flex-start",
+            padding: "48px 56px",
+            backgroundImage,
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+            position: "relative",
+            fontFamily: "system-ui, sans-serif",
+          }}
+        >
+          {/* Degradé para legibilidad */}
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              background: "linear-gradient(to top, rgba(0,0,0,0.78) 0%, rgba(0,0,0,0.25) 55%, rgba(0,0,0,0) 100%)",
+            }}
+          />
+          {ribbon()}
+          <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 24 }}>
+            {logo && (
+              <img
+                src={logo}
+                width={160}
+                height={160}
+                style={{ borderRadius: 999, objectFit: "cover", border: "4px solid rgba(255,255,255,0.9)" }}
+              />
+            )}
+            {textBlock()}
+          </div>
+        </div>
+      ),
+      {
+        width: W,
+        height: H,
+      }
+    );
+  } catch (err) {
+    console.error("[share] fallo render con imágenes, usando fallback:", err);
+    return new ImageResponse(
+      (
+        <div
+          style={{
+            width: W,
+            height: H,
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "flex-end",
+            alignItems: "flex-start",
+            padding: "48px 56px",
+            background: "linear-gradient(135deg, #4f46e5 0%, #7c3aed 55%, #a855f7 100%)",
+            position: "relative",
+            fontFamily: "system-ui, sans-serif",
+          }}
+        >
+          {ribbon()}
+          {textBlock()}
+        </div>
+      ),
+      {
+        width: W,
+        height: H,
+      }
+    );
+  }
 }

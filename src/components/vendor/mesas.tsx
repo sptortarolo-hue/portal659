@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import { ModifierPicker } from "@/components/offers/modifier-picker";
+import { ProductPickCard } from "@/components/vendor/product-pick-card";
 
 type Table = {
   id: string;
@@ -364,32 +365,14 @@ export function Mesas() {
           ))}
         </div>
       )}
-      <div className={`grid grid-cols-2 sm:grid-cols-3 gap-1.5 ${gridClass}`}>
+      <div className={`grid grid-cols-2 sm:grid-cols-3 gap-2 ${gridClass}`}>
         {filtered.map((p) => (
-          <button
+          <ProductPickCard
             key={p.id}
-            onClick={() => addProduct(p)}
-            className="text-left rounded-lg border border-border bg-card overflow-hidden hover:border-primary/50 transition-colors active:scale-[0.97]"
-          >
-            <div className="aspect-square w-full bg-secondary">
-              {p.image_url ? (
-                <img src={p.image_url} alt={p.name} loading="lazy" decoding="async" className="w-full h-full object-cover" />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center">
-                  <span className="font-display text-2xl font-bold text-primary/40">{p.name.charAt(0)}</span>
-                </div>
-              )}
-            </div>
-            <div className="p-1.5">
-              <p className="text-[10px] font-medium line-clamp-2">{p.name}</p>
-              <p className="text-[11px] font-semibold text-primary tabular-nums">
-                ${Number(p.promo_price ?? p.price).toLocaleString("es-AR")}
-              </p>
-              {(modifiersMap[p.id] || []).length > 0 && (
-                <span className="inline-block text-[9px] font-medium text-primary/70">+ opciones</span>
-              )}
-            </div>
-          </button>
+            product={p}
+            hasModifiers={(modifiersMap[p.id] || []).length > 0}
+            onAdd={() => addProduct(p)}
+          />
         ))}
         {filtered.length === 0 && (
           <p className="text-[11px] text-muted-foreground col-span-full text-center py-4">Sin productos</p>
@@ -638,30 +621,12 @@ export function Mesas() {
                 <div className="flex-1 overflow-y-auto px-3 pt-2pb-4">
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                     {filtered.map((p) => (
-                      <button
+                      <ProductPickCard
                         key={p.id}
-                        onClick={() => addProduct(p)}
-                        className="text-left rounded-lg border border-border bg-card overflow-hidden hover:border-primary/50 transition-colors active:scale-[0.97]"
-                      >
-                        <div className="aspect-square w-full bg-secondary">
-                          {p.image_url ? (
-                            <img src={p.image_url} alt={p.name} loading="lazy" decoding="async" className="w-full h-full object-cover" />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center">
-                              <span className="font-display text-2xl font-bold text-primary/40">{p.name.charAt(0)}</span>
-                            </div>
-                          )}
-                        </div>
-                        <div className="p-1.5">
-                          <p className="text-[10px] font-medium line-clamp-2">{p.name}</p>
-                          <p className="text-[11px] font-semibold text-primary tabular-nums">
-                            ${Number(p.promo_price ?? p.price).toLocaleString("es-AR")}
-                          </p>
-                          {(modifiersMap[p.id] || []).length > 0 && (
-                            <span className="inline-block text-[9px] font-medium text-primary/70">+ opciones</span>
-                          )}
-                        </div>
-                      </button>
+                        product={p}
+                        hasModifiers={(modifiersMap[p.id] || []).length > 0}
+                        onAdd={() => addProduct(p)}
+                      />
                     ))}
                     {filtered.length === 0 && (
                       <p className="text-[11px] text-muted-foreground col-span-full text-center py-6">Sin productos</p>

@@ -667,6 +667,7 @@ function VendorDashboardInner() {
           onSelectOrder={setSelectedOrder}
           onRefresh={loadOrdersOnly}
           isLoading={ordersLoading}
+          focusStatus={orderStatusFilter}
         />
       </div>
 

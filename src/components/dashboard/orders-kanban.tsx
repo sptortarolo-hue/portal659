@@ -21,6 +21,8 @@ type OrdersKanbanProps = {
   onSelectOrder: (order: Order | null) => void;
   onRefresh?: () => void;
   isLoading?: boolean;
+  /** Si hay filtro de estado, mostrar solo esa columna. */
+  focusStatus?: string | null;
 };
 
 const ACTIVE_STATUSES: OrderStatus[] = [
@@ -216,7 +218,7 @@ function KanbanColumn({
   };
 
   return (
-    <div className="flex-1 min-w-[280px] max-w-[320px] flex flex-col" aria-labelledby={`column-${status}-label`}>
+    <div className="flex-1 min-w-[220px] flex flex-col" aria-labelledby={`column-${status}-label`}>
       <div className="px-3 py-2.5 flex items-center justify-between border-b border-border bg-muted/50 rounded-t-xl">
         <h3 id={`column-${status}-label`} className="font-semibold text-sm flex items-center gap-2">
           <span className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full ${ORDER_STATUS_COLORS[status]}`}>
@@ -260,9 +262,15 @@ export function OrdersKanban({
   onSelectOrder,
   onRefresh,
   isLoading,
+  focusStatus,
 }: OrdersKanbanProps) {
   const steps = flowSteps(isModa);
   const activeSteps = steps.filter((s) => ACTIVE_STATUSES.includes(s));
+  // Con filtro de estado (ej. clic en "Enviados"), mostrar solo esa columna
+  // para que nunca quede fuera de pantalla.
+  const focusActive =
+    focusStatus && focusStatus !== "all" && (activeSteps as string[]).includes(focusStatus);
+  const visibleSteps = focusActive ? [focusStatus as OrderStatus] : activeSteps;
 
   const ordersByStatus = activeSteps.reduce(
     (acc, status) => {
@@ -330,9 +338,18 @@ export function OrdersKanban({
     [isModa, onRefresh]
   );
 
+  // Filtro terminal (ej. "completed"): el Kanban solo muestra estados activos.
+  if (focusStatus && focusStatus !== "all" && !focusActive) {
+    return (
+      <div className="text-center py-12 text-sm text-muted-foreground">
+        Los pedidos entregados están en la pestaña Histórico.
+      </div>
+    );
+  }
+
   return (
     <div className="flex gap-3 overflow-x-auto pb-4 px-1">
-      {activeSteps.map((status) => (
+      {visibleSteps.map((status) => (
         <KanbanColumn
           key={status}
           status={status}

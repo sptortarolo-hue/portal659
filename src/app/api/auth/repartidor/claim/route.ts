@@ -45,15 +45,17 @@ export async function POST(request: Request) {
 
   const result = await withTransaction(async (tx) => {
     // Identity por teléfono: buscamos/creamos el perfil por email sintético.
-    const existing = await tx.queryOne<{ id: string }>(
-      `SELECT id FROM profiles WHERE email = $1 LIMIT 1`,
+    const existing = await tx.queryOne<{ id: string; token_version: number }>(
+      `SELECT id, token_version FROM profiles WHERE email = $1 LIMIT 1`,
       [email]
     );
 
     let profileId: string;
+    let tokenVersion = 1;
     if (existing) {
       await tx.queryVoid(`UPDATE profiles SET password_hash = $1, phone = $2, email_confirmed = true WHERE id = $3`, [passwordHash, phone, existing.id]);
       profileId = existing.id;
+      tokenVersion = existing.token_version;
     } else {
       const rows = await tx.query<{ id: string }>(
         `INSERT INTO profiles (email, password_hash, full_name, phone, role, email_confirmed)
@@ -71,13 +73,14 @@ export async function POST(request: Request) {
       [profileId, phone, invite.id]
     );
 
-    return { profileId };
+    return { profileId, tokenVersion };
   });
 
   const accessToken = await signAccessToken({
     id: result.profileId,
     email,
     role: "buyer",
+    tokenVersion: result.tokenVersion,
   });
 
   const response = NextResponse.json({ ok: true, vendor: { id: vendor?.id, store_name: vendor?.store_name } });

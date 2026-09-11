@@ -61,10 +61,10 @@ export const POST = withRateLimit(async (request: Request) => {
   const passwordHash = await hashPassword(password);
   const fullName = `${String(firstName).trim()} ${String(lastName).trim()}`.trim();
 
-  const user = await queryOne<{ id: string; email: string; full_name: string | null; role: string }>(
+  const user = await queryOne<{ id: string; email: string; full_name: string | null; role: string; token_version: number }>(
     `INSERT INTO profiles (email, password_hash, full_name, phone, whatsapp, role, email_confirmed, verified)
      VALUES ($1, $2, $3, $4, $4, 'buyer', true, true)
-     RETURNING id, email, full_name, role`,
+     RETURNING id, email, full_name, role, token_version`,
     [emailLower, passwordHash, fullName, phoneE164]
   );
 
@@ -76,6 +76,7 @@ export const POST = withRateLimit(async (request: Request) => {
     id: user.id,
     email: user.email,
     role: user.role,
+    tokenVersion: user.token_version,
   });
 
   const response = NextResponse.json({

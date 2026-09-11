@@ -25,8 +25,9 @@ export const POST = withRateLimit(async (request: Request) => {
     password_hash: string | null;
     email: string | null;
     status: string;
+    token_version: number;
   }>(
-    `SELECT vs.id, vs.profile_id, vs.vendor_id, p.password_hash, p.email, vs.status
+    `SELECT vs.id, vs.profile_id, vs.vendor_id, p.password_hash, p.email, p.token_version, vs.status
      FROM vendor_staff vs
      JOIN profiles p ON p.id = vs.profile_id
      WHERE vs.phone = $1
@@ -53,6 +54,7 @@ export const POST = withRateLimit(async (request: Request) => {
     id: staff.profile_id,
     email: staff.email || `rep_${phone}@portal659.local`,
     role: "buyer",
+    tokenVersion: staff.token_version,
   });
 
   const response = NextResponse.json({

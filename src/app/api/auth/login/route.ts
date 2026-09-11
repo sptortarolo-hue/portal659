@@ -26,8 +26,9 @@ export const POST = withRateLimit(async (request: Request) => {
       role: string;
       password_hash: string;
       email_confirmed: boolean;
+      token_version: number;
     }>(
-      `SELECT id, email, full_name, role, password_hash, email_confirmed FROM profiles WHERE lower(email) = lower($1)`,
+      `SELECT id, email, full_name, role, password_hash, email_confirmed, token_version FROM profiles WHERE lower(email) = lower($1)`,
       [identifier]
     );
   } else {
@@ -42,8 +43,9 @@ export const POST = withRateLimit(async (request: Request) => {
         role: string;
         password_hash: string;
         email_confirmed: boolean;
+        token_version: number;
       }>(
-        `SELECT id, email, full_name, role, password_hash, email_confirmed FROM profiles
+        `SELECT id, email, full_name, role, password_hash, email_confirmed, token_version FROM profiles
          WHERE regexp_replace(whatsapp, '[^0-9]', '', 'g') = ANY($1)
             OR regexp_replace(phone, '[^0-9]', '', 'g') = ANY($1)
          LIMIT 1`,
@@ -72,6 +74,7 @@ export const POST = withRateLimit(async (request: Request) => {
     id: user.id,
     email: user.email,
     role: user.role,
+    tokenVersion: user.token_version,
   });
 
   const response = NextResponse.json({

@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS profiles (
   whatsapp text,
   role text CHECK (role IN ('buyer', 'vendor', 'admin')) DEFAULT 'buyer',
   is_admin boolean DEFAULT false,
+  token_version integer NOT NULL DEFAULT 1,
   verified boolean DEFAULT false,
   email_confirmed boolean DEFAULT false,
   created_at timestamptz DEFAULT now(),

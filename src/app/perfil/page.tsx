@@ -21,6 +21,7 @@ export default function PerfilPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [loggingOutAll, setLoggingOutAll] = useState(false);
   const [msg, setMsg] = useState("");
   const [error, setError] = useState("");
   const [email, setEmail] = useState("");
@@ -152,6 +153,29 @@ export default function PerfilPage() {
           </Button>
         </div>
       </form>
+
+      <div className="bg-card border border-red-200 rounded-2xl p-6 mt-4">
+        <h2 className="font-semibold text-sm mb-1">Sesiones</h2>
+        <p className="text-sm text-muted-foreground mb-4">
+          Si perdiste un dispositivo o ves actividad rara, cerrá la sesión en todos lados de una vez.
+        </p>
+        <Button
+          type="button"
+          variant="destructive"
+          disabled={loggingOutAll}
+          onClick={async () => {
+            if (!window.confirm("¿Cerrar sesión en todos los dispositivos? Vas a tener que volver a entrar en cada uno.")) return;
+            setLoggingOutAll(true);
+            try {
+              await fetch("/api/auth/logout-all", { method: "POST" });
+            } catch { /* noop */ }
+            router.push("/login");
+            router.refresh();
+          }}
+        >
+          {loggingOutAll ? "Cerrando…" : "Cerrar sesión en todos los dispositivos"}
+        </Button>
+      </div>
     </main>
   );
 }

@@ -39,13 +39,16 @@ export async function verifyPassword(password: string, hash: string): Promise<bo
   }
 }
 
-/** Firma un JWT (access token). */
+type DecodedToken = { userId: string; email?: string; role?: string; tv?: number };
+
+/** Firma un JWT (access token). `tv` = versión de tokens (logout en todos lados). */
 export async function signAccessToken(user: {
   id: string;
   email: string;
   role: string;
+  tokenVersion?: number;
 }): Promise<string> {
-  return new SignJWT({ sub: user.id, email: user.email, role: user.role })
+  return new SignJWT({ sub: user.id, email: user.email, role: user.role, tv: user.tokenVersion ?? 1 })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime(ACCESS_TTL)
@@ -55,13 +58,14 @@ export async function signAccessToken(user: {
 /** Verifica y decodifica un access token. Devuelve null si es inválido/expirado. */
 export async function verifyAccessToken(
   token: string
-): Promise<{ userId: string; email?: string; role?: string } | null> {
+): Promise<DecodedToken | null> {
   try {
     const { payload } = await jwtVerify(token, getJwtSecret());
     return {
       userId: (payload.sub as string) || "",
       email: (payload.email as string) || undefined,
       role: (payload.role as string) || undefined,
+      tv: typeof payload.tv === "number" ? payload.tv : undefined,
     };
   } catch {
     return null;
@@ -105,7 +109,7 @@ export function extractAllTokens(request: Request): string[] {
 export async function getAuthUser(request: Request): Promise<AuthUser | null> {
   // Probar cada candidato hasta encontrar uno que verifique (ver extractAllTokens:
   // puede haber una cookie host-only legacy conviviendo con la nueva con Domain).
-  let decoded: { userId: string; email?: string; role?: string } | null = null;
+  let decoded: DecodedToken | null = null;
   for (const token of extractAllTokens(request)) {
     const d = await verifyAccessToken(token);
     if (d?.userId) {
@@ -115,11 +119,14 @@ export async function getAuthUser(request: Request): Promise<AuthUser | null> {
   }
   if (!decoded) return null;
 
-  const user = await queryOne<{ id: string; email: string; full_name: string | null; role: string; verified: boolean; is_admin: boolean }>(
-    `SELECT id, email, full_name, role, verified, is_admin FROM profiles WHERE id = $1`,
+  const user = await queryOne<{ id: string; email: string; full_name: string | null; role: string; verified: boolean; is_admin: boolean; token_version: number }>(
+    `SELECT id, email, full_name, role, verified, is_admin, token_version FROM profiles WHERE id = $1`,
     [decoded.userId]
   );
   if (!user) return null;
+  // Token revocado (logout en todos los dispositivos): la versión del claim
+  // debe coincidir con la actual del perfil. Tokens viejos (sin `tv`) valen 1.
+  if ((decoded.tv ?? 1) !== user.token_version) return null;
 
   return {
     id: user.id,

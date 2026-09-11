@@ -15,8 +15,8 @@ export async function GET(request: Request) {
 
   if (type === "magic") {
     const tokenHash = createHash("sha256").update(token).digest("hex");
-    const profile = await queryOne<{ id: string; email: string; role: string }>(
-      `SELECT id, email, role FROM profiles WHERE magic_token_hash = $1 AND magic_token_expires > now() LIMIT 1`,
+    const profile = await queryOne<{ id: string; email: string; role: string; token_version: number }>(
+      `SELECT id, email, role, token_version FROM profiles WHERE magic_token_hash = $1 AND magic_token_expires > now() LIMIT 1`,
       [tokenHash]
     );
     if (!profile) {
@@ -28,7 +28,7 @@ export async function GET(request: Request) {
       [profile.id]
     );
 
-    const accessToken = await signAccessToken({ id: profile.id, email: profile.email, role: profile.role });
+    const accessToken = await signAccessToken({ id: profile.id, email: profile.email, role: profile.role, tokenVersion: profile.token_version });
     const response = NextResponse.redirect(origin);
     const isLocal = process.env.NODE_ENV === "development";
     const opts = { httpOnly: true, secure: !isLocal, sameSite: "lax" as const, path: "/", maxAge: 60 * 60 * 24 * 7, ...(!isLocal && { domain: ".portal659.com.ar" }) };

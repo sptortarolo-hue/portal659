@@ -5,6 +5,12 @@ on:
     branches: [master]
   workflow_dispatch:
 
+# Un solo deploy a la vez: los pushes seguidos encolan en vez de solaparse
+# (dos `compose up` concurrentes se pisan removiendo contenedores).
+concurrency:
+  group: deploy-vps
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -58,7 +64,14 @@ jobs:
             echo 'LLM_API_KEY=${{ secrets.LLM_API_KEY }}' >> /opt/portal659/.env
 
             cd /opt/portal659
-            docker compose up -d --build
+            # Retry: absorbe carreras transitorias del daemon (ej. removal
+            # of container ... is already in progress al recrear servicios).
+            DEPLOYED=0
+            for i in 1 2 3; do
+              if docker compose up -d --build; then DEPLOYED=1; break; fi
+              sleep 15
+            done
+            [ "$DEPLOYED" = "1" ]
             # nginx cachea el DNS del upstream al arrancar: si 'app' se recrea con un IP
             # nuevo, nginx apunta a un IP muerto y el sitio da 502. Restart = re-resuelve.
             docker restart portal659-nginx

@@ -3,11 +3,16 @@ import { isAdmin } from "@/lib/admin-utils";
 import { queryMany, queryOne, query } from "@/lib/db";
 
 export async function GET(request: Request) {
-  if (!(await isAdmin(request))) {
-    return NextResponse.json({ error: "No autorizado" }, { status: 403 });
+  try {
+    if (!(await isAdmin(request))) {
+      return NextResponse.json({ error: "No autorizado" }, { status: 403 });
+    }
+  } catch {
+    return NextResponse.json({ error: "Error al verificar permisos" }, { status: 500 });
   }
 
-  const [vendors, orders, reviews, products, stats] = await Promise.all([
+  try {
+    const [vendors, orders, reviews, products, stats] = await Promise.all([
     queryMany(
       `SELECT * FROM vendors ORDER BY created_at DESC`
     ),
@@ -54,9 +59,13 @@ export async function GET(request: Request) {
       totalProducts: Number(stats?.total_products ?? 0),
       totalReviews: Number(stats?.total_reviews ?? 0),
       totalRevenue: Number(stats?.total_revenue ?? 0),     // solo pedidos entregados
-      avgRating: Number(stats?.avg_rating ?? 0),
+      avgRating: Number(stats?.total_revenue ?? 0) && Number(stats?.avg_rating ?? 0),
     },
   });
+  } catch (e) {
+    console.error("[api/admin] error:", e);
+    return NextResponse.json({ error: "No se pudieron cargar los datos del panel" }, { status: 500 });
+  }
 }
 
 export async function PATCH(request: Request) {

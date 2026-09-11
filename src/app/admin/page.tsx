@@ -68,8 +68,10 @@ export default function AdminDashboard() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
 
   const fetchData = useCallback(async () => {
+    setError(false);
     try {
       const [adminData, usersData] = await Promise.all([
         fetchJson("/api/admin"),
@@ -83,8 +85,11 @@ export default function AdminDashboard() {
         });
         setOrders(adminData.orders || []);
         setVendors(adminData.vendors || []);
+      } else {
+        setError(true);
       }
     } catch {
+      setError(true);
     } finally {
       setLoading(false);
     }
@@ -142,6 +147,26 @@ export default function AdminDashboard() {
   }
 
   const totalUsers = (stats as any)?.totalUsers || 0;
+
+  if (error && !stats) {
+    return (
+      <div className="space-y-4">
+        <h1 className="font-display text-2xl font-semibold">Dashboard</h1>
+        <div className="border border-red-200 bg-red-50 rounded-xl p-6 text-center space-y-3">
+          <p className="font-semibold text-red-700">No se pudieron cargar los datos</p>
+          <p className="text-sm text-muted-foreground">
+            El servidor no respondió. Revisá la conexión o reintentá.
+          </p>
+          <button
+            onClick={() => { setLoading(true); fetchData(); }}
+            className="rounded-xl bg-primary text-primary-foreground text-sm font-medium px-4 py-2 hover:bg-primary/90 transition-colors"
+          >
+            Reintentar
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

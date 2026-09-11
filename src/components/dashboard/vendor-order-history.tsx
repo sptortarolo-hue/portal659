@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { ORDER_STATUS_LABELS, ORDER_STATUS_COLORS, statusLabel } from "@/lib/order-utils";
-import type { OrderStatus } from "@/types/database";
+import type { Order, OrderItem, OrderStatus } from "@/types/database";
 
 type HistoryOrder = {
   id: string;
@@ -16,6 +16,16 @@ type HistoryOrder = {
   total: number;
   created_at: string;
   pickup_number: number | null;
+  // La API devuelve SELECT *: vienen todos los campos del pedido.
+  items?: OrderItem[] | null;
+  channel?: Order["channel"];
+  notes?: string | null;
+  customer_address?: string | null;
+  payment_status?: string | null;
+  estimated_minutes?: number | null;
+  closed_at?: string | null;
+  modification_notes?: string | null;
+  is_preview?: boolean;
 };
 
 const PAYMENT_LABELS: Record<string, string> = {
@@ -25,11 +35,12 @@ const PAYMENT_LABELS: Record<string, string> = {
   mercadopago: "Mercado Pago",
 };
 
-export function VendorOrderHistory({ isModa = false }: { isModa?: boolean }) {
+export function VendorOrderHistory({ isModa = false, onOpenOrder }: { isModa?: boolean; onOpenOrder?: (order: Order) => void }) {
   const [orders, setOrders] = useState<HistoryOrder[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [openingId, setOpeningId] = useState<string | null>(null);
   const pageSize = 25;
 
   const [q, setQ] = useState("");
@@ -78,6 +89,25 @@ export function VendorOrderHistory({ isModa = false }: { isModa?: boolean }) {
     setDeleteTarget(order);
     setConfirmStage(1);
     setConfirmText("");
+  }
+
+  // Abrir el detalle completo del pedido. La lista ya trae `items` (SELECT *),
+  // así que normalmente no hace falta otro fetch; si faltaran, se trae por id.
+  async function openDetail(h: HistoryOrder) {
+    if (!onOpenOrder || openingId) return;
+    if (Array.isArray(h.items)) {
+      onOpenOrder(h as unknown as Order);
+      return;
+    }
+    setOpeningId(h.id);
+    try {
+      const res = await fetch(`/api/vendor/orders/${h.id}`);
+      const data = await res.json();
+      if (data.order) onOpenOrder(data.order as Order);
+    } catch { /* noop */ }
+    finally {
+      setOpeningId(null);
+    }
   }
 
   async function confirmDelete() {
@@ -149,7 +179,15 @@ export function VendorOrderHistory({ isModa = false }: { isModa?: boolean }) {
       ) : (
         <div className="space-y-2">
           {orders.map((o) => (
-            <div key={o.id} className="flex items-center gap-3 rounded-xl border border-border bg-card p-3">
+            <div
+              key={o.id}
+              onClick={() => openDetail(o)}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openDetail(o); } }}
+              role="button"
+              tabIndex={0}
+              title="Ver detalle del pedido"
+              className="flex items-center gap-3 rounded-xl border border-border bg-card p-3 cursor-pointer hover:border-primary/40 hover:shadow-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            >
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-medium text-sm">{o.customer_name}</span>
@@ -173,12 +211,16 @@ export function VendorOrderHistory({ isModa = false }: { isModa?: boolean }) {
               </div>
               <div className="text-right shrink-0">
                 <p className="font-bold text-sm">${Number(o.total).toLocaleString("es-AR")}</p>
-                <button
-                  onClick={() => openDelete(o)}
-                  className="text-[11px] font-medium text-red-500 hover:text-red-600 mt-1"
-                >
-                  Borrar
-                </button>
+                {openingId === o.id ? (
+                  <p className="text-[11px] font-medium text-muted-foreground mt-1">Abriendo...</p>
+                ) : (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); openDelete(o); }}
+                    className="text-[11px] font-medium text-red-500 hover:text-red-600 mt-1"
+                  >
+                    Borrar
+                  </button>
+                )}
               </div>
             </div>
           ))}

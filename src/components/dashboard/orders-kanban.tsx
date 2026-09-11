@@ -339,10 +339,12 @@ export function OrdersKanban({
   );
 
   // Filtro terminal (ej. "completed"): el Kanban solo muestra estados activos.
+  // Los entregados de la jornada se ven en la sección "Entregados de hoy"
+  // debajo del tablero; los de días anteriores, en Histórico.
   if (focusStatus && focusStatus !== "all" && !focusActive) {
     return (
       <div className="text-center py-12 text-sm text-muted-foreground">
-        Los pedidos entregados están en la pestaña Histórico.
+        Los entregados de hoy se muestran debajo · los anteriores están en Histórico.
       </div>
     );
   }

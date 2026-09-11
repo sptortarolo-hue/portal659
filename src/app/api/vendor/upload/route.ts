@@ -45,11 +45,40 @@ export async function POST(request: Request) {
     .replace(/[^a-z0-9]/g, "");
   const filename = `${Date.now()}-${randomBytes(6).toString("hex")}.${ext}`;
 
+  // Achicar fotos de cámara a un tamaño web (máx 1200px, calidad 80) para que
+  // las fichas de Mostrador/Mesa y el micrositio carguen al instante.
+  // PNG/WebP con transparencia se conservan en su formato para no romper recortes.
+  let outBuffer = buffer;
+  let outExt = ext;
+  try {
+    const sharp = (await import("sharp")).default;
+    const pipeline = sharp(buffer).rotate().resize({
+      width: 1200,
+      withoutEnlargement: true,
+    });
+    const meta = await sharp(buffer).metadata();
+    const format = meta.format as string | undefined;
+    if (format === "png" || format === "webp") {
+      outBuffer = await pipeline.toFormat(format, { quality: 80 }).toBuffer();
+      outExt = format;
+    } else if (format === "avif" || format === "gif") {
+      // GIF animados y AVIF: no se tocan (sharp aplanaría la animación).
+      outBuffer = buffer;
+    } else {
+      outBuffer = await pipeline.jpeg({ quality: 80, mozjpeg: true }).toBuffer();
+      outExt = "jpg";
+    }
+  } catch {
+    // Si sharp falla, se guarda el original sin romper la subida.
+    outBuffer = buffer;
+  }
+  const outFilename = filename.replace(/\.[a-z0-9]+$/, `.${outExt}`);
+
   const uploadRoot = process.env.UPLOAD_DIR || path.join(process.cwd(), "uploads");
   const dir = path.join(uploadRoot, folder, userId);
   await mkdir(dir, { recursive: true });
-  await writeFile(path.join(dir, filename), buffer);
+  await writeFile(path.join(dir, outFilename), outBuffer);
 
-  const url = `${getSiteUrl()}/uploads/${folder}/${userId}/${filename}`;
+  const url = `${getSiteUrl()}/uploads/${folder}/${userId}/${outFilename}`;
   return NextResponse.json({ url });
 }

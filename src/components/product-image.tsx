@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import {
   Beef,
   BookOpen,
@@ -29,6 +30,10 @@ type Props = {
   alt: string;
   className?: string;
   iconClassName?: string;
+  /** Si es true, carga inmediata (sin lazy). Útil para imágenes above-the-fold. */
+  eager?: boolean;
+  /** Clases extra para el <img> de la foto (ej. transiciones). */
+  imgClassName?: string;
 };
 
 const VERTICAL_COLORS: Record<string, { bg: string; fg: string }> = {
@@ -93,16 +98,32 @@ export function ProductImage({
   alt,
   className,
   iconClassName,
+  eager = false,
+  imgClassName,
 }: Props) {
-  if (src) {
+  const [loaded, setLoaded] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  // Si cambia la URL, volver a estado de carga.
+  useEffect(() => {
+    setLoaded(false);
+    setFailed(false);
+  }, [src]);
+
+  if (src && !failed) {
     return (
-      <img
-        src={src}
-        alt={alt}
-        loading="lazy"
-        decoding="async"
-        className={className ?? "w-full h-full object-cover"}
-      />
+      <div className={`relative overflow-hidden ${className ?? "w-full h-full"}`}>
+        {!loaded && <div className="absolute inset-0 bg-muted animate-pulse" />}
+        <img
+          src={src}
+          alt={alt}
+          loading={eager ? "eager" : "lazy"}
+          decoding="async"
+          onLoad={() => setLoaded(true)}
+          onError={() => setFailed(true)}
+          className={`w-full h-full object-cover transition-opacity duration-300 ${loaded ? "opacity-100" : "opacity-0"} ${imgClassName ?? ""}`}
+        />
+      </div>
     );
   }
 

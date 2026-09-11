@@ -427,3 +427,30 @@ export function buildContextualWhatsApp(
 
   return null;
 }
+
+/**
+ * Hora de corte de la jornada comercial (hora local del navegador).
+ * Los comercios gastronómicos suelen cerrar pasada la medianoche: un pedido
+ * entregado a las 01:30 sigue perteneciendo a la jornada del día anterior.
+ */
+export const BUSINESS_DAY_CUTOFF_HOUR = 5;
+
+/**
+ * True si dos fechas pertenecen a la misma jornada comercial: se les resta
+ * `cutoffHour` horas a ambas antes de comparar el día calendario.
+ * Ej. con corte a las 5am, lunes 01:30 y domingo 20:00 son la misma jornada.
+ */
+export function isSameBusinessDay(
+  a: string | Date,
+  b: string | Date = new Date(),
+  cutoffHour: number = BUSINESS_DAY_CUTOFF_HOUR
+): boolean {
+  const shift = cutoffHour * 3_600_000;
+  const da = new Date(new Date(a).getTime() - shift);
+  const db = new Date(new Date(b).getTime() - shift);
+  return (
+    da.getFullYear() === db.getFullYear() &&
+    da.getMonth() === db.getMonth() &&
+    da.getDate() === db.getDate()
+  );
+}

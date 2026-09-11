@@ -34,7 +34,7 @@ import { UserMenu } from "@/components/nav/user-menu";
 import { DashboardHome } from "@/components/dashboard/dashboard-home";
 import { OrdersKanban } from "@/components/dashboard/orders-kanban";
 import { useKeyboardShortcuts } from "@/lib/use-keyboard-shortcuts";
-import { buildClientWhatsAppUrl, ORDER_STATUS_COLORS, MODA_STATUS_LABELS, flowSteps, orderCondition, orderReadyLabel, orderNeedsKitchen, CONDITION_META } from "@/lib/order-utils";
+import { buildClientWhatsAppUrl, ORDER_STATUS_COLORS, MODA_STATUS_LABELS, flowSteps, orderCondition, orderReadyLabel, orderNeedsKitchen, isSameBusinessDay, CONDITION_META } from "@/lib/order-utils";
 import OrderDetailModal from "@/components/dashboard/order-detail-modal";
 import DashboardGastro from "@/components/dashboard/dashboard-gastro";
 import DashboardComercio from "@/components/dashboard/dashboard-comercio";
@@ -619,6 +619,100 @@ function VendorDashboardInner() {
     return true;
   });
 
+  // Entregados de la jornada comercial (el corte es a las 5am: un pedido
+  // entregado a la 1:30 sigue siendo "de hoy" para quien cierra de madrugada).
+  const completedToday = orders.filter(
+    (o) => o.status === "completed" && isSameBusinessDay(o.closed_at ?? o.created_at)
+  );
+
+  const deliveredTodaySection = (
+    <div className="mt-2">
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="font-semibold text-sm">
+          ✅ Entregados de hoy{" "}
+          <span className="text-muted-foreground font-bold tabular-nums">({completedToday.length})</span>
+        </h3>
+        {orderStatusFilter === "completed" ? (
+          <button onClick={() => setOrderStatusFilter("all")} className="text-xs font-medium text-primary hover:underline">
+            Ver todos →
+          </button>
+        ) : (
+          <button onClick={() => setTab("history")} className="text-xs font-medium text-primary hover:underline">
+            Histórico →
+          </button>
+        )}
+      </div>
+      {completedToday.length === 0 ? (
+        <div className="text-center py-8 rounded-xl border border-dashed border-border">
+          <p className="text-muted-foreground text-sm">Sin entregas en esta jornada</p>
+          <button onClick={() => setTab("history")} className="text-xs text-primary font-medium hover:underline mt-1">
+            Ver histórico de días anteriores →
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+          {completedToday.map((order) => {
+            const endMs = order.closed_at ? new Date(order.closed_at).getTime() : Date.now();
+            const elapsed = Math.max(0, Math.floor((endMs - new Date(order.created_at).getTime()) / 60000));
+            return (
+              <div
+                key={order.id}
+                role="button"
+                tabIndex={0}
+                onClick={() => setSelectedOrder(order)}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelectedOrder(order); } }}
+                className="w-full text-left p-3.5 rounded-xl border-2 border-border bg-card transition-all active:scale-[0.98] cursor-pointer hover:border-primary/40 hover:shadow-sm"
+              >
+                <div className="flex items-start justify-between gap-2 mb-2">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-sm truncate">{order.customer_name}</p>
+                    <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                      <span className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full ${ORDER_STATUS_COLORS[order.status]}`}>
+                        <span className="inline-block w-1.5 h-1.5 rounded-full bg-current" />
+                        {statusLabels[order.status]}
+                      </span>
+                      {order.is_preview && (
+                        <span className="inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full border bg-violet-100 text-violet-700 border-violet-200">
+                          🧪 PRUEBA
+                        </span>
+                      )}
+                      {order.pickup_number != null && (
+                        <span className="inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-status-new/15 text-status-new border-status-new/20">
+                          Nro. {order.pickup_number}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <span className="text-sm font-bold tabular-nums">${Number(order.total).toLocaleString("es-AR")}</span>
+                    <p className="text-[10px] font-medium text-muted-foreground">Tardó {elapsed} min</p>
+                  </div>
+                </div>
+                <div className="space-y-0.5 mb-2">
+                  {(order.items || []).slice(0, 2).map((item, i) => (
+                    <p key={i} className="text-xs text-muted-foreground truncate">
+                      {item.qty}x {item.name}
+                      {item.modifiers && item.modifiers.length > 0 && (
+                        <span className="text-red-500 font-medium"> ({item.modifiers.join(", ")})</span>
+                      )}
+                    </p>
+                  ))}
+                  {(order.items || []).length > 2 && (
+                    <p className="text-[10px] text-muted-foreground/50">+{order.items.length - 2} más</p>
+                  )}
+                </div>
+                <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                  <span>{new Date(order.closed_at ?? order.created_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}</span>
+                  <span className="text-primary font-semibold">Ver detalle →</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+
   const ordersContent = (
     <div className="space-y-3">
       {/* Search */}
@@ -658,6 +752,10 @@ function VendorDashboardInner() {
         </div>
       )}
 
+      {orderStatusFilter === "completed" ? (
+        deliveredTodaySection
+      ) : (
+        <>
       {/* Desktop: Kanban board */}
       <div className="hidden lg:block">
         <OrdersKanban
@@ -813,6 +911,9 @@ function VendorDashboardInner() {
           </div>
         )}
       </div>
+      {deliveredTodaySection}
+        </>
+      )}
     </div>
   );
 
@@ -982,14 +1083,14 @@ function VendorDashboardInner() {
                 { status: "preparing", label: isModa ? "Empaquetando" : "Preparando", value: orders.filter((o) => o.status === "preparing").length, bg: "bg-status-preparing/10 dark:bg-status-preparing/20", text: "text-status-preparing" },
                 { status: "ready", label: "Listos", value: orders.filter((o) => o.status === "ready").length, bg: "bg-status-ready/10 dark:bg-status-ready/20", text: "text-status-ready" },
                 { status: "sent", label: "Enviados", value: orders.filter((o) => o.status === "sent").length, bg: "bg-status-sent/10 dark:bg-status-sent/20", text: "text-status-sent" },
-                { status: "completed", label: "Entregados", value: orders.filter((o) => o.status === "completed").length, bg: "bg-muted", text: "text-muted-foreground" },
+                { status: "completed", label: "Entregados", value: completedToday.length, bg: "bg-muted", text: "text-muted-foreground" },
               ].map((stat) => (
                 <button
                   key={stat.label}
                   type="button"
                   onClick={() => {
                     setTab("orders");
-                    setOrderStatusFilter(stat.status);
+                    setOrderStatusFilter((prev) => (prev === stat.status ? "all" : stat.status));
                   }}
                   className={`rounded-xl ${stat.bg} p-2 text-center transition-all active:scale-[0.96] ${tab === "orders" && orderStatusFilter === stat.status ? "ring-2 ring-primary/40" : ""}`}
                 >
@@ -1089,7 +1190,7 @@ function VendorDashboardInner() {
               )}
               {mountedTabs.has("history") && (
                 <div className={tab === "history" ? "" : "hidden"}>
-                  <VendorOrderHistory isModa={isModa} />
+                  <VendorOrderHistory isModa={isModa} onOpenOrder={setSelectedOrder} />
                 </div>
               )}
               {mountedTabs.has("hoy") && (

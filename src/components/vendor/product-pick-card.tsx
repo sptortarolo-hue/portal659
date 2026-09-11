@@ -1,5 +1,7 @@
 "use client";
 
+import { ProductImage } from "@/components/product-image";
+
 export type PickProduct = {
   id: string;
   name: string;
@@ -7,6 +9,8 @@ export type PickProduct = {
   promo_price?: number | null;
   image_url?: string | null;
   available?: boolean;
+  category?: string | null;
+  vertical?: string | null;
 };
 
 /**
@@ -29,21 +33,15 @@ export function ProductPickCard({
       className="group text-left rounded-xl border border-border bg-card overflow-hidden hover:border-primary/50 hover:shadow-sm transition-all active:scale-[0.98] min-w-0"
     >
       <div className="relative aspect-square">
-        {p.image_url ? (
-          <img
-            src={p.image_url}
-            alt={p.name}
-            loading="lazy"
-            decoding="async"
-            className="w-full h-full object-cover"
-          />
-        ) : (
-          <div className="w-full h-full bg-gradient-to-br from-secondary to-accent flex items-center justify-center">
-            <span className="font-display text-4xl font-bold text-primary/40">
-              {p.name.charAt(0)}
-            </span>
-          </div>
-        )}
+        <ProductImage
+          src={p.image_url}
+          name={p.name}
+          category={p.category}
+          vertical={p.vertical ?? "gastronomia"}
+          alt={p.name}
+          className="w-full h-full"
+          iconClassName="h-10 w-10"
+        />
         {p.available === false && (
           <span className="absolute top-2 left-2 rounded-full bg-red-500 text-white text-[9px] font-bold px-2 py-0.5">
             Agotado

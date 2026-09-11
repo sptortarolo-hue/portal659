@@ -42,6 +42,7 @@
     "react-dom": "^19.0.0",
     "react-easy-crop": "^6.2.3",
     "recharts": "^3.10.1",
+    "sharp": "^0.35.4",
     "tailwind-merge": "^2.6.0",
     "web-push": "^3.6.7"
   },

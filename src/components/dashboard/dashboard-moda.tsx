@@ -410,7 +410,7 @@ export default function DashboardModa({
               <Label className="text-sm">Variantes (color × talle)</Label>
               <Button type="button" size="sm" variant="outline" onClick={addVariantRow}>+ Fila</Button>
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-6 gap-2 text-xs font-medium text-muted-foreground px-1">
+            <div className="hidden sm:grid sm:grid-cols-6 gap-2 text-xs font-medium text-muted-foreground px-1">
               <span>Color</span><span>Talle</span><span>Precio</span><span>Promo</span><span>Stock</span><span></span>
             </div>
             {variantRows.map((row, i) => (

@@ -125,7 +125,7 @@ export function OfferForm({
         )}
       </div>
       <div className="space-y-3">
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div><Label>Nombre</Label><Input value={offName} onChange={(e) => setOffName(e.target.value)} required onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }} /></div>
           <div><Label>Precio ($)</Label><Input type="number" step="0.01" value={offPrice} onChange={(e) => setOffPrice(e.target.value)} required onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }} /></div>
         </div>
@@ -162,7 +162,7 @@ export function OfferForm({
           </div>
         )}
         {showStock && offStockControl && setOffStock && setOffStockLowThreshold && (
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div><Label>Stock</Label><QuantityInput value={offStock} onChange={setOffStock} min={0} /></div>
             <div><Label>Umbral bajo stock</Label><Input type="number" min={0} value={offStockLowThreshold} onChange={(e) => { const v = parseInt(e.target.value, 10); if (!isNaN(v) && v >= 0) setOffStockLowThreshold(v); }} /></div>
           </div>
@@ -465,7 +465,7 @@ export function DeliveryFeeConfig({
 
   return (
     <div className="space-y-3 rounded-xl border border-border p-3">
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <Label>Costo de envío ($)</Label>
           <Input

@@ -182,8 +182,8 @@ export function MenuImportModal({ open, onClose, onImported }: Props) {
           </div>
 
           {items.length > 0 && (
-            <div className="max-h-64 overflow-y-auto rounded-lg border border-border">
-              <table className="w-full text-sm">
+            <div className="max-h-64 overflow-y-auto overflow-x-auto rounded-lg border border-border">
+              <table className="w-full min-w-[560px] text-sm">
                 <thead className="sticky top-0 bg-card">
                   <tr className="text-left text-xs text-muted-foreground border-b border-border">
                     <th className="p-2 font-medium">Nombre</th>

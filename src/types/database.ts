@@ -160,6 +160,55 @@ export type RecipeItem = {
   created_at: string;
 };
 
+/** Tipo de comprobante de una compra (AR). */
+export type ReceiptType =
+  | "factura_a"
+  | "factura_b"
+  | "factura_c"
+  | "remito"
+  | "ticket"
+  | "ninguno";
+
+/** Proveedor del módulo Compras. */
+export type Supplier = {
+  id: string;
+  vendor_id: string;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  notes: string | null;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+/** Compra a proveedor (cabecera). El total es Σ de líneas. */
+export type Purchase = {
+  id: string;
+  vendor_id: string;
+  supplier_id: string | null;
+  purchased_at: string;
+  receipt_type: ReceiptType;
+  receipt_number: string | null;
+  notes: string | null;
+  total: number;
+  created_at: string;
+  updated_at: string;
+};
+
+/** Línea de compra: insumo + cantidad + costo neto por unidad base. */
+export type PurchaseItem = {
+  id: string;
+  purchase_id: string;
+  ingredient_id: string;
+  qty: number;
+  unit: string;
+  unit_cost_net: number;
+  line_total: number;
+  position: number;
+  created_at: string;
+};
+
 export type VendorGallery = {
   id: string;
   vendor_id: string;

@@ -56,10 +56,17 @@ export function toBaseUnit(
   unit: string,
   baseUnit: string
 ): number | null {
+  const f = unitFactor(unit, baseUnit);
+  return f === null ? null : qty * f;
+}
+
+/** Factor de conversión de `unit` a la unidad base (para 1 unidad).
+ *  Ej.: unitFactor('kg', 'g') = 1000. Null si incompatible. */
+export function unitFactor(unit: string, baseUnit: string): number | null {
   const from = familyOf(unit);
   const baseFamily = FAMILY_OF_BASE[baseUnit];
   if (!from || !baseFamily || from.family !== baseFamily) return null;
-  return qty * from.factor;
+  return from.factor;
 }
 
 /** Cantidad BRUTA a partir de la neta y el % de merma.
@@ -275,6 +282,20 @@ export const LINE_UNITS: Record<UnitFamily, string[]> = {
   ml: ["ml", "cl", "l"],
   u: ["u", "doc"],
 };
+
+/** Tipos de comprobante de compra (AR) con su etiqueta. */
+export const RECEIPT_TYPE_OPTIONS: { value: string; label: string }[] = [
+  { value: "ninguno", label: "Sin comprobante" },
+  { value: "ticket", label: "Ticket" },
+  { value: "remito", label: "Remito" },
+  { value: "factura_b", label: "Factura B" },
+  { value: "factura_c", label: "Factura C" },
+  { value: "factura_a", label: "Factura A" },
+];
+
+export const RECEIPT_TYPE_LABEL: Record<string, string> = Object.fromEntries(
+  RECEIPT_TYPE_OPTIONS.map((o) => [o.value, o.label])
+);
 
 export const BASE_UNIT_LABEL: Record<UnitFamily, string> = {
   g: "Peso (g)",

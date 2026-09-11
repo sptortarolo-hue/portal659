@@ -305,7 +305,7 @@ export function Mostrador() {
           </div>
         )}
       </div>
-      <div className="grid grid-cols-3 sm:grid-cols-3 xl:grid-cols-4 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-2">
         {filtered.map((p) => (
           <button
             key={p.id}
@@ -334,9 +334,9 @@ export function Mostrador() {
                 </span>
               )}
             </div>
-            <div className="p-2">
-              <p className="text-xs font-medium line-clamp-2">{p.name}</p>
-              <div className="flex items-baseline gap-1 mt-0.5">
+            <div className="p-2 min-w-0">
+              <p className="text-xs font-medium line-clamp-2 break-words">{p.name}</p>
+              <div className="flex items-baseline gap-1 mt-0.5 flex-wrap min-w-0">
                 <span className="text-sm font-semibold text-primary tabular-nums">
                   ${Number(p.promo_price ?? p.price).toLocaleString("es-AR")}
                 </span>
@@ -363,7 +363,7 @@ export function Mostrador() {
         {items.length === 0 && <p className="text-xs text-muted-foreground text-center py-6">Tocá productos para armar el pedido</p>}
         {items.map((i) => (
           <div key={`${i.product_id}|${(i.modifiers || []).map((m) => m.label).join(",")}`} className="flex items-center gap-2 text-sm">
-            <span className="flex-1 line-clamp-2">
+            <span className="flex-1 min-w-0 line-clamp-2 break-words">
               {i.name}
               {(i.modifiers || []).length > 0 && (
                 <span className="block text-[10px] text-muted-foreground truncate">
@@ -537,7 +537,7 @@ export function Mostrador() {
               return (
                 <div key={o.id} className="space-y-2">
                   <div className="flex items-center justify-between text-xs gap-2">
-                    <div className="flex items-center gap-2 min-w-0">
+                    <div className="flex items-center gap-2 min-w-0 flex-wrap">
                       <Badge variant="secondary" className="text-[9px]">{o.payment_method}</Badge>
                       {o.pickup_number != null && (
                         <Badge className="text-[9px] bg-status-new/15 text-status-new">Nro. {o.pickup_number}</Badge>
@@ -546,7 +546,7 @@ export function Mostrador() {
                         <Badge className="text-[9px] bg-blue-100 text-blue-700">🛵 A domicilio</Badge>
                       )}
                       <span className="text-muted-foreground truncate">{o.customer_name || "Mostrador"}</span>
-                      <span className="text-muted-foreground/60">{new Date(o.created_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}</span>
+                      <span className="text-muted-foreground/60 shrink-0">{new Date(o.created_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}</span>
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
                       {canConvert && (

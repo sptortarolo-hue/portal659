@@ -313,7 +313,7 @@ export default function CheckoutPage() {
 
       <form onSubmit={handleSubmit} className="space-y-4">
         {/* Name & Phone */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="min-w-0">
             <Label htmlFor="name">Tu nombre</Label>
             <Input
@@ -357,7 +357,7 @@ export default function CheckoutPage() {
             <button
               type="button"
               onClick={() => setMethod("delivery")}
-              className={`flex-1 rounded-xl border-2 py-3 text-sm font-medium transition-all ${
+              className={`flex-1 min-w-0 rounded-xl border-2 py-3 px-1 text-xs sm:text-sm font-medium transition-all break-words ${
                 method === "delivery"
                   ? "border-primary bg-primary/5 text-primary"
                   : "border-border text-muted-foreground hover:border-primary/30"
@@ -368,7 +368,7 @@ export default function CheckoutPage() {
             <button
               type="button"
               onClick={() => setMethod("pickup")}
-              className={`flex-1 rounded-xl border-2 py-3 text-sm font-medium transition-all ${
+              className={`flex-1 min-w-0 rounded-xl border-2 py-3 px-1 text-xs sm:text-sm font-medium transition-all break-words ${
                 method === "pickup"
                   ? "border-primary bg-primary/5 text-primary"
                   : "border-border text-muted-foreground hover:border-primary/30"
@@ -411,7 +411,7 @@ export default function CheckoutPage() {
             <button
               type="button"
               onClick={() => setPaymentMethod("whatsapp")}
-              className={`rounded-xl border-2 py-3 text-sm font-medium transition-all ${
+              className={`rounded-xl border-2 py-3 px-1 text-xs sm:text-sm font-medium transition-all min-w-0 break-words ${
                 paymentMethod === "whatsapp"
                   ? "border-primary bg-primary/5 text-primary"
                   : "border-border text-muted-foreground hover:border-primary/30"
@@ -422,7 +422,7 @@ export default function CheckoutPage() {
             <button
               type="button"
               onClick={() => setPaymentMethod("efectivo")}
-              className={`rounded-xl border-2 py-3 text-sm font-medium transition-all ${
+              className={`rounded-xl border-2 py-3 px-1 text-xs sm:text-sm font-medium transition-all min-w-0 break-words ${
                 paymentMethod === "efectivo"
                   ? "border-primary bg-primary/5 text-primary"
                   : "border-border text-muted-foreground hover:border-primary/30"
@@ -433,7 +433,7 @@ export default function CheckoutPage() {
             <button
               type="button"
               onClick={() => setPaymentMethod("transferencia")}
-              className={`rounded-xl border-2 py-3 text-sm font-medium transition-all ${
+              className={`rounded-xl border-2 py-3 px-1 text-xs sm:text-sm font-medium transition-all min-w-0 break-words ${
                 paymentMethod === "transferencia"
                   ? "border-primary bg-primary/5 text-primary"
                   : "border-border text-muted-foreground hover:border-primary/30"

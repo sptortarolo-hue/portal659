@@ -66,6 +66,12 @@ ilimitado), `max_orders_month` (vacío = ilimitado), `badge`, `popular`, y la pr
   recalcula todo lo que lo usa. UI: tab **Recetas** (`RecipeManager`) + chip de
   food-cost en el Menú. Alcance v1: solo costeo informativo (sin descuento de
   stock al vender, sin CMV/teórico-vs-real — fase 2).
+- **Compras** (misma feature `recipes`): `suppliers` + `purchases`/`purchase_items`
+  (`supabase/self-host/migrate-purchases.sql`). Cada compra guarda proveedor, fecha,
+  comprobante (A/B/C, Remito, Ticket) y líneas con costo neto; al guardar pisa el
+  costo al **último precio** (los platos se recalculan solos) y deja historial para
+  ver variación de precios por insumo. Borrar una compra revierte al precio anterior.
+  Sin stock ni cuenta corriente (fase 2).
 
 ## Migración
 

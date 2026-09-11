@@ -88,6 +88,8 @@ export async function POST(request: Request) {
     print_social,
     lat,
     lng,
+    food_cost_warn,
+    food_cost_bad,
   } = body;
 
   const VALID_VERTICALS = ["gastronomia", "comercio", "servicio", "moda", "salud", "otro"];
@@ -149,6 +151,21 @@ export async function POST(request: Request) {
   if (print_social !== undefined) payload.print_social = print_social === true;
   if (lat !== undefined) payload.lat = lat != null && lat !== "" && !isNaN(Number(lat)) ? Number(lat) : null;
   if (lng !== undefined) payload.lng = lng != null && lng !== "" && !isNaN(Number(lng)) ? Number(lng) : null;
+  // Semáforo food-cost (global por comercio, NULL = defaults 30/35).
+  if (food_cost_warn !== undefined || food_cost_bad !== undefined) {
+    const w = food_cost_warn != null && food_cost_warn !== "" ? Number(food_cost_warn) : null;
+    const b = food_cost_bad != null && food_cost_bad !== "" ? Number(food_cost_bad) : null;
+    for (const [label, v] of [["amarillo", w], ["rojo", b]] as const) {
+      if (v !== null && (!isFinite(v) || v <= 0 || v >= 100)) {
+        return NextResponse.json({ error: `El umbral ${label} debe estar entre 1 y 99` }, { status: 400 });
+      }
+    }
+    if (w !== null && b !== null && w >= b) {
+      return NextResponse.json({ error: "El amarillo debe ser menor que el rojo" }, { status: 400 });
+    }
+    if (food_cost_warn !== undefined) payload.food_cost_warn = w;
+    if (food_cost_bad !== undefined) payload.food_cost_bad = b;
+  }
 
   if (existing) {
     let vendor: Record<string, unknown> | undefined;

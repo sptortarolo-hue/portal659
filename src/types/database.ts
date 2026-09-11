@@ -209,6 +209,24 @@ export type PurchaseItem = {
   created_at: string;
 };
 
+/** Link de receta compartida: otro producto a la venta del mismo batch
+ *  (ej. la porción y la torta entera). El costo se deriva con `servings`;
+ *  el precio sigue siendo propio de cada producto. */
+export type ProductRecipeLink = {
+  id: string;
+  recipe_id: string;
+  product_id: string;
+  /** Porciones del batch que representa esta venta. */
+  servings: number;
+  created_at: string;
+};
+
+/** Umbrales del semáforo food-cost (global por comercio). */
+export type FoodCostThresholds = {
+  warn: number;
+  bad: number;
+};
+
 export type VendorGallery = {
   id: string;
   vendor_id: string;

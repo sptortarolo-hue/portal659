@@ -21,6 +21,7 @@ import {
   foodCostPct,
   foodCostStatus,
   formatMoney,
+  linkedCost,
   suggestedPrice,
   toBaseUnit,
   unitFactor,
@@ -39,6 +40,20 @@ type CostSummary = {
   cost: number | null;
   food_cost_pct: number | null;
   status: FoodCostStatus;
+  linked_from: {
+    recipe_id: string;
+    product_name: string | null;
+    servings: number;
+  } | null;
+};
+
+type RecipeLinkInfo = {
+  id: string;
+  recipe_id: string;
+  product_id: string;
+  servings: number;
+  product_name: string;
+  recipe_product_name: string | null;
 };
 
 type DraftLine = { key: number; ingredient_id: string; qty_net: string; unit: string };
@@ -71,8 +86,12 @@ function RecipeEditor({
   ingredients,
   recipes,
   allItems,
+  products,
+  links,
+  thresholds,
   onSaved,
   onDeleted,
+  onLinksChanged,
 }: {
   target: DraftTarget;
   title: string;
@@ -84,8 +103,15 @@ function RecipeEditor({
   ingredients: Ingredient[];
   recipes: Recipe[];
   allItems: RecipeItem[];
+  /** Catálogo para vincular otras presentaciones (solo platos). */
+  products?: { id: string; name: string; price: number }[];
+  /** Links existentes (se filtran por receta acá adentro). */
+  links?: RecipeLinkInfo[];
+  /** Umbrales del semáforo del comercio. */
+  thresholds?: { warn: number; bad: number };
   onSaved: () => void;
   onDeleted: () => void;
+  onLinksChanged?: () => void;
 }) {
   const existing = useMemo(() => {
     const r =
@@ -215,9 +241,10 @@ function RecipeEditor({
   }
 
   const pct = preview && salePrice ? foodCostPct(preview.perPortion, salePrice) : null;
-  const status = foodCostStatus(pct);
+  const status = foodCostStatus(pct, thresholds);
   const meta = FOOD_COST_STATUS_META[status];
   const tgt = Math.min(Math.max(Number(targetPct) || 30, 1), 90);
+  const belowCost = salePrice != null && preview !== null && preview.perPortion > salePrice;
 
   return (
     <Card className="p-4 space-y-4">
@@ -361,6 +388,11 @@ function RecipeEditor({
               </Badge>
             </div>
           )}
+          {belowCost && (
+            <p className="text-sm text-red-600 font-medium">
+              ⚠️ Vendés bajo costo: cuesta {formatMoney(preview.perPortion)} y sale a {formatMoney(Number(salePrice))}
+            </p>
+          )}
           {salePrice != null && preview.perPortion > 0 && (
             <div className="flex items-center justify-between gap-2 text-sm flex-wrap">
               <span className="text-muted-foreground flex items-center gap-1 min-w-0 flex-wrap">
@@ -389,6 +421,18 @@ function RecipeEditor({
       )}
 
       {error && <p className="text-sm text-red-600">{error}</p>}
+      {"productId" in target && (
+        <RecipePresentations
+          recipeId={existing?.recipe.id ?? null}
+          batchTotal={preview?.total ?? 0}
+          batchPortions={preview?.portions ?? 1}
+          ownProductId={target.productId}
+          products={products ?? []}
+          recipes={recipes}
+          links={links ?? []}
+          onChanged={() => onLinksChanged?.()}
+        />
+      )}
       <div className="flex gap-2">
         <Button onClick={handleSave} disabled={saving} className="flex-1">
           {saving ? "Guardando…" : existing ? "Guardar cambios" : "Crear receta"}
@@ -400,6 +444,127 @@ function RecipeEditor({
         )}
       </div>
     </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Otras presentaciones del mismo batch (porción + entera): productos
+// vinculados a esta receta, cada uno con sus porciones y su precio propio.
+// ---------------------------------------------------------------------------
+function RecipePresentations({
+  recipeId,
+  batchTotal,
+  batchPortions,
+  ownProductId,
+  products,
+  recipes,
+  links,
+  onChanged,
+}: {
+  recipeId: string | null;
+  batchTotal: number;
+  batchPortions: number;
+  ownProductId: string;
+  products: { id: string; name: string; price: number }[];
+  recipes: Recipe[];
+  links: RecipeLinkInfo[];
+  onChanged: () => void;
+}) {
+  const [selProduct, setSelProduct] = useState("");
+  const [servings, setServings] = useState("1");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const myLinks = useMemo(() => links.filter((l) => l.recipe_id === recipeId), [links, recipeId]);
+
+  const eligible = useMemo(() => {
+    const withRecipe = new Set(recipes.map((r) => r.product_id).filter(Boolean));
+    const withLink = new Set(links.map((l) => l.product_id));
+    return products.filter((p) => p.id !== ownProductId && !withRecipe.has(p.id) && !withLink.has(p.id));
+  }, [products, recipes, links, ownProductId]);
+
+  async function handleAdd() {
+    setError("");
+    if (!recipeId) return setError("Guardá la receta primero");
+    if (!selProduct) return setError("Elegí el producto");
+    const sv = Number(servings);
+    if (!isFinite(sv) || sv <= 0) return setError("Las porciones deben ser mayores a 0");
+    setSaving(true);
+    const r = await apiJson("/api/vendor/recipes/links", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ recipe_id: recipeId, product_id: selProduct, servings: sv }),
+    });
+    setSaving(false);
+    if (!r.ok) return setError(r.error || "No se pudo vincular");
+    setSelProduct("");
+    setServings("1");
+    onChanged();
+  }
+
+  async function handleRemove(productId: string, name: string) {
+    if (!window.confirm(`¿Desvincular “${name}”? Queda sin receta.`)) return;
+    const r = await apiJson(`/api/vendor/recipes/links?productId=${productId}`, { method: "DELETE" });
+    if (!r.ok) return setError(r.error || "No se pudo desvincular");
+    onChanged();
+  }
+
+  return (
+    <div className="rounded-xl border border-border p-3 space-y-2">
+      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        🧩 Otras presentaciones de este batch
+      </p>
+      {myLinks.length === 0 && (
+        <p className="text-xs text-muted-foreground">
+          Ej.: esta elaboración (rinde {batchPortions}) también se vende entera o por porción, cada una a su precio.
+        </p>
+      )}
+      {myLinks.map((l) => (
+        <div key={l.id} className="flex items-center gap-2 text-sm">
+          <span className="flex-1 min-w-0 truncate tabular-nums">
+            {l.product_name} · {Number(l.servings).toLocaleString("es-AR")} porc. →{" "}
+            <span className="font-semibold">{formatMoney(linkedCost(batchTotal, batchPortions, Number(l.servings)))}</span>
+          </span>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="text-red-600 px-2"
+            onClick={() => handleRemove(l.product_id, l.product_name)}
+          >
+            ✕
+          </Button>
+        </div>
+      ))}
+      {eligible.length > 0 ? (
+        <div className="flex gap-1.5">
+          <select
+            value={selProduct}
+            onChange={(e) => setSelProduct(e.target.value)}
+            className="flex-1 min-w-0 rounded-lg border border-input bg-background px-2 py-2 text-sm"
+          >
+            <option value="">Vincular producto…</option>
+            {eligible.map((p) => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+          <Input
+            type="number"
+            min={0.001}
+            step="any"
+            value={servings}
+            onChange={(e) => setServings(e.target.value)}
+            className="w-20"
+            title="Porciones del batch que representa"
+            placeholder="Porc."
+          />
+          <Button type="button" size="sm" onClick={handleAdd} disabled={saving || !recipeId}>+</Button>
+        </div>
+      ) : (
+        <p className="text-xs text-muted-foreground">No hay productos libres para vincular (todos tienen receta o link).</p>
+      )}
+      {error && <p className="text-xs text-red-600">{error}</p>}
+    </div>
   );
 }
 
@@ -1214,6 +1379,69 @@ function PriceHistory({ ingredientId, baseUnit }: { ingredientId: string; baseUn
 }
 
 // ---------------------------------------------------------------------------
+// Semáforo food-cost editable (global por comercio, defaults 30/35).
+// ---------------------------------------------------------------------------
+function ThresholdSettings({
+  thresholds,
+  onSaved,
+}: {
+  thresholds: { warn: number; bad: number };
+  onSaved: () => void;
+}) {
+  const [warn, setWarn] = useState(String(thresholds.warn));
+  const [bad, setBad] = useState(String(thresholds.bad));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    setWarn(String(thresholds.warn));
+    setBad(String(thresholds.bad));
+  }, [thresholds.warn, thresholds.bad]);
+
+  async function handleSave() {
+    setError("");
+    const w = Number(warn);
+    const b = Number(bad);
+    if (!isFinite(w) || w <= 0 || w >= 100 || !isFinite(b) || b <= 0 || b >= 100) {
+      return setError("Usá valores entre 1 y 99");
+    }
+    if (w >= b) return setError("El amarillo debe ser menor que el rojo");
+    setSaving(true);
+    const r = await apiJson("/api/vendor/me", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ food_cost_warn: w, food_cost_bad: b }),
+    });
+    setSaving(false);
+    if (!r.ok) return setError(r.error || "No se pudo guardar");
+    onSaved();
+  }
+
+  return (
+    <details className="rounded-xl border border-border bg-card px-3 py-2">
+      <summary className="text-xs cursor-pointer list-none flex items-center gap-2">
+        <span className="tabular-nums">
+          🚦 Semáforo: 🟢 &lt;{thresholds.warn}% · 🟡 {thresholds.warn}–{thresholds.bad}% · 🔴 &gt;{thresholds.bad}%
+        </span>
+        <span className="text-primary font-semibold ml-auto flex-shrink-0">Editar</span>
+      </summary>
+      <div className="flex items-end gap-2 pt-2">
+        <div>
+          <Label className="text-xs">🟡 desde %</Label>
+          <Input type="number" min={1} max={99} step="any" value={warn} onChange={(e) => setWarn(e.target.value)} className="w-24" />
+        </div>
+        <div>
+          <Label className="text-xs">🔴 desde %</Label>
+          <Input type="number" min={1} max={99} step="any" value={bad} onChange={(e) => setBad(e.target.value)} className="w-24" />
+        </div>
+        <Button size="sm" onClick={handleSave} disabled={saving}>{saving ? "…" : "Guardar"}</Button>
+      </div>
+      {error && <p className="text-xs text-red-600 pt-1">{error}</p>}
+    </details>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Tab Recetas: carta con semáforo + editor | biblioteca de insumos | compras.
 // ---------------------------------------------------------------------------
 export function RecipeManager() {
@@ -1223,6 +1451,8 @@ export function RecipeManager() {
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [allItems, setAllItems] = useState<RecipeItem[]>([]);
   const [costs, setCosts] = useState<CostSummary[]>([]);
+  const [links, setLinks] = useState<RecipeLinkInfo[]>([]);
+  const [thresholds, setThresholds] = useState({ warn: 30, bad: 35 });
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [selectedProduct, setSelectedProduct] = useState<string | null>(null);
@@ -1233,12 +1463,14 @@ export function RecipeManager() {
     const [o, ing, c, r] = await Promise.all([
       getJson<{ offers: Product[] }>("/api/vendor/offers"),
       getJson<{ ingredients: Ingredient[] }>("/api/vendor/ingredients"),
-      getJson<{ costs: CostSummary[] }>("/api/vendor/recipes/costs"),
+      getJson<{ costs: CostSummary[]; links: RecipeLinkInfo[]; thresholds: { warn: number; bad: number } }>("/api/vendor/recipes/costs"),
       getJson<{ recipes: Recipe[]; items: RecipeItem[] }>("/api/vendor/recipes"),
     ]);
     if (o?.offers) setProducts(o.offers.map((p) => ({ id: p.id, name: p.name, price: Number(p.price) || 0 })));
     if (ing?.ingredients) setIngredients(ing.ingredients);
     if (c?.costs) setCosts(c.costs);
+    if (c?.links) setLinks(c.links);
+    if (c?.thresholds) setThresholds(c.thresholds);
     if (r) {
       setRecipes(r.recipes || []);
       setAllItems(r.items || []);
@@ -1316,6 +1548,8 @@ export function RecipeManager() {
         className="max-w-sm"
       />
 
+      <ThresholdSettings thresholds={thresholds} onSaved={refreshAfterSave} />
+
       {view === "compras" ? (
         <PurchasesManager
           ingredients={ingredients.filter((i) => i.active)}
@@ -1354,6 +1588,7 @@ export function RecipeManager() {
                         {c?.has_recipe && c.cost !== null
                           ? ` · Costo ${formatMoney(c.cost)}`
                           : " · Sin receta"}
+                        {c?.linked_from && ` · 🔗 ${c.linked_from.product_name}`}
                       </span>
                     </span>
                     {c?.has_recipe && meta ? (
@@ -1384,11 +1619,15 @@ export function RecipeManager() {
                     ingredients={ingredients.filter((i) => i.active)}
                     recipes={recipes}
                     allItems={allItems}
+                    products={products}
+                    links={links}
+                    thresholds={thresholds}
                     onSaved={refreshAfterSave}
                     onDeleted={() => {
                       setSelectedProduct(null);
                       refreshAfterSave();
                     }}
+                    onLinksChanged={refreshAfterSave}
                   />
                 );
               })()
@@ -1479,6 +1718,7 @@ export function RecipeManager() {
                     ingredients={ingredients.filter((i) => i.active && i.id !== selectedElaborated)}
                     recipes={recipes}
                     allItems={allItems}
+                    thresholds={thresholds}
                     onSaved={refreshAfterSave}
                     onDeleted={() => refreshAfterSave()}
                   />

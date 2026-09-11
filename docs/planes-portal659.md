@@ -72,6 +72,14 @@ ilimitado), `max_orders_month` (vacío = ilimitado), `badge`, `popular`, y la pr
   costo al **último precio** (los platos se recalculan solos) y deja historial para
   ver variación de precios por insumo. Borrar una compra revierte al precio anterior.
   Sin stock ni cuenta corriente (fase 2).
+- **Receta compartida** (`supabase/self-host/migrate-recipe-links.sql`): tabla
+  `product_recipe_links` (producto → receta de otro + `servings`). La misma
+  elaboración se vende porcionada y entera: el costo se deriva
+  (`total ÷ rinde × servings`) pero el precio, semáforo y sugerido son propios de
+  cada producto. Un producto tiene receta propia o link, nunca ambas.
+- **Semáforo editable** (misma migración): `vendors.food_cost_warn/food_cost_bad`
+  (NULL = 30/35). Se edita en el tab Recetas (tarjeta 🚦) vía `POST /api/vendor/me`;
+  `GET /api/vendor/recipes/costs` calcula con esos umbrales y los devuelve.
 
 ## Migración
 

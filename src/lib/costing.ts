@@ -259,13 +259,46 @@ export function suggestedPrice(cost: number, targetPct = 30): number {
   return round2(cost / (t / 100));
 }
 
+/**
+ * Costo de una presentación vinculada: total del batch ÷ rinde × servings.
+ * Ej.: torta total $9.000, rinde 6 → porción (servings=1) $1.500,
+ * torta entera (servings=6) $9.000.
+ */
+export function linkedCost(total: number, portions: number, servings: number): number {
+  const p = Number(portions) > 0 ? Number(portions) : 1;
+  const s = Number(servings) > 0 ? Number(servings) : 1;
+  return round2((Number(total) / p) * s);
+}
+
 export type FoodCostStatus = "ok" | "warn" | "bad" | "none";
 
-/** Semáforo: 🟢 <30% · 🟡 30–35% · 🔴 >35%. */
-export function foodCostStatus(pct: number | null): FoodCostStatus {
+/** Umbrales del semáforo (defaults; el vendor puede editarlos). */
+export const DEFAULT_THRESHOLDS = { warn: 30, bad: 35 };
+
+/** Sanea umbrales (null/inválidos → defaults; exige warn < bad). */
+export function resolveThresholds(
+  warn: number | null | undefined,
+  bad: number | null | undefined
+): { warn: number; bad: number } {
+  let w = Number(warn);
+  let b = Number(bad);
+  if (!isFinite(w) || w <= 0 || w >= 100) w = DEFAULT_THRESHOLDS.warn;
+  if (!isFinite(b) || b <= 0 || b >= 100) b = DEFAULT_THRESHOLDS.bad;
+  if (w >= b) {
+    w = DEFAULT_THRESHOLDS.warn;
+    b = DEFAULT_THRESHOLDS.bad;
+  }
+  return { warn: w, bad: b };
+}
+
+/** Semáforo: 🟢 < warn · 🟡 warn–bad · 🔴 > bad. */
+export function foodCostStatus(
+  pct: number | null,
+  thresholds: { warn: number; bad: number } = DEFAULT_THRESHOLDS
+): FoodCostStatus {
   if (pct === null || !isFinite(pct)) return "none";
-  if (pct < 30) return "ok";
-  if (pct <= 35) return "warn";
+  if (pct < thresholds.warn) return "ok";
+  if (pct <= thresholds.bad) return "warn";
   return "bad";
 }
 

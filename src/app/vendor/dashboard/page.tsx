@@ -52,7 +52,7 @@ import { RecipeManager } from "@/components/dashboard/recipe-manager";
 import { ProductManager } from "@/components/dashboard/product-manager";
 import ComandaKDS from "@/components/dashboard/comanda-kds";
 import { playNewOrderSound, resumeAudioContext } from "@/lib/sounds";
-import { resolveVendorPlan, daysLeft } from "@/lib/plans";
+import { resolveVendorPlan, daysLeft, type FeatureKey } from "@/lib/plans";
 import { PlanBanner } from "@/components/vendor/plan-banner";
 import { PlanLock } from "@/components/vendor/plan-lock";
 import { Mostrador } from "@/components/vendor/mostrador";
@@ -561,6 +561,19 @@ function VendorDashboardInner() {
     if (cropImageSrc) URL.revokeObjectURL(cropImageSrc);
   }, [cropTarget, cropImageSrc, saveVendor]);
 
+  // Estos hooks van ANTES de cualquier `return` temprano: si un hook corre en
+  // algunos renders y en otros no, React tira error #310 y cae el dashboard.
+  // `can` estable entre renders (misma identidad mientras no cambien vendor/planes).
+  const canFeature = useMemo(
+    (): ((feature: FeatureKey) => boolean) =>
+      vendor ? resolveVendorPlan(vendor, plans).can : () => false,
+    [vendor, plans]
+  );
+  const dashboardProps = useMemo(() => ({
+    vendor, offers, categories, modifiers, gallery, bookings, msg,
+    setMsg, reload: loadData, saveVendor, uploading: false, onCrop: openCrop,
+  }), [vendor, offers, categories, modifiers, gallery, bookings, msg, loadData, saveVendor, openCrop]);
+
   if (loading) return <main className="container mx-auto px-4 py-8"><p className="text-muted-foreground">Cargando...</p></main>;
 
   // Repartidor: vista acotada solo al módulo de entrega.
@@ -607,8 +620,6 @@ function VendorDashboardInner() {
   const stepOrder = flowSteps(isModa);
 
   const effectivePlan = resolveVendorPlan(vendor, plans);
-  // `can` estable entre renders (misma identidad mientras no cambien vendor/planes).
-  const canFeature = useMemo(() => effectivePlan.can, [vendor, plans]);
   const overLimit =
     effectivePlan.maxProducts != null && offers.length > effectivePlan.maxProducts;
   const planBannerData = {
@@ -625,11 +636,6 @@ function VendorDashboardInner() {
     ordersOverLimit:
       orderUsage.maxOrdersMonth != null && orderUsage.ordersThisMonth >= orderUsage.maxOrdersMonth,
   } as const;
-
-  const dashboardProps = useMemo(() => ({
-    vendor, offers, categories, modifiers, gallery, bookings, msg,
-    setMsg, reload: loadData, saveVendor, uploading: false, onCrop: openCrop,
-  }), [vendor, offers, categories, modifiers, gallery, bookings, msg, loadData, saveVendor, openCrop]);
 
   const configContent = isGastro ? (
     <DashboardGastro {...dashboardProps} />

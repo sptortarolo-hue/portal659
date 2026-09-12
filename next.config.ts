@@ -3,6 +3,15 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   allowedDevOrigins: ["*"],
+  images: {
+    // Las subidas se guardan con URL absoluta (getSiteUrl): para next/image
+    // eso es "remoto" aunque sea el mismo servidor. Sin esto, 400.
+    remotePatterns: [
+      { protocol: "https", hostname: "www.portal659.com.ar" },
+      { protocol: "https", hostname: "portal659.com.ar" },
+      { protocol: "http", hostname: "localhost" },
+    ],
+  },
   async headers() {
     return [
       {

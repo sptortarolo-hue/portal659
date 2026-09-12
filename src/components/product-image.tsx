@@ -35,6 +35,8 @@ type Props = {
   eager?: boolean;
   /** Sizes para el srcset (default: tarjetas). El hero usa "100vw". */
   sizes?: string;
+  /** Ajuste de la foto: cover (default) o contain (foto completa). */
+  fit?: "cover" | "contain";
   /** Clases extra para el <img> de la foto (ej. transiciones). */
   imgClassName?: string;
 };
@@ -103,6 +105,7 @@ export function ProductImage({
   iconClassName,
   eager = false,
   sizes,
+  fit = "cover",
   imgClassName,
 }: Props) {
   const [loaded, setLoaded] = useState(false);
@@ -115,8 +118,11 @@ export function ProductImage({
   }, [src]);
 
   if (src && !failed) {
+    // El wrapper solo se posiciona relative si el caller no trae la suya
+    // (absolute/fixed/sticky): si no, pelean por `position` y se rompe el overlay.
+    const positioned = /(^|\s)(absolute|fixed|sticky)(\s|$)/.test(className ?? "");
     return (
-      <div className={`relative overflow-hidden ${className ?? "w-full h-full"}`}>
+      <div className={`${positioned ? "" : "relative "}overflow-hidden ${className ?? "w-full h-full"}`}>
         {!loaded && <div className="absolute inset-0 bg-muted animate-pulse" />}
         <Image
           src={src}
@@ -127,7 +133,7 @@ export function ProductImage({
           decoding="async"
           onLoad={() => setLoaded(true)}
           onError={() => setFailed(true)}
-          className={`object-cover transition-opacity duration-300 ${loaded ? "opacity-100" : "opacity-0"} ${imgClassName ?? ""}`}
+          className={`${fit === "contain" ? "object-contain" : "object-cover"} transition-opacity duration-300 ${loaded ? "opacity-100" : "opacity-0"} ${imgClassName ?? ""}`}
         />
       </div>
     );

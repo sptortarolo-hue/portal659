@@ -204,7 +204,9 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
         category={product.category}
         vertical={vendor.vertical}
         alt={product.name}
-        className="absolute inset-0 w-full h-full object-cover blur-lg scale-110"
+        className="absolute inset-0"
+        imgClassName="blur-lg scale-110"
+        fit="cover"
       />
       <ProductImage
         src={product.image_url}
@@ -212,7 +214,8 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
         category={product.category}
         vertical={vendor.vertical}
         alt={product.name}
-        className="relative w-full h-full object-contain"
+        className="relative w-full h-full"
+        fit="contain"
       />
     </div>
   ) : (

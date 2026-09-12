@@ -93,6 +93,7 @@ export default function DashboardModa({
     vendor?.payment_methods ? vendor.payment_methods.split(", ").map((s: string) => s.trim()).filter(Boolean) : []
   );
   const [deliveryOptions, setDeliveryOptions] = useState(vendor?.delivery_options || "ambos");
+  const [onlineOrders, setOnlineOrders] = useState(vendor?.accepts_online_orders !== false);
   const [storePreview, setStorePreview] = useState<string | null>(vendor?.image_url || null);
   const [logoPreview, setLogoPreview] = useState<string | null>(vendor?.logo_url || null);
   const [storeFile, setStoreFile] = useState<File | null>(null);
@@ -118,6 +119,7 @@ export default function DashboardModa({
       vendor.payment_methods ? vendor.payment_methods.split(", ").map((s: string) => s.trim()).filter(Boolean) : []
     );
     setDeliveryOptions(vendor.delivery_options || "ambos");
+    setOnlineOrders(vendor.accepts_online_orders !== false);
     setStorePreview(vendor.image_url || null);
     setLogoPreview(vendor.logo_url || null);
   }, [vendor]);
@@ -514,6 +516,23 @@ export default function DashboardModa({
           {deliveryOptions !== "retiro" && (
             <DeliveryFeeConfig vendor={vendor} saveVendor={saveVendor} />
           )}
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-border px-3 py-2.5">
+            <div>
+              <Label className="text-sm">Aceptar pedidos online</Label>
+              <p className="text-xs text-muted-foreground">
+                {onlineOrders
+                  ? "Tu micrositio muestra carrito y toman pedidos por la app."
+                  : "Apagado: solo contacto por WhatsApp, sin carrito."}
+              </p>
+            </div>
+            <Switch
+              checked={onlineOrders}
+              onCheckedChange={async (v) => {
+                setOnlineOrders(v);
+                await saveVendor({ accepts_online_orders: v });
+              }}
+            />
+          </div>
         </div>
       </CollapsibleSection>
 

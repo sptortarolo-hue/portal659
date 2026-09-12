@@ -168,6 +168,31 @@ export function resolveVendorPlan(
   };
 }
 
+/**
+ * ¿El comercio vende por la app (carrito + pedidos)? Plan con carrito Y
+ * opt-in del comercio (accepts_online_orders !== false; default true para
+ * compatibilidad con filas previas a la migración).
+ * A prueba de futuros cambios de features por vertical: hoy equivale a
+ * gastro/moda con el toggle prendido, pero no se hardcodea el vertical.
+ */
+export function vendorSellsOnline(
+  vendor: {
+    vertical: string | null;
+    plan_id: string | null;
+    plan_status: string | null;
+    plan_expires_at: string | null;
+    trial_ends_at: string | null;
+    accepts_online_orders?: boolean | null;
+  },
+  plans: Plan[]
+): boolean {
+  if (vendor.accepts_online_orders === false) return false;
+  return resolveVendorPlan(
+    vendor as Pick<Vendor, "vertical" | "plan_id" | "plan_status" | "plan_expires_at" | "trial_ends_at">,
+    plans
+  ).can("cart");
+}
+
 export function formatPrice(value: number | null): string {
   if (value == null) return "Ilimitado";
   if (value === 0) return "Gratis";

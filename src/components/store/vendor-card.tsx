@@ -15,11 +15,13 @@ type VendorCardProps = {
   vertical?: string | null;
   hours?: string | null;
   open_override?: boolean | null;
+  /** Vende por la app (carrito). null/undefined = no mostrar badge (compat). */
+  acceptsCart?: boolean | null;
   /** Destino del link (default: micrositio público). Útil en modo prueba. */
   href?: string | null;
 };
 
-export function VendorCard({ id, slug, store_name, image_url, logo_url, description, vertical, hours, open_override, href }: VendorCardProps) {
+export function VendorCard({ id, slug, store_name, image_url, logo_url, description, vertical, hours, open_override, acceptsCart, href }: VendorCardProps) {
   const [avgRating, setAvgRating] = useState<number | null>(null);
   const [reviewCount, setReviewCount] = useState(0);
 
@@ -96,10 +98,19 @@ export function VendorCard({ id, slug, store_name, image_url, logo_url, descript
               <span className="text-[10px] text-muted-foreground">({reviewCount})</span>
             </div>
           )}
-          <div className="flex items-center justify-between mt-2">
+          <div className="flex items-center justify-between mt-2 gap-2">
             <p className="text-xs text-primary font-medium">
-              {vertical === "servicio" ? "Ver y contactar →" : "Ver y pedir →"}
+              {acceptsCart === false || vertical === "servicio" ? "Ver y contactar →" : "Ver y pedir →"}
             </p>
+            {acceptsCart !== null && acceptsCart !== undefined && (
+              <span
+                className={`flex-shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full tabular-nums ${
+                  acceptsCart ? "bg-green-100 text-green-700" : "bg-muted text-muted-foreground"
+                }`}
+              >
+                {acceptsCart ? "🛒 Pedí online" : "💬 Solo contacto"}
+              </span>
+            )}
           </div>
         </div>
       </div>

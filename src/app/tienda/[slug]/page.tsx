@@ -1,5 +1,5 @@
 import { queryOne, queryMany } from "@/lib/db";
-import { resolveVendorPlan } from "@/lib/plans";
+import { resolveVendorPlan, vendorSellsOnline } from "@/lib/plans";
 import { isStoreOpen } from "@/lib/open-hours";
 import { notFound } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
@@ -123,7 +123,7 @@ export default async function TiendaPage({
     `SELECT * FROM plans ORDER BY sort ASC`
   );
   const effectivePlan = resolveVendorPlan(vendor as any, planRows || []);
-  const acceptsCart = effectivePlan.can("cart");
+  const acceptsCart = vendorSellsOnline(vendor as any, planRows || []);
   const planBadge = effectivePlan.plan?.badge ?? null;
 
   const cats = await queryMany<any>(
@@ -348,6 +348,13 @@ export default async function TiendaPage({
                   ✓ Verificado
                 </Badge>
               )}
+              <Badge
+                className={`rounded-full text-[10px] ${
+                  acceptsCart ? "bg-green-100 text-green-700" : "bg-muted text-muted-foreground"
+                }`}
+              >
+                {acceptsCart ? "🛒 Pedí online" : "💬 Solo contacto"}
+              </Badge>
             </div>
             <div className="flex items-center gap-2 ml-auto shrink-0">
               <span className="hidden sm:inline-flex">

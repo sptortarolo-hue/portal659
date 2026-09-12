@@ -2,12 +2,13 @@ import Link from "next/link";
 import { queryMany } from "@/lib/db";
 import { VERTICALS } from "@/lib/config";
 import { getZone } from "@/lib/zone";
+import { vendorSellsOnline } from "@/lib/plans";
 import { OfferCard } from "@/components/offers/offer-card";
 import { HorizontalCarousel } from "@/components/ui/horizontal-carousel";
 import { VendorCard } from "@/components/store/vendor-card";
 import { MostOrderedSection } from "@/components/home/most-ordered-section";
 import { OpenNowSection } from "@/components/home/open-now-section";
-import type { Vendor, Product } from "@/types/database";
+import type { Vendor, Plan, Product } from "@/types/database";
 
 type OfferWithVendor = Product & {
   vendors: { id: string; slug: string; store_name: string; vertical: string } | null;
@@ -54,6 +55,10 @@ export default async function HomePage() {
     const s = verticalSlug(v);
     if (vendorsByVertical[s]) vendorsByVertical[s].push(v);
   }
+
+  const plans = await queryMany<Plan>(`SELECT * FROM plans ORDER BY sort ASC`);
+  const onlineByVendor: Record<string, boolean> = {};
+  for (const v of vendors || []) onlineByVendor[v.id] = vendorSellsOnline(v, plans || []);
 
   return (
     <main>
@@ -125,7 +130,7 @@ export default async function HomePage() {
       </section>
 
       {/* Abiertos ahora (cliente — zona horaria del usuario) */}
-      <OpenNowSection vendors={vendors || []} />
+      <OpenNowSection vendors={vendors || []} onlineByVendor={onlineByVendor} />
 
       {/* Oferta de hoy */}
       {featured.length > 0 && (
@@ -200,6 +205,7 @@ export default async function HomePage() {
                 vertical={v.vertical}
                 hours={v.hours}
                 open_override={v.open_override ?? null}
+                acceptsCart={onlineByVendor[v.id] ?? null}
               />
             ))}
           </HorizontalCarousel>
@@ -245,6 +251,7 @@ export default async function HomePage() {
                   vertical={v.vertical}
                   hours={v.hours}
                   open_override={v.open_override ?? null}
+                  acceptsCart={onlineByVendor[v.id] ?? null}
                 />
               ))}
             </HorizontalCarousel>

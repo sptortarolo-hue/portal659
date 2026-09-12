@@ -129,6 +129,7 @@ export default function DashboardGastro({
       : []
   );
   const [deliveryOptions, setDeliveryOptions] = useState(vendor?.delivery_options || "ambos");
+  const [onlineOrders, setOnlineOrders] = useState(vendor?.accepts_online_orders !== false);
   const [prepTimeMin, setPrepTimeMin] = useState(
     vendor?.prep_time_min || 30
   );
@@ -209,6 +210,7 @@ export default function DashboardGastro({
         : []
     );
     setDeliveryOptions(vendor?.delivery_options || "ambos");
+    setOnlineOrders(vendor?.accepts_online_orders !== false);
     setPrepTimeMin(vendor?.prep_time_min || 30);
     setStorePreview(vendor?.image_url || null);
     setLogoPreview(vendor?.logo_url || null);
@@ -838,6 +840,23 @@ export default function DashboardGastro({
           {deliveryOptions !== "retiro" && (
             <DeliveryFeeConfig vendor={vendor} saveVendor={saveVendor} />
           )}
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-border px-3 py-2.5">
+            <div>
+              <Label className="text-sm">Aceptar pedidos online</Label>
+              <p className="text-xs text-muted-foreground">
+                {onlineOrders
+                  ? "Tu micrositio muestra carrito y toman pedidos por la app."
+                  : "Apagado: solo contacto por WhatsApp, sin carrito."}
+              </p>
+            </div>
+            <Switch
+              checked={onlineOrders}
+              onCheckedChange={async (v) => {
+                setOnlineOrders(v);
+                await saveVendor({ accepts_online_orders: v });
+              }}
+            />
+          </div>
         </div>
       </CollapsibleSection>
 

@@ -3,7 +3,7 @@ import { getDeviceId } from "@/lib/device";
 import { NextResponse } from "next/server";
 import { withRateLimit } from "@/lib/api-wrapper";
 import { sendEmail, orderConfirmationEmail } from "@/lib/email";
-import { resolveVendorPlan } from "@/lib/plans";
+import { resolveVendorPlan, vendorSellsOnline } from "@/lib/plans";
 import { adjustStockForItems, OutOfStockError } from "@/lib/stock";
 import { isStoreOpen } from "@/lib/open-hours";
 import { PricingError, resolveOrderPricing } from "@/lib/pricing";
@@ -74,7 +74,7 @@ export const POST = withRateLimit(async (request: Request) => {
   if (vendorRow) {
     const planRows = await queryMany<Record<string, unknown>>(`SELECT * FROM plans`);
     const plan = resolveVendorPlan(vendorRow as any, planRows as any);
-    if (!plan.can("cart")) {
+    if (!vendorSellsOnline(vendorRow as any, planRows as any)) {
       return NextResponse.json(
         { error: "Este comercio no acepta pedidos online por ahora. Consultalo directamente por WhatsApp." },
         { status: 403 }

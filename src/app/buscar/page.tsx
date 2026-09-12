@@ -2,6 +2,8 @@ import Link from "next/link";
 import { queryMany } from "@/lib/db";
 import { VERTICALS } from "@/lib/config";
 import { getZone } from "@/lib/zone";
+import { vendorSellsOnline } from "@/lib/plans";
+import type { Plan } from "@/types/database";
 import { Card, CardContent } from "@/components/ui/card";
 import { ProductImage } from "@/components/product-image";
 
@@ -14,6 +16,11 @@ type VendorRow = {
   image_url: string | null;
   vertical: string | null;
   description: string | null;
+  plan_id: string | null;
+  plan_status: string | null;
+  plan_expires_at: string | null;
+  trial_ends_at: string | null;
+  accepts_online_orders?: boolean | null;
 };
 
 type ProductRow = {
@@ -23,17 +30,51 @@ type ProductRow = {
   category: string | null;
   description: string | null;
   price: number | null;
+  vendor_id: string;
   vendors?: { vertical: string | null; store_name: string | null; slug: string | null } | null;
 };
+
+/** Pill de modo de venta (compartida por las tarjetas de esta página). */
+function OnlineBadge({ online }: { online: boolean }) {
+  return (
+    <span
+      className={`flex-shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full tabular-nums ${
+        online ? "bg-green-100 text-green-700" : "bg-muted text-muted-foreground"
+      }`}
+    >
+      {online ? "🛒 Pedí online" : "💬 Solo contacto"}
+    </span>
+  );
+}
 
 export default async function BuscarPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; vertical?: string }>;
+  searchParams: Promise<{ q?: string; vertical?: string; online?: string }>;
 }) {
   const zone = await getZone();
-  const { q, vertical } = await searchParams;
+  const { q, vertical, online } = await searchParams;
   const query = (q || "").trim();
+  const onlineOnly = online === "1";
+
+  const plans = await queryMany<Plan>(`SELECT * FROM plans ORDER BY sort ASC`);
+  const isOnline = (v: VendorRow) => vendorSellsOnline(v, plans || []);
+  const hrefOnline = (on: boolean) => {
+    const sp = new URLSearchParams();
+    if (query) sp.set("q", query);
+    if (vertical) sp.set("vertical", vertical);
+    if (on) sp.set("online", "1");
+    const s = sp.toString();
+    return `/buscar${s ? `?${s}` : ""}`;
+  };
+  const hrefVertical = (slug: string | null) => {
+    const sp = new URLSearchParams();
+    if (query) sp.set("q", query);
+    if (slug) sp.set("vertical", slug);
+    if (onlineOnly) sp.set("online", "1");
+    const s = sp.toString();
+    return `/buscar${s ? `?${s}` : ""}`;
+  };
 
   const allVendors = (await queryMany<Record<string, unknown>>(
     `SELECT * FROM vendors
@@ -43,7 +84,9 @@ export default async function BuscarPage({
   )) as unknown as VendorRow[];
 
   if (!query) {
-    const list = vertical ? allVendors.filter((v) => v.vertical === vertical) : allVendors;
+    let list = vertical ? allVendors.filter((v) => v.vertical === vertical) : allVendors;
+    const onlineCount = list.filter((v) => isOnline(v)).length;
+    if (onlineOnly) list = list.filter((v) => isOnline(v));
     return (
       <main className="container mx-auto px-4 py-8 max-w-4xl">
         <div className="mb-6">
@@ -56,7 +99,7 @@ export default async function BuscarPage({
         {/* Vertical filters */}
         <div className="flex flex-wrap gap-2 mb-8">
           <Link
-            href="/buscar"
+            href={hrefVertical(null)}
             className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
               !vertical ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:border-primary hover:text-primary"
             }`}
@@ -66,7 +109,7 @@ export default async function BuscarPage({
           {VERTICALS.map((vert) => (
             <Link
               key={vert.slug}
-              href={`/buscar?vertical=${vert.slug}`}
+              href={hrefVertical(vert.slug)}
               className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
                 vertical === vert.slug
                   ? "bg-primary text-primary-foreground border-primary"
@@ -76,6 +119,16 @@ export default async function BuscarPage({
               {vert.emoji} {vert.name}
             </Link>
           ))}
+          <Link
+            href={hrefOnline(!onlineOnly)}
+            className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+              onlineOnly
+                ? "bg-green-600 text-white border-green-600"
+                : "border-border text-muted-foreground hover:border-green-600 hover:text-green-700"
+            }`}
+          >
+            🛒 Venden online{onlineCount > 0 ? ` (${onlineCount})` : ""}
+          </Link>
         </div>
 
         {list.length === 0 ? (
@@ -104,9 +157,12 @@ export default async function BuscarPage({
                   <CardContent className="p-4">
                     <h3 className="font-semibold">{v.store_name}</h3>
                     {v.description && <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{v.description}</p>}
-                    <p className="text-xs text-primary mt-2 font-medium">
-                      {v.vertical === "servicio" ? "Ver y contactar →" : "Ver y pedir →"}
-                    </p>
+                    <div className="flex items-center justify-between gap-2 mt-2">
+                      <p className="text-xs text-primary font-medium">
+                        {!isOnline(v) || v.vertical === "servicio" ? "Ver y contactar →" : "Ver y pedir →"}
+                      </p>
+                      <OnlineBadge online={isOnline(v)} />
+                    </div>
                   </CardContent>
                 </Card>
               </Link>
@@ -141,6 +197,12 @@ export default async function BuscarPage({
     products = products.filter((p) => p.vendors?.vertical === vertical);
   }
 
+  const onlineById = new Map(vendors.map((v) => [v.id, isOnline(v)]));
+  if (onlineOnly) {
+    vendors = vendors.filter((v) => onlineById.get(v.id));
+    products = products.filter((p) => onlineById.get(p.vendor_id));
+  }
+
   const totalResults = vendors.length + products.length;
 
   return (
@@ -160,7 +222,7 @@ export default async function BuscarPage({
       {/* Vertical filters */}
       <div className="flex flex-wrap gap-2 mb-8">
         <Link
-          href={`/buscar?q=${encodeURIComponent(query)}`}
+          href={hrefVertical(null)}
           className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
             !vertical ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:border-primary hover:text-primary"
           }`}
@@ -170,7 +232,7 @@ export default async function BuscarPage({
         {VERTICALS.map((vert) => (
           <Link
             key={vert.slug}
-            href={`/buscar?q=${encodeURIComponent(query)}&vertical=${vert.slug}`}
+            href={hrefVertical(vert.slug)}
             className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
               vertical === vert.slug
                 ? `bg-${vert.color} text-white border-${vert.color}`
@@ -180,6 +242,16 @@ export default async function BuscarPage({
             {vert.emoji} {vert.name}
           </Link>
         ))}
+        <Link
+          href={hrefOnline(!onlineOnly)}
+          className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+            onlineOnly
+              ? "bg-green-600 text-white border-green-600"
+              : "border-border text-muted-foreground hover:border-green-600 hover:text-green-700"
+          }`}
+        >
+          🛒 Venden online
+        </Link>
       </div>
 
       {totalResults === 0 ? (
@@ -213,9 +285,12 @@ export default async function BuscarPage({
                       <CardContent className="p-4">
                         <h3 className="font-semibold">{v.store_name}</h3>
                         {v.description && <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{v.description}</p>}
-                        <p className="text-xs text-primary mt-2 font-medium">
-                          {v.vertical === "servicio" ? "Ver y contactar →" : "Ver y pedir →"}
-                        </p>
+                        <div className="flex items-center justify-between gap-2 mt-2">
+                          <p className="text-xs text-primary font-medium">
+                            {!onlineById.get(v.id) || v.vertical === "servicio" ? "Ver y contactar →" : "Ver y pedir →"}
+                          </p>
+                          <OnlineBadge online={!!onlineById.get(v.id)} />
+                        </div>
                       </CardContent>
                     </Card>
                   </Link>

@@ -342,6 +342,8 @@ export type Vendor = {
   /** Umbrales del semáforo food-cost (NULL = defaults 30/35). */
   food_cost_warn?: number | null;
   food_cost_bad?: number | null;
+  /** Opt-out de venta online: false = solo contacto aunque el plan traiga carrito. */
+  accepts_online_orders?: boolean | null;
   plan_id: string | null;
   plan_status: PlanStatus;
   plan_expires_at: string | null;

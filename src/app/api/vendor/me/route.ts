@@ -90,6 +90,7 @@ export async function POST(request: Request) {
     lng,
     food_cost_warn,
     food_cost_bad,
+    accepts_online_orders,
   } = body;
 
   const VALID_VERTICALS = ["gastronomia", "comercio", "servicio", "moda", "salud", "otro"];
@@ -166,6 +167,7 @@ export async function POST(request: Request) {
     if (food_cost_warn !== undefined) payload.food_cost_warn = w;
     if (food_cost_bad !== undefined) payload.food_cost_bad = b;
   }
+  if (accepts_online_orders !== undefined) payload.accepts_online_orders = accepts_online_orders === true;
 
   if (existing) {
     let vendor: Record<string, unknown> | undefined;

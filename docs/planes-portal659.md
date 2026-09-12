@@ -80,6 +80,11 @@ ilimitado), `max_orders_month` (vacío = ilimitado), `badge`, `popular`, y la pr
 - **Semáforo editable** (misma migración): `vendors.food_cost_warn/food_cost_bad`
   (NULL = 30/35). Se edita en el tab Recetas (tarjeta 🚦) vía `POST /api/vendor/me`;
   `GET /api/vendor/recipes/costs` calcula con esos umbrales y los devuelve.
+- **Diferenciación online/contacto**: helper `vendorSellsOnline()` (plan con carrito
+  Y `vendors.accepts_online_orders !== false`) alimenta badges `🛒 Pedí online` /
+  `💬 Solo contacto` (tarjetas, micrositio), filtro `?online=1` en `/buscar` y el
+  gate de `POST /api/orders` (403 si está apagado). Migración
+  `migrate-online-toggle.sql`; toggle en dashboards gastro/moda.
 
 ## Migración
 

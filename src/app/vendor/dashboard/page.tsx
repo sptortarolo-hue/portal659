@@ -106,6 +106,7 @@ type Vendor = {
   mp_connected_at?: string | null;
   food_cost_warn?: number | null;
   food_cost_bad?: number | null;
+  accepts_online_orders?: boolean | null;
   plan_id: string | null;
   plan_status: PlanStatus;
   plan_expires_at: string | null;

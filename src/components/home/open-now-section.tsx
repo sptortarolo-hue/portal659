@@ -11,7 +11,7 @@ import type { Vendor } from "@/types/database";
  * (el servidor puede estar en otra zona horaria que el usuario).
  * Si no hay comercios abiertos, no renderiza nada.
  */
-export function OpenNowSection({ vendors }: { vendors: Vendor[] }) {
+export function OpenNowSection({ vendors, onlineByVendor }: { vendors: Vendor[]; onlineByVendor?: Record<string, boolean> }) {
   const [open, setOpen] = useState<Vendor[]>([]);
   const [ready, setReady] = useState(false);
 
@@ -47,6 +47,7 @@ export function OpenNowSection({ vendors }: { vendors: Vendor[] }) {
             vertical={v.vertical}
             hours={v.hours}
             open_override={v.open_override ?? null}
+            acceptsCart={onlineByVendor?.[v.id] ?? null}
           />
         ))}
       </HorizontalCarousel>

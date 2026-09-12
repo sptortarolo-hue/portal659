@@ -21,12 +21,21 @@ export async function POST(request: Request) {
     plan_status: string | null;
     plan_expires_at: string | null;
     trial_ends_at: string | null;
+    visible: boolean | null;
   }>(
-    `SELECT id, vertical, plan_id, plan_status, plan_expires_at, trial_ends_at FROM vendors WHERE user_id = $1 LIMIT 1`,
+    `SELECT id, vertical, plan_id, plan_status, plan_expires_at, trial_ends_at, visible FROM vendors WHERE user_id = $1 LIMIT 1`,
     [userId]
   );
 
   if (!vendor) return NextResponse.json({ error: "No tenés un local" }, { status: 403 });
+
+  // En preview no corre el reloj: primero hay que publicar el comercio.
+  if (vendor.visible === false) {
+    return NextResponse.json(
+      { error: "Publicá tu comercio antes de activar un plan: en modo prueba ya tenés todo habilitado." },
+      { status: 403 }
+    );
+  }
 
   if (vendor.vertical !== "gastronomia") {
     return NextResponse.json(

@@ -15,7 +15,7 @@ export type Vertical =
 
 export type PlanSlug = "gratuito" | "pedidos" | "gestion";
 
-export type PlanStatus = "gratuito" | "trial" | "active" | "expired" | "cancelled";
+export type PlanStatus = "gratuito" | "trial" | "active" | "expired" | "cancelled" | "preview";
 
 export type PlanFeatures = {
   info: boolean;

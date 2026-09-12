@@ -85,6 +85,12 @@ ilimitado), `max_orders_month` (vacío = ilimitado), `badge`, `popular`, y la pr
   `💬 Solo contacto` (tarjetas, micrositio), filtro `?online=1` en `/buscar` y el
   gate de `POST /api/orders` (403 si está apagado). Migración
   `migrate-online-toggle.sql`; toggle en dashboards gastro/moda.
+- **Modo prueba (preview)**: con `vendors.visible = false`, `resolveVendorPlan()`
+  devuelve estado `"preview"` — todo habilitado e ilimitado, sin conteo de uso
+  (sin trial, sin topes, sin analytics capado). Al publicar toma el control el plan
+  real; activar trial/pago en preview se bloquea con 403 ("publicá primero").
+  Banner `🧪 Modo prueba` en el dashboard y badge en `/vendor/suscripcion`.
+  Sin migración (usa columnas existentes).
 
 ## Migración
 

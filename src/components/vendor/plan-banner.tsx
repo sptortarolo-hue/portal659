@@ -25,6 +25,22 @@ type Props = {
 export function PlanBanner({ plan }: Props) {
   const router = useRouter();
 
+  if (plan.status === "preview") {
+    return (
+      <div className="container mx-auto px-4 mt-3">
+        <div className="w-full rounded-xl border border-violet-300 bg-violet-50 dark:bg-violet-950/30 px-4 py-3 flex items-center gap-3">
+          <span className="text-lg flex-shrink-0">🧪</span>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-violet-700 dark:text-violet-300">Modo prueba</p>
+            <p className="text-xs text-muted-foreground">
+              Tenés todo habilitado sin límites hasta que se publique. El reloj arranca ahí.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (plan.slug === "gratuito") {
     if (!plan.eligibleForPaid) return null;
     return (

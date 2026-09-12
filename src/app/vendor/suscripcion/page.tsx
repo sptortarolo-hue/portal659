@@ -121,7 +121,9 @@ export default function VendorSuscripcionPage() {
   const trialTimeLeft = me.trial.hasTrial ? me.trial.daysLeft : eff.status === "trial" ? daysLeft(me.trial.endsAt) : 0;
 
   const statusBadge =
-    eff.status === "trial"
+    eff.status === "preview"
+      ? { label: "Modo prueba", cls: "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300" }
+      : eff.status === "trial"
       ? { label: `En prueba · ${trialTimeLeft} días`, cls: "bg-sun text-ink" }
       : eff.status === "active"
         ? { label: "Activo", cls: "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300" }
@@ -249,6 +251,16 @@ export default function VendorSuscripcionPage() {
 
         <div>
           <h3 className="font-display font-semibold mb-2">Elegí tu plan</h3>
+          {eff.status === "preview" ? (
+            <div className="rounded-2xl border border-violet-300 bg-violet-50 dark:bg-violet-950/30 p-5 text-sm">
+              <p className="font-semibold text-violet-700 dark:text-violet-300 mb-1">🧪 Estás en modo prueba</p>
+              <p className="text-muted-foreground text-xs">
+                Tenés todo habilitado sin límites y sin que corra ningún reloj.
+                Cuando publiques tu comercio vas a poder activar una prueba gratis o un plan pago.
+              </p>
+            </div>
+          ) : (
+          <>
           {!eff.eligibleForPaid && (
             <div className="rounded-2xl border border-border bg-card p-5 text-sm text-muted-foreground">
               Los planes de pago están disponibles por ahora solo para <b>gastronomía</b>.
@@ -317,6 +329,8 @@ export default function VendorSuscripcionPage() {
                   );
                 })}
             </div>
+          )}
+          </>
           )}
         </div>
 

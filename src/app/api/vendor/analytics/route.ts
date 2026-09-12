@@ -27,7 +27,7 @@ export async function GET(request: Request) {
   if (!resolved) return NextResponse.json({ error: "No tenés un local" }, { status: 403 });
 
   const vendor = await queryOne<Vendor>(
-    `SELECT id, vertical, plan_id, plan_status, plan_expires_at, trial_ends_at FROM vendors WHERE id = $1 LIMIT 1`,
+    `SELECT id, vertical, plan_id, plan_status, plan_expires_at, trial_ends_at, visible FROM vendors WHERE id = $1 LIMIT 1`,
     [resolved.id]
   );
   if (!vendor) return NextResponse.json({ error: "No tenés un local" }, { status: 403 });

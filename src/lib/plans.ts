@@ -95,19 +95,40 @@ export type EffectivePlan = {
  * Deriva el estado actual (trial/active/expired) sin necesidad de cron:
  * - planners pagos: vigente mientras vence trial/periodo no haya pasado.
  * - si venció, cae a features de Gratuito (no rompe la app, bloquea lo pago).
+ * - preview (visible === false): todo habilitado e ilimitado, sin conteo de
+ *   uso. Al publicar toma el control el plan real (el reloj arranca ahí).
  */
 export function resolveVendorPlan(
-  vendor: Pick<Vendor, "vertical" | "plan_id" | "plan_status" | "plan_expires_at" | "trial_ends_at">,
+  vendor: Pick<Vendor, "vertical" | "plan_id" | "plan_status" | "plan_expires_at" | "trial_ends_at" | "visible">,
   plans: Plan[]
 ): EffectivePlan {
   const now = Date.now();
-  const trialEndsAt = vendor.trial_ends_at ? new Date(vendor.trial_ends_at).getTime() : null;
-  const planExpiresAt = vendor.plan_expires_at ? new Date(vendor.plan_expires_at).getTime() : null;
 
   const plan =
     plans.find((p) => p.id === vendor.plan_id) ||
     plans.find((p) => p.slug === "gratuito") ||
     null;
+
+  if (vendor.visible === false) {
+    return {
+      plan,
+      slug: plan?.slug ?? "none",
+      status: "preview",
+      trialActive: false,
+      active: false,
+      expired: false,
+      eligibleForPaid: isGastroVendor(vendor),
+      can: () => true,
+      analyticsDays: 99999,
+      maxProducts: null,
+      maxOrdersMonth: null,
+      hasTrial: false,
+      trialEndsAt: vendor.trial_ends_at,
+    };
+  }
+
+  const trialEndsAt = vendor.trial_ends_at ? new Date(vendor.trial_ends_at).getTime() : null;
+  const planExpiresAt = vendor.plan_expires_at ? new Date(vendor.plan_expires_at).getTime() : null;
 
   const isPaid = plan ? plan.slug !== "gratuito" : false;
 

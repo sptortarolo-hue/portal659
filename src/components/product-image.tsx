@@ -190,8 +190,11 @@ export function ProductImage({
     // Subidas del portal: directo sin pasar por /_next/image (daba 400).
     if (isDirectUpload(src)) {
       const shownSrc = retried ? (withRetryParam(src) ?? src) : src;
+      // Misma regla que la rama optimizada: si el caller trae posicionamiento
+      // propio no se agrega `relative` (si no, pelean y se rompe el overlay).
+      const directPositioned = /(^|\s)(absolute|fixed|sticky)(\s|$)/.test(className ?? "");
       return (
-        <div className={`relative overflow-hidden ${className ?? "w-full h-full"}`}>
+        <div className={`${directPositioned ? "" : "relative "}overflow-hidden ${className ?? "w-full h-full"}`}>
           {!loaded && <div className="absolute inset-0 bg-muted animate-pulse" />}
           <img
             src={shownSrc}

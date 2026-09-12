@@ -48,6 +48,8 @@ type Props = {
   onShare: () => void;
   onOpenOrder: (order: Order) => void;
   onChanged?: () => void;
+  /** Sesión de prueba (link compartido): gestiona todo salvo el token. */
+  isPreview?: boolean;
 };
 
 const STATUS_CHIP: Record<Order["status"], string> = {
@@ -140,6 +142,7 @@ export function DashboardHome({
   onShare,
   onOpenOrder,
   onChanged,
+  isPreview = false,
 }: Props) {
   const sellsOrders = isGastro || isModa;
 
@@ -205,7 +208,7 @@ export function DashboardHome({
 
   return (
     <div className="space-y-5">
-      <StorePreviewCard vendor={vendor} onChanged={onChanged} />
+      <StorePreviewCard vendor={vendor} onChanged={onChanged} canManageTokens={!isPreview} />
       {sellsOrders ? (
         <>
           {/* KPIs */}

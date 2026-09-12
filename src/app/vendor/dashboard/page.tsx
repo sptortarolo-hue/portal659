@@ -1253,6 +1253,7 @@ function VendorDashboardInner() {
                     onShare={openShare}
                     onOpenOrder={openOrderDetail}
                     onChanged={loadData}
+                    isPreview={previewSession}
                   />
                 </div>
               )}

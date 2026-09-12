@@ -226,6 +226,7 @@ export default async function TiendaPage({
 
   const v = vendor as any;
   const isModa = v.vertical === "moda";
+  const isGastro = v.vertical === "gastronomia";
 
   const norm = (s: string | null) => (s || "").toLowerCase().trim();
   type Section = { name: string; items: any[] };
@@ -246,6 +247,9 @@ export default async function TiendaPage({
   }
 
   const isService = v.vertical === "servicio";
+  // Solo-contacto (toggle OFF en gastro/moda): se oculta el menú y se muestra
+  // la tarjeta de contacto. El resto conserva su vidriera con consultar.
+  const hideMenu = !acceptsCart && (isGastro || isModa);
   const vendorBrief = {
     id: v.id,
     slug: v.slug,
@@ -322,7 +326,7 @@ export default async function TiendaPage({
                 <span className="font-bold text-primary">{v.store_name.charAt(0)}</span>
               </div>
             )}
-            {!isService && !isModa && (offers?.length || 0) > 0 && <IrAComprarButton />}
+            {!isService && !isModa && (offers?.length || 0) > 0 && !hideMenu && <IrAComprarButton />}
           </div>
 
           {/* Desktop: logo sigue arriba como siempre */}
@@ -358,7 +362,7 @@ export default async function TiendaPage({
             </div>
             <div className="flex items-center gap-2 ml-auto shrink-0">
               <span className="hidden sm:inline-flex">
-                {!isService && !isModa && (offers?.length || 0) > 0 && <IrAComprarButton />}
+                {!isService && !isModa && (offers?.length || 0) > 0 && !hideMenu && <IrAComprarButton />}
               </span>
               <FavoriteButton vendorId={v.id} />
               <WhatsAppShareButton slug={v.slug} storeName={v.store_name} isModa={isModa} />
@@ -507,6 +511,40 @@ export default async function TiendaPage({
                 📅 Reservar turno
               </h3>
               <BookingForm vendorId={v.id} vendorName={v.store_name} services={offers?.map((o: any) => ({ id: o.id, name: o.name }))} />
+            </div>
+          </>
+        ) : hideMenu ? (
+          <>
+            {/* Solo contacto: sin menú, tarjeta de contacto directa */}
+            <div className="border border-border rounded-2xl p-8 text-center bg-card mt-6 mb-6">
+              <h2 className="font-display text-2xl font-semibold mb-2">
+                Contactanos directo
+              </h2>
+              <p className="text-muted-foreground max-w-md mx-auto mb-2">
+                {v.description || "Este local atiende por WhatsApp. Escribinos y te respondemos a la brevedad."}
+              </p>
+              {v.hours && (
+                <p className="text-sm text-muted-foreground max-w-md mx-auto mb-1">
+                  🕒 {v.hours}
+                </p>
+              )}
+              {v.address && (
+                <p className="text-sm text-muted-foreground max-w-md mx-auto mb-4">
+                  📍 {v.address}
+                </p>
+              )}
+              {waNumber ? (
+                <a
+                  href={waUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 rounded-full bg-green-500 text-white px-6 py-3 text-sm font-bold hover:bg-green-600 transition-colors"
+                >
+                  💬 Escribir por WhatsApp
+                </a>
+              ) : (
+                <p className="text-sm text-muted-foreground">Tel: {v.phone || v.whatsapp || "—"}</p>
+              )}
             </div>
           </>
         ) : (

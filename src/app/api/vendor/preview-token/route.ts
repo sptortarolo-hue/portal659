@@ -7,11 +7,11 @@ import { NextResponse } from "next/server";
  * Link de preview compartible del comercio.
  * POST { action: "generate", expiresInDays?: number } → crea/rota el token.
  * POST { action: "revoke" } → revoca el link.
- * Solo dueño (no repartidores).
+ * Solo dueño o admin (no repartidores ni sesiones de prueba con el link).
  */
 export async function POST(request: Request) {
-  const { vendor: resolved, staffRole } = await getVendorByRequest(request);
-  if (!resolved || staffRole === "delivery") {
+  const { vendor: resolved, staffRole, previewSession } = await getVendorByRequest(request);
+  if (!resolved || staffRole === "delivery" || previewSession) {
     return NextResponse.json({ error: "No autorizado" }, { status: 403 });
   }
 

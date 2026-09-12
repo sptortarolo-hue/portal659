@@ -23,9 +23,12 @@ import {
 export function StorePreviewCard({
   vendor,
   onChanged,
+  canManageTokens = true,
 }: {
   vendor: VendorDB;
   onChanged?: () => void;
+  /** false en sesión de prueba: oculta Generar/Regenerar/Revocar el token. */
+  canManageTokens?: boolean;
 }) {
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -141,7 +144,7 @@ export function StorePreviewCard({
                 {copied ? <Check className="h-3.5 w-3.5 mr-1" /> : <Copy className="h-3.5 w-3.5 mr-1" />}
                 {copied ? "¡Copiado!" : "Copiar link de prueba"}
               </Button>
-            ) : (
+            ) : canManageTokens ? (
               <Button
                 size="sm"
                 variant="outline"
@@ -152,8 +155,8 @@ export function StorePreviewCard({
                 <Copy className="h-3.5 w-3.5 mr-1" />
                 Generar link de prueba
               </Button>
-            )}
-            {token && (
+            ) : null}
+            {token && canManageTokens && (
               <>
                 <Button
                   size="sm"

@@ -102,6 +102,31 @@ function toOptimizableSrc(src: string): string {
 }
 
 /**
+ * True si el src es una subida del portal (/uploads/...) del mismo origen.
+ * Esas fotos se sirven DIRECTO con <img> clásico: ya vienen achicadas a 1200px
+ * al subir y el optimizador (/_next/image) las rechazaba con 400.
+ */
+function isDirectUpload(src: string): boolean {
+  const clean = src.trim();
+  if (/^(data|blob):/i.test(clean)) return false;
+  if (clean.startsWith("/uploads/")) return true;
+  if (typeof window !== "undefined" && /^https?:\/\//i.test(clean)) {
+    try {
+      const u = new URL(clean);
+      if (
+        u.host.toLowerCase() === window.location.host.toLowerCase() &&
+        u.pathname.startsWith("/uploads/")
+      ) {
+        return true;
+      }
+    } catch {
+      // URL malformada: no es directa.
+    }
+  }
+  return false;
+}
+
+/**
  * Parametro anti-caché para el reintento. Solo http(s) y rutas: los
  * data:/blob: se romperían si les agregamos query.
  */
@@ -162,6 +187,24 @@ export function ProductImage({
   }
 
   if (src && !failed) {
+    // Subidas del portal: directo sin pasar por /_next/image (daba 400).
+    if (isDirectUpload(src)) {
+      const shownSrc = retried ? (withRetryParam(src) ?? src) : src;
+      return (
+        <div className={`relative overflow-hidden ${className ?? "w-full h-full"}`}>
+          {!loaded && <div className="absolute inset-0 bg-muted animate-pulse" />}
+          <img
+            src={shownSrc}
+            alt={alt}
+            loading={eager ? "eager" : "lazy"}
+            decoding="async"
+            onLoad={() => setLoaded(true)}
+            onError={handleError}
+            className={`${fit === "contain" ? "object-contain" : "object-cover"} w-full h-full transition-opacity duration-300 ${loaded ? "opacity-100" : "opacity-0"} ${imgClassName ?? ""}`}
+          />
+        </div>
+      );
+    }
     const shownSrc = retried ? (withRetryParam(src) ?? src) : src;
     // El wrapper solo se posiciona relative si el caller no trae la suya
     // (absolute/fixed/sticky): si no, pelean por `position` y se rompe el overlay.

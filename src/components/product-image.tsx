@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useState } from "react";
 import {
   Beef,
@@ -32,6 +33,8 @@ type Props = {
   iconClassName?: string;
   /** Si es true, carga inmediata (sin lazy). Útil para imágenes above-the-fold. */
   eager?: boolean;
+  /** Sizes para el srcset (default: tarjetas). El hero usa "100vw". */
+  sizes?: string;
   /** Clases extra para el <img> de la foto (ej. transiciones). */
   imgClassName?: string;
 };
@@ -99,6 +102,7 @@ export function ProductImage({
   className,
   iconClassName,
   eager = false,
+  sizes,
   imgClassName,
 }: Props) {
   const [loaded, setLoaded] = useState(false);
@@ -114,14 +118,16 @@ export function ProductImage({
     return (
       <div className={`relative overflow-hidden ${className ?? "w-full h-full"}`}>
         {!loaded && <div className="absolute inset-0 bg-muted animate-pulse" />}
-        <img
+        <Image
           src={src}
           alt={alt}
-          loading={eager ? "eager" : "lazy"}
+          fill
+          sizes={sizes ?? "(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"}
+          priority={eager}
           decoding="async"
           onLoad={() => setLoaded(true)}
           onError={() => setFailed(true)}
-          className={`w-full h-full object-cover transition-opacity duration-300 ${loaded ? "opacity-100" : "opacity-0"} ${imgClassName ?? ""}`}
+          className={`object-cover transition-opacity duration-300 ${loaded ? "opacity-100" : "opacity-0"} ${imgClassName ?? ""}`}
         />
       </div>
     );

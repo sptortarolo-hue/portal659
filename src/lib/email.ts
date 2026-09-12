@@ -33,8 +33,8 @@ export async function sendEmail({ to, subject, html }: SendEmailParams): Promise
     });
 
     return res.ok;
-  } catch {
-    console.log("[Email] Error al enviar email");
+  } catch (e) {
+    console.error("[Email] Error al enviar email:", e);
     return false;
   }
 }

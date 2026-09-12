@@ -13,6 +13,7 @@ type AdminStats = {
   totalReviews: number;
   totalRevenue: number;
   avgRating: number | null;
+  totalUsers: number;
 };
 
 type Order = {
@@ -20,6 +21,7 @@ type Order = {
   created_at: string;
   total: number;
   status: string;
+  vendor_id: string;
   vendors?: { store_name: string } | null;
 };
 
@@ -118,7 +120,7 @@ export default function AdminDashboard() {
     const map: Record<string, number> = {};
     vendors.forEach((v) => {
       const count = orders.filter((o) => {
-        const vendor = vendors.find((v2) => v2.id === (o as any).vendor_id);
+        const vendor = vendors.find((v2) => v2.id === o.vendor_id);
         return vendor?.vertical === v.vertical;
       }).length;
       if (count > 0) map[v.vertical] = (map[v.vertical] || 0) + count;
@@ -146,7 +148,7 @@ export default function AdminDashboard() {
     );
   }
 
-  const totalUsers = (stats as any)?.totalUsers || 0;
+  const totalUsers = stats?.totalUsers || 0;
 
   if (error && !stats) {
     return (

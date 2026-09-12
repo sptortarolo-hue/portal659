@@ -507,8 +507,8 @@ export default function DashboardModa({
             <TransferConfig vendor={vendor} saveVendor={saveVendor} />
           )}
           <MpConnectCard
-            mpUserId={(vendor as any)?.mp_user_id ?? null}
-            mpConnectedAt={(vendor as any)?.mp_connected_at ?? null}
+            mpUserId={vendor?.mp_user_id ?? null}
+            mpConnectedAt={vendor?.mp_connected_at ?? null}
           />
           <div><Label className="mb-2 block">Entrega</Label><RadioCards options={DELIVERY_OPTIONS} value={deliveryOptions} onChange={setDeliveryOptions} /></div>
           {deliveryOptions !== "retiro" && (

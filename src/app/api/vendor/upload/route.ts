@@ -1,4 +1,5 @@
 import { getVendorByRequest } from "@/lib/vendor-utils";
+import { logApiError } from "@/lib/api-error";
 import { getSiteUrl } from "@/lib/site-url";
 import { NextResponse } from "next/server";
 import { mkdir, writeFile } from "fs/promises";
@@ -68,8 +69,9 @@ export async function POST(request: Request) {
       outBuffer = await pipeline.jpeg({ quality: 80, mozjpeg: true }).toBuffer();
       outExt = "jpg";
     }
-  } catch {
-    // Si sharp falla, se guarda el original sin romper la subida.
+  } catch (e) {
+    // Si sharp falla, se guarda el original sin romper la subida (se loguea la degradación).
+    logApiError("vendor-upload/sharp", e);
     outBuffer = buffer;
   }
   const outFilename = filename.replace(/\.[a-z0-9]+$/, `.${outExt}`);

@@ -19,7 +19,7 @@ export function PrepTimeControl({ vendor, onSaved }: { vendor: Vendor; onSaved: 
   const wrapRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
-  const prep = (vendor as any).prep_time_min ?? 30;
+  const prep = vendor.prep_time_min ?? 30;
 
   useEffect(() => {
     function onDoc(e: MouseEvent) {

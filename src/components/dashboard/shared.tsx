@@ -22,6 +22,17 @@ export async function apiJson(url: string, init?: RequestInit): Promise<{ ok: bo
     return { ok: false, error: "Error de red" };
   }
 }
+
+/** GET JSON tipado (null si falla o no es ok). */
+export async function getJson<T>(url: string): Promise<T | null> {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    return (await res.json()) as T;
+  } catch {
+    return null;
+  }
+}
 import { QuantityInput } from "@/components/ui/quantity-input";
 import { ImageCropModal } from "@/components/ui/image-crop-modal";
 

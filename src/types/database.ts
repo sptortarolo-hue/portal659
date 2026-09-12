@@ -339,6 +339,9 @@ export type Vendor = {
   transfer_holder?: string | null;
   transfer_qr_url?: string | null;
   block_unpaid_orders?: boolean;
+  /** Umbrales del semáforo food-cost (NULL = defaults 30/35). */
+  food_cost_warn?: number | null;
+  food_cost_bad?: number | null;
   plan_id: string | null;
   plan_status: PlanStatus;
   plan_expires_at: string | null;
@@ -349,6 +352,7 @@ export type Vendor = {
   preview_token_expires_at?: string | null;
   /** Solicitud de publicación pendiente de aprobación del admin. */
   publish_requested_at?: string | null;
+  visible?: boolean | null;
   created_at: string;
 };
 
@@ -416,6 +420,10 @@ export type Order = {
   payment_status?: "paid" | "pending";
   pickup_number?: number | null;
   track_token?: string | null;
+  /** Costo de envío del pedido (si aplica). */
+  delivery_cost?: number | null;
+  /** Número legible del pedido (ticket). */
+  order_number?: string | null;
   /** Pedido de prueba (modo preview). true = no cuenta en topes/métricas/ingresos. */
   is_preview?: boolean;
   created_at: string;

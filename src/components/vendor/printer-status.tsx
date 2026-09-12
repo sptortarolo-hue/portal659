@@ -21,7 +21,7 @@ const DOT: Record<St, string> = {
 export function PrinterStatus({ vendor, onOpenConfig }: { vendor: Vendor; onOpenConfig: () => void }) {
   const [state, setState] = useState<St>("none");
 
-  const mode = (vendor as any).print_mode === "app" ? "app" : "server";
+  const mode = vendor.print_mode === "app" ? "app" : "server";
 
   useEffect(() => {
     let mounted = true;

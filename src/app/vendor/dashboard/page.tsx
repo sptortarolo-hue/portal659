@@ -1,8 +1,8 @@
 "use client";
 
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import QRCode from "qrcode";
+import dynamic from "next/dynamic";
 import {
   Menu,
   ExternalLink,
@@ -26,7 +26,11 @@ import {
   MessageSquare,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { ImageCropModal } from "@/components/ui/image-crop-modal";
+// Modal de recorte: solo se carga cuando se abre (fuera del bundle inicial).
+const ImageCropModal = dynamic(
+  () => import("@/components/ui/image-crop-modal").then((m) => m.ImageCropModal),
+  { ssr: false }
+);
 import { DEFAULT_ZONE } from "@/lib/config";
 import VendorSidebar from "@/components/vendor/vendor-sidebar";
 import { NotificationBell } from "@/components/nav/notification-bell";
@@ -79,6 +83,7 @@ type Vendor = {
   accepting_quotes: boolean;
   verified: boolean;
   hours: string | null;
+  open_override?: boolean | null;
   location: string | null;
   address: string | null;
   lat?: number | null;
@@ -93,6 +98,14 @@ type Vendor = {
   printer_port: number | null;
   paper_size: string | null;
   auto_print: boolean;
+  transfer_alias?: string | null;
+  transfer_cbu?: string | null;
+  transfer_holder?: string | null;
+  block_unpaid_orders?: boolean;
+  mp_user_id?: number | null;
+  mp_connected_at?: string | null;
+  food_cost_warn?: number | null;
+  food_cost_bad?: number | null;
   plan_id: string | null;
   plan_status: PlanStatus;
   plan_expires_at: string | null;
@@ -103,6 +116,21 @@ type Vendor = {
 type Offer = DBProduct;
 
 type MenuCategory = { id: string; name: string; position: number };
+
+type DashTab = "hoy" | "config" | "menu" | "orders" | "history" | "comanda" | "analytics" | "pos" | "mesas" | "reviews" | "recetas";
+
+// Tabs pesados con fetch propio: se memoizan para no re-renderizarlos en cada
+// tecla/búsqueda del dashboard (solo cambian cuando cambian sus props).
+const MemoMostrador = memo(Mostrador);
+const MemoMesas = memo(Mesas);
+const MemoComandaKDS = memo(ComandaKDS);
+const MemoVendorAnalytics = memo(VendorAnalytics);
+const MemoVendorReviews = memo(VendorReviews);
+const MemoVendorOrderHistory = memo(VendorOrderHistory);
+const MemoProductManager = memo(ProductManager);
+const MemoRecipeManager = memo(RecipeManager);
+const MemoDashboardHome = memo(DashboardHome);
+const MemoDeliveryBoard = memo(DeliveryBoard);
 
 const STATUS_LABELS: Record<Order["status"], string> = {
   new: "Nuevo", confirmed: "Confirmado", preparing: "Preparando", ready: "Listo", sent: "Enviado", completed: "Completado", cancelled: "Cancelado",
@@ -136,7 +164,7 @@ function VendorDashboardInner() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [variants, setVariants] = useState<ProductVariant[]>([]);
   const [productImages, setProductImages] = useState<ProductImage[]>([]);
-  const [tab, setTab] = useState<"hoy" | "config" | "menu" | "orders" | "history" | "comanda" | "analytics" | "pos" | "mesas" | "reviews" | "recetas">("hoy");
+  const [tab, setTab] = useState<DashTab>("hoy");
   // Las pestañas pesadas (fetch propio: comanda, mostrador, mesas, analytics,
   // reviews) se montan recién cuando el usuario las abre por primera vez.
   // Así el arranque del dashboard hace ~12 requests en vez de ~20 y el pool
@@ -167,9 +195,13 @@ function VendorDashboardInner() {
   const [cropTitle, setCropTitle] = useState("Ajustá tu foto");
   const [cropTarget, setCropTarget] = useState<"cover" | "logo" | "offer">("cover");
 
+  // Callbacks estables para el hook de teclado y los tabs memoizados.
+  const handleTabChange = useCallback((t: DashTab) => setTab(t), []);
+  const openOrderDetail = useCallback((o: Order) => setSelectedOrder(o), []);
+
   // Keyboard shortcuts: Ctrl+1-9 para tabs, Escape para cerrar modales
   useKeyboardShortcuts({
-    onTabChange: (t) => setTab(t),
+    onTabChange: handleTabChange,
     onEscape: () => {
       if (selectedOrder) setSelectedOrder(null);
       else if (shareOpen) setShareOpen(false);
@@ -189,7 +221,7 @@ function VendorDashboardInner() {
 
   const [ordersLoading, setOrdersLoading] = useState(false);
 
-  async function loadOrdersOnly() {
+  const loadOrdersOnly = useCallback(async () => {
     setOrdersLoading(true);
     try {
       const res = await fetch("/api/vendor/orders");
@@ -199,9 +231,9 @@ function VendorDashboardInner() {
     finally {
       setOrdersLoading(false);
     }
-  }
+  }, []);
 
-  async function loadData() {
+  const loadData = useCallback(async () => {
     try {
       const [meRes, offersRes, ordersRes, catsRes, modsRes, galRes, bkRes, variantsRes, imagesRes, plansRes, subsMeRes] = await Promise.all([
         fetch("/api/vendor/me").catch(() => null),
@@ -254,7 +286,7 @@ function VendorDashboardInner() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [router]);
 
   useEffect(() => {
     if (impersonatingId) {
@@ -262,8 +294,7 @@ function VendorDashboardInner() {
       document.cookie = `portal659-admin-as=${impersonatingId}; path=/; max-age=7200; samesite=lax`;
     }
     loadData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [impersonatingId]);
+  }, [impersonatingId, loadData]);
 
   // Vuelta del OAuth de Mercado Pago: mostrar feedback al comercio y limpiar la URL.
   useEffect(() => {
@@ -384,7 +415,7 @@ function VendorDashboardInner() {
     };
   }, [vendor?.id]);
 
-  async function saveVendor(data: Record<string, unknown>) {
+  const saveVendor = useCallback(async (data: Record<string, unknown>) => {
     setMsg("");
     const res = await fetch("/api/vendor/me", {
       method: "POST",
@@ -394,7 +425,7 @@ function VendorDashboardInner() {
     const result = await res.json().catch(() => ({ error: "Error de conexión" }));
     if (result.error) setMsg(result.error);
     else { setVendor(result.vendor); setMsg("Guardado"); }
-  }
+  }, []);
 
   async function updateOrderStatus(order: Order, status: Order["status"]) {
     try {
@@ -493,40 +524,42 @@ function VendorDashboardInner() {
     }
   }
 
-  async function openShare() {
+  const openShare = useCallback(async () => {
     if (!vendor?.slug) return;
     setCopied(false);
     setQrDataUrl(null);
     setShareOpen(true);
     try {
+      // qrcode solo se carga al compartir (fuera del bundle inicial).
+      const { default: QRCode } = await import("qrcode");
       const url = `${window.location.origin}/tienda/${vendor.slug}`;
       setQrDataUrl(await QRCode.toDataURL(url, { width: 480, margin: 1 }));
     } catch { /* noop */ }
-  }
+  }, [vendor?.slug]);
 
-  async function copyLink() {
+  const copyLink = useCallback(async () => {
     if (!vendor?.slug) return;
     try {
       await navigator.clipboard.writeText(`${window.location.origin}/tienda/${vendor.slug}`);
       setCopied(true);
     } catch { /* noop */ }
-  }
+  }, [vendor?.slug]);
 
-  function openCrop(target: "cover" | "logo" | "offer") {
+  const openCrop = useCallback((target: "cover" | "logo" | "offer") => {
     setCropTarget(target);
     if (target === "cover") { setCropAspect(3 / 1); setCropTitle("Ajustá la foto del comercio"); }
     else if (target === "logo") { setCropAspect(1); setCropTitle("Ajustá el logo"); }
     else { setCropAspect(16 / 9); setCropTitle("Ajustá la foto del plato"); }
     setCropOpen(true);
-  }
+  }, []);
 
-  function handleCropComplete(file: File, previewUrl: string) {
+  const handleCropComplete = useCallback((file: File, previewUrl: string) => {
     if (cropTarget === "cover" || cropTarget === "logo") {
       saveVendor({ [cropTarget === "cover" ? "image_url" : "logo_url"]: previewUrl });
     }
     setCropOpen(false);
     if (cropImageSrc) URL.revokeObjectURL(cropImageSrc);
-  }
+  }, [cropTarget, cropImageSrc, saveVendor]);
 
   if (loading) return <main className="container mx-auto px-4 py-8"><p className="text-muted-foreground">Cargando...</p></main>;
 
@@ -548,7 +581,7 @@ function VendorDashboardInner() {
           </div>
         </div>
         <div className="container mx-auto px-4 py-4 pb-24">
-          {vendor && <DeliveryBoard vendorId={vendor.id} userId={userId} />}
+          {vendor && <MemoDeliveryBoard vendorId={vendor.id} userId={userId} />}
         </div>
       </main>
     );
@@ -574,6 +607,8 @@ function VendorDashboardInner() {
   const stepOrder = flowSteps(isModa);
 
   const effectivePlan = resolveVendorPlan(vendor, plans);
+  // `can` estable entre renders (misma identidad mientras no cambien vendor/planes).
+  const canFeature = useMemo(() => effectivePlan.can, [vendor, plans]);
   const overLimit =
     effectivePlan.maxProducts != null && offers.length > effectivePlan.maxProducts;
   const planBannerData = {
@@ -591,7 +626,10 @@ function VendorDashboardInner() {
       orderUsage.maxOrdersMonth != null && orderUsage.ordersThisMonth >= orderUsage.maxOrdersMonth,
   } as const;
 
-  const dashboardProps = { vendor, offers, categories, modifiers, gallery, bookings, msg, setMsg, reload: loadData, saveVendor, uploading: false, onCrop: openCrop };
+  const dashboardProps = useMemo(() => ({
+    vendor, offers, categories, modifiers, gallery, bookings, msg,
+    setMsg, reload: loadData, saveVendor, uploading: false, onCrop: openCrop,
+  }), [vendor, offers, categories, modifiers, gallery, bookings, msg, loadData, saveVendor, openCrop]);
 
   const configContent = isGastro ? (
     <DashboardGastro {...dashboardProps} />
@@ -947,7 +985,7 @@ function VendorDashboardInner() {
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
         currentTab={tab}
-        onTabChange={(t) => setTab(t)}
+        onTabChange={handleTabChange}
         orderCount={activeOrderCount}
         kitchenCount={kitchenCount}
         menuCount={menuCount}
@@ -1110,7 +1148,7 @@ function VendorDashboardInner() {
             <>
               <div className={tab === "config" ? "" : "hidden"}>{configContent}</div>
               <div className={tab === "menu" ? "" : "hidden"}>
-                <ProductManager
+                <MemoProductManager
                   isModa={isModa}
                   showStock
                   showPrep={!isModa}
@@ -1123,7 +1161,7 @@ function VendorDashboardInner() {
                 <div className={tab === "comanda" ? "" : "hidden"}>
                   {effectivePlan.can("kds") ? (
                     accessToken && vendor && (
-                      <ComandaKDS vendorId={vendor.id} vendorName={vendor.store_name} accessToken={accessToken} prepTimeMin={vendor.prep_time_min ?? null} />
+                      <MemoComandaKDS vendorId={vendor.id} vendorName={vendor.store_name} accessToken={accessToken} prepTimeMin={vendor.prep_time_min ?? null} />
                     )
                   ) : (
                     <PlanLock
@@ -1136,7 +1174,7 @@ function VendorDashboardInner() {
               {mountedTabs.has("pos") && (
                 <div className={tab === "pos" ? "" : "hidden"}>
                   {effectivePlan.can("pos") ? (
-                    <Mostrador />
+                    <MemoMostrador />
                   ) : (
                     <PlanLock
                       title="Mostrador"
@@ -1150,7 +1188,7 @@ function VendorDashboardInner() {
               {mountedTabs.has("mesas") && (
                 <div className={tab === "mesas" ? "" : "hidden"}>
                   {effectivePlan.can("mesas") ? (
-                    <Mesas />
+                    <MemoMesas />
                   ) : (
                     <PlanLock
                       title="Gestión de mesas"
@@ -1162,7 +1200,7 @@ function VendorDashboardInner() {
               {mountedTabs.has("recetas") && (
                 <div className={tab === "recetas" ? "" : "hidden"}>
                   {isGastro && effectivePlan.can("recipes") ? (
-                    <RecipeManager />
+                    <MemoRecipeManager />
                   ) : (
                     <PlanLock
                       title="Recetas y costos"
@@ -1173,13 +1211,13 @@ function VendorDashboardInner() {
               )}
               {mountedTabs.has("analytics") && (
                 <div className={tab === "analytics" ? "" : "hidden"}>
-                  <VendorAnalytics />
+                  <MemoVendorAnalytics />
                 </div>
               )}
               {mountedTabs.has("reviews") && (
                 <div className={tab === "reviews" ? "" : "hidden"}>
                   {effectivePlan.can("reviews_manage") ? (
-                    <VendorReviews />
+                    <MemoVendorReviews />
                   ) : (
                     <PlanLock
                       title="Respondé tus reseñas"
@@ -1190,12 +1228,12 @@ function VendorDashboardInner() {
               )}
               {mountedTabs.has("history") && (
                 <div className={tab === "history" ? "" : "hidden"}>
-                  <VendorOrderHistory isModa={isModa} onOpenOrder={setSelectedOrder} />
+                  <MemoVendorOrderHistory isModa={isModa} onOpenOrder={setSelectedOrder} />
                 </div>
               )}
               {mountedTabs.has("hoy") && (
                 <div className={tab === "hoy" ? "" : "hidden"}>
-                  <DashboardHome
+                  <MemoDashboardHome
                     vendor={vendor as unknown as VendorDB}
                     isGastro={isGastro}
                     isModa={isModa}
@@ -1203,10 +1241,10 @@ function VendorDashboardInner() {
                     orders={orders}
                     bookings={bookings}
                     offerCount={offers.length}
-                    can={effectivePlan.can}
-                    onNavigate={(t) => setTab(t)}
+                    can={canFeature}
+                    onNavigate={handleTabChange}
                     onShare={openShare}
-                    onOpenOrder={(o) => setSelectedOrder(o)}
+                    onOpenOrder={openOrderDetail}
                     onChanged={loadData}
                   />
                 </div>
@@ -1322,11 +1360,11 @@ function VendorDashboardInner() {
           offers={offers}
           canPrint={effectivePlan.can("printer")}
           transfer={{
-            alias: (vendor as any)?.transfer_alias || null,
-            cbu: (vendor as any)?.transfer_cbu || null,
-            holder: (vendor as any)?.transfer_holder || null,
+            alias: vendor?.transfer_alias || null,
+            cbu: vendor?.transfer_cbu || null,
+            holder: vendor?.transfer_holder || null,
           }}
-          blockUnpaid={!!(vendor as any)?.block_unpaid_orders}
+          blockUnpaid={!!vendor?.block_unpaid_orders}
           onMarkPaid={markOrderPaid}
         />
       )}

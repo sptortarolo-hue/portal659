@@ -1,4 +1,5 @@
 import { getPool } from "@/lib/db";
+import { logApiError } from "@/lib/api-error";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +15,8 @@ export async function GET() {
     const pool = getPool();
     await pool.query("SELECT 1");
     db = true;
-  } catch {
+  } catch (e) {
+    logApiError("health", e);
     db = false;
   }
 

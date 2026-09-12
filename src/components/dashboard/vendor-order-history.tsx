@@ -194,7 +194,7 @@ export function VendorOrderHistory({ isModa = false, onOpenOrder }: { isModa?: b
                   <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${ORDER_STATUS_COLORS[o.status]}`}>
                     {statusLabel(o.status, isModa)}
                   </span>
-                  {(o as any).is_preview && (
+                  {o.is_preview && (
                     <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold bg-violet-100 text-violet-700">
                       🧪 PRUEBA
                     </span>

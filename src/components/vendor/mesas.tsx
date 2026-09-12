@@ -328,25 +328,26 @@ export function Mesas() {
   }
 
   // Catálogo compartido: buscador + pastillas + grilla de productos.
+  // Desktop: mismo patrón que Mostrador (grilla en flujo de página, scrollea la página).
   const catalogBlock = (gridClass: string) => (
-    <div className="min-w-0 space-y-2 flex flex-col min-h-0 flex-1 lg:overflow-hidden">
-      <div className="flex items-center gap-2 flex-shrink-0">
+    <div className="min-w-0 space-y-2">
+      <div className="flex items-center gap-2">
         <input
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Buscar y agregar producto..."
-          className="flex-1 h-9 px-3 text-xs rounded-lg border border-input bg-background"
+          className="flex-1 h-10 px-3 text-sm rounded-xl border border-input bg-background"
         />
         {cartCount > 0 && (
-          <Badge className="h-9 px-3 text-xs tabular-nums">🛒 {cartCount}</Badge>
+          <Badge className="h-10 px-3 text-xs tabular-nums">🛒 {cartCount}</Badge>
         )}
       </div>
       {categories.length > 1 && (
-        <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide flex-shrink-0">
+        <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
           <button
             onClick={() => setActiveCat(null)}
-            className={`flex-shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors ${
+            className={`flex-shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
               activeCat === null ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
             }`}
           >
@@ -356,7 +357,7 @@ export function Mesas() {
             <button
               key={c}
               onClick={() => setActiveCat(activeCat === c ? null : c)}
-              className={`flex-shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors ${
+              className={`flex-shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
                 activeCat === c ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
               }`}
             >
@@ -459,9 +460,9 @@ export function Mesas() {
 
       {selected && (
         <>
-          {/* ============ Desktop (sm+): panel inline a altura de pantalla ============ */}
-          <div className="hidden sm:flex rounded-2xl border border-border bg-card p-4 flex-col lg:h-[calc(100vh-12rem)] lg:overflow-hidden">
-            <div className="flex items-center justify-between mb-3 flex-shrink-0">
+          {/* ============ Desktop (sm+): catálogo en flujo + cuenta sticky (igual que Mostrador) ============ */}
+          <div className="hidden sm:block">
+            <div className="flex items-center justify-between mb-3">
               <h3 className="font-display font-semibold">{selected.name}</h3>
               <div className="flex items-center gap-2">
                 {renaming === selected.id ? (
@@ -489,18 +490,20 @@ export function Mesas() {
               </div>
             </div>
 
-            <div className="mt-3 grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_auto] gap-3 flex-1 min-h-0">
-              <div className="min-w-0 flex flex-col min-h-0 lg:overflow-hidden">
-                {catalogBlock("sm:grid-cols-4 lg:grid-cols-5 flex-1 min-h-0 overflow-y-auto pr-1")}
-                {cart.length > 0 && (
-                  <div className="mt-2 space-y-1 max-h-40 overflow-y-auto flex-shrink-0">
-                    {cart.map(cartLine)}
-                  </div>
-                )}
+            <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_360px] gap-4 items-start">
+              <div className="min-w-0">
+                {catalogBlock("xl:grid-cols-4")}
               </div>
-              <div className="flex flex-col gap-2 sm:min-w-40 lg:w-80 flex-shrink-0 min-h-0">
-                <div className="min-h-0 overflow-y-auto space-y-3">
+              {/* Cuenta sticky con scroll interno */}
+              <div className="flex rounded-2xl border border-border bg-card p-4 flex-col gap-2 max-h-[70vh] lg:sticky lg:top-24 lg:h-[calc(100vh-12rem)] lg:max-h-none">
+                <h3 className="font-display font-semibold text-sm mb-2 flex-shrink-0">Cuenta · {selected.name}</h3>
+                <div className="flex-1 space-y-3 min-h-0 overflow-y-auto">
                   {consumicionesBlock(false)}
+                  {cart.length > 0 && (
+                    <div className="space-y-1">
+                      {cart.map(cartLine)}
+                    </div>
+                  )}
 
                   {closedOrders.length > 0 && (
                     <div>
@@ -519,7 +522,7 @@ export function Mesas() {
                     </div>
                   )}
                 </div>
-                <div className="flex flex-wrap gap-1">
+                <div className="flex flex-wrap gap-1 pt-2 flex-shrink-0">
                   {PAYMENT_OPTIONS.map((o) => (
                     <button
                       key={o.key}
@@ -530,12 +533,12 @@ export function Mesas() {
                     </button>
                   ))}
                 </div>
-                <div className="flex items-center justify-between text-sm">
+                <div className="flex items-center justify-between text-sm flex-shrink-0">
                   <span>Total mesa</span>
                   <b className="tabular-nums">${(selectedTotal + cartTotal).toLocaleString("es-AR")}</b>
                 </div>
-                <Button size="sm" disabled={cart.length === 0} onClick={addConsumicion}>Agregar consumición</Button>
-                <div className="grid grid-cols-2 gap-1.5">
+                <Button size="sm" className="flex-shrink-0" disabled={cart.length === 0} onClick={addConsumicion}>Agregar consumición</Button>
+                <div className="grid grid-cols-2 gap-1.5 flex-shrink-0">
                   <Button
                     size="sm"
                     variant="outline"

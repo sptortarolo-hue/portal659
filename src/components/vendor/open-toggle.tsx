@@ -18,7 +18,7 @@ export function OpenToggle({ vendor, onSaved }: { vendor: Vendor; onSaved: (v: V
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState(false);
 
-  const override = (vendor as any).open_override ?? null; // null | true | false
+  const override = vendor.open_override ?? null; // null | true | false
   const resolved = isStoreOpen({ hours: vendor.hours, open_override: override });
   const isOpenResolved = resolved === true;
   const isManual = override === true || override === false;

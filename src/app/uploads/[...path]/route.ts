@@ -1,6 +1,7 @@
 import { readFile } from "fs/promises";
 import path from "path";
 import { NextRequest, NextResponse } from "next/server";
+import { logApiError } from "@/lib/api-error";
 
 const MIME: Record<string, string> = {
   jpg: "image/jpeg",
@@ -46,7 +47,8 @@ export async function GET(
       headers["Content-Disposition"] = "attachment; filename=\"file.svg\"";
     }
     return new NextResponse(data, { headers });
-  } catch {
+  } catch (e) {
+    logApiError("uploads", e);
     return new NextResponse("Not found", { status: 404 });
   }
 }

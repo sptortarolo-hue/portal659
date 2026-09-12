@@ -7,6 +7,25 @@ import { ProductImage } from "@/components/product-image";
 
 export const dynamic = "force-dynamic";
 
+type VendorRow = {
+  id: string;
+  slug: string | null;
+  store_name: string;
+  image_url: string | null;
+  vertical: string | null;
+  description: string | null;
+};
+
+type ProductRow = {
+  id: string;
+  name: string;
+  image_url: string | null;
+  category: string | null;
+  description: string | null;
+  price: number | null;
+  vendors?: { vertical: string | null; store_name: string | null; slug: string | null } | null;
+};
+
 export default async function BuscarPage({
   searchParams,
 }: {
@@ -16,15 +35,15 @@ export default async function BuscarPage({
   const { q, vertical } = await searchParams;
   const query = (q || "").trim();
 
-  const allVendors = await queryMany<Record<string, unknown>>(
+  const allVendors = (await queryMany<Record<string, unknown>>(
     `SELECT * FROM vendors
      WHERE neighborhood = ANY($1) AND visible = true
      ORDER BY store_name`,
     [zone.neighborhoods]
-  );
+  )) as unknown as VendorRow[];
 
   if (!query) {
-    const list = (vertical ? allVendors.filter((v: any) => v.vertical === vertical) : allVendors) as any[];
+    const list = vertical ? allVendors.filter((v) => v.vertical === vertical) : allVendors;
     return (
       <main className="container mx-auto px-4 py-8 max-w-4xl">
         <div className="mb-6">
@@ -70,7 +89,7 @@ export default async function BuscarPage({
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {list.map((v: any) => (
+            {list.map((v) => (
               <Link key={v.id} href={`/tienda/${v.slug}`} className="block">
                 <Card className="hover:shadow-lg transition-shadow cursor-pointer overflow-hidden h-full">
                   {v.image_url ? (
@@ -100,7 +119,7 @@ export default async function BuscarPage({
 
   const pattern = `%${query}%`;
 
-  let [vendors, products] = await Promise.all([
+  let [vendors, products]: [VendorRow[], ProductRow[]] = await Promise.all([
     queryMany<Record<string, unknown>>(
       `SELECT * FROM vendors
        WHERE neighborhood = ANY($2) AND visible = true AND (store_name ILIKE $1 OR description ILIKE $1 OR category ILIKE $1 OR services_list ILIKE $1)
@@ -115,11 +134,11 @@ export default async function BuscarPage({
        ORDER BY p.name`,
       [pattern, zone.neighborhoods]
     ),
-  ]);
+  ]) as unknown as [VendorRow[], ProductRow[]];
 
   if (vertical) {
-    vendors = vendors.filter((v: any) => v.vertical === vertical);
-    products = products.filter((p: any) => p.vendors?.vertical === vertical);
+    vendors = vendors.filter((v) => v.vertical === vertical);
+    products = products.filter((p) => p.vendors?.vertical === vertical);
   }
 
   const totalResults = vendors.length + products.length;
@@ -179,7 +198,7 @@ export default async function BuscarPage({
             <section>
               <h2 className="font-display text-xl font-semibold mb-4">Comercios ({vendors.length})</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {vendors.map((v: any) => (
+                {vendors.map((v) => (
                   <Link key={v.id} href={`/tienda/${v.slug}`} className="block">
                     <Card className="hover:shadow-lg transition-shadow cursor-pointer overflow-hidden">
                       {v.image_url ? (
@@ -210,7 +229,7 @@ export default async function BuscarPage({
             <section>
               <h2 className="font-display text-xl font-semibold mb-4">Productos ({products.length})</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {products.map((p: any) => (
+                {products.map((p) => (
                   <Link key={p.id} href={`/tienda/${p.vendors?.slug || ""}`} className="block">
                     <Card className="hover:shadow-lg transition-shadow cursor-pointer overflow-hidden">
                       <div className="flex items-center gap-3 p-4">

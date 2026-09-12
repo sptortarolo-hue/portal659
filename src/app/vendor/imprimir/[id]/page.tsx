@@ -33,7 +33,16 @@ function leftRight(left: string, right: string, width: number): string {
   return l.slice(0, width - right.length).trimEnd() + right;
 }
 
-function formatItemLine(item: any, width: number): string[] {
+/** Ítem normalizado para impresión (tolera el formato legacy de pedidos viejos). */
+type PrintItem = {
+  name: string;
+  price: number;
+  quantity?: number;
+  variants?: Record<string, unknown>;
+  modifiers?: { name: string }[] | string[];
+};
+
+function formatItemLine(item: PrintItem, width: number): string[] {
   const qty = item.quantity ?? 1;
   const price = dollar(item.price);
   const lines: string[] = [];
@@ -42,7 +51,7 @@ function formatItemLine(item: any, width: number): string[] {
     lines.push("  " + Object.entries(item.variants).map(([k, v]) => `${k}: ${v}`).join(" · "));
   }
   if (item.modifiers && item.modifiers.length > 0) {
-    lines.push("  " + item.modifiers.map((m: any) => m.name).join(", "));
+    lines.push("  " + item.modifiers.map((m) => (typeof m === "string" ? m : m.name)).join(", "));
   }
   lines.push(`   ${qty} x ${price} ${"=".repeat(3)}  ${dollar((Number(item.price) || 0) * qty)}`);
   return lines;
@@ -123,8 +132,7 @@ export default function ImprimirPedidoPage() {
   titleLines.push("                 PORTAL 659");
   titleLines.push(`\n👉 ${storeName}`);
 
-  const anyOrder = order as any;
-  const orderNumber = anyOrder.order_number || order.id.slice(0, 8).toUpperCase();
+  const orderNumber = order.order_number || order.id.slice(0, 8).toUpperCase();
 
   const headerLines: string[] = [];
   headerLines.push("");
@@ -139,12 +147,12 @@ export default function ImprimirPedidoPage() {
 
   const items: string[] = [];
   const rawItems = Array.isArray(order.items) ? order.items : [];
-  rawItems.forEach((it: any) => {
-    items.push(...formatItemLine(it, width));
+  rawItems.forEach((it) => {
+    items.push(...formatItemLine(it as PrintItem, width));
   });
   items.push(SEP.slice(0, width));
 
-  const deliveryCost = anyOrder.delivery_cost ? Number(anyOrder.delivery_cost) : 0;
+  const deliveryCost = order.delivery_cost ? Number(order.delivery_cost) : 0;
   const totals: string[] = [];
   if (deliveryCost > 0) totals.push(leftRight("Envío:", dollar(deliveryCost), width));
   totals.push(leftRight("TOTAL:", dollar(order.total ?? 0), width));
@@ -213,9 +221,9 @@ export default function ImprimirPedidoPage() {
 }
 
 function orderConditionFallback(order: Order): "delivery" | "retiro" | "mostrador" | "mesa" {
-  const channel = (order as any).channel as string | undefined;
+  const channel = order.channel as string | undefined;
   // El envío a domicilio gana sobre el canal (mostrador delivery se despacha).
-  if ((order as any).method === "delivery") return "delivery";
+  if (order.method === "delivery") return "delivery";
   if (channel === "mostrador") return "mostrador";
   if (channel === "mesa") return "mesa";
   return "retiro";

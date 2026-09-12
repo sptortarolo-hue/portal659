@@ -1,4 +1,5 @@
 import { query, queryOne, withTransaction } from "@/lib/db";
+import { logApiError } from "@/lib/api-error";
 import { adjustStockForItems } from "@/lib/stock";
 import { sendPushToUser } from "@/lib/push";
 import { getVendorMpToken } from "@/lib/mp-oauth";
@@ -180,8 +181,9 @@ export async function POST(request: Request) {
             const raw = (metadata as Record<string, unknown>).stock_items;
             const stockItems = typeof raw === "string" ? JSON.parse(raw) : [];
             await adjustStockForItems(tx, stockItems, "decrement");
-          } catch {
-            // best-effort: ver nota arriba
+          } catch (e) {
+            // best-effort: ver nota arriba (se loguea para no perderlo en silencio)
+            logApiError("mp-webhook/stock", e);
           }
         });
 
@@ -201,8 +203,9 @@ export async function POST(request: Request) {
           await sendPushToUser(vendor.user_id, { title, body, link: "/vendor/dashboard" });
         }
       }
-    } catch {
-      // Mercado Pago reintenta, no fallar
+    } catch (e) {
+      // Mercado Pago reintenta, no fallar (pero se loguea: un fallo acá es plata sin pedido)
+      logApiError("mp-webhook", e);
     }
   }
 

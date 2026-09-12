@@ -153,7 +153,7 @@ export function DashboardHome({
 
   const openResolved = isStoreOpen({
     hours: vendor.hours,
-    open_override: (vendor as any).open_override ?? null,
+    open_override: vendor.open_override ?? null,
   });
 
   const shortcuts: { tab: DashboardTab; label: string; desc: string; icon: typeof ShoppingBag; accent: string; show: boolean }[] = [

@@ -313,7 +313,7 @@ export default function MisPedidosPage() {
 
       <div className="space-y-3">
         {orders.map((order) => (
-          <OrderCard key={order.id} order={order as any} onReorder={handleReorder} />
+          <OrderCard key={order.id} order={order} onReorder={handleReorder} />
         ))}
       </div>
 

@@ -31,11 +31,10 @@ export function StorePreviewCard({
   const [copied, setCopied] = useState(false);
   const [msg, setMsg] = useState("");
 
-  const v = vendor as any;
-  const isVisible = !!v.visible;
-  const requested = !!v.publish_requested_at;
-  const token: string | null = v.preview_token ?? null;
-  const slug: string | null = v.slug ?? null;
+  const isVisible = !!vendor.visible;
+  const requested = !!vendor.publish_requested_at;
+  const token: string | null = vendor.preview_token ?? null;
+  const slug: string | null = vendor.slug ?? null;
 
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   // Dueño con sesión: preview sin token (?preview=1). Con token: link compartible.
@@ -117,7 +116,7 @@ export function StorePreviewCard({
                 description={vendor.description}
                 vertical={vendor.vertical}
                 hours={vendor.hours}
-                open_override={(vendor as any).open_override ?? null}
+                open_override={vendor.open_override ?? null}
                 href={micrositePreviewUrl}
               />
             </div>

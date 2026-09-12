@@ -307,7 +307,7 @@ export default async function TiendaPage({
       {/* Full-width cover */}
       <div className="relative h-56 sm:h-72 w-full">
         {v.image_url ? (
-          <ProductImage src={v.image_url} name={v.store_name} vertical={v.vertical} alt={v.store_name} className="w-full h-full object-cover" eager sizes="100vw" />
+          <ProductImage src={v.image_url} name={v.store_name} vertical={v.vertical} alt={v.store_name} className="w-full h-full object-cover" eager />
         ) : (
           <ProductImage src={null} name={v.store_name} vertical={v.vertical} alt={v.store_name} className="w-full h-full" iconClassName="h-24 w-24" />
         )}

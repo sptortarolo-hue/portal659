@@ -1,5 +1,5 @@
-// v10: invalida cachés v9 (chunks/JS viejos sin normalización de imágenes).
-const CACHE_NAME = "portal659-v10";
+// v11: invalida cachés v10 (ProductImage con doble rama; ahora camino único directo).
+const CACHE_NAME = "portal659-v11";
 const OFFLINE_URL = "/offline.html";
 
 self.addEventListener("install", (event) => {

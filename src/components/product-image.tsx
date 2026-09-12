@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import { useEffect, useState } from "react";
 import {
   Beef,
@@ -33,8 +32,6 @@ type Props = {
   iconClassName?: string;
   /** Si es true, carga inmediata (sin lazy). Útil para imágenes above-the-fold. */
   eager?: boolean;
-  /** Sizes para el srcset (default: tarjetas). El hero usa "100vw". */
-  sizes?: string;
   /** Ajuste de la foto: cover (default) o contain (foto completa). */
   fit?: "cover" | "contain";
   /** Clases extra para el <img> de la foto (ej. transiciones). */
@@ -82,54 +79,6 @@ function normalize(s: string): string {
   return s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 }
 
-/**
- * Normaliza el src para el optimizador: si es una URL absoluta del MISMO
- * origen (las subidas se guardan absolutas), la pasa a relativa. Las
- * relativas siempre validan, sin importar protocolo/host/mayúsculas.
- */
-function toOptimizableSrc(src: string): string {
-  const clean = src.trim();
-  if (typeof window === "undefined" || !/^https?:\/\//i.test(clean)) return clean;
-  try {
-    const u = new URL(clean);
-    if (u.host.toLowerCase() === window.location.host.toLowerCase()) {
-      return u.pathname + u.search;
-    }
-  } catch {
-    // URL malformada: se devuelve tal cual y el onError muestra el fallback.
-  }
-  return clean;
-}
-
-/**
- * True si el src es una subida del portal (/uploads/...) del mismo origen.
- * Esas fotos se sirven DIRECTO con <img> clásico: ya vienen achicadas a 1200px
- * al subir y el optimizador (/_next/image) las rechazaba con 400.
- */
-function isDirectUpload(src: string): boolean {
-  const clean = src.trim();
-  if (/^(data|blob):/i.test(clean)) return false;
-  if (clean.startsWith("/uploads/")) return true;
-  if (typeof window !== "undefined" && /^https?:\/\//i.test(clean)) {
-    try {
-      const u = new URL(clean);
-      if (
-        u.host.toLowerCase() === window.location.host.toLowerCase() &&
-        u.pathname.startsWith("/uploads/")
-      ) {
-        return true;
-      }
-    } catch {
-      // URL malformada: no es directa.
-    }
-  }
-  return false;
-}
-
-/**
- * Parametro anti-caché para el reintento. Solo http(s) y rutas: los
- * data:/blob: se romperían si les agregamos query.
- */
 function withRetryParam(s: string): string | null {
   if (/^(data|blob):/i.test(s.trim())) return null;
   const clean = s.trim();
@@ -158,7 +107,6 @@ export function ProductImage({
   className,
   iconClassName,
   eager = false,
-  sizes,
   fit = "cover",
   imgClassName,
 }: Props) {
@@ -187,44 +135,25 @@ export function ProductImage({
   }
 
   if (src && !failed) {
-    // Subidas del portal: directo sin pasar por /_next/image (daba 400).
-    if (isDirectUpload(src)) {
-      const shownSrc = retried ? (withRetryParam(src) ?? src) : src;
-      // Misma regla que la rama optimizada: si el caller trae posicionamiento
-      // propio no se agrega `relative` (si no, pelean y se rompe el overlay).
-      const directPositioned = /(^|\s)(absolute|fixed|sticky)(\s|$)/.test(className ?? "");
-      return (
-        <div className={`${directPositioned ? "" : "relative "}overflow-hidden ${className ?? "w-full h-full"}`}>
-          {!loaded && <div className="absolute inset-0 bg-muted animate-pulse" />}
-          <img
-            src={shownSrc}
-            alt={alt}
-            loading={eager ? "eager" : "lazy"}
-            decoding="async"
-            onLoad={() => setLoaded(true)}
-            onError={handleError}
-            className={`${fit === "contain" ? "object-contain" : "object-cover"} w-full h-full transition-opacity duration-300 ${loaded ? "opacity-100" : "opacity-0"} ${imgClassName ?? ""}`}
-          />
-        </div>
-      );
-    }
+    // Camino único: <img> directo, sin optimizador.
+    // Las subidas ya vienen achicadas a 1200px al subir y /_next/image
+    // demostró ser frágil (400 por validación, cachés, doble rama).
+    // Un <img> clásico carga cualquier src válido sin validación previa.
     const shownSrc = retried ? (withRetryParam(src) ?? src) : src;
-    // El wrapper solo se posiciona relative si el caller no trae la suya
-    // (absolute/fixed/sticky): si no, pelean por `position` y se rompe el overlay.
+    // Si el caller trae posicionamiento propio no se agrega `relative`
+    // (si no, pelean por `position` y se rompe el overlay).
     const positioned = /(^|\s)(absolute|fixed|sticky)(\s|$)/.test(className ?? "");
     return (
       <div className={`${positioned ? "" : "relative "}overflow-hidden ${className ?? "w-full h-full"}`}>
         {!loaded && <div className="absolute inset-0 bg-muted animate-pulse" />}
-        <Image
-          src={toOptimizableSrc(shownSrc)}
+        <img
+          src={shownSrc}
           alt={alt}
-          fill
-          sizes={sizes ?? "(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"}
-          priority={eager}
+          loading={eager ? "eager" : "lazy"}
           decoding="async"
           onLoad={() => setLoaded(true)}
           onError={handleError}
-          className={`${fit === "contain" ? "object-contain" : "object-cover"} transition-opacity duration-300 ${loaded ? "opacity-100" : "opacity-0"} ${imgClassName ?? ""}`}
+          className={`${fit === "contain" ? "object-contain" : "object-cover"} w-full h-full transition-opacity duration-300 ${loaded ? "opacity-100" : "opacity-0"} ${imgClassName ?? ""}`}
         />
       </div>
     );

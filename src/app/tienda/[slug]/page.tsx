@@ -261,8 +261,8 @@ export default async function TiendaPage({
   };
   const waNumber = (v.whatsapp || "").replace(/[^0-9]/g, "");
   const waText = isService
-    ? `Hola ${v.store_name}! Quiero consultar por tu servicio.`
-    : `Hola ${v.store_name}! Quiero hacer un pedido.`;
+    ? `Hola ${v.store_name}! Quiero consultar por tu servicio. Vengo de Portal 659.`
+    : `Hola ${v.store_name}! Quiero hacer un pedido. Vengo de Portal 659.`;
   const waUrl = `https://wa.me/${waNumber}?text=${encodeURIComponent(waText)}`;
 
   const reviewsInfo = await queryMany<{ rating: number }>(

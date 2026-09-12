@@ -38,7 +38,7 @@ export const POST = withRateLimit(async (request: Request) => {
 
   // Gating: el carrito/checkout requiere un plan con la feature cart activa
   const vendorRow = await queryOne<Record<string, unknown>>(
-    `SELECT vertical, plan_id, plan_status, plan_expires_at, trial_ends_at, hours, open_override, delivery_fee, free_delivery_min, user_id, visible, preview_token, preview_token_expires_at FROM vendors WHERE id = $1 LIMIT 1`,
+    `SELECT vertical, plan_id, plan_status, plan_expires_at, trial_ends_at, hours, open_override, delivery_fee, free_delivery_min, user_id, visible, preview_token, preview_token_expires_at, cash_discount_pct FROM vendors WHERE id = $1 LIMIT 1`,
     [vendorId]
   );
 
@@ -122,6 +122,8 @@ export const POST = withRateLimit(async (request: Request) => {
   let resolvedItems: OrderItem[] = [];
   let resolvedTotal = 0;
   let resolvedItemsCount = 0;
+  let resolvedCashDiscount = 0;
+  let resolvedCashPct = 0;
 
   try {
     await withTransaction(async (tx) => {
@@ -137,9 +139,13 @@ export const POST = withRateLimit(async (request: Request) => {
         method: isPickup ? "pickup" : "delivery",
         deliveryFee: (vendorRow as any)?.delivery_fee,
         freeDeliveryMin: (vendorRow as any)?.free_delivery_min,
+        paymentMethod: paymentMethod || null,
+        cashDiscountPct: (vendorRow as any)?.cash_discount_pct ?? null,
       });
       resolvedItems = pricing.items;
       resolvedTotal = pricing.total;
+      resolvedCashDiscount = pricing.cashDiscount;
+      resolvedCashPct = pricing.cashPct;
       resolvedItemsCount = pricing.items.reduce((s, i) => s + i.qty, 0);
 
       // Reserva de stock (moda: variantes o productos con stock_control);
@@ -154,8 +160,8 @@ export const POST = withRateLimit(async (request: Request) => {
       trackToken = randomBytes(16).toString("hex");
 
       const rows = await tx.query<{ id: string }>(
-        `INSERT INTO orders (vendor_id, customer_id, customer_name, customer_phone, customer_address, method, payment_method, items, total, status, notes, device_id, payment_status, pickup_number, track_token, is_preview)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'new', $10, $11, $12, $13, $14, $15)
+        `INSERT INTO orders (vendor_id, customer_id, customer_name, customer_phone, customer_address, method, payment_method, items, total, status, notes, device_id, payment_status, pickup_number, track_token, is_preview, cash_discount, cash_pct)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'new', $10, $11, $12, $13, $14, $15, $16, $17)
          RETURNING id`,
         [
           vendorId,
@@ -173,6 +179,8 @@ export const POST = withRateLimit(async (request: Request) => {
           pickupNumber,
           trackToken,
           previewOrder,
+          resolvedCashDiscount,
+          resolvedCashPct,
         ]
       );
       orderId = rows[0]?.id;
@@ -229,5 +237,5 @@ export const POST = withRateLimit(async (request: Request) => {
     }
   }
 
-  return NextResponse.json({ ok: true, orderId, trackToken, total: resolvedTotal });
+  return NextResponse.json({ ok: true, orderId, trackToken, total: resolvedTotal, cashDiscount: resolvedCashDiscount, cashPct: resolvedCashPct });
 }, { maxRequests: 10 });

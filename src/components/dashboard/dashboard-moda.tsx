@@ -94,6 +94,9 @@ export default function DashboardModa({
   );
   const [deliveryOptions, setDeliveryOptions] = useState(vendor?.delivery_options || "ambos");
   const [onlineOrders, setOnlineOrders] = useState(vendor?.accepts_online_orders !== false);
+  const [cashDiscount, setCashDiscount] = useState(
+    vendor?.cash_discount_pct != null ? String(vendor.cash_discount_pct) : ""
+  );
   const [storePreview, setStorePreview] = useState<string | null>(vendor?.image_url || null);
   const [logoPreview, setLogoPreview] = useState<string | null>(vendor?.logo_url || null);
   const [storeFile, setStoreFile] = useState<File | null>(null);
@@ -120,6 +123,7 @@ export default function DashboardModa({
     );
     setDeliveryOptions(vendor.delivery_options || "ambos");
     setOnlineOrders(vendor.accepts_online_orders !== false);
+    setCashDiscount(vendor.cash_discount_pct != null ? String(vendor.cash_discount_pct) : "");
     setStorePreview(vendor.image_url || null);
     setLogoPreview(vendor.logo_url || null);
   }, [vendor]);
@@ -194,6 +198,7 @@ export default function DashboardModa({
       facebook,
       payment_methods: paymentMethods.join(", "),
       delivery_options: deliveryOptions,
+      cash_discount_pct: cashDiscount === "" ? null : Number(cashDiscount),
     });
     setSaving(false);
   }
@@ -515,6 +520,24 @@ export default function DashboardModa({
           <div><Label className="mb-2 block">Entrega</Label><RadioCards options={DELIVERY_OPTIONS} value={deliveryOptions} onChange={setDeliveryOptions} /></div>
           {deliveryOptions !== "retiro" && (
             <DeliveryFeeConfig vendor={vendor} saveVendor={saveVendor} />
+          )}
+          {paymentMethods.includes("Efectivo") && (
+            <div>
+              <Label className="mb-2 block">Descuento en efectivo (%)</Label>
+              <Input
+                type="number"
+                min={0}
+                max={99}
+                step="any"
+                value={cashDiscount}
+                onChange={(e) => setCashDiscount(e.target.value)}
+                placeholder="Ej: 10"
+                className="max-w-40"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Se muestra junto a cada precio y se descuenta solo al pagar en efectivo.
+              </p>
+            </div>
           )}
           <div className="flex items-center justify-between gap-3 rounded-xl border border-border px-3 py-2.5">
             <div>

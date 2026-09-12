@@ -21,6 +21,8 @@ type OrderSummaryModalProps = {
   address?: string;
   paymentMethod?: string;
   loading?: boolean;
+  cashDiscount?: number;
+  cashPct?: number;
 };
 
 export function OrderSummaryModal({
@@ -35,6 +37,8 @@ export function OrderSummaryModal({
   address,
   paymentMethod,
   loading,
+  cashDiscount = 0,
+  cashPct = 0,
 }: OrderSummaryModalProps) {
   const paymentLabel =
     paymentMethod === "efectivo"
@@ -95,6 +99,12 @@ export function OrderSummaryModal({
           <div className="border-t border-border pt-3 flex justify-between text-sm text-muted-foreground">
             <span>Envío</span>
             <span className="tabular-nums">${deliveryFee.toLocaleString("es-AR")}</span>
+          </div>
+        )}
+        {cashDiscount > 0 && (
+          <div className="flex justify-between text-sm font-medium text-green-700">
+            <span>Desc. efectivo ({Number(cashPct).toLocaleString("es-AR")}%)</span>
+            <span className="tabular-nums">−${Number(cashDiscount).toLocaleString("es-AR")}</span>
           </div>
         )}
         <div className="border-t border-border pt-3 flex justify-between font-bold">

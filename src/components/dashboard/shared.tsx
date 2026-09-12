@@ -104,6 +104,8 @@ type OfferFormProps = {
   showPrep?: boolean;
   offRequiresPrep?: boolean;
   setOffRequiresPrep?: (v: boolean) => void;
+  offCashExcluded?: boolean;
+  setOffCashExcluded?: (v: boolean) => void;
   onSubmit: () => void;
   onClose?: () => void;
 };
@@ -125,6 +127,7 @@ export function OfferForm({
   offStockLowThreshold = 5, setOffStockLowThreshold,
   showPrep = false,
   offRequiresPrep = true, setOffRequiresPrep,
+  offCashExcluded = false, setOffCashExcluded,
   onClose,
 }: OfferFormProps) {
   // Al crear (no editando): si la categoría actual no existe entre las opciones
@@ -153,6 +156,20 @@ export function OfferForm({
         </div>
         {showStock && setOffPromoPrice && (
           <div><Label>Precio promo ($)</Label><Input type="number" step="0.01" value={offPromoPrice} onChange={(e) => setOffPromoPrice(e.target.value)} placeholder="Precio de oferta" /></div>
+        )}
+        {setOffCashExcluded && Number(offPromoPrice) > 0 && (
+          <div className="flex items-center justify-between">
+            <div>
+              <Label>Aplica descuento en efectivo</Label>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Si lo apagás, esta promo no recibe el % de descuento en efectivo
+              </p>
+            </div>
+            <Switch
+              checked={!offCashExcluded}
+              onCheckedChange={(v) => setOffCashExcluded(!v)}
+            />
+          </div>
         )}
         <div><Label>Categoría</Label><select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={offCategory} onChange={(e) => setOffCategory(e.target.value)}>{categories.length === 0 && <option value="otras">otras</option>}{categories.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}{showCurrentAsOption && <option value={offCategory}>{offCategory}</option>}</select></div>
         {showPrep && setOffRequiresPrep && (

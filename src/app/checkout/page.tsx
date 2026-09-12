@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { buildComandaWhatsApp } from "@/lib/whatsapp-message";
+import { cashPrice, normalizeCashPct } from "@/lib/cash-discount";
 import { formatPhone, isValidPhone } from "@/lib/order-utils";
 import { OrderSummaryModal } from "@/components/cart/order-summary-modal";
 import { readPreviewSession } from "@/components/store/preview-session-sync";
@@ -40,6 +41,21 @@ export default function CheckoutPage() {
     ? Number(vendor.deliveryFee)
     : 0;
   const grandTotal = total + deliveryFee;
+
+  // Espejo visual del descuento en efectivo (el servidor recalcula y manda).
+  const cashPct = normalizeCashPct(vendor?.cashDiscountPct);
+  const cashActive = paymentMethod === "efectivo" && cashPct > 0;
+  let cashDiscount = 0;
+  if (cashActive) {
+    for (const i of items) {
+      if (i.cashExcluded) continue;
+      const modTotal = (i.modifiers || []).reduce((s, m) => s + m.price_mod, 0);
+      const unit = i.price + modTotal;
+      cashDiscount += Math.round((unit - cashPrice(unit, cashPct)) * i.qty * 100) / 100;
+    }
+    cashDiscount = Math.round(cashDiscount * 100) / 100;
+  }
+  const displayTotal = grandTotal - cashDiscount;
 
   useEffect(() => {
     if (!vendor?.id) return;
@@ -180,7 +196,7 @@ export default function CheckoutPage() {
             qty: i.qty,
             modifiers: (i.modifiers || []).map((m) => m.label),
           })),
-          total: grandTotal,
+          total: displayTotal,
           notes: notes.trim() || null,
         }),
       });
@@ -194,9 +210,12 @@ export default function CheckoutPage() {
       }
 
       const waTotal = typeof data.total === "number" ? data.total : grandTotal;
+      const waCashDiscount = typeof data.cashDiscount === "number" ? data.cashDiscount : 0;
+      const waCashPct = typeof data.cashPct === "number" ? data.cashPct : 0;
       const previewPrefix = isPreview ? "🧪 [PRUEBA] " : "";
       const baseUrl = (process.env.NEXT_PUBLIC_SITE_URL || window.location.origin).replace(/\/$/, "");
       const trackUrl = data.trackToken ? `${baseUrl}/seguimiento/${data.trackToken}` : undefined;
+      const registerUrl = data.trackToken ? `${baseUrl}/registro?next=/perfil` : undefined;
       const waMessage = buildComandaWhatsApp({
         vendorName: v.storeName,
         items: items.map((i) => ({
@@ -213,6 +232,9 @@ export default function CheckoutPage() {
         paymentMethod,
           notes: notes.trim() || undefined,
           trackUrl,
+          registerUrl,
+          cashDiscount: waCashDiscount,
+          cashPct: waCashPct,
         });
       const message = previewPrefix + waMessage;
 
@@ -271,6 +293,23 @@ export default function CheckoutPage() {
             </>
           )}
         </p>
+        {!userId && (
+          <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4 mb-6 text-left">
+            <p className="font-semibold text-sm mb-1">📋 ¿Guardamos tus datos para la próxima?</p>
+            <p className="text-xs text-muted-foreground leading-relaxed mb-3">
+              Creá tu cuenta gratis y tené tus favoritos, tus datos de contacto ya cargados,
+              tu historial de pedidos y acceso a dejar reseñas.
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full"
+              onClick={() => router.push("/registro?next=/perfil")}
+            >
+              Crear mi cuenta gratis
+            </Button>
+          </div>
+        )}
         <Button onClick={() => router.push("/")}>Seguir viendo ofertas</Button>
       </main>
     );
@@ -283,7 +322,7 @@ export default function CheckoutPage() {
       </h1>
       <p className="text-muted-foreground text-sm mb-6">
         Con <span className="font-medium">{v.storeName}</span> · {items.length} items ·{" "}
-        <span className="font-bold text-foreground">${grandTotal.toLocaleString("es-AR")}</span>
+        <span className="font-bold text-foreground">${displayTotal.toLocaleString("es-AR")}</span>
       </p>
 
       {/* Order summary */}
@@ -321,9 +360,15 @@ export default function CheckoutPage() {
               <span>${deliveryFee.toLocaleString("es-AR")}</span>
             </div>
           )}
+          {cashActive && cashDiscount > 0 && (
+            <div className="flex justify-between text-sm font-medium text-green-700">
+              <span>Desc. efectivo ({Number(cashPct).toLocaleString("es-AR")}%)</span>
+              <span>−${cashDiscount.toLocaleString("es-AR")}</span>
+            </div>
+          )}
           <div className="flex justify-between font-bold text-lg">
             <span>Total</span>
-            <span>${grandTotal.toLocaleString("es-AR")}</span>
+            <span>${displayTotal.toLocaleString("es-AR")}</span>
           </div>
         </div>
       </div>
@@ -451,6 +496,11 @@ export default function CheckoutPage() {
               }`}
             >
               💵 Efectivo
+              {normalizeCashPct(vendor?.cashDiscountPct) > 0 && (
+                <span className="ml-1 rounded-full bg-green-100 text-green-700 text-[10px] font-bold px-1.5 py-0.5">
+                  −{Number(normalizeCashPct(vendor?.cashDiscountPct)).toLocaleString("es-AR")}%
+                </span>
+              )}
             </button>
             <button
               type="button"
@@ -516,7 +566,9 @@ export default function CheckoutPage() {
           qty: i.qty,
           modifiers: (i.modifiers || []).map((m) => m.label),
         }))}
-        total={grandTotal}
+        total={displayTotal}
+        cashDiscount={cashActive ? cashDiscount : 0}
+        cashPct={cashActive ? cashPct : 0}
         deliveryFee={deliveryFee}
         method={method}
         address={method === "delivery" ? address : undefined}

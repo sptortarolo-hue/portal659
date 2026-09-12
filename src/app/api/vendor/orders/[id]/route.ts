@@ -86,8 +86,8 @@ export async function PATCH(
     return NextResponse.json({ error: "No autorizado" }, { status: 403 });
   }
 
-  const fullVendor = await queryOne<{ id: string; store_name: string; slug: string | null; block_unpaid_orders: boolean; vertical: string; delivery_fee: number | null; free_delivery_min: number | null }>(
-    `SELECT id, store_name, slug, block_unpaid_orders, vertical, delivery_fee, free_delivery_min FROM vendors WHERE id = $1 LIMIT 1`,
+  const fullVendor = await queryOne<{ id: string; store_name: string; slug: string | null; block_unpaid_orders: boolean; vertical: string; delivery_fee: number | null; free_delivery_min: number | null; cash_discount_pct: number | null }>(
+    `SELECT id, store_name, slug, block_unpaid_orders, vertical, delivery_fee, free_delivery_min, cash_discount_pct FROM vendors WHERE id = $1 LIMIT 1`,
     [vendor.id]
   );
 
@@ -212,9 +212,13 @@ export async function PATCH(
           method: currentOrder.method,
           deliveryFee: fullVendor?.delivery_fee,
           freeDeliveryMin: fullVendor?.free_delivery_min,
+          paymentMethod: currentOrder.payment_method,
+          cashDiscountPct: fullVendor?.cash_discount_pct ?? null,
         });
         updateData.items = JSON.stringify(pricing.items);
         updateData.total = pricing.total;
+        updateData.cash_discount = pricing.cashDiscount;
+        updateData.cash_pct = pricing.cashPct;
 
         // Re-stock del pedido viejo + reserva del nuevo (solo canal app; los
         // canales presenciales no habían reservado stock al crear).

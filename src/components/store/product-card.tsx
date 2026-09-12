@@ -4,6 +4,8 @@ import { useState, useMemo } from "react";
 import { AddToCartButton } from "@/components/offers/add-to-cart-button";
 import { VariantSelector } from "./variant-selector";
 import { ProductImage } from "@/components/product-image";
+import { CashPrice } from "@/components/store/cash-price";
+import { cashAppliesToItem, normalizeCashPct } from "@/lib/cash-discount";
 
 type VendorBrief = {
   id: string;
@@ -11,6 +13,7 @@ type VendorBrief = {
   storeName: string;
   whatsapp: string;
   vertical?: string | null;
+  cashDiscountPct?: number | null;
 };
 
 type Props = {
@@ -72,6 +75,16 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
       ? `De $${Number(product.price).toLocaleString("es-AR")}`
       : null;
 
+  // Descuento en efectivo: sobre el mínimo del rango (o precio exacto).
+  const cardHasPromo = hasVariants
+    ? variants.some((x: any) => x.promo != null)
+    : product.promo_price != null;
+  const cardCashBase = hasVariants && summary ? summary.min : Number(product.promo_price ?? product.price);
+  const cardCashRange = hasVariants && summary ? summary.min !== summary.max : false;
+  const showCardCash =
+    normalizeCashPct(vendor.cashDiscountPct) > 0 &&
+    cashAppliesToItem({ hasPromo: cardHasPromo, excluded: product.cash_discount_excluded });
+
   return (
     <>
       <div className="flex flex-col rounded-xl overflow-hidden border border-border bg-card shadow-sm hover:shadow-md transition-shadow">
@@ -109,10 +122,14 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
 
         <div className="p-2.5 flex flex-col gap-0.5 flex-1">
           <p className="font-medium text-[13px] leading-snug line-clamp-1">{product.name}</p>
-          <div className="flex items-baseline gap-1.5 mt-0.5">
-            <span className={`font-display font-bold text-sm ${bestDiscount != null ? "text-primary" : ""}`}>{priceLabel}</span>
-            {regularLabel && <span className="text-[10px] text-muted-foreground line-through">{regularLabel}</span>}
-          </div>
+          {showCardCash ? (
+            <CashPrice price={cardCashBase} hasPromo={cardHasPromo} excluded={product.cash_discount_excluded} cashPct={vendor.cashDiscountPct} size="sm" prefix={cardCashRange ? "Desde " : ""} plainClassName="font-display font-bold text-sm" />
+          ) : (
+            <div className="flex items-baseline gap-1.5 mt-0.5">
+              <span className={`font-display font-bold text-sm ${bestDiscount != null ? "text-primary" : ""}`}>{priceLabel}</span>
+              {regularLabel && <span className="text-[10px] text-muted-foreground line-through">{regularLabel}</span>}
+            </div>
+          )}
         </div>
       </div>
 
@@ -160,13 +177,17 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
 
               <div className="space-y-1">
                 <h2 className="font-display text-xl font-semibold">{product.name}</h2>
-                <div className="flex items-baseline gap-2 flex-wrap">
-                  <span className="font-bold text-lg">{priceLabel}</span>
-                  {regularLabel && <span className="text-sm text-muted-foreground line-through">{regularLabel}</span>}
-                  {bestDiscount != null && (
-                    <span className="rounded-full bg-red-500 text-white text-[11px] font-bold px-2 py-0.5">-{bestDiscount}%</span>
-                  )}
-                </div>
+                {showCardCash ? (
+                  <CashPrice price={cardCashBase} hasPromo={cardHasPromo} excluded={product.cash_discount_excluded} cashPct={vendor.cashDiscountPct} size="lg" prefix={cardCashRange ? "Desde " : ""} plainClassName="font-bold text-lg" />
+                ) : (
+                  <div className="flex items-baseline gap-2 flex-wrap">
+                    <span className="font-bold text-lg">{priceLabel}</span>
+                    {regularLabel && <span className="text-sm text-muted-foreground line-through">{regularLabel}</span>}
+                    {bestDiscount != null && (
+                      <span className="rounded-full bg-red-500 text-white text-[11px] font-bold px-2 py-0.5">-{bestDiscount}%</span>
+                    )}
+                  </div>
+                )}
               </div>
 
               {product.description && (
@@ -186,7 +207,7 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
                     Consultar por WhatsApp
                   </a>
                 ) : hasVariants ? (
-                  <VariantSelector productId={product.id} name={product.name} variants={variants} vendor={vendor} stockControl={product.stock_control !== false} />
+                  <VariantSelector productId={product.id} name={product.name} variants={variants} vendor={vendor} stockControl={product.stock_control !== false} cashExcluded={!!product.cash_discount_excluded} />
                 ) : (
                   <AddToCartButton
                     offerId={product.id}
@@ -194,6 +215,7 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
                     price={product.promo_price ? Number(product.promo_price) : Number(product.price)}
                     vendor={vendor}
                     modifiers={modifiers}
+                    cashExcluded={product.promo_price != null && !!product.cash_discount_excluded}
                   />
                 )}
               </div>

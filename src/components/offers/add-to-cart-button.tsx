@@ -21,6 +21,8 @@ type AddToCartButtonProps = {
     freeDeliveryMin?: number | null;
   };
   modifiers?: ProductModifier[];
+  /** La promo de este ítem está excluida del descuento en efectivo. */
+  cashExcluded?: boolean;
 };
 
 export function AddToCartButton({
@@ -29,6 +31,7 @@ export function AddToCartButton({
   price,
   vendor,
   modifiers,
+  cashExcluded,
 }: AddToCartButtonProps) {
   const { addItem } = useCart();
   const { addToast } = useToast();
@@ -43,6 +46,7 @@ export function AddToCartButton({
         price,
         qty: 1,
         modifiers: mods,
+        cashExcluded,
       });
       if (switched) {
         addToast("Se limpió el carrito anterior (solo podés pedir de un local a la vez)");
@@ -52,7 +56,7 @@ export function AddToCartButton({
       setAdded(true);
       setTimeout(() => setAdded(false), 1500);
     },
-    [addItem, vendor, offerId, name, price, addToast]
+    [addItem, vendor, offerId, name, price, cashExcluded, addToast]
   );
 
   const handleClick = useCallback(() => {

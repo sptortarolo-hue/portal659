@@ -91,6 +91,12 @@ ilimitado), `max_orders_month` (vacío = ilimitado), `badge`, `popular`, y la pr
   real; activar trial/pago en preview se bloquea con 403 ("publicá primero").
   Banner `🧪 Modo prueba` en el dashboard y badge en `/vendor/suscripcion`.
   Sin migración (usa columnas existentes).
+- **Descuento en efectivo** (`migrate-cash-discount.sql`): `vendors.cash_discount_pct`
+  (global, solo con Efectivo) + `products.cash_discount_excluded` (la promo no lo
+  recibe, a elección por producto) + `orders.cash_discount/cash_pct` (detalle
+  persistido). Micrositio muestra precio lista + efectivo con pill; checkout y
+  `resolveOrderPricing` lo aplican al pagar en efectivo (nunca sobre el envío);
+  ticket/WhatsApp detallan `Desc. efectivo (X%): -$Y`.
 
 ## Migración
 

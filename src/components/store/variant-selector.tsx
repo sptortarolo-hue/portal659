@@ -4,6 +4,8 @@ import { useState, useMemo } from "react";
 import { useCart } from "@/lib/cart";
 import type { CartModifier } from "@/lib/cart";
 import { useToast } from "@/lib/toast";
+import { CashPrice } from "@/components/store/cash-price";
+import { cashAppliesToItem, normalizeCashPct } from "@/lib/cash-discount";
 import type { ProductVariant } from "@/types/database";
 
 type Props = {
@@ -18,11 +20,14 @@ type Props = {
     vertical?: string | null;
     deliveryFee?: number | null;
     freeDeliveryMin?: number | null;
+    cashDiscountPct?: number | null;
   };
   stockControl?: boolean;
+  /** La promo del producto está excluida del descuento en efectivo. */
+  cashExcluded?: boolean;
 };
 
-export function VariantSelector({ productId, name, variants, vendor, stockControl = true }: Props) {
+export function VariantSelector({ productId, name, variants, vendor, stockControl = true, cashExcluded = false }: Props) {
   const { addItem } = useCart();
   const { addToast } = useToast();
   const [color, setColor] = useState<string | null>(null);
@@ -42,6 +47,10 @@ export function VariantSelector({ productId, name, variants, vendor, stockContro
 
   const price = current ? (current.promo != null ? current.promo : current.price) : null;
   const promo = current?.promo != null ? -Math.round((1 - current.promo / current.price) * 100) : null;
+  const showCash =
+    current != null && price != null &&
+    normalizeCashPct(vendor.cashDiscountPct) > 0 &&
+    cashAppliesToItem({ hasPromo: current.promo != null, excluded: cashExcluded });
 
   const totalStock = stockControl ? variants.reduce((acc, v) => acc + (v.stock ?? 0), 0) : 1;
 
@@ -52,8 +61,8 @@ export function VariantSelector({ productId, name, variants, vendor, stockContro
     if (current.talle) mods.push({ group: "Talle", label: current.talle, price_mod: 0 });
     // price_mod 0: el precio ya está definido en el producto según variante.
     const switched = addItem(
-      { id: vendor.id, slug: vendor.slug, storeName: vendor.storeName, whatsapp: vendor.whatsapp, vertical: vendor.vertical, deliveryFee: vendor.deliveryFee ?? null, freeDeliveryMin: vendor.freeDeliveryMin ?? null },
-      { offerId: productId, variantId: current.id, name, price: price!, qty: 1, modifiers: mods }
+      { id: vendor.id, slug: vendor.slug, storeName: vendor.storeName, whatsapp: vendor.whatsapp, vertical: vendor.vertical, deliveryFee: vendor.deliveryFee ?? null, freeDeliveryMin: vendor.freeDeliveryMin ?? null, cashDiscountPct: vendor.cashDiscountPct ?? null },
+      { offerId: productId, variantId: current.id, name, price: price!, qty: 1, modifiers: mods, cashExcluded: current.promo != null && cashExcluded }
     );
     addToast(`${name} (${current.color} / ${current.talle}) agregado al carrito`);
     setAdded(true);
@@ -134,7 +143,11 @@ export function VariantSelector({ productId, name, variants, vendor, stockContro
               </>
             )}
             <div className="font-display text-lg font-bold">
-              ${price!.toLocaleString("es-AR")}
+              {showCash ? (
+                <CashPrice price={price!} hasPromo={current.promo != null} excluded={cashExcluded} cashPct={vendor.cashDiscountPct} size="md" plainClassName="font-display text-lg font-bold" />
+              ) : (
+                <>${price!.toLocaleString("es-AR")}</>
+              )}
             </div>
           </div>
           <div className="text-right text-xs text-muted-foreground">

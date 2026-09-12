@@ -17,12 +17,15 @@ export async function PATCH(
     "name", "description", "price", "category", "image_url",
     "available", "featured_today", "stock", "promo_price",
     "stock_low_threshold", "currency", "neighborhood", "type", "unit",
-    "has_variants", "stock_control", "requires_prep",
+    "has_variants", "stock_control", "requires_prep", "cash_discount_excluded",
   ] as const;
 
   const safeUpdate: Record<string, unknown> = {};
   for (const key of allowedFields) {
     if (key in body) safeUpdate[key] = body[key];
+  }
+  if ("cash_discount_excluded" in safeUpdate) {
+    safeUpdate.cash_discount_excluded = safeUpdate.cash_discount_excluded === true;
   }
   // Normalizar categoría igual que al crear (evita variantes duplicadas).
   if ("category" in safeUpdate) {

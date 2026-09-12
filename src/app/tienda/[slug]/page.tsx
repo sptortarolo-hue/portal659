@@ -258,6 +258,13 @@ export default async function TiendaPage({
     vertical: v.vertical,
     deliveryFee: v.delivery_fee != null ? Number(v.delivery_fee) : null,
     freeDeliveryMin: v.free_delivery_min != null ? Number(v.free_delivery_min) : null,
+    cashDiscountPct:
+      String(v.payment_methods || "")
+        .split(",")
+        .map((s: string) => s.trim())
+        .includes("Efectivo") && Number(v.cash_discount_pct) > 0
+        ? Number(v.cash_discount_pct)
+        : null,
   };
   const waNumber = (v.whatsapp || "").replace(/[^0-9]/g, "");
   const waText = isService

@@ -4,6 +4,8 @@ import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { AddToCartButton } from "@/components/offers/add-to-cart-button";
 import { ProductImage } from "@/components/product-image";
+import { CashPrice } from "@/components/store/cash-price";
+import { cashAppliesToItem, normalizeCashPct } from "@/lib/cash-discount";
 import { useCart, type CartModifier } from "@/lib/cart";
 import { useToast } from "@/lib/toast";
 import type { ProductModifier, ModifierOption } from "@/types/database";
@@ -16,6 +18,7 @@ type VendorBrief = {
   vertical?: string | null;
   deliveryFee?: number | null;
   freeDeliveryMin?: number | null;
+  cashDiscountPct?: number | null;
 };
 
 type Props = {
@@ -31,6 +34,7 @@ type Props = {
     stock?: number | null;
     stock_low_threshold?: number | null;
     stock_control?: boolean;
+    cash_discount_excluded?: boolean | null;
   };
   vendor: VendorBrief;
   modifiers?: ProductModifier[];
@@ -55,6 +59,12 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
   const [qty, setQty] = useState(1);
 
   const basePrice = product.promo_price != null ? Number(product.promo_price) : Number(product.price);
+  const hasPromo = product.promo_price != null;
+  const cashExcluded = hasPromo && !!product.cash_discount_excluded;
+  // Doble valor solo si el descuento corre para este plato.
+  const showCash =
+    normalizeCashPct(vendor.cashDiscountPct) > 0 &&
+    cashAppliesToItem({ hasPromo, excluded: product.cash_discount_excluded });
   const stockControl = product.stock_control !== false;
   const outStock = stockControl && (product.stock ?? 0) <= 0;
 
@@ -101,6 +111,7 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
       price: basePrice,
       qty,
       modifiers: flat.length > 0 ? flat : undefined,
+      cashExcluded,
     });
     addToast(
       switched
@@ -136,7 +147,9 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
         </div>
       </div>
       <div className="flex flex-col items-end gap-2 flex-shrink-0">
-        {product.promo_price ? (
+        {showCash ? (
+          <CashPrice price={basePrice} hasPromo={hasPromo} excluded={product.cash_discount_excluded} cashPct={vendor.cashDiscountPct} />
+        ) : product.promo_price ? (
           <div className="text-right">
             <span className="font-bold text-primary">${Number(product.promo_price).toLocaleString("es-AR")}</span>
             <span className="block text-xs text-muted-foreground line-through">${Number(product.price).toLocaleString("es-AR")}</span>
@@ -146,7 +159,7 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
         )}
         {!outStock &&
           (acceptsCart ? (
-            <AddToCartButton offerId={product.id} name={product.name} price={basePrice} vendor={vendor} modifiers={modifiers} />
+            <AddToCartButton offerId={product.id} name={product.name} price={basePrice} vendor={vendor} modifiers={modifiers} cashExcluded={cashExcluded} />
           ) : (
             <a href={consultHref} target="_blank" rel="noopener noreferrer" className="rounded-md px-3 py-1.5 text-sm font-medium text-center bg-primary text-primary-foreground hover:bg-primary/90">Consultar</a>
           ))}
@@ -179,7 +192,9 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
           <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{product.description}</p>
         )}
         <div className="flex items-center gap-2 mt-1">
-          {product.promo_price ? (
+          {showCash ? (
+            <CashPrice price={basePrice} hasPromo={hasPromo} excluded={product.cash_discount_excluded} cashPct={vendor.cashDiscountPct} size="sm" plainClassName="font-bold" />
+          ) : product.promo_price ? (
             <>
               <span className="font-bold text-primary">${Number(product.promo_price).toLocaleString("es-AR")}</span>
               <span className="text-xs text-muted-foreground line-through">${Number(product.price).toLocaleString("es-AR")}</span>
@@ -251,7 +266,9 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
             <div className="p-4 space-y-3">
               <div className="flex items-center justify-between gap-2">
                 <div>
-                  {product.promo_price ? (
+                  {showCash ? (
+                    <CashPrice price={basePrice} hasPromo={hasPromo} excluded={product.cash_discount_excluded} cashPct={vendor.cashDiscountPct} size="lg" plainClassName="font-display text-2xl font-bold" />
+                  ) : product.promo_price ? (
                     <div className="flex items-baseline gap-2">
                       <span className="font-display text-2xl font-bold text-primary">${Number(product.promo_price).toLocaleString("es-AR")}</span>
                       <span className="text-sm text-muted-foreground line-through">${Number(product.price).toLocaleString("es-AR")}</span>

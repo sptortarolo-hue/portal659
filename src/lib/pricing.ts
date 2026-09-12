@@ -1,5 +1,6 @@
 import type { Tx } from "@/lib/db";
 import type { OrderItem } from "@/types/database";
+import { cashAppliesToItem, cashPrice, normalizeCashPct } from "@/lib/cash-discount";
 
 /** Interfaz mínima: sirve la Tx de withTransaction o un wrapper de queryMany. */
 export type PricingQuerier = Pick<Tx, "query">;
@@ -26,6 +27,7 @@ type ProductRow = {
   price: number;
   promo_price: number | null;
   available: boolean;
+  cash_discount_excluded: boolean | null;
 };
 
 type VariantRow = {
@@ -40,6 +42,10 @@ export type ResolvedPricing = {
   subtotal: number;
   deliveryFee: number;
   total: number;
+  /** Descuento en efectivo aplicado (0 si no corresponde). */
+  cashDiscount: number;
+  /** % aplicado (0 si no corresponde). */
+  cashPct: number;
 };
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -63,8 +69,14 @@ export async function resolveOrderPricing(opts: {
   method?: string | null;
   deliveryFee?: number | null;
   freeDeliveryMin?: number | null;
+  /** Método de pago elegido (solo "efectivo" activa el descuento). */
+  paymentMethod?: string | null;
+  /** % de descuento en efectivo del comercio (0/NULL = sin descuento). */
+  cashDiscountPct?: number | null;
 }): Promise<ResolvedPricing> {
   const { tx, vendorId, method } = opts;
+  const cashPct = normalizeCashPct(opts.cashDiscountPct);
+  const cashActive = opts.paymentMethod === "efectivo" && cashPct > 0;
 
   if (!Array.isArray(opts.items) || opts.items.length === 0) {
     throw new PricingError("El pedido no tiene productos");
@@ -93,7 +105,7 @@ export async function resolveOrderPricing(opts: {
 
   const products: ProductRow[] = productIds.size
     ? await tx.query<ProductRow>(
-        `SELECT id, name, price, promo_price, available FROM products
+        `SELECT id, name, price, promo_price, available, cash_discount_excluded FROM products
          WHERE vendor_id = $1 AND id = ANY($2)`,
         [vendorId, [...productIds]]
       )
@@ -130,6 +142,7 @@ export async function resolveOrderPricing(opts: {
 
   const outItems: OrderItem[] = [];
   let subtotal = 0;
+  let cashDiscount = 0;
 
   for (const it of opts.items) {
     if (!it) continue;
@@ -189,6 +202,17 @@ export async function resolveOrderPricing(opts: {
     unit = round2(unit);
     subtotal += unit * qtySafe;
 
+    // Descuento en efectivo: sobre la unidad elegible (promo excluida no corre).
+    // La unidad con descuento es la misma que muestra el micrositio.
+    const hasPromo = variant ? variant.promo != null : product.promo_price != null;
+    if (
+      cashActive &&
+      cashAppliesToItem({ hasPromo, excluded: product.cash_discount_excluded })
+    ) {
+      const unitCash = cashPrice(unit, cashPct);
+      cashDiscount += round2((unit - unitCash) * qtySafe);
+    }
+
     outItems.push({
       product_id: it.offerId ? String(it.offerId) : product.id,
       variant_id: variant ? variant.id : undefined,
@@ -207,10 +231,15 @@ export async function resolveOrderPricing(opts: {
   const freeMin = Number(opts.freeDeliveryMin) || 0;
   const deliveryFee = fee > 0 && !(freeMin > 0 && subtotal >= freeMin) ? fee : 0;
 
+  // El descuento va solo sobre productos (nunca sobre el envío).
+  cashDiscount = round2(Math.min(cashDiscount, subtotal));
+
   return {
     items: outItems,
     subtotal: round2(subtotal),
     deliveryFee: round2(deliveryFee),
-    total: round2(subtotal + deliveryFee),
+    total: round2(subtotal - cashDiscount + deliveryFee),
+    cashDiscount,
+    cashPct: cashActive ? cashPct : 0,
   };
 }

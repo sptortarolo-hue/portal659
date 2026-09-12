@@ -60,6 +60,7 @@ type Offer = {
   stock_control?: boolean;
   promo_price: number | null;
   requires_prep?: boolean;
+  cash_discount_excluded?: boolean;
 };
 
 const CATEGORY_SUGGESTIONS: Record<string, string[]> = {
@@ -130,6 +131,9 @@ export default function DashboardGastro({
   );
   const [deliveryOptions, setDeliveryOptions] = useState(vendor?.delivery_options || "ambos");
   const [onlineOrders, setOnlineOrders] = useState(vendor?.accepts_online_orders !== false);
+  const [cashDiscount, setCashDiscount] = useState(
+    vendor?.cash_discount_pct != null ? String(vendor.cash_discount_pct) : ""
+  );
   const [prepTimeMin, setPrepTimeMin] = useState(
     vendor?.prep_time_min || 30
   );
@@ -155,6 +159,7 @@ export default function DashboardGastro({
   const [offPromoPrice, setOffPromoPrice] = useState("");
   const [offStockLowThreshold, setOffStockLowThreshold] = useState<number>(5);
   const [offRequiresPrep, setOffRequiresPrep] = useState<boolean>(true);
+  const [offCashExcluded, setOffCashExcluded] = useState(false);
 
   const [galleryUploading, setGalleryUploading] = useState(false);
   const galleryFileRef = useRef<HTMLInputElement>(null);
@@ -211,6 +216,7 @@ export default function DashboardGastro({
     );
     setDeliveryOptions(vendor?.delivery_options || "ambos");
     setOnlineOrders(vendor?.accepts_online_orders !== false);
+    setCashDiscount(vendor?.cash_discount_pct != null ? String(vendor.cash_discount_pct) : "");
     setPrepTimeMin(vendor?.prep_time_min || 30);
     setStorePreview(vendor?.image_url || null);
     setLogoPreview(vendor?.logo_url || null);
@@ -338,6 +344,7 @@ export default function DashboardGastro({
       payment_methods: paymentMethods.join(", "),
       delivery_options: deliveryOptions,
       prep_time_min: prepTimeMin,
+      cash_discount_pct: cashDiscount === "" ? null : Number(cashDiscount),
     };
 
     if (storeFile) {
@@ -389,7 +396,7 @@ export default function DashboardGastro({
   }, [
     storeName, storeCategory, address, lat, lng, hours, description,
     whatsapp, phone, instagram, facebook, paymentMethods,
-    deliveryOptions, prepTimeMin,
+    deliveryOptions, prepTimeMin, cashDiscount,
     storeFile, logoFile, saveVendor, setMsg,
   ]);
 
@@ -407,6 +414,7 @@ export default function DashboardGastro({
     setOffPromoPrice("");
     setOffStockLowThreshold(5);
     setOffRequiresPrep(true);
+    setOffCashExcluded(false);
   }
 
   async function handleOfferSubmit(e?: React.FormEvent) {
@@ -437,6 +445,7 @@ export default function DashboardGastro({
       promo_price: offPromoPrice ? Number(offPromoPrice) : null,
       stock_low_threshold: offStockControl ? offStockLowThreshold : null,
       requires_prep: offRequiresPrep,
+      cash_discount_excluded: offCashExcluded,
     };
 
     let res: Response;
@@ -477,6 +486,7 @@ export default function DashboardGastro({
     setOffPromoPrice(offer.promo_price ? String(offer.promo_price) : "");
     setOffStockLowThreshold(offer.stock_low_threshold ?? 5);
     setOffRequiresPrep(offer.requires_prep !== false);
+    setOffCashExcluded(!!offer.cash_discount_excluded);
     setShowOfferForm(true);
     setMsg("");
   }
@@ -636,6 +646,8 @@ export default function DashboardGastro({
         showPrep
         offRequiresPrep={offRequiresPrep}
         setOffRequiresPrep={setOffRequiresPrep}
+        offCashExcluded={offCashExcluded}
+        setOffCashExcluded={setOffCashExcluded}
         onClose={resetOfferForm}
       />
       {editingId && (
@@ -824,6 +836,24 @@ export default function DashboardGastro({
           </div>
           {paymentMethods.includes("Transferencia") && (
             <TransferConfig vendor={vendor} saveVendor={saveVendor} />
+          )}
+          {paymentMethods.includes("Efectivo") && (
+            <div>
+              <Label className="mb-2 block">Descuento en efectivo (%)</Label>
+              <Input
+                type="number"
+                min={0}
+                max={99}
+                step="any"
+                value={cashDiscount}
+                onChange={(e) => setCashDiscount(e.target.value)}
+                placeholder="Ej: 10"
+                className="max-w-40"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Se muestra junto a cada precio y se descuenta solo al pagar en efectivo.
+              </p>
+            </div>
           )}
           <MpConnectCard
             mpUserId={vendor?.mp_user_id ?? null}

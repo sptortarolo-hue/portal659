@@ -3,6 +3,8 @@ import { queryMany } from "@/lib/db";
 import { VERTICALS } from "@/lib/config";
 import { getZone } from "@/lib/zone";
 import { vendorSellsOnline } from "@/lib/plans";
+import { cashAppliesToItem, normalizeCashPct } from "@/lib/cash-discount";
+import { CashPrice } from "@/components/store/cash-price";
 import type { Plan } from "@/types/database";
 import { Card, CardContent } from "@/components/ui/card";
 import { ProductImage } from "@/components/product-image";
@@ -21,6 +23,8 @@ type VendorRow = {
   plan_expires_at: string | null;
   trial_ends_at: string | null;
   accepts_online_orders?: boolean | null;
+  payment_methods?: string | null;
+  cash_discount_pct?: number | null;
 };
 
 type ProductRow = {
@@ -30,6 +34,8 @@ type ProductRow = {
   category: string | null;
   description: string | null;
   price: number | null;
+  promo_price?: number | null;
+  cash_discount_excluded?: boolean | null;
   vendor_id: string;
   vendors?: { vertical: string | null; store_name: string | null; slug: string | null } | null;
 };
@@ -198,6 +204,18 @@ export default async function BuscarPage({
   }
 
   const onlineById = new Map(vendors.map((v) => [v.id, isOnline(v)]));
+  // % de descuento en efectivo por vendor (0 si no ofrece Efectivo).
+  const cashByVendor = new Map(
+    vendors.map((v) => [
+      v.id,
+      String(v.payment_methods || "")
+        .split(",")
+        .map((s: string) => s.trim())
+        .includes("Efectivo") && Number(v.cash_discount_pct) > 0
+        ? Number(v.cash_discount_pct)
+        : 0,
+    ])
+  );
   if (onlineOnly) {
     vendors = vendors.filter((v) => onlineById.get(v.id));
     products = products.filter((p) => onlineById.get(p.vendor_id));
@@ -325,7 +343,27 @@ export default async function BuscarPage({
                             {p.category && <span className="text-xs text-muted-foreground truncate shrink-0">· {p.category}</span>}
                           </div>
                         </div>
-                        <span className="font-bold text-sm flex-shrink-0">${Number(p.price).toLocaleString("es-AR")}</span>
+                        <span className="font-bold text-sm flex-shrink-0">
+                          {(() => {
+                            const pct = cashByVendor.get(p.vendor_id) ?? 0;
+                            const hasPromo = p.promo_price != null;
+                            const show =
+                              normalizeCashPct(pct) > 0 &&
+                              cashAppliesToItem({ hasPromo, excluded: p.cash_discount_excluded });
+                            return show ? (
+                              <CashPrice
+                                price={Number(hasPromo ? p.promo_price : p.price)}
+                                hasPromo={hasPromo}
+                                excluded={p.cash_discount_excluded}
+                                cashPct={pct}
+                                size="sm"
+                                plainClassName="font-bold text-sm flex-shrink-0"
+                              />
+                            ) : (
+                              <>${Number(p.price).toLocaleString("es-AR")}</>
+                            );
+                          })()}
+                        </span>
                       </div>
                     </Card>
                   </Link>

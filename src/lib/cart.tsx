@@ -23,6 +23,8 @@ export type CartItem = {
   price: number;
   qty: number;
   modifiers?: CartModifier[];
+  /** La promo de este ítem está excluida del descuento en efectivo. */
+  cashExcluded?: boolean;
 };
 
 export type CartVendor = {
@@ -33,6 +35,8 @@ export type CartVendor = {
   vertical?: string | null;
   deliveryFee?: number | null;
   freeDeliveryMin?: number | null;
+  /** % de descuento en efectivo del comercio (visual en checkout). */
+  cashDiscountPct?: number | null;
 };
 
 type CartState = {

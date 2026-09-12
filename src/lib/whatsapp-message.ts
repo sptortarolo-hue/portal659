@@ -8,6 +8,8 @@ export function buildOrderMessage(params: {
   address?: string;
   paymentMethod?: string;
   notes?: string;
+  cashDiscount?: number | null;
+  cashPct?: number | null;
 }): string {
   const lines = params.items.map((i) => {
     const modStr = i.modifiers && i.modifiers.length > 0
@@ -24,6 +26,11 @@ export function buildOrderMessage(params: {
 
   const notesLine = params.notes ? `\n📝 Notas: ${params.notes}` : "";
 
+  const cashLine =
+    params.paymentMethod === "efectivo" && Number(params.cashDiscount) > 0
+      ? `\nDesc. efectivo (${Number(params.cashPct) || 0}%): -$${Number(params.cashDiscount).toLocaleString("es-AR")}`
+      : "";
+
   return [
     `Hola ${params.vendorName}! Quiero hacer un pedido:`,
     "",
@@ -35,6 +42,7 @@ export function buildOrderMessage(params: {
     params.method === "delivery" ? `Dirección: ${params.address || "sin dirección"}` : "Retiro en el local",
     notesLine,
     paymentLine,
+    cashLine,
   ].filter(Boolean).join("\n");
 }
 
@@ -50,6 +58,9 @@ export function buildComandaWhatsApp(params: {
   notes?: string;
   orderId?: string;
   trackUrl?: string;
+  registerUrl?: string;
+  cashDiscount?: number | null;
+  cashPct?: number | null;
 }): string {
   const sep = "------------------------------";
   const id = params.orderId ? params.orderId.slice(0, 8) : "--------";
@@ -74,6 +85,11 @@ export function buildComandaWhatsApp(params: {
   const notesLine = params.notes ? `\nNotas: ${params.notes}` : "";
   const addressLine = params.method === "delivery" && params.address ? `Dir: ${params.address}` : "";
   const trackLine = params.trackUrl ? `\nSeguí tu pedido acá: ${params.trackUrl}` : "";
+  const registerLine = params.registerUrl ? `\n📋 Guardá tus datos, favoritos y dejá reseñas: ${params.registerUrl}` : "";
+  const cashLine =
+    params.paymentMethod === "efectivo" && Number(params.cashDiscount) > 0
+      ? `Desc. efectivo (${Number(params.cashPct) || 0}%): -$${Number(params.cashDiscount).toLocaleString("es-AR")}`
+      : "";
 
   return [
     `*${params.vendorName}*`,
@@ -85,6 +101,7 @@ export function buildComandaWhatsApp(params: {
     sep,
     ...itemLines,
     sep,
+    cashLine,
     `TOTAL: *$${params.total.toLocaleString("es-AR")}*`,
     "",
     `Cliente: ${params.customerName}`,
@@ -92,6 +109,7 @@ export function buildComandaWhatsApp(params: {
     addressLine,
     notesLine,
     trackLine,
+    registerLine,
     "",
     sep,
   ].filter((l) => l !== null && l !== undefined).join("\n");

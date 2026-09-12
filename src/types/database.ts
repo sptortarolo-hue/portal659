@@ -255,6 +255,8 @@ export type Product = {
   featured_today: boolean;
   unit: string | null;
   has_variants?: boolean;
+  /** true = la promo de este producto NO recibe el descuento en efectivo. */
+  cash_discount_excluded?: boolean;
   created_at: string;
 };
 
@@ -344,6 +346,8 @@ export type Vendor = {
   food_cost_bad?: number | null;
   /** Opt-out de venta online: false = solo contacto aunque el plan traiga carrito. */
   accepts_online_orders?: boolean | null;
+  /** % de descuento en efectivo (NULL/0 = sin descuento). Requiere Efectivo en payment_methods. */
+  cash_discount_pct?: number | null;
   plan_id: string | null;
   plan_status: PlanStatus;
   plan_expires_at: string | null;
@@ -426,6 +430,10 @@ export type Order = {
   delivery_cost?: number | null;
   /** Número legible del pedido (ticket). */
   order_number?: string | null;
+  /** Descuento en efectivo aplicado (detalle para ticket/WhatsApp). */
+  cash_discount?: number | null;
+  /** % de descuento en efectivo aplicado. */
+  cash_pct?: number | null;
   /** Pedido de prueba (modo preview). true = no cuenta en topes/métricas/ingresos. */
   is_preview?: boolean;
   created_at: string;

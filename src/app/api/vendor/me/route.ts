@@ -91,6 +91,7 @@ export async function POST(request: Request) {
     food_cost_warn,
     food_cost_bad,
     accepts_online_orders,
+    cash_discount_pct,
   } = body;
 
   const VALID_VERTICALS = ["gastronomia", "comercio", "servicio", "moda", "salud", "otro"];
@@ -168,6 +169,17 @@ export async function POST(request: Request) {
     if (food_cost_bad !== undefined) payload.food_cost_bad = b;
   }
   if (accepts_online_orders !== undefined) payload.accepts_online_orders = accepts_online_orders === true;
+  if (cash_discount_pct !== undefined) {
+    if (cash_discount_pct === null || cash_discount_pct === "") {
+      payload.cash_discount_pct = null;
+    } else {
+      const pct = Number(cash_discount_pct);
+      if (!isFinite(pct) || pct < 0 || pct >= 100) {
+        return NextResponse.json({ error: "El descuento debe estar entre 0 y 99" }, { status: 400 });
+      }
+      payload.cash_discount_pct = pct;
+    }
+  }
 
   if (existing) {
     let vendor: Record<string, unknown> | undefined;

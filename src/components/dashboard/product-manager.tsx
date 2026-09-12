@@ -23,6 +23,7 @@ type OfferRow = {
   stock_control?: boolean;
   promo_price: number | null;
   requires_prep?: boolean;
+  cash_discount_excluded?: boolean;
 };
 
 type Props = {
@@ -58,6 +59,7 @@ export function ProductManager({ isModa = false, showStock = true, showPrep = fa
   const [offPromoPrice, setOffPromoPrice] = useState("");
   const [offStockLowThreshold, setOffStockLowThreshold] = useState(5);
   const [offRequiresPrep, setOffRequiresPrep] = useState(true);
+  const [offCashExcluded, setOffCashExcluded] = useState(false);
 
   const load = useCallback(async () => {
     const [o, c] = await Promise.all([
@@ -96,6 +98,7 @@ export function ProductManager({ isModa = false, showStock = true, showPrep = fa
     setOffPromoPrice("");
     setOffStockLowThreshold(5);
     setOffRequiresPrep(true);
+    setOffCashExcluded(false);
   }
 
   function startEdit(offer: OfferRow) {
@@ -111,6 +114,7 @@ export function ProductManager({ isModa = false, showStock = true, showPrep = fa
     setOffPromoPrice(offer.promo_price ? String(offer.promo_price) : "");
     setOffStockLowThreshold(offer.stock_low_threshold ?? 5);
     setOffRequiresPrep(offer.requires_prep !== false);
+    setOffCashExcluded(!!offer.cash_discount_excluded);
     setShowForm(true);
     setMsg("");
   }
@@ -146,6 +150,7 @@ export function ProductManager({ isModa = false, showStock = true, showPrep = fa
       promo_price: offPromoPrice ? Number(offPromoPrice) : null,
       stock_low_threshold: offStockControl ? offStockLowThreshold : null,
       requires_prep: offRequiresPrep,
+      cash_discount_excluded: offCashExcluded,
     };
 
     const res = editingId
@@ -218,6 +223,7 @@ export function ProductManager({ isModa = false, showStock = true, showPrep = fa
         offStockLowThreshold={offStockLowThreshold} setOffStockLowThreshold={setOffStockLowThreshold}
         showPrep={showPrep}
         offRequiresPrep={offRequiresPrep} setOffRequiresPrep={setOffRequiresPrep}
+        offCashExcluded={offCashExcluded} setOffCashExcluded={setOffCashExcluded}
       />
       {editingId && <ProductModifiersBlock productId={editingId} productName={offName} />}
     </div>

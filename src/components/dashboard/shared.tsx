@@ -127,6 +127,17 @@ export function OfferForm({
   offRequiresPrep = true, setOffRequiresPrep,
   onClose,
 }: OfferFormProps) {
+  // Al crear (no editando): si la categoría actual no existe entre las opciones
+  // (ej. default "otras" sin fila), usar la primera. Así el desplegable nunca
+  // muestra una cosa y guarda otra.
+  useEffect(() => {
+    if (!editingId && categories.length > 0 && !categories.some((c) => c.name === offCategory)) {
+      setOffCategory(categories[0].name);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [categories, editingId]);
+  const showCurrentAsOption =
+    !!offCategory && !categories.some((c) => c.name === offCategory);
   return (
     <Card className="p-4 mb-4">
       <div className="flex items-center justify-between mb-3">
@@ -143,7 +154,7 @@ export function OfferForm({
         {showStock && setOffPromoPrice && (
           <div><Label>Precio promo ($)</Label><Input type="number" step="0.01" value={offPromoPrice} onChange={(e) => setOffPromoPrice(e.target.value)} placeholder="Precio de oferta" /></div>
         )}
-        <div><Label>Categoría</Label><select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={offCategory} onChange={(e) => setOffCategory(e.target.value)}>{categories.length === 0 && <option value="otras">otras</option>}{categories.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}</select></div>
+        <div><Label>Categoría</Label><select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={offCategory} onChange={(e) => setOffCategory(e.target.value)}>{categories.length === 0 && <option value="otras">otras</option>}{categories.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}{showCurrentAsOption && <option value={offCategory}>{offCategory}</option>}</select></div>
         {showPrep && setOffRequiresPrep && (
           <div className="flex items-center justify-between">
             <div>

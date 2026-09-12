@@ -1,5 +1,5 @@
 import { getAuthUser } from "./auth";
-import { queryOne } from "./db";
+import { queryMany, queryOne } from "./db";
 import { getPreviewSessionVendorId } from "./preview-session";
 
 const ADMIN_AS_COOKIE = "portal659-admin-as";
@@ -81,4 +81,30 @@ export async function getVendorByRequest(request: Request): Promise<{
   }
 
   return { userId: user.id, vendor: null, staffRole: null, previewSession: false };
+}
+
+/**
+ * Normaliza la categoría de un producto: trim + usa el nombre canónico de
+ * `vendor_categories` si coincide (case-insensitive), para no generar
+ * variantes ("Pizzas" vs "pizzas") que después se ven como chips duplicados.
+ * Si no hay coincidencia, devuelve el texto recortado (o "otras" si está vacío).
+ */
+export async function resolveCategoryName(
+  vendorId: string,
+  raw: unknown,
+  fallback = "otras"
+): Promise<string> {
+  const text = typeof raw === "string" ? raw.trim() : "";
+  const base = text || fallback;
+  try {
+    const cats = await queryMany<{ name: string }>(
+      `SELECT name FROM vendor_categories WHERE vendor_id = $1`,
+      [vendorId]
+    );
+    const match = (cats || []).find(
+      (c) => c.name.trim().toLowerCase() === base.toLowerCase()
+    );
+    if (match) return match.name;
+  } catch { /* sin categorías: usar el texto tal cual */ }
+  return base;
 }

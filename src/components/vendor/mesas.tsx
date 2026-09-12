@@ -134,19 +134,30 @@ export function Mesas() {
   );
   const selectedTotal = openOrders.reduce((s, o) => s + Number(o.total), 0);
 
+  // Chips de categoría agrupados por clave normalizada (trim+lowercase):
+  // "Pizzas", "pizzas" o " Pizzas" forman un solo chip (igual que el micrositio).
+  const normCat = (s: string | null | undefined) => (s || "").trim().toLowerCase();
+
   const filtered = useMemo(() => {
     const q = query.toLowerCase();
     return products.filter(
       (p) =>
         (!q || p.name.toLowerCase().includes(q)) &&
-        (!activeCat || p.category === activeCat)
+        (!activeCat || normCat(p.category) === activeCat)
     );
   }, [products, query, activeCat]);
 
   const categories = useMemo(() => {
-    const set = new Set<string>();
-    products.forEach((p) => { if (p.category) set.add(p.category); });
-    return Array.from(set).sort((a, b) => a.localeCompare(b, "es"));
+    const map = new Map<string, string>();
+    products.forEach((p) => {
+      if (p.category && p.category.trim()) {
+        const key = normCat(p.category);
+        if (!map.has(key)) map.set(key, p.category.trim());
+      }
+    });
+    return Array.from(map.entries())
+      .sort((a, b) => a[1].localeCompare(b[1], "es"))
+      .map(([key, label]) => ({ key, label }));
   }, [products]);
 
   async function addTable() {
@@ -355,13 +366,13 @@ export function Mesas() {
           </button>
           {categories.map((c) => (
             <button
-              key={c}
-              onClick={() => setActiveCat(activeCat === c ? null : c)}
-              className={`flex-shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
-                activeCat === c ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+              key={c.key}
+              onClick={() => setActiveCat(activeCat === c.key ? null : c.key)}
+              className={`flex-shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                activeCat === c.key ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
               }`}
             >
-              {c}
+              {c.label}
             </button>
           ))}
         </div>
@@ -608,13 +619,13 @@ export function Mesas() {
                       </button>
                       {categories.map((c) => (
                         <button
-                          key={c}
-                          onClick={() => setActiveCat(activeCat === c ? null : c)}
+                          key={c.key}
+                          onClick={() => setActiveCat(activeCat === c.key ? null : c.key)}
                           className={`flex-shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
-                            activeCat === c ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                            activeCat === c.key ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
                           }`}
                         >
-                          {c}
+                          {c.label}
                         </button>
                       ))}
                     </div>

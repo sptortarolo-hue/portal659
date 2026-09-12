@@ -1,4 +1,4 @@
-import { getVendorByRequest } from "@/lib/vendor-utils";
+import { getVendorByRequest, resolveCategoryName } from "@/lib/vendor-utils";
 import { queryMany, queryOne } from "@/lib/db";
 import { resolveVendorPlan } from "@/lib/plans";
 import { NextResponse } from "next/server";
@@ -102,7 +102,7 @@ export async function POST(request: Request) {
       name,
       description || null,
       parseFloat(price),
-      category || "otras",
+      await resolveCategoryName(vendor.id, category),
       fullVendor?.neighborhood || null,
       !!featured_today,
       image_url || null,

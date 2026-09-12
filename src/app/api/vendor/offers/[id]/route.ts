@@ -1,4 +1,4 @@
-import { getVendorByRequest } from "@/lib/vendor-utils";
+import { getVendorByRequest, resolveCategoryName } from "@/lib/vendor-utils";
 import { queryOne } from "@/lib/db";
 import { NextResponse } from "next/server";
 
@@ -23,6 +23,10 @@ export async function PATCH(
   const safeUpdate: Record<string, unknown> = {};
   for (const key of allowedFields) {
     if (key in body) safeUpdate[key] = body[key];
+  }
+  // Normalizar categoría igual que al crear (evita variantes duplicadas).
+  if ("category" in safeUpdate) {
+    safeUpdate.category = await resolveCategoryName(vendor.id, safeUpdate.category);
   }
   if (Object.keys(safeUpdate).length === 0) {
     return NextResponse.json({ error: "No hay campos válidos para actualizar" }, { status: 400 });

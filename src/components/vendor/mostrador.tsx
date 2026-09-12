@@ -84,10 +84,21 @@ export function Mostrador() {
 
   const total = useMemo(() => items.reduce((s, i) => s + i.price * i.qty, 0), [items]);
 
+  // Chips de categoría agrupados por clave normalizada (trim+lowercase):
+  // "Pizzas", "pizzas" o " Pizzas" forman un solo chip (igual que el micrositio).
+  const normCat = (s: string | null | undefined) => (s || "").trim().toLowerCase();
+
   const categories = useMemo(() => {
-    const set = new Set<string>();
-    products.forEach((p) => { if (p.category) set.add(p.category); });
-    return Array.from(set).sort((a, b) => a.localeCompare(b, "es"));
+    const map = new Map<string, string>();
+    products.forEach((p) => {
+      if (p.category && p.category.trim()) {
+        const key = normCat(p.category);
+        if (!map.has(key)) map.set(key, p.category.trim());
+      }
+    });
+    return Array.from(map.entries())
+      .sort((a, b) => a[1].localeCompare(b[1], "es"))
+      .map(([key, label]) => ({ key, label }));
   }, [products]);
 
   useEffect(() => {
@@ -123,7 +134,7 @@ export function Mostrador() {
     return products.filter(
       (p) =>
         (!q || p.name.toLowerCase().includes(q)) &&
-        (!activeCat || p.category === activeCat)
+        (!activeCat || normCat(p.category) === activeCat)
     );
   }, [products, query, activeCat]);
 
@@ -294,13 +305,13 @@ export function Mostrador() {
             </button>
             {categories.map((c) => (
               <button
-                key={c}
-                onClick={() => setActiveCat(activeCat === c ? null : c)}
+                key={c.key}
+                onClick={() => setActiveCat(activeCat === c.key ? null : c.key)}
                 className={`flex-shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
-                  activeCat === c ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                  activeCat === c.key ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
                 }`}
               >
-                {c}
+                {c.label}
               </button>
             ))}
           </div>

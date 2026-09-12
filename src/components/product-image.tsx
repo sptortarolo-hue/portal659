@@ -82,6 +82,25 @@ function normalize(s: string): string {
   return s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 }
 
+/**
+ * Normaliza el src para el optimizador: si es una URL absoluta del MISMO
+ * origen (las subidas se guardan absolutas), la pasa a relativa. Las
+ * relativas siempre validan, sin importar protocolo/host/mayúsculas.
+ */
+function toOptimizableSrc(src: string): string {
+  const clean = src.trim();
+  if (typeof window === "undefined" || !/^https?:\/\//i.test(clean)) return clean;
+  try {
+    const u = new URL(clean);
+    if (u.host.toLowerCase() === window.location.host.toLowerCase()) {
+      return u.pathname + u.search;
+    }
+  } catch {
+    // URL malformada: se devuelve tal cual y el onError muestra el fallback.
+  }
+  return clean;
+}
+
 function pickIcon(name: string, category?: string | null, vertical?: string | null): LucideIcon {
   const haystack = normalize(`${name} ${category ?? ""}`);
   for (const rule of CATEGORY_RULES) {
@@ -125,7 +144,7 @@ export function ProductImage({
       <div className={`${positioned ? "" : "relative "}overflow-hidden ${className ?? "w-full h-full"}`}>
         {!loaded && <div className="absolute inset-0 bg-muted animate-pulse" />}
         <Image
-          src={src}
+          src={toOptimizableSrc(src)}
           alt={alt}
           fill
           sizes={sizes ?? "(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"}

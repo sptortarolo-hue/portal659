@@ -1,4 +1,5 @@
-const CACHE_NAME = "portal659-v9";
+// v10: invalida cachés v9 (chunks/JS viejos sin normalización de imágenes).
+const CACHE_NAME = "portal659-v10";
 const OFFLINE_URL = "/offline.html";
 
 self.addEventListener("install", (event) => {

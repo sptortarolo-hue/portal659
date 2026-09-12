@@ -101,6 +101,16 @@ function toOptimizableSrc(src: string): string {
   return clean;
 }
 
+/**
+ * Parametro anti-caché para el reintento. Solo http(s) y rutas: los
+ * data:/blob: se romperían si les agregamos query.
+ */
+function withRetryParam(s: string): string | null {
+  if (/^(data|blob):/i.test(s.trim())) return null;
+  const clean = s.trim();
+  return clean + (clean.includes("?") ? "&" : "?") + "p659r=1";
+}
+
 function pickIcon(name: string, category?: string | null, vertical?: string | null): LucideIcon {
   const haystack = normalize(`${name} ${category ?? ""}`);
   for (const rule of CATEGORY_RULES) {
@@ -129,14 +139,30 @@ export function ProductImage({
 }: Props) {
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [retried, setRetried] = useState(false);
 
   // Si cambia la URL, volver a estado de carga.
   useEffect(() => {
     setLoaded(false);
     setFailed(false);
+    setRetried(false);
   }, [src]);
 
+  function handleError() {
+    if (src && !retried && withRetryParam(src)) {
+      // Reintento una vez con anti-caché: si era un fallo transitorio
+      // (caché truncada, red), esta carga lo supera sin mostrar fallback.
+      setRetried(true);
+      return;
+    }
+    // Fallo definitivo: se loguea el src exacto para diagnosticar (host,
+    // formato, archivo puntual) y se muestra el fallback.
+    console.warn("[img] no se pudo cargar:", src);
+    setFailed(true);
+  }
+
   if (src && !failed) {
+    const shownSrc = retried ? (withRetryParam(src) ?? src) : src;
     // El wrapper solo se posiciona relative si el caller no trae la suya
     // (absolute/fixed/sticky): si no, pelean por `position` y se rompe el overlay.
     const positioned = /(^|\s)(absolute|fixed|sticky)(\s|$)/.test(className ?? "");
@@ -144,14 +170,14 @@ export function ProductImage({
       <div className={`${positioned ? "" : "relative "}overflow-hidden ${className ?? "w-full h-full"}`}>
         {!loaded && <div className="absolute inset-0 bg-muted animate-pulse" />}
         <Image
-          src={toOptimizableSrc(src)}
+          src={toOptimizableSrc(shownSrc)}
           alt={alt}
           fill
           sizes={sizes ?? "(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"}
           priority={eager}
           decoding="async"
           onLoad={() => setLoaded(true)}
-          onError={() => setFailed(true)}
+          onError={handleError}
           className={`${fit === "contain" ? "object-contain" : "object-cover"} transition-opacity duration-300 ${loaded ? "opacity-100" : "opacity-0"} ${imgClassName ?? ""}`}
         />
       </div>

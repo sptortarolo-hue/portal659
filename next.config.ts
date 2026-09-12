@@ -6,9 +6,12 @@ const nextConfig: NextConfig = {
   images: {
     // Las subidas se guardan con URL absoluta (getSiteUrl): para next/image
     // eso es "remoto" aunque sea el mismo servidor. Sin esto, 400.
+    // Se permiten http y https porque el .env del VPS puede tener cualquiera.
     remotePatterns: [
       { protocol: "https", hostname: "www.portal659.com.ar" },
+      { protocol: "http", hostname: "www.portal659.com.ar" },
       { protocol: "https", hostname: "portal659.com.ar" },
+      { protocol: "http", hostname: "portal659.com.ar" },
       { protocol: "http", hostname: "localhost" },
     ],
   },

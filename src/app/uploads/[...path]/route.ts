@@ -28,7 +28,9 @@ export async function GET(
 
   // Evitar path traversal
   if (!full.startsWith(path.resolve(uploadRoot))) {
-    return new NextResponse("Forbidden", { status: 403 });
+    // no-store: un 403/404 cacheado (browser o CDN) dejaría la foto rota
+    // aunque el archivo aparezca después.
+    return new NextResponse("Forbidden", { status: 403, headers: { "Cache-Control": "no-store" } });
   }
 
   try {
@@ -49,6 +51,6 @@ export async function GET(
     return new NextResponse(data, { headers });
   } catch (e) {
     logApiError("uploads", e);
-    return new NextResponse("Not found", { status: 404 });
+    return new NextResponse("Not found", { status: 404, headers: { "Cache-Control": "no-store" } });
   }
 }

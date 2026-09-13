@@ -35,6 +35,12 @@ export async function POST(request: Request) {
   if (file.type === "image/svg+xml" || (file.name || "").toLowerCase().endsWith(".svg")) {
     return NextResponse.json({ error: "El formato SVG no está permitido por seguridad (usá JPG/PNG/WEBP)" }, { status: 400 });
   }
+  // HEIC/HEIF (foto default del iPhone): ningún navegador lo renderiza en
+  // <img> y se serviría como application/octet-stream (imagen rota para
+  // siempre). Se rechaza con mensaje claro en vez de guardar un archivo muerto.
+  if (file.type === "image/heic" || file.type === "image/heif" || /\.(heic|heif)$/i.test(file.name || "")) {
+    return NextResponse.json({ error: "Las fotos HEIC de iPhone no están soportadas: exportala como JPG y subila de nuevo" }, { status: 400 });
+  }
   if (file.size > MAX_SIZE) {
     return NextResponse.json({ error: "La imagen debe pesar menos de 5 MB" }, { status: 400 });
   }

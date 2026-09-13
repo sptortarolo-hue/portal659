@@ -6,17 +6,24 @@ import { resolveVendorPlan } from "@/lib/plans";
 import type { Order, Plan, Vendor } from "@/types/database";
 
 export async function POST(request: Request) {
-  const { userId } = await getVendorByRequest(request);
-  if (!userId) {
+  const { vendor: gateVendor, staffRole } = await getVendorByRequest(request);
+  if (!gateVendor) {
     return NextResponse.json({ ok: false, error: "No autenticado" }, { status: 401 });
+  }
+  // Repartidores no imprimen (mismo alcance que antes: dueño/admin/preview).
+  if (staffRole === "delivery") {
+    return NextResponse.json({ ok: false, error: "No autorizado" }, { status: 403 });
   }
 
   const body = await request.json();
   const { orderId, test, type, tableName, subLabel, items, total } = body;
+  // Info de efectivo para precuenta (viene del panel, es solo informativa).
+  const cashPct = Number(body.cashPct) || 0;
+  const cashTotal = Number(body.cashTotal) || 0;
 
   const vendor = await queryOne<PrinterVendor & Vendor>(
-    `SELECT * FROM vendors WHERE user_id = $1 LIMIT 1`,
-    [userId]
+    `SELECT * FROM vendors WHERE id = $1 LIMIT 1`,
+    [gateVendor.id]
   );
 
   if (!vendor) {
@@ -46,7 +53,7 @@ export async function POST(request: Request) {
     const result = await dispatchPrint({
       vendor,
       type: "precuenta",
-      extra: { tableName, items, total: Number(total) },
+      extra: { tableName, items, total: Number(total), cashPct, cashTotal },
     });
     await recordLastPrint(vendor.id, result);
     return printResponse(result);

@@ -639,7 +639,8 @@ async function composePrecuenta(
   vendor: PrinterVendor,
   tableName: string,
   items: { name: string; price: number; qty: number; modifiers?: string[] }[],
-  total: number
+  total: number,
+  cash?: { pct: number; total: number } | null
 ): Promise<void> {
   const width = vendor.paper_size === "58mm" ? 32 : 48;
   const separator = separatorFor(width);
@@ -676,6 +677,19 @@ async function composePrecuenta(
   printer.println(`TOTAL: $${Number(total).toLocaleString("es-AR")}`);
   printer.setTextSize(0, 0);
   printer.bold(false);
+
+  // Info descuento en efectivo (patrón precuenta de POS gastronómicos: el
+  // TOTAL legal queda y abajo la alternativa en efectivo, bien visible).
+  if (cash && cash.total > 0 && cash.total < total) {
+    printer.println("");
+    printer.bold(true);
+    printer.println(`EFECTIVO (-${cash.pct}%): $${cash.total.toLocaleString("es-AR")}`);
+    printer.bold(false);
+    printer.alignLeft();
+    printer.println("");
+    printer.println("Pagando en efectivo");
+    printer.println("abonas ese monto.");
+  }
 
   printer.alignLeft();
   printer.println("");
@@ -865,13 +879,14 @@ export async function printPrecuenta(
   vendor: PrinterVendor,
   tableName: string,
   items: { name: string; price: number; qty: number; modifiers?: string[] }[],
-  total: number
+  total: number,
+  cash?: { pct: number; total: number } | null
 ): Promise<{ success: boolean; error?: string }> {
   const res = await createPrinter(vendor);
   if (!res.ok) return { success: false, error: res.error };
   if (!vendor.printer_ip) return { success: false, error: "IP de impresora no configurada" };
   try {
-    await composePrecuenta(res.printer, vendor, tableName, items, total);
+    await composePrecuenta(res.printer, vendor, tableName, items, total, cash);
     await res.printer.execute();
     return { success: true };
   } catch (e) {
@@ -883,12 +898,13 @@ export async function buildPrecuentaBuffer(
   vendor: PrinterVendor,
   tableName: string,
   items: { name: string; price: number; qty: number; modifiers?: string[] }[],
-  total: number
+  total: number,
+  cash?: { pct: number; total: number } | null
 ): Promise<BufferResult> {
   const res = await createPrinter(vendor);
   if (!res.ok) return { success: false, error: res.error };
   try {
-    await composePrecuenta(res.printer, vendor, tableName, items, total);
+    await composePrecuenta(res.printer, vendor, tableName, items, total, cash);
     const buffer = (await res.printer.getBuffer()) as Buffer;
     return { success: true, buffer };
   } catch (e) {
@@ -955,6 +971,9 @@ export async function dispatchPrint(params: {
     subLabel?: string;
     items?: { name: string; price: number; qty: number; modifiers?: string[] }[];
     total?: number;
+    /** Info de efectivo en precuenta: % y total a abonar en efectivo. */
+    cashPct?: number;
+    cashTotal?: number;
   };
 }): Promise<DispatchResult> {
   const { vendor } = params;
@@ -977,14 +996,17 @@ export async function dispatchPrint(params: {
     const tableName = params.extra?.tableName || "Mesa";
     const items = params.extra?.items || [];
     const total = params.extra?.total ?? 0;
+    const cashPct = Number(params.extra?.cashPct) || 0;
+    const cashTotal = Number(params.extra?.cashTotal) || 0;
+    const cash = cashPct > 0 && cashTotal > 0 && cashTotal < total ? { pct: cashPct, total: cashTotal } : null;
     if (mode === "app") {
-      const built = await buildPrecuentaBuffer(vendor, tableName, items, total);
+      const built = await buildPrecuentaBuffer(vendor, tableName, items, total, cash);
       if (!built.success) return { ok: false, mode, error: built.error };
       const pushed = await pushToBridge(vendor.print_token, bridgeJob("precuenta", built.buffer, vendor));
       return { ok: pushed.ok, mode, offline: pushed.offline, error: pushed.error };
     }
     if (!vendor.printer_ip) return { ok: true, mode, skipped: true };
-    const r = await printPrecuenta(vendor, tableName, items, total);
+    const r = await printPrecuenta(vendor, tableName, items, total, cash);
     return { ok: r.success, mode, error: r.error };
   }
 

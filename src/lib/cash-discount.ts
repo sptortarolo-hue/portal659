@@ -30,3 +30,43 @@ export function cashAppliesToItem(opts: {
   if (!opts.hasPromo) return true;
   return !opts.excluded;
 }
+
+/**
+ * Ítem para el cálculo de descuento compartido (Mostrador en vivo + precuenta
+ * de mesa + `pos/order` + cierre de mesa — misma fórmula en todos lados).
+ * `unitPrice` ya incluye modificadores (el descuento corre sobre el total de
+ * la unidad, igual que en `resolveOrderPricing`).
+ */
+export type CashDiscountItem = {
+  unitPrice: number;
+  qty: number;
+  hasPromo: boolean;
+  excluded?: boolean | null;
+};
+
+/**
+ * Descuento en efectivo de un conjunto de ítems. Devuelve el monto a descontar
+ * y el % normalizado (0/0 si no corresponde). Capado al subtotal.
+ */
+export function cashDiscountForItems(
+  items: CashDiscountItem[],
+  pct: unknown
+): { cashDiscount: number; cashPct: number } {
+  const p = normalizeCashPct(pct);
+  if (!p || !Array.isArray(items) || items.length === 0) {
+    return { cashDiscount: 0, cashPct: 0 };
+  }
+  let subtotal = 0;
+  let discount = 0;
+  for (const it of items) {
+    if (!it) continue;
+    const qty = Number.isFinite(Number(it.qty)) ? Math.min(99, Math.max(1, Math.floor(Number(it.qty)))) : 1;
+    const unit = round2(Number(it.unitPrice) || 0);
+    subtotal += unit * qty;
+    if (cashAppliesToItem({ hasPromo: it.hasPromo, excluded: it.excluded })) {
+      discount += round2((unit - cashPrice(unit, p)) * qty);
+    }
+  }
+  subtotal = round2(subtotal);
+  return { cashDiscount: round2(Math.min(discount, subtotal)), cashPct: p };
+}

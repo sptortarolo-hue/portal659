@@ -9,10 +9,9 @@ import { randomBytes } from "crypto";
 const MAX_SIZE = 5 * 1024 * 1024;
 
 export async function POST(request: Request) {
-  const { userId, vendor } = await getVendorByRequest(request);
-  if (!userId) {
-    return NextResponse.json({ error: "No autenticado" }, { status: 401 });
-  }
+  // Sesión normal (dueño), admin-as o sesión de prueba (link compartido):
+  // la vista previa hace TODO lo que el panel en producción (fotos incluidas).
+  const { vendor } = await getVendorByRequest(request);
   if (!vendor) {
     return NextResponse.json(
       { error: "Necesitás un local registrado para subir imágenes" },
@@ -83,10 +82,12 @@ export async function POST(request: Request) {
   const outFilename = filename.replace(/\.[a-z0-9]+$/, `.${outExt}`);
 
   const uploadRoot = process.env.UPLOAD_DIR || path.join(process.cwd(), "uploads");
-  const dir = path.join(uploadRoot, folder, userId);
+  // Carpeta por comercio (antes por usuario; las fotos viejas quedan con su
+  // URL absoluta ya guardada, nada se rompe).
+  const dir = path.join(uploadRoot, folder, vendor.id);
   await mkdir(dir, { recursive: true });
   await writeFile(path.join(dir, outFilename), outBuffer);
 
-  const url = `${getSiteUrl()}/uploads/${folder}/${userId}/${outFilename}`;
+  const url = `${getSiteUrl()}/uploads/${folder}/${vendor.id}/${outFilename}`;
   return NextResponse.json({ url });
 }

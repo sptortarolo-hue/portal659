@@ -1,6 +1,7 @@
 import { gateRequest, gateError } from "@/lib/subscription-gate";
-import { queryOne, withTransaction } from "@/lib/db";
+import { queryMany, withTransaction } from "@/lib/db";
 import { nextOrderNumber } from "@/lib/order-number";
+import { cashDiscountForItems } from "@/lib/cash-discount";
 import { NextResponse } from "next/server";
 
 const PAYMENT_METHODS = ["efectivo", "transferencia", "tarjeta", "mixto", "whatsapp"] as const;
@@ -62,6 +63,38 @@ export async function POST(request: Request) {
 
   const now = new Date().toISOString();
 
+  // Descuento en efectivo: se recalcula server-side (nunca se confía en el
+  // total del cliente). Misma fórmula que el micrositio: % sobre la unidad
+  // (con modificadores), promos excluidas por el comercio no reciben descuento.
+  const pctSource = gate.vendor.cash_discount_pct;
+  let cashDiscount = 0;
+  let cashPct = 0;
+  if (payment === "efectivo") {
+    const ids = Array.from(new Set(normalizedItems.map((i) => i.product_id).filter(Boolean))) as string[];
+    const prows = ids.length
+      ? await queryMany<{ id: string; promo_price: number | null; cash_discount_excluded: boolean | null }>(
+          `SELECT id, promo_price, cash_discount_excluded FROM products WHERE vendor_id = $1 AND id = ANY($2)`,
+          [gate.vendor.id, ids]
+        )
+      : [];
+    const pmap = new Map((prows || []).map((p) => [p.id, p]));
+    const res = cashDiscountForItems(
+      normalizedItems.map((i) => {
+        const p = i.product_id ? pmap.get(i.product_id) : undefined;
+        return {
+          unitPrice: i.price,
+          qty: i.qty,
+          hasPromo: p ? p.promo_price != null : false,
+          excluded: p?.cash_discount_excluded ?? null,
+        };
+      }),
+      pctSource
+    );
+    cashDiscount = res.cashDiscount;
+    cashPct = res.cashPct;
+  }
+  const finalTotal = Math.max(0, Math.round((Number(total) - cashDiscount) * 100) / 100);
+
   // Número de pedido diario universal (mostrador/delivery): además de
   // referenciarlo a la caja, el pedido queda con su número de oraculo en tickets.
   // En sesión de prueba todo nace marcado como prueba.
@@ -69,8 +102,8 @@ export async function POST(request: Request) {
   const order = await withTransaction(async (tx) => {
     const pickupNumber = await nextOrderNumber(tx, gate.vendor.id);
     return tx.queryOne<Record<string, any>>(
-      `INSERT INTO orders (vendor_id, customer_name, customer_phone, customer_address, method, payment_method, items, total, status, channel, paid_at, notes, pickup_number, is_preview)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'mostrador', $10, $11, $12, $13)
+      `INSERT INTO orders (vendor_id, customer_name, customer_phone, customer_address, method, payment_method, items, total, status, channel, paid_at, notes, pickup_number, is_preview, cash_pct, cash_discount)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'mostrador', $10, $11, $12, $13, $14, $15)
        RETURNING *`,
       [
         gate.vendor.id,
@@ -80,12 +113,14 @@ export async function POST(request: Request) {
         isDelivery ? "delivery" : "pickup",
         payment,
         JSON.stringify(normalizedItems),
-        Number(total),
+        finalTotal,
         status,
         now,
         notes || null,
         pickupNumber,
         previewOrder,
+        cashPct,
+        cashDiscount,
       ]
     );
   });

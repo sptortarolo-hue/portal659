@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import { ModifierPicker } from "@/components/offers/modifier-picker";
 import { ProductPickCard } from "@/components/vendor/product-pick-card";
+import { cashDiscountForItems, normalizeCashPct } from "@/lib/cash-discount";
 
 type Table = {
   id: string;
@@ -36,6 +37,7 @@ type Product = {
   image_url?: string | null;
   category?: string | null;
   requires_prep?: boolean;
+  cash_discount_excluded?: boolean | null;
   modifiers?: ProductModifier[];
 };
 
@@ -78,6 +80,8 @@ export function Mesas() {
   // pastillas + grilla) y "detail" (cuenta: consumiciones, precuenta, cobro).
   const [mobileView, setMobileView] = useState<"catalog" | "detail">("catalog");
   const [printingTicket, setPrintingTicket] = useState(false);
+  // % descuento en efectivo del comercio (0 = sin descuento).
+  const [cashPct, setCashPct] = useState(0);
 
   const load = useCallback(async () => {
     // Timeout: si la red queda colgada (p. ej. conexión móvil suspendida),
@@ -85,14 +89,17 @@ export function Mesas() {
     const ac = new AbortController();
     const timeout = setTimeout(() => ac.abort(), 8000);
     try {
-      const [tRes, oRes, pRes] = await Promise.all([
+      const [tRes, oRes, pRes, mRes] = await Promise.all([
         fetch("/api/vendor/tables", { signal: ac.signal }),
         fetch("/api/vendor/orders", { signal: ac.signal }),
         fetch("/api/vendor/offers", { signal: ac.signal }),
+        fetch("/api/vendor/me", { signal: ac.signal }),
       ]);
       const t = await tRes.json();
       const o = await oRes.json();
       const p = await pRes.json();
+      const me = await mRes.json().catch(() => null);
+      if (me?.vendor) setCashPct(normalizeCashPct(me.vendor.cash_discount_pct));
       if (t.tables) setTables(t.tables);
       if (o.orders) setOrders(o.orders);
       if (p.offers) {
@@ -133,6 +140,32 @@ export function Mesas() {
     [orders, selected]
   );
   const selectedTotal = openOrders.reduce((s, o) => s + Number(o.total), 0);
+
+  // Descuento en efectivo de la mesa (misma fórmula que el servidor):
+  // ítems de las consumiciones abiertas + lo pendiente de cargar.
+  const productCashFlags = useMemo(
+    () =>
+      new Map(
+        products.map((p) => [
+          p.id,
+          { hasPromo: p.promo_price != null, excluded: p.cash_discount_excluded === true },
+        ])
+      ),
+    [products]
+  );
+  const mesaCash = useMemo(() => {
+    const lines = [
+      ...openOrders.flatMap((o) => o.items || []),
+      ...cart,
+    ];
+    return cashDiscountForItems(
+      lines.map((i: any) => {
+        const info = i.product_id ? productCashFlags.get(i.product_id) : undefined;
+        return { unitPrice: Number(i.price), qty: Number(i.qty), hasPromo: info?.hasPromo ?? false, excluded: info?.excluded ?? null };
+      }),
+      cashPct
+    );
+  }, [openOrders, cart, cashPct, productCashFlags]);
 
   // Chips de categoría agrupados por clave normalizada (trim+lowercase):
   // "Pizzas", "pizzas" o " Pizzas" forman un solo chip (igual que el micrositio).
@@ -281,13 +314,21 @@ export function Mesas() {
       setSelected(null);
       setCart([]);
       await load();
-      setMsg(`Mesa cobrada: $${Number(data.total).toLocaleString("es-AR")}`);
+      setMsg(
+        `Mesa cobrada: $${Number(data.total).toLocaleString("es-AR")}` +
+        (Number(data.cashDiscount) > 0
+          ? ` (desc. efectivo −$${Number(data.cashDiscount).toLocaleString("es-AR")})`
+          : "")
+      );
     } else setMsg(data.error || "No se pudo cerrar la mesa");
     setTimeout(() => setMsg(""), 3000);
   }
 
   const cartCount = cart.reduce((s, i) => s + i.qty, 0);
   const cartTotal = cart.reduce((s, i) => s + i.price * i.qty, 0);
+  const mesaTotalNotDiscounted = selectedTotal + cartTotal;
+  // Con efectivo se cobra el total con descuento; con otros medios, el pleno.
+  const mesaPayTotal = Math.max(0, Math.round((mesaTotalNotDiscounted - (payment === "efectivo" ? mesaCash.cashDiscount : 0)) * 100) / 100);
 
   // Precuenta de la mesa (ticket térmico, sin cerrar): incluye lo ya cargado
   // más el carrito pendiente. No cierra ni cobra.
@@ -312,6 +353,9 @@ export function Mesas() {
           tableName: selected.name,
           items,
           total: selectedTotal + cartTotal,
+          // Info de efectivo para el ticket: "Efectivo (-X%): $Y".
+          cashPct: mesaCash.cashDiscount > 0 ? mesaCash.cashPct : 0,
+          cashTotal: mesaCash.cashDiscount > 0 ? Math.max(0, mesaTotalNotDiscounted - mesaCash.cashDiscount) : 0,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -546,8 +590,15 @@ export function Mesas() {
                 </div>
                 <div className="flex items-center justify-between text-sm flex-shrink-0">
                   <span>Total mesa</span>
-                  <b className="tabular-nums">${(selectedTotal + cartTotal).toLocaleString("es-AR")}</b>
+                  <b className="tabular-nums">${mesaPayTotal.toLocaleString("es-AR")}</b>
                 </div>
+                {mesaCash.cashDiscount > 0 && (
+                  <p className="text-[11px] leading-snug text-green-600 dark:text-green-400 flex-shrink-0">
+                    {payment === "efectivo"
+                      ? `💵 Desc. efectivo (${mesaCash.cashPct}%) aplicado: −$${mesaCash.cashDiscount.toLocaleString("es-AR")}`
+                      : `💵 Pagando en efectivo: $${(mesaTotalNotDiscounted - mesaCash.cashDiscount).toLocaleString("es-AR")} (−${mesaCash.cashPct}%)`}
+                  </p>
+                )}
                 <Button size="sm" className="flex-shrink-0" disabled={cart.length === 0} onClick={addConsumicion}>Agregar consumición</Button>
                 <div className="grid grid-cols-2 gap-1.5 flex-shrink-0">
                   <Button
@@ -720,8 +771,15 @@ export function Mesas() {
                   </div>
                   <div className="flex items-center justify-between text-sm">
                     <span>Total a cobrar</span>
-                    <b className="tabular-nums">${(selectedTotal + cartTotal).toLocaleString("es-AR")}</b>
+                    <b className="tabular-nums">${mesaPayTotal.toLocaleString("es-AR")}</b>
                   </div>
+                  {mesaCash.cashDiscount > 0 && (
+                    <p className="text-[11px] leading-snug text-green-600 dark:text-green-400">
+                      {payment === "efectivo"
+                        ? `💵 Desc. efectivo (${mesaCash.cashPct}%) aplicado: −$${mesaCash.cashDiscount.toLocaleString("es-AR")}`
+                        : `💵 Pagando en efectivo: $${(mesaTotalNotDiscounted - mesaCash.cashDiscount).toLocaleString("es-AR")} (−${mesaCash.cashPct}%)`}
+                    </p>
+                  )}
                   <div className="grid grid-cols-1 gap-1.5">
                     {cart.length > 0 && (
                       <Button size="sm" variant="secondary" onClick={addConsumicion}>

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ModifierPicker } from "@/components/offers/modifier-picker";
 import { ProductPickCard } from "@/components/vendor/product-pick-card";
+import { cashDiscountForItems, normalizeCashPct } from "@/lib/cash-discount";
 
 type ModifierOption = { label: string; price_mod: number };
 type ProductModifier = {
@@ -28,6 +29,7 @@ type Product = {
   image_url?: string | null;
   category?: string | null;
   requires_prep?: boolean;
+  cash_discount_excluded?: boolean | null;
   modifiers?: ProductModifier[];
 };
 
@@ -38,6 +40,9 @@ type LineItem = {
   qty: number;
   requires_prep: boolean;
   modifiers?: CartModifier[];
+  /** Promo vigente + exclusión: reglas del descuento en efectivo. */
+  hasPromo: boolean;
+  cashExcluded: boolean;
 };
 
 type MostradorOrder = {
@@ -81,8 +86,23 @@ export function Mostrador() {
   const [convertAddress, setConvertAddress] = useState("");
   const [converting, setConverting] = useState(false);
   const [notes, setNotes] = useState("");
+  // % descuento en efectivo del comercio (0 = sin descuento).
+  const [cashPct, setCashPct] = useState(0);
 
   const total = useMemo(() => items.reduce((s, i) => s + i.price * i.qty, 0), [items]);
+
+  // Descuento en efectivo EN VIVO (misma fórmula que el servidor y el
+  // micrositio): cambia al tocar medio de pago o al armar el pedido.
+  const cashResult = useMemo(
+    () =>
+      cashDiscountForItems(
+        items.map((i) => ({ unitPrice: i.price, qty: i.qty, hasPromo: i.hasPromo, excluded: i.cashExcluded })),
+        cashPct
+      ),
+    [items, cashPct]
+  );
+  const activeCashDiscount = payment === "efectivo" ? cashResult.cashDiscount : 0;
+  const payableTotal = Math.max(0, Math.round((total - activeCashDiscount) * 100) / 100);
 
   // Chips de categoría agrupados por clave normalizada (trim+lowercase):
   // "Pizzas", "pizzas" o " Pizzas" forman un solo chip (igual que el micrositio).
@@ -104,12 +124,15 @@ export function Mostrador() {
   useEffect(() => {
     (async () => {
       try {
-        const [offRes, ordRes] = await Promise.all([
+        const [offRes, ordRes, meRes] = await Promise.all([
           fetch("/api/vendor/offers"),
           fetch("/api/vendor/orders"),
+          fetch("/api/vendor/me"),
         ]);
         const off = await offRes.json();
         const ord = await ordRes.json();
+        const me = await meRes.json().catch(() => null);
+        setCashPct(normalizeCashPct(me?.vendor?.cash_discount_pct));
         const today = new Date().toDateString();
         const modsMap = off.modifiersByProduct || {};
         setModifiersMap(modsMap);
@@ -152,7 +175,11 @@ export function Mostrador() {
       const key = `${p.id}|${(modifiers || []).map((m) => m.label).sort().join(",")}`;
       const found = prev.find((i) => `${i.product_id}|${(i.modifiers || []).map((m) => m.label).sort().join(",")}` === key);
       if (found) return prev.map((i) => (i === found ? { ...i, qty: i.qty + qty } : i));
-      return [...prev, { product_id: p.id, name: p.name, price: unitPrice, qty, requires_prep: p.requires_prep !== false, modifiers }];
+      return [...prev, {
+        product_id: p.id, name: p.name, price: unitPrice, qty,
+        requires_prep: p.requires_prep !== false, modifiers,
+        hasPromo: p.promo_price != null, cashExcluded: p.cash_discount_excluded === true,
+      }];
     });
   }
 
@@ -228,10 +255,13 @@ export function Mostrador() {
       printRetiro().catch(() => {});
     }
 
+    // El servidor recalcula el descuento en efectivo (pos/order): el total
+    // cobrado real viene en data.order.total.
+    const netTotal = Number(data.order?.total ?? total);
     setMsg(
       isDelivery
         ? "Pedido a domicilio registrado"
-        : `Cobrado $${Number(total).toLocaleString("es-AR")}${withReceipt ? " · comprobante de retiro" : ""}`
+        : `Cobrado $${netTotal.toLocaleString("es-AR")}${withReceipt ? " · comprobante de retiro" : ""}`
     );
     setItems([]);
     setCustomerName("");
@@ -425,9 +455,28 @@ export function Mostrador() {
           ))}
         </div>
 
-        <div className="flex items-center justify-between pt-1">
-          <span className="text-sm font-semibold">Total</span>
-          <span className="font-display font-bold text-lg tabular-nums">${total.toLocaleString("es-AR")}</span>
+        <div className="space-y-1 pt-1">
+          {activeCashDiscount > 0 && (
+            <>
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>Subtotal</span>
+                <span className="tabular-nums">${total.toLocaleString("es-AR")}</span>
+              </div>
+              <div className="flex items-center justify-between text-xs font-medium text-green-600 dark:text-green-400">
+                <span>💵 Desc. efectivo ({cashResult.cashPct}%)</span>
+                <span className="tabular-nums">−${activeCashDiscount.toLocaleString("es-AR")}</span>
+              </div>
+            </>
+          )}
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-semibold">Total</span>
+            <span className="font-display font-bold text-lg tabular-nums">${payableTotal.toLocaleString("es-AR")}</span>
+          </div>
+          {cashResult.cashPct > 0 && payment !== "efectivo" && cashResult.cashDiscount > 0 && (
+            <p className="text-[11px] leading-snug text-green-700 dark:text-green-400">
+              💵 Pagando en efectivo: ${(total - cashResult.cashDiscount).toLocaleString("es-AR")}
+            </p>
+          )}
         </div>
 
         <Button className="w-full" disabled={items.length === 0 || saving} onClick={() => charge(true)}>
@@ -462,7 +511,7 @@ export function Mostrador() {
             className="w-full flex items-center justify-between rounded-xl bg-primary text-primary-foreground px-4 py-3 shadow-lg"
           >
             <span className="text-sm font-semibold">{items.length} {items.length === 1 ? "producto" : "productos"}</span>
-            <span className="text-base font-bold">${total.toLocaleString("es-AR")}</span>
+            <span className="text-base font-bold">${payableTotal.toLocaleString("es-AR")}</span>
           </button>
         </div>
       )}

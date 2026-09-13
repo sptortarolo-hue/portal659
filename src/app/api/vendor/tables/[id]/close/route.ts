@@ -1,5 +1,6 @@
 import { gateRequest, gateError } from "@/lib/subscription-gate";
-import { queryOne, queryMany, query } from "@/lib/db";
+import { queryOne, queryMany, withTransaction } from "@/lib/db";
+import { cashDiscountForItems, normalizeCashPct } from "@/lib/cash-discount";
 import { NextResponse } from "next/server";
 
 export async function POST(
@@ -29,34 +30,90 @@ export async function POST(
   }
 
   const orders = await queryMany<Record<string, any>>(
-    `SELECT id, total, status, paid_at FROM orders WHERE vendor_id = $1 AND table_id = $2 AND status NOT IN ('cancelled', 'completed')`,
+    `SELECT id, total, status, paid_at, items FROM orders WHERE vendor_id = $1 AND table_id = $2 AND status NOT IN ('cancelled', 'completed')`,
     [gate.vendor.id, table.id]
   );
 
   const list = orders || [];
-  const total = list.reduce((s: number, o: any) => s + Number(o.total), 0);
-  const now = new Date().toISOString();
 
-  const toUpdate = list.filter((o) => o.status !== "completed");
-  if (toUpdate.length > 0) {
-    await query(
-      `UPDATE orders SET status = 'completed', paid_at = $1, closed_at = $1 WHERE id = ANY($2)`,
-      [now, toUpdate.map((o) => o.id)]
-    );
-  } else {
-    // ya estaban completadas: solo registrar el cierre de la mesa
-    await query(
-      `UPDATE orders SET paid_at = $1 WHERE table_id = $2 AND id = ANY($3)`,
-      [now, table.id, list.map((o) => o.id)]
-    );
+  // Descuento en efectivo al cerrar: la precuenta lo anuncia y acá se aplica
+  // de verdad, con la misma fórmula (ítems con promo excluida no reciben).
+  const cashPct = paymentMethod === "efectivo" ? normalizeCashPct((gate.vendor as any).cash_discount_pct) : 0;
+  let cashDiscountTotal = 0;
+  const perOrder = new Map<string, { cashPct: number; cashDiscount: number; total: number }>();
+
+  if (cashPct > 0 && list.length > 0) {
+    const ids = new Set<string>();
+    for (const o of list) {
+      for (const i of (Array.isArray(o.items) ? o.items : [])) {
+        if (i?.product_id) ids.add(String(i.product_id));
+      }
+    }
+    const prows = ids.size
+      ? await queryMany<{ id: string; promo_price: number | null; cash_discount_excluded: boolean | null }>(
+          `SELECT id, promo_price, cash_discount_excluded FROM products WHERE vendor_id = $1 AND id = ANY($2)`,
+          [gate.vendor.id, [...ids]]
+        )
+      : [];
+    const pmap = new Map((prows || []).map((p) => [p.id, p]));
+    for (const o of list) {
+      const items = Array.isArray(o.items) ? o.items : [];
+      const { cashDiscount } = cashDiscountForItems(
+        items.map((i: any) => {
+          const p = i?.product_id ? pmap.get(String(i.product_id)) : undefined;
+          return {
+            unitPrice: Number(i?.price) || 0,
+            qty: Number(i?.qty) || 1,
+            hasPromo: p ? p.promo_price != null : false,
+            excluded: p?.cash_discount_excluded ?? null,
+          };
+        }),
+        cashPct
+      );
+      if (cashDiscount > 0) {
+        const newTotal = Math.max(0, Math.round((Number(o.total) - cashDiscount) * 100) / 100);
+        perOrder.set(o.id, { cashPct, cashDiscount, total: newTotal });
+        cashDiscountTotal += cashDiscount;
+      }
+    }
   }
 
-  await query(`UPDATE tables SET status = 'libre' WHERE id = $1`, [table.id]);
+  const total = list.reduce((s: number, o: any) => s + Number(o.total), 0) - cashDiscountTotal;
+  const now = new Date().toISOString();
+
+  await withTransaction(async (tx) => {
+    // Descuento por orden primero (cash_pct/cash_discount/total real cobrado),
+    // después el cierre: todo en la misma transacción.
+    for (const [orderId, d] of perOrder) {
+      await tx.query(
+        `UPDATE orders SET cash_pct = $1, cash_discount = $2, total = $3 WHERE id = $4`,
+        [d.cashPct, d.cashDiscount, d.total, orderId]
+      );
+    }
+
+    const toUpdate = list.filter((o) => o.status !== "completed");
+    if (toUpdate.length > 0) {
+      await tx.query(
+        `UPDATE orders SET status = 'completed', paid_at = $1, closed_at = $1 WHERE id = ANY($2)`,
+        [now, toUpdate.map((o) => o.id)]
+      );
+    } else {
+      // ya estaban completadas: solo registrar el cierre de la mesa
+      await tx.query(
+        `UPDATE orders SET paid_at = $1 WHERE table_id = $2 AND id = ANY($3)`,
+        [now, table.id, list.map((o) => o.id)]
+      );
+    }
+
+    await tx.query(`UPDATE tables SET status = 'libre' WHERE id = $1`, [table.id]);
+  });
 
   return NextResponse.json({
     ok: true,
     table: { ...table, status: "libre" },
-    total,
+    total: Math.round(total * 100) / 100,
+    cashDiscount: cashDiscountTotal > 0 ? Math.round(cashDiscountTotal * 100) / 100 : 0,
+    cashPct: cashPct || 0,
     ordersClosed: list.length,
     paymentMethod,
   });

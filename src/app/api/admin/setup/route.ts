@@ -19,6 +19,9 @@ export async function POST(request: Request) {
       );
       const id = rows[0].id;
 
+      // El permiso real lo lee getAuthUser desde profiles.is_admin.
+      await tx.queryVoid(`UPDATE profiles SET is_admin = true WHERE id = $1`, [id]);
+
       await tx.queryVoid(
         `INSERT INTO vendors (user_id, store_name, slug, category, vertical, neighborhood, whatsapp, accepting_quotes, verified, is_admin)
          VALUES ($1, $2, 'admin-portal659', 'admin', 'gastronomia', 'sicardi', $3, false, true, true)`,

@@ -15,11 +15,15 @@ export default function AdminComercioDetailPage() {
 
   const [vendor, setVendor] = useState<any>(null);
   const [products, setProducts] = useState<any[]>([]);
+  const [subscriptions, setSubscriptions] = useState<any[]>([]);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [assignedUserId, setAssignedUserId] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
+  const [payMethod, setPayMethod] = useState("efectivo");
+  const [payAmount, setPayAmount] = useState("");
+  const [recordingPay, setRecordingPay] = useState(false);
 
   const load = useCallback(async () => {
     const res = await fetch(`/api/admin/comercios/${id}`);
@@ -28,6 +32,7 @@ export default function AdminComercioDetailPage() {
       setVendor(data.vendor);
       setProducts(data.vendor.products || []);
       setAssignedUserId(data.vendor.user_id || "");
+      setSubscriptions(data.subscriptions || []);
     }
     setLoading(false);
   }, [id]);
@@ -64,6 +69,35 @@ export default function AdminComercioDetailPage() {
   }
 
   const [resetting, setResetting] = useState(false);
+
+  async function handleRecordPayment() {
+    if (!subscriptions.length) return;
+    setRecordingPay(true);
+    try {
+      const res = await fetch("/api/admin/comercios", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          vendorId: id,
+          action: "record_payment",
+          paymentMethod: payMethod,
+          amount: payAmount !== "" && Number(payAmount) >= 0 ? Number(payAmount) : null,
+        }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setMsg(`Pago registrado (${payMethod}${payAmount ? ` · $${payAmount}` : ""}).`);
+        setPayAmount("");
+        load();
+      } else {
+        setMsg(data.error || "No se pudo registrar el pago");
+      }
+    } catch {
+      setMsg("Error al registrar el pago");
+    } finally {
+      setRecordingPay(false);
+    }
+  }
 
   async function resetOrders() {
     if (!confirm(`¿Eliminar TODOS los pedidos y poner las mesas en libre de "${vendor?.store_name}"?`)) return;
@@ -189,6 +223,117 @@ export default function AdminComercioDetailPage() {
           <div><span className="text-muted-foreground">Dirección:</span> {vendor.address || "-"}</div>
           <div><span className="text-muted-foreground">Registro:</span> {new Date(vendor.created_at).toLocaleDateString("es-AR")}</div>
         </div>
+      </div>
+
+      {/* Pagos / Suscripciones */}
+      <div className="rounded-xl border border-border p-4 space-y-3">
+        <h2 className="font-semibold text-sm uppercase tracking-wide text-muted-foreground">
+          Plan y pagos
+        </h2>
+        <div className="grid md:grid-cols-3 gap-3 text-sm">
+          <div>
+            <span className="text-muted-foreground">Plan actual:</span>{" "}
+            {vendor.plan_status === "gratuito" ? "Gratuito" : (
+              <>
+                {subscriptions[0]?.plan_name || vendor.plan_id} · {vendor.plan_status}
+              </>
+            )}
+          </div>
+          <div>
+            <span className="text-muted-foreground">Vence:</span>{" "}
+            {vendor.plan_expires_at
+              ? new Date(vendor.plan_expires_at).toLocaleDateString("es-AR")
+              : "—"}
+          </div>
+          <div>
+            <span className="text-muted-foreground">Último pago:</span>{" "}
+            {subscriptions[0]?.paid_at
+              ? `${new Date(subscriptions[0].paid_at).toLocaleDateString("es-AR")} · ${subscriptions[0].payment_method || ""}${subscriptions[0].amount != null ? ` · $${Number(subscriptions[0].amount).toLocaleString("es-AR")}` : ""}`
+              : "Sin registrar"}
+          </div>
+        </div>
+
+        {subscriptions.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-left text-muted-foreground border-b border-border">
+                  <th className="py-1.5 pr-2 font-medium">Fecha</th>
+                  <th className="py-1.5 pr-2 font-medium">Plan</th>
+                  <th className="py-1.5 pr-2 font-medium">Período</th>
+                  <th className="py-1.5 pr-2 font-medium">Método</th>
+                  <th className="py-1.5 pr-2 font-medium">Monto</th>
+                  <th className="py-1.5 pr-2 font-medium">Estado</th>
+                </tr>
+              </thead>
+              <tbody>
+                {subscriptions.map((s: any) => (
+                  <tr key={s.id} className="border-b border-border/50">
+                    <td className="py-1.5 pr-2">{new Date(s.created_at).toLocaleDateString("es-AR")}</td>
+                    <td className="py-1.5 pr-2">{s.plan_name || s.plan_slug || "—"}</td>
+                    <td className="py-1.5 pr-2">
+                      {s.current_period_end
+                        ? `hasta ${new Date(s.current_period_end).toLocaleDateString("es-AR")}`
+                        : "—"}
+                    </td>
+                    <td className="py-1.5 pr-2">
+                      {s.payment_method === "efectivo" ? "💵 Efectivo" :
+                       s.payment_method === "transferencia" ? "🏦 Transf." :
+                       s.payment_method === "mercadopago" ? "💳 MP" : "—"}
+                    </td>
+                    <td className="py-1.5 pr-2">
+                      {s.amount != null ? `$${Number(s.amount).toLocaleString("es-AR")}` : "—"}
+                    </td>
+                    <td className="py-1.5 pr-2">
+                      {s.paid_at ? (
+                        <span className="px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 font-medium">
+                          Pagado
+                        </span>
+                      ) : (
+                        <span className="px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300 font-medium">
+                          Sin pagar
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground">Sin suscripciones registradas (plan Gratuito).</p>
+        )}
+
+        {subscriptions.length > 0 && !subscriptions[0]?.paid_at && (
+          <div className="flex flex-wrap items-end gap-2 rounded-xl bg-muted/40 border border-border p-3">
+            <div>
+              <label className="text-xs text-muted-foreground block mb-1">Método</label>
+              <select
+                className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+                value={payMethod}
+                onChange={(e) => setPayMethod(e.target.value)}
+              >
+                <option value="efectivo">💵 Efectivo</option>
+                <option value="transferencia">🏦 Transferencia</option>
+                <option value="mercadopago">💳 Mercado Pago</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground block mb-1">Monto ($)</label>
+              <input
+                type="number"
+                min={0}
+                placeholder="0"
+                value={payAmount}
+                onChange={(e) => setPayAmount(e.target.value)}
+                className="h-9 w-28 rounded-md border border-input bg-background px-2 text-sm"
+              />
+            </div>
+            <Button size="sm" onClick={handleRecordPayment} disabled={recordingPay}>
+              {recordingPay ? "Guardando…" : "Registrar pago"}
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Inicializar pedidos y contadores */}

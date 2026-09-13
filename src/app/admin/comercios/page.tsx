@@ -6,6 +6,7 @@ import DataTable, { Column } from "@/components/admin/data-table";
 import VendorEditModal from "@/components/admin/vendor-edit-modal";
 import VendorCreateModal from "@/components/admin/vendor-create-modal";
 import DeleteConfirmModal from "@/components/admin/delete-confirm-modal";
+import PlanAssignModal from "@/components/admin/plan-assign-modal";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { VERTICALS } from "@/lib/config";
@@ -32,6 +33,9 @@ type Vendor = {
   trial_ends_at: string | null;
   paid_at: string | null;
   payment_method: string | null;
+  sub_amount: number | null;
+  sub_status: string | null;
+  sub_period_end: string | null;
   publish_requested_at: string | null;
 };
 
@@ -58,8 +62,11 @@ export default function AdminComerciosPage() {
   const [filterVertical, setFilterVertical] = useState("");
   const [filterVerified, setFilterVerified] = useState("");
   const [filterPending, setFilterPending] = useState(false);
+  const [filterPay, setFilterPay] = useState<"all" | "paid" | "unpaid" | "expired">("all");
   const [plans, setPlans] = useState<Plan[]>([]);
   const [createOpen, setCreateOpen] = useState(false);
+  const [planModal, setPlanModal] = useState<{ vendor: Vendor; planSlug: string } | null>(null);
+  const [savingPlan, setSavingPlan] = useState(false);
 
   useEffect(() => {
     fetch("/api/subscriptions/plans")
@@ -129,13 +136,34 @@ export default function AdminComerciosPage() {
     fetchVendors();
   }
 
-  async function handleSetPlan(id: string, planSlug: string) {
-    await fetch("/api/admin/comercios", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ vendorId: id, action: "set_plan", planSlug, days: 30 }),
-    });
-    fetchVendors();
+  async function handleSetPlan(
+    id: string,
+    planSlug: string,
+    opts?: { days?: number; paymentMethod?: string | null; amount?: number | null }
+  ) {
+    setSavingPlan(true);
+    try {
+      await fetch("/api/admin/comercios", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          vendorId: id,
+          action: "set_plan",
+          planSlug,
+          days: opts?.days ?? 30,
+          paymentMethod: opts?.paymentMethod ?? null,
+          amount: opts?.amount ?? null,
+        }),
+      });
+    } finally {
+      setSavingPlan(false);
+      setPlanModal(null);
+      fetchVendors();
+    }
+  }
+
+  function hasPaidPlan(v: Vendor) {
+    return v.plan_status === "trial" || v.plan_status === "active" || v.plan_status === "expired";
   }
 
   function planInfo(v: Vendor) {
@@ -179,6 +207,14 @@ export default function AdminComerciosPage() {
     fetchVendors();
     return {};
   }
+
+  const visibleVendors = vendors.filter((v) => {
+    if (filterPending && !(v.publish_requested_at && !v.visible)) return false;
+    if (filterPay === "paid" && !v.paid_at) return false;
+    if (filterPay === "unpaid" && !(hasPaidPlan(v) && !v.paid_at)) return false;
+    if (filterPay === "expired" && v.plan_status !== "expired") return false;
+    return true;
+  });
 
   const columns: Column<Vendor>[] = [
     {
@@ -257,6 +293,35 @@ export default function AdminComerciosPage() {
       },
     },
     {
+      key: "pago",
+      label: "Pago",
+      render: (v) => {
+        if (!hasPaidPlan(v)) return <span className="text-xs text-muted-foreground">—</span>;
+        const methodLabel =
+          v.payment_method === "efectivo" ? "Efectivo" :
+          v.payment_method === "transferencia" ? "Transf." :
+          v.payment_method === "mercadopago" ? "MP" : "";
+        if (v.paid_at) {
+          return (
+            <div className="flex flex-col gap-0.5">
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 w-fit">
+                Pagado{methodLabel ? ` · ${methodLabel}` : ""}
+              </span>
+              <span className="text-[10px] text-muted-foreground">
+                {v.sub_amount != null ? `$${Number(v.sub_amount).toLocaleString("es-AR")} · ` : ""}
+                {new Date(v.paid_at).toLocaleDateString("es-AR")}
+              </span>
+            </div>
+          );
+        }
+        return (
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300">
+            Sin pagar
+          </span>
+        );
+      },
+    },
+    {
       key: "verified",
       label: "Estado",
       render: (v) => (
@@ -319,6 +384,17 @@ export default function AdminComerciosPage() {
           <option value="true">Verificados</option>
           <option value="false">No verificados</option>
         </select>
+        <select
+          className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+          value={filterPay}
+          onChange={(e) => setFilterPay(e.target.value as typeof filterPay)}
+          title="Filtrar por estado de pago"
+        >
+          <option value="all">Todos los pagos</option>
+          <option value="paid">Pagados</option>
+          <option value="unpaid">Sin pagar</option>
+          <option value="expired">Vencidos</option>
+        </select>
         <button
           onClick={() => setFilterPending((v) => !v)}
           className={`h-9 rounded-md border px-3 text-sm transition-colors ${
@@ -338,7 +414,7 @@ export default function AdminComerciosPage() {
       ) : (
         <DataTable
           columns={columns}
-          data={filterPending ? vendors.filter((v) => v.publish_requested_at && !v.visible) : vendors}
+          data={visibleVendors}
           searchPlaceholder="Buscar comercio..."
           searchKeys={["store_name", "slug", "neighborhood"]}
           pageSize={10}
@@ -390,9 +466,17 @@ export default function AdminComerciosPage() {
               </button>
               <select
                 value={v.plan_id ?? ""}
-                onChange={(e) => handleSetPlan(v.id, e.target.value)}
+                onChange={(e) => {
+                  const slug = e.target.value;
+                  if (!slug) return;
+                  if (slug === "gratuito") {
+                    handleSetPlan(v.id, slug);
+                  } else {
+                    setPlanModal({ vendor: v, planSlug: slug });
+                  }
+                }}
                 className="text-xs px-2 py-1 rounded-md border border-border bg-background text-muted-foreground"
-                title="Cambiar plan (30 días)"
+                title="Cambiar plan (abre cobro si es pago)"
               >
                 <option value="" disabled>Plan...</option>
                 {plans.map((p) => (
@@ -432,6 +516,17 @@ export default function AdminComerciosPage() {
         onConfirm={handleDeleteVendor}
         title="Eliminar comercio"
         message={`¿Eliminar "${deleteVendor?.store_name}"? Esta acción no se puede deshacer.`}
+      />
+
+      <PlanAssignModal
+        open={!!planModal}
+        vendorName={planModal?.vendor.store_name ?? ""}
+        planName={plans.find((p) => p.slug === planModal?.planSlug)?.name ?? planModal?.planSlug ?? ""}
+        onClose={() => setPlanModal(null)}
+        loading={savingPlan}
+        onConfirm={(d) => {
+          if (planModal) handleSetPlan(planModal.vendor.id, planModal.planSlug, d);
+        }}
       />
     </div>
   );

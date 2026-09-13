@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 
 /**
@@ -16,6 +16,33 @@ export function MpConnectCard({
 }) {
   const [disconnecting, setDisconnecting] = useState(false);
   const connected = !!mpUserId;
+  const [oauthMsg, setOauthMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  // Feedback del callback OAuth (?mp=connected | ?mp=error&reason=...).
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const mp = params.get("mp");
+    if (mp === "connected") {
+      setOauthMsg({ ok: true, text: "✅ ¡Cuenta de Mercado Pago conectada! Ya podés cobrar online." });
+    } else if (mp === "error") {
+      const reason = params.get("reason");
+      setOauthMsg({
+        ok: false,
+        text:
+          reason === "state"
+            ? "⚠️ La conexión expiró (más de 10 min). Probá de nuevo."
+            : reason === "exchange"
+              ? "⚠️ Mercado Pago no devolvió los permisos. Probá de nuevo o revisá tu cuenta."
+              : "⚠️ No se pudo conectar. Probá de nuevo.",
+      });
+    }
+    if (mp) {
+      params.delete("mp");
+      params.delete("reason");
+      const clean = `${window.location.pathname}${params.toString() ? `?${params}` : ""}`;
+      window.history.replaceState(null, "", clean);
+    }
+  }, []);
 
   async function handleDisconnect() {
     if (!confirm("¿Desconectar Mercado Pago? Tus clientes ya no podrán pagar online hasta que lo vuelvas a conectar.")) return;

@@ -38,10 +38,13 @@ export async function GET(request: Request) {
   const vendors = await queryMany(
     `SELECT v.*,
             sub.paid_at,
-            sub.payment_method
+            sub.payment_method,
+            sub.amount AS sub_amount,
+            sub.status AS sub_status,
+            sub.current_period_end AS sub_period_end
      FROM vendors v
      LEFT JOIN LATERAL (
-       SELECT s.paid_at, s.payment_method
+       SELECT s.paid_at, s.payment_method, s.amount, s.status, s.current_period_end
        FROM vendor_subscriptions s
        WHERE s.vendor_id = v.id
        ORDER BY s.created_at DESC
@@ -169,8 +172,14 @@ export async function PATCH(request: Request) {
   }
 
   if (action === "set_plan") {
-    const { planSlug, days, note } = body;
+    const { planSlug, days, note, paymentMethod, amount } = body;
     if (!planSlug) return NextResponse.json({ error: "planSlug es requerido" }, { status: 400 });
+
+    // Cobro manual (el pago es por fuera: efectivo / transferencia / MP).
+    // Se registra en la suscripción; null = sin cobrar.
+    const validMethods = ["efectivo", "transferencia", "mercadopago"];
+    const method = paymentMethod && validMethods.includes(paymentMethod) ? paymentMethod : null;
+    const billedAmount = amount != null && Number(amount) >= 0 ? Number(amount) : null;
 
     const plans = await queryMany<{ id: string; slug: string; name: string }>(
       `SELECT id, slug, name FROM plans WHERE slug = ANY($1)`,
@@ -210,19 +219,51 @@ export async function PATCH(request: Request) {
       );
       await tx.queryVoid(
         `INSERT INTO vendor_subscriptions (
-           vendor_id, plan_id, status, current_period_start, current_period_end, note
-         ) VALUES ($1, $2, 'active', $3, $4, $5)`,
+           vendor_id, plan_id, status, current_period_start, current_period_end,
+           note, payment_method, amount, paid_at
+         ) VALUES ($1, $2, 'active', $3, $4, $5, $6, $7, $8)`,
         [
           vendorId,
           plan.id,
           periodStart,
           periodEnd,
           note || `Activado por administrador (${periodDays} días)`,
+          method,
+          billedAmount,
+          method ? new Date().toISOString() : null,
         ]
       );
     });
 
-    return NextResponse.json({ ok: true, plan: planSlug, periodEnd });
+    return NextResponse.json({ ok: true, plan: planSlug, periodEnd, paymentMethod: method });
+  }
+
+  // Registrar cobro manual de la última suscripción del comercio
+  // (efectivo / transferencia / mercadopago). No toca el plan, solo el pago.
+  if (action === "record_payment") {
+    const { paymentMethod, amount, subscriptionId } = body;
+    const validMethods = ["efectivo", "transferencia", "mercadopago"];
+    if (!paymentMethod || !validMethods.includes(paymentMethod)) {
+      return NextResponse.json({ error: "paymentMethod inválido (efectivo / transferencia / mercadopago)" }, { status: 400 });
+    }
+    const billedAmount = amount != null && Number(amount) >= 0 ? Number(amount) : null;
+
+    const sub = subscriptionId
+      ? await queryOne<{ id: string }>(
+          `SELECT id FROM vendor_subscriptions WHERE id = $1 AND vendor_id = $2`,
+          [subscriptionId, vendorId]
+        )
+      : await queryOne<{ id: string }>(
+          `SELECT id FROM vendor_subscriptions WHERE vendor_id = $1 ORDER BY created_at DESC LIMIT 1`,
+          [vendorId]
+        );
+    if (!sub) return NextResponse.json({ error: "El comercio no tiene suscripciones para cobrar" }, { status: 404 });
+
+    await query(
+      `UPDATE vendor_subscriptions SET payment_method = $1, amount = $2, paid_at = now() WHERE id = $3`,
+      [paymentMethod, billedAmount, sub.id]
+    );
+    return NextResponse.json({ ok: true, subscriptionId: sub.id, paymentMethod, amount: billedAmount });
   }
 
   return NextResponse.json({ error: "Acción inválida" }, { status: 400 });

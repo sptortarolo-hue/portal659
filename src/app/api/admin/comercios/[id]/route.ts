@@ -28,7 +28,17 @@ export async function GET(
     [id]
   );
 
-  return NextResponse.json({ vendor: { ...vendor, products } });
+  const subscriptions = await queryMany(
+    `SELECT s.*, p.slug AS plan_slug, p.name AS plan_name
+     FROM vendor_subscriptions s
+     LEFT JOIN plans p ON p.id = s.plan_id
+     WHERE s.vendor_id = $1
+     ORDER BY s.created_at DESC
+     LIMIT 24`,
+    [id]
+  );
+
+  return NextResponse.json({ vendor: { ...vendor, products }, subscriptions: subscriptions || [] });
 }
 
 export async function POST(

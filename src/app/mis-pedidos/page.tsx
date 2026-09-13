@@ -280,6 +280,19 @@ export default function MisPedidosPage() {
           : "Ingresá tu número de WhatsApp para ver el estado de tus pedidos."}
       </p>
 
+      {authed === false && (
+        <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4 mb-6">
+          <p className="font-semibold text-sm mb-1">📋 Creá tu cuenta gratis</p>
+          <p className="text-xs text-muted-foreground leading-relaxed mb-3">
+            Guardá tus favoritos, tus datos de contacto, tu historial de pedidos
+            y dejá reseñas en los comercios del barrio.
+          </p>
+          <Button size="sm" className="w-full" onClick={() => router.push("/registro?next=/mis-pedidos")}>
+            Crear mi cuenta
+          </Button>
+        </div>
+      )}
+
       <form onSubmit={handleSearch} className="space-y-3 mb-6">
         <div>
           <Label htmlFor="phone">Tu número de WhatsApp</Label>

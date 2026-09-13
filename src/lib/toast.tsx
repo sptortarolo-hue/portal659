@@ -36,11 +36,14 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <ToastContext.Provider value={value}>
       {children}
-      <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-[60] flex flex-col gap-2 pointer-events-none">
+      {/* Fixed: NO lo recorta el overflow-x-clip de las páginas. El wrapper
+         limita al ancho del viewport y cada toast envuelve su texto: un
+         mensaje largo nunca desborda el borde derecho en mobile. */}
+      <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-[60] flex flex-col items-center gap-2 pointer-events-none w-full max-w-md px-4">
         {toasts.map((t) => (
           <div
             key={t.id}
-            className={`pointer-events-auto px-4 py-2.5 rounded-xl text-sm font-medium shadow-lg animate-slide-in-bottom ${
+            className={`pointer-events-auto px-4 py-2.5 rounded-xl text-sm font-medium shadow-lg animate-slide-in-bottom max-w-full break-words ${
               t.type === "success"
                 ? "bg-green-600 text-white"
                 : t.type === "error"

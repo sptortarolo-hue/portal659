@@ -67,6 +67,13 @@
 }
 
 @layer base {
+  /* Nada puede desbordar el viewport en horizontal (red de seguridad global).
+     `clip` (a diferencia de `hidden`) no crea un scroll container: los
+     `sticky` siguen funcionando. */
+  html, body {
+    overflow-x: clip;
+  }
+
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);

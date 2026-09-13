@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { AddToCartButton } from "@/components/offers/add-to-cart-button";
 import { VariantSelector } from "./variant-selector";
 import { ProductImage } from "@/components/product-image";
@@ -41,6 +41,7 @@ function variantSummary(vars: any[]) {
 export function ProductCard({ product, variants = [], images = [], vendor, modifiers, acceptsCart = true, consultHref }: Props) {
   const [open, setOpen] = useState(false);
   const [activeImg, setActiveImg] = useState(0);
+  const sheetRef = useRef<HTMLDivElement | null>(null);
 
   const hasVariants = variants.length > 0;
   const imgs = images.length > 0 ? images : product.image_url ? [{ image_url: product.image_url }] : [];
@@ -74,6 +75,22 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
     : product.promo_price
       ? `De $${Number(product.price).toLocaleString("es-AR")}`
       : null;
+
+  // Al abrir un producto CON variantes/opciones: la foto ocupa casi todo el
+  // alto visible del sheet y el selector quedaba debajo del pliegue (la gente
+  // no sabía que tenía que elegir). Auto-scroll suave al fondo para mostrarlas.
+  const hasOptions = hasVariants || (modifiers?.length ?? 0) > 0;
+  useEffect(() => {
+    if (!open || !hasOptions) return;
+    const el = sheetRef.current;
+    if (!el) return;
+    const t = window.setTimeout(() => {
+      if (el.scrollHeight > el.clientHeight + 8) {
+        el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+      }
+    }, 300);
+    return () => window.clearTimeout(t);
+  }, [open, hasOptions]);
 
   // Descuento en efectivo: sobre el mínimo del rango (o precio exacto).
   const cardHasPromo = hasVariants
@@ -137,6 +154,7 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
         <div className="fixed inset-0 z-50">
           <div className="absolute inset-0 bg-black/60" onClick={() => { setOpen(false); setActiveImg(0); }} />
           <div
+            ref={sheetRef}
             className="absolute inset-x-0 bottom-0 max-h-[90vh] overflow-y-auto rounded-t-2xl bg-card sm:inset-0 sm:m-auto sm:max-w-md sm:h-fit sm:rounded-2xl"
             onClick={(e) => e.stopPropagation()}
           >

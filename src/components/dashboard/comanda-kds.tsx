@@ -208,13 +208,18 @@ function TicketCard({
       <div className="space-y-0.5 mb-1.5">
         {(order.items || []).slice(0, 4).map((item, i) => (
           <div key={i} className="flex items-start gap-1 text-[13px] leading-tight">
-            <span className="font-bold text-foreground tabular-nums min-w-[22px]">{item.qty}x</span>
-            <span className="text-foreground font-medium truncate">{item.name}</span>
-            {item.modifiers && item.modifiers.length > 0 && (
-              <span className="text-[10px] font-bold text-red-600 dark:text-red-400 ml-0.5">
-                ({item.modifiers.join(", ")})
-              </span>
-            )}
+            <span className="font-bold text-foreground tabular-nums min-w-[22px] flex-shrink-0">{item.qty}x</span>
+            {/* min-w-0 flex-1 + wrap: sin esto un nombre o modifier largo
+                ensanchaba la tarjeta y la página se iba de pantalla en mobile.
+                Los modifiers NO se truncan: cocina los necesita completos. */}
+            <span className="min-w-0 flex-1 break-words text-foreground font-medium">
+              {item.name}
+              {item.modifiers && item.modifiers.length > 0 && (
+                <span className="text-[10px] font-bold text-red-600 dark:text-red-400">
+                  {" "}({item.modifiers.join(", ")})
+                </span>
+              )}
+            </span>
           </div>
         ))}
         {(order.items || []).length > 4 && (
@@ -524,8 +529,9 @@ export default function ComandaKDS({ vendorId, vendorName, accessToken, prepTime
 
   return (
     <div className="space-y-3">
-      {/* Header */}
-      <div className="flex items-center justify-between sticky top-0 z-10 bg-background/95 backdrop-blur-sm py-2 -mx-4 px-4 border-b border-border/50">
+      {/* Header — SIN backdrop-blur: sticky + backdrop-filter tiene un bug de
+          compositing en Chrome/WebView Android (se "va" durante el scroll). */}
+      <div className="flex items-center justify-between sticky top-0 z-10 bg-background py-2 -mx-4 px-4 border-b border-border/50">
         <div className="flex items-center gap-2">
           <h2 className="font-display text-lg font-bold">Comanda</h2>
           {activeCount > 0 && (

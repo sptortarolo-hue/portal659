@@ -1020,8 +1020,11 @@ function VendorDashboardInner() {
           </div>
         )}
 
-        {/* Sticky header: 2 filas en mobile, 1 en desktop */}
-        <div className="sticky top-0 z-30 bg-background/95 backdrop-blur-sm border-b border-border">
+        {/* Sticky header: 2 filas en mobile, 1 en desktop.
+            SIN backdrop-blur: sticky + backdrop-filter tiene un bug de
+            compositing en Chrome/WebView Android (la barra "desaparece"
+            durante el scroll). Fondo sólido va bien en todos lados. */}
+        <div className="sticky top-0 z-30 bg-background border-b border-border">
           <div className="px-3 sm:px-4 py-2 sm:py-2.5">
             {/* Fila 1: menú + título + compartir (+ controles en desktop) */}
             <div className="flex items-center gap-2 sm:gap-3">

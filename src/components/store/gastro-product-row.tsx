@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { AddToCartButton } from "@/components/offers/add-to-cart-button";
 import { ProductImage } from "@/components/product-image";
@@ -57,6 +57,22 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
   // Estado inline de la ficha mobile (modificadores + cantidad).
   const [selected, setSelected] = useState<Record<string, ModifierOption[]>>({});
   const [qty, setQty] = useState(1);
+  const sheetBodyRef = useRef<HTMLDivElement | null>(null);
+
+  // Al abrir una ficha CON opciones: la foto de 45vh las dejaba debajo del
+  // pliegue y el cliente no sabía que tenía que elegir. Auto-scroll suave al
+  // fondo para que se vean todas (el footer con Cantidad/Agregar queda fijo).
+  useEffect(() => {
+    if (!open || modifiers.length === 0) return;
+    const el = sheetBodyRef.current;
+    if (!el) return;
+    const t = window.setTimeout(() => {
+      if (el.scrollHeight > el.clientHeight + 8) {
+        el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+      }
+    }, 300);
+    return () => window.clearTimeout(t);
+  }, [open, modifiers.length]);
 
   const basePrice = product.promo_price != null ? Number(product.promo_price) : Number(product.price);
   const hasPromo = product.promo_price != null;
@@ -260,7 +276,7 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
             <h3 className="font-display font-semibold leading-tight truncate">{product.name}</h3>
           </header>
 
-          <div className="flex-1 overflow-y-auto">
+          <div ref={sheetBodyRef} className="flex-1 overflow-y-auto">
             {imageBlock}
 
             <div className="p-4 space-y-3">

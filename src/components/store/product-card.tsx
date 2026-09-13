@@ -169,7 +169,7 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
                       onClick={() => setActiveImg(i)}
                       className={`h-16 w-16 flex-shrink-0 rounded-lg overflow-hidden border-2 ${activeImg === i ? "border-primary" : "border-transparent"}`}
                     >
-                      <img src={img.image_url} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
+                      <ProductImage src={img.image_url} name={product.name} category={product.category} vertical={vendor?.vertical} alt="" className="w-full h-full" />
                     </button>
                   ))}
                 </div>

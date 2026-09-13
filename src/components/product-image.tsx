@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import {
   Beef,
   BookOpen,
@@ -162,10 +162,45 @@ export function ProductImage({
       return;
     }
     // Fallo definitivo: se loguea el src exacto para diagnosticar (host,
-    // formato, archivo puntual) y se muestra el fallback.
+    // formato, archivo puntual) y se muestra el fallback (clicable: reintenta).
     console.warn("[img] no se pudo cargar:", src);
+    if (src && /^https?:\/\//i.test(src.trim())) {
+      // Telemetría mínima (fire-and-forget): cae en `docker logs` del VPS
+      // vía [API:img-client], para detectar fotos problemáticas reales.
+      fetch("/api/img-error", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ src: src.trim().slice(0, 500) }),
+      }).catch(() => {});
+    }
     setFailed(true);
   }
+
+  // Reintento manual desde el fallback: limpia el estado y recarga la foto.
+  function retryNow() {
+    if (!src) return;
+    if (retryTimer.current) clearTimeout(retryTimer.current);
+    setLoaded(false);
+    setFailed(false);
+    setAttempt(0);
+  }
+
+  // El fallback de una foto que falló es clicable (reintenta sin F5).
+  const canRetry = failed && !!src;
+  const retryProps = canRetry
+    ? {
+        onClick: retryNow,
+        onKeyDown: (e: KeyboardEvent) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            retryNow();
+          }
+        },
+        role: "button" as const,
+        tabIndex: 0,
+        title: "Tocá para reintentar",
+      }
+    : {};
 
   if (src && !failed) {
     // Camino único: <img> directo, sin optimizador.
@@ -196,7 +231,10 @@ export function ProductImage({
   const emojiPath = getProductEmojiImage(name, category, vertical);
   if (emojiPath) {
     return (
-      <div className={`${className ?? "w-full h-full"} flex items-center justify-center bg-accent/30`}>
+      <div
+        {...retryProps}
+        className={`${className ?? "w-full h-full"} flex items-center justify-center bg-accent/30 ${canRetry ? "cursor-pointer" : ""}`}
+      >
         <img
           src={emojiPath}
           alt={alt}
@@ -214,7 +252,10 @@ export function ProductImage({
     fg: "text-muted-foreground",
   };
   return (
-    <div className={`${className ?? "w-full h-full"} flex items-center justify-center ${colors.bg}`}>
+    <div
+      {...retryProps}
+      className={`${className ?? "w-full h-full"} flex items-center justify-center ${colors.bg} ${canRetry ? "cursor-pointer" : ""}`}
+    >
       <Icon className={iconClassName ?? "h-10 w-10"} strokeWidth={1.5} />
     </div>
   );

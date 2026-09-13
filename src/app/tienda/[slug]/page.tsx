@@ -323,10 +323,13 @@ export default async function TiendaPage({
           {/* Mobile: fila logo (izq) + Ir a comprar al extremo opuesto (der), misma altura */}
           <div className="flex sm:hidden items-center justify-between mb-3">
             {v.logo_url ? (
-              <img
+              <ProductImage
                 src={v.logo_url}
+                name={v.store_name}
+                vertical={v.vertical}
                 alt={`Logo de ${v.store_name}`}
-                className="h-12 w-12 rounded-full object-cover border-2 border-white shadow-md"
+                className="h-12 w-12 rounded-full border-2 border-white shadow-md"
+                eager
               />
             ) : (
               <div className="h-12 w-12 rounded-full bg-accent flex items-center justify-center">
@@ -338,10 +341,13 @@ export default async function TiendaPage({
 
           {/* Desktop: logo sigue arriba como siempre */}
           {v.logo_url && (
-            <img
+            <ProductImage
               src={v.logo_url}
+              name={v.store_name}
+              vertical={v.vertical}
               alt={`Logo de ${v.store_name}`}
-              className="hidden sm:block h-16 w-16 rounded-full object-cover mb-3 border-2 border-white shadow-md"
+              className="hidden sm:block h-16 w-16 rounded-full border-2 border-white shadow-md mb-3"
+              eager
             />
           )}
           <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
@@ -463,7 +469,7 @@ export default async function TiendaPage({
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               {gallery.map((g: any) => (
                 <div key={g.id} className="relative aspect-square rounded-xl overflow-hidden group cursor-pointer">
-                  <img src={g.image_url} alt={g.caption || ""} loading="lazy" decoding="async" className="w-full h-full object-cover transition-transform group-hover:scale-105" />
+                  <ProductImage src={g.image_url} name={g.caption || v.store_name} vertical={v.vertical} alt={g.caption || ""} className="w-full h-full" imgClassName="transition-transform group-hover:scale-105" />
                   {g.caption && (
                     <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent text-white text-xs px-3 py-2 opacity-0 group-hover:opacity-100 transition-opacity">
                       {g.caption}

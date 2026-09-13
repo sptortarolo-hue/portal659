@@ -293,7 +293,7 @@ export default async function BuscarPage({
                     <Card className="hover:shadow-lg transition-shadow cursor-pointer overflow-hidden">
                       {v.image_url ? (
                         <div className="h-28 w-full">
-                          <img src={v.image_url} alt={v.store_name} loading="lazy" decoding="async" className="w-full h-full object-cover" />
+                          <ProductImage src={v.image_url} name={v.store_name} vertical={v.vertical} alt={v.store_name} className="w-full h-full" />
                         </div>
                       ) : (
                         <div className="h-28 w-full bg-gradient-to-br from-secondary to-accent flex items-center justify-center">

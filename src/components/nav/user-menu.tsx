@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTheme } from "@/components/ui/theme-provider";
+import { ProductImage } from "@/components/product-image";
 import { Shield } from "lucide-react";
 
 type MeUser = {
@@ -98,7 +99,7 @@ export function UserMenu() {
         aria-label="Menú"
       >
         {vendorImg ? (
-          <img src={vendorImg} alt={vendor?.store_name || "Mi comercio"} className="h-8 w-8 rounded-full object-cover flex-shrink-0" />
+          <ProductImage src={vendorImg} name={vendor?.store_name || "Mi comercio"} vertical={vendor?.vertical ?? null} alt={vendor?.store_name || "Mi comercio"} className="h-8 w-8 rounded-full flex-shrink-0" eager />
         ) : (
           <span className="w-8 h-8 flex items-center justify-center rounded-full bg-primary/10 text-primary text-lg">☰</span>
         )}

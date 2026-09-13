@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { ProductImage } from "@/components/product-image";
 
 /**
  * Barra sticky del micrositio (solo mobile): aparece debajo del nav principal
@@ -44,10 +45,12 @@ export function StickyStoreBar({
       aria-hidden={!visible}
     >
       {logoUrl ? (
-        <img
+        <ProductImage
           src={logoUrl}
+          name={storeName}
           alt={`Logo de ${storeName}`}
-          className="h-7 w-7 rounded-full object-cover border border-border flex-shrink-0"
+          className="h-7 w-7 rounded-full border border-border flex-shrink-0"
+          eager
         />
       ) : (
         <div className="h-7 w-7 rounded-full bg-accent flex items-center justify-center flex-shrink-0">

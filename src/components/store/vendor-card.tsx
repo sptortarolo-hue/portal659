@@ -67,12 +67,12 @@ export function VendorCard({ id, slug, store_name, image_url, logo_url, descript
           </div>
         )}
         {logo_url && (
-          <img
+          <ProductImage
             src={logo_url}
+            name={store_name}
+            vertical={vertical}
             alt={`Logo de ${store_name}`}
-            loading="lazy"
-            decoding="async"
-            className="absolute left-3 top-3 h-12 w-12 rounded-full object-cover border-2 border-white shadow-md"
+            className="absolute left-3 top-3 h-12 w-12 rounded-full border-2 border-white shadow-md"
           />
         )}
         {isOpen !== null && (

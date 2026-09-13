@@ -1,10 +1,9 @@
-// v12: las fotos (/uploads/*) y los documentos de navegación ya NO se
-// cachean. Las subidas traen `immutable` por 1 año (browser + CDN) y el HTML
-// público referencia chunks que rotan en cada deploy: un HTML viejo = JS
-// muerto e imágenes en fallback sin reintento. El SW queda para push +
-// offline.html + estáticos versionados; purga las cachés v5-v11 al activar.
-// v11: invalida cachés v10 (ProductImage con doble rama; ahora camino único directo).
-const CACHE_NAME = "portal659-v12";
+// v13: /uploads/* ni se intercepta (bypass total). El browser gestiona la
+// foto directo: sus reintentos TLS, su caché `immutable` y sus errores
+// nativos. El SW solo mediaba para devolver 503 sintéticos ante fallos
+// transitorios (fotos que solo cargaban tras varios F5). Purga cachés v12.
+// v12: fotos y navegaciones ya no se cacheaban (HTML pre-deploy = JS muerto).
+const CACHE_NAME = "portal659-v13";
 const OFFLINE_URL = "/offline.html";
 
 self.addEventListener("install", (event) => {
@@ -74,21 +73,22 @@ self.addEventListener("fetch", (event) => {
   if (request.method !== "GET") return;
   if (request.url.includes("/api/")) return;
   if (request.url.includes("/_next/")) return;
+  // Bypass total de fotos: ni siquiera se interceptan (ver nota v13).
+  try {
+    if (new URL(request.url).pathname.startsWith("/uploads/")) return;
+  } catch {
+    return;
+  }
 
   // /admin: nunca cachear el documento. Referencia hashes de chunks que rotan
   // en cada deploy; un HTML cacheado = ChunkLoadError / pantalla congelada.
   // Solo red: si la red falla, que lo maneje la app (no HTML viejo).
-  // Lo mismo vale para TODA navegación pública y para /uploads/* (las fotos
-  // ya las cachean browser + CDN con `immutable`; guardarlas acá solo suma
-  // una capa capaz de servir bytes truncados).
+  // Lo mismo vale para TODA navegación pública (las fotos ya ni se
+  // interceptan: bypass total v13).
   let cacheable = true;
   try {
     const url = new URL(request.url);
-    if (
-      request.mode === "navigate" ||
-      url.pathname.startsWith("/admin") ||
-      url.pathname.startsWith("/uploads/")
-    ) {
+    if (request.mode === "navigate" || url.pathname.startsWith("/admin")) {
       cacheable = false;
     }
   } catch {

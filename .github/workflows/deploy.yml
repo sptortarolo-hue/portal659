@@ -52,6 +52,10 @@ jobs:
             echo 'MP_CLIENT_ID=${{ secrets.MP_CLIENT_ID }}' >> /opt/portal659/.env
             echo 'MP_CLIENT_SECRET=${{ secrets.MP_CLIENT_SECRET }}' >> /opt/portal659/.env
             echo 'MP_TOKEN_KEY=${{ secrets.MP_TOKEN_KEY }}' >> /opt/portal659/.env
+            # MP_ENABLED NO se define hasta tener el OK de Mercado Pago: sin
+            # ella, la card de conexión se oculta y todo cobro online se
+            # bloquea (ver isMpEnabled en src/lib/mp-oauth.ts). El día del OK,
+            # agregar: echo 'MP_ENABLED=1' >> /opt/portal659/.env
             echo 'UPSTASH_REDIS_REST_URL=${{ secrets.UPSTASH_REDIS_REST_URL }}' >> /opt/portal659/.env
             echo 'UPSTASH_REDIS_REST_TOKEN=${{ secrets.UPSTASH_REDIS_REST_TOKEN }}' >> /opt/portal659/.env
             echo 'VAPID_PUBLIC_KEY=${{ secrets.VAPID_PUBLIC_KEY }}' >> /opt/portal659/.env

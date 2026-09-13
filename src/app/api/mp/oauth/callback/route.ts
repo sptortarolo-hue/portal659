@@ -1,5 +1,5 @@
 import { queryOne } from "@/lib/db";
-import { verifyState, exchangeCodeForTokens, encryptSecret } from "@/lib/mp-oauth";
+import { verifyState, exchangeCodeForTokens, encryptSecret, isMpEnabled } from "@/lib/mp-oauth";
 import { getSiteUrl } from "@/lib/site-url";
 import { NextResponse } from "next/server";
 
@@ -14,6 +14,12 @@ export async function GET(request: Request) {
   const state = url.searchParams.get("state");
 
   const dashboardUrl = (extra: string) => `${getSiteUrl(request)}/vendor/dashboard?${extra}`;
+
+  // Llave maestra: sin OK de MP no se vincula ninguna cuenta, aunque el
+  // comercio llegue acá con un code válido.
+  if (!isMpEnabled()) {
+    return NextResponse.redirect(dashboardUrl("mp=error"));
+  }
 
   if (!code || !state) {
     return NextResponse.redirect(dashboardUrl("mp=error"));

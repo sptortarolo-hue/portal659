@@ -1,6 +1,7 @@
 import { getUserId } from "@/lib/auth-utils";
 import { queryMany, queryOne } from "@/lib/db";
 import { activePromo } from "@/lib/plans";
+import { isMpEnabled } from "@/lib/mp-oauth";
 import { getSiteUrl } from "@/lib/site-url";
 import { NextResponse } from "next/server";
 import type { Plan } from "@/types/database";
@@ -93,8 +94,9 @@ export async function POST(request: Request) {
   const externalReference = `portal659_sub_${vendor.id}_${plan.slug}_${Math.floor(base / 1000)}`;
   const siteUrl = getSiteUrl();
 
-  // Sin Mercado Pago configurado → transferencia manual (el admin activa con set_plan)
-  if (!MP_ACCESS_TOKEN) {
+  // Sin Mercado Pago configurado (o con la llave maestra apagada) →
+  // transferencia manual (el admin activa con set_plan)
+  if (!MP_ACCESS_TOKEN || !isMpEnabled()) {
     return NextResponse.json({
       ok: true,
       mode: "transfer",

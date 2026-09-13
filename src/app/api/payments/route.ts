@@ -1,12 +1,20 @@
 import { queryOne } from "@/lib/db";
 import { getSiteUrl } from "@/lib/site-url";
-import { getVendorMpToken, type VendorMpRow } from "@/lib/mp-oauth";
+import { getVendorMpToken, isMpEnabled, type VendorMpRow } from "@/lib/mp-oauth";
 import { NextResponse } from "next/server";
 
 // Mercado Pago Preference API (multi-market: cada comercio cobra con SU cuenta)
 // Docs: https://www.mercadopago.com.ar/developers/en/docs/checkout-pro/landing
 
 export async function POST(request: Request) {
+  // Llave maestra: sin OK de MP no se cobra online por ningún canal.
+  if (!isMpEnabled()) {
+    return NextResponse.json(
+      { error: "Los pagos online están deshabilitados por ahora", code: "mp_disabled" },
+      { status: 403 }
+    );
+  }
+
   const body = await request.json();
   const { vendorId, items, total, customerName, customerPhone, customerAddress, method, isPreview } = body;
 
@@ -108,6 +116,11 @@ export async function POST(request: Request) {
 
 // El checkout le pregunta "¿puedo cobrar online?" por un comercio dado.
 export async function GET(request: Request) {
+  // Sin OK de MP el checkout nunca ofrece pago online.
+  if (!isMpEnabled()) {
+    return NextResponse.json({ configured: false, reason: "mp_disabled" });
+  }
+
   const vendorId = new URL(request.url).searchParams.get("vendorId");
   if (!vendorId) {
     return NextResponse.json({ configured: false, reason: "vendorId requerido" }, { status: 400 });

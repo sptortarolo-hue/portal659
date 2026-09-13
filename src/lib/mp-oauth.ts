@@ -20,6 +20,16 @@ import { queryOne } from "@/lib/db";
 const MP_AUTH_URL = "https://auth.mercadopago.com.ar/authorization";
 const MP_TOKEN_URL = "https://api.mercadopago.com/oauth/token";
 
+/**
+ * Llave maestra de Mercado Pago (on/off global).
+ * Todo MP (conexión OAuth por comercio, botón de checkout y cobro de planes
+ * con el token global) solo opera con `MP_ENABLED=1`. Sin el OK de MP el
+ * deploy no la define y el portal funciona 100% sin pagos online.
+ */
+export function isMpEnabled(): boolean {
+  return process.env.MP_ENABLED === "1";
+}
+
 // Ventana de seguridad: si el token vence en menos de esto, lo refrescamos antes.
 const REFRESH_BUFFER_MS = 10 * 60 * 1000;
 // El state del OAuth expira en 10 minutos (anti-replay / anti-CSRF).

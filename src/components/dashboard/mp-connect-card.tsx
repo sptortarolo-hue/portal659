@@ -17,6 +17,15 @@ export function MpConnectCard({
   const [disconnecting, setDisconnecting] = useState(false);
   const connected = !!mpUserId;
   const [oauthMsg, setOauthMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  // Llave maestra MP: sin `MP_ENABLED=1` la card ni se muestra.
+  const [mpEnabled, setMpEnabled] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    fetch("/api/mp/status")
+      .then((r) => r.json())
+      .then((d) => setMpEnabled(d.enabled === true))
+      .catch(() => setMpEnabled(false));
+  }, []);
 
   // Feedback del callback OAuth (?mp=connected | ?mp=error&reason=...).
   useEffect(() => {
@@ -56,6 +65,7 @@ export function MpConnectCard({
   }
 
   return (
+    mpEnabled !== true ? null : (
     <div className="rounded-xl border border-border p-4 space-y-3">
       <div className="flex items-start justify-between gap-3">
         <div>
@@ -122,5 +132,6 @@ export function MpConnectCard({
         </div>
       )}
     </div>
+    )
   );
 }

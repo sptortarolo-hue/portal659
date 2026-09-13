@@ -120,6 +120,7 @@ export function ProductImage({
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const imgRef = useRef<HTMLImageElement | null>(null);
 
   // Si cambia la URL, volver a estado de carga (y cancelar reintentos viejos).
   useEffect(() => {
@@ -151,6 +152,26 @@ export function ProductImage({
       document.removeEventListener("visibilitychange", onVisible);
     };
   }, [src, loaded]);
+
+  // Cierre de la carrera de hidratación: el <img> del HTML SSR arranca a
+  // cargar antes de que React conecte los handlers. Si terminó antes (foto
+  // cacheada / CDN / chica), el evento load/error se pierde y la foto quedaba
+  // invisible para siempre (opacity-0). Acá se consulta el estado REAL del
+  // <img> y se sincroniza la UI. El guard `src === currentSrc` evita leer el
+  // estado de la imagen vieja mientras una nueva sigue en vuelo.
+  useEffect(() => {
+    const img = imgRef.current;
+    if (!img || !src || failed || loaded) return;
+    if (!img.complete) return;
+    if (img.src !== img.currentSrc) return;
+    if (img.naturalWidth > 0) {
+      setLoaded(true);
+    } else {
+      // Terminó y falló antes de hidratar: entra al ciclo de reintentos.
+      handleError();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [src, attempt, loaded, failed]);
 
   function handleError() {
     if (src && attempt + 1 < MAX_ATTEMPTS && withRetryParam(src, attempt + 1)) {
@@ -215,6 +236,7 @@ export function ProductImage({
       <div className={`${positioned ? "" : "relative "}overflow-hidden ${className ?? "w-full h-full"}`}>
         {!loaded && <div className="absolute inset-0 bg-muted animate-pulse" />}
         <img
+          ref={imgRef}
           src={shownSrc}
           alt={alt}
           loading={eager ? "eager" : "lazy"}

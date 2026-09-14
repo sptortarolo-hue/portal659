@@ -11,6 +11,7 @@
       <div class="brand">
         <span class="brand-dot"></span>
         <span class="brand-name">Portal Print Agent</span>
+        <span id="app-version" class="brand-version">v…</span>
       </div>
       <button id="btn-minimize" class="ghost" title="Minimizar a la bandeja">—</button>
     </header>
@@ -18,12 +19,13 @@
     <main class="content">
       <section class="status-card">
         <div class="status-row">
-          <span id="status-dot" class="dot dot-off"></span>
+          <span id="status-dot" class="dot dot-init"></span>
           <div class="status-text">
-            <div id="status-label" class="status-label">Desconectado</div>
-            <div id="status-sub" class="status-sub">Conectando&hellip;</div>
+            <div id="status-label" class="status-label">Iniciando…</div>
+            <div id="status-sub" class="status-sub">Cargando configuración…</div>
           </div>
         </div>
+        <div id="status-detail" class="status-detail">Esperando el primer estado del agente…</div>
         <div id="last-print" class="last-print hidden"></div>
       </section>
 

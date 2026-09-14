@@ -97,9 +97,20 @@ body {
 .dot-off { background: var(--red); }
 .dot-on { background: var(--green); }
 .dot-connecting { background: var(--amber); }
+.dot-init { background: var(--muted); }
+
+.brand-version {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 1px 8px;
+}
 
 .status-label { font-weight: 600; }
 .status-sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
+.status-detail { color: var(--muted); font-size: 12px; margin-top: 10px; overflow-wrap: anywhere; }
 
 .last-print {
   margin-top: 10px;

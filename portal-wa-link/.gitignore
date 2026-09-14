@@ -5,3 +5,5 @@ local.properties
 keystore.properties
 *.apk
 *.aab
+app/src/main/assets/relay/relay-arm64
+app/src/main/assets/relay/relay-x86_64

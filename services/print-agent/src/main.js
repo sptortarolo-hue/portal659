@@ -8,7 +8,7 @@ const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, shell } = require(
 const { execFile } = require("node:child_process");
 const { existsSync, readFileSync, writeFileSync, mkdirSync } = require("node:fs");
 const { join, dirname } = require("node:path");
-const { createRelay } = require("./relay");
+const { createRelay, sanitizeAgentConfig, validateConnectionConfig } = require("./relay");
 
 const APP_NAME = "Portal Print Agent";
 const RUN_KEY = "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run";
@@ -19,6 +19,7 @@ let tray = null;
 let relay = null;
 let isQuitting = false;
 let config = null;
+let lastStatus = null;
 
 // ---------------------------------------------------------------- config
 
@@ -39,8 +40,7 @@ function loadConfig() {
   const path = configPath();
   if (existsSync(path)) {
     try {
-      const parsed = JSON.parse(readFileSync(path, "utf8"));
-      return { ...defaultConfig(), ...parsed };
+      return sanitizeAgentConfig(JSON.parse(readFileSync(path, "utf8")));
     } catch {
       /* config rota → se regenera */
     }
@@ -48,10 +48,8 @@ function loadConfig() {
   for (const legacy of legacyConfigPaths()) {
     if (existsSync(legacy)) {
       try {
-        const parsed = JSON.parse(readFileSync(legacy, "utf8"));
-        const cfg = { ...defaultConfig(), ...parsed };
-        saveConfig(cfg); // migrar al userData
-        return cfg;
+        const migrated = saveConfig(JSON.parse(readFileSync(legacy, "utf8")));
+        return migrated.config;
       } catch {
         /* ignorar y seguir */
       }
@@ -61,10 +59,12 @@ function loadConfig() {
 }
 
 function saveConfig(next) {
-  config = { ...defaultConfig(), ...next };
+  const validation = validateConnectionConfig(next);
+  config = validation.config;
   const path = configPath();
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, JSON.stringify(config, null, 2));
+  return { config, validation };
 }
 
 // ------------------------------------------------------------- autostart
@@ -106,12 +106,32 @@ const hideToTray = () => {
   mainWindow.hide();
 };
 
+function connectionStateText(status) {
+  if (!status) return "Iniciando";
+  if (status.online) return "Conectado";
+  if (status.connection?.status === "connecting") return "Conectando";
+  if (status.connection?.status === "retrying") return "Reintentando";
+  if (status.connection?.status === "invalid") return "Configuración inválida";
+  return "Desconectado";
+}
+
+function deliverStatus(status) {
+  if (!status) return;
+  lastStatus = status;
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    try {
+      mainWindow.webContents.send("status", status);
+    } catch {}
+  }
+  updateTrayStatus(status);
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 460,
-    height: 640,
+    height: 680,
     minWidth: 400,
-    minHeight: 560,
+    minHeight: 580,
     resizable: true,
     show: false,
     title: APP_NAME,
@@ -124,6 +144,9 @@ function createWindow() {
   });
 
   mainWindow.removeMenu();
+  mainWindow.webContents.on("did-finish-load", () => {
+    if (lastStatus) deliverStatus(lastStatus);
+  });
   mainWindow.loadFile(join(__dirname, "renderer", "index.html"));
 
   mainWindow.on("close", (e) => {
@@ -134,7 +157,10 @@ function createWindow() {
   });
 
   mainWindow.once("ready-to-show", () => {
-    if (!startHidden) mainWindow.show();
+    if (!startHidden) {
+      mainWindow.show();
+      if (lastStatus) deliverStatus(lastStatus);
+    }
   });
 
   mainWindow.on("closed", () => {
@@ -148,25 +174,35 @@ function createWindow() {
   });
 }
 
-function createTray() {
+function createTray(status) {
   const iconPath = join(__dirname, "..", "assets", "icon-512.png");
   let image = nativeImage.createFromPath(iconPath);
   if (image.isEmpty()) image = nativeImage.createEmpty();
   image = image.resize({ width: 16, height: 16 });
   tray = new Tray(image);
-  tray.setToolTip(APP_NAME);
-  tray.setContextMenu(buildTrayMenu());
+  tray.setToolTip(`${APP_NAME} — ${connectionStateText(status)}`);
+  tray.setContextMenu(buildTrayMenu(status));
   tray.on("click", () => {
     if (mainWindow) {
       mainWindow.show();
       mainWindow.focus();
+      if (lastStatus) deliverStatus(lastStatus);
     }
   });
 }
 
-function buildTrayMenu() {
+function updateTrayStatus(status) {
+  if (!tray) return;
+  tray.setToolTip(`${APP_NAME} — ${connectionStateText(status)}`);
+  try {
+    tray.setContextMenu(buildTrayMenu(status));
+  } catch {}
+}
+
+function buildTrayMenu(status) {
   return Menu.buildFromTemplate([
-    { label: "Abrir configuración", click: () => { mainWindow && (mainWindow.show(), mainWindow.focus()); } },
+    { label: `Estado: ${connectionStateText(status)}`, enabled: false },
+    { label: "Abrir configuración", click: () => { if (mainWindow) { mainWindow.show(); mainWindow.focus(); } } },
     { type: "separator" },
     { label: "Reconectar", click: () => relay && relay.reconnectNow() },
     { label: "Probar impresora", click: () => relay && relay.testPrint() },
@@ -180,14 +216,22 @@ function buildTrayMenu() {
 function registerIpc() {
   ipcMain.handle("config:get", () => config);
   ipcMain.handle("config:save", (_e, next) => {
-    saveConfig(next);
-    relay && relay.reconnectNow();
-    return config;
+    const result = saveConfig(next);
+    if (relay) relay.reconnectNow();
+    return result;
   });
+  ipcMain.handle("status:get", () => lastStatus || (relay ? relay.getStatus() : null));
   ipcMain.handle("relay:test", () => (relay ? relay.testPrint() : { ok: false, error: "Agente no inicializado" }));
   ipcMain.handle("relay:reconnect", () => (relay ? relay.reconnectNow() : null));
   ipcMain.handle("autostart:get", () => getAutostart());
   ipcMain.handle("autostart:set", (_e, enabled) => setAutostart(!!enabled));
+  ipcMain.handle("app:getInfo", () => ({
+    name: APP_NAME,
+    version: app.getVersion(),
+    platform: process.platform,
+    arch: process.arch,
+    packaged: app.isPackaged(),
+  }));
 }
 
 // ------------------------------------------------------------------ app
@@ -202,6 +246,7 @@ if (!gotLock) {
     if (mainWindow) {
       mainWindow.show();
       mainWindow.focus();
+      if (lastStatus) deliverStatus(lastStatus);
     }
   });
 
@@ -213,26 +258,29 @@ if (!gotLock) {
     relay = createRelay({
       getConfig: () => config,
       onEvent: (payload) => {
-        if (payload.type === "status" && mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send("status", payload);
-        }
-        if (payload.type === "print" && mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send("print", payload);
-        }
-        if (payload.type === "error" && mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send("error", payload);
+        if (!payload || typeof payload !== "object") return;
+        if (payload.type === "status") {
+          deliverStatus(payload);
+        } else if ((payload.type === "print" || payload.type === "error") && mainWindow && !mainWindow.isDestroyed()) {
+          try {
+            mainWindow.webContents.send(payload.type, payload);
+          } catch {}
         }
       },
     });
+    lastStatus = relay.getStatus();
 
     registerIpc();
     createWindow();
-    createTray();
+    createTray(lastStatus);
     relay.start();
 
     app.on("activate", () => {
       if (!mainWindow) createWindow();
-      else mainWindow.show();
+      else {
+        mainWindow.show();
+        if (lastStatus) deliverStatus(lastStatus);
+      }
     });
   });
 

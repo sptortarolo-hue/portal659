@@ -3,6 +3,8 @@ const { contextBridge, ipcRenderer } = require("electron");
 contextBridge.exposeInMainWorld("api", {
   getConfig: () => ipcRenderer.invoke("config:get"),
   saveConfig: (config) => ipcRenderer.invoke("config:save", config),
+  getStatus: () => ipcRenderer.invoke("status:get"),
+  getInfo: () => ipcRenderer.invoke("app:getInfo"),
   testPrint: () => ipcRenderer.invoke("relay:test"),
   reconnect: () => ipcRenderer.invoke("relay:reconnect"),
   getAutostart: () => ipcRenderer.invoke("autostart:get"),

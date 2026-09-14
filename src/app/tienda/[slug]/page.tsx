@@ -77,7 +77,7 @@ export async function generateMetadata({
     preview && typeof sp?.preview === "string" && sp.preview !== "1"
       ? `?preview=${encodeURIComponent(sp.preview)}`
       : "";
-  const shareImage = `${siteUrl}/api/share/tienda/${slug}${previewTokenParam}`;
+  const shareImage = `${siteUrl}/og/tienda/${slug}.jpg${previewTokenParam}`;
 
   return {
     title,

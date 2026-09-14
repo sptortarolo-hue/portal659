@@ -12,5 +12,8 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|sw\\.js|icons|uploads/).*)", "/api/:path*"],
+  // api/share queda fuera: son las tarjetas og:image (imágenes) — un
+  // Set-Cookie impide que el CDN las cachee (y el crawler de WhatsApp no
+  // necesita cookie de dispositivo).
+  matcher: "/((?!_next/static|_next/image|favicon.ico|sw\\.js|icons|uploads|api/share).*)",
 };

@@ -27,6 +27,16 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  async rewrites() {
+    return [
+      // Tarjetas og:image con "extensión de archivo": Cloudflare solo cachea
+      // por defecto URLs que terminan en .jpg/.png/... — esto hace que la
+      // tarjeta de cada comercio quede 24hs en el edge (WhatsApp la descarga
+      // al instante en vez de esperar el render del VPS). La query
+      // (?preview=token) pasa intacta al destino.
+      { source: "/og/tienda/:slug.jpg", destination: "/api/share/tienda/:slug" },
+    ];
+  },
 };
 
 export default nextConfig;

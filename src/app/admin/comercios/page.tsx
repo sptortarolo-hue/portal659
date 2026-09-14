@@ -37,6 +37,7 @@ type Vendor = {
   sub_status: string | null;
   sub_period_end: string | null;
   publish_requested_at: string | null;
+  wa_bot_enabled?: boolean;
 };
 
 type Plan = {
@@ -114,6 +115,15 @@ export default function AdminComerciosPage() {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ vendorId: id, action: "toggle_visible" }),
+    });
+    fetchVendors();
+  }
+
+  async function handleToggleWaBot(id: string) {
+    await fetch("/api/admin/comercios", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ vendorId: id, action: "toggle_wa_bot" }),
     });
     fetchVendors();
   }
@@ -463,6 +473,15 @@ export default function AdminComerciosPage() {
                 title={v.visible ? "Ocultar de la página" : "Mostrar en la página"}
               >
                 {v.visible ? "Visible" : "Oculto"}
+              </button>
+              <button
+                onClick={() => handleToggleWaBot(v.id)}
+                className={`text-xs px-2 py-1 rounded-md border transition-colors ${
+                  v.wa_bot_enabled ? "border-emerald-300 bg-emerald-50 text-emerald-700" : "border-border text-muted-foreground hover:bg-muted"
+                }`}
+                title={v.wa_bot_enabled ? "Deshabilitar bot de WhatsApp" : "Habilitar bot de WhatsApp"}
+              >
+                {v.wa_bot_enabled ? "Bot ON" : "Bot OFF"}
               </button>
               <select
                 value={v.plan_id ?? ""}

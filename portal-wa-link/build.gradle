@@ -1,0 +1,24 @@
+// Portal Wa Link — app Android nativa (Kotlin) que corre el relay whatsmeow (Go)
+// en el celular del comercio y lo vincula al cerebro (services/wa-bot) en el VPS.
+
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.9.1'
+        classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.24'
+    }
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+task clean(type: Delete) {
+    delete rootProject.buildDir
+}

@@ -66,6 +66,9 @@ jobs:
             if [ -z "$PB_SECRET" ]; then PB_SECRET=$(openssl rand -hex 24); fi
             echo "PRINT_BRIDGE_SECRET=$PB_SECRET" >> /opt/portal659/.env
             echo 'LLM_API_KEY=${{ secrets.LLM_API_KEY }}' >> /opt/portal659/.env
+            WB_SECRET='${{ secrets.WA_BOT_SECRET }}'
+            if [ -z "$WB_SECRET" ]; then WB_SECRET=$(openssl rand -hex 24); fi
+            echo "WA_BOT_SECRET=$WB_SECRET" >> /opt/portal659/.env
 
             cd /opt/portal659
             # Cert TLS para nginx :443. Si aún no pegaste el Origin CA de

@@ -31,6 +31,7 @@ services:
       - PRINT_BRIDGE_URL=${PRINT_BRIDGE_URL:-http://printbridge:8791}
       - PRINT_BRIDGE_SECRET=${PRINT_BRIDGE_SECRET}
       - LLM_API_KEY=${LLM_API_KEY}
+      - WA_BOT_SECRET=${WA_BOT_SECRET}
     volumes:
       - uploads_data:/app/uploads
     expose:
@@ -59,6 +60,34 @@ services:
       start_period: 10s
     networks:
       - portal659
+
+  wabot:
+    build:
+      context: ./services/wa-bot
+    container_name: portal659-wabot
+    restart: unless-stopped
+    mem_limit: 256m
+    environment:
+      - PORT=8792
+      - APP_URL=http://portal659:3000
+      - WA_BOT_SECRET=${WA_BOT_SECRET}
+      - DATABASE_URL=${DATABASE_URL}
+      - UPSTASH_REDIS_REST_URL=${UPSTASH_REDIS_REST_URL}
+      - UPSTASH_REDIS_REST_TOKEN=${UPSTASH_REDIS_REST_TOKEN}
+      - LLM_API_KEY=${LLM_API_KEY}
+    expose:
+      - "8792"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8792/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - portal659
+    depends_on:
+      app:
+        condition: service_healthy
 
   db:
     image: postgres:15-alpine

@@ -54,7 +54,20 @@ export async function GET(request: Request) {
      ORDER BY v.created_at DESC`,
     params
   );
-  return NextResponse.json({ vendors });
+
+  // Bot de WhatsApp: estado habilitado por comercio (tolerante a tabla sin migrar).
+  let waEnabled: Record<string, boolean> = {};
+  try {
+    const rows = await queryMany<{ vendor_id: string; enabled: boolean }>(
+      `SELECT vendor_id, enabled FROM vendor_wa_bots`
+    );
+    for (const r of rows) waEnabled[r.vendor_id] = r.enabled !== false;
+  } catch {
+    /* tabla vendor_wa_bots aún no migrada */
+  }
+
+  const out = vendors.map((v) => ({ ...v, wa_bot_enabled: !!waEnabled[v.id] }));
+  return NextResponse.json({ vendors: out });
 }
 
 export async function POST(request: Request) {
@@ -128,6 +141,37 @@ export async function PATCH(request: Request) {
       await query(`UPDATE profiles SET is_admin = $1 WHERE id = $2`, [next, vendor.user_id]);
     }
     return NextResponse.json({ ok: true, is_admin: next });
+  }
+
+  // Kill switch del bot de WhatsApp: habilita/deshabilita el bot de un comercio.
+  // La tabla existe tras migrate-pilot-whatsapp-bot.sql; sin migrar devuelve
+  // un 500 claro para que se aplique la migración.
+  if (action === "toggle_wa_bot") {
+    const vendor = await queryOne<{ id: string }>(
+      `SELECT id FROM vendors WHERE id = $1`,
+      [vendorId]
+    );
+    if (!vendor) return NextResponse.json({ error: "Vendor no encontrado" }, { status: 404 });
+
+    try {
+      const cur = await queryOne<{ enabled: boolean }>(
+        `SELECT enabled FROM vendor_wa_bots WHERE vendor_id = $1`,
+        [vendorId]
+      );
+      const next = cur ? !cur.enabled : true;
+      await query(
+        `INSERT INTO vendor_wa_bots (vendor_id, enabled)
+         VALUES ($1, $2)
+         ON CONFLICT (vendor_id) DO UPDATE SET enabled = $2, updated_at = now()`,
+        [vendorId, next]
+      );
+      return NextResponse.json({ ok: true, enabled: next });
+    } catch {
+      return NextResponse.json(
+        { error: "Tabla vendor_wa_bots no existe. Aplicar migrate-pilot-whatsapp-bot.sql" },
+        { status: 500 }
+      );
+    }
   }
 
   if (action === "toggle_visible") {

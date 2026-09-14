@@ -132,19 +132,18 @@ export default function ImpresoraPage() {
           <ol className="list-decimal pl-5 space-y-1 mb-4">
             <li>La impresora debe estar en la <span className="font-medium">misma red</span> que la PC.</li>
             <li>Descargá el archivo <code className="bg-muted px-1 rounded text-xs">.exe</code> desde el dashboard.</li>
-            <li>Ejecutalo (doble clic). La primera vez te pide el <span className="font-medium">token</span> y la <span className="font-medium">IP de la impresora</span>.</li>
-            <li>Dejá la ventana abierta.</li>
+            <li>Ejecutalo (doble clic): se abre una <span className="font-medium">ventana de configuración</span>.</li>
+            <li>Pegá el <span className="font-medium">token</span>, la <span className="font-medium">IP de la impresora</span> y tocá <span className="font-medium">&quot;Guardar&quot;</span>.</li>
+            <li>Tocá <span className="font-medium">&quot;Probar impresora&quot;</span> para verificar que imprime.</li>
           </ol>
+          <p className="text-xs text-muted-foreground bg-muted/50 rounded-lg p-3 mb-4">
+            <strong>No necesitás dejar la ventana abierta:</strong> al cerrarla, el agente sigue
+            imprimiendo en segundo plano desde la <span className="font-medium">bandeja del sistema</span>
+            (ícono junto al reloj).
+          </p>
 
           <h3 className="font-semibold mb-2">Autoarranque</h3>
-          <p className="mb-2">Para que el agente arranque solo al prender la PC:</p>
-          <p className="mb-1"><span className="font-medium">Opción 1 — Inicio de Windows:</span></p>
-          <ul className="list-disc pl-5 space-y-1 mb-3">
-            <li>Tecleá <code className="bg-muted px-1 rounded text-xs">Win + R</code>, escribí <code className="bg-muted px-1 rounded text-xs">shell:startup</code> y Enter.</li>
-            <li>Mové o copiá el <code className="bg-muted px-1 rounded text-xs">.exe</code> a esa carpeta.</li>
-          </ul>
-          <p className="mb-1"><span className="font-medium">Opción 2 — Tarea programada</span> (CMD como admin):</p>
-          <pre className="bg-muted rounded-lg p-3 text-xs overflow-x-auto">schtasks /create /tn &quot;Portal Print&quot; /sc onlogon /tr &quot;portal-print-agent.exe&quot;</pre>
+          <p className="mb-2">Para que el agente arranque solo al prender la PC, activá el interruptor <span className="font-medium">&quot;Arrancar al encender la PC&quot;</span> dentro de la misma ventana. No hace falta CMD ni permisos de administrador.</p>
         </div>
 
         {/* 5 */}

@@ -36,10 +36,16 @@ export async function GET(
   try {
     const data = await readFile(full);
     const ext = (path.extname(full) || "").replace(".", "").toLowerCase();
+    // Imágenes: cache inmutable (la URL única de cada foto no cambia).
+    // Descargas (ej. .exe del agente PC): se revalidan siempre, porque el
+    // binario se reemplaza con builds nuevos sin cambiar la URL.
+    const cacheControl = MIME[ext]
+      ? "public, max-age=31536000, immutable"
+      : "public, max-age=0, must-revalidate";
     // nosniff: si el navegador huele un tipo de contenido distinto, no lo usa.
     const headers: Record<string, string> = {
       "Content-Type": MIME[ext] || "application/octet-stream",
-      "Cache-Control": "public, max-age=31536000, immutable",
+      "Cache-Control": cacheControl,
       "X-Content-Type-Options": "nosniff",
     };
     // SVG: por las dudas (un SVG con script sería XSS del mismo origen) no se

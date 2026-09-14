@@ -1,11 +1,43 @@
 {
   "name": "portal-print-agent",
   "private": true,
-  "type": "module",
   "version": "1.0.0",
-  "description": "Agente de impresión para PC (relé WebSocket → impresora TCP ESC/POS)",
+  "description": "Agente de impresión para PC (relé WebSocket → impresora TCP ESC/POS) con ventana de configuración",
+  "author": "Portal 659",
+  "main": "src/main.js",
   "scripts": {
     "start": "node agent.mjs",
-    "build:exe": "bun build agent.mjs --compile --outfile portal-print-agent.exe"
+    "start:electron": "electron .",
+    "build:exe": "electron-builder --win portable"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "ar.portal659.printagent",
+    "productName": "Portal Print Agent",
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "output": "dist",
+      "buildResources": "assets"
+    },
+    "win": {
+      "target": [
+        "portable"
+      ],
+      "icon": "assets/icon.ico",
+      "signAndEditExecutable": false
+    },
+    "portable": {
+      "artifactName": "portal-print-agent.exe"
+    }
   }
 }

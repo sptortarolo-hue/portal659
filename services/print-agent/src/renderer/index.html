@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline';" />
+    <title>Portal Print Agent</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-dot"></span>
+        <span class="brand-name">Portal Print Agent</span>
+      </div>
+      <button id="btn-minimize" class="ghost" title="Minimizar a la bandeja">—</button>
+    </header>
+
+    <main class="content">
+      <section class="status-card">
+        <div class="status-row">
+          <span id="status-dot" class="dot dot-off"></span>
+          <div class="status-text">
+            <div id="status-label" class="status-label">Desconectado</div>
+            <div id="status-sub" class="status-sub">Conectando&hellip;</div>
+          </div>
+        </div>
+        <div id="last-print" class="last-print hidden"></div>
+      </section>
+
+      <section class="section">
+        <h2>Impresora</h2>
+        <label class="field">
+          <span>IP de la impresora</span>
+          <input id="printerIp" type="text" placeholder="192.168.1.100" />
+        </label>
+        <label class="field">
+          <span>Puerto</span>
+          <input id="printerPort" type="number" placeholder="9100" />
+        </label>
+        <button id="btn-test" class="btn btn-outline">Probar impresora</button>
+      </section>
+
+      <section class="section">
+        <h2>Conexión al portal</h2>
+        <label class="field">
+          <span>Token</span>
+          <textarea id="token" rows="2" placeholder="Pegá el token del dashboard"></textarea>
+        </label>
+        <details class="advanced">
+          <summary>Configuración avanzada</summary>
+          <label class="field">
+            <span>Servidor</span>
+            <input id="serverUrl" type="text" placeholder="https://www.portal659.com.ar" />
+          </label>
+        </details>
+        <div class="row">
+          <button id="btn-save" class="btn btn-primary">Guardar</button>
+          <button id="btn-reconnect" class="btn btn-outline">Reconectar</button>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>Sistema</h2>
+        <label class="switch-row">
+          <span class="switch-text">Arrancar al encender la PC</span>
+          <input id="autostart" type="checkbox" class="switch" />
+        </label>
+        <p class="hint">Cierra minimiza a la bandeja (el agente sigue imprimiendo).</p>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <span id="msg" class="msg"></span>
+    </footer>
+
+    <script src="renderer.js"></script>
+  </body>
+</html>

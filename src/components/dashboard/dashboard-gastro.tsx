@@ -1033,7 +1033,7 @@ export default function DashboardGastro({
                 </summary>
 
                 <a
-                  href="/uploads/downloads/portal-print-agent.exe"
+                  href="/uploads/downloads/portal-print-agent.exe?v=2"
                   download="portal-print-agent.exe"
                   className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-fresh text-fresh-foreground px-4 py-2.5 text-sm font-semibold hover:bg-fresh/80 active:scale-[0.98] transition-all"
                 >
@@ -1041,25 +1041,21 @@ export default function DashboardGastro({
                 </a>
 
                 <p className="text-[10px] text-muted-foreground/70 mt-1.5">
-                  No instala nada ni requiere permisos de administrador. Primera vez: te pide
-                  token + IP de la impresora y listo. Para cambiar la IP después, ejecutalo
-                  con <code>--setup</code>.
+                  No instala nada ni requiere permisos de administrador: es un solo archivo que
+                  abre una ventana de configuración.
                 </p>
 
                 <ol className="mt-2 space-y-1 list-decimal pl-4 text-muted-foreground">
                   <li>La impresora debe estar en la <strong>misma red</strong> que la PC.</li>
                   <li>Descargá y ejecutá el archivo (doble clic).</li>
-                  <li>Pegá el <strong>token</strong> de abajo y la <strong>IP de la impresora</strong>.</li>
-                  <li>Dejá la ventana abierta o agregalo al inicio de Windows (teclea Win+R → <code>shell:startup</code>).</li>
+                  <li>Pegá el <strong>token</strong> de abajo, la <strong>IP de la impresora</strong> y tocá <strong>Guardar</strong>.</li>
+                  <li>Usá <strong>Probar impresora</strong> para verificar y activá <strong>«Arrancar al encender la PC»</strong>.</li>
                 </ol>
 
-                <div className="mt-2 rounded-lg bg-muted p-2 text-[11px]">
-                  <strong>Arrancar solo al prender la PC:</strong> creá una tarea con esta línea (CMD como admin):
-                  <br />
-                  <code className="block mt-1 break-all text-[10px] bg-background rounded p-1.5">
-                    schtasks /create /tn &quot;Portal Print&quot; /sc onlogon /tr &quot;&quot;portal-print-agent.exe&quot;&quot;
-                  </code>
-                </div>
+                <p className="mt-2 rounded-lg bg-muted p-2 text-[11px] text-muted-foreground">
+                  Al cerrar la ventana, el agente sigue imprimiendo en segundo plano desde la
+                  bandeja del sistema (ícono junto al reloj).
+                </p>
               </details>
 
               {printToken && (

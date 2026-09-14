@@ -1,30 +1,50 @@
-# Portal Print Agent (PC — Windows/Linux/macOS)
+# Portal Print Agent (PC — Windows)
 
 Programa que recibe los tickets del portal y los manda a la impresora térmica ESC/POS
 directamente por la red local (TCP 9100). Es el equivalente en PC de la app Android
 "Portal Print": ambos se conectan al mismo relay con el mismo token.
 
+A diferencia de la primera versión (que corría en una ventana CMD), ahora es una app de
+escritorio (Electron) con **ventana de configuración** y **bandeja del sistema**.
+
 ## Para el comercio (uso directo, sin instalar nada)
 
 1. Descargá `portal-print-agent.exe` desde el dashboard:
-   sección **Impresora → 💻 Descargar para PC**.
-2. Doble clic al archivo.
-3. La primera vez pregunta: **token** (lo copiás del dashboard, lo ves abajo de esa sección) y
-   **IP de la impresora** (la TP85 la muestra en su ticket de autotest; suele ser 192.168.1.x).
-4. A partir de ahí, cada vez que el archivo se ejecute, imprime solo.
+   sección **Impresora → 💻 Descargar para PC (Windows)**.
+2. Doble clic al archivo (portable: no instala nada, no pide permisos de administrador).
+3. En la ventana pegá el **token** (del dashboard) y la **IP de la impresora**, y tocá **Guardar**.
+4. Tocá **Probar impresora** para verificar.
+5. Activá **"Arrancar al encender la PC"** si querés que empiece solo al iniciar Windows.
 
-- Si cambia la IP de la impresora o el token: `portal-print-agent.exe --setup`.
-- Para que arranque al prender la PC:
-  ```
-  Win + R  →  shell:startup  →  pegá el .exe ahí
-  ```
-  o programá una tarea:
-  ```
-  schtasks /create /tn "Portal Print" /sc onlogon /rl highest /tr "\"C:\ruta\portal-print-agent.exe\""
-  ```
+- Al cerrar la ventana, el agente **sigue imprimiendo** desde la bandeja del sistema (ícono
+  junto al reloj). Para salir del todo: menú de la bandeja → **Salir**.
+- Si cambia la IP o el token, abrí la ventana desde la bandeja, editá y **Guardar**.
+
+> Nota: la primera vez Windows puede mostrar SmartScreen ("Windows protegió tu PC") por ser
+> un .exe sin firmar. Es normal: "Más información → Ejecutar de todas formas". Se elimina
+> definitivamente firmando el .exe con un certificado de firma de código (OV).
 
 ## Para desarrolladores
 
-- Código fuente: `services/print-agent/agent.mjs` (Node 22+ con WebSocket global nativo, sin npm install).
-- Build del EXE: `bun build agent.mjs --compile --target=bun-windows-x64 --outfile portal-print-agent.exe`.
-- Test E2E (relay real + agente + capturador TCP): `node test/e2e.mjs` desde esta carpeta.
+- Código fuente:
+  - `agent.mjs` — variante headless (sin GUI, legacy; la usa el test E2E).
+  - `src/main.js` — proceso principal Electron (ventana, bandeja, IPC, autostart).
+  - `src/relay.js` — lógica WebSocket → impresora TCP.
+  - `src/renderer/*` — HTML/CSS/JS de la ventana.
+- Requiere `npm install` (devDeps: electron + electron-builder; dep: ws).
+- Correr en dev: `npm run start:electron`.
+- Build del EXE portable: `npm run build:exe` → sale en `dist/portal-print-agent.exe`.
+- Icono: `scripts/make-ico.mjs` genera `assets/icon.ico` desde `assets/icon-512.png`.
+- Test E2E (relay real + agente headless + capturador TCP): `node test/e2e.mjs`.
+
+## Publicar el exe en el VPS
+
+El `.exe` **no se versiona** (`.gitignore`). Tras el build, subirlo al volumen de uploads:
+
+```
+scp -P 8277 dist/portal-print-agent.exe <VPS_USER>@<VPS_HOST>:/tmp/
+ssh -p 8277 <VPS_USER>@<VPS_HOST> "docker cp /tmp/portal-print-agent.exe portal659:/app/uploads/downloads/"
+```
+
+Si ya hay clientes con el exe viejo cacheado, bumpear el `?v=` del link en
+`dashboard-gastro.tsx` (hoy `?v=2`).

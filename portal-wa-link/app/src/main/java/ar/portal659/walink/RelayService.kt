@@ -140,13 +140,24 @@ class RelayService : Service() {
                 Config.setPairingCode(this, l.removePrefix("PAIRING_CODE="))
                 Config.setStatus(this, "Código de pareo disponible")
             }
+            l.startsWith("QR_DATA=") -> {
+                // El QR raw del relay (whatsmeow): lo mostramos en pantalla como imagen.
+                Config.setQrImageData(this, l.removePrefix("QR_DATA="))
+                Config.setStatus(this, "QR listo para escanear")
+            }
             l.startsWith("QR_EVENT=") -> Config.setStatus(this, "QR listo para escanear")
-            l.startsWith("LINKED=") -> Config.setStatus(this, "Vinculado")
+            l.startsWith("QR_TIMEOUT=") -> Config.setStatus(this, "QR vencido — el relay reintentará solo")
+            l.startsWith("LINKED=") -> {
+                Config.setStatus(this, "Vinculado")
+                Config.setQrImageData(this, "")
+                Config.setPairingCode(this, "")
+            }
             l.startsWith("CONNECTED=") -> Config.setStatus(this, "Conectado")
             l.startsWith("DISCONNECTED=") -> Config.setStatus(this, "Desconectado (reintentando)")
             l.startsWith("LOGGED_OUT=") -> {
                 Config.setStatus(this, "Desvinculado: reescanear QR/código")
                 Config.setPairingCode(this, "")
+                Config.setQrImageData(this, "")
             }
             else -> return
         }

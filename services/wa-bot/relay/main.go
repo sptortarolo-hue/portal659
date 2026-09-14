@@ -95,9 +95,7 @@ func main() {
 
 	if client.Store.ID == nil {
 		if !relay.login(ctx) {
-			client.Disconnect()
-			_ = container.Close()
-			return
+			log.Printf("login sin éxito, quedando en espera de vinculación")
 		}
 	} else if err := client.Connect(); err != nil {
 		log.Fatalf("connect: %v", err)
@@ -123,32 +121,52 @@ type relay struct {
 	inbound chan inboundMsg
 }
 
-// login espera el pairing code y lo imprime a stdout (lo muestra el wrapper Kotlin).
+// login espera el código de pareo/QR y lo imprime a stdout (el wrapper Kotlin lo
+// muestra como imagen al dueño). Ante timeout del QR, REINTENTA con un QR nuevo
+// (no mata el proceso — antes el proceso moría y la app quedaba en "Reconectando").
 func (r *relay) login(ctx context.Context) bool {
-	qrChan, err := r.client.GetQRChannel(ctx)
-	if err != nil {
-		log.Fatalf("qr: %v", err)
-	}
-	if err := r.client.Connect(); err != nil {
-		log.Fatalf("connect: %v", err)
-	}
-	fmt.Println("PAIRING=1")
-	for item := range qrChan {
-		switch item.Event {
-		case "code":
-			fmt.Printf("PAIRING_CODE=%s\n", item.Code)
-		case "success":
-			fmt.Println("LINKED=1")
-			return true
-		case "error":
-			fmt.Printf("PAIR_ERROR=%v\n", item.Error)
-			return false
-		case "timeout":
-			fmt.Println("PAIR_TIMEOUT=1")
+	for attempt := 1; ; attempt++ {
+		if ctx.Err() != nil {
 			return false
 		}
+		if attempt > 1 {
+			// El canal anterior se cerró (timeout): reconectar y pedir QR nuevo.
+			r.client.Disconnect()
+			time.Sleep(2 * time.Second)
+		}
+		qrChan, err := r.client.GetQRChannel(ctx)
+		if err != nil {
+			log.Printf("qr (intento %d): %v", attempt, err)
+			time.Sleep(3 * time.Second)
+			continue
+		}
+		// QRChannel debe registrarse ANTES de Connect.
+		if err := r.client.Connect(); err != nil {
+			log.Printf("connect (intento %d): %v", attempt, err)
+			time.Sleep(3 * time.Second)
+			continue
+		}
+		for item := range qrChan {
+			switch item.Event {
+			case "code":
+				fmt.Printf("QR_DATA=%s\n", item.Code)
+			case "success":
+				fmt.Println("LINKED=1")
+				return true
+			case "error":
+				fmt.Printf("PAIR_ERROR=%v\n", item.Error)
+				// Error de pairing (timeout/cancelado) → canal cerrado, reintentamo luego
+				goto retry
+			case "timeout":
+				fmt.Println("QR_TIMEOUT=1")
+				goto retry
+			}
+		}
+		goto retry
+	retry:
+		log.Printf("reintentando obtener QR (intento %d -> %d)...", attempt, attempt+1)
+		time.Sleep(2 * time.Second)
 	}
-	return false
 }
 
 func (r *relay) onEvent(evt any) {

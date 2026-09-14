@@ -10,11 +10,17 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
-import androidx.appcompat.app.AppCompatActivity
 import android.provider.Settings
 import android.widget.Button
 import android.widget.EditText
+import android.widget.ImageView
 import android.widget.TextView
+import androidx.appcompat.app.AppCompatActivity
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.MultiFormatWriter
+import com.google.zxing.common.BitMatrix
+import android.graphics.Bitmap
+import android.graphics.Color
 
 class MainActivity : AppCompatActivity() {
 
@@ -46,10 +52,40 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.refresh).setOnClickListener { updateStatus() }
     }
 
+    private var lastQr: String = ""
+
     private fun updateStatus() {
         findViewById<TextView>(R.id.status).text = "Estado: ${Config.status(this)}"
+
+        // QR del relay (whatsmeow): lo renderizamos localmente como imagen.
+        val qrData = Config.qrImageData(this)
+        if (qrData.isNotEmpty()) {
+            if (qrData != lastQr) {
+                val bmp = renderQrBitmap(qrData, 700)
+                val img = findViewById<ImageView>(R.id.qrImage)
+                img.setImageBitmap(bmp)
+                img.visibility = android.view.View.VISIBLE
+                lastQr = qrData
+            }
+        } else {
+            findViewById<ImageView>(R.id.qrImage).visibility = android.view.View.GONE
+            if (lastQr.isNotEmpty()) lastQr = ""
+        }
+
+        // Fallback de código de pareo.
         val code = Config.pairingCode(this)
         findViewById<TextView>(R.id.pairing).text = if (code.isNotEmpty()) "Código de pareo: $code" else ""
+    }
+
+    private fun renderQrBitmap(text: String, size: Int): Bitmap {
+        val bits: BitMatrix = MultiFormatWriter().encode(text, BarcodeFormat.QR_CODE, size, size)
+        val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.RGB_565)
+        for (x in 0 until size) {
+            for (y in 0 until size) {
+                bmp.setPixel(x, y, if (bits[x, y]) Color.BLACK else Color.WHITE)
+            }
+        }
+        return bmp
     }
 
     private fun requestPermissionsIfNeeded() {

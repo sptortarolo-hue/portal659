@@ -28,4 +28,8 @@ object Config {
     fun pairingCode(ctx: Context): String = prefs(ctx).getString("pairing_code", "") ?: ""
 
     fun setPairingCode(ctx: Context, value: String) = prefs(ctx).edit().putString("pairing_code", value).apply()
+
+    fun qrImageData(ctx: Context): String = prefs(ctx).getString("qr_image_data", "") ?: ""
+
+    fun setQrImageData(ctx: Context, value: String) = prefs(ctx).edit().putString("qr_image_data", value).apply()
 }

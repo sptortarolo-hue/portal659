@@ -63,4 +63,6 @@ dependencies {
     implementation "org.jetbrains.kotlin:kotlin-stdlib:1.9.24"
     implementation 'androidx.core:core-ktx:1.13.1'
     implementation 'androidx.appcompat:appcompat:1.6.1'
+    // QR local (sin red): renderiza el QR de emparejamiento en la app, sin usar una URL.
+    implementation 'com.google.zxing:core:3.5.3'
 }

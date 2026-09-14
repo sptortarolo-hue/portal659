@@ -33,7 +33,9 @@ escritorio (Electron) con **ventana de configuración** y **bandeja del sistema*
   - `src/renderer/*` — HTML/CSS/JS de la ventana.
 - Requiere `npm install` (devDeps: electron + electron-builder; dep: ws).
 - Correr en dev: `npm run start:electron`.
+- Test unitario de validación/estado: `npm test`.
 - Build del EXE portable: `npm run build:exe` → sale en `dist/portal-print-agent.exe`.
+- La ventana muestra la versión instalada (`v2.0.0`), el servidor intentado, el último error y el reintento pendiente.
 - Icono: `scripts/make-ico.mjs` genera `assets/icon.ico` desde `assets/icon-512.png`.
 - Test E2E (relay real + agente headless + capturador TCP): `node test/e2e.mjs`.
 

@@ -29,6 +29,9 @@ reply). Falta solo lo remoto/real: correr la migración en el VPS, setear
 - `src/lib/wa-bot.ts` — helpers de auth (`WA_BOT_SECRET`) + kill switch.
 - `src/app/api/wa/menu/route.ts` — menú público para el bot.
 - `src/app/api/wa/order/route.ts` — crear pedido desde el bot.
+- `src/app/api/vendor/wa-bot/route.ts` — pareo self-service del comercio
+  (generar/regenerar/ver token, toggle propio).
+- `src/app/vendor/wa-bot/page.tsx` — página del comercio con el token/estado.
 - `services/wa-bot/` — cerebro Node (relay WS + estados Redis + NLU NIM) y relay
   `whatsmeow` (Go) + README.
 - `portal-wa-link/` — APK nativo Kotlin "Portal Wa Link" (ForegroundService +
@@ -40,6 +43,8 @@ reply). Falta solo lo remoto/real: correr la migración en el VPS, setear
 - `src/app/api/admin/comercios/route.ts` — acción `toggle_wa_bot` + campo
   `wa_bot_enabled` en GET.
 - `src/app/admin/comercios/page.tsx` — botón "Bot ON/OFF" por comercio.
+- `src/components/vendor/vendor-sidebar.tsx` — enlace "Bot de WhatsApp" en el pie.
+- `nginx.conf` — `location /wa` (relay WS del APK) debajo de `printbridge`.
 
 ### Config / deploy
 - Env nueva: `WA_BOT_SECRET` (en app y en `wabot`).

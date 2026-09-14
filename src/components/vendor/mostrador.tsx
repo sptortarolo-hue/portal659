@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { ModifierPicker } from "@/components/offers/modifier-picker";
 import { ProductPickCard } from "@/components/vendor/product-pick-card";
 import { cashDiscountForItems, normalizeCashPct } from "@/lib/cash-discount";
+import { toE164 } from "@/lib/phone";
 
 type ModifierOption = { label: string; price_mod: number };
 type ProductModifier = {
@@ -200,8 +201,10 @@ export function Mostrador() {
     if (items.length === 0) return;
 
     const isDelivery = method === "delivery";
-    if (isDelivery && !customerPhone.trim()) {
-      setMsg("El envío a domicilio requiere el teléfono del cliente");
+    // Misma validación que el checkout del cliente: celular real (WhatsApp).
+    const deliveryPhoneE164 = isDelivery ? toE164(customerPhone) : null;
+    if (isDelivery && !deliveryPhoneE164) {
+      setMsg("El envío a domicilio requiere el celular del cliente (ej: 11 5555 1234)");
       return;
     }
 
@@ -219,7 +222,7 @@ export function Mostrador() {
         paymentMethod: payment,
         customerName: customerName || "Mostrador",
         method,
-        customerPhone: isDelivery ? customerPhone : undefined,
+        customerPhone: isDelivery ? deliveryPhoneE164 : undefined,
         customerAddress: isDelivery ? customerAddress : undefined,
         notes: notes.trim() || null,
       }),
@@ -277,8 +280,10 @@ export function Mostrador() {
 
   // El cliente no quiere esperar más en el mostrador: convertir el pedido a domicilio.
   async function convertToDelivery(orderId: string) {
-    if (!convertPhone.trim()) {
-      setMsg("Ingresá el teléfono del cliente para el envío");
+    // Celular válido (misma regla que el checkout): es el que recibe los WA.
+    const convertPhoneE164 = toE164(convertPhone);
+    if (!convertPhoneE164) {
+      setMsg("Ingresá un celular válido del cliente (ej: 11 5555 1234)");
       return;
     }
     setConverting(true);
@@ -287,7 +292,7 @@ export function Mostrador() {
       const res = await fetch(`/api/vendor/orders/${orderId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ method: "delivery", customer_phone: convertPhone.trim(), customer_address: convertAddress.trim() || null }),
+        body: JSON.stringify({ method: "delivery", customer_phone: convertPhoneE164, customer_address: convertAddress.trim() || null }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || data.error) {

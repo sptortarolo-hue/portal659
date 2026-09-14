@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { buildComandaWhatsApp } from "@/lib/whatsapp-message";
 import { cashPrice, normalizeCashPct } from "@/lib/cash-discount";
-import { formatPhone, isValidPhone } from "@/lib/order-utils";
+import { checkArgPhone, toE164 } from "@/lib/phone";
 import { OrderSummaryModal } from "@/components/cart/order-summary-modal";
 import { readPreviewSession } from "@/components/store/preview-session-sync";
 
@@ -32,6 +32,29 @@ export default function CheckoutPage() {
   const [pendingOrder, setPendingOrder] = useState<{ orderId: string; message: string; waNumber: string; trackToken?: string } | null>(null);
   const [prefillInfo, setPrefillInfo] = useState<{ found: boolean; name?: string | null } | null>(null);
   const [doneTrackToken, setDoneTrackToken] = useState<string | null>(null);
+  // Validación de WhatsApp en vivo (misma que el registro de usuarios).
+  const [phoneMsg, setPhoneMsg] = useState("");
+  const [phoneOk, setPhoneOk] = useState(false);
+
+  function updatePhone(raw: string) {
+    setPhone(raw);
+    if (!raw.trim()) {
+      setPhoneMsg("");
+      setPhoneOk(false);
+      return;
+    }
+    const res = checkArgPhone(raw);
+    if (res.ok) {
+      setPhoneMsg(`Se usará ${res.formatted} para tu pedido`);
+      setPhoneOk(true);
+    } else if (res.invalid) {
+      setPhoneMsg(res.message);
+      setPhoneOk(false);
+    } else {
+      setPhoneMsg("");
+      setPhoneOk(false);
+    }
+  }
 
   const deliveryFee =
   vendor &&
@@ -96,8 +119,10 @@ export default function CheckoutPage() {
   const isPreview = previewCtx !== null;
 
   async function lookupPhone() {
-    const clean = formatPhone(phone);
-    if (!isValidPhone(clean)) return;
+    // Autocompletar datos de pedidos anteriores: solo con celular válido.
+    const e164 = toE164(phone);
+    if (!e164) return;
+    const clean = e164;
     try {
       const res = await fetch(`/api/orders/last?phone=${encodeURIComponent(clean)}`);
       const data = await res.json();
@@ -118,14 +143,15 @@ export default function CheckoutPage() {
       return;
     }
     if (!name || !phone) return;
-    if (!isValidPhone(phone)) {
-      setError("Ingresá un número de WhatsApp válido (10 a 15 dígitos)");
+    const e164 = toE164(phone);
+    if (!e164) {
+      setError(phoneMsg || "Ingresá tu celular con código de área (ej: 11 5555 1234)");
       return;
     }
     setLoading(true);
     setError("");
 
-    const cleanPhone = formatPhone(phone);
+    const cleanPhone = e164;
 
     const res = await fetch("/api/payments", {
       method: "POST",
@@ -164,8 +190,9 @@ export default function CheckoutPage() {
     e.preventDefault();
     if (!name || !phone) return;
 
-    if (!isValidPhone(phone)) {
-      setError("Ingresá un número de WhatsApp válido (10 a 15 dígitos)");
+    const e164 = toE164(phone);
+    if (!e164) {
+      setError(phoneMsg || "Ingresá tu celular con código de área (ej: 11 5555 1234)");
       return;
     }
 
@@ -173,7 +200,7 @@ export default function CheckoutPage() {
     setError("");
 
     try {
-      const cleanPhone = formatPhone(phone);
+      const cleanPhone = e164;
 
       const res = await fetch("/api/orders", {
         method: "POST",
@@ -395,18 +422,27 @@ export default function CheckoutPage() {
             <Label htmlFor="phone">Tu WhatsApp</Label>
             <Input
               id="phone"
+              type="tel"
               value={phone}
-              onChange={(e) => setPhone(e.target.value)}
+              onChange={(e) => updatePhone(e.target.value)}
               onBlur={() => {
                 if (phone) {
-                  const clean = formatPhone(phone);
-                  setPhone(clean);
                   lookupPhone();
                 }
               }}
-              placeholder="2215550000"
+              placeholder="11 5555 1234"
+              className={
+                phone && !phoneOk && phone.replace(/\D/g, "").length >= 10
+                  ? "border-red-300"
+                  : phoneOk
+                    ? "border-green-400"
+                    : ""
+              }
               required
             />
+            {phoneMsg && (
+              <p className={`text-xs mt-1 ${phoneOk ? "text-green-600" : "text-red-500"}`}>{phoneMsg}</p>
+            )}
           </div>
         </div>
 

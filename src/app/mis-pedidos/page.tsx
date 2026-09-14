@@ -7,9 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Modal } from "@/components/ui/modal";
 import { useCart } from "@/lib/cart";
+import { checkArgPhone, toE164 } from "@/lib/phone";
 import {
-  formatPhone,
-  isValidPhone,
   timeAgo,
   estimatedRemaining,
   progressPercent,
@@ -172,6 +171,8 @@ export default function MisPedidosPage() {
     vendorWhatsapp: string;
   } | null>(null);
   const [authed, setAuthed] = useState<boolean | null>(null);
+  // Misma validación de WhatsApp en vivo que el registro/checkout.
+  const phoneCheck = phone.trim() ? checkArgPhone(phone) : null;
 
   useEffect(() => {
     fetch("/api/auth/me")
@@ -223,11 +224,12 @@ export default function MisPedidosPage() {
 
   function handleSearch(e: React.FormEvent) {
     e.preventDefault();
-    const clean = formatPhone(phone);
-    if (!isValidPhone(clean)) {
-      setError("Ingresá un número válido (10 a 15 dígitos)");
+    const clean = toE164(phone);
+    if (!clean) {
+      setError(phoneCheck?.message || "Ingresá tu celular con código de área (ej: 11 5555 1234)");
       return;
     }
+    setError("");
     setPhone(clean);
     setSearched(true);
     fetchOrders(clean);
@@ -299,15 +301,27 @@ export default function MisPedidosPage() {
           <div className="flex gap-2 mt-1">
             <Input
               id="phone"
+              type="tel"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
-              placeholder="2215550000"
-              className="flex-1"
+              placeholder="11 5555 1234"
+              className={`flex-1 ${
+                phoneCheck?.invalid
+                  ? "border-red-300"
+                  : phoneCheck?.ok
+                    ? "border-green-400"
+                    : ""
+              }`}
             />
-            <Button type="submit" disabled={loading}>
+            <Button type="submit" disabled={loading || !!phoneCheck?.invalid}>
               {loading ? "..." : "Buscar"}
             </Button>
           </div>
+          {phoneCheck && (phoneCheck.message || phoneCheck.ok) && (
+            <p className={`text-xs mt-1 ${phoneCheck.ok ? "text-green-600" : "text-red-500"}`}>
+              {phoneCheck.ok ? `Se buscan pedidos de ${phoneCheck.formatted}` : phoneCheck.message}
+            </p>
+          )}
         </div>
         {error && <p className="text-sm text-red-600">{error}</p>}
       </form>

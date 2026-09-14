@@ -5,6 +5,7 @@ import { adjustStockForItems, OutOfStockError } from "@/lib/stock";
 import { isStoreOpen } from "@/lib/open-hours";
 import { PricingError, resolveOrderPricing, IncomingOrderItem } from "@/lib/pricing";
 import { nextOrderNumber } from "@/lib/order-number";
+import { toE164 } from "@/lib/phone";
 import type { OrderItem } from "@/types/database";
 
 /**
@@ -39,6 +40,8 @@ export type CreateOrderResult = {
   total: number;
   items: OrderItem[];
   pickupNumber: number;
+  cashDiscount: number;
+  cashPct: number;
 };
 
 /** Negocio: el comercio no acepta pedidos online (plan sin carrito). → 403 */
@@ -54,6 +57,14 @@ export class StoreClosedError extends Error {
   constructor(message = "El comercio está cerrado en este momento.") {
     super(message);
     this.name = "StoreClosedError";
+  }
+}
+
+/** Entrada: el teléfono del cliente no es un celular argentino (WhatsApp). → 400 */
+export class InvalidPhoneError extends Error {
+  constructor(message = "Ingresá un celular válido con código de área (ej: 11 5555 1234)") {
+    super(message);
+    this.name = "InvalidPhoneError";
   }
 }
 
@@ -76,12 +87,20 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
     throw new Error("Faltan datos requeridos");
   }
 
+  // Teléfono del cliente: celular argentino válido (WhatsApp), normalizado a
+  // E.164 sin "+" (549...). Misma validación que el registro de usuarios —
+  // de acá salen los links wa.me del comercio, así que tiene que ser real.
+  const customerPhoneE164 = toE164(customerPhone);
+  if (!customerPhoneE164) {
+    throw new InvalidPhoneError();
+  }
+
   const paymentMethodNorm = paymentMethod || "whatsapp";
   const notesFinal =
     source === "wa-bot" && notes ? `[Bot WA] ${notes}` : source === "wa-bot" ? "[Bot WA]" : notes || null;
 
   const vendorRow = await queryOne<Record<string, unknown>>(
-    `SELECT vertical, plan_id, plan_status, plan_expires_at, trial_ends_at, hours, open_override, delivery_fee, free_delivery_min FROM vendors WHERE id = $1 LIMIT 1`,
+    `SELECT vertical, plan_id, plan_status, plan_expires_at, trial_ends_at, hours, open_override, delivery_fee, free_delivery_min, cash_discount_pct FROM vendors WHERE id = $1 LIMIT 1`,
     [vendorId]
   );
 
@@ -107,6 +126,8 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
   let resolvedTotal = 0;
   let resolvedItemsCount = 0;
   let pickupNumber = 0;
+  let resolvedCashDiscount = 0;
+  let resolvedCashPct = 0;
 
   try {
     await withTransaction(async (tx) => {
@@ -120,24 +141,31 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
         method: isPickup ? "pickup" : "delivery",
         deliveryFee: (vendorRow as any)?.delivery_fee,
         freeDeliveryMin: (vendorRow as any)?.free_delivery_min,
+        // Descuento en efectivo: corre con la misma fórmula que el checkout
+        // muestra en pantalla (antes no se aplicaba server-side: el cliente
+        // veía un precio y el pedido guardaba otro).
+        paymentMethod: paymentMethodNorm,
+        cashDiscountPct: (vendorRow as any)?.cash_discount_pct,
       });
       resolvedItems = pricing.items;
       resolvedTotal = pricing.total;
       resolvedItemsCount = pricing.items.reduce((s, i) => s + i.qty, 0);
+      resolvedCashDiscount = pricing.cashDiscount;
+      resolvedCashPct = pricing.cashPct;
 
       await adjustStockForItems(tx, resolvedItems, "decrement");
 
       pickupNumber = await nextOrderNumber(tx, vendorId);
 
       const rows = await tx.query<{ id: string }>(
-        `INSERT INTO orders (vendor_id, customer_id, customer_name, customer_phone, customer_address, method, payment_method, items, total, status, notes, device_id, payment_status, pickup_number)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'new', $10, $11, $12, $13)
+        `INSERT INTO orders (vendor_id, customer_id, customer_name, customer_phone, customer_address, method, payment_method, items, total, status, notes, device_id, payment_status, pickup_number, cash_pct, cash_discount)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'new', $10, $11, $12, $13, $14, $15)
          RETURNING id`,
         [
           vendorId,
           customerId || null,
           customerName,
-          customerPhone,
+          customerPhoneE164,
           customerAddress || null,
           isPickup ? "pickup" : "delivery",
           paymentMethodNorm,
@@ -147,6 +175,8 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
           deviceId || null,
           paymentStatus,
           pickupNumber,
+          pricing.cashPct,
+          pricing.cashDiscount,
         ]
       );
       orderId = rows[0]?.id;
@@ -199,5 +229,5 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
     }
   }
 
-  return { orderId, total: resolvedTotal, items: resolvedItems, pickupNumber };
+  return { orderId, total: resolvedTotal, items: resolvedItems, pickupNumber, cashDiscount: resolvedCashDiscount, cashPct: resolvedCashPct };
 }

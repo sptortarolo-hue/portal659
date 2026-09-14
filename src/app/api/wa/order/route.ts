@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { authWaBot, isWaBotEnabled } from "@/lib/wa-bot";
 import {
   createOrder,
+  InvalidPhoneError,
   OrderForbiddenError,
   StoreClosedError,
 } from "@/lib/order-service";
@@ -51,6 +52,9 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ ok: true, orderId: result.orderId, total: result.total });
   } catch (e) {
+    if (e instanceof InvalidPhoneError) {
+      return NextResponse.json({ error: e.message }, { status: 400 });
+    }
     if (e instanceof OrderForbiddenError) {
       return NextResponse.json({ error: e.message }, { status: 403 });
     }

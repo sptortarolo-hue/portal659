@@ -32,4 +32,15 @@ object Config {
     fun qrImageData(ctx: Context): String = prefs(ctx).getString("qr_image_data", "") ?: ""
 
     fun setQrImageData(ctx: Context, value: String) = prefs(ctx).edit().putString("qr_image_data", value).apply()
+
+    fun logLines(ctx: Context): List<String> =
+        (prefs(ctx).getString("log_tail", "") ?: "").split("\n").filter { it.isNotBlank() }
+
+    fun appendLog(ctx: Context, line: String) {
+        val tail = (prefs(ctx).getString("log_tail", "") ?: "")
+        val newTail = (if (tail.isBlank()) line else "$tail\n$line").split("\n").takeLast(100).joinToString("\n")
+        prefs(ctx).edit().putString("log_tail", newTail).apply()
+    }
+
+    fun clearLog(ctx: Context) = prefs(ctx).edit().remove("log_tail").apply()
 }

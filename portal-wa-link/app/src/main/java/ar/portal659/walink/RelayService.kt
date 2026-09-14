@@ -135,6 +135,11 @@ class RelayService : Service() {
 
     private fun parseLine(line: String) {
         val l = line.trim()
+        if (l.isEmpty()) return
+
+        // Log raw: todas las líneas (stdout + stderr) al buffer para diagnóstico.
+        Config.appendLog(this, l)
+
         when {
             l.startsWith("PAIRING_CODE=") -> {
                 Config.setPairingCode(this, l.removePrefix("PAIRING_CODE="))

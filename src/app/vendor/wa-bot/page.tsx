@@ -77,6 +77,17 @@ export default function VendorWaBotPage() {
 
       {error && <div className="rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
 
+      <a
+        href="/uploads/downloads/portal-wa-link.apk?v=1"
+        download
+        className="flex items-center justify-center gap-2 rounded-xl border-2 border-primary bg-primary/10 px-4 py-3.5 text-base font-bold text-primary hover:bg-primary/20 transition-colors"
+      >
+        ⬇️ 1. Descargar la app "Portal Wa Link" (APK)
+      </a>
+      <p className="text-[11px] text-muted-foreground text-center -mt-3">
+        Instalala en el celular del comercio (permitir &ldquo;fuentes desconocidas&rdquo;).
+      </p>
+
       <div className="rounded-xl border border-border bg-card p-4 space-y-3">
         <div className="flex items-center justify-between">
           <span className="text-sm font-medium">Estado</span>
@@ -104,8 +115,8 @@ export default function VendorWaBotPage() {
       <div className="rounded-xl border border-border bg-card p-4 space-y-2">
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-sm font-medium">Token de vinculación</p>
-            <p className="text-[11px] text-muted-foreground">Se pega en la app "Portal Wa Link" del comercio.</p>
+            <p className="text-sm font-medium">2. Token de vinculación</p>
+            <p className="text-[11px] text-muted-foreground">Lo generás acá y lo pegás en la app del celular.</p>
           </div>
           <button
             onClick={generateToken}

@@ -57,6 +57,11 @@ class MainActivity : AppCompatActivity() {
     private fun updateStatus() {
         findViewById<TextView>(R.id.status).text = "Estado: ${Config.status(this)}"
 
+        // Log del proceso relay (para diagnóstico en app, sin adb).
+        val logs = Config.logLines(this)
+        findViewById<TextView>(R.id.logView).text =
+            if (logs.isEmpty()) "(log aparentará acá)" else logs.joinToString("\n") { it }
+
         // QR del relay (whatsmeow): lo renderizamos localmente como imagen.
         val qrData = Config.qrImageData(this)
         if (qrData.isNotEmpty()) {

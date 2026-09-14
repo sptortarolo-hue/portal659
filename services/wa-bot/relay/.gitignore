@@ -1,3 +1,5 @@
 relay-arm64
 relay-x86_64
-
+relay-test.exe
+session*
+*.log

@@ -1,9 +1,34 @@
 import { ImageResponse } from "next/og";
+import type { ReactElement } from "react";
 import { queryOne } from "@/lib/db";
 import { getSiteUrl } from "@/lib/site-url";
 import { isPreviewTokenValid } from "@/lib/preview";
 
 export const runtime = "nodejs";
+
+/**
+ * next/og SIEMPRE emite PNG — y el PNG de una foto real pesa ~500KB, por
+ * encima del límite práctico de WhatsApp (~300KB) y tarda segundos en
+ * generarse por request (su crawler corta la preview). Solución: convertir a
+ * JPEG (sharp, 50–120KB) y cachear 24hs en el edge de Cloudflare (los crawls
+ * siguientes salen instantáneos). `?preview=token` queda en la cache key:
+ * cada comercio oculto tiene su propia tarjeta con la cinta MODO PRUEBA.
+ */
+async function ogJpeg(element: ReactElement): Promise<Response> {
+  const res = new ImageResponse(element, { width: 1200, height: 630 });
+  const png = Buffer.from(await res.arrayBuffer());
+  const sharp = (await import("sharp")).default;
+  const jpeg = await sharp(png)
+    .flatten({ background: "#111111" }) // el JPEG no tiene alpha
+    .jpeg({ quality: 82, mozjpeg: true })
+    .toBuffer();
+  return new Response(new Uint8Array(jpeg), {
+    headers: {
+      "Content-Type": "image/jpeg",
+      "Cache-Control": "public, max-age=86400, s-maxage=86400, stale-while-revalidate=604800",
+    },
+  });
+}
 
 // Tarjeta de compartir (og:image) del micrositio: banner + logo + nombre + leyenda.
 // Al pegar el link en WhatsApp se ve esta imagen con el comercio.
@@ -136,7 +161,7 @@ export async function GET(
       ? `url(${banner})`
       : `linear-gradient(135deg, #4f46e5 0%, #7c3aed 55%, #a855f7 100%)`;
 
-    return new ImageResponse(
+    return ogJpeg(
       (
         <div
           style={{
@@ -175,15 +200,11 @@ export async function GET(
             {textBlock()}
           </div>
         </div>
-      ),
-      {
-        width: W,
-        height: H,
-      }
+      )
     );
   } catch (err) {
     console.error("[share] fallo render con imágenes, usando fallback:", err);
-    return new ImageResponse(
+    return ogJpeg(
       (
         <div
           style={{
@@ -202,11 +223,7 @@ export async function GET(
           {ribbon()}
           {textBlock()}
         </div>
-      ),
-      {
-        width: W,
-        height: H,
-      }
+      )
     );
   }
 }

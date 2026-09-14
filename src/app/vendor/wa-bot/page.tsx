@@ -126,6 +126,17 @@ export default function VendorWaBotPage() {
         )}
       </div>
 
+      <a
+        href="/uploads/downloads/portal-wa-link.apk?v=1"
+        download
+        className="flex items-center justify-center gap-2 rounded-xl border border-primary bg-primary/10 px-3 py-2.5 text-sm font-semibold text-primary hover:bg-primary/20 transition-colors"
+      >
+        ⬇️ Descargar la app para tu celular (APK)
+      </a>
+      <p className="text-[11px] text-muted-foreground text-center -mt-2">
+        Instalalo en el celular del comercio (permitir &ldquo;fuentes desconocidas&rdquo;).
+      </p>
+
       <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-900">
         <p className="font-semibold mb-1">Cómo funciona</p>
         <ol className="list-decimal pl-4 space-y-0.5">

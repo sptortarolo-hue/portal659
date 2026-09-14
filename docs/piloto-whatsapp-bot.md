@@ -76,6 +76,26 @@ Hay **tres niveles**, de más fino a más bruto:
    dispositivo desde el WhatsApp del comercio (Ajustes → Dispositivos
    vinculados → quitar).
 
+## 3.1. Publicar el APK (Plan B — sin versionar el binario)
+
+El APK **no se commitea**. Se copia al volumen `uploads_data` del VPS y la web lo
+sirve en `/uploads/downloads/portal-wa-link.apk` (el route `/uploads/*` sirve
+cualquier archivo con `must-revalidate`, igual que el agente PC):
+
+```bash
+# 1) Publicar el APK compilado (portal-wa-link, firmado) en el VPS:
+scp -P 8277 portal-wa-link/app/build/outputs/apk/release/app-release.apk root@<TU_VPS>:/tmp/portal-wa-link.apk
+ssh -p 8277 root@<TU_VPS> "docker exec portal659 mkdir -p /app/uploads/downloads && docker cp /tmp/portal-wa-link.apk portal659:/app/uploads/downloads/portal-wa-link.apk"
+
+# 2) La descarga para el comercio ya está en su panel (/vendor/wa-bot):
+#    https://www.portal659.com.ar/uploads/downloads/portal-wa-link.apk?v=1
+```
+
+> Como el archivo se sobreescribe in-place (misma URL), usá `?v=N` en el link cada
+> vez que subas un build nuevo (cache-bust).
+>
+> Para borrarlo del piloto: `docker exec portal659 rm /app/uploads/downloads/portal-wa-link.apk`.
+
 ---
 
 ## 4. Borrado TOTAL (deshacer todo, volver al estado previo)

@@ -82,16 +82,26 @@ class RelayService : Service() {
 
     private fun ensureBinary() {
         val asset = binaryAssetName() ?: run {
+            Config.appendLog(this, "[check] No hay binario para esta arquitectura")
             Config.setStatus(this, "Sin binario para esta arquitectura")
             return
         }
         val dst = binaryPath()
         if (dst.exists()) return
-        assets.open(asset).use { input ->
-            dst.outputStream().use { output -> input.copyTo(output) }
+
+        Config.appendLog(this, "[extract] extrayendo $asset → ${dst.absolutePath}")
+        try {
+            assets.open(asset).use { input ->
+                dst.outputStream().use { output -> input.copyTo(output) }
+            }
+            dst.setReadable(true, false)
+            val chmod = dst.setExecutable(true, false)
+            Config.appendLog(this, "[extract] OK: ${dst.length()} bytes, exec=$chmod")
+        } catch (e: Exception) {
+            Config.appendLog(this, "[extract] ERROR: ${e.message}")
+            Config.setStatus(this, "Error extrayendo relay")
+            throw e
         }
-        dst.setExecutable(true, false)
-        dst.setReadable(true, false)
     }
 
     private fun startProcess() {
@@ -105,19 +115,23 @@ class RelayService : Service() {
             "PATH=/system/bin:/system/xbin",
             "GOOS=android",
         )
+        val bin = binaryPath()
+        Config.appendLog(this, "[start] binario=${bin.absolutePath} exists=${bin.exists()} size=${bin.length()} canRead=${bin.canRead()} canExec=${bin.canExecute()}")
         Config.setStatus(this, "Iniciando relay...")
         try {
-            val p = Runtime.getRuntime().exec(arrayOf(binaryPath().absolutePath, "--session", File(filesDir, "session").absolutePath), env, filesDir)
+            val p = Runtime.getRuntime().exec(arrayOf(bin.absolutePath, "--session", File(filesDir, "session").absolutePath), env, filesDir)
             process = p
             pump(p.inputStream)
             pump(p.errorStream)
             Thread {
                 val code = p.waitFor()
+                Config.appendLog(this, "[exit] proceso terminó con código $code")
                 process = null
                 if (!stopping.get()) scheduleRestart()
                 else Config.setStatus(this, "Detenido ($code)")
             }.start()
         } catch (e: Exception) {
+            Config.appendLog(this, "[exec] ERROR: ${e.javaClass.simpleName}: ${e.message}")
             Config.setStatus(this, "Error al arrancar: ${e.message}")
             scheduleRestart()
         }

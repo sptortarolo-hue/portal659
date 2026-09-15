@@ -117,13 +117,11 @@ func main() {
 	}
 
 	client := whatsmeow.NewClient(device, nil)
-	relay := &relay{cfg: cfg, client: client, inbound: make(chan inboundMsg, 128)}
+	relay := &relay{cfg: cfg, client: client, inbound: make(chan inboundMsg, 128), qrOut: make(chan string, 8)}
 	client.AddEventHandler(relay.onEvent)
 
 	if client.Store.ID == nil {
-		if !relay.login(ctx) {
-			log.Printf("login sin éxito, quedando en espera de vinculación")
-		}
+		log.Printf("sin sesión guardada — emitiendo QR")
 	} else if err := client.Connect(); err != nil {
 		log.Fatalf("connect: %v", err)
 	}
@@ -142,10 +140,18 @@ type inboundMsg struct {
 	body string
 }
 
+// qrMsg es el mensaje WS del relay → cerebro con el payload del QR (para que
+// el comercio lo vea en su panel web y lo escanee con el teléfono).
+type qrMsg struct {
+	Type string `json:"type"`
+	Data string `json:"data"`
+}
+
 type relay struct {
 	cfg     config
 	client  *whatsmeow.Client
 	inbound chan inboundMsg
+	qrOut   chan string // se publica vía WS al cerebro
 }
 
 // login espera el código de pareo/QR y lo imprime a stdout (el wrapper Kotlin lo
@@ -284,6 +290,10 @@ func (r *relay) writeLoop(ctx context.Context, conn *websocket.Conn) {
 			return
 		case m := <-r.inbound:
 			if err := conn.WriteJSON(wsOut{Type: "message", WaID: m.waID, Body: m.body}); err != nil {
+				return
+			}
+		case qr := <-r.qrOut:
+			if err := conn.WriteJSON(qrMsg{Type: "qr", Data: qr}); err != nil {
 				return
 			}
 		}

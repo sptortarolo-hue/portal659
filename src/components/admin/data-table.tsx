@@ -83,7 +83,37 @@ export default function DataTable<T extends Record<string, any>>({
         </div>
       )}
 
-      <div className="overflow-x-auto border border-border rounded-xl">
+      {/* Mobile (<sm): tarjetas apiladas — sin scroll horizontal, todo visible.
+          Desktop: tabla con scroll interno propio (overflow-x-auto). */}
+      <div className="sm:hidden space-y-3">
+        {paged.length === 0 ? (
+          <div className="border border-border rounded-xl px-4 py-8 text-center text-muted-foreground text-sm">
+            {emptyMessage}
+          </div>
+        ) : (
+          paged.map((item, idx) => (
+            <div key={idx} className="border border-border rounded-xl bg-card p-3.5 space-y-1.5">
+              {columns.map((col) => (
+                <div key={col.key} className="flex items-start justify-between gap-3 text-sm">
+                  <span className="text-muted-foreground text-xs font-medium pt-0.5 shrink-0 max-w-[38%]">
+                    {col.label}
+                  </span>
+                  <span className="text-right min-w-0 break-words flex-1">
+                    {col.render ? col.render(item) : String(item[col.key] ?? "")}
+                  </span>
+                </div>
+              ))}
+              {actions && (
+                <div className="pt-2.5 mt-1 border-t border-border flex flex-wrap gap-2 justify-end [&>*]:shrink-0">
+                  {actions(item)}
+                </div>
+              )}
+            </div>
+          ))
+        )}
+      </div>
+
+      <div className="hidden sm:block overflow-x-auto border border-border rounded-xl">
         <table className="w-full min-w-[640px] text-sm">
           <thead>
             <tr className="border-b border-border bg-muted/50">

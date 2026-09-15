@@ -172,7 +172,7 @@ export default function AdminUsuariosPage() {
           <div className="bg-card border border-border rounded-2xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <h2 className="font-display text-xl font-semibold mb-4">{editing ? "Editar usuario" : "Nuevo usuario"}</h2>
             <form onSubmit={handleSubmit} className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <Label>Nombre</Label>
                   <Input value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} required />
@@ -198,7 +198,7 @@ export default function AdminUsuariosPage() {
                 <Label>WhatsApp</Label>
                 <Input type="tel" value={form.whatsapp} onChange={(e) => setForm({ ...form, whatsapp: e.target.value })} />
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <Label>Rol</Label>
                   <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>

@@ -116,7 +116,7 @@ export default function VendorCreateModal({ open, onClose, onCreate }: VendorCre
             <Input id="vc-name" value={form.store_name} onChange={(e) => setForm({ ...form, store_name: e.target.value })} required />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <Label htmlFor="vc-vert">Vertical</Label>
               <select
@@ -146,7 +146,7 @@ export default function VendorCreateModal({ open, onClose, onCreate }: VendorCre
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <Label htmlFor="vc-phone">Teléfono</Label>
               <Input id="vc-phone" type="tel" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />

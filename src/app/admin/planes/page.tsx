@@ -151,7 +151,7 @@ function PlanEditor({
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <Label className="text-xs">Nombre</Label>
             <Input
@@ -182,7 +182,7 @@ function PlanEditor({
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <Label className="text-xs">Límite de productos</Label>
             <Input
@@ -207,7 +207,7 @@ function PlanEditor({
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <Label className="text-xs">Precio promocional ($/mes)</Label>
             <Input
@@ -232,7 +232,7 @@ function PlanEditor({
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <Label className="text-xs">Válido hasta (opcional)</Label>
             <Input

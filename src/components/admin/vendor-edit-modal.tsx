@@ -99,7 +99,7 @@ export default function VendorEditModal({ open, vendor, onClose, onSave }: Vendo
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <Label htmlFor="ve-vert">Vertical</Label>
               <select
@@ -119,7 +119,7 @@ export default function VendorEditModal({ open, vendor, onClose, onSave }: Vendo
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <Label htmlFor="ve-phone">Teléfono</Label>
               <Input id="ve-phone" type="tel" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />

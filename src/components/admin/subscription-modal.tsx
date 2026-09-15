@@ -145,7 +145,7 @@ export default function SubscriptionModal({ open, onClose, mode, row, plans, onS
           )}
 
           {mode !== "pay" && (
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <Label>Días</Label>
                 <Input type="number" min={1} value={days} onChange={(e) => setDays(e.target.value)} />
@@ -160,7 +160,7 @@ export default function SubscriptionModal({ open, onClose, mode, row, plans, onS
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <Label>Método de pago</Label>
               <select

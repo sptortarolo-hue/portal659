@@ -39,6 +39,18 @@ export default function VendorWaBotPage() {
 
   useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Polling de la info del bot: así si cambiaste algo (ej. regeneraste token en otra pantalla)
+  // o el estado cambió, esta pestaña se actualiza sola cada 3s — no hay "estado fake".
+  useEffect(() => {
+    const t = setInterval(load, 3000);
+    const onFocus = () => load();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      clearInterval(t);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   async function generateToken() {
     if (!window.confirm("¿Generar un token nuevo? Si ya estabas usando el bot, el anterior deja de valer.")) return;
     setSaving(true);
@@ -138,9 +150,9 @@ export default function VendorWaBotPage() {
       </div>
 
       <a
-        href="/uploads/downloads/portal-wa-link.apk?v=1"
+        href="/downloads/portal-wa-link.apk?v=3"
         download
-        className="flex items-center justify-center gap-2 rounded-xl border border-primary bg-primary/10 px-3 py-2.5 text-sm font-semibold text-primary hover:bg-primary/20 transition-colors"
+        className="flex items-center justify-center gap-2 rounded-xl border-2 border-primary bg-primary/10 px-4 py-3.5 text-base font-bold text-primary hover:bg-primary/20 transition-colors"
       >
         ⬇️ Descargar la app para tu celular (APK)
       </a>

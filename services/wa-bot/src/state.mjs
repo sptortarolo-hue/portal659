@@ -42,3 +42,26 @@ export async function clearState(vendorId, waId) {
     memory.delete(key(vendorId, waId));
   }
 }
+
+// ————— QR de vinculación —————
+// Guarda el último QR para /vendor/wa-bot. TTL corto (90s): si el QR expira,
+// el relay re-emite otro y esto se sobreescribe.
+const QR_TTL_S = 90;
+const qrKey = (vendorId) => `wa:qr:${vendorId}`;
+
+export async function saveQrToken(vendorId, dataUrl) {
+  const r = getRedis();
+  if (!r) return;
+  await r.set(qrKey(vendorId), dataUrl, { ex: QR_TTL_S });
+}
+
+export async function getQrToken(vendorId) {
+  const r = getRedis();
+  if (!r) return null;
+  return r.get(qrKey(vendorId));
+}
+
+export async function clearQrToken(vendorId) {
+  const r = getRedis();
+  if (r) await r.del(qrKey(vendorId));
+}

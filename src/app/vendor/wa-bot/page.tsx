@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import QRCode from "qrcode";
 
 type BotRow = {
   wa_phone: string | null;
@@ -20,10 +21,9 @@ export default function VendorWaBotPage() {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [qrImage, setQrImage] = useState<string | null>(null);
 
   async function load() {
-    setLoading(true);
-    setError(null);
     try {
       const res = await fetch("/api/vendor/wa-bot");
       if (res.status === 401) { router.push("/login"); return; }
@@ -37,19 +37,36 @@ export default function VendorWaBotPage() {
     }
   }
 
-  useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Polling de la info del bot: así si cambiaste algo (ej. regeneraste token en otra pantalla)
-  // o el estado cambió, esta pestaña se actualiza sola cada 3s — no hay "estado fake".
+  // Polling del bot + del QR cada 3s (se actualiza solo si cambió).
   useEffect(() => {
-    const t = setInterval(load, 3000);
-    const onFocus = () => load();
+    load();
+    const t = setInterval(async () => {
+      await load();
+      await loadQr();
+    }, 3000);
+    const onFocus = () => { load(); loadQr(); };
     window.addEventListener("focus", onFocus);
     return () => {
       clearInterval(t);
       window.removeEventListener("focus", onFocus);
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function loadQr() {
+    try {
+      const res = await fetch("/api/wa/qr");
+      const data = await res.json();
+      if (res.ok && data.qr) {
+        const dataUrl = await QRCode.toDataURL(data.qr, { width: 320, margin: 2 });
+        setQrImage(dataUrl);
+      } else {
+        setQrImage(null);
+      }
+    } catch {
+      setQrImage(null);
+    }
+  }
 
   async function generateToken() {
     if (!window.confirm("¿Generar un token nuevo? Si ya estabas usando el bot, el anterior deja de valer.")) return;
@@ -149,23 +166,32 @@ export default function VendorWaBotPage() {
         )}
       </div>
 
-      <a
-        href="/downloads/portal-wa-link.apk?v=3"
-        download
-        className="flex items-center justify-center gap-2 rounded-xl border-2 border-primary bg-primary/10 px-4 py-3.5 text-base font-bold text-primary hover:bg-primary/20 transition-colors"
-      >
-        ⬇️ Descargar la app para tu celular (APK)
-      </a>
-      <p className="text-[11px] text-muted-foreground text-center -mt-2">
-        Instalalo en el celular del comercio (permitir &ldquo;fuentes desconocidas&rdquo;).
-      </p>
+      {bot?.enabled && bot?.status !== "linked" && (
+        <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium">3. Escaneá el QR para vincular</span>
+          </div>
+          {qrImage ? (
+            <div className="flex flex-col items-center gap-2">
+              <img src={qrImage} alt="QR de vinculación de WhatsApp" className="h-64 w-64 border border-border rounded-lg bg-white p-2" />
+              <p className="text-[11px] text-muted-foreground text-center">
+                En el celular: WhatsApp → Dispositivos vinculados → Vincular dispositivo → escaneá este QR.
+              </p>
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground text-center py-6">
+              Esperando que la app se conecte y genere el QR… (mantené la app abierta en el celular)
+            </p>
+          )}
+        </div>
+      )}
 
       <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-900">
         <p className="font-semibold mb-1">Cómo funciona</p>
         <ol className="list-decimal pl-4 space-y-0.5">
-          <li>Generá/copiá el token.</li>
-          <li>En el teléfono con el número de WhatsApp del comercio, abrí la app <strong>Portal Wa Link</strong> (instalada manualmente),</li>
-          <li>pegá el token y la URL del relay (la que te pase administración), tocá <strong>Iniciar</strong> y escané el código que aparece.</li>
+          <li>Descargá la app e instalala en el celular del comercio.</li>
+          <li>Generá/copiá el token y pegálo en la app junto con la URL del relay.</li>
+          <li>Tocá <strong>Iniciar</strong> en la app y acá aparece el QR para vincular.</li>
         </ol>
       </div>
     </main>

@@ -118,15 +118,17 @@ func main() {
 
 	client := whatsmeow.NewClient(device, nil)
 	relay := &relay{cfg: cfg, client: client, inbound: make(chan inboundMsg, 128), qrOut: make(chan string, 8)}
-	client.AddEventHandler(relay.onEvent)
+
+	// Conexión al cerebro (VPS) primero — el token autentica y el QR
+	// ya puede reenviarse al comercio/ panel aunque aún no haya pareo.
+	go relay.outboundLoop(ctx)
 
 	if client.Store.ID == nil {
 		log.Printf("sin sesión guardada — emitiendo QR")
+		relay.login(ctx)
 	} else if err := client.Connect(); err != nil {
 		log.Fatalf("connect: %v", err)
 	}
-
-	go relay.outboundLoop(ctx)
 
 	log.Println("relay whatsmeow corriendo")
 	<-ctx.Done()
@@ -155,15 +157,15 @@ type relay struct {
 }
 
 // login espera el código de pareo/QR y lo imprime a stdout (el wrapper Kotlin lo
-// muestra como imagen al dueño). Ante timeout del QR, REINTENTA con un QR nuevo
-// (no mata el proceso — antes el proceso moría y la app quedaba en "Reconectando").
+// muestra como imagen al dueño). Además --> el QR se reenvía por WEBSOCKET al
+// cerebro (para la página /vendor/wa-bot) — así no necesita screencapturear de celular.
 func (r *relay) login(ctx context.Context) bool {
 	for attempt := 1; ; attempt++ {
 		if ctx.Err() != nil {
 			return false
 		}
 		if attempt > 1 {
-			// El canal anterior se cerró (timeout): reconectar y pedir QR nuevo.
+			// El canal anterior se cerró (timeout/error): reconectar y pedir QR nuevo.
 			r.client.Disconnect()
 			time.Sleep(2 * time.Second)
 		}
@@ -179,26 +181,32 @@ func (r *relay) login(ctx context.Context) bool {
 			time.Sleep(3 * time.Second)
 			continue
 		}
+		linked := false
 		for item := range qrChan {
 			switch item.Event {
 			case "code":
 				fmt.Printf("QR_DATA=%s\n", item.Code)
+				select {
+				case r.qrOut <- item.Code:
+				default:
+				}
 			case "success":
-				fmt.Println("LINKED=1")
-				return true
+				linked = true
 			case "error":
 				fmt.Printf("PAIR_ERROR=%v\n", item.Error)
-				// Error de pairing (timeout/cancelado) → canal cerrado, reintentamo luego
-				goto retry
 			case "timeout":
 				fmt.Println("QR_TIMEOUT=1")
-				goto retry
+			}
+			if linked {
+				break
 			}
 		}
-		goto retry
-	retry:
+		if linked {
+			fmt.Println("LINKED=1")
+			return true
+		}
+		// El canal se cerró sin éxito (timeout/error): reintentar con un QR nuevo.
 		log.Printf("reintentando obtener QR (intento %d -> %d)...", attempt, attempt+1)
-		time.Sleep(2 * time.Second)
 	}
 }
 

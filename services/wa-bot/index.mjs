@@ -4,6 +4,7 @@ import { config } from "./src/config.mjs";
 import { vendorByToken } from "./src/db.mjs";
 import { handleInbound } from "./src/bot.mjs";
 import { addClient, removeClient, getClient, sendText, clientCount } from "./src/relay.mjs";
+import { saveQrToken, clearQrToken } from "./src/state.mjs";
 
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
@@ -55,6 +56,15 @@ async function attach(ws, token) {
     try {
       msg = JSON.parse(raw.toString());
     } catch {
+      return;
+    }
+    // El relay manda el QR crudo (data del QR code) para escanearlo desde la web.
+    if (msg.type === "qr" && msg.data) {
+      await saveQrToken(vendor.id, msg.data).catch(() => {});
+      return;
+    }
+    if (msg.type === "qr_stop" || msg.type === "linked") {
+      await clearQrToken(vendor.id).catch(() => {});
       return;
     }
     if (msg.type !== "message") return;

@@ -61,8 +61,7 @@ function GroupForm({
     setOptions((prev) => prev.filter((_, idx) => idx !== i));
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleSubmit() {
     setError("");
     const clean = options.filter((o) => o.label.trim());
     if (!name.trim()) return setError("Indicá el nombre del grupo");
@@ -86,7 +85,7 @@ function GroupForm({
 
   return (
     <Card className="p-4 border-primary/30">
-      <form onSubmit={handleSubmit} className="space-y-3">
+      <div className="space-y-3">
         <div className="flex items-center justify-between">
           <h4 className="font-medium text-sm">{initial ? "Editar grupo" : "Nuevo grupo"}</h4>
           <div className="flex items-center gap-2">
@@ -187,7 +186,7 @@ function GroupForm({
         {error && <p className="text-sm text-red-600">{error}</p>}
 
         <div className="flex gap-2">
-          <Button type="submit" className="flex-1" disabled={saving}>
+          <Button type="button" className="flex-1" disabled={saving} onClick={handleSubmit}>
             {saving ? "Guardando..." : submitLabel}
           </Button>
           {onCancel && (
@@ -196,7 +195,7 @@ function GroupForm({
             </Button>
           )}
         </div>
-      </form>
+      </div>
     </Card>
   );
 }

@@ -91,8 +91,7 @@ function GroupForm({
     setTiers((prev) => prev.map((t, idx) => (idx === i ? { ...t, ...patch } : t)));
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleSubmit() {
     setError("");
     if (!name.trim()) return setError("Ponéle un nombre al grupo (ej: Empanadas)");
     if (selected.size === 0) return setError("Tildá al menos un producto del grupo");
@@ -127,7 +126,7 @@ function GroupForm({
 
   return (
     <Card className="p-4 border-primary/30">
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="space-y-4">
         <div className="flex items-center justify-between">
           <h4 className="font-medium text-sm">{initial ? "Editar grupo" : "Nuevo grupo"}</h4>
           {onCancel && (
@@ -265,10 +264,10 @@ function GroupForm({
         </div>
 
         {error && <p className="text-xs text-red-600">{error}</p>}
-        <Button type="submit" size="sm" disabled={saving} className="w-full">
+        <Button type="button" size="sm" disabled={saving} className="w-full" onClick={handleSubmit}>
           {saving ? "Guardando..." : submitLabel}
         </Button>
-      </form>
+      </div>
     </Card>
   );
 }

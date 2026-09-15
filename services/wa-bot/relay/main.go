@@ -35,7 +35,32 @@ import (
 	"go.mau.fi/whatsmeow/types/events"
 	waProto "go.mau.fi/whatsmeow/proto/waE2E"
 	"google.golang.org/protobuf/proto"
+	"net"
 )
+
+// fixAndroidNet: Go compilado para Android no encuentra /etc/resolv.conf ni el
+// bundle de CA — hace que los dials fallen con "connection refused" (se veía como
+// fallo de WebSocket pero era DNS/TLS). Vermifix: resolver explícito (8.8.8.8,
+// public) + sistema de CA de Android (cacerts). %wiki: android dns failure (AndroidP
+// doesn't have /etc/resolv.conf: )
+// - https://github.com/golang/go/issues/23971 (Android: DNS resolver requires
+//   CGO or netdns=go without /etc/resolv.conf → '[::1]:53' → connection refused)
+// - https://stackoverflow.com/questions/38959067/dns-lookup-issue-when-running-my-go-app-in-termux
+func fixAndroidNet() {
+	// (1) Forzar el resolver "puro Go" y dialar el DNS explícito (la rama `Dial`
+	// del resolver es la que evita que Go intente abrir /etc/resolv.conf).
+	net.DefaultResolver.PreferGo = true
+	net.DefaultResolver.Dial = func(_ context.Context, network, addr string) (net.Conn, error) {
+		d := net.Dialer{Timeout: 10 * time.Second}
+		return d.Dial(network, "8.8.8.8:53")
+	}
+
+	// (2) Los certificados system de Android no están en /etc/ssl/certs sino en
+	// cacerts. whatsmeow (y gorilla/websocket) los lee desde la var env.
+	if _, err := os.Stat("/system/etc/security/cacerts"); err == nil && os.Getenv("SSL_CERT_DIR") == "" {
+		_ = os.Setenv("SSL_CERT_DIR", "/system/etc/security/cacerts")
+	}
+}
 
 type config struct {
 	vpsURL     string // p.ej. ws://host:8792/wa
@@ -73,6 +98,8 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	fixAndroidNet()
 
 	// Driver "sqlite" de modernc.org (puro Go) + dialect "sqlite3" para dbutil.
 	db, err := sql.Open("sqlite", "file:"+dbPath+"?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)")

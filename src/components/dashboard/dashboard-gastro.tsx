@@ -1033,21 +1033,22 @@ export default function DashboardGastro({
                 </summary>
 
                 <a
-                  href="/uploads/downloads/portal-print-agent.exe?v=2"
-                  download="portal-print-agent.exe"
+                  href="/uploads/downloads/portal-print-agent.zip?v=3"
+                  download="portal-print-agent.zip"
                   className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-fresh text-fresh-foreground px-4 py-2.5 text-sm font-semibold hover:bg-fresh/80 active:scale-[0.98] transition-all"
                 >
-                  📥 Descargar el agente (Windows, .exe)
+                  📥 Descargar el agente (Windows, .zip)
                 </a>
 
                 <p className="text-[10px] text-muted-foreground/70 mt-1.5">
-                  No instala nada ni requiere permisos de administrador: es un solo archivo que
-                  abre una ventana de configuración.
+                  No instala nada ni requiere permisos de administrador: descargás el .zip,
+                  extraés la carpeta y abrís <code>Portal Print Agent.exe</code>.
                 </p>
 
                 <ol className="mt-2 space-y-1 list-decimal pl-4 text-muted-foreground">
                   <li>La impresora debe estar en la <strong>misma red</strong> que la PC.</li>
-                  <li>Descargá y ejecutá el archivo (doble clic).</li>
+                  <li>Descargá el <strong>.zip</strong> y <strong>extraelo</strong> en una carpeta.</li>
+                  <li>Abrí <strong>Portal Print Agent.exe</strong> (doble clic).</li>
                   <li>Pegá el <strong>token</strong> de abajo, la <strong>IP de la impresora</strong> y tocá <strong>Guardar</strong>.</li>
                   <li>Usá <strong>Probar impresora</strong> para verificar y activá <strong>«Arrancar al encender la PC»</strong>.</li>
                 </ol>
@@ -1055,6 +1056,11 @@ export default function DashboardGastro({
                 <p className="mt-2 rounded-lg bg-muted p-2 text-[11px] text-muted-foreground">
                   Al cerrar la ventana, el agente sigue imprimiendo en segundo plano desde la
                   bandeja del sistema (ícono junto al reloj).
+                </p>
+                <p className="mt-2 rounded-lg bg-amber-50 border border-amber-200 p-2 text-[11px] text-amber-800">
+                  ¿Tu antivirus (AVG/Avast) lo marca? Es un <strong>falso positivo heurístico</strong>.
+                  Restaurá el archivo, agregá una excepción y avisanos. Guía en
+                  <a href="/manuales/impresora" className="underline"> el manual de impresora</a>.
                 </p>
               </details>
 

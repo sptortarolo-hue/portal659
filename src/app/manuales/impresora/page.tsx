@@ -131,8 +131,9 @@ export default function ImpresoraPage() {
           <img src="/manuales/capturas/33-printer-pc-steps.png" alt="Pasos PC" className="rounded-xl border border-border shadow-sm w-full max-w-sm mb-3" />
           <ol className="list-decimal pl-5 space-y-1 mb-4">
             <li>La impresora debe estar en la <span className="font-medium">misma red</span> que la PC.</li>
-            <li>Descargá el archivo <code className="bg-muted px-1 rounded text-xs">.exe</code> desde el dashboard.</li>
-            <li>Ejecutalo (doble clic): se abre una <span className="font-medium">ventana de configuración</span>.</li>
+            <li>Descargá el archivo <code className="bg-muted px-1 rounded text-xs">.zip</code> desde el dashboard.</li>
+            <li><span className="font-medium">Extraé</span> el .zip en una carpeta (clic derecho → &quot;Extraer todo&quot;).</li>
+            <li>Abrí <code className="bg-muted px-1 rounded text-xs">Portal Print Agent.exe</code> (doble clic): se abre una <span className="font-medium">ventana de configuración</span>.</li>
             <li>Pegá el <span className="font-medium">token</span>, la <span className="font-medium">IP de la impresora</span> y tocá <span className="font-medium">&quot;Guardar&quot;</span>.</li>
             <li>Tocá <span className="font-medium">&quot;Probar impresora&quot;</span> para verificar que imprime.</li>
           </ol>
@@ -144,6 +145,20 @@ export default function ImpresoraPage() {
 
           <h3 className="font-semibold mb-2">Autoarranque</h3>
           <p className="mb-2">Para que el agente arranque solo al prender la PC, activá el interruptor <span className="font-medium">&quot;Arrancar al encender la PC&quot;</span> dentro de la misma ventana. No hace falta CMD ni permisos de administrador.</p>
+
+          <h3 className="font-semibold mb-2">El antivirus lo marca (AVG/Avast)</h3>
+          <p className="mb-2">
+            Algunos antivirus (en especial <span className="font-medium">AVG/Avast</span>) pueden marcar el
+            <code className="bg-muted px-1 rounded text-xs"> Portal Print Agent.exe</code> como
+            <span className="font-medium"> IDP.HEUR.26</span>. Es un <span className="font-medium">falso positivo
+            heurístico</span>: la heurística sospecha de apps nuevas sin firma digital, pero el archivo es legítimo.
+            Para resolverlo:
+          </p>
+          <ol className="list-decimal pl-5 space-y-1 mb-3">
+            <li>En el antivirus, <span className="font-medium">Cuarentena → Restaurar</span> el archivo.</li>
+            <li>Agregá una <span className="font-medium">excepción</span> por archivo (AVG: Configuración → General → Excepciones → <code className="bg-muted px-1 rounded text-xs">Portal Print Agent.exe</code>).</li>
+            <li>Si querés, <a className="font-medium underline" href="https://www.avg.com/en-ww/report-false-positive" target="_blank" rel="noopener noreferrer">reportalo como falso positivo a AVG</a> para que dejen de marcarlo.</li>
+          </ol>
         </div>
 
         {/* 5 */}

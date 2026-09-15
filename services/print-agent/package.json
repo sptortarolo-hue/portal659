@@ -10,7 +10,10 @@
     "start:electron": "electron .",
     "test": "node test/relay-status.test.mjs",
     "test:e2e": "node test/e2e.mjs",
-    "build:exe": "electron-builder --win portable"
+    "build:exe": "electron-builder --win portable",
+    "build:win": "electron-builder --win dir",
+    "package:zip": "node scripts/package-zip.mjs",
+    "build:win:zip": "npm run build:win && npm run package:zip"
   },
   "dependencies": {
     "ws": "^8.18.0"
@@ -33,13 +36,10 @@
     },
     "win": {
       "target": [
-        "portable"
+        "dir"
       ],
       "icon": "assets/icon.ico",
       "signAndEditExecutable": false
-    },
-    "portable": {
-      "artifactName": "portal-print-agent.exe"
     }
   }
 }

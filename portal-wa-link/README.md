@@ -18,12 +18,14 @@ Requisitos: JDK 17, Android SDK (build-tools 36), Go (para el relay). Mismo
 entorno que `portal659-twa`.
 
 ```bash
-# 1) compilar el relay Go (ver services/wa-bot/relay) y copiarlo a assets/relay/
-# 2) compilar el APK firmado
-cd portal-wa-link
-$env:BUBBLEWRAP_KEYSTORE_PASSWORD="..."; $env:BUBBLEWRAP_KEY_PASSWORD="..."   # opcional
-./gradlew.bat assembleRelease
+# Android (arm64, sin CGO):
+CGO_ENABLED=0 GOOS=android GOARCH=arm64 go build -ldflags="-s -w" -o jniLibs/arm64-v8a/librelay.so .
 ```
+
+El binario queda en `app/src/main/jniLibs/arm64-v8a/librelay.so` y cuando installás
+la app Android lo encuentra en `nativeLibraryDir` (funciona con SELinux, sin necesidad
+de exec en filesDir).
+
 
 > Para firmar con el keystore de Portal 659, agregar `signingConfigs` a
 > `app/build.gradle` apuntando a `C:\Users\IPS\portal659-keystore\portal659-release.keystore`

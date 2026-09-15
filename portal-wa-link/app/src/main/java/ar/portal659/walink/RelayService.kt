@@ -71,37 +71,20 @@ class RelayService : Service() {
         wakelock?.acquire()
     }
 
-    private fun binaryAssetName(): String? {
-        val abis = Build.SUPPORTED_ABIS ?: return null
-        if (abis.any { it == "arm64-v8a" }) return "relay/relay-arm64"
-        if (abis.any { it == "x86_64" }) return "relay/relay-x86_64"
-        return null
-    }
-
-    private fun binaryPath(): File = File(filesDir, "relay")
+    /** El binario del relay se empaqueta como librería nativa (`jniLibs/arm64-v8a/librelay.so`).
+     *  Android lo extrae en [applicationInfo.nativeLibraryDir] y ahí sí puede
+     *  ejecutarse (SELinux ya no lo bloquea como "datos de la app"). */
+    private fun binaryPath(): File =
+        File(applicationInfo.nativeLibraryDir, "librelay.so")
 
     private fun ensureBinary() {
-        val asset = binaryAssetName() ?: run {
-            Config.appendLog(this, "[check] No hay binario para esta arquitectura")
-            Config.setStatus(this, "Sin binario para esta arquitectura")
+        val bin = binaryPath()
+        if (!bin.exists()) {
+            Config.appendLog(this, "[check] binario no está en nativeLibraryDir: ${bin.absolutePath}")
+            Config.setStatus(this, "No hay binario para esta arquitectura")
             return
         }
-        val dst = binaryPath()
-        if (dst.exists()) return
-
-        Config.appendLog(this, "[extract] extrayendo $asset → ${dst.absolutePath}")
-        try {
-            assets.open(asset).use { input ->
-                dst.outputStream().use { output -> input.copyTo(output) }
-            }
-            dst.setReadable(true, false)
-            val chmod = dst.setExecutable(true, false)
-            Config.appendLog(this, "[extract] OK: ${dst.length()} bytes, exec=$chmod")
-        } catch (e: Exception) {
-            Config.appendLog(this, "[extract] ERROR: ${e.message}")
-            Config.setStatus(this, "Error extrayendo relay")
-            throw e
-        }
+        Config.appendLog(this, "[check] binario OK: ${bin.absolutePath} (${bin.length()} bytes)")
     }
 
     private fun startProcess() {

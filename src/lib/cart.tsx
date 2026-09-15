@@ -25,6 +25,21 @@ export type CartItem = {
   modifiers?: CartModifier[];
   /** La promo de este ítem está excluida del descuento en efectivo. */
   cashExcluded?: boolean;
+  /** Precio de lista al agregar (si price trae promo, para espejo de volumen). */
+  origPrice?: number;
+  /** El price de este ítem viene de una promo. */
+  hasPromo?: boolean;
+};
+
+/** Grupo de volumen (espejo visual; el servidor recalcula y manda). */
+export type CartVolumeGroup = {
+  id: string;
+  name: string;
+  productIds: string[];
+  combinePromo: boolean;
+  combineCash: boolean;
+  extrasIncluded: boolean;
+  tiers: { minQty: number; kind: "fixed_total" | "percent_off"; value: number }[];
 };
 
 export type CartVendor = {
@@ -37,6 +52,8 @@ export type CartVendor = {
   freeDeliveryMin?: number | null;
   /** % de descuento en efectivo del comercio (visual en checkout). */
   cashDiscountPct?: number | null;
+  /** Reglas de volumen (espejo visual). */
+  volumeGroups?: CartVolumeGroup[];
 };
 
 type CartState = {
@@ -79,6 +96,7 @@ function loadCart(): CartState {
               vertical: parsed.vendor.vertical || null,
               deliveryFee: parsed.vendor.deliveryFee ?? null,
               freeDeliveryMin: parsed.vendor.freeDeliveryMin ?? null,
+              volumeGroups: Array.isArray(parsed.vendor.volumeGroups) ? parsed.vendor.volumeGroups : undefined,
             }
           : null,
         items: parsed.items,

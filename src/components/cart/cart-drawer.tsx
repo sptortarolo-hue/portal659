@@ -1,10 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import { useMemo } from "react";
 import { useCart } from "@/lib/cart";
+import { mirrorVolume } from "@/lib/volume-mirror";
 
 export function CartDrawer() {
   const { open, setOpen, items, vendor, total, count, setQty, removeItem, clear } = useCart();
+  const vol = useMemo(() => mirrorVolume(items, vendor?.volumeGroups), [items, vendor]);
+  const netTotal = total - vol.volumeDiscount;
 
   if (!open) return null;
 
@@ -127,12 +131,18 @@ export function CartDrawer() {
         {/* Footer */}
         {items.length > 0 && vendor && (
           <div className="border-t border-border px-6 pt-4 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)] space-y-3 bg-card">
+            {vol.volumeDiscount > 0 && (
+              <div className="flex items-center justify-between text-sm font-medium text-emerald-700">
+                <span>📦 Desc. volumen{vol.applied.length > 0 ? ` (${vol.applied.map((a) => a.label).join(" · ")})` : ""}</span>
+                <span className="tabular-nums">−${vol.volumeDiscount.toLocaleString("es-AR")}</span>
+              </div>
+            )}
             <div className="flex items-center justify-between">
               <span className="text-sm text-muted-foreground">
                 {count} producto{count !== 1 ? "s" : ""}
               </span>
               <span className="text-lg font-bold">
-                ${total.toLocaleString("es-AR")}
+                ${netTotal.toLocaleString("es-AR")}
               </span>
             </div>
             <Link

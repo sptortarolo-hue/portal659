@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from "react";
 import { useCart } from "@/lib/cart";
-import type { CartModifier } from "@/lib/cart";
+import type { CartModifier, CartVolumeGroup } from "@/lib/cart";
 import type { ProductModifier } from "@/types/database";
 import { ModifierPicker } from "./modifier-picker";
 import { useToast } from "@/lib/toast";
@@ -19,10 +19,16 @@ type AddToCartButtonProps = {
     vertical?: string | null;
     deliveryFee?: number | null;
     freeDeliveryMin?: number | null;
+    cashDiscountPct?: number | null;
+    volumeGroups?: CartVolumeGroup[];
   };
   modifiers?: ProductModifier[];
   /** La promo de este ítem está excluida del descuento en efectivo. */
   cashExcluded?: boolean;
+  /** Precio de lista (si price trae promo, para espejo de volumen). */
+  origPrice?: number;
+  /** El price viene de una promo. */
+  hasPromo?: boolean;
 };
 
 export function AddToCartButton({
@@ -32,6 +38,8 @@ export function AddToCartButton({
   vendor,
   modifiers,
   cashExcluded,
+  origPrice,
+  hasPromo,
 }: AddToCartButtonProps) {
   const { addItem } = useCart();
   const { addToast } = useToast();
@@ -47,6 +55,8 @@ export function AddToCartButton({
         qty: 1,
         modifiers: mods,
         cashExcluded,
+        origPrice,
+        hasPromo,
       });
       if (switched) {
         addToast("Se limpió el carrito anterior (solo podés pedir de un local a la vez)");
@@ -56,7 +66,7 @@ export function AddToCartButton({
       setAdded(true);
       setTimeout(() => setAdded(false), 1500);
     },
-    [addItem, vendor, offerId, name, price, cashExcluded, addToast]
+    [addItem, vendor, offerId, name, price, cashExcluded, origPrice, hasPromo, addToast]
   );
 
   const handleClick = useCallback(() => {

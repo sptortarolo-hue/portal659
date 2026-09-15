@@ -467,6 +467,10 @@ async function composeComanda(printer: any, vendor: PrinterVendor, order: Order)
   if (ticketCash > 0) {
     printer.println(`Desc. efectivo (${ticketCashPct}%): -$${ticketCash.toLocaleString("es-AR")}`);
   }
+  const ticketVol = Number((order as any)?.volume_discount) || 0;
+  if (ticketVol > 0) {
+    printer.println(`Desc. volumen: -$${ticketVol.toLocaleString("es-AR")}`);
+  }
   printer.bold(true);
   printer.setTextSize(1, 1);
   printer.println(`TOTAL: $${Number(order.total).toLocaleString("es-AR")}`);
@@ -531,11 +535,15 @@ async function composeReceipt(
   printer.println(separator);
 
   printer.alignRight();
-  const receiptCash = Number((order as any)?.cash_discount) || 0;
-  const receiptCashPct = Number((order as any)?.cash_pct) || 0;
-  if (receiptCash > 0) {
-    printer.println(`Desc. efectivo (${receiptCashPct}%): -$${receiptCash.toLocaleString("es-AR")}`);
-  }
+    const receiptCash = Number((order as any)?.cash_discount) || 0;
+    const receiptCashPct = Number((order as any)?.cash_pct) || 0;
+    if (receiptCash > 0) {
+      printer.println(`Desc. efectivo (${receiptCashPct}%): -$${receiptCash.toLocaleString("es-AR")}`);
+    }
+    const receiptVol = Number((order as any)?.volume_discount) || 0;
+    if (receiptVol > 0) {
+      printer.println(`Desc. volumen: -$${receiptVol.toLocaleString("es-AR")}`);
+    }
   printer.bold(true);
   printer.setTextSize(1, 1);
   printer.println(`TOTAL: $${Number(order.total).toLocaleString("es-AR")}`);

@@ -219,6 +219,18 @@ export async function PATCH(
         updateData.total = pricing.total;
         updateData.cash_discount = pricing.cashDiscount;
         updateData.cash_pct = pricing.cashPct;
+        // Tolerante a migración de volumen sin aplicar.
+        try {
+          const col = await tx.query<{ exists: boolean }>(
+            `SELECT EXISTS (
+               SELECT 1 FROM information_schema.columns
+               WHERE table_name = 'orders' AND column_name = 'volume_discount'
+             ) AS exists`
+          );
+          if (col[0]?.exists === true) updateData.volume_discount = pricing.volumeDiscount;
+        } catch {
+          /* sin columna: se sigue sin persistir el detalle */
+        }
 
         // Re-stock del pedido viejo + reserva del nuevo (solo canal app; los
         // canales presenciales no habían reservado stock al crear).

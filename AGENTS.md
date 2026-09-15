@@ -103,6 +103,7 @@ Portal 659: "El centro comercial de tu barrio". Hub multicommerce hiperlocal (Si
 - Aplicar `supabase/self-host/migrate-recipe-links.sql` (receta compartida porción/entera: `product_recipe_links` + umbrales `vendors.food_cost_warn/food_cost_bad` — presentaciones en el editor y semáforo editable).
 - Aplicar `supabase/self-host/migrate-online-toggle.sql` (opt-out venta online: `vendors.accepts_online_orders` — toggle en dashboards gastro/moda, badges/filtro online, gate de POST orders).
 - Aplicar `supabase/self-host/migrate-cash-discount.sql` (descuento en efectivo: `vendors.cash_discount_pct` + `products.cash_discount_excluded` + `orders.cash_discount/cash_pct` — doble precio en micrositio, descuento al cobrar en efectivo, detalle en ticket/WhatsApp).
+- Aplicar `supabase/self-host/migrate-volume-pricing.sql` (precios por volumen gastro: `volume_groups` + `volume_tiers` + `orders.volume_discount` — grupos mixtos con tramos fijo/% y flags `combine_promo/combine_cash/extras_mode`; editor en dashboard gastro, badges/progreso en micrositio).
 - Cargar secrets `VAPID_*`, `PRINT_BRIDGE_SECRET` y `RESEND_API_KEY`/`FROM_EMAIL` en GitHub para que el deploy las escriba al `.env`.
 - Compilar el APK de Portal Print (Android): ver `android/README.md` (requiere Android SDK/JDK 17).
 - Reboot test del VPS (verificar que la web vuelve sola).

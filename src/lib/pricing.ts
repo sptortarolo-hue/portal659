@@ -1,6 +1,11 @@
 import type { Tx } from "@/lib/db";
 import type { OrderItem } from "@/types/database";
 import { cashAppliesToItem, cashPrice, normalizeCashPct } from "@/lib/cash-discount";
+import {
+  applyVolumePricing,
+  type VolumeGroupInput,
+  type VolumeLineInput,
+} from "@/lib/volume-pricing";
 
 /** Interfaz mínima: sirve la Tx de withTransaction o un wrapper de queryMany. */
 export type PricingQuerier = Pick<Tx, "query">;
@@ -46,6 +51,10 @@ export type ResolvedPricing = {
   cashDiscount: number;
   /** % aplicado (0 si no corresponde). */
   cashPct: number;
+  /** Descuento por volumen aplicado (0 si no corresponde). */
+  volumeDiscount: number;
+  /** Grupos de volumen aplicados (para el mensaje de WhatsApp/ticket). */
+  volumeApplied: { groupName: string; label: string; qty: number }[];
 };
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -140,9 +149,20 @@ export async function resolveOrderPricing(opts: {
     }
   }
 
+  type StagedLine = {
+    product: ProductRow;
+    variant?: VariantRow;
+    unit: number;
+    unitBase: number;
+    modsTotal: number;
+    qtySafe: number;
+    labels: string[];
+    hasPromo: boolean;
+  };
+
+  const staged: StagedLine[] = [];
   const outItems: OrderItem[] = [];
   let subtotal = 0;
-  let cashDiscount = 0;
 
   for (const it of opts.items) {
     if (!it) continue;
@@ -202,16 +222,17 @@ export async function resolveOrderPricing(opts: {
     unit = round2(unit);
     subtotal += unit * qtySafe;
 
-    // Descuento en efectivo: sobre la unidad elegible (promo excluida no corre).
-    // La unidad con descuento es la misma que muestra el micrositio.
     const hasPromo = variant ? variant.promo != null : product.promo_price != null;
-    if (
-      cashActive &&
-      cashAppliesToItem({ hasPromo, excluded: product.cash_discount_excluded })
-    ) {
-      const unitCash = cashPrice(unit, cashPct);
-      cashDiscount += round2((unit - unitCash) * qtySafe);
-    }
+    staged.push({
+      product,
+      variant,
+      unit,
+      unitBase: round2(unitPrice),
+      modsTotal: round2(unit - unitPrice),
+      qtySafe,
+      labels,
+      hasPromo,
+    });
 
     outItems.push({
       product_id: it.offerId ? String(it.offerId) : product.id,
@@ -227,19 +248,116 @@ export async function resolveOrderPricing(opts: {
     throw new PricingError("El pedido no tiene productos");
   }
 
+  // Precios por volumen: agrupa líneas del mismo grupo (docena surtida) y
+  // calcula el descuento a nivel pedido. Tolerante a tabla sin migrar.
+  let volumeDiscount = 0;
+  let volumeApplied: ResolvedPricing["volumeApplied"] = [];
+  // Neto por línea tras volumen (para el cash con combine_cash).
+  const volumeNetUnit = new Map<number, number>();
+  const volumeNoCash = new Set<number>();
+  try {
+    const gRows = await tx.query<{
+      id: string;
+      name: string;
+      product_ids: string[];
+      combine_promo: boolean;
+      combine_cash: boolean;
+      extras_mode: string;
+    }>(
+      `SELECT id, name, product_ids, combine_promo, combine_cash, extras_mode
+       FROM volume_groups WHERE vendor_id = $1 AND active = true ORDER BY position ASC, created_at ASC`,
+      [vendorId]
+    );
+    if (gRows.length > 0) {
+      const tRows = await tx.query<{ group_id: string; min_qty: number; kind: string; value: number }>(
+        `SELECT group_id, min_qty, kind, value FROM volume_tiers WHERE group_id = ANY($1)`,
+        [gRows.map((g) => g.id)]
+      );
+      const tiersByGroup = new Map<string, { minQty: number; kind: "fixed_total" | "percent_off"; value: number }[]>();
+      for (const t of tRows) {
+        if (t.kind !== "fixed_total" && t.kind !== "percent_off") continue;
+        const arr = tiersByGroup.get(t.group_id) || [];
+        arr.push({ minQty: Number(t.min_qty), kind: t.kind, value: Number(t.value) });
+        tiersByGroup.set(t.group_id, arr);
+      }
+      const volGroups: VolumeGroupInput[] = gRows
+        .map((g) => ({
+          id: g.id,
+          name: g.name,
+          productIds: Array.isArray(g.product_ids) ? g.product_ids.map(String) : [],
+          active: true,
+          combinePromo: g.combine_promo === true,
+          combineCash: g.combine_cash === true,
+          extrasIncluded: g.extras_mode === "included",
+          tiers: tiersByGroup.get(g.id) || [],
+        }))
+        .filter((g) => g.productIds.length > 0 && g.tiers.length > 0);
+      if (volGroups.length > 0) {
+        const volLines: VolumeLineInput[] = staged.map((s) => ({
+          offerId: s.product.id,
+          qty: s.qtySafe,
+          listUnit: Number(s.variant ? s.variant.price : s.product.price),
+          promoUnit:
+            s.variant
+              ? s.variant.promo != null ? Number(s.variant.promo) : null
+              : s.product.promo_price != null ? Number(s.product.promo_price) : null,
+          modsUnit: s.modsTotal,
+          refUnit: s.unit,
+          hasPromo: s.hasPromo,
+          excluded: s.product.cash_discount_excluded,
+        }));
+        const vol = applyVolumePricing(volLines, volGroups);
+        volumeDiscount = vol.volumeDiscount;
+        volumeApplied = vol.applied.map((a) => ({ groupName: a.groupName, label: a.label, qty: a.qty }));
+        vol.lines.forEach((l, i) => {
+          if (l.netTotal !== l.grossTotal) {
+            volumeNetUnit.set(i, round2(l.netTotal / staged[i].qtySafe));
+          }
+          if (!l.cashEligible) volumeNoCash.add(i);
+        });
+      }
+    }
+  } catch {
+    // Tabla sin migrar: se sigue sin volumen.
+    volumeDiscount = 0;
+    volumeApplied = [];
+    volumeNetUnit.clear();
+    volumeNoCash.clear();
+  }
+
+  // Descuento en efectivo: sobre la unidad elegible (promo excluida no corre).
+  // En líneas con volumen + combine_cash corre sobre el neto del grupo;
+  // con volumen sin combine queda excluido.
+  let cashDiscount = 0;
+  if (cashActive) {
+    staged.forEach((s, i) => {
+      if (volumeNoCash.has(i)) return;
+      if (!cashAppliesToItem({ hasPromo: s.hasPromo, excluded: s.product.cash_discount_excluded })) return;
+      const cashUnit = volumeNetUnit.get(i) ?? s.unit;
+      const unitCash = cashPrice(cashUnit, cashPct);
+      cashDiscount += round2((cashUnit - unitCash) * s.qtySafe);
+    });
+  }
+
   const fee = method === "delivery" ? Number(opts.deliveryFee) || 0 : 0;
   const freeMin = Number(opts.freeDeliveryMin) || 0;
-  const deliveryFee = fee > 0 && !(freeMin > 0 && subtotal >= freeMin) ? fee : 0;
+  // El volumen es precio real: el neto cuenta para el envío gratis
+  // (el cash, en cambio, es medio de pago y no afecta el umbral).
+  const netSubtotal = round2(subtotal - volumeDiscount);
+  const deliveryFee = fee > 0 && !(freeMin > 0 && netSubtotal >= freeMin) ? fee : 0;
 
-  // El descuento va solo sobre productos (nunca sobre el envío).
-  cashDiscount = round2(Math.min(cashDiscount, subtotal));
+  // Los descuentos van solo sobre productos (nunca sobre el envío).
+  cashDiscount = round2(Math.min(cashDiscount, netSubtotal));
+  volumeDiscount = round2(Math.min(volumeDiscount, subtotal));
 
   return {
     items: outItems,
     subtotal: round2(subtotal),
     deliveryFee: round2(deliveryFee),
-    total: round2(subtotal - cashDiscount + deliveryFee),
+    total: round2(subtotal - volumeDiscount - cashDiscount + deliveryFee),
     cashDiscount,
     cashPct: cashActive ? cashPct : 0,
+    volumeDiscount,
+    volumeApplied,
   };
 }

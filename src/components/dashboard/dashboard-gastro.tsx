@@ -13,6 +13,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { OfferForm, OfferList, CategoryManager, LivePreview, apiJson, TransferConfig, DeliveryFeeConfig } from "@/components/dashboard/shared";
 import { ModifierLibrary, ProductModifiersBlock } from "@/components/dashboard/modifier-editor";
+import { VolumeEditor } from "@/components/dashboard/volume-editor";
 import { MpConnectCard } from "@/components/dashboard/mp-connect-card";
 import { MenuImportModal } from "@/components/dashboard/menu-import";
 import { HoursEditor } from "@/components/dashboard/hours-editor";
@@ -1383,6 +1384,13 @@ export default function DashboardGastro({
 
       <CollapsibleSection icon="⚙️" title="Modificadores">
         <ModifierLibrary products={offers.map((o) => ({ id: o.id, name: o.name }))} />
+      </CollapsibleSection>
+
+      <CollapsibleSection icon="📦" title="Precios por volumen">
+        <VolumeEditor
+          products={offers.map((o) => ({ id: o.id, name: o.name, category: o.category }))}
+          categories={categories}
+        />
       </CollapsibleSection>
 
       <CollapsibleSection icon="🖼️" title={`Galería (${gallery.length})`}>

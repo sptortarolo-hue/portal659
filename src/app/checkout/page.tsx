@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useCart } from "@/lib/cart";
 import { Button } from "@/components/ui/button";
@@ -8,7 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { buildComandaWhatsApp } from "@/lib/whatsapp-message";
-import { cashPrice, normalizeCashPct } from "@/lib/cash-discount";
+import { cashAppliesToItem, cashPrice, normalizeCashPct } from "@/lib/cash-discount";
+import { mirrorVolume } from "@/lib/volume-mirror";
 import { checkArgPhone, toE164 } from "@/lib/phone";
 import { OrderSummaryModal } from "@/components/cart/order-summary-modal";
 import { readPreviewSession } from "@/components/store/preview-session-sync";
@@ -56,29 +57,42 @@ export default function CheckoutPage() {
     }
   }
 
+  // Espejo visual del volumen (el servidor recalcula y manda).
+  const vol = useMemo(() => mirrorVolume(items, vendor?.volumeGroups), [items, vendor]);
+  const netSubtotal = total - vol.volumeDiscount;
+
   const deliveryFee =
   vendor &&
   method === "delivery" &&
   vendor.deliveryFee != null &&
-  !(vendor.freeDeliveryMin != null && total >= Number(vendor.freeDeliveryMin))
+  !(vendor.freeDeliveryMin != null && netSubtotal >= Number(vendor.freeDeliveryMin))
     ? Number(vendor.deliveryFee)
     : 0;
   const grandTotal = total + deliveryFee;
 
   // Espejo visual del descuento en efectivo (el servidor recalcula y manda).
+  // En líneas con volumen sin combine, el cash no corre; con combine corre
+  // sobre el neto del grupo.
   const cashPct = normalizeCashPct(vendor?.cashDiscountPct);
   const cashActive = paymentMethod === "efectivo" && cashPct > 0;
   let cashDiscount = 0;
   if (cashActive) {
-    for (const i of items) {
-      if (i.cashExcluded) continue;
+    items.forEach((i, idx) => {
+      const vline = vol.lines[idx];
+      if (vline && !vline.cashEligible) return;
+      if (!cashAppliesToItem({ hasPromo: vline?.hasPromo ?? !!i.hasPromo, excluded: i.cashExcluded })) return;
       const modTotal = (i.modifiers || []).reduce((s, m) => s + m.price_mod, 0);
-      const unit = i.price + modTotal;
+      const unit = vline
+        ? Math.round((vline.netTotal / Math.max(1, i.qty)) * 100) / 100
+        : i.price + modTotal;
       cashDiscount += Math.round((unit - cashPrice(unit, cashPct)) * i.qty * 100) / 100;
-    }
+    });
     cashDiscount = Math.round(cashDiscount * 100) / 100;
   }
-  const displayTotal = grandTotal - cashDiscount;
+  const displayTotal = grandTotal - vol.volumeDiscount - cashDiscount;
+  const volumeLabel = vol.applied.length > 0
+    ? vol.applied.map((a) => `${a.groupName} (${a.label})`).join(" · ")
+    : "";
 
   useEffect(() => {
     if (!vendor?.id) return;
@@ -153,19 +167,30 @@ export default function CheckoutPage() {
 
     const cleanPhone = e164;
 
+    // Con volumen, MP cobra los netos por línea (la preferencia suma ítems).
+    const mpItems = items.map((i, idx) => {
+      const vline = vol.lines[idx];
+      const modTotal = (i.modifiers || []).reduce((s, m) => s + m.price_mod, 0);
+      const unit = vline
+        ? Math.round((vline.netTotal / Math.max(1, i.qty)) * 100) / 100
+        : i.price + modTotal;
+      return {
+        offerId: i.offerId,
+        variantId: i.variantId,
+        name: i.name,
+        price: unit,
+        qty: i.qty,
+      };
+    });
+    const mpTotal = mpItems.reduce((s, it) => s + it.price * it.qty, 0) + deliveryFee;
+
     const res = await fetch("/api/payments", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         vendorId: v.id,
-        items: items.map((i) => ({
-          offerId: i.offerId,
-          variantId: i.variantId,
-          name: i.name,
-          price: i.price + (i.modifiers || []).reduce((s, m) => s + m.price_mod, 0),
-          qty: i.qty,
-        })),
-        total: grandTotal,
+        items: mpItems,
+        total: mpTotal,
         customerName: name,
         customerPhone: cleanPhone,
         customerAddress: method === "delivery" ? address : null,
@@ -239,6 +264,10 @@ export default function CheckoutPage() {
       const waTotal = typeof data.total === "number" ? data.total : grandTotal;
       const waCashDiscount = typeof data.cashDiscount === "number" ? data.cashDiscount : 0;
       const waCashPct = typeof data.cashPct === "number" ? data.cashPct : 0;
+      const waVolumeDiscount = typeof data.volumeDiscount === "number" ? data.volumeDiscount : 0;
+      const waVolumeLabel = Array.isArray(data.volumeApplied) && data.volumeApplied.length > 0
+        ? data.volumeApplied.map((a: any) => `${a.groupName} (${a.label})`).join(" · ")
+        : volumeLabel;
       const previewPrefix = isPreview ? "🧪 [PRUEBA] " : "";
       const baseUrl = (process.env.NEXT_PUBLIC_SITE_URL || window.location.origin).replace(/\/$/, "");
       const trackUrl = data.trackToken ? `${baseUrl}/seguimiento/${data.trackToken}` : undefined;
@@ -262,6 +291,8 @@ export default function CheckoutPage() {
           registerUrl,
           cashDiscount: waCashDiscount,
           cashPct: waCashPct,
+          volumeDiscount: waVolumeDiscount,
+          volumeLabel: waVolumeLabel || undefined,
         });
       const message = previewPrefix + waMessage;
 
@@ -391,6 +422,12 @@ export default function CheckoutPage() {
             <div className="flex justify-between text-sm font-medium text-green-700">
               <span>Desc. efectivo ({Number(cashPct).toLocaleString("es-AR")}%)</span>
               <span>−${cashDiscount.toLocaleString("es-AR")}</span>
+            </div>
+          )}
+          {vol.volumeDiscount > 0 && (
+            <div className="flex justify-between text-sm font-medium text-emerald-700">
+              <span>Desc. volumen{volumeLabel ? ` (${volumeLabel})` : ""}</span>
+              <span>−${vol.volumeDiscount.toLocaleString("es-AR")}</span>
             </div>
           )}
           <div className="flex justify-between font-bold text-lg">
@@ -605,6 +642,8 @@ export default function CheckoutPage() {
         total={displayTotal}
         cashDiscount={cashActive ? cashDiscount : 0}
         cashPct={cashActive ? cashPct : 0}
+        volumeDiscount={vol.volumeDiscount}
+        volumeLabel={volumeLabel || undefined}
         deliveryFee={deliveryFee}
         method={method}
         address={method === "delivery" ? address : undefined}

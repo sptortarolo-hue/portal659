@@ -19,6 +19,7 @@ import { ScrollToMenu } from "@/components/store/scroll-to-menu";
 import { ScrollToProduct } from "@/components/store/scroll-to-product";
 import { IrAComprarButton } from "@/components/store/ir-a-comprar-button";
 import { CategoryNav } from "@/components/store/category-nav";
+import { VolumeProgress } from "@/components/store/volume-progress";
 import { StickyStoreBar } from "@/components/store/sticky-store-bar";
 import { VendorShareButton } from "@/components/store/vendor-share-button";
 import { PreviewBanner } from "@/components/store/preview-banner";
@@ -246,6 +247,47 @@ export default async function TiendaPage({
     sections.push({ name: isModa ? "Catálogo" : "Menú", items: offers });
   }
 
+  // Precios por volumen (solo gastro): grupos + tramos para badges y espejo.
+  // Tolerante a tabla sin migrar.
+  let volumeGroups: any[] = [];
+  if (isGastro) {
+    try {
+      const gRows: any[] = await queryMany<any>(
+        `SELECT id, name, product_ids, combine_promo, combine_cash, extras_mode
+         FROM volume_groups WHERE vendor_id = $1 AND active = true ORDER BY position ASC, created_at ASC`,
+        [vendor.id]
+      );
+      if (gRows && gRows.length > 0) {
+        const tRows: any[] = await queryMany<any>(
+          `SELECT group_id, min_qty, kind, value FROM volume_tiers WHERE group_id = ANY($1) ORDER BY min_qty ASC`,
+          [gRows.map((g: any) => g.id)]
+        );
+        const tiersByGroup: Record<string, any[]> = {};
+        for (const t of tRows || []) {
+          if (t.kind !== "fixed_total" && t.kind !== "percent_off") continue;
+          (tiersByGroup[t.group_id] ||= []).push({
+            minQty: Number(t.min_qty),
+            kind: t.kind,
+            value: Number(t.value),
+          });
+        }
+        volumeGroups = gRows
+          .map((g: any) => ({
+            id: g.id,
+            name: g.name,
+            productIds: Array.isArray(g.product_ids) ? g.product_ids.map(String) : [],
+            combinePromo: g.combine_promo === true,
+            combineCash: g.combine_cash === true,
+            extrasIncluded: g.extras_mode === "included",
+            tiers: tiersByGroup[g.id] || [],
+          }))
+          .filter((g: any) => g.productIds.length > 0 && g.tiers.length > 0);
+      }
+    } catch {
+      volumeGroups = [];
+    }
+  }
+
   const isService = v.vertical === "servicio";
   // Solo-contacto (toggle OFF en gastro/moda): se oculta el menú y se muestra
   // la tarjeta de contacto. El resto conserva su vidriera con consultar.
@@ -265,6 +307,7 @@ export default async function TiendaPage({
         .includes("Efectivo") && Number(v.cash_discount_pct) > 0
         ? Number(v.cash_discount_pct)
         : null,
+    volumeGroups,
   };
   const waNumber = (v.whatsapp || "").replace(/[^0-9]/g, "");
   const waText = isService
@@ -571,6 +614,7 @@ export default async function TiendaPage({
             ) : (
               <>
                 {sections.length > 0 && <CategoryNav sections={sections} />}
+                {isGastro && volumeGroups.length > 0 && <VolumeProgress groups={volumeGroups} />}
                 {sections.map((s, i) => (
                   <section key={s.name} id={`seccion-${i}`} className="mb-10 scroll-mt-[184px] sm:scroll-mt-24">
                     <h3 className="font-display text-xl font-semibold mb-4 border-b border-border pb-2">

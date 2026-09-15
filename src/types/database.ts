@@ -432,8 +432,10 @@ export type Order = {
   order_number?: string | null;
   /** Descuento en efectivo aplicado (detalle para ticket/WhatsApp). */
   cash_discount?: number | null;
-  /** % de descuento en efectivo aplicado. */
-  cash_pct?: number | null;
+    /** % de descuento en efectivo aplicado. */
+    cash_pct?: number | null;
+    /** Descuento por volumen aplicado (detalle para ticket/WhatsApp). */
+    volume_discount?: number | null;
   /** Pedido de prueba (modo preview). true = no cuenta en topes/métricas/ingresos. */
   is_preview?: boolean;
   created_at: string;

@@ -42,6 +42,8 @@ export type CreateOrderResult = {
   pickupNumber: number;
   cashDiscount: number;
   cashPct: number;
+  volumeDiscount: number;
+  volumeApplied: { groupName: string; label: string; qty: number }[];
 };
 
 /** Negocio: el comercio no acepta pedidos online (plan sin carrito). → 403 */
@@ -128,6 +130,18 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
   let pickupNumber = 0;
   let resolvedCashDiscount = 0;
   let resolvedCashPct = 0;
+  let resolvedVolumeDiscount = 0;
+  let resolvedVolumeApplied: { groupName: string; label: string; qty: number }[] = [];
+
+  // Tolerante a migración de volumen sin aplicar: si la columna no existe,
+  // el pedido se guarda igual (sin columna de descuento por volumen).
+  const volumeCol = await queryOne<{ exists: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1 FROM information_schema.columns
+       WHERE table_name = 'orders' AND column_name = 'volume_discount'
+     ) AS exists`
+  );
+  const hasVolumeCol = volumeCol?.exists === true;
 
   try {
     await withTransaction(async (tx) => {
@@ -152,14 +166,19 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
       resolvedItemsCount = pricing.items.reduce((s, i) => s + i.qty, 0);
       resolvedCashDiscount = pricing.cashDiscount;
       resolvedCashPct = pricing.cashPct;
+      resolvedVolumeDiscount = pricing.volumeDiscount;
+      resolvedVolumeApplied = pricing.volumeApplied;
 
       await adjustStockForItems(tx, resolvedItems, "decrement");
 
       pickupNumber = await nextOrderNumber(tx, vendorId);
 
+      const volumeCols = hasVolumeCol ? ", volume_discount" : "";
+      const volumeVals = hasVolumeCol ? ", $16" : "";
+      const volumeParams: unknown[] = hasVolumeCol ? [pricing.volumeDiscount] : [];
       const rows = await tx.query<{ id: string }>(
-        `INSERT INTO orders (vendor_id, customer_id, customer_name, customer_phone, customer_address, method, payment_method, items, total, status, notes, device_id, payment_status, pickup_number, cash_pct, cash_discount)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'new', $10, $11, $12, $13, $14, $15)
+        `INSERT INTO orders (vendor_id, customer_id, customer_name, customer_phone, customer_address, method, payment_method, items, total, status, notes, device_id, payment_status, pickup_number, cash_pct, cash_discount${volumeCols})
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'new', $10, $11, $12, $13, $14, $15${volumeVals})
          RETURNING id`,
         [
           vendorId,
@@ -177,6 +196,7 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
           pickupNumber,
           pricing.cashPct,
           pricing.cashDiscount,
+          ...volumeParams,
         ]
       );
       orderId = rows[0]?.id;
@@ -229,5 +249,5 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
     }
   }
 
-  return { orderId, total: resolvedTotal, items: resolvedItems, pickupNumber, cashDiscount: resolvedCashDiscount, cashPct: resolvedCashPct };
+  return { orderId, total: resolvedTotal, items: resolvedItems, pickupNumber, cashDiscount: resolvedCashDiscount, cashPct: resolvedCashPct, volumeDiscount: resolvedVolumeDiscount, volumeApplied: resolvedVolumeApplied };
 }

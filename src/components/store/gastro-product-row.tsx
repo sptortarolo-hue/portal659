@@ -6,8 +6,9 @@ import { AddToCartButton } from "@/components/offers/add-to-cart-button";
 import { ProductImage } from "@/components/product-image";
 import { CashPrice } from "@/components/store/cash-price";
 import { cashAppliesToItem, normalizeCashPct } from "@/lib/cash-discount";
-import { useCart, type CartModifier } from "@/lib/cart";
+import { useCart, type CartModifier, type CartVolumeGroup } from "@/lib/cart";
 import { useToast } from "@/lib/toast";
+import { volumeBadgeText } from "@/lib/volume-pricing";
 import type { ProductModifier, ModifierOption } from "@/types/database";
 
 type VendorBrief = {
@@ -19,6 +20,7 @@ type VendorBrief = {
   deliveryFee?: number | null;
   freeDeliveryMin?: number | null;
   cashDiscountPct?: number | null;
+  volumeGroups?: CartVolumeGroup[];
 };
 
 type Props = {
@@ -83,6 +85,19 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
     cashAppliesToItem({ hasPromo, excluded: product.cash_discount_excluded });
   const stockControl = product.stock_control !== false;
   const outStock = stockControl && (product.stock ?? 0) <= 0;
+  const volBadge = volumeBadgeText(
+    (vendor.volumeGroups || []).map((g) => ({
+      id: g.id,
+      name: g.name,
+      productIds: g.productIds,
+      active: true,
+      combinePromo: g.combinePromo,
+      combineCash: g.combineCash,
+      extrasIncluded: g.extrasIncluded,
+      tiers: g.tiers,
+    })),
+    product.id
+  );
 
   const modTotal = Object.values(selected)
     .flat()
@@ -128,6 +143,8 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
       qty,
       modifiers: flat.length > 0 ? flat : undefined,
       cashExcluded,
+      origPrice: Number(product.price),
+      hasPromo,
     });
     addToast(
       switched
@@ -155,7 +172,10 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
           <div className="flex items-center gap-2">
             <p className="font-semibold leading-tight">{product.name}</p>
             {product.featured_today && <Badge className="bg-sun text-ink hover:bg-sun">Hoy</Badge>}
-            {outStock && <Badge variant="secondary" className="bg-red-100 text-red-700 text-[10px]">Sin stock</Badge>}
+          {outStock && <Badge variant="secondary" className="bg-red-100 text-red-700 text-[10px]">Sin stock</Badge>}
+          {volBadge && acceptsCart && !outStock && (
+            <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-1.5 py-0.5 whitespace-nowrap">{volBadge}</span>
+          )}
           </div>
           {product.description && (
             <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{product.description}</p>
@@ -175,7 +195,7 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
         )}
         {!outStock &&
           (acceptsCart ? (
-            <AddToCartButton offerId={product.id} name={product.name} price={basePrice} vendor={vendor} modifiers={modifiers} cashExcluded={cashExcluded} />
+            <AddToCartButton offerId={product.id} name={product.name} price={basePrice} vendor={vendor} modifiers={modifiers} cashExcluded={cashExcluded} origPrice={Number(product.price)} hasPromo={hasPromo} />
           ) : (
             <a href={consultHref} target="_blank" rel="noopener noreferrer" className="rounded-md px-3 py-1.5 text-sm font-medium text-center bg-primary text-primary-foreground hover:bg-primary/90">Consultar</a>
           ))}
@@ -219,6 +239,9 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
             <span className="font-bold">${Number(product.price).toLocaleString("es-AR")}</span>
           )}
           {outStock && <Badge variant="secondary" className="bg-red-100 text-red-700 text-[10px]">Sin stock</Badge>}
+          {volBadge && acceptsCart && !outStock && (
+            <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-1.5 py-0.5 whitespace-nowrap">{volBadge}</span>
+          )}
         </div>
       </div>
       <span className="text-muted-foreground text-lg flex-shrink-0">›</span>

@@ -10,6 +10,8 @@ export function buildOrderMessage(params: {
   notes?: string;
   cashDiscount?: number | null;
   cashPct?: number | null;
+  volumeDiscount?: number | null;
+  volumeLabel?: string;
 }): string {
   const lines = params.items.map((i) => {
     const modStr = i.modifiers && i.modifiers.length > 0
@@ -31,6 +33,10 @@ export function buildOrderMessage(params: {
       ? `\nDesc. efectivo (${Number(params.cashPct) || 0}%): -$${Number(params.cashDiscount).toLocaleString("es-AR")}`
       : "";
 
+  const volumeLine = Number(params.volumeDiscount) > 0
+    ? `\nDesc. volumen${params.volumeLabel ? ` (${params.volumeLabel})` : ""}: -$${Number(params.volumeDiscount).toLocaleString("es-AR")}`
+    : "";
+
   return [
     `Hola ${params.vendorName}! Quiero hacer un pedido:`,
     "",
@@ -43,6 +49,7 @@ export function buildOrderMessage(params: {
     notesLine,
     paymentLine,
     cashLine,
+    volumeLine,
   ].filter(Boolean).join("\n");
 }
 
@@ -61,6 +68,8 @@ export function buildComandaWhatsApp(params: {
   registerUrl?: string;
   cashDiscount?: number | null;
   cashPct?: number | null;
+  volumeDiscount?: number | null;
+  volumeLabel?: string;
 }): string {
   const sep = "------------------------------";
   const id = params.orderId ? params.orderId.slice(0, 8) : "--------";
@@ -90,6 +99,9 @@ export function buildComandaWhatsApp(params: {
     params.paymentMethod === "efectivo" && Number(params.cashDiscount) > 0
       ? `Desc. efectivo (${Number(params.cashPct) || 0}%): -$${Number(params.cashDiscount).toLocaleString("es-AR")}`
       : "";
+  const volumeLine = Number(params.volumeDiscount) > 0
+    ? `Desc. volumen${params.volumeLabel ? ` (${params.volumeLabel})` : ""}: -$${Number(params.volumeDiscount).toLocaleString("es-AR")}`
+    : "";
 
   return [
     `*${params.vendorName}*`,
@@ -102,6 +114,7 @@ export function buildComandaWhatsApp(params: {
     ...itemLines,
     sep,
     cashLine,
+    volumeLine,
     `TOTAL: *$${params.total.toLocaleString("es-AR")}*`,
     "",
     `Cliente: ${params.customerName}`,

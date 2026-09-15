@@ -1,5 +1,6 @@
 import { Redis } from "@upstash/redis";
 import { config } from "./config.mjs";
+import { query, queryOne } from "./db.mjs";
 
 let redis = null;
 const memory = new Map();
@@ -43,25 +44,29 @@ export async function clearState(vendorId, waId) {
   }
 }
 
-// ————— QR de vinculación —————
-// Guarda el último QR para /vendor/wa-bot. TTL corto (90s): si el QR expira,
-// el relay re-emite otro y esto se sobreescribe.
-const QR_TTL_S = 90;
-const qrKey = (vendorId) => `wa:qr:${vendorId}`;
+// ————— QR de vinculación (guardado en Postgres, TTL por antigüedad 90s) —————
+const QR_TTL_MS = 90 * 1000;
 
-export async function saveQrToken(vendorId, dataUrl) {
-  const r = getRedis();
-  if (!r) return;
-  await r.set(qrKey(vendorId), dataUrl, { ex: QR_TTL_S });
+export async function saveQrToken(vendorId, data) {
+  await query(
+    `UPDATE vendor_wa_bots SET qr_data = $1, qr_updated_at = now() WHERE vendor_id = $2`,
+    [data, vendorId]
+  );
+  console.log(`[qr] guardado para vendor ${vendorId}`);
 }
 
 export async function getQrToken(vendorId) {
-  const r = getRedis();
-  if (!r) return null;
-  return r.get(qrKey(vendorId));
+  const row = await queryOne(
+    `SELECT qr_data FROM vendor_wa_bots
+     WHERE vendor_id = $1 AND qr_updated_at > now() - interval '90 seconds'`,
+    [vendorId]
+  );
+  return row?.qr_data ?? null;
 }
 
 export async function clearQrToken(vendorId) {
-  const r = getRedis();
-  if (r) await r.del(qrKey(vendorId));
+  await query(
+    `UPDATE vendor_wa_bots SET qr_data = NULL, qr_updated_at = NULL WHERE vendor_id = $1`,
+    [vendorId]
+  );
 }

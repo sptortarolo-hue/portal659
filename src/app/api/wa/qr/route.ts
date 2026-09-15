@@ -1,18 +1,11 @@
-import { Redis } from "@upstash/redis";
 import { getAuthUser } from "@/lib/auth";
 import { getVendorByRequest } from "@/lib/vendor-utils";
+import { queryOne } from "@/lib/db";
 import { NextResponse } from "next/server";
-
-function getRedis(): Redis | null {
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) return null;
-  return new Redis({ url, token });
-}
 
 /**
  * GET /api/wa/qr — devuelve el QR de vinculación del bot de WhatsApp del comercio
- * actual (el que genera el relay en el celular y el cerebro guarda en Redis con TTL).
+ * actual (el que genera el relay en el celular y el cerebro guarda en Postgres).
  * Devuelve `{ qr: string | null }`; el panel /vendor/wa-bot lo renderiza como imagen.
  */
 export async function GET(request: Request) {
@@ -25,11 +18,10 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "No autorizado" }, { status: 403 });
   }
 
-  const redis = getRedis();
-  if (!redis) {
-    return NextResponse.json({ error: "Redis no inicializado" }, { status: 500 });
-  }
-
-  const value = await redis.get<string>(`wa:qr:${vendor.id}`);
-  return NextResponse.json({ qr: value ?? null });
+  const row = await queryOne<{ qr_data: string | null }>(
+    `SELECT qr_data FROM vendor_wa_bots
+     WHERE vendor_id = $1 AND qr_updated_at > now() - interval '90 seconds'`,
+    [vendor.id]
+  );
+  return NextResponse.json({ qr: row?.qr_data ?? null });
 }

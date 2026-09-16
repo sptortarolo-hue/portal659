@@ -221,7 +221,7 @@ func (r *relay) login(ctx context.Context) bool {
 				break
 			}
 		}
-		if linked {
+		if linked || r.client.Store.ID != nil {
 			fmt.Println("LINKED=1")
 			_, _ = r.db.Exec("PRAGMA wal_checkpoint(TRUNCATE)") // persistir identidad en Android
 			r.stateCh <- "linked"

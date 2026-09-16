@@ -182,5 +182,6 @@ async function createOrder(vendorId, state) {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `order ${res.status}`);
+  console.log(`[bot] pedido creado (id ${data?.id ?? "?"}) para vendor ${vendorId} · ${state.method} · ${state.items.length} ítems`);
   return data;
 }

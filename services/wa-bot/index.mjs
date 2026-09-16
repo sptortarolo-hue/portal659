@@ -31,6 +31,8 @@ server.on("upgrade", (req, socket, head) => {
   });
 });
 
+const lastPong = new Map(); // token -> última pong/bajada de actividad
+
 async function attach(ws, token) {
   let vendor = null;
   try {
@@ -48,6 +50,8 @@ async function attach(ws, token) {
   if (existing) existing.ws.close();
 
   addClient(token, ws, vendor);
+  lastPong.set(token, Date.now());
+  ws.on("pong", () => lastPong.set(token, Date.now()));
   ws.send(JSON.stringify({ type: "hello", vendor_id: vendor.id, enabled: vendor.enabled !== false }));
   console.log(`[relay] conectado ${vendor.store_name} (${vendor.id})`, { clients: clientCount() });
 
@@ -60,25 +64,59 @@ async function attach(ws, token) {
     }
     // El relay manda el QR crudo (data del QR code) para escanearlo desde la web.
     if (msg.type === "qr" && msg.data) {
+      lastPong.set(token, Date.now());
       await saveQrToken(vendor.id, msg.data).catch(() => {});
       return;
     }
     if (msg.type === "qr_stop" || msg.type === "linked") {
       await clearQrToken(vendor.id).catch(() => {});
+      console.log(`[relay] ${msg.type === "linked" ? "vinculado" : "qr_stop"} ${vendor.store_name} (${vendor.id})`);
       return;
     }
     if (msg.type !== "message") return;
     if (!msg.wa_id || !msg.body) return;
 
+    lastPong.set(token, Date.now());
+    console.log(`[msg] de ${msg.wa_id}: ${msg.body}`);
+
     const result = await handleInbound({ vendor, waId: msg.wa_id, body: msg.body });
+    if (result.handoff) {
+      console.log(`[bot] handoff de ${msg.wa_id} (bot apagado) -> responde el dueño`);
+      return;
+    }
     for (const reply of result.replies || []) {
-      sendText(getClient(token), msg.wa_id, reply);
+      const sent = sendText(getClient(token), msg.wa_id, reply);
+      console.log(`[bot] reply a ${msg.wa_id} (${sent ? "enviado" : "SIN_CONEXION"}): ${reply}`);
     }
   });
 
-  ws.on("close", () => removeClient(token, ws));
+  ws.on("close", () => {
+    removeClient(token, ws);
+    lastPong.delete(token);
+    console.log(`[ws] relay desconectado ${vendor.store_name} (${vendor.id})`, { clients: clientCount() });
+  });
   ws.on("error", () => removeClient(token, ws));
 }
+
+// Heartbeat: permite distinguir "relay vivo pero en silencio" de "relay muerto".
+// gorilla/websocket responde a los ping automáticamente, así que un relay sano
+// mantiene lastPong fresco sin tocar el APK.
+setInterval(() => {
+  const now = Date.now();
+  for (const [token, ts] of lastPong) {
+    const client = getClient(token);
+    if (!client) {
+      lastPong.delete(token);
+      continue;
+    }
+    if (now - ts < 60_000) continue;
+    console.log(`[heartbeat] ${client.vendor.store_name} (${token}) sin pong > 60s — relay caído, cerrando`);
+    try {
+      client.ws.terminate();
+    } catch {}
+    lastPong.delete(token);
+  }
+}, 20_000);
 
 process.on("SIGTERM", () => process.exit(0));
 process.on("SIGINT", () => process.exit(0));

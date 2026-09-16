@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Modal } from "@/components/ui/modal";
 import {
   OfferForm,
   OfferList,
@@ -12,6 +14,11 @@ import {
 import { ModifierLibrary, ProductModifiersBlock } from "@/components/dashboard/modifier-editor";
 import { VolumeEditor } from "@/components/dashboard/volume-editor";
 import { MenuImportModal } from "@/components/dashboard/menu-import";
+import { ProductsTable } from "@/components/dashboard/products-table";
+import { ProductDrawer } from "@/components/dashboard/product-drawer";
+import { RecipeEditor, type RecipeLinkInfo } from "@/components/dashboard/recipe-editor";
+import { PlanLock } from "@/components/vendor/plan-lock";
+import type { Ingredient, Recipe, RecipeItem } from "@/types/database";
 
 type MenuCategory = { id: string; name: string; position: number };
 
@@ -34,14 +41,24 @@ type Offer = {
 
 type CostInfo = { cost: number | null; pct: number | null; status: "ok" | "warn" | "bad" | "none" };
 
+type RecipeCtx = {
+  ingredients: Ingredient[];
+  recipes: Recipe[];
+  allItems: RecipeItem[];
+  links: RecipeLinkInfo[];
+  thresholds: { warn: number; bad: number };
+};
+
 type Props = {
   offers: Offer[];
   categories: MenuCategory[];
   reload: () => void;
   msg: string;
   setMsg: (m: string) => void;
-  /** Muestra el chip de food-cost por plato (plan con recetas). */
+  /** Muestra el chip de food-cost por plato y habilita la receta en el drawer. */
   showCosts?: boolean;
+  /** Plan del comercio: si no tiene recetas, la solapa Receta muestra PlanLock. */
+  hasRecipes?: boolean;
 };
 
 type View = "productos" | "categorias" | "opciones" | "volumen";
@@ -53,20 +70,51 @@ const VIEWS: { id: View; icon: string; label: string }[] = [
   { id: "volumen", icon: "📦", label: "Precios por volumen" },
 ];
 
+type BulkOp = "pct_up" | "pct_down" | "add" | "set";
+
+const BULK_OPS: { id: BulkOp; label: string }[] = [
+  { id: "pct_up", label: "Subir %" },
+  { id: "pct_down", label: "Bajar %" },
+  { id: "add", label: "Sumar $" },
+  { id: "set", label: "Precio fijo $" },
+];
+
+function applyOp(price: number, op: BulkOp, value: number): number {
+  const n =
+    op === "pct_up"
+      ? Math.round((price * (100 + value)) / 100)
+      : op === "pct_down"
+        ? Math.round((price * (100 - value)) / 100)
+        : op === "add"
+          ? price + value
+          : value;
+  return Math.max(0, n);
+}
+
 /**
  * Panel integrado del menú (gastro): productos, categorías, biblioteca de
  * opciones/modificadores, precios por volumen e importación por Excel.
- * Reemplaza lo que antes estaba duplicado entre el tab Menú y la sección
- * "Menú" de Configuración. Mismos componentes en mobile y desktop; solo
- * cambia la densidad de la barra de solapas.
+ * Desktop (≥lg): tabla densa + drawer lateral con Datos/Opciones/Receta y
+ * acción masiva de precios. Mobile (<lg): mismas cards + edición inline de
+ * siempre (OfferList).
  */
-export function MenuStudio({ offers, categories, reload, msg, setMsg, showCosts = false }: Props) {
+export function MenuStudio({
+  offers,
+  categories,
+  reload,
+  msg,
+  setMsg,
+  showCosts = false,
+  hasRecipes = false,
+}: Props) {
   const [view, setView] = useState<View>("productos");
   const [showImport, setShowImport] = useState(false);
   const [saving, setSaving] = useState(false);
   const [costByProduct, setCostByProduct] = useState<Record<string, CostInfo>>({});
+  const [costsNonce, setCostsNonce] = useState(0);
 
-  // Estado del formulario de plato (alta/edición inline bajo la card).
+  // Estado del formulario de plato (alta/edición; lo comparten el inline de
+  // mobile y el drawer de desktop).
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [offName, setOffName] = useState("");
@@ -82,6 +130,58 @@ export function MenuStudio({ offers, categories, reload, msg, setMsg, showCosts 
   const [offRequiresPrep, setOffRequiresPrep] = useState<boolean>(true);
   const [offCashExcluded, setOffCashExcluded] = useState(false);
 
+  // Drawer (desktop).
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
+  // Toolbar desktop: búsqueda + filtros + selección.
+  const [search, setSearch] = useState("");
+  const [catFilter, setCatFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "paused" | "nostock">("all");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  // Precios masivos.
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkOp, setBulkOp] = useState<BulkOp>("pct_up");
+  const [bulkValue, setBulkValue] = useState("");
+  const [bulkSaving, setBulkSaving] = useState(false);
+
+  // Contexto de recetas: se carga lazy la primera vez que se abre el drawer.
+  const [recipeCtx, setRecipeCtx] = useState<RecipeCtx | null>(null);
+  const recipeCtxLoadingRef = useRef(false);
+  const [recipeCtxLoading, setRecipeCtxLoading] = useState(false);
+
+  const refreshRecipeCtx = useCallback(async () => {
+    const [ing, r, c] = await Promise.all([
+      getJson<{ ingredients: Ingredient[] }>("/api/vendor/ingredients"),
+      getJson<{ recipes: Recipe[]; items: RecipeItem[] }>("/api/vendor/recipes"),
+      getJson<{ links: RecipeLinkInfo[]; thresholds: { warn: number; bad: number } }>(
+        "/api/vendor/recipes/costs"
+      ),
+    ]);
+    setRecipeCtx({
+      ingredients: ing?.ingredients || [],
+      recipes: r?.recipes || [],
+      allItems: r?.items || [],
+      links: c?.links || [],
+      thresholds: c?.thresholds || { warn: 30, bad: 35 },
+    });
+    setCostsNonce((n) => n + 1);
+  }, []);
+
+  const ensureRecipeCtx = useCallback(async () => {
+    // Se llama al abrir el drawer: recarga fresca por si el usuario tocó
+    // el tab Recetas entre aperturas. El ref evita requests duplicados.
+    if (recipeCtxLoadingRef.current) return;
+    recipeCtxLoadingRef.current = true;
+    setRecipeCtxLoading(true);
+    try {
+      await refreshRecipeCtx();
+    } finally {
+      recipeCtxLoadingRef.current = false;
+      setRecipeCtxLoading(false);
+    }
+  }, [refreshRecipeCtx]);
+
   // Food-cost por plato (módulo Recetas): 403 si el plan no lo incluye, se ignora.
   useEffect(() => {
     if (!showCosts) return;
@@ -95,8 +195,13 @@ export function MenuStudio({ offers, categories, reload, msg, setMsg, showCosts 
       }
       setCostByProduct(map);
     })();
-    return () => { cancelled = true; };
-  }, [showCosts, offers]);
+    return () => {
+      cancelled = true;
+    };
+  }, [showCosts, offers, costsNonce]);
+
+  const isDesktop = () =>
+    typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches;
 
   function resetForm() {
     setEditingId(null);
@@ -133,6 +238,25 @@ export function MenuStudio({ offers, categories, reload, msg, setMsg, showCosts 
     setMsg("");
   }
 
+  /** Edición desde la tabla desktop: abre el drawer lateral. */
+  function openEdit(offer: Offer) {
+    startEdit(offer);
+    setDrawerOpen(true);
+    if (hasRecipes) ensureRecipeCtx();
+  }
+
+  /** "+ Plato": drawer en desktop, form inline en mobile. */
+  function openNewForm() {
+    resetForm();
+    setShowForm(true);
+    if (isDesktop()) setDrawerOpen(true);
+  }
+
+  function closeEditor() {
+    setDrawerOpen(false);
+    resetForm();
+  }
+
   async function handleOfferSubmit() {
     if (!offName.trim() || !offPrice) {
       setMsg("Completá nombre y precio");
@@ -142,7 +266,7 @@ export function MenuStudio({ offers, categories, reload, msg, setMsg, showCosts 
     setMsg("");
 
     let imageUrl = editingId
-      ? (offers.find((o) => o.id === editingId)?.image_url || null)
+      ? offers.find((o) => o.id === editingId)?.image_url || null
       : null;
     if (offFile) {
       const fd = new FormData();
@@ -183,8 +307,15 @@ export function MenuStudio({ offers, categories, reload, msg, setMsg, showCosts 
     if (data.error) {
       setMsg(data.error);
     } else {
-      resetForm();
       setMsg(editingId ? "Plato actualizado" : "Plato agregado");
+      if (!editingId && drawerOpen && data.offer?.id) {
+        // Alta desde el drawer desktop: queda abierto en modo edición para
+        // cargar opciones/receta sin reabrir.
+        setEditingId(data.offer.id);
+        if (hasRecipes) ensureRecipeCtx();
+      } else {
+        closeEditor();
+      }
       reload();
     }
   }
@@ -210,7 +341,13 @@ export function MenuStudio({ offers, categories, reload, msg, setMsg, showCosts 
   async function deleteOffer(offer: Offer) {
     if (!confirm(`¿Eliminar "${offer.name}"? Esta acción no se puede deshacer.`)) return;
     await fetch(`/api/vendor/offers/${offer.id}`, { method: "DELETE" });
-    if (editingId === offer.id) resetForm();
+    if (editingId === offer.id) closeEditor();
+    setSelected((prev) => {
+      if (!prev.has(offer.id)) return prev;
+      const next = new Set(prev);
+      next.delete(offer.id);
+      return next;
+    });
     setMsg("Plato eliminado");
     reload();
   }
@@ -270,44 +407,162 @@ export function MenuStudio({ offers, categories, reload, msg, setMsg, showCosts 
     ).length,
   };
 
-  const offerFormNode = (
+  // --- Toolbar: filtrado ---------------------------------------------------
+  const filteredOffers = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return offers.filter((o) => {
+      if (q && !o.name.toLowerCase().includes(q)) return false;
+      if (catFilter !== "all" && (o.category || "") !== catFilter) return false;
+      if (statusFilter === "active" && !o.available) return false;
+      if (statusFilter === "paused" && o.available) return false;
+      if (statusFilter === "nostock" && !(o.stock_control && o.stock !== null && o.stock === 0))
+        return false;
+      return true;
+    });
+  }, [offers, search, catFilter, statusFilter]);
+
+  function toggleSelect(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAll(ids: string[]) {
+    setSelected((prev) => {
+      const all = ids.length > 0 && ids.every((id) => prev.has(id));
+      const next = new Set(prev);
+      if (all) ids.forEach((id) => next.delete(id));
+      else ids.forEach((id) => next.add(id));
+      return next;
+    });
+  }
+
+  // --- Precios masivos -----------------------------------------------------
+  const bulkTargets = useMemo(() => {
+    const scoped = selected.size > 0 ? offers.filter((o) => selected.has(o.id)) : filteredOffers;
+    return scoped;
+  }, [offers, selected, filteredOffers]);
+
+  async function applyBulkPrice() {
+    const value = Number(bulkValue);
+    if (!bulkValue || !isFinite(value) || value < 0) {
+      setMsg("Ingresá un valor válido para modificar precios");
+      return;
+    }
+    if (bulkTargets.length === 0) return;
+    setBulkSaving(true);
+    try {
+      const res = await fetch("/api/vendor/offers/bulk-price", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: bulkTargets.map((o) => o.id), op: bulkOp, value }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) {
+        setMsg(data.error || "No se pudieron actualizar los precios");
+        return;
+      }
+      setMsg(`Precios actualizados en ${data.updated ?? bulkTargets.length} platos`);
+      setSelected(new Set());
+      setBulkOpen(false);
+      setBulkValue("");
+      reload();
+    } finally {
+      setBulkSaving(false);
+    }
+  }
+
+  // --- Nodos compartidos ----------------------------------------------------
+  // El OfferForm puro (una sola instancia de estado): se monta inline en
+  // mobile o dentro del drawer (solapa Datos) en desktop.
+  const offerForm = (
+    <OfferForm
+      categories={categories}
+      editingId={editingId}
+      offName={offName}
+      setOffName={setOffName}
+      offDesc={offDesc}
+      setOffDesc={setOffDesc}
+      offPrice={offPrice}
+      setOffPrice={setOffPrice}
+      offCategory={offCategory}
+      setOffCategory={setOffCategory}
+      offFile={offFile}
+      setOffFile={setOffFile}
+      offPreview={offPreview}
+      setOffPreview={setOffPreview}
+      saving={saving}
+      onSubmit={handleOfferSubmit}
+      showStock
+      offStock={offStock}
+      setOffStock={setOffStock}
+      offStockControl={offStockControl}
+      setOffStockControl={setOffStockControl}
+      offPromoPrice={offPromoPrice}
+      setOffPromoPrice={setOffPromoPrice}
+      offStockLowThreshold={offStockLowThreshold}
+      setOffStockLowThreshold={setOffStockLowThreshold}
+      showPrep
+      offRequiresPrep={offRequiresPrep}
+      setOffRequiresPrep={setOffRequiresPrep}
+      offCashExcluded={offCashExcluded}
+      setOffCashExcluded={setOffCashExcluded}
+      onClose={closeEditor}
+    />
+  );
+
+  // Mobile (inline): form + modificadores debajo, como venía funcionando.
+  const offerFormInline = (
     <div className="space-y-3">
-      <OfferForm
-        categories={categories}
-        editingId={editingId}
-        offName={offName}
-        setOffName={setOffName}
-        offDesc={offDesc}
-        setOffDesc={setOffDesc}
-        offPrice={offPrice}
-        setOffPrice={setOffPrice}
-        offCategory={offCategory}
-        setOffCategory={setOffCategory}
-        offFile={offFile}
-        setOffFile={setOffFile}
-        offPreview={offPreview}
-        setOffPreview={setOffPreview}
-        saving={saving}
-        onSubmit={handleOfferSubmit}
-        showStock
-        offStock={offStock}
-        setOffStock={setOffStock}
-        offStockControl={offStockControl}
-        setOffStockControl={setOffStockControl}
-        offPromoPrice={offPromoPrice}
-        setOffPromoPrice={setOffPromoPrice}
-        offStockLowThreshold={offStockLowThreshold}
-        setOffStockLowThreshold={setOffStockLowThreshold}
-        showPrep
-        offRequiresPrep={offRequiresPrep}
-        setOffRequiresPrep={setOffRequiresPrep}
-        offCashExcluded={offCashExcluded}
-        setOffCashExcluded={setOffCashExcluded}
-        onClose={resetForm}
-      />
+      {offerForm}
       {editingId && <ProductModifiersBlock productId={editingId} productName={offName} />}
     </div>
   );
+
+  const editingOffer = editingId ? offers.find((o) => o.id === editingId) : undefined;
+
+  let recetaNode: ReactNode = null;
+  if (editingId) {
+    if (!hasRecipes) {
+      recetaNode = (
+        <PlanLock
+          title="Recetas y costos"
+          description="La receta por plato (escandallo) y el semáforo de food cost forman parte del plan Gestión integral."
+        />
+      );
+    } else if (!recipeCtx) {
+      recetaNode = (
+        <p className="text-sm text-muted-foreground py-6 text-center">
+          {recipeCtxLoading ? "Cargando insumos y recetas…" : "Preparando editor…"}
+        </p>
+      );
+    } else if (editingOffer) {
+      recetaNode = (
+        <RecipeEditor
+          key={editingId}
+          target={{ productId: editingOffer.id }}
+          title={editingOffer.name}
+          subtitle="Receta del plato (cantidades netas por porción)"
+          salePrice={Number(editingOffer.price) || 0}
+          ingredients={recipeCtx.ingredients.filter((i) => i.active)}
+          recipes={recipeCtx.recipes}
+          allItems={recipeCtx.allItems}
+          products={offers.map((o) => ({ id: o.id, name: o.name, price: Number(o.price) || 0 }))}
+          links={recipeCtx.links}
+          thresholds={recipeCtx.thresholds}
+          onSaved={refreshRecipeCtx}
+          onDeleted={refreshRecipeCtx}
+          onLinksChanged={refreshRecipeCtx}
+        />
+      );
+    }
+  }
+
+  const sample = bulkTargets[0];
+  const bulkValueNum = Number(bulkValue);
 
   return (
     <div className="space-y-4">
@@ -316,10 +571,16 @@ export function MenuStudio({ offers, categories, reload, msg, setMsg, showCosts 
         <div className="flex items-center gap-3 min-w-0">
           <h2 className="font-display text-xl font-semibold flex-shrink-0">Menú</h2>
           <div className="hidden lg:flex items-center gap-1.5 text-[11px] text-muted-foreground">
-            <span className="rounded-full border border-border px-2 py-0.5 tabular-nums">{stats.total} platos</span>
-            <span className="rounded-full border border-border px-2 py-0.5 tabular-nums">{stats.active} activos</span>
+            <span className="rounded-full border border-border px-2 py-0.5 tabular-nums">
+              {stats.total} platos
+            </span>
+            <span className="rounded-full border border-border px-2 py-0.5 tabular-nums">
+              {stats.active} activos
+            </span>
             {stats.noPhoto > 0 && (
-              <span className="rounded-full border border-border px-2 py-0.5 tabular-nums">{stats.noPhoto} sin foto</span>
+              <span className="rounded-full border border-border px-2 py-0.5 tabular-nums">
+                {stats.noPhoto} sin foto
+              </span>
             )}
             {stats.lowStock > 0 && (
               <span className="rounded-full border border-red-200 bg-red-50 px-2 py-0.5 tabular-nums text-red-700">
@@ -353,17 +614,62 @@ export function MenuStudio({ offers, categories, reload, msg, setMsg, showCosts 
 
       {view === "productos" && (
         <div className="space-y-3">
+          {/* Toolbar: desktop con buscador/filtros/precios masivos; mobile = misma fila de siempre */}
           <div className="flex items-center justify-between gap-2 flex-wrap">
-            <p className="text-sm text-muted-foreground">La carta que ven tus clientes.</p>
+            <p className="text-sm text-muted-foreground lg:hidden">La carta que ven tus clientes.</p>
+            <div className="hidden lg:flex items-center gap-2 flex-1 min-w-0">
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="🔍 Buscar producto…"
+                className="w-48"
+              />
+              <select
+                value={catFilter}
+                onChange={(e) => setCatFilter(e.target.value)}
+                className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                aria-label="Filtrar por categoría"
+              >
+                <option value="all">Todas las categorías</option>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.name}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={statusFilter}
+                onChange={(e) =>
+                  setStatusFilter(e.target.value as "all" | "active" | "paused" | "nostock")
+                }
+                className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                aria-label="Filtrar por estado"
+              >
+                <option value="all">Todos</option>
+                <option value="active">Activos</option>
+                <option value="paused">Pausados</option>
+                <option value="nostock">Sin stock</option>
+              </select>
+            </div>
             <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="hidden lg:inline-flex"
+                disabled={filteredOffers.length === 0}
+                onClick={() => setBulkOpen(true)}
+              >
+                💲 Modificar precios{selected.size > 0 ? ` (${selected.size})` : ""}
+              </Button>
               <Button type="button" size="sm" variant="outline" onClick={() => setShowImport(true)}>
                 📥 Importar Excel
               </Button>
               <Button
                 size="sm"
                 onClick={() => {
-                  if (editingId || showForm) resetForm();
-                  else setShowForm(true);
+                  if (editingId || showForm) closeEditor();
+                  else openNewForm();
                 }}
               >
                 {editingId || showForm ? "Cancelar" : "+ Plato"}
@@ -373,19 +679,50 @@ export function MenuStudio({ offers, categories, reload, msg, setMsg, showCosts 
 
           {msg && <p className="text-sm text-green-700">{msg}</p>}
 
-          {showForm && !editingId && offerFormNode}
+          {showForm && !editingId && <div className="lg:hidden">{offerFormInline}</div>}
 
-          <OfferList
-            offers={offers}
-            onEdit={startEdit}
-            onToggleFeatured={toggleFeatured}
-            onToggleAvailable={toggleAvailable}
-            onDelete={deleteOffer}
-            editingId={editingId}
-            editForm={editingId ? offerFormNode : undefined}
-            onEditModifiers={(offer) => startEdit(offer)}
-            costByProduct={showCosts ? costByProduct : undefined}
-          />
+          {/* Mobile: cards como siempre. Desktop: tabla densa. */}
+          <div className="lg:hidden">
+            <OfferList
+              offers={offers}
+              onEdit={startEdit}
+              onToggleFeatured={toggleFeatured}
+              onToggleAvailable={toggleAvailable}
+              onDelete={deleteOffer}
+              editingId={editingId}
+              editForm={editingId ? offerFormInline : undefined}
+              onEditModifiers={(offer) => startEdit(offer)}
+              costByProduct={showCosts ? costByProduct : undefined}
+            />
+          </div>
+          <div className="hidden lg:block">
+            {filteredOffers.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-10 rounded-xl border border-border bg-card">
+                {offers.length === 0
+                  ? "Todavía no cargaste platos."
+                  : "No hay productos con esos filtros."}
+              </p>
+            ) : (
+              <ProductsTable
+                offers={filteredOffers}
+                costByProduct={showCosts ? costByProduct : undefined}
+                selected={selected}
+                onToggleSelect={toggleSelect}
+                onToggleAll={toggleSelectAll}
+                onEdit={openEdit}
+                onToggleFeatured={toggleFeatured}
+                onToggleAvailable={toggleAvailable}
+                onDelete={deleteOffer}
+              />
+            )}
+          </div>
+
+          {selected.size > 0 && (
+            <p className="hidden lg:block text-xs text-muted-foreground tabular-nums">
+              {selected.size} seleccionado{selected.size === 1 ? "" : "s"} · sin selección el cambio
+              de precios aplica a los {filteredOffers.length} filtrados
+            </p>
+          )}
         </div>
       )}
 
@@ -427,6 +764,89 @@ export function MenuStudio({ offers, categories, reload, msg, setMsg, showCosts 
             `Menú importado: ${sum.imported} platos nuevos, ${sum.updated} actualizados, ${sum.createdCategories.length} categorías creadas.`
           );
         }}
+      />
+
+      {/* Precios masivos (desktop) */}
+      <Modal
+        open={bulkOpen}
+        onClose={() => setBulkOpen(false)}
+        title="Modificar precios"
+        footer={
+          <>
+            <Button
+              type="button"
+              className="flex-1"
+              disabled={bulkSaving || !bulkValue}
+              onClick={applyBulkPrice}
+            >
+              {bulkSaving ? "Aplicando…" : `Aplicar a ${bulkTargets.length}`}
+            </Button>
+            <Button type="button" variant="outline" onClick={() => setBulkOpen(false)}>
+              Cancelar
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            {selected.size > 0
+              ? `Se aplica a los ${bulkTargets.length} platos seleccionados.`
+              : `Sin selección: se aplica a los ${bulkTargets.length} platos filtrados.`}{" "}
+            Los precios promo no se modifican.
+          </p>
+          <div className="flex gap-2">
+            <select
+              value={bulkOp}
+              onChange={(e) => setBulkOp(e.target.value as BulkOp)}
+              className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+              aria-label="Tipo de cambio"
+            >
+              {BULK_OPS.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+            <Input
+              type="number"
+              min={0}
+              step="any"
+              inputMode="decimal"
+              placeholder={bulkOp === "pct_up" || bulkOp === "pct_down" ? "10" : "500"}
+              value={bulkValue}
+              onChange={(e) => setBulkValue(e.target.value)}
+              className="flex-1"
+            />
+          </div>
+          {sample && bulkValue && isFinite(bulkValueNum) && bulkValueNum >= 0 && (
+            <p className="text-sm rounded-lg bg-muted px-3 py-2 tabular-nums">
+              Ej.: {sample.name} ${Number(sample.price).toLocaleString("es-AR")} →{" "}
+              <strong>
+                ${applyOp(Number(sample.price), bulkOp, bulkValueNum).toLocaleString("es-AR")}
+              </strong>
+            </p>
+          )}
+        </div>
+      </Modal>
+
+      {/* Drawer de edición (desktop; en mobile el inline sigue vigente: el
+          drawer solo se abre desde la tabla ≥lg o desde "+ Plato" en ≥lg) */}
+      <ProductDrawer
+        open={drawerOpen}
+        onClose={closeEditor}
+        title={editingId ? offName || "Editar plato" : "Nuevo plato"}
+        subtitle={
+          editingId
+            ? editingOffer?.category || undefined
+            : "Completá los datos y guardá; después asignás opciones y receta."
+        }
+        isNew={!editingId}
+        hasRecipes={hasRecipes}
+        datosNode={<div className="space-y-3">{offerForm}</div>}
+        opcionesNode={
+          editingId ? <ProductModifiersBlock productId={editingId} productName={offName} /> : null
+        }
+        recetaNode={recetaNode}
       />
     </div>
   );

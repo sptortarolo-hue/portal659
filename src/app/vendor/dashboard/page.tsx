@@ -1176,6 +1176,7 @@ function VendorDashboardInner() {
                     msg={msg}
                     setMsg={setMsg}
                     showCosts
+                    hasRecipes={effectivePlan.can("recipes")}
                   />
                 ) : (
                   <MemoProductManager

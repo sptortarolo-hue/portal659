@@ -235,8 +235,12 @@ func (r *relay) onEvent(evt any) {
 		fmt.Println("CONNECTED=1")
 	case *events.LoggedOut:
 		fmt.Println("LOGGED_OUT=1")
-		os.Exit(1)
+		// La sesión se cerró desde WhatsApp: hay que re-escanear el QR.
+		// NO matamos el proceso: el usuario ve el estado y re-vincula.
 	case *events.Disconnected:
+		// Corte transitorio de red: whatsmeow auto-reconecta solo
+		// (EnableAutoReconnect). Antes hacíamos os.Exit(1) → WhatsApp mostraba
+		// "sincronizando / última conexión" cada vez que el proceso moría.
 		fmt.Println("DISCONNECTED=1")
 	}
 }

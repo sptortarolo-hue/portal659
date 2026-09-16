@@ -32,6 +32,20 @@ export async function POST(request: Request) {
   return NextResponse.json({ ok: true });
 }
 
+export async function DELETE(request: Request) {
+  const userId = await getUserId(request);
+  if (!userId) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
+  const body = await request.json().catch(() => ({}));
+
+  if (body.all) {
+    await query(`DELETE FROM notifications WHERE user_id = $1`, [userId]);
+  } else if (body.notificationId) {
+    await query(`DELETE FROM notifications WHERE id = $1 AND user_id = $2`, [body.notificationId, userId]);
+  }
+
+  return NextResponse.json({ ok: true });
+}
+
 export async function PATCH(request: Request) {
   const userId = await getUserId(request);
   if (!userId) return NextResponse.json({ error: "No autenticado" }, { status: 401 });

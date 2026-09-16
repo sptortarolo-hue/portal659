@@ -75,6 +75,26 @@ export function NotificationBell() {
     setUnread(0);
   }
 
+  async function deleteAll() {
+    await fetch("/api/notifications", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ all: true }),
+    });
+    setNotifications([]);
+    setUnread(0);
+  }
+
+  async function deleteOne(id: string) {
+    await fetch("/api/notifications", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ notificationId: id }),
+    });
+    setNotifications((prev) => prev.filter((n) => n.id !== id));
+    setUnread((u) => Math.max(0, u - 1));
+  }
+
   function toggleOpen() {
     if (!open) {
       const r = bellRef.current?.getBoundingClientRect();
@@ -87,30 +107,45 @@ export function NotificationBell() {
     <>
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
         <span className="font-medium text-sm">Notificaciones</span>
-        {unread > 0 && (
-          <button onClick={markAllRead} className="text-xs text-primary hover:underline">
-            Marcar todo leído
-          </button>
+        {notifications.length > 0 && (
+          <>
+            {unread > 0 && (
+              <button onClick={markAllRead} className="text-xs text-primary hover:underline">
+                Marcar todo leído
+              </button>
+            )}
+            <button onClick={deleteAll} className="text-xs text-red-600 hover:underline ml-3">
+              Borrar todo
+            </button>
+          </>
         )}
       </div>
       {notifications.length === 0 ? (
         <p className="text-sm text-muted-foreground text-center py-8">Sin notificaciones</p>
       ) : (
         notifications.map((n) => (
-          <Link
-            key={n.id}
-            href={n.link || "#"}
-            onClick={() => setOpen(false)}
-            className={`block px-4 py-3 border-b border-border last:border-0 hover:bg-muted/50 ${
-              !n.read ? "bg-primary/5" : ""
-            }`}
-          >
-            <p className="text-sm font-medium leading-tight">{n.title}</p>
-            {n.body && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{n.body}</p>}
-            <p className="text-[10px] text-muted-foreground mt-1">
-              {new Date(n.created_at).toLocaleDateString("es-AR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
-            </p>
-          </Link>
+          <div key={n.id} className="relative group">
+            <Link
+              href={n.link || "#"}
+              onClick={() => setOpen(false)}
+              className={`block px-4 py-3 border-b border-border last:border-0 hover:bg-muted/50 ${
+                !n.read ? "bg-primary/5" : ""
+              }`}
+            >
+              <p className="text-sm font-medium leading-tight">{n.title}</p>
+              {n.body && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{n.body}</p>}
+              <p className="text-[10px] text-muted-foreground mt-1">
+                {new Date(n.created_at).toLocaleDateString("es-AR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+              </p>
+            </Link>
+            <button
+              onClick={(e) => { e.stopPropagation(); deleteOne(n.id); }}
+              className="absolute right-3 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 text-xs text-red-600 hover:text-red-700"
+              title="Borrar"
+            >
+              ✕
+            </button>
+          </div>
         ))
       )}
     </>

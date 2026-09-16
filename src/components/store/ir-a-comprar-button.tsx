@@ -1,11 +1,12 @@
 "use client";
 
 /**
- * Botón "Ir a comprar" del micrositio (gastronomía): scrollea hasta el menú,
- * dejándolo justo debajo del nav sticky de categorías (mismo destino que el
- * link compartido por WhatsApp con ?menu=1).
+ * Botón del micrositio que scrollea hasta el menú, dejándolo justo debajo del
+ * nav sticky de categorías (mismo destino que el link compartido por WhatsApp
+ * con ?menu=1). El label varía: con carrito "🛒 Ir a comprar", en modo lectura
+ * (venta online apagada) "📋 Ver la carta".
  */
-export function IrAComprarButton() {
+export function IrAComprarButton({ label }: { label?: string }) {
   function goToMenu() {
     const el = document.getElementById("menu");
     if (!el) return;
@@ -22,7 +23,7 @@ export function IrAComprarButton() {
       onClick={goToMenu}
       className="inline-flex items-center gap-1.5 rounded-full bg-primary text-primary-foreground px-3 py-1.5 text-xs font-medium hover:bg-primary/90 transition-colors"
     >
-      🛒 Ir a comprar
+      {label ?? "🛒 Ir a comprar"}
     </button>
   );
 }

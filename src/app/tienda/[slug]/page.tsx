@@ -289,9 +289,10 @@ export default async function TiendaPage({
   }
 
   const isService = v.vertical === "servicio";
-  // Solo-contacto (toggle OFF en gastro/moda): se oculta el menú y se muestra
-  // la tarjeta de contacto. El resto conserva su vidriera con consultar.
-  const hideMenu = !acceptsCart && (isGastro || isModa);
+  // Venta online apagada (gastro/moda): la carta SIGUE visible pero sin
+  // carrito — cada producto muestra "Consultar por WhatsApp". La tarjeta de
+  // solo-contacto aparece únicamente cuando todavía no hay carta cargada.
+  const noCart = !acceptsCart && (isGastro || isModa);
   const vendorBrief = {
     id: v.id,
     slug: v.slug,
@@ -379,7 +380,9 @@ export default async function TiendaPage({
                 <span className="font-bold text-primary">{v.store_name.charAt(0)}</span>
               </div>
             )}
-            {!isService && !isModa && (offers?.length || 0) > 0 && !hideMenu && <IrAComprarButton />}
+            {!isService && !isModa && (offers?.length || 0) > 0 && (
+              <IrAComprarButton label={acceptsCart ? undefined : "📋 Ver la carta"} />
+            )}
           </div>
 
           {/* Desktop: logo sigue arriba como siempre */}
@@ -418,7 +421,9 @@ export default async function TiendaPage({
             </div>
             <div className="flex items-center gap-2 ml-auto shrink-0">
               <span className="hidden sm:inline-flex">
-                {!isService && !isModa && (offers?.length || 0) > 0 && !hideMenu && <IrAComprarButton />}
+                {!isService && !isModa && (offers?.length || 0) > 0 && (
+                  <IrAComprarButton label={acceptsCart ? undefined : "📋 Ver la carta"} />
+                )}
               </span>
               <FavoriteButton vendorId={v.id} />
               <WhatsAppShareButton slug={v.slug} storeName={v.store_name} isModa={isModa} />
@@ -569,9 +574,9 @@ export default async function TiendaPage({
               <BookingForm vendorId={v.id} vendorName={v.store_name} services={offers?.map((o: any) => ({ id: o.id, name: o.name }))} />
             </div>
           </>
-        ) : hideMenu ? (
+        ) : noCart && sections.length === 0 ? (
           <>
-            {/* Solo contacto: sin menú, tarjeta de contacto directa */}
+            {/* Solo contacto sin carta cargada: tarjeta de contacto directa */}
             <div className="border border-border rounded-2xl p-8 text-center bg-card mt-6 mb-6">
               <h2 className="font-display text-2xl font-semibold mb-2">
                 Contactanos directo
@@ -614,7 +619,7 @@ export default async function TiendaPage({
             ) : (
               <>
                 {sections.length > 0 && <CategoryNav sections={sections} />}
-                {isGastro && volumeGroups.length > 0 && <VolumeProgress groups={volumeGroups} />}
+                {isGastro && acceptsCart && volumeGroups.length > 0 && <VolumeProgress groups={volumeGroups} />}
                 {sections.map((s, i) => (
                   <section key={s.name} id={`seccion-${i}`} className="mb-10 scroll-mt-[184px] sm:scroll-mt-24">
                     <h3 className="font-display text-xl font-semibold mb-4 border-b border-border pb-2">
@@ -624,7 +629,7 @@ export default async function TiendaPage({
                       {s.items.map((o: any) => {
                         if (isModa) {
                           return (
-                            <div key={o.id} id={`product-${o.id}`} className="scroll-mt-16 sm:scroll-mt-24">
+                            <div key={o.id} id={`product-${o.id}`} data-pname={String(o.name).toLowerCase()} className="scroll-mt-16 sm:scroll-mt-24">
                               <ProductCard
                                 product={o}
                                 variants={variantsByProduct[o.id] || []}
@@ -647,6 +652,7 @@ export default async function TiendaPage({
                             <div
                               key={o.id}
                               id={`product-${o.id}`}
+                              data-pname={String(o.name).toLowerCase()}
                               className="border border-border rounded-xl p-4 bg-card space-y-3 scroll-mt-16 sm:scroll-mt-24"
                             >
                               <div className="flex items-start gap-3">
@@ -716,14 +722,15 @@ export default async function TiendaPage({
                           );
                         }
                         return (
-                        <GastroProductRow
-                          key={o.id}
-                          product={o}
-                          vendor={vendorBrief}
-                          modifiers={modifiersByProduct[o.id] || []}
-                          acceptsCart={acceptsCart}
-                          consultHref={waUrl}
-                        />
+                        <div key={o.id} data-pname={String(o.name).toLowerCase()}>
+                          <GastroProductRow
+                            product={o}
+                            vendor={vendorBrief}
+                            modifiers={modifiersByProduct[o.id] || []}
+                            acceptsCart={acceptsCart}
+                            consultHref={waUrl}
+                          />
+                        </div>
                         );
                       })}
                     </div>

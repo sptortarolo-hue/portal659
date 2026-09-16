@@ -11,9 +11,10 @@ export function ScrollToMenu() {
   const params = useSearchParams();
 
   useEffect(() => {
-    if (params.get("menu") !== "1") return;
-    // Si hay oferta puntual, el scroll lo maneja ScrollToProduct.
-    if (params.get("oferta")) return;
+    // ?from=qr (link escaneado desde un QR impreso) se comporta como ?menu=1.
+    if (params.get("menu") !== "1" && params.get("from") !== "qr") return;
+    // Si hay oferta puntual o categoría puntual, ese scrollea lo maneja otro componente.
+    if (params.get("oferta") || params.get("cat")) return;
     const id = window.setTimeout(() => {
       const el = document.getElementById("menu");
       if (!el) return;

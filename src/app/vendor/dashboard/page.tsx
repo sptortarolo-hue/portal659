@@ -542,8 +542,9 @@ function VendorDashboardInner() {
     setShareOpen(true);
     try {
       // qrcode solo se carga al compartir (fuera del bundle inicial).
+      // El QR apunta directo a la carta (?menu=1) y marca la fuente ?from=qr.
       const { default: QRCode } = await import("qrcode");
-      const url = `${window.location.origin}/tienda/${vendor.slug}`;
+      const url = `${window.location.origin}/tienda/${vendor.slug}?menu=1&from=qr`;
       setQrDataUrl(await QRCode.toDataURL(url, { width: 480, margin: 1 }));
     } catch { /* noop */ }
   }, [vendor?.slug]);
@@ -1355,7 +1356,7 @@ function VendorDashboardInner() {
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={() => setShareOpen(false)}>
           <div className="bg-card rounded-2xl p-6 max-w-sm w-full text-center" onClick={(e) => e.stopPropagation()}>
             <h3 className="font-display text-xl font-semibold mb-1">Compartí tu vidriera</h3>
-            <p className="text-sm text-muted-foreground mb-4">El QR lleva directo a tu micrositio.</p>
+            <p className="text-sm text-muted-foreground mb-4">El QR lleva directo a tu carta (listo para imprimir y pegar en la mesa o el vidrio).</p>
             {qrDataUrl ? <img src={qrDataUrl} alt="QR" className="mx-auto w-48 h-48 mb-4" /> : <div className="mx-auto w-48 h-48 mb-4 bg-skeleton rounded-lg" />}
             <p className="text-xs text-muted-foreground break-all mb-4">{window.location.origin}/tienda/{vendor.slug}</p>
             <div className="space-y-2">
@@ -1369,6 +1370,25 @@ function VendorDashboardInner() {
               >
                 📲 {isModa ? "Compartir tienda" : "Compartir menú"}
               </a>
+              <div className="grid grid-cols-2 gap-2">
+                {qrDataUrl && (
+                  <a
+                    href={qrDataUrl}
+                    download={`qr-${vendor.slug}.png`}
+                    className="rounded-xl border border-border bg-background text-sm font-medium py-2.5 hover:bg-muted transition-colors"
+                  >
+                    ⬇️ QR (PNG)
+                  </a>
+                )}
+                <a
+                  href="/vendor/carta-qr"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="rounded-xl border border-border bg-background text-sm font-medium py-2.5 hover:bg-muted transition-colors"
+                >
+                  🖨️ Cartel para imprimir
+                </a>
+              </div>
               <div className="flex gap-2">
                 <Button className="flex-1" onClick={copyLink}>{copied ? "¡Copiado!" : "Copiar link"}</Button>
                 <Button variant="outline" className="flex-1" onClick={() => setShareOpen(false)}>Cerrar</Button>

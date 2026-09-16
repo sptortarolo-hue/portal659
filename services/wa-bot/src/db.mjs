@@ -23,6 +23,10 @@ export async function queryOne(sql, params = []) {
   return rows[0] || null;
 }
 
+export async function query(sql, params = []) {
+  await getPool().query(sql, params);
+}
+
 /** token (vendor_wa_bots.token) → vendor. Devuelve null si no hay. */
 export async function vendorByToken(token) {
   if (!token) return null;

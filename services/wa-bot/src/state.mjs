@@ -70,3 +70,10 @@ export async function clearQrToken(vendorId) {
     [vendorId]
   );
 }
+
+export async function setBotStatus(vendorId, status) {
+  await query(
+    `UPDATE vendor_wa_bots SET status = $1, updated_at = now() WHERE vendor_id = $2`,
+    [status, vendorId]
+  );
+}

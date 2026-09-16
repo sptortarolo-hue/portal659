@@ -4,7 +4,7 @@ import { config } from "./src/config.mjs";
 import { vendorByToken } from "./src/db.mjs";
 import { handleInbound } from "./src/bot.mjs";
 import { addClient, removeClient, getClient, sendText, clientCount, forEachClient } from "./src/relay.mjs";
-import { saveQrToken, clearQrToken } from "./src/state.mjs";
+import { saveQrToken, clearQrToken, setBotStatus } from "./src/state.mjs";
 
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
@@ -68,9 +68,20 @@ async function attach(ws, token) {
       await saveQrToken(vendor.id, msg.data).catch(() => {});
       return;
     }
-    if (msg.type === "qr_stop" || msg.type === "linked") {
+    if (msg.type === "qr_stop") {
       await clearQrToken(vendor.id).catch(() => {});
-      console.log(`[relay] ${msg.type === "linked" ? "vinculado" : "qr_stop"} ${vendor.store_name} (${vendor.id})`);
+      return;
+    }
+    if (msg.type === "linked") {
+      await clearQrToken(vendor.id).catch(() => {});
+      await setBotStatus(vendor.id, "linked").catch(() => {});
+      console.log(`[relay] vinculado ${vendor.store_name} (${vendor.id})`);
+      return;
+    }
+    if (msg.type === "logged_out") {
+      await clearQrToken(vendor.id).catch(() => {});
+      await setBotStatus(vendor.id, "unlinked").catch(() => {});
+      console.log(`[relay] desvinculado ${vendor.store_name} (${vendor.id}) — re-pareando`);
       return;
     }
     if (msg.type !== "message") return;

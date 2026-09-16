@@ -117,7 +117,7 @@ func main() {
 	}
 
 	client := whatsmeow.NewClient(device, nil)
-	relay := &relay{cfg: cfg, client: client, inbound: make(chan inboundMsg, 128), qrOut: make(chan string, 8)}
+	relay := &relay{cfg: cfg, client: client, inbound: make(chan inboundMsg, 128), qrOut: make(chan string, 8), stateCh: make(chan string, 64), db: db, ctx: ctx}
 
 	// Conexión al cerebro (VPS) primero — el token autentica y el QR
 	// ya puede reenviarse al comercio/ panel aunque aún no haya pareo.
@@ -167,10 +167,13 @@ type qrMsg struct {
 }
 
 type relay struct {
-	cfg     config
-	client  *whatsmeow.Client
-	inbound chan inboundMsg
-	qrOut   chan string // se publica vía WS al cerebro
+	cfg      config
+	client   *whatsmeow.Client
+	inbound  chan inboundMsg
+	qrOut    chan string // se publica vía WS al cerebro
+	stateCh  chan string // "linked" / "logged_out" → notify al cerebro
+	db       *sql.DB     // para checkpoint post-vinculación
+	ctx      context.Context
 }
 
 // login espera el código de pareo/QR y lo imprime a stdout (el wrapper Kotlin lo
@@ -220,6 +223,8 @@ func (r *relay) login(ctx context.Context) bool {
 		}
 		if linked {
 			fmt.Println("LINKED=1")
+			_, _ = r.db.Exec("PRAGMA wal_checkpoint(TRUNCATE)") // persistir identidad en Android
+			r.stateCh <- "linked"
 			return true
 		}
 		// El canal se cerró sin éxito (timeout/error): reintentar con un QR nuevo.
@@ -236,7 +241,9 @@ func (r *relay) onEvent(evt any) {
 	case *events.LoggedOut:
 		fmt.Println("LOGGED_OUT=1")
 		// La sesión se cerró desde WhatsApp: hay que re-escanear el QR.
-		// NO matamos el proceso: el usuario ve el estado y re-vincula.
+		// NOTIFICAR al cerebro (status='unlinked') y re-parear automáticamente.
+		r.stateCh <- "logged_out"
+		go r.login(r.ctx)
 	case *events.Disconnected:
 		// Corte transitorio de red: whatsmeow auto-reconecta solo
 		// (EnableAutoReconnect). Antes hacíamos os.Exit(1) → WhatsApp mostraba
@@ -323,6 +330,10 @@ func (r *relay) writeLoop(ctx context.Context, conn *websocket.Conn) {
 			}
 		case qr := <-r.qrOut:
 			if err := conn.WriteJSON(qrMsg{Type: "qr", Data: qr}); err != nil {
+				return
+			}
+		case state := <-r.stateCh:
+			if err := conn.WriteJSON(wsOut{Type: state}); err != nil {
 				return
 			}
 		}

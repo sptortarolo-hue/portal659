@@ -1,6 +1,5 @@
 package ar.portal659.walink
 
-import android.content.SharedPreferences
 import android.app.Service
 import android.content.Context
 import android.content.Intent
@@ -37,20 +36,22 @@ class RelayService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
+        if (intent?.action == ACTION_RESET) {
+            // Borrar sesión del disco.
+            val sessionDir = File(filesDir, "session")
+            listOf(File(sessionDir, "session.db"), File(sessionDir, "session.db-shm"), File(sessionDir, "session.db-wal")).forEach { it.delete() }
+            stopRelay()
+            process = null
+            stopping.set(false)
+            Config.setStatus(this, "Re-escanenando...")
+            startProcess(doLogin = true)
+            return START_STICKY
+        }
         stopping.set(false)
         startForegroundCompat()
         Config.setEnabled(this, true)
         ensureBinary()
-        val prefs = getSharedPreferences("walink", Context.MODE_PRIVATE)
-        if (prefs.getBoolean("reset_pending", false)) {
-            prefs.edit().putBoolean("reset_pending", false).apply()
-            // Borrar sesión para re-escanear QR.
-            val sessionDir = File(filesDir, "session")
-            listOf(File(sessionDir, "session.db"), File(sessionDir, "session.db-shm"), File(sessionDir, "session.db-wal")).forEach { it.delete() }
-            startProcess(doLogin = true)
-        } else {
-            startProcess()
-        }
+        startProcess()
         return START_STICKY
     }
 
@@ -99,7 +100,6 @@ class RelayService : Service() {
 
     private fun startProcess(doLogin: Boolean = false) {
         if (stopping.get()) return
-        val loginFlag = if (doLogin) "--login" else ""
         val cmd = if (doLogin) {
             arrayOf(binaryPath().absolutePath, "--login", "--session", File(filesDir, "session").absolutePath)
         } else {
@@ -209,12 +209,12 @@ class RelayService : Service() {
         super.onDestroy()
     }
 
-    companion object {
+companion object {
         const val ACTION_START = "ar.portal659.walink.START"
         const val ACTION_STOP = "ar.portal659.walink.STOP"
+        const val ACTION_RESET = "ar.portal659.walink.RESET"
         private const val CHANNEL_ID = "walink"
         private const val NOTIF_ID = 1001
-        private const val PREFS_RESET = "reset_pending"
 
         fun start(ctx: Context) {
             ctx.startForegroundService(Intent(ctx, RelayService::class.java).setAction(ACTION_START))
@@ -225,10 +225,7 @@ class RelayService : Service() {
         }
 
         fun resetAndReconnect(ctx: Context) {
-            stop(ctx)
-            val prefs = ctx.getSharedPreferences("walink", Context.MODE_PRIVATE)
-            prefs.edit().putBoolean(PREFS_RESET, true).apply()
-            start(ctx)
+            ctx.startService(Intent(ctx, RelayService::class.java).setAction(ACTION_RESET))
         }
     }
 }

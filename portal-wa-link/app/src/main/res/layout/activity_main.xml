@@ -15,7 +15,7 @@
         android:id="@+id/vpsUrl"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:hint="ws://VPS:8792/wa"
+        android:hint="wss://www.portal659.com.ar/wa"
         android:inputType="textUri" />
 
     <TextView

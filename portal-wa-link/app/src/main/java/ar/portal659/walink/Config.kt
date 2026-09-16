@@ -9,7 +9,7 @@ object Config {
     private fun prefs(ctx: Context) = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
     fun vpsUrl(ctx: Context): String =
-        prefs(ctx).getString("vps_url", "ws://portal659.vps/wa") ?: ""
+        prefs(ctx).getString("vps_url", "wss://www.portal659.com.ar/wa") ?: ""
 
     fun setVpsUrl(ctx: Context, value: String) = prefs(ctx).edit().putString("vps_url", value).apply()
 

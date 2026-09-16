@@ -124,7 +124,7 @@ func main() {
 	if *doLogin {
 		client.Store.ID = nil
 	}
-	relay := &relay{cfg: cfg, client: client, inbound: make(chan inboundMsg, 128), qrOut: make(chan string, 8), stateCh: make(chan string, 64), db: db, ctx: ctx}
+	relay := &relay{cfg: cfg, client: client, container: container, inbound: make(chan inboundMsg, 128), qrOut: make(chan string, 8), stateCh: make(chan string, 64), db: db, ctx: ctx}
 
 	// Conexión al cerebro (VPS) primero — el token autentica y el QR
 	// ya puede reenviarse al comercio/ panel aunque aún no haya pareo.
@@ -174,13 +174,14 @@ type qrMsg struct {
 }
 
 type relay struct {
-	cfg      config
-	client   *whatsmeow.Client
-	inbound  chan inboundMsg
-	qrOut    chan string // se publica vía WS al cerebro
-	stateCh  chan string // "linked" / "logged_out" → notify al cerebro
-	db       *sql.DB     // para checkpoint post-vinculación
-	ctx      context.Context
+	cfg       config
+	client    *whatsmeow.Client
+	container *sqlstore.Container // para recrear el device cliente tras LoggedOut
+	inbound   chan inboundMsg
+	qrOut     chan string // se publica vía WS al cerebro
+	stateCh   chan string // "linked" / "logged_out" → notify al cerebro
+	db        *sql.DB     // para checkpoint post-vinculación
+	ctx       context.Context
 }
 
 // login espera el código de pareo/QR y lo imprime a stdout (el wrapper Kotlin lo
@@ -265,6 +266,12 @@ func (r *relay) onEvent(evt any) {
 		// La sesión se cerró desde WhatsApp: hay que re-escanear el QR.
 		// NOTIFICAR al cerebro (status='unlinked') y re-parear automáticamente.
 		r.stateCh <- "logged_out"
+		// El store actual quedó en estado Deleted (NoopStore) — no sirve para
+		// nada más. Recrear el client con un device fresco para el re-paireo.
+		r.client.Disconnect()
+		device := r.container.NewDevice()
+		r.client = whatsmeow.NewClient(device, nil)
+		r.client.AddEventHandler(r.onEvent)
 		go r.login(r.ctx)
 	case *events.Disconnected:
 		// Corte transitorio de red: whatsmeow auto-reconecta solo

@@ -1016,8 +1016,10 @@ function VendorDashboardInner() {
         planSlug={effectivePlan.plan?.slug ?? null}
       />
 
-      {/* Content area */}
-      <div className="flex-1 flex flex-col min-h-screen lg:ml-64">
+      {/* Content area — min-w-0: evita que el min-content de los controles del
+          header (etiquetas nowrap) estire el flex item más allá del viewport
+          y desborde en mobile. */}
+      <div className="flex-1 flex flex-col min-h-screen lg:ml-64 min-w-0">
         {impersonatingId && (
           <div className="bg-amber-50 border-b border-amber-200">
             <div className="container mx-auto px-4 py-2 flex items-center justify-between gap-3 text-sm text-amber-900">

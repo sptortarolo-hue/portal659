@@ -191,6 +191,21 @@ func (r *relay) login(ctx context.Context) bool {
 		}
 		qrChan, err := r.client.GetQRChannel(ctx)
 		if err != nil {
+			if err == whatsmeow.ErrQRStoreContainsID {
+				// Sesión vigente: conectar directamente sin QR.
+				r.client.Disconnect()
+				if err := r.client.Connect(); err != nil {
+					log.Printf("connect: %v", err)
+					time.Sleep(3 * time.Second)
+					continue
+				}
+				if r.client.Store.ID != nil {
+					fmt.Println("LINKED=1")
+					r.stateCh <- "linked"
+					return true
+				}
+				continue
+			}
 			log.Printf("qr (intento %d): %v", attempt, err)
 			time.Sleep(3 * time.Second)
 			continue

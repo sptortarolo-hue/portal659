@@ -50,6 +50,10 @@ class MainActivity : AppCompatActivity() {
         }
         findViewById<Button>(R.id.stop).setOnClickListener { RelayService.stop(this) }
         findViewById<Button>(R.id.refresh).setOnClickListener { updateStatus() }
+        findViewById<Button>(R.id.reset).setOnClickListener {
+            RelayService.resetAndReconnect(this)
+            updateStatus()
+        }
     }
 
     private var lastQr: String = ""

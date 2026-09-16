@@ -123,11 +123,28 @@ func main() {
 	// ya puede reenviarse al comercio/ panel aunque aún no haya pareo.
 	go relay.outboundLoop(ctx)
 
-	if client.Store.ID == nil {
+if client.Store.ID == nil {
 		log.Printf("sin sesión guardada — emitiendo QR")
 		relay.login(ctx)
-	} else if err := client.Connect(); err != nil {
-		log.Fatalf("connect: %v", err)
+	} else {
+		// Con sesión ya guardada: reintentar el connect inicial con backoff.
+		// Un fallo transitorio NO debe matar el proceso (antes log.Fatalf → la
+		// app reiniciaba en loop y quedaba "reconectando" para siempre).
+		for {
+			if ctx.Err() != nil {
+				return
+			}
+			if err := client.Connect(); err != nil {
+				log.Printf("connect (reintentando): %v", err)
+				select {
+				case <-time.After(2 * time.Second):
+				case <-ctx.Done():
+					return
+				}
+				continue
+			}
+			break
+		}
 	}
 
 	log.Println("relay whatsmeow corriendo")

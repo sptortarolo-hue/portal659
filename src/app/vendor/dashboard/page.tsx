@@ -50,6 +50,7 @@ import { VendorReviews } from "@/components/vendor/vendor-reviews";
 import { VendorOrderHistory } from "@/components/dashboard/vendor-order-history";
 import { RecipeManager } from "@/components/dashboard/recipe-manager";
 import { ProductManager } from "@/components/dashboard/product-manager";
+import { MenuStudio } from "@/components/dashboard/menu-studio";
 import ComandaKDS from "@/components/dashboard/comanda-kds";
 import { playNewOrderSound, resumeAudioContext } from "@/lib/sounds";
 import { resolveVendorPlan, daysLeft, type FeatureKey } from "@/lib/plans";
@@ -129,6 +130,7 @@ const MemoVendorAnalytics = memo(VendorAnalytics);
 const MemoVendorReviews = memo(VendorReviews);
 const MemoVendorOrderHistory = memo(VendorOrderHistory);
 const MemoProductManager = memo(ProductManager);
+const MemoMenuStudio = memo(MenuStudio);
 const MemoRecipeManager = memo(RecipeManager);
 const MemoDashboardHome = memo(DashboardHome);
 const MemoDeliveryBoard = memo(DeliveryBoard);
@@ -174,6 +176,14 @@ function VendorDashboardInner() {
   useEffect(() => {
     setMountedTabs((prev) => (prev.has(tab) ? prev : new Set(prev).add(tab)));
   }, [tab]);
+
+  // Atajo desde Configuración → pestaña Menú (la gestión de la carta del
+  // comercio gastro vive integrada ahí; Config muestra un acceso directo).
+  useEffect(() => {
+    const handler = () => setTab("menu");
+    window.addEventListener("portal:go-menu", handler);
+    return () => window.removeEventListener("portal:go-menu", handler);
+  }, []);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -1151,20 +1161,31 @@ function VendorDashboardInner() {
         )}
 
         {/* Tab content */}
-        <div className={`flex-1 px-4 mt-4 ${tab === "comanda" ? "w-full max-w-none" : `mx-auto w-full ${["orders", "history", "pos", "mesas", "analytics", "recetas", "hoy"].includes(tab) ? "max-w-7xl" : "max-w-4xl"}`}`}>
+        <div className={`flex-1 px-4 mt-4 ${tab === "comanda" ? "w-full max-w-none" : `mx-auto w-full ${["orders", "history", "pos", "mesas", "analytics", "recetas", "hoy", "menu"].includes(tab) ? "max-w-7xl" : "max-w-4xl"}`}`}>
           {isService ? (
             <div className="space-y-4">{configContent}</div>
           ) : (
             <>
               <div className={tab === "config" ? "" : "hidden"}>{configContent}</div>
               <div className={tab === "menu" ? "" : "hidden"}>
-                <MemoProductManager
-                  isModa={isModa}
-                  showStock
-                  showPrep={!isModa}
-                  showCosts={isGastro}
-                  onChanged={() => loadData()}
-                />
+                {isGastro ? (
+                  <MemoMenuStudio
+                    offers={offers}
+                    categories={categories}
+                    reload={loadData}
+                    msg={msg}
+                    setMsg={setMsg}
+                    showCosts
+                  />
+                ) : (
+                  <MemoProductManager
+                    isModa={isModa}
+                    showStock
+                    showPrep={!isModa}
+                    showCosts={isGastro}
+                    onChanged={() => loadData()}
+                  />
+                )}
               </div>
               <div className={tab === "orders" ? "" : "hidden"}>{ordersContent}</div>
               {mountedTabs.has("comanda") && (

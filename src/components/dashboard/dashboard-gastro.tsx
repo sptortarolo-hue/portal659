@@ -11,21 +11,15 @@ import { ChipToggle } from "@/components/ui/chip-toggle";
 import { RadioCards } from "@/components/ui/radio-cards";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { OfferForm, OfferList, CategoryManager, LivePreview, apiJson, TransferConfig, DeliveryFeeConfig } from "@/components/dashboard/shared";
-import { ModifierLibrary, ProductModifiersBlock } from "@/components/dashboard/modifier-editor";
-import { VolumeEditor } from "@/components/dashboard/volume-editor";
+import { LivePreview, TransferConfig, DeliveryFeeConfig } from "@/components/dashboard/shared";
 import { MpConnectCard } from "@/components/dashboard/mp-connect-card";
-import { MenuImportModal } from "@/components/dashboard/menu-import";
 import { HoursEditor } from "@/components/dashboard/hours-editor";
 import { LocationPicker } from "./location-picker";
 import { StaffManager } from "@/components/vendor/staff-manager";
-import type { Vendor, Product, ProductModifier, VendorGallery } from "@/types/database";
+import type { Vendor, VendorGallery } from "@/types/database";
 
 type Props = {
   vendor: Vendor | null;
-  offers: Product[];
-  categories: MenuCategory[];
-  modifiers: ProductModifier[];
   gallery: VendorGallery[];
   msg: string;
   setMsg: (m: string) => void;
@@ -33,35 +27,6 @@ type Props = {
   saveVendor: (data: Record<string, unknown>) => Promise<void>;
   uploading: boolean;
   onCrop: (target: "cover" | "logo" | "offer") => void;
-};
-
-type MenuCategory = { id: string; name: string; position: number };
-
-type Modifier = {
-  id: string;
-  product_id: string;
-  group_name: string;
-  options: { label: string; price_mod: number }[];
-  required: boolean;
-  max_selections: number;
-  position: number;
-};
-
-type Offer = {
-  id: string;
-  name: string;
-  description: string | null;
-  price: number;
-  category: string | null;
-  available: boolean;
-  featured_today: boolean;
-  image_url: string | null;
-  stock: number | null;
-  stock_low_threshold: number | null;
-  stock_control?: boolean;
-  promo_price: number | null;
-  requires_prep?: boolean;
-  cash_discount_excluded?: boolean;
 };
 
 const CATEGORY_SUGGESTIONS: Record<string, string[]> = {
@@ -103,9 +68,6 @@ const PREP_TIME_OPTIONS = [15, 20, 25, 30, 40, 50, 60];
 
 export default function DashboardGastro({
   vendor,
-  offers,
-  categories,
-  modifiers,
   gallery,
   msg,
   setMsg,
@@ -144,33 +106,10 @@ export default function DashboardGastro({
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(vendor?.logo_url || null);
 
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [offName, setOffName] = useState("");
-  const [offDesc, setOffDesc] = useState("");
-  const [offPrice, setOffPrice] = useState("");
-  const [offCategory, setOffCategory] = useState("empanadas");
-  const [offFile, setOffFile] = useState<File | null>(null);
-  const [offPreview, setOffPreview] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [showOfferForm, setShowOfferForm] = useState(false);
-  const [showImport, setShowImport] = useState(false);
-
-  const [offStock, setOffStock] = useState<number>(0);
-  const [offStockControl, setOffStockControl] = useState<boolean>(false);
-  const [offPromoPrice, setOffPromoPrice] = useState("");
-  const [offStockLowThreshold, setOffStockLowThreshold] = useState<number>(5);
-  const [offRequiresPrep, setOffRequiresPrep] = useState<boolean>(true);
-  const [offCashExcluded, setOffCashExcluded] = useState(false);
 
   const [galleryUploading, setGalleryUploading] = useState(false);
   const galleryFileRef = useRef<HTMLInputElement>(null);
-
-  const [newModProductId, setNewModProductId] = useState("");
-  const [newModGroupName, setNewModGroupName] = useState("");
-  const [newModOptionLabel, setNewModOptionLabel] = useState("");
-  const [newModOptionPrice, setNewModOptionPrice] = useState("0");
-  const [newModOptions, setNewModOptions] = useState<{ label: string; price_mod: number }[]>([]);
-  const [modSaving, setModSaving] = useState(false);
 
   const [printerIp, setPrinterIp] = useState(vendor?.printer_ip || "");
   const [printerPort, setPrinterPort] = useState(String(vendor?.printer_port || 9100));
@@ -401,179 +340,6 @@ export default function DashboardGastro({
     storeFile, logoFile, saveVendor, setMsg,
   ]);
 
-  function resetOfferForm() {
-    setEditingId(null);
-    setOffName("");
-    setOffDesc("");
-    setOffPrice("");
-    setOffCategory("empanadas");
-    setOffFile(null);
-    setOffPreview(null);
-    setShowOfferForm(false);
-    setOffStock(0);
-    setOffStockControl(false);
-    setOffPromoPrice("");
-    setOffStockLowThreshold(5);
-    setOffRequiresPrep(true);
-    setOffCashExcluded(false);
-  }
-
-  async function handleOfferSubmit(e?: React.FormEvent) {
-    e?.preventDefault();
-    setSaving(true);
-    setMsg("");
-
-    let imageUrl = editingId
-      ? (offers.find((o) => o.id === editingId)?.image_url || null)
-      : null;
-    if (offFile) {
-      const fd = new FormData();
-      fd.append("file", offFile);
-      fd.append("folder", "offers");
-      const res = await fetch("/api/vendor/upload", { method: "POST", body: fd });
-      const data = await res.json();
-      if (data.url) imageUrl = data.url;
-    }
-
-    const payload = {
-      name: offName,
-      description: offDesc,
-      price: Number(offPrice),
-      category: offCategory,
-      image_url: imageUrl,
-      stock: offStockControl ? offStock : null,
-      stock_control: offStockControl,
-      promo_price: offPromoPrice ? Number(offPromoPrice) : null,
-      stock_low_threshold: offStockControl ? offStockLowThreshold : null,
-      requires_prep: offRequiresPrep,
-      cash_discount_excluded: offCashExcluded,
-    };
-
-    let res: Response;
-    if (editingId) {
-      res = await fetch(`/api/vendor/offers/${editingId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-    } else {
-      res = await fetch("/api/vendor/offers", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-    }
-    const data = await res.json();
-    if (data.error) {
-      setMsg(data.error);
-    } else {
-      resetOfferForm();
-      setMsg(editingId ? "Plato actualizado" : "Plato agregado");
-      reload();
-    }
-    setSaving(false);
-  }
-
-  function startEditOffer(offer: Offer) {
-    setEditingId(offer.id);
-    setOffName(offer.name);
-    setOffDesc(offer.description || "");
-    setOffPrice(String(offer.price));
-    setOffCategory(offer.category || "otras");
-    setOffFile(null);
-    setOffPreview(offer.image_url || null);
-    setOffStock(offer.stock ?? 0);
-    setOffStockControl(!!offer.stock_control);
-    setOffPromoPrice(offer.promo_price ? String(offer.promo_price) : "");
-    setOffStockLowThreshold(offer.stock_low_threshold ?? 5);
-    setOffRequiresPrep(offer.requires_prep !== false);
-    setOffCashExcluded(!!offer.cash_discount_excluded);
-    setShowOfferForm(true);
-    setMsg("");
-  }
-
-  async function toggleFeatured(offer: Offer) {
-    await fetch(`/api/vendor/offers/${offer.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ featured_today: !offer.featured_today }),
-    });
-    reload();
-  }
-
-  async function toggleAvailable(offer: Offer) {
-    await fetch(`/api/vendor/offers/${offer.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ available: !offer.available }),
-    });
-    reload();
-  }
-
-  async function deleteOffer(offer: Offer) {
-    await fetch(`/api/vendor/offers/${offer.id}`, { method: "DELETE" });
-    reload();
-  }
-
-  async function addModifierOption() {
-    if (!newModOptionLabel.trim()) return;
-    setNewModOptions((prev) => [
-      ...prev,
-      { label: newModOptionLabel.trim(), price_mod: Number(newModOptionPrice) || 0 },
-    ]);
-    setNewModOptionLabel("");
-    setNewModOptionPrice("0");
-  }
-
-  function removeModifierOption(index: number) {
-    setNewModOptions((prev) => prev.filter((_, i) => i !== index));
-  }
-
-  async function handleAddModifier() {
-    if (!newModProductId || !newModGroupName.trim() || newModOptions.length === 0) {
-      setMsg("Completá producto, nombre del grupo y al menos una opción");
-      return;
-    }
-    setModSaving(true);
-    setMsg("");
-    try {
-      const res = await fetch("/api/vendor/modifiers", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          product_id: newModProductId,
-          group_name: newModGroupName,
-          options: newModOptions,
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || data.error) {
-        setMsg(data.error || "Error al guardar el modificador");
-      } else {
-        setMsg("Modificador agregado");
-        setNewModProductId("");
-        setNewModGroupName("");
-        setNewModOptions([]);
-        reload();
-      }
-    } catch {
-      setMsg("Error al guardar el modificador");
-    } finally {
-      setModSaving(false);
-    }
-  }
-
-  async function deleteModifier(modifier: Modifier) {
-    await fetch(`/api/vendor/modifiers/${modifier.id}`, { method: "DELETE" });
-    setMsg("Modificador eliminado");
-    reload();
-  }
-
-  function getProductName(productId: string): string {
-    const offer = offers.find((o) => o.id === productId);
-    return offer?.name || "Producto desconocido";
-  }
-
   async function handleGalleryUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -606,56 +372,6 @@ export default function DashboardGastro({
       reload();
     } catch { setMsg("Error de conexión"); }
   }
-
-  const groupedModifiers: Record<string, Modifier[]> = {};
-  (modifiers || []).forEach((mod: Modifier) => {
-    if (!groupedModifiers[mod.product_id]) {
-      groupedModifiers[mod.product_id] = [];
-    }
-    groupedModifiers[mod.product_id].push(mod);
-  });
-
-  const offerFormNode = (
-    <div className="space-y-3">
-      <OfferForm
-        categories={categories}
-        editingId={editingId}
-        offName={offName}
-        setOffName={setOffName}
-        offDesc={offDesc}
-        setOffDesc={setOffDesc}
-        offPrice={offPrice}
-        setOffPrice={setOffPrice}
-        offCategory={offCategory}
-        setOffCategory={setOffCategory}
-        offFile={offFile}
-        setOffFile={setOffFile}
-        offPreview={offPreview}
-        setOffPreview={setOffPreview}
-        saving={saving}
-        onSubmit={handleOfferSubmit}
-        onCrop={() => onCrop("offer")}
-        showStock
-        offStock={offStock}
-        setOffStock={setOffStock}
-        offStockControl={offStockControl}
-        setOffStockControl={setOffStockControl}
-        offPromoPrice={offPromoPrice}
-        setOffPromoPrice={setOffPromoPrice}
-        offStockLowThreshold={offStockLowThreshold}
-        setOffStockLowThreshold={setOffStockLowThreshold}
-        showPrep
-        offRequiresPrep={offRequiresPrep}
-        setOffRequiresPrep={setOffRequiresPrep}
-        offCashExcluded={offCashExcluded}
-        setOffCashExcluded={setOffCashExcluded}
-        onClose={resetOfferForm}
-      />
-      {editingId && (
-        <ProductModifiersBlock productId={editingId} productName={offName} />
-      )}
-    </div>
-  );
 
   return (
     <form onSubmit={handleSave} className="space-y-4">
@@ -1281,116 +997,19 @@ export default function DashboardGastro({
       </CollapsibleSection>
 
       <CollapsibleSection icon="🍽️" title="Menú" defaultOpen>
-        <div className="space-y-4">
-          <CategoryManager
-            categories={categories}
-            onAdd={async (name) => {
-              const r = await apiJson("/api/vendor/categories", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ name }),
-              });
-              if (!r.ok) setMsg(r.error || "No se pudo crear la categoría");
-              reload();
-            }}
-            onRename={async (id, name) => {
-              const r = await apiJson(`/api/vendor/categories/${id}`, {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ name }),
-              });
-              if (!r.ok) setMsg(r.error || "No se pudo renombrar");
-              reload();
-            }}
-            onDelete={async (cat) => {
-              const r = await apiJson(`/api/vendor/categories/${cat.id}`, {
-                method: "DELETE",
-              });
-              if (!r.ok) setMsg(r.error || "No se pudo eliminar");
-              reload();
-            }}
-            onMove={async (cat, dir) => {
-              const idx = categories.findIndex((c) => c.id === cat.id);
-              const target = idx + dir;
-              if (target < 0 || target >= categories.length) return;
-              const reordered = [...categories];
-              const [moved] = reordered.splice(idx, 1);
-              reordered.splice(target, 0, moved);
-              await Promise.all(
-                reordered.map((c, i) =>
-                  apiJson(`/api/vendor/categories/${c.id}`, {
-                    method: "PATCH",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ position: i }),
-                  })
-                )
-              );
-              reload();
-            }}
-          />
-
-          <div className="flex items-center justify-between">
-            <h3 className="font-semibold text-sm">
-              Platos ({offers.length})
-            </h3>
-            <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => setShowImport(true)}
-              >
-                📥 Importar Excel
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                onClick={() => {
-                  if (editingId) resetOfferForm();
-                  else if (showOfferForm) resetOfferForm();
-                  else setShowOfferForm(true);
-                }}
-              >
-                {editingId ? "Cancelar" : showOfferForm ? "Cancelar" : "+ Plato"}
-              </Button>
-            </div>
-          </div>
-
-          {showOfferForm && !editingId && offerFormNode}
-
-          <OfferList
-            offers={offers}
-            onEdit={startEditOffer}
-            onToggleFeatured={toggleFeatured}
-            onToggleAvailable={toggleAvailable}
-            onDelete={deleteOffer}
-            editingId={editingId}
-            editForm={editingId ? offerFormNode : undefined}
-            onEditModifiers={(offer) => startEditOffer(offer)}
-          />
+        <div className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Platos, categorías, opciones, precios por volumen e importación de Excel ahora se
+            gestionan desde la pestaña <strong>Menú</strong>, en un panel integrado.
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => window.dispatchEvent(new CustomEvent("portal:go-menu"))}
+          >
+            🍽️ Ir al Menú
+          </Button>
         </div>
-      </CollapsibleSection>
-
-      <MenuImportModal
-        open={showImport}
-        onClose={() => setShowImport(false)}
-        onImported={(sum) => {
-          reload();
-          setMsg(
-            `Menú importado: ${sum.imported} platos nuevos, ${sum.updated} actualizados, ${sum.createdCategories.length} categorías creadas.`
-          );
-        }}
-      />
-
-      <CollapsibleSection icon="⚙️" title="Modificadores">
-        <ModifierLibrary products={offers.map((o) => ({ id: o.id, name: o.name }))} />
-      </CollapsibleSection>
-
-      <CollapsibleSection icon="📦" title="Precios por volumen">
-        <VolumeEditor
-          products={offers.map((o) => ({ id: o.id, name: o.name, category: o.category }))}
-          categories={categories}
-        />
       </CollapsibleSection>
 
       <CollapsibleSection icon="🖼️" title={`Galería (${gallery.length})`}>

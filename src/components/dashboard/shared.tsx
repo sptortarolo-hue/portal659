@@ -320,12 +320,14 @@ export function OfferList({ offers, onEdit, onToggleFeatured, onToggleAvailable,
   );
 }
 
-export function CategoryManager({ categories, onAdd, onRename, onDelete, onMove }: {
+export function CategoryManager({ categories, onAdd, onRename, onDelete, onMove, defaultOpen }: {
   categories: MenuCategory[];
   onAdd: (name: string) => void;
   onRename: (id: string, name: string) => void;
   onDelete: (cat: MenuCategory) => void;
   onMove: (cat: MenuCategory, dir: -1 | 1) => void;
+  /** Abierto por defecto (ej. cuando se renderiza como solapa dedicada). */
+  defaultOpen?: boolean;
 }) {
   const [newName, setNewName] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -339,7 +341,7 @@ export function CategoryManager({ categories, onAdd, onRename, onDelete, onMove 
   };
 
   return (
-    <CollapsibleSection icon="📂" title={`Categorías (${categories.length})`}>
+    <CollapsibleSection icon="📂" title={`Categorías (${categories.length})`} defaultOpen={defaultOpen}>
       <div className="flex gap-2 mb-3">
         <Input
           placeholder="Nueva categoría"

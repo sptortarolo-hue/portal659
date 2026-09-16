@@ -117,6 +117,13 @@ func main() {
 	}
 
 	client := whatsmeow.NewClient(device, nil)
+	// Si se pidió re-login, limpiar Store.ID para que GetQRChannel
+	// emita un QR nuevo (el .db se borró pero el device persistía
+	// en memoria, lo que causaba que GetQRChannel devolviera
+	// ErrQRStoreContainsID sin emitir QR).
+	if *doLogin {
+		client.Store.ID = nil
+	}
 	relay := &relay{cfg: cfg, client: client, inbound: make(chan inboundMsg, 128), qrOut: make(chan string, 8), stateCh: make(chan string, 64), db: db, ctx: ctx}
 
 	// Conexión al cerebro (VPS) primero — el token autentica y el QR

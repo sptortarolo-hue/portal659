@@ -25,143 +25,145 @@ export default function RecepcionPedidosPage() {
 
         {/* 1 */}
         <div>
-          <h2 className="font-display text-lg font-semibold mb-3">1. ¿Cómo llegan los pedidos?</h2>
-          <p>
-            Los clientes te escriben por <span className="font-medium">WhatsApp</span> haciendo su pedido. Vos lo registrás en el panel de control y lo gestionás paso a paso. También podés recibir pedidos directamente desde el <span className="font-medium">carrito online</span> si tu plan lo permite (plan Gestión o superior).
+          <h2 className="font-display text-lg font-semibold mb-3">1. El panel de pedidos</h2>
+          <p className="mb-3">
+            La pestaña <span className="font-medium">Pedidos</span> (barra inferior del dashboard) es tu vista principal. Arriba tenés:
+          </p>
+          <ul className="list-disc pl-5 space-y-1 mb-3">
+            <li><span className="font-medium">Resumen</span>: cinco tarjetas con la cantidad de pedidos por estado (Nuevos, Preparando, Listos, Enviados, Entregados).</li>
+            <li><span className="font-medium">Buscador</span>: buscá por nombre, teléfono o <span className="font-medium">#ID</span> del pedido.</li>
+            <li><span className="font-medium">Chips de estado</span>: filtran por estado (solo aparecen los que tienen pedidos, con su contador). El chip <span className="font-medium">Todos</span> siempre está activo.</li>
+          </ul>
+          <img src="/manuales/capturas/05-pedidos-todos.png" alt="Panel de pedidos" className="rounded-xl border border-border shadow-sm w-full max-w-sm mb-4" />
+          <p className="mb-2">Cada tarjeta de pedido muestra:</p>
+          <ul className="list-disc pl-5 space-y-1">
+            <li><span className="font-medium">Canal + número</span> (ej: Mostrador Nro. 3, Mesa 1 · Nro. 5).</li>
+            <li><span className="font-medium">Estado</span> (badge de color).</li>
+            <li><span className="font-medium">Total</span> y tiempo transcurrido (ej: 14 min).</li>
+            <li><span className="font-medium">Ítem resumido</span> (ej: 1x Milanesa Napolitana con fritas).</li>
+            <li>Botón <span className="font-medium">Ver detalle →</span> para abrir la ficha del pedido.</li>
+          </ul>
+          <p className="text-xs text-muted-foreground bg-muted/50 rounded-lg p-3">
+            <strong>Tip:</strong> el banner verde de arriba (<span className="font-medium">Gestión integral activo</span>) te lleva a la suscripción. El indicador de la impresora (🔴) te avisa si la comanda se va a imprimir sola.
           </p>
         </div>
 
         {/* 2 */}
         <div>
-          <h2 className="font-display text-lg font-semibold mb-3">2. Tu panel de pedidos</h2>
-          <p className="mb-3">
-            Entrá a tu dashboard en <span className="font-medium">portal659.com.ar/vendor/dashboard</span>.
-          </p>
-          <img src="/manuales/capturas/21-pedidos-nuevo.png" alt="Dashboard Pedidos" className="rounded-xl border border-border shadow-sm w-full max-w-sm mb-3" />
-          <p className="mb-2">En la parte superior ves el resumen:</p>
+          <h2 className="font-display text-lg font-semibold mb-3">2. Estados de un pedido</h2>
+          <p className="mb-3">Cada pedido recorre un ciclo de estados. El ciclo cambia según el vertical:</p>
+          <div className="bg-muted/50 rounded-xl p-5 mb-4">
+            <h3 className="font-semibold mb-2">Gastronomía (app, carrito, mostrador, mesa)</h3>
+            <p className="mb-2"><span className="font-medium">Nuevo</span> → <span className="font-medium">En preparación</span> → <span className="font-medium">Listo</span> → <span className="font-medium">Enviado</span> → <span className="font-medium">Entregado</span></p>
+            <p className="text-xs text-muted-foreground">En gastronomía el primer paso es directo: al abrir un pedido Nuevo, <span className="font-medium">&quot;Aceptar y empezar a preparar&quot;</span> lo pasa a En preparación (sin paso intermedio de aceptación).</p>
+          </div>
+          <div className="bg-blue-50 border border-blue-200 text-blue-800 rounded-xl px-4 py-3 text-sm mb-4">
+            <strong>Moda (indumentaria):</strong> el ciclo tiene un paso extra de aceptación explícita. Nuevo (<span className="font-medium">Por aceptar</span>) → <span className="font-medium">Aceptado</span> → <span className="font-medium">Empaquetando</span> → <span className="font-medium">Listo</span> → <span className="font-medium">En camino</span> → <span className="font-medium">Entregado</span>.
+          </div>
+          <p className="mb-3"><span className="font-medium">Cancelado</span> está disponible desde cualquier estado anterior; un pedido cancelado no avanza más.</p>
           <div className="overflow-x-auto">
             <table className="w-full text-sm border border-border rounded-lg overflow-hidden">
               <thead className="bg-muted/50">
                 <tr>
-                  <th className="text-left px-3 py-2 font-medium">Filtro</th>
-                  <th className="text-left px-3 py-2 font-medium">Qué muestra</th>
+                  <th className="text-left px-3 py-2 font-medium">Desde</th>
+                  <th className="text-left px-3 py-2 font-medium">Podés ir a</th>
                 </tr>
               </thead>
               <tbody>
-                <tr className="border-t border-border"><td className="px-3 py-2">Nuevos</td><td className="px-3 py-2">Pedidos recién llegados</td></tr>
-                <tr className="border-t border-border"><td className="px-3 py-2">Preparando</td><td className="px-3 py-2">Pedidos en cocina</td></tr>
-                <tr className="border-t border-border"><td className="px-3 py-2">Listos</td><td className="px-3 py-2">Listos para enviar o retirar</td></tr>
-                <tr className="border-t border-border"><td className="px-3 py-2">Enviados</td><td className="px-3 py-2">En camino (delivery)</td></tr>
-                <tr className="border-t border-border"><td className="px-3 py-2">Entregados</td><td className="px-3 py-2">Finalizados</td></tr>
+                <tr className="border-t border-border"><td className="px-3 py-2 font-medium">Nuevo</td><td className="px-3 py-2">En preparación / Aceptado / Cancelado</td></tr>
+                <tr className="border-t border-border"><td className="px-3 py-2 font-medium">Confirmado / Aceptado</td><td className="px-3 py-2">En preparación / Cancelado</td></tr>
+                <tr className="border-t border-border"><td className="px-3 py-2 font-medium">En preparación</td><td className="px-3 py-2">Listo / Cancelado</td></tr>
+                <tr className="border-t border-border"><td className="px-3 py-2 font-medium">Listo</td><td className="px-3 py-2">Enviado / Entregado / Cancelado</td></tr>
+                <tr className="border-t border-border"><td className="px-3 py-2 font-medium">Enviado</td><td className="px-3 py-2">Entregado / Cancelado</td></tr>
+                <tr className="border-t border-border"><td className="px-3 py-2 font-medium">Entregado / Cancelado</td><td className="px-3 py-2">— (final)</td></tr>
               </tbody>
             </table>
           </div>
-          <img src="/manuales/capturas/05-pedidos-todos.png" alt="Filtro Todos" className="rounded-xl border border-border shadow-sm w-full max-w-sm mt-4" />
         </div>
 
         {/* 3 */}
         <div>
-          <h2 className="font-display text-lg font-semibold mb-3">3. Flujo de un pedido de delivery</h2>
-
-          <h3 className="font-semibold mb-2">3.1 Pedido nuevo</h3>
-          <p className="mb-3">
-            Cuando un cliente hace un pedido, aparece como <span className="font-medium">&quot;Nuevo&quot;</span>. Tocá el pedido para ver los detalles.
-          </p>
-          <img src="/manuales/capturas/06-order-delivery-new.png" alt="Pedido nuevo delivery" className="rounded-xl border border-border shadow-sm w-full max-w-sm mb-4" />
-
-          <h3 className="font-semibold mb-2">3.2 Aceptá el pedido</h3>
-          <p className="mb-3">
-            Tocá <span className="font-medium">&quot;Aceptar y empezar a preparar&quot;</span>. El pedido pasa a estado &quot;Preparando&quot;.
-          </p>
-          <img src="/manuales/capturas/22-pedido-accion.png" alt="Acción de aceptar" className="rounded-xl border border-border shadow-sm w-full max-w-sm mb-4" />
-
-          <h3 className="font-semibold mb-2">3.3 Preparando</h3>
-          <p className="mb-3">
-            Mientras cocinás, el pedido aparece en la pestaña &quot;Preparando&quot;.
-          </p>
-          <img src="/manuales/capturas/08-order-preparing.png" alt="Pedido en preparación" className="rounded-xl border border-border shadow-sm w-full max-w-sm mb-4" />
-
-          <h3 className="font-semibold mb-2">3.4 Listo para enviar</h3>
-          <p className="mb-3">
-            Cuando terminás, tocá <span className="font-medium">&quot;Listo para envío&quot;</span>. El pedido pasa a estado &quot;Listo&quot;.
-          </p>
-          <img src="/manuales/capturas/09-order-ready.png" alt="Pedido listo" className="rounded-xl border border-border shadow-sm w-full max-w-sm mb-4" />
-
-          <h3 className="font-semibold mb-2">3.5 Enviá el pedido</h3>
-          <p className="mb-3">
-            Avisale al cliente que sale el envío. Tocá <span className="font-medium">&quot;Avisar por WhatsApp&quot;</span> para enviarle el mensaje con el link de seguimiento.
-          </p>
-
-          <h3 className="font-semibold mb-2">3.6 Pedido enviado</h3>
-          <p className="mb-3">
-            El pedido pasa a &quot;Enviado&quot; y el cliente recibe una notificación.
-          </p>
-          <img src="/manuales/capturas/10-order-sent.png" alt="Pedido enviado" className="rounded-xl border border-border shadow-sm w-full max-w-sm mb-4" />
-
-          <h3 className="font-semibold mb-2">3.7 Completado</h3>
-          <p>
-            Cuando el cliente recibe el pedido, tocá <span className="font-medium">&quot;Marcar como entregado&quot;</span>. El pedido pasa a &quot;Completado&quot;.
-          </p>
+          <h2 className="font-display text-lg font-semibold mb-3">3. Crear un pedido</h2>
+          <p className="mb-3">Un pedido nace cuando un cliente te escribe por <span className="font-medium">WhatsApp</span>, hace un pedido en el <span className="font-medium">carrito online</span> (si tu plan lo permite), lo tomás en <span className="font-medium">Mostrador</span> o cargás consumiciones en una <span className="font-medium">Mesa</span>. En todos los casos aparece como <span className="font-medium">Nuevo</span> (o <span className="font-medium">Por aceptar</span> en moda) en el panel.</p>
+          <p>No importa el origen: la gestión es siempre la misma — desde esta pestaña.</p>
         </div>
 
         {/* 4 */}
         <div>
-          <h2 className="font-display text-lg font-semibold mb-3">4. Flujo de retiro en local</h2>
-          <p className="mb-2">El flujo es igual pero <span className="font-medium">sin el paso de envío</span>:</p>
-          <ol className="list-decimal pl-5 space-y-1">
-            <li><span className="font-medium">Nuevo</span> → Aceptás.</li>
-            <li><span className="font-medium">Preparando</span> → Cocinás.</li>
-            <li><span className="font-medium">Listo para retiro</span> → Avisás al cliente por WhatsApp.</li>
-            <li>El cliente retira y tocás &quot;Marcar como completado&quot;.</li>
-          </ol>
+          <h2 className="font-display text-lg font-semibold mb-3">4. Abrir un pedido (ficha)</h2>
+          <p className="mb-3">Tocá <span className="font-medium">Ver detalle</span> en cualquier tarjeta. La ficha muestra:</p>
+          <img src="/manuales/capturas/22-pedido-accion.png" alt="Ficha del pedido" className="rounded-xl border border-border shadow-sm w-full max-w-sm mb-4" />
+          <ul className="list-disc pl-5 space-y-1">
+            <li><span className="font-medium">Stepper de estados</span>: el progreso visual del pedido (Nuevo → En preparación → Listo → Enviado → Entregado).</li>
+            <li><span className="font-medium">Productos</span>: cantidad, nombre (con modificadores) y precio.</li>
+            <li><span className="font-medium">Método de pago</span> (ej: Efectivo) y fecha/hora del pedido.</li>
+            <li><span className="font-medium">Total</span>.</li>
+            <li><span className="font-medium">Acciones</span>: los botones cambian según el estado (ver sección 5).</li>
+          </ul>
         </div>
 
         {/* 5 */}
         <div>
-          <h2 className="font-display text-lg font-semibold mb-3">5. Pedido con transferencia pendiente</h2>
-          <p className="mb-3">
-            Si el cliente paga por <span className="font-medium">transferencia bancaria</span>, el pedido aparece con el aviso &quot;Pago pendiente&quot;.
+          <h2 className="font-display text-lg font-semibold mb-3">5. Aceptar, preparar y entregar</h2>
+
+          <h3 className="font-semibold mb-2">5.1 Pedido Nuevo (primer paso)</h3>
+          <ul className="list-disc pl-5 space-y-1 mb-3">
+            <li><span className="font-medium">Gastronomía</span>: <span className="font-medium">&quot;Aceptar y empezar a preparar&quot;</span> → pasa a En preparación.</li>
+            <li><span className="font-medium">Moda</span>: <span className="font-medium">&quot;✓ Aceptar pedido&quot;</span> → pasa a Aceptado; o <span className="font-medium">&quot;Rechazar pedido&quot;</span> (con motivo) para descartarlo.</li>
+          </ul>
+
+          <h3 className="font-semibold mb-2">5.2 En preparación</h3>
+          <p className="mb-3">Mientras cocinás. El pedido aparece en la pestaña <span className="font-medium">Comanda</span> (solo los que necesitan cocina — ver sección 7). En KDS los botones son <span className="font-medium">&quot;Aceptar&quot;</span>, <span className="font-medium">&quot;Preparar&quot;</span> o <span className="font-medium">&quot;✅ Listo...&quot;</span> según el estado.</p>
+
+          <h3 className="font-semibold mb-2">5.3 Listo</h3>
+          <p className="mb-3">Cuando está empaquetado:
+            <ul className="list-disc pl-5 space-y-1">
+              <li><span className="font-medium">Retiro:</span> <span className="font-medium">&quot;Listo mostrador&quot;</span> / &quot;Listo p/ retiro&quot; y luego <span className="font-medium">&quot;Marcar como entregado&quot;</span> cuando el cliente lo retira.</li>
+              <li><span className="font-medium">Delivery:</span> <span className="font-medium">&quot;Listo para envío&quot;</span> → avisa al cliente → <span className="font-medium">&quot;Marcar como enviado&quot;</span> (a veces con impresión de comprobante).</li>
+            </ul>
           </p>
-          <img src="/manuales/capturas/07-order-transfer-pending.png" alt="Pago pendiente" className="rounded-xl border border-border shadow-sm w-full max-w-sm mb-3" />
-          <p>
-            Hasta que no marques el pago como recibido, el pedido <span className="font-medium">no puede avanzar</span> (si tenés activada la opción &quot;Bloquear hasta confirmar pago&quot;). Para desbloquear, abrí el pedido y tocá &quot;Marcar como pagado&quot;.
-          </p>
+
+          <h3 className="font-semibold mb-2">5.4 Enviado → Entregado</h3>
+          <p className="mb-3">Cuando el cliente recibe el pedido, <span className="font-medium">&quot;Marcar como entregado&quot;</span> lo pasa a <span className="font-medium">Entregado</span> y se envía la notificación final por WhatsApp.</p>
+
+          <h3 className="font-semibold mb-2">5.5 Cancelar / Rechazar</h3>
+          <p>Podés cancelar un pedido desde cualquier estado antes de Entregado. En moda, si está Por aceptar/Aceptado, el botón es <span className="font-medium">&quot;Rechazar pedido&quot;</span> (permite dejar un motivo); en los demás estados es <span className="font-medium">&quot;Cancelar pedido&quot;</span>.</p>
         </div>
 
         {/* 6 */}
         <div>
-          <h2 className="font-display text-lg font-semibold mb-3">6. Pedidos en mostrador (venta presencial)</h2>
-          <p className="mb-3">
-            Si vendés en el mostrador, el pedido aparece con el método <span className="font-medium">&quot;Mostrador&quot;</span>. No tienen dirección ni delivery. Se cobran en el momento y se marcan como completados al entregar.
-          </p>
-          <img src="/manuales/capturas/23-pedido-mostrador.png" alt="Pedido de mostrador" className="rounded-xl border border-border shadow-sm w-full max-w-sm" />
+          <h2 className="font-display text-lg font-semibold mb-3">6. Flujo cocina y sin cocina</h2>
+          <p className="mb-3">Cada producto tiene un switch <span className="font-medium">&quot;Requiere elaboración&quot;</span> en el editor del menú (por defecto activado). Dependiendo de eso:</p>
+          <ul className="list-disc pl-5 space-y-1 mb-3">
+            <li><span className="font-medium">Con cocina</span>: el pedido entra en la pestaña <span className="font-medium">Comanda</span> (KDS), se imprime comanda y avanza a En preparación cuando lo aceptás.</li>
+            <li><span className="font-medium">Sin cocina</span> (solo bebidas/packs): <strong>no</strong> aparece en la Comanda, <strong>no</strong> imprime comanda y el badge de Comanda no lo cuenta.</li>
+          </ul>
+          <div className="bg-blue-50 border border-blue-200 text-blue-800 rounded-xl px-4 py-3 text-sm mb-3">
+            <strong>Mostrador/mesa sin cocina:</strong> el pedido pasa directo de <span className="font-medium">Nuevo</span> a <span className="font-medium">Listo</span> (saltándose En preparación) y se completa al instante. Es el flujo rápido de bares y rotiserías.
+          </div>
+          <p className="text-xs text-muted-foreground">Si tomás un plato que SÍ necesita cocina en Mostrador, el pedido queda <span className="font-medium">En preparación</span> (no se completa al instante).</p>
+          <img src="/manuales/capturas/25-comanda-kds.png" alt="Comanda KDS" className="rounded-xl border border-border shadow-sm w-full max-w-sm mt-3" />
         </div>
 
         {/* 7 */}
         <div>
-          <h2 className="font-display text-lg font-semibold mb-3">7. Pedidos de mesa</h2>
-          <p className="mb-3">
-            Si tu local tiene mesas, los pedidos aparecen con el método <span className="font-medium">&quot;Mesa&quot;</span> y el número de mesa. Los pedidos se acumulan en la cuenta hasta que el cliente quiera cerrar.
-          </p>
-          <img src="/manuales/capturas/24-pedido-mesa.png" alt="Pedido de mesa" className="rounded-xl border border-border shadow-sm w-full max-w-sm" />
+          <h2 className="font-display text-lg font-semibold mb-3">7. WhatsApp del pedido</h2>
+          <p className="mb-3">Desde la ficha del pedido hay botones de WhatsApp contextuales (se abren con el mensaje listo para enviar):</p>
+          <ul className="list-disc pl-5 space-y-1">
+            <li><span className="font-medium">📨 Avisar recibido</span> — cuando llegó como Nuevo.</li>
+            <li><span className="font-medium">✅ Avisar confirmado</span> — cuando lo aceptaste/empaquetaste (app/carrito).</li>
+            <li><span className="font-medium">🛵 Avisar retiro</span> / <span className="font-medium">🛵 Avisar envío</span> — cuando está Listo.</li>
+            <li><span className="font-medium">🚚 Avisar envío</span> / <span className="font-medium">✅ Avisar entrega</span> — Enviado / Entregado.</li>
+            <li><span className="font-medium">💸 Datos de pago (WA)</span> — si el cliente pagó por transferencia y está pendiente de confirmar.</li>
+          </ul>
+          <p className="text-xs text-muted-foreground">Si el cliente no tiene WhatsApp o el pedido es de mesa/mostrador (sin teléfono de cliente), estos botones no aparecen — el contacto es el del comercio.</p>
         </div>
 
         {/* 8 */}
         <div>
-          <h2 className="font-display text-lg font-semibold mb-3">8. Comanda (KDS)</h2>
-          <p className="mb-3">
-            La pestaña <span className="font-medium">&quot;Comanda&quot;</span> muestra los pedidos que necesitan preparación, organizados por tipo de plato. Es tu pantalla de cocina.
-          </p>
-          <img src="/manuales/capturas/25-comanda-kds.png" alt="Comanda KDS" className="rounded-xl border border-border shadow-sm w-full max-w-sm" />
-        </div>
-
-        {/* 9 */}
-        <div>
-          <h2 className="font-display text-lg font-semibold mb-3">9. Mostrador (POS)</h2>
-          <p className="mb-3">
-            La pestaña <span className="font-medium">&quot;Mostrador&quot;</span> es tu punto de venta para ventas presenciales. Desde ahí podés registrar ventas rápidas, cobrar en el momento y imprimir la precuenta.
-          </p>
-          <img src="/manuales/capturas/26-mostrador-pos.png" alt="Mostrador POS" className="rounded-xl border border-border shadow-sm w-full max-w-sm" />
+          <h2 className="font-display text-lg font-semibold mb-3">8. Impresión</h2>
+          <p className="mb-3">La ficha tiene <span className="font-medium">🖨️ Imprimir comanda</span> (para la cocina). Para configurar la impresora (app Android, agente PC o TCP), ver el <Link href="/manuales/impresora" className="text-primary hover:underline">manual de impresora</Link>.</p>
+          <p>Desde la Comanda (KDS) y el Mostrador (POS) también hay botones de impresión por ticket.</p>
         </div>
 
         {/* Resumen estados */}
@@ -173,15 +175,16 @@ export default function RecepcionPedidosPage() {
                 <tr>
                   <th className="text-left px-3 py-2 font-medium">Estado</th>
                   <th className="text-left px-3 py-2 font-medium">Significado</th>
-                  <th className="text-left px-3 py-2 font-medium">Acción</th>
+                  <th className="text-left px-3 py-2 font-medium">Acción típica</th>
                 </tr>
               </thead>
               <tbody>
-                <tr className="border-t border-border"><td className="px-3 py-2 font-medium">Nuevo</td><td className="px-3 py-2">Recién llegado</td><td className="px-3 py-2">Aceptar o rechazar</td></tr>
-                <tr className="border-t border-border"><td className="px-3 py-2 font-medium">Preparando</td><td className="px-3 py-2">En cocina</td><td className="px-3 py-2">Preparar</td></tr>
-                <tr className="border-t border-border"><td className="px-3 py-2 font-medium">Listo</td><td className="px-3 py-2">Empaquetado</td><td className="px-3 py-2">Avisar al cliente</td></tr>
+                <tr className="border-t border-border"><td className="px-3 py-2 font-medium">Nuevo</td><td className="px-3 py-2">Recién llegado</td><td className="px-3 py-2">Aceptar y empezar a preparar / Aceptar (moda) / Cancelar</td></tr>
+                <tr className="border-t border-border"><td className="px-3 py-2 font-medium">En preparación</td><td className="px-3 py-2">En cocina</td><td className="px-3 py-2">Preparar → Listo</td></tr>
+                <tr className="border-t border-border"><td className="px-3 py-2 font-medium">Listo</td><td className="px-3 py-2">Empaquetado</td><td className="px-3 py-2">Avisar al cliente / Enviar</td></tr>
                 <tr className="border-t border-border"><td className="px-3 py-2 font-medium">Enviado</td><td className="px-3 py-2">En camino</td><td className="px-3 py-2">Esperar confirmación</td></tr>
-                <tr className="border-t border-border"><td className="px-3 py-2 font-medium">Completado</td><td className="px-3 py-2">Entregado</td><td className="px-3 py-2">¡Listo!</td></tr>
+                <tr className="border-t border-border"><td className="px-3 py-2 font-medium">Entregado</td><td className="px-3 py-2">Finalizado</td><td className="px-3 py-2">—</td></tr>
+                <tr className="border-t border-border"><td className="px-3 py-2 font-medium">Cancelado</td><td className="px-3 py-2">Descartado</td><td className="px-3 py-2">—</td></tr>
               </tbody>
             </table>
           </div>
@@ -192,10 +195,11 @@ export default function RecepcionPedidosPage() {
           <h2 className="font-display text-lg font-semibold mb-3">Tips</h2>
           <ul className="list-disc pl-5 space-y-1 text-sm">
             <li><span className="font-medium">Respondé rápido</span>: los clientes valoran la velocidad.</li>
-            <li><span className="font-medium">Actualizá el estado</span>: el cliente recibe notificaciones.</li>
-            <li><span className="font-medium">Usá la comanda</span>: te ayuda a organizar varios pedidos.</li>
-            <li><span className="font-medium">Revisá los pagos</span>: no despachés sin confirmar el pago.</li>
-            <li><span className="font-medium">Stock</span>: si activás control de stock, los platos se agotan automáticamente.</li>
+            <li><span className="font-medium">Usá la Comanda</span>: te ayuda a organizar varios pedidos de cocina a la vez.</li>
+            <li><span className="font-medium">Revisá los pagos</span>: no despachés sin confirmar el pago (especialmente transferencias).</li>
+            <li><span className="font-medium">WhatsApp</span>: usá los botones contextuales para avisar al cliente en cada etapa.</li>
+            <li><span className="font-medium">Sin cocina</span>: los pedidos de bebidas/packs se completan al instante — no los busques en la Comanda.</li>
+            <li><span className="font-medium">Moda</span>: aceptá/rechazá por stock antes de empaquetar.</li>
           </ul>
         </div>
 

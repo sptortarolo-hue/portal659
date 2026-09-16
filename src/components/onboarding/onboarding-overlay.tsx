@@ -12,7 +12,7 @@ const SLIDES = [
   },
   {
     emoji: "📍",
-    title: "Descubrí cerca de vos",
+    title: "Descubrí cerca tuyo",
     text: "Explorá por categoría, buscá lo que necesitá y pedí directo por WhatsApp.",
   },
   {

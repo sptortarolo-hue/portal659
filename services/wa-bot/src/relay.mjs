@@ -20,6 +20,10 @@ export function clientCount() {
 }
 
 /** Envía un texto al celular de un cliente vía la conexión del relay. */
+export function forEachClient(fn) {
+  for (const [token, c] of clients) fn(token, c);
+}
+
 export function sendText(client, waId, text) {
   if (!client || client.ws.readyState !== WebSocket.OPEN) return false;
   client.ws.send(JSON.stringify({ type: "send", wa_id: waId, text }));

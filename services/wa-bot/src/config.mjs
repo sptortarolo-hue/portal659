@@ -7,5 +7,6 @@ export const config = {
   redisToken: process.env.UPSTASH_REDIS_REST_TOKEN || "",
   llmApiKey: process.env.LLM_API_KEY || "",
   llmBaseUrl: process.env.LLM_BASE_URL || "https://integrate.api.nvidia.com/v1",
-  llmModel: process.env.LLM_MODEL || "meta/llama-3.3-70b-instruct",
+  // Modelo gratis confirmado en NVIDIA NIM (post-deprecation de llama-3.3-70b-instruct).
+  llmModel: process.env.LLM_MODEL || "google/gemma-4-31b-it",
 };

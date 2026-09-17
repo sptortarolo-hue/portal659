@@ -1,5 +1,37 @@
 import { config } from "./config.mjs";
 
+// NVIDIA depreca modelos con tiempo (410 Gone). Para no pinchar el bot cada
+// tanto, si el modelo configurado devuelve 410/404, pedimos la lista /models
+// y caemos al primer instruct disponible. Cacheada en memoria del proceso.
+let resolvedModelCache = null;
+
+async function resolveModel() {
+  if (process.env.LLM_MODEL) return process.env.LLM_MODEL; // pin manual = respetar
+  if (resolvedModelCache) return resolvedModelCache;
+  queryModels();
+  return config.llmModel;
+}
+
+async function queryModels() {
+  try {
+    const res = await fetch(`${config.llmBaseUrl}/models`, {
+      headers: { Authorization: `Bearer ${config.llmApiKey}` },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    const ids = (data.data || []).map((m) => m.id).filter(Boolean);
+    const prefer = ids.filter((id) => /llama.*instruct/i.test(id) && !/vision|guard|embed|rerank/i.test(id));
+    const pick = prefer[0] || ids.find((id) => /llama|gemma|mistral|qwen/i.test(id)) || null;
+    if (pick) {
+      resolvedModelCache = pick;
+      console.log(`[bot] LLM modelo activo auto-descubierto: ${pick} (configurado: ${config.llmModel} no disponible)`);
+    }
+  } catch (e) {
+    console.error(`[bot] LLM /models falló (seguirá con modelo configurado): ${e?.message}`);
+  }
+}
+
 const SYSTEM = `Sos un asistente de un comercio gastronómico que toma pedidos por WhatsApp.
 Dado el mensaje del cliente y la lista de productos disponibles, devolvé SOLO un JSON válido (sin texto adicional) con esta forma:
 
@@ -30,6 +62,23 @@ export async function parseWithLlm(message, products) {
     return null;
   }
 
+  const model = await resolveModel();
+  const parsed = await callOnce(message, products, model);
+  if (parsed !== null) return parsed;
+
+  // Si el modelo está deprecado (410/404), re-descubrir y reintentar 1 vez.
+  if (parseWithLlm._deprecated) {
+    parseWithLlm._deprecated = false;
+    resolvedModelCache = null;
+    queryModels();
+    await new Promise((r) => setTimeout(r, 500));
+    const retry = await callOnce(message, products, await resolveModel());
+    if (retry !== null) return retry;
+  }
+  return null;
+}
+
+async function callOnce(message, products, model) {
   const menu = products
     .map((p) => `${p.id}|${p.name}|$${p.price}`)
     .join("\n");
@@ -43,7 +92,7 @@ export async function parseWithLlm(message, products) {
         Authorization: `Bearer ${config.llmApiKey}`,
       },
       body: JSON.stringify({
-        model: config.llmModel,
+        model,
         temperature: 0,
         max_tokens: 400,
         messages: [
@@ -58,6 +107,11 @@ export async function parseWithLlm(message, products) {
     return null;
   }
 
+  if (res.status === 410 || res.status === 404) {
+    parseWithLlm._deprecated = true;
+    console.error(`[bot] LLM modelo ${model} está deprecado/no existe (${res.status}) — se re-descubrirá automáticamente`);
+    return null;
+  }
   if (!res.ok) {
     const snippet = (await res.text().catch(() => "")).slice(0, 300);
     console.error(`[bot] LLM error ${res.status}: ${snippet}`);

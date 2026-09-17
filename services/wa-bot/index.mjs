@@ -10,7 +10,7 @@ const server = createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
   if (url.pathname === "/health") {
     res.writeHead(200, { "content-type": "application/json" });
-    res.end(JSON.stringify({ ok: true, clients: clientCount() }));
+    res.end(JSON.stringify({ ok: true, clients: clientCount(), llm: !!config.llmApiKey }));
     return;
   }
   res.writeHead(404, { "content-type": "application/json" });
@@ -142,4 +142,6 @@ process.on("SIGINT", () => process.exit(0));
 
 server.listen(config.port, () => {
   console.log(`[wa-bot] cerebro escuchando en :${config.port}`);
+  console.log(`[wa-bot] LLM ${config.llmApiKey ? `activo (${config.llmModel} via ${config.llmBaseUrl})` : "DESACTIVADO — mensajes sin saludo solo"}`);
+  console.log(`[wa-bot] redis=${config.redisUrl ? "on" : "off"} db=${config.databaseUrl ? "ok" : "no conf"} appUrl=${config.appUrl}`);
 });

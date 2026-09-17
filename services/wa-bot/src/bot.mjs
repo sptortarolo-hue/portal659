@@ -39,13 +39,16 @@ export async function handleInbound({ vendor, waId, body }) {
     }
 
     // Cancelar desde cualquier paso.
-    if (/^(cancelar|no gracias|\/salir|basta)$/i.test(text)) {
+    if (/^(cancelar|no gracias|\/salir|basta|sali[rl]?)$/i.test(text)) {
       await clearState(vendorId, waId);
       return { replies: ["Listo, cancelé el pedido. Cualquier cosa me avisás. 😊"] };
     }
 
+    console.log(`[bot] ${waId} step=${state.step} body="${text.slice(0, 80)}" llm=${config.llmApiKey ? "on" : "off"}`);
+
     if (state.step === "idle") {
       await handleIdle({ vendor, text, state, replies, phone, waId });
+      console.log(`[bot] ${waId} idle -> step=${state.step} replies=${replies.length} items=${state.items?.length ?? 0}`);
       if (state._done) await clearState(vendorId, waId);
       else if (state.step !== "idle") await setState(vendorId, waId, state);
       return { replies };
@@ -53,6 +56,7 @@ export async function handleInbound({ vendor, waId, body }) {
 
     // Flujo paso a paso (método → nombre → dirección → confirmar).
     await handleStep({ vendor, text, state, replies });
+    console.log(`[bot] ${waId} step=${state.step} -> replies=${replies.length}${state._done ? " done" : ""}`);
     if (state._done) await clearState(vendorId, waId);
     else await setState(vendorId, waId, state);
     return { replies };
@@ -153,6 +157,12 @@ async function handleStep({ vendor, text, state, replies }) {
         await createOrder(vendor.id, state);
         state._done = true;
         replies.push("✅ ¡Pedido recibido! Te lo confirmamos por acá. 💬");
+        return;
+      }
+      if (/^(no|nop|no,)/i.test(t)) {
+        state._done = true;
+        await clearState(vendor.id, waId);
+        replies.push("Dale, lo dejamos sin pedir. Si te arrepentís, escribime de nuevo 👍");
         return;
       }
       replies.push(confirmText(state));

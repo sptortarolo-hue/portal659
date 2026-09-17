@@ -76,6 +76,18 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "El nombre y el precio son obligatorios" }, { status: 400 });
   }
 
+  // Tolerante a migración de packs sin aplicar: sin la columna, se ignora.
+  const hasPack = await queryOne<{ exists: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1 FROM information_schema.columns
+       WHERE table_name = 'products' AND column_name = 'pack_size'
+     ) AS exists`
+  );
+  const packSize =
+    hasPack?.exists === true && Number.isInteger(Number(body.pack_size)) && Number(body.pack_size) >= 2
+      ? Math.floor(Number(body.pack_size))
+      : null;
+
   const plans = await queryMany<Plan>(`SELECT * FROM plans`);
   const plan = resolveVendorPlan(fullVendor as Vendor, plans || []);
   if (plan.maxProducts != null) {
@@ -96,8 +108,8 @@ export async function POST(request: Request) {
   }
 
   const offer = await queryOne<Record<string, unknown>>(
-    `INSERT INTO products (vendor_id, name, description, price, currency, category, neighborhood, type, available, featured_today, image_url, stock, stock_low_threshold, stock_control, requires_prep, has_variants, cash_discount_excluded)
-     VALUES ($1, $2, $3, $4, 'ARS', $5, $6, 'food', true, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING *`,
+    `INSERT INTO products (vendor_id, name, description, price, currency, category, neighborhood, type, available, featured_today, image_url, stock, stock_low_threshold, stock_control, requires_prep, has_variants, cash_discount_excluded${packSize != null ? ", pack_size" : ""})
+     VALUES ($1, $2, $3, $4, 'ARS', $5, $6, 'food', true, $7, $8, $9, $10, $11, $12, $13, $14${packSize != null ? ", $15" : ""}) RETURNING *`,
     [
       vendor.id,
       name,
@@ -113,6 +125,7 @@ export async function POST(request: Request) {
       requires_prep,
       has_variants,
       cash_discount_excluded,
+      ...(packSize != null ? [packSize] : []),
     ]
   );
 

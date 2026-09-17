@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { AddToCartButton } from "@/components/offers/add-to-cart-button";
 import { ProductImage } from "@/components/product-image";
 import { CashPrice } from "@/components/store/cash-price";
-import { cashAppliesToItem, normalizeCashPct } from "@/lib/cash-discount";
+import { cashAppliesToItem, cashPrice, normalizeCashPct } from "@/lib/cash-discount";
 import { useCart, type CartModifier, type CartVolumeGroup } from "@/lib/cart";
 import { useToast } from "@/lib/toast";
 import { volumeBadgeText } from "@/lib/volume-pricing";
@@ -37,6 +37,8 @@ type Props = {
     stock_low_threshold?: number | null;
     stock_control?: boolean;
     cash_discount_excluded?: boolean | null;
+    /** Venta en packs (ej: sandwiches de miga de a 6). El precio es del paquete. */
+    pack_size?: number | null;
   };
   vendor: VendorBrief;
   modifiers?: ProductModifier[];
@@ -79,6 +81,15 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
   const basePrice = product.promo_price != null ? Number(product.promo_price) : Number(product.price);
   const hasPromo = product.promo_price != null;
   const cashExcluded = hasPromo && !!product.cash_discount_excluded;
+  // Pack: el precio del catálogo es por PAQUETE (pack_size unidades); la unidad
+  // derivada se usa para totales, móds y el carrito.
+  const pack =
+    Number.isInteger(Number(product.pack_size)) && Number(product.pack_size) >= 2
+      ? Math.floor(Number(product.pack_size))
+      : 1;
+  const baseUnit = pack > 1 ? Math.round((basePrice / pack) * 100) / 100 : basePrice;
+  const listBaseUnit =
+    pack > 1 ? Math.round((Number(product.price) / pack) * 100) / 100 : Number(product.price);
   // Doble valor solo si el descuento corre para este plato.
   const showCash =
     normalizeCashPct(vendor.cashDiscountPct) > 0 &&
@@ -102,7 +113,7 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
   const modTotal = Object.values(selected)
     .flat()
     .reduce((s, o) => s + Number(o.price_mod || 0), 0);
-  const unitTotal = basePrice + modTotal;
+  const unitTotal = baseUnit + modTotal;
   const grandTotal = unitTotal * qty;
 
   const allRequiredMet = modifiers
@@ -127,7 +138,7 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
   function openSheet() {
     // Reset del estado al abrir (no arrastrar lo de la vez anterior).
     setSelected({});
-    setQty(1);
+    setQty(pack);
     setOpen(true);
   }
 
@@ -139,20 +150,21 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
     const switched = addItem(vendor, {
       offerId: product.id,
       name: product.name,
-      price: basePrice,
+      price: baseUnit,
       qty,
       modifiers: flat.length > 0 ? flat : undefined,
       cashExcluded,
-      origPrice: Number(product.price),
+      origPrice: listBaseUnit,
       hasPromo,
+      packSize: pack > 1 ? pack : undefined,
     });
     addToast(
       switched
         ? "Se limpió el carrito anterior (solo podés pedir de un local a la vez)"
-        : `${product.name} agregado al carrito`
+        : `${product.name}${pack > 1 ? ` (pack x${pack})` : ""} agregado al carrito`
     );
     setOpen(false); // cierra la ficha y vuelve al menú
-    setQty(1);
+    setQty(pack);
   }
 
   // Desktop: fila compacta con botón directo (comportamiento actual).
@@ -172,6 +184,7 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
           <div className="flex items-center gap-2">
             <p className="font-semibold leading-tight">{product.name}</p>
             {product.featured_today && <Badge className="bg-sun text-ink hover:bg-sun">Hoy</Badge>}
+            {pack > 1 && <Badge className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] whitespace-nowrap">De a {pack}</Badge>}
           {outStock && <Badge variant="secondary" className="bg-red-100 text-red-700 text-[10px]">Sin stock</Badge>}
           {volBadge && acceptsCart && !outStock && (
             <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-1.5 py-0.5 whitespace-nowrap">{volBadge}</span>
@@ -183,7 +196,15 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
         </div>
       </div>
       <div className="flex flex-col items-end gap-2 flex-shrink-0">
-        {showCash ? (
+        {pack > 1 ? (
+          <div className="text-right">
+            <span className="font-bold">${basePrice.toLocaleString("es-AR")}</span>
+            {showCash && (
+              <span className="block text-xs font-semibold text-emerald-700">efvo ${cashPrice(basePrice, Number(vendor.cashDiscountPct)).toLocaleString("es-AR")}</span>
+            )}
+            <span className="block text-xs text-muted-foreground">de a {pack} · c/u ${baseUnit.toLocaleString("es-AR")}</span>
+          </div>
+        ) : showCash ? (
           <CashPrice price={basePrice} hasPromo={hasPromo} excluded={product.cash_discount_excluded} cashPct={vendor.cashDiscountPct} />
         ) : product.promo_price ? (
           <div className="text-right">
@@ -195,7 +216,7 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
         )}
         {!outStock &&
           (acceptsCart ? (
-            <AddToCartButton offerId={product.id} name={product.name} price={basePrice} vendor={vendor} modifiers={modifiers} cashExcluded={cashExcluded} origPrice={Number(product.price)} hasPromo={hasPromo} />
+            <AddToCartButton offerId={product.id} name={product.name} price={baseUnit} vendor={vendor} modifiers={modifiers} cashExcluded={cashExcluded} origPrice={listBaseUnit} hasPromo={hasPromo} packSize={pack > 1 ? pack : undefined} />
           ) : (
             <a href={consultHref} target="_blank" rel="noopener noreferrer" className="rounded-md px-3 py-1.5 text-sm font-medium text-center bg-primary text-primary-foreground hover:bg-primary/90">Consultar</a>
           ))}
@@ -223,12 +244,21 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
         <div className="flex items-center gap-1.5">
           <p className="font-semibold leading-tight truncate">{product.name}</p>
           {product.featured_today && <Badge className="bg-sun text-ink text-[10px] px-1.5">Hoy</Badge>}
+          {pack > 1 && <Badge className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] px-1.5 whitespace-nowrap">De a {pack}</Badge>}
         </div>
         {product.description && (
           <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{product.description}</p>
         )}
         <div className="flex items-center gap-2 mt-1">
-          {showCash ? (
+          {pack > 1 ? (
+            <>
+              <span className="font-bold">${basePrice.toLocaleString("es-AR")}</span>
+              <span className="text-xs text-muted-foreground">de a {pack}</span>
+              {showCash && (
+                <span className="text-[11px] font-semibold text-emerald-700">efvo ${cashPrice(basePrice, Number(vendor.cashDiscountPct)).toLocaleString("es-AR")}</span>
+              )}
+            </>
+          ) : showCash ? (
             <CashPrice price={basePrice} hasPromo={hasPromo} excluded={product.cash_discount_excluded} cashPct={vendor.cashDiscountPct} size="sm" plainClassName="font-bold" />
           ) : product.promo_price ? (
             <>
@@ -305,7 +335,12 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
             <div className="p-4 space-y-3">
               <div className="flex items-center justify-between gap-2">
                 <div>
-                  {showCash ? (
+                  {pack > 1 ? (
+                    <div>
+                      <span className="font-display text-2xl font-bold">${basePrice.toLocaleString("es-AR")}</span>
+                      <p className="text-xs text-muted-foreground mt-0.5">Paquete de {pack} · c/u ${baseUnit.toLocaleString("es-AR")}</p>
+                    </div>
+                  ) : showCash ? (
                     <CashPrice price={basePrice} hasPromo={hasPromo} excluded={product.cash_discount_excluded} cashPct={vendor.cashDiscountPct} size="lg" plainClassName="font-display text-2xl font-bold" />
                   ) : product.promo_price ? (
                     <div className="flex items-baseline gap-2">
@@ -388,11 +423,14 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
                 <>
                   {/* Cantidad */}
                   <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">Cantidad</span>
+                    <span className="text-sm font-medium">
+                      Cantidad
+                      {pack > 1 && <span className="ml-1.5 text-xs text-muted-foreground">(de a {pack})</span>}
+                    </span>
                     <div className="flex items-center border border-border rounded-lg">
                       <button
                         type="button"
-                        onClick={() => setQty((q) => Math.max(1, q - 1))}
+                        onClick={() => setQty((q) => Math.max(pack, q - pack))}
                         className="h-9 w-9 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted rounded-l-lg transition-colors"
                         aria-label="Menos"
                       >
@@ -401,7 +439,7 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
                       <span className="w-10 text-center text-sm font-medium tabular-nums">{qty}</span>
                       <button
                         type="button"
-                        onClick={() => setQty((q) => q + 1)}
+                        onClick={() => setQty((q) => q + pack)}
                         className="h-9 w-9 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted rounded-r-lg transition-colors"
                         aria-label="Más"
                       >

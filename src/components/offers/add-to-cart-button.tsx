@@ -29,6 +29,8 @@ type AddToCartButtonProps = {
   origPrice?: number;
   /** El price viene de una promo. */
   hasPromo?: boolean;
+  /** Pack (ej: 6): el quick-add agrega un pack completo por click. */
+  packSize?: number;
 };
 
 export function AddToCartButton({
@@ -40,6 +42,7 @@ export function AddToCartButton({
   cashExcluded,
   origPrice,
   hasPromo,
+  packSize,
 }: AddToCartButtonProps) {
   const { addItem } = useCart();
   const { addToast } = useToast();
@@ -52,11 +55,12 @@ export function AddToCartButton({
         offerId,
         name,
         price,
-        qty: 1,
+        qty: packSize && packSize >= 2 ? packSize : 1,
         modifiers: mods,
         cashExcluded,
         origPrice,
         hasPromo,
+        packSize: packSize && packSize >= 2 ? packSize : undefined,
       });
       if (switched) {
         addToast("Se limpió el carrito anterior (solo podés pedir de un local a la vez)");
@@ -66,7 +70,7 @@ export function AddToCartButton({
       setAdded(true);
       setTimeout(() => setAdded(false), 1500);
     },
-    [addItem, vendor, offerId, name, price, cashExcluded, origPrice, hasPromo, addToast]
+    [addItem, vendor, offerId, name, price, cashExcluded, origPrice, hasPromo, packSize, addToast]
   );
 
   const handleClick = useCallback(() => {

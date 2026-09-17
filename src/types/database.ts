@@ -257,6 +257,8 @@ export type Product = {
   has_variants?: boolean;
   /** true = la promo de este producto NO recibe el descuento en efectivo. */
   cash_discount_excluded?: boolean;
+  /** Se vende de a N unidades (ej: 6). El precio es del paquete. NULL = por unidad. */
+  pack_size?: number | null;
   created_at: string;
 };
 

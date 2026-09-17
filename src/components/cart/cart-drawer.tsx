@@ -62,7 +62,12 @@ export function CartDrawer() {
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="font-medium text-sm leading-tight">{item.name}</p>
+                      <p className="font-medium text-sm leading-tight">
+                        {item.name}
+                        {item.packSize ? (
+                          <span className="ml-1.5 rounded-full bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 whitespace-nowrap">pack x{item.packSize}</span>
+                        ) : null}
+                      </p>
                       {item.modifiers && item.modifiers.length > 0 && (
                         <div className="mt-1 flex flex-wrap gap-1">
                           {item.modifiers.map((m, mi) => (
@@ -94,7 +99,7 @@ export function CartDrawer() {
                         onClick={() =>
                           setQty(
                             item.offerId,
-                            item.qty - 1,
+                            item.qty - (item.packSize || 1),
                             item.modifiers
                           )
                         }
@@ -109,7 +114,7 @@ export function CartDrawer() {
                         onClick={() =>
                           setQty(
                             item.offerId,
-                            item.qty + 1,
+                            item.qty + (item.packSize || 1),
                             item.modifiers
                           )
                         }

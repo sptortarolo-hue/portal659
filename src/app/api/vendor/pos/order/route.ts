@@ -54,6 +54,32 @@ export async function POST(request: Request) {
     requires_prep: i.requires_prep !== false,
   }));
 
+  // Packs: cantidad siempre múltiplo de `pack_size` (ej: sandwiches x6).
+  // Tolerante a migración sin aplicar.
+  {
+    const pids = Array.from(new Set(normalizedItems.map((i) => i.product_id).filter(Boolean))) as string[];
+    if (pids.length > 0) {
+      try {
+        const prows = await queryMany<{ id: string; name: string; pack_size: number | null }>(
+          `SELECT id, name, pack_size FROM products WHERE vendor_id = $1 AND id = ANY($2)`,
+          [gate.vendor.id, pids]
+        );
+        const ppack = new Map((prows || []).map((p) => [p.id, p]));
+        for (const i of normalizedItems) {
+          const pack = i.product_id ? Math.floor(Number(ppack.get(i.product_id)?.pack_size || 0)) : 0;
+          if (pack >= 2 && i.qty % pack !== 0) {
+            return NextResponse.json(
+              { error: `"${i.name}" se vende de a ${pack} unidades` },
+              { status: 400 }
+            );
+          }
+        }
+      } catch {
+        // columna sin migrar: se omite la validación
+      }
+    }
+  }
+
   // Pedidos CON cocina o delivery nacen en "preparing" y entran al flow
   // normal de la comanda (hay que prepararlos/despacharlos). Pedidos de
   // mostrador/mesa SIN nada de cocina (solo bebidas/packs) no van a la

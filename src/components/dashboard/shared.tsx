@@ -106,6 +106,9 @@ type OfferFormProps = {
   setOffRequiresPrep?: (v: boolean) => void;
   offCashExcluded?: boolean;
   setOffCashExcluded?: (v: boolean) => void;
+  /** "Se vende de a N" (pack): string con el N, "" = por unidad. Solo gastro. */
+  offPackSize?: string;
+  setOffPackSize?: (v: string) => void;
   onSubmit: () => void;
   onClose?: () => void;
 };
@@ -128,6 +131,7 @@ export function OfferForm({
   showPrep = false,
   offRequiresPrep = true, setOffRequiresPrep,
   offCashExcluded = false, setOffCashExcluded,
+  offPackSize = "", setOffPackSize,
   onClose,
 }: OfferFormProps) {
   // Al crear (no editando): si la categoría actual no existe entre las opciones
@@ -172,6 +176,23 @@ export function OfferForm({
           </div>
         )}
         <div><Label>Categoría</Label><select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={offCategory} onChange={(e) => setOffCategory(e.target.value)}>{categories.length === 0 && <option value="otras">otras</option>}{categories.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}{showCurrentAsOption && <option value={offCategory}>{offCategory}</option>}</select></div>
+        {setOffPackSize && (
+          <div>
+            <Label>Se vende de a… (pack)</Label>
+            <Input
+              type="number"
+              min={2}
+              step={1}
+              inputMode="numeric"
+              value={offPackSize}
+              onChange={(e) => setOffPackSize(e.target.value)}
+              placeholder="Ej: 6 (vacío = por unidad)"
+            />
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Cantidad mínima y múltiplo de venta (ej: sandwiches de miga de a 6). Con pack, el precio cargado es <strong>por paquete</strong> (6 unidades).
+            </p>
+          </div>
+        )}
         {showPrep && setOffRequiresPrep && (
           <div className="flex items-center justify-between">
             <div>

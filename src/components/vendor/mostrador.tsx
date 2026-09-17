@@ -31,8 +31,21 @@ type Product = {
   category?: string | null;
   requires_prep?: boolean;
   cash_discount_excluded?: boolean | null;
+  /** Venta en packs (ej: 6). El precio es del paquete; la unidad se deriva. */
+  pack_size?: number | null;
   modifiers?: ProductModifier[];
 };
+
+/** Tamaño del pack (1 = venta por unidad). */
+function packOf(p: Product): number {
+  return Number.isInteger(Number(p.pack_size)) && Number(p.pack_size) >= 2 ? Math.floor(Number(p.pack_size)) : 1;
+}
+/** Precio por unidad (con pack: price del paquete / pack_size). */
+function unitPriceOf(p: Product): number {
+  const base = Number(p.promo_price ?? p.price);
+  const pk = packOf(p);
+  return pk > 1 ? Math.round((base / pk) * 100) / 100 : base;
+}
 
 type LineItem = {
   product_id: string;
@@ -44,6 +57,8 @@ type LineItem = {
   /** Promo vigente + exclusión: reglas del descuento en efectivo. */
   hasPromo: boolean;
   cashExcluded: boolean;
+  /** Pack (stepper de a N). */
+  packSize?: number;
 };
 
 type MostradorOrder = {
@@ -168,7 +183,7 @@ export function Mostrador() {
       setPickerProduct(p);
       return;
     }
-    addLine(p, 1, Number(p.promo_price ?? p.price), []);
+    addLine(p, packOf(p), unitPriceOf(p), []);
   }
 
   function addLine(p: Product, qty: number, unitPrice: number, modifiers?: CartModifier[]) {
@@ -180,19 +195,20 @@ export function Mostrador() {
         product_id: p.id, name: p.name, price: unitPrice, qty,
         requires_prep: p.requires_prep !== false, modifiers,
         hasPromo: p.promo_price != null, cashExcluded: p.cash_discount_excluded === true,
+        packSize: packOf(p),
       }];
     });
   }
 
   function handleModConfirm(selected: CartModifier[], finalPrice: number) {
-    if (pickerProduct) addLine(pickerProduct, 1, finalPrice, selected);
+    if (pickerProduct) addLine(pickerProduct, packOf(pickerProduct), finalPrice, selected);
     setPickerProduct(null);
   }
 
   function changeQty(id: string, delta: number) {
     setItems((prev) =>
       prev
-        .map((i) => (i.product_id === id ? { ...i, qty: i.qty + delta } : i))
+        .map((i) => (i.product_id === id ? { ...i, qty: i.qty + delta * (i.packSize || 1) } : i))
         .filter((i) => i.qty > 0)
     );
   }
@@ -629,7 +645,7 @@ export function Mostrador() {
         <ModifierPicker
           modifiers={modifiersMap[pickerProduct.id] || []}
           productName={pickerProduct.name}
-          basePrice={Number(pickerProduct.promo_price ?? pickerProduct.price)}
+            basePrice={unitPriceOf(pickerProduct)}
           onConfirm={handleModConfirm}
           onCancel={() => setPickerProduct(null)}
         />

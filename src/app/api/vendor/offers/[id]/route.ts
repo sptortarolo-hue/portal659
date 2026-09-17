@@ -18,11 +18,29 @@ export async function PATCH(
     "available", "featured_today", "stock", "promo_price",
     "stock_low_threshold", "currency", "neighborhood", "type", "unit",
     "has_variants", "stock_control", "requires_prep", "cash_discount_excluded",
+    "pack_size",
   ] as const;
 
   const safeUpdate: Record<string, unknown> = {};
   for (const key of allowedFields) {
     if (key in body) safeUpdate[key] = body[key];
+  }
+  // Tolerante a migración de packs sin aplicar: sin la columna, se ignora.
+  if ("pack_size" in safeUpdate) {
+    const hasPack = await queryOne<{ exists: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1 FROM information_schema.columns
+         WHERE table_name = 'products' AND column_name = 'pack_size'
+       ) AS exists`
+    );
+    if (hasPack?.exists === true) {
+      safeUpdate.pack_size =
+        Number.isInteger(Number(safeUpdate.pack_size)) && Number(safeUpdate.pack_size) >= 2
+          ? Math.floor(Number(safeUpdate.pack_size))
+          : null;
+    } else {
+      delete safeUpdate.pack_size;
+    }
   }
   if ("cash_discount_excluded" in safeUpdate) {
     safeUpdate.cash_discount_excluded = safeUpdate.cash_discount_excluded === true;

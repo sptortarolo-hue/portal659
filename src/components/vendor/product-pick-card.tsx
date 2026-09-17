@@ -11,6 +11,8 @@ export type PickProduct = {
   available?: boolean;
   category?: string | null;
   vertical?: string | null;
+  /** Venta en packs (ej: 6). El precio es del paquete. */
+  pack_size?: number | null;
 };
 
 /**
@@ -45,6 +47,11 @@ export function ProductPickCard({
         {p.available === false && (
           <span className="absolute top-2 left-2 rounded-full bg-red-500 text-white text-[9px] font-bold px-2 py-0.5">
             Agotado
+          </span>
+        )}
+        {Number(p.pack_size) >= 2 && (
+          <span className="absolute top-2 right-2 rounded-full bg-emerald-600 text-white text-[9px] font-bold px-2 py-0.5">
+            pack x{Math.floor(Number(p.pack_size))}
           </span>
         )}
       </div>

@@ -37,6 +37,8 @@ type Offer = {
   promo_price: number | null;
   requires_prep?: boolean;
   cash_discount_excluded?: boolean;
+  /** Venta en packs (ej: 6). El precio es del paquete. */
+  pack_size?: number | null;
 };
 
 type CostInfo = { cost: number | null; pct: number | null; status: "ok" | "warn" | "bad" | "none" };
@@ -129,6 +131,8 @@ export function MenuStudio({
   const [offStockLowThreshold, setOffStockLowThreshold] = useState<number>(5);
   const [offRequiresPrep, setOffRequiresPrep] = useState<boolean>(true);
   const [offCashExcluded, setOffCashExcluded] = useState(false);
+  // "Se vende de a N" (pack). Vacío = se vende por unidad.
+  const [offPackSize, setOffPackSize] = useState("");
 
   // Drawer (desktop).
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -218,6 +222,7 @@ export function MenuStudio({
     setOffStockLowThreshold(5);
     setOffRequiresPrep(true);
     setOffCashExcluded(false);
+    setOffPackSize("");
   }
 
   function startEdit(offer: Offer) {
@@ -234,6 +239,7 @@ export function MenuStudio({
     setOffStockLowThreshold(offer.stock_low_threshold ?? 5);
     setOffRequiresPrep(offer.requires_prep !== false);
     setOffCashExcluded(!!offer.cash_discount_excluded);
+    setOffPackSize(offer.pack_size ? String(offer.pack_size) : "");
     setShowForm(true);
     setMsg("");
   }
@@ -289,6 +295,7 @@ export function MenuStudio({
       stock_low_threshold: offStockControl ? offStockLowThreshold : null,
       requires_prep: offRequiresPrep,
       cash_discount_excluded: offCashExcluded,
+      pack_size: offPackSize ? Math.floor(Number(offPackSize)) : null,
     };
 
     const res = editingId
@@ -510,6 +517,8 @@ export function MenuStudio({
       setOffRequiresPrep={setOffRequiresPrep}
       offCashExcluded={offCashExcluded}
       setOffCashExcluded={setOffCashExcluded}
+      offPackSize={offPackSize}
+      setOffPackSize={setOffPackSize}
       onClose={closeEditor}
     />
   );

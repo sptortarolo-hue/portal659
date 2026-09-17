@@ -20,15 +20,18 @@ export type CartItem = {
   /** Variante elegida (moda): se usa para reservar/reponer stock. */
   variantId?: string;
   name: string;
+  /** Precio POR UNIDAD (con pack: price del paquete / pack_size). */
   price: number;
   qty: number;
   modifiers?: CartModifier[];
   /** La promo de este ítem está excluida del descuento en efectivo. */
   cashExcluded?: boolean;
-  /** Precio de lista al agregar (si price trae promo, para espejo de volumen). */
+  /** Precio de lista POR UNIDAD al agregar (si price trae promo, para espejo de volumen). */
   origPrice?: number;
-  /** El price de este ítem viene de una promo. */
+  /** El price viene de una promo. */
   hasPromo?: boolean;
+  /** Pack (ej: 6): qty es siempre múltiplo de esto y el stepper va de a N. */
+  packSize?: number;
 };
 
 /** Grupo de volumen (espejo visual; el servidor recalcula y manda). */
@@ -150,7 +153,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       const items = existing
         ? base.map((i) =>
             i.offerId === item.offerId && JSON.stringify(i.modifiers || []) === modifierKey
-              ? { ...i, qty: i.qty + 1 }
+              ? { ...i, qty: i.qty + (Number(item.qty) || 1) }
               : i
           )
         : [...base, item];

@@ -33,6 +33,8 @@ type ProductRow = {
   promo_price: number | null;
   available: boolean;
   cash_discount_excluded: boolean | null;
+  /** Si se vende en packs (ej: 6), el precio es del paquete. NULL = por unidad. */
+  pack_size: number | null;
 };
 
 type VariantRow = {
@@ -114,7 +116,7 @@ export async function resolveOrderPricing(opts: {
 
   const products: ProductRow[] = productIds.size
     ? await tx.query<ProductRow>(
-        `SELECT id, name, price, promo_price, available, cash_discount_excluded FROM products
+        `SELECT id, name, price, promo_price, available, cash_discount_excluded, pack_size FROM products
          WHERE vendor_id = $1 AND id = ANY($2)`,
         [vendorId, [...productIds]]
       )
@@ -158,6 +160,8 @@ export async function resolveOrderPricing(opts: {
     qtySafe: number;
     labels: string[];
     hasPromo: boolean;
+    /** Tamaño del pack (1 = por unidad). */
+    pack: number;
   };
 
   const staged: StagedLine[] = [];
@@ -201,6 +205,23 @@ export async function resolveOrderPricing(opts: {
       throw new PricingError(`"Precio inválido en "${product.name}".`);
     }
 
+    // Packs: si el producto se vende de a N (ej: sandwiches de miga x6), la
+    // cantidad tiene que ser múltiplo de N y el precio del catálogo es del
+    // PAQUETE → la unidad derivada = price / N (base para totales, volumen,
+    // cash y modificadores por unidad).
+    const pack =
+      !variant && Number.isInteger(Number(product.pack_size)) && Number(product.pack_size) >= 2
+        ? Math.floor(Number(product.pack_size))
+        : 1;
+    if (pack > 1) {
+      if (qtySafe % pack !== 0) {
+        throw new PricingError(
+          `"${product.name}" se vende de a ${pack} unidades. Elegí una cantidad múltiplo de ${pack}.`
+        );
+      }
+      unitPrice = round2(unitPrice / pack);
+    }
+
     // Modificadores: solo se aplican los que el producto hoy tiene definidos
     // y con el precio actual del catálogo (no del cliente).
     const labels = Array.isArray(it.modifiers)
@@ -232,6 +253,7 @@ export async function resolveOrderPricing(opts: {
       qtySafe,
       labels,
       hasPromo,
+      pack,
     });
 
     outItems.push({
@@ -293,19 +315,25 @@ export async function resolveOrderPricing(opts: {
         }))
         .filter((g) => g.productIds.length > 0 && g.tiers.length > 0);
       if (volGroups.length > 0) {
-        const volLines: VolumeLineInput[] = staged.map((s) => ({
-          offerId: s.product.id,
-          qty: s.qtySafe,
-          listUnit: Number(s.variant ? s.variant.price : s.product.price),
-          promoUnit:
-            s.variant
-              ? s.variant.promo != null ? Number(s.variant.promo) : null
-              : s.product.promo_price != null ? Number(s.product.promo_price) : null,
-          modsUnit: s.modsTotal,
-          refUnit: s.unit,
-          hasPromo: s.hasPromo,
-          excluded: s.product.cash_discount_excluded,
-        }));
+        const volLines: VolumeLineInput[] = staged.map((s) => {
+          const rawList = Number(s.variant ? s.variant.price : s.product.price);
+          const rawPromo = s.variant
+            ? s.variant.promo != null ? Number(s.variant.promo) : null
+            : s.product.promo_price != null ? Number(s.product.promo_price) : null;
+          // Con pack, la base del volumen es la unidad derivada (price/pack).
+          const listUnit = s.pack > 1 ? round2(rawList / s.pack) : rawList;
+          const promoUnit = s.pack > 1 && rawPromo != null ? round2(rawPromo / s.pack) : rawPromo;
+          return {
+            offerId: s.product.id,
+            qty: s.qtySafe,
+            listUnit,
+            promoUnit,
+            modsUnit: s.modsTotal,
+            refUnit: s.unit,
+            hasPromo: s.hasPromo,
+            excluded: s.product.cash_discount_excluded,
+          };
+        });
         const vol = applyVolumePricing(volLines, volGroups);
         volumeDiscount = vol.volumeDiscount;
         volumeApplied = vol.applied.map((a) => ({ groupName: a.groupName, label: a.label, qty: a.qty }));

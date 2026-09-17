@@ -315,8 +315,11 @@ func (r *relay) onMessage(m *events.Message) {
 		fmt.Printf("INBOUND_EMPTY=%s chat=%s\n", messageType(m.Message), m.Info.Chat.String())
 		return
 	}
-	fmt.Printf("INBOUND=%s len=%d\n", m.Info.Chat.User, len(text))
-	r.inbound <- inboundMsg{waID: m.Info.Chat.User, body: text}
+	// JID completo (user@server): hoy los no-contactos llegan como
+	// 1346...@lid, y para responder hay que usar el server correcto.
+	chatJID := m.Info.Chat.String()
+	fmt.Printf("INBOUND=%s len=%d\n", chatJID, len(text))
+	r.inbound <- inboundMsg{waID: chatJID, body: text}
 }
 
 // getText extrae el texto plano del mensaje, desenvolviendo los wrappers que
@@ -487,8 +490,15 @@ func (r *relay) readLoop(ctx context.Context, conn *websocket.Conn) {
 }
 
 func (r *relay) sendText(ctx context.Context, waID, text string) {
-	jid := types.NewJID(waID, types.DefaultUserServer)
-	_, err := r.client.SendMessage(ctx, jid, &waProto.Message{Conversation: proto.String(text)})
+	// ParseJID respeta el server original: los chats de no-contactos son
+	// LID (xxxxx@lid). Hardcodear DefaultUserServer mandaba las respuestas
+	// a un destinatario inexistente y WhatsApp las descartaba en silencio.
+	jid, err := types.ParseJID(waID)
+	if err != nil {
+		// Compat: si llegó sin "@server", asumir usuario normal.
+		jid = types.NewJID(waID, types.DefaultUserServer)
+	}
+	_, err = r.client.SendMessage(ctx, jid, &waProto.Message{Conversation: proto.String(text)})
 	if err != nil {
 		log.Printf("send a %s: %v", waID, err)
 	}

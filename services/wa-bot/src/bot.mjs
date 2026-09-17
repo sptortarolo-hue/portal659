@@ -12,7 +12,13 @@ const DEFAULT_STATE = {
 };
 
 function normalizePhone(waId) {
-  const n = String(waId || "").replace(/[^\d]/g, "");
+  const s = String(waId || "");
+  // Si viene con server: para "@lid" no hay teléfono real (identificador
+  // opaco de WhatsApp) — se guarda como "lid:<id>". order-service lo acepta
+  // solo en pedidos del bot; el comercio ve la cadena y no un número inválido.
+  if (s.includes("@lid")) return "lid:" + s.split("@")[0];
+  const stripped = s.includes("@") ? s.split("@")[0] : s;
+  const n = stripped.replace(/[^\d]/g, "");
   if (!n) return "";
   if (n.startsWith("549")) return n;
   if (n.startsWith("54")) return "549" + n.slice(2);

@@ -92,9 +92,18 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
   // Teléfono del cliente: celular argentino válido (WhatsApp), normalizado a
   // E.164 sin "+" (549...). Misma validación que el registro de usuarios —
   // de acá salen los links wa.me del comercio, así que tiene que ser real.
-  const customerPhoneE164 = toE164(customerPhone);
-  if (!customerPhoneE164) {
-    throw new InvalidPhoneError();
+  // Excepción wa-bot: el chat puede venir como LID (id opaco de WhatsApp de
+  // no-contactos, sin teléfono disponible). Se guarda como "lid:<id>" para
+  // identificarlo igual; no sirve para escribirle por fuera del chat.
+  let customerPhoneE164: string;
+  if (source === "wa-bot" && customerPhone.startsWith("lid:")) {
+    customerPhoneE164 = customerPhone;
+  } else {
+    const normalized = toE164(customerPhone);
+    if (!normalized) {
+      throw new InvalidPhoneError();
+    }
+    customerPhoneE164 = normalized;
   }
 
   const paymentMethodNorm = paymentMethod || "whatsapp";

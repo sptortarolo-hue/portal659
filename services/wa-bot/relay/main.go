@@ -130,28 +130,34 @@ func main() {
 	// ya puede reenviarse al comercio/ panel aunque aún no haya pareo.
 	go relay.outboundLoop(ctx)
 
-if client.Store.ID == nil {
+	if client.Store.ID == nil {
 		log.Printf("sin sesión guardada — emitiendo QR")
-		relay.login(ctx)
-	} else {
-		// Con sesión ya guardada: reintentar el connect inicial con backoff.
-		// Un fallo transitorio NO debe matar el proceso (antes log.Fatalf → la
-		// app reiniciaba en loop y quedaba "reconectando" para siempre).
-		for {
-			if ctx.Err() != nil {
+		if !relay.login(ctx) {
+			stop()
+			return
+		}
+	}
+
+	// Loop común de conexión (para ambas ramas):
+	// - Si había sesión guardada: conecta y recibe mensajes.
+	// - Si se acaba de parear: el server desconectó el socket tras el
+	//   expectDisconnect() del pairing y NO autoreconecta — sin este
+	//   Connect() el relay queda "vinculado" pero nunca recibe mensajes
+	//   (era el bug de "hola y nada").
+	for {
+		if ctx.Err() != nil {
+			return
+		}
+		if err := client.Connect(); err != nil {
+			log.Printf("connect (reintentando): %v", err)
+			select {
+			case <-time.After(2 * time.Second):
+			case <-ctx.Done():
 				return
 			}
-			if err := client.Connect(); err != nil {
-				log.Printf("connect (reintentando): %v", err)
-				select {
-				case <-time.After(2 * time.Second):
-				case <-ctx.Done():
-					return
-				}
-				continue
-			}
-			break
+			continue
 		}
+		break
 	}
 
 	log.Println("relay whatsmeow corriendo")
@@ -293,19 +299,95 @@ func (r *relay) onMessage(m *events.Message) {
 	}
 	text := getText(m.Message)
 	if text == "" {
+		// Llega un mensaje pero sin texto extraíble: loguear el tipo para
+		// distinguir en el log de la app "no llega nada" vs "llega sin texto".
+		fmt.Printf("INBOUND_EMPTY=%s chat=%s\n", messageType(m.Message), m.Info.Chat.String())
 		return
 	}
+	fmt.Printf("INBOUND=%s len=%d\n", m.Info.Chat.User, len(text))
 	r.inbound <- inboundMsg{waID: m.Info.Chat.User, body: text}
 }
 
+// getText extrae el texto plano del mensaje, desenvolviendo los wrappers que
+// usa WhatsApp multi-device hoy (ephemeral = mensajes temporales, viewOnce,
+// deviceSent). Sin esto, "hola" llegaba como EphemeralMessage y se descartaba
+// silenciosamente (bot que "no responde").
 func getText(msg *waProto.Message) string {
+	msg = unwrapMessage(msg)
+	if msg == nil {
+		return ""
+	}
 	if s := msg.GetConversation(); s != "" {
 		return s
 	}
 	if s := msg.GetExtendedTextMessage().GetText(); s != "" {
 		return s
 	}
+	// Captions de media (foto/video/documento con caption "puede llevar texto").
+	if s := msg.GetImageMessage().GetCaption(); s != "" {
+		return s
+	}
+	if s := msg.GetVideoMessage().GetCaption(); s != "" {
+		return s
+	}
+	if s := msg.GetDocumentMessage().GetCaption(); s != "" {
+		return s
+	}
 	return ""
+}
+
+func unwrapMessage(msg *waProto.Message) *waProto.Message {
+	if msg == nil {
+		return nil
+	}
+	if e := msg.GetEphemeralMessage(); e != nil {
+		return unwrapMessage(e.GetMessage())
+	}
+	if v := msg.GetViewOnceMessage(); v != nil {
+		return unwrapMessage(v.GetMessage())
+	}
+	if v := msg.GetViewOnceMessageV2(); v != nil {
+		return unwrapMessage(v.GetMessage())
+	}
+	if d := msg.GetDeviceSentMessage(); d != nil {
+		return unwrapMessage(d.GetMessage())
+	}
+	if e := msg.GetEditedMessage(); e != nil {
+		return unwrapMessage(e.GetMessage())
+	}
+	return msg
+}
+
+func messageType(msg *waProto.Message) string {
+	if msg == nil {
+		return "nil"
+	}
+	switch {
+	case msg.GetConversation() != "":
+		return "conversation"
+	case msg.GetExtendedTextMessage() != nil:
+		return "extendedText"
+	case msg.GetEphemeralMessage() != nil:
+		return "ephemeral"
+	case msg.GetViewOnceMessage() != nil:
+		return "viewOnce"
+	case msg.GetViewOnceMessageV2() != nil:
+		return "viewOnceV2"
+	case msg.GetDeviceSentMessage() != nil:
+		return "deviceSent"
+	case msg.GetImageMessage() != nil:
+		return "image"
+	case msg.GetVideoMessage() != nil:
+		return "video"
+	case msg.GetAudioMessage() != nil:
+		return "audio"
+	case msg.GetDocumentMessage() != nil:
+		return "document"
+	case msg.GetStickerMessage() != nil:
+		return "sticker"
+	default:
+		return "other"
+	}
 }
 
 func (r *relay) outboundLoop(ctx context.Context) {

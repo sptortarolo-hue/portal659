@@ -78,6 +78,12 @@ async function attach(ws, token) {
       console.log(`[relay] vinculado ${vendor.store_name} (${vendor.id})`);
       return;
     }
+    if (msg.type === "pairing") {
+      // El relay está esperando que escaneen el QR: sacar el "✅ vinculado"
+      // del panel y volver a mostrar la sección del QR.
+      await setBotStatus(vendor.id, "pairing").catch(() => {});
+      return;
+    }
     if (msg.type === "logged_out") {
       await clearQrToken(vendor.id).catch(() => {});
       await setBotStatus(vendor.id, "unlinked").catch(() => {});

@@ -104,15 +104,27 @@
             android:text="(log aparentará acá)" />
     </ScrollView>
 
-    <!-- QR de vinculación (se muestra cuando el relay emite uno nuevo) -->
-    <ImageView
-        android:id="@+id/qrImage"
-        android:layout_width="280dp"
-        android:layout_height="280dp"
-        android:layout_gravity="center_horizontal"
+    <!-- Aviso: el QR del relay va al panel web; no se dibuja acá (imposible
+         escanear la pantalla de este mismo celular con el WhatsApp de este
+         mismo celular, y renderizarlo en main thread crasheaba la app). -->
+    <TextView
+        android:id="@+id/qrBanner"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
         android:layout_marginTop="16dp"
-        android:layout_marginBottom="16dp"
-        android:visibility="gone"
-        android:scaleType="fitCenter"
-        android:adjustViewBounds="true" />
+        android:background="#FFF3CD"
+        android:padding="12dp"
+        android:text="📷 QR listo: abrí el panel web (/vendor/wa-bot) y escanealo desde WhatsApp en este celular → Dispositivos vinculados → Vincular dispositivo."
+        android:textColor="#664D03"
+        android:textSize="14sp"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/version"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:textSize="11sp"
+        android:textColor="#888888"
+        android:gravity="end" />
 </LinearLayout>

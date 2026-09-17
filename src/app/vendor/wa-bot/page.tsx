@@ -107,7 +107,7 @@ export default function VendorWaBotPage() {
       {error && <div className="rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
 
       <a
-        href="/downloads/portal-wa-link.apk?v=7"
+        href="/downloads/portal-wa-link.apk?v=8"
         download
         className="flex items-center justify-center gap-2 rounded-xl border-2 border-primary bg-primary/10 px-4 py-3.5 text-base font-bold text-primary hover:bg-primary/20 transition-colors"
       >
@@ -125,7 +125,13 @@ export default function VendorWaBotPage() {
           </span>
         </div>
         <div className="text-xs text-muted-foreground">
-          {bot?.status === "linked" ? "✅ Número vinculado" : bot?.token ? "🔑 Token generado — falta vincular el número en la app" : "⌛ Bot aún no configurado"}
+          {bot?.status === "linked"
+            ? "✅ Número vinculado"
+            : bot?.status === "pairing"
+              ? "⏳ Esperando escaneo del QR…"
+              : bot?.token
+                ? "🔑 Token generado — falta vincular el número en la app"
+                : "⌛ Bot aún no configurado"}
         </div>
       </div>
 

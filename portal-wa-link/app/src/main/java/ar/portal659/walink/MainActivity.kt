@@ -1,7 +1,6 @@
 package ar.portal659.walink
 
 import android.Manifest
-import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -11,16 +10,11 @@ import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
 import android.provider.Settings
+import android.view.View
 import android.widget.Button
 import android.widget.EditText
-import android.widget.ImageView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
-import com.google.zxing.BarcodeFormat
-import com.google.zxing.MultiFormatWriter
-import com.google.zxing.common.BitMatrix
-import android.graphics.Bitmap
-import android.graphics.Color
 
 class MainActivity : AppCompatActivity() {
 
@@ -54,9 +48,10 @@ class MainActivity : AppCompatActivity() {
             RelayService.resetAndReconnect(this)
             updateStatus()
         }
+        try {
+            findViewById<TextView>(R.id.version).text = "v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})"
+        } catch (_: Exception) {}
     }
-
-    private var lastQr: String = ""
 
     private fun updateStatus() {
         findViewById<TextView>(R.id.status).text = "Estado: ${Config.status(this)}"
@@ -66,35 +61,22 @@ class MainActivity : AppCompatActivity() {
         findViewById<TextView>(R.id.logView).text =
             if (logs.isEmpty()) "(log aparentará acá)" else logs.joinToString("\n") { it }
 
-        // QR del relay (whatsmeow): lo renderizamos localmente como imagen.
+        // El QR se muestra SOLO en el panel web (/vendor/wa-bot): escanearlo
+        // desde este mismo celular es imposible (WhatsApp no puede leer su
+        // propia pantalla). Acá solo indicamos que hay uno esperando. Y no
+        // renderizamos con ZXing: el string del QR de WhatsApp puede disparar
+        // una excepción en el main thread y cerrar la app.
         val qrData = Config.qrImageData(this)
+        val banner = findViewById<TextView>(R.id.qrBanner)
         if (qrData.isNotEmpty()) {
-            if (qrData != lastQr) {
-                val bmp = renderQrBitmap(qrData, 700)
-                val img = findViewById<ImageView>(R.id.qrImage)
-                img.setImageBitmap(bmp)
-                img.visibility = android.view.View.VISIBLE
-                lastQr = qrData
-            }
+            banner.visibility = View.VISIBLE
         } else {
-            findViewById<ImageView>(R.id.qrImage).visibility = android.view.View.GONE
-            if (lastQr.isNotEmpty()) lastQr = ""
+            banner.visibility = View.GONE
         }
 
         // Fallback de código de pareo.
         val code = Config.pairingCode(this)
         findViewById<TextView>(R.id.pairing).text = if (code.isNotEmpty()) "Código de pareo: $code" else ""
-    }
-
-    private fun renderQrBitmap(text: String, size: Int): Bitmap {
-        val bits: BitMatrix = MultiFormatWriter().encode(text, BarcodeFormat.QR_CODE, size, size)
-        val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.RGB_565)
-        for (x in 0 until size) {
-            for (y in 0 until size) {
-                bmp.setPixel(x, y, if (bits[x, y]) Color.BLACK else Color.WHITE)
-            }
-        }
-        return bmp
     }
 
     private fun requestPermissionsIfNeeded() {

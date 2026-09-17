@@ -224,6 +224,12 @@ func (r *relay) login(ctx context.Context) bool {
 			time.Sleep(3 * time.Second)
 			continue
 		}
+		// Avisar al cerebro que estamos esperando escaneo: el panel quita el
+		// "✅ Número vinculado" y vuelve a mostrar la sección del QR.
+		select {
+		case r.stateCh <- "pairing":
+		default:
+		}
 		linked := false
 		for item := range qrChan {
 			switch item.Event {

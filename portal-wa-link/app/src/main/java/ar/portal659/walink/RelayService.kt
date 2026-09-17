@@ -37,14 +37,18 @@ class RelayService : Service() {
             return START_NOT_STICKY
         }
         if (intent?.action == ACTION_RESET) {
-            // Borrar sesión del disco.
+            Config.appendLog(this, "[reset] solicitado por el usuario")
+            // Borrar sesión del disco. El proceso relay nuevo (que arrancamos
+            // después) lee el disco vacío → Store.ID == nil → emite QR solo.
             val sessionDir = File(filesDir, "session")
             listOf(File(sessionDir, "session.db"), File(sessionDir, "session.db-shm"), File(sessionDir, "session.db-wal")).forEach { it.delete() }
+            Config.appendLog(this, "[reset] sesión borrada")
             stopRelay()
             process = null
             stopping.set(false)
-            Config.setStatus(this, "Re-escanenando...")
-            startProcess(doLogin = true)
+            Config.setStatus(this, "Re-escaneando...")
+            Config.appendLog(this, "[reset] reiniciando relay")
+            startProcess()
             return START_STICKY
         }
         stopping.set(false)

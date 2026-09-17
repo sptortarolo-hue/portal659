@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Modal } from "@/components/ui/modal";
 import { useCart } from "@/lib/cart";
+import { orderLineTotal } from "@/lib/order-line";
 import { checkArgPhone, toE164 } from "@/lib/phone";
 import {
   timeAgo,
@@ -108,7 +109,7 @@ function OrderCard({ order, onReorder }: { order: Order & { track_token?: string
                 <span className="text-muted-foreground/50"> ({item.modifiers.join(", ")})</span>
               )}
             </span>
-            <span className="font-medium tabular-nums">${(item.price * item.qty).toLocaleString("es-AR")}</span>
+            <span className="font-medium tabular-nums">${orderLineTotal(item).toLocaleString("es-AR")}</span>
           </div>
         ))}
       </div>
@@ -244,7 +245,7 @@ export default function MisPedidosPage() {
     const { order, vendorSlug, vendorWhatsapp } = reorderConfirm;
 
     // Try to map items to real product IDs from the vendor's current catalog
-    let vendorProducts: { id: string; name: string; price: number; promo_price: number | null }[] = [];
+    let vendorProducts: { id: string; name: string; price: number; promo_price: number | null; pack_size?: number | null }[] = [];
     try {
       const res = await fetch(`/api/vendor/offers?vendor_id=${order.vendor_id}`);
       const data = await res.json();
@@ -255,6 +256,24 @@ export default function MisPedidosPage() {
       const match = vendorProducts.find(
         (p) => p.name.toLowerCase().trim() === item.name.toLowerCase().trim()
       );
+      // Pack-aware: si el producto sigue siendo pack, price va por unidad y
+      // packPrice lleva el precio del paquete (la línea computa pack-native).
+      const packSize = match && (match as any).pack_size >= 2 ? Math.floor(Number((match as any).pack_size)) : 0;
+      if (packSize >= 2) {
+        const packPrice = match ? (match.promo_price ?? match.price) : item.price;
+        return {
+          offerId: match!.id,
+          variantId: item.variant_id,
+          name: item.name,
+          price: Number(packPrice) / packSize,
+          qty: item.qty,
+          modifiers: (item.modifiers || []).map((m) => ({ group: "", label: m, price_mod: 0 })),
+          packSize,
+          packPrice: Number(packPrice),
+          origPrice: Number(match!.price),
+          hasPromo: match!.promo_price != null,
+        };
+      }
       return {
         offerId: match ? match.id : `reorder-${order.id}-${item.name}`,
         variantId: item.variant_id,
@@ -386,7 +405,7 @@ export default function MisPedidosPage() {
                     {item.qty}x {item.name}
                   </span>
                   <span className="font-medium tabular-nums">
-                    ${(item.price * item.qty).toLocaleString("es-AR")}
+                    ${orderLineTotal(item).toLocaleString("es-AR")}
                   </span>
                 </div>
               ))}

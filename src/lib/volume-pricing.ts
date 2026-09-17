@@ -93,8 +93,10 @@ function grossUnitFor(line: VolumeLineInput, group: VolumeGroupInput, tierKind: 
   const base =
     group.combinePromo && line.promoUnit != null ? Number(line.promoUnit) : Number(line.listUnit);
   const mods = Number(line.modsUnit) || 0;
-  if (tierKind === "fixed_total" && group.extrasIncluded) return round2(base);
-  return round2(base + mods);
+  // Sin round2 intermedio: los packs trabajan con unidad full-precision
+  // (11500/6 = 1916,666… → ×6 = 11500 exacto tras el round2 de la línea).
+  if (tierKind === "fixed_total" && group.extrasIncluded) return base;
+  return base + mods;
 }
 
 /**
@@ -109,8 +111,8 @@ function packSplitFor(
   const base =
     group.combinePromo && line.promoUnit != null ? Number(line.promoUnit) : Number(line.listUnit);
   const mods = Number(line.modsUnit) || 0;
-  if (group.extrasIncluded) return { packUnit: round2(base + mods), extraUnit: 0 };
-  return { packUnit: round2(base), extraUnit: round2(mods) };
+  if (group.extrasIncluded) return { packUnit: base + mods, extraUnit: 0 };
+  return { packUnit: base, extraUnit: mods };
 }
 
 function packLabel(tier: VolumeTierInput): string {

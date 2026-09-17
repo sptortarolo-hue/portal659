@@ -2,6 +2,7 @@ import { existsSync } from "fs";
 import path from "path";
 import { Readable, Writable } from "stream";
 import type { Order, OrderItem } from "@/types/database";
+import { orderLineTotal } from "@/lib/order-line";
 
 let ThermalPrinter: any = null;
 let PrinterTypes: any = null;
@@ -351,7 +352,7 @@ function formatItemLine(item: OrderItem, width: number): string[] {
   const lines: string[] = [];
   const qtyStr = `${item.qty}x`;
   const nameStr = item.name;
-  const priceStr = `$${(item.price * item.qty).toLocaleString("es-AR")}`;
+  const priceStr = `$${orderLineTotal(item).toLocaleString("es-AR")}`;
 
   const availableForName = width - qtyStr.length - 1 - priceStr.length;
   if (nameStr.length <= availableForName) {

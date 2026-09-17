@@ -40,11 +40,16 @@ type Product = {
 function packOf(p: Product): number {
   return Number.isInteger(Number(p.pack_size)) && Number(p.pack_size) >= 2 ? Math.floor(Number(p.pack_size)) : 1;
 }
-/** Precio por unidad (con pack: price del paquete / pack_size). */
+/** Precio por unidad a FULL PRECISION (nunca sumar unidades redondeadas:
+ *  11500/6 = 1916.66… → ×6 = 11500 exacto tras redondear el total). */
 function unitPriceOf(p: Product): number {
   const base = Number(p.promo_price ?? p.price);
   const pk = packOf(p);
-  return pk > 1 ? Math.round((base / pk) * 100) / 100 : base;
+  return pk > 1 ? base / pk : base;
+}
+/** Precio del paquete completo (con promo si aplica). */
+function packPriceOf(p: Product): number {
+  return Number(p.promo_price ?? p.price);
 }
 
 type LineItem = {
@@ -109,10 +114,19 @@ export function Mostrador() {
 
   // Descuento en efectivo EN VIVO (misma fórmula que el servidor y el
   // micrositio): cambia al tocar medio de pago o al armar el pedido.
+  // Con pack, la base es pack-price × N° de packs (sin drift de decimales).
   const cashResult = useMemo(
     () =>
       cashDiscountForItems(
-        items.map((i) => ({ unitPrice: i.price, qty: i.qty, hasPromo: i.hasPromo, excluded: i.cashExcluded })),
+        items.map((i) => {
+          const pk = i.packSize && i.packSize >= 2 ? i.packSize : 1;
+          return {
+            unitPrice: pk > 1 ? i.price * pk : i.price,
+            qty: pk > 1 ? i.qty / pk : i.qty,
+            hasPromo: i.hasPromo,
+            excluded: i.cashExcluded,
+          };
+        }),
         cashPct
       ),
     [items, cashPct]
@@ -401,7 +415,7 @@ export function Mostrador() {
               <span className="w-5 text-center tabular-nums">{i.qty}</span>
               <button onClick={() => changeQty(i.product_id, 1)} className="h-6 w-6 rounded-md bg-muted hover:bg-accent">+</button>
             </div>
-            <span className="w-16 text-right tabular-nums">${(i.price * i.qty).toLocaleString("es-AR")}</span>
+            <span className="w-16 text-right tabular-nums">${(Math.round(i.price * i.qty * 100) / 100).toLocaleString("es-AR")}</span>
           </div>
         ))}
       </div>

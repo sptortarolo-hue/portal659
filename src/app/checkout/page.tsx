@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { buildComandaWhatsApp } from "@/lib/whatsapp-message";
 import { cashAppliesToItem, cashPrice, normalizeCashPct } from "@/lib/cash-discount";
+import { cartLineTotal } from "@/lib/order-line";
 import { mirrorVolume } from "@/lib/volume-mirror";
 import { checkArgPhone, toE164 } from "@/lib/phone";
 import { OrderSummaryModal } from "@/components/cart/order-summary-modal";
@@ -71,8 +72,9 @@ export default function CheckoutPage() {
   const grandTotal = total + deliveryFee;
 
   // Espejo visual del descuento en efectivo (el servidor recalcula y manda).
-  // En líneas con volumen sin combine, el cash no corre; con combine corre
-  // sobre el neto del grupo.
+  // % sobre la NETA DE LA LÍNEA (pack-native: nunca se deriva de unidades
+  // redondeadas). Con volumen sin combine, la línea no recibe cash; con
+  // combine, corre sobre el neto del grupo.
   const cashPct = normalizeCashPct(vendor?.cashDiscountPct);
   const cashActive = paymentMethod === "efectivo" && cashPct > 0;
   let cashDiscount = 0;
@@ -81,11 +83,8 @@ export default function CheckoutPage() {
       const vline = vol.lines[idx];
       if (vline && !vline.cashEligible) return;
       if (!cashAppliesToItem({ hasPromo: vline?.hasPromo ?? !!i.hasPromo, excluded: i.cashExcluded })) return;
-      const modTotal = (i.modifiers || []).reduce((s, m) => s + m.price_mod, 0);
-      const unit = vline
-        ? Math.round((vline.netTotal / Math.max(1, i.qty)) * 100) / 100
-        : i.price + modTotal;
-      cashDiscount += Math.round((unit - cashPrice(unit, cashPct)) * i.qty * 100) / 100;
+      const lineNet = vline ? vline.netTotal : cartLineTotal(i);
+      cashDiscount += lineNet - Math.round(lineNet * (1 - cashPct / 100) * 100) / 100;
     });
     cashDiscount = Math.round(cashDiscount * 100) / 100;
   }
@@ -168,11 +167,24 @@ export default function CheckoutPage() {
     const cleanPhone = e164;
 
     // Con volumen, MP cobra los netos por línea (la preferencia suma ítems).
+    // Con pack: MP recibe packs (qty = N° de packs, precio por pack) — nunca
+    // la unidad redondeada (igual que la fórmula del servidor).
     const mpItems = items.map((i, idx) => {
       const vline = vol.lines[idx];
+      const lineNet = vline ? vline.netTotal : cartLineTotal(i);
+      if (i.packSize && i.packSize >= 2) {
+        const packs = Math.max(1, Math.round(i.qty / i.packSize));
+        return {
+          offerId: i.offerId,
+          variantId: i.variantId,
+          name: i.name,
+          price: Math.round((lineNet / packs) * 100) / 100,
+          qty: packs,
+        };
+      }
       const modTotal = (i.modifiers || []).reduce((s, m) => s + m.price_mod, 0);
       const unit = vline
-        ? Math.round((vline.netTotal / Math.max(1, i.qty)) * 100) / 100
+        ? Math.round((lineNet / Math.max(1, i.qty)) * 100) / 100
         : i.price + modTotal;
       return {
         offerId: i.offerId,
@@ -279,6 +291,7 @@ export default function CheckoutPage() {
           price: i.price + (i.modifiers || []).reduce((s, m) => s + m.price_mod, 0),
           qty: i.qty,
           modifiers: (i.modifiers || []).map((m) => m.label),
+          lineTotal: cartLineTotal(i),
         })),
         total: waTotal,
         customerName: name,
@@ -386,15 +399,17 @@ export default function CheckoutPage() {
       {/* Order summary */}
       <div className="border border-border rounded-2xl p-4 mb-6 bg-card space-y-3">
         {items.map((i, idx) => {
-          const modTotal = (i.modifiers || []).reduce((s, m) => s + m.price_mod, 0);
-          const unitTotal = i.price + modTotal;
+          const lineTotal = cartLineTotal(i);
           return (
             <div key={`${i.offerId}-${idx}`} className="flex items-center gap-3">
               <div className="h-10 w-10 rounded-lg bg-muted flex items-center justify-center flex-shrink-0 text-sm font-bold text-muted-foreground">
                 {i.qty}x
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">{i.name}</p>
+                <p className="text-sm font-medium truncate">
+                  {i.name}
+                  {i.packSize && <span className="ml-1.5 text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-1.5 py-0.5 whitespace-nowrap">pack x{i.packSize}</span>}
+                </p>
                 {i.modifiers && i.modifiers.length > 0 && (
                   <p className="text-xs text-muted-foreground/60 truncate">
                     {i.modifiers.map((m) => m.label).join(" · ")}
@@ -402,7 +417,7 @@ export default function CheckoutPage() {
                 )}
               </div>
               <span className="text-sm font-bold tabular-nums">
-                ${Number(unitTotal * i.qty).toLocaleString("es-AR")}
+                ${lineTotal.toLocaleString("es-AR")}
               </span>
             </div>
           );
@@ -638,6 +653,7 @@ export default function CheckoutPage() {
           price: i.price + (i.modifiers || []).reduce((s, m) => s + m.price_mod, 0),
           qty: i.qty,
           modifiers: (i.modifiers || []).map((m) => m.label),
+          lineTotal: cartLineTotal(i),
         }))}
         total={displayTotal}
         cashDiscount={cashActive ? cashDiscount : 0}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCart } from "@/lib/cart";
+import { cartLineTotal } from "@/lib/order-line";
 
 export function CartInlineSummary() {
   const { items, vendor, total, count, setOpen } = useCart();
@@ -16,6 +17,7 @@ export function CartInlineSummary() {
         {items.map((item, idx) => {
           const modTotal = (item.modifiers || []).reduce((s, m) => s + m.price_mod, 0);
           const unitTotal = item.price + modTotal;
+          const lineTotal = cartLineTotal(item);
           return (
             <li key={`${item.offerId}-${idx}`} className="py-3 text-sm">
               <div className="flex justify-between">
@@ -23,7 +25,7 @@ export function CartInlineSummary() {
                   {item.qty}x {item.name}
                 </span>
                 <span className="font-medium">
-                  ${(unitTotal * item.qty).toLocaleString("es-AR")}
+                  ${lineTotal.toLocaleString("es-AR")}
                 </span>
               </div>
               {item.modifiers && item.modifiers.length > 0 && (

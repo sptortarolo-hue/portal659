@@ -3,6 +3,7 @@ import {
   type VolumeGroupInput,
   type VolumeResult,
 } from "@/lib/volume-pricing";
+import { cartLineTotal } from "@/lib/order-line";
 import type { CartItem, CartVolumeGroup } from "@/lib/cart";
 
 /**
@@ -27,13 +28,21 @@ export function mirrorVolume(items: CartItem[], groups?: CartVolumeGroup[] | nul
   const volLines = items.map((i) => {
     const mods = (i.modifiers || []).reduce((s, m) => s + Number(m.price_mod || 0), 0);
     const hasPromo = i.hasPromo ?? (i.origPrice != null && Number(i.origPrice) !== Number(i.price));
+    const pk = i.packSize && i.packSize >= 2 ? i.packSize : 1;
+    // Pack: unidades full-precision (nunca round2 intermedio) — el espejo
+    // matchea al server porque ambos calculan con la misma fórmula.
+    const packList = i.origPrice != null && pk > 1 ? Number(i.origPrice) : null;
     return {
       offerId: i.offerId,
       qty: i.qty,
-      listUnit: Number(i.origPrice ?? i.price),
-      promoUnit: hasPromo ? Number(i.price) : null,
+      listUnit: pk > 1 && packList != null ? packList / pk : Number(i.origPrice ?? i.price),
+      promoUnit: hasPromo
+        ? pk > 1 && i.packPrice != null
+          ? i.packPrice / pk
+          : Number(i.price)
+        : null,
       modsUnit: mods,
-      refUnit: Number(i.price) + mods,
+      refUnit: cartLineTotal(i) / i.qty,
       hasPromo,
       excluded: i.cashExcluded,
     };

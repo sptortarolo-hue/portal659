@@ -8,6 +8,7 @@ import {
   useMemo,
   useState,
 } from "react";
+import { cartLineTotal } from "@/lib/order-line";
 
 export type CartModifier = {
   group: string;
@@ -20,7 +21,7 @@ export type CartItem = {
   /** Variante elegida (moda): se usa para reservar/reponer stock. */
   variantId?: string;
   name: string;
-  /** Precio POR UNIDAD (con pack: price del paquete / pack_size). */
+  /** Precio POR UNIDAD (con pack: price del paquete / pack_size — derivado para display). */
   price: number;
   qty: number;
   modifiers?: CartModifier[];
@@ -32,6 +33,12 @@ export type CartItem = {
   hasPromo?: boolean;
   /** Pack (ej: 6): qty es siempre múltiplo de esto y el stepper va de a N. */
   packSize?: number;
+  /**
+   * Precio del PAQUETE completo (sin mods). Con pack, es la fuente del dinero:
+   * línea = packPrice × (qty/packSize) + mods×qty. Nunca sumar unidades
+   * redondeadas (11500/6=1916,67 → 6×1916,67 = 11500,02 ≠ 11500).
+   */
+  packPrice?: number;
 };
 
 /** Grupo de volumen (espejo visual; el servidor recalcula y manda). */
@@ -208,10 +215,9 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const total = useMemo(
-    () => state.items.reduce((sum, i) => {
-      const modTotal = (i.modifiers || []).reduce((ms, m) => ms + m.price_mod, 0);
-      return sum + (i.price + modTotal) * i.qty;
-    }, 0),
+    // Pack-aware: con pack, la fuente es packPrice × N packs + mods × qty
+    // (nunca la unidad redondeada).
+    () => state.items.reduce((sum, i) => sum + cartLineTotal(i as any), 0),
     [state.items]
   );
 

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo } from "react";
 import { useCart } from "@/lib/cart";
+import { cartLineTotal } from "@/lib/order-line";
 import { mirrorVolume } from "@/lib/volume-mirror";
 
 export function CartDrawer() {
@@ -52,9 +53,8 @@ export function CartDrawer() {
             </div>
           ) : (
             items.map((item, idx) => {
-              const modTotal = (item.modifiers || []).reduce((s, m) => s + m.price_mod, 0);
-              const unitPrice = item.price + modTotal;
               const key = `${item.offerId}-${JSON.stringify(item.modifiers || [])}`;
+              const lineTotal = cartLineTotal(item);
               return (
                 <div
                   key={key}
@@ -124,7 +124,7 @@ export function CartDrawer() {
                       </button>
                     </div>
                     <span className="text-sm font-bold tabular-nums">
-                      ${(unitPrice * item.qty).toLocaleString("es-AR")}
+                      ${lineTotal.toLocaleString("es-AR")}
                     </span>
                   </div>
                 </div>

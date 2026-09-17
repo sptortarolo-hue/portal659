@@ -154,9 +154,12 @@ export async function resolveOrderPricing(opts: {
   type StagedLine = {
     product: ProductRow;
     variant?: VariantRow;
-    unit: number;
+    /** Unidad sin mods (full precision en packs: packPrice/pack). Solo display/referencia. */
     unitBase: number;
-    modsTotal: number;
+    /** Mods POR UNIDAD sumados. */
+    modsPerUnit: number;
+    /** Total de la línea sin descuentos (pack-native: packPrice×packs + mods×qty). */
+    lineGross: number;
     qtySafe: number;
     labels: string[];
     hasPromo: boolean;
@@ -207,20 +210,20 @@ export async function resolveOrderPricing(opts: {
 
     // Packs: si el producto se vende de a N (ej: sandwiches de miga x6), la
     // cantidad tiene que ser múltiplo de N y el precio del catálogo es del
-    // PAQUETE → la unidad derivada = price / N (base para totales, volumen,
-    // cash y modificadores por unidad).
+    // PAQUETE. Regla de oro: la plata se calcula desde el PACK (packPrice ×
+    // cantidad de packs), NUNCA sumando unidades redondeadas (11500/6 =
+    // 1916,67 → 6×1916,67 = 11500,02 ≠ 11500).
     const pack =
       !variant && Number.isInteger(Number(product.pack_size)) && Number(product.pack_size) >= 2
         ? Math.floor(Number(product.pack_size))
         : 1;
-    if (pack > 1) {
-      if (qtySafe % pack !== 0) {
-        throw new PricingError(
-          `"${product.name}" se vende de a ${pack} unidades. Elegí una cantidad múltiplo de ${pack}.`
-        );
-      }
-      unitPrice = round2(unitPrice / pack);
+    if (pack > 1 && qtySafe % pack !== 0) {
+      throw new PricingError(
+        `"${product.name}" se vende de a ${pack} unidades. Elegí una cantidad múltiplo de ${pack}.`
+      );
     }
+    // packPrice = precio del paquete entero (con promo si aplica), sin mods.
+    const packPrice = pack > 1 ? unitPrice : 0;
 
     // Modificadores: solo se aplican los que el producto hoy tiene definidos
     // y con el precio actual del catálogo (no del cliente).
@@ -228,7 +231,7 @@ export async function resolveOrderPricing(opts: {
       ? it.modifiers.map((m) => String(m ?? "").trim()).filter(Boolean).slice(0, 10)
       : [];
 
-    let unit = unitPrice;
+    let modsPerUnit = 0;
     if (labels.length > 0) {
       const modsForProduct = modifierMap.get(product.id);
       for (const label of labels) {
@@ -236,20 +239,24 @@ export async function resolveOrderPricing(opts: {
         if (mod == null) {
           throw new PricingError(`Modificador "${label}" no existe más en "${product.name}".`);
         }
-        unit += mod;
+        modsPerUnit += mod;
       }
     }
 
-    unit = round2(unit);
-    subtotal += unit * qtySafe;
+    // Bruto de la línea (sin descuentos). En packs se computa pack-native.
+    const lineGross =
+      pack > 1
+        ? round2(round2(packPrice * (qtySafe / pack)) + round2(modsPerUnit * qtySafe))
+        : round2(round2(unitPrice + modsPerUnit) * qtySafe);
+    subtotal += lineGross;
 
     const hasPromo = variant ? variant.promo != null : product.promo_price != null;
     staged.push({
       product,
       variant,
-      unit,
-      unitBase: round2(unitPrice),
-      modsTotal: round2(unit - unitPrice),
+      unitBase: pack > 1 ? packPrice / pack : unitPrice,
+      modsPerUnit,
+      lineGross,
       qtySafe,
       labels,
       hasPromo,
@@ -260,9 +267,15 @@ export async function resolveOrderPricing(opts: {
       product_id: it.offerId ? String(it.offerId) : product.id,
       variant_id: variant ? variant.id : undefined,
       name: product.name,
-      price: unit,
+      // Con pack: price = precio del paquete COMPLETO (mods incluidos),
+      // y la línea se computa como price × (qty/pack) en orderLineTotal().
+      price:
+        pack > 1
+          ? round2(packPrice + modsPerUnit * pack)
+          : round2(unitPrice + modsPerUnit),
       qty: qtySafe,
       modifiers: labels.length ? labels : undefined,
+      pack_size: pack > 1 ? pack : undefined,
     });
   }
 
@@ -274,8 +287,9 @@ export async function resolveOrderPricing(opts: {
   // calcula el descuento a nivel pedido. Tolerante a tabla sin migrar.
   let volumeDiscount = 0;
   let volumeApplied: ResolvedPricing["volumeApplied"] = [];
-  // Neto por línea tras volumen (para el cash con combine_cash).
-  const volumeNetUnit = new Map<number, number>();
+  // Neto por línea tras volumen (por línea, no por unidad: es lo que evita
+  // el drift de decimales con packs).
+  const volumeNetLine = new Map<number, number>();
   const volumeNoCash = new Set<number>();
   try {
     const gRows = await tx.query<{
@@ -320,16 +334,17 @@ export async function resolveOrderPricing(opts: {
           const rawPromo = s.variant
             ? s.variant.promo != null ? Number(s.variant.promo) : null
             : s.product.promo_price != null ? Number(s.product.promo_price) : null;
-          // Con pack, la base del volumen es la unidad derivada (price/pack).
-          const listUnit = s.pack > 1 ? round2(rawList / s.pack) : rawList;
-          const promoUnit = s.pack > 1 && rawPromo != null ? round2(rawPromo / s.pack) : rawPromo;
+          // Con pack el volumen trabaja con la unidad FULL PRECISION (sin
+          // redondeo intermedio): es lo que hace que 11500/6 × 6 = 11500.
+          const listUnit = s.pack > 1 ? rawList / s.pack : rawList;
+          const promoUnit = s.pack > 1 && rawPromo != null ? rawPromo / s.pack : rawPromo;
           return {
             offerId: s.product.id,
             qty: s.qtySafe,
             listUnit,
             promoUnit,
-            modsUnit: s.modsTotal,
-            refUnit: s.unit,
+            modsUnit: s.modsPerUnit,
+            refUnit: s.lineGross / s.qtySafe,
             hasPromo: s.hasPromo,
             excluded: s.product.cash_discount_excluded,
           };
@@ -339,7 +354,7 @@ export async function resolveOrderPricing(opts: {
         volumeApplied = vol.applied.map((a) => ({ groupName: a.groupName, label: a.label, qty: a.qty }));
         vol.lines.forEach((l, i) => {
           if (l.netTotal !== l.grossTotal) {
-            volumeNetUnit.set(i, round2(l.netTotal / staged[i].qtySafe));
+            volumeNetLine.set(i, l.netTotal);
           }
           if (!l.cashEligible) volumeNoCash.add(i);
         });
@@ -349,21 +364,20 @@ export async function resolveOrderPricing(opts: {
     // Tabla sin migrar: se sigue sin volumen.
     volumeDiscount = 0;
     volumeApplied = [];
-    volumeNetUnit.clear();
+    volumeNetLine.clear();
     volumeNoCash.clear();
   }
 
-  // Descuento en efectivo: sobre la unidad elegible (promo excluida no corre).
-  // En líneas con volumen + combine_cash corre sobre el neto del grupo;
-  // con volumen sin combine queda excluido.
+  // Descuento en efectivo: % sobre la NETO DE LA LÍNEA elegible (pack-native,
+  // sin redondeo por unidad). En líneas con volumen + combine_cash corre sobre
+  // el neto del grupo; con volumen sin combine queda excluido.
   let cashDiscount = 0;
   if (cashActive) {
     staged.forEach((s, i) => {
       if (volumeNoCash.has(i)) return;
       if (!cashAppliesToItem({ hasPromo: s.hasPromo, excluded: s.product.cash_discount_excluded })) return;
-      const cashUnit = volumeNetUnit.get(i) ?? s.unit;
-      const unitCash = cashPrice(cashUnit, cashPct);
-      cashDiscount += round2((cashUnit - unitCash) * s.qtySafe);
+      const lineNet = volumeNetLine.get(i) ?? s.lineGross;
+      cashDiscount += round2(lineNet - round2(lineNet * (1 - cashPct / 100)));
     });
   }
 

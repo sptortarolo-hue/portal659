@@ -7,6 +7,8 @@ type SummaryItem = {
   price: number;
   qty: number;
   modifiers?: string[];
+  /** Total de la línea ya calculado (pack-aware). Si falta, price×qty. */
+  lineTotal?: number;
 };
 
 type OrderSummaryModalProps = {
@@ -85,6 +87,7 @@ export function OrderSummaryModal({
               item.modifiers && item.modifiers.length > 0
                 ? ` (${item.modifiers.join(", ")})`
                 : "";
+            const itemTotal = item.lineTotal ?? (item.price * item.qty);
             return (
               <div key={idx} className="flex items-center justify-between text-sm">
                 <span className="text-muted-foreground">
@@ -92,7 +95,7 @@ export function OrderSummaryModal({
                   {modStr}
                 </span>
                 <span className="font-medium tabular-nums">
-                  ${(item.price * item.qty).toLocaleString("es-AR")}
+                  ${itemTotal.toLocaleString("es-AR")}
                 </span>
               </div>
             );

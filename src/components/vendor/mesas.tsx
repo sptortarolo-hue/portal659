@@ -47,11 +47,12 @@ type Product = {
 function packOf(p: Product): number {
   return Number.isInteger(Number(p.pack_size)) && Number(p.pack_size) >= 2 ? Math.floor(Number(p.pack_size)) : 1;
 }
-/** Precio por unidad (con pack: price del paquete / pack_size). */
+/** Precio por unidad a FULL PRECISION (nunca sumar unidades redondeadas:
+ *  11500/6 = 1916.66… → ×6 = 11500 exacto tras redondear el total). */
 function unitPriceOf(p: Product): number {
   const base = Number(p.promo_price ?? p.price);
   const pk = packOf(p);
-  return pk > 1 ? Math.round((base / pk) * 100) / 100 : base;
+  return pk > 1 ? base / pk : base;
 }
 
 type Order = {
@@ -174,6 +175,18 @@ export function Mesas() {
     return cashDiscountForItems(
       lines.map((i: any) => {
         const info = i.product_id ? productCashFlags.get(i.product_id) : undefined;
+        // Pack-aware: carrito (packSize, price por unidad full-precision) y
+        // órdenes persistidas (pack_size, price = precio del paquete).
+        const pack = Math.floor(Number(i.pack_size ?? i.packSize ?? 0));
+        if (pack >= 2) {
+          const isDbItem = i.pack_size != null;
+          return {
+            unitPrice: isDbItem ? Number(i.price) : Number(i.price) * pack,
+            qty: Number(i.qty) / pack,
+            hasPromo: info?.hasPromo ?? false,
+            excluded: info?.excluded ?? null,
+          };
+        }
         return { unitPrice: Number(i.price), qty: Number(i.qty), hasPromo: info?.hasPromo ?? false, excluded: info?.excluded ?? null };
       }),
       cashPct
@@ -280,17 +293,26 @@ export function Mesas() {
     );
   }
 
-  const cartLine = (i: (typeof cart)[number]) => (
-    <div key={`${i.product_id}|${(i.modifiers || []).map((m) => m.label).join(",")}`} className="flex items-center gap-2 text-xs">
-      <span className="flex-1 min-w-0 line-clamp-2 break-words">{i.name}</span>
-      <div className="flex items-center gap-1">
-        <button type="button" onClick={() => changeQty(i.product_id, -1)} className="h-6 w-6 rounded-md bg-muted hover:bg-accent">−</button>
-        <span className="w-5 text-center tabular-nums">{i.qty}</span>
-        <button type="button" onClick={() => changeQty(i.product_id, 1)} className="h-6 w-6 rounded-md bg-muted hover:bg-accent">+</button>
+  const cartLine = (i: (typeof cart)[number]) => {
+    // Pack-aware: i.price es unidad full-precision → la línea cierra en el
+    // precio del paquete (round2 final; nunca suma de unidades redondeadas).
+    const pk = i.packSize && i.packSize >= 2 ? i.packSize : 1;
+    const lineTotal = Math.round(i.price * i.qty * 100) / 100;
+    return (
+      <div key={`${i.product_id}|${(i.modifiers || []).map((m) => m.label).join(",")}`} className="flex items-center gap-2 text-xs">
+        <span className="flex-1 min-w-0 line-clamp-2 break-words">
+          {i.name}
+          {pk > 1 && <span className="ml-1.5 rounded-full bg-emerald-50 border border-emerald-200 px-1.5 py-0 text-[9px] font-semibold text-emerald-700 whitespace-nowrap">pack x{pk}</span>}
+        </span>
+        <div className="flex items-center gap-1">
+          <button type="button" onClick={() => changeQty(i.product_id, -1)} className="h-6 w-6 rounded-md bg-muted hover:bg-accent">−</button>
+          <span className="w-5 text-center tabular-nums">{i.qty}</span>
+          <button type="button" onClick={() => changeQty(i.product_id, 1)} className="h-6 w-6 rounded-md bg-muted hover:bg-accent">+</button>
+        </div>
+        <span className="w-14 text-right tabular-nums">${lineTotal.toLocaleString("es-AR")}</span>
       </div>
-      <span className="w-14 text-right tabular-nums">${(i.price * i.qty).toLocaleString("es-AR")}</span>
-    </div>
-  );
+    );
+  };
 
   async function addConsumicion() {
     if (!selected || cart.length === 0) return;

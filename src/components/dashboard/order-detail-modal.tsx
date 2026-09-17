@@ -16,6 +16,7 @@ import {
   CONDITION_META,
 } from "@/lib/order-utils";
 import { buildModifiedOrderMessage, buildTransferInstructionsMessage } from "@/lib/whatsapp-message";
+import { orderLineTotal, derivedUnitPrice } from "@/lib/order-line";
 import type { Order, OrderStatus, OrderItem, Product as DBProduct } from "@/types/database";
 
 function getActionButtonLabel(next: OrderStatus, order: Order, isModa: boolean): string {
@@ -117,19 +118,30 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
     setEditItems((prev) => prev.map((item, i) => (i === index ? { ...item, qty } : item)));
   };
 
+  /** Paso de cantidad por ítem (pack-aware: con pack_size va de a N). */
+  const stepQty = (index: number, delta: 1 | -1) => {
+    const item = editItems[index];
+    const pack = Number((item as any).pack_size) && Number((item as any).pack_size) >= 2
+      ? Math.floor(Number((item as any).pack_size))
+      : 1;
+    updateItemQty(index, item.qty + delta * pack);
+  };
+
   const removeItem = (index: number) => {
     setEditItems((prev) => prev.filter((_, i) => i !== index));
   };
 
   const addProduct = (product: DBProduct) => {
+    const pack = Number((product as any).pack_size) >= 2 ? Math.floor(Number((product as any).pack_size)) : 0;
     setEditItems((prev) => [
       ...prev,
       {
         product_id: product.id,
         name: product.name,
         price: product.promo_price ?? product.price,
-        qty: 1,
+        qty: pack || 1,
         modifiers: [],
+        ...(pack ? { pack_size: pack } : {}),
       },
     ]);
   };
@@ -141,10 +153,10 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
       p.name.toLowerCase().includes(productSearch.toLowerCase())
   );
 
-  const newTotal = editItems.reduce((sum, item) => {
-    const modPrice = item.modifiers?.reduce((s, m) => s + (typeof m === "object" ? 0 : 0), 0) || 0;
-    return sum + (item.price + modPrice) * item.qty;
-  }, 0);
+  const newTotal = editItems.reduce(
+    (sum, item) => sum + orderLineTotal(item),
+    0
+  );
 
   const handleSaveModification = async (): Promise<{ ok: boolean; error?: string }> => {
     if (!onModify || editItems.length === 0) {
@@ -167,7 +179,7 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
   const sendModifiedWhatsApp = () => {
     const msg = buildModifiedOrderMessage({
       vendorName,
-      items: editItems,
+      items: editItems.map((it: any) => ({ ...it, lineTotal: orderLineTotal(it) })),
       total: newTotal,
       customerName: order.customer_name,
       orderId: order.id,
@@ -340,7 +352,7 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
                       )}
                     </div>
                     <span className="text-sm font-medium whitespace-nowrap shrink-0">
-                      ${(item.price * item.qty).toLocaleString("es-AR")}
+                      ${orderLineTotal(item).toLocaleString("es-AR")}
                     </span>
                   </div>
                 ))}
@@ -367,18 +379,22 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
                           ({item.modifiers.join(", ")})
                         </p>
                       )}
-                      <p className="text-[10px] text-muted-foreground">${item.price.toLocaleString("es-AR")} c/u</p>
+                      <p className="text-[10px] text-muted-foreground">
+                        {(item as any).pack_size >= 2
+                          ? `$${derivedUnitPrice(item).toLocaleString("es-AR")} c/u · pack x${(item as any).pack_size}`
+                          : `$${item.price.toLocaleString("es-AR")} c/u`}
+                      </p>
                     </div>
                     <div className="flex items-center gap-1.5">
                       <button
-                        onClick={() => updateItemQty(i, item.qty - 1)}
+                        onClick={() => stepQty(i, -1)}
                         className="w-7 h-7 rounded-lg border border-border bg-muted flex items-center justify-center text-sm font-bold"
                       >
                         -
                       </button>
                       <span className="w-6 text-center text-sm font-bold">{item.qty}</span>
                       <button
-                        onClick={() => updateItemQty(i, item.qty + 1)}
+                        onClick={() => stepQty(i, 1)}
                         className="w-7 h-7 rounded-lg border border-border bg-muted flex items-center justify-center text-sm font-bold"
                       >
                         +

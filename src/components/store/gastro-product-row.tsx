@@ -168,7 +168,9 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
       qty,
       modifiers: flat.length > 0 ? flat : undefined,
       cashExcluded,
-      origPrice: listBaseUnit,
+      // Con pack: origPrice = precio de LISTA del paquete (full precision para
+      // el espejo de volumen), no la unidad derivada.
+      origPrice: pack > 1 ? Number(product.price) : listBaseUnit,
       hasPromo,
       packSize: pack > 1 ? pack : undefined,
       // La fuente del dinero (pack-native): nunca se deriva del precio/unidad.
@@ -232,7 +234,7 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
         )}
         {!outStock &&
           (acceptsCart ? (
-            <AddToCartButton offerId={product.id} name={product.name} price={baseUnit} vendor={vendor} modifiers={modifiers} cashExcluded={cashExcluded} origPrice={listBaseUnit} hasPromo={hasPromo} packSize={pack > 1 ? pack : undefined} packPrice={pack > 1 ? basePrice : undefined} />
+            <AddToCartButton offerId={product.id} name={product.name} price={baseUnit} vendor={vendor} modifiers={modifiers} cashExcluded={cashExcluded} origPrice={pack > 1 ? Number(product.price) : listBaseUnit} hasPromo={hasPromo} packSize={pack > 1 ? pack : undefined} packPrice={pack > 1 ? basePrice : undefined} />
           ) : (
             <a href={consultHref} target="_blank" rel="noopener noreferrer" className="rounded-md px-3 py-1.5 text-sm font-medium text-center bg-primary text-primary-foreground hover:bg-primary/90">Consultar</a>
           ))}

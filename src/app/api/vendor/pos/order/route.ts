@@ -45,7 +45,7 @@ export async function POST(request: Request) {
     ? (paymentMethod as PaymentMethod)
     : "efectivo";
 
-  const normalizedItems = items.map((i: any) => ({
+  const normalizedItems: { product_id?: any; name: any; price: number; qty: number; modifiers?: any; requires_prep: boolean; pack_size?: number }[] = items.map((i: any) => ({
     product_id: i.product_id || undefined,
     name: i.name,
     price: Number(i.price),
@@ -54,8 +54,9 @@ export async function POST(request: Request) {
     requires_prep: i.requires_prep !== false,
   }));
 
-  // Packs: cantidad siempre múltiplo de `pack_size` (ej: sandwiches x6).
-  // Tolerante a migración sin aplicar.
+  // Packs: validación de múltiplo. Después normalizo el ítem a formato
+  // pack-native: `price` = PRECIO DEL PAQUETE y `pack_size` presente (mismo
+  // formato que el canal app — así cierre de mesa, tickets y cash lo entienden).
   {
     const pids = Array.from(new Set(normalizedItems.map((i) => i.product_id).filter(Boolean))) as string[];
     if (pids.length > 0) {
@@ -65,13 +66,24 @@ export async function POST(request: Request) {
           [gate.vendor.id, pids]
         );
         const ppack = new Map((prows || []).map((p) => [p.id, p]));
-        for (const i of normalizedItems) {
+        for (let idx = 0; idx < normalizedItems.length; idx++) {
+          const i = normalizedItems[idx];
           const pack = i.product_id ? Math.floor(Number(ppack.get(i.product_id)?.pack_size || 0)) : 0;
-          if (pack >= 2 && i.qty % pack !== 0) {
-            return NextResponse.json(
-              { error: `"${i.name}" se vende de a ${pack} unidades` },
-              { status: 400 }
-            );
+          if (pack >= 2) {
+            if (i.qty % pack !== 0) {
+              return NextResponse.json(
+                { error: `"${i.name}" se vende de a ${pack} unidades` },
+                { status: 400 }
+              );
+            }
+            // Normalizado pack-native: price = precio del PAQUETE (el cliente
+            // mandó la unidad full-precision). qty sigue en unidades; la línea
+            // se computa como price × (qty/pack) via orderLineTotal.
+            normalizedItems[idx] = {
+              ...i,
+              price: Math.round(i.price * pack * 100) / 100,
+              pack_size: pack,
+            };
           }
         }
       } catch {
@@ -107,9 +119,12 @@ export async function POST(request: Request) {
     const res = cashDiscountForItems(
       normalizedItems.map((i) => {
         const p = i.product_id ? pmap.get(i.product_id) : undefined;
+        // Con pack ya normalizado: price = precio del paquete; el cash corre
+        // por paquetes (qty/pack) → sin drift de decimales.
+        const pack = ((i as any).pack_size as number) >= 2 ? ((i as any).pack_size as number) : 0;
         return {
           unitPrice: i.price,
-          qty: i.qty,
+          qty: pack ? i.qty / pack : i.qty,
           hasPromo: p ? p.promo_price != null : false,
           excluded: p?.cash_discount_excluded ?? null,
         };

@@ -46,7 +46,7 @@ export async function POST(request: Request) {
     ? (paymentMethod as PaymentMethod)
     : "efectivo";
 
-  const normalizedItems = items.map((i: any) => ({
+  const normalizedItems: { product_id?: any; name: any; price: number; qty: number; modifiers?: any; requires_prep: boolean; pack_size?: number }[] = items.map((i: any) => ({
     product_id: i.product_id || undefined,
     name: i.name,
     price: Number(i.price),
@@ -55,7 +55,8 @@ export async function POST(request: Request) {
     requires_prep: i.requires_prep !== false,
   }));
 
-  // Packs: cantidad siempre múltiplo de `pack_size` (tolerante a migración).
+  // Packs: validación de múltiplo + normalización a formato pack-native
+  // (price = precio del paquete, pack_size presente — igual que canal app).
   {
     const pids = Array.from(new Set(normalizedItems.map((i) => i.product_id).filter(Boolean))) as string[];
     if (pids.length > 0) {
@@ -65,13 +66,21 @@ export async function POST(request: Request) {
           [gate.vendor.id, pids]
         );
         const ppack = new Map((prows || []).map((p) => [p.id, p]));
-        for (const i of normalizedItems) {
+        for (let idx = 0; idx < normalizedItems.length; idx++) {
+          const i = normalizedItems[idx];
           const pack = i.product_id ? Math.floor(Number(ppack.get(i.product_id)?.pack_size || 0)) : 0;
-          if (pack >= 2 && i.qty % pack !== 0) {
-            return NextResponse.json(
-              { error: `"${i.name}" se vende de a ${pack} unidades` },
-              { status: 400 }
-            );
+          if (pack >= 2) {
+            if (i.qty % pack !== 0) {
+              return NextResponse.json(
+                { error: `"${i.name}" se vende de a ${pack} unidades` },
+                { status: 400 }
+              );
+            }
+            normalizedItems[idx] = {
+              ...i,
+              price: Math.round(i.price * pack * 100) / 100,
+              pack_size: pack,
+            };
           }
         }
       } catch {

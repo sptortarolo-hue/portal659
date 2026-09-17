@@ -7,6 +7,13 @@ import type { Plan, Vendor } from "@/types/database";
 
 const TZ_AR = "America/Argentina/Buenos_Aires";
 
+/** Revenue de un ítem (pack-aware: con pack, price = paquete y qty = unidades). */
+function itemRevenue(item: { price: number; qty: number; pack_size?: number | null }): number {
+  const pack = Number(item.pack_size);
+  if (pack >= 2) return item.price * (item.qty / pack);
+  return item.price * item.qty;
+}
+
 /** Día civil en horario argentino. node-pg devuelve Date (no string) → normalizar. */
 function dayKey(value: string | Date): string {
   const d = typeof value === "string" ? new Date(value) : value;
@@ -112,7 +119,7 @@ export async function GET(request: Request) {
       const key = item.name;
       if (!productSales[key]) productSales[key] = { name: key, count: 0, revenue: 0 };
       productSales[key].count += item.qty;
-      productSales[key].revenue += item.price * item.qty;
+      productSales[key].revenue += itemRevenue(item);
     }
   }
   const topProduct = Object.values(productSales).sort((a, b) => b.revenue - a.revenue)[0] || null;
@@ -220,7 +227,7 @@ export async function GET(request: Request) {
         const cat = productCategory[item.name] || "Sin categoría";
         if (!byCategory[cat]) byCategory[cat] = { count: 0, revenue: 0 };
         byCategory[cat].count += item.qty;
-        byCategory[cat].revenue += item.price * item.qty;
+        byCategory[cat].revenue += itemRevenue(item);
       }
     }
     advanced.byCategory = Object.entries(byCategory)

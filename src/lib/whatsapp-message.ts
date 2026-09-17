@@ -1,6 +1,19 @@
+type WaItem = {
+  name: string;
+  price: number;
+  qty: number;
+  modifiers?: string[];
+  /** Total de línea pack-aware (si falta, price×qty). */
+  lineTotal?: number;
+};
+
+function itemTotal(i: WaItem): number {
+  return i.lineTotal ?? i.price * i.qty;
+}
+
 export function buildOrderMessage(params: {
   vendorName: string;
-  items: { name: string; price: number; qty: number; modifiers?: string[] }[];
+  items: WaItem[];
   total: number;
   customerName: string;
   customerPhone: string;
@@ -17,7 +30,7 @@ export function buildOrderMessage(params: {
     const modStr = i.modifiers && i.modifiers.length > 0
       ? ` (${i.modifiers.join(", ")})`
       : "";
-    return `- ${i.qty}x ${i.name}${modStr} ($${(i.price * i.qty).toLocaleString("es-AR")})`;
+    return `- ${i.qty}x ${i.name}${modStr} ($${itemTotal(i).toLocaleString("es-AR")})`;
   });
 
   const paymentLine = params.paymentMethod === "transferencia"
@@ -55,7 +68,7 @@ export function buildOrderMessage(params: {
 
 export function buildComandaWhatsApp(params: {
   vendorName: string;
-  items: { name: string; price: number; qty: number; modifiers?: string[] }[];
+  items: WaItem[];
   total: number;
   customerName: string;
   customerPhone: string;
@@ -88,7 +101,7 @@ export function buildComandaWhatsApp(params: {
     const modStr = i.modifiers && i.modifiers.length > 0
       ? `\n  (${i.modifiers.join(", ")})`
       : "";
-    itemLines.push(`${i.qty}x ${i.name}${modStr}  $${(i.price * i.qty).toLocaleString("es-AR")}`);
+    itemLines.push(`${i.qty}x ${i.name}${modStr}  $${itemTotal(i).toLocaleString("es-AR")}`);
   }
 
   const notesLine = params.notes ? `\nNotas: ${params.notes}` : "";
@@ -130,7 +143,7 @@ export function buildComandaWhatsApp(params: {
 
 export function buildModifiedOrderMessage(params: {
   vendorName: string;
-  items: { name: string; price: number; qty: number; modifiers?: string[] }[];
+  items: WaItem[];
   total: number;
   customerName: string;
   orderId?: string;
@@ -144,7 +157,7 @@ export function buildModifiedOrderMessage(params: {
     const modStr = i.modifiers && i.modifiers.length > 0
       ? ` (${i.modifiers.join(", ")})`
       : "";
-    return `${i.qty}x ${i.name}${modStr}  $${(i.price * i.qty).toLocaleString("es-AR")}`;
+    return `${i.qty}x ${i.name}${modStr}  $${itemTotal(i).toLocaleString("es-AR")}`;
   });
 
   const modLine = params.modificationNotes

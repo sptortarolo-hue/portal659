@@ -12,6 +12,7 @@ import {
   estimatedRemaining,
   timeAgo,
 } from "@/lib/order-utils";
+import { orderLineTotal } from "@/lib/order-line";
 import type { OrderStatus } from "@/types/database";
 
 type TrackOrder = {
@@ -155,7 +156,7 @@ export default function SeguimientoPedidoPage() {
                   <span className="text-muted-foreground/50"> ({item.modifiers.join(", ")})</span>
                 )}
               </span>
-              <span className="font-medium tabular-nums">${(item.price * item.qty).toLocaleString("es-AR")}</span>
+              <span className="font-medium tabular-nums">${orderLineTotal(item).toLocaleString("es-AR")}</span>
             </div>
           ))}
         </div>

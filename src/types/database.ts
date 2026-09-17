@@ -451,8 +451,11 @@ export type OrderItem = {
   /** Variante (moda: color+talle). Permite descontar/reponer stock. */
   variant_id?: string;
   name: string;
+  /** Precio de la UNIDAD (mods incluidos); con pack: precio del PAQUETE completo. */
   price: number;
   qty: number;
+  /** Pack (ej: 6): qty es múltiplo y la línea = price × (qty/pack_size). */
+  pack_size?: number;
   modifiers?: string[];
   requires_prep?: boolean;
 };

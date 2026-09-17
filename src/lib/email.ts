@@ -41,7 +41,13 @@ export async function sendEmail({ to, subject, html }: SendEmailParams): Promise
 
 export function orderConfirmationEmail(vendorName: string, items: any[], total: number): { subject: string; html: string } {
   const itemRows = items
-    .map((i) => `<tr><td style="padding:8px;border-bottom:1px solid #eee">${i.qty}x ${i.name}</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:right">$${(i.price * i.qty).toLocaleString("es-AR")}</td></tr>`)
+    .map((i) => {
+      // Pack-aware (i.pack_size + price = paquete): la línea nunca se computa
+      // como unidad×qty para no arrastrar decimales.
+      const pack = Math.floor(Number(i.pack_size || 0));
+      const lineTotal = pack >= 2 ? i.price * (i.qty / pack) : i.price * i.qty;
+      return `<tr><td style="padding:8px;border-bottom:1px solid #eee">${i.qty}x ${i.name}</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:right">$${lineTotal.toLocaleString("es-AR")}</td></tr>`;
+    })
     .join("");
 
   return {

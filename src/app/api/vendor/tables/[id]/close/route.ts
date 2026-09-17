@@ -61,9 +61,12 @@ export async function POST(
       const { cashDiscount } = cashDiscountForItems(
         items.map((i: any) => {
           const p = i?.product_id ? pmap.get(String(i.product_id)) : undefined;
+          // Pack-aware: con pack, price = precio del paquete y quantity =
+          // unidades → el cash corre sobre packPrice × N° de packs.
+          const pack = Math.floor(Number(i?.pack_size || 0));
           return {
             unitPrice: Number(i?.price) || 0,
-            qty: Number(i?.qty) || 1,
+            qty: pack >= 2 ? Number(i.qty) / pack : Number(i?.qty) || 1,
             hasPromo: p ? p.promo_price != null : false,
             excluded: p?.cash_discount_excluded ?? null,
           };

@@ -126,6 +126,11 @@ func main() {
 	}
 	relay := &relay{cfg: cfg, client: client, container: container, inbound: make(chan inboundMsg, 128), qrOut: make(chan string, 8), stateCh: make(chan string, 64), db: db, ctx: ctx}
 
+	// Registrar el handler principal (mensajes, connected, logged_out): sin
+	// esto los *events.Message nunca llegan a onMessage y el bot no responde
+	// (el QR funcionaba porque GetQRChannel registra su propio handler interno).
+	client.AddEventHandler(relay.onEvent)
+
 	// Conexión al cerebro (VPS) primero — el token autentica y el QR
 	// ya puede reenviarse al comercio/ panel aunque aún no haya pareo.
 	go relay.outboundLoop(ctx)
@@ -148,7 +153,13 @@ func main() {
 		if ctx.Err() != nil {
 			return
 		}
+		if client.IsConnected() {
+			break
+		}
 		if err := client.Connect(); err != nil {
+			if err == whatsmeow.ErrAlreadyConnected {
+				break // el socket del pairing quedó vivo: sirve igual
+			}
 			log.Printf("connect (reintentando): %v", err)
 			select {
 			case <-time.After(2 * time.Second):

@@ -92,6 +92,20 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
     return () => window.clearTimeout(t);
   }, [open, hasOptions]);
 
+  // El back del celular cierra la ficha (igual que la flecha ↙) en vez
+  // de volver a la página anterior. Para eso agregamos una entrada en
+  // el historial al abrir y la cerramos al cerrar la ficha.
+  useEffect(() => {
+    if (!open) return;
+    const onPop = () => { setOpen(false); setActiveImg(0); };
+    window.addEventListener("popstate", onPop);
+    history.pushState({ portal659Sheet: true }, "", window.location.href);
+    return () => {
+      window.removeEventListener("popstate", onPop);
+      history.replaceState({}, "", window.location.href);
+    };
+  }, [open]);
+
   // Descuento en efectivo: sobre el mínimo del rango (o precio exacto).
   const cardHasPromo = hasVariants
     ? variants.some((x: any) => x.promo != null)

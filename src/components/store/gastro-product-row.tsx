@@ -78,6 +78,20 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
     return () => window.clearTimeout(t);
   }, [open, modifiers.length]);
 
+  // El back del celular cierra la ficha (igual que la flecha ←) en vez
+  // de volver a la página anterior. Para eso agregamos una entrada en
+  // el historial al abrir y la cerramos al cerrar la ficha.
+  useEffect(() => {
+    if (!open) return;
+    const onPop = () => setOpen(false);
+    window.addEventListener("popstate", onPop);
+    history.pushState({ portal659Sheet: true }, "", window.location.href);
+    return () => {
+      window.removeEventListener("popstate", onPop);
+      history.replaceState({}, "", window.location.href);
+    };
+  }, [open]);
+
   const basePrice = product.promo_price != null ? Number(product.promo_price) : Number(product.price);
   const hasPromo = product.promo_price != null;
   const cashExcluded = hasPromo && !!product.cash_discount_excluded;
@@ -157,6 +171,8 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
       origPrice: listBaseUnit,
       hasPromo,
       packSize: pack > 1 ? pack : undefined,
+      // La fuente del dinero (pack-native): nunca se deriva del precio/unidad.
+      packPrice: pack > 1 ? basePrice : undefined,
     });
     addToast(
       switched
@@ -216,7 +232,7 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
         )}
         {!outStock &&
           (acceptsCart ? (
-            <AddToCartButton offerId={product.id} name={product.name} price={baseUnit} vendor={vendor} modifiers={modifiers} cashExcluded={cashExcluded} origPrice={listBaseUnit} hasPromo={hasPromo} packSize={pack > 1 ? pack : undefined} />
+            <AddToCartButton offerId={product.id} name={product.name} price={baseUnit} vendor={vendor} modifiers={modifiers} cashExcluded={cashExcluded} origPrice={listBaseUnit} hasPromo={hasPromo} packSize={pack > 1 ? pack : undefined} packPrice={pack > 1 ? basePrice : undefined} />
           ) : (
             <a href={consultHref} target="_blank" rel="noopener noreferrer" className="rounded-md px-3 py-1.5 text-sm font-medium text-center bg-primary text-primary-foreground hover:bg-primary/90">Consultar</a>
           ))}

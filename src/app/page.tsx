@@ -273,12 +273,20 @@ export default async function HomePage() {
             <p className="mt-3 text-sm sm:text-base text-white/80 max-w-xl mx-auto">
               Tu micrositio con QR en minutos — catálogo, pedidos y WhatsApp directo. 0% comisión, sin letra chica.
             </p>
-            <Link
-              href="/register"
-              className="inline-block mt-6 rounded-full bg-sun text-ink px-8 py-3 text-sm font-bold hover:bg-sun/90 transition-all hover:scale-105 active:scale-95 shadow-lg"
-            >
-              Creá tu comercio gratis
-            </Link>
+            <div className="mt-6 flex flex-col sm:flex-row items-center justify-center gap-3">
+              <Link
+                href="/register"
+                className="inline-block rounded-full bg-sun text-ink px-8 py-3 text-sm font-bold hover:bg-sun/90 transition-all hover:scale-105 active:scale-95 shadow-lg"
+              >
+                Creá tu comercio gratis
+              </Link>
+              <Link
+                href="/comercios"
+                className="inline-block rounded-full border border-white/40 bg-white/10 text-white px-7 py-3 text-sm font-medium hover:bg-white/20 transition-colors"
+              >
+                Conocé cómo funciona →
+              </Link>
+            </div>
           </div>
         </div>
       </section>

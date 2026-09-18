@@ -110,6 +110,7 @@ export default function RootLayout({
                     <Link href="/buscar" className="hover:text-foreground transition-colors">Comercios</Link>
                     <Link href="/barrio" className="hover:text-foreground transition-colors">Info del barrio</Link>
                     <Link href="/planes" className="hover:text-foreground transition-colors">Planes</Link>
+                    <Link href="/comercios" className="hover:text-foreground transition-colors">Sumar mi comercio</Link>
                     <Link href="/privacidad" className="hover:text-foreground transition-colors">Privacidad</Link>
                   </div>
                 </div>

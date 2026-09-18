@@ -71,6 +71,18 @@ export default function AdminDashboard() {
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [shareCopied, setShareCopied] = useState(false);
+
+  /** Link de captación: landing pública /comercios (para compartir con comercios). */
+  const comerciosUrl = "/comercios";
+
+  async function copyComerciosLink() {
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}${comerciosUrl}`);
+      setShareCopied(true);
+      setTimeout(() => setShareCopied(false), 2000);
+    } catch { /* noop */ }
+  }
 
   const fetchData = useCallback(async () => {
     setError(false);
@@ -258,6 +270,46 @@ export default function AdminDashboard() {
               ))}
             </tbody>
           </table>
+        </div>
+      </div>
+
+      <div className="border border-border rounded-xl p-4 bg-card flex flex-col sm:flex-row sm:items-center gap-3">
+        <div className="flex-1 min-w-0">
+          <h2 className="font-medium text-sm">📣 Difundir Portal 659</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Mandá este link a comercios que quieras sumar: explica beneficios, planes y lleva al registro.
+          </p>
+          <p className="text-xs text-muted-foreground mt-1 font-mono truncate">
+            portal659.com.ar{comerciosUrl}
+          </p>
+        </div>
+        <div className="flex gap-2 flex-shrink-0">
+          <a
+            href={comerciosUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="rounded-lg border border-border px-3 py-2 text-xs font-medium hover:bg-muted transition-colors"
+          >
+            Ver página
+          </a>
+          <button
+            type="button"
+            onClick={copyComerciosLink}
+            className="rounded-lg border border-border px-3 py-2 text-xs font-medium hover:bg-muted transition-colors"
+          >
+            {shareCopied ? "¡Copiado!" : "Copiar link"}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              const url = `${window.location.origin}${comerciosUrl}`;
+              const text = `Mirá Portal 659, el centro comercial de tu barrio 🏘️ Tu comercio online con carta y QR, pedidos por WhatsApp y 0% de comisión: ${url}`;
+              window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank", "noopener,noreferrer");
+            }}
+            className="rounded-lg bg-green-500 text-white px-3 py-2 text-xs font-medium hover:bg-green-600 transition-colors"
+          >
+            💬 Por WhatsApp
+          </button>
         </div>
       </div>
     </div>

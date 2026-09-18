@@ -67,3 +67,43 @@ reconexión (patrón Portal Print). La UI:
 > Nota: escrito contra la API actual de `whatsmeow` (proto `waE2E`, pairing-code,
 > `sqlstore.NewWithDB`). Verificado contra el código fuente; si `go mod tidy`
 > pineara una versión que mueve algo, es un retoque menor.
+
+## Anti-ban (medidas para parecer humano)
+
+whatsmeow es un cliente **no oficial** → hay riesgo de ban. El diseño ya era
+conservador (el relay corre en el celular del comercio con IP móvil, el bot solo
+responde a inbound, nunca inicia conversaciones, hay kill switch por comercio).
+Esto suma señales anti-bot:
+
+- **Pacing humano**: delay aleatorio antes de responder (base 1200–3500ms +
+  ~4ms/char del mensaje, `WA_REPLY_DELAY_MIN_MS`/`MAX_MS`) y gap entre replies
+  múltiples (`WA_REPLY_GAP_MS`). Antes todo salía en ~1s — patrón robótico.
+- **Indicador de tipeo**: el cerebro manda `{type:"typing"}` antes de cada reply
+  y `{type:"paused"}` al terminar; el relay emite `SendChatPresence` (el dueño
+  "aparece escribiendo"). Es el refuerzo más efectivo y el que más cuesta ver.
+- **Rate limits por comercio** (`src/limits.mjs`): al superar mensajes/hora
+  (`WA_MAX_MSG_PER_HOUR`, 60) o /día (`WA_MAX_MSG_PER_DAY`, 500), o chats NUEVOS
+  por hora (`WA_MAX_NEW_CHATS_PER_HOUR`, 15), el bot deja de responder y hace
+  handoff al dueño (como el kill switch, pero automático). Estado en Redis (o
+  memoria si no hay). Se loguea como `[ban-risque]`.
+- **Plantilla variada**: el saludo/menú ya no es el blob exactamente idéntico a
+  cada chat nuevo (`src/menu.mjs` rota saludos y pies de mensaje por comercio).
+- **Backoff de re-pareo** (relay): tras un `LoggedOut`, el re-pareo espera 5s →
+  duplica por cada fallo seguido hasta `WA_REPAIR_BACKOFF_MAX` (5min). Ciclos
+  rápidos logout→relink parecen automatización. Se resetea al quedar vinculado.
+- **Telemetría**: `/health` expone `stats` (mensajes, replies, loggedOut,
+  limitsHit) y los límites activos. Cada `logged_out` loguea `[ban-risque]`.
+
+Todas las env anti-ban son opcionales (defaults conservadores en `config.mjs` /
+`main.go`). Para tunear: pasarlas al servicio `wabot` del compose.
+
+### Si te banean / desvinculan
+
+1. El relay avisa `LOGGED_OUT=1`, el panel pasa a `unlinked` y re-parea solo con
+   backoff. Si el número se desvinculó a propósito (quitar dispositivo desde el
+   WhatsApp), el re-pareo requerirá re-escanear el QR en el APK.
+2. **El dueño nunca pierde su WhatsApp**: era un dispositivo vinculado; con solo
+   quitar el APK (o `docker compose stop wabot`) el negocio vuelve a la normalidad.
+3. Si el ban es real (número bloqueado), no hay recuperación vía whatsmeow: usar
+   otro número. Por eso conviene correr el bot en un **número dedicado** si el
+   principal es crítico (ver `docs/piloto-whatsapp-bot.md`).

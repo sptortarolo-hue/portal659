@@ -13,8 +13,10 @@ firmadas: relay Go → `relay-arm64` (CGO_ENABLED=0) y APK "Portal Wa Link"
 `portal659-release.keystore`). Migración `vendor_wa_bots` aplicada al Postgres
 local; `WA_BOT_SECRET` setado en `.env.local` y plumbado en `deploy.yml` (auto
 genera si falta el secret). Smoke test local del cerebro OK (relay WS + vendor +
-reply). Falta solo lo remoto/real: correr la migración en el VPS, setear
-`WA_BOT_SECRET` (secret de GitHub o auto), y vincular un número real desde el APK.
+reply). **Anti-ban** (pacing humano, tipeo, rate limits, backoff de re-pareo)
+integrado en cerebro + relay; APK `?v=12`. Falta solo lo remoto/real: correr la
+migración en el VPS, setear `WA_BOT_SECRET` (secret de GitHub o auto), y vincular
+un número real desde el APK.
 
 ---
 
@@ -78,9 +80,11 @@ Hay **tres niveles**, de más fino a más bruto:
 
 ## 3.1. Publicar el APK (Plan B — sin versionar el binario)
 
-El APK **no se commitea**. Se copia al volumen `uploads_data` del VPS y la web lo
-sirve en `/uploads/downloads/portal-wa-link.apk` (el route `/uploads/*` sirve
-cualquier archivo con `must-revalidate`, igual que el agente PC):
+El APK **no se commitea** (salvo `public/downloads/portal-wa-link.apk`, el build
+firmado que ya sirve el panel con cache-bust `?v=N`). Para un build nuevo, además
+de recompilar el relay hay que copiarlo al volumen `uploads_data` del VPS (el
+route `/uploads/*` sirve cualquier archivo con `must-revalidate`, igual que el
+agente PC):
 
 ```bash
 # 1) Publicar el APK compilado (portal-wa-link, firmado) en el VPS:
@@ -95,6 +99,34 @@ ssh -p 8277 root@<TU_VPS> "docker exec portal659 mkdir -p /app/uploads/downloads
 > vez que subas un build nuevo (cache-bust).
 >
 > Para borrarlo del piloto: `docker exec portal659 rm /app/uploads/downloads/portal-wa-link.apk`.
+
+---
+
+## 3.2. Anti-ban (qué se hizo y qué se puede tunear)
+
+whatsmeow es un cliente **no oficial** → el ban es un riesgo real (ToS). El
+diseño ya era conservador (relay en el celular del comercio, IP móvil; el bot
+**solo responde** a inbound, nunca inicia conversaciones; kill switch por
+comercio). Esta tanda agregó señales humanas + frenos automáticos:
+
+| Medida | Dónde | Tune |
+|---|---|---|
+| Delay humano antes de responder (base 1200–3500ms + ~4ms/char) | `index.mjs` (`humanDelay`) | `WA_REPLY_DELAY_MIN_MS`/`MAX_MS` |
+| Gap entre replies múltiples | `index.mjs` | `WA_REPLY_GAP_MS` |
+| Indicador de tipeo (el dueño "escribe") | cerebro → relay `SendChatPresence` | — (siempre activo) |
+| Cap mensajes salientes por hora/día | `src/limits.mjs` | `WA_MAX_MSG_PER_HOUR`/`DAY` |
+| Cap chats NUEVOS por hora (anti avalancha) | `src/limits.mjs` | `WA_MAX_NEW_CHATS_PER_HOUR` |
+| Plantilla de menú variada (no blob idéntico) | `src/menu.mjs` | — |
+| Backoff de re-pareo tras `logged_out` (5s→5min) | relay `main.go` | `WA_REPAIR_BACKOFF_MAX` |
+| Telemetría `/health` (`stats`, límites) + logs `[ban-risque]` | `index.mjs` | — |
+
+Al superarse un cap, el bot hace **handoff** (responde el dueño) y loguea
+`[ban-risque]`. Todas las env son opcionales (defaults conservadores) y van al
+servicio `wabot` del compose.
+
+> **Recomendación de fondo:** si el número principal del comercio es crítico,
+> correr el bot en un **número dedicado** (SIM nueva). Un ban mata el número que
+> hospeda la sesión; con número dedicado se pierde el bot, no el negocio.
 
 ---
 

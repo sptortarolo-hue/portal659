@@ -23,17 +23,18 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
-	_ "modernc.org/sqlite" // registra el driver "sqlite" (CGO-free)
 	"github.com/gorilla/websocket"
+	_ "modernc.org/sqlite" // registra el driver "sqlite" (CGO-free)
 
 	"go.mau.fi/whatsmeow"
+	waProto "go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/store/sqlstore"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
-	waProto "go.mau.fi/whatsmeow/proto/waE2E"
 	"google.golang.org/protobuf/proto"
 	"net"
 )
@@ -199,6 +200,12 @@ type relay struct {
 	stateCh   chan string // "linked" / "logged_out" → notify al cerebro
 	db        *sql.DB     // para checkpoint post-vinculación
 	ctx       context.Context
+
+	// Anti-ban: backoff exponencial entre re-pareos tras LoggedOut repetidos
+	// (ciclos rápidos logout→relink parecen automatización).
+	repairMu      sync.Mutex
+	repairFails   int
+	repairBackoff time.Duration
 }
 
 // login espera el código de pareo/QR y lo imprime a stdout (el wrapper Kotlin lo
@@ -225,6 +232,7 @@ func (r *relay) login(ctx context.Context) bool {
 					continue
 				}
 				if r.client.Store.ID != nil {
+					r.resetRepairBackoff()
 					fmt.Println("LINKED=1")
 					r.stateCh <- "linked"
 					return true
@@ -268,6 +276,7 @@ func (r *relay) login(ctx context.Context) bool {
 			}
 		}
 		if linked || r.client.Store.ID != nil {
+			r.resetRepairBackoff()
 			fmt.Println("LINKED=1")
 			_, _ = r.db.Exec("PRAGMA wal_checkpoint(TRUNCATE)") // persistir identidad en Android
 			r.stateCh <- "linked"
@@ -295,7 +304,21 @@ func (r *relay) onEvent(evt any) {
 		device := r.container.NewDevice()
 		r.client = whatsmeow.NewClient(device, nil)
 		r.client.AddEventHandler(r.onEvent)
-		go r.login(r.ctx)
+		// Anti-ban: backoff exponencial entre re-pareos. Ciclos rápidos
+		// logout→relink parecen automatización; los LoggedOut seguidos (sin
+		// que el dueño re-escanee) se espacian hasta WA_REPAIR_BACKOFF_MAX.
+		delay := r.nextRepairBackoff()
+		if delay > 0 {
+			log.Printf("repair: backoff %s antes de re-parear (%d fallos seguidos)", delay, r.repairFails)
+		}
+		go func() {
+			select {
+			case <-time.After(delay):
+			case <-r.ctx.Done():
+				return
+			}
+			r.login(r.ctx)
+		}()
 	case *events.Disconnected:
 		// Corte transitorio de red: whatsmeow auto-reconecta solo
 		// (EnableAutoReconnect). Antes hacíamos os.Exit(1) → WhatsApp mostraba
@@ -482,6 +505,12 @@ func (r *relay) readLoop(ctx context.Context, conn *websocket.Conn) {
 			if in.WaID != "" && in.Text != "" {
 				r.sendText(ctx, in.WaID, in.Text)
 			}
+		case "typing", "paused":
+			// Indicador de tipeo (anti-ban): que el dueño "parezca" que escribe
+			// antes de responder. Se ignora si el chat ya no es válido.
+			if in.WaID != "" {
+				r.sendPresence(ctx, in.WaID, in.Type)
+			}
 		case "error", "hello":
 			b, _ := json.Marshal(in)
 			log.Printf("cerebro: %s", string(b))
@@ -504,9 +533,62 @@ func (r *relay) sendText(ctx context.Context, waID, text string) {
 	}
 }
 
+// sendPresence emite el indicador de tipeo ("typing") o su fin ("paused").
+// Es lo que hace que WhatsApp muestre "escribiendo..." para el dueño.
+func (r *relay) sendPresence(ctx context.Context, waID, kind string) {
+	jid, err := types.ParseJID(waID)
+	if err != nil {
+		jid = types.NewJID(waID, types.DefaultUserServer)
+	}
+	presence := types.ChatPresenceComposing
+	if kind == "paused" {
+		presence = types.ChatPresencePaused
+	}
+	if err := r.client.SendChatPresence(ctx, jid, presence, types.ChatPresenceMediaText); err != nil {
+		log.Printf("presence %s a %s: %v", kind, waID, err)
+	}
+}
+
 func minDur(a, b time.Duration) time.Duration {
 	if a < b {
 		return a
 	}
 	return b
+}
+
+// nextRepairBackoff devuelve cuánto esperar antes del próximo intento de
+// re-pareo tras un LoggedOut, y registra ese fallo. Arranca en 5s y crece
+// exponencialmente hasta WA_REPAIR_BACKOFF_MAX (default 5 min). Se resetea al
+// quedar vinculado (resetRepairBackoff).
+func (r *relay) nextRepairBackoff() time.Duration {
+	r.repairMu.Lock()
+	defer r.repairMu.Unlock()
+	r.repairFails++
+	max := envDur("WA_REPAIR_BACKOFF_MAX", 5*time.Minute)
+	delay := 5 * time.Second
+	for i := 1; i < r.repairFails; i++ {
+		delay *= 2
+		if delay >= max {
+			delay = max
+			break
+		}
+	}
+	r.repairBackoff = delay
+	return delay
+}
+
+func (r *relay) resetRepairBackoff() {
+	r.repairMu.Lock()
+	defer r.repairMu.Unlock()
+	r.repairFails = 0
+	r.repairBackoff = 0
+}
+
+func envDur(k string, def time.Duration) time.Duration {
+	if v := os.Getenv(k); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			return d
+		}
+	}
+	return def
 }

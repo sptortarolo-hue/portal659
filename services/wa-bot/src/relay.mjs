@@ -29,3 +29,18 @@ export function sendText(client, waId, text) {
   client.ws.send(JSON.stringify({ type: "send", wa_id: waId, text }));
   return true;
 }
+
+/** Avisa al relay que "está tipeando" (ChatPresence composing) — el dueño se ve
+ *  como si estuviera escribiendo. No bloquea: si el relay no está, se ignora. */
+export function sendTyping(client, waId) {
+  if (!client || client.ws.readyState !== WebSocket.OPEN) return false;
+  client.ws.send(JSON.stringify({ type: "typing", wa_id: waId }));
+  return true;
+}
+
+/** Detiene el indicador de tipeo (ChatPresence paused). */
+export function sendPaused(client, waId) {
+  if (!client || client.ws.readyState !== WebSocket.OPEN) return false;
+  client.ws.send(JSON.stringify({ type: "paused", wa_id: waId }));
+  return true;
+}

@@ -3,14 +3,32 @@ import { WebSocketServer, WebSocket } from "ws";
 import { config } from "./src/config.mjs";
 import { vendorByToken } from "./src/db.mjs";
 import { handleInbound } from "./src/bot.mjs";
-import { addClient, removeClient, getClient, sendText, clientCount, forEachClient } from "./src/relay.mjs";
+import { getState } from "./src/state.mjs";
+import { countOutbound, markNewChat } from "./src/limits.mjs";
+import { addClient, removeClient, getClient, sendText, sendTyping, sendPaused, clientCount, forEachClient } from "./src/relay.mjs";
 import { saveQrToken, clearQrToken, setBotStatus } from "./src/state.mjs";
+
+// Telemetría de salud (anti-ban): contadores de proceso para /health y logs.
+const stats = { messages: 0, replies: 0, errors: 0, loggedOut: 0, limitsHit: 0 };
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const rand = (min, max) => Math.round(min + Math.random() * (max - min));
+
+/** Delay humano antes de responder: base aleatoria en [min,max], +4ms por char
+ *  del inbound (simula que leen). Nunca 0 — WhatsApp nota la inmediatez. */
+function humanDelay(textLen) {
+  return Math.min(config.replyDelayMaxMs, config.replyDelayMinMs + textLen * 4 + rand(200, 700));
+}
 
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
   if (url.pathname === "/health") {
     res.writeHead(200, { "content-type": "application/json" });
-    res.end(JSON.stringify({ ok: true, clients: clientCount(), llm: !!config.llmApiKey }));
+    res.end(JSON.stringify({
+      ok: true, clients: clientCount(), llm: !!config.llmApiKey,
+      stats,
+      limits: { replyDelayMinMs: config.replyDelayMinMs, replyDelayMaxMs: config.replyDelayMaxMs, replyGapMs: config.replyGapMs, maxMsgPerHour: config.maxMsgPerHour, maxMsgPerDay: config.maxMsgPerDay, maxNewChatsPerHour: config.maxNewChatsPerHour },
+    }));
     return;
   }
   res.writeHead(404, { "content-type": "application/json" });
@@ -87,24 +105,60 @@ async function attach(ws, token) {
     if (msg.type === "logged_out") {
       await clearQrToken(vendor.id).catch(() => {});
       await setBotStatus(vendor.id, "unlinked").catch(() => {});
-      console.log(`[relay] desvinculado ${vendor.store_name} (${vendor.id}) — re-pareando`);
+      stats.loggedOut++;
+      console.log(`[ban-risque] ${vendor.store_name} (${vendor.id}) LOGGED_OUT ${stats.loggedOut}° — re-pareando`);
       return;
     }
     if (msg.type !== "message") return;
     if (!msg.wa_id || !msg.body) return;
 
     lastSeen.set(token, Date.now());
+    stats.messages++;
     console.log(`[msg] de ${msg.wa_id}: ${msg.body}`);
+
+    // Rate limit de chats nuevos: si es primer contacto y ya se superó el tope
+    // de la hora, no responder (handoff al dueño). Evita contestar la misma
+    // plantilla a una avalancha de números nuevos (señal de spam).
+    const prev = await getState(vendor.id, msg.wa_id).catch(() => null);
+    if (!prev) {
+      const { added, count } = await markNewChat(vendor.id, msg.wa_id).catch(() => ({ added: 0, count: 0 }));
+      if (added && count > config.maxNewChatsPerHour) {
+        stats.limitsHit++;
+        console.log(`[ban-risque] ${vendor.store_name} (${vendor.id}) ${count} chats nuevos/hora > ${config.maxNewChatsPerHour} — handoff, responde el dueño`);
+        return;
+      }
+    }
 
     const result = await handleInbound({ vendor, waId: msg.wa_id, body: msg.body });
     if (result.handoff) {
       console.log(`[bot] handoff de ${msg.wa_id} (bot apagado) -> responde el dueño`);
       return;
     }
-    for (const reply of result.replies || []) {
-      const sent = sendText(getClient(token), msg.wa_id, reply);
+    const replies = result.replies || [];
+    if (!replies.length) return;
+
+    // Rate limit de salida: si este lote supera los caps de hora/día, no mandar
+    // (el dueño atiende). El conteo se hace ANTES de enviar para no exceder.
+    const { hour, day } = await countOutbound(vendor.id, replies.length).catch(() => ({ hour: 0, day: 0 }));
+    if (hour > config.maxMsgPerHour || day > config.maxMsgPerDay) {
+      stats.limitsHit++;
+      console.log(`[ban-risque] ${vendor.store_name} (${vendor.id}) salida h=${hour}/${config.maxMsgPerHour} d=${day}/${config.maxMsgPerDay} — handoff, responde el dueño`);
+      return;
+    }
+
+    // Pacing humano: esperar antes de tipear, gaps entre replies múltiples.
+    const client = getClient(token);
+    await sleep(humanDelay(msg.body.length));
+    sendTyping(client, msg.wa_id);
+    let first = true;
+    for (const reply of replies) {
+      if (!first) await sleep(config.replyGapMs + rand(300, 800));
+      first = false;
+      const sent = sendText(client, msg.wa_id, reply);
+      stats.replies++;
       console.log(`[bot] reply a ${msg.wa_id} (${sent ? "enviado" : "SIN_CONEXION"}): ${reply}`);
     }
+    sendPaused(client, msg.wa_id);
   });
 
   ws.on("close", () => {

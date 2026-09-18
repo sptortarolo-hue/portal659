@@ -440,6 +440,8 @@ export type Order = {
     volume_discount?: number | null;
   /** Pedido de prueba (modo preview). true = no cuenta en topes/métricas/ingresos. */
   is_preview?: boolean;
+  /** Comprobante de transferencia (imagen/PDF) que llegó por WhatsApp al bot. */
+  transfer_proof_url?: string | null;
   created_at: string;
   updated_at: string;
   /** Momento en que el pedido se cerró (completed/cancelled). Frena el cronómetro. */

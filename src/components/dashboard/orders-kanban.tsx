@@ -93,6 +93,11 @@ function OrderCard({
                 <AlertTriangle className="h-2.5 w-2.5" /> Pago pendiente
               </span>
             )}
+            {order.transfer_proof_url && (
+              <span className="inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-sky-100 text-sky-700 border-sky-200">
+                🧾 comprobante
+              </span>
+            )}
           </div>
         </div>
         <div className="text-right flex-shrink-0">
@@ -178,7 +183,10 @@ function KanbanColumn({
       case "new":
         return <Plus className="h-6 w-6 mx-auto mb-2 opacity-30" />;
       case "confirmed":
-        return <ChefHat className="h-6 w-6 mx-auto mb-2 opacity-30" />;
+        // En moda "aceptado" es para empaquetar, no cocina.
+        return isModa
+          ? <Package className="h-6 w-6 mx-auto mb-2 opacity-30" />
+          : <ChefHat className="h-6 w-6 mx-auto mb-2 opacity-30" />;
       case "preparing":
         return <Package className="h-6 w-6 mx-auto mb-2 opacity-30" />;
       case "ready":

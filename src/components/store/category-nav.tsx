@@ -23,7 +23,7 @@ export function categorySlug(name: string): string {
  * server-rendered, sin esperar nada del server) y deep link ?cat=<slug> que
  * scrollea directo a esa sección.
  */
-export function CategoryNav({ sections }: { sections: { name: string }[] }) {
+export function CategoryNav({ sections, isModa = false }: { sections: { name: string }[]; isModa?: boolean }) {
   const [active, setActive] = useState(0);
   const [query, setQuery] = useState("");
   const [matches, setMatches] = useState<number | null>(null);
@@ -121,9 +121,9 @@ export function CategoryNav({ sections }: { sections: { name: string }[] }) {
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="🔍 Buscar en la carta…"
+            placeholder={isModa ? "🔍 Buscar en el catálogo…" : "🔍 Buscar en la carta…"}
             className="h-9 flex-1 min-w-0 rounded-full border border-border bg-card px-4 text-sm outline-none focus:border-primary"
-            aria-label="Buscar en la carta"
+            aria-label={isModa ? "Buscar en el catálogo" : "Buscar en la carta"}
           />
           {matches !== null && (
             <span className="text-xs text-muted-foreground tabular-nums whitespace-nowrap">

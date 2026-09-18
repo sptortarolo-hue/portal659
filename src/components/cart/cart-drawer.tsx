@@ -5,6 +5,7 @@ import { useMemo } from "react";
 import { useCart } from "@/lib/cart";
 import { cartLineTotal } from "@/lib/order-line";
 import { mirrorVolume } from "@/lib/volume-mirror";
+import { ProductImage } from "@/components/product-image";
 
 export function CartDrawer() {
   const { open, setOpen, items, vendor, total, count, setQty, removeItem, clear } = useCart();
@@ -61,7 +62,13 @@ export function CartDrawer() {
                   className="border border-border rounded-xl p-3 space-y-2"
                 >
                   <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex gap-2.5 flex-1">
+                      {item.image ? (
+                        <div className="h-14 w-14 rounded-lg overflow-hidden flex-shrink-0 bg-accent">
+                          <ProductImage src={item.image} name={item.name} vertical={vendor?.vertical} alt={item.name} className="w-full h-full object-cover" />
+                        </div>
+                      ) : null}
+                      <div className="min-w-0 flex-1">
                       <p className="font-medium text-sm leading-tight">
                         {item.name}
                         {item.packSize ? (
@@ -81,6 +88,7 @@ export function CartDrawer() {
                           ))}
                         </div>
                       )}
+                      </div>
                     </div>
                     <button
                       onClick={() => removeItem(item.offerId, item.modifiers)}

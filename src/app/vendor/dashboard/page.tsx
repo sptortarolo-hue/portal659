@@ -561,9 +561,9 @@ function VendorDashboardInner() {
     setCropTarget(target);
     if (target === "cover") { setCropAspect(3 / 1); setCropTitle("Ajustá la foto del comercio"); }
     else if (target === "logo") { setCropAspect(1); setCropTitle("Ajustá el logo"); }
-    else { setCropAspect(16 / 9); setCropTitle("Ajustá la foto del plato"); }
+    else { setCropAspect(16 / 9); setCropTitle(vendor?.vertical === "moda" ? "Ajustá la foto del producto" : "Ajustá la foto del plato"); }
     setCropOpen(true);
-  }, []);
+  }, [vendor?.vertical]);
 
   const handleCropComplete = useCallback((file: File, previewUrl: string) => {
     if (cropTarget === "cover" || cropTarget === "logo") {
@@ -1358,7 +1358,7 @@ function VendorDashboardInner() {
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={() => setShareOpen(false)}>
           <div className="bg-card rounded-2xl p-6 max-w-sm w-full text-center" onClick={(e) => e.stopPropagation()}>
             <h3 className="font-display text-xl font-semibold mb-1">Compartí tu vidriera</h3>
-            <p className="text-sm text-muted-foreground mb-4">El QR lleva directo a tu carta (listo para imprimir y pegar en la mesa o el vidrio).</p>
+            <p className="text-sm text-muted-foreground mb-4">{isModa ? "El QR lleva directo a tu catálogo (listo para imprimir y pegar en la vidriera o el vidrio)." : "El QR lleva directo a tu carta (listo para imprimir y pegar en la mesa o el vidrio)."}</p>
             {qrDataUrl ? <img src={qrDataUrl} alt="QR" className="mx-auto w-48 h-48 mb-4" /> : <div className="mx-auto w-48 h-48 mb-4 bg-skeleton rounded-lg" />}
             <p className="text-xs text-muted-foreground break-all mb-4">{window.location.origin}/tienda/{vendor.slug}</p>
             <div className="space-y-2">

@@ -23,15 +23,21 @@ export async function getState(vendorId, waId) {
     const raw = await r.get(key(vendorId, waId));
     return raw ? raw : null;
   }
-  return memory.get(key(vendorId, waId)) || null;
+  const entry = memory.get(key(vendorId, waId));
+  if (!entry) return null;
+  if (entry.expireAt && Date.now() > entry.expireAt) {
+    memory.delete(key(vendorId, waId));
+    return null;
+  }
+  return entry.state;
 }
 
-export async function setState(vendorId, waId, state) {
+export async function setState(vendorId, waId, state, ttlSeconds = TTL) {
   const r = getRedis();
   if (r) {
-    await r.set(key(vendorId, waId), state, { ex: TTL });
+    await r.set(key(vendorId, waId), state, { ex: ttlSeconds });
   } else {
-    memory.set(key(vendorId, waId), state);
+    memory.set(key(vendorId, waId), { state, expireAt: Date.now() + ttlSeconds * 1000 });
   }
 }
 

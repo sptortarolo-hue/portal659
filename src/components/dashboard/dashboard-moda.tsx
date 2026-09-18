@@ -64,6 +64,10 @@ type VariantRow = {
   stock: number;
 };
 
+// Galería moda: 1 portada (image_url) + hasta 7 extras (product_images).
+// El cap vive también en PUT /api/vendor/product-images; acá solo UX.
+const MAX_EXTRA_IMAGES = 7;
+
 export default function DashboardModa({
   vendor,
   offers,
@@ -262,12 +266,38 @@ export default function DashboardModa({
 
   async function handleGalleryUpload(files: FileList | null) {
     if (!files) return;
+    const room = MAX_EXTRA_IMAGES - galleryUrls.length;
+    if (room <= 0) {
+      setMsg2(`Máximo ${MAX_EXTRA_IMAGES} fotos extra (más la portada)`);
+      return;
+    }
     const added: string[] = [];
-    for (const f of Array.from(files)) {
+    for (const f of Array.from(files).slice(0, room)) {
       const url = await uploadImage(f, "offers");
       if (url) added.push(url);
     }
-    setGalleryUrls((prev) => [...prev, ...added]);
+    setGalleryUrls((prev) => [...prev, ...added].slice(0, MAX_EXTRA_IMAGES));
+    if (files.length > room) setMsg2(`Se agregaron ${room}; máximo ${MAX_EXTRA_IMAGES} fotos extra`);
+  }
+
+  function moveGalleryUrl(i: number, dir: -1 | 1) {
+    setGalleryUrls((prev) => {
+      const j = i + dir;
+      if (j < 0 || j >= prev.length) return prev;
+      const next = [...prev];
+      [next[i], next[j]] = [next[j], next[i]];
+      return next;
+    });
+  }
+
+  function makeCoverFromGallery(i: number) {
+    setGalleryUrls((prev) => {
+      const url = prev[i];
+      if (!url) return prev;
+      setOffPreview(url);
+      setOffFile(null);
+      return prev.filter((_, idx) => idx !== i);
+    });
   }
 
   async function handleOfferSubmit(e?: React.FormEvent) {
@@ -333,7 +363,7 @@ export default function DashboardModa({
       await fetch("/api/vendor/product-images", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ product_id: productId, images: galleryUrls }),
+        body: JSON.stringify({ product_id: productId, images: galleryUrls.slice(0, MAX_EXTRA_IMAGES) }),
       });
       resetOfferForm();
       setMsg2(editingId ? "Producto actualizado" : "Producto agregado");
@@ -437,22 +467,30 @@ export default function DashboardModa({
           </div>
         )}
 
-        <div><Label>Fotos del producto</Label>
-          <Input type="file" accept="image/*" multiple onChange={(e) => handleGalleryUpload(e.target.files)} />
+        <div><Label>Fotos extra ({galleryUrls.length}/{MAX_EXTRA_IMAGES}) — frente, espalda/en modelo, detalle de tela, escala</Label>
+          <Input type="file" accept="image/*" multiple disabled={galleryUrls.length >= MAX_EXTRA_IMAGES} onChange={(e) => handleGalleryUpload(e.target.files)} />
           {galleryUrls.length > 0 && (
             <div className="flex gap-2 mt-2 flex-wrap">
               {galleryUrls.map((url, i) => (
-                <div key={i} className="relative h-16 w-16 rounded-lg overflow-hidden group">
-                  <img src={url} alt="" className="w-full h-full object-cover" />
-                  <button type="button" onClick={() => setGalleryUrls((prev) => prev.filter((_, idx) => idx !== i))} className="absolute top-0 right-0 bg-black/60 text-white text-xs h-4 w-4 rounded-full">✕</button>
+                <div key={i} className="relative h-16 w-16 rounded-lg overflow-hidden group border border-border">
+                  <img src={url} alt={`Foto extra ${i + 1}`} className="w-full h-full object-cover" />
+                  <button type="button" onClick={() => setGalleryUrls((prev) => prev.filter((_, idx) => idx !== i))} title="Quitar" className="absolute top-0 right-0 bg-black/60 text-white text-xs h-4 w-4 rounded-full">✕</button>
+                  <div className="absolute bottom-0 inset-x-0 flex justify-center gap-0.5 bg-black/50 py-0.5 opacity-0 group-hover:opacity-100 transition">
+                    <button type="button" disabled={i === 0} onClick={() => moveGalleryUrl(i, -1)} title="Mover antes" className="text-white text-[10px] px-1 disabled:opacity-30">◀</button>
+                    <button type="button" disabled={i === galleryUrls.length - 1} onClick={() => moveGalleryUrl(i, 1)} title="Mover después" className="text-white text-[10px] px-1 disabled:opacity-30">▶</button>
+                    <button type="button" onClick={() => makeCoverFromGallery(i)} title="Hacer portada" className="text-amber-300 text-[10px] px-1">★</button>
+                  </div>
                 </div>
               ))}
             </div>
           )}
+          {galleryUrls.length >= MAX_EXTRA_IMAGES && (
+            <p className="text-xs text-muted-foreground mt-1">Llegaste al máximo de {MAX_EXTRA_IMAGES} fotos extra (más la portada).</p>
+          )}
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-          <div><Label>Foto principal</Label><Input type="file" accept="image/*" onChange={(e) => handleOfferFileSelect(e.target.files?.[0] || null)} />{offPreview && <img src={offPreview} alt="" className="mt-2 h-16 w-full object-cover rounded-lg" />}</div>
+          <div><Label>Foto principal (portada)</Label><Input type="file" accept="image/*" onChange={(e) => handleOfferFileSelect(e.target.files?.[0] || null)} />{offPreview && <img src={offPreview} alt="Portada" className="mt-2 h-16 w-full object-cover rounded-lg" />}</div>
         </div>
 
         <div><Label>Descripción</Label><Textarea value={offDesc} onChange={(e) => setOffDesc(e.target.value)} /></div>

@@ -21,6 +21,8 @@ export type CartItem = {
   /** Variante elegida (moda): se usa para reservar/reponer stock. */
   variantId?: string;
   name: string;
+  /** Foto miniatura (moda: portada del producto). Opcional: carritos viejos no la traen. */
+  image?: string | null;
   /** Precio POR UNIDAD (con pack: price del paquete / pack_size — derivado para display). */
   price: number;
   qty: number;

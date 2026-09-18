@@ -33,6 +33,8 @@ type AddToCartButtonProps = {
   packSize?: number;
   /** Precio del paquete completo (fuente del dinero con pack). */
   packPrice?: number;
+  /** Foto miniatura para el carrito (moda). Opcional, no rompe gastro. */
+  image?: string | null;
 };
 
 export function AddToCartButton({
@@ -46,6 +48,7 @@ export function AddToCartButton({
   hasPromo,
   packSize,
   packPrice,
+  image,
 }: AddToCartButtonProps) {
   const { addItem } = useCart();
   const { addToast } = useToast();
@@ -65,6 +68,7 @@ export function AddToCartButton({
         hasPromo,
         packSize: packSize && packSize >= 2 ? packSize : undefined,
         packPrice: packPrice && packSize && packSize >= 2 ? packPrice : undefined,
+        image: image ?? null,
       });
       if (switched) {
         addToast("Se limpió el carrito anterior (solo podés pedir de un local a la vez)");
@@ -74,7 +78,7 @@ export function AddToCartButton({
       setAdded(true);
       setTimeout(() => setAdded(false), 1500);
     },
-    [addItem, vendor, offerId, name, price, cashExcluded, origPrice, hasPromo, packSize, packPrice, addToast]
+    [addItem, vendor, offerId, name, price, cashExcluded, origPrice, hasPromo, packSize, packPrice, image, addToast]
   );
 
   const handleClick = useCallback(() => {

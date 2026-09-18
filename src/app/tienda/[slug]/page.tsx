@@ -196,11 +196,16 @@ export default async function TiendaPage({
   }
 
   let allProductImages: any[] = [];
-  if (variantProductIds.length > 0) {
+  // Galería product_images: se carga para TODOS los productos del local
+  // (antes solo para los que tenían variantes y los simples perdían su
+  // galería aunque existiera). Solo moda la usa hoy; gastro sigue igual
+  // porque su rama ya contempla oImages opcional.
+  const galleryProductIds = productIds;
+  if (galleryProductIds.length > 0) {
     try {
       allProductImages = await queryMany<any>(
         `SELECT * FROM product_images WHERE product_id = ANY($1) ORDER BY position ASC`,
-        [variantProductIds]
+        [galleryProductIds]
       );
     } catch {
       allProductImages = [];
@@ -619,7 +624,7 @@ export default async function TiendaPage({
               </p>
             ) : (
               <>
-                {sections.length > 0 && <CategoryNav sections={sections} />}
+                {sections.length > 0 && <CategoryNav sections={sections} isModa={isModa} />}
                 {isGastro && acceptsCart && volumeGroups.length > 0 && <VolumeProgress groups={volumeGroups} />}
                 {sections.map((s, i) => (
                   <section key={s.name} id={`seccion-${i}`} className="mb-10 scroll-mt-[184px] sm:scroll-mt-24">

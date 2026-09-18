@@ -2,7 +2,7 @@ import { createServer } from "node:http";
 import { WebSocketServer, WebSocket } from "ws";
 import { config } from "./src/config.mjs";
 import { vendorByToken } from "./src/db.mjs";
-import { handleInbound } from "./src/bot.mjs";
+import { handleInbound, handleInboundMedia } from "./src/bot.mjs";
 import { getState } from "./src/state.mjs";
 import { countOutbound, markNewChat } from "./src/limits.mjs";
 import { addClient, removeClient, getClient, sendText, sendTyping, sendPaused, clientCount, forEachClient } from "./src/relay.mjs";
@@ -109,6 +109,30 @@ async function attach(ws, token) {
       console.log(`[ban-risque] ${vendor.store_name} (${vendor.id}) LOGGED_OUT ${stats.loggedOut}° — re-pareando`);
       return;
     }
+    if (msg.type === "image" || msg.type === "file") {
+      lastSeen.set(token, Date.now());
+      if (!msg.wa_id || !msg.data) return;
+      console.log(`[msg] media de ${msg.wa_id}: ${msg.mime} (${Math.round((msg.data.length * 3) / 4 / 1024)}KB)`);
+      try {
+        const buffer = Buffer.from(msg.data, "base64");
+        const result = await handleInboundMedia({
+          vendor,
+          waId: msg.wa_id,
+          mime: msg.mime || "",
+          name: msg.name || "",
+          buffer,
+        });
+        if (!result.handled) return;
+        for (const reply of result.replies || []) {
+          const sent = sendText(getClient(token), msg.wa_id, reply);
+          console.log(`[bot] reply a ${msg.wa_id} (${sent ? "enviado" : "SIN_CONEXION"}): ${reply.slice(0, 80)}`);
+        }
+      } catch (e) {
+        console.error(`[bot] error manejando media: ${e.message}`);
+      }
+      return;
+    }
+
     if (msg.type !== "message") return;
     if (!msg.wa_id || !msg.body) return;
 

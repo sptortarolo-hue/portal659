@@ -49,8 +49,13 @@ export async function PUT(request: Request) {
   );
   if (!product) return NextResponse.json({ error: "Producto no encontrado" }, { status: 404 });
 
+  // Tope moda (ropa y accesorios): 1 portada (products.image_url) + hasta
+  // 7 extras en product_images = 8 fotos total. Solo moda usa esta tabla
+  // hoy (gastro va por image_url), así que el cap no afecta a nadie más.
+  const MAX_EXTRA_IMAGES = 7;
   const rows = (images as string[])
     .filter((url) => url && url.trim())
+    .slice(0, MAX_EXTRA_IMAGES)
     .map((url, i) => ({ product_id, image_url: url.trim(), position: i }));
 
   // Atomicidad: si un INSERT falla a mitad, las imágenes no quedan corruptas.
@@ -63,5 +68,5 @@ export async function PUT(request: Request) {
       );
     }
   });
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, capped: (images as string[]).filter((u) => u && u.trim()).length > MAX_EXTRA_IMAGES });
 }

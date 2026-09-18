@@ -25,9 +25,11 @@ type Props = {
   stockControl?: boolean;
   /** La promo del producto está excluida del descuento en efectivo. */
   cashExcluded?: boolean;
+  /** Foto miniatura para el carrito (moda). Opcional, no rompe gastro. */
+  image?: string | null;
 };
 
-export function VariantSelector({ productId, name, variants, vendor, stockControl = true, cashExcluded = false }: Props) {
+export function VariantSelector({ productId, name, variants, vendor, stockControl = true, cashExcluded = false, image }: Props) {
   const { addItem } = useCart();
   const { addToast } = useToast();
   const [color, setColor] = useState<string | null>(null);
@@ -62,7 +64,7 @@ export function VariantSelector({ productId, name, variants, vendor, stockContro
     // price_mod 0: el precio ya está definido en el producto según variante.
     const switched = addItem(
       { id: vendor.id, slug: vendor.slug, storeName: vendor.storeName, whatsapp: vendor.whatsapp, vertical: vendor.vertical, deliveryFee: vendor.deliveryFee ?? null, freeDeliveryMin: vendor.freeDeliveryMin ?? null, cashDiscountPct: vendor.cashDiscountPct ?? null },
-      { offerId: productId, variantId: current.id, name, price: price!, qty: 1, modifiers: mods, cashExcluded: current.promo != null && cashExcluded }
+      { offerId: productId, variantId: current.id, name, price: price!, qty: 1, modifiers: mods, cashExcluded: current.promo != null && cashExcluded, image: image ?? null }
     );
     addToast(`${name} (${current.color} / ${current.talle}) agregado al carrito`);
     setAdded(true);

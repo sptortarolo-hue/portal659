@@ -118,7 +118,7 @@ export default function CheckoutPage() {
           Tu pedido está vacío
         </h1>
         <p className="text-muted-foreground mb-6">
-          Agregá platos de un local para poder hacer el pedido.
+          {vendor?.vertical === "moda" ? "Agregá productos de un local para poder hacer el pedido." : "Agregá platos de un local para poder hacer el pedido."}
         </p>
         <Button onClick={() => router.push("/")}>Ver ofertas</Button>
       </main>

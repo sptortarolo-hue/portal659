@@ -474,7 +474,7 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
                 <textarea
                   value={modNotes}
                   onChange={(e) => setModNotes(e.target.value)}
-                  placeholder="Ej: Pizza no disponible, se reemplazo por empanadas..."
+                  placeholder={isModa ? "Ej: Talle M sin stock, se reemplaza por L..." : "Ej: Pizza no disponible, se reemplazo por empanadas..."}
                   className="mt-1 w-full h-16 px-3 text-xs rounded-lg border border-input bg-background resize-none"
                 />
               </div>
@@ -529,11 +529,35 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
                 </Button>
               )}
               {isTransferAppPending && (
-                <div className="rounded-lg border border-amber-300 bg-amber-50 text-amber-800 px-3 py-2 text-xs space-y-1.5">
+                <div className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                   <p className="font-semibold">🕐 Pago pendiente ({order.payment_status})</p>
                   <p className="text-amber-700">
                     Transferí los datos al cliente y confirmá el depósito antes de avanzar.
                   </p>
+                  {order.transfer_proof_url && (
+                    <div className="space-y-1.5 rounded-md border border-amber-200 bg-white/70 p-2">
+                      <p className="font-semibold">🧾 Comprobante recibido (por WhatsApp)</p>
+                      {/\.pdf(\?|$)/i.test(order.transfer_proof_url) ? (
+                        <a
+                          href={order.transfer_proof_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-block text-xs text-primary underline"
+                        >
+                          Abrir PDF del comprobante
+                        </a>
+                      ) : (
+                        <a href={order.transfer_proof_url} target="_blank" rel="noreferrer">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={order.transfer_proof_url}
+                            alt="Comprobante de transferencia"
+                            className="max-h-56 w-auto rounded border border-border object-contain"
+                          />
+                        </a>
+                      )}
+                    </div>
+                  )}
                   {onMarkPaid && (
                     <Button
                       type="button"

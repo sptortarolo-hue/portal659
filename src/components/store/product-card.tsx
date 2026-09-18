@@ -42,6 +42,7 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
   const [open, setOpen] = useState(false);
   const [activeImg, setActiveImg] = useState(0);
   const sheetRef = useRef<HTMLDivElement | null>(null);
+  const touchX = useRef<number | null>(null);
 
   const hasVariants = variants.length > 0;
   const imgs = images.length > 0 ? images : product.image_url ? [{ image_url: product.image_url }] : [];
@@ -125,7 +126,7 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
           className="relative w-full aspect-square overflow-hidden bg-accent/60 block"
         >
           {cover ? (
-            <ProductImage src={cover} name={product.name} category={product.category} vertical={vendor.vertical} alt={product.name} className="w-full h-full object-cover" />
+            <ProductImage src={cover} name={product.name} category={product.category} vertical={vendor.vertical} alt={`${product.name} — foto 1 de ${imgs.length}`} className="w-full h-full object-cover" />
           ) : (
             <ProductImage src={null} name={product.name} category={product.category} vertical={vendor.vertical} alt={product.name} className="w-full h-full" iconClassName="h-16 w-16" />
           )}
@@ -184,11 +185,33 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
             </div>
 
             <div className="p-4 space-y-4">
-              <div className="rounded-xl overflow-hidden bg-accent aspect-[4/5] max-h-80">
+              <div
+                className="relative rounded-xl overflow-hidden bg-accent aspect-[4/5] max-h-80"
+                onTouchStart={(e) => { touchX.current = e.touches[0]?.clientX ?? null; }}
+                onTouchEnd={(e) => {
+                  if (touchX.current == null || imgs.length < 2) return;
+                  const dx = (e.changedTouches[0]?.clientX ?? 0) - touchX.current;
+                  if (Math.abs(dx) < 40) return;
+                  setActiveImg((i) => (dx < 0 ? Math.min(i + 1, imgs.length - 1) : Math.max(i - 1, 0)));
+                  touchX.current = null;
+                }}
+              >
                 {cover ? (
-                  <ProductImage src={cover} name={product.name} category={product.category} vertical={vendor.vertical} alt={product.name} className="w-full h-full object-cover" />
+                  <ProductImage src={cover} name={product.name} category={product.category} vertical={vendor.vertical} alt={`${product.name} — foto ${activeImg + 1} de ${imgs.length}`} className="w-full h-full object-cover" />
                 ) : (
                   <ProductImage src={null} name={product.name} category={product.category} vertical={vendor.vertical} alt={product.name} className="w-full h-full" iconClassName="h-24 w-24" />
+                )}
+                {imgs.length > 1 && (
+                  <>
+                    <span className="absolute bottom-2 right-2 rounded-full bg-black/60 text-white text-[11px] font-semibold px-2 py-0.5 tabular-nums">
+                      {activeImg + 1} / {imgs.length}
+                    </span>
+                    <span className="absolute bottom-2 left-0 right-0 flex justify-center gap-1">
+                      {imgs.map((_, i) => (
+                        <span key={i} className={`h-1.5 rounded-full transition-all ${i === activeImg ? "w-4 bg-white" : "w-1.5 bg-white/60"}`} />
+                      ))}
+                    </span>
+                  </>
                 )}
               </div>
 
@@ -201,7 +224,7 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
                       onClick={() => setActiveImg(i)}
                       className={`h-16 w-16 flex-shrink-0 rounded-lg overflow-hidden border-2 ${activeImg === i ? "border-primary" : "border-transparent"}`}
                     >
-                      <ProductImage src={img.image_url} name={product.name} category={product.category} vertical={vendor?.vertical} alt="" className="w-full h-full" />
+                      <ProductImage src={img.image_url} name={product.name} category={product.category} vertical={vendor?.vertical} alt={`${product.name} — miniatura ${i + 1}`} className="w-full h-full" />
                     </button>
                   ))}
                 </div>
@@ -239,7 +262,7 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
                     Consultar por WhatsApp
                   </a>
                 ) : hasVariants ? (
-                  <VariantSelector productId={product.id} name={product.name} variants={variants} vendor={vendor} stockControl={product.stock_control !== false} cashExcluded={!!product.cash_discount_excluded} />
+                  <VariantSelector productId={product.id} name={product.name} variants={variants} vendor={vendor} stockControl={product.stock_control !== false} cashExcluded={!!product.cash_discount_excluded} image={cover} />
                 ) : (
                   <AddToCartButton
                     offerId={product.id}
@@ -248,6 +271,7 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
                     vendor={vendor}
                     modifiers={modifiers}
                     cashExcluded={product.promo_price != null && !!product.cash_discount_excluded}
+                    image={cover}
                   />
                 )}
               </div>

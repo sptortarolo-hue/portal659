@@ -170,7 +170,7 @@ export function ProductManager({ isModa = false, showStock = true, showPrep = fa
       setMsg(data.error);
     } else {
       resetForm();
-      setMsg(editingId ? "Plato actualizado" : "Plato agregado");
+      setMsg(editingId ? (isModa ? "Producto actualizado" : "Plato actualizado") : (isModa ? "Producto agregado" : "Plato agregado"));
       load();
       onChanged?.();
     }
@@ -198,7 +198,7 @@ export function ProductManager({ isModa = false, showStock = true, showPrep = fa
     if (!confirm(`¿Eliminar "${offer.name}"? Esta acción no se puede deshacer.`)) return;
     await fetch(`/api/vendor/offers/${offer.id}`, { method: "DELETE" });
     if (editingId === offer.id) resetForm();
-    setMsg("Plato eliminado");
+    setMsg(isModa ? "Producto eliminado" : "Plato eliminado");
     load(); onChanged?.();
   }
 

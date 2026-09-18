@@ -17,6 +17,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -125,7 +126,7 @@ func main() {
 	if *doLogin {
 		client.Store.ID = nil
 	}
-	relay := &relay{cfg: cfg, client: client, container: container, inbound: make(chan inboundMsg, 128), qrOut: make(chan string, 8), stateCh: make(chan string, 64), db: db, ctx: ctx}
+	relay := &relay{cfg: cfg, client: client, container: container, inbound: make(chan inboundMsg, 128), media: make(chan mediaMsg, 16), qrOut: make(chan string, 8), stateCh: make(chan string, 64), db: db, ctx: ctx}
 
 	// Registrar el handler principal (mensajes, connected, logged_out): sin
 	// esto los *events.Message nunca llegan a onMessage y el bot no responde
@@ -184,6 +185,15 @@ type inboundMsg struct {
 	body string
 }
 
+// mediaMsg es una imagen/PDF descargada (ej. comprobante de transferencia)
+// que el cliente manda al chat del bot. Viaja al cerebro como base64 por WS.
+type mediaMsg struct {
+	waID string
+	mime string
+	name string
+	data []byte
+}
+
 // qrMsg es el mensaje WS del relay → cerebro con el payload del QR (para que
 // el comercio lo vea en su panel web y lo escanee con el teléfono).
 type qrMsg struct {
@@ -196,9 +206,10 @@ type relay struct {
 	client    *whatsmeow.Client
 	container *sqlstore.Container // para recrear el device cliente tras LoggedOut
 	inbound   chan inboundMsg
-	qrOut     chan string // se publica vía WS al cerebro
-	stateCh   chan string // "linked" / "logged_out" → notify al cerebro
-	db        *sql.DB     // para checkpoint post-vinculación
+	media     chan mediaMsg // imágenes/PDF (ej. comprobante de transferencia)
+	qrOut     chan string   // se publica vía WS al cerebro
+	stateCh   chan string   // "linked" / "logged_out" → notify al cerebro
+	db        *sql.DB       // para checkpoint post-vinculación
 	ctx       context.Context
 
 	// Anti-ban: backoff exponencial entre re-pareos tras LoggedOut repetidos
@@ -331,18 +342,95 @@ func (r *relay) onMessage(m *events.Message) {
 	if m.Info.IsFromMe || m.Info.IsGroup {
 		return
 	}
+	chatJID := m.Info.Chat.String()
+
+	// 1) Media (imagen o PDF): descargar y mandar al cerebro (p.ej. comprobante
+	//    de transferencia). Se hace antes del texto: una foto viene sin caption.
+	if mm, ok := extractMedia(m.Message); ok {
+		data, fileName, mime, err := r.downloadMedia(m.Message)
+		if err != nil {
+			log.Printf("media download: %v", err)
+			fmt.Printf("INBOUND_MEDIA_FAIL=%s chat=%s\n", messageType(m.Message), chatJID)
+			return
+		}
+		const max = 2 << 20 // 2MB: el comprobante es una captura chica
+		if len(data) > max {
+			log.Printf("media >2MB (%d bytes), rechazando", len(data))
+			fmt.Printf("INBOUND_MEDIA_TOO_BIG=%s chat=%s size=%d\n", messageType(m.Message), chatJID, len(data))
+			return
+		}
+		fmt.Printf("INBOUND_MEDIA=%s mime=%s size=%d chat=%s\n", mm.kind, mime, len(data), chatJID)
+		select {
+		case r.media <- mediaMsg{waID: chatJID, mime: mime, name: fileName, data: data}:
+		default:
+			log.Printf("media queue llena, descartando")
+		}
+		// Si la foto lleva caption, procesar también el texto (ej. "ya pagué").
+		if cap := getText(m.Message); cap != "" {
+			fmt.Printf("INBOUND=%s len=%d\n", chatJID, len(cap))
+			r.inbound <- inboundMsg{waID: chatJID, body: cap}
+		}
+		return
+	}
+
+	// 2) Texto plano (flujo actual).
 	text := getText(m.Message)
 	if text == "" {
 		// Llega un mensaje pero sin texto extraíble: loguear el tipo para
 		// distinguir en el log de la app "no llega nada" vs "llega sin texto".
-		fmt.Printf("INBOUND_EMPTY=%s chat=%s\n", messageType(m.Message), m.Info.Chat.String())
+		fmt.Printf("INBOUND_EMPTY=%s chat=%s\n", messageType(m.Message), chatJID)
 		return
 	}
-	// JID completo (user@server): hoy los no-contactos llegan como
-	// 1346...@lid, y para responder hay que usar el server correcto.
-	chatJID := m.Info.Chat.String()
 	fmt.Printf("INBOUND=%s len=%d\n", chatJID, len(text))
 	r.inbound <- inboundMsg{waID: chatJID, body: text}
+}
+
+// extractMedia inspecciona el mensaje (tras unwrap) y devuelve la referencia
+// al binario si es imagen o PDF (comprobante de transferencia del bot).
+func extractMedia(msg *waProto.Message) (struct{ kind string }, bool) {
+	m := unwrapMessage(msg)
+	if m == nil {
+		return struct{ kind string }{}, false
+	}
+	if m.GetImageMessage() != nil {
+		return struct{ kind string }{kind: "image"}, true
+	}
+	if d := m.GetDocumentMessage(); d != nil {
+		return struct{ kind string }{kind: "document"}, true
+	}
+	return struct{ kind string }{}, false
+}
+
+// downloadMedia descarga el binario del mensaje (imagen o documento PDF).
+// Devuelve also el filename sugerido por el cliente (para PDF).
+func (r *relay) downloadMedia(msg *waProto.Message) (data []byte, fileName, mime string, err error) {
+	m := unwrapMessage(msg)
+	if m == nil {
+		return nil, "", "", fmt.Errorf("mensaje vacío")
+	}
+	if img := m.GetImageMessage(); img != nil {
+		data, err = r.client.Download(context.Background(), img)
+		if err != nil {
+			return nil, "", "", err
+		}
+		return data, "comprobante.jpg", img.GetMimetype(), nil
+	}
+	if doc := m.GetDocumentMessage(); doc != nil {
+		mime = doc.GetMimetype()
+		if mime != "application/pdf" && doc.GetFileName() == "" {
+			return nil, "", "", fmt.Errorf("documento no-PDF no soportado: %s", mime)
+		}
+		data, err = r.client.Download(context.Background(), doc)
+		if err != nil {
+			return nil, "", "", err
+		}
+		name := doc.GetFileName()
+		if name == "" {
+			name = "comprobante.pdf"
+		}
+		return data, name, "application/pdf", nil
+	}
+	return nil, "", "", fmt.Errorf("sin media descargable")
 }
 
 // getText extrae el texto plano del mensaje, desenvolviendo los wrappers que
@@ -464,6 +552,9 @@ type wsOut struct {
 	Type string `json:"type"`
 	WaID string `json:"wa_id,omitempty"`
 	Body string `json:"body,omitempty"`
+	Mime string `json:"mime,omitempty"`
+	Name string `json:"name,omitempty"`
+	Data string `json:"data,omitempty"` // base64 (solo type image/file)
 }
 
 type wsIn struct {
@@ -480,6 +571,21 @@ func (r *relay) writeLoop(ctx context.Context, conn *websocket.Conn) {
 			return
 		case m := <-r.inbound:
 			if err := conn.WriteJSON(wsOut{Type: "message", WaID: m.waID, Body: m.body}); err != nil {
+				return
+			}
+		case mm := <-r.media:
+			// Comprobante u otra imagen/PDF: base64 sobre WS (los bytes no van por JSON crudo).
+			kind := "image"
+			if mm.mime == "application/pdf" {
+				kind = "file"
+			}
+			if err := conn.WriteJSON(wsOut{
+				Type: kind,
+				WaID: mm.waID,
+				Mime: mm.mime,
+				Name: mm.name,
+				Data: base64.StdEncoding.EncodeToString(mm.data),
+			}); err != nil {
 				return
 			}
 		case qr := <-r.qrOut:

@@ -24,10 +24,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "JSON inválido" }, { status: 400 });
   }
 
-  const { vendorId, customerName, customerPhone, customerAddress, method, items, notes, customerId } = body;
+  const { vendorId, customerName, customerPhone, customerAddress, method, items, notes, customerId, paymentMethod } = body;
 
   if (!vendorId || !customerName || !customerPhone || !Array.isArray(items) || items.length === 0) {
     return NextResponse.json({ error: "Faltan datos requeridos" }, { status: 400 });
+  }
+  const pmValid = paymentMethod == null || ["whatsapp", "efectivo", "transferencia"].includes(paymentMethod);
+  if (!pmValid) {
+    return NextResponse.json({ error: "paymentMethod inválido" }, { status: 400 });
   }
 
   // Kill switch por comercio (el toggle del admin). Tolerante a tabla sin migrar.
@@ -42,7 +46,7 @@ export async function POST(request: Request) {
       customerPhone,
       customerAddress: customerAddress || null,
       method: method || "delivery",
-      paymentMethod: "whatsapp",
+      paymentMethod: paymentMethod || "whatsapp",
       customerId: customerId || null,
       items,
       notes: notes || null,

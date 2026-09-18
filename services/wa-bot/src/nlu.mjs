@@ -102,6 +102,7 @@ Dado el mensaje del cliente y la lista de productos disponibles, devolvé SOLO u
   "complete": boolean,
   "items": [{"name": string, "qty": number, "modifiers": [string]}],
   "method": "pickup" | "delivery" | null,
+  "payment": "efectivo" | "transferencia" | null,
   "customerName": string | null,
   "customerPhone": string | null,
   "customerAddress": string | null,
@@ -112,6 +113,7 @@ Reglas:
 - "complete": true si el mensaje tiene información suficiente para armar el pedido (productos + método + nombre + teléfono; si es delivery también dirección).
 - "items": productos pedidos. "name" debe coincidir con alguno de la lista de productos (usá el nombre exacto si existe). "qty" es número (default 1). "modifiers" solo si dice explícitamente (p. ej. "sin cebolla", "doble queso").
 - "method": "pickup"/"delivery" si lo aclara, si no null.
+- "payment": "transferencia" si dice pagar con transferencia/transfer/alias/CBU, "efectivo" si dice en efectivo/efectivo al recibir, si no null.
 - Extraé nombre/teléfono/dirección solo si el cliente los da.
 - Si el cliente solo saluda, pregunta, o pide el menú: "complete" false e "items" [].`;
 

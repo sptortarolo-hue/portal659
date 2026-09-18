@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { TimeSelect24 } from "@/components/ui/time-select-24";
 
 type Props = {
   vendorId: string;
@@ -99,7 +100,7 @@ export function BookingForm({ vendorId, vendorName, services }: Props) {
         </div>
         <div>
           <Label htmlFor="b-time">Horario *</Label>
-          <Input id="b-time" type="time" value={bookingTime} onChange={e => setBookingTime(e.target.value)} required />
+          <TimeSelect24 value={bookingTime} onChange={setBookingTime} aria-label="Horario" />
         </div>
       </div>
       <div>

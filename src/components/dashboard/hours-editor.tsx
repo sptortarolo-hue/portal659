@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { TimeSelect24 } from "@/components/ui/time-select-24";
 
 // Hasta 2 franjas por día (horario cortado: mañana + tarde/noche).
 type DayShift = { open: string; close: string }; // "09:00" / "13:00" (24h)
@@ -80,6 +81,10 @@ const RANGE_RE = /(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*(?:[-–]|\ba\b)\s*(\d{1,2
 function parseHours(text: string | null | undefined): DayConfig[] {
   const cfg = defaultConfig();
   if (!text) return cfg;
+  // "Abierto 24 hs": todos los días abiertos de 00:00 a 23:59 (roundtrip del toggle).
+  if (/\b24\s*(hs|horas|\/7)\b/i.test(text) || /todo el d[ií]a/i.test(text)) {
+    return DAYS.map(() => ({ shifts: [{ open: "00:00", close: "23:59" }], closed: false }));
+  }
 
   const parts = text.toLowerCase().split(/[,;]\s*/);
   for (const rawPart of parts) {
@@ -128,19 +133,15 @@ function ShiftField({ label, shift, onOpen, onClose, onRemove }: ShiftFieldProps
   return (
     <div className="flex items-center gap-1.5 w-full">
       {label && <span className="text-[10px] text-muted-foreground w-12 flex-shrink-0 text-right">{label}</span>}
-      <Input
-        type="time"
-        className="h-9 min-w-0 flex-1 px-1.5 text-xs sm:text-sm"
+      <TimeSelect24
         value={shift.open}
-        onChange={(e) => onOpen(e.target.value)}
+        onChange={onOpen}
         aria-label={label ? `${label} apertura` : "Apertura"}
       />
       <span className="text-muted-foreground flex-shrink-0 text-xs">a</span>
-      <Input
-        type="time"
-        className="h-9 min-w-0 flex-1 px-1.5 text-xs sm:text-sm"
+      <TimeSelect24
         value={shift.close}
-        onChange={(e) => onClose(e.target.value)}
+        onChange={onClose}
         aria-label={label ? `${label} cierre` : "Cierre"}
       />
       {onRemove && (

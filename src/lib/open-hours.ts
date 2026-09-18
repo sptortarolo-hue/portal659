@@ -238,6 +238,18 @@ function rangesText(segment: string): string[] {
  */
 export function parseWeeklyHours(hoursStr: string | null | undefined): WeeklyDayHours[] | null {
   if (!hoursStr) return null;
+
+  // "Abierto 24 hs" / "24hs" / "24/7" → todos los días abiertos todo el día.
+  if (/\b24\s*(hs|horas|\/7)\b/i.test(hoursStr) || /^24\s*hs?$/i.test(hoursStr.trim())) {
+    return WEEKLY_ORDER.map((d) => ({
+      dayIdx: d.dayIdx,
+      abbr: d.abbr,
+      label: d.label,
+      text: "Abierto 24 hs",
+      closed: false,
+    }));
+  }
+
   const parts = hoursStr.split(/[,;]\s*/).map((p) => p.trim()).filter(Boolean);
   if (parts.length === 0) return null;
 

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { TimeSelect24 } from "@/components/ui/time-select-24";
 
 type Props = {
   vendorId: string;
@@ -93,7 +94,7 @@ export function QuoteForm({ vendorId, vendorName, servicesList }: Props) {
         </div>
         <div>
           <Label htmlFor="q-time">Horario preferido</Label>
-          <Input id="q-time" type="time" value={preferredTime} onChange={e => setPreferredTime(e.target.value)} />
+          <TimeSelect24 value={preferredTime} onChange={setPreferredTime} aria-label="Horario preferido" />
         </div>
       </div>
       {error && <p className="text-sm text-red-600">{error}</p>}

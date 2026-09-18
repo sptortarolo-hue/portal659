@@ -179,3 +179,106 @@ function isOpenWithClock(hoursStr: string | null | undefined, currentDay: number
   return null;
 }
 
+// ---------------------------------------------------------------------------
+// Display semanal (micrositio): parser del formato del editor
+// - "lun: 09:00-13:00 y 17:00-22:00, mar: 09:00-18:00, mié: cerrado, ..."
+// - Reutiliza la misma tolerancia que isOpenWithClock (split por \by\b, am/pm).
+// - Devuelve null si el string no matchea el formato por días (legacy/suelto).
+// ---------------------------------------------------------------------------
+
+export type WeeklyDayHours = {
+  /** 0=lunes … 6=domingo (orden de display). */
+  dayIdx: number;
+  /** Label corto para pills: "Lun". */
+  abbr: string;
+  /** Label completo: "Lunes". */
+  label: string;
+  /** Franjas como texto "09:00–13:00 · 17:00–22:00" o null si cerrado. */
+  text: string;
+  closed: boolean;
+};
+
+export const WEEKLY_ORDER: { key: string; dayIdx: number; abbr: string; label: string }[] = [
+  { key: "lun", dayIdx: 1, abbr: "Lun", label: "Lunes" },
+  { key: "mar", dayIdx: 2, abbr: "Mar", label: "Martes" },
+  { key: "mie", dayIdx: 3, abbr: "Mié", label: "Miércoles" },
+  { key: "jue", dayIdx: 4, abbr: "Jue", label: "Jueves" },
+  { key: "vie", dayIdx: 5, abbr: "Vie", label: "Viernes" },
+  { key: "sab", dayIdx: 6, abbr: "Sáb", label: "Sábado" },
+  { key: "dom", dayIdx: 0, abbr: "Dom", label: "Domingo" },
+];
+
+const DISPLAY_RANGE_RE = /(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*(?:[-–]|\ba\b)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i;
+
+function rangesText(segment: string): string[] {
+  const out: string[] = [];
+  const segs = segment.split(/\by\b/i).filter((s) => s.trim().length > 0);
+  for (const seg of segs) {
+    const m = seg.match(DISPLAY_RANGE_RE);
+    if (!m) continue;
+    const fmtSide = (h?: string, mm?: string, mer?: string) =>
+      `${h}${mm ? `:${mm}` : ""}${mer ?? ""}`;
+    const m1 = toMinutes(fmtSide(m[1], m[2], m[3]));
+    const m2 = toMinutes(fmtSide(m[4], m[5], m[6]));
+    if (m1 === null || m2 === null) continue;
+    const fmt = (mins: number) => {
+      const h = Math.floor(mins / 60);
+      const min = mins % 60;
+      return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
+    };
+    out.push(`${fmt(m1)}–${fmt(m2)}`);
+  }
+  return out;
+}
+
+/**
+ * "lun: 09:00-13:00 y 17:00-22:00, mar: cerrado, ..." → filas por día (lunes →
+ * domingo) listas para renderizar. Devuelve null si el string no viene en el
+ * formato del editor (el caller muestra el texto crudo como fallback).
+ */
+export function parseWeeklyHours(hoursStr: string | null | undefined): WeeklyDayHours[] | null {
+  if (!hoursStr) return null;
+  const parts = hoursStr.split(/[,;]\s*/).map((p) => p.trim()).filter(Boolean);
+  if (parts.length === 0) return null;
+
+  const byDay = new Map<number, { text: string; closed: boolean }>();
+  let matched = 0;
+
+  for (const rawPart of parts) {
+    const m = rawPart.match(/^([a-záéíóúñ]+)\s*:\s*(.+)$/i);
+    if (!m) continue;
+    const dayIdxList = daysForToken(m[1]);
+    if (dayIdxList.length !== 1) continue;
+    const dayIdx = dayIdxList[0];
+    const rest = m[2].trim();
+    if (!rest) continue;
+
+    if (rest.toLowerCase().includes("cerrado") || rest.toLowerCase() === "n/a") {
+      byDay.set(dayIdx, { text: "Cerrado", closed: true });
+      matched++;
+      continue;
+    }
+
+    const ranges = rangesText(rest);
+    if (ranges.length === 0) continue;
+    matched++;
+    byDay.set(dayIdx, { text: ranges.join(" · "), closed: false });
+  }
+
+  if (matched === 0) return null;
+
+  return WEEKLY_ORDER.map((d) => {
+    const found = byDay.get(d.dayIdx);
+    if (found) {
+      return { dayIdx: d.dayIdx, abbr: d.abbr, label: d.label, text: found.text, closed: found.closed };
+    }
+    return { dayIdx: d.dayIdx, abbr: d.abbr, label: d.label, text: "Cerrado", closed: true };
+  });
+}
+
+/** Día de la semana (0=domingo..6=sábado) en timezone del barrio. */
+export function todayWeekDay(timeZone: string = TZ_AR): number {
+  const wd = new Intl.DateTimeFormat("en-US", { timeZone, weekday: "short" }).format(new Date());
+  const map: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+  return map[wd] ?? new Date().getDay();
+}

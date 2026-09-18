@@ -20,6 +20,7 @@ import { ScrollToProduct } from "@/components/store/scroll-to-product";
 import { IrAComprarButton } from "@/components/store/ir-a-comprar-button";
 import { CategoryNav } from "@/components/store/category-nav";
 import { VolumeProgress } from "@/components/store/volume-progress";
+import { WeeklyHours } from "@/components/store/weekly-hours";
 import { StickyStoreBar } from "@/components/store/sticky-store-bar";
 import { VendorShareButton } from "@/components/store/vendor-share-button";
 import { PreviewBanner } from "@/components/store/preview-banner";
@@ -452,9 +453,9 @@ export default async function TiendaPage({
               </span>
             )}
             {v.hours && (
-              <span className="rounded-full bg-muted px-3 py-1 text-sm text-muted-foreground">
-                🕐 {v.hours}
-              </span>
+              <div className="w-full">
+                <WeeklyHours hours={v.hours} openNow={isStoreOpen(v as any)} />
+              </div>
             )}
             {v.address && (
               <span className="rounded-full bg-muted px-3 py-1 text-sm text-muted-foreground">
@@ -585,9 +586,9 @@ export default async function TiendaPage({
                 {v.description || "Este local atiende por WhatsApp. Escribinos y te respondemos a la brevedad."}
               </p>
               {v.hours && (
-                <p className="text-sm text-muted-foreground max-w-md mx-auto mb-1">
-                  🕒 {v.hours}
-                </p>
+                <div className="mb-4">
+                  <WeeklyHours hours={v.hours} openNow={isStoreOpen(v as any)} />
+                </div>
               )}
               {v.address && (
                 <p className="text-sm text-muted-foreground max-w-md mx-auto mb-4">

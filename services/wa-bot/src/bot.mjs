@@ -146,7 +146,7 @@ function greetingText(vendor, cats, url) {
   if (url) parts.push(`📸 Menú con fotos: ${url}`);
   if (cats.length > 0) {
     parts.push("");
-    parts.push("¿Qué te pinta hoy? Respondé con el número:");
+    parts.push("¿Qué vas a querer hoy? Respondé con el número:");
     parts.push("");
     parts.push(categoriesLine(cats));
     parts.push("");

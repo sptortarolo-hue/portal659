@@ -80,6 +80,10 @@ services:
       - UPSTASH_REDIS_REST_URL=${UPSTASH_REDIS_REST_URL}
       - UPSTASH_REDIS_REST_TOKEN=${UPSTASH_REDIS_REST_TOKEN}
       - LLM_API_KEY=${LLM_API_KEY}
+      - LLM_BASE_URL=${LLM_BASE_URL}
+      - LLM_MODEL=${LLM_MODEL}
+      - LLM_SITE_URL=${NEXT_PUBLIC_SITE_URL}
+      - LLM_SITE_NAME=${LLM_SITE_NAME:-Portal 659 wa-bot}
       # Anti-ban (opcionales; defaults conservadores en src/config.mjs)
       - WA_REPLY_DELAY_MIN_MS=${WA_REPLY_DELAY_MIN_MS:-1200}
       - WA_REPLY_DELAY_MAX_MS=${WA_REPLY_DELAY_MAX_MS:-3500}

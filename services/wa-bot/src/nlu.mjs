@@ -21,11 +21,22 @@ const EXCLUDE = /vision|guard|embed|rerank|code|chatqa|nemo(retriever|guard)/i;
 
 let resolvedModelCache = null; // modelo verificado que responde 200
 
+// OpenRouter (u otro proveedor compatible): NO probar modelos — usá el pin.
+// El probe /models de NVIDIA solo existe para auto-sanar deprecaciones de NIM.
+function isOpenRouter() {
+  return /openrouter\.ai/i.test(config.llmBaseUrl);
+}
+
 async function resolveModel() {
   if (process.env.LLM_MODEL) return process.env.LLM_MODEL; // pin manual, siempre gana
   if (resolvedModelCache) return resolvedModelCache;
-  // Default rápido: si el modelo configurado funciona, quedamos con ese
-  // (evitamos el escaneo en el primer mensaje).
+  if (isOpenRouter()) {
+    // El modelo ya viene pineado por el env; no se prueba con probes porque
+    // OpenRouter expone abiertamente los modelos disponibles por key.
+    resolvedModelCache = config.llmModel;
+    console.log(`[bot] LLM usando ${config.llmModel} (OpenRouter nuestra lista)`);
+    return resolvedModelCache;
+  }
   const first = await pickLiveModel();
   return first || config.llmModel;
 }
@@ -152,14 +163,20 @@ async function callOnce(message, products, model) {
     .map((p) => `${p.id}|${p.name}|$${p.price}`)
     .join("\n");
 
+  const headers = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${config.llmApiKey}`,
+  };
+  if (isOpenRouter()) {
+    headers["HTTP-Referer"] = config.llmSiteUrl;
+    headers["X-Title"] = config.llmSiteName;
+  }
+
   let res;
   try {
     res = await fetch(`${config.llmBaseUrl}/chat/completions`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${config.llmApiKey}`,
-      },
+      headers,
       body: JSON.stringify({
         model,
         temperature: 0,
@@ -169,7 +186,7 @@ async function callOnce(message, products, model) {
           { role: "user", content: `Productos disponibles:\n${menu}\n\nMensaje del cliente: "${message}"` },
         ],
       }),
-      signal: AbortSignal.timeout(30_000),
+      signal: AbortSignal.timeout(isOpenRouter() ? 60_000 : 30_000),
     });
   } catch (e) {
     console.error(`[bot] LLM fetch error: ${e?.name || "Error"}: ${e?.message || e}`);

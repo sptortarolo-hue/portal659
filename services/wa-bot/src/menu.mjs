@@ -33,49 +33,6 @@ export function menuSummary(vendorName, products) {
   return `🍽️ *Menú de ${vendorName}*\n\n${lines.join("\n")}\n\nRespondé con lo que querés pedir, por ejemplo: "dos hamburguesas y una coca".`;
 }
 
-/** Agrupa productos por categoría (orden: primero los que tienen destacados, luego alfabético, "Más" al final). */
-export function groupByCategory(products) {
-  const groups = new Map();
-  for (const p of products) {
-    const raw = String(p.category || "").trim();
-    const cat = raw || "Más";
-    if (!groups.has(cat)) groups.set(cat, []);
-    groups.get(cat).push(p);
-  }
-  const cats = Array.from(groups.entries()).map(([name, items]) => ({
-    name,
-    hasFeatured: items.some((p) => p.featured_today || p.featured),
-    count: items.length,
-    items,
-  }));
-  cats.sort((a, b) => {
-    if (a.hasFeatured !== b.hasFeatured) return a.hasFeatured ? -1 : 1;
-    if (a.name === "Más") return 1;
-    if (b.name === "Más") return -1;
-    return a.name.localeCompare(b.name, "es");
-  });
-  return cats;
-}
-
-/** Texto de la lista de categorías numeradas (el primer mensaje del bot). */
-export function categoriesLine(cats) {
-  return cats.map((c, i) => `${i + 1}. *${c.name}* (${c.count})`).join("\n");
-}
-
-/** Lista numerada de productos de UNA categoría (el cliente eligió con un número). */
-export function categoryProductsLine(cat, vendorSlug, appUrl) {
-  const lines = cat.items.slice(0, 12).map((p, i) => {
-    const precio = p.price != null ? ` — $${p.price}` : "";
-    const mods = p.modifiers?.length ? " _(con opciones)_" : "";
-    return `${i + 1}. ${p.name}${precio}${mods}`;
-  });
-  let tail = "";
-  if (cat.count > 12) {
-    tail = `\n…y ${cat.count - 12} más en ${appUrl}/tienda/${vendorSlug || ""}`;
-  }
-  return `🍽️ *${cat.name}*:\n${lines.join("\n")}${tail}`;
-}
-
 // Variantes de saludo/pie para NO mandar el blob exactamente idéntico a cada
 // chat nuevo (texto repetido a muchos números = señal de spam). Se rota por
 // número de comercio para que un mismo cliente vea siempre el mismo tono.

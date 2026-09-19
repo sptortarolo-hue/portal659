@@ -1,6 +1,8 @@
 export const config = {
   port: Number(process.env.PORT || 8792),
   appUrl: (process.env.APP_URL || "http://localhost:3000").replace(/\/$/, ""),
+  // URL pública del sitio (para links que van al cliente por WhatsApp, ej. el menú).
+  publicUrl: process.env.NEXT_PUBLIC_SITE_URL || "https://www.portal659.com.ar",
   waBotSecret: process.env.WA_BOT_SECRET || "",
   databaseUrl: process.env.DATABASE_URL || "",
   redisUrl: process.env.UPSTASH_REDIS_REST_URL || "",

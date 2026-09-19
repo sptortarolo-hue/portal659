@@ -39,7 +39,8 @@ function acceptsTransfer(vendor) {
 }
 
 function shopUrl(vendor) {
-  return vendor.slug ? `${config.appUrl}/tienda/${vendor.slug}` : "";
+  // La URL va a un cliente en WhatsApp: siempre la pública, nunca la interna de Docker.
+  return vendor.slug ? `${config.publicUrl}/tienda/${vendor.slug}` : "";
 }
 
 // ———————————————————————————————————————————————————————————————————————————

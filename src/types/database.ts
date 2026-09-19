@@ -34,6 +34,8 @@ export type PlanFeatures = {
   priority: boolean;
   /** Módulo Recetas/escandallo (gastronomía, plan Gestión integral). */
   recipes: boolean;
+  /** Libro de clientes CRM (gastronomía, plan Gestión integral). */
+  crm: boolean;
 };
 
 export type Plan = {
@@ -377,6 +379,21 @@ export type Booking = {
   created_at: string;
 };
 
+export type Customer = {
+  id: string;
+  vendor_id: string;
+  /** E.164 sin "+" (549...) o "lid:<id>" para chats del bot sin teléfono real. */
+  phone: string;
+  name: string | null;
+  address: string | null;
+  notes: string | null;
+  last_order_at: string | null;
+  total_orders: number;
+  total_spent: number;
+  created_at: string;
+  updated_at: string;
+};
+
 export type Quote = {
   id: string;
   vendor_id: string;
@@ -415,7 +432,7 @@ export type Order = {
   customer_phone: string;
   customer_address: string | null;
   method: "pickup" | "delivery";
-  payment_method: "whatsapp" | "efectivo" | "transferencia";
+  payment_method: "whatsapp" | "efectivo" | "transferencia" | "mercadopago" | "tarjeta" | "mixto";
   items: OrderItem[];
   total: number;
   status: OrderStatus;

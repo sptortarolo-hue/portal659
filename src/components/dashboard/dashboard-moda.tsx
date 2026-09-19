@@ -475,7 +475,7 @@ export default function DashboardModa({
                 <div key={i} className="relative h-16 w-16 rounded-lg overflow-hidden group border border-border">
                   <img src={url} alt={`Foto extra ${i + 1}`} className="w-full h-full object-cover" />
                   <button type="button" onClick={() => setGalleryUrls((prev) => prev.filter((_, idx) => idx !== i))} title="Quitar" className="absolute top-0 right-0 bg-black/60 text-white text-xs h-4 w-4 rounded-full">✕</button>
-                  <div className="absolute bottom-0 inset-x-0 flex justify-center gap-0.5 bg-black/50 py-0.5 opacity-0 group-hover:opacity-100 transition">
+                  <div className="absolute bottom-0 inset-x-0 flex justify-center gap-0.5 bg-black/50 py-0.5 sm:opacity-0 sm:group-hover:opacity-100 transition">
                     <button type="button" disabled={i === 0} onClick={() => moveGalleryUrl(i, -1)} title="Mover antes" className="text-white text-[10px] px-1 disabled:opacity-30">◀</button>
                     <button type="button" disabled={i === galleryUrls.length - 1} onClick={() => moveGalleryUrl(i, 1)} title="Mover después" className="text-white text-[10px] px-1 disabled:opacity-30">▶</button>
                     <button type="button" onClick={() => makeCoverFromGallery(i)} title="Hacer portada" className="text-amber-300 text-[10px] px-1">★</button>

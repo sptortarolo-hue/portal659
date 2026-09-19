@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { X, Package, ChefHat, ShoppingBag, LayoutGrid, UtensilsCrossed, Settings, BarChart3, History, Star, ExternalLink, LogOut, Home, Sparkles, Calculator, Bot } from "lucide-react";
+import { X, Package, ChefHat, ShoppingBag, LayoutGrid, UtensilsCrossed, Settings, BarChart3, History, Star, ExternalLink, LogOut, Home, Sparkles, Calculator, Bot, DollarSign, Users } from "lucide-react";
 
-type Tab = "hoy" | "config" | "menu" | "orders" | "history" | "comanda" | "analytics" | "pos" | "mesas" | "reviews" | "recetas";
+type Tab = "hoy" | "config" | "menu" | "orders" | "history" | "comanda" | "analytics" | "pos" | "mesas" | "caja" | "clientes" | "reviews" | "recetas";
 
 interface VendorSidebarProps {
   open: boolean;
@@ -28,11 +28,13 @@ const OPERACION_ITEMS: { tab: Tab; label: string; icon: typeof Package; show: (g
   { tab: "comanda", label: "Comanda", icon: ChefHat, show: (g, m) => !m, badge: (_, c) => c },
   { tab: "pos", label: "Mostrador", icon: ShoppingBag, show: () => true },
   { tab: "mesas", label: "Mesas", icon: LayoutGrid, show: (g, m) => g && !m },
+  { tab: "caja", label: "Caja", icon: DollarSign, show: (g, m) => g && !m },
 ];
 
 const GESTION_ITEMS: { tab: Tab; label: string; icon: typeof UtensilsCrossed; show: (g: boolean, m: boolean) => boolean; suffix?: (count: number) => string }[] = [
   { tab: "menu", label: "Menú", icon: UtensilsCrossed, show: () => true, suffix: (c) => `${c}` },
   { tab: "recetas", label: "Recetas", icon: Calculator, show: (g) => g },
+  { tab: "clientes", label: "Clientes", icon: Users, show: (g) => g },
   { tab: "config", label: "Configuración", icon: Settings, show: () => true },
 ];
 

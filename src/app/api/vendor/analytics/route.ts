@@ -45,12 +45,15 @@ export async function GET(request: Request) {
 
   const vendorId = vendor.id;
 
-  // Siempre traemos pedidos recientes (para el panel "Hoy" y comparativo), y el
-  // histórico para los planes pagos. Cap a 1 año: con Gestión analyticsDays es
-  // 99999 ("ilimitado") y sin tope el loop de días abajo era O(100k) de
-  // Intl.toLocaleDateString — llevaba varios segundos de CPU por request y el
-  // cliente mostraba "tildado".
-  const lookback = Math.min(Math.max(analyticsDays, 30), 366); // 30-366 días
+  // Rango del análisis: preset elegido desde el cliente (?range=N, Gestión),
+  // o el lookback por defecto del plan (30-366 días). Cap a 1 año: con Gestión
+  // analyticsDays es 99999 ("ilimitado") y sin tope el loop de días abajo era
+  // O(100k) de Intl.toLocaleDateString — llevaba varios segundos de CPU por
+  // request y el cliente mostraba "tildado".
+  const rangeParam = Number(new URL(request.url).searchParams.get("range") || 0);
+  const lookback = rangeParam > 0
+    ? Math.min(Math.max(rangeParam, 7), 366)
+    : Math.min(Math.max(analyticsDays, 30), 366); // 7-366 días
   const since = new Date(Date.now() - lookback * 24 * 60 * 60 * 1000).toISOString();
 
   const [orders, products, reviews] = await Promise.all([
@@ -94,6 +97,19 @@ export async function GET(request: Request) {
   const prevWeekRevenue = prevWeek.reduce((s, o) => s + Number(o.total), 0);
   const revenueDelta = prevWeekRevenue > 0 ? Math.round(((thisWeekRevenue - prevWeekRevenue) / prevWeekRevenue) * 100) : null;
   const ordersDelta = prevWeek.length > 0 ? Math.round(((thisWeek.length - prevWeek.length) / prevWeek.length) * 100) : null;
+
+  // Comparativo mensual: últimos 30 días vs los 30 anteriores (plan pago).
+  const monthAgoStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const monthAgoEnd = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
+  const thisMonth = orders.filter((o) => o.status === "completed" && new Date(o.created_at) >= monthAgoStart);
+  const prevMonth = orders.filter((o) => o.status === "completed" && new Date(o.created_at) >= monthAgoEnd && new Date(o.created_at) < monthAgoStart);
+  const thisMonthRevenue = thisMonth.reduce((s, o) => s + Number(o.total), 0);
+  const prevMonthRevenue = prevMonth.reduce((s, o) => s + Number(o.total), 0);
+  const monthRevenueDelta = prevMonthRevenue > 0 ? Math.round(((thisMonthRevenue - prevMonthRevenue) / prevMonthRevenue) * 100) : null;
+  const monthOrdersDelta = prevMonth.length > 0 ? Math.round(((thisMonth.length - prevMonth.length) / prevMonth.length) * 100) : null;
+  const thisMonthAvg = thisMonth.length > 0 ? thisMonthRevenue / thisMonth.length : 0;
+  const prevMonthAvg = prevMonth.length > 0 ? prevMonthRevenue / prevMonth.length : 0;
+  const monthTicketDelta = prevMonthAvg > 0 ? Math.round(((thisMonthAvg - prevMonthAvg) / prevMonthAvg) * 100) : null;
 
   // Insight: día pico de la semana (últimos 7 días)
   const dayCounts: Record<string, number> = {};
@@ -139,9 +155,10 @@ export async function GET(request: Request) {
   const isPaid = analyticsDays > 0;
 
   const responseBase: Record<string, any> = {
-    plan: { slug: plan.slug, analyticsDays },
+    plan: { slug: plan.slug, analyticsDays, range: lookback },
     today,
     comparison: { revenueDelta, ordersDelta },
+    monthly: { revenueDelta: monthRevenueDelta, ordersDelta: monthOrdersDelta, ticketDelta: monthTicketDelta },
   };
 
   if (!isPaid) {
@@ -169,16 +186,20 @@ export async function GET(request: Request) {
     }
   }
 
-  const byChannel: Record<string, number> = {};
+  const byChannel: Record<string, { count: number; revenue: number }> = {};
   for (const o of orders) {
     const c = o.channel || "app";
-    byChannel[c] = (byChannel[c] || 0) + 1;
+    if (!byChannel[c]) byChannel[c] = { count: 0, revenue: 0 };
+    byChannel[c].count++;
+    if (o.status === "completed") byChannel[c].revenue += Number(o.total);
   }
 
-  const byMethod: Record<string, number> = {};
+  const byMethod: Record<string, { count: number; revenue: number }> = {};
   for (const o of completedOrders) {
     const m = o.method || "delivery";
-    byMethod[m] = (byMethod[m] || 0) + 1;
+    if (!byMethod[m]) byMethod[m] = { count: 0, revenue: 0 };
+    byMethod[m].count++;
+    byMethod[m].revenue += Number(o.total);
   }
 
   const topProducts = Object.values(productSales)
@@ -194,16 +215,45 @@ export async function GET(request: Request) {
   const advanced: Record<string, any> = {};
 
   if (isGest) {
-    // Horas pico
-    const ordersByHour: Record<string, number> = {};
-    for (const o of orders) {
-      const hour = hourKey(o.created_at);
-      ordersByHour[hour] = (ordersByHour[hour] || 0) + 1;
+    // Ventas por hora (serie completa 0-23 con revenue, para el gráfico).
+    const ordersByHour: Record<string, { count: number; revenue: number }> = {};
+    for (let h = 0; h < 24; h++) {
+      ordersByHour[String(h).padStart(2, "0")] = { count: 0, revenue: 0 };
     }
-    advanced.topHours = Object.entries(ordersByHour)
-      .sort((a, b) => b[1] - a[1])
+    for (const o of completedOrders) {
+      const hour = hourKey(o.created_at);
+      if (!ordersByHour[hour]) ordersByHour[hour] = { count: 0, revenue: 0 };
+      ordersByHour[hour].count++;
+      ordersByHour[hour].revenue += Number(o.total);
+    }
+    const hourly = Object.entries(ordersByHour)
+      .map(([hour, d]) => ({ hour, count: d.count, revenue: Math.round(d.revenue) }))
+      .sort((a, b) => a.hour.localeCompare(b.hour));
+    advanced.hourly = hourly;
+    advanced.topHours = [...hourly]
+      .sort((a, b) => b.count - a.count)
       .slice(0, 5)
-      .map(([hour, count]) => ({ hour, count }));
+      .map(({ hour, count, revenue }) => ({ hour, count, revenue }));
+
+    // Ventas por día de la semana (todo el rango, con revenue).
+    const dowRevenue: Record<number, { count: number; revenue: number }> = {};
+    for (const o of completedOrders) {
+      const dow = new Date(o.created_at).getDay();
+      if (!dowRevenue[dow]) dowRevenue[dow] = { count: 0, revenue: 0 };
+      dowRevenue[dow].count++;
+      dowRevenue[dow].revenue += Number(o.total);
+    }
+    advanced.byDayOfWeek = DAY_NAMES.map((name, idx) => ({
+      day: name,
+      count: dowRevenue[idx]?.count || 0,
+      revenue: Math.round(dowRevenue[idx]?.revenue || 0),
+    }));
+
+    // Menú muerto: productos disponibles sin ninguna venta en el rango.
+    const soldNames = new Set(Object.keys(productSales));
+    advanced.deadProducts = products
+      .filter((p) => p.available && !soldNames.has(p.name))
+      .map((p) => ({ id: p.id, name: p.name, category: p.category || "Sin categoría" }));
 
     // Clientes recurrentes vs nuevos
     const customerCounts: Record<string, number> = {};

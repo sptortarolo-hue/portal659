@@ -1,8 +1,13 @@
-import { query, queryOne, withTransaction } from "@/lib/db";
+import { query, queryOne, queryMany, withTransaction } from "@/lib/db";
 import { logApiError } from "@/lib/api-error";
 import { adjustStockForItems } from "@/lib/stock";
 import { sendPushToUser } from "@/lib/push";
+import { sendEmail, newOrderVendorEmail } from "@/lib/email";
 import { getVendorMpToken } from "@/lib/mp-oauth";
+import { dispatchPrint, type PrinterVendor } from "@/lib/thermal-printer";
+import { upsertCustomerFromOrder } from "@/lib/customers";
+import { toE164 } from "@/lib/phone";
+import { resolveVendorPlan } from "@/lib/plans";
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 
@@ -155,25 +160,57 @@ export async function POST(request: Request) {
         }
 
         const items = payment.additional_info?.items || [];
+        const customerE164 = toE164(customerPhone);
+        const trackToken = crypto.randomBytes(20).toString("hex");
+        const orderItems = items.map((i: any) => ({
+          name: i.title,
+          price: Number(i.unit_price),
+          qty: Number(i.quantity),
+        }));
+        let order: any = null;
         await withTransaction(async (tx) => {
-          await tx.queryVoid(
-            `INSERT INTO orders (vendor_id, customer_name, customer_phone, customer_address, method, items, total, status, pickup_number)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, 'new', $8)`,
+          const inserted = await tx.query<{ id: string }>(
+            `INSERT INTO orders (vendor_id, customer_name, customer_phone, customer_address, method, items, total, status, pickup_number, payment_method, payment_status, track_token)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, 'new', $8, 'mercadopago', 'paid', $9)
+             RETURNING id`,
             [
               vendorId,
               payment.payer?.first_name || "Cliente MP",
               customerPhone,
               customerAddress,
               isPickup ? "pickup" : "delivery",
-              JSON.stringify(items.map((i: any) => ({
-                name: i.title,
-                price: Number(i.unit_price),
-                qty: Number(i.quantity),
-              }))),
+              JSON.stringify(orderItems),
               payment.transaction_amount,
               pickupNumber,
+              trackToken,
             ]
           );
+          order = {
+            id: inserted[0]?.id,
+            vendor_id: vendorId,
+            customer_name: payment.payer?.first_name || "Cliente MP",
+            customer_phone: customerPhone,
+            customer_address: customerAddress,
+            method: isPickup ? "pickup" : "delivery",
+            items: orderItems,
+            total: payment.transaction_amount,
+            status: "new",
+            payment_method: "mercadopago",
+            payment_status: "paid",
+            pickup_number: pickupNumber,
+            track_token: trackToken,
+            paid_at: new Date().toISOString(),
+          };
+
+          // CRM: el pago MP trae el teléfono del cliente → ficha.
+          if (customerE164) {
+            await upsertCustomerFromOrder(tx, vendorId, {
+              phone: customerE164,
+              name: payment.payer?.first_name || null,
+              address: customerAddress,
+              total: Number(payment.transaction_amount),
+            });
+          }
 
           // Reservar stock (viene en metadata de la preferencia). Si no alcanza,
           // el pedido entra igual: el pago ya fue aprobado por MP.
@@ -187,20 +224,68 @@ export async function POST(request: Request) {
           }
         });
 
-        const vendor = await queryOne<{ user_id: string }>(
+        const vendor = await queryOne<{ user_id: string; store_name: string }>(
           `SELECT user_id, store_name FROM vendors WHERE id = $1 LIMIT 1`,
           [vendorId]
         );
 
         if (vendor?.user_id) {
-          const title = "¡Pago aprobado!";
-          const body = `Nuevo pago de $${Number(payment.transaction_amount).toLocaleString("es-AR")} vía Mercado Pago`;
+          const title = "¡Pago aprobado! Nuevo pedido";
+          const body = `Nuevo pedido pagado de $${Number(payment.transaction_amount).toLocaleString("es-AR")} vía Mercado Pago${pickupNumber ? ` · Pedido #${pickupNumber}` : ""}`;
           await query(
             `INSERT INTO notifications (user_id, title, body, type, link)
              VALUES ($1, $2, $3, 'payment', '/vendor/dashboard')`,
             [vendor.user_id, title, body]
           );
           await sendPushToUser(vendor.user_id, { title, body, link: "/vendor/dashboard" });
+
+          // Email al comercio (mismo respaldo que los pedidos web).
+          try {
+            const profile = await queryOne<{ email: string }>(
+              `SELECT email FROM profiles WHERE id = $1 LIMIT 1`,
+              [vendor.user_id]
+            );
+            if (profile?.email && order) {
+              const emailContent = newOrderVendorEmail({
+                storeName: vendor.store_name || "Tu comercio",
+                orderNumber: pickupNumber,
+                customerName: order.customer_name,
+                customerPhone: customerPhone,
+                paymentLabel: "💳 Mercado Pago (online)",
+                items: orderItems,
+                total: payment.transaction_amount,
+                method: isPickup ? "pickup" : "delivery",
+                address: customerAddress,
+              });
+              await sendEmail({ to: profile.email, ...emailContent });
+            }
+          } catch (e) {
+            logApiError("mp-webhook/email", e);
+          }
+        }
+
+        // Comanda automática al aprobar el pago: solo con auto_print ON y plan
+        // con impresora. Best-effort; un fallo no rompe el webhook ni el pedido.
+        try {
+          if (order?.id) {
+            const printerVendor = await queryOne<PrinterVendor & { auto_print?: boolean }>(
+              `SELECT id, store_name, logo_url, address, phone, whatsapp, instagram, facebook,
+                      printer_ip, printer_port, paper_size, print_mode, print_token,
+                      print_logo, print_address, print_phone, print_social, auto_print,
+                      vertical, plan_id, plan_status, plan_expires_at, trial_ends_at
+               FROM vendors WHERE id = $1 LIMIT 1`,
+              [vendorId]
+            );
+            if (printerVendor?.auto_print) {
+              const planRows = await queryMany<any>(`SELECT * FROM plans`);
+              if (resolveVendorPlan(printerVendor as any, planRows || []).can("printer")) {
+                const printed = await dispatchPrint({ vendor: printerVendor, order, type: "comanda" });
+                if (!printed.ok) logApiError("mp-webhook/print", new Error(printed.error || "print falló"));
+              }
+            }
+          }
+        } catch (e) {
+          logApiError("mp-webhook/print", e);
         }
       }
     } catch (e) {

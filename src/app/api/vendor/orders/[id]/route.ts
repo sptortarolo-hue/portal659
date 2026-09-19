@@ -8,6 +8,7 @@ import { canTransition } from "@/lib/order-utils";
 import { adjustStockForItems, OutOfStockError } from "@/lib/stock";
 import { PricingError, resolveOrderPricing } from "@/lib/pricing";
 import { phoneVariantsAR } from "@/lib/phone";
+import { decrementCustomerFromOrder } from "@/lib/customers";
 import type { OrderItem, OrderStatus } from "@/types/database";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -116,8 +117,8 @@ export async function PATCH(
     return NextResponse.json({ error: "Estado de pago inválido" }, { status: 400 });
   }
 
-  const currentOrder = await queryOne<{ status: string; payment_status: string; payment_method: string; channel: string; method: string; items: OrderItem[] | null }>(
-    `SELECT status, payment_status, payment_method, channel, method, items FROM orders WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
+  const currentOrder = await queryOne<{ status: string; payment_status: string; payment_method: string; channel: string; method: string; items: OrderItem[] | null; customer_phone: string | null; total: number }>(
+    `SELECT status, payment_status, payment_method, channel, method, items, customer_phone, total FROM orders WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
     [params.id, vendor.id]
   );
 
@@ -271,6 +272,20 @@ export async function PATCH(
       if (status === "cancelled" && currentOrder.channel === "app") {
         const updatedItems = (orderRows[0].items as OrderItem[] | null) ?? currentOrder.items;
         await adjustStockForItems(tx, updatedItems, "increment");
+      }
+
+      // CRM: la compra cancelada sale del libro (solo pedidos con cliente real:
+      // app y mostrador delivery; mesa/mostrador-retiro nunca generaron ficha).
+      if (status === "cancelled" && currentOrder.customer_phone) {
+        const hasCustomerRow =
+          currentOrder.channel === "app" ||
+          (currentOrder.channel === "mostrador" && currentOrder.method === "delivery");
+        if (hasCustomerRow && !currentOrder.customer_phone.startsWith("lid:")) {
+          await decrementCustomerFromOrder(tx, vendor.id, {
+            phone: currentOrder.customer_phone,
+            total: currentOrder.total,
+          });
+        }
       }
 
       return orderRows[0];

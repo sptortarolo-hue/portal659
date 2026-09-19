@@ -3,6 +3,7 @@ import path from "path";
 import { Readable, Writable } from "stream";
 import type { Order, OrderItem } from "@/types/database";
 import { orderLineTotal } from "@/lib/order-line";
+import { CASH_METHOD_LABELS } from "@/lib/cash-methods";
 
 let ThermalPrinter: any = null;
 let PrinterTypes: any = null;
@@ -27,7 +28,27 @@ export type PrinterVendor = {
   print_social?: boolean | null;
 };
 
-export type PrintJobType = "ticket" | "comanda" | "retiro" | "despacho" | "test" | "precuenta";
+export type PrintJobType =
+  | "ticket"
+  | "comanda"
+  | "retiro"
+  | "despacho"
+  | "test"
+  | "precuenta"
+  | "cash_close";
+
+export type CashClosingPrintData = {
+  closed_at: string;
+  since: string;
+  orders_count: number;
+  gross_total: number;
+  discounts_total: number;
+  net_total: number;
+  by_method: Record<string, { count: number; total: number }> | null;
+  cash_declared: number | null;
+  cash_difference: number | null;
+  notes: string | null;
+};
 
 export type DispatchResult = {
   ok: boolean;
@@ -446,6 +467,7 @@ async function composeComanda(printer: any, vendor: PrinterVendor, order: Order)
   const paymentStr =
     order.payment_method === "efectivo" ? "Efectivo" :
     order.payment_method === "transferencia" ? "Transferencia" :
+    order.payment_method === "mercadopago" ? "Mercado Pago (pago)" :
     "Coordinar";
   printer.println(`${methodStr}  |  ${paymentStr}`);
   printer.println("----------------------------------------");
@@ -709,6 +731,83 @@ async function composePrecuenta(
   printer.cut();
 }
 
+async function composeCashClose(
+  printer: any,
+  vendor: PrinterVendor,
+  closing: CashClosingPrintData
+): Promise<void> {
+  const width = vendor.paper_size === "58mm" ? 32 : 48;
+  const separator = separatorFor(width);
+
+  printer.alignCenter();
+  await composeStoreHeader(printer, vendor, width);
+  printer.println("CIERRE DE CAJA (Z)");
+  printer.println("(no es comprobante fiscal)");
+  printer.println(separator);
+
+  printer.alignLeft();
+  printer.bold(true);
+  printer.println(`Desde: ${formatArgDate(new Date(closing.since))} ${formatArgTime(new Date(closing.since))}`);
+  printer.println(`Hasta: ${formatArgDate(new Date(closing.closed_at))} ${formatArgTime(new Date(closing.closed_at))}`);
+  printer.bold(false);
+  printer.println(separator);
+
+  const ORDER = ["efectivo", "transferencia", "tarjeta", "mixto", "whatsapp", "mercadopago"];
+  const byMethod = closing.by_method || {};
+  const entries = Object.entries(byMethod).sort(
+    (a, b) => (ORDER.indexOf(a[0]) + 1 || 99) - (ORDER.indexOf(b[0]) + 1 || 99)
+  );
+  for (const [m, d] of entries) {
+    const label = CASH_METHOD_LABELS[m] || m;
+    const countStr = `(${d.count})`;
+    const totalStr = `$${Number(d.total).toLocaleString("es-AR")}`;
+    printer.println(`${padRight(label, width - countStr.length - totalStr.length - 1)}${countStr} ${padLeft(totalStr, totalStr.length)}`);
+  }
+  if (entries.length === 0) {
+    printer.println("Sin cobros en el periodo");
+  }
+
+  printer.println(separator);
+
+  printer.alignRight();
+  printer.println(`Pedidos: ${closing.orders_count}`);
+  printer.println(`Bruto: $${Number(closing.gross_total).toLocaleString("es-AR")}`);
+  if (Number(closing.discounts_total) > 0) {
+    printer.println(`Desc. efectivo: -$${Number(closing.discounts_total).toLocaleString("es-AR")}`);
+  }
+  printer.bold(true);
+  printer.setTextSize(1, 1);
+  printer.println(`NETO: $${Number(closing.net_total).toLocaleString("es-AR")}`);
+  printer.setTextSize(0, 0);
+  printer.bold(false);
+
+  if (closing.cash_declared != null) {
+    printer.alignLeft();
+    printer.println(separator);
+    printer.println(`Arqueo (efectivo): $${Number(closing.cash_declared).toLocaleString("es-AR")}`);
+    const diff = Number(closing.cash_difference) || 0;
+    printer.bold(true);
+    printer.println(`Diferencia: ${diff >= 0 ? "+" : "-"}$${Math.abs(diff).toLocaleString("es-AR")}`);
+    printer.bold(false);
+  }
+
+  if (closing.notes && closing.notes.trim()) {
+    printer.alignLeft();
+    printer.println("");
+    printer.bold(true);
+    printer.println("NOTAS:");
+    printer.bold(false);
+    for (const line of String(closing.notes).split("\n")) {
+      if (line.trim()) printer.println(line.trim());
+    }
+  }
+
+  printer.alignLeft();
+  printer.println("");
+  composeFooter(printer, width);
+  printer.cut();
+}
+
 async function composeTest(printer: any, vendor: PrinterVendor): Promise<void> {
   const width = vendor.paper_size === "58mm" ? 32 : 48;
 
@@ -921,6 +1020,37 @@ export async function buildPrecuentaBuffer(
   }
 }
 
+export async function printCashClose(
+  vendor: PrinterVendor,
+  closing: CashClosingPrintData
+): Promise<{ success: boolean; error?: string }> {
+  const res = await createPrinter(vendor);
+  if (!res.ok) return { success: false, error: res.error };
+  if (!vendor.printer_ip) return { success: false, error: "IP de impresora no configurada" };
+  try {
+    await composeCashClose(res.printer, vendor, closing);
+    await res.printer.execute();
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: errorMsg(e) };
+  }
+}
+
+export async function buildCashCloseBuffer(
+  vendor: PrinterVendor,
+  closing: CashClosingPrintData
+): Promise<BufferResult> {
+  const res = await createPrinter(vendor);
+  if (!res.ok) return { success: false, error: res.error };
+  try {
+    await composeCashClose(res.printer, vendor, closing);
+    const buffer = (await res.printer.getBuffer()) as Buffer;
+    return { success: true, buffer };
+  } catch (e) {
+    return { success: false, error: errorMsg(e) };
+  }
+}
+
 type BridgeJob = {
   type: string;
   payload: string;
@@ -983,6 +1113,8 @@ export async function dispatchPrint(params: {
     /** Info de efectivo en precuenta: % y total a abonar en efectivo. */
     cashPct?: number;
     cashTotal?: number;
+    /** Cierre de caja (Z) guardado, para imprimir tal cual. */
+    closing?: CashClosingPrintData;
   };
 }): Promise<DispatchResult> {
   const { vendor } = params;
@@ -1016,6 +1148,21 @@ export async function dispatchPrint(params: {
     }
     if (!vendor.printer_ip) return { ok: true, mode, skipped: true };
     const r = await printPrecuenta(vendor, tableName, items, total, cash);
+    return { ok: r.success, mode, error: r.error };
+  }
+
+  // Cierre de caja (Z): no es un pedido; imprime el cierre guardado.
+  if (params.type === "cash_close") {
+    const closing = params.extra?.closing;
+    if (!closing) return { ok: false, mode, error: "Cierre requerido" };
+    if (mode === "app") {
+      const built = await buildCashCloseBuffer(vendor, closing);
+      if (!built.success) return { ok: false, mode, error: built.error };
+      const pushed = await pushToBridge(vendor.print_token, bridgeJob("cash_close", built.buffer, vendor));
+      return { ok: pushed.ok, mode, offline: pushed.offline, error: pushed.error };
+    }
+    if (!vendor.printer_ip) return { ok: true, mode, skipped: true };
+    const r = await printCashClose(vendor, closing);
     return { ok: r.success, mode, error: r.error };
   }
 

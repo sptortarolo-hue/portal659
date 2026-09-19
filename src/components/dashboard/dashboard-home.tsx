@@ -16,6 +16,7 @@ import {
   Store,
   Sparkles,
   Calculator,
+  Users,
 } from "lucide-react";
 import type { Order, Booking, Vendor } from "@/types/database";
 import { StorePreviewCard } from "@/components/vendor/store-preview-card";
@@ -33,6 +34,8 @@ export type DashboardTab =
   | "analytics"
   | "pos"
   | "mesas"
+  | "caja"
+  | "clientes"
   | "reviews"
   | "recetas";
 
@@ -184,6 +187,22 @@ export function DashboardHome({
       icon: LayoutGrid,
       accent: "bg-amber-100 text-amber-700",
       show: can("mesas") && !isModa,
+    },
+    {
+      tab: "caja",
+      label: "Caja",
+      desc: "Cobros del día y cierre (Z)",
+      icon: DollarSign,
+      accent: "bg-emerald-100 text-emerald-700",
+      show: can("pos") && !isModa,
+    },
+    {
+      tab: "clientes",
+      label: "Clientes",
+      desc: "Tu libro de clientes",
+      icon: Users,
+      accent: "bg-cyan-100 text-cyan-700",
+      show: can("crm") && !isModa,
     },
     {
       tab: "recetas",

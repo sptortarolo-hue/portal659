@@ -1,11 +1,14 @@
+import crypto from "crypto";
 import { queryMany, queryOne, withTransaction } from "@/lib/db";
-import { sendEmail, orderConfirmationEmail } from "@/lib/email";
+import { sendEmail, newOrderVendorEmail } from "@/lib/email";
+import { sendPushToUser } from "@/lib/push";
 import { resolveVendorPlan } from "@/lib/plans";
 import { adjustStockForItems, OutOfStockError } from "@/lib/stock";
 import { isStoreOpen } from "@/lib/open-hours";
 import { PricingError, resolveOrderPricing, IncomingOrderItem } from "@/lib/pricing";
 import { nextOrderNumber } from "@/lib/order-number";
 import { toE164 } from "@/lib/phone";
+import { upsertCustomerFromOrder } from "@/lib/customers";
 import type { OrderItem } from "@/types/database";
 
 /**
@@ -44,6 +47,8 @@ export type CreateOrderResult = {
   cashPct: number;
   volumeDiscount: number;
   volumeApplied: { groupName: string; label: string; qty: number }[];
+  /** Link público de seguimiento: /seguimiento/[trackToken]. */
+  trackToken: string;
 };
 
 /** Negocio: el comercio no acepta pedidos online (plan sin carrito). → 403 */
@@ -142,6 +147,10 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
   let resolvedVolumeDiscount = 0;
   let resolvedVolumeApplied: { groupName: string; label: string; qty: number }[] = [];
 
+  // Token público del link de seguimiento (/seguimiento/[token]). Se genera
+  // acá y viaja en el mensaje de WhatsApp del pedido.
+  const trackToken = crypto.randomBytes(20).toString("hex");
+
   // Tolerante a migración de volumen sin aplicar: si la columna no existe,
   // el pedido se guarda igual (sin columna de descuento por volumen).
   const volumeCol = await queryOne<{ exists: boolean }>(
@@ -182,12 +191,13 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
 
       pickupNumber = await nextOrderNumber(tx, vendorId);
 
+      // $16 = track_token; $17 = volume_discount (si la columna existe).
       const volumeCols = hasVolumeCol ? ", volume_discount" : "";
-      const volumeVals = hasVolumeCol ? ", $16" : "";
+      const volumeVals = hasVolumeCol ? ", $17" : "";
       const volumeParams: unknown[] = hasVolumeCol ? [pricing.volumeDiscount] : [];
       const rows = await tx.query<{ id: string }>(
-        `INSERT INTO orders (vendor_id, customer_id, customer_name, customer_phone, customer_address, method, payment_method, items, total, status, notes, device_id, payment_status, pickup_number, cash_pct, cash_discount${volumeCols})
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'new', $10, $11, $12, $13, $14, $15${volumeVals})
+        `INSERT INTO orders (vendor_id, customer_id, customer_name, customer_phone, customer_address, method, payment_method, items, total, status, notes, device_id, payment_status, pickup_number, cash_pct, cash_discount, track_token${volumeCols})
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'new', $10, $11, $12, $13, $14, $15, $16${volumeVals})
          RETURNING id`,
         [
           vendorId,
@@ -205,10 +215,20 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
           pickupNumber,
           pricing.cashPct,
           pricing.cashDiscount,
+          trackToken,
           ...volumeParams,
         ]
       );
       orderId = rows[0]?.id;
+
+      if (customerPhoneE164 && !customerPhoneE164.startsWith("lid:")) {
+        await upsertCustomerFromOrder(tx, vendorId, {
+          phone: customerPhoneE164,
+          name: customerName,
+          address: customerAddress || null,
+          total: resolvedTotal,
+        });
+      }
 
       const vendor = await tx.queryOne<{ user_id: string }>(
         `SELECT user_id FROM vendors WHERE id = $1 LIMIT 1`,
@@ -246,17 +266,42 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
   );
 
   if (vendor?.user_id) {
+    // Push al dueño (en todo pedido nuevo): el comercio no depende de que el
+    // cliente mande el WhatsApp. Campañita "paymentLabel" e itemsCount igual
+    // que la notificación in-app de la tx.
+    const paymentLabel =
+      paymentMethodNorm === "efectivo"
+        ? "💵 Efectivo"
+        : paymentMethodNorm === "transferencia"
+          ? "🏦 Transferencia"
+          : "📱 Coordinar";
+    void sendPushToUser(vendor.user_id, {
+      title: `🛎️ Pedido nuevo #${pickupNumber} · $${resolvedTotal.toLocaleString("es-AR")}`,
+      body: `${customerName} · ${resolvedItemsCount} producto${resolvedItemsCount !== 1 ? "s" : ""} · ${paymentLabel}`,
+      link: "/vendor/dashboard",
+    }).catch(() => {});
+
     const userProfile = await queryOne<{ email: string }>(
       `SELECT email FROM profiles WHERE id = $1 LIMIT 1`,
       [vendor.user_id]
     );
     if (userProfile?.email) {
-      const emailContent = orderConfirmationEmail(vendor.store_name, resolvedItems as any, resolvedTotal);
+      const emailContent = newOrderVendorEmail({
+        storeName: vendor.store_name,
+        orderNumber: pickupNumber,
+        customerName,
+        customerPhone: customerPhoneE164,
+        paymentLabel,
+        items: resolvedItems,
+        total: resolvedTotal,
+        method: method || null,
+        address: customerAddress,
+      });
       Promise.resolve()
         .then(() => sendEmail({ to: userProfile.email, ...emailContent }))
         .catch(() => {});
     }
   }
 
-  return { orderId, total: resolvedTotal, items: resolvedItems, pickupNumber, cashDiscount: resolvedCashDiscount, cashPct: resolvedCashPct, volumeDiscount: resolvedVolumeDiscount, volumeApplied: resolvedVolumeApplied };
+  return { orderId, total: resolvedTotal, items: resolvedItems, pickupNumber, cashDiscount: resolvedCashDiscount, cashPct: resolvedCashPct, volumeDiscount: resolvedVolumeDiscount, volumeApplied: resolvedVolumeApplied, trackToken };
 }

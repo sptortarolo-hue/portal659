@@ -47,6 +47,7 @@ export const POST = withRateLimit(async (request: Request) => {
       cashPct: result.cashPct,
       volumeDiscount: result.volumeDiscount,
       volumeApplied: result.volumeApplied,
+      trackToken: result.trackToken,
     });
   } catch (e) {
     if (e instanceof InvalidPhoneError) {

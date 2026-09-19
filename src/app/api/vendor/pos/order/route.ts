@@ -2,6 +2,8 @@ import { gateRequest, gateError } from "@/lib/subscription-gate";
 import { queryMany, withTransaction } from "@/lib/db";
 import { nextOrderNumber } from "@/lib/order-number";
 import { cashDiscountForItems } from "@/lib/cash-discount";
+import { upsertCustomerFromOrder, isRealCustomerPhone } from "@/lib/customers";
+import { toE164 } from "@/lib/phone";
 import { NextResponse } from "next/server";
 
 const PAYMENT_METHODS = ["efectivo", "transferencia", "tarjeta", "mixto", "whatsapp"] as const;
@@ -140,9 +142,10 @@ export async function POST(request: Request) {
   // referenciarlo a la caja, el pedido queda con su número de oraculo en tickets.
   // En sesión de prueba todo nace marcado como prueba.
   const previewOrder = gate.previewSession === true;
+  const customerE164 = toE164(customerPhoneClean);
   const order = await withTransaction(async (tx) => {
     const pickupNumber = await nextOrderNumber(tx, gate.vendor.id);
-    return tx.queryOne<Record<string, any>>(
+    const order = await tx.queryOne<Record<string, any>>(
       `INSERT INTO orders (vendor_id, customer_name, customer_phone, customer_address, method, payment_method, items, total, status, channel, paid_at, notes, pickup_number, is_preview, cash_pct, cash_discount)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'mostrador', $10, $11, $12, $13, $14, $15)
        RETURNING *`,
@@ -164,6 +167,20 @@ export async function POST(request: Request) {
         cashDiscount,
       ]
     );
+
+    // CRM: el delivery lleva teléfono del cliente → ficha (el pickup guarda
+    // el WA del comercio, no genera ficha; tampoco si pusieron su propio WA).
+    if (isDelivery && customerE164 && isRealCustomerPhone(customerPhoneClean, gate.vendor.whatsapp) && !previewOrder) {
+      await upsertCustomerFromOrder(tx, gate.vendor.id, {
+        phone: customerE164,
+        name: customerName?.trim() || null,
+        address: customerAddress?.trim() || null,
+        total: finalTotal,
+        at: now,
+      });
+    }
+
+    return order;
   });
 
   return NextResponse.json({ ok: true, orderId: order?.id, order });

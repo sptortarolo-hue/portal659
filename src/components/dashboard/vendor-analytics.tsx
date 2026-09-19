@@ -7,6 +7,7 @@ import type { Product, Review } from "@/types/database";
 type OrderItem = { name: string; price: number; qty: number };
 
 type AnalyticsSummary = {
+  totalOrders?: number;
   activeOrders: number;
   newOrders: number;
   preparingOrders: number;
@@ -26,9 +27,10 @@ type TopProduct = { name: string; count: number; revenue: number };
 type OrdersByDay = { date: string; count: number; revenue: number };
 
 type AnalyticsData = {
-  plan: { slug: string; analyticsDays: number; eligibleForPaid?: boolean };
+  plan: { slug: string; analyticsDays: number; range?: number; eligibleForPaid?: boolean };
   today: { orders: number; revenue: number; avgOrderValue: number };
   comparison?: { revenueDelta: number | null; ordersDelta: number | null };
+  monthly?: { revenueDelta: number | null; ordersDelta: number | null; ticketDelta: number | null };
   insights?: string[];
   summary?: AnalyticsSummary;
   topProducts?: TopProduct[];
@@ -36,9 +38,12 @@ type AnalyticsData = {
   recentReviews?: Review[];
   lowStock?: Product[];
   activeOrders?: (Record<string, any> & { items: OrderItem[] })[];
-  byChannel?: Record<string, number>;
-  byMethod?: Record<string, number>;
-  topHours?: { hour: string; count: number }[];
+  byChannel?: Record<string, { count: number; revenue: number }>;
+  byMethod?: Record<string, { count: number; revenue: number }>;
+  hourly?: { hour: string; count: number; revenue: number }[];
+  topHours?: { hour: string; count: number; revenue: number }[];
+  byDayOfWeek?: { day: string; count: number; revenue: number }[];
+  deadProducts?: { id: string; name: string; category: string }[];
   customers?: { new: number; recurring: number; withAccount: number };
   byCategory?: { category: string; count: number; revenue: number }[];
 };
@@ -55,12 +60,12 @@ function StatCard({ label, value, sub, color }: { label: string; value: React.Re
   );
 }
 
-function DeltaBadge({ value, prefix }: { value: number | null; prefix: string }) {
+function DeltaBadge({ value, prefix, vs = "semana anterior" }: { value: number | null; prefix: string; vs?: string }) {
   if (value == null) return <span className="text-xs text-muted-foreground">sin datos previos</span>;
   const up = value >= 0;
   return (
     <span className={`text-xs font-semibold ${up ? "text-green-600" : "text-red-600"}`}>
-      {up ? "▲" : "▼"} {prefix} {Math.abs(value)}% {up ? "vs" : "vs"} semana anterior
+      {up ? "▲" : "▼"} {prefix} {Math.abs(value)}% {up ? "vs" : "vs"} {vs}
     </span>
   );
 }
@@ -82,11 +87,12 @@ export function VendorAnalytics() {
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [range, setRange] = useState(30);
 
   const load = () => {
     setLoading(true);
     setError(false);
-    fetch("/api/vendor/analytics")
+    fetch(`/api/vendor/analytics?range=${range}`)
       .then(async (r) => {
         const d = await r.json().catch(() => null);
         // Solo aceptamos la respuesta si es exitosa y trae la estructura esperada
@@ -100,7 +106,7 @@ export function VendorAnalytics() {
   };
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(load, []);
+  useEffect(load, [range]);
 
   if (loading) return <p className="text-muted-foreground text-sm">Cargando estadísticas...</p>;
   if (error || !data) {
@@ -115,15 +121,32 @@ export function VendorAnalytics() {
   const analyticsDays = data.plan?.analyticsDays ?? 0;
   const isPaid = analyticsDays > 0;
   const isGest = analyticsDays >= 99999;
-  const periodLabel = isGest ? "periodo" : `últimos ${analyticsDays} días`;
+  const activeRange = data.plan?.range ?? 30;
+  const periodLabel = isGest ? `últimos ${activeRange} días` : `últimos ${analyticsDays} días`;
 
   const { summary = {} as AnalyticsSummary, topProducts = [], ordersByDay = [], recentReviews = [], lowStock = [], activeOrders = [] } = data;
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <h2 className="font-display text-xl font-semibold">Estadísticas</h2>
-        <span className="text-xs text-muted-foreground">{periodLabel}</span>
+        {isGest ? (
+          <div className="flex gap-1.5 flex-wrap">
+            {[7, 30, 90, 365].map((r) => (
+              <button
+                key={r}
+                onClick={() => setRange(r)}
+                className={`text-xs font-medium rounded-full px-3 py-1.5 transition-colors ${
+                  activeRange === r ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/70"
+                }`}
+              >
+                {r === 365 ? "Año" : `${r}d`}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <span className="text-xs text-muted-foreground">{periodLabel}</span>
+        )}
       </div>
 
       {/* Panel de hoy: visible para todos los planes */}
@@ -154,6 +177,18 @@ export function VendorAnalytics() {
               <div className="flex flex-wrap gap-4">
                 <DeltaBadge value={data.comparison.revenueDelta} prefix="ventas" />
                 <DeltaBadge value={data.comparison.ordersDelta} prefix="pedidos" />
+              </div>
+            </div>
+          )}
+
+          {/* Comparativo mensual: últimos 30 días vs 30 anteriores */}
+          {data.monthly && (data.monthly.revenueDelta != null || data.monthly.ordersDelta != null || data.monthly.ticketDelta != null) && (
+            <div className="rounded-xl border border-border bg-card p-4">
+              <h3 className="font-medium text-sm mb-2">Comparativa mensual (30 días)</h3>
+              <div className="flex flex-wrap gap-4">
+                <DeltaBadge value={data.monthly.revenueDelta} prefix="ventas" vs="mes anterior" />
+                <DeltaBadge value={data.monthly.ordersDelta} prefix="pedidos" vs="mes anterior" />
+                <DeltaBadge value={data.monthly.ticketDelta} prefix="ticket prom." vs="mes anterior" />
               </div>
             </div>
           )}
@@ -204,16 +239,16 @@ export function VendorAnalytics() {
             </div>
           )}
 
-          {/* Canal y método */}
+          {/* Canal, método y conversión */}
           {data.byChannel && (
-            <div className="grid sm:grid-cols-2 gap-4">
+            <div className="grid sm:grid-cols-3 gap-4">
               <div className="border border-border rounded-xl p-4 bg-card">
                 <h3 className="font-medium text-sm mb-3">Pedidos por canal</h3>
                 <div className="space-y-2">
-                  {Object.entries(data.byChannel).map(([c, count]) => (
+                  {Object.entries(data.byChannel).map(([c, d]) => (
                     <div key={c} className="flex justify-between text-sm">
                       <span className="text-muted-foreground">{CHANNEL_LABEL[c] || c}</span>
-                      <span className="font-medium">{count}</span>
+                      <span className="font-medium">{d.count} · ${Math.round(d.revenue).toLocaleString("es-AR")}</span>
                     </div>
                   ))}
                 </div>
@@ -221,12 +256,33 @@ export function VendorAnalytics() {
               <div className="border border-border rounded-xl p-4 bg-card">
                 <h3 className="font-medium text-sm mb-3">Retiro vs domicilio</h3>
                 <div className="space-y-2">
-                  {Object.entries(data.byMethod || {}).map(([m, count]) => (
+                  {Object.entries(data.byMethod || {}).map(([m, d]) => (
                     <div key={m} className="flex justify-between text-sm">
                       <span className="text-muted-foreground">{METHOD_LABEL[m] || m}</span>
-                      <span className="font-medium">{count}</span>
+                      <span className="font-medium">{d.count} · ${Math.round(d.revenue).toLocaleString("es-AR")}</span>
                     </div>
                   ))}
+                </div>
+              </div>
+              <div className="border border-border rounded-xl p-4 bg-card">
+                <h3 className="font-medium text-sm mb-3">Conversión del período</h3>
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Entregados</span>
+                    <span className="font-medium">{summary.completedOrders || 0}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Cancelados</span>
+                    <span className="font-medium text-red-600">{summary.cancelledOrders || 0}</span>
+                  </div>
+                  <div className="flex justify-between text-sm border-t border-border pt-2">
+                    <span className="text-muted-foreground">Se completa el</span>
+                    <span className="font-bold">
+                      {summary.totalOrders != null && summary.totalOrders > 0
+                        ? `${Math.round(((summary.completedOrders || 0) / summary.totalOrders) * 100)}%`
+                        : "—"}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -271,6 +327,29 @@ export function VendorAnalytics() {
           {/* Avanzado - Gestión */}
           {isGest && (
             <>
+              {data.hourly && data.hourly.some((h) => h.count > 0) && (
+                <div>
+                  <h3 className="font-medium text-sm mb-2">Ventas por hora</h3>
+                  <div className="flex items-end gap-px h-20">
+                    {data.hourly.map((h) => {
+                      const maxCount = Math.max(...data.hourly!.map((x) => x.count), 1);
+                      const height = h.count > 0 ? Math.max((h.count / maxCount) * 100, 8) : 2;
+                      return (
+                        <div
+                          key={h.hour}
+                          className="bg-primary/80 rounded-t flex-1"
+                          style={{ height: `${height}%`, minWidth: "4px" }}
+                          title={`${h.hour}:00 — ${h.count} pedidos ($${h.revenue.toLocaleString("es-AR")})`}
+                        />
+                      );
+                    })}
+                  </div>
+                  <div className="flex justify-between text-[9px] text-muted-foreground mt-1">
+                    <span>00</span><span>06</span><span>12</span><span>18</span><span>23</span>
+                  </div>
+                </div>
+              )}
+
               {data.topHours && data.topHours.length > 0 && (
                 <div>
                   <h3 className="font-medium text-sm mb-2">Horarios pico</h3>
@@ -278,7 +357,48 @@ export function VendorAnalytics() {
                     {data.topHours.map((h) => (
                       <div key={h.hour} className="border border-border rounded-xl p-3 bg-card text-center">
                         <p className="text-lg font-bold">{h.hour}:00</p>
-                        <p className="text-[10px] text-muted-foreground">{h.count} pedidos</p>
+                        <p className="text-[10px] text-muted-foreground">
+                          {h.count} pedidos · ${h.revenue.toLocaleString("es-AR")}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {data.byDayOfWeek && data.byDayOfWeek.some((d) => d.count > 0) && (
+                <div>
+                  <h3 className="font-medium text-sm mb-2">Ventas por día de la semana</h3>
+                  <div className="space-y-1">
+                    {data.byDayOfWeek.map((d) => {
+                      const maxRev = Math.max(...data.byDayOfWeek!.map((x) => x.revenue), 1);
+                      return (
+                        <div key={d.day} className="flex items-center gap-2 text-sm py-0.5">
+                          <span className="w-24 flex-shrink-0 text-muted-foreground">{d.day}</span>
+                          <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-primary/70 rounded-full"
+                              style={{ width: `${(d.revenue / maxRev) * 100}%` }}
+                            />
+                          </div>
+                          <span className="w-28 text-right text-xs tabular-nums flex-shrink-0">
+                            {d.count} ped. · ${d.revenue.toLocaleString("es-AR")}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {data.deadProducts && data.deadProducts.length > 0 && (
+                <div>
+                  <h3 className="font-medium text-sm mb-2 text-amber-600">😴 Sin ventas {periodLabel}</h3>
+                  <div className="space-y-1">
+                    {data.deadProducts.map((p) => (
+                      <div key={p.id} className="flex justify-between text-sm py-1 border-b border-border last:border-0">
+                        <span>{p.name}</span>
+                        <span className="text-muted-foreground text-xs">{p.category}</span>
                       </div>
                     ))}
                   </div>

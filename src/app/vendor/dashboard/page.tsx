@@ -24,6 +24,8 @@ import {
   Star,
   Banknote,
   MessageSquare,
+  DollarSign,
+  Users,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 // Modal de recorte: solo se carga cuando se abre (fuera del bundle inicial).
@@ -58,6 +60,8 @@ import { PlanBanner } from "@/components/vendor/plan-banner";
 import { PlanLock } from "@/components/vendor/plan-lock";
 import { Mostrador } from "@/components/vendor/mostrador";
 import { Mesas } from "@/components/vendor/mesas";
+import { CajaManager } from "@/components/dashboard/caja-manager";
+import { CustomersManager } from "@/components/dashboard/customers-manager";
 import { OpenToggle } from "@/components/vendor/open-toggle";
 import { PrepTimeControl } from "@/components/vendor/prep-time-control";
 import { PrinterStatus } from "@/components/vendor/printer-status";
@@ -119,12 +123,14 @@ type Offer = DBProduct;
 
 type MenuCategory = { id: string; name: string; position: number };
 
-type DashTab = "hoy" | "config" | "menu" | "orders" | "history" | "comanda" | "analytics" | "pos" | "mesas" | "reviews" | "recetas";
+type DashTab = "hoy" | "config" | "menu" | "orders" | "history" | "comanda" | "analytics" | "pos" | "mesas" | "caja" | "clientes" | "reviews" | "recetas";
 
 // Tabs pesados con fetch propio: se memoizan para no re-renderizarlos en cada
 // tecla/búsqueda del dashboard (solo cambian cuando cambian sus props).
 const MemoMostrador = memo(Mostrador);
 const MemoMesas = memo(Mesas);
+const MemoCajaManager = memo(CajaManager);
+const MemoCustomersManager = memo(CustomersManager);
 const MemoComandaKDS = memo(ComandaKDS);
 const MemoVendorAnalytics = memo(VendorAnalytics);
 const MemoVendorReviews = memo(VendorReviews);
@@ -1164,7 +1170,7 @@ function VendorDashboardInner() {
         )}
 
         {/* Tab content */}
-        <div className={`flex-1 px-4 mt-4 ${tab === "comanda" ? "w-full max-w-none" : `mx-auto w-full ${["orders", "history", "pos", "mesas", "analytics", "recetas", "hoy", "menu"].includes(tab) ? "max-w-7xl" : "max-w-4xl"}`}`}>
+        <div className={`flex-1 px-4 mt-4 ${tab === "comanda" ? "w-full max-w-none" : `mx-auto w-full ${["orders", "history", "pos", "mesas", "caja", "clientes", "analytics", "recetas", "hoy", "menu"].includes(tab) ? "max-w-7xl" : "max-w-4xl"}`}`}>
           {isService ? (
             <div className="space-y-4">{configContent}</div>
           ) : (
@@ -1187,6 +1193,9 @@ function VendorDashboardInner() {
                     showStock
                     showPrep={!isModa}
                     showCosts={isGastro}
+                    variants={variants}
+                    productImages={productImages}
+                    onCrop={openCrop}
                     onChanged={() => loadData()}
                   />
                 )}
@@ -1228,6 +1237,30 @@ function VendorDashboardInner() {
                     <PlanLock
                       title="Gestión de mesas"
                       description="Abrí, cargá consumiciones y cobrá tus mesas. Parte del plan Gestión integral."
+                    />
+                  )}
+                </div>
+              )}
+              {mountedTabs.has("caja") && (
+                <div className={tab === "caja" ? "" : "hidden"}>
+                  {effectivePlan.can("pos") ? (
+                    <MemoCajaManager />
+                  ) : (
+                    <PlanLock
+                      title="Cierre de caja"
+                      description="Cobros del día por medio de pago, arqueo de efectivo y cierre (Z) imprimible. Parte del plan Gestión integral."
+                    />
+                  )}
+                </div>
+              )}
+              {mountedTabs.has("clientes") && (
+                <div className={tab === "clientes" ? "" : "hidden"}>
+                  {isGastro && effectivePlan.can("crm") ? (
+                    <MemoCustomersManager />
+                  ) : (
+                    <PlanLock
+                      title="Libro de clientes"
+                      description="Tus clientes con su historial, notas y contacto directo por WhatsApp. Parte del plan Gestión integral."
                     />
                   )}
                 </div>
@@ -1313,7 +1346,7 @@ function VendorDashboardInner() {
                 <Table className="h-5 w-5" />Mesas
               </button>
             )}
-            <button onClick={() => setMoreOpen((v) => !v)} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors ${["config", "menu", "analytics", "history", "reviews", "recetas"].includes(tab) ? "text-primary" : "text-muted-foreground"}`}>
+            <button onClick={() => setMoreOpen((v) => !v)} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors ${["config", "menu", "analytics", "history", "reviews", "recetas", "caja", "clientes"].includes(tab) ? "text-primary" : "text-muted-foreground"}`}>
               <span className="text-lg">{moreOpen ? <X className="h-5 w-5" /> : <MoreHorizontal className="h-5 w-5" />}</span>Más
             </button>
           </div>
@@ -1334,6 +1367,16 @@ function VendorDashboardInner() {
               {isGastro && (
                 <button onClick={() => { setTab("recetas"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "recetas" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
                   <FileText className="h-5 w-5" />Recetas
+                </button>
+              )}
+              {isGastro && !isModa && (
+                <button onClick={() => { setTab("caja"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "caja" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
+                  <DollarSign className="h-5 w-5" />Caja
+                </button>
+              )}
+              {isGastro && (
+                <button onClick={() => { setTab("clientes"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "clientes" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
+                  <Users className="h-5 w-5" />Clientes
                 </button>
               )}
               <button onClick={() => { setTab("config"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "config" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>

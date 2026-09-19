@@ -34,6 +34,22 @@ export default function CheckoutPage() {
   const [pendingOrder, setPendingOrder] = useState<{ orderId: string; message: string; waNumber: string; trackToken?: string } | null>(null);
   const [prefillInfo, setPrefillInfo] = useState<{ found: boolean; name?: string | null } | null>(null);
   const [doneTrackToken, setDoneTrackToken] = useState<string | null>(null);
+  // Vuelta de Mercado Pago (back_urls: /checkout?payment=success|pending|failure&vendor=<slug>).
+  // El pedido lo crea el webhook de forma asíncrona; el token de seguimiento
+  // se obtiene con un poll corto a /api/orders/latest-token.
+  const [mpReturn, setMpReturn] = useState<{
+    status: "success" | "pending" | "failure";
+    stash: {
+      slug?: string;
+      storeName?: string;
+      whatsapp?: string;
+      phone?: string;
+      customerName?: string;
+      total?: number;
+    } | null;
+  } | null>(null);
+  const [mpTrackToken, setMpTrackToken] = useState<string | null>(null);
+  const [mpTokenDone, setMpTokenDone] = useState(false);
   // Validación de WhatsApp en vivo (misma que el registro de usuarios).
   const [phoneMsg, setPhoneMsg] = useState("");
   const [phoneOk, setPhoneOk] = useState(false);
@@ -94,6 +110,58 @@ export default function CheckoutPage() {
     : "";
 
   useEffect(() => {
+    const sp = new URLSearchParams(window.location.search);
+    const p = sp.get("payment");
+    if (p !== "success" && p !== "pending" && p !== "failure") return;
+    let stash: any = null;
+    try {
+      const raw = sessionStorage.getItem("mp_return");
+      if (raw) {
+        stash = JSON.parse(raw);
+        sessionStorage.removeItem("mp_return");
+      }
+    } catch { /* noop */ }
+    setMpReturn({ status: p, stash });
+  }, []);
+
+  useEffect(() => {
+    if (!mpReturn || mpTokenDone || mpReturn.status === "failure") return;
+    const slug = mpReturn.stash?.slug;
+    const phone = mpReturn.stash?.phone;
+    if (!slug || !phone) {
+      setMpTokenDone(true);
+      return;
+    }
+    let cancelled = false;
+    let tries = 0;
+    const id = window.setInterval(async () => {
+      tries++;
+      try {
+        const r = await fetch(
+          `/api/orders/latest-token?vendor=${encodeURIComponent(slug)}&phone=${encodeURIComponent(phone)}`
+        );
+        const d = await r.json().catch(() => null);
+        if (d?.token) {
+          if (!cancelled) {
+            setMpTrackToken(d.token);
+            setMpTokenDone(true);
+          }
+          window.clearInterval(id);
+          return;
+        }
+      } catch { /* noop */ }
+      if (tries >= 20) {
+        window.clearInterval(id);
+        if (!cancelled) setMpTokenDone(true);
+      }
+    }, 3000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [mpReturn, mpTokenDone]);
+
+  useEffect(() => {
     if (!vendor?.id) return;
     fetch(`/api/payments?vendorId=${encodeURIComponent(vendor.id)}`)
       .then(r => r.json())
@@ -109,6 +177,79 @@ export default function CheckoutPage() {
       })
       .catch(() => {});
   }, [vendor?.id]);
+
+  if (mpReturn) {
+    const s = mpReturn;
+    const storeName = s.stash?.storeName || "el local";
+    const waNum = (s.stash?.whatsapp || "").replace(/[^0-9]/g, "");
+    const waText =
+      s.status === "failure"
+        ? `Hola ${storeName}! Intenté pagar online y no se pudo cobrar. ¿Coordinamos el pedido por acá?`
+        : `Hola ${storeName}! Soy ${s.stash?.customerName || "el cliente"}: ya pagué mi pedido online por Mercado Pago (${s.stash?.total ? `$${Number(s.stash.total).toLocaleString("es-AR")}` : "online"}).`;
+    const waLink = waNum ? `https://wa.me/${waNum}?text=${encodeURIComponent(waText)}` : null;
+    const tiendaLink = s.stash?.slug ? `/tienda/${s.stash.slug}` : "/";
+
+    return (
+      <main className="container mx-auto px-4 py-20 max-w-md text-center">
+        {s.status === "success" && (
+          <>
+            <div className="text-6xl mb-4 animate-bounce-in">✅</div>
+            <h1 className="font-display text-3xl font-semibold mb-3">¡Pago aprobado!</h1>
+            <p className="text-muted-foreground mb-6">
+              Tu pedido pagado ya llegó a <span className="font-medium">{storeName}</span>. No hace falta que avises por WhatsApp: les llega solo.
+            </p>
+          </>
+        )}
+        {s.status === "pending" && (
+          <>
+            <div className="text-6xl mb-4">⏳</div>
+            <h1 className="font-display text-3xl font-semibold mb-3">Pago en revisión</h1>
+            <p className="text-muted-foreground mb-6">
+              Mercado Pago está procesando tu pago. Cuando se acredite, el pedido entra directo en{" "}
+              <span className="font-medium">{storeName}</span>.
+            </p>
+          </>
+        )}
+        {s.status === "failure" && (
+          <>
+            <div className="text-6xl mb-4">❌</div>
+            <h1 className="font-display text-3xl font-semibold mb-3">No se pudo cobrar</h1>
+            <p className="text-muted-foreground mb-6">
+              El pago online no se completó. Podés volver a intentar o coordinar el pago directo con{" "}
+              <span className="font-medium">{storeName}</span>.
+            </p>
+          </>
+        )}
+
+        {s.status !== "failure" && (
+          <div className="space-y-2 mb-4">
+            {mpTrackToken ? (
+              <Button className="w-full" onClick={() => router.push(`/seguimiento/${mpTrackToken}`)}>
+                📦 Seguir mi pedido en vivo
+              </Button>
+            ) : !mpTokenDone ? (
+              <div className="h-10 rounded-xl bg-muted animate-pulse" aria-label="Buscando tu pedido" />
+            ) : null}
+          </div>
+        )}
+        <div className="space-y-2">
+          {waLink && (
+            <a
+              href={waLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block w-full rounded-xl bg-green-500 text-white text-sm font-medium py-2.5 hover:bg-green-600 transition-colors"
+            >
+              💬 {s.status === "failure" ? "Coordinar por WhatsApp" : "Avisar por WhatsApp (opcional)"}
+            </a>
+          )}
+          <Button variant="outline" className="w-full" onClick={() => router.push(tiendaLink)}>
+            Volver a la tienda
+          </Button>
+        </div>
+      </main>
+    );
+  }
 
   if (!vendor || items.length === 0) {
     return (
@@ -218,6 +359,21 @@ export default function CheckoutPage() {
     }
 
     if (data.initPoint) {
+      // Stash para la pantalla de vuelta (el pedido lo crea el webhook MP;
+      // sin esto la vuelta caía en "carrito vacío" sin confirmación).
+      try {
+        sessionStorage.setItem(
+          "mp_return",
+          JSON.stringify({
+            slug: v.slug,
+            storeName: v.storeName,
+            whatsapp: v.whatsapp || "",
+            phone: cleanPhone,
+            customerName: name,
+            total: mpTotal,
+          })
+        );
+      } catch { /* noop */ }
       clear();
       window.location.href = data.initPoint;
     }

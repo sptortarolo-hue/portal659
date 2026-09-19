@@ -68,6 +68,57 @@ export function orderConfirmationEmail(vendorName: string, items: any[], total: 
   };
 }
 
+/**
+ * Email al COMERCIO por pedido nuevo (web/app/bot) o pago aprobado por MP.
+ * Se manda al email del perfil del dueño (canal de respaldo del dashboard/push).
+ */
+export function newOrderVendorEmail(params: {
+  storeName: string;
+  orderNumber: number | null;
+  customerName: string;
+  customerPhone: string;
+  paymentLabel: string;
+  items: { name: string; qty: number; price: number; pack_size?: number }[];
+  total: number;
+  method: string | null;
+  address?: string | null;
+}): { subject: string; html: string } {
+  const { storeName, orderNumber, customerName, customerPhone, paymentLabel, items, total, method, address } = params;
+  const numTxt = orderNumber ? `#${orderNumber}` : "nuevo";
+  const itemRows = items
+    .map((i) => {
+      // Pack-aware (pack_size + price = paquete): la línea = price × (qty/pack).
+      const pack = Math.floor(Number(i.pack_size || 0));
+      const lineTotal = pack >= 2 ? i.price * (i.qty / pack) : i.price * i.qty;
+      return `<tr><td style="padding:8px;border-bottom:1px solid #eee">${i.qty}x ${i.name}</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:right">$${lineTotal.toLocaleString("es-AR")}</td></tr>`;
+    })
+    .join("");
+
+  return {
+    subject: `🔔 Pedido ${numTxt} en ${storeName} — $${Number(total).toLocaleString("es-AR")}`,
+    html: `
+      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px">
+        <h1 style="color:#4f46e5">Tenés un pedido nuevo</h1>
+        <p><strong>${storeName}</strong> · Pedido ${numTxt}</p>
+        <table style="width:100%;border-collapse:collapse;margin:20px 0">
+          ${itemRows}
+          <tr><td style="padding:8px;font-weight:bold;border-top:2px solid #4f46e5">Total</td><td style="padding:8px;font-weight:bold;text-align:right;border-top:2px solid #4f46e5">$${Number(total).toLocaleString("es-AR")}</td></tr>
+        </table>
+        <p style="font-size:14px">
+          Cliente: <strong>${customerName}</strong> (${customerPhone})<br>
+          Entrega: ${method === "pickup" ? "Retiro en el local" : `Envío${address ? ` — ${address}` : ""}`}<br>
+          Pago: ${paymentLabel}
+        </p>
+        <p style="margin-top:16px">
+          <a href="https://www.portal659.com.ar/vendor/dashboard" style="background:#4f46e5;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:bold">Abrir el panel</a>
+        </p>
+        <hr style="border:none;border-top:1px solid #eee;margin:20px 0">
+        <p style="color:#999;font-size:12px">Portal 659 — El centro comercial de tu barrio</p>
+      </div>
+    `,
+  };
+}
+
 export function welcomeEmail(storeName: string, micrositeUrl: string): { subject: string; html: string } {
   return {
     subject: `¡Bienvenido/a a Portal 659, ${storeName}!`,

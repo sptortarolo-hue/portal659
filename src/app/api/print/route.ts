@@ -1,7 +1,7 @@
 import { query, queryOne, queryMany } from "@/lib/db";
 import { getVendorByRequest } from "@/lib/vendor-utils";
 import { NextResponse } from "next/server";
-import { dispatchPrint, type PrinterVendor } from "@/lib/thermal-printer";
+import { dispatchPrint, type CashClosingPrintData, type PrinterVendor } from "@/lib/thermal-printer";
 import { resolveVendorPlan } from "@/lib/plans";
 import type { Order, Plan, Vendor } from "@/types/database";
 
@@ -41,6 +41,26 @@ export async function POST(request: Request) {
 
   if (test) {
     const result = await dispatchPrint({ vendor, type: "test" });
+    await recordLastPrint(vendor.id, result);
+    return printResponse(result);
+  }
+
+  // Cierre de caja (Z): imprime el cierre guardado tal cual quedó en la DB.
+  if (type === "cash_close") {
+    const closingId = body.closingId;
+    if (!closingId) {
+      return NextResponse.json({ ok: false, error: "closingId requerido" }, { status: 400 });
+    }
+    const closing = await queryOne<CashClosingPrintData>(
+      `SELECT closed_at, since, orders_count, gross_total, discounts_total, net_total,
+              by_method, cash_declared, cash_difference, notes
+       FROM cash_closings WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
+      [closingId, vendor.id]
+    );
+    if (!closing) {
+      return NextResponse.json({ ok: false, error: "Cierre no encontrado" }, { status: 404 });
+    }
+    const result = await dispatchPrint({ vendor, type: "cash_close", extra: { closing } });
     await recordLastPrint(vendor.id, result);
     return printResponse(result);
   }

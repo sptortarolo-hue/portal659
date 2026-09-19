@@ -68,7 +68,7 @@ jobs:
             echo 'LLM_API_KEY=${{ secrets.LLM_API_KEY }}' >> /opt/portal659/.env
             echo 'LLM_BASE_URL=${{ secrets.LLM_BASE_URL }}' >> /opt/portal659/.env
             echo 'LLM_MODEL=${{ secrets.LLM_MODEL }}' >> /opt/portal659/.env
-            echo 'LLM_SITE_NAME=${{ vars.LLM_SITE_NAME || "Portal 659 wa-bot" }}' >> /opt/portal659/.env
+            SN='${{ vars.LLM_SITE_NAME }}'; echo "LLM_SITE_NAME=${SN:-Portal 659 wa-bot}" >> /opt/portal659/.env
             WB_SECRET='${{ secrets.WA_BOT_SECRET }}'
             if [ -z "$WB_SECRET" ]; then WB_SECRET=$(openssl rand -hex 24); fi
             echo "WA_BOT_SECRET=$WB_SECRET" >> /opt/portal659/.env

@@ -9,11 +9,14 @@ export const config = {
   redisToken: process.env.UPSTASH_REDIS_REST_TOKEN || "",
   llmApiKey: process.env.LLM_API_KEY || "",
   llmBaseUrl: (process.env.LLM_BASE_URL || "https://integrate.api.nvidia.com/v1").replace(/\/$/, ""),
-  llmSiteUrl: process.env.LLM_SITE_URL || "https://www.portal659.com.ar",
+  llmSiteUrl: process.env.LLM_SITE_URL || process.env.NEXT_PUBLIC_SITE_URL || "https://www.portal659.com.ar",
   llmSiteName: process.env.LLM_SITE_NAME || "Portal 659 wa-bot",
-  // Modelo gratis confirmado en NVIDIA NIM (post-deprecation de llama-3.3-70b-instruct).
-  // Si va por OpenRouter: "meta-llama/llama-3.3-70b-instruct:free" (pinar en secret).
-  llmModel: process.env.LLM_MODEL || "google/gemma-4-31b-it",
+  // Modelo default. Si va por OpenRouter, un free que sabemos vivo en el catálogo.
+  llmModel:
+    process.env.LLM_MODEL ||
+    (process.env.LLM_BASE_URL?.includes("openrouter")
+      ? "google/gemma-4-31b-it:free"
+      : "google/gemma-4-31b-it"),
   // ————— Anti-ban (pacing humano + rate limits) —————
   replyDelayMinMs: Number(process.env.WA_REPLY_DELAY_MIN_MS || 1200),
   replyDelayMaxMs: Number(process.env.WA_REPLY_DELAY_MAX_MS || 3500),

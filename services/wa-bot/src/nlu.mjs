@@ -143,12 +143,28 @@ export async function parseWithLlm(message, products) {
   const parsed = await callOnce(message, products, model);
   if (parsed !== null) return parsed;
 
-  // Si el modelo verificado pinchó (410/404/402), hay que re-descubrir y reintentar
-  // 1 vez con el siguiente. Así sobrevivimos deprecaciones futuras de NVIDIA.
+  // Si el modelo pinchó (410/404/402), re-descubrir y reintentar 1 vez.
   if (parseWithLlm._modelDeprecated) {
     parseWithLlm._modelDeprecated = false;
     resolvedModelCache = null;
     console.log("[bot] LLM re-descubriendo modelo tras fallo del verificado");
+
+    // OpenRouter: el catalogo indexado no auto-cura con /models (puede no listar
+    // los :free). Reintento con alternativas conocidas primero.
+    if (isOpenRouter()) {
+      const alternativas = ["google/gemma-4-31b-it:free", "nvidia/nemotron-3-super-120b-a12b:free", "z-ai/glm-5.2:free"];
+      for (const alt of alternativas) {
+        if (alt === model) continue;
+        console.log(`[bot] OpenRouter retry con ${alt}`);
+        const retry = await callOnce(message, products, alt);
+        if (retry !== null) {
+          resolvedModelCache = alt;
+          return retry;
+        }
+      }
+      return null;
+    }
+
     const fresh = await resolveModel();
     if (fresh) {
       const retry = await callOnce(message, products, fresh);

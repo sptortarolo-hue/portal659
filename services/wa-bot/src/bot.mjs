@@ -119,38 +119,41 @@ async function handleIdle({ vendor, text, state, replies, phone, waId }) {
   const url = shopUrl(vendor);
   const hasItems = Array.isArray(parsed?.items) && parsed.items.length > 0;
 
-  // Pedido explícito → armar flujo.
+  // Orden de detección (no mezclar):
+  // 1) Pedido explícito (LLM o reglas con ítems) → flujo de pedido.
+  // 2) Menú pedido ("menu", "carta", "precios") → link.
+  // 3) Saludo ("hola", "buenas") → responder el saludo, una vez por chat.
+  // 4) Nada matcheó → miss. A los 2 seguidos → handoff.
   if (hasItems) {
     await fillOrderFromParsed({ vendor, state, parsed, replies, phone, waId });
     return;
   }
-
-  // Piden el menú ("menu", "carta", "precios") → link + resumen corto.
   if (parsed?.askMenu) {
     replies.push(`📋 Mirá el menú con fotos acá: ${url}\n\nO escribime directo lo que querés (ej: *"2 empanadas de carne y una coca"*).`);
     state.handoffCount = 0;
     return;
   }
-
-  // LLM/reglas no entendieron nada útil (parse null o vacío): contar miss y, tras 2 seguidos, handoff.
-  // Antes solo contestábamos el saludo y quedaba un bucle "igual que ayer".
-  if (parsed === null || (Array.isArray(parsed?.items) && parsed.items.length === 0 && !parsed?.askMenu)) {
-    const misses = (state.handoffCount || 0) + 1;
-    state.handoffCount = misses;
-    console.log(`[bot] ${waId} no entendí "${text.slice(0, 50)}" — miss ${misses}/${MAX_PARSE_MISSES}`);
-    if (misses >= MAX_PARSE_MISSES) {
-      replies.push("Perdón que no te estoy siguiendo 😅 Te paso con el comercio, te contesta enseguida por acá.");
-      await notifyHandoff(vendor.id, waId, text);
-      state.pausedUntil = Date.now() + HANDOFF_PAUSE_MIN * 60 * 1000;
-      state.handoffCount = 0;
-      return;
-    }
-    replies.push(`No te entendí bien. ¿Qué querés pedir? escribilo simple, por ejemplo: *"2 empanadas de carne"* o mirá el menú: ${url}`);
+  if (parsed?.greeting) {
+    // Saludo corto: responder con el texto del bot, sin contar como miss.
+    // Si el cliente repite "hola" varias veces seguidas, igual le contestamos
+    // (no es ambiguo: es un saludo).
+    replies.push(greetingText(vendor, url));
+    state.handoffCount = 0;
     return;
   }
 
-  // Saludo/menu puro sin pedido.
-  replies.push(greetingText(vendor, url));
+  // LLM/reglas no entendieron nada útil: contar miss y, tras 2 seguidos, handoff.
+  const misses = (state.handoffCount || 0) + 1;
+  state.handoffCount = misses;
+  console.log(`[bot] ${waId} no entendí "${text.slice(0, 50)}" — miss ${misses}/${MAX_PARSE_MISSES}`);
+  if (misses >= MAX_PARSE_MISSES) {
+    replies.push("Perdón que no te estoy siguiendo 😅 Te paso con el comercio, te contesta enseguida por acá.");
+    await notifyHandoff(vendor.id, waId, text);
+    state.pausedUntil = Date.now() + HANDOFF_PAUSE_MIN * 60 * 1000;
+    state.handoffCount = 0;
+    return;
+  }
+  replies.push(`No te entendí bien. ¿Qué querés pedir? escribilo simple, por ejemplo: *"2 empanadas de carne"* o mirá el menú: ${url}`);
 }
 
 function greetingText(vendor, url) {

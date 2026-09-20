@@ -270,7 +270,8 @@ const NUM_WORDS = { "un": 1, "una": 1, "uno": 1, "dos": 2, "tres": 3, "cuatro": 
 
 export function parseByRules(message, products) {
   const m = String(message || "").trim();
-  if (/^(hola|buenas|buen|hey|hi)\b/i.test(m)) return { complete: false, items: [] };
+  // Saludo corto: marcar greeting=true para que handleIdle conteste el saludo (en vez de contarlo como miss).
+  if (/^(hola|buenas|buen|hey|hi)\b/i.test(m)) return { complete: false, items: [], greeting: true };
   if (/menu|menú|carta|precio|cuanto|qué tienen|que tienen/i.test(m)) {
     return { complete: false, items: [], askMenu: true };
   }

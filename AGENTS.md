@@ -10,8 +10,9 @@ Portal 659: "El centro comercial de tu barrio". Hub multicommerce hiperlocal (Si
 - **Storage**: a disco (`UPLOAD_DIR`, volumen `uploads_data`), no Supabase Storage.
 - **Typecheck**: `npx tsc --noEmit`
 - **Build**: `npm run build`
-- **Deploy**: push a `master` dispara GitHub Actions "Deploy to VPS" (ssh -p 8277, path `/opt/portal659`, docker compose con `app`+`db`+`nginx`, `next start`). Sitio: `https://www.portal659.com.ar` (Cloudflare).
+- **Deploy**: push a `master` dispara GitHub Actions "Deploy to VPS" (ssh -p 22, host VexyHost `103.195.103.245`, path `/opt/portal659`, docker compose con `app`+`db`+`nginx`, `next start`). Sitio: `https://www.portal659.com.ar` (Cloudflare).
 - **No commitear/pushear salvo que lo pida el usuario.**
+- **Backup self-managed**: cron en el host (`/etc/cron.d/portal659-backup`, 07:00 UTC = 04:00 AR) corre `scripts/backup.sh` — `pg_dump` gzip + tar de uploads → **Cloudflare R2** (`rclone` por env vars `R2_*` del `.env`), retención 14 días local / 30 días R2. El deploy hace snapshot previo y auto-repara el cron (self-healing). `/opt/portal659-backups` está fuera de `/opt/portal659` (el deploy no lo borra). Restore: `scripts/restore.sh <db.sql.gz> [uploads.tar.gz] [certs.tar.gz]`. Runbook: `docs/migracion-vexyhost.md`.
 
 ## Base de datos (PostgreSQL self-host)
 
@@ -113,6 +114,7 @@ Portal 659: "El centro comercial de tu barrio". Hub multicommerce hiperlocal (Si
 - Cargar secrets `VAPID_*`, `PRINT_BRIDGE_SECRET` y `RESEND_API_KEY`/`FROM_EMAIL` en GitHub para que el deploy las escriba al `.env`.
 - Compilar el APK de Portal Print (Android): ver `android/README.md` (requiere Android SDK/JDK 17).
 - Reboot test del VPS (verificar que la web vuelve sola).
+- **Migración a VexyHost** (sep-2026): seguir `docs/migracion-vexyhost.md` — Docker en el host nuevo → deploy (secrets `VPS_HOST=103.195.103.245`/`VPS_USER=root`/`VPS_SSH_KEY` + `R2_*`) → export del viejo (pg_dump + uploads + certs de `/opt/portal659-certs`) → `scp` → `restore.sh` → DNS → verificación. VPS viejo queda 2-3 días como fallback.
 
 ## App Android para Play Store (TWA)
 
@@ -157,6 +159,7 @@ Portal 659: "El centro comercial de tu barrio". Hub multicommerce hiperlocal (Si
 
 ## Referencias útiles
 - `docs/plan-multicommerce-portal659.md` — plan de producto multicommerce.
+- `docs/migracion-vexyhost.md` — runbook de migración de VPS + backup self-managed (R2).
 - `docs/lanzamiento-portal659.md` — propuesta de valor, marketing, métricas y backlog.
 - `docs/PRODUCCION.md` — puesta en producción y roadmap.
 - `src/lib/config.ts` — `ZONES`, `ACTIVE_ZONES`, `DEFAULT_ZONE`, `VERTICALS`.

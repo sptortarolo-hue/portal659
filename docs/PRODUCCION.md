@@ -95,10 +95,30 @@ docker exec -i portal659-db psql -U portal659 -d portal659 -f supabase/self-host
 
 ## 7. Backup
 
+Backup diario **self-managed** (independiente del host — funciona en cualquier VPS):
+
+- Cron `/etc/cron.d/portal659-backup` (07:00 UTC = 04:00 AR) corre `scripts/backup.sh`
+  (instalado y auto-reparado por el deploy): `pg_dump` gzip + tar de `uploads_data`
+  → push a **Cloudflare R2** (bucket `portal659-backups`, privado; rclone con
+  `R2_ACCESS_KEY_ID`/`R2_SECRET_ACCESS_KEY`/`R2_ENDPOINT` del `.env`).
+- Validación del dump (gzip íntegro + marcador de dump completo) antes de subir.
+- Retención: **14 días local, 30 días en R2**. `/opt/portal659-backups` está fuera
+  del path del deploy: no se borra nunca.
+- El deploy además hace **snapshot previo** (DB+uploads → R2) en cada deploy.
+- Runbook de migración/restore: `docs/migracion-vexyhost.md`.
+
+Restore:
+
 ```bash
+bash /opt/portal659/scripts/restore.sh <db.sql.gz> [uploads.tar.gz] [certs.tar.gz]
+```
+
+Manual puntual:
+
+```bash
+bash /opt/portal659-backups/backup.sh          # backup ya (local + push R2)
+cat /opt/portal659-backups/cron.log            # log de las corridas del cron
 docker exec portal659-db pg_dump -U portal659 -d portal659 > backup.sql
-# o dentro del contenedor db
-docker exec portal659-db pg_dump -U portal659 portal659 > /backups/portal659-$(date +%F).sql
 ```
 
 ## 8. Costos estimados

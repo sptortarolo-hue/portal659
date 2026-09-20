@@ -21,7 +21,7 @@ jobs:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          port: 8277
+          port: 22
           command_timeout: 60m
           script: |
             set -euo pipefail
@@ -72,6 +72,15 @@ jobs:
             WB_SECRET='${{ secrets.WA_BOT_SECRET }}'
             if [ -z "$WB_SECRET" ]; then WB_SECRET=$(openssl rand -hex 24); fi
             echo "WA_BOT_SECRET=$WB_SECRET" >> /opt/portal659/.env
+            # Credenciales R2 para el backup self-managed (scripts/backup.sh).
+            echo 'R2_ACCESS_KEY_ID=${{ secrets.R2_ACCESS_KEY_ID }}' >> /opt/portal659/.env
+            echo 'R2_SECRET_ACCESS_KEY=${{ secrets.R2_SECRET_ACCESS_KEY }}' >> /opt/portal659/.env
+            echo 'R2_ENDPOINT=${{ secrets.R2_ENDPOINT }}' >> /opt/portal659/.env
+
+            # Backup previo al deploy (DB + uploads → R2). Tolera primer arranque
+            # (sin contenedores aún). Si falla NO bloquea el deploy — el backup
+            # diario corre igual por cron.
+            bash /opt/portal659/scripts/backup.sh || echo "WARNING: backup previo falló, continúa el deploy"
 
             cd /opt/portal659
             # Cert TLS para nginx :443. Si aún no pegaste el Origin CA de
@@ -97,5 +106,21 @@ jobs:
             # nuevo, nginx apunta a un IP muerto y el sitio da 502. Restart = re-resuelve.
             docker restart portal659-nginx
             docker image prune -f
+
+            # Backup diario self-managed (04:00 AR = 07:00 UTC). Self-healing:
+            # reinstala rclone + script + crontab si faltan. /opt/portal659-backups
+            # está FUERA de /opt/portal659: el deploy no lo borra nunca.
+            mkdir -p /opt/portal659-backups/db /opt/portal659-backups/uploads
+            cp -f /opt/portal659/scripts/backup.sh /opt/portal659-backups/backup.sh
+            chmod +x /opt/portal659-backups/backup.sh
+            if ! command -v rclone >/dev/null 2>&1; then
+              apt-get update -qq >/dev/null 2>&1 && apt-get install -y -qq rclone >/dev/null 2>&1 || true
+            fi
+            printf '%s\n' \
+              '07 7 * * * root /opt/portal659-backups/backup.sh >> /opt/portal659-backups/cron.log 2>&1' \
+              > /etc/cron.d/portal659-backup
+            chmod 644 /etc/cron.d/portal659-backup
+            systemctl enable --now cron >/dev/null 2>&1 || service cron start >/dev/null 2>&1 || true
+
             rm -f /tmp/code.tgz
             echo "Deploy completado!"

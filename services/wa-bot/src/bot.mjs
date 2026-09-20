@@ -114,7 +114,7 @@ export async function handleInbound({ vendor, waId, body }) {
 
 async function handleIdle({ vendor, text, state, replies, phone, waId }) {
   const products = await getMenu(vendor.id);
-  const parsed = await parseWithLlm(text, products).catch(() => null) || parseByRules(text);
+  const parsed = await parseWithLlm(text, products).catch(() => null) || parseByRules(text, products);
 
   const url = shopUrl(vendor);
   const hasItems = Array.isArray(parsed?.items) && parsed.items.length > 0;

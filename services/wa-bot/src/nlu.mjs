@@ -1,4 +1,5 @@
 import { config } from "./config.mjs";
+import { matchProduct } from "./menu.mjs";
 
 // NVIDIA rota el catálogo /models (410 Gone) sin aviso. El auto-descubrimiento
 // no confía en la lista — la prueba real (POST chat/completions) decide: el
@@ -20,6 +21,8 @@ const PREFERRED = [
 const EXCLUDE = /vision|guard|embed|rerank|code|chatqa|nemo(retriever|guard)/i;
 
 let resolvedModelCache = null; // modelo verificado que responde 200
+// Cooldown cuando un modelo devuelve 429: no lo reintentamos por 5 minutos.
+const modelCooldowns = new Map(); // model -> timestamp de cuándo vuelve a poder probarse
 
 // OpenRouter (u otro proveedor compatible): NO probar modelos — usá el pin.
 // El probe /models de NVIDIA solo existe para auto-sanar deprecaciones de NIM.
@@ -27,9 +30,20 @@ function isOpenRouter() {
   return /openrouter\.ai/i.test(config.llmBaseUrl);
 }
 
+/** Cooldown anti-429: al fluir un rate-limit no reintentamos ese modelo por 5 min. */
+function isCooledDown(model) {
+  const until = modelCooldowns.get(model);
+  return !!until && until > Date.now();
+}
+function markCooldown(model) {
+  modelCooldowns.set(model, Date.now() + 5 * 60 * 1000);
+}
+
 async function resolveModel() {
-  if (process.env.LLM_MODEL) return process.env.LLM_MODEL; // pin manual, siempre gana
-  if (resolvedModelCache) return resolvedModelCache;
+  if (process.env.LLM_MODEL && !isCooledDown(process.env.LLM_MODEL)) {
+    return process.env.LLM_MODEL; // pin manual, siempre gana si no está en cooldown
+  }
+  if (resolvedModelCache && !isCooledDown(resolvedModelCache)) return resolvedModelCache;
   if (isOpenRouter()) {
     // El modelo ya viene pineado por el env; no se prueba con probes porque
     // OpenRouter expone abiertamente los modelos disponibles por key.
@@ -149,12 +163,12 @@ export async function parseWithLlm(message, products) {
     resolvedModelCache = null;
     console.log("[bot] LLM re-descubriendo modelo tras fallo del verificado");
 
-    // OpenRouter: el catalogo indexado no auto-cura con /models (puede no listar
-    // los :free). Reintento con alternativas conocidas primero.
+    // OpenRouter: reintento rotando alternativas (con el cooldown en mente).
     if (isOpenRouter()) {
       const alternativas = ["google/gemma-4-31b-it:free", "nvidia/nemotron-3-super-120b-a12b:free", "z-ai/glm-5.2:free"];
       for (const alt of alternativas) {
         if (alt === model) continue;
+        if (isCooledDown(alt)) continue;
         console.log(`[bot] OpenRouter retry con ${alt}`);
         const retry = await callOnce(message, products, alt);
         if (retry !== null) {
@@ -209,7 +223,8 @@ async function callOnce(message, products, model) {
     return null;
   }
 
-  if (res.status === 410 || res.status === 404 || res.status === 429) {
+    if (res.status === 410 || res.status === 404 || res.status === 429) {
+    markCooldown(model);
     parseWithLlm._modelDeprecated = true;
     console.error(`[bot] LLM modelo ${model} deprecado/no existe/429 (${res.status}) — re-descubriendo en el próximo mensaje`);
     return null;
@@ -246,12 +261,50 @@ async function callOnce(message, products, model) {
   }
 }
 
-/** Fallback sin LLM: regla mínima que detecta saludo/pedido de menú. */
-export function parseByRules(message) {
+// ———————————————————————————————————————————————————————————————————————————
+// Reglas sin LLM: detectar saludo, pedir el menú, o Parsear "2 empanadas de carne
+// y una coca" sin modelo (fallback definitivo contra rate-limits OpenRouter).
+// ———————————————————————————————————————————————————————————————————————————
+
+const NUM_WORDS = { "un": 1, "una": 1, "uno": 1, "dos": 2, "tres": 3, "cuatro": 4, "cinco": 5, "seis": 6, "siete": 7, "ocho": 8, "nueve": 9, "diez": 10, "once": 11, "doce": 12 };
+
+export function parseByRules(message, products) {
   const m = String(message || "").trim();
   if (/^(hola|buenas|buen|hey|hi)\b/i.test(m)) return { complete: false, items: [] };
   if (/menu|menú|carta|precio|cuanto|qué tienen|que tienen/i.test(m)) {
     return { complete: false, items: [], askMenu: true };
   }
+
+  // Fallback libre de LLM: buscar "qty x nombre" en el texto. Sipor el LLM no anda,
+  // esto tiene que ser suficiente para pedidos "normales" del barrio.
+  if (Array.isArray(products) && products.length > 0) {
+    const items = extractItemsByRules(m, products);
+    if (items.length > 0) {
+      return { complete: true, items, method: null, customerName: null, customerAddress: null, payment: null, note: null };
+    }
+  }
   return null;
+}
+
+function extractItemsByRules(text, products) {
+  const t = text.toLowerCase();
+  const items = [];
+  // separar por comas/ " y " / " + "
+  const chunks = t.split(/[,;]|\s+y\s+|\s+\+\s+|\s+e\s+/);
+  for (const chunkRaw of chunks) {
+    const chunk = chunkRaw.trim();
+    if (!chunk) continue;
+    // qty al principio: "3 empanadas" | "una coca"
+    let qty = 1, rest = chunk;
+    const mQty = /^(\d+|un|una|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce)\s+(?:de\s+)?(.+)$/.exec(chunk);
+    if (mQty) {
+      const rawQty = mQty[1];
+      qty = NUM_WORDS[rawQty] ?? (Number(rawQty) || 1);
+      rest = mQty[2].trim();
+    }
+    if (!rest) continue;
+    const p = matchProduct(products, rest);
+    if (p) items.push({ name: p.name, qty, modifiers: [] });
+  }
+  return items;
 }

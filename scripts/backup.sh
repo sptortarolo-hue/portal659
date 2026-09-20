@@ -104,8 +104,9 @@ export RCLONE_CONFIG_R2_ACCESS_KEY_ID="$R2_AK"
 export RCLONE_CONFIG_R2_SECRET_ACCESS_KEY="$R2_SK"
 
 echo "[$NOW] push → R2:$R2_BUCKET"
-rclone copy "$BACKUP_ROOT/db" "R2:$R2_BUCKET/db" --no-traverse >/dev/null 2>>"$BACKUP_ROOT/errors.log" \
-  && rclone copy "$BACKUP_ROOT/uploads" "R2:$R2_BUCKET/uploads" --no-traverse >/dev/null 2>>"$BACKUP_ROOT/errors.log" \
+# stderr de rclone sale inline al log (para diagnóstico); stdout se descarta.
+rclone copy "$BACKUP_ROOT/db" "R2:$R2_BUCKET/db" --no-traverse 2>&1 >/dev/null \
+  && rclone copy "$BACKUP_ROOT/uploads" "R2:$R2_BUCKET/uploads" --no-traverse 2>&1 >/dev/null \
   || { echo "[$NOW] ERROR: fallo el push a R2 (copia local queda)"; exit 1; }
 echo "[$NOW] push a R2 OK"
 

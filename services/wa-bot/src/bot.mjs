@@ -128,10 +128,28 @@ async function handleIdle({ vendor, text, state, replies, phone, waId }) {
   // Piden el menú ("menu", "carta", "precios") → link + resumen corto.
   if (parsed?.askMenu) {
     replies.push(`📋 Mirá el menú con fotos acá: ${url}\n\nO escribime directo lo que querés (ej: *"2 empanadas de carne y una coca"*).`);
+    state.handoffCount = 0;
     return;
   }
 
-  // Saludo simple: link + "si ya sabés, escribilo".
+  // LLM/reglas no entendieron nada útil (parse null o vacío): contar miss y, tras 2 seguidos, handoff.
+  // Antes solo contestábamos el saludo y quedaba un bucle "igual que ayer".
+  if (parsed === null || (Array.isArray(parsed?.items) && parsed.items.length === 0 && !parsed?.askMenu)) {
+    const misses = (state.handoffCount || 0) + 1;
+    state.handoffCount = misses;
+    console.log(`[bot] ${waId} no entendí "${text.slice(0, 50)}" — miss ${misses}/${MAX_PARSE_MISSES}`);
+    if (misses >= MAX_PARSE_MISSES) {
+      replies.push("Perdón que no te estoy siguiendo 😅 Te paso con el comercio, te contesta enseguida por acá.");
+      await notifyHandoff(vendor.id, waId, text);
+      state.pausedUntil = Date.now() + HANDOFF_PAUSE_MIN * 60 * 1000;
+      state.handoffCount = 0;
+      return;
+    }
+    replies.push(`No te entendí bien. ¿Qué querés pedir? escribilo simple, por ejemplo: *"2 empanadas de carne"* o mirá el menú: ${url}`);
+    return;
+  }
+
+  // Saludo/menu puro sin pedido.
   replies.push(greetingText(vendor, url));
 }
 

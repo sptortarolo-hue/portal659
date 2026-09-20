@@ -209,9 +209,9 @@ async function callOnce(message, products, model) {
     return null;
   }
 
-  if (res.status === 410 || res.status === 404) {
+  if (res.status === 410 || res.status === 404 || res.status === 429) {
     parseWithLlm._modelDeprecated = true;
-    console.error(`[bot] LLM modelo ${model} deprecado/no existe (${res.status}) — re-descubriendo en el próximo mensaje`);
+    console.error(`[bot] LLM modelo ${model} deprecado/no existe/429 (${res.status}) — re-descubriendo en el próximo mensaje`);
     return null;
   }
   if (res.status === 402 || res.status === 403) {

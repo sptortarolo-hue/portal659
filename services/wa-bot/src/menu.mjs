@@ -6,15 +6,23 @@ export async function getMenu(vendorId) {
   const hit = cache.get(vendorId);
   if (hit && Date.now() - hit.at < 60 * 1000) return hit.products;
 
-  const res = await fetch(`${config.appUrl}/api/wa/menu?vendorId=${encodeURIComponent(vendorId)}`, {
-    headers: { Authorization: `Bearer ${config.waBotSecret}` },
-  });
-  if (!res.ok) throw new Error(`menu error ${res.status}: ${await res.text()}`);
-
-  const data = await res.json();
-  const products = data.products || [];
-  cache.set(vendorId, { products, at: Date.now() });
-  return products;
+  try {
+    const res = await fetch(`${config.appUrl}/api/wa/menu?vendorId=${encodeURIComponent(vendorId)}`, {
+      headers: { Authorization: `Bearer ${config.waBotSecret}` },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) {
+      console.error(`[bot] menu error ${res.status}`);
+      return hit?.products || [];
+    }
+    const data = await res.json();
+    const products = data.products || [];
+    cache.set(vendorId, { products, at: Date.now() });
+    return products;
+  } catch (e) {
+    console.error(`[bot] menu fetch fail: ${e.message}`);
+    return hit?.products || []; // fallback: caché vieja si la hubo
+  }
 }
 
 /** Mapea un nombre libre a un producto del menú. Mejorado con stem + "contains" para typos/variantes. */

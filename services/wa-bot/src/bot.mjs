@@ -98,13 +98,14 @@ export async function handleInbound({ vendor, waId, body }) {
       return { replies };
     }
     // Guardamos SIEMPRE el estado de la conversación con TTL corto: así el
-    // handoffCount persiste entre mensajes (y el pedido parcial también).
+    // handoffCount persiste entre mensajes y los pasos no se pierden.
     await setState(vendorId, waId, state, state.step === "awaiting_receipt" ? AWAITING_RECEIPT_TTL : undefined);
     return { replies };
   } catch (e) {
     console.error("[bot] error:", e.message);
-    await clearState(vendorId, waId);
-    return { replies: ["Perdón, hubo un problema. ¿Podés repetir el pedido?"] };
+    console.error(e.stack?.split("\n").slice(0, 3).join(" | "));
+    // NO limpiamos el state: un error transitorio no debe resetear el flujo.
+    return { replies: ["Uy, hubo un error. Probá de nuevo en un segundo. 🙏"] };
   }
 }
 

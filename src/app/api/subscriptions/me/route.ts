@@ -1,5 +1,6 @@
 import { getUserId } from "@/lib/auth-utils";
 import { queryMany, queryOne } from "@/lib/db";
+import { getVendorByRequest } from "@/lib/vendor-utils";
 import { resolveVendorPlan, daysLeft } from "@/lib/plans";
 import { NextResponse } from "next/server";
 import type { Plan, Vendor, VendorSubscription } from "@/types/database";
@@ -8,8 +9,18 @@ export async function GET(request: Request) {
   const userId = await getUserId(request);
   if (!userId) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
 
+  const { vendor: resolved, staffRole } = await getVendorByRequest(request);
+  // Repartidor: fuera de la suscripción (mismo alcance que antes).
+  if (staffRole === "delivery") {
+    return NextResponse.json({ error: "No autorizado" }, { status: 403 });
+  }
+
   const [vendor, plans, history] = await Promise.all([
-    queryOne<Vendor>(`SELECT * FROM vendors WHERE user_id = $1 LIMIT 1`, [userId]),
+    // El vendor resuelto soporta admin-as (modo llave en mano): antes se
+    // query-eaba por user_id y el admin impersonado caía 403 "No tenés un local".
+    resolved
+      ? queryOne<Vendor>(`SELECT * FROM vendors WHERE id = $1 LIMIT 1`, [resolved.id])
+      : Promise.resolve(undefined),
     queryMany<Plan>(`SELECT * FROM plans ORDER BY sort ASC`),
     queryMany<VendorSubscription>(
       `SELECT * FROM vendor_subscriptions ORDER BY created_at DESC LIMIT 24`

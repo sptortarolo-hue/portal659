@@ -17,15 +17,58 @@ export async function getMenu(vendorId) {
   return products;
 }
 
-/** Mapea un nombre libre a un producto del menú (exacto → contiene). null si no. */
+/** Mapea un nombre libre a un producto del menú. Mejorado con stem + "contains" para typos/variantes. */
 export function matchProduct(products, name) {
-  const n = String(name || "").toLowerCase().trim();
+  const n = normalizeForMatch(name);
   if (!n) return null;
-  const exact = products.find((p) => String(p.name).toLowerCase() === n);
+
+  // Los tokens de interés: las palabras de la búsqueda del cliente.
+  const search = new Set(n.split("").length > 0 ? n.split("") : []);
+  const wanted = n.split(" ").filter(Boolean);
+
+  // Exacto: nombre del producto = búsqueda.
+  const exact = products.find((p) => normalizeForMatch(p.name) === n);
   if (exact) return exact;
-  const contains = products.filter((p) => String(p.name).toLowerCase().includes(n) || n.includes(String(p.name).toLowerCase()));
+
+  // "Contenido": todas las palabras del producto aparecen (o viceversa).
+  const contains = products.filter((p) => {
+    const pn = normalizeForMatch(p.name);
+    const toks = pn.split(" ");
+    const w = wanted.every((t) => toks.includes(t));
+    return w && toks.every((t2) => wanted.includes(t2));
+  });
   if (contains.length === 1) return contains[0];
+  if (contains.length > 1) {
+    // Si hay varios que cubren todo, devolver el más corto (más específico).
+    contains.sort((a, b) => a.name.length - b.name.length);
+    return contains[0];
+  }
+
+  // "Intersección": todas las palabras que el cliente escribió están (parcialmente) en el producto.
+  const interseccion = products.filter((p) => {
+    const toks = normalizeForMatch(p.name).split(" ");
+    return wanted.every((t) => toks.some((t2) => t2.startsWith(t) || t.startsWith(t2)));
+  });
+  if (interseccion.length === 1) return interseccion[0];
+  if (interseccion.length > 1) {
+    // Priorizar el producto con menos tokens (menos ambiguo).
+    interseccion.sort((a, b) => normalizeForMatch(a.name).split(" ").length - normalizeForMatch(b.name).split(" ").length);
+    return interseccion[0];
+  }
+
+  // Por defecto: null — preferimos no arriesgar que agregar algo que no pidió.
   return null;
+}
+
+function normalizeForMatch(name) {
+  return String(name || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    // quitar plurales comunes del español para match aproximado (empanadas→empanada)
+    .replace(/([sr])s\b/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 export function menuSummary(vendorName, products) {

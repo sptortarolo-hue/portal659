@@ -4,7 +4,7 @@ import { matchProduct } from "./menu.mjs";
 // NVIDIA rota el catálogo /models (410 Gone) sin aviso. El auto-descubrimiento
 // no confía en la lista — la prueba real (POST chat/completions) decide: el
 // primer candidato que responde 200 se cachea y se usa hasta que falle de nuevo.
-// Tier gratis = responde 200; no gratis / no existe = 402/403/404/410.
+// Tier gratis = responde 200; no gratis / no existe = 402/403/404/410/429.
 
 const PREFERRED = [
   "google/gemma-4-31b-it", // verificado gratis con la cuenta actual
@@ -157,13 +157,13 @@ export async function parseWithLlm(message, products) {
   const parsed = await callOnce(message, products, model);
   if (parsed !== null) return parsed;
 
-  // Si el modelo pinchó (410/404/402), re-descubrir y reintentar 1 vez.
+  // Si el modelo pinchó (410/404/402/429), re-descubrir y reintentar 1 vez.
   if (parseWithLlm._modelDeprecated) {
     parseWithLlm._modelDeprecated = false;
     resolvedModelCache = null;
     console.log("[bot] LLM re-descubriendo modelo tras fallo del verificado");
 
-    // OpenRouter: reintento rotando alternativas (con el cooldown en mente).
+    // OpenRouter: reintento rotando alternativas (con cooldown en mente).
     if (isOpenRouter()) {
       const alternativas = ["google/gemma-4-31b-it:free", "nvidia/nemotron-3-super-120b-a12b:free", "z-ai/glm-5.2:free"];
       for (const alt of alternativas) {
@@ -223,14 +223,14 @@ async function callOnce(message, products, model) {
     return null;
   }
 
-    if (res.status === 410 || res.status === 404 || res.status === 429) {
+  if (res.status === 410 || res.status === 404 || res.status === 429) {
     markCooldown(model);
     parseWithLlm._modelDeprecated = true;
-    console.error(`[bot] LLM modelo ${model} deprecado/no existe/429 (${res.status}) — re-descubriendo en el próximo mensaje`);
+    console.error(`[bot] LLM modelo ${model} no responde o fue rate-limited (${res.status}) — re-descubriendo en el próximo mensaje`);
     return null;
   }
   if (res.status === 402 || res.status === 403) {
-    parseWithLlm._modelDeprecated = true; // no gratis / no autorizado → probar otro
+    parseWithLlm._modelDeprecated = true;
     console.error(`[bot] LLM modelo ${model} no está en el tier gratis (${res.status}) — probando otro`);
     return null;
   }
@@ -262,50 +262,63 @@ async function callOnce(message, products, model) {
 }
 
 // ———————————————————————————————————————————————————————————————————————————
-// Reglas sin LLM: detectar saludo, pedir el menú, o Parsear "2 empanadas de carne
-// y una coca" sin modelo (fallback definitivo contra rate-limits OpenRouter).
+// Reglas sin LLM: detectar saludo, pedir el menú, o parsear pedidos en prosa
+// ("3 empanadas de carne y una coca") cuando el modelo de IA está caído.
 // ———————————————————————————————————————————————————————————————————————————
 
-const NUM_WORDS = { "un": 1, "una": 1, "uno": 1, "dos": 2, "tres": 3, "cuatro": 4, "cinco": 5, "seis": 6, "siete": 7, "ocho": 8, "nueve": 9, "diez": 10, "once": 11, "doce": 12 };
+const NUM_WORDS = {
+  un: 1, una: 1, uno: 1, dos: 2, tres: 3, cuatro: 4, cinco: 5,
+  seis: 6, siete: 7, ocho: 8, nueve: 9, diez: 10, once: 11, doce: 12,
+};
 
 export function parseByRules(message, products) {
+  // Prioridad: el match de reglas mínimas (greeting/menú) gana sobre el extractor.
   const m = String(message || "").trim();
-  // Saludo corto: marcar greeting=true para que handleIdle conteste el saludo (en vez de contarlo como miss).
   if (/^(hola|buenas|buen|hey|hi)\b/i.test(m)) return { complete: false, items: [], greeting: true };
-  if (/menu|menú|carta|precio|cuanto|qué tienen|que tienen/i.test(m)) {
+  if (/menu|menú|carta|precios?|cuanto|que tenés|qué tienen/i.test(m)) {
     return { complete: false, items: [], askMenu: true };
   }
-
-  // Fallback libre de LLM: buscar "qty x nombre" en el texto. Sipor el LLM no anda,
-  // esto tiene que ser suficiente para pedidos "normales" del barrio.
   if (Array.isArray(products) && products.length > 0) {
-    const items = extractItemsByRules(m, products);
-    if (items.length > 0) {
-      return { complete: true, items, method: null, customerName: null, customerAddress: null, payment: null, note: null };
-    }
+    const items = extractFromText(m, products);
+    if (items.length) return { complete: true, items, method: null, customerName: null, customerAddress: null, payment: null, note: null };
   }
   return null;
 }
 
-function extractItemsByRules(text, products) {
-  const t = text.toLowerCase();
-  const items = [];
-  // separar por comas/ " y " / " + "
-  const chunks = t.split(/[,;]|\s+y\s+|\s+\+\s+|\s+e\s+/);
-  for (const chunkRaw of chunks) {
-    const chunk = chunkRaw.trim();
+function extractFromText(text, products) {
+  // Casos:
+  //  - "3 empanadas y una coca" → [empanadas×3, coca×1]
+  //  - "dos pizzas"          → [pizza×2]
+  //  - "quiero dos empanadas" → qty detectada aunque haya verbos al principio.
+  const t = normalizeEs(text);
+  const out = [];
+  const tokens = t.split(/[,\n;]| e | y |\s*\+\s*/);
+  for (const part of tokens) {
+    let chunk = part.trim();
     if (!chunk) continue;
-    // qty al principio: "3 empanadas" | "una coca"
-    let qty = 1, rest = chunk;
-    const mQty = /^(\d+|un|una|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce)\s+(?:de\s+)?(.+)$/.exec(chunk);
-    if (mQty) {
-      const rawQty = mQty[1];
-      qty = NUM_WORDS[rawQty] ?? (Number(rawQty) || 1);
-      rest = mQty[2].trim();
+    // Quitar verbos/intenciones al inicio (quiero/dame/traeme/etc.)
+    chunk = chunk.replace(/^(quiero|querria|quisiera|dame|démela|traeme|traigame|me das|me pones|me haces|me traes|me preparas|me cobras)\s+/i, "");
+    const m = /^(\d+|un(?:a|o)?|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce)\s+(?:de\s+)?(.*)$/.exec(chunk);
+    let qty = 1, name = chunk;
+    if (m) {
+      const rawQty = m[1];
+      if (/^\d+$/.test(rawQty)) qty = Number(rawQty);
+      else qty = NUM_WORDS[rawQty] ?? 1;
+      name = m[2].trim();
     }
-    if (!rest) continue;
-    const p = matchProduct(products, rest);
-    if (p) items.push({ name: p.name, qty, modifiers: [] });
+    if (!name) continue;
+    const p = matchProduct(products, name);
+    if (p) out.push({ name: p.name, qty: Math.max(1, qty), modifiers: [] });
   }
-  return items;
+  return out;
+}
+
+function normalizeEs(s) {
+  return String(s)
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }

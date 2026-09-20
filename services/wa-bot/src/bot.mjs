@@ -97,9 +97,9 @@ export async function handleInbound({ vendor, waId, body }) {
       await clearState(vendorId, waId);
       return { replies };
     }
-    if (state.step !== "idle" || state.pausedUntil) {
-      await setState(vendorId, waId, state, state.step === "awaiting_receipt" ? AWAITING_RECEIPT_TTL : undefined);
-    }
+    // Guardamos SIEMPRE el estado de la conversación con TTL corto: así el
+    // handoffCount persiste entre mensajes (y el pedido parcial también).
+    await setState(vendorId, waId, state, state.step === "awaiting_receipt" ? AWAITING_RECEIPT_TTL : undefined);
     return { replies };
   } catch (e) {
     console.error("[bot] error:", e.message);

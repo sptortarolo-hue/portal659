@@ -52,6 +52,22 @@ export async function POST(request: Request) {
     );
   }
 
+  // Sanidad: MP acepta la preferencia aunque algún ítem venga con precio
+  // 0 o qty <= 0, pero después el checkout no puede armar medios de pago y el
+  // cliente cae en "Elegí cómo pagar" sin opciones. Lo cortamos acá.
+  const invalidItem = items.find(
+    (i: any) => !(Number(i.price) > 0) || !(Number(i.qty) > 0) || !Number.isFinite(Number(i.price))
+  );
+  if (invalidItem) {
+    console.warn(
+      `[MP preference] rejected vendor=${vendorId} item sin precio válido price=${invalidItem?.price} qty=${invalidItem?.qty}`
+    );
+    return NextResponse.json(
+      { error: `Hay un ítem sin precio válido en el carrito ("${invalidItem?.name || "?"}"). Sacalo y volvé a intentar.` },
+      { status: 400 }
+    );
+  }
+
   try {
     const preference = {
       items: items.map((i: any) => ({
@@ -110,7 +126,11 @@ export async function POST(request: Request) {
       // vez de al checkout (el "te lleva a MP pero no al lugar para pagar").
       const isTest = mpToken.startsWith("TEST-");
       const initPoint = isTest && data.sandbox_init_point ? data.sandbox_init_point : data.init_point;
-      console.log(`[MP preference] ok id=${data.id} vendor=${vendorId} sandbox=${isTest}`);
+      const itemsSum = items.reduce((s: number, i: any) => s + Number(i.price) * Number(i.qty), 0);
+      console.log(
+        `[MP preference] ok id=${data.id} vendor=${vendorId} sandbox=${isTest} items=${items.length} itemsSum=${Math.round(itemsSum)} total=${total} method=${method || "?"}` +
+          ` prices=[${items.map((i: any) => Number(i.price)).join(",")}]`
+      );
       return NextResponse.json({
         preferenceId: data.id,
         initPoint,

@@ -20,7 +20,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         <AdminSidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
         <div className="flex-1 flex flex-col min-h-screen lg:ml-64 min-w-0">
-          <header className="sticky top-0 z-30 bg-card border-b border-border px-4 py-3 flex items-center gap-3 lg:hidden">
+          <header className="sticky top-14 sm:top-0 z-30 bg-card border-b border-border px-4 py-3 flex items-center gap-3 lg:hidden">
             <button
               onClick={() => setSidebarOpen(true)}
               className="p-2 rounded-lg hover:bg-muted transition-colors"

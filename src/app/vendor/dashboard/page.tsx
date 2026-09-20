@@ -598,7 +598,7 @@ function VendorDashboardInner() {
   if (staffRole === "delivery") {
     return (
       <main className="min-h-screen bg-background">
-        <div className="sticky top-0 z-40 bg-background border-b border-border">
+        <div className="sticky top-14 sm:top-0 z-40 bg-background border-b border-border">
           <div className="container mx-auto px-4 py-3 flex items-center gap-3">
             {vendor && (vendor.logo_url || vendor.image_url) ? (
               <img src={vendor.logo_url || vendor.image_url || ""} alt={vendor.store_name} className="h-10 w-10 rounded-full object-cover flex-shrink-0" />
@@ -1043,7 +1043,7 @@ function VendorDashboardInner() {
             SIN backdrop-blur: sticky + backdrop-filter tiene un bug de
             compositing en Chrome/WebView Android (la barra "desaparece"
             durante el scroll). Fondo sólido va bien en todos lados. */}
-        <div className="sticky top-0 z-30 bg-background border-b border-border">
+        <div className="sticky top-14 sm:top-0 z-30 bg-background border-b border-border">
           <div className="px-3 sm:px-4 py-2 sm:py-2.5">
             {/* Fila 1: menú + título + compartir (+ controles en desktop) */}
             <div className="flex items-center gap-2 sm:gap-3">

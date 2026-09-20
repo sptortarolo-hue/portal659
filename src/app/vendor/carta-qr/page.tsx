@@ -48,7 +48,7 @@ export default function CartaQrPage() {
       <style>{`@page { size: ${size === "a5" ? "A5" : "A4"}; margin: 10mm; }`}</style>
 
       {/* Barra de controles (no se imprime) */}
-      <div className="no-print sticky top-0 z-10 bg-background border-b border-border">
+      <div className="no-print sticky top-14 sm:top-0 z-10 bg-background border-b border-border">
         <div className="max-w-2xl mx-auto px-4 py-3 flex items-center gap-2 flex-wrap">
           <Link href="/vendor/dashboard" className="text-sm text-muted-foreground hover:text-foreground">
             ← Volver al panel

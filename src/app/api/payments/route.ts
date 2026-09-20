@@ -62,7 +62,10 @@ export async function POST(request: Request) {
       })),
       payer: {
         name: customerName,
-        phone: { number: customerPhone },
+        // Sin phone: MP es estricto con el formato (area_code/number separados)
+        // y un formato raro puede hacer la preferencia rebotar al home de MP
+        // en vez de abrir el checkout. El teléfono del cliente igual queda en
+        // metadata.customer_phone (es donde lo lee el webhook para el pedido).
       },
       metadata: {
         vendor_id: vendorId,
@@ -101,13 +104,26 @@ export async function POST(request: Request) {
     const data = await res.json();
 
     if (data.id) {
+      // init_point (producción) vs sandbox_init_point: depende del TOKEN del
+      // comercio, no del cliente. Un token TEST- tiene que abrir el sandbox;
+      // si abrimos init_point con token de prueba, MP manda al home/login en
+      // vez de al checkout (el "te lleva a MP pero no al lugar para pagar").
+      const isTest = mpToken.startsWith("TEST-");
+      const initPoint = isTest && data.sandbox_init_point ? data.sandbox_init_point : data.init_point;
+      console.log(`[MP preference] ok id=${data.id} vendor=${vendorId} sandbox=${isTest}`);
       return NextResponse.json({
         preferenceId: data.id,
-        initPoint: data.init_point,
-        sandboxInitPoint: data.sandbox_init_point,
+        initPoint,
+        sandbox: isTest,
       });
     }
 
+    // Sin data.id: algo del contenido de la preferencia no le gusta a MP.
+    // Logueamos el mensaje en docker logs para diagnosticar de un vistazo
+    // (sin tokens ni datos sensibles).
+    console.warn(
+      `[MP preference] FAIL status=${res.status} vendor=${vendorId} message=${data.message || data.error || "sin detalle"}`
+    );
     return NextResponse.json({ error: data.message || "Error al crear preferencia" }, { status: 500 });
   } catch (err: any) {
     return NextResponse.json({ error: err.message || "Error de conexión con Mercado Pago" }, { status: 500 });

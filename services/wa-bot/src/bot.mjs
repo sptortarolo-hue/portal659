@@ -5,21 +5,31 @@ import { parseWithLlm, parseByRules } from "./nlu.mjs";
 
 const DEFAULT_STATE = {
   step: "idle",
-  items: [],          // { offerId, qty, modifiers, name }
+  items: [],
   method: null,
-  payment: null,      // "efectivo" | "transferencia" | "whatsapp" | null
+  payment: null,
   customerName: null,
   note: null,
-  handoffCount: 0,    // cuántas veces seguidas el parser no entendió
-  pausedUntil: 0,     // timestamp: bot en pausa (handoff humano)
-  // Para esperar el comprobante:
+  handoffCount: 0,
+  pausedUntil: 0,
   orderId: null,
-  total: null,
 };
 
-const AWAITING_RECEIPT_TTL = 15 * 60;     // 15 min para mandar el comprobante
-const HANDOFF_PAUSE_MIN = 30;             // 30 min: quien llama al humano calla
-const MAX_PARSE_MISSES = 2;               // 2 fallos seguidos del lenguaje → humano
+const AWAITING_RECEIPT_TTL = 15 * 60; // 15 min para mandar comprobante
+const HANDOFF_PAUSE_MIN = 30;
+const MAX_PARSE_MISSES = 2;
+
+// — Regexes de control de flujo
+const RE_CANCEL    = /^(cancelar|no gracias|basta|me olvidé|olvide)\s*$/i;
+const RE_CONFIRM   = /^(sí|si|dale|ok|okey|bueno|perfecto|confirmo|confirmar|listo)\s*[.!]?\s*$/i;
+const RE_NO        = /^(no|nop|noa)\s*[.!]?$/i;
+const RE_HUMAN     = /hablar con (una )?persona|hablar con alguien|manejáte|manejate|handoff|^humano\b|^dueño\b|^dueña\b|want to (speak|talk) to (a )?(human|person)|operator|reception/i;
+const RE_TRANSFER  = /transfer|cbu|alias|cvu/i;
+const RE_EFECTIVO  = /efectivo|cash|efvo/i;
+const RE_MENU      = /menu|menú|carta|precio|precios|qué (tenés|tenés|tienen)|qué venden|cosas venden/i;
+const RE_PICKUP    = /retiro|picker|paso por|voy yo|por el local/i;
+const RE_DELIVERY  = /envío|envio|delivery|domicilio|a domicilio|llega to mi casa/;
+const RE_GREETING  = /^(hola|buenas|buenos dias|buenas tardes|buenas noches|hi|hey|hello)\b/i;
 
 function normalizePhone(waId) {
   const s = String(waId || "");
@@ -41,288 +51,278 @@ function shopUrl(vendor) {
 }
 
 // ———————————————————————————————————————————————————————————————————————————
-// entrada principal
+// Entrada principal
 // ———————————————————————————————————————————————————————————————————————————
 
 export async function handleInbound({ vendor, waId, body }) {
-  const vendorId = vendor.id;
   const text = String(body || "").trim();
-  const phone = normalizePhone(waId);
+  const vendorId = vendor.id;
   const state = (await getState(vendorId, waId)) || { ...DEFAULT_STATE };
   const replies = [];
+  const phone = normalizePhone(waId);
 
   try {
-    if (!vendor.enabled) {
-      return { replies: [], handoff: true };
-    }
+    // Kill-switch
+    if (!vendor.enabled) return { replies: [], handoff: true };
 
-    // Bot en pausa porque ya derivamos a un humano hace poco: el dueño atiende.
-    if (state.pausedUntil && state.pausedUntil > Date.now()) {
-      console.log(
-        `[bot] ${waId} en pausa por handoff (${Math.round((state.pausedUntil - Date.now()) / 1000)}s restantes)`
-      );
-      return { replies: [] };
-    }
-    if (state.pausedUntil) {
-      state.pausedUntil = 0;
-      state.handoffCount = 0;
-    }
+    // Pausa derivación (handoff reciente → nada de IA, atiende el dueño)
+    if (state.pausedUntil && state.pausedUntil > Date.now()) return { replies: [] };
+    if (state.pausedUntil) { state.pausedUntil = 0; state.handoffCount = 0; }
 
-    if (/^(cancelar|no gracias|\/salir|basta|sali[rl]?)$/i.test(text)) {
+    // Cancelar
+    if (RE_CANCEL.test(text)) {
       await clearState(vendorId, waId);
-      return { replies: ["Listo, cancelé el pedido. Cualquier cosa me avisás. 😊"] };
+      return { replies: ["Dale — cancelé todo. Si querés otra cosa, acá estoy. 🙂"] };
     }
 
-    // Handoff explícito: el cliente pide hablar con una persona.
-    if (/humano|persona|hablar con/i.test(text)) {
-      console.log(`[bot] ${waId} pidió hablar con una persona`);
-      replies.push("Te derivo con el dueño — te responde enseguida por acá. 🙌");
-      await notifyHandoff(vendorId, waId, text);
-      state.pausedUntil = Date.now() + HANDOFF_PAUSE_MIN * 60 * 1000;
-      await setState(vendorId, waId, state);
-      return { replies };
+    // Handoff explícito (cualquier mensaje con estas palabras clave)
+    if (RE_HUMAN.test(text)) {
+      return await performHandoff(vendor, waId, text, state, replies);
     }
 
-    console.log(`[bot] ${waId} step=${state.step} body="${text.slice(0, 80)}" llm=${config.llmApiKey ? "on" : "off"}`);
-
-    if (state.step === "idle") {
-      await handleIdle({ vendor, text, state, replies, phone, waId });
-    } else {
-      await handleStep({ vendor, text, state, replies, waId });
+    // Paso específico (estamos en un flujo)
+    if (state.step !== "idle") {
+      await handleStepFlow({ vendor, text, state, replies, waId, phone });
+      return await persist(state, replies, vendorId, waId);
     }
 
-    console.log(`[bot] ${waId} → step=${state.step} replies=${replies.length}`);
+    // Idle: intento de pedido o saludo
+    await handleIdle({ vendor, text, state, replies, phone, waId });
+    return await persist(state, replies, vendorId, waId);
 
-    if (state._done) {
-      await clearState(vendorId, waId);
-      return { replies };
-    }
-    // Guardamos SIEMPRE el estado de la conversación con TTL corto: así el
-    // handoffCount persiste entre mensajes y los pasos no se pierden.
-    await setState(vendorId, waId, state, state.step === "awaiting_receipt" ? AWAITING_RECEIPT_TTL : undefined);
-    return { replies };
   } catch (e) {
-    console.error("[bot] error:", e.message);
-    console.error(e.stack?.split("\n").slice(0, 3).join(" | "));
-    // NO limpiamos el state: un error transitorio no debe resetear el flujo.
-    return { replies: ["Uy, hubo un error. Probá de nuevo en un segundo. 🙏"] };
+    console.error("[bot] error:", e?.stack || e);
+    return { replies: ["Hubo un error técnico, perdón. Escribime de nuevo en un segundo. 🙏"] };
   }
 }
 
 // ———————————————————————————————————————————————————————————————————————————
-// idle: primer contacto o mensaje fuera de flujo
+// idle: primer mensaje → greeting o pedido directo
 // ———————————————————————————————————————————————————————————————————————————
 
 async function handleIdle({ vendor, text, state, replies, phone, waId }) {
-  const products = await getMenu(vendor.id);
-  const parsed = await parseWithLlm(text, products).catch(() => null) || parseByRules(text, products);
-
-  const url = shopUrl(vendor);
-  const hasItems = Array.isArray(parsed?.items) && parsed.items.length > 0;
-
-  // Orden de detección (no mezclar):
-  // 1) Pedido explícito (LLM o reglas con ítems) → flujo de pedido.
-  // 2) Menú pedido ("menu", "carta", "precios") → link.
-  // 3) Saludo ("hola", "buenas") → responder el saludo, una vez por chat.
-  // 4) Nada matcheó → miss. A los 2 seguidos → handoff.
-  if (hasItems) {
-    await fillOrderFromParsed({ vendor, state, parsed, replies, phone, waId });
-    return;
-  }
-  if (parsed?.askMenu) {
-    replies.push(`📋 Mirá el menú con fotos acá: ${url}\n\nO escribime directo lo que querés (ej: *"2 empanadas de carne y una coca"*).`);
-    state.handoffCount = 0;
-    return;
-  }
-  if (parsed?.greeting) {
-    // Saludo corto: responder con el texto del bot, sin contar como miss.
-    // Si el cliente repite "hola" varias veces seguidas, igual le contestamos
-    // (no es ambiguo: es un saludo).
-    replies.push(greetingText(vendor, url));
-    state.handoffCount = 0;
+  if (RE_MENU.test(text)) {
+    // Solo menú
+    const url = shopUrl(vendor);
+    replies.push(`📋 Nuestro menú con fotos y precios:\n${url}\n\nEscribime tu pedido cuando quieras (ej: *2 empanadas de carne y una gaseosa*).`);
     return;
   }
 
-  // LLM/reglas no entendieron nada útil: contar miss y, tras 2 seguidos, handoff.
-  const misses = (state.handoffCount || 0) + 1;
-  state.handoffCount = misses;
-  console.log(`[bot] ${waId} no entendí "${text.slice(0, 50)}" — miss ${misses}/${MAX_PARSE_MISSES}`);
-  if (misses >= MAX_PARSE_MISSES) {
-    replies.push("Perdón que no te estoy siguiendo 😅 Te paso con el comercio, te contesta enseguida por acá.");
-    await notifyHandoff(vendor.id, waId, text);
-    state.pausedUntil = Date.now() + HANDOFF_PAUSE_MIN * 60 * 1000;
-    state.handoffCount = 0;
-    return;
-  }
-  replies.push(`No te entendí bien. ¿Qué querés pedir? escribilo simple, por ejemplo: *"2 empanadas de carne"* o mirá el menú: ${url}`);
-}
-
-function greetingText(vendor, url) {
-  const parts = [`Hola 👋 Soy el asistente de *${vendor.store_name}*.`];
-  if (url) {
-    parts.push(`📲 Pedí online con fotos y precios: ${url}`);
-  }
-  parts.push("¿Ya sabés qué querés? escribimelo de una (ej: *2 empanadas de carne y una coca*) y te lo confirmo por acá.");
-  return parts.join("\n\n");
-}
-
-async function fillOrderFromParsed({ vendor, state, parsed, replies, phone, waId }) {
-  const items = [];
-  const notFound = [];
-  const products = await getMenu(vendor.id);
-  for (const it of parsed.items || []) {
-    const p = matchProduct(products, it.name);
-    if (!p) { notFound.push(it.name); continue; }
-    items.push({ offerId: p.id, name: p.name, qty: Math.max(1, Number(it.qty) || 1), modifiers: it.modifiers || [] });
-  }
-
-  if (notFound.length) {
-    // No encontramos lo que pediste: listar el menú para que mire.
-    replies.push(`No encontré: ${notFound.join(", ")}.\n\n${menuSummary(vendor.store_name, products)}`);
+  // Saludo puro (sin pedido)
+  if (RE_GREETING.test(text) && !/[a-z]\s+\d|\d/.test(text)) {
+    replies.push(greetingText(vendor));
     return;
   }
 
-  state.items = items;
-  state.customerName = parsed.customerName || state.customerName || null;
-  state.note = parsed.note || state.note || null;
-  state.customerPhone = parsed.customerPhone || phone;
-  if (parsed.payment === "transferencia" || parsed.payment === "efectivo") {
-    state.payment = parsed.payment;
+  // Pedido: intentar con IA primero.
+  const parsed = await parseWithLlm(text, await getMenu(vendor.id)).catch(() => null);
+  const items = Array.isArray(parsed?.items) ? parsed.items : [];
+  const hasParsedItems = items.length > 0;
+
+  if (hasParsedItems) {
+    // Si la IA ya armó un pedido coherente, completo el estado y le muestro el resumen
+    applyParsed(items, parsed, state, phone);
+
+    // Si el método está, vamos directo a la confirmación
+    if (parsed.method) state.method = parsed.method;
+    if (parsed.customerAddress) state.customerAddress = parsed.customerAddress;
+    if (parsed.customerName) state.customerName = parsed.customerName;
+    if (parsed.payment) state.payment = parsed.payment;
+
+    if (state.method === "delivery" && !state.customerAddress) {
+      state.step = "address";
+      replies.push("¿A qué dirección te lo enviamos?");
+      return;
+    }
+
+    state.step = "confirm";
+    replies.push(summaryText(state, vendor));
+    return;
   }
 
-  if (parsed.method === "pickup" || parsed.method === "delivery") {
-    state.method = parsed.method;
-  } else {
-    state.step = "method";
-    replies.push("Perfecto. ¿Lo retirás por el local o te lo enviamos? (retiro / envío)");
+  // IA no entendió: tratamos por reglas (números + producto en el menú)
+  const ruleBased = parseByRules(text, state.menuSnapshot ?? []);
+  if (ruleBased?.items?.length) {
+    applyParsed(ruleBased.items, ruleBased, state, phone);
+    if (ruleBased.method) state.method = ruleBased.method;
+
+    state.step = state.method ? "confirm" : "method";
+    if (state.step === "confirm") {
+      replies.push(summaryText(state, vendor));
+    } else {
+      replies.push("¿Lo retirás por el local o te lo enviamos?");
+    }
     return;
   }
 
-  if (state.method === "delivery" && !parsed.customerAddress) {
-    state.step = "address";
-    replies.push("¿A qué dirección lo enviamos?");
-    return;
+  // Nada entendido: miss
+  state.handoffCount = (state.handoffCount || 0) + 1;
+  if (state.handoffCount >= MAX_PARSE_MISSES) {
+    return await performHandoff(vendor, waId, text, state, replies, "No entendí lo siguiente — puede pedirlo acá:");
   }
-  if (!state.customerName) {
-    state.step = "name";
-    replies.push("¿A nombre de quién lo hacemos?");
-    return;
-  }
-  nextAfterCustomer(state, vendor, replies);
+  replies.push(`No te entendí bien. Probá escribirlo distinto, por ejemplo: *2 empanadas y una gaseosa* ✏️`);
 }
 
 // ———————————————————————————————————————————————————————————————————————————
-// steps: method → address → name → payment → confirm → awaiting_receipt
+// Steps secuenciales (solo avanzan: cada mensaje los va completando)
 // ———————————————————————————————————————————————————————————————————————————
 
-async function handleStep({ vendor, text, state, replies, waId }) {
-  const t = text.trim();
+async function handleStepFlow({ vendor, text, state, replies, waId, phone }) {
+  const t = text;
 
   switch (state.step) {
     case "method": {
-      if (/retiro|pickup|paso|busco/i.test(t)) state.method = "pickup";
-      else if (/envio|envío|delivery|domicilio/i.test(t)) state.method = "delivery";
-      else { replies.push("Respondé: ¿*retiro* en el local o *envío* a domicilio?"); return; }
-      nextAfterCustomer(state, vendor, replies);
-      return;
+      if (RE_PICKUP.test(t)) state.method = "pickup";
+      else if (RE_DELIVERY.test(t)) state.method = "delivery";
+      else { replies.push("Contestame *retiro* o *envío*, así te lo preparo ya."); return; }
+      break;
     }
     case "address": {
+      if (t.length < 5) { replies.push("Pasame una dirección un poco más detallada, por favor."); return; }
       state.customerAddress = t;
-      nextAfterCustomer(state, vendor, replies);
-      return;
+      break;
     }
     case "name": {
       state.customerName = t;
-      nextAfterCustomer(state, vendor, replies);
-      return;
+      break;
     }
     case "payment": {
-      if (/efectivo|cash/i.test(t)) state.payment = "efectivo";
-      else if (/transfer/i.test(t)) state.payment = "transferencia";
-      else { replies.push("Respondé: 💵 efectivo o 🏦 transferencia"); return; }
-      nextAfterCustomer(state, vendor, replies);
-      return;
+      if (RE_TRANSFER.test(t)) state.payment = "transferencia";
+      else if (RE_EFECTIVO.test(t)) state.payment = "efectivo";
+      else { replies.push("Pagás *efectivo* o *transferencia*?"); return; }
+      break;
     }
     case "confirm": {
-      if (/^(sí|si|dale|ok|confirmo|confirmar|bueno|perfecto)$/i.test(t)) {
-        const order = await createOrder(vendor.id, state);
-        if (state.payment === "transferencia") {
-          state.step = "awaiting_receipt";
-          state.orderId = order.orderId || order.id;
-          state.total = order.total;
-          replies.push("✅ ¡Pedido recibido! Quedó como *pendiente de pago*.");
-          replies.push(transferDataText(vendor, order.total));
-          return;
-        }
-        state._done = true;
-        replies.push("✅ ¡Pedido recibido! Te lo confirmamos por acá. 💬");
+      if (RE_CONFIRM.test(t)) {
+        await createAndConfirm(state, vendor, replies, waId);
         return;
       }
-      if (/^(no|nop|no,)/i.test(t)) {
-        state._done = true;
-        replies.push("Dale, lo dejamos sin pedir. Si te arrepentís, escribime de nuevo 👍");
+      if (RE_NO.test(t)) {
+        await clearState(vendor.id, waId);
+        replies.push("Dale, lo dejamos sin pedir. Si querés otra cosa me escribís.");
         return;
       }
-      replies.push(confirmText(state));
       return;
     }
     case "awaiting_receipt": {
-      if (/listo|ya pag|te mand|ahí va|comprobante|recibo|pagado/i.test(t)) {
-        replies.push("👍 Genial. Mandame la foto o el PDF del comprobante por acá y le aviso al comercio.");
-        return;
-      }
-      replies.push("Sigo esperando tu comprobante. Si no lo tenés, contame *cancelar* y no quedas pendiente.");
+      replies.push("Estoy esperando el comprobante todavía — mandame la foto o PDF cuando quieras. Si cambiás de pago escribíme cancelar.");
       return;
     }
     default:
       state.step = "idle";
-      await handleIdle({ vendor, text, state, replies, phone: normalizePhone(waId), waId });
-  }
-}
-
-// ———————————————————————————————————————————————————————————————————————————
-// utilidades
-// ———————————————————————————————————————————————————————————————————————————
-
-function nextAfterCustomer(state, vendor, replies) {
-  if (state.method === "delivery" && !state.customerAddress) {
-    state.step = "address";
-    replies.push("¿A qué dirección lo enviamos?");
-    return;
-  }
-  if (!state.customerName) {
-    state.step = "name";
-    replies.push("¿A nombre de quién?");
-    return;
-  }
-  if (!state.payment) {
-    if (acceptsTransfer(vendor)) {
-      state.step = "payment";
-      replies.push("¿Cómo pagás? 💵 Efectivo o 🏦 Transferencia");
+      await handleIdle({ vendor, text, state, replies, phone, waId });
       return;
-    }
-    state.payment = "whatsapp";
   }
-  state.step = "confirm";
-  replies.push(confirmText(state));
+
+  // Avanzamos al siguiente paso según el estado al final de cada caso.
+  if (state.step === "method" && state.method) {
+    state.step = state.method === "delivery" ? "address" : (acceptsTransfer(vendor) ? "payment" : "confirm");
+    if (state.step === "address") replies.push("¿A qué dirección te lo llevamos?");
+    else if (state.step === "payment") replies.push("¿Efectivo o transferencia?");
+    else replies.push(summaryText(state, vendor));
+  }
+  else if (state.step === "address" && state.method === "delivery") {
+    state.step = acceptsTransfer(vendor) ? "payment" : "confirm";
+    if (state.step === "payment") replies.push("¿Efectivo o transferencia?");
+    else replies.push(summaryText(state, vendor));
+  }
+  else if (state.step === "payment" && state.payment) {
+    state.step = "confirm";
+    replies.push(summaryText(state, vendor));
+  }
+  else if (state.step === "confirm" && state.step === "confirm") {
+    // el "confirm" ya lo manejé arriba; acá solo llego si siguio sin iros
+    replies.push("Para confirmar decime *sí*; para cancelar *no*.");
+  }
 }
 
-function confirmText(state) {
-  const lines = state.items.map((i) => `• ${i.name || ""} x${i.qty}`);
-  const method = state.method === "delivery" ? `🚚 Envío a ${state.customerAddress}` : "🏬 Retiro";
+// ———————————————————————————————————————————————————————————————————————————
+// Parsing output → state.items + metadata
+// ———————————————————————————————————————————————————————————————————————————
+
+function applyParsed(items, parsed, state, phone) {
+  state.items = items.map((it) => ({
+    offerId: it.offerId ?? it.id,
+    name: it.name,
+    qty: Math.max(1, it.qty || 1),
+    modifiers: it.modifiers || [],
+  }));
+  if (parsed.customerName) state.customerName = parsed.customerName;
+  if (parsed.customerPhone) state.customerPhone = parsed.customerPhone;
+  else state.customerPhone = phone;
+  if (parsed.note) state.note = parsed.note;
+}
+
+function summaryText(state, vendor) {
+  const lines = state.items.map((i) => `• ${i.name} ×${i.qty}`);
+  const method = state.method === "delivery" ? `🛵 Envío a ${state.customerAddress}` : "🏬 Retiro en el local";
   const payment =
     state.payment === "transferencia" ? "🏦 Transferencia" :
-    state.payment === "efectivo" ? "💵 Efectivo" : "📱 A coordinar";
-  return `Te resumo:\n\n${lines.join("\n")}\n\n${method}\nPago: ${payment}\nNombre: ${state.customerName}\n\n¿Confirmás? (sí / no)`;
+    state.payment === "efectivo" ? "💵 Efectivo" : "💳 Coordinamos por WhatsApp";
+  return `Te armo el pedido:\n\n${lines.join("\n")}\n\n${method}\n${payment}\n${state.customerName ? `Nombre: ${state.customerName}\n` : ""}\n¿Te parece? Escribime *sí* para confirmar o *no* para corregir.`;
+}
+
+async function createAndConfirm(state, vendor, replies, waId) {
+  const order = await createOrder(vendor.id, state);
+  if (state.payment === "transferencia") {
+    state.step = "awaiting_receipt";
+    state.orderId = order.orderId || order.id;
+    replies.push("✅ Pedido guardado como pendiente de pago.");
+    replies.push(transferDataText(vendor, order.total ?? extractOrderTotal(order)));
+    return;
+  }
+  replies.push("✅ Pedido recibido. Enseguida te lo confirmamos por acá. 💬");
+  state.step = "idle";
+  await clearState(vendor.id, waId);
+}
+
+// ———————————————————————————————————————————————————————————————————————————
+// Handoffs
+// ———————————————————————————————————————————————————————————————————————————
+
+async function performHandoff(vendor, waId, text, state, replies, customPrefix) {
+  if (state.pausedUntil > Date.now()) return { replies: [] };
+
+  const prefixLine = customPrefix ?? "Te paso con el comercio — te contestan enseguida. 🙌";
+  replies.push(prefixLine);
+
+  state.pausedUntil = Date.now() + HANDOFF_PAUSE_MIN * 60 * 1000;
+  state.handoffCount = 0;
+  await setState(vendor.id, waId, state);
+  await notifyHandoff(vendor.id, waId, text);
+  return { replies };
+}
+
+async function notifyHandoff(vendorId, waId, text) {
+  try {
+    await fetch(`${config.appUrl}/api/wa/handoff`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.waBotSecret}` },
+      body: JSON.stringify({ vendorId, waId, lastMessage: text.slice(0, 200) }),
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch (e) {
+    console.error("[bot] notifyHandoff:", e.message);
+  }
+}
+
+// ———————————————————————————————————————————————————————————————————————————
+// Persistencia + crear pedido + ayudas post-order
+// ———————————————————————————————————————————————————————————————————————————
+
+async function persist(state, replies, vendorId, waId) {
+  if (state._done) {
+    await clearState(vendorId, waId);
+    return { replies };
+  }
+  await setState(vendorId, waId, state, state.step === "awaiting_receipt" ? AWAITING_RECEIPT_TTL : undefined);
+  return { replies };
 }
 
 async function createOrder(vendorId, state) {
   const res = await fetch(`${config.appUrl}/api/wa/order`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${config.waBotSecret}`,
-    },
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.waBotSecret}` },
     body: JSON.stringify({
       vendorId,
       customerName: state.customerName,
@@ -336,53 +336,37 @@ async function createOrder(vendorId, state) {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `order ${res.status}`);
-  console.log(`[bot] pedido creado (id ${data?.orderId ?? data?.id ?? "?"}) para vendor ${vendorId} · ${state.method} · ${state.items.length} ítems · pago=${state.payment}`);
   return data;
 }
 
+function extractOrderTotal(order) {
+  if (order?.total) return Number(order.total);
+  return null;
+}
+
 function transferDataText(vendor, total) {
-  const lines = ["💳 *Datos para transferir:*"];
+  const lines = ["Para confirmar el pago, pasame el comprobante acá (foto o PDF):"];
   if (vendor.transfer_alias) lines.push(`Alias: ${vendor.transfer_alias}`);
   if (vendor.transfer_cbu) lines.push(`CBU: ${vendor.transfer_cbu}`);
   if (vendor.transfer_holder) lines.push(`Titular: ${vendor.transfer_holder}`);
   if (total != null) lines.push(`Monto: $${Number(total).toLocaleString("es-AR")}`);
-  lines.push("\nCuando la hagas, mandame la foto o el PDF del comprobante por este chat y le aviso al comercio. ✅");
-  lines.push("Si no lo mandás en 15 minutos, no pasa nada — queda pendiente de pago y lo coordinás directo con el comercio.");
   return lines.join("\n");
 }
 
-async function notifyHandoff(vendorId, waId, text) {
-  try {
-    await fetch(`${config.appUrl}/api/wa/handoff`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${config.waBotSecret}`,
-      },
-      body: JSON.stringify({ vendorId, waId, lastMessage: text.slice(0, 200) }),
-      signal: AbortSignal.timeout(10_000),
-    });
-  } catch (e) {
-    console.error(`[bot] handoff notify falló: ${e.message}`);
-  }
-}
-
 // ———————————————————————————————————————————————————————————————————————————
-// media: comprobante de transferencia (foto/PDF)
+// Media: comprobante (foto/PDF) que llega mientras esperamos
 // ———————————————————————————————————————————————————————————————————————————
 
 export async function handleInboundMedia({ vendor, waId, mime, name, buffer }) {
   const state = await getState(vendor.id, waId);
-  if (!state || state.step !== "awaiting_receipt" || !state.orderId) {
-    return { handled: false };
-  }
+  if (!state || state.step !== "awaiting_receipt" || !state.orderId) return { handled: false };
 
   try {
     const fd = new FormData();
-    const blob = new Blob([buffer], { type: mime });
     fd.append("orderId", state.orderId);
     fd.append("vendorId", vendor.id);
-    fd.append("file", blob, name || (mime === "application/pdf" ? "comprobante.pdf" : "comprobante.jpg"));
+    fd.append("file", new Blob([buffer], { type: mime }),
+      name || `comprobante.${mime === "application/pdf" ? "pdf" : "jpg"}`);
 
     const res = await fetch(`${config.appUrl}/api/wa/receipt`, {
       method: "POST",
@@ -391,22 +375,25 @@ export async function handleInboundMedia({ vendor, waId, mime, name, buffer }) {
       signal: AbortSignal.timeout(30_000),
     });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok || !data.url) {
-      console.error(`[bot] receipt upload error ${res.status}: ${JSON.stringify(data).slice(0, 200)}`);
-      return { handled: true, replies: ["Hmm, no pude guardar la imagen. Probá mandarla de nuevo en un segundo 🙏"] };
+    if (!res.ok) {
+      console.error(`[bot] receipt ${res.status}: ${JSON.stringify(data).slice(0, 80)}`);
+      return { handled: true, replies: ["No pude guardarlo. Probá mandarlo de nuevo en un ratito. 🙏"] };
     }
-
-    console.log(`[bot] comprobante guardado en pedido ${state.orderId} → ${data.url}`);
     await clearState(vendor.id, waId);
-    return {
-      handled: true,
-      replies: [
-        "✅ ¡Perfecto! Recibí tu comprobante y ya se lo mostré al comercio.",
-        "Apenas ellos lo verifiquen te escriben por acá. Gracias 🙌",
-      ],
-    };
+    return { handled: true, replies: ["✅ Comprobante recibido. El comercio lo verifica y te avisa enseguida. 👍"] };
   } catch (e) {
-    console.error("[bot] receipt upload exception:", e?.message || e);
-    return { handled: true, replies: ["Hubo un problema técnico al guardar la imagen. Intentá mandarla de nuevo."] };
+    console.error("[bot] receipt upload:", e.message);
+    return { handled: true, replies: ["Hubo un problema técnico al guardar. Probá reenviar en un segundo."] };
   }
+}
+
+function greetingText(vendor) {
+  const url = shopUrl(vendor);
+  return `Hola 👋 Soy el asistente de *${vendor.store_name}*.
+
+📲 Pedí desde nuestro menú online:
+${url}
+
+¿Ya sabés qué pedir?
+Escribilo directamente y yo lo confirmo.`;
 }

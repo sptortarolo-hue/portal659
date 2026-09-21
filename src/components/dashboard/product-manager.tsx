@@ -11,6 +11,7 @@ import { QuantityInput } from "@/components/ui/quantity-input";
 import { Badge } from "@/components/ui/badge";
 import { OfferForm, OfferList } from "@/components/dashboard/shared";
 import { ProductModifiersBlock } from "@/components/dashboard/modifier-editor";
+import { SIZE_GUIDE_TEMPLATES, templateToText } from "@/lib/size-guides";
 import type { ProductVariant, ProductImage } from "@/types/database";
 
 
@@ -36,6 +37,8 @@ type OfferRow = {
 
 type Props = {
   isModa?: boolean;
+  /** Comercio del barrio: usa el mismo editor genérico (sin variantes). */
+  isComercio?: boolean;
   showStock?: boolean;
   showPrep?: boolean;
   /** Muestra el chip de food-cost por plato (requiere plan con recetas). */
@@ -56,6 +59,7 @@ type VariantRow = {
   price: string;
   promo: string;
   stock: number;
+  sku: string;
 };
 
 // Galería moda: 1 portada (image_url) + hasta 7 extras (product_images).
@@ -88,7 +92,9 @@ export function ProductManager({ isModa = false, showStock = true, showPrep = fa
   // Moda: variantes (color × talle) + galería.
   const [offHasVariants, setOffHasVariants] = useState(false);
   const [variantRows, setVariantRows] = useState<VariantRow[]>([]);
-  const [galleryUrls, setGalleryUrls] = useState<string[]>([]);
+  const [galleryUrls, setGalleryUrls] = useState<{ url: string; color: string | null }[]>([]);
+  // Guía de talles (texto, una línea por talle).
+  const [offSizeGuide, setOffSizeGuide] = useState("");
 
   const load = useCallback(async () => {
     const [o, c] = await Promise.all([
@@ -123,10 +129,10 @@ export function ProductManager({ isModa = false, showStock = true, showPrep = fa
   }, [variants]);
 
   const imagesByProduct = useCallback(() => {
-    const map: Record<string, string[]> = {};
+    const map: Record<string, { url: string; color: string | null }[]> = {};
     for (const pi of productImages || []) {
       if (!map[pi.product_id]) map[pi.product_id] = [];
-      map[pi.product_id].push(pi.image_url);
+      map[pi.product_id].push({ url: pi.image_url, color: pi.color ?? null });
     }
     return map;
   }, [productImages]);
@@ -149,6 +155,7 @@ export function ProductManager({ isModa = false, showStock = true, showPrep = fa
     setOffHasVariants(false);
     setVariantRows([]);
     setGalleryUrls([]);
+    setOffSizeGuide("");
   }
 
   function startEdit(offer: OfferRow) {
@@ -175,9 +182,11 @@ export function ProductManager({ isModa = false, showStock = true, showPrep = fa
         price: String(v.price),
         promo: v.promo != null ? String(v.promo) : "",
         stock: v.stock,
+        sku: v.sku ?? "",
       }))
     );
-    setGalleryUrls(imgs);
+    setGalleryUrls(imgs.map((img) => ({ url: img.url, color: img.color ?? null })));
+    setOffSizeGuide((offer as { size_guide?: string | null }).size_guide ?? "");
     setShowForm(true);
     setMsg("");
   }
@@ -186,7 +195,7 @@ export function ProductManager({ isModa = false, showStock = true, showPrep = fa
     setVariantRows((prev) => {
       const colors = prev.length ? Array.from(new Set(prev.map((r) => r.color))) : [""];
       const talles = prev.length ? Array.from(new Set(prev.map((r) => r.talle))) : [""];
-      return [...prev, { color: colors[0] || "", talle: talles[0] || "", price: prev[prev.length - 1]?.price || offPrice, promo: "", stock: 0 }];
+      return [...prev, { color: colors[0] || "", talle: talles[0] || "", price: prev[prev.length - 1]?.price || offPrice, promo: "", stock: 0, sku: "" }];
     });
   }
 
@@ -201,14 +210,14 @@ export function ProductManager({ isModa = false, showStock = true, showPrep = fa
       setMsg(`Máximo ${MAX_EXTRA_IMAGES} fotos extra (más la portada)`);
       return;
     }
-    const added: string[] = [];
+    const added: { url: string; color: string | null }[] = [];
     for (const f of Array.from(files).slice(0, room)) {
       const fd = new FormData();
       fd.append("file", f);
       fd.append("folder", "offers");
       const res = await fetch("/api/vendor/upload", { method: "POST", body: fd });
       const data = await res.json().catch(() => ({ url: null }));
-      if (data.url) added.push(data.url);
+      if (data.url) added.push({ url: data.url, color: null });
     }
     setGalleryUrls((prev) => [...prev, ...added].slice(0, MAX_EXTRA_IMAGES));
     if (files.length > room) setMsg(`Se agregaron ${room}; máximo ${MAX_EXTRA_IMAGES} fotos extra`);
@@ -226,12 +235,16 @@ export function ProductManager({ isModa = false, showStock = true, showPrep = fa
 
   function makeCoverFromGallery(i: number) {
     setGalleryUrls((prev) => {
-      const url = prev[i];
-      if (!url) return prev;
-      setOffPreview(url);
+      const item = prev[i];
+      if (!item) return prev;
+      setOffPreview(item.url);
       setOffFile(null);
       return prev.filter((_, idx) => idx !== i);
     });
+  }
+
+  function setGalleryItemColor(i: number, color: string | null) {
+    setGalleryUrls((prev) => prev.map((g, idx) => (idx === i ? { ...g, color } : g)));
   }
 
   async function handleSubmit() {
@@ -268,6 +281,7 @@ export function ProductManager({ isModa = false, showStock = true, showPrep = fa
           requires_prep: offRequiresPrep,
           cash_discount_excluded: offCashExcluded,
           has_variants: offHasVariants,
+          size_guide: offSizeGuide.trim() || null,
         }
       : {
           name: offName.trim(),
@@ -308,7 +322,7 @@ export function ProductManager({ isModa = false, showStock = true, showPrep = fa
         const vr = await fetch("/api/vendor/variants", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ product_id: productId, variants: variantRows.map((r) => ({ color: r.color, talle: r.talle, price: r.price, promo: r.promo || null, stock: r.stock, sku: null })) }),
+          body: JSON.stringify({ product_id: productId, variants: variantRows.map((r) => ({ color: r.color, talle: r.talle, price: r.price, promo: r.promo || null, stock: r.stock, sku: r.sku.trim() || null })) }),
         });
         const vdata = await vr.json().catch(() => ({}));
         if (!vr.ok || vdata.error) {
@@ -320,7 +334,7 @@ export function ProductManager({ isModa = false, showStock = true, showPrep = fa
       await fetch("/api/vendor/product-images", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ product_id: productId, images: galleryUrls.slice(0, MAX_EXTRA_IMAGES) }),
+        body: JSON.stringify({ product_id: productId, images: galleryUrls.slice(0, MAX_EXTRA_IMAGES).map((g) => ({ image_url: g.url, color: g.color || null })) }),
       });
     }
 
@@ -387,11 +401,11 @@ export function ProductManager({ isModa = false, showStock = true, showPrep = fa
               <Label className="text-sm">Variantes (color × talle)</Label>
               <Button type="button" size="sm" variant="outline" onClick={addVariantRow}>+ Fila</Button>
             </div>
-            <div className="hidden sm:grid sm:grid-cols-6 gap-2 text-xs font-medium text-muted-foreground px-1">
-              <span>Color</span><span>Talle</span><span>Precio</span><span>Promo</span><span>Stock</span><span></span>
+            <div className="hidden sm:grid sm:grid-cols-7 gap-2 text-xs font-medium text-muted-foreground px-1">
+              <span>Color</span><span>Talle</span><span>Precio</span><span>Promo</span><span>Stock</span><span>SKU</span><span></span>
             </div>
             {variantRows.map((row, i) => (
-              <div key={i} className="grid grid-cols-2 sm:grid-cols-6 gap-2 items-center">
+              <div key={i} className="grid grid-cols-2 sm:grid-cols-7 gap-2 items-center">
                 <Input className="h-8" value={row.color} onChange={(e) => updateVariantRow(i, "color", e.target.value)} placeholder="Rojo" />
                 <Input className="h-8" value={row.talle} onChange={(e) => updateVariantRow(i, "talle", e.target.value)} placeholder="M" />
                 <Input className="h-8" type="number" value={row.price} onChange={(e) => updateVariantRow(i, "price", e.target.value)} />
@@ -401,27 +415,66 @@ export function ProductManager({ isModa = false, showStock = true, showPrep = fa
                 <div className="min-w-0">
                   <QuantityInput value={row.stock} onChange={(v) => updateVariantRow(i, "stock", v)} min={0} />
                 </div>
+                <div className="min-w-0">
+                  <Input className="h-8" value={row.sku} onChange={(e) => updateVariantRow(i, "sku", e.target.value)} placeholder="Código" />
+                </div>
                 <Button type="button" variant="ghost" size="sm" className="text-red-600" onClick={() => setVariantRows((prev) => prev.filter((_, idx) => idx !== i))}>🗑️</Button>
               </div>
             ))}
           </div>
         )}
 
+        <div><Label>Guía de talles (opcional)</Label>
+          <Textarea value={offSizeGuide} onChange={(e) => setOffSizeGuide(e.target.value)} placeholder={"Una línea por talle:\nM: Pecho 96 cm · Largo 69 cm"} className="h-20" />
+          <div className="flex items-center gap-2 mt-1">
+            <span className="text-xs text-muted-foreground">Plantilla:</span>
+            <select
+              className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+              value=""
+              onChange={(e) => { if (e.target.value) setOffSizeGuide(templateToText(e.target.value)); }}
+              aria-label="Copiar plantilla de guía de talles"
+            >
+              <option value="">Copiar de…</option>
+              {SIZE_GUIDE_TEMPLATES.map((t) => (
+                <option key={t.id} value={t.id}>{t.label}</option>
+              ))}
+            </select>
+          </div>
+          <p className="text-xs text-muted-foreground mt-0.5">Se muestra en la ficha del producto con el selector de talles.</p>
+        </div>
+
         <div><Label>Fotos extra ({galleryUrls.length}/{MAX_EXTRA_IMAGES}) — frente, espalda/en modelo, detalle de tela, escala</Label>
           <Input type="file" accept="image/*" multiple disabled={galleryUrls.length >= MAX_EXTRA_IMAGES} onChange={(e) => handleGalleryUpload(e.target.files)} />
           {galleryUrls.length > 0 && (
             <div className="flex gap-2 mt-2 flex-wrap">
-              {galleryUrls.map((url, i) => (
+              {galleryUrls.map((g, i) => {
+                const colorOptions = Array.from(new Set(variantRows.map((r) => r.color).filter(Boolean)));
+                return (
                 <div key={i} className="relative h-16 w-16 rounded-lg overflow-hidden group border border-border">
-                  <img src={url} alt={`Foto extra ${i + 1}`} className="w-full h-full object-cover" />
+                  <img src={g.url} alt={`Foto extra ${i + 1}`} className="w-full h-full object-cover" />
                   <button type="button" onClick={() => setGalleryUrls((prev) => prev.filter((_, idx) => idx !== i))} title="Quitar" className="absolute top-0 right-0 bg-black/60 text-white text-xs h-4 w-4 rounded-full">✕</button>
                   <div className="absolute bottom-0 inset-x-0 flex justify-center gap-0.5 bg-black/50 py-0.5 sm:opacity-0 sm:group-hover:opacity-100 transition">
                     <button type="button" disabled={i === 0} onClick={() => moveGalleryUrl(i, -1)} title="Mover antes" className="text-white text-[10px] px-1 disabled:opacity-30">◀</button>
                     <button type="button" disabled={i === galleryUrls.length - 1} onClick={() => moveGalleryUrl(i, 1)} title="Mover después" className="text-white text-[10px] px-1 disabled:opacity-30">▶</button>
                     <button type="button" onClick={() => makeCoverFromGallery(i)} title="Hacer portada" className="text-amber-300 text-[10px] px-1">★</button>
                   </div>
+                  {colorOptions.length > 0 && (
+                    <select
+                      value={g.color ?? ""}
+                      onChange={(e) => setGalleryItemColor(i, e.target.value || null)}
+                      className="absolute top-0 left-0 h-4 w-full text-[8px] bg-black/60 text-white border-0 px-0.5"
+                      title="Color de la foto (la ficha la muestra al elegir ese color)"
+                      aria-label={`Color de la foto ${i + 1}`}
+                    >
+                      <option value="">General</option>
+                      {colorOptions.map((c) => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                  )}
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
           {galleryUrls.length >= MAX_EXTRA_IMAGES && (

@@ -88,6 +88,18 @@ export async function POST(request: Request) {
       ? Math.floor(Number(body.pack_size))
       : null;
 
+  // Guía de talles (moda): texto, una línea por talle. Tolerante a migración sin aplicar.
+  const hasSizeGuide = await queryOne<{ exists: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1 FROM information_schema.columns
+       WHERE table_name = 'products' AND column_name = 'size_guide'
+     ) AS exists`
+  );
+  const sizeGuide =
+    hasSizeGuide?.exists === true && body.size_guide && String(body.size_guide).trim()
+      ? String(body.size_guide).trim().slice(0, 2000)
+      : null;
+
   const plans = await queryMany<Plan>(`SELECT * FROM plans`);
   const plan = resolveVendorPlan(fullVendor as Vendor, plans || []);
   if (plan.maxProducts != null) {
@@ -108,8 +120,8 @@ export async function POST(request: Request) {
   }
 
   const offer = await queryOne<Record<string, unknown>>(
-    `INSERT INTO products (vendor_id, name, description, price, currency, category, neighborhood, type, available, featured_today, image_url, stock, stock_low_threshold, stock_control, requires_prep, has_variants, cash_discount_excluded${packSize != null ? ", pack_size" : ""})
-     VALUES ($1, $2, $3, $4, 'ARS', $5, $6, 'food', true, $7, $8, $9, $10, $11, $12, $13, $14${packSize != null ? ", $15" : ""}) RETURNING *`,
+    `INSERT INTO products (vendor_id, name, description, price, currency, category, neighborhood, type, available, featured_today, image_url, stock, stock_low_threshold, stock_control, requires_prep, has_variants, cash_discount_excluded${packSize != null ? ", pack_size" : ""}${sizeGuide != null ? ", size_guide" : ""})
+     VALUES ($1, $2, $3, $4, 'ARS', $5, $6, 'food', true, $7, $8, $9, $10, $11, $12, $13, $14${packSize != null ? ", $15" : ""}${sizeGuide != null ? ", $16" : ""}) RETURNING *`,
     [
       vendor.id,
       name,
@@ -126,6 +138,7 @@ export async function POST(request: Request) {
       has_variants,
       cash_discount_excluded,
       ...(packSize != null ? [packSize] : []),
+      ...(sizeGuide != null ? [sizeGuide] : []),
     ]
   );
 

@@ -53,20 +53,42 @@ export async function PUT(request: Request) {
   // 7 extras en product_images = 8 fotos total. Solo moda usa esta tabla
   // hoy (gastro va por image_url), así que el cap no afecta a nadie más.
   const MAX_EXTRA_IMAGES = 7;
-  const rows = (images as string[])
-    .filter((url) => url && url.trim())
+  // Cada foto puede llevar color de variante (fotos por color, fase A).
+  // Tolerante a migración sin aplicar: sin la columna, color queda null.
+  const hasColor = await queryOne<{ exists: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1 FROM information_schema.columns
+       WHERE table_name = 'product_images' AND column_name = 'color'
+     ) AS exists`
+  );
+  const rawItems = (images as (string | { image_url?: string; color?: string | null })[])
+    .filter((u) => (typeof u === "string" ? u && u.trim() : u?.image_url && u.image_url.trim()))
     .slice(0, MAX_EXTRA_IMAGES)
-    .map((url, i) => ({ product_id, image_url: url.trim(), position: i }));
+    .map((u, i) => {
+      const url = (typeof u === "string" ? u : u?.image_url || "").trim();
+      const color =
+        hasColor?.exists === true && typeof u !== "string" && u?.color && u.color.trim()
+          ? u.color.trim()
+          : null;
+      return { product_id, image_url: url, color, position: i };
+    });
 
   // Atomicidad: si un INSERT falla a mitad, las imágenes no quedan corruptas.
   await withTransaction(async (tx) => {
     await tx.queryVoid(`DELETE FROM product_images WHERE product_id = $1`, [product_id]);
-    for (const row of rows) {
-      await tx.queryVoid(
-        `INSERT INTO product_images (product_id, image_url, position) VALUES ($1, $2, $3)`,
-        [row.product_id, row.image_url, row.position]
-      );
+    for (const row of rawItems) {
+      if (hasColor?.exists === true) {
+        await tx.queryVoid(
+          `INSERT INTO product_images (product_id, image_url, color, position) VALUES ($1, $2, $3, $4)`,
+          [row.product_id, row.image_url, row.color, row.position]
+        );
+      } else {
+        await tx.queryVoid(
+          `INSERT INTO product_images (product_id, image_url, position) VALUES ($1, $2, $3)`,
+          [row.product_id, row.image_url, row.position]
+        );
+      }
     }
   });
-  return NextResponse.json({ ok: true, capped: (images as string[]).filter((u) => u && u.trim()).length > MAX_EXTRA_IMAGES });
+  return NextResponse.json({ ok: true, capped: (images as unknown[]).filter((u) => (typeof u === "string" ? u && u.trim() : u && typeof u === "object" && (u as any).image_url?.trim())).length > MAX_EXTRA_IMAGES });
 }

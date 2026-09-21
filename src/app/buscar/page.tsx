@@ -4,6 +4,7 @@ import { VERTICALS } from "@/lib/config";
 import { getZone } from "@/lib/zone";
 import { vendorSellsOnline } from "@/lib/plans";
 import { cashAppliesToItem, normalizeCashPct } from "@/lib/cash-discount";
+import { sortTalles } from "@/lib/size-guides";
 import { CashPrice } from "@/components/store/cash-price";
 import type { Plan } from "@/types/database";
 import { Card, CardContent } from "@/components/ui/card";
@@ -56,23 +57,21 @@ function OnlineBadge({ online }: { online: boolean }) {
 export default async function BuscarPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; vertical?: string; online?: string }>;
+  searchParams: Promise<{ q?: string; vertical?: string; online?: string; talle?: string; color?: string; min?: string; max?: string }>;
 }) {
   const zone = await getZone();
-  const { q, vertical, online } = await searchParams;
+  const { q, vertical, online, talle, color, min, max } = await searchParams;
   const query = (q || "").trim();
   const onlineOnly = online === "1";
+  const talleSel = talle || null;
+  const colorSel = color || null;
+  const minVal = min != null && min !== "" && !isNaN(Number(min)) ? Number(min) : null;
+  const maxVal = max != null && max !== "" && !isNaN(Number(max)) ? Number(max) : null;
 
   const plans = await queryMany<Plan>(`SELECT * FROM plans ORDER BY sort ASC`);
   const isOnline = (v: VendorRow) => vendorSellsOnline(v, plans || []);
-  const hrefOnline = (on: boolean) => {
-    const sp = new URLSearchParams();
-    if (query) sp.set("q", query);
-    if (vertical) sp.set("vertical", vertical);
-    if (on) sp.set("online", "1");
-    const s = sp.toString();
-    return `/buscar${s ? `?${s}` : ""}`;
-  };
+  // Cambiar de vertical (o a Todos) descarta los facets de moda (talle/color/
+  // precio no aplican a otros verticales). Cambiar "online" los conserva.
   const hrefVertical = (slug: string | null) => {
     const sp = new URLSearchParams();
     if (query) sp.set("q", query);
@@ -81,6 +80,40 @@ export default async function BuscarPage({
     const s = sp.toString();
     return `/buscar${s ? `?${s}` : ""}`;
   };
+  const hrefOnline = (on: boolean) => {
+    const sp = new URLSearchParams();
+    if (query) sp.set("q", query);
+    if (vertical) sp.set("vertical", vertical);
+    if (on) sp.set("online", "1");
+    if (talleSel) sp.set("talle", talleSel);
+    if (colorSel) sp.set("color", colorSel);
+    if (minVal != null) sp.set("min", String(minVal));
+    if (maxVal != null) sp.set("max", String(maxVal));
+    const s = sp.toString();
+    return `/buscar${s ? `?${s}` : ""}`;
+  };
+  const hrefWith = (patch: Record<string, string | null>) => {
+    const sp = new URLSearchParams();
+    if (query) sp.set("q", query);
+    if (vertical) sp.set("vertical", vertical);
+    if (onlineOnly) sp.set("online", "1");
+    if (talleSel) sp.set("talle", talleSel);
+    if (colorSel) sp.set("color", colorSel);
+    if (minVal != null) sp.set("min", String(minVal));
+    if (maxVal != null) sp.set("max", String(maxVal));
+    for (const [k, v] of Object.entries(patch)) {
+      if (v == null) sp.delete(k);
+      else sp.set(k, v);
+    }
+    const s = sp.toString();
+    return `/buscar${s ? `?${s}` : ""}`;
+  };
+  const pillCls = (active: boolean) =>
+    `rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+      active
+        ? "bg-primary text-primary-foreground border-primary"
+        : "border-border text-muted-foreground hover:border-primary hover:text-primary"
+    }`;
 
   const allVendors = (await queryMany<Record<string, unknown>>(
     `SELECT * FROM vendors
@@ -203,6 +236,68 @@ export default async function BuscarPage({
     products = products.filter((p) => p.vendors?.vertical === vertical);
   }
 
+  // Facets moda (fase A): talles/colores/precios desde variantes con stock.
+  // Tolerante a migración/tabla sin variantes: facets vacíos y sin filtros.
+  const isModaSearch = vertical === "moda";
+  const variantsByProduct: Record<string, { color: string; talle: string; price: number }[]> = {};
+  let facetTalles: string[] = [];
+  let facetColors: string[] = [];
+  if (isModaSearch && products.length > 0) {
+    try {
+      const varRows = await queryMany<{ product_id: string; color: string; talle: string; price: number; promo: number | null; stock: number }>(
+        `SELECT product_id, color, talle, price, promo, stock FROM product_variants WHERE product_id = ANY($1) AND stock > 0`,
+        [products.map((p) => p.id)]
+      );
+      for (const v of varRows || []) {
+        (variantsByProduct[v.product_id] ||= []).push({
+          color: v.color,
+          talle: v.talle,
+          price: v.promo != null ? Number(v.promo) : Number(v.price),
+        });
+      }
+      facetTalles = sortTalles(Array.from(new Set(varRows.map((v) => v.talle).filter(Boolean))));
+      facetColors = Array.from(new Set(varRows.map((v) => v.color).filter(Boolean))).sort().slice(0, 12);
+    } catch {
+      // sin variantes o tabla sin migrar: sin facets
+    }
+  }
+
+  // Filtros moda: talle/color (al menos una variante en stock que los matchee)
+  // y rango de precio (alguna opción comprable dentro del rango).
+  const productMatchesTalleColor = (p: ProductRow) => {
+    if (!talleSel && !colorSel) return true;
+    const vs = variantsByProduct[p.id] || [];
+    if (vs.length === 0) return false;
+    return vs.some((v) => (!talleSel || v.talle === talleSel) && (!colorSel || v.color === colorSel));
+  };
+  const productMatchesPrice = (p: ProductRow) => {
+    if (minVal == null && maxVal == null) return true;
+    const vs = variantsByProduct[p.id] || [];
+    const opts = vs.length > 0
+      ? vs.map((v) => v.price)
+      : [Number(p.promo_price ?? p.price)];
+    return opts.some((pr) => (minVal == null || pr >= minVal) && (maxVal == null || pr <= maxVal));
+  };
+  if (isModaSearch) {
+    products = products.filter((p) => productMatchesTalleColor(p) && productMatchesPrice(p));
+  }
+
+  // Precio para la card de producto en búsqueda: con variantes muestra
+  // "Desde $X" (mínimo efectivo); sin variantes mantiene el comportamiento actual.
+  const priceInfo = (p: ProductRow): { label: string; hasPromo: boolean } => {
+    const vs = variantsByProduct[p.id] || [];
+    if (vs.length > 0) {
+      const vmin = Math.min(...vs.map((v) => v.price));
+      const vmax = Math.max(...vs.map((v) => v.price));
+      return {
+        label: vmin === vmax ? `$${vmin.toLocaleString("es-AR")}` : `Desde $${vmin.toLocaleString("es-AR")}`,
+        hasPromo: false,
+      };
+    }
+    const hasPromo = p.promo_price != null;
+    return { label: `$${Number(hasPromo ? p.promo_price : p.price).toLocaleString("es-AR")}`, hasPromo };
+  };
+
   const onlineById = new Map(vendors.map((v) => [v.id, isOnline(v)]));
   // % de descuento en efectivo por vendor (0 si no ofrece Efectivo).
   const cashByVendor = new Map(
@@ -271,6 +366,71 @@ export default async function BuscarPage({
           🛒 Venden online
         </Link>
       </div>
+
+      {/* Filtros moda (fase A): talle / color / precio desde variantes con stock */}
+      {isModaSearch && (facetTalles.length > 0 || facetColors.length > 0) && (
+        <div className="space-y-2 mb-8">
+          {facetTalles.length > 0 && (
+            <div className="flex flex-wrap gap-2 items-center">
+              <span className="text-xs font-medium text-muted-foreground w-12">Talle</span>
+              <Link href={hrefWith({ talle: null })} className={pillCls(!talleSel)}>Todos</Link>
+              {facetTalles.map((t) => (
+                <Link key={t} href={hrefWith({ talle: talleSel === t ? null : t })} className={pillCls(talleSel === t)}>
+                  {t}
+                </Link>
+              ))}
+            </div>
+          )}
+          {facetColors.length > 0 && (
+            <div className="flex flex-wrap gap-2 items-center">
+              <span className="text-xs font-medium text-muted-foreground w-12">Color</span>
+              <Link href={hrefWith({ color: null })} className={pillCls(!colorSel)}>Todos</Link>
+              {facetColors.map((c) => (
+                <Link key={c} href={hrefWith({ color: colorSel === c ? null : c })} className={pillCls(colorSel === c)}>
+                  {c}
+                </Link>
+              ))}
+            </div>
+          )}
+          <form action="/buscar" method="get" className="flex flex-wrap gap-2 items-center">
+            <input type="hidden" name="q" value={query} />
+            {vertical && <input type="hidden" name="vertical" value={vertical} />}
+            {onlineOnly && <input type="hidden" name="online" value="1" />}
+            {talleSel && <input type="hidden" name="talle" value={talleSel} />}
+            {colorSel && <input type="hidden" name="color" value={colorSel} />}
+            <span className="text-xs font-medium text-muted-foreground w-12">Precio</span>
+            <input
+              type="number"
+              name="min"
+              min={0}
+              step="any"
+              placeholder="mín"
+              defaultValue={min ?? ""}
+              className="h-8 w-24 rounded-md border border-input bg-background px-2 text-xs"
+              aria-label="Precio mínimo"
+            />
+            <span className="text-xs text-muted-foreground">–</span>
+            <input
+              type="number"
+              name="max"
+              min={0}
+              step="any"
+              placeholder="máx"
+              defaultValue={max ?? ""}
+              className="h-8 w-24 rounded-md border border-input bg-background px-2 text-xs"
+              aria-label="Precio máximo"
+            />
+            <button type="submit" className="h-8 rounded-full border border-border bg-card px-3 text-xs font-medium hover:border-primary">
+              Filtrar
+            </button>
+            {(minVal != null || maxVal != null) && (
+              <Link href={hrefWith({ min: null, max: null })} className="text-xs text-muted-foreground hover:text-primary">
+                Limpiar
+              </Link>
+            )}
+          </form>
+        </div>
+      )}
 
       {totalResults === 0 ? (
         <div className="text-center py-16">
@@ -345,22 +505,24 @@ export default async function BuscarPage({
                         </div>
                         <span className="font-bold text-sm flex-shrink-0">
                           {(() => {
+                            const info = priceInfo(p);
                             const pct = cashByVendor.get(p.vendor_id) ?? 0;
-                            const hasPromo = p.promo_price != null;
                             const show =
-                              normalizeCashPct(pct) > 0 &&
-                              cashAppliesToItem({ hasPromo, excluded: p.cash_discount_excluded });
+                              !info.hasPromo
+                                ? false
+                                : normalizeCashPct(pct) > 0 &&
+                                  cashAppliesToItem({ hasPromo: info.hasPromo, excluded: p.cash_discount_excluded });
                             return show ? (
                               <CashPrice
-                                price={Number(hasPromo ? p.promo_price : p.price)}
-                                hasPromo={hasPromo}
+                                price={Number(p.promo_price ?? p.price)}
+                                hasPromo={info.hasPromo}
                                 excluded={p.cash_discount_excluded}
                                 cashPct={pct}
                                 size="sm"
                                 plainClassName="font-bold text-sm flex-shrink-0"
                               />
                             ) : (
-                              <>${Number(p.price).toLocaleString("es-AR")}</>
+                              <>{info.label}</>
                             );
                           })()}
                         </span>

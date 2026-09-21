@@ -43,6 +43,7 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
   const [activeImg, setActiveImg] = useState(0);
   const sheetRef = useRef<HTMLDivElement | null>(null);
   const touchX = useRef<number | null>(null);
+  const cardTouchX = useRef<number | null>(null);
 
   const hasVariants = variants.length > 0;
   const imgs = images.length > 0 ? images : product.image_url ? [{ image_url: product.image_url }] : [];
@@ -123,10 +124,20 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
         <button
           type="button"
           onClick={() => setOpen(true)}
+          onTouchStart={(e) => { cardTouchX.current = e.touches[0]?.clientX ?? null; }}
+          onTouchEnd={(e) => {
+            // Carrusel en la card (fase A): swipe horizontal rota las fotos sin
+            // abrir la ficha. Si es un tap (dx chico) no rota y abre normalmente.
+            if (cardTouchX.current == null || imgs.length < 2) return;
+            const dx = (e.changedTouches[0]?.clientX ?? 0) - cardTouchX.current;
+            cardTouchX.current = null;
+            if (Math.abs(dx) < 40) return;
+            setActiveImg((i) => (dx < 0 ? Math.min(i + 1, imgs.length - 1) : Math.max(i - 1, 0)));
+          }}
           className="relative w-full aspect-square overflow-hidden bg-accent/60 block"
         >
           {cover ? (
-            <ProductImage src={cover} name={product.name} category={product.category} vertical={vendor.vertical} alt={`${product.name} — foto 1 de ${imgs.length}`} className="w-full h-full object-cover" />
+            <ProductImage src={cover} name={product.name} category={product.category} vertical={vendor.vertical} alt={`${product.name} — foto ${activeImg + 1} de ${imgs.length}`} className="w-full h-full object-cover" />
           ) : (
             <ProductImage src={null} name={product.name} category={product.category} vertical={vendor.vertical} alt={product.name} className="w-full h-full" iconClassName="h-16 w-16" />
           )}
@@ -138,6 +149,19 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
           )}
           {product.featured_today && (
             <span className="absolute top-2 right-2 rounded-full bg-sun text-ink text-xs font-bold px-2 py-0.5">Hoy</span>
+          )}
+
+          {imgs.length > 1 && (
+            <>
+              <span className="absolute bottom-2 right-2 rounded-full bg-black/60 text-white text-[11px] font-semibold px-2 py-0.5 tabular-nums">
+                {activeImg + 1} / {imgs.length}
+              </span>
+              <span className="absolute bottom-2 left-0 right-0 flex justify-center gap-1">
+                {imgs.map((_, i) => (
+                  <span key={i} className={`h-1.5 rounded-full transition-all ${i === activeImg ? "w-4 bg-white" : "w-1.5 bg-white/60"}`} />
+                ))}
+              </span>
+            </>
           )}
 
           <div className="absolute inset-x-0 bottom-0 px-3 py-2 flex items-center justify-between gap-2 bg-gradient-to-t from-black/50 to-transparent">
@@ -262,7 +286,23 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
                     Consultar por WhatsApp
                   </a>
                 ) : hasVariants ? (
-                  <VariantSelector productId={product.id} name={product.name} variants={variants} vendor={vendor} stockControl={product.stock_control !== false} cashExcluded={!!product.cash_discount_excluded} image={cover} />
+                  <VariantSelector
+                    productId={product.id}
+                    name={product.name}
+                    variants={variants}
+                    vendor={vendor}
+                    stockControl={product.stock_control !== false}
+                    cashExcluded={!!product.cash_discount_excluded}
+                    image={cover}
+                    sizeGuide={product.size_guide ?? null}
+                    allowQty
+                    onColorChange={(c) => {
+                      // Fotos por color: al elegir color, la foto principal pasa
+                      // a la primera foto de la galería asociada a ese color.
+                      const idx = imgs.findIndex((img) => img.color === c);
+                      if (idx !== -1) setActiveImg(idx);
+                    }}
+                  />
                 ) : (
                   <AddToCartButton
                     offerId={product.id}

@@ -18,7 +18,7 @@ export async function PATCH(
     "available", "featured_today", "stock", "promo_price",
     "stock_low_threshold", "currency", "neighborhood", "type", "unit",
     "has_variants", "stock_control", "requires_prep", "cash_discount_excluded",
-    "pack_size",
+    "pack_size", "size_guide",
   ] as const;
 
   const safeUpdate: Record<string, unknown> = {};
@@ -40,6 +40,23 @@ export async function PATCH(
           : null;
     } else {
       delete safeUpdate.pack_size;
+    }
+  }
+  // Guía de talles (moda): tolerante a migración sin aplicar.
+  if ("size_guide" in safeUpdate) {
+    const hasSizeGuide = await queryOne<{ exists: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1 FROM information_schema.columns
+         WHERE table_name = 'products' AND column_name = 'size_guide'
+       ) AS exists`
+    );
+    if (hasSizeGuide?.exists === true) {
+      safeUpdate.size_guide =
+        safeUpdate.size_guide && String(safeUpdate.size_guide).trim()
+          ? String(safeUpdate.size_guide).trim().slice(0, 2000)
+          : null;
+    } else {
+      delete safeUpdate.size_guide;
     }
   }
   if ("cash_discount_excluded" in safeUpdate) {

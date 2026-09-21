@@ -17,7 +17,6 @@ import {
   X,
   Wrench,
   Shirt,
-  ShoppingBag,
   Utensils,
   FileText,
   BarChart,
@@ -41,7 +40,7 @@ import { UserMenu } from "@/components/nav/user-menu";
 import { DashboardHome } from "@/components/dashboard/dashboard-home";
 import { OrdersKanban } from "@/components/dashboard/orders-kanban";
 import { useKeyboardShortcuts } from "@/lib/use-keyboard-shortcuts";
-import { buildClientWhatsAppUrl, ORDER_STATUS_COLORS, RETAIL_STATUS_LABELS, flowSteps, orderCondition, orderReadyLabel, orderNeedsKitchen, isSameBusinessDay, CONDITION_META } from "@/lib/order-utils";
+import { buildClientWhatsAppUrl, ORDER_STATUS_COLORS, MODA_STATUS_LABELS, flowSteps, orderCondition, orderReadyLabel, orderNeedsKitchen, isSameBusinessDay, CONDITION_META } from "@/lib/order-utils";
 import OrderDetailModal from "@/components/dashboard/order-detail-modal";
 import DashboardGastro from "@/components/dashboard/dashboard-gastro";
 import DashboardComercio from "@/components/dashboard/dashboard-comercio";
@@ -449,8 +448,8 @@ function VendorDashboardInner() {
     try {
       const payload: Record<string, unknown> = { status };
       // Gastronomía estima minutos de cocina desde la demora configurada (sin hardcodeo);
-      // retail (moda/comercio) no maneja tiempos en minutos.
-      if (status === "preparing" && !isRetail) {
+      // moda no maneja tiempos en minutos.
+      if (status === "preparing" && !isModa) {
         payload.estimated_minutes = (vendor?.prep_time_min ?? 30) || 30;
       }
       const res = await fetch(`/api/vendor/orders/${order.id}`, {
@@ -568,7 +567,7 @@ function VendorDashboardInner() {
     setCropTarget(target);
     if (target === "cover") { setCropAspect(3 / 1); setCropTitle("Ajustá la foto del comercio"); }
     else if (target === "logo") { setCropAspect(1); setCropTitle("Ajustá el logo"); }
-    else { setCropAspect(16 / 9); setCropTitle(vendor?.vertical === "moda" || vendor?.vertical === "comercio" ? "Ajustá la foto del producto" : "Ajustá la foto del plato"); }
+    else { setCropAspect(16 / 9); setCropTitle(vendor?.vertical === "moda" ? "Ajustá la foto del producto" : "Ajustá la foto del plato"); }
     setCropOpen(true);
   }, [vendor?.vertical]);
 
@@ -633,12 +632,10 @@ function VendorDashboardInner() {
   const isGastro = vendor?.vertical === "gastronomia";
   const isComercio = vendor?.vertical === "comercio";
   const isModa = vendor?.vertical === "moda";
-  // Retail (moda y comercio): flow de pedido con aceptación explícita y sin cocina.
-  const isRetail = isModa || isComercio;
 
-  // Retail: labels y pasos del flow con aceptación explícita ("Empaquetando", etc.).
-  const statusLabels: Record<Order["status"], string> = isRetail ? RETAIL_STATUS_LABELS : STATUS_LABELS;
-  const stepOrder = flowSteps(isRetail);
+  // Moda: labels y pasos del flow con aceptación explícita ("Empaquetando", etc.).
+  const statusLabels: Record<Order["status"], string> = isModa ? MODA_STATUS_LABELS : STATUS_LABELS;
+  const stepOrder = flowSteps(isModa);
 
   const effectivePlan = resolveVendorPlan(vendor, plans);
   const overLimit =
@@ -825,7 +822,7 @@ function VendorDashboardInner() {
       <div className="hidden lg:block">
         <OrdersKanban
           orders={filteredOrders}
-          isRetail={isRetail}
+          isModa={isModa}
           selectedOrder={selectedOrder}
           onSelectOrder={setSelectedOrder}
           onRefresh={loadOrdersOnly}
@@ -987,7 +984,7 @@ function VendorDashboardInner() {
   const menuCount = offers.length;
 
   const tabTitle =
-    tab === "menu" ? (isRetail ? "Catálogo" : "Menú")
+    tab === "menu" ? (isModa ? "Catálogo" : "Menú")
     : tab === "hoy" ? "Hoy"
     : tab === "orders" ? "Pedidos"
     : tab === "comanda" ? "Comanda"
@@ -1021,7 +1018,6 @@ function VendorDashboardInner() {
         storeSlug={vendor.slug}
         isGastro={isGastro}
         isModa={isModa}
-        isComercio={isComercio}
         planName={effectivePlan.plan?.name ?? null}
         planSlug={effectivePlan.plan?.slug ?? null}
       />
@@ -1072,16 +1068,16 @@ function VendorDashboardInner() {
               <div className="hidden sm:flex items-center gap-3">
                 <OpenToggle vendor={vendor} onSaved={(v) => setVendor(v)} />
                 {isGastro && (
-                  <PrepTimeControl vendor={vendor} onSaved={(v) => setVendor(v)} />
-                )}
-                {(isGastro || (isComercio && effectivePlan.can("printer"))) && (
-                  <PrinterStatus vendor={vendor} onOpenConfig={() => {
-                    setTab("config");
-                    window.dispatchEvent(new Event("portal:open-printer-config"));
-                    window.setTimeout(() => {
-                      document.getElementById("printer-config")?.scrollIntoView({ behavior: "smooth", block: "start" });
-                    }, 120);
-                  }} />
+                  <>
+                    <PrepTimeControl vendor={vendor} onSaved={(v) => setVendor(v)} />
+                    <PrinterStatus vendor={vendor} onOpenConfig={() => {
+                      setTab("config");
+                      window.dispatchEvent(new Event("portal:open-printer-config"));
+                      window.setTimeout(() => {
+                        document.getElementById("printer-config")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                      }, 120);
+                    }} />
+                  </>
                 )}
               </div>
               {vendor.slug && (
@@ -1105,16 +1101,16 @@ function VendorDashboardInner() {
             <div className="flex sm:hidden items-center gap-2 overflow-x-auto pt-2">
               <OpenToggle vendor={vendor} onSaved={(v) => setVendor(v)} />
               {isGastro && (
-                <PrepTimeControl vendor={vendor} onSaved={(v) => setVendor(v)} />
-              )}
-              {(isGastro || (isComercio && effectivePlan.can("printer"))) && (
-                <PrinterStatus vendor={vendor} onOpenConfig={() => {
-                  setTab("config");
-                  window.dispatchEvent(new Event("portal:open-printer-config"));
-                  window.setTimeout(() => {
-                    document.getElementById("printer-config")?.scrollIntoView({ behavior: "smooth", block: "start" });
-                  }, 120);
-                }} />
+                <>
+                  <PrepTimeControl vendor={vendor} onSaved={(v) => setVendor(v)} />
+                  <PrinterStatus vendor={vendor} onOpenConfig={() => {
+                    setTab("config");
+                    window.dispatchEvent(new Event("portal:open-printer-config"));
+                    window.setTimeout(() => {
+                      document.getElementById("printer-config")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                    }, 120);
+                  }} />
+                </>
               )}
             </div>
           </div>
@@ -1151,7 +1147,7 @@ function VendorDashboardInner() {
             <div className="grid grid-cols-5 gap-1.5 mb-4">
               {[
                 { status: "new", label: "Nuevos", value: orders.filter((o) => o.status === "new").length, bg: "bg-status-new/10 dark:bg-status-new/20", text: "text-status-new" },
-                { status: "preparing", label: isRetail ? "Empaquetando" : "Preparando", value: orders.filter((o) => o.status === "preparing").length, bg: "bg-status-preparing/10 dark:bg-status-preparing/20", text: "text-status-preparing" },
+                { status: "preparing", label: isModa ? "Empaquetando" : "Preparando", value: orders.filter((o) => o.status === "preparing").length, bg: "bg-status-preparing/10 dark:bg-status-preparing/20", text: "text-status-preparing" },
                 { status: "ready", label: "Listos", value: orders.filter((o) => o.status === "ready").length, bg: "bg-status-ready/10 dark:bg-status-ready/20", text: "text-status-ready" },
                 { status: "sent", label: "Enviados", value: orders.filter((o) => o.status === "sent").length, bg: "bg-status-sent/10 dark:bg-status-sent/20", text: "text-status-sent" },
                 { status: "completed", label: "Entregados", value: completedToday.length, bg: "bg-muted", text: "text-muted-foreground" },
@@ -1194,9 +1190,8 @@ function VendorDashboardInner() {
                 ) : (
                   <MemoProductManager
                     isModa={isModa}
-                    isComercio={isComercio}
                     showStock
-                    showPrep={!isModa && !isComercio}
+                    showPrep={!isModa}
                     showCosts={isGastro}
                     variants={variants}
                     productImages={productImages}
@@ -1260,7 +1255,7 @@ function VendorDashboardInner() {
               )}
               {mountedTabs.has("clientes") && (
                 <div className={tab === "clientes" ? "" : "hidden"}>
-                  {effectivePlan.can("crm") ? (
+                  {isGastro && effectivePlan.can("crm") ? (
                     <MemoCustomersManager />
                   ) : (
                     <PlanLock
@@ -1301,7 +1296,7 @@ function VendorDashboardInner() {
               )}
               {mountedTabs.has("history") && (
                 <div className={tab === "history" ? "" : "hidden"}>
-                  <MemoVendorOrderHistory isRetail={isRetail} onOpenOrder={setSelectedOrder} />
+                  <MemoVendorOrderHistory isModa={isModa} onOpenOrder={setSelectedOrder} />
                 </div>
               )}
               {mountedTabs.has("hoy") && (
@@ -1310,7 +1305,6 @@ function VendorDashboardInner() {
                     vendor={vendor as unknown as VendorDB}
                     isGastro={isGastro}
                     isModa={isModa}
-                    isComercio={isComercio}
                     isService={isService}
                     orders={orders}
                     bookings={bookings}
@@ -1338,7 +1332,7 @@ function VendorDashboardInner() {
               <Package className="h-5 w-5" />Pedidos
               {activeOrderCount > 0 && <span className="absolute top-1 right-1/3 -translate-x-4 bg-red-500 text-white text-[9px] rounded-full h-4 w-4 flex items-center justify-center">{activeOrderCount}</span>}
             </button>
-            {isGastro && (
+            {!isModa && (
               <button onClick={() => setTab("comanda")} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors relative ${tab === "comanda" ? "text-primary" : "text-muted-foreground"}`}>
                 <ChefHat className="h-5 w-5" />Comanda
                 {kitchenCount > 0 && <span className="absolute top-1 right-1/3 -translate-x-4 bg-red-500 text-white text-[9px] rounded-full h-4 w-4 flex items-center justify-center">{kitchenCount}</span>}
@@ -1347,7 +1341,7 @@ function VendorDashboardInner() {
             <button onClick={() => setTab("pos")} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors relative ${tab === "pos" ? "text-primary" : "text-muted-foreground"}`}>
               <Monitor className="h-5 w-5" />Mostrador
             </button>
-            {isGastro && (
+            {!isModa && (
               <button onClick={() => setTab("mesas")} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors ${tab === "mesas" ? "text-primary" : "text-muted-foreground"}`}>
                 <Table className="h-5 w-5" />Mesas
               </button>
@@ -1367,20 +1361,20 @@ function VendorDashboardInner() {
             <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wide mb-2">Administración</p>
             <div className="grid grid-cols-2 gap-2">
               <button onClick={() => { setTab("menu"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "menu" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
-                {isService ? <Wrench className="h-5 w-5" /> : isModa ? <Shirt className="h-5 w-5" /> : isComercio ? <ShoppingBag className="h-5 w-5" /> : <Utensils className="h-5 w-5" />}
-                {isService ? "Servicios" : isRetail ? "Catálogo" : "Menú"} ({menuCount})
+                {isService ? <Wrench className="h-5 w-5" /> : isModa ? <Shirt className="h-5 w-5" /> : <Utensils className="h-5 w-5" />}
+                {isService ? "Servicios" : isModa ? "Catálogo" : "Menú"} ({menuCount})
               </button>
               {isGastro && (
                 <button onClick={() => { setTab("recetas"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "recetas" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
                   <FileText className="h-5 w-5" />Recetas
                 </button>
               )}
-              {(isGastro || isComercio) && (
+              {isGastro && !isModa && (
                 <button onClick={() => { setTab("caja"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "caja" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
                   <DollarSign className="h-5 w-5" />Caja
                 </button>
               )}
-              {(isGastro || isComercio) && (
+              {isGastro && (
                 <button onClick={() => { setTab("clientes"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "clientes" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
                   <Users className="h-5 w-5" />Clientes
                 </button>
@@ -1407,19 +1401,19 @@ function VendorDashboardInner() {
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={() => setShareOpen(false)}>
           <div className="bg-card rounded-2xl p-6 max-w-sm w-full text-center" onClick={(e) => e.stopPropagation()}>
             <h3 className="font-display text-xl font-semibold mb-1">Compartí tu vidriera</h3>
-            <p className="text-sm text-muted-foreground mb-4">{isRetail ? "El QR lleva directo a tu catálogo (listo para imprimir y pegar en la vidriera o el vidrio)." : "El QR lleva directo a tu carta (listo para imprimir y pegar en la mesa o el vidrio)."}</p>
+            <p className="text-sm text-muted-foreground mb-4">{isModa ? "El QR lleva directo a tu catálogo (listo para imprimir y pegar en la vidriera o el vidrio)." : "El QR lleva directo a tu carta (listo para imprimir y pegar en la mesa o el vidrio)."}</p>
             {qrDataUrl ? <img src={qrDataUrl} alt="QR" className="mx-auto w-48 h-48 mb-4" /> : <div className="mx-auto w-48 h-48 mb-4 bg-skeleton rounded-lg" />}
             <p className="text-xs text-muted-foreground break-all mb-4">{window.location.origin}/tienda/{vendor.slug}</p>
             <div className="space-y-2">
               <a
                 href={`https://wa.me/?text=${encodeURIComponent(
-                  `Mirá el ${isRetail ? "catálogo" : "menú"} de ${vendor.store_name} en Portal 659 🛍️\n${window.location.origin}/tienda/${vendor.slug}?menu=1\n\nPedí directo por WhatsApp — 0% comisión`
+                  `Mirá el ${isModa ? "catálogo" : "menú"} de ${vendor.store_name} en Portal 659 🛍️\n${window.location.origin}/tienda/${vendor.slug}?menu=1\n\nPedí directo por WhatsApp — 0% comisión`
                 )}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="block w-full rounded-xl bg-green-500 text-white text-sm font-medium py-2.5 hover:bg-green-600 transition-colors"
               >
-                📲 {isRetail ? "Compartir tienda" : "Compartir menú"}
+                📲 {isModa ? "Compartir tienda" : "Compartir menú"}
               </a>
               <div className="grid grid-cols-2 gap-2">
                 {qrDataUrl && (
@@ -1457,7 +1451,7 @@ function VendorDashboardInner() {
         <OrderDetailModal
           order={selectedOrder}
           vendorName={vendor?.store_name || ""}
-          isRetail={isRetail}
+          isModa={isModa}
           onClose={() => setSelectedOrder(null)}
           onAction={(order, status) => updateOrderStatus(order, status)}
           onModify={modifyOrder}

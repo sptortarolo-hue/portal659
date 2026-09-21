@@ -76,6 +76,7 @@ jobs:
             echo 'R2_ACCESS_KEY_ID=${{ secrets.R2_ACCESS_KEY_ID }}' >> /opt/portal659/.env
             echo 'R2_SECRET_ACCESS_KEY=${{ secrets.R2_SECRET_ACCESS_KEY }}' >> /opt/portal659/.env
             echo 'R2_ENDPOINT=${{ secrets.R2_ENDPOINT }}' >> /opt/portal659/.env
+            echo 'R2_BUCKET=${{ secrets.R2_BUCKET }}' >> /opt/portal659/.env
 
             # Backup previo al deploy (DB + uploads → R2). Tolera primer arranque
             # (sin contenedores aún). Si falla NO bloquea el deploy — el backup

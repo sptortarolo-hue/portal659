@@ -456,7 +456,7 @@ export default async function TiendaPage({
                 </span>
               ) : null;
             })()}
-            {v.prep_time_min && (
+            {isGastro && v.prep_time_min && (
               <span className="rounded-full bg-primary/10 text-primary px-3 py-1 text-sm font-medium">
                 ⏱️ {v.prep_time_min} min
               </span>

@@ -20,14 +20,34 @@ const PREFERRED = [
 // Patrones que excluimos del catálogo (no sirven para chat libre del bot).
 const EXCLUDE = /vision|guard|embed|rerank|code|chatqa|nemo(retriever|guard)/i;
 
+// Alternativas por proveedor (rotación anti-429/410). El primer candidato vivo
+// se cachea; si enfrió, rota al siguiente SIN reintentarlo.
+const ALTERNATIVAS = {
+  gemini: ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-2.0-flash-lite"],
+  openrouter: [
+    "google/gemma-4-31b-it:free",
+    "google/gemma-4-26b-a4b-it:free",
+    "nvidia/nemotron-3-super-120b-a12b:free",
+    "z-ai/glm-5.2:free",
+  ],
+};
+
 let resolvedModelCache = null; // modelo verificado que responde 200
 // Cooldown cuando un modelo devuelve 429: no lo reintentamos por 5 minutos.
 const modelCooldowns = new Map(); // model -> timestamp de cuándo vuelve a poder probarse
 
-// OpenRouter (u otro proveedor compatible): NO probar modelos — usá el pin.
-// El probe /models de NVIDIA solo existe para auto-sanar deprecaciones de NIM.
 function isOpenRouter() {
   return /openrouter\.ai/i.test(config.llmBaseUrl);
+}
+
+function isGemini() {
+  return /generativelanguage\.googleapis\.com/i.test(config.llmBaseUrl);
+}
+
+function proveedor() {
+  if (isGemini()) return "gemini";
+  if (isOpenRouter()) return "openrouter";
+  return "nvidia";
 }
 
 /** Cooldown anti-429: al fluir un rate-limit no reintentamos ese modelo por 5 min. */
@@ -40,19 +60,33 @@ function markCooldown(model) {
 }
 
 async function resolveModel() {
-  if (process.env.LLM_MODEL && !isCooledDown(process.env.LLM_MODEL)) {
-    return process.env.LLM_MODEL; // pin manual, siempre gana si no está en cooldown
-  }
+  const pin = process.env.LLM_MODEL || null;
+  if (pin && !isCooledDown(pin)) return pin;
   if (resolvedModelCache && !isCooledDown(resolvedModelCache)) return resolvedModelCache;
-  if (isOpenRouter()) {
-    // El modelo ya viene pineado por el env; no se prueba con probes porque
-    // OpenRouter expone abiertamente los modelos disponibles por key.
-    resolvedModelCache = config.llmModel;
-    console.log(`[bot] LLM usando ${config.llmModel} (OpenRouter nuestra lista)`);
-    return resolvedModelCache;
+
+  const kind = proveedor();
+  if (kind === "nvidia") {
+    const first = await pickLiveModel();
+    return first || config.llmModel;
   }
-  const first = await pickLiveModel();
-  return first || config.llmModel;
+
+  // Gemini/OpenRouter: rotar alternativas respetando el cooldown. Antes la
+  // rama OpenRouter devolvía el pin aunque estuviera en 429 → cada mensaje
+  // reintentaba el modelo rate-limited con timeout de 60s (respuestas
+  // lentísimas además de fallidas).
+  const candidates = [];
+  if (config.llmModel && !candidates.includes(config.llmModel)) candidates.push(config.llmModel);
+  for (const a of ALTERNATIVAS[kind] || []) {
+    if (!candidates.includes(a)) candidates.push(a);
+  }
+  const live = candidates.find((m) => !isCooledDown(m));
+  if (live) {
+    resolvedModelCache = live;
+    console.log(`[bot] LLM usando ${live} (${kind}, rotado)`);
+    return live;
+  }
+  console.log("[bot] LLM: todos los modelos en cooldown — este mensaje cae al fallback de reglas");
+  return null;
 }
 
 /** Itera candidatos (preferidos → resto del catálogo) y devuelve el 1ro que responda 200. */
@@ -120,7 +154,7 @@ async function probeModel(id) {
   }
 }
 
-const SYSTEM = `Sos un asistente de un comercio gastronómico que toma pedidos por WhatsApp.
+const SYSTEM = `Sos un asistente de un comercio que toma pedidos por WhatsApp.
 Dado el mensaje del cliente y la lista de productos disponibles, devolvé SOLO un JSON válido (sin texto adicional) con esta forma:
 
 {
@@ -135,14 +169,17 @@ Dado el mensaje del cliente y la lista de productos disponibles, devolvé SOLO u
 }
 
 Reglas:
-- "complete": true si el mensaje tiene información suficiente para armar el pedido (productos + método + nombre + teléfono; si es delivery también dirección).
-- "items": productos pedidos. "name" debe coincidir con alguno de la lista de productos (usá el nombre exacto si existe). "qty" es número (default 1). "modifiers" solo si dice explícitamente (p. ej. "sin cebolla", "doble queso").
+- "complete": true si el mensaje tiene información suficiente para armar el pedido (productos + método + nombre; si es delivery también dirección; si el pago es solo efectivo/transferencia coordinado por WhatsApp, no falta nada de pago).
+- "items": productos pedidos. "name" debe coincidir con alguno de la lista de productos (usá el nombre exacto si existe). "qty" es número (default 1; "una docena" = 12, "media docena" = 6). "modifiers" solo si dice explícitamente (p. ej. "sin cebolla", "doble queso").
 - "method": "pickup"/"delivery" si lo aclara, si no null.
 - "payment": "transferencia" si dice pagar con transferencia/transfer/alias/CBU, "efectivo" si dice en efectivo/efectivo al recibir, si no null.
 - Extraé nombre/teléfono/dirección solo si el cliente los da.
+- Usá el CONTEXTO (carrito actual, preguntas pendientes, últimos mensajes) para entender a qué responde el cliente: si le preguntaste el nombre y contesta un nombre, extraelo; si le preguntaste la dirección y contesta una dirección, extraela.
+- Si el cliente corrige o re-declara el pedido (ej. "no, mejor solo 3 empanadas"), devolvé en "items" el carrito COMPLETO actualizado (todos los productos que quedan, con sus cantidades finales).
+- Si el cliente agrega productos sin re-declarar todo (ej. "agregá una coca"), devolvé SOLO los items nuevos.
 - Si el cliente solo saluda, pregunta, o pide el menú: "complete" false e "items" [].`;
 
-export async function parseWithLlm(message, products) {
+export async function parseWithLlm(message, products, ctx = null) {
   if (!config.llmApiKey) {
     if (!parseWithLlm._reported) {
       console.warn("[bot] LLM sin LLM_API_KEY — los pedidos caen al fallback de reglas");
@@ -154,26 +191,29 @@ export async function parseWithLlm(message, products) {
   const model = await resolveModel();
   if (!model) return null;
 
-  const parsed = await callOnce(message, products, model);
-  if (parsed !== null) return parsed;
+  const parsed = await callOnce(message, products, model, ctx);
+  if (parsed !== null) return { ...parsed, __llm: true };
 
-  // Si el modelo pinchó (410/404/402/429), re-descubrir y reintentar 1 vez.
+  // Si el modelo pinchó (410/404/402/429), rotar alternativas 1 vez.
   if (parseWithLlm._modelDeprecated) {
     parseWithLlm._modelDeprecated = false;
     resolvedModelCache = null;
     console.log("[bot] LLM re-descubriendo modelo tras fallo del verificado");
 
-    // OpenRouter: reintento rotando alternativas (con cooldown en mente).
-    if (isOpenRouter()) {
-      const alternativas = ["google/gemma-4-31b-it:free", "nvidia/nemotron-3-super-120b-a12b:free", "z-ai/glm-5.2:free"];
-      for (const alt of alternativas) {
-        if (alt === model) continue;
-        if (isCooledDown(alt)) continue;
-        console.log(`[bot] OpenRouter retry con ${alt}`);
-        const retry = await callOnce(message, products, alt);
+    // Gemini/OpenRouter: reintento rotando alternativas del proveedor.
+    const kind = proveedor();
+    if (kind === "openrouter" || kind === "gemini") {
+      const alts = [...(ALTERNATIVAS[kind] || []), config.llmModel].filter(
+        (alt) => alt && alt !== model && !isCooledDown(alt)
+      );
+      // dedupe de defensa
+      const uniq = [...new Set(alts)];
+      for (const alt of uniq) {
+        console.log(`[bot] ${kind} retry con ${alt}`);
+        const retry = await callOnce(message, products, alt, ctx);
         if (retry !== null) {
           resolvedModelCache = alt;
-          return retry;
+          return { ...retry, __llm: true };
         }
       }
       return null;
@@ -181,17 +221,33 @@ export async function parseWithLlm(message, products) {
 
     const fresh = await resolveModel();
     if (fresh) {
-      const retry = await callOnce(message, products, fresh);
-      if (retry !== null) return retry;
+      const retry = await callOnce(message, products, fresh, ctx);
+      if (retry !== null) return { ...retry, __llm: true };
     }
   }
   return null;
 }
 
-async function callOnce(message, products, model) {
+async function callOnce(message, products, model, ctx = null) {
   const menu = products
     .map((p) => `${p.id}|${p.name}|$${p.price}`)
     .join("\n");
+
+  // Contexto de conversación: carrito actual + qué se le preguntó + historial.
+  // Es lo que hace que la IA extraiga EXACTAMENTE lo que falta (nombre cuando
+  // se le preguntó el nombre, dirección cuando se le preguntó la dirección) y
+  // entienda re-declaraciones ("no, mejor solo 3") vs agregados.
+  const parts = [];
+  if (ctx?.cart?.length) {
+    parts.push(`Carrito actual del pedido:\n${ctx.cart.map((i) => `- ${i.name} x${i.qty}`).join("\n")}`);
+  }
+  if (ctx?.pending?.length) {
+    parts.push(`Le acabás de preguntar (extraé SOLO lo que falta): ${ctx.pending.join(", ")}`);
+  }
+  if (ctx?.history?.length) {
+    parts.push(`Últimos mensajes del chat:\n${ctx.history.map((h) => `${h.role === "bot" ? "BOT" : "CLIENTE"}: ${h.text}`).join("\n")}`);
+  }
+  const contextBlock = parts.length ? `\n\n${parts.join("\n\n")}` : "";
 
   const headers = {
     "Content-Type": "application/json",
@@ -213,7 +269,7 @@ async function callOnce(message, products, model) {
         max_tokens: 400,
         messages: [
           { role: "system", content: SYSTEM },
-          { role: "user", content: `Productos disponibles:\n${menu}\n\nMensaje del cliente: "${message}"` },
+          { role: "user", content: `Productos disponibles:\n${menu}\n\nMensaje del cliente: "${message}"${contextBlock}` },
         ],
       }),
       signal: AbortSignal.timeout(isOpenRouter() ? 60_000 : 30_000),

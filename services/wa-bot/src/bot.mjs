@@ -15,6 +15,7 @@ const DEFAULT_STATE = {
   handoffCount: 0,
   pausedUntil: 0,
   orderId: null,
+  history: [],        // [{ role: "user"|"bot", text }] — contexto para la IA (cap 8)
 };
 
 const AWAITING_RECEIPT_TTL = 15 * 60; // 15 min para acreditar el comprobante
@@ -85,6 +86,7 @@ function enrichParsed(products, parsed) {
 export async function handleInbound({ vendor, waId, body }) {
   const text = String(body || "").trim();
   const state = (await getState(vendor.id, waId)) || { ...DEFAULT_STATE };
+  if (!Array.isArray(state.history)) state.history = [];
   const replies = [];
 
   try {
@@ -93,8 +95,13 @@ export async function handleInbound({ vendor, waId, body }) {
     // Pausa por handoff reciente: el dueño atiende, el bot calla.
     if (state.pausedUntil && state.pausedUntil > Date.now()) return { replies: [] };
 
+    // Historial para el contexto del LLM (cap 8 mensajes).
+    state.history.push({ role: "user", text: text.slice(0, 200) });
+    if (state.history.length > 8) state.history = state.history.slice(-8);
+
     // Cancelación global (siempre disponible).
     if (RE_CANCEL.test(text)) {
+      state._cleared = true;
       await clearState(vendor.id, waId);
       return { replies: ["Ok, cancelé todo. Cuando quieras retomamos. 👍"] };
     }
@@ -119,6 +126,11 @@ export async function handleInbound({ vendor, waId, body }) {
     // No limpiar el state: un error transitorio no debe resetear el pedido.
     return { replies: ["Uy, hubo un error. Mandame el mensaje de nuevo en un segundo. 🙏"] };
   }
+}
+
+// Contexto para la llamada IA: carrito actual + qué se le preguntó + historial.
+function llmCtx(state, vendor) {
+  return { cart: state.items, pending: missingFields(state, vendor), history: state.history };
 }
 
 // ———————————————————————————————————————————————————————————————————————————
@@ -150,7 +162,7 @@ async function handleIdle({ vendor, text, state, replies, waId }) {
   const products = await getMenu(vendor.id);
   let parsed = enrichParsed(
     products,
-    (await parseWithLlm(text, products).catch(() => null)) || parseByRules(text, products)
+    (await parseWithLlm(text, products, llmCtx(state, vendor)).catch(() => null)) || parseByRules(text, products)
   );
 
   if (parsed?.items?.length) {
@@ -201,7 +213,7 @@ async function handleStep({ vendor, text, state, replies, waId }) {
     const products = await getMenu(vendor.id);
     const parsed = enrichParsed(
       products,
-      (await parseWithLlm(t, products).catch(() => null)) || parseByRules(t, products)
+      (await parseWithLlm(t, products, llmCtx(state, vendor)).catch(() => null)) || parseByRules(t, products)
     );
     if (parsed?.items?.length) {
       applyParsed(state, parsed, waId);
@@ -223,7 +235,7 @@ async function handleStep({ vendor, text, state, replies, waId }) {
   const products = await getMenu(vendor.id);
   const parsed = enrichParsed(
     products,
-    (await parseWithLlm(t, products).catch(() => null)) || parseByRules(t, products)
+    (await parseWithLlm(t, products, llmCtx(state, vendor)).catch(() => null)) || parseByRules(t, products)
   );
 
   let got = false;
@@ -235,12 +247,22 @@ async function handleStep({ vendor, text, state, replies, waId }) {
   if (parsed?.payment && parsed.payment !== state.payment) { state.payment = parsed.payment; got = true; }
 
   // Productos en la respuesta: distinguir AGREGAR de RE-DECLARAR.
-  // Con verbos de suma ("agregá/también/sumá/más") se suman al carrito; en
-  // cualquier otro caso el mensaje ES el pedido actualizado → reemplaza.
-  // Antes siempre sumaba: repetir el pedido lo duplicaba (×4 en vez de ×2).
+  //  - Verbos de suma ("agregá/también/más") y el parseo NO devolvió el
+  //    carrito completo → se SUMAN los items nuevos.
+  //  - El parseo devolvió el carrito completo (todos los items actuales
+  //    presentes) → REEMPLAZA (es el pedido actualizado; antes siempre sumaba:
+  //    repetir el pedido lo duplicaba ×4).
+  //  - Sin verbos de suma → reemplaza igual (mensaje = pedido actualizado).
+  // (lookahead en vez de \b: "agregá/también/sumá" terminan en vocal acentuada,
+  //  que JS NO trata como word-char — con \b el match fallaba y "agregá otra
+  //  coca" no sumaba).
   if (parsed?.items?.length) {
-    const isAddition = /\b(agrega|agregá|agregar|también|tambien|sumá|suma|sumar|más|mas)\b/i.test(t);
-    if (isAddition) {
+    const isAddition = /\b(agrega|agregá|agregar|también|tambien|sumá|suma|sumar|más|mas)(?=[\s.,!¡]|$)/i.test(t);
+    const fullCart =
+      state.items.length > 0 &&
+      state.items.every((i) => parsed.items.some((p) => (p.offerId || p.id) === i.offerId));
+    const shouldMerge = isAddition && !fullCart;
+    if (shouldMerge) {
       mergeItems(state, parsed.items);
     } else {
       state.items = parsed.items.map((p) => ({
@@ -478,6 +500,11 @@ async function persist(state, vendorId, waId, replies) {
   // volverlo a guardar: re-seriarlo acá re-creaba el chat zombie (un segundo
   // "sí" re-confirmaba el mismo pedido).
   if (state._cleared) return { replies };
+  // Historial de respuestas del bot (contexto para la próxima llamada IA).
+  if (Array.isArray(replies) && replies.length) {
+    state.history.push(...replies.map((r) => ({ role: "bot", text: r.slice(0, 200) })));
+    if (state.history.length > 8) state.history = state.history.slice(-8);
+  }
   await setState(vendorId, waId, state, state.step === "awaiting_receipt" ? AWAITING_RECEIPT_TTL : undefined);
   return { replies };
 }

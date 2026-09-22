@@ -59,6 +59,7 @@ type Props = {
   setMsg: (m: string) => void;
   /** Muestra el chip de food-cost por plato y habilita la receta en el drawer. */
   showCosts?: boolean;
+  isComercio?: boolean;
   /** Plan del comercio: si no tiene recetas, la solapa Receta muestra PlanLock. */
   hasRecipes?: boolean;
 };
@@ -108,12 +109,15 @@ export function MenuStudio({
   setMsg,
   showCosts = false,
   hasRecipes = false,
+  isComercio = false,
 }: Props) {
   const [view, setView] = useState<View>("productos");
   const [showImport, setShowImport] = useState(false);
   const [saving, setSaving] = useState(false);
   const [costByProduct, setCostByProduct] = useState<Record<string, CostInfo>>({});
   const [costsNonce, setCostsNonce] = useState(0);
+  const itemLabel = isComercio ? "producto" : "plato";
+  const itemLabelPlural = isComercio ? "productos" : "platos";
 
   // Estado del formulario de plato (alta/edición; lo comparten el inline de
   // mobile y el drawer de desktop).
@@ -122,14 +126,14 @@ export function MenuStudio({
   const [offName, setOffName] = useState("");
   const [offDesc, setOffDesc] = useState("");
   const [offPrice, setOffPrice] = useState("");
-  const [offCategory, setOffCategory] = useState("empanadas");
+  const [offCategory, setOffCategory] = useState(isComercio ? "otros" : "empanadas");
   const [offFile, setOffFile] = useState<File | null>(null);
   const [offPreview, setOffPreview] = useState<string | null>(null);
   const [offStock, setOffStock] = useState<number>(0);
   const [offStockControl, setOffStockControl] = useState<boolean>(false);
   const [offPromoPrice, setOffPromoPrice] = useState("");
   const [offStockLowThreshold, setOffStockLowThreshold] = useState<number>(5);
-  const [offRequiresPrep, setOffRequiresPrep] = useState<boolean>(true);
+  const [offRequiresPrep, setOffRequiresPrep] = useState<boolean>(!isComercio);
   const [offCashExcluded, setOffCashExcluded] = useState(false);
   // "Se vende de a N" (pack). Vacío = se vende por unidad.
   const [offPackSize, setOffPackSize] = useState("");
@@ -213,14 +217,14 @@ export function MenuStudio({
     setOffName("");
     setOffDesc("");
     setOffPrice("");
-    setOffCategory("empanadas");
+    setOffCategory(isComercio ? "otros" : "empanadas");
     setOffFile(null);
     setOffPreview(null);
     setOffStock(0);
     setOffStockControl(false);
     setOffPromoPrice("");
     setOffStockLowThreshold(5);
-    setOffRequiresPrep(true);
+    setOffRequiresPrep(!isComercio);
     setOffCashExcluded(false);
     setOffPackSize("");
   }
@@ -230,14 +234,14 @@ export function MenuStudio({
     setOffName(offer.name);
     setOffDesc(offer.description || "");
     setOffPrice(String(offer.price));
-    setOffCategory(offer.category || "otras");
+    setOffCategory(offer.category || (isComercio ? "otros" : "otras"));
     setOffFile(null);
     setOffPreview(offer.image_url || null);
     setOffStock(offer.stock ?? 0);
     setOffStockControl(!!offer.stock_control);
     setOffPromoPrice(offer.promo_price ? String(offer.promo_price) : "");
     setOffStockLowThreshold(offer.stock_low_threshold ?? 5);
-    setOffRequiresPrep(offer.requires_prep !== false);
+    setOffRequiresPrep(isComercio ? false : offer.requires_prep !== false);
     setOffCashExcluded(!!offer.cash_discount_excluded);
     setOffPackSize(offer.pack_size ? String(offer.pack_size) : "");
     setShowForm(true);
@@ -251,7 +255,7 @@ export function MenuStudio({
     if (hasRecipes) ensureRecipeCtx();
   }
 
-  /** "+ Plato": drawer en desktop, form inline en mobile. */
+  /** Nuevo ítem: drawer en desktop, form inline en mobile. */
   function openNewForm() {
     resetForm();
     setShowForm(true);
@@ -293,7 +297,7 @@ export function MenuStudio({
       stock_control: offStockControl,
       promo_price: offPromoPrice ? Number(offPromoPrice) : null,
       stock_low_threshold: offStockControl ? offStockLowThreshold : null,
-      requires_prep: offRequiresPrep,
+      requires_prep: isComercio ? false : offRequiresPrep,
       cash_discount_excluded: offCashExcluded,
       pack_size: offPackSize ? Math.floor(Number(offPackSize)) : null,
     };
@@ -314,7 +318,7 @@ export function MenuStudio({
     if (data.error) {
       setMsg(data.error);
     } else {
-      setMsg(editingId ? "Plato actualizado" : "Plato agregado");
+      setMsg(editingId ? `${itemLabel} actualizado` : `${itemLabel} agregado`);
       if (!editingId && drawerOpen && data.offer?.id) {
         // Alta desde el drawer desktop: queda abierto en modo edición para
         // cargar opciones/receta sin reabrir.
@@ -355,7 +359,7 @@ export function MenuStudio({
       next.delete(offer.id);
       return next;
     });
-    setMsg("Plato eliminado");
+    setMsg(`${itemLabel} eliminado`);
     reload();
   }
 
@@ -472,7 +476,7 @@ export function MenuStudio({
         setMsg(data.error || "No se pudieron actualizar los precios");
         return;
       }
-      setMsg(`Precios actualizados en ${data.updated ?? bulkTargets.length} platos`);
+      setMsg(`Precios actualizados en ${data.updated ?? bulkTargets.length} ${itemLabelPlural}`);
       setSelected(new Set());
       setBulkOpen(false);
       setBulkValue("");
@@ -512,7 +516,8 @@ export function MenuStudio({
       setOffPromoPrice={setOffPromoPrice}
       offStockLowThreshold={offStockLowThreshold}
       setOffStockLowThreshold={setOffStockLowThreshold}
-      showPrep
+      showPrep={!isComercio}
+      noun={isComercio ? "producto" : "plato"}
       offRequiresPrep={offRequiresPrep}
       setOffRequiresPrep={setOffRequiresPrep}
       offCashExcluded={offCashExcluded}
@@ -539,7 +544,7 @@ export function MenuStudio({
       recetaNode = (
         <PlanLock
           title="Recetas y costos"
-          description="La receta por plato (escandallo) y el semáforo de food cost forman parte del plan Gestión integral."
+          description={isComercio ? "La receta por producto (escandallo) y el semáforo de food cost forman parte del plan Gestión integral." : "La receta por plato (escandallo) y el semáforo de food cost forman parte del plan Gestión integral."}
         />
       );
     } else if (!recipeCtx) {
@@ -554,7 +559,7 @@ export function MenuStudio({
           key={editingId}
           target={{ productId: editingOffer.id }}
           title={editingOffer.name}
-          subtitle="Receta del plato (cantidades netas por porción)"
+          subtitle={isComercio ? "Receta del producto (cantidades netas por porción)" : "Receta del plato (cantidades netas por porción)"}
           salePrice={Number(editingOffer.price) || 0}
           ingredients={recipeCtx.ingredients.filter((i) => i.active)}
           recipes={recipeCtx.recipes}
@@ -578,10 +583,10 @@ export function MenuStudio({
       {/* Header: título + contadores (desktop) + solapas */}
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-3 min-w-0">
-          <h2 className="font-display text-xl font-semibold flex-shrink-0">Menú</h2>
+          <h2 className="font-display text-xl font-semibold flex-shrink-0">{isComercio ? "Catálogo" : "Menú"}</h2>
           <div className="hidden lg:flex items-center gap-1.5 text-[11px] text-muted-foreground">
             <span className="rounded-full border border-border px-2 py-0.5 tabular-nums">
-              {stats.total} platos
+              {stats.total} {itemLabelPlural}
             </span>
             <span className="rounded-full border border-border px-2 py-0.5 tabular-nums">
               {stats.active} activos
@@ -625,7 +630,7 @@ export function MenuStudio({
         <div className="space-y-3">
           {/* Toolbar: desktop con buscador/filtros/precios masivos; mobile = misma fila de siempre */}
           <div className="flex items-center justify-between gap-2 flex-wrap">
-            <p className="text-sm text-muted-foreground lg:hidden">La carta que ven tus clientes.</p>
+            <p className="text-sm text-muted-foreground lg:hidden">{isComercio ? "El catálogo que ven tus clientes." : "La carta que ven tus clientes."}</p>
             <div className="hidden lg:flex items-center gap-2 flex-1 min-w-0">
               <Input
                 value={search}
@@ -681,7 +686,7 @@ export function MenuStudio({
                   else openNewForm();
                 }}
               >
-                {editingId || showForm ? "Cancelar" : "+ Plato"}
+                {editingId || showForm ? "Cancelar" : "+ " + (isComercio ? "Producto" : "Plato")}
               </Button>
             </div>
           </div>
@@ -702,13 +707,14 @@ export function MenuStudio({
               editForm={editingId ? offerFormInline : undefined}
               onEditModifiers={(offer) => startEdit(offer)}
               costByProduct={showCosts ? costByProduct : undefined}
+              emptyText={isComercio ? "Todavía no cargaste productos." : undefined}
             />
           </div>
           <div className="hidden lg:block">
             {filteredOffers.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-10 rounded-xl border border-border bg-card">
                 {offers.length === 0
-                  ? "Todavía no cargaste platos."
+                  ? `Todavía no cargaste ${itemLabelPlural}.`
                   : "No hay productos con esos filtros."}
               </p>
             ) : (
@@ -747,7 +753,7 @@ export function MenuStudio({
             onMove={moveCategory}
           />
           <p className="text-xs text-muted-foreground">
-            Las categorías ordenan la carta del micrositio. Usá ↑↓ para cambiar el orden.
+            Las categorías ordenan {isComercio ? "el catálogo" : "la carta"} del micrositio. Usá ↑↓ para cambiar el orden.
           </p>
         </>
       )}
@@ -770,7 +776,7 @@ export function MenuStudio({
           setView("productos");
           reload();
           setMsg(
-            `Menú importado: ${sum.imported} platos nuevos, ${sum.updated} actualizados, ${sum.createdCategories.length} categorías creadas.`
+            `${isComercio ? "Catálogo" : "Menú"} importado: ${sum.imported} ${itemLabelPlural} nuevos, ${sum.updated} actualizados, ${sum.createdCategories.length} categorías creadas.`
           );
         }}
       />
@@ -799,8 +805,8 @@ export function MenuStudio({
         <div className="space-y-4">
           <p className="text-sm text-muted-foreground">
             {selected.size > 0
-              ? `Se aplica a los ${bulkTargets.length} platos seleccionados.`
-              : `Sin selección: se aplica a los ${bulkTargets.length} platos filtrados.`}{" "}
+              ? `Se aplica a los ${bulkTargets.length} ${itemLabelPlural} seleccionados.`
+              : `Sin selección: se aplica a los ${bulkTargets.length} ${itemLabelPlural} filtrados.`}{" "}
             Los precios promo no se modifican.
           </p>
           <div className="flex gap-2">
@@ -839,11 +845,11 @@ export function MenuStudio({
       </Modal>
 
       {/* Drawer de edición (desktop; en mobile el inline sigue vigente: el
-          drawer solo se abre desde la tabla ≥lg o desde "+ Plato" en ≥lg) */}
+          drawer solo se abre desde la tabla ≥lg o desde "+ Nuevo" en ≥lg) */}
       <ProductDrawer
         open={drawerOpen}
         onClose={closeEditor}
-        title={editingId ? offName || "Editar plato" : "Nuevo plato"}
+        title={editingId ? offName || (isComercio ? "Editar producto" : "Editar plato") : (isComercio ? "Nuevo producto" : "Nuevo plato")}
         subtitle={
           editingId
             ? editingOffer?.category || undefined

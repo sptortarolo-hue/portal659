@@ -1190,6 +1190,7 @@ function VendorDashboardInner() {
                     setMsg={setMsg}
                     showCosts={isGastro}
                     hasRecipes={false}
+                    isComercio={isComercio}
                   />
                 ) : (
                   <MemoProductManager

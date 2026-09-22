@@ -11,6 +11,22 @@ export default function ErrorPage({
 }) {
   useEffect(() => {
     console.error("Route error:", error);
+    // Telemetría al servidor (fire-and-forget): cae en docker logs como
+    // [API:client-error] para diagnosticar "Algo salió mal" reales.
+    try {
+      fetch("/api/client-error", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: String(error?.message || error),
+          stack: typeof error?.stack === "string" ? error.stack : null,
+          digest: error?.digest || null,
+          pathname: typeof window !== "undefined" ? window.location.pathname : null,
+        }),
+      }).catch(() => {});
+    } catch {
+      /* noop */
+    }
   }, [error]);
 
   return (

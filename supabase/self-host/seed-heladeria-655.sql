@@ -96,12 +96,12 @@ DECLARE
 BEGIN
   -- 1) Ubicar al comercio.
   SELECT id, vertical INTO v_vendor_id, v_vertical
-  FROM public.vendors WHERE slug = 'heladeria-655' LIMIT 1;
+  FROM public.vendors WHERE slug = 'heladera-655' LIMIT 1;
   IF v_vendor_id IS NULL THEN
-    RAISE EXCEPTION 'seed-heladeria-655: no existe un comercio con slug heladeria-655';
+    RAISE EXCEPTION 'seed-heladeria-655: no existe un comercio con slug heladera-655';
   END IF;
   IF v_vertical IS DISTINCT FROM 'gastronomia' THEN
-    RAISE EXCEPTION 'seed-heladeria-655: el comercio % no es gastronomía (vertical=%)', 'heladeria-655', v_vertical;
+    RAISE EXCEPTION 'seed-heladeria-655: el comercio % no es gastronomía (vertical=%)', 'heladera-655', v_vertical;
   END IF;
 
   -- 2) Guardia anti-duplicados.

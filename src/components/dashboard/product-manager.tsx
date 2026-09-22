@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -14,6 +14,13 @@ import { ProductModifiersBlock } from "@/components/dashboard/modifier-editor";
 import { SIZE_GUIDE_TEMPLATES, templateToText } from "@/lib/size-guides";
 import type { ProductVariant, ProductImage } from "@/types/database";
 
+const COMERCIO_CATEGORIES = [
+  "verdulería", "carnicería", "pollajería", "kiosko", "almacén",
+  "fiambrería", "panadería", "licorería", "ferretería", "librería",
+  "farmacia", "droguería", "floristería", "pet shop", "peluquería canina",
+  "veterinaria", "alimentos", "accesorios", "guardería", "papelería",
+  "óptica", "otros",
+];
 
 type MenuCategory = { id: string; name: string; position: number };
 
@@ -33,6 +40,7 @@ type OfferRow = {
   requires_prep?: boolean;
   cash_discount_excluded?: boolean;
   has_variants?: boolean;
+  pack_size?: number | null;
 };
 
 type Props = {
@@ -93,6 +101,16 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
   // aunque el switch no se muestre (así no entran al flow de cocina del POS).
   const [offRequiresPrep, setOffRequiresPrep] = useState(showPrep);
   const [offCashExcluded, setOffCashExcluded] = useState(false);
+  const [offPackSize, setOffPackSize] = useState("");
+  // Búsqueda y filtros en la lista.
+  const [search, setSearch] = useState("");
+  const [catFilter, setCatFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "paused" | "nostock">("all");
+  // Operaciones masivas de precio.
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkOp, setBulkOp] = useState<"pct_up" | "pct_down" | "add" | "set">("pct_up");
+  const [bulkValue, setBulkValue] = useState("");
+  const [bulkSaving, setBulkSaving] = useState(false);
 
   // Moda: variantes (color × talle) + galería.
   const [offHasVariants, setOffHasVariants] = useState(false);
@@ -124,6 +142,52 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
 
   useEffect(() => { load(); }, [load]);
 
+  // Filtrado de la lista de productos.
+  const filteredOffers = useMemo(() => {
+    return offers.filter((o) => {
+      const matchSearch = !search || o.name.toLowerCase().includes(search.toLowerCase());
+      const matchCat = catFilter === "all" || o.category === catFilter;
+      const matchStatus =
+        statusFilter === "all" ||
+        (statusFilter === "active" && o.available) ||
+        (statusFilter === "paused" && !o.available) ||
+        (statusFilter === "nostock" && o.stock !== null && o.stock <= (o.stock_low_threshold ?? 5));
+      return matchSearch && matchCat && matchStatus;
+    });
+  }, [offers, search, catFilter, statusFilter]);
+
+  // Operaciones masivas de precio.
+  async function applyBulk() {
+    const value = Number(bulkValue);
+    if (!bulkOp || isNaN(value)) { setMsg("Completá un valor numérico"); return; }
+    setBulkSaving(true);
+    setMsg("");
+    try {
+      await Promise.all(filteredOffers.map(async (o) => {
+        const newPrice = (() => {
+          if (bulkOp === "pct_up") return Math.round(o.price * (100 + value) / 100);
+          if (bulkOp === "pct_down") return Math.round(o.price * (100 - value) / 100);
+          if (bulkOp === "add") return Math.max(0, o.price + value);
+          if (bulkOp === "set") return Math.max(0, value);
+          return o.price;
+        })();
+        if (newPrice !== o.price) {
+          await fetch(`/api/vendor/offers/${o.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ price: newPrice }),
+          });
+        }
+      }));
+      setBulkOpen(false);
+      setBulkValue("");
+      setMsg(`Precios actualizados para ${filteredOffers.length} productos`);
+      load();
+      onChanged?.();
+    } catch { setMsg("Error al actualizar precios"); }
+    finally { setBulkSaving(false); }
+  }
+
   const variantsByProduct = useCallback(() => {
     const map: Record<string, ProductVariant[]> = {};
     for (const v of variants || []) {
@@ -148,7 +212,7 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
     setOffName("");
     setOffDesc("");
     setOffPrice("");
-    setOffCategory(isModa ? "ropa" : "otras");
+    setOffCategory(isModa ? "ropa" : isComercio ? COMERCIO_CATEGORIES[0] : "otras");
     setOffFile(null);
     setOffPreview(null);
     setOffStock(0);
@@ -157,6 +221,7 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
     setOffStockLowThreshold(5);
     setOffRequiresPrep(showPrep);
     setOffCashExcluded(false);
+    setOffPackSize("");
     setOffHasVariants(false);
     setVariantRows([]);
     setGalleryUrls([]);
@@ -181,6 +246,7 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
     setOffRequiresPrep(showPrep ? offer.requires_prep !== false : false);
     setOffCashExcluded(!!offer.cash_discount_excluded);
     setOffHasVariants(!!offer.has_variants);
+    setOffPackSize(offer.pack_size ? String(offer.pack_size) : "");
     setVariantRows(
       existing.map((v) => ({
         color: v.color,
@@ -268,9 +334,10 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
       const fd = new FormData();
       fd.append("file", offFile);
       fd.append("folder", "offers");
-      const res = await fetch("/api/vendor/upload", { method: "POST", body: fd });
-      const data = await res.json();
-      if (data.url) imageUrl = data.url;
+      const upRes = await fetch("/api/vendor/upload", { method: "POST", body: fd });
+      const upData = await upRes.json();
+      if (upData.url) imageUrl = upData.url;
+      else { setSaving(false); setMsg(upData.error || "Error al subir la foto"); return; }
     }
 
     const payload: Record<string, unknown> = isModa
@@ -301,6 +368,7 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
           stock_low_threshold: offStockControl ? offStockLowThreshold : null,
           requires_prep: offRequiresPrep,
           cash_discount_excluded: offCashExcluded,
+          pack_size: offPackSize ? (Number(offPackSize) >= 2 ? Math.floor(Number(offPackSize)) : null) : null,
         };
 
     const res = editingId
@@ -500,28 +568,29 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
 
   const offerFormNode = isModa ? modaFormNode : (
     <div className="space-y-3">
-      <OfferForm
-        categories={categories}
-        editingId={editingId}
-        offName={offName} setOffName={setOffName}
-        offDesc={offDesc} setOffDesc={setOffDesc}
-        offPrice={offPrice} setOffPrice={setOffPrice}
-        offCategory={offCategory} setOffCategory={setOffCategory}
-        offFile={offFile} setOffFile={setOffFile}
-        offPreview={offPreview} setOffPreview={setOffPreview}
-        saving={saving}
-        onSubmit={handleSubmit}
-        onClose={resetForm}
-        showStock={showStock}
-        offStock={offStock} setOffStock={setOffStock}
-        offStockControl={offStockControl} setOffStockControl={setOffStockControl}
-        offPromoPrice={offPromoPrice} setOffPromoPrice={setOffPromoPrice}
-        offStockLowThreshold={offStockLowThreshold} setOffStockLowThreshold={setOffStockLowThreshold}
-        showPrep={showPrep}
-        offRequiresPrep={offRequiresPrep} setOffRequiresPrep={setOffRequiresPrep}
-        offCashExcluded={offCashExcluded} setOffCashExcluded={setOffCashExcluded}
-        noun={noun.toLowerCase()}
-      />
+        <OfferForm
+          categories={categories}
+          editingId={editingId}
+          offName={offName} setOffName={setOffName}
+          offDesc={offDesc} setOffDesc={setOffDesc}
+          offPrice={offPrice} setOffPrice={setOffPrice}
+          offCategory={offCategory} setOffCategory={setOffCategory}
+          offFile={offFile} setOffFile={setOffFile}
+          offPreview={offPreview} setOffPreview={setOffPreview}
+          saving={saving}
+          onSubmit={handleSubmit}
+          onClose={resetForm}
+          showStock={showStock}
+          offStock={offStock} setOffStock={setOffStock}
+          offStockControl={offStockControl} setOffStockControl={setOffStockControl}
+          offPromoPrice={offPromoPrice} setOffPromoPrice={setOffPromoPrice}
+          offStockLowThreshold={offStockLowThreshold} setOffStockLowThreshold={setOffStockLowThreshold}
+          showPrep={showPrep}
+          offRequiresPrep={offRequiresPrep} setOffRequiresPrep={setOffRequiresPrep}
+          offCashExcluded={offCashExcluded} setOffCashExcluded={setOffCashExcluded}
+          offPackSize={offPackSize} setOffPackSize={setOffPackSize}
+          noun={noun.toLowerCase()}
+        />
       {editingId && <ProductModifiersBlock productId={editingId} productName={offName} />}
     </div>
   );
@@ -537,13 +606,53 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
 
       {msg && <p className="text-sm text-green-600">{msg}</p>}
 
+      {/* Barra de búsqueda y filtros */}
+      <div className="flex flex-wrap gap-2 items-center">
+        <Input
+          placeholder="Buscar producto…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="max-w-xs"
+        />
+        <select className="rounded-md border border-input bg-background px-2 py-1 text-sm" value={catFilter} onChange={(e) => setCatFilter(e.target.value)}>
+          <option value="all">Todas las categorías</option>
+          {categories.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}
+        </select>
+        <select className="rounded-md border border-input bg-background px-2 py-1 text-sm" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as any)}>
+          <option value="all">Todos</option>
+          <option value="active">Activos</option>
+          <option value="paused">Pausados</option>
+          <option value="nostock">Sin stock</option>
+        </select>
+        <span className="text-xs text-muted-foreground">{filteredOffers.length} producto{filteredOffers.length !== 1 ? "s" : ""}</span>
+      </div>
+
+      {/* Operaciones masivas */}
+      <div className="flex flex-wrap gap-2 items-center">
+        {bulkOpen ? (
+          <>
+            <select className="rounded-md border border-input bg-background px-2 py-1 text-sm" value={bulkOp} onChange={(e) => setBulkOp(e.target.value as any)}>
+              <option value="pct_up">Subir %</option>
+              <option value="pct_down">Bajar %</option>
+              <option value="add">Sumar $</option>
+              <option value="set">Precio fijo $</option>
+            </select>
+            <Input type="number" step="0.01" value={bulkValue} onChange={(e) => setBulkValue(e.target.value)} placeholder="Valor" className="w-28" />
+            <Button size="sm" onClick={applyBulk} disabled={bulkSaving}>{bulkSaving ? "Aplicando…" : "Aplicar"}</Button>
+            <Button size="sm" variant="ghost" onClick={() => setBulkOpen(false)}>Cancelar</Button>
+          </>
+        ) : (
+          <Button size="sm" variant="outline" onClick={() => setBulkOpen(true)}>⚡ Acción masiva</Button>
+        )}
+      </div>
+
       {showForm && !editingId && offerFormNode}
 
       {loading ? (
         <div className="space-y-2">{[...Array(4)].map((_, i) => <div key={i} className="h-16 rounded-xl bg-muted animate-pulse" />)}</div>
       ) : (
         <OfferList
-          offers={offers}
+          offers={filteredOffers}
           onEdit={startEdit}
           onToggleFeatured={toggleFeatured}
           onToggleAvailable={toggleAvailable}

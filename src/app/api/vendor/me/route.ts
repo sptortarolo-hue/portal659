@@ -1,6 +1,6 @@
 import { getAuthUser } from "@/lib/auth";
 import { query, queryOne } from "@/lib/db";
-import { getVendorByRequest } from "@/lib/vendor-utils";
+import { getVendorByRequest, seedDefaultCategories } from "@/lib/vendor-utils";
 import { NextResponse } from "next/server";
 
 function slugify(text: string): string {
@@ -236,6 +236,10 @@ export async function POST(request: Request) {
      ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email, full_name = EXCLUDED.full_name, role = 'vendor'`,
     [user.id, user.email, user.full_name]
   );
+
+  if (vendor) {
+    await seedDefaultCategories(vendor.id as string, resolvedVertical);
+  }
 
   return NextResponse.json({ vendor });
 }

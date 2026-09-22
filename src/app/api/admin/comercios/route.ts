@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { isAdmin } from "@/lib/admin-utils";
 import { queryMany, queryOne, query, withTransaction } from "@/lib/db";
+import { seedDefaultCategories } from "@/lib/vendor-utils";
 
 export async function GET(request: Request) {
   if (!(await isAdmin(request))) {
@@ -102,6 +103,10 @@ export async function POST(request: Request) {
       false,
     ]
   );
+
+  if (vendor) {
+    await seedDefaultCategories(vendor.id as string, vertical || "gastronomia");
+  }
 
   return NextResponse.json({ vendor });
 }

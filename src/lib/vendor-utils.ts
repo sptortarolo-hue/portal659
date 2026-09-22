@@ -1,6 +1,14 @@
 import { getAuthUser } from "./auth";
-import { queryMany, queryOne } from "./db";
+import { query, queryMany, queryOne } from "./db";
 import { getPreviewSessionVendorId } from "./preview-session";
+
+const COMERCIO_CATEGORIES = [
+  "verdulería", "carnicería", "pollajería", "kiosko", "almacén",
+  "fiambrería", "panadería", "licorería", "ferretería", "librería",
+  "farmacia", "droguería", "floristería", "pet shop", "peluquería canina",
+  "veterinaria", "alimentos", "accesorios", "guardería", "papelería",
+  "óptica", "otros",
+];
 
 const ADMIN_AS_COOKIE = "portal659-admin-as";
 
@@ -104,7 +112,21 @@ export async function resolveCategoryName(
     const match = (cats || []).find(
       (c) => c.name.trim().toLowerCase() === base.toLowerCase()
     );
-    if (match) return match.name;
-  } catch { /* sin categorías: usar el texto tal cual */ }
-  return base;
+     if (match) return match.name;
+   } catch { /* sin categorías: usar el texto tal cual */ }
+   return base;
+}
+
+/**
+ * Si el vertical es comercio, seedea las categorías de producto por
+ * defecto en vendor_categories al crear el vendor.
+ */
+export async function seedDefaultCategories(vendorId: string, vertical: string): Promise<void> {
+  if (vertical !== "comercio") return;
+  for (let i = 0; i < COMERCIO_CATEGORIES.length; i++) {
+    await query(
+      `INSERT INTO vendor_categories (vendor_id, name, position) VALUES ($1, $2, $3) ON CONFLICT (vendor_id, name) DO NOTHING`,
+      [vendorId, COMERCIO_CATEGORIES[i], i]
+    );
+  }
 }

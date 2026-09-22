@@ -9,6 +9,16 @@ import { cashAppliesToItem, cashPrice, normalizeCashPct } from "@/lib/cash-disco
 import { useCart, type CartModifier, type CartVolumeGroup } from "@/lib/cart";
 import { useToast } from "@/lib/toast";
 import { volumeBadgeText } from "@/lib/volume-pricing";
+import {
+  BIG_GROUP_THRESHOLD,
+  categoriesOf,
+  effectiveMax,
+  filterOptions,
+  groupStatusText,
+  missingCount,
+  missingText,
+  toggleWithCap,
+} from "@/lib/modifier-select";
 import type { ProductModifier, ModifierOption } from "@/types/database";
 
 type VendorBrief = {
@@ -61,6 +71,10 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
   // Estado inline de la ficha mobile (modificadores + cantidad).
   const [selected, setSelected] = useState<Record<string, ModifierOption[]>>({});
   const [qty, setQty] = useState(1);
+  // Búsqueda/categoría solo para grupos grandes (ej: gustos de heladería).
+  const [queries, setQueries] = useState<Record<string, string>>({});
+  const [cats, setCats] = useState<Record<string, string | null>>({});
+  const [hints, setHints] = useState<Record<string, string>>({});
   const sheetBodyRef = useRef<HTMLDivElement | null>(null);
 
   // Al abrir una ficha CON opciones: la foto de 45vh las dejaba debajo del
@@ -132,27 +146,35 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
 
   const allRequiredMet = modifiers
     .filter((m) => m.required)
-    .every((m) => (selected[m.group_name] || []).length > 0);
+    .every((m) => missingCount(m, (selected[m.group_name] || []).length) <= 0);
+  const totalMissing = modifiers.reduce(
+    (s, m) => s + missingCount(m, (selected[m.group_name] || []).length),
+    0
+  );
 
   function toggleOption(groupName: string, option: ModifierOption, max: number) {
-    setSelected((prev) => {
-      const current = prev[groupName] || [];
-      const exists = current.find((o) => o.label === option.label);
-      let next: ModifierOption[];
-      if (exists) {
-        next = current.filter((o) => o.label !== option.label);
-      } else {
-        if (current.length >= max) return prev;
-        next = [...current, option];
-      }
-      return { ...prev, [groupName]: next };
-    });
+    const res = toggleWithCap(selected[groupName] || [], option, max);
+    setSelected((prev) => ({ ...prev, [groupName]: res.next }));
+    if (res.replaced) {
+      setHints((prev) => ({ ...prev, [groupName]: `Se reemplazó ${res.replaced!.label}` }));
+      window.setTimeout(() => {
+        setHints((prev) => {
+          if (!prev[groupName]) return prev;
+          const next = { ...prev };
+          delete next[groupName];
+          return next;
+        });
+      }, 2200);
+    }
   }
 
   function openSheet() {
     // Reset del estado al abrir (no arrastrar lo de la vez anterior).
     setSelected({});
     setQty(pack);
+    setQueries({});
+    setCats({});
+    setHints({});
     setOpen(true);
   }
 
@@ -385,28 +407,79 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
                 <div className="border-t border-border pt-3 space-y-4">
                   {modifiers.map((mod) => {
                     const groupSelected = selected[mod.group_name] || [];
+                    const max = effectiveMax(mod);
+                    const isBig = (mod.options || []).length > BIG_GROUP_THRESHOLD;
+                    const status = groupStatusText(mod, groupSelected.length);
+                    const missing = missingCount(mod, groupSelected.length);
+                    const q = queries[mod.group_name] || "";
+                    const activeCat = cats[mod.group_name] ?? null;
+                    const catsList = isBig ? categoriesOf(mod.options) : [];
+                    const visible = isBig ? filterOptions(mod.options, q, activeCat) : mod.options;
                     return (
                       <div key={mod.id}>
                         <div className="flex items-center justify-between mb-2">
-                          <span className="text-sm font-medium">{mod.group_name}</span>
+                          <span className="text-sm font-medium">
+                            {mod.group_name}
+                            {max > 1 && (
+                              <span className="ml-1.5 text-xs text-muted-foreground tabular-nums">
+                                {groupSelected.length}/{max}
+                              </span>
+                            )}
+                          </span>
                           <span className="text-xs text-muted-foreground">
                             {mod.required ? "Obligatorio" : "Opcional"}
-                            {mod.max_selections > 1 && ` · Hasta ${mod.max_selections}`}
+                            {max > 1 && ` · ${status}`}
                           </span>
                         </div>
-                        <div className="space-y-1.5">
-                          {mod.options.map((opt) => {
+                        {hints[mod.group_name] && (
+                          <p className="text-xs text-muted-foreground mb-1.5">{hints[mod.group_name]}</p>
+                        )}
+                        {missing > 0 && (
+                          <p className="text-xs text-amber-600 mb-1.5">{missingText(mod, groupSelected.length)}</p>
+                        )}
+                        {isBig && (
+                          <input
+                            type="search"
+                            value={q}
+                            onChange={(e) => setQueries((prev) => ({ ...prev, [mod.group_name]: e.target.value }))}
+                            placeholder="Buscar gusto…"
+                            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm mb-2 outline-none focus:border-primary"
+                          />
+                        )}
+                        {catsList.length > 0 && (
+                          <div className="flex gap-1.5 overflow-x-auto pb-2 mb-1">
+                            <button
+                              type="button"
+                              onClick={() => setCats((prev) => ({ ...prev, [mod.group_name]: null }))}
+                              className={`flex-shrink-0 text-xs px-2.5 py-1 rounded-full border transition-colors ${!activeCat ? "border-primary bg-primary/10 text-primary font-medium" : "border-border text-muted-foreground"}`}
+                            >
+                              Todas
+                            </button>
+                            {catsList.map((c) => (
+                              <button
+                                key={c}
+                                type="button"
+                                onClick={() => setCats((prev) => ({ ...prev, [mod.group_name]: c }))}
+                                className={`flex-shrink-0 text-xs px-2.5 py-1 rounded-full border transition-colors ${activeCat === c ? "border-primary bg-primary/10 text-primary font-medium" : "border-border text-muted-foreground"}`}
+                              >
+                                {c}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        <div className={isBig ? "space-y-1.5 max-h-64 overflow-y-auto pr-0.5" : "space-y-1.5"}>
+                          {visible.map((opt) => {
                             const isChecked = groupSelected.some((o) => o.label === opt.label);
                             return (
                               <button
                                 key={opt.label}
                                 type="button"
-                                onClick={() => toggleOption(mod.group_name, opt, mod.max_selections)}
+                                onClick={() => toggleOption(mod.group_name, opt, max)}
                                 className={`w-full flex items-center justify-between rounded-lg border px-3 py-2 text-sm transition-colors ${
                                   isChecked ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"
                                 }`}
                               >
-                                <span className="flex items-center gap-2">
+                                <span className="flex items-center gap-2 min-w-0">
                                   <span
                                     className={`h-4 w-4 rounded-full border flex items-center justify-center flex-shrink-0 ${
                                       isChecked ? "border-primary bg-primary" : "border-muted-foreground"
@@ -418,14 +491,19 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
                                       </svg>
                                     )}
                                   </span>
-                                  {opt.label}
+                                  <span className="truncate">{opt.label}</span>
                                 </span>
                                 {Number(opt.price_mod) > 0 && (
-                                  <span className="text-muted-foreground">+${Number(opt.price_mod).toLocaleString("es-AR")}</span>
+                                  <span className="text-muted-foreground flex-shrink-0 ml-2">+${Number(opt.price_mod).toLocaleString("es-AR")}</span>
                                 )}
                               </button>
                             );
                           })}
+                          {visible.length === 0 && (
+                            <p className="text-sm text-muted-foreground text-center py-3">
+                              Sin resultados para “{q}”
+                            </p>
+                          )}
                         </div>
                       </div>
                     );
@@ -474,7 +552,7 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
                     className="w-full rounded-xl bg-primary text-primary-foreground text-sm font-semibold py-3 hover:bg-primary/90 transition-colors active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Agregar al pedido · ${grandTotal.toLocaleString("es-AR")}
-                    {modifiers.length > 0 && !allRequiredMet && " (faltan opciones)"}
+                    {modifiers.length > 0 && !allRequiredMet && ` (te ${totalMissing === 1 ? "falta 1" : `faltan ${totalMissing}`})`}
                   </button>
                 </>
               ) : (

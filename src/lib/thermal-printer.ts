@@ -386,7 +386,25 @@ function formatItemLine(item: OrderItem, width: number): string[] {
   }
 
   if (item.modifiers && item.modifiers.length > 0) {
-    lines.push(`   (${item.modifiers.join(", ")})`);
+    // Los gustos (ej: 4-5 en 1 kg) no entran en una línea de 32/48 columnas:
+    // se envuelven por palabras en vez de dejar que la impresora corte.
+    const full = `(${item.modifiers.join(", ")})`;
+    const maxw = Math.max(10, width - 3);
+    if (full.length <= maxw) {
+      lines.push(`   ${full}`);
+    } else {
+      let cur = "";
+      for (const word of full.split(" ")) {
+        const next = cur ? `${cur} ${word}` : word;
+        if (next.length > maxw && cur) {
+          lines.push(`   ${cur}`);
+          cur = word;
+        } else {
+          cur = next;
+        }
+      }
+      if (cur) lines.push(`   ${cur}`);
+    }
   }
 
   return lines;

@@ -82,7 +82,7 @@ export function CartDrawer() {
                               key={mi}
                               className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground"
                             >
-                              {m.label}
+                              {m.group ? `${m.group}: ` : ""}{m.label}
                               {m.price_mod > 0 && ` +$${m.price_mod.toLocaleString("es-AR")}`}
                             </span>
                           ))}

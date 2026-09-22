@@ -10,6 +10,8 @@ function normalizeOptions(options: unknown): ModifierOption[] {
     .map((o: any) => ({
       label: String(o?.label ?? o?.name ?? "").trim(),
       price_mod: Number(o?.price_mod ?? o?.price ?? 0) || 0,
+      // Familia opcional (filtro en la hoja de gustos). Se guarda en el JSONB.
+      ...(String(o?.category ?? "").trim() ? { category: String(o.category).trim().slice(0, 40) } : {}),
     }))
     .filter((o) => o.label !== "");
 }
@@ -29,7 +31,7 @@ export async function PATCH(
   if (!existing) return NextResponse.json({ error: "No encontrado" }, { status: 404 });
 
   const body = await request.json();
-  const { group_name, options, required, max_selections, is_variant, product_ids } = body;
+  const { group_name, options, required, max_selections, min_selections, is_variant, product_ids } = body;
 
   const update: Record<string, unknown> = {};
   if (typeof group_name === "string" && group_name.trim()) update.group_name = group_name.trim();
@@ -40,15 +42,31 @@ export async function PATCH(
   if (typeof required === "boolean") update.required = required;
   if (max_selections !== undefined) update.max_selections = Math.max(1, Number(max_selections) || 1);
   if (typeof is_variant === "boolean") update.is_variant = is_variant;
+  if (min_selections !== undefined) {
+    // NULL/0 = legacy. Solo rige si el grupo es (o queda) obligatorio.
+    const req = typeof required === "boolean" ? required : undefined;
+    const m = Math.floor(Number(min_selections));
+    update.min_selections = Number.isFinite(m) && m >= 1 ? m : null;
+    if (req === false) update.min_selections = null;
+  }
 
   await withTransaction(async (tx) => {
     if (Object.keys(update).length > 0) {
-      const cols = Object.keys(update);
-      const set = cols.map((k, i) => `${k} = $${i + 1}`).join(", ");
-      await tx.queryVoid(`UPDATE modifier_groups SET ${set} WHERE id = $${cols.length + 1}`, [
-        ...cols.map((k) => update[k]),
-        id,
-      ]);
+      const runUpdate = async (cols: string[]) => {
+        const set = cols.map((k, i) => `${k} = $${i + 1}`).join(", ");
+        await tx.queryVoid(`UPDATE modifier_groups SET ${set} WHERE id = $${cols.length + 1}`, [
+          ...cols.map((k) => update[k]),
+          id,
+        ]);
+      };
+      try {
+        await runUpdate(Object.keys(update));
+      } catch (e) {
+        // Columna min_selections aún no migrada: reintentar sin ella.
+        if (!("min_selections" in update) || !/min_selections/i.test(String((e as Error)?.message || ""))) throw e;
+        const { min_selections: _drop, ...rest } = update;
+        if (Object.keys(rest).length > 0) await runUpdate(Object.keys(rest));
+      }
     }
 
     // Reconciliación de asignaciones: si llega product_ids, reemplaza la lista.

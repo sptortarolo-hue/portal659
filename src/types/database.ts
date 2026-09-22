@@ -91,6 +91,8 @@ export type ProductModifier = {
   options: ModifierOption[];
   required: boolean;
   max_selections: number;
+  /** Mínimo exigible (solo si required). NULL/ausente = legacy (≥1 si required). */
+  min_selections?: number | null;
   position: number;
   /** Grupo "Variante": aparece primero y debe elegirse una opción. */
   is_variant?: boolean;
@@ -105,6 +107,8 @@ export type ModifierGroup = {
   options: ModifierOption[];
   required: boolean;
   max_selections: number;
+  /** Mínimo exigible (solo si required). NULL = legacy. Puede faltar si la migración aún no se aplicó. */
+  min_selections?: number | null;
   is_variant: boolean;
   created_at: string;
   product_ids?: string[];
@@ -114,6 +118,8 @@ export type ModifierGroup = {
 export type ModifierOption = {
   label: string;
   price_mod: number;
+  /** Familia opcional para agrupar/filtrar (ej: "Cremas", "Chocolates"). Vive en el JSONB: sin migración. */
+  category?: string;
 };
 
 /** Unidad base de un insumo: peso (g), volumen (ml) o unidad (u). */

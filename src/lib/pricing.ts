@@ -127,6 +127,10 @@ export async function resolveOrderPricing(opts: {
 
   // Mapa product_id -> label -> price_mod (desde modifier_groups.options JSONB).
   let modifierMap = new Map<string, Map<string, number>>();
+  // Reglas por producto: grupo -> { required, max, min, labels } para validar
+  // cantidades (caso heladería: "Gustos" min 2 / max 2 en el 1/4 kg).
+  type GroupRule = { name: string; required: boolean; max: number; min: number | null; labels: Set<string> };
+  let rulesByProduct = new Map<string, GroupRule[]>();
   if (productIds.size) {
     const modRows = await tx.query<{ product_id: string; options: { label?: string; price_mod?: number }[] }>(
       `SELECT l.product_id, g.options
@@ -148,6 +152,45 @@ export async function resolveOrderPricing(opts: {
         if (!label) continue;
         inner.set(label, Number(o?.price_mod ?? 0) || 0);
       }
+    }
+    // Reglas de cantidad por grupo. Si la migración migrate-min-selections.sql
+    // aún no se aplicó, reintentamos sin la columna (min = legacy).
+    type RuleRow = { product_id: string; group_name: string; required: boolean; max_selections: number; min_selections: number | null; options: { label?: string }[] };
+    let ruleRows: RuleRow[] = [];
+    try {
+      ruleRows = await tx.query<RuleRow>(
+        `SELECT l.product_id, g.group_name, g.required, g.max_selections, g.min_selections, g.options
+         FROM product_modifier_links l
+         JOIN modifier_groups g ON g.id = l.group_id
+         WHERE l.product_id = ANY($1)`,
+        [[...productIds]]
+      );
+    } catch {
+      const legacy = await tx.query<Omit<RuleRow, "min_selections">>(
+        `SELECT l.product_id, g.group_name, g.required, g.max_selections, g.options
+         FROM product_modifier_links l
+         JOIN modifier_groups g ON g.id = l.group_id
+         WHERE l.product_id = ANY($1)`,
+        [[...productIds]]
+      );
+      ruleRows = (legacy || []).map((r) => ({ ...r, min_selections: null }));
+    }
+    rulesByProduct = new Map();
+    for (const r of ruleRows || []) {
+      const labels = new Set<string>();
+      for (const o of Array.isArray(r.options) ? r.options : []) {
+        const label = String(o?.label ?? "").trim();
+        if (label) labels.add(label);
+      }
+      const list = rulesByProduct.get(r.product_id) || [];
+      list.push({
+        name: String(r.group_name || ""),
+        required: r.required === true,
+        max: Math.max(1, Math.floor(Number(r.max_selections)) || 1),
+        min: r.min_selections == null ? null : Math.max(0, Math.floor(Number(r.min_selections)) || 0),
+        labels,
+      });
+      rulesByProduct.set(r.product_id, list);
     }
   }
 
@@ -227,9 +270,23 @@ export async function resolveOrderPricing(opts: {
 
     // Modificadores: solo se aplican los que el producto hoy tiene definidos
     // y con el precio actual del catálogo (no del cliente).
-    const labels = Array.isArray(it.modifiers)
-      ? it.modifiers.map((m) => String(m ?? "").trim()).filter(Boolean).slice(0, 10)
+    // Acepta strings ("Chocolate") u objetos {label, group} del carrito.
+    const picked: { label: string; group: string | null }[] = Array.isArray(it.modifiers)
+      ? (it.modifiers as unknown[])
+          .map((m) => {
+            if (typeof m === "string") return { label: m.trim(), group: null as string | null };
+            if (m && typeof m === "object") {
+              const o = m as Record<string, unknown>;
+              const label = String(o.label ?? o.name ?? "").trim();
+              const group = o.group != null && String(o.group).trim() ? String(o.group).trim() : null;
+              return { label, group };
+            }
+            return { label: "", group: null as string | null };
+          })
+          .filter((p) => p.label !== "")
+          .slice(0, 10)
       : [];
+    const labels = picked.map((p) => p.label);
 
     let modsPerUnit = 0;
     if (labels.length > 0) {
@@ -240,6 +297,34 @@ export async function resolveOrderPricing(opts: {
           throw new PricingError(`Modificador "${label}" no existe más en "${product.name}".`);
         }
         modsPerUnit += mod;
+      }
+    }
+
+    // Cantidades por grupo (min/max/obligatorio). Solo rechaza pedidos que la
+    // UI honesta nunca emite (el cliente ya lo valida); cierra el bypass por
+    // request directo. Con datos legacy (sin min) el comportamiento no cambia.
+    const rules = rulesByProduct.get(product.id) || [];
+    if (rules.length > 0) {
+      for (const rule of rules) {
+        let count = 0;
+        for (const p of picked) {
+          if (p.group) {
+            if (p.group === rule.name) count++;
+          } else if (rule.labels.has(p.label)) {
+            count++;
+          }
+        }
+        const need = rule.required ? Math.max(1, rule.min ?? 1) : 0;
+        if (count < need) {
+          throw new PricingError(
+            `"${product.name}": en "${rule.name || "opciones"}" elegí al menos ${need} (elegiste ${count}).`
+          );
+        }
+        if (count > rule.max) {
+          throw new PricingError(
+            `"${product.name}": en "${rule.name || "opciones"}" podés elegir hasta ${rule.max} (elegiste ${count}).`
+          );
+        }
       }
     }
 

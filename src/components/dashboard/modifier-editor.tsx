@@ -17,11 +17,13 @@ type GroupData = {
   options: ModifierOption[];
   required: boolean;
   max_selections: number;
+  /** NULL = legacy (obligatorio exige ≥1). Solo rige si required. */
+  min_selections: number | null;
   is_variant: boolean;
   product_ids: string[];
 };
 
-function emptyOption() {
+function emptyOption(): ModifierOption {
   return { label: "", price_mod: 0 };
 }
 
@@ -44,6 +46,9 @@ function GroupForm({
   );
   const [required, setRequired] = useState(initial ? !!initial.required : false);
   const [maxSel, setMaxSel] = useState(String(initial?.max_selections || 1));
+  const [minSel, setMinSel] = useState(
+    initial?.min_selections != null ? String(initial.min_selections) : ""
+  );
   const [isVariant, setIsVariant] = useState(initial ? !!initial.is_variant : false);
   const [selected, setSelected] = useState<Set<string>>(
     new Set(initial?.product_ids || [])
@@ -63,16 +68,31 @@ function GroupForm({
 
   async function handleSubmit() {
     setError("");
-    const clean = options.filter((o) => o.label.trim());
+    const clean = options
+      .map((o) => ({
+        label: o.label.trim(),
+        price_mod: Number(o.price_mod) || 0,
+        ...(String(o.category ?? "").trim() ? { category: String(o.category).trim().slice(0, 40) } : {}),
+      }))
+      .filter((o) => o.label !== "");
     if (!name.trim()) return setError("Indicá el nombre del grupo");
     if (clean.length === 0) return setError("Agregá al menos una opción");
+    const maxN = Math.max(1, Number(maxSel) || 1);
+    const req = required || isVariant;
+    // Mínimo: vacío = legacy (≥1 si obligatorio). Clampeado a 1..max.
+    let minN: number | null = null;
+    if (req) {
+      const m = Math.floor(Number(minSel));
+      minN = Number.isFinite(m) && m >= 1 ? Math.min(m, maxN) : 1;
+    }
     setSaving(true);
     try {
       await onSubmit({
         group_name: name.trim(),
         options: clean,
-        required: required || isVariant,
-        max_selections: Math.max(1, Number(maxSel) || 1),
+        required: req,
+        max_selections: maxN,
+        min_selections: minN,
         is_variant: isVariant,
         product_ids: Array.from(selected),
       });
@@ -109,13 +129,33 @@ function GroupForm({
           />
           <Input
             type="number"
+            min={0}
+            className="w-20"
+            value={minSel}
+            onChange={(e) => setMinSel(e.target.value)}
+            title="Mínimo de selecciones (vacío = 1 si es obligatorio)"
+            placeholder="Mín"
+            disabled={!required && !isVariant}
+          />
+          <Input
+            type="number"
             min={1}
-            className="w-24"
+            className="w-20"
             value={maxSel}
             onChange={(e) => setMaxSel(e.target.value)}
             title="Máximo de selecciones"
+            placeholder="Máx"
           />
         </div>
+        {(required || isVariant) && (
+          <p className="text-xs text-muted-foreground">
+            Mínimo {minSel && Number(minSel) >= 1 ? Math.min(Math.max(1, Math.floor(Number(minSel))), Math.max(1, Number(maxSel) || 1)) : 1}
+            {" "}· Máximo {Math.max(1, Number(maxSel) || 1)}
+            {minSel && Number(minSel) >= Math.max(1, Number(maxSel) || 1)
+              ? " — hay que elegir exactamente esa cantidad (ej: 2 gustos en el 1/4 kg)."
+              : " — el cliente puede elegir dentro de ese rango."}
+          </p>
+        )}
         {isVariant && (
           <p className="text-xs text-primary">
             ⭐ Variante: aparece primero en la ficha y es obligatorio elegir una opción.
@@ -132,12 +172,19 @@ function GroupForm({
                 className="flex-1"
               />
               <Input
+                value={o.category || ""}
+                onChange={(e) => setOpt(i, { category: e.target.value })}
+                placeholder="Familia"
+                title="Familia para filtrar (ej: Cremas, Chocolates). Opcional."
+                className="w-24"
+              />
+              <Input
                 type="number"
                 step="0.01"
                 value={o.price_mod === 0 ? "" : String(o.price_mod)}
                 onChange={(e) => setOpt(i, { price_mod: Number(e.target.value) || 0 })}
                 placeholder="$"
-                className="w-24"
+                className="w-20"
               />
               <Button type="button" variant="ghost" size="sm" className="text-red-600" onClick={() => removeOpt(i)} disabled={options.length <= 1}>
                 ✕

@@ -143,7 +143,7 @@ export default async function TiendaPage({
   if (productIds.length > 0) {
     try {
       allModifiers = await queryMany<any>(
-        `SELECT g.id, g.group_name, g.options, g.required, g.max_selections, g.is_variant,
+        `SELECT g.id, g.group_name, g.options, g.required, g.max_selections, g.min_selections, g.is_variant,
                 l.product_id, l.position
          FROM product_modifier_links l
          JOIN modifier_groups g ON g.id = l.group_id
@@ -152,6 +152,18 @@ export default async function TiendaPage({
         [productIds]
       );
     } catch {
+      try {
+        // Migración migrate-min-selections.sql aún no aplicada: sin mínimo.
+        allModifiers = await queryMany<any>(
+          `SELECT g.id, g.group_name, g.options, g.required, g.max_selections, g.is_variant,
+                  l.product_id, l.position
+           FROM product_modifier_links l
+           JOIN modifier_groups g ON g.id = l.group_id
+           WHERE l.product_id = ANY($1)
+           ORDER BY g.is_variant DESC, l.position ASC`,
+          [productIds]
+        );
+      } catch {
       try {
         allModifiers = await queryMany<any>(
           `SELECT id, product_id, group_name, options, required, max_selections, position
@@ -162,6 +174,7 @@ export default async function TiendaPage({
         );
       } catch {
         allModifiers = [];
+      }
       }
     }
   }

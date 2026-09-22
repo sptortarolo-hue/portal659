@@ -298,11 +298,17 @@ export function Mesas() {
     // precio del paquete (round2 final; nunca suma de unidades redondeadas).
     const pk = i.packSize && i.packSize >= 2 ? i.packSize : 1;
     const lineTotal = Math.round(i.price * i.qty * 100) / 100;
+    const modLabels = (i.modifiers || []).map((m) => m.label).filter(Boolean);
     return (
-      <div key={`${i.product_id}|${(i.modifiers || []).map((m) => m.label).join(",")}`} className="flex items-center gap-2 text-xs">
-        <span className="flex-1 min-w-0 line-clamp-2 break-words">
-          {i.name}
-          {pk > 1 && <span className="ml-1.5 rounded-full bg-emerald-50 border border-emerald-200 px-1.5 py-0 text-[9px] font-semibold text-emerald-700 whitespace-nowrap">pack x{pk}</span>}
+      <div key={`${i.product_id}|${modLabels.join(",")}`} className="flex items-center gap-2 text-xs">
+        <span className="flex-1 min-w-0">
+          <span className="line-clamp-2 break-words">
+            {i.name}
+            {pk > 1 && <span className="ml-1.5 rounded-full bg-emerald-50 border border-emerald-200 px-1.5 py-0 text-[9px] font-semibold text-emerald-700 whitespace-nowrap">pack x{pk}</span>}
+          </span>
+          {modLabels.length > 0 && (
+            <span className="block text-[10px] text-muted-foreground truncate">({modLabels.join(", ")})</span>
+          )}
         </span>
         <div className="flex items-center gap-1">
           <button type="button" onClick={() => changeQty(i.product_id, -1)} className="h-6 w-6 rounded-md bg-muted hover:bg-accent">−</button>

@@ -108,6 +108,8 @@ export default function DashboardComercio({
   const [hours, setHours] = useState(vendor?.hours || "");
   const [storePreview, setStorePreview] = useState<string | null>(vendor?.image_url || null);
   const [logoPreview, setLogoPreview] = useState<string | null>(vendor?.logo_url || null);
+  const [storeFile, setStoreFile] = useState<File | null>(null);
+  const [logoFile, setLogoFile] = useState<File | null>(null);
   const [description, setDescription] = useState(vendor?.description || "");
   const [whatsapp, setWhatsapp] = useState(vendor?.whatsapp || "");
   const [phone, setPhone] = useState(vendor?.phone || "");
@@ -166,24 +168,70 @@ export default function DashboardComercio({
       e.preventDefault();
       setSaving(true);
       setMsg("");
+      const data: Record<string, unknown> = {
+        store_name: storeName,
+        vertical: storeVertical,
+        category: storeCategory,
+        address,
+        lat,
+        lng,
+        hours,
+        description,
+        whatsapp,
+        phone,
+        instagram,
+        facebook,
+        payment_methods: paymentMethods.join(", "),
+        delivery_options: deliveryOptions,
+        cash_discount_pct: cashDiscount === "" ? null : Number(cashDiscount),
+      };
+
+      if (storeFile) {
+        const fd = new FormData();
+        fd.append("file", storeFile);
+        fd.append("folder", "vendors");
+        try {
+          const res = await fetch("/api/vendor/upload", { method: "POST", body: fd });
+          const uploaded = await res.json();
+          if (uploaded.url) {
+            data.image_url = uploaded.url;
+          } else {
+            setMsg("No se pudo subir la foto del comercio");
+            setSaving(false);
+            return;
+          }
+        } catch {
+          setMsg("Error al subir la foto del comercio");
+          setSaving(false);
+          return;
+        }
+      }
+
+      if (logoFile) {
+        const fd = new FormData();
+        fd.append("file", logoFile);
+        fd.append("folder", "vendors");
+        try {
+          const res = await fetch("/api/vendor/upload", { method: "POST", body: fd });
+          const uploaded = await res.json();
+          if (uploaded.url) {
+            data.logo_url = uploaded.url;
+          } else {
+            setMsg("No se pudo subir el logo");
+            setSaving(false);
+            return;
+          }
+        } catch {
+          setMsg("Error al subir el logo");
+          setSaving(false);
+          return;
+        }
+      }
+
       try {
-        await saveVendor({
-          store_name: storeName,
-          vertical: storeVertical,
-          category: storeCategory,
-          address,
-          lat,
-          lng,
-          hours,
-          description,
-          whatsapp,
-          phone,
-          instagram,
-          facebook,
-          payment_methods: paymentMethods.join(", "),
-          delivery_options: deliveryOptions,
-          cash_discount_pct: cashDiscount === "" ? null : Number(cashDiscount),
-        });
+        await saveVendor(data);
+        setStoreFile(null);
+        setLogoFile(null);
         setMsg("Guardado");
       } catch {
         setMsg("Error al guardar");
@@ -206,6 +254,8 @@ export default function DashboardComercio({
       paymentMethods,
       deliveryOptions,
       cashDiscount,
+      storeFile,
+      logoFile,
       saveVendor,
       setMsg,
     ]
@@ -214,6 +264,7 @@ export default function DashboardComercio({
   function handleCoverFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0] || null;
     if (f) {
+      setStoreFile(f);
       onCrop("cover");
       setStorePreview(URL.createObjectURL(f));
     }
@@ -222,6 +273,7 @@ export default function DashboardComercio({
   function handleLogoFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0] || null;
     if (f) {
+      setLogoFile(f);
       onCrop("logo");
       setLogoPreview(URL.createObjectURL(f));
     }

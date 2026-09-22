@@ -85,6 +85,7 @@ export async function POST(request: Request) {
       },
       metadata: {
         vendor_id: vendorId,
+        customer_name: customerName || "",
         customer_phone: customerPhone,
         customer_address: customerAddress || "",
         delivery_method: method || "delivery",

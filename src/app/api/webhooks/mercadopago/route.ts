@@ -277,6 +277,12 @@ export async function POST(request: Request) {
         const isPickup = metadata.delivery_method === "pickup";
         const customerPhone = metadata.customer_phone || payment.payer?.phone?.number || "";
         const customerAddress = metadata.customer_address || null;
+        // Nombre del cliente: el que escribió en el checkout (metadata) gana —
+        // payment.payer suele venir vacío y caía en "Cliente MP" genérico.
+        const customerName =
+          typeof metadata.customer_name === "string" && metadata.customer_name.trim()
+            ? metadata.customer_name.trim()
+            : payment.payer?.first_name || "Cliente MP";
 
         // Número de retiro correlativo por día (solo si es retiro en local).
         let pickupNumber: number | null = null;
@@ -303,12 +309,12 @@ export async function POST(request: Request) {
         let order: any = null;
         await withTransaction(async (tx) => {
           const inserted = await tx.query<{ id: string }>(
-            `INSERT INTO orders (vendor_id, customer_name, customer_phone, customer_address, method, items, total, status, pickup_number, payment_method, payment_status, track_token)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, 'new', $8, 'mercadopago', 'paid', $9)
+            `INSERT INTO orders (vendor_id, customer_name, customer_phone, customer_address, method, items, total, status, pickup_number, payment_method, payment_status, track_token, mp_payment_id)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, 'new', $8, 'mercadopago', 'paid', $9, $10)
              RETURNING id`,
             [
               vendorId,
-              payment.payer?.first_name || "Cliente MP",
+              customerName,
               customerPhone,
               customerAddress,
               isPickup ? "pickup" : "delivery",
@@ -316,12 +322,13 @@ export async function POST(request: Request) {
               payment.transaction_amount,
               pickupNumber,
               trackToken,
+              String(payment.id ?? ""),
             ]
           );
           order = {
             id: inserted[0]?.id,
             vendor_id: vendorId,
-            customer_name: payment.payer?.first_name || "Cliente MP",
+            customer_name: customerName,
             customer_phone: customerPhone,
             customer_address: customerAddress,
             method: isPickup ? "pickup" : "delivery",
@@ -339,7 +346,7 @@ export async function POST(request: Request) {
           if (customerE164) {
             await upsertCustomerFromOrder(tx, vendorId, {
               phone: customerE164,
-              name: payment.payer?.first_name || null,
+              name: customerName !== "Cliente MP" ? customerName : payment.payer?.first_name || null,
               address: customerAddress,
               total: Number(payment.transaction_amount),
             });

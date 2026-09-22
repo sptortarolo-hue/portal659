@@ -23,7 +23,7 @@ const MAX_PARSE_MISSES = 2;
 
 // Regexes
 const RE_CANCEL   = /^(cancelar|no gracias|basta)\b/i;
-const RE_CONFIRM  = /^(sí|si|dale|ok|okey|bueno|perfecto|confirmo|confirmar|listo)\b/i;
+const RE_CONFIRM  = /^(sí|si|dale|ok|okey|bueno|perfecto|confirmo|confirmar|listo)(?=[\s.,!¡]|$)/i;
 const RE_NO       = /^(no|nop|cancelar todo)\b/i;
 const RE_HUMAN    = /hablar con (una )?persona|hablar con alguien|humano|dueño|dueña|atención humana/i;
 const RE_MENU     = /\b(menú|menu|carta)\b/i;
@@ -53,6 +53,34 @@ function shopUrl(vendor) {
 // ———————————————————————————————————————————————————————————————————————————
 // Entrada principal
 // ———————————————————————————————————————————————————————————————————————————
+
+// Los parsers (LLM y reglas) devuelven items { name, qty, modifiers } SIN id.
+// El API de pedido exige `offerId` (pricing.ts resuelve por id, no por nombre).
+// Acá se enriquecen los items con el offerId REAL del menú, matcheando el
+// nombre contra los productos disponibles. Sin esto, CADA pedido confirmado
+// fallaba con "Uno de los productos ya no está disponible" (pricing.ts).
+function resolveOfferIds(products, items) {
+  if (!Array.isArray(items)) return [];
+  return items
+    .map((p) => {
+      const prod =
+        (p.offerId && products.find((x) => String(x.id) === String(p.offerId))) ||
+        matchProduct(products, p.name);
+      return {
+        offerId: prod?.id || p.offerId || p.id,
+        name: p.name,
+        qty: Math.max(1, Number(p.qty) || 1),
+        modifiers: Array.isArray(p.modifiers) ? p.modifiers : [],
+      };
+    })
+    .filter((p) => p.offerId);
+}
+
+function enrichParsed(products, parsed) {
+  if (!parsed) return parsed;
+  parsed.items = resolveOfferIds(products, parsed.items);
+  return parsed;
+}
 
 export async function handleInbound({ vendor, waId, body }) {
   const text = String(body || "").trim();
@@ -120,7 +148,10 @@ async function handleIdle({ vendor, text, state, replies, waId }) {
 
   // Pedido: IA primero, reglas después.
   const products = await getMenu(vendor.id);
-  let parsed = await parseWithLlm(text, products).catch(() => null) || parseByRules(text, products);
+  let parsed = enrichParsed(
+    products,
+    (await parseWithLlm(text, products).catch(() => null)) || parseByRules(text, products)
+  );
 
   if (parsed?.items?.length) {
     state.welcomed = true;
@@ -166,7 +197,10 @@ async function handleStep({ vendor, text, state, replies, waId }) {
     }
     // Corrección: el cliente pide cambiar algo → re-parsear y actualizar el resumen.
     const products = await getMenu(vendor.id);
-    const parsed = await parseWithLlm(t, products).catch(() => null) || parseByRules(t, products);
+    const parsed = enrichParsed(
+      products,
+      (await parseWithLlm(t, products).catch(() => null)) || parseByRules(t, products)
+    );
     if (parsed?.items?.length) {
       applyParsed(state, parsed, waId);
       advanceAndAsk(state, vendor, replies);
@@ -185,21 +219,18 @@ async function handleStep({ vendor, text, state, replies, waId }) {
   // Pasos method/address/name/payment: el mensaje puede traer TODO junto
   // ("envío a calle 5 123, Juan Pérez, transferencia"). Extraemos todo lo que falte.
   const products = await getMenu(vendor.id);
-  const parsed = await parseWithLlm(t, products).catch(() => null) || parseByRules(t, products);
+  const parsed = enrichParsed(
+    products,
+    (await parseWithLlm(t, products).catch(() => null)) || parseByRules(t, products)
+  );
 
   let got = false;
-  if (!state.method && parsed?.method) { state.method = parsed.method; got = true; }
-  if (!state.customerAddress && parsed?.customerAddress) { state.customerAddress = parsed.customerAddress; got = true; }
-  if (!state.customerName && parsed?.customerName) { state.customerName = parsed.customerName; got = true; }
-  if (!state.payment && parsed?.payment) { state.payment = parsed.payment; got = true; }
-
-  // Heurística: si lo ÚNICO pendiente es el nombre y el texto es corto sin
-  // números ni palabras de pedido → es el nombre (el LLM gratis no extrae nombres).
-  const fieldsNow = missingFields(state, vendor);
-  if (!got && fieldsNow.length === 1 && fieldsNow[0] === "name" && t.length < 40 && !/\d/.test(t) && !RE_MENU.test(t) && !RE_CANCEL.test(t)) {
-    state.customerName = t;
-    got = true;
-  }
+  // Se actualizan SIEMPRE (no solo si falta): el cliente puede cambiar de idea
+  // en medio del flujo ("mejor retiro" tras decir "envío", "mejor efectivo"…).
+  if (parsed?.method && parsed.method !== state.method) { state.method = parsed.method; got = true; }
+  if (parsed?.customerAddress && parsed.customerAddress !== state.customerAddress) { state.customerAddress = parsed.customerAddress; got = true; }
+  if (parsed?.customerName && parsed.customerName !== state.customerName) { state.customerName = parsed.customerName; got = true; }
+  if (parsed?.payment && parsed.payment !== state.payment) { state.payment = parsed.payment; got = true; }
 
   // Productos en la respuesta: distinguir AGREGAR de RE-DECLARAR.
   // Con verbos de suma ("agregá/también/sumá/más") se suman al carrito; en
@@ -220,6 +251,9 @@ async function handleStep({ vendor, text, state, replies, waId }) {
     got = true;
   }
 
+  const fieldsNow = missingFields(state, vendor);
+  const RESPUESTAS_FLUJO = /^(sí|si|no|dale|ok|okey|bueno|perfecto|cancelar|no gracias|basta|listo|confirmo|confirmar|hola|buenas|hi|hey|buen)(?=[\s.,!¡]|$)/i;
+
   // Saludo en medio del flujo: responder con las preguntas pendientes, sin contar miss.
   if (!got && RE_GREETING.test(t) && t.length < 40) {
     replies.push(pendingQuestions(state));
@@ -227,6 +261,9 @@ async function handleStep({ vendor, text, state, replies, waId }) {
   }
 
   // "sí" en medio del flujo: si ya está todo completo, saltar a confirmar.
+  // (Si falta algo, se vuelven a preguntar las mismas — el "sí" NO debe
+  //  tratarse como nombre: antes la heurística lo capturaba y confirmaba
+  //  con "Nombre: sí".)
   if (!got && RE_CONFIRM.test(t)) {
     const still = missingFields(state, vendor);
     if (still.length === 0) {
@@ -236,6 +273,28 @@ async function handleStep({ vendor, text, state, replies, waId }) {
     }
     replies.push(pendingQuestions(state));
     return;
+  }
+
+  // "no" en medio del flujo = cancela.
+  if (!got && RE_NO.test(t)) {
+    await clearState(vendor.id, waId);
+    replies.push("Dale, lo cancelamos. Cuando quieras retomamos. 👍");
+    return;
+  }
+
+  // ——— Heurísticas de reglas (el LLM gratis suele estar caído/429) ———
+  // 1) Nombre: cuando falta, el texto es corto, sin dígitos (una dirección las
+  //    tiene) y no es una consigna propia del flujo → tomarlo como nombre.
+  if (!got && fieldsNow.includes("name") && t.length < 40 && !/\d/.test(t) && !RESPUESTAS_FLUJO.test(t) && !RE_MENU.test(t)) {
+    state.customerName = t;
+    got = true;
+  }
+  // 2) Dirección: cuando falta, con dígitos o prefijo de calle y no hay items
+  //    ni otra cosa consumida → tomarla como dirección.
+  if (!got && fieldsNow.includes("address") && t.length >= 4 &&
+      (/\d/.test(t) || /^(calle|av|avenida|pasaje|bulevar|diagonal|ruta|juan b|gral|barrio|localidad)/i.test(t))) {
+    state.customerAddress = t;
+    got = true;
   }
 
   if (got) {

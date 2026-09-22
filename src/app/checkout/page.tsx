@@ -43,6 +43,7 @@ export default function CheckoutPage() {
   // se obtiene con un poll corto a /api/orders/latest-token.
   const [mpReturn, setMpReturn] = useState<{
     status: "success" | "pending" | "failure";
+    paymentId: string | null;
     stash: {
       slug?: string;
       storeName?: string;
@@ -54,6 +55,16 @@ export default function CheckoutPage() {
   } | null>(null);
   const [mpTrackToken, setMpTrackToken] = useState<string | null>(null);
   const [mpTokenDone, setMpTokenDone] = useState(false);
+  // Datos que vienen del pedido ya creado (server) — no dependen del storage
+  // del cliente (MP suele volver por la app y el sessionStorage se pierde).
+  const [mpOrderInfo, setMpOrderInfo] = useState<{
+    storeName: string | null;
+    whatsapp: string | null;
+    total: number | null;
+    pickupNumber: number | null;
+    customerName: string | null;
+    slug?: string | null;
+  } | null>(null);
   // Validación de WhatsApp en vivo (misma que el registro de usuarios).
   const [phoneMsg, setPhoneMsg] = useState("");
   const [phoneOk, setPhoneOk] = useState(false);
@@ -116,7 +127,14 @@ export default function CheckoutPage() {
   useEffect(() => {
     const sp = new URLSearchParams(window.location.search);
     const p = sp.get("payment");
-    if (p !== "success" && p !== "pending" && p !== "failure") return;
+    const mpStatus = sp.get("status"); // lo agrega MP al volver: approved/pending/rejected...
+    const paymentId = sp.get("payment_id");
+    let status: "success" | "pending" | "failure" | null = null;
+    if (p === "success" || p === "pending" || p === "failure") status = p;
+    else if (mpStatus === "approved") status = "success";
+    else if (mpStatus === "pending" || mpStatus === "in_process") status = "pending";
+    else if (mpStatus === "rejected" || mpStatus === "cancelled" || mpStatus === "refunded") status = "failure";
+    if (!status) return;
     let stash: any = null;
     try {
       const raw = sessionStorage.getItem("mp_return");
@@ -125,40 +143,59 @@ export default function CheckoutPage() {
         sessionStorage.removeItem("mp_return");
       }
     } catch { /* noop */ }
-    setMpReturn({ status: p, stash });
+    setMpReturn({ status, stash, paymentId });
   }, []);
 
   useEffect(() => {
     if (!mpReturn || mpTokenDone || mpReturn.status === "failure") return;
+    const paymentId = mpReturn.paymentId;
     const slug = mpReturn.stash?.slug;
     const phone = mpReturn.stash?.phone;
-    if (!slug || !phone) {
+    if (!paymentId && !(slug && phone)) {
       setMpTokenDone(true);
       return;
     }
+    const buildUrl = () =>
+      paymentId
+        ? `/api/orders/latest-token?payment_id=${encodeURIComponent(paymentId)}`
+        : `/api/orders/latest-token?vendor=${encodeURIComponent(slug!)}&phone=${encodeURIComponent(phone!)}`;
     let cancelled = false;
     let tries = 0;
-    const id = window.setInterval(async () => {
+    let id: number | null = null;
+    const tick = async () => {
       tries++;
       try {
-        const r = await fetch(
-          `/api/orders/latest-token?vendor=${encodeURIComponent(slug)}&phone=${encodeURIComponent(phone)}`
-        );
+        const r = await fetch(buildUrl());
         const d = await r.json().catch(() => null);
+        // Datos del comercio para los botones, aunque el token todavía no esté.
+        if (d && (d.storeName || d.whatsapp || d.phoneVendor || d.token)) {
+          if (!cancelled) {
+            setMpOrderInfo({
+              storeName: d.storeName ?? null,
+              whatsapp: d.whatsapp ?? d.phoneVendor ?? null,
+              total: d.total ?? null,
+              pickupNumber: d.pickupNumber ?? null,
+              customerName: d.customerName ?? null,
+              slug: d.slug ?? null,
+            });
+          }
+        }
         if (d?.token) {
           if (!cancelled) {
             setMpTrackToken(d.token);
             setMpTokenDone(true);
           }
-          window.clearInterval(id);
+          if (id !== null) window.clearInterval(id);
           return;
         }
       } catch { /* noop */ }
-      if (tries >= 20) {
-        window.clearInterval(id);
+      if (tries >= 30) {
+        if (id !== null) window.clearInterval(id);
         if (!cancelled) setMpTokenDone(true);
       }
-    }, 3000);
+    };
+    void tick(); // primer intento inmediato; después cada 3s (~90s de ventana)
+    id = window.setInterval(tick, 3000);
     return () => {
       cancelled = true;
       window.clearInterval(id);
@@ -193,14 +230,25 @@ export default function CheckoutPage() {
 
   if (mpReturn) {
     const s = mpReturn;
-    const storeName = s.stash?.storeName || "el local";
-    const waNum = (s.stash?.whatsapp || "").replace(/[^0-9]/g, "");
+    // Datos del pedido criado: primero del endpoint (server = fuente de verdad),
+    // si no, el stash local. Funciona aunque MP haya vuelto por su app.
+    const storeName = mpOrderInfo?.storeName || s.stash?.storeName || "el local";
+    const waNum = (mpOrderInfo?.whatsapp || s.stash?.whatsapp || "").replace(/[^0-9]/g, "");
+    const totalTxt =
+      mpOrderInfo?.total != null
+        ? `$${Number(mpOrderInfo.total).toLocaleString("es-AR")}`
+        : s.stash?.total != null
+          ? `$${Number(s.stash.total).toLocaleString("es-AR")}`
+          : null;
+    const numTxt = mpOrderInfo?.pickupNumber ? ` Nro. ${mpOrderInfo.pickupNumber}` : "";
+    const nameTxt = mpOrderInfo?.customerName || s.stash?.customerName || "un cliente";
+    const trackSnippet = mpTrackToken ? ` · Seguimiento: ${window.location.origin}/seguimiento/${mpTrackToken}` : "";
     const waText =
       s.status === "failure"
         ? `Hola ${storeName}! Intenté pagar online y no se pudo cobrar. ¿Coordinamos el pedido por acá?`
-        : `Hola ${storeName}! Soy ${s.stash?.customerName || "el cliente"}: ya pagué mi pedido online por Mercado Pago (${s.stash?.total ? `$${Number(s.stash.total).toLocaleString("es-AR")}` : "online"}).`;
+        : `Hola ${storeName}! Soy ${nameTxt}: ya pagué mi pedido por Mercado Pago${totalTxt ? ` (${totalTxt})` : ""}${numTxt}.${trackSnippet}`;
     const waLink = waNum ? `https://wa.me/${waNum}?text=${encodeURIComponent(waText)}` : null;
-    const tiendaLink = s.stash?.slug ? `/tienda/${s.stash.slug}` : "/";
+    const tiendaLink = mpOrderInfo?.slug ? `/tienda/${mpOrderInfo.slug}` : s.stash?.slug ? `/tienda/${s.stash.slug}` : "/";
 
     return (
       <main className="container mx-auto px-4 py-20 max-w-md text-center">
@@ -253,7 +301,7 @@ export default function CheckoutPage() {
               rel="noopener noreferrer"
               className="block w-full rounded-xl bg-green-500 text-white text-sm font-medium py-2.5 hover:bg-green-600 transition-colors"
             >
-              💬 {s.status === "failure" ? "Coordinar por WhatsApp" : "Avisar por WhatsApp (opcional)"}
+              💬 {s.status === "failure" ? "Coordinar por WhatsApp" : "Consultar por WhatsApp"}
             </a>
           )}
           <Button variant="outline" className="w-full" onClick={() => router.push(tiendaLink)}>

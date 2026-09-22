@@ -31,7 +31,6 @@ export function matchProduct(products, name) {
   if (!n) return null;
 
   // Los tokens de interés: las palabras de la búsqueda del cliente.
-  const search = new Set(n.split("").length > 0 ? n.split("") : []);
   const wanted = n.split(" ").filter(Boolean);
 
   // Exacto: nombre del producto = búsqueda.

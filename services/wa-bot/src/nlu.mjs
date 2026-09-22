@@ -286,16 +286,20 @@ export function parseByRules(message, products) {
     : /(retiro|retirar|paso por|voy por)/i.test(m) ? "pickup" : null;
   const payment = /(transferencia|transferir|cbu|alias)/i.test(m) ? "transferencia"
     : /(efectivo|cash)/i.test(m) ? "efectivo" : null;
+  // Dirección: tras "envío a X" hasta la siguiente coma/tope de separación de
+  // items ("envío a calle 5 123, Juan, transferencia" → "calle 5 123").
+  const addrMatch = m.match(/(?:envío|envio|delivery|domicilio)\s+a\s+(?:la\s+)?([^,;\n]+)/i);
+  const customerAddress = addrMatch ? String(addrMatch[1]).trim().slice(0, 80) : null;
 
   if (Array.isArray(products) && products.length > 0) {
     const items = extractFromText(m, products);
     if (items.length) {
-      return { complete: true, items, method, customerName: null, customerAddress: null, payment, note: null };
+      return { complete: true, items, method, customerName: null, customerAddress, payment, note: null };
     }
   }
   // Sin items pero con datos: igual devolverlos (el bot los usa para avanzar).
-  if (method || payment) {
-    return { complete: false, items: [], method, customerName: null, customerAddress: null, payment, note: null };
+  if (method || payment || customerAddress) {
+    return { complete: false, items: [], method, customerName: null, customerAddress, payment, note: null };
   }
   return null;
 }
@@ -339,7 +343,7 @@ function extractFromText(text, products) {
       name = docena[1].trim();
     }
     const p = matchProduct(products, name);
-    if (p) out.push({ name: p.name, qty: Math.max(1, qty), modifiers: [] });
+    if (p) out.push({ offerId: p.id, name: p.name, qty: Math.max(1, qty), modifiers: [] });
   }
   return out;
 }

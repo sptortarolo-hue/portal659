@@ -1,4 +1,5 @@
 import { query, queryMany, queryOne } from "@/lib/db";
+import { getSiteUrl } from "@/lib/site-url";
 import { sendPushToUser } from "@/lib/push";
 import { getServiceQuota, ServiceQuotaError } from "@/lib/service-quota";
 import { getVendorByRequest } from "@/lib/vendor-utils";
@@ -7,11 +8,18 @@ import { withRateLimit } from "@/lib/api-wrapper";
 
 export const POST = withRateLimit(async (request: Request) => {
   const body = await request.json();
-  const { vendorId, customerName, customerPhone, serviceName, description, preferredDate, preferredTime } = body;
+  const { vendorId, customerName, customerPhone, serviceName, description, preferredDate, preferredTime, photoUrls } = body;
 
   if (!vendorId || !customerName || !customerPhone || !description) {
     return NextResponse.json({ error: "Faltan datos requeridos" }, { status: 400 });
   }
+
+  // Fotos (hasta 3, solo URLs de uploads propios).
+  const siteUrl = getSiteUrl();
+  const photos = (Array.isArray(photoUrls) ? photoUrls : [])
+    .map((u) => String(u || "").trim())
+    .filter((u) => u.startsWith(`${siteUrl}/uploads/service-requests/`) || u.startsWith("/uploads/service-requests/"))
+    .slice(0, 3);
 
   // Tope mensual del plan gratuito (5 solicitudes combinadas). 429 si se alcanza.
   try {
@@ -24,11 +32,21 @@ export const POST = withRateLimit(async (request: Request) => {
     // Sin tabla/columna (migración pendiente): seguir sin tope.
   }
 
-  const quote = await queryOne<{ id: string }>(
-    `INSERT INTO quotes (vendor_id, customer_name, customer_phone, service_name, description, preferred_date, preferred_time, status)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending') RETURNING id`,
-    [vendorId, customerName, customerPhone, serviceName || null, description, preferredDate || null, preferredTime || null]
-  );
+  let quote: { id: string } | undefined;
+  try {
+    quote = await queryOne<{ id: string }>(
+      `INSERT INTO quotes (vendor_id, customer_name, customer_phone, service_name, description, preferred_date, preferred_time, photo_urls, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending') RETURNING id`,
+      [vendorId, customerName, customerPhone, serviceName || null, description, preferredDate || null, preferredTime || null, JSON.stringify(photos)]
+    );
+  } catch {
+    // Columna photo_urls aún no migrada: guardar sin fotos.
+    quote = await queryOne<{ id: string }>(
+      `INSERT INTO quotes (vendor_id, customer_name, customer_phone, service_name, description, preferred_date, preferred_time, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending') RETURNING id`,
+      [vendorId, customerName, customerPhone, serviceName || null, description, preferredDate || null, preferredTime || null]
+    );
+  }
 
   const vendor = await queryOne<{ user_id: string }>(
     `SELECT user_id, store_name FROM vendors WHERE id = $1 LIMIT 1`,

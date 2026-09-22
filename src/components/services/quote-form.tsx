@@ -20,6 +20,7 @@ export function QuoteForm({ vendorId, vendorName, servicesList }: Props) {
   const [description, setDescription] = useState("");
   const [preferredDate, setPreferredDate] = useState("");
   const [preferredTime, setPreferredTime] = useState("");
+  const [photos, setPhotos] = useState<File[]>([]);
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState("");
@@ -42,6 +43,26 @@ export function QuoteForm({ vendorId, vendorName, servicesList }: Props) {
     setLoading(true);
     setError("");
 
+    // Fotos del problema (opcional, hasta 3). Se suben antes de la solicitud.
+    let photoUrls: string[] = [];
+    if (photos.length > 0) {
+      try {
+        const fd = new FormData();
+        photos.slice(0, 3).forEach((f) => fd.append("files", f));
+        const upRes = await fetch(`/api/service-upload?vendorId=${vendorId}`, {
+          method: "POST",
+          body: fd,
+        });
+        const upData = await upRes.json();
+        if (!upRes.ok || !upData.urls) throw new Error(upData.error || "No se pudieron subir las fotos");
+        photoUrls = upData.urls;
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "No se pudieron subir las fotos");
+        setLoading(false);
+        return;
+      }
+    }
+
     const res = await fetch("/api/quotes", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -53,6 +74,7 @@ export function QuoteForm({ vendorId, vendorName, servicesList }: Props) {
         description,
         preferredDate: preferredDate || null,
         preferredTime: preferredTime || null,
+        photoUrls,
       }),
     });
 
@@ -86,6 +108,19 @@ export function QuoteForm({ vendorId, vendorName, servicesList }: Props) {
       <div>
         <Label htmlFor="q-desc">Describí lo que necesitás *</Label>
         <Textarea id="q-desc" value={description} onChange={e => setDescription(e.target.value)} placeholder="Contanos brevemente qué necesitás, medidas, cantidades, etc." required rows={3} />
+      </div>
+      <div>
+        <Label htmlFor="q-photos">Fotos del problema (opcional, hasta 3)</Label>
+        <Input
+          id="q-photos"
+          type="file"
+          accept="image/jpeg,image/png,image/webp,image/gif"
+          multiple
+          onChange={(e) => setPhotos(Array.from(e.target.files || []).slice(0, 3))}
+        />
+        {photos.length > 0 && (
+          <p className="text-xs text-muted-foreground mt-1">{photos.length} foto{photos.length > 1 ? "s" : ""} seleccionada{photos.length > 1 ? "s" : ""}</p>
+        )}
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>

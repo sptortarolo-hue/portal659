@@ -24,11 +24,19 @@ export async function GET(request: Request) {
   const quotes = await queryMany<Record<string, unknown>>(
     `SELECT id, customer_name, customer_phone, service_name, description,
             preferred_date, preferred_time, status, vendor_notes, quoted_price,
-            deposit_amount, deposit_pct, deposit_status, created_at
+            deposit_amount, deposit_pct, deposit_status, photo_urls, created_at
      FROM quotes WHERE ${conditions.join(" AND ")} ORDER BY created_at DESC LIMIT 100`,
     params
   ).catch(() =>
     // Migración de seña aún no aplicada: sin columnas de depósito.
+    queryMany<Record<string, unknown>>(
+      `SELECT id, customer_name, customer_phone, service_name, description,
+              preferred_date, preferred_time, status, vendor_notes, quoted_price, photo_urls,
+              created_at
+       FROM quotes WHERE ${conditions.join(" AND ")} ORDER BY created_at DESC LIMIT 100`,
+      params
+    )
+  ).catch(() =>
     queryMany<Record<string, unknown>>(
       `SELECT id, customer_name, customer_phone, service_name, description,
               preferred_date, preferred_time, status, vendor_notes, quoted_price,

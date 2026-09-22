@@ -65,6 +65,8 @@ jobs:
             PB_SECRET='${{ secrets.PRINT_BRIDGE_SECRET }}'
             if [ -z "$PB_SECRET" ]; then PB_SECRET=$(openssl rand -hex 24); fi
             echo "PRINT_BRIDGE_SECRET=$PB_SECRET" >> /opt/portal659/.env
+            CS_SECRET='${{ secrets.CRON_SECRET }}'
+            if [ -n "$CS_SECRET" ]; then echo "CRON_SECRET=$CS_SECRET" >> /opt/portal659/.env; fi
             echo 'LLM_API_KEY=${{ secrets.LLM_API_KEY }}' >> /opt/portal659/.env
             echo 'LLM_BASE_URL=${{ secrets.LLM_BASE_URL }}' >> /opt/portal659/.env
             echo 'LLM_MODEL=${{ secrets.LLM_MODEL }}' >> /opt/portal659/.env
@@ -121,6 +123,17 @@ jobs:
               '07 7 * * * root /opt/portal659-backups/backup.sh >> /opt/portal659-backups/cron.log 2>&1' \
               > /etc/cron.d/portal659-backup
             chmod 644 /etc/cron.d/portal659-backup
+            systemctl enable --now cron >/dev/null 2>&1 || service cron start >/dev/null 2>&1 || true
+
+            # Recordatorios T-24/T-2 de turnos (cron self-managed, igual que backups).
+            # Genera CRON_SECRET si falta; dispara cada 15 min contra el secreto.
+            CRON_SECRET_VAL='${{ secrets.CRON_SECRET }}'
+            if [ -z "$CRON_SECRET_VAL" ]; then CRON_SECRET_VAL=$(openssl rand -hex 16); fi
+            echo "CRON_SECRET=$CRON_SECRET_VAL" >> /opt/portal659/.env
+            printf '%s\n' \
+              "*/15 * * * * root curl -fsS \"https://www.portal659.com.ar/api/cron/booking-reminders?secret=$CRON_SECRET_VAL\" >> /var/log/portal659-cron.log 2>&1" \
+              > /etc/cron.d/portal659-reminders
+            chmod 644 /etc/cron.d/portal659-reminders
             systemctl enable --now cron >/dev/null 2>&1 || service cron start >/dev/null 2>&1 || true
 
             rm -f /tmp/code.tgz

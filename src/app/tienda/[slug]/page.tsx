@@ -1,5 +1,6 @@
 import { queryOne, queryMany } from "@/lib/db";
 import { queryEffectiveModifiers } from "@/lib/modifier-rules";
+import { getServiceQuota } from "@/lib/service-quota";
 import { resolveVendorPlan, vendorSellsOnline } from "@/lib/plans";
 import { isStoreOpen } from "@/lib/open-hours";
 import { notFound } from "next/navigation";
@@ -293,6 +294,15 @@ export default async function TiendaPage({
   }
 
   const isService = v.vertical === "servicio";
+  // Tope de solicitudes alcanzado: no se muestran los formularios (el POST
+  // devuelve 429 igual). Solo aplica si la migración de tope está aplicada.
+  let serviceQuotaFull = false;
+  if (isService) {
+    try {
+      const quota = await getServiceQuota(v.id);
+      serviceQuotaFull = quota.limit != null && quota.used >= quota.limit;
+    } catch { /* sin migración: se muestran igual */ }
+  }
   // Recargo de urgencia (plan Oficios): se muestra solo si el plan lo habilita.
   const urgentSurcharge =
     isService && v.urgent_enabled && v.urgent_surcharge_pct != null && Number(v.urgent_surcharge_pct) > 0 && effectivePlan.can("urgent")
@@ -573,7 +583,7 @@ export default async function TiendaPage({
               )}
             </div>
 
-            {v.accepting_quotes && (
+            {v.accepting_quotes && !serviceQuotaFull && (
               <div className="border border-border rounded-2xl p-6 bg-card mb-6">
                 <h3 className="font-display text-lg font-semibold mb-4">
                   📋 Solicitar presupuesto
@@ -582,12 +592,21 @@ export default async function TiendaPage({
               </div>
             )}
 
+            {!serviceQuotaFull && (
             <div className="border border-border rounded-2xl p-6 bg-card mb-6">
               <h3 className="font-display text-lg font-semibold mb-4">
                 📅 Reservar turno
               </h3>
               <BookingForm vendorId={v.id} vendorName={v.store_name} services={offers?.map((o: any) => ({ id: o.id, name: o.name }))} />
             </div>
+            )}
+
+            {serviceQuotaFull && (
+              <div className="border border-border rounded-2xl p-6 bg-card mb-6 text-center">
+                <p className="text-sm font-medium">Este profesional completó sus solicitudes online del mes.</p>
+                <p className="text-sm text-muted-foreground mt-1">Escribile directo por WhatsApp 👇</p>
+              </div>
+            )}
           </>
         ) : noCart && sections.length === 0 ? (
           <>

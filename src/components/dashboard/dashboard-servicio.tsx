@@ -1031,6 +1031,15 @@ export default function DashboardServicio({
                       <Badge className="flex-shrink-0">{QUOTE_STATUS_LABELS[q.status] || q.status}</Badge>
                     </div>
                     <p className="text-xs text-muted-foreground mb-2 break-words">{q.description}</p>
+                    {Array.isArray(q.photo_urls) && q.photo_urls.length > 0 && (
+                      <div className="flex gap-1.5 mb-2 flex-wrap">
+                        {q.photo_urls.slice(0, 3).map((url: string, idx: number) => (
+                          <a key={idx} href={url} target="_blank" rel="noopener noreferrer">
+                            <img src={url} alt={`Foto ${idx + 1}`} className="h-16 w-16 rounded-lg object-cover border border-border hover:opacity-80 transition-opacity" />
+                          </a>
+                        ))}
+                      </div>
+                    )}
                     {q.vendor_notes && (
                       <p className="text-xs mb-2 break-words">📝 Tu respuesta: {q.vendor_notes}</p>
                     )}

@@ -92,11 +92,21 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "Pedido no encontrado" }, { status: 404 });
   }
 
+  const resolvedType = type === "ticket" ? "ticket" : type === "retiro" ? "retiro" : type === "despacho" ? "despacho" : "comanda";
+  // Retail (moda/comercio): el ticket sale como COMPROBANTE con Nro. diario
+  // y datos del cliente; gastronomía mantiene TICKET.
+  const isRetailVendor = vendor.vertical === "moda" || vendor.vertical === "comercio";
   const result = await dispatchPrint({
     vendor,
     order,
-    type: type === "ticket" ? "ticket" : type === "retiro" ? "retiro" : type === "despacho" ? "despacho" : "comanda",
-    extra: { tableName, subLabel },
+    type: resolvedType,
+    extra: {
+      tableName,
+      subLabel,
+      ...(resolvedType === "ticket" && isRetailVendor
+        ? { docTitle: "COMPROBANTE", retail: true }
+        : {}),
+    },
   });
   await recordLastPrint(vendor.id, result);
   return printResponse(result);

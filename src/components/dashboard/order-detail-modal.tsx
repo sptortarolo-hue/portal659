@@ -192,7 +192,7 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
     }
   };
 
-  async function handlePrint(type: "comanda" | "ticket" | "despacho" = "comanda") {
+  async function handlePrint(type: "comanda" | "ticket" | "despacho" = isRetail ? "ticket" : "comanda") {
     setPrinting(true);
     setPrintStatus(null);
     try {
@@ -616,7 +616,7 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
                   </Button>
                 )
               )}
-              {order.status !== "new" && orderNeedsKitchen(order) && (
+              {order.status !== "new" && (orderNeedsKitchen(order) || isRetail) && (
                 <>
                   {canPrint ? (
                     <button
@@ -630,7 +630,7 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
                           : "bg-background text-foreground border-border hover:bg-muted"
                       }`}
                     >
-                      {printing ? "🖨️ Imprimiendo..." : printStatus === "ok" ? "✅ Impreso" : printStatus === "error" ? "❌ Error al imprimir" : "🖨️ Imprimir comanda"}
+                      {printing ? "🖨️ Imprimiendo..." : printStatus === "ok" ? "✅ Impreso" : printStatus === "error" ? "❌ Error al imprimir" : isRetail ? "🖨️ Imprimir comprobante" : "🖨️ Imprimir comanda"}
                     </button>
                   ) : (
                     <button
@@ -641,12 +641,12 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
                       <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
                         <path d="M12 1a5 5 0 00-5 5v3H6a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V11a2 2 0 00-2-2h-1V6a5 5 0 00-5-5zm-3 8V6a3 3 0 116 0v3H9z" />
                       </svg>
-                      Imprimir comanda — Exclusivo plan Gestión
+                      {isRetail ? "Imprimir comprobante — Exclusivo plan Gestión" : "Imprimir comanda — Exclusivo plan Gestión"}
                     </button>
                   )}
                   {!canPrint && (
                     <p className="text-[11px] text-center text-muted-foreground">
-                      Actualizá a <a href="/planes" className="text-primary font-medium underline">Gestión integral</a> para imprimir comandas
+                      Actualizá a <a href="/planes" className="text-primary font-medium underline">Gestión integral</a> para imprimir {isRetail ? "comprobantes" : "comandas"}
                     </p>
                   )}
                 </>

@@ -269,7 +269,7 @@ export async function POST(request: Request) {
         // con impresora. Best-effort; un fallo no rompe el webhook ni el pedido.
         try {
           if (order?.id) {
-            const printerVendor = await queryOne<PrinterVendor & { auto_print?: boolean }>(
+            const printerVendor = await queryOne<PrinterVendor & { auto_print?: boolean; vertical?: string | null }>(
               `SELECT id, store_name, logo_url, address, phone, whatsapp, instagram, facebook,
                       printer_ip, printer_port, paper_size, print_mode, print_token,
                       print_logo, print_address, print_phone, print_social, auto_print,
@@ -280,10 +280,19 @@ export async function POST(request: Request) {
             if (printerVendor?.auto_print) {
               const planRows = await queryMany<any>(`SELECT * FROM plans`);
               if (resolveVendorPlan(printerVendor as any, planRows || []).can("printer")) {
-                // Sin ítems de cocina (comercio/moda o bebidas): imprime el
-                // ticket del pedido en vez de la comanda.
-                const printType = orderNeedsKitchen(order) ? "comanda" : "retiro";
-                const printed = await dispatchPrint({ vendor: printerVendor, order, type: printType });
+                // Sin ítems de cocina: retail (comercio/moda) imprime el
+                // comprobante de venta; el resto, el stub de retiro.
+                const isRetailVendor =
+                  printerVendor?.vertical === "moda" || printerVendor?.vertical === "comercio";
+                const printType = orderNeedsKitchen(order) ? "comanda" : isRetailVendor ? "ticket" : "retiro";
+                const printed = await dispatchPrint({
+                  vendor: printerVendor,
+                  order,
+                  type: printType,
+                  ...(printType === "ticket" && isRetailVendor
+                    ? { extra: { docTitle: "COMPROBANTE", retail: true } }
+                    : {}),
+                });
                 if (!printed.ok) logApiError("mp-webhook/print", new Error(printed.error || "print falló"));
               }
             }

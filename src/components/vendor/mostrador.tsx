@@ -267,14 +267,15 @@ export function Mostrador() {
       return;
     }
 
-    // Imprime comanda solo si requiere cocina; recién al terminar imprime el
-    // comprobante de retiro (evita dos trabajos concurrentes a la impresora).
-    const printRetiro = (): Promise<void> => {
+    // Retail: comprobante de venta (ticket con ítems y total). Gastro: comanda
+    // si requiere cocina y recién al terminar el stub de retiro (evita dos
+    // trabajos concurrentes a la impresora).
+    const printSaleDoc = (): Promise<void> => {
       if (withReceipt && !isDelivery) {
         return fetch("/api/print", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ orderId: data.orderId, type: "retiro" }),
+          body: JSON.stringify({ orderId: data.orderId, type: isRetail ? "ticket" : "retiro" }),
         }).then(() => {});
       }
       return Promise.resolve();
@@ -285,10 +286,10 @@ export function Mostrador() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ orderId: data.orderId, type: "comanda" }),
       })
-        .then(printRetiro)
+        .then(printSaleDoc)
         .catch(() => {});
     } else {
-      printRetiro().catch(() => {});
+      printSaleDoc().catch(() => {});
     }
 
     // El servidor recalcula el descuento en efectivo (pos/order): el total
@@ -297,7 +298,7 @@ export function Mostrador() {
     setMsg(
       isDelivery
         ? "Pedido a domicilio registrado"
-        : `Cobrado $${netTotal.toLocaleString("es-AR")}${withReceipt ? " · comprobante de retiro" : ""}`
+        : `Cobrado $${netTotal.toLocaleString("es-AR")}${withReceipt ? (isRetail ? " · comprobante" : " · comprobante de retiro") : ""}`
     );
     setItems([]);
     setCustomerName("");
@@ -518,7 +519,7 @@ export function Mostrador() {
         </div>
 
         <Button className="w-full" disabled={items.length === 0 || saving} onClick={() => charge(true)}>
-          {saving ? "Cobrando..." : method === "pickup" ? "Cobrar + comprobante de retiro" : "Cobrar y despachar"}
+          {saving ? "Cobrando..." : method === "pickup" ? (isRetail ? "Cobrar + comprobante" : "Cobrar + comprobante de retiro") : "Cobrar y despachar"}
         </Button>
         <Button className="w-full" variant="outline" disabled={items.length === 0 || saving} onClick={() => charge(false)}>
           {method === "pickup" ? "Cobrar sin comprobante" : "Cobrar sin imprimir comprobante"}

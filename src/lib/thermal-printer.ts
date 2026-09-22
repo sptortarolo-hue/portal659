@@ -521,11 +521,20 @@ async function composeComanda(printer: any, vendor: PrinterVendor, order: Order)
   printer.cut();
 }
 
+export type ReceiptExtra = {
+  tableName?: string;
+  subLabel?: string;
+  /** Título del documento (default "TICKET"). Retail imprime "COMPROBANTE". */
+  docTitle?: string;
+  /** Comprobante de venta retail: Nro. diario grande + datos del cliente. */
+  retail?: boolean;
+};
+
 async function composeReceipt(
   printer: any,
   vendor: PrinterVendor,
   order: Order,
-  extra?: { tableName?: string; subLabel?: string }
+  extra?: ReceiptExtra
 ): Promise<void> {
   const width = vendor.paper_size === "58mm" ? 32 : 48;
   const separator = separatorFor(width);
@@ -536,10 +545,21 @@ async function composeReceipt(
 
   printer.alignCenter();
   await composeStoreHeader(printer, vendor, width);
-  printer.println("TICKET");
+  printer.println(extra?.docTitle || "TICKET");
   if (extra?.tableName) printer.println(`Mesa: ${extra.tableName}`);
   if (extra?.subLabel) printer.println(extra.subLabel);
   printer.println(separator);
+
+  // Retail: número diario grande (el que canta caja/mostrador).
+  if (extra?.retail && order.pickup_number != null) {
+    printer.bold(true);
+    printer.setTextSize(2, 2);
+    const m = order.method === "delivery" ? "ENVIO" : "RETIRO";
+    printer.println(`${m} Nro. ${order.pickup_number}`);
+    printer.bold(false);
+    printer.setTextSize(0, 0);
+    printer.println(separator);
+  }
 
   printer.alignLeft();
   printer.bold(true);
@@ -585,8 +605,14 @@ async function composeReceipt(
   printer.println(`Pago: ${paymentStr} â€” ${paidStr}`);
   printer.bold(false);
 
-  if (order.customer_name && order.channel !== "app") {
+  if (order.customer_name && (extra?.retail || order.channel !== "app")) {
     printer.println(`Cliente: ${order.customer_name}`);
+  }
+  if (extra?.retail && order.customer_phone) {
+    printer.println(`Tel: ${order.customer_phone}`);
+  }
+  if (extra?.retail && order.method === "delivery" && order.customer_address) {
+    printer.println(`Dir: ${order.customer_address}`);
   }
 
   printer.println("");
@@ -847,7 +873,7 @@ export async function printComanda(
 export async function printReceipt(
   order: Order,
   vendor: PrinterVendor,
-  extra?: { tableName?: string; subLabel?: string }
+  extra?: ReceiptExtra
 ): Promise<{ success: boolean; error?: string }> {
   const res = await createPrinter(vendor);
   if (!res.ok) return { success: false, error: res.error };
@@ -896,7 +922,7 @@ export async function buildComandaBuffer(
 export async function buildReceiptBuffer(
   vendor: PrinterVendor,
   order: Order,
-  extra?: { tableName?: string; subLabel?: string }
+  extra?: ReceiptExtra
 ): Promise<BufferResult> {
   const res = await createPrinter(vendor);
   if (!res.ok) return { success: false, error: res.error };
@@ -1108,6 +1134,10 @@ export async function dispatchPrint(params: {
   extra?: {
     tableName?: string;
     subLabel?: string;
+    /** Título del ticket retail (ej. "COMPROBANTE"). */
+    docTitle?: string;
+    /** Comprobante de venta retail: Nro. diario + datos del cliente. */
+    retail?: boolean;
     items?: { name: string; price: number; qty: number; modifiers?: string[] }[];
     total?: number;
     /** Info de efectivo en precuenta: % y total a abonar en efectivo. */

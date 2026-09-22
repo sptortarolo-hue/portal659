@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { X, Package, ChefHat, ShoppingBag, LayoutGrid, UtensilsCrossed, Settings, BarChart3, History, Star, ExternalLink, LogOut, Home, Sparkles, Calculator, Bot, DollarSign, Users } from "lucide-react";
+import { X, Package, ChefHat, ShoppingBag, LayoutGrid, UtensilsCrossed, Settings, BarChart3, History, Star, ExternalLink, LogOut, Home, Sparkles, Calculator, Bot, DollarSign, Users, MessageSquare, CalendarDays, ClipboardList } from "lucide-react";
 
 type Tab = "hoy" | "config" | "menu" | "orders" | "history" | "comanda" | "analytics" | "pos" | "mesas" | "caja" | "clientes" | "reviews" | "recetas";
 
@@ -20,6 +20,10 @@ interface VendorSidebarProps {
   isGastro: boolean;
   isModa: boolean;
   isComercio?: boolean;
+  /** Vertical servicios: menú propio (Presupuestos/Turnos/Cobros/Ficha). */
+  isService?: boolean;
+  pendingQuotesCount?: number;
+  pendingBookingsCount?: number;
   planName: string | null;
   planSlug: string | null;
 }
@@ -102,6 +106,9 @@ export default function VendorSidebar({
   isGastro,
   isModa,
   isComercio = false,
+  isService = false,
+  pendingQuotesCount = 0,
+  pendingBookingsCount = 0,
   planName,
   planSlug,
 }: VendorSidebarProps) {
@@ -173,19 +180,44 @@ export default function VendorSidebar({
           <div>
             <p className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Operaciones</p>
             <div className="space-y-0.5">
-              {OPERACION_ITEMS.filter((i) => i.show(isGastro, isModa, isComercio)).map((item) => {
-                const count = item.badge ? item.badge(orderCount, kitchenCount) : 0;
-                return (
+              {isService ? (
+                <>
                   <NavButton
-                    key={item.tab}
-                    active={currentTab === item.tab}
-                    onClick={() => handleTab(item.tab)}
-                    icon={item.icon}
-                    label={item.label}
-                    badge={count}
+                    active={currentTab === "orders"}
+                    onClick={() => handleTab("orders")}
+                    icon={MessageSquare}
+                    label="Presupuestos"
+                    badge={pendingQuotesCount}
                   />
-                );
-              })}
+                  <NavButton
+                    active={currentTab === "pos"}
+                    onClick={() => handleTab("pos")}
+                    icon={CalendarDays}
+                    label="Turnos"
+                    badge={pendingBookingsCount}
+                  />
+                  <NavButton
+                    active={currentTab === "caja"}
+                    onClick={() => handleTab("caja")}
+                    icon={DollarSign}
+                    label="Cobros"
+                  />
+                </>
+              ) : (
+                OPERACION_ITEMS.filter((i) => i.show(isGastro, isModa, isComercio)).map((item) => {
+                  const count = item.badge ? item.badge(orderCount, kitchenCount) : 0;
+                  return (
+                    <NavButton
+                      key={item.tab}
+                      active={currentTab === item.tab}
+                      onClick={() => handleTab(item.tab)}
+                      icon={item.icon}
+                      label={item.label}
+                      badge={count}
+                    />
+                  );
+                })
+              )}
             </div>
           </div>
 
@@ -193,20 +225,29 @@ export default function VendorSidebar({
           <div>
             <p className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Gestión</p>
             <div className="space-y-0.5">
-              {GESTION_ITEMS.filter((i) => i.show(isGastro, isModa, isComercio)).map((item) => {
-                const suffix = item.suffix ? item.suffix(menuCount) : null;
-                const label = item.tab === "menu" && (isModa || isComercio) ? "Catálogo" : item.label;
-                return (
-                  <NavButton
-                    key={item.tab}
-                    active={currentTab === item.tab}
-                    onClick={() => handleTab(item.tab)}
-                    icon={item.icon}
-                    label={label}
-                    suffix={suffix ?? undefined}
-                  />
-                );
-              })}
+              {isService ? (
+                <NavButton
+                  active={currentTab === "config"}
+                  onClick={() => handleTab("config")}
+                  icon={ClipboardList}
+                  label="Ficha"
+                />
+              ) : (
+                GESTION_ITEMS.filter((i) => i.show(isGastro, isModa, isComercio)).map((item) => {
+                  const suffix = item.suffix ? item.suffix(menuCount) : null;
+                  const label = item.tab === "menu" && (isModa || isComercio) ? "Catálogo" : item.label;
+                  return (
+                    <NavButton
+                      key={item.tab}
+                      active={currentTab === item.tab}
+                      onClick={() => handleTab(item.tab)}
+                      icon={item.icon}
+                      label={label}
+                      suffix={suffix ?? undefined}
+                    />
+                  );
+                })
+              )}
             </div>
           </div>
 
@@ -214,7 +255,7 @@ export default function VendorSidebar({
           <div>
             <p className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Análisis</p>
             <div className="space-y-0.5">
-              {ANALISIS_ITEMS.map((item) => (
+              {(isService ? ANALISIS_ITEMS.filter((i) => i.tab !== "analytics") : ANALISIS_ITEMS).map((item) => (
                 <NavButton
                   key={item.tab}
                   active={currentTab === item.tab}

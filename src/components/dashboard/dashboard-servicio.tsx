@@ -29,6 +29,16 @@ type Props = {
   saveVendor: (data: Record<string, unknown>) => Promise<void>;
   uploading: boolean;
   onCrop: (target: "cover" | "logo" | "offer") => void;
+  /** Sub-vista a mostrar (el dashboard switchea por tab). Sin section = todo (legacy). */
+  section?: "hoy" | "presupuestos" | "turnos" | "cobros" | "ficha" | "reviews" | "history";
+  /** Navegación a otra sub-vista (botones del Hoy). */
+  onNavigate?: (section: "orders" | "pos" | "caja" | "config") => void;
+  /** Datos lifteados desde el dashboard (badges + refresco único). Si faltan, se fetchean acá. */
+  quotes?: Record<string, unknown>[];
+  quota?: { used: number; limit: number | null } | null;
+  canQuotePrice?: boolean;
+  canDeposits?: boolean;
+  onQuotesChanged?: () => void;
 };
 
 const BOOKING_STATUS_COLORS: Record<string, string> = {
@@ -43,6 +53,176 @@ const BOOKING_STATUS_LABELS: Record<string, string> = {
   cancelled: "Cancelado",
 };
 
+function waLinkFor(phone: unknown): string | null {
+  const digits = String(phone || "").replace(/\D/g, "");
+  return digits ? `https://wa.me/${digits}` : null;
+}
+
+/** Vista Hoy: pendientes que necesitan respuesta + próximos turnos + accesos. */
+function ServicioHoy({
+  quotes,
+  bookings,
+  onNavigate,
+}: {
+  quotes: Record<string, unknown>[];
+  bookings: Booking[];
+  onNavigate?: (section: "orders" | "pos" | "caja" | "config") => void;
+}) {
+  const pendingQuotes = (quotes || []).filter((q) => q.status === "pending" || q.status === "responded");
+  const pendingBookings = (bookings || []).filter((b: any) => b.status === "pending");
+  const upcoming = (bookings || [])
+    .filter((b: any) => b.status === "confirmed" && b.booking_date)
+    .sort((a: any, b: any) => String(a.booking_date).localeCompare(String(b.booking_date)) || String(a.booking_time || "").localeCompare(String(b.booking_time || "")))
+    .slice(0, 3);
+  const paidThisMonth = (quotes || [])
+    .filter((q) => q.deposit_status === "paid" && q.deposit_amount != null)
+    .reduce((s, q) => s + Number(q.deposit_amount), 0);
+
+  if (pendingQuotes.length === 0 && pendingBookings.length === 0 && upcoming.length === 0) {
+    return (
+      <Card className="p-6 text-center">
+        <p className="text-3xl mb-2">☀️</p>
+        <p className="font-medium text-sm">Sin pendientes. Buen momento para compartir tu vidriera.</p>
+        <p className="text-xs text-muted-foreground mt-1">Los presupuestos y turnos nuevos aparecen acá con aviso.</p>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {paidThisMonth > 0 && (
+        <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+          💰 Señas cobradas: <strong>${paidThisMonth.toLocaleString("es-AR")}</strong>
+        </div>
+      )}
+      {pendingQuotes.length > 0 && (
+        <Card className="p-3">
+          <div className="flex items-center justify-between mb-2">
+            <p className="font-medium text-sm">💬 Presupuestos por responder ({pendingQuotes.length})</p>
+            {onNavigate && (
+              <button type="button" onClick={() => onNavigate("orders")} className="text-xs text-primary font-medium hover:underline">
+                Ver todos →
+              </button>
+            )}
+          </div>
+          <div className="space-y-1.5">
+            {pendingQuotes.slice(0, 3).map((q: any) => (
+              <div key={q.id} className="flex items-center gap-2 text-xs rounded-lg bg-muted px-2.5 py-2">
+                <span className="flex-1 min-w-0 truncate">
+                  <strong>{q.customer_name}</strong>
+                  {q.service_name ? ` · ${q.service_name}` : ""} — <span className="text-muted-foreground">{String(q.description || "").slice(0, 60)}</span>
+                </span>
+                {waLinkFor(q.customer_phone) && (
+                  <a href={waLinkFor(q.customer_phone)!} target="_blank" rel="noopener noreferrer" className="text-green-600 font-medium flex-shrink-0">📲</a>
+                )}
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+      {pendingBookings.length > 0 && (
+        <Card className="p-3">
+          <div className="flex items-center justify-between mb-2">
+            <p className="font-medium text-sm">📅 Turnos por confirmar ({pendingBookings.length})</p>
+            {onNavigate && (
+              <button type="button" onClick={() => onNavigate("pos")} className="text-xs text-primary font-medium hover:underline">
+                Ver agenda →
+              </button>
+            )}
+          </div>
+          <div className="space-y-1.5">
+            {pendingBookings.slice(0, 3).map((b: any) => (
+              <div key={b.id} className="flex items-center gap-2 text-xs rounded-lg bg-muted px-2.5 py-2">
+                <span className="flex-1 min-w-0 truncate">
+                  <strong>{b.customer_name || "Sin nombre"}</strong> · {b.booking_date} {b.booking_time || ""}
+                </span>
+                {waLinkFor(b.customer_phone) && (
+                  <a href={waLinkFor(b.customer_phone)!} target="_blank" rel="noopener noreferrer" className="text-green-600 font-medium flex-shrink-0">📲</a>
+                )}
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+      {upcoming.length > 0 && (
+        <Card className="p-3">
+          <p className="font-medium text-sm mb-2">🗓️ Próximos turnos</p>
+          <div className="space-y-1.5">
+            {upcoming.map((b: any) => (
+              <div key={b.id} className="flex items-center gap-2 text-xs rounded-lg border border-border px-2.5 py-2">
+                <span className="flex-1 min-w-0 truncate">
+                  <strong>{b.customer_name || "Sin nombre"}</strong> · {b.booking_date} {b.booking_time || ""}
+                </span>
+                {waLinkFor(b.customer_phone) && (
+                  <a href={waLinkFor(b.customer_phone)!} target="_blank" rel="noopener noreferrer" className="text-green-600 font-medium flex-shrink-0">📲</a>
+                )}
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+/** Vista Historial: trabajos terminados y descartados (derivado, sin API nueva). */
+function ServicioHistorial({
+  quotes,
+  bookings,
+}: {
+  quotes: Record<string, unknown>[];
+  bookings: Booking[];
+}) {
+  const doneQuotes = (quotes || []).filter((q) => q.status === "accepted" || q.status === "cancelled");
+  const doneBookings = (bookings || []).filter((b: any) => {
+    if (b.status === "cancelled") return true;
+    if (b.status !== "confirmed" || !b.booking_date) return false;
+    return b.booking_date < new Date().toISOString().slice(0, 10);
+  });
+  if (doneQuotes.length === 0 && doneBookings.length === 0) {
+    return (
+      <Card className="p-6 text-center">
+        <p className="text-sm text-muted-foreground">Todavía no hay trabajos terminados. Aparecen acá cuando aceptás un presupuesto o pasa un turno confirmado.</p>
+      </Card>
+    );
+  }
+  return (
+    <div className="space-y-2">
+      {doneQuotes.map((q: any) => (
+        <Card key={`q-${q.id}`} className="p-3">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <p className="font-medium text-sm truncate">💬 {q.customer_name}{q.service_name ? ` · ${q.service_name}` : ""}</p>
+              <p className="text-xs text-muted-foreground truncate">{String(q.description || "").slice(0, 80)}</p>
+              {q.quoted_price != null && (
+                <p className="text-xs mt-0.5">💰 ${Number(q.quoted_price).toLocaleString("es-AR")}{q.deposit_status === "paid" ? " · seña pagada ✅" : ""}</p>
+              )}
+            </div>
+            <Badge className={`flex-shrink-0 ${q.status === "accepted" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-600"}`}>
+              {q.status === "accepted" ? "Aceptado" : "Descartado"}
+            </Badge>
+          </div>
+        </Card>
+      ))}
+      {doneBookings.map((b: any) => (
+        <Card key={`b-${b.id}`} className="p-3">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <p className="font-medium text-sm truncate">📅 {b.customer_name || "Sin nombre"} · {b.booking_date} {b.booking_time || ""}</p>
+              {(b.product_label || b.product_name) && (
+                <p className="text-xs text-muted-foreground truncate">{b.product_label || b.product_name}</p>
+              )}
+            </div>
+            <Badge className={`flex-shrink-0 ${b.status === "confirmed" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-600"}`}>
+              {b.status === "confirmed" ? "Realizado" : "Cancelado"}
+            </Badge>
+          </div>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
 export default function DashboardServicio({
   vendor,
   offers,
@@ -56,7 +236,16 @@ export default function DashboardServicio({
   saveVendor,
   uploading,
   onCrop,
+  section,
+  onNavigate,
+  quotes: quotesProp,
+  quota: quotaProp,
+  canQuotePrice: canQuotePriceProp,
+  canDeposits: canDepositsProp,
+  onQuotesChanged,
 }: Props) {
+  // Sin section se muestra todo (legacy); con section, solo esa sub-vista.
+  const sec = section ?? "all";
   const [storeName, setStoreName] = useState(vendor?.store_name || "");
   const [storeCategory, setStoreCategory] = useState(vendor?.category || "");
   const [address, setAddress] = useState(vendor?.address || "");
@@ -80,29 +269,39 @@ export default function DashboardServicio({
   );
   const [acceptingQuotes, setAcceptingQuotes] = useState(vendor?.accepting_quotes !== false);
 
-    // Bandeja de presupuestos (Fase 0: ver + responder estado/notas).
-  const [quotes, setQuotes] = useState<Record<string, unknown>[]>([]);
+    // Bandeja de presupuestos (lifteada al dashboard para badges; fallback local).
+  const [innerQuotes, setInnerQuotes] = useState<Record<string, unknown>[]>([]);
   const [quotesLoading, setQuotesLoading] = useState(true);
-  // Tope mensual de solicitudes (Fase 1: 5 combinadas en gratuito).
-  const [quota, setQuota] = useState<{ used: number; limit: number | null } | null>(null);  const [quoteFilter, setQuoteFilter] = useState<"all" | "pending" | "responded" | "accepted" | "cancelled">("all");
+  // Tope mensual de solicitudes (lifteado; fallback local).
+  const [innerQuota, setInnerQuota] = useState<{ used: number; limit: number | null } | null>(null);
+  const [innerCanQuotePrice, setInnerCanQuotePrice] = useState(false);
+  const [innerCanDeposits, setInnerCanDeposits] = useState(false);
+  const quotes = quotesProp ?? innerQuotes;
+  const quota = quotaProp !== undefined ? quotaProp : innerQuota;
+  const canQuotePrice = canQuotePriceProp ?? innerCanQuotePrice;
+  const canDeposits = canDepositsProp ?? innerCanDeposits;
+  const [quoteFilter, setQuoteFilter] = useState<"all" | "pending" | "responded" | "accepted" | "cancelled">("all");
   const [respondingId, setRespondingId] = useState<string | null>(null);
   const [respondNotes, setRespondNotes] = useState("");
   const [respondPrice, setRespondPrice] = useState("");
-  const [canQuotePrice, setCanQuotePrice] = useState(false);
-  const [canDeposits, setCanDeposits] = useState(false);
   // Seña: % + link generado.
   const [depositPct, setDepositPct] = useState("");
   const [depositLink, setDepositLink] = useState<Record<string, string>>({});
   const [depositBusy, setDepositBusy] = useState<string | null>(null);
 
   const loadQuotes = async () => {
+    if (onQuotesChanged) {
+      onQuotesChanged();
+      setQuotesLoading(false);
+      return;
+    }
     try {
       const res = await fetch("/api/vendor/quotes");
       const data = await res.json();
       if (!data.error) {
-        setQuotes(data.quotes || []);
-        setCanQuotePrice(data.canQuotePrice === true);
-        setCanDeposits(data.canDeposits === true);
+        setInnerQuotes(data.quotes || []);
+        setInnerCanQuotePrice(data.canQuotePrice === true);
+        setInnerCanDeposits(data.canDeposits === true);
       }
     } catch { /* noop */ } finally {
       setQuotesLoading(false);
@@ -112,11 +311,12 @@ export default function DashboardServicio({
   useEffect(() => { loadQuotes(); }, []);
 
   useEffect(() => {
+    if (quotaProp !== undefined || onQuotesChanged) return;
     (async () => {
       try {
         const res = await fetch("/api/vendor/service-quota");
         const data = await res.json();
-        if (!data.error) setQuota({ used: data.used || 0, limit: data.limit ?? null });
+        if (!data.error) setInnerQuota({ used: data.used || 0, limit: data.limit ?? null });
       } catch { /* noop */ }
     })();
   }, []);
@@ -316,11 +516,6 @@ export default function DashboardServicio({
     }
   }
 
-  const waLinkFor = (phone: unknown) => {
-    const digits = String(phone || "").replace(/\D/g, "");
-    return digits ? `https://wa.me/${digits}` : null;
-  };
-
   const QUOTE_STATUS_LABELS: Record<string, string> = {
     pending: "Pendiente",
     responded: "Respondido",
@@ -333,7 +528,7 @@ export default function DashboardServicio({
 
   return (
     <div className="space-y-4">
-      {quota && quota.limit != null && (
+      {(sec === "all" || sec === "hoy") && quota && quota.limit != null && (
         <div className={`rounded-xl border px-4 py-3 text-sm ${quota.used >= quota.limit ? "bg-red-50 border-red-200 text-red-700" : "bg-muted border-border text-muted-foreground"}`}>
           {quota.used >= quota.limit ? (
             <p className="font-medium">
@@ -348,6 +543,8 @@ export default function DashboardServicio({
           )}
         </div>
       )}
+      {(sec === "all" || sec === "ficha") && (
+      <>
       <LivePreview
         storeName={storeName}
         storePreview={storePreviewUrl}
@@ -666,7 +863,11 @@ export default function DashboardServicio({
           )}
         </div>
       </CollapsibleSection>
+      </>
+      )}
 
+      {(sec === "all" || sec === "turnos") && (
+      <>
       <CollapsibleSection icon="📅" title={`Agenda de turnos (${bookings.length})`}>
         <div className="space-y-3">
           <div className="flex gap-1 flex-wrap">
@@ -777,6 +978,11 @@ export default function DashboardServicio({
           )}
         </div>
       </CollapsibleSection>
+      </>
+      )}
+
+      {(sec === "all" || sec === "presupuestos") && (
+      <>
       <CollapsibleSection icon="💬" title={`Presupuestos (${quotes.length})`}>
         <div className="space-y-3">
           {!acceptingQuotes && (
@@ -951,6 +1157,11 @@ export default function DashboardServicio({
           )}
         </div>
       </CollapsibleSection>
+      </>
+      )}
+
+      {(sec === "all" || sec === "cobros") && (
+      <>
       <CollapsibleSection icon="💰" title="Cobros y seña">
         <div className="space-y-3">
           <MpConnectCard
@@ -977,11 +1188,19 @@ export default function DashboardServicio({
           </Button>
         </div>
       </CollapsibleSection>
+      </>
+      )}
 
+      {(sec === "all" || sec === "reviews") && (
+      <>
       <CollapsibleSection icon="⭐" title="Reseñas">
         <VendorReviews />
       </CollapsibleSection>
+      </>
+      )}
 
+      {(sec === "all" || sec === "hoy") && (
+      <>
       <CollapsibleSection icon="📊" title="Resumen del mes">
         <div className="grid grid-cols-3 gap-2 text-center">
           <div className="rounded-xl border border-border p-3">
@@ -1009,6 +1228,23 @@ export default function DashboardServicio({
           Estadísticas completas de 30 días con el plan Oficios.
         </p>
       </CollapsibleSection>
+      </>
+      )}
+
+      {sec === "hoy" && (
+        <ServicioHoy
+          quotes={quotes}
+          bookings={bookings}
+          onNavigate={onNavigate}
+        />
+      )}
+
+      {sec === "history" && (
+        <ServicioHistorial
+          quotes={quotes}
+          bookings={bookings}
+        />
+      )}
     </div>
   );
 }

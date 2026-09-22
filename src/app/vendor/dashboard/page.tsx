@@ -13,6 +13,7 @@ import {
   ChefHat,
   Monitor,
   Table,
+  CalendarDays,
   MoreHorizontal,
   X,
   Wrench,
@@ -172,6 +173,11 @@ function VendorDashboardInner() {
   const [modifiers, setModifiers] = useState<ProductModifier[]>([]);
   const [gallery, setGallery] = useState<VendorGallery[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
+  // Solicitudes de servicios (para badges y tabs de presupuestos/turnos).
+  const [quotes, setQuotes] = useState<Record<string, unknown>[]>([]);
+  const [serviceQuota, setServiceQuota] = useState<{ used: number; limit: number | null } | null>(null);
+  const [canQuotePrice, setCanQuotePrice] = useState(false);
+  const [canDeposits, setCanDeposits] = useState(false);
   const [variants, setVariants] = useState<ProductVariant[]>([]);
   const [productImages, setProductImages] = useState<ProductImage[]>([]);
   const [tab, setTab] = useState<DashTab>("hoy");
@@ -251,6 +257,29 @@ function VendorDashboardInner() {
     }
   }, []);
 
+  // Solicitudes de servicios (bandeja + badges). Separado de loadData para
+  // refrescar tras responder sin recargar todo el dashboard.
+  const loadServiceData = useCallback(async () => {
+    try {
+      const [qRes, quotaRes] = await Promise.all([
+        fetch("/api/vendor/quotes").catch(() => null),
+        fetch("/api/vendor/service-quota").catch(() => null),
+      ]);
+      if (qRes?.ok) {
+        const data = await qRes.json().catch(() => ({}));
+        if (!data.error) {
+          setQuotes(data.quotes || []);
+          setCanQuotePrice(data.canQuotePrice === true);
+          setCanDeposits(data.canDeposits === true);
+        }
+      }
+      if (quotaRes?.ok) {
+        const data = await quotaRes.json().catch(() => ({}));
+        if (!data.error) setServiceQuota({ used: data.used || 0, limit: data.limit ?? null });
+      }
+    } catch { /* noop */ }
+  }, []);
+
   const loadData = useCallback(async () => {
     try {
       const [meRes, offersRes, ordersRes, catsRes, modsRes, galRes, bkRes, variantsRes, imagesRes, plansRes, subsMeRes] = await Promise.all([
@@ -299,12 +328,14 @@ function VendorDashboardInner() {
           maxOrdersMonth: subsMeData.usage.maxOrdersMonth ?? null,
         });
       }
+      // Solicitudes solo para servicios.
+      if (me.vendor?.vertical === "servicio") await loadServiceData();
     } catch (err) {
       console.error("[dashboard] loadData error:", err);
     } finally {
       setLoading(false);
     }
-  }, [router]);
+  }, [router, loadServiceData]);
 
   useEffect(() => {
     if (impersonatingId) {
@@ -985,9 +1016,18 @@ function VendorDashboardInner() {
   const kitchenCount = orders.filter((o) => o.status === "new" && orderNeedsKitchen(o)).length;
   const activeOrderCount = activeOrders.length;
   const menuCount = offers.length;
+  // Badges de servicios (independientes de los contadores de pedidos).
+  const pendingQuotesCount = quotes.filter((q) => q.status === "pending" || q.status === "responded").length;
+  const pendingBookingsCount = bookings.filter((b: any) => b.status === "pending").length;
+  const pendingDepositsCount = quotes.filter((q) => q.deposit_status === "pending").length;
 
   const tabTitle =
-    tab === "menu" ? (isRetail ? "Catálogo" : "Menú")
+    isService && tab === "orders" ? "Presupuestos"
+    : isService && tab === "pos" ? "Turnos"
+    : isService && tab === "caja" ? "Cobros"
+    : isService && tab === "config" ? "Ficha"
+    : isService && tab === "history" ? "Historial"
+    : tab === "menu" ? (isRetail ? "Catálogo" : "Menú")
     : tab === "hoy" ? "Hoy"
     : tab === "orders" ? "Pedidos"
     : tab === "comanda" ? "Comanda"
@@ -1022,6 +1062,9 @@ function VendorDashboardInner() {
         isGastro={isGastro}
         isModa={isModa}
         isComercio={isComercio}
+        isService={isService}
+        pendingQuotesCount={pendingQuotesCount}
+        pendingBookingsCount={pendingBookingsCount}
         planName={effectivePlan.plan?.name ?? null}
         planSlug={effectivePlan.plan?.slug ?? null}
       />
@@ -1145,8 +1188,8 @@ function VendorDashboardInner() {
         {/* Banner de suscripción — solo en Hoy */}
         {tab === "hoy" && <PlanBanner plan={planBannerData as any} />}
 
-        {/* Stats bar — solo en tab de pedidos */}
-        {tab === "orders" && orders.length > 0 && (
+        {/* Stats bar — solo en tab de pedidos (no aplica a servicios: su tab "orders" es Presupuestos) */}
+        {!isService && tab === "orders" && orders.length > 0 && (
           <div className="px-4 mt-4">
             <div className="grid grid-cols-5 gap-1.5 mb-4">
               {[
@@ -1176,7 +1219,26 @@ function VendorDashboardInner() {
         {/* Tab content */}
         <div className={`flex-1 px-4 mt-4 ${tab === "comanda" ? "w-full max-w-none" : `mx-auto w-full ${["orders", "history", "pos", "mesas", "caja", "clientes", "analytics", "recetas", "hoy", "menu"].includes(tab) ? "max-w-7xl" : "max-w-4xl"}`}`}>
           {isService ? (
-            <div className="space-y-4">{configContent}</div>
+            <div className="space-y-4">
+              <DashboardServicio
+                {...dashboardProps}
+                quotes={quotes}
+                quota={serviceQuota}
+                canQuotePrice={canQuotePrice}
+                canDeposits={canDeposits}
+                onQuotesChanged={loadServiceData}
+                section={
+                  tab === "orders" ? "presupuestos"
+                  : tab === "pos" ? "turnos"
+                  : tab === "caja" ? "cobros"
+                  : tab === "config" ? "ficha"
+                  : tab === "reviews" ? "reviews"
+                  : tab === "history" ? "history"
+                  : "hoy"
+                }
+                onNavigate={handleTabChange}
+              />
+            </div>
           ) : (
             <>
               <div className={tab === "config" ? "" : "hidden"}>{configContent}</div>
@@ -1335,7 +1397,25 @@ function VendorDashboardInner() {
           <div className="flex">
             <button onClick={() => setTab("hoy")} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors relative ${tab === "hoy" ? "text-primary" : "text-muted-foreground"}`}>
               <Home className="h-5 w-5" />Hoy
+              {isService && (pendingQuotesCount + pendingBookingsCount) > 0 && <span className="absolute top-1 right-1/3 -translate-x-4 bg-red-500 text-white text-[9px] rounded-full h-4 w-4 flex items-center justify-center">{pendingQuotesCount + pendingBookingsCount}</span>}
             </button>
+            {isService ? (
+              <>
+                <button onClick={() => setTab("orders")} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors relative ${tab === "orders" ? "text-primary" : "text-muted-foreground"}`}>
+                  <MessageSquare className="h-5 w-5" />Presupuestos
+                  {pendingQuotesCount > 0 && <span className="absolute top-1 right-1/3 -translate-x-4 bg-red-500 text-white text-[9px] rounded-full h-4 w-4 flex items-center justify-center">{pendingQuotesCount}</span>}
+                </button>
+                <button onClick={() => setTab("pos")} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors relative ${tab === "pos" ? "text-primary" : "text-muted-foreground"}`}>
+                  <CalendarDays className="h-5 w-5" />Turnos
+                  {pendingBookingsCount > 0 && <span className="absolute top-1 right-1/3 -translate-x-4 bg-red-500 text-white text-[9px] rounded-full h-4 w-4 flex items-center justify-center">{pendingBookingsCount}</span>}
+                </button>
+                <button onClick={() => setTab("caja")} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors relative ${tab === "caja" ? "text-primary" : "text-muted-foreground"}`}>
+                  <DollarSign className="h-5 w-5" />Cobros
+                  {pendingDepositsCount > 0 && <span className="absolute top-1 right-1/3 -translate-x-4 bg-red-500 text-white text-[9px] rounded-full h-4 w-4 flex items-center justify-center">{pendingDepositsCount}</span>}
+                </button>
+              </>
+            ) : (
+              <>
             <button onClick={() => setTab("orders")} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors relative ${tab === "orders" ? "text-primary" : "text-muted-foreground"}`}>
               <Package className="h-5 w-5" />Pedidos
               {activeOrderCount > 0 && <span className="absolute top-1 right-1/3 -translate-x-4 bg-red-500 text-white text-[9px] rounded-full h-4 w-4 flex items-center justify-center">{activeOrderCount}</span>}
@@ -1354,6 +1434,8 @@ function VendorDashboardInner() {
                 <Table className="h-5 w-5" />Mesas
               </button>
             )}
+              </>
+            )}
             <button onClick={() => setMoreOpen((v) => !v)} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors ${["config", "menu", "analytics", "history", "reviews", "recetas", "caja", "clientes"].includes(tab) ? "text-primary" : "text-muted-foreground"}`}>
               <span className="text-lg">{moreOpen ? <X className="h-5 w-5" /> : <MoreHorizontal className="h-5 w-5" />}</span>Más
             </button>
@@ -1368,9 +1450,23 @@ function VendorDashboardInner() {
             <button onClick={() => setMoreOpen(false)} className="mx-auto block w-10 h-1.5 bg-muted rounded-full mb-4" aria-label="Cerrar" />
             <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wide mb-2">Administración</p>
             <div className="grid grid-cols-2 gap-2">
+              {isService ? (
+                <>
+                  <button onClick={() => { setTab("config"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "config" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
+                    <Wrench className="h-5 w-5" />Ficha
+                  </button>
+                  <button onClick={() => { setTab("reviews"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "reviews" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
+                    <Star className="h-5 w-5" />Reseñas
+                  </button>
+                  <button onClick={() => { setTab("history"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "history" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
+                    <History className="h-5 w-5" />Historial
+                  </button>
+                </>
+              ) : (
+                <>
               <button onClick={() => { setTab("menu"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "menu" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
-                {isService ? <Wrench className="h-5 w-5" /> : isModa ? <Shirt className="h-5 w-5" /> : isComercio ? <ShoppingBag className="h-5 w-5" /> : <Utensils className="h-5 w-5" />}
-                {isService ? "Servicios" : isRetail ? "Catálogo" : "Menú"} ({menuCount})
+                {isModa ? <Shirt className="h-5 w-5" /> : isComercio ? <ShoppingBag className="h-5 w-5" /> : <Utensils className="h-5 w-5" />}
+                {isRetail ? "Catálogo" : "Menú"} ({menuCount})
               </button>
               {isGastro && (
                 <button onClick={() => { setTab("recetas"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "recetas" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
@@ -1399,6 +1495,8 @@ function VendorDashboardInner() {
               <button onClick={() => { setTab("reviews"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "reviews" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
                 <Star className="h-5 w-5" />Reseñas
               </button>
+                </>
+              )}
             </div>
           </div>
         )}

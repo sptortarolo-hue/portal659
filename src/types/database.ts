@@ -483,6 +483,22 @@ export type Order = {
   is_preview?: boolean;
   /** Comprobante de transferencia (imagen/PDF) que llegó por WhatsApp al bot. */
   transfer_proof_url?: string | null;
+  /** Apartado/seña (moda): reserva con pago parcial + vencimiento. */
+  is_apartado?: boolean | null;
+  /** Monto de la seña acordada. */
+  deposit_amount?: number | null;
+  /** % de seña sobre el total. */
+  deposit_pct?: number | null;
+  /** Estado de la seña: 'pending' (link generado) | 'paid' (cobrada) | null (sin registrar). */
+  deposit_status?: "pending" | "paid" | null;
+  /** Vencimiento del apartado (saldo pendiente). */
+  deposit_due_at?: string | null;
+  /** Cuándo se cobró la seña. */
+  deposit_paid_at?: string | null;
+  /** Cuándo se cobró el saldo (pedido totalmente pago). */
+  remainder_paid_at?: string | null;
+  /** ID del pago de Mercado Pago (seña de apartado o pedido online). */
+  mp_payment_id?: string | null;
   created_at: string;
   updated_at: string;
   /** Momento en que el pedido se cerró (completed/cancelled). Frena el cronómetro. */

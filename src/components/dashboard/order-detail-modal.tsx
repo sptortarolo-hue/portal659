@@ -3,6 +3,8 @@
 import { useEffect, useCallback, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { apartadoInfo } from "@/lib/apartado";
 import {
   ORDER_STATUS_COLORS,
   buildContextualWhatsApp,
@@ -57,9 +59,11 @@ type Props = {
   blockUnpaid?: boolean;
   onMarkPaid?: (orderId: string) => void;
   isRetail?: boolean;
+  /** El padre refresca lista + orden seleccionada tras una acción de apartado. */
+  onApartadoChanged?: (order: Order) => void;
 };
 
-export default function OrderDetailModal({ order, vendorName, onClose, onAction, onModify, offers = [], canPrint = true, transfer, blockUnpaid = false, onMarkPaid, isRetail = false }: Props) {
+export default function OrderDetailModal({ order, vendorName, onClose, onAction, onModify, offers = [], canPrint = true, transfer, blockUnpaid = false, onMarkPaid, isRetail = false, onApartadoChanged }: Props) {
   const [editing, setEditing] = useState(false);
   const [editItems, setEditItems] = useState<OrderItem[]>([]);
   const [modNotes, setModNotes] = useState("");
@@ -69,6 +73,60 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
   const [printing, setPrinting] = useState(false);
   const [printStatus, setPrintStatus] = useState<"ok" | "error" | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  // Apartado/seña.
+  const [mpLink, setMpLink] = useState<string | null>(null);
+  const [mpBusy, setMpBusy] = useState(false);
+  const [apBusy, setApBusy] = useState<"deposit" | "remainder" | null>(null);
+  const [apError, setApError] = useState("");
+  useEffect(() => {
+    setMpLink(null);
+    setApError("");
+  }, [order.id]);
+
+  const ap = apartadoInfo(order);
+  // Apartado con saldo pendiente en el paso de aceptar: el camino correcto
+  // es cobrar el saldo (no aceptar directo). Se reemplaza el botón primario.
+  const apartadoUnpaidAccept = ap.isApartado && !ap.fullyPaid && ap.active && nextStatusFor(order.status as OrderStatus, order.method, isRetail, order.channel, orderNeedsKitchen(order)) === "confirmed";
+
+  async function handleApartadoMark(kind: "deposit" | "remainder") {
+    setApError("");
+    setApBusy(kind);
+    try {
+      const res = await fetch(`/api/vendor/apartados/${order.id}/mark-paid`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.error || !data.order) {
+        setApError(data.error || "No se pudo registrar el pago.");
+        return;
+      }
+      onApartadoChanged?.(data.order as Order);
+    } catch {
+      setApError("Error de red. Probá de nuevo.");
+    } finally {
+      setApBusy(null);
+    }
+  }
+
+  async function handleApartadoLink() {
+    setApError("");
+    setMpBusy(true);
+    try {
+      const res = await fetch(`/api/vendor/apartados/${order.id}/deposit-link`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.error || !data.initPoint) {
+        setApError(data.error || "No se pudo generar el link.");
+        return;
+      }
+      setMpLink(data.initPoint as string);
+    } catch {
+      setApError("Error de red. Probá de nuevo.");
+    } finally {
+      setMpBusy(false);
+    }
+  }
 
   const isCancelled = order.status === "cancelled";
   const isCompleted = order.status === "completed";
@@ -261,6 +319,9 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
             {order.is_preview && (
               <Badge variant="outline" className="text-[9px] px-1.5 py-0 bg-violet-100 text-violet-700 font-bold">🧪 PRUEBA</Badge>
             )}
+            {ap.isApartado && (
+              <Badge variant="outline" className="text-[9px] px-1.5 py-0 bg-amber-100 text-amber-800 font-bold">🏷️ APARTADO</Badge>
+            )}
           </div>
           <button onClick={onClose} className="p-1 rounded-lg hover:bg-muted transition-colors text-lg">
             ✕
@@ -289,6 +350,87 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
               <p className="text-xs text-muted-foreground">📍 {order.customer_address}</p>
             )}
           </div>
+
+          {/* Apartado / seña */}
+          {ap.isApartado && ap.active && !editing && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 space-y-2">
+              <p className="text-xs font-bold text-amber-800 tabular-nums">
+                🏷️ Seña ${ap.deposit.toLocaleString("es-AR")}{ap.pct > 0 ? ` (${ap.pct}%)` : ""} · Saldo ${ap.remainder.toLocaleString("es-AR")}
+              </p>
+              <p className="text-xs text-amber-700">
+                {ap.fullyPaid
+                  ? "✅ Cobrado total"
+                  : `Seña: ${ap.depositPaid ? "cobrada ✅" : "pendiente"}`}
+                {ap.dueLabel && !ap.fullyPaid ? ` · ${ap.overdue ? "venció" : "vence"} ${ap.dueLabel}` : ""}
+                {ap.overdue && <span className="font-bold text-red-600"> · vencido</span>}
+              </p>
+              {apError && (
+                <p className="text-xs font-semibold text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                  ❌ {apError}
+                </p>
+              )}
+              {!ap.depositPaid && (
+                <div className="flex gap-2">
+                  {order.payment_method === "mercadopago" && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="flex-1"
+                      disabled={mpBusy}
+                      onClick={handleApartadoLink}
+                    >
+                      {mpBusy ? "Generando…" : "🔗 Link de seña (MP)"}
+                    </Button>
+                  )}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="flex-1 border-green-300 bg-green-50 text-green-700 hover:bg-green-100"
+                    disabled={apBusy === "deposit"}
+                    onClick={() => handleApartadoMark("deposit")}
+                  >
+                    {apBusy === "deposit" ? "Guardando…" : "Marcar seña cobrada"}
+                  </Button>
+                </div>
+              )}
+              {mpLink && !ap.depositPaid && (
+                <div className="space-y-1.5">
+                  <Input value={mpLink} readOnly onFocus={(e) => e.target.select()} className="h-8 text-[11px]" />
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => { void navigator.clipboard?.writeText(mpLink).catch(() => {}); }}
+                    >
+                      Copiar link
+                    </Button>
+                    <a
+                      href={`https://wa.me/${customerPhone}?text=${encodeURIComponent(`Hola, te paso el link para la seña de tu apartado: ${mpLink}`)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="rounded-md bg-green-500 text-white text-xs font-medium py-2 text-center hover:bg-green-600"
+                    >
+                      Enviar por WA
+                    </a>
+                  </div>
+                </div>
+              )}
+              {ap.depositPaid && !ap.fullyPaid && (
+                <Button
+                  type="button"
+                  size="sm"
+                  className="w-full"
+                  disabled={apBusy === "remainder"}
+                  onClick={() => handleApartadoMark("remainder")}
+                >
+                  {apBusy === "remainder" ? "Guardando…" : `✅ Marcar saldo cobrado ($${ap.remainder.toLocaleString("es-AR")})`}
+                </Button>
+              )}
+            </div>
+          )}
 
           {/* Progress steps */}
           {!isCancelled && !editing && (
@@ -571,7 +713,16 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
                 </div>
               )}
               {nextStatus && (
-                isBlockedByPayment ? (
+                apartadoUnpaidAccept ? (
+                  <Button
+                    className="w-full"
+                    disabled={!ap.depositPaid || apBusy === "remainder"}
+                    title={!ap.depositPaid ? "Primero hay que cobrar la seña" : undefined}
+                    onClick={() => handleApartadoMark("remainder")}
+                  >
+                    {apBusy === "remainder" ? "Guardando…" : `✅ Marcar saldo cobrado ($${ap.remainder.toLocaleString("es-AR")})`}
+                  </Button>
+                ) : isBlockedByPayment ? (
                   <div className="w-full">
                     <button
                       type="button"

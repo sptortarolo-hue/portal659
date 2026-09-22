@@ -160,7 +160,9 @@ Objetivo: cerrar el gap básico de "tienda de ropa seria" aprovechando la base e
 7. **Cupones / códigos de descuento** (decisión de alcance global, no solo moda).
 8. **"Comprá también" / cross-selling** por categoría/outfit en ficha y carrito.
 9. **Outfits / bundles moda** — extender `pack_size` o modelo combo propio.
-10. **Apartado / seña** — reserva con pago parcial + fecha límite + notificación (diferencial AR/LatAm).
+10. **Apartado / seña** — reserva con pago parcial + fecha límite + notificación (diferencial AR/LatAm). ✅ **Implementado** (migración `migrate-apartado.sql`: `orders.is_apartado/deposit_*/remainder_paid_at`; `POST /api/vendor/apartados` crea y reserva stock; link MP con `POST .../deposit-link` + rama `portal659_apartado_` del webhook; `POST .../mark-paid` para seña/saldo; UI en tab Pedidos moda: modal crear, badges, acciones en el detalle).
+    - **Caja**: el saldo cobrado entra al cierre Z (`paid_at`); las señas sueltas van aparte en el resumen (`senasTotal/senasCount/senasByMethod` en `computeCashClosing`, sin duplicar). Guardado en Z + visualización pendientes de Fase D (pestaña Caja para moda).
+    - **Clientes**: la ficha se crea al crear el apartado (`upsertCustomerFromOrder`); al cancelar se resta por el flujo genérico.
 11. **Back-in-stock** — tabla + push "¡volvió tu talle!" al reponer stock.
 12. **Pre-venta / lanzamiento** — flag + fecha de disponibilidad.
 

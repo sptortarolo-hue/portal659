@@ -44,6 +44,8 @@ import { OrdersKanban } from "@/components/dashboard/orders-kanban";
 import { useKeyboardShortcuts } from "@/lib/use-keyboard-shortcuts";
 import { buildClientWhatsAppUrl, ORDER_STATUS_COLORS, RETAIL_STATUS_LABELS, flowSteps, orderCondition, orderReadyLabel, orderNeedsKitchen, isSameBusinessDay, CONDITION_META } from "@/lib/order-utils";
 import OrderDetailModal from "@/components/dashboard/order-detail-modal";
+import { ApartadoModal } from "@/components/dashboard/apartado-modal";
+import { apartadoInfo } from "@/lib/apartado";
 import DashboardGastro from "@/components/dashboard/dashboard-gastro";
 import DashboardComercio from "@/components/dashboard/dashboard-comercio";
 import DashboardServicio from "@/components/dashboard/dashboard-servicio";
@@ -100,6 +102,8 @@ type Vendor = {
   logo_url: string | null;
   prep_time_min: number | null;
   urgent_enabled: boolean;
+  /** % de seña por defecto (moda/servicios). NULL = 30. */
+  deposit_default_pct?: number | null;
   is_admin: boolean;
   printer_ip: string | null;
   printer_port: number | null;
@@ -216,6 +220,7 @@ function VendorDashboardInner() {
   const [orderSearch, setOrderSearch] = useState("");
   const [orderStatusFilter, setOrderStatusFilter] = useState<string>("all");
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [apartadoOpen, setApartadoOpen] = useState(false);
   const [cropTitle, setCropTitle] = useState("Ajustá tu foto");
   const [cropTarget, setCropTarget] = useState<"cover" | "logo" | "offer">("cover");
 
@@ -811,6 +816,18 @@ function VendorDashboardInner() {
 
   const ordersContent = (
     <div className="space-y-3">
+      {/* Nuevo apartado / seña (moda) */}
+      {isModa && (
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={() => setApartadoOpen(true)}
+            className="rounded-xl bg-amber-500 text-white text-sm font-semibold px-4 py-2 hover:bg-amber-600 active:scale-[0.98] transition-all"
+          >
+            🏷️ Nuevo apartado
+          </button>
+        </div>
+      )}
       {/* Search */}
       <div className="relative">
         <input
@@ -936,6 +953,15 @@ function VendorDashboardInner() {
                             <AlertTriangle className="h-2.5 w-2.5" /> Pago pendiente
                           </span>
                         )}
+                        {(() => {
+                          const ap = apartadoInfo(order);
+                          if (!ap.isApartado || !ap.active) return null;
+                          return (
+                            <span className={`inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-full border ${ap.overdue ? "bg-red-100 text-red-700 border-red-200" : "bg-amber-100 text-amber-800 border-amber-200"}`}>
+                              🏷️ Seña ${ap.deposit.toLocaleString("es-AR")} · Saldo ${ap.remainder.toLocaleString("es-AR")}{ap.dueLabel ? ` · ${ap.overdue ? "venció" : "vence"} ${ap.dueLabel}` : ""}
+                            </span>
+                          );
+                        })()}
                       </div>
                     </div>
                     <div className="text-right flex-shrink-0">
@@ -1570,8 +1596,20 @@ function VendorDashboardInner() {
           }}
           blockUnpaid={!!vendor?.block_unpaid_orders}
           onMarkPaid={markOrderPaid}
+          onApartadoChanged={(updated) => {
+            setOrders((prev) => prev.map((o) => (o.id === updated.id ? { ...o, ...updated } : o)));
+            setSelectedOrder((prev) => (prev && prev.id === updated.id ? { ...prev, ...updated } as Order : prev));
+          }}
         />
       )}
+      <ApartadoModal
+        open={apartadoOpen}
+        onClose={() => setApartadoOpen(false)}
+        offers={offers}
+        variants={variants}
+        defaultDepositPct={vendor?.deposit_default_pct ?? null}
+        onChanged={loadOrdersOnly}
+      />
     </div>
   );
 }

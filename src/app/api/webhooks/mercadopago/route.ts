@@ -219,6 +219,57 @@ export async function POST(request: Request) {
           return NextResponse.json({ ok: true });
         }
 
+        // Rama seña de apartado (moda): portal659_apartado_{orderId}_{ts}.
+        // Marca la seña como cobrada; el saldo se cobra aparte y el pedido
+        // sigue en 'new' hasta que el comercio lo acepta por el flujo normal.
+        if (externalRef?.startsWith("portal659_apartado_")) {
+          const orderId = externalRef.split("_")[2];
+          if (orderId) {
+            const order = await queryOne<{
+              id: string;
+              vendor_id: string;
+              customer_name: string;
+              total: number | null;
+              is_apartado: boolean | null;
+              deposit_amount: number | null;
+              deposit_status: string | null;
+              remainder_paid_at: string | null;
+            }>(
+              `SELECT id, vendor_id, customer_name, total, is_apartado, deposit_amount, deposit_status, remainder_paid_at
+               FROM orders WHERE id = $1 LIMIT 1`,
+              [orderId]
+            ).catch(() => undefined);
+            if (order && order.is_apartado && order.deposit_status !== "paid" && !order.remainder_paid_at) {
+              const paidAmount = Number(payment.transaction_amount) || 0;
+              const expected = Number(order.deposit_amount) || 0;
+              const mismatch = expected > 0 && Math.abs(paidAmount - expected) > 1;
+              await query(
+                `UPDATE orders SET deposit_status = 'paid', deposit_paid_at = now(), mp_payment_id = $1 WHERE id = $2`,
+                [String(payment.id || ""), orderId]
+              ).catch(() => {});
+              const vrow = await queryOne<{ user_id: string; store_name: string }>(
+                `SELECT user_id, store_name FROM vendors WHERE id = $1 LIMIT 1`,
+                [order.vendor_id]
+              );
+              if (vrow?.user_id) {
+                const title = "¡Seña de apartado pagada! 🏷️";
+                const body = `${order.customer_name} pagó $${paidAmount.toLocaleString("es-AR")} de seña${mismatch ? ` (difiere de $${expected.toLocaleString("es-AR")}, revisar)` : ""}. Falta cobrar el saldo.`;
+                await query(
+                  `INSERT INTO notifications (user_id, title, body, type, link)
+                   VALUES ($1, $2, $3, 'payment', '/vendor/dashboard')`,
+                  [vrow.user_id, title, body]
+                );
+                try {
+                  const { sendPushToUser } = await import("@/lib/push");
+                  await sendPushToUser(vrow.user_id, { title, body, link: "/vendor/dashboard" });
+                } catch { /* best-effort */ }
+              }
+              console.log(`[mp-webhook] apartado ok order=${orderId} amount=${paidAmount} mismatch=${mismatch}`);
+            }
+          }
+          return NextResponse.json({ ok: true });
+        }
+
         const parts = externalRef.split("_");
         const vendorId = parts[1];
 

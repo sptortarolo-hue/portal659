@@ -13,6 +13,7 @@ import {
   orderReadyLabel,
 } from "@/lib/order-utils";
 import { AlertTriangle, ChevronRight, Banknote, MessageSquare, CheckCircle, Truck, Plus, ChefHat, Package } from "lucide-react";
+import { apartadoInfo } from "@/lib/apartado";
 
 type OrdersKanbanProps = {
   orders: Order[];
@@ -98,6 +99,15 @@ function OrderCard({
                 🧾 comprobante
               </span>
             )}
+            {(() => {
+              const ap = apartadoInfo(order);
+              if (!ap.isApartado || !ap.active) return null;
+              return (
+                <span className={`inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-full border ${ap.overdue ? "bg-red-100 text-red-700 border-red-200" : "bg-amber-100 text-amber-800 border-amber-200"}`}>
+                  🏷️ Seña ${ap.deposit.toLocaleString("es-AR")} · Saldo ${ap.remainder.toLocaleString("es-AR")}{ap.dueLabel ? ` · ${ap.overdue ? "venció" : "vence"} ${ap.dueLabel}` : ""}
+                </span>
+              );
+            })()}
           </div>
         </div>
         <div className="text-right flex-shrink-0">
@@ -321,6 +331,13 @@ export function OrdersKanban({
       const needsKitchen = (order.items || []).some((i) => i?.requires_prep !== false);
       const next = nextStatusFor(order.status, order.method, isRetail, order.channel, needsKitchen);
       if (!next) return;
+      // Apartado con saldo pendiente: no debería entrar al circuito sin
+      // cobrar (el camino correcto es "Marcar saldo cobrado" en el detalle).
+      // Se permite igual con confirmación explícita.
+      if (order.is_apartado && !order.remainder_paid_at && next === "confirmed" && !["cancelled", "completed"].includes(order.status)) {
+        const ap = apartadoInfo(order);
+        if (!window.confirm(`Este apartado tiene saldo pendiente de $${ap.remainder.toLocaleString("es-AR")}. ¿Aceptar igual sin cobrar el saldo?`)) return;
+      }
 
       try {
         const payload: Record<string, unknown> = { status: next };

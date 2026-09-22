@@ -127,6 +127,8 @@ Portal 659: "El centro comercial de tu barrio". Hub multicommerce hiperlocal (Si
 - Aplicar `supabase/self-host/migrate-service-requests.sql` (servicios: `bookings.customer_name/phone` + `plans.max_quotes_month` con gratuito=5 — tope combinado presupuestos+turnos, gate 429 en POST quotes/bookings).
 - Aplicar `supabase/self-host/migrate-service-oficios.sql` (plan Oficios $2.990: `quotes.quoted_price/deposit_*` + `vendors.urgent_surcharge_pct/deposit_default_pct` + fila `oficios` — cotización con precio, seña MP, urgencia con recargo).
 - Aplicar `supabase/self-host/migrate-service-reminders.sql` (recordatorios T-24/T-2 de turnos: `service_reminder_log` + `quotes.photo_urls` jsonb; cron en el host: `*/15 * * * * curl -fsS "https://www.portal659.com.ar/api/cron/booking-reminders?secret=$CRON_SECRET" >> /var/log/portal659-cron.log 2>&1` con `CRON_SECRET` en `.env`; upload público de fotos: `POST /api/service-upload?vendorId=` con rate-limit, hasta 3 fotos). Cron self-managed: se auto-repara como el de backups (deploy lo escribe si falta).
+- Aplicar `supabase/self-host/migrate-size-guide.sql` (Fase A moda: `products.size_guide` + `product_images.color` — guía de talles y fotos por color).
+- Aplicar `supabase/self-host/migrate-apartado.sql` (apartado/seña moda: `orders.is_apartado/deposit_*/remainder_paid_at/mp_payment_id` — reserva con pago parcial + vencimiento, link MP con rama `portal659_apartado_` del webhook).
 - Cargar secrets `VAPID_*`, `PRINT_BRIDGE_SECRET` y `RESEND_API_KEY`/`FROM_EMAIL` en GitHub para que el deploy las escriba al `.env`.
 - Compilar el APK de Portal Print (Android): ver `android/README.md` (requiere Android SDK/JDK 17).
 - Reboot test del VPS (verificar que la web vuelve sola).

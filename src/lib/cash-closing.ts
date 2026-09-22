@@ -15,6 +15,12 @@ export type CashClosingSummary = {
   byMethod: Record<string, ClosingMethodTotals>;
   cashTotal: number;
   avgTicket: number;
+  /** Señas de apartados cobradas en el rango con saldo aún pendiente. Van
+   * aparte para no duplicar: cuando se cobra el saldo, el total entra por
+   * paid_at y la seña sale de acá. Visualización en Fase D (Caja para moda). */
+  senasTotal: number;
+  senasCount: number;
+  senasByMethod: Record<string, ClosingMethodTotals>;
 };
 
 function round2(n: number): number {
@@ -82,6 +88,39 @@ export async function computeCashClosing(
     rounded[m] = { count: d.count, total: round2(d.total) };
   }
 
+  // Señas de apartados cobradas en el rango con saldo aún pendiente: la
+  // plata está en el cajón pero el pedido no tiene paid_at todavía.
+  // Tolerante a migración sin aplicar (el cierre existente no se rompe).
+  let senasTotal = 0;
+  let senasCount = 0;
+  const senasByMethod: Record<string, ClosingMethodTotals> = {};
+  try {
+    const srows = await queryMany<{
+      payment_method: string | null;
+      deposit_amount: number;
+    }>(
+      `SELECT payment_method, deposit_amount
+       FROM orders
+       WHERE vendor_id = $1 AND is_apartado = true AND deposit_status = 'paid'
+         AND remainder_paid_at IS NULL AND status != 'cancelled'
+         AND deposit_paid_at IS NOT NULL AND deposit_paid_at >= $2`,
+      [vendorId, since]
+    );
+    for (const s of srows || []) {
+      const amount = Number(s.deposit_amount) || 0;
+      if (!(amount > 0)) continue;
+      const m = s.payment_method || "efectivo";
+      if (!senasByMethod[m]) senasByMethod[m] = { count: 0, total: 0 };
+      senasByMethod[m].count++;
+      senasByMethod[m].total += amount;
+      senasCount++;
+      senasTotal += amount;
+    }
+    for (const d of Object.values(senasByMethod)) d.total = round2(d.total);
+  } catch {
+    // Sin columnas de apartado: sin señas para sumar.
+  }
+
   return {
     since,
     ordersCount: rows.length,
@@ -91,5 +130,8 @@ export async function computeCashClosing(
     byMethod: rounded,
     cashTotal: rounded["efectivo"]?.total ?? 0,
     avgTicket: rows.length > 0 ? round2(net / rows.length) : 0,
+    senasTotal: round2(senasTotal),
+    senasCount,
+    senasByMethod,
   };
 }

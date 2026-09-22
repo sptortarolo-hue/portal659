@@ -113,6 +113,7 @@ Portal 659: "El centro comercial de tu barrio". Hub multicommerce hiperlocal (Si
 - Aplicar `supabase/self-host/migrate-ticket-config.sql` (toggles de encabezado impreso: `vendors.print_logo/print_address/print_phone/print_social` — sin esto los tickets salen con todo activado por defecto igual, pero conviene correrla antes de tocar esos switches en el dashboard).
 - Aplicar `supabase/self-host/migrate-subscription-payments.sql` (campos de pago en `vendor_subscriptions`: `payment_method/amount/paid_at` — panel `/admin/suscripciones`).
 - Aplicar `supabase/self-host/migrate-order-track-token.sql` (columna `orders.track_token` — link de seguimiento público `/seguimiento/[token]` y cuenta comprador).
+- Aplicar `supabase/self-host/migrate-order-mp-payment-id.sql` (columna `orders.mp_payment_id` — la pantalla de vuelta de MP busca el pedido por `payment_id`; sin esta migración ese lookup no funciona y queda solo el fallback por teléfono).
 - Aplicar `supabase/self-host/migrate-cash-closing.sql` (tabla `cash_closings` del cierre de caja Z + índice `orders(vendor_id, paid_at)` — pestaña Caja).
 - Aplicar `supabase/self-host/migrate-crm.sql` (tabla `customers` + feature `crm` en plan gestion + backfill de pedidos app — pestaña Clientes).
 - Aplicar `supabase/self-host/migrate-recipes.sql` (módulo Recetas/escandallo gastro: `ingredients` + `recipes` + `recipe_items` + flag `recipes` en plan `gestion` — tab Recetas del dashboard, plan Gestión integral).

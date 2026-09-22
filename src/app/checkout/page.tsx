@@ -182,6 +182,15 @@ export default function CheckoutPage() {
       .catch(() => {});
   }, [vendor?.id]);
 
+  // Si el comercio no ofrece el método elegido, forzar el habilitado.
+  // Va ANTES de cualquier return temprano: todos los hooks deben correr en
+  // todos los renders (si no, React tira "fewer hooks" y cae el boundary).
+  useEffect(() => {
+    const opts = vendor?.deliveryOptions || "ambos";
+    if (opts === "retiro" && method === "delivery") setMethod("pickup");
+    if (opts === "domicilio" && method === "pickup") setMethod("delivery");
+  }, [vendor?.deliveryOptions, method]);
+
   if (mpReturn) {
     const s = mpReturn;
     const storeName = s.stash?.storeName || "el local";
@@ -333,12 +342,6 @@ export default function CheckoutPage() {
   // Modo prueba: el micrositio en preview guarda el contexto en sessionStorage.
   const previewCtx = v?.id ? readPreviewSession(v.id) : null;
   const isPreview = previewCtx !== null;
-
-  // Si el comercio no ofrece el método elegido, forzar el habilitado.
-  useEffect(() => {
-    if (!allowDelivery && method === "delivery") setMethod("pickup");
-    if (!allowPickup && method === "pickup") setMethod("delivery");
-  }, [allowDelivery, allowPickup, method]);
 
   async function lookupPhone() {
     // Autocompletar datos de pedidos anteriores: solo con celular válido.

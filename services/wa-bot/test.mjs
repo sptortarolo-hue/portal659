@@ -30,34 +30,33 @@ const wa = "5491134567890";
 
 function show(label, r) {
   console.log(`\n===== ${label} =====`);
-  for (const line of r.replies || []) console.log(line);
+  console.log(JSON.stringify(r.replies || [], null, 2));
 }
 
 async function main() {
-  console.log("--- ESCENARIO 1: pedido completo ---");
-  let r = await handleInbound({ vendor, waId: wa, body: "hola" });
+  let r;
+  r = await handleInbound({ vendor, waId: wa, body: "hola" });
   show("hola", r);
-
   r = await handleInbound({ vendor, waId: wa, body: "quiero 2 empanadas de carne y una coca, envío a calle 5 123" });
   show("pedido + envío", r);
-
   r = await handleInbound({ vendor, waId: wa, body: "Juan Pérez, transferencia" });
-  show("nombre + pago (combinado)", r);
-
+  show("nombre + pago", r);
   r = await handleInbound({ vendor, waId: wa, body: "si" });
   show("confirmar", r);
 
-  console.log("\n--- ESCENARIO 2: saludo repetido ---");
-  r = await handleInbound({ vendor, waId: wa, body: "hola" });
-  show("hola de nuevo", r);
+  console.log("\n--- ESC 4: re-declarar NO duplica ---");
+  r = await handleInbound({ vendor, waId: wa, body: "quiero 2 empanadas de carne y una coca" });
+  show("pedido completo", r);
+  r = await handleInbound({ vendor, waId: wa, body: "no, mejor solo 3 empanadas de carne" });
+  show("re-declaración", r);
 
-  console.log("\n--- ESCENARIO 3: corrección en confirm ---");
-  r = await handleInbound({ vendor, waId: wa, body: "quiero 2 empanadas de carne" });
-  show("pedido corto", r);
-  r = await handleInbound({ vendor, waId: wa, body: "retiro, Juan" });
-  show("retiro + nombre", r);
-  r = await handleInbound({ vendor, waId: wa, body: "agrega 1 coca" });
-  show("corrección", r);
+  console.log("\n--- ESC 5: cantidades en palabras ---");
+  r = await handleInbound({ vendor, waId: wa, body: "cancelar" });
+  r = await handleInbound({ vendor, waId: wa, body: "quiero una docena de empanadas de carne" });
+  show("una docena", r);
+  r = await handleInbound({ vendor, waId: wa, body: "cancelar" });
+  r = await handleInbound({ vendor, waId: wa, body: "dos pizzas y tres coca" });
+  show("dos pizzas + tres coca", r);
 }
 
 main().catch((e) => { console.error("FAIL:", e); process.exit(1); });

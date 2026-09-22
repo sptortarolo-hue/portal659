@@ -201,9 +201,22 @@ async function handleStep({ vendor, text, state, replies, waId }) {
     got = true;
   }
 
-  // Además, si pide más productos, sumarlos al pedido.
+  // Productos en la respuesta: distinguir AGREGAR de RE-DECLARAR.
+  // Con verbos de suma ("agregá/también/sumá/más") se suman al carrito; en
+  // cualquier otro caso el mensaje ES el pedido actualizado → reemplaza.
+  // Antes siempre sumaba: repetir el pedido lo duplicaba (×4 en vez de ×2).
   if (parsed?.items?.length) {
-    mergeItems(state, parsed.items);
+    const isAddition = /\b(agrega|agregá|agregar|también|tambien|sumá|suma|sumar|más|mas)\b/i.test(t);
+    if (isAddition) {
+      mergeItems(state, parsed.items);
+    } else {
+      state.items = parsed.items.map((p) => ({
+        offerId: p.offerId || p.id,
+        name: p.name,
+        qty: Math.max(1, Number(p.qty) || 1),
+        modifiers: p.modifiers || [],
+      }));
+    }
     got = true;
   }
 
@@ -327,10 +340,22 @@ function applyParsed(state, parsed, waId) {
 function mergeItems(state, newItems) {
   for (const p of newItems) {
     const offerId = p.offerId || p.id;
-    const existing = state.items.find((i) => i.offerId === offerId && (i.modifiers || []).length === (p.modifiers || []).length);
+    const mods = p.modifiers || [];
+    const existing = state.items.find((i) => i.offerId === offerId && (i.modifiers || []).length === mods.length);
     if (existing) existing.qty += Math.max(1, Number(p.qty) || 1);
-    else state.items.push({ offerId, name: p.name, qty: Math.max(1, Number(p.qty) || 1), modifiers: p.modifiers || [] });
+    else state.items.push({ offerId, name: p.name, qty: Math.max(1, Number(p.qty) || 1), modifiers: mods });
   }
+  // Dedupe de defensa: jamás dos entradas del mismo producto (offerId+mods).
+  const seen = new Map();
+  state.items = state.items.filter((i) => {
+    const k = `${i.offerId}|${(i.modifiers || []).map((m) => (typeof m === "string" ? m : m.label || m.group)).join(",")}`;
+    if (seen.has(k)) {
+      seen.get(k).qty += i.qty;
+      return false;
+    }
+    seen.set(k, i);
+    return true;
+  });
 }
 
 // ———————————————————————————————————————————————————————————————————————————

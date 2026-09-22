@@ -305,6 +305,7 @@ function extractFromText(text, products) {
   //  - "3 empanadas y una coca" → [empanadas×3, coca×1]
   //  - "dos pizzas"          → [pizza×2]
   //  - "quiero dos empanadas" → qty detectada aunque haya verbos al principio.
+  //  - "una docena de empanadas" → ×12; "media docena de empanadas" → ×6.
   // Split sobre el texto ORIGINAL: las comas separan pedidos y normalizeEs
   // las destruiría (todo quedaría en un chunk sin separar).
   const out = [];
@@ -314,6 +315,12 @@ function extractFromText(text, products) {
     if (!chunk) continue;
     // Quitar verbos/intenciones al inicio (quiero/dame/traeme/etc.)
     chunk = chunk.replace(/^(quiero|querria|quisiera|dame|démela|traeme|traigame|me das|me pones|me haces|me traes|me preparas|me cobras)\s+/i, "");
+    // Quitar negaciones/relleno de corrección al inicio ("no, mejor solo X" → "X").
+    for (let i = 0; i < 4; i++) {
+      const filler = /^(no\b[,.;:]?\s*(mejor\b\s*)?(solo\b\s*)?|mejor\b\s*(solo\b\s*)?|solo\b\s*|unicamente\b\s*|bueno\b\s*)/i.exec(chunk);
+      if (!filler || !chunk.slice(filler[0].length).trim()) break;
+      chunk = chunk.slice(filler[0].length).trim();
+    }
     const norm = normalizeEs(chunk);
     const m = /^(\d+|un(?:a|o)?|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce)\s+(?:de\s+)?(.*)$/.exec(norm);
     let qty = 1, name = norm;
@@ -324,6 +331,13 @@ function extractFromText(text, products) {
       name = m[2].trim();
     }
     if (!name) continue;
+    // "docena de X" → ×12 · "media docena de X" → ×6 (el multiplicador va
+    // sobre la cantidad: "una docena" = 1 × 12).
+    const docena = /^media\s+docena\s+(?:de\s+)?(.+)$/.exec(name) || /^docena\s+(?:de\s+)?(.+)$/.exec(name);
+    if (docena) {
+      qty *= name.startsWith("media") ? 6 : 12;
+      name = docena[1].trim();
+    }
     const p = matchProduct(products, name);
     if (p) out.push({ name: p.name, qty: Math.max(1, qty), modifiers: [] });
   }

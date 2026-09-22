@@ -287,6 +287,12 @@ export function OrdersKanban({
     },
     {} as Record<OrderStatus, Order[]>
   );
+  // Legacy retail (flow viejo con "Aceptado"): si el backfill aún no corrió,
+  // esos pedidos se muestran en Empaquetando para no quedar invisibles.
+  if (isRetail) {
+    const legacy = orders.filter((o) => o.status === "confirmed");
+    if (legacy.length) ordersByStatus.preparing = [...(ordersByStatus.preparing || []), ...legacy];
+  }
 
   if (isLoading) {
     return (

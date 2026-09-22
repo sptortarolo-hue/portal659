@@ -12,8 +12,9 @@ export function orderNeedsKitchen(
 }
 
 const VALID_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
-  // "confirmed" (aceptación explícita) lo usa el vertical moda; gastronomía
-  // salta directo de new a preparing (su UI nunca emite "confirmed").
+  // "confirmed" es legacy del flow retail con aceptación explícita (pedidos
+  // en vuelo): se sigue aceptando como origen/destino pero la UI ya no lo
+  // emite — retail acepta directo new → preparing (como gastronomía).
   // Mostrador/mesa saltean "preparación": de new pasan directo a ready
   // ("Listo p/ entregar"); la cocina igual los ve en la comanda.
   new: ["confirmed", "preparing", "ready", "cancelled"],
@@ -141,9 +142,9 @@ export const ORDER_STATUS_COLORS: Record<OrderStatus, string> = {
   cancelled: "bg-red-100 text-red-600 border-red-200",
 };
 
-// Retail (moda y comercio de barrio): el pedido se acepta/rechaza por stock
-// y se empaqueta; no hay cocina. Los estados son los mismos, cambian los
-// nombres visibles.
+// Retail (moda y comercio de barrio): el pedido nuevo se acepta/rechaza por
+// stock y pasa directo a empaquetando; no hay cocina ni paso intermedio.
+// Los estados son los mismos, cambian los nombres visibles.
 export const RETAIL_STATUS_LABELS: Record<OrderStatus, string> = {
   new: "Por aceptar",
   confirmed: "Aceptado",
@@ -157,14 +158,14 @@ export const RETAIL_STATUS_LABELS: Record<OrderStatus, string> = {
 /** @deprecated usar RETAIL_STATUS_LABELS (queda como alias por compatibilidad). */
 export const MODA_STATUS_LABELS = RETAIL_STATUS_LABELS;
 
-/** `isRetail` = vertical moda o comercio (flow con aceptación explícita). */
+/** `isRetail` = vertical moda o comercio (acepta directo a empaquetando). */
 export function statusLabel(status: OrderStatus, isRetail: boolean): string {
   return isRetail ? RETAIL_STATUS_LABELS[status] : ORDER_STATUS_LABELS[status];
 }
 
 export function flowSteps(isRetail: boolean): OrderStatus[] {
   return isRetail
-    ? ["new", "confirmed", "preparing", "ready", "sent", "completed"]
+    ? ["new", "preparing", "ready", "sent", "completed"]
     : ["new", "preparing", "ready", "sent", "completed"];
 }
 
@@ -173,7 +174,8 @@ export function flowSteps(isRetail: boolean): OrderStatus[] {
  * - Mostrador/mesa SIN cocina (solo bebidas/packs): `new` salta a `ready`
  *   (2 pasos: "Listo p/ entregar"), sin pasar por comanda.
  * - Mostrador/mesa CON cocina: flow normal (`new` → `preparing` → ...).
- * - Retail (moda/comercio, app): `new` → `confirmed` (aceptación explícita).
+ * - Retail (moda/comercio, app): `new` → `preparing` directo al aceptar
+ *   ("confirmed" quedó como estado legacy: solo pedidos viejos en vuelo).
  * - Gastro/app: `new` → `preparing`.
  * `null` en estados terminales.
  */
@@ -193,8 +195,9 @@ export function nextStatusFor(
     return "ready";
   switch (status) {
     case "new":
-      return isRetail ? "confirmed" : "preparing";
+      return "preparing";
     case "confirmed":
+      // Legacy retail: pedidos aceptados con el flow viejo drenan a empaquetando.
       return "preparing";
     case "preparing":
       return "ready";

@@ -58,7 +58,7 @@ export default function RecepcionPedidosPage() {
             <p className="text-xs text-muted-foreground">En gastronomía el primer paso es directo: al abrir un pedido Nuevo, <span className="font-medium">&quot;Aceptar y empezar a preparar&quot;</span> lo pasa a En preparación (sin paso intermedio de aceptación).</p>
           </div>
           <div className="bg-blue-50 border border-blue-200 text-blue-800 rounded-xl px-4 py-3 text-sm mb-4">
-            <strong>Moda (indumentaria):</strong> el ciclo tiene un paso extra de aceptación explícita. Nuevo (<span className="font-medium">Por aceptar</span>) → <span className="font-medium">Aceptado</span> → <span className="font-medium">Empaquetando</span> → <span className="font-medium">Listo</span> → <span className="font-medium">En camino</span> → <span className="font-medium">Entregado</span>.
+            <strong>Moda y comercio de barrio:</strong> Nuevo (<span className="font-medium">Por aceptar</span>) → <span className="font-medium">Empaquetando</span> → <span className="font-medium">Listo</span> → <span className="font-medium">En camino</span> → <span className="font-medium">Entregado</span>. Aceptar lleva directo a empaquetar (sin paso intermedio).
           </div>
           <p className="mb-3"><span className="font-medium">Cancelado</span> está disponible desde cualquier estado anterior; un pedido cancelado no avanza más.</p>
           <div className="overflow-x-auto">
@@ -70,7 +70,7 @@ export default function RecepcionPedidosPage() {
                 </tr>
               </thead>
               <tbody>
-                <tr className="border-t border-border"><td className="px-3 py-2 font-medium">Nuevo</td><td className="px-3 py-2">En preparación / Aceptado / Cancelado</td></tr>
+                <tr className="border-t border-border"><td className="px-3 py-2 font-medium">Nuevo</td><td className="px-3 py-2">En preparación / Empaquetando / Cancelado</td></tr>
                 <tr className="border-t border-border"><td className="px-3 py-2 font-medium">Confirmado / Aceptado</td><td className="px-3 py-2">En preparación / Cancelado</td></tr>
                 <tr className="border-t border-border"><td className="px-3 py-2 font-medium">En preparación</td><td className="px-3 py-2">Listo / Cancelado</td></tr>
                 <tr className="border-t border-border"><td className="px-3 py-2 font-medium">Listo</td><td className="px-3 py-2">Enviado / Entregado / Cancelado</td></tr>
@@ -109,7 +109,7 @@ export default function RecepcionPedidosPage() {
           <h3 className="font-semibold mb-2">5.1 Pedido Nuevo (primer paso)</h3>
           <ul className="list-disc pl-5 space-y-1 mb-3">
             <li><span className="font-medium">Gastronomía</span>: <span className="font-medium">&quot;Aceptar y empezar a preparar&quot;</span> → pasa a En preparación.</li>
-            <li><span className="font-medium">Moda</span>: <span className="font-medium">&quot;✓ Aceptar pedido&quot;</span> → pasa a Aceptado; o <span className="font-medium">&quot;Rechazar pedido&quot;</span> (con motivo) para descartarlo.</li>
+            <li><span className="font-medium">Moda y comercio</span>: <span className="font-medium">&quot;✓ Aceptar pedido&quot;</span> → pasa directo a Empaquetando; o <span className="font-medium">&quot;Rechazar pedido&quot;</span> (con motivo) para descartarlo.</li>
           </ul>
 
           <h3 className="font-semibold mb-2">5.2 En preparación</h3>
@@ -127,7 +127,7 @@ export default function RecepcionPedidosPage() {
           <p className="mb-3">Cuando el cliente recibe el pedido, <span className="font-medium">&quot;Marcar como entregado&quot;</span> lo pasa a <span className="font-medium">Entregado</span> y se envía la notificación final por WhatsApp.</p>
 
           <h3 className="font-semibold mb-2">5.5 Cancelar / Rechazar</h3>
-          <p>Podés cancelar un pedido desde cualquier estado antes de Entregado. En moda, si está Por aceptar/Aceptado, el botón es <span className="font-medium">&quot;Rechazar pedido&quot;</span> (permite dejar un motivo); en los demás estados es <span className="font-medium">&quot;Cancelar pedido&quot;</span>.</p>
+          <p>Podés cancelar un pedido desde cualquier estado antes de Entregado. En moda y comercio, si está Por aceptar, el botón es <span className="font-medium">&quot;Rechazar pedido&quot;</span> (permite dejar un motivo); en los demás estados es <span className="font-medium">&quot;Cancelar pedido&quot;</span>.</p>
         </div>
 
         {/* 6 */}

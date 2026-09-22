@@ -120,23 +120,14 @@ async function handleIdle({ vendor, text, state, replies, phone, waId }) {
   const hasParsedItems = items.length > 0;
 
   if (hasParsedItems) {
-    // Si la IA ya armó un pedido coherente, completo el estado y le muestro el resumen
+    // Si la IA armó items, guardar en el estado
     applyParsed(items, parsed, state, phone);
-
-    // Si el método está, vamos directo a la confirmación
     if (parsed.method) state.method = parsed.method;
     if (parsed.customerAddress) state.customerAddress = parsed.customerAddress;
     if (parsed.customerName) state.customerName = parsed.customerName;
     if (parsed.payment) state.payment = parsed.payment;
-
-    if (state.method === "delivery" && !state.customerAddress) {
-      state.step = "address";
-      replies.push("¿A qué dirección te lo enviamos?");
-      return;
-    }
-
-    state.step = "confirm";
-    replies.push(summaryText(state, vendor));
+    // Avanzar al primer paso faltante — nunca saltao de una vez a confirm si falta algo.
+    advanceToNextStep(state, vendor, replies);
     return;
   }
 
@@ -145,13 +136,7 @@ async function handleIdle({ vendor, text, state, replies, phone, waId }) {
   if (ruleBased?.items?.length) {
     applyParsed(ruleBased.items, ruleBased, state, phone);
     if (ruleBased.method) state.method = ruleBased.method;
-
-    state.step = state.method ? "confirm" : "method";
-    if (state.step === "confirm") {
-      replies.push(summaryText(state, vendor));
-    } else {
-      replies.push("¿Lo retirás por el local o te lo enviamos?");
-    }
+    advanceToNextStep(state, vendor, replies);
     return;
   }
 

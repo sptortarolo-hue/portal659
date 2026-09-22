@@ -278,9 +278,24 @@ export function parseByRules(message, products) {
   if (/menu|menú|carta|precios?|cuanto|que tenés|qué tienen/i.test(m)) {
     return { complete: false, items: [], askMenu: true };
   }
+
+  // Método/pago se extraen del texto SIEMPRE (aunque no haya productos en el
+  // mensaje): las respuestas combinadas tipo "envío, Juan, transferencia" o
+  // "retiro, Juan" no traen ítems pero traen datos que el bot necesita.
+  const method = /(envío|envio|delivery|domicilio|despachen)/i.test(m) ? "delivery"
+    : /(retiro|retirar|paso por|voy por)/i.test(m) ? "pickup" : null;
+  const payment = /(transferencia|transferir|cbu|alias)/i.test(m) ? "transferencia"
+    : /(efectivo|cash)/i.test(m) ? "efectivo" : null;
+
   if (Array.isArray(products) && products.length > 0) {
     const items = extractFromText(m, products);
-    if (items.length) return { complete: true, items, method: null, customerName: null, customerAddress: null, payment: null, note: null };
+    if (items.length) {
+      return { complete: true, items, method, customerName: null, customerAddress: null, payment, note: null };
+    }
+  }
+  // Sin items pero con datos: igual devolverlos (el bot los usa para avanzar).
+  if (method || payment) {
+    return { complete: false, items: [], method, customerName: null, customerAddress: null, payment, note: null };
   }
   return null;
 }
@@ -290,16 +305,18 @@ function extractFromText(text, products) {
   //  - "3 empanadas y una coca" → [empanadas×3, coca×1]
   //  - "dos pizzas"          → [pizza×2]
   //  - "quiero dos empanadas" → qty detectada aunque haya verbos al principio.
-  const t = normalizeEs(text);
+  // Split sobre el texto ORIGINAL: las comas separan pedidos y normalizeEs
+  // las destruiría (todo quedaría en un chunk sin separar).
   const out = [];
-  const tokens = t.split(/[,\n;]| e | y |\s*\+\s*/);
+  const tokens = String(text).split(/[,\n;]| e | y |\s*\+\s*/i);
   for (const part of tokens) {
     let chunk = part.trim();
     if (!chunk) continue;
     // Quitar verbos/intenciones al inicio (quiero/dame/traeme/etc.)
     chunk = chunk.replace(/^(quiero|querria|quisiera|dame|démela|traeme|traigame|me das|me pones|me haces|me traes|me preparas|me cobras)\s+/i, "");
-    const m = /^(\d+|un(?:a|o)?|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce)\s+(?:de\s+)?(.*)$/.exec(chunk);
-    let qty = 1, name = chunk;
+    const norm = normalizeEs(chunk);
+    const m = /^(\d+|un(?:a|o)?|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce)\s+(?:de\s+)?(.*)$/.exec(norm);
+    let qty = 1, name = norm;
     if (m) {
       const rawQty = m[1];
       if (/^\d+$/.test(rawQty)) qty = Number(rawQty);

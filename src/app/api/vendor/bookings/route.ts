@@ -22,9 +22,9 @@ export async function GET(request: Request) {
   }
 
   const bookings = await queryMany<Record<string, unknown>>(
-    `SELECT b.*, p.name
+    `SELECT b.*, p.name AS product_label
      FROM bookings b
-     JOIN products p ON p.id = b.product_id
+     LEFT JOIN products p ON p.id = b.product_id
      WHERE ${conditions.join(" AND ")}
      ORDER BY b.booking_date ASC, b.booking_time ASC`,
     params

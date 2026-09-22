@@ -11,6 +11,7 @@ const ALLOWED = [
   "price_monthly",
   "max_products",
   "max_orders_month",
+  "max_quotes_month",
   "badge",
   "popular",
   "sort",
@@ -49,7 +50,7 @@ export async function PATCH(request: Request) {
     if (v === "" || v === null || v === undefined) {
       if (["promo_price", "promo_months", "promo_ends_at", "promo_label"].includes(k)) {
         clean[k] = null;
-      } else if (["description", "badge", "max_products", "max_orders_month"].includes(k)) {
+      } else if (["description", "badge", "max_products", "max_orders_month", "max_quotes_month"].includes(k)) {
         clean[k] = null;
       }
       continue;
@@ -59,7 +60,7 @@ export async function PATCH(request: Request) {
       const n = Number(v);
       if (!Number.isFinite(n) || n < 0) continue;
       clean[k] = n;
-    } else if (["max_products", "max_orders_month", "promo_months", "sort"].includes(k)) {
+    } else if (["max_products", "max_orders_month", "max_quotes_month", "promo_months", "sort"].includes(k)) {
       const n = Number(v);
       if (!Number.isFinite(n) || n < 0) continue;
       clean[k] = n;
@@ -99,10 +100,19 @@ export async function PATCH(request: Request) {
   }
 
   const setClauses = cols.map((k, i) => `${k} = $${i + 2}`).join(", ");
-  await query(
-    `UPDATE plans SET ${setClauses} WHERE id = $1`,
-    [id, ...Object.values(clean)]
-  );
+  try {
+    await query(
+      `UPDATE plans SET ${setClauses} WHERE id = $1`,
+      [id, ...Object.values(clean)]
+    );
+  } catch (e) {
+    // Columna max_quotes_month aún no migrada: reintentar sin ella.
+    if (!("max_quotes_month" in clean)) throw e;
+    const { max_quotes_month: _drop, ...rest } = clean;
+    if (Object.keys(rest).length === 0) return NextResponse.json({ ok: true });
+    const set2 = Object.keys(rest).map((k, i) => `${k} = $${i + 2}`).join(", ");
+    await query(`UPDATE plans SET ${set2} WHERE id = $1`, [id, ...Object.values(rest)]);
+  }
 
   return NextResponse.json({ ok: true });
 }

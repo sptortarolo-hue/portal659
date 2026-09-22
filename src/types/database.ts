@@ -13,7 +13,7 @@ export type Vertical =
   | "salud"
   | "otro";
 
-export type PlanSlug = "gratuito" | "pedidos" | "gestion";
+export type PlanSlug = "gratuito" | "pedidos" | "gestion" | "oficios";
 
 export type PlanStatus = "gratuito" | "trial" | "active" | "expired" | "cancelled" | "preview";
 
@@ -36,6 +36,10 @@ export type PlanFeatures = {
   recipes: boolean;
   /** Libro de clientes CRM (gastronomía, plan Gestión integral). */
   crm: boolean;
+  /** Responder presupuestos con precio (servicios, plan Oficios). */
+  quotes_respond: boolean;
+  /** Cobrar seña por Mercado Pago en presupuestos/turnos (servicios, Oficios). */
+  deposits: boolean;
 };
 
 export type Plan = {
@@ -46,6 +50,8 @@ export type Plan = {
   price_monthly: number;
   max_products: number | null;
   max_orders_month: number | null;
+  /** Tope mensual de presupuestos + turnos (servicios). NULL = ilimitado. Puede faltar si la migración aún no se aplicó. */
+  max_quotes_month?: number | null;
   features: PlanFeatures;
   badge: string | null;
   popular: boolean;
@@ -329,6 +335,10 @@ export type Vendor = {
   logo_url: string | null;
   prep_time_min: number | null;
   urgent_enabled: boolean;
+  /** % de recargo en urgencias (servicios, plan Oficios). NULL = sin recargo. */
+  urgent_surcharge_pct?: number | null;
+  /** % de seña por defecto sobre el cotizado (servicios, Oficios). NULL = 30. */
+  deposit_default_pct?: number | null;
   is_admin: boolean;
   printer_ip: string | null;
   printer_port: number | null;
@@ -384,6 +394,8 @@ export type Booking = {
   customer_id: string;
   vendor_id: string;
   product_name: string | null;
+  customer_name: string | null;
+  customer_phone: string | null;
   booking_date: string;
   booking_time: string;
   notes: string | null;

@@ -6,27 +6,34 @@ El comercio **no paga por el software**, paga por **ordenarse y vender**. La esc
 planes acompaña el crecimiento: el gratuito es el gancho (carta + carrito con tope), y
 se paga cuando el negocio pide más.
 
-| Plan | Precio | Productos | Pedidos/mes (app) | Features clave |
-|---|---|---|---|---|
-| **Gratuito** | $0 | Carta completa (ilimitado) | **20** (configurable) | micrositio + QR + carrito + checkout por WhatsApp |
-| **Pedidos** | $4.990 | ilimitado | ilimitado | + analytics 7 días + gestión de reseñas |
-| **Gestión integral** | $12.990 | ilimitado | ilimitado | + POS (Mostrador) + Mesas + Comanda (KDS) + impresión + cobro online + **Recetas/escandallo** |
+| Plan | Precio | Productos | Pedidos/mes (app) | Solicitudes/mes (servicios) | Features clave |
+|---|---|---|---|---|---|
+| **Gratuito** | $0 | Carta completa (ilimitado) | **20** (configurable) | **5** (configurable) | micrositio + QR + carrito + checkout por WhatsApp |
+| **Pedidos** | $4.990 | ilimitado | ilimitado | — | + analytics 7 días + gestión de reseñas |
+| **Gestión integral** | $12.990 | ilimitado | ilimitado | — | + POS (Mostrador) + Mesas + Comanda (KDS) + impresión + cobro online + **Recetas/escandallo** |
+| **Oficios** | $2.990 | — | — | ilimitado | cotización con precio + seña MP + urgencia con recargo + reseñas + destacado + analytics 30 días |
 
 Reglas:
 
-- **Solo gastronomía** tiene planes pagos. No-gastro (comercio/servicios/salud) queda en
-  `Gratuito` como ficha de **contacto** (sin carrito) — es motor de tráfico/descargas.
+- **Gastronomía y comercio** compran Pedidos/Gestión; **servicios** solo Oficios
+  (`eligibleForPaid` en `src/lib/plans.ts`; `pay`/`activate` lo enforcean por vertical).
+- No-gastro sin plan (salud/moda/otros) queda en `Gratuito` como ficha de **contacto**.
 - **Moda**: `MODA_FEATURES` en `src/lib/plans.ts` habilita `cart`+`emits_orders` gratis.
   Los planes pagos para moda (pos/límites/precios) siguen pendientes.
-- Un plan pago **vencido** cae al fallback `FREE_GASTRO_FEATURES` (carrito + tope de
-  pedidos del plan `gratuito`) — no rompe la venta, pero genera urgencia de renovar.
+- Un plan pago **vencido** cae a su fallback gratuito (gastro: carrito + tope de
+  pedidos del plan `gratuito`; servicio: solicitudes con tope del `gratuito`) — no rompe
+  la venta, pero genera urgencia de renovar.
 - Todos arrancan en `gratuito` (sin grandfather).
+- **Nunca se cobra por lead ni por trabajo** (diferencial vs Habitissimo/Cronoshare/
+  GetNinjas): gratis la vidriera, suscripción fija por gestión. 0 % comisión.
 
 ## Dónde viven los valores
 
-- Tabla `plans`: `price_monthly`, `max_products`, **`max_orders_month`**, `features`
+- Tabla `plans`: `price_monthly`, `max_products`, **`max_orders_month`**, **`max_quotes_month`**, `features`
   (jsonb), `description`, `badge`, `popular`, `sort`, `promo_*`.
 - `max_orders_month`: **NULL = ilimitado**. El `gratuito` trae `20` por defecto.
+- `max_quotes_month`: tope combinado presupuestos + turnos no cancelados del mes (solo
+  rige para servicios). El `gratuito` trae `5`; Oficios trae `NULL`.
 - Fallbacks en `src/lib/plans.ts`: `GRATUITO_FEATURES` (contacto, no-gastro),
   `FREE_GASTRO_FEATURES` (gastro gratuito/vencido), `MODA_FEATURES`.
 - Resolución: `resolveVendorPlan()` → `EffectivePlan` con `can(feature)`,

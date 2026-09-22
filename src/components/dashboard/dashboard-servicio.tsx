@@ -12,6 +12,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { MpConnectCard } from "@/components/dashboard/mp-connect-card";
+import { VendorReviews } from "@/components/vendor/vendor-reviews";
 import type { Vendor, Product, ProductModifier, Booking, VendorGallery } from "@/types/database";
 
 type Props = {
@@ -70,6 +72,54 @@ export default function DashboardServicio({
   const [serviceArea, setServiceArea] = useState(vendor?.service_area || "");
   const [freeEstimate, setFreeEstimate] = useState(vendor?.free_estimate !== false);
   const [urgentEnabled, setUrgentEnabled] = useState(vendor?.urgent_enabled === true);
+  const [urgentSurcharge, setUrgentSurcharge] = useState(
+    vendor?.urgent_surcharge_pct != null ? String(vendor.urgent_surcharge_pct) : ""
+  );
+  const [depositDefault, setDepositDefault] = useState(
+    vendor?.deposit_default_pct != null ? String(vendor.deposit_default_pct) : ""
+  );
+  const [acceptingQuotes, setAcceptingQuotes] = useState(vendor?.accepting_quotes !== false);
+
+    // Bandeja de presupuestos (Fase 0: ver + responder estado/notas).
+  const [quotes, setQuotes] = useState<Record<string, unknown>[]>([]);
+  const [quotesLoading, setQuotesLoading] = useState(true);
+  // Tope mensual de solicitudes (Fase 1: 5 combinadas en gratuito).
+  const [quota, setQuota] = useState<{ used: number; limit: number | null } | null>(null);  const [quoteFilter, setQuoteFilter] = useState<"all" | "pending" | "responded" | "accepted" | "cancelled">("all");
+  const [respondingId, setRespondingId] = useState<string | null>(null);
+  const [respondNotes, setRespondNotes] = useState("");
+  const [respondPrice, setRespondPrice] = useState("");
+  const [canQuotePrice, setCanQuotePrice] = useState(false);
+  const [canDeposits, setCanDeposits] = useState(false);
+  // Seña: % + link generado.
+  const [depositPct, setDepositPct] = useState("");
+  const [depositLink, setDepositLink] = useState<Record<string, string>>({});
+  const [depositBusy, setDepositBusy] = useState<string | null>(null);
+
+  const loadQuotes = async () => {
+    try {
+      const res = await fetch("/api/vendor/quotes");
+      const data = await res.json();
+      if (!data.error) {
+        setQuotes(data.quotes || []);
+        setCanQuotePrice(data.canQuotePrice === true);
+        setCanDeposits(data.canDeposits === true);
+      }
+    } catch { /* noop */ } finally {
+      setQuotesLoading(false);
+    }
+  };
+
+  useEffect(() => { loadQuotes(); }, []);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch("/api/vendor/service-quota");
+        const data = await res.json();
+        if (!data.error) setQuota({ used: data.used || 0, limit: data.limit ?? null });
+      } catch { /* noop */ }
+    })();
+  }, []);
 
   useEffect(() => {
     if (!vendor) return;
@@ -88,6 +138,9 @@ export default function DashboardServicio({
     setServiceArea(vendor.service_area || "");
     setFreeEstimate(vendor.free_estimate !== false);
     setUrgentEnabled(vendor.urgent_enabled === true);
+    setUrgentSurcharge(vendor.urgent_surcharge_pct != null ? String(vendor.urgent_surcharge_pct) : "");
+    setDepositDefault(vendor.deposit_default_pct != null ? String(vendor.deposit_default_pct) : "");
+    setAcceptingQuotes(vendor.accepting_quotes !== false);
     setStorePreview(vendor.image_url || null);
     setLogoPreview(vendor.logo_url || null);
   }, [vendor]);
@@ -135,6 +188,9 @@ export default function DashboardServicio({
       service_area: serviceArea,
       free_estimate: freeEstimate,
       urgent_enabled: urgentEnabled,
+      urgent_surcharge_pct: urgentSurcharge === "" ? null : Number(urgentSurcharge),
+      deposit_default_pct: depositDefault === "" ? null : Number(depositDefault),
+      accepting_quotes: acceptingQuotes,
     });
   }
 
@@ -211,8 +267,87 @@ export default function DashboardServicio({
     }
   }
 
+  async function handleRespondQuote(id: string, status: string) {
+    try {
+      const body: Record<string, unknown> = { status, vendor_notes: respondNotes || undefined };
+      if (canQuotePrice && respondPrice !== "") {
+        body.quoted_price = respondPrice === "" ? null : Number(respondPrice);
+      }
+      const res = await fetch(`/api/vendor/quotes/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (data.error) {
+        setMsg(data.error);
+        return;
+      }
+      setRespondingId(null);
+      setRespondNotes("");
+      setRespondPrice("");
+      setMsg(status === "cancelled" ? "Presupuesto descartado" : "Respuesta enviada");
+      loadQuotes();
+    } catch {
+      setMsg("Error de conexión");
+    }
+  }
+
+  async function handleDepositLink(id: string) {
+    setDepositBusy(id);
+    try {
+      const res = await fetch(`/api/vendor/quotes/${id}/deposit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deposit_pct: depositPct === "" ? undefined : Number(depositPct) }),
+      });
+      const data = await res.json();
+      if (data.error) {
+        setMsg(data.error);
+        return;
+      }
+      setDepositLink((prev) => ({ ...prev, [id]: data.initPoint }));
+      setMsg(`Link de seña generado: $${Number(data.amount).toLocaleString("es-AR")} (${data.pct}%). Pasáselo al cliente por WhatsApp.`);
+      loadQuotes();
+    } catch {
+      setMsg("Error de conexión");
+    } finally {
+      setDepositBusy(null);
+    }
+  }
+
+  const waLinkFor = (phone: unknown) => {
+    const digits = String(phone || "").replace(/\D/g, "");
+    return digits ? `https://wa.me/${digits}` : null;
+  };
+
+  const QUOTE_STATUS_LABELS: Record<string, string> = {
+    pending: "Pendiente",
+    responded: "Respondido",
+    accepted: "Aceptado",
+    cancelled: "Descartado",
+  };
+
+  const filteredQuotes =
+    quoteFilter === "all" ? quotes : quotes.filter((q) => q.status === quoteFilter);
+
   return (
     <div className="space-y-4">
+      {quota && quota.limit != null && (
+        <div className={`rounded-xl border px-4 py-3 text-sm ${quota.used >= quota.limit ? "bg-red-50 border-red-200 text-red-700" : "bg-muted border-border text-muted-foreground"}`}>
+          {quota.used >= quota.limit ? (
+            <p className="font-medium">
+              Llegaste al tope de {quota.limit} solicitudes online del mes. Las nuevas llegan por WhatsApp.
+              El plan Oficios las hace ilimitadas.
+            </p>
+          ) : (
+            <p>
+              Solicitudes online del mes: <strong className="text-foreground">{quota.used} de {quota.limit}</strong>
+              {" "}(presupuestos + turnos).
+            </p>
+          )}
+        </div>
+      )}
       <LivePreview
         storeName={storeName}
         storePreview={storePreviewUrl}
@@ -411,6 +546,15 @@ export default function DashboardServicio({
             />
             <span className="text-sm">Presupuesto sin compromiso</span>
           </label>
+          <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2">
+            <div>
+              <p className="text-sm font-medium">Recibir presupuestos</p>
+              <p className="text-xs text-muted-foreground">
+                Si lo apagás, el formulario desaparece de tu micrositio
+              </p>
+            </div>
+            <Switch checked={acceptingQuotes} onCheckedChange={setAcceptingQuotes} />
+          </div>
           <Button onClick={handleSaveAll} className="w-full" disabled={uploading}>
             {uploading ? "Guardando..." : "Guardar servicios"}
           </Button>
@@ -429,13 +573,28 @@ export default function DashboardServicio({
             <Switch checked={urgentEnabled} onCheckedChange={setUrgentEnabled} />
           </div>
           {urgentEnabled && (
-            <div className="rounded-lg bg-orange-50 border border-orange-200 p-3">
+            <div className="rounded-lg bg-orange-50 border border-orange-200 p-3 space-y-2">
               <p className="text-sm text-orange-700 font-medium">
                 🚨 Atención de emergencias activada
               </p>
-              <p className="text-xs text-orange-600 mt-1">
+              <p className="text-xs text-orange-600">
                 Los visitantes verán un botón naranja destacado en tu micrositio para contactarte por urgencias.
               </p>
+              <div>
+                <Label className="text-xs text-orange-700">Recargo por urgencia (%)</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  max={99}
+                  value={urgentSurcharge}
+                  onChange={(e) => setUrgentSurcharge(e.target.value)}
+                  placeholder="Ej: 20"
+                  className="mt-1 max-w-40 bg-white"
+                />
+                <p className="text-[11px] text-orange-600 mt-1">
+                  Se muestra junto al botón de urgencia (visible con el plan Oficios).
+                </p>
+              </div>
             </div>
           )}
           <Button onClick={handleSaveAll} className="w-full" disabled={uploading}>
@@ -556,8 +715,18 @@ export default function DashboardServicio({
                             </p>
                             <p className="text-xs text-muted-foreground">
                               {booking.booking_time || "Sin horario"}
-                              {booking.products?.name && ` · ${booking.products.name}`}
+                              {(booking.product_label || booking.product_name) && ` · ${booking.product_label || booking.product_name}`}
                             </p>
+                            {booking.customer_phone && (
+                              <a
+                                href={waLinkFor(booking.customer_phone) || undefined}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs text-green-600 font-medium hover:underline"
+                              >
+                                📲 {booking.customer_phone}
+                              </a>
+                            )}
                           </div>
                           <Badge className={`flex-shrink-0 ${BOOKING_STATUS_COLORS[booking.status] || ""}`}>
                             {BOOKING_STATUS_LABELS[booking.status] || booking.status}
@@ -607,6 +776,238 @@ export default function DashboardServicio({
             </div>
           )}
         </div>
+      </CollapsibleSection>
+      <CollapsibleSection icon="💬" title={`Presupuestos (${quotes.length})`}>
+        <div className="space-y-3">
+          {!acceptingQuotes && (
+            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+              No estás recibiendo presupuestos (apagado en “Servicios que ofrecés”).
+            </p>
+          )}
+          <div className="flex gap-1 flex-wrap">
+            {(["all", "pending", "responded", "accepted", "cancelled"] as const).map((status) => (
+              <Button
+                key={status}
+                size="sm"
+                variant={quoteFilter === status ? "default" : "outline"}
+                onClick={() => setQuoteFilter(status)}
+                className="h-7 text-xs"
+              >
+                {status === "all"
+                  ? `Todos (${quotes.length})`
+                  : `${QUOTE_STATUS_LABELS[status]} (${quotes.filter((q) => q.status === status).length})`}
+              </Button>
+            ))}
+          </div>
+
+          {quotesLoading ? (
+            <div className="h-10 rounded-lg bg-muted animate-pulse" />
+          ) : filteredQuotes.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-4">
+              Todavía no recibiste presupuestos.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {filteredQuotes.map((q: any) => {
+                const wa = waLinkFor(q.customer_phone);
+                return (
+                  <Card key={q.id} className="p-3">
+                    <div className="flex items-start justify-between gap-2 mb-1">
+                      <div className="min-w-0">
+                        <p className="font-medium text-sm truncate">
+                          {q.customer_name || "Sin nombre"}
+                          {q.service_name ? ` · ${q.service_name}` : ""}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {q.preferred_date || "Sin fecha"}{q.preferred_time ? ` ${q.preferred_time}` : ""}
+                        </p>
+                      </div>
+                      <Badge className="flex-shrink-0">{QUOTE_STATUS_LABELS[q.status] || q.status}</Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground mb-2 break-words">{q.description}</p>
+                    {q.vendor_notes && (
+                      <p className="text-xs mb-2 break-words">📝 Tu respuesta: {q.vendor_notes}</p>
+                    )}
+                    {q.quoted_price != null && (
+                      <p className="text-xs mb-1">
+                        💰 Cotizado: <strong>${Number(q.quoted_price).toLocaleString("es-AR")}</strong>
+                        {q.deposit_status === "paid" ? (
+                          <span className="ml-1.5 rounded-full bg-green-100 text-green-700 px-1.5 py-0.5 text-[10px] font-semibold">
+                            Seña pagada{q.deposit_amount != null ? ` $${Number(q.deposit_amount).toLocaleString("es-AR")}` : ""}
+                          </span>
+                        ) : q.deposit_status === "pending" ? (
+                          <span className="ml-1.5 rounded-full bg-yellow-100 text-yellow-700 px-1.5 py-0.5 text-[10px] font-semibold">
+                            Seña pendiente{q.deposit_amount != null ? ` $${Number(q.deposit_amount).toLocaleString("es-AR")}` : ""}
+                          </span>
+                        ) : null}
+                      </p>
+                    )}
+                    <div className="flex gap-2 flex-wrap">
+                      {wa && (
+                        <a
+                          href={wa}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs font-medium text-green-600 hover:underline self-center"
+                        >
+                          📲 {q.customer_phone}
+                        </a>
+                      )}
+                      {(q.status === "pending" || q.status === "responded") && (
+                        <>
+                          {respondingId === q.id ? (
+                            <div className="w-full space-y-2 mt-1">
+                              <Textarea
+                                value={respondNotes}
+                                onChange={(e) => setRespondNotes(e.target.value)}
+                                placeholder="Tu respuesta (precio orientativo, disponibilidad...)."
+                                className="text-xs min-h-16"
+                              />
+                              {canQuotePrice ? (
+                                <div className="flex items-center gap-2">
+                                  <Label className="text-[11px] text-muted-foreground">Precio $</Label>
+                                  <Input
+                                    type="number"
+                                    min={0}
+                                    step="0.01"
+                                    value={respondPrice}
+                                    onChange={(e) => setRespondPrice(e.target.value)}
+                                    placeholder={q.quoted_price != null ? String(q.quoted_price) : "Cotización formal"}
+                                    className="h-8 text-xs w-36"
+                                  />
+                                </div>
+                              ) : (
+                                <p className="text-[11px] text-muted-foreground">
+                                  La cotización con precio formal es del plan Oficios.
+                                </p>
+                              )}
+                              <div className="flex gap-2">
+                                <Button size="sm" className="h-7 text-xs" onClick={() => handleRespondQuote(q.id, "responded")}>
+                                  Enviar respuesta
+                                </Button>
+                                <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => { setRespondingId(null); setRespondNotes(""); setRespondPrice(""); }}>
+                                  Cancelar
+                                </Button>
+                              </div>
+                            </div>
+                          ) : (
+                            <>
+                              <Button size="sm" className="h-7 text-xs" onClick={() => { setRespondingId(q.id); setRespondNotes(String(q.vendor_notes || "")); setRespondPrice(q.quoted_price != null ? String(q.quoted_price) : ""); }}>
+                                Responder
+                              </Button>
+                              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => handleRespondQuote(q.id, "accepted")}>
+                                Aceptar
+                              </Button>
+                              <Button size="sm" variant="outline" className="h-7 text-xs text-red-600" onClick={() => handleRespondQuote(q.id, "cancelled")}>
+                                Descartar
+                              </Button>
+                            </>
+                          )}
+                        </>
+                      )}
+                      {canDeposits && q.quoted_price != null && q.deposit_status !== "paid" && (q.status === "responded" || q.status === "accepted") && (
+                        <div className="w-full rounded-lg border border-border p-2 mt-1 space-y-2">
+                          <div className="flex items-center gap-2">
+                            <Label className="text-[11px] text-muted-foreground">Seña %</Label>
+                            <Input
+                              type="number"
+                              min={1}
+                              max={100}
+                              value={depositPct}
+                              onChange={(e) => setDepositPct(e.target.value)}
+                              placeholder={vendor?.deposit_default_pct != null ? String(vendor.deposit_default_pct) : "30"}
+                              className="h-8 text-xs w-24"
+                            />
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-8 text-xs"
+                              disabled={depositBusy === q.id}
+                              onClick={() => handleDepositLink(q.id)}
+                            >
+                              {depositBusy === q.id ? "Generando..." : "Generar link de cobro"}
+                            </Button>
+                          </div>
+                          {depositLink[q.id] && (
+                            <div className="flex items-center gap-2">
+                              <Input value={depositLink[q.id]} readOnly className="h-8 text-[11px] flex-1" onFocus={(e) => e.target.select()} />
+                              <a
+                                href={`https://wa.me/?text=${encodeURIComponent(`Hola, te paso el link para la seña: ${depositLink[q.id]}`)}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs font-medium text-green-600 hover:underline whitespace-nowrap"
+                              >
+                                📲 Enviar
+                              </a>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </CollapsibleSection>
+      <CollapsibleSection icon="💰" title="Cobros y seña">
+        <div className="space-y-3">
+          <MpConnectCard
+            mpUserId={vendor?.mp_user_id ?? null}
+            mpConnectedAt={vendor?.mp_connected_at ?? null}
+          />
+          <div>
+            <Label className="text-xs text-muted-foreground">Seña por defecto (%)</Label>
+            <Input
+              type="number"
+              min={1}
+              max={100}
+              value={depositDefault}
+              onChange={(e) => setDepositDefault(e.target.value)}
+              placeholder="30"
+              className="mt-1 max-w-40"
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Se usa al generar el link de cobro (podés cambiarlo caso por caso). Cobrar seña online es del plan Oficios.
+            </p>
+          </div>
+          <Button onClick={handleSaveAll} className="w-full" disabled={uploading}>
+            {uploading ? "Guardando..." : "Guardar cobros"}
+          </Button>
+        </div>
+      </CollapsibleSection>
+
+      <CollapsibleSection icon="⭐" title="Reseñas">
+        <VendorReviews />
+      </CollapsibleSection>
+
+      <CollapsibleSection icon="📊" title="Resumen del mes">
+        <div className="grid grid-cols-3 gap-2 text-center">
+          <div className="rounded-xl border border-border p-3">
+            <p className="font-display text-xl font-bold">{quotes.length + bookings.length}</p>
+            <p className="text-[11px] text-muted-foreground">Solicitudes</p>
+          </div>
+          <div className="rounded-xl border border-border p-3">
+            <p className="font-display text-xl font-bold">
+              {quotes.filter((q) => q.status === "accepted").length + bookings.filter((b: any) => b.status === "confirmed").length}
+            </p>
+            <p className="text-[11px] text-muted-foreground">Confirmadas</p>
+          </div>
+          <div className="rounded-xl border border-border p-3">
+            <p className="font-display text-xl font-bold">
+              {(() => {
+                const total = quotes.length + bookings.length;
+                const ok = quotes.filter((q) => q.status === "accepted").length + bookings.filter((b: any) => b.status === "confirmed").length;
+                return total > 0 ? `${Math.round((ok / total) * 100)}%` : "—";
+              })()}
+            </p>
+            <p className="text-[11px] text-muted-foreground">Conversión</p>
+          </div>
+        </div>
+        <p className="text-[11px] text-muted-foreground mt-2">
+          Estadísticas completas de 30 días con el plan Oficios.
+        </p>
       </CollapsibleSection>
     </div>
   );

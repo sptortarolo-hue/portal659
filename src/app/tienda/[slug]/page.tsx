@@ -293,6 +293,11 @@ export default async function TiendaPage({
   }
 
   const isService = v.vertical === "servicio";
+  // Recargo de urgencia (plan Oficios): se muestra solo si el plan lo habilita.
+  const urgentSurcharge =
+    isService && v.urgent_enabled && v.urgent_surcharge_pct != null && Number(v.urgent_surcharge_pct) > 0 && effectivePlan.can("urgent")
+      ? Number(v.urgent_surcharge_pct)
+      : null;
   // Venta online apagada (gastro/retail): la carta SIGUE visible pero sin
   // carrito — cada producto muestra "Consultar por WhatsApp". La tarjeta de
   // solo-contacto aparece únicamente cuando todavía no hay carta cargada.
@@ -556,6 +561,11 @@ export default async function TiendaPage({
                   Presupuesto sin compromiso
                 </p>
               )}
+              {v.urgent_enabled && (
+                <p className="text-sm max-w-md mx-auto mb-4 rounded-full bg-red-50 border border-red-200 text-red-700 font-medium px-3 py-1.5 inline-block">
+                  🚨 Urgencias 24 h{urgentSurcharge != null ? ` (+${urgentSurcharge} %)` : ""}
+                </p>
+              )}
               {!v.services_list && (
                 <p className="text-muted-foreground max-w-md mx-auto">
                   Este comercio ofrece un servicio en el barrio. Completá el formulario o escribile por WhatsApp.
@@ -760,6 +770,7 @@ export default async function TiendaPage({
           isService={isService}
           isUrgent={isService && v.urgent_enabled}
           urgentUrl={`https://wa.me/${waNumber}?text=${encodeURIComponent(`🚨 URGENTE - Necesito ${v.store_name} lo antes posible.`)}`}
+          urgentLabel={urgentSurcharge != null ? `🚨 Urgente +${urgentSurcharge}%` : undefined}
         />
       )}
     </main>

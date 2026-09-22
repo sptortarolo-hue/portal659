@@ -10,7 +10,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
   if (!gate.plan.can("reviews_manage")) {
     return NextResponse.json(
-      { error: "Responder reseñas requiere el nivel Pedidos o Gestión integral." },
+      { error: "Responder reseñas requiere un plan pago (Pedidos, Gestión integral u Oficios)." },
       { status: 403 }
     );
   }

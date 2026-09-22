@@ -1,4 +1,7 @@
 import { query, queryMany, queryOne } from "@/lib/db";
+import { sendPushToUser } from "@/lib/push";
+import { getServiceQuota, ServiceQuotaError } from "@/lib/service-quota";
+import { getVendorByRequest } from "@/lib/vendor-utils";
 import { NextResponse } from "next/server";
 import { withRateLimit } from "@/lib/api-wrapper";
 
@@ -8,6 +11,17 @@ export const POST = withRateLimit(async (request: Request) => {
 
   if (!vendorId || !customerName || !customerPhone || !description) {
     return NextResponse.json({ error: "Faltan datos requeridos" }, { status: 400 });
+  }
+
+  // Tope mensual del plan gratuito (5 solicitudes combinadas). 429 si se alcanza.
+  try {
+    const quota = await getServiceQuota(vendorId);
+    if (quota.limit != null && quota.used >= quota.limit) throw new ServiceQuotaError();
+  } catch (e) {
+    if (e instanceof ServiceQuotaError) {
+      return NextResponse.json({ error: e.message }, { status: 429 });
+    }
+    // Sin tabla/columna (migración pendiente): seguir sin tope.
   }
 
   const quote = await queryOne<{ id: string }>(
@@ -28,6 +42,13 @@ export const POST = withRateLimit(async (request: Request) => {
        VALUES ($1, $2, $3, 'quote', '/vendor/dashboard')`,
       [vendor.user_id, "Nuevo presupuesto solicitado", `${customerName} solicitó presupuesto: "${desc}"`]
     );
+    try {
+      await sendPushToUser(vendor.user_id, {
+        title: "Nuevo presupuesto solicitado",
+        body: `${customerName}: "${desc}"`,
+        link: "/vendor/dashboard",
+      });
+    } catch { /* best-effort */ }
   }
 
   return NextResponse.json({ ok: true, quoteId: quote?.id });
@@ -37,6 +58,12 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const vendorId = searchParams.get("vendorId");
   if (!vendorId) return NextResponse.json({ error: "Missing vendorId" }, { status: 400 });
+
+  // Las solicitudes tienen datos personales (nombre/teléfono): solo el dueño.
+  const { vendor } = await getVendorByRequest(request);
+  if (!vendor || vendor.id !== vendorId) {
+    return NextResponse.json({ error: "No autorizado" }, { status: 403 });
+  }
 
   const quotes = await queryMany<Record<string, unknown>>(
     `SELECT * FROM quotes WHERE vendor_id = $1 ORDER BY created_at DESC`,

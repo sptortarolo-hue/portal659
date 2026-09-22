@@ -160,6 +160,65 @@ export async function POST(request: Request) {
           return NextResponse.json({ ok: true });
         }
 
+        // Rama seña de servicio: portal659_sena_{quoteId}_{ts}. Marca la seña
+        // como pagada y acepta el presupuesto (plan Oficios).
+        if (externalRef?.startsWith("portal659_sena_")) {
+          const quoteId = externalRef.split("_")[2];
+          if (quoteId) {
+            const quote = await queryOne<{
+              id: string;
+              vendor_id: string;
+              customer_name: string;
+              customer_phone: string;
+              quoted_price: number | null;
+              deposit_amount: number | null;
+              deposit_status: string | null;
+            }>(
+              `SELECT id, vendor_id, customer_name, customer_phone, quoted_price, deposit_amount, deposit_status
+               FROM quotes WHERE id = $1 LIMIT 1`,
+              [quoteId]
+            );
+            if (quote && quote.deposit_status !== "paid") {
+              const paidAmount = Number(payment.transaction_amount) || 0;
+              const expected = Number(quote.deposit_amount) || 0;
+              // Tolerancia de $1 por redondeo; si difiere mucho igual se marca
+              // (la plata entró) pero se avisa en la notificación.
+              const mismatch = expected > 0 && Math.abs(paidAmount - expected) > 1;
+              await query(
+                `UPDATE quotes SET deposit_status = 'paid', status = 'accepted', mp_payment_id = $1, accepted_at = now()
+                 WHERE id = $2`,
+                [String(payment.id || ""), quoteId]
+              );
+              const vrow = await queryOne<{ user_id: string; store_name: string }>(
+                `SELECT user_id, store_name FROM vendors WHERE id = $1 LIMIT 1`,
+                [quote.vendor_id]
+              );
+              if (vrow?.user_id) {
+                const title = "¡Seña pagada!";
+                const body = `${quote.customer_name} pagó $${paidAmount.toLocaleString("es-AR")} de seña${mismatch ? ` (difiere de $${expected.toLocaleString("es-AR")}, revisar)` : ""}. Presupuesto aceptado.`;
+                await query(
+                  `INSERT INTO notifications (user_id, title, body, type, link)
+                   VALUES ($1, $2, $3, 'payment', '/vendor/dashboard')`,
+                  [vrow.user_id, title, body]
+                );
+                try {
+                  const { sendPushToUser } = await import("@/lib/push");
+                  await sendPushToUser(vrow.user_id, { title, body, link: "/vendor/dashboard" });
+                } catch { /* best-effort */ }
+              }
+              try {
+                const { notifyServiceClient } = await import("@/lib/service-notify");
+                await notifyServiceClient(quote.customer_phone, {
+                  title: `Seña recibida — ${quote.customer_name.split(" ")[0] || "gracias"}`,
+                  body: "Tu seña fue acreditada. El profesional coordina el trabajo con vos.",
+                });
+              } catch { /* best-effort */ }
+              console.log(`[mp-webhook] seña ok quote=${quoteId} amount=${paidAmount} mismatch=${mismatch}`);
+            }
+          }
+          return NextResponse.json({ ok: true });
+        }
+
         const parts = externalRef.split("_");
         const vendorId = parts[1];
 

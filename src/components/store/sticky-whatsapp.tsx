@@ -5,9 +5,11 @@ type StickyWhatsAppProps = {
   isService: boolean;
   isUrgent?: boolean;
   urgentUrl?: string;
+  /** Texto del botón de urgencia (ej: "🚨 Urgente +20%"). Default "🚨 Urgente". */
+  urgentLabel?: string;
 };
 
-export function StickyWhatsApp({ url, isService, isUrgent, urgentUrl }: StickyWhatsAppProps) {
+export function StickyWhatsApp({ url, isService, isUrgent, urgentUrl, urgentLabel }: StickyWhatsAppProps) {
   return (
     <div className="fixed bottom-0 left-0 right-0 z-40 bg-card/95 backdrop-blur-sm border-t border-border px-4 py-3 sm:hidden">
       <div className="flex gap-2">
@@ -29,7 +31,7 @@ export function StickyWhatsApp({ url, isService, isUrgent, urgentUrl }: StickyWh
             rel="noopener noreferrer"
             className="flex items-center justify-center gap-1 rounded-xl bg-red-500 text-white px-4 py-3 text-sm font-medium hover:bg-red-600 transition-all active:scale-95"
           >
-            🚨 Urgente
+            {urgentLabel || "🚨 Urgente"}
           </a>
         )}
       </div>

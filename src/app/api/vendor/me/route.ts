@@ -71,6 +71,10 @@ export async function POST(request: Request) {
     services_list,
     service_area,
     free_estimate,
+    accepting_quotes,
+    urgent_enabled,
+    urgent_surcharge_pct,
+    deposit_default_pct,
     printer_ip,
     printer_port,
     paper_size,
@@ -134,6 +138,22 @@ export async function POST(request: Request) {
   if (services_list !== undefined) payload.services_list = services_list || null;
   if (service_area !== undefined) payload.service_area = service_area || null;
   if (free_estimate !== undefined) payload.free_estimate = free_estimate !== false;
+  if (accepting_quotes !== undefined) payload.accepting_quotes = accepting_quotes !== false;
+  if (urgent_enabled !== undefined) payload.urgent_enabled = urgent_enabled === true;
+  if (urgent_surcharge_pct !== undefined) {
+    const pct = urgent_surcharge_pct == null || urgent_surcharge_pct === "" ? null : Number(urgent_surcharge_pct);
+    if (pct !== null && (!Number.isFinite(pct) || pct < 0 || pct >= 100)) {
+      return NextResponse.json({ error: "El recargo debe estar entre 0 y 99" }, { status: 400 });
+    }
+    payload.urgent_surcharge_pct = pct;
+  }
+  if (deposit_default_pct !== undefined) {
+    const pct = deposit_default_pct == null || deposit_default_pct === "" ? null : Number(deposit_default_pct);
+    if (pct !== null && (!Number.isFinite(pct) || pct <= 0 || pct > 100)) {
+      return NextResponse.json({ error: "La seña debe estar entre 1 y 100" }, { status: 400 });
+    }
+    payload.deposit_default_pct = pct;
+  }
   if (printer_ip !== undefined) payload.printer_ip = printer_ip || null;
   if (printer_port !== undefined) payload.printer_port = printer_port || 9100;
   if (paper_size !== undefined) payload.paper_size = paper_size || "80mm";
@@ -198,21 +218,37 @@ export async function POST(request: Request) {
         values
       );
     } catch (err: any) {
-      if (err?.message?.includes("lat") || err?.message?.includes("lng")) {
-        delete payload.lat;
-        delete payload.lng;
-        const setClauses: string[] = [];
-        const values: unknown[] = [existing.id];
-        let idx = 2;
-        for (const [key, val] of Object.entries(payload)) {
-          setClauses.push(`${key} = $${idx}`);
-          values.push(val);
-          idx++;
+      const msg = String(err?.message || "");
+      // Columnas de migraciones pendientes (servicios): se reintenta sin ellas.
+      const droppable = [
+        "lat",
+        "lng",
+        "accepting_quotes",
+        "urgent_enabled",
+        "urgent_surcharge_pct",
+        "deposit_default_pct",
+      ].filter((k) => k in payload && msg.includes(k));
+      if (droppable.length > 0) {
+        for (const k of droppable) delete payload[k];
+        if (Object.keys(payload).length === 0) {
+          vendor = await queryOne<Record<string, unknown>>(
+            `SELECT * FROM vendors WHERE id = $1 LIMIT 1`,
+            [existing.id]
+          );
+        } else {
+          const setClauses: string[] = [];
+          const values: unknown[] = [existing.id];
+          let idx = 2;
+          for (const [key, val] of Object.entries(payload)) {
+            setClauses.push(`${key} = $${idx}`);
+            values.push(val);
+            idx++;
+          }
+          vendor = await queryOne<Record<string, unknown>>(
+            `UPDATE vendors SET ${setClauses.join(", ")} WHERE id = $1 RETURNING *`,
+            values
+          );
         }
-        vendor = await queryOne<Record<string, unknown>>(
-          `UPDATE vendors SET ${setClauses.join(", ")} WHERE id = $1 RETURNING *`,
-          values
-        );
       } else {
         throw err;
       }

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { queryMany } from "@/lib/db";
 import { VERTICALS } from "@/lib/config";
 import { getZone } from "@/lib/zone";
-import { vendorSellsOnline } from "@/lib/plans";
+import { vendorSellsOnline, resolveVendorPlan } from "@/lib/plans";
 import { cashAppliesToItem, normalizeCashPct } from "@/lib/cash-discount";
 import { sortTalles } from "@/lib/size-guides";
 import { CashPrice } from "@/components/store/cash-price";
@@ -234,6 +234,25 @@ export default async function BuscarPage({
   if (vertical) {
     vendors = vendors.filter((v) => v.vertical === vertical);
     products = products.filter((p) => p.vendors?.vertical === vertical);
+  }
+
+  // Prioridad del plan Oficios: en el vertical servicios, los comercios con
+  // plan vigente van primero (estable; el resto sigue alfabético).
+  if (vertical === "servicio" && vendors.length > 1) {
+    const isOficiosActive = (v: VendorRow): boolean => {
+      try {
+        const eff = resolveVendorPlan(v as never, plans || []);
+        return eff.slug === "oficios" && (eff.trialActive || eff.active);
+      } catch {
+        return false;
+      }
+    };
+    vendors = [...vendors].sort((a, b) => {
+      const pa = isOficiosActive(a) ? 0 : 1;
+      const pb = isOficiosActive(b) ? 0 : 1;
+      if (pa !== pb) return pa - pb;
+      return (a.store_name || "").localeCompare(b.store_name || "", "es");
+    });
   }
 
   // Facets moda (fase A): talles/colores/precios desde variantes con stock.

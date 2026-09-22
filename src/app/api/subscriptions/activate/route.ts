@@ -10,10 +10,6 @@ export async function POST(request: Request) {
 
   const { planSlug } = await request.json();
 
-  if (planSlug !== "pedidos" && planSlug !== "gestion") {
-    return NextResponse.json({ error: "Plan inválido" }, { status: 400 });
-  }
-
   const vendor = await queryOne<{
     id: string;
     vertical: string;
@@ -37,11 +33,18 @@ export async function POST(request: Request) {
     );
   }
 
-  if (vendor.vertical !== "gastronomia" && vendor.vertical !== "comercio") {
+  if (vendor.vertical !== "gastronomia" && vendor.vertical !== "comercio" && vendor.vertical !== "servicio") {
     return NextResponse.json(
-      { error: "Los planes pagos están disponibles para gastronomía y comercios de barrio" },
+      { error: "Los planes pagos están disponibles para gastronomía, comercios de barrio y servicios" },
       { status: 400 }
     );
+  }
+
+  // Cada vertical compra su plan: servicios solo Oficios.
+  const allowedSlugs =
+    vendor.vertical === "servicio" ? ["oficios"] : ["pedidos", "gestion"];
+  if (!allowedSlugs.includes(planSlug)) {
+    return NextResponse.json({ error: "Plan inválido para tu rubro" }, { status: 400 });
   }
 
   const now = Date.now();

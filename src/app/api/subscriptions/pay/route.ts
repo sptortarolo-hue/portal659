@@ -43,16 +43,23 @@ export async function POST(request: Request) {
       { status: 403 }
     );
   }
-  if (vendor.vertical !== "gastronomia" && vendor.vertical !== "comercio") {
+  // Servicios solo puede comprar Oficios (ni Pedidos ni Gestión: son de cocina/mostrador).
+  const allowedSlugs =
+    vendor.vertical === "servicio"
+      ? ["oficios"]
+      : vendor.vertical === "gastronomia" || vendor.vertical === "comercio"
+        ? ["pedidos", "gestion"]
+        : [];
+  if (allowedSlugs.length === 0) {
     return NextResponse.json(
-      { error: "Los planes pagos están disponibles para gastronomía y comercios de barrio" },
+      { error: "Los planes pagos están disponibles para gastronomía, comercios de barrio y servicios" },
       { status: 400 }
     );
   }
 
   const plans = await queryMany<Plan>(
     `SELECT * FROM plans WHERE slug = ANY($1)`,
-    [["pedidos", "gestion"]]
+    [allowedSlugs]
   );
 
   const planList = plans || [];
@@ -60,7 +67,9 @@ export async function POST(request: Request) {
     ? planList.find((p) => p.slug === planSlug)
     : planList.find((p) => p.id === vendor.plan_id);
 
-  if (!plan) return NextResponse.json({ error: "Elegí un plan para pagar" }, { status: 400 });
+  if (!plan || !allowedSlugs.includes(plan.slug)) {
+    return NextResponse.json({ error: "Elegí un plan válido para tu rubro" }, { status: 400 });
+  }
 
   const now = Date.now();
   const covered =

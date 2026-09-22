@@ -2,7 +2,7 @@ import Link from "next/link";
 import { queryMany } from "@/lib/db";
 import { VERTICALS } from "@/lib/config";
 import { getZone } from "@/lib/zone";
-import { vendorSellsOnline } from "@/lib/plans";
+import { vendorSellsOnline, resolveVendorPlan } from "@/lib/plans";
 import { OfferCard } from "@/components/offers/offer-card";
 import { HorizontalCarousel } from "@/components/ui/horizontal-carousel";
 import { VendorCard } from "@/components/store/vendor-card";
@@ -38,11 +38,23 @@ export default async function HomePage() {
     [zone.neighborhoods]
   );
 
+  const plans = await queryMany<Plan>(`SELECT * FROM plans ORDER BY sort ASC`);
+
   const featured =
     (offers || [])?.filter(
       (o) => o.featured_today && o.vendors?.vertical !== "servicio"
     ) || [];
-  const destacados = (vendors || []).filter((v) => v.featured);
+  const destacados = (vendors || []).filter((v) => {
+    if (v.featured) return true;
+    // Prioridad del plan Oficios: servicios con plan vigente también destacan.
+    if (v.vertical !== "servicio") return false;
+    try {
+      const eff = resolveVendorPlan(v, plans || []);
+      return eff.slug === "oficios" && (eff.trialActive || eff.active);
+    } catch {
+      return false;
+    }
+  });
 
   const verticalSlug = (v: Vendor): string => {
     const valid: string[] = VERTICALS.map((v) => v.slug);
@@ -56,7 +68,6 @@ export default async function HomePage() {
     if (vendorsByVertical[s]) vendorsByVertical[s].push(v);
   }
 
-  const plans = await queryMany<Plan>(`SELECT * FROM plans ORDER BY sort ASC`);
   const onlineByVendor: Record<string, boolean> = {};
   for (const v of vendors || []) onlineByVendor[v.id] = vendorSellsOnline(v, plans || []);
 

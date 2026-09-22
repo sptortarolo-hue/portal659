@@ -20,6 +20,8 @@ const FEATURE_LABELS: Record<string, string> = {
   mesas: "Gestión de mesas",
   reviews_manage: "Respondé reseñas",
   priority: "Prioridad en el buscador",
+  quotes_respond: "Cotizá presupuestos con precio (servicios)",
+  deposits: "Cobrá seña online con Mercado Pago (servicios)",
 };
 
 const FEATURE_ORDER = [
@@ -36,6 +38,8 @@ const FEATURE_ORDER = [
   "mesas",
   "reviews_manage",
   "priority",
+  "quotes_respond",
+  "deposits",
 ];
 
 export default async function PlanesPage() {
@@ -60,7 +64,7 @@ export default async function PlanesPage() {
             comercio de barrio.
           </p>
           <p className="text-xs text-muted-foreground mt-2">
-            Los planes pagos están disponibles para <b>gastronomía</b> y <b>comercios de barrio</b>.
+            Los planes pagos están disponibles para <b>gastronomía</b>, <b>comercios de barrio</b> y <b>servicios</b> (plan Oficios).
           </p>
         </div>
 
@@ -74,6 +78,11 @@ export default async function PlanesPage() {
             const orderLimit = plan.max_orders_month != null
               ? `Hasta ${plan.max_orders_month} pedidos por mes`
               : "Pedidos ilimitados por mes";
+            // Tope de solicitudes: solo se muestra en Oficios (para servicios el
+            // gratuito trae 5, que ya se comunica en su panel).
+            const quoteLimit = plan.slug === "oficios"
+              ? "Solicitudes ilimitadas por mes"
+              : null;
             const analyticsLabel =
               plan.features.analytics_days != null && plan.features.analytics_days > 0
                 ? `Estadísticas (${plan.features.analytics_days} días)`
@@ -148,6 +157,7 @@ export default async function PlanesPage() {
                   )}
                   <p className="text-xs text-muted-foreground mt-0.5">{products}</p>
                   <p className="text-xs text-muted-foreground mt-0.5">{orderLimit}</p>
+                  {quoteLimit && <p className="text-xs text-muted-foreground mt-0.5">{quoteLimit}</p>}
                 </div>
 
                 <ul className="space-y-2 mb-6 flex-1">

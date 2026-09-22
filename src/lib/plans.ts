@@ -10,16 +10,18 @@ export const PLAN_IDS: Record<PlanSlug, string> = {
   gratuito: "6f000000-0000-4000-8000-000000000001",
   pedidos: "6f000000-0000-4000-8000-000000000002",
   gestion: "6f000000-0000-4000-8000-000000000003",
+  oficios: "6f000000-0000-4000-8000-000000000004",
 };
 
-export const PLAN_SLUGS: PlanSlug[] = ["gratuito", "pedidos", "gestion"];
+export const PLAN_SLUGS: PlanSlug[] = ["gratuito", "pedidos", "gestion", "oficios"];
 
-// Los planes pagos están disponibles para gastronomía y comercio de barrio.
-export const PAID_PLAN_SLUGS: PlanSlug[] = ["pedidos", "gestion"];
+// Los planes pagos están disponibles para gastronomía, comercio de barrio y servicios.
+export const PAID_PLAN_SLUGS: PlanSlug[] = ["pedidos", "gestion", "oficios"];
 
 export const GASTRO_VERTICAL = "gastronomia";
 export const MODA_VERTICAL = "moda";
 export const COMERCIO_VERTICAL = "comercio";
+export const SERVICIO_VERTICAL = "servicio";
 
 export function isGastroVendor(vendor: { vertical?: string | null }): boolean {
   return vendor.vertical === GASTRO_VERTICAL;
@@ -31,6 +33,10 @@ export function isModaVendor(vendor: { vertical?: string | null }): boolean {
 
 export function isComercioVendor(vendor: { vertical?: string | null }): boolean {
   return vendor.vertical === COMERCIO_VERTICAL;
+}
+
+export function isServicioVendor(vendor: { vertical?: string | null }): boolean {
+  return vendor.vertical === SERVICIO_VERTICAL;
 }
 
 /**
@@ -64,6 +70,8 @@ const GRATUITO_FEATURES: PlanFeatures = {
   priority: false,
   recipes: false,
   crm: false,
+  quotes_respond: false,
+  deposits: false,
 };
 
 // Features del plan Gratuito para gastronomía: carta completa + carrito +
@@ -94,6 +102,27 @@ const COMERCIO_FREE_FEATURES: PlanFeatures = {
   emits_orders: true,
 };
 
+// Servicios (plomero, electricista...): vidriera + contacto + solicitudes
+// (presupuestos/turnos) con tope mensual. El plan Oficios suma gestión.
+// Recibir solicitudes no es feature gateada (es el gratuito mismo); el tope
+// vive en plans.max_quotes_month.
+const SERVICIO_FREE_FEATURES: PlanFeatures = {
+  ...GRATUITO_FEATURES,
+};
+
+// Features que no aplican al vertical servicios (forzadas a false aunque el
+// JSONB del plan las traiga: un plomero no tiene cocina, salón ni POS).
+const SERVICIO_FEATURE_MASK: Partial<Record<FeatureKey, false>> = {
+  cart: false,
+  emits_orders: false,
+  kds: false,
+  mesas: false,
+  pos: false,
+  variants: false,
+  modifiers: false,
+  recipes: false,
+};
+
 // Features del plan que no aplican al vertical comercio (forzadas a false).
 // pos/printer/caja/crm/analytics/reviews SÍ aplican con el plan pago.
 const COMERCIO_FEATURE_MASK: Partial<Record<FeatureKey, false>> = {
@@ -121,6 +150,8 @@ export type EffectivePlan = {
   analyticsDays: number;
   maxProducts: number | null;
   maxOrdersMonth: number | null;
+  /** Tope mensual combinado de presupuestos + turnos (servicios). NULL = ilimitado. */
+  maxQuotesMonth: number | null;
   hasTrial: boolean;
   trialEndsAt: string | null;
 };
@@ -152,11 +183,12 @@ export function resolveVendorPlan(
       trialActive: false,
       active: false,
       expired: false,
-      eligibleForPaid: isGastroVendor(vendor) || isComercioVendor(vendor),
+      eligibleForPaid: isGastroVendor(vendor) || isComercioVendor(vendor) || isServicioVendor(vendor),
       can: () => true,
       analyticsDays: 99999,
       maxProducts: null,
       maxOrdersMonth: null,
+      maxQuotesMonth: null,
       hasTrial: false,
       trialEndsAt: vendor.trial_ends_at,
     };
@@ -190,9 +222,9 @@ export function resolveVendorPlan(
   else if (active) status = "active";
   else status = expired ? "expired" : "gratuito";
 
-  // Gastro y comercio pueden tener planes pagos; el resto de los verticales
-  // (moda cae por su propia rama) resuelven siempre como gratuito.
-  const eligibleForPaid = isGastroVendor(vendor) || isComercioVendor(vendor);
+  // Gastro, comercio y servicios pueden tener planes pagos; el resto de los
+  // verticales (moda cae por su propia rama) resuelven siempre como gratuito.
+  const eligibleForPaid = isGastroVendor(vendor) || isComercioVendor(vendor) || isServicioVendor(vendor);
 
   const can = (feature: FeatureKey): boolean => {
     if (isModaVendor(vendor)) return MODA_FEATURES[feature] === true;
@@ -202,6 +234,12 @@ export function resolveVendorPlan(
       if (COMERCIO_FEATURE_MASK[feature] === false) return false;
       if (trialActive || active) return featureOf(plan, feature);
       return COMERCIO_FREE_FEATURES[feature] === true;
+    }
+    if (isServicioVendor(vendor)) {
+      // Mask del vertical: sin cocina, salón, POS ni carrito (solo contacto).
+      if (SERVICIO_FEATURE_MASK[feature] === false) return false;
+      if (trialActive || active) return featureOf(plan, feature);
+      return SERVICIO_FREE_FEATURES[feature] === true;
     }
     if (!eligibleForPaid) return GRATUITO_FEATURES[feature] === true;
     if (trialActive || active) return featureOf(plan, feature);
@@ -226,6 +264,7 @@ export function resolveVendorPlan(
     analyticsDays: trialActive || active ? (plan?.features.analytics_days ?? 0) : 0,
     maxProducts: limitRow?.max_products ?? null,
     maxOrdersMonth: limitRow?.max_orders_month ?? null,
+    maxQuotesMonth: limitRow?.max_quotes_month ?? null,
     hasTrial: trialEndsAt !== null && now < trialEndsAt,
     trialEndsAt: vendor.trial_ends_at,
   };

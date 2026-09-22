@@ -32,6 +32,9 @@ type MeResponse = {
     ordersThisMonth: number;
     maxOrdersMonth: number | null;
     ordersOverLimit: boolean;
+    quotesThisMonth: number;
+    maxQuotesMonth: number | null;
+    quotesOverLimit: boolean;
   };
   history: VendorSubscription[];
 };
@@ -44,6 +47,10 @@ const PLAN_COPY: Record<string, { title: string; desc: string }> = {
   gestion: {
     title: "Gestión integral",
     desc: "Todo lo de Pedidos, más pago online, comanda, mostrador y mesas.",
+  },
+  oficios: {
+    title: "Oficios",
+    desc: "Solicitudes ilimitadas, cotización con precio, seña por Mercado Pago, urgencia con recargo y reseñas.",
   },
 };
 
@@ -247,6 +254,33 @@ export default function VendorSuscripcionPage() {
               </p>
             )}
           </div>
+
+          {me.vertical === "servicio" && (
+          <div className="mt-4">
+            <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
+              <span>Solicitudes este mes (presupuestos + turnos)</span>
+              <span>
+                {me.usage.quotesThisMonth}
+                {me.usage.maxQuotesMonth != null ? ` de ${me.usage.maxQuotesMonth}` : " ilimitadas"}
+              </span>
+            </div>
+            <div className="h-2 rounded-full bg-muted overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all ${me.usage.quotesOverLimit ? "bg-red-500" : "bg-primary"}`}
+                style={{
+                  width: `${me.usage.maxQuotesMonth != null
+                    ? Math.min(100, Math.round((me.usage.quotesThisMonth / me.usage.maxQuotesMonth) * 100))
+                    : 10}%`,
+                }}
+              />
+            </div>
+            {me.usage.quotesOverLimit && (
+              <p className="text-[11px] text-red-500 mt-1">
+                Llegaste al límite de solicitudes de este mes. Con Oficios son ilimitadas.
+              </p>
+            )}
+          </div>
+          )}
         </div>
 
         <div>
@@ -263,7 +297,7 @@ export default function VendorSuscripcionPage() {
           <>
           {!eff.eligibleForPaid && (
             <div className="rounded-2xl border border-border bg-card p-5 text-sm text-muted-foreground">
-              Los planes de pago están disponibles para <b>gastronomía</b> y <b>comercios de barrio</b>.
+              Los planes de pago están disponibles para <b>gastronomía</b>, <b>comercios de barrio</b> y <b>servicios</b> (plan Oficios).
               Para tu rubro, el plan <b>Gratuito</b> incluye tu ficha y vidriera completa.
             </div>
           )}
@@ -271,6 +305,7 @@ export default function VendorSuscripcionPage() {
             <div className="grid sm:grid-cols-2 gap-3">
               {me.plans
                 .filter((p) => p.slug !== "gratuito")
+                .filter((p) => (me.vertical === "servicio" ? p.slug === "oficios" : p.slug !== "oficios"))
                 .map((plan) => {
                   const current = eff.slug === plan.slug && (eff.status === "trial" || eff.status === "active");
                   const active = eff.status === "trial" || eff.status === "active";

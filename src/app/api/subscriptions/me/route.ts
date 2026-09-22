@@ -47,6 +47,24 @@ export async function GET(request: Request) {
   );
   const ordersThisMonth = monthOrders?.c || 0;
 
+  // Solicitudes del mes (servicios): presupuestos + turnos no cancelados.
+  let quotesThisMonth = 0;
+  if (vendor.vertical === "servicio") {
+    try {
+      const [q, b] = await Promise.all([
+        queryOne<{ c: number }>(
+          `SELECT COUNT(*)::int AS c FROM quotes WHERE vendor_id = $1 AND status <> 'cancelled' AND created_at >= date_trunc('month', now())`,
+          [vendor.id]
+        ),
+        queryOne<{ c: number }>(
+          `SELECT COUNT(*)::int AS c FROM bookings WHERE vendor_id = $1 AND status <> 'cancelled' AND created_at >= date_trunc('month', now())`,
+          [vendor.id]
+        ),
+      ]);
+      quotesThisMonth = (q?.c ?? 0) + (b?.c ?? 0);
+    } catch { /* tablas sin migrar: 0 */ }
+  }
+
   const usage = {
     products: count,
     maxProducts: effective.maxProducts,
@@ -58,6 +76,10 @@ export async function GET(request: Request) {
     maxOrdersMonth: effective.maxOrdersMonth,
     ordersOverLimit:
       effective.maxOrdersMonth != null && ordersThisMonth >= effective.maxOrdersMonth,
+    quotesThisMonth,
+    maxQuotesMonth: effective.maxQuotesMonth,
+    quotesOverLimit:
+      effective.maxQuotesMonth != null && quotesThisMonth >= effective.maxQuotesMonth,
   };
 
   return NextResponse.json({

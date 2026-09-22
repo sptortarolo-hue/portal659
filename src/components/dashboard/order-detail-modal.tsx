@@ -19,7 +19,7 @@ import { buildModifiedOrderMessage, buildTransferInstructionsMessage } from "@/l
 import { orderLineTotal, derivedUnitPrice } from "@/lib/order-line";
 import type { Order, OrderStatus, OrderItem, Product as DBProduct } from "@/types/database";
 
-function getActionButtonLabel(next: OrderStatus, order: Order, isModa: boolean): string {
+function getActionButtonLabel(next: OrderStatus, order: Order, isRetail: boolean): string {
   // Mostrador/mesa SIN cocina (solo bebidas/packs): del estado nuevo pasan
   // directo a "Listo p/ entregar" (flow de 2 pasos).
   if (
@@ -29,9 +29,9 @@ function getActionButtonLabel(next: OrderStatus, order: Order, isModa: boolean):
   ) {
     return `✅ ${orderReadyLabel(order)}`;
   }
-  // Moda: el primer paso es aceptar/rechazar (control de stock); después se empaqueta.
-  if (order.status === "new") return isModa ? "✓ Aceptar pedido" : "Aceptar y empezar a preparar";
-  if (order.status === "confirmed") return isModa ? "📦 Empezar a empaquetar" : "Empezar a preparar";
+  // Retail (moda/comercio): el primer paso es aceptar/rechazar (control de stock); después se empaqueta.
+  if (order.status === "new") return isRetail ? "✓ Aceptar pedido" : "Aceptar y empezar a preparar";
+  if (order.status === "confirmed") return isRetail ? "📦 Empezar a empaquetar" : "Empezar a preparar";
   if (next === "ready") return orderReadyLabel(order);
   if (next === "sent" || (next === "completed" && order.status === "ready")) return orderCompleteActionLabel(order);
   const labels: Partial<Record<OrderStatus, string>> = {
@@ -56,10 +56,10 @@ type Props = {
   transfer?: { alias: string | null; cbu: string | null; holder: string | null };
   blockUnpaid?: boolean;
   onMarkPaid?: (orderId: string) => void;
-  isModa?: boolean;
+  isRetail?: boolean;
 };
 
-export default function OrderDetailModal({ order, vendorName, onClose, onAction, onModify, offers = [], canPrint = true, transfer, blockUnpaid = false, onMarkPaid, isModa = false }: Props) {
+export default function OrderDetailModal({ order, vendorName, onClose, onAction, onModify, offers = [], canPrint = true, transfer, blockUnpaid = false, onMarkPaid, isRetail = false }: Props) {
   const [editing, setEditing] = useState(false);
   const [editItems, setEditItems] = useState<OrderItem[]>([]);
   const [modNotes, setModNotes] = useState("");
@@ -74,9 +74,9 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
   const isCompleted = order.status === "completed";
   const isTerminal = isCancelled || isCompleted;
   const canModify = order.status === "new" && !isTerminal;
-  const STEP_ORDER = flowSteps(isModa);
+  const STEP_ORDER = flowSteps(isRetail);
   const statusIdx = STEP_ORDER.indexOf(order.status as OrderStatus);
-  const nextStatus = nextStatusFor(order.status as OrderStatus, order.method, isModa, order.channel, orderNeedsKitchen(order));
+  const nextStatus = nextStatusFor(order.status as OrderStatus, order.method, isRetail, order.channel, orderNeedsKitchen(order));
 
   const customerPhone = order.customer_phone?.replace(/\D/g, "");
   // Mostrador y mesa son ventas presenciales: sin WhatsApp del cliente.
@@ -101,7 +101,7 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
       })
     : null;
 
-  const contextualWa = isCounterChannel ? null : buildContextualWhatsApp(order, vendorName, transfer, () => transferInstructions, isModa);
+  const contextualWa = isCounterChannel ? null : buildContextualWhatsApp(order, vendorName, transfer, () => transferInstructions, isRetail);
   const isBlockedByPayment = blockUnpaid && isTransferAppPending;
 
   const startEditing = useCallback(() => {
@@ -250,7 +250,7 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
           <div className="flex items-center gap-2 min-w-0">
             <span className="font-mono text-sm font-bold text-foreground">{order.pickup_number != null ? `Nro. ${order.pickup_number}` : `#${order.id.slice(0, 8)}`}</span>
             <Badge className={ORDER_STATUS_COLORS[order.status as OrderStatus]}>
-              {order.status === "ready" ? orderReadyLabel(order) : statusLabel(order.status as OrderStatus, isModa)}
+              {order.status === "ready" ? orderReadyLabel(order) : statusLabel(order.status as OrderStatus, isRetail)}
             </Badge>
             {order.modification_notes && !editing && (
               <Badge variant="outline" className="text-[9px] px-1.5 py-0">Editado</Badge>
@@ -310,7 +310,7 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
                           {done ? "✓" : idx + 1}
                         </div>
                         <p className={`text-[9px] mt-1 text-center leading-tight ${done ? "text-primary font-medium" : "text-muted-foreground/50"}`}>
-                          {step === "ready" ? orderReadyLabel(order) : statusLabel(step, isModa)}
+                          {step === "ready" ? orderReadyLabel(order) : statusLabel(step, isRetail)}
                         </p>
                       </div>
                       {idx < STEP_ORDER.length - 1 && (
@@ -474,7 +474,7 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
                 <textarea
                   value={modNotes}
                   onChange={(e) => setModNotes(e.target.value)}
-                  placeholder={isModa ? "Ej: Talle M sin stock, se reemplaza por L..." : "Ej: Pizza no disponible, se reemplazo por empanadas..."}
+                  placeholder={isRetail ? "Ej: Talle M sin stock, se reemplaza por L..." : "Ej: Pizza no disponible, se reemplazo por empanadas..."}
                   className="mt-1 w-full h-16 px-3 text-xs rounded-lg border border-input bg-background resize-none"
                 />
               </div>
@@ -582,7 +582,7 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
                       <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
                         <path d="M12 1a5 5 0 00-5 5v3H6a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V11a2 2 0 00-2-2h-1V6a5 5 0 00-5-5zm-3 8V6a3 3 0 116 0v3H9z" />
                       </svg>
-                      {getActionButtonLabel(nextStatus, order, isModa)} — esperando pago
+                      {getActionButtonLabel(nextStatus, order, isRetail)} — esperando pago
                     </button>
                   </div>
                 ) : nextStatus === "sent" && order.method === "delivery" ? (
@@ -592,7 +592,7 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
                       className="w-full"
                       onClick={() => { onAction(order, "sent"); onClose(); }}
                     >
-                      {getActionButtonLabel(nextStatus, order, isModa)}
+                      {getActionButtonLabel(nextStatus, order, isRetail)}
                     </Button>
                     <Button
                       variant="outline"
@@ -612,7 +612,7 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
                     className="w-full"
                     onClick={() => { onAction(order, nextStatus); onClose(); }}
                   >
-                    {getActionButtonLabel(nextStatus, order, isModa)}
+                    {getActionButtonLabel(nextStatus, order, isRetail)}
                   </Button>
                 )
               )}
@@ -671,7 +671,7 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
                 onClick={() => { onAction(order, "cancelled"); onClose(); }}
               >
                 {/* En moda, cancelar antes de empaquetar = rechazar (sin stock, etc.) */}
-                {isModa && (order.status === "new" || order.status === "confirmed") ? "Rechazar pedido" : "Cancelar pedido"}
+                {isRetail && (order.status === "new" || order.status === "confirmed") ? "Rechazar pedido" : "Cancelar pedido"}
               </Button>
             </div>
           )}

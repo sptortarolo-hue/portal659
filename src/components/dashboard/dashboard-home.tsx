@@ -43,6 +43,7 @@ type Props = {
   vendor: Vendor;
   isGastro: boolean;
   isModa: boolean;
+  isComercio: boolean;
   isService: boolean;
   orders: Order[];
   bookings: Booking[];
@@ -137,6 +138,7 @@ export function DashboardHome({
   vendor,
   isGastro,
   isModa,
+  isComercio,
   isService,
   orders,
   bookings,
@@ -148,7 +150,9 @@ export function DashboardHome({
   onChanged,
   isPreview = false,
 }: Props) {
-  const sellsOrders = isGastro || isModa;
+  const sellsOrders = isGastro || isModa || isComercio;
+  // Retail (moda/comercio): flow con aceptación + empaque ("Por aceptar", "Empaquetando").
+  const isRetail = isModa || isComercio;
 
   // KPIs de venta (gastro + moda)
   const notCancelled = orders.filter((o) => o.status !== "cancelled");
@@ -178,7 +182,7 @@ export function DashboardHome({
       desc: "Cocina organizada por estado",
       icon: ChefHat,
       accent: "bg-orange-100 text-orange-700",
-      show: can("kds") && !isModa,
+      show: isGastro && can("kds"),
     },
     {
       tab: "mesas",
@@ -186,7 +190,7 @@ export function DashboardHome({
       desc: "Abrí y cobrá tus mesas",
       icon: LayoutGrid,
       accent: "bg-amber-100 text-amber-700",
-      show: can("mesas") && !isModa,
+      show: isGastro && can("mesas"),
     },
     {
       tab: "caja",
@@ -214,9 +218,9 @@ export function DashboardHome({
     },
     {
       tab: "menu",
-      label: isModa ? "Catálogo" : "Menú",
+      label: isRetail ? "Catálogo" : "Menú",
       desc: `${offerCount} ${offerCount === 1 ? "producto" : "productos"} publicados`,
-      icon: isModa ? Shirt : UtensilsCrossed,
+      icon: isModa ? Shirt : isComercio ? ShoppingBag : UtensilsCrossed,
       accent: "bg-violet-100 text-violet-700",
       show: true,
     },
@@ -255,9 +259,9 @@ export function DashboardHome({
               accent="bg-violet-100 text-violet-700"
             />
             <KpiCard
-              label={isModa ? "Por aceptar" : "Nuevos"}
+              label={isRetail ? "Por aceptar" : "Nuevos"}
               value={String(nuevos)}
-              sub={isModa ? "aceptalos para empacar" : "esperando tu respuesta"}
+              sub={isRetail ? "aceptalos para empacar" : "esperando tu respuesta"}
               icon={BellRing}
               accent="bg-orange-100 text-orange-700"
             />
@@ -296,7 +300,7 @@ export function DashboardHome({
                       <span className="flex items-center gap-1.5 mt-0.5">
                         <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full ${STATUS_CHIP[o.status]}`}>
                           <span className="inline-block w-1 h-1 rounded-full bg-current" />
-                          {statusLabel(o.status, isModa)}
+                          {statusLabel(o.status, isRetail)}
                         </span>
                         <span className={`hidden sm:inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${CONDITION_META[orderCondition(o)].pillClass}`}>
                           {CONDITION_META[orderCondition(o)].label}

@@ -6,6 +6,7 @@ import { getSiteUrl } from "@/lib/site-url";
 import { NextResponse } from "next/server";
 import { canTransition } from "@/lib/order-utils";
 import { adjustStockForItems, OutOfStockError } from "@/lib/stock";
+import { isRetailVendor } from "@/lib/plans";
 import { PricingError, resolveOrderPricing } from "@/lib/pricing";
 import { phoneVariantsAR } from "@/lib/phone";
 import { decrementCustomerFromOrder } from "@/lib/customers";
@@ -20,17 +21,17 @@ const STATUS_LABELS: Record<string, string> = {
   cancelled: "cancelado",
 };
 
-/** Textos de la notificación al cliente; moda tiene wording propio (aceptación/empaque). */
+/** Textos de la notificación al cliente; los verticales retail (moda/comercio) tienen wording propio (aceptación/empaque). */
 function customerNotificationText(
   status: string,
-  isModa: boolean,
+  isRetail: boolean,
   storeName: string | undefined,
   total: number,
   pickupNumber: number | null
 ): { title: string; body: string } | null {
   const totalStr = `$${Number(total).toLocaleString("es-AR")}`;
   const numStr = pickupNumber != null ? ` Nro. ${pickupNumber}` : "";
-  if (!isModa) {
+  if (!isRetail) {
     const label = STATUS_LABELS[status];
     if (!label) return null;
     return { title: `Tu pedido${numStr} fue ${label}`, body: `${storeName} ${label} tu pedido${numStr} de ${totalStr}` };
@@ -117,8 +118,8 @@ export async function PATCH(
     return NextResponse.json({ error: "Estado de pago inválido" }, { status: 400 });
   }
 
-  const currentOrder = await queryOne<{ status: string; payment_status: string; payment_method: string; channel: string; method: string; items: OrderItem[] | null; customer_phone: string | null; total: number }>(
-    `SELECT status, payment_status, payment_method, channel, method, items, customer_phone, total FROM orders WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
+  const currentOrder = await queryOne<{ status: string; payment_status: string; payment_method: string; channel: string; method: string; items: OrderItem[] | null; customer_phone: string | null; total: number; is_preview: boolean | null }>(
+    `SELECT status, payment_status, payment_method, channel, method, items, customer_phone, total, is_preview FROM orders WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
     [params.id, vendor.id]
   );
 
@@ -233,9 +234,9 @@ export async function PATCH(
           /* sin columna: se sigue sin persistir el detalle */
         }
 
-        // Re-stock del pedido viejo + reserva del nuevo (solo canal app; los
-        // canales presenciales no habían reservado stock al crear).
-        if (currentOrder.channel === "app") {
+        // Re-stock del pedido viejo + reserva del nuevo (canales que reservan
+        // stock al crear: app y mostrador; mesa nunca reserva).
+        if (currentOrder.channel === "app" || currentOrder.channel === "mostrador") {
           await adjustStockForItems(tx, currentOrder.items, "increment");
           await adjustStockForItems(tx, pricing.items, "decrement");
         }
@@ -268,8 +269,10 @@ export async function PATCH(
         );
       }
 
-      // Cancelación/rechazo: reposición del stock reservado al crear el pedido.
-      if (status === "cancelled" && currentOrder.channel === "app") {
+      // Cancelación/rechazo: reposición del stock reservado al crear el pedido
+      // (app y mostrador reservan; mesa nunca reservó; los pedidos de prueba
+      // tampoco descontaron → no hay nada que reponer).
+      if (status === "cancelled" && (currentOrder.channel === "app" || currentOrder.channel === "mostrador") && currentOrder.is_preview !== true) {
         const updatedItems = (orderRows[0].items as OrderItem[] | null) ?? currentOrder.items;
         await adjustStockForItems(tx, updatedItems, "increment");
       }
@@ -313,7 +316,7 @@ export async function PATCH(
 
   const pushText = customerNotificationText(
     status,
-    fullVendor?.vertical === "moda",
+    isRetailVendor({ vertical: fullVendor?.vertical ?? null }),
     fullVendor?.store_name,
     Number(order.total),
     order.pickup_number as number | null
@@ -367,8 +370,8 @@ export async function DELETE(
     return NextResponse.json({ error: "No autorizado" }, { status: 403 });
   }
 
-  const order = await queryOne<{ id: string; channel: string; status: string; items: OrderItem[] | null }>(
-    `SELECT id, channel, status, items FROM orders WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
+  const order = await queryOne<{ id: string; channel: string; status: string; items: OrderItem[] | null; is_preview: boolean | null }>(
+    `SELECT id, channel, status, items, is_preview FROM orders WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
     [params.id, vendor.id]
   );
   if (!order) {
@@ -378,10 +381,12 @@ export async function DELETE(
   await withTransaction(async (tx) => {
     // Reponer stock reservado: si el pedido no está en estado terminal
     // (cancelado ya repuso al cancelar; completado ya vendió el stock).
+    // Los pedidos de prueba nunca descontaron: nada que reponer.
     if (
-      order.channel === "app" &&
+      (order.channel === "app" || order.channel === "mostrador") &&
       order.status !== "completed" &&
       order.status !== "cancelled" &&
+      order.is_preview !== true &&
       order.items &&
       order.items.length > 0
     ) {

@@ -6,19 +6,19 @@ import { flowSteps, progressPercent, statusLabel, orderReadyLabel } from "@/lib/
 export function OrderTimeline({
   status,
   method,
-  isModa = false,
+  isRetail = false,
 }: {
   status: OrderStatus;
   method: "delivery" | "pickup";
-  isModa?: boolean;
+  isRetail?: boolean;
 }) {
-  const stepOrder = flowSteps(isModa);
+  const stepOrder = flowSteps(isRetail);
   const currentIdx = stepOrder.indexOf(status);
   const isCancelled = status === "cancelled";
   const pct = progressPercent(status);
 
   const stepLabel = (step: OrderStatus) =>
-    step === "ready" ? orderReadyLabel({ channel: "app", method }) : statusLabel(step, isModa);
+    step === "ready" ? orderReadyLabel({ channel: "app", method }) : statusLabel(step, isRetail);
 
   return (
     <div className="relative mt-3 mb-2">

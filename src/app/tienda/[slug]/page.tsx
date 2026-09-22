@@ -234,6 +234,9 @@ export default async function TiendaPage({
   const v = vendor as any;
   const isModa = v.vertical === "moda";
   const isGastro = v.vertical === "gastronomia";
+  const isComercio = v.vertical === "comercio";
+  // Retail (moda/comercio): se habla de "catálogo" y productos, no de carta/menú.
+  const isCatalog = isModa || isComercio;
 
   const norm = (s: string | null) => (s || "").toLowerCase().trim();
   type Section = { name: string; items: any[] };
@@ -250,7 +253,7 @@ export default async function TiendaPage({
     const leftovers = offers?.filter((o: any) => !used.has(norm(o.category))) || [];
     if (leftovers.length) sections.push({ name: "Otros", items: leftovers });
   } else if (offers?.length) {
-    sections.push({ name: isModa ? "Catálogo" : "Menú", items: offers });
+    sections.push({ name: isCatalog ? "Catálogo" : "Menú", items: offers });
   }
 
   // Precios por volumen (solo gastro): grupos + tramos para badges y espejo.
@@ -295,10 +298,10 @@ export default async function TiendaPage({
   }
 
   const isService = v.vertical === "servicio";
-  // Venta online apagada (gastro/moda): la carta SIGUE visible pero sin
+  // Venta online apagada (gastro/retail): la carta SIGUE visible pero sin
   // carrito — cada producto muestra "Consultar por WhatsApp". La tarjeta de
   // solo-contacto aparece únicamente cuando todavía no hay carta cargada.
-  const noCart = !acceptsCart && (isGastro || isModa);
+  const noCart = !acceptsCart && (isGastro || isCatalog);
   const vendorBrief = {
     id: v.id,
     slug: v.slug,
@@ -307,6 +310,7 @@ export default async function TiendaPage({
     vertical: v.vertical,
     deliveryFee: v.delivery_fee != null ? Number(v.delivery_fee) : null,
     freeDeliveryMin: v.free_delivery_min != null ? Number(v.free_delivery_min) : null,
+    deliveryOptions: v.delivery_options || "ambos",
     cashDiscountPct:
       String(v.payment_methods || "")
         .split(",")
@@ -387,7 +391,7 @@ export default async function TiendaPage({
               </div>
             )}
             {!isService && !isModa && (offers?.length || 0) > 0 && (
-              <IrAComprarButton label={acceptsCart ? undefined : "📋 Ver la carta"} />
+              <IrAComprarButton label={acceptsCart ? undefined : isCatalog ? "🛍️ Ver el catálogo" : "📋 Ver la carta"} />
             )}
           </div>
 
@@ -428,11 +432,11 @@ export default async function TiendaPage({
             <div className="flex items-center gap-2 ml-auto shrink-0">
               <span className="hidden sm:inline-flex">
                 {!isService && !isModa && (offers?.length || 0) > 0 && (
-                  <IrAComprarButton label={acceptsCart ? undefined : "📋 Ver la carta"} />
+                  <IrAComprarButton label={acceptsCart ? undefined : isCatalog ? "🛍️ Ver el catálogo" : "📋 Ver la carta"} />
                 )}
               </span>
               <FavoriteButton vendorId={v.id} />
-              <WhatsAppShareButton slug={v.slug} storeName={v.store_name} isModa={isModa} />
+              <WhatsAppShareButton slug={v.slug} storeName={v.store_name} catalog={isCatalog} />
               <VendorShareButton slug={v.slug} storeName={v.store_name} />
             </div>
           </div>
@@ -617,14 +621,14 @@ export default async function TiendaPage({
         ) : (
           <>
             {/* Menu sections */}
-            <h2 id="menu" className="font-display text-2xl font-semibold mt-6 mb-4 scroll-mt-[152px] sm:scroll-mt-16">{isModa ? "Catálogo" : "Menú"}</h2>
+            <h2 id="menu" className="font-display text-2xl font-semibold mt-6 mb-4 scroll-mt-[152px] sm:scroll-mt-16">{isCatalog ? "Catálogo" : "Menú"}</h2>
             {sections.length === 0 ? (
               <p className="text-muted-foreground text-center py-12">
-                Este local todavía no cargó su menú.
+                Este local todavía no cargó {isCatalog ? "su catálogo" : "su menú"}.
               </p>
             ) : (
               <>
-                {sections.length > 0 && <CategoryNav sections={sections} isModa={isModa} />}
+                {sections.length > 0 && <CategoryNav sections={sections} catalog={isCatalog} />}
                 {isGastro && acceptsCart && volumeGroups.length > 0 && <VolumeProgress groups={volumeGroups} />}
                 {sections.map((s, i) => (
                   <section key={s.name} id={`seccion-${i}`} className="mb-10 scroll-mt-[184px] sm:scroll-mt-24">

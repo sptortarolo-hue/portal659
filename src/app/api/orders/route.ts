@@ -3,8 +3,10 @@ import { getDeviceId } from "@/lib/device";
 import { withRateLimit } from "@/lib/api-wrapper";
 import {
   createOrder,
+  DeliveryMethodError,
   InvalidPhoneError,
   OrderForbiddenError,
+  OrderLimitError,
   StoreClosedError,
 } from "@/lib/order-service";
 import { OutOfStockError } from "@/lib/stock";
@@ -58,6 +60,12 @@ export const POST = withRateLimit(async (request: Request) => {
     }
     if (e instanceof StoreClosedError) {
       return NextResponse.json({ error: e.message }, { status: 409 });
+    }
+    if (e instanceof OrderLimitError) {
+      return NextResponse.json({ error: e.message }, { status: 429 });
+    }
+    if (e instanceof DeliveryMethodError) {
+      return NextResponse.json({ error: e.message }, { status: 400 });
     }
     if (e instanceof OutOfStockError) {
       return NextResponse.json({ error: e.message }, { status: 409 });

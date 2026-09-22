@@ -19,22 +19,24 @@ interface VendorSidebarProps {
   storeSlug: string | null;
   isGastro: boolean;
   isModa: boolean;
+  isComercio?: boolean;
   planName: string | null;
   planSlug: string | null;
 }
 
-const OPERACION_ITEMS: { tab: Tab; label: string; icon: typeof Package; show: (g: boolean, m: boolean) => boolean; badge?: (orderCount: number, kitchenCount: number) => number }[] = [
+/** g = gastro · m = moda · c = comercio */
+const OPERACION_ITEMS: { tab: Tab; label: string; icon: typeof Package; show: (g: boolean, m: boolean, c: boolean) => boolean; badge?: (orderCount: number, kitchenCount: number) => number }[] = [
   { tab: "orders", label: "Pedidos", icon: Package, show: () => true, badge: (c) => c },
-  { tab: "comanda", label: "Comanda", icon: ChefHat, show: (g, m) => !m, badge: (_, c) => c },
+  { tab: "comanda", label: "Comanda", icon: ChefHat, show: (g, m, c) => !m && !c, badge: (_, c) => c },
   { tab: "pos", label: "Mostrador", icon: ShoppingBag, show: () => true },
-  { tab: "mesas", label: "Mesas", icon: LayoutGrid, show: (g, m) => g && !m },
-  { tab: "caja", label: "Caja", icon: DollarSign, show: (g, m) => g && !m },
+  { tab: "mesas", label: "Mesas", icon: LayoutGrid, show: (g) => g },
+  { tab: "caja", label: "Caja", icon: DollarSign, show: (g, m, c) => g || c },
 ];
 
-const GESTION_ITEMS: { tab: Tab; label: string; icon: typeof UtensilsCrossed; show: (g: boolean, m: boolean) => boolean; suffix?: (count: number) => string }[] = [
+const GESTION_ITEMS: { tab: Tab; label: string; icon: typeof UtensilsCrossed; show: (g: boolean, m: boolean, c: boolean) => boolean; suffix?: (count: number) => string }[] = [
   { tab: "menu", label: "Menú", icon: UtensilsCrossed, show: () => true, suffix: (c) => `${c}` },
   { tab: "recetas", label: "Recetas", icon: Calculator, show: (g) => g },
-  { tab: "clientes", label: "Clientes", icon: Users, show: (g) => g },
+  { tab: "clientes", label: "Clientes", icon: Users, show: (g, m, c) => g || c },
   { tab: "config", label: "Configuración", icon: Settings, show: () => true },
 ];
 
@@ -99,6 +101,7 @@ export default function VendorSidebar({
   storeSlug,
   isGastro,
   isModa,
+  isComercio = false,
   planName,
   planSlug,
 }: VendorSidebarProps) {
@@ -170,7 +173,7 @@ export default function VendorSidebar({
           <div>
             <p className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Operaciones</p>
             <div className="space-y-0.5">
-              {OPERACION_ITEMS.filter((i) => i.show(isGastro, isModa)).map((item) => {
+              {OPERACION_ITEMS.filter((i) => i.show(isGastro, isModa, isComercio)).map((item) => {
                 const count = item.badge ? item.badge(orderCount, kitchenCount) : 0;
                 return (
                   <NavButton
@@ -190,9 +193,9 @@ export default function VendorSidebar({
           <div>
             <p className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Gestión</p>
             <div className="space-y-0.5">
-              {GESTION_ITEMS.filter((i) => i.show(isGastro, isModa)).map((item) => {
+              {GESTION_ITEMS.filter((i) => i.show(isGastro, isModa, isComercio)).map((item) => {
                 const suffix = item.suffix ? item.suffix(menuCount) : null;
-                const label = item.tab === "menu" && isModa ? "Catálogo" : item.label;
+                const label = item.tab === "menu" && (isModa || isComercio) ? "Catálogo" : item.label;
                 return (
                   <NavButton
                     key={item.tab}

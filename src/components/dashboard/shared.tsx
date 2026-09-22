@@ -109,6 +109,8 @@ type OfferFormProps = {
   /** "Se vende de a N" (pack): string con el N, "" = por unidad. Solo gastro. */
   offPackSize?: string;
   setOffPackSize?: (v: string) => void;
+  /** Sustantivo del ítem en el título del form (default "plato"). */
+  noun?: string;
   onSubmit: () => void;
   onClose?: () => void;
 };
@@ -132,6 +134,7 @@ export function OfferForm({
   offRequiresPrep = true, setOffRequiresPrep,
   offCashExcluded = false, setOffCashExcluded,
   offPackSize = "", setOffPackSize,
+  noun = "plato",
   onClose,
 }: OfferFormProps) {
   // Al crear (no editando): si la categoría actual no existe entre las opciones
@@ -148,7 +151,7 @@ export function OfferForm({
   return (
     <Card className="p-4 mb-4">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="font-semibold">{editingId ? "Editar plato" : "Nuevo plato"}</h3>
+        <h3 className="font-semibold">{editingId ? `Editar ${noun}` : `Nuevo ${noun}`}</h3>
         {onClose && (
           <Button type="button" variant="ghost" size="sm" onClick={onClose}>✕</Button>
         )}
@@ -235,7 +238,7 @@ export function OfferForm({
   );
 }
 
-export function OfferList({ offers, onEdit, onToggleFeatured, onToggleAvailable, onDelete, editingId, editForm, onEditModifiers, costByProduct }: {
+export function OfferList({ offers, onEdit, onToggleFeatured, onToggleAvailable, onDelete, editingId, editForm, onEditModifiers, costByProduct, emptyText = "Todavía no cargaste platos." }: {
   offers: Offer[];
   onEdit: (o: Offer) => void;
   onToggleFeatured: (o: Offer) => void;
@@ -246,6 +249,8 @@ export function OfferList({ offers, onEdit, onToggleFeatured, onToggleAvailable,
   onEditModifiers?: (o: Offer) => void;
   /** Costo por plato (módulo Recetas): { [productId]: { cost, pct, status } }. */
   costByProduct?: Record<string, { cost: number | null; pct: number | null; status: "ok" | "warn" | "bad" | "none" }>;
+  /** Texto del estado vacío de la lista. */
+  emptyText?: string;
 }) {
   const editAnchorRef = useRef<HTMLDivElement>(null);
 
@@ -260,7 +265,7 @@ export function OfferList({ offers, onEdit, onToggleFeatured, onToggleAvailable,
   return (
     <div className="space-y-3">
       {offers.length === 0 ? (
-        <p className="text-muted-foreground text-sm text-center py-8">Todavía no cargaste platos.</p>
+        <p className="text-muted-foreground text-sm text-center py-8">{emptyText}</p>
       ) : (
         offers.map((offer) => (
           <div key={offer.id}>

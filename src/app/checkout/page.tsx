@@ -259,7 +259,7 @@ export default function CheckoutPage() {
           Tu pedido está vacío
         </h1>
         <p className="text-muted-foreground mb-6">
-          {vendor?.vertical === "moda" ? "Agregá productos de un local para poder hacer el pedido." : "Agregá platos de un local para poder hacer el pedido."}
+          {vendor?.vertical === "gastronomia" ? "Agregá platos de un local para poder hacer el pedido." : "Agregá productos de un local para poder hacer el pedido."}
         </p>
         <Button onClick={() => router.push("/")}>Ver ofertas</Button>
       </main>
@@ -267,10 +267,21 @@ export default function CheckoutPage() {
   }
 
   const v = vendor;
-  const esModa = v.vertical === "moda";
+  // Retail (moda/comercio): textos de "productos", sin referencias a cocina.
+  const esRetail = v.vertical === "moda" || v.vertical === "comercio";
+  // Métodos de entrega que habilitó el comercio ("ambos" | "retiro" | "domicilio").
+  const deliveryOpts = v.deliveryOptions || "ambos";
+  const allowDelivery = deliveryOpts !== "retiro";
+  const allowPickup = deliveryOpts !== "domicilio";
   // Modo prueba: el micrositio en preview guarda el contexto en sessionStorage.
   const previewCtx = v?.id ? readPreviewSession(v.id) : null;
   const isPreview = previewCtx !== null;
+
+  // Si el comercio no ofrece el método elegido, forzar el habilitado.
+  useEffect(() => {
+    if (!allowDelivery && method === "delivery") setMethod("pickup");
+    if (!allowPickup && method === "pickup") setMethod("delivery");
+  }, [allowDelivery, allowPickup, method]);
 
   async function lookupPhone() {
     // Autocompletar datos de pedidos anteriores: solo con celular válido.
@@ -663,30 +674,40 @@ export default function CheckoutPage() {
 
         {/* Delivery method */}
         <div>
-          <Label>¿Retirás o pedís delivery?</Label>
+          <Label>
+            {allowDelivery && allowPickup
+              ? "¿Retirás o pedís delivery?"
+              : allowDelivery
+                ? "Entrega a domicilio"
+                : "Retiro en el local"}
+          </Label>
           <div className="flex gap-2 mt-1">
-            <button
-              type="button"
-              onClick={() => setMethod("delivery")}
-              className={`flex-1 min-w-0 rounded-xl border-2 py-3 px-1 text-xs sm:text-sm font-medium transition-all break-words ${
-                method === "delivery"
-                  ? "border-primary bg-primary/5 text-primary"
-                  : "border-border text-muted-foreground hover:border-primary/30"
-              }`}
-            >
-              🛵 A domicilio
-            </button>
-            <button
-              type="button"
-              onClick={() => setMethod("pickup")}
-              className={`flex-1 min-w-0 rounded-xl border-2 py-3 px-1 text-xs sm:text-sm font-medium transition-all break-words ${
-                method === "pickup"
-                  ? "border-primary bg-primary/5 text-primary"
-                  : "border-border text-muted-foreground hover:border-primary/30"
-              }`}
-            >
-              🏠 Retiro en el local
-            </button>
+            {allowDelivery && (
+              <button
+                type="button"
+                onClick={() => setMethod("delivery")}
+                className={`flex-1 min-w-0 rounded-xl border-2 py-3 px-1 text-xs sm:text-sm font-medium transition-all break-words ${
+                  method === "delivery"
+                    ? "border-primary bg-primary/5 text-primary"
+                    : "border-border text-muted-foreground hover:border-primary/30"
+                }`}
+              >
+                🛵 A domicilio
+              </button>
+            )}
+            {allowPickup && (
+              <button
+                type="button"
+                onClick={() => setMethod("pickup")}
+                className={`flex-1 min-w-0 rounded-xl border-2 py-3 px-1 text-xs sm:text-sm font-medium transition-all break-words ${
+                  method === "pickup"
+                    ? "border-primary bg-primary/5 text-primary"
+                    : "border-border text-muted-foreground hover:border-primary/30"
+                }`}
+              >
+                🏠 Retiro en el local
+              </button>
+            )}
           </div>
         </div>
         {method === "delivery" && (
@@ -708,7 +729,7 @@ export default function CheckoutPage() {
             id="notes"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            placeholder={esModa ? "" : "Sin cebolla, extra picante, acceso por el costado..."}
+            placeholder={esRetail ? "Ej: preferencia de color, horario de entrega..." : "Sin cebolla, extra picante, acceso por el costado..."}
             className="h-16 text-sm resize-none"
             maxLength={200}
           />

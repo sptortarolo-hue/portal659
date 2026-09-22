@@ -60,7 +60,7 @@ export default async function PlanesPage() {
             comercio de barrio.
           </p>
           <p className="text-xs text-muted-foreground mt-2">
-            Los planes pagos están disponibles por ahora para <b>gastronomía</b>.
+            Los planes pagos están disponibles para <b>gastronomía</b> y <b>comercios de barrio</b>.
           </p>
         </div>
 

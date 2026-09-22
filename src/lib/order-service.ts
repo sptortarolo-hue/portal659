@@ -67,6 +67,24 @@ export class StoreClosedError extends Error {
   }
 }
 
+/** Negocio: el comercio llegó al tope mensual de pedidos de su plan. → 429 */
+export class OrderLimitError extends Error {
+  constructor(
+    message = "Este comercio llegó al tope de pedidos online del mes. Escribile por WhatsApp."
+  ) {
+    super(message);
+    this.name = "OrderLimitError";
+  }
+}
+
+/** Negocio: el método elegido (retiro/delivery) no está habilitado por el comercio. → 400 */
+export class DeliveryMethodError extends Error {
+  constructor(message = "El comercio no ofrece ese método de entrega.") {
+    super(message);
+    this.name = "DeliveryMethodError";
+  }
+}
+
 /** Entrada: el teléfono del cliente no es un celular argentino (WhatsApp). → 400 */
 export class InvalidPhoneError extends Error {
   constructor(message = "Ingresá un celular válido con código de área (ej: 11 5555 1234)") {
@@ -116,7 +134,7 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
     source === "wa-bot" && notes ? `[Bot WA] ${notes}` : source === "wa-bot" ? "[Bot WA]" : notes || null;
 
   const vendorRow = await queryOne<Record<string, unknown>>(
-    `SELECT vertical, plan_id, plan_status, plan_expires_at, trial_ends_at, hours, open_override, delivery_fee, free_delivery_min, cash_discount_pct FROM vendors WHERE id = $1 LIMIT 1`,
+    `SELECT vertical, plan_id, plan_status, plan_expires_at, trial_ends_at, hours, open_override, delivery_fee, free_delivery_min, cash_discount_pct, accepts_online_orders, delivery_options FROM vendors WHERE id = $1 LIMIT 1`,
     [vendorId]
   );
 
@@ -129,11 +147,44 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
       );
     }
 
+    // Opt-out del comercio (toggle "Vender online" del panel). El gate del
+    // carrito vive en la UI; acá se enforcea para que un POST directo o el
+    // bot no puedan crear pedidos igual.
+    if ((vendorRow as any).accepts_online_orders === false) {
+      throw new OrderForbiddenError(
+        "Este comercio desactivó la venta online temporalmente. Escribile por WhatsApp."
+      );
+    }
+
     const openNow = isStoreOpen(vendorRow as any);
     if (openNow === false) {
       throw new StoreClosedError(
         "El comercio está cerrado en este momento. Probá cuando abra o escribile por WhatsApp."
       );
+    }
+
+    // Método de entrega habilitado por el comercio ("ambos" | "retiro" | "domicilio").
+    const deliveryOptions = ((vendorRow as any).delivery_options as string | null) || "ambos";
+    const wantsDelivery = method !== "pickup";
+    if (deliveryOptions === "retiro" && wantsDelivery) {
+      throw new DeliveryMethodError("Este comercio solo trabaja con retiro en el local.");
+    }
+    if (deliveryOptions === "domicilio" && !wantsDelivery) {
+      throw new DeliveryMethodError("Este comercio solo entrega a domicilio.");
+    }
+
+    // Tope mensual de pedidos del plan gratuito (canal app, mes calendario,
+    // no cancelados). Un plan pago vigente resuelve maxOrdersMonth = null.
+    if (plan.maxOrdersMonth != null) {
+      const countRow = await queryOne<{ c: number }>(
+        `SELECT COUNT(*)::int AS c FROM orders
+         WHERE vendor_id = $1 AND channel = 'app' AND status <> 'cancelled'
+           AND created_at >= date_trunc('month', now())`,
+        [vendorId]
+      );
+      if ((countRow?.c ?? 0) >= plan.maxOrdersMonth) {
+        throw new OrderLimitError();
+      }
     }
   }
 

@@ -62,6 +62,8 @@ export type CartVendor = {
   vertical?: string | null;
   deliveryFee?: number | null;
   freeDeliveryMin?: number | null;
+  /** "ambos" | "retiro" | "domicilio" — el checkout solo ofrece lo habilitado. */
+  deliveryOptions?: string | null;
   /** % de descuento en efectivo del comercio (visual en checkout). */
   cashDiscountPct?: number | null;
   /** Reglas de volumen (espejo visual). */
@@ -108,6 +110,8 @@ function loadCart(): CartState {
               vertical: parsed.vendor.vertical || null,
               deliveryFee: parsed.vendor.deliveryFee ?? null,
               freeDeliveryMin: parsed.vendor.freeDeliveryMin ?? null,
+              deliveryOptions: parsed.vendor.deliveryOptions ?? null,
+              cashDiscountPct: parsed.vendor.cashDiscountPct ?? null,
               volumeGroups: Array.isArray(parsed.vendor.volumeGroups) ? parsed.vendor.volumeGroups : undefined,
             }
           : null,

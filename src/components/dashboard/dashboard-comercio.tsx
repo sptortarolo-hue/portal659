@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,8 +13,6 @@ import { RadioCards } from "@/components/ui/radio-cards";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import {
-  OfferForm,
-  OfferList,
   CategoryManager,
   LivePreview,
   apiJson,
@@ -22,10 +20,10 @@ import {
   DeliveryFeeConfig,
 } from "@/components/dashboard/shared";
 import { MpConnectCard } from "@/components/dashboard/mp-connect-card";
+import { PrinterConfigSection } from "@/components/dashboard/printer-config-section";
 import { HoursEditor } from "@/components/dashboard/hours-editor";
 import { LocationPicker } from "./location-picker";
-import { DropdownMenu } from "@/components/ui/dropdown-menu";
-import { ModifierLibrary, ProductModifiersBlock } from "@/components/dashboard/modifier-editor";
+import { ModifierLibrary } from "@/components/dashboard/modifier-editor";
 import type { Vendor, Product, ProductModifier } from "@/types/database";
 
 type Offer = {
@@ -121,6 +119,10 @@ export default function DashboardComercio({
       : []
   );
   const [deliveryOptions, setDeliveryOptions] = useState(vendor?.delivery_options || "ambos");
+  const [onlineOrders, setOnlineOrders] = useState(vendor?.accepts_online_orders !== false);
+  const [cashDiscount, setCashDiscount] = useState(
+    vendor?.cash_discount_pct != null ? String(vendor.cash_discount_pct) : ""
+  );
 
   useEffect(() => {
     if (!vendor) return;
@@ -144,24 +146,13 @@ export default function DashboardComercio({
         : []
     );
     setDeliveryOptions(vendor.delivery_options || "ambos");
+    setOnlineOrders(vendor.accepts_online_orders !== false);
+    setCashDiscount(vendor.cash_discount_pct != null ? String(vendor.cash_discount_pct) : "");
   }, [vendor]);
 
-  const [offName, setOffName] = useState("");
-  const [offDesc, setOffDesc] = useState("");
-  const [offPrice, setOffPrice] = useState("");
-  const [offCategory, setOffCategory] = useState(categories[0]?.name || "otros");
-  const [offFile, setOffFile] = useState<File | null>(null);
-  const [offPreview, setOffPreview] = useState<string | null>(null);
-  const [editingId, setEditingId] = useState<string | null>(null);
+  // Los productos se gestionan en la pestaña "Catálogo" (ProductManager);
+  // acá queda solo la config del comercio (datos, pagos, impresión).
   const [saving, setSaving] = useState(false);
-  const [showForm, setShowForm] = useState(false);
-
-  const [offStock, setOffStock] = useState<number>(0);
-  const [offPromoPrice, setOffPromoPrice] = useState("");
-  const [offStockLowThreshold, setOffStockLowThreshold] = useState<number>(5);
-
-  const [offerStocks, setOfferStocks] = useState<Record<string, number>>({});
-  const [offerThresholds, setOfferThresholds] = useState<Record<string, number>>({});
 
   const [newModProductId, setNewModProductId] = useState("");
   const [newModGroupName, setNewModGroupName] = useState("");
@@ -191,6 +182,7 @@ export default function DashboardComercio({
           facebook,
           payment_methods: paymentMethods.join(", "),
           delivery_options: deliveryOptions,
+          cash_discount_pct: cashDiscount === "" ? null : Number(cashDiscount),
         });
         setMsg("Guardado");
       } catch {
@@ -213,141 +205,11 @@ export default function DashboardComercio({
       facebook,
       paymentMethods,
       deliveryOptions,
+      cashDiscount,
       saveVendor,
       setMsg,
     ]
   );
-
-  function resetOfferForm() {
-    setEditingId(null);
-    setOffName("");
-    setOffDesc("");
-    setOffPrice("");
-    setOffCategory(categories[0]?.name || "otros");
-    setOffFile(null);
-    setOffPreview(null);
-    setOffStock(0);
-    setOffPromoPrice("");
-    setOffStockLowThreshold(5);
-    setShowForm(false);
-  }
-
-  function startEdit(offer: any) {
-    setEditingId(offer.id);
-    setOffName(offer.name);
-    setOffDesc(offer.description || "");
-    setOffPrice(String(offer.price));
-    setOffCategory(offer.category || "otros");
-    setOffFile(null);
-    setOffPreview(offer.image_url || null);
-    setOffStock(offer.stock ?? 0);
-    setOffPromoPrice(offer.promo_price ? String(offer.promo_price) : "");
-    setOffStockLowThreshold(offer.stock_low_threshold ?? 5);
-    setShowForm(true);
-    setMsg("");
-  }
-
-  async function handleOfferSubmit(e?: React.FormEvent) {
-    e?.preventDefault();
-    setSaving(true);
-    setMsg("");
-
-    let imageUrl = editingId ? (offers.find((o: any) => o.id === editingId)?.image_url || null) : null;
-    if (offFile) {
-      const fd = new FormData();
-      fd.append("file", offFile);
-      fd.append("folder", "offers");
-      const res = await fetch("/api/vendor/upload", { method: "POST", body: fd });
-      const data = await res.json();
-      if (data.url) imageUrl = data.url;
-    }
-
-    const payload = {
-      name: offName,
-      description: offDesc,
-      price: Number(offPrice),
-      category: offCategory,
-      image_url: imageUrl,
-      stock: offStock,
-      promo_price: offPromoPrice ? Number(offPromoPrice) : null,
-      stock_low_threshold: offStockLowThreshold,
-    };
-
-    let res: Response;
-    if (editingId) {
-      res = await fetch(`/api/vendor/offers/${editingId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-    } else {
-      res = await fetch("/api/vendor/offers", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-    }
-    const data = await res.json();
-    if (data.error) {
-      setMsg(data.error);
-    } else {
-      setShowForm(false);
-      resetOfferForm();
-      setMsg(editingId ? "Producto actualizado" : "Producto agregado");
-      reload();
-    }
-    setSaving(false);
-  }
-
-  async function toggleFeatured(offer: any) {
-    await fetch(`/api/vendor/offers/${offer.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ featured_today: !offer.featured_today }),
-    });
-    reload();
-  }
-
-  async function toggleAvailable(offer: any) {
-    await fetch(`/api/vendor/offers/${offer.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ available: !offer.available }),
-    });
-    reload();
-  }
-
-  async function deleteOffer(offer: any) {
-    await fetch(`/api/vendor/offers/${offer.id}`, { method: "DELETE" });
-    reload();
-  }
-
-  async function updateOfferStock(offer: any, newStock: number) {
-    setOfferStocks((prev) => ({ ...prev, [offer.id]: newStock }));
-    await fetch(`/api/vendor/offers/${offer.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ stock: newStock }),
-    });
-    reload();
-  }
-
-  async function updateOfferThreshold(offer: any, threshold: number) {
-    setOfferThresholds((prev) => ({ ...prev, [offer.id]: threshold }));
-    await fetch(`/api/vendor/offers/${offer.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ stock_low_threshold: threshold }),
-    });
-  }
-
-  function handleOfferFileSelect(file: File | null) {
-    if (file) {
-      onCrop("offer");
-      setOffFile(file);
-      setOffPreview(URL.createObjectURL(file));
-    }
-  }
 
   function handleCoverFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0] || null;
@@ -424,327 +286,6 @@ export default function DashboardComercio({
   });
 
   const isService = storeVertical === "servicio";
-
-  const offerListContent = (
-    <div className="space-y-3">
-      {offers.length === 0 ? (
-        <p className="text-muted-foreground text-sm text-center py-8">
-          Todavía no cargaste productos.
-        </p>
-      ) : (
-        offers.map((offer: any) => {
-          const currentStock = offerStocks[offer.id] ?? offer.stock ?? 0;
-          const currentThreshold =
-            offerThresholds[offer.id] ?? offer.stock_low_threshold ?? 5;
-
-          return (
-            <div key={offer.id}>
-            <Card className="p-3">
-              <div className="flex items-center gap-3">
-                {offer.image_url ? (
-                  <img
-                    src={offer.image_url}
-                    alt={offer.name}
-                    className="h-12 w-12 rounded-lg object-cover flex-shrink-0"
-                  />
-                ) : (
-                  <div className="h-12 w-12 rounded-lg bg-accent flex items-center justify-center flex-shrink-0">
-                    <span className="font-bold text-primary/60">
-                      {offer.name.charAt(0)}
-                    </span>
-                  </div>
-                )}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="font-medium text-sm truncate">
-                      {offer.name}
-                    </span>
-                    {offer.featured_today && (
-                      <Badge className="bg-sun/20 text-ink text-[10px] px-1.5 py-0">
-                        Hoy
-                      </Badge>
-                    )}
-                    {!offer.available && (
-                      <Badge
-                        variant="secondary"
-                        className="text-[10px] px-1.5 py-0"
-                      >
-                        Pausado
-                      </Badge>
-                    )}
-                    {offer.stock !== null && offer.stock === 0 && (
-                      <Badge
-                        variant="destructive"
-                        className="text-[10px] px-1.5 py-0"
-                      >
-                        Sin stock
-                      </Badge>
-                    )}
-                    {offer.stock !== null &&
-                      offer.stock > 0 &&
-                      offer.stock <= (offer.stock_low_threshold || 5) && (
-                        <Badge className="bg-yellow-100 text-yellow-700 text-[10px] px-1.5 py-0 border border-yellow-200">
-                          Stock: {offer.stock}
-                        </Badge>
-                      )}
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {offer.promo_price ? (
-                      <>
-                        <span className="line-through">
-                          ${Number(offer.price).toLocaleString("es-AR")}
-                        </span>{" "}
-                        <span className="text-primary font-medium">
-                          ${Number(offer.promo_price).toLocaleString("es-AR")}
-                        </span>
-                      </>
-                    ) : (
-                      <>${Number(offer.price).toLocaleString("es-AR")}</>
-                    )}
-                    {offer.category && ` · ${offer.category}`}
-                  </p>
-                </div>
-                <div className="hidden sm:flex items-center gap-1 flex-shrink-0">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    type="button"
-                    onClick={() => startEdit(offer)}
-                  >
-                    Editar
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    type="button"
-                    onClick={() => toggleFeatured(offer)}
-                  >
-                    {offer.featured_today ? "Quitar" : "Destacar"}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    type="button"
-                    onClick={() => toggleAvailable(offer)}
-                  >
-                    {offer.available ? "Pausar" : "Activar"}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    type="button"
-                    className="text-red-600"
-                    onClick={() => deleteOffer(offer)}
-                  >
-                    Eliminar
-                  </Button>
-                </div>
-                <div className="sm:hidden flex-shrink-0">
-                  <DropdownMenu
-                    trigger={<span className="text-xl">⋯</span>}
-                    items={[
-                      { label: "Editar", icon: "✏️", onClick: () => startEdit(offer) },
-                      { label: "Modificadores", icon: "⚙️", onClick: () => startEdit(offer) },
-                      { label: offer.featured_today ? "Quitar de Hoy" : "Destacar Hoy", icon: "⭐", onClick: () => toggleFeatured(offer) },
-                      { label: offer.available ? "Pausar" : "Activar", icon: offer.available ? "⏸️" : "▶️", onClick: () => toggleAvailable(offer) },
-                      { label: "Eliminar", icon: "🗑️", onClick: () => deleteOffer(offer), destructive: true },
-                    ]}
-                  />
-                </div>
-              </div>
-
-              <div className="mt-3 pt-3 border-t border-border">
-                <div className="flex items-center gap-4 flex-wrap">
-                  <div className="flex items-center gap-2">
-                    <Label className="text-xs text-muted-foreground whitespace-nowrap">
-                      Stock:
-                    </Label>
-                    <QuantityInput
-                      value={
-                        offerStocks[offer.id] ??
-                        offer.stock ??
-                        0
-                      }
-                      onChange={(val) => updateOfferStock(offer, val)}
-                      min={0}
-                    />
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Label className="text-xs text-muted-foreground whitespace-nowrap">
-                      Umbral bajo:
-                    </Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      className="h-8 w-20 text-center text-sm"
-                      value={
-                        offerThresholds[offer.id] ??
-                        offer.stock_low_threshold ??
-                        5
-                      }
-                      onChange={(e) => {
-                        const v = parseInt(e.target.value, 10);
-                        if (!isNaN(v) && v >= 0)
-                          updateOfferThreshold(offer, v);
-                      }}
-                    />
-                  </div>
-                </div>
-              </div>
-            </Card>
-              {editingId === offer.id && offerFormNode && (
-                <div ref={editAnchorRef} className="mt-2">
-                  {offerFormNode}
-                </div>
-              )}
-            </div>
-          );
-        })
-      )}
-    </div>
-  );
-
-  const editAnchorRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!editingId || !showForm) return;
-    const t = setTimeout(() => {
-      editAnchorRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    }, 60);
-    return () => clearTimeout(t);
-  }, [editingId, showForm]);
-
-  const offerFormNode = (
-    <Card className="p-4">
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="font-semibold">
-          {editingId ? "Editar producto" : "Nuevo producto"}
-        </h3>
-        <Button type="button" variant="ghost" size="sm" onClick={() => resetOfferForm()}>
-          ✕
-        </Button>
-      </div>
-      <div className="space-y-3">
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <Label>Nombre</Label>
-            <Input
-              value={offName}
-              onChange={(e) => setOffName(e.target.value)}
-              required
-            />
-          </div>
-          <div>
-            <Label>Precio ($)</Label>
-            <Input
-              type="number"
-              step="0.01"
-              value={offPrice}
-              onChange={(e) => setOffPrice(e.target.value)}
-              required
-            />
-          </div>
-        </div>
-        <div>
-          <Label>Precio promo ($)</Label>
-          <Input
-            type="number"
-            step="0.01"
-            value={offPromoPrice}
-            onChange={(e) => setOffPromoPrice(e.target.value)}
-            placeholder="Precio de oferta del día"
-          />
-        </div>
-        <div>
-          <Label>Categoría</Label>
-          <select
-            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-            value={offCategory}
-            onChange={(e) => setOffCategory(e.target.value)}
-          >
-            {categories.length === 0 && (
-              <option value="otros">otros</option>
-            )}
-            {categories.map((c: any) => (
-              <option key={c.id} value={c.name}>
-                {c.name}
-              </option>
-            ))}
-            {offCategory &&
-              !categories.some((c: any) => c.name === offCategory) &&
-              offCategory !== "otros" && (
-                <option value={offCategory}>{offCategory}</option>
-              )}
-          </select>
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <Label>Stock</Label>
-            <QuantityInput
-              value={offStock}
-              onChange={setOffStock}
-              min={0}
-            />
-          </div>
-          <div>
-            <Label>Umbral bajo stock</Label>
-            <Input
-              type="number"
-              min={0}
-              value={offStockLowThreshold}
-              onChange={(e) => {
-                const v = parseInt(e.target.value, 10);
-                if (!isNaN(v) && v >= 0) setOffStockLowThreshold(v);
-              }}
-            />
-          </div>
-        </div>
-        <div>
-          <Label>Foto</Label>
-          <Input
-            type="file"
-            accept="image/*"
-            onChange={(e) =>
-              handleOfferFileSelect(
-                e.target.files?.[0] || null
-              )
-            }
-          />
-          {offPreview && (
-            <img
-              src={offPreview}
-              alt="Preview"
-              className="mt-2 h-20 w-full object-cover rounded-lg"
-            />
-          )}
-        </div>
-        <div>
-          <Label>Descripción</Label>
-          <Textarea
-            value={offDesc}
-            onChange={(e) => setOffDesc(e.target.value)}
-          />
-        </div>
-        <Button
-          type="button"
-          onClick={() => handleOfferSubmit()}
-          disabled={saving}
-          className="w-full"
-        >
-          {saving
-            ? "Guardando..."
-            : editingId
-              ? "Guardar"
-              : "Agregar"}
-        </Button>
-      </div>
-      {editingId && (
-        <div className="mt-3 border-t border-border pt-3">
-          <ProductModifiersBlock productId={editingId} productName={offName} />
-        </div>
-      )}
-    </Card>
-  );
 
   return (
     <form onSubmit={handleSave} className="space-y-4">
@@ -934,6 +475,24 @@ export default function DashboardComercio({
           {paymentMethods.includes("Transferencia") && (
             <TransferConfig vendor={vendor} saveVendor={saveVendor} />
           )}
+          {paymentMethods.includes("Efectivo") && (
+            <div>
+              <Label className="mb-2 block">Descuento en efectivo (%)</Label>
+              <Input
+                type="number"
+                min={0}
+                max={99}
+                step="any"
+                value={cashDiscount}
+                onChange={(e) => setCashDiscount(e.target.value)}
+                placeholder="Ej: 10"
+                className="max-w-40"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Se muestra junto a cada precio y se descuenta solo al pagar en efectivo.
+              </p>
+            </div>
+          )}
           <MpConnectCard
             mpUserId={vendor?.mp_user_id ?? null}
             mpConnectedAt={vendor?.mp_connected_at ?? null}
@@ -949,15 +508,50 @@ export default function DashboardComercio({
           {deliveryOptions !== "retiro" && (
             <DeliveryFeeConfig vendor={vendor} saveVendor={saveVendor} />
           )}
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-border px-3 py-2.5">
+            <div>
+              <Label className="text-sm">Aceptar pedidos online</Label>
+              <p className="text-xs text-muted-foreground">
+                {onlineOrders
+                  ? "Tu micrositio muestra carrito y te llegan pedidos por la app."
+                  : "Apagado: solo contacto por WhatsApp, sin carrito."}
+              </p>
+            </div>
+            <Switch
+              checked={onlineOrders}
+              onCheckedChange={async (v) => {
+                setOnlineOrders(v);
+                await saveVendor({ accepts_online_orders: v });
+              }}
+            />
+          </div>
         </div>
       </CollapsibleSection>
 
+      <PrinterConfigSection
+        vendor={vendor}
+        saveVendor={saveVendor}
+        setMsg={setMsg}
+        autoPrintDesc="Imprime el ticket automáticamente cuando entra un pedido online pago"
+      />
+
       <CollapsibleSection
-        icon="📦"
-        title="Menú / Catálogo"
+        icon="🛍️"
+        title="Catálogo"
         badge={`${offers.length}`}
       >
         <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Productos, precios, stock y fotos se gestionan con edición completa
+            desde la pestaña <strong>Catálogo</strong>, en un panel integrado.
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => window.dispatchEvent(new CustomEvent("portal:go-menu"))}
+          >
+            🛍️ Ir al Catálogo
+          </Button>
           <CategoryManager
             categories={categories}
             onAdd={async (name) => {
@@ -1010,26 +604,6 @@ export default function DashboardComercio({
               reload();
             }}
           />
-
-          <div className="flex items-center justify-between mt-2">
-            <h3 className="font-semibold text-sm">
-              Productos ({offers.length})
-            </h3>
-            <Button
-              type="button"
-              size="sm"
-              onClick={() => {
-                if (editingId || showForm) resetOfferForm();
-                else setShowForm(true);
-              }}
-            >
-              {editingId || showForm ? "Cancelar" : "+ Producto"}
-            </Button>
-          </div>
-
-          {showForm && !editingId && offerFormNode}
-
-          {offerListContent}
         </div>
       </CollapsibleSection>
 

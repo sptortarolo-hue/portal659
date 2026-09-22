@@ -109,6 +109,8 @@ export function Mostrador() {
   const [notes, setNotes] = useState("");
   // % descuento en efectivo del comercio (0 = sin descuento).
   const [cashPct, setCashPct] = useState(0);
+  // Retail (comercio/moda): textos sin referencias a cocina/comida.
+  const [isRetail, setIsRetail] = useState(false);
 
   const total = useMemo(() => items.reduce((s, i) => s + i.price * i.qty, 0), [items]);
 
@@ -163,6 +165,7 @@ export function Mostrador() {
         const ord = await ordRes.json();
         const me = await meRes.json().catch(() => null);
         setCashPct(normalizeCashPct(me?.vendor?.cash_discount_pct));
+        setIsRetail(me?.vendor?.vertical === "comercio" || me?.vendor?.vertical === "moda");
         const today = new Date().toDateString();
         const modsMap = off.modifiersByProduct || {};
         setModifiersMap(modsMap);
@@ -453,7 +456,7 @@ export function Mostrador() {
           type="text"
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
-          placeholder="📝 Instrucciones especiales (ej: sin cebolla, extra picante, cortar al medio)"
+          placeholder={isRetail ? "📝 Notas de la venta (ej: bolsa extra, envolver para regalo)" : "📝 Instrucciones especiales (ej: sin cebolla, extra picante, cortar al medio)"}
           className="w-full h-9 px-3 text-xs rounded-lg border border-input bg-background"
         />
 

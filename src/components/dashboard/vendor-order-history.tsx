@@ -35,7 +35,7 @@ const PAYMENT_LABELS: Record<string, string> = {
   mercadopago: "Mercado Pago",
 };
 
-export function VendorOrderHistory({ isModa = false, onOpenOrder }: { isModa?: boolean; onOpenOrder?: (order: Order) => void }) {
+export function VendorOrderHistory({ isRetail = false, onOpenOrder }: { isRetail?: boolean; onOpenOrder?: (order: Order) => void }) {
   const [orders, setOrders] = useState<HistoryOrder[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -192,7 +192,7 @@ export function VendorOrderHistory({ isModa = false, onOpenOrder }: { isModa?: b
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-medium text-sm">{o.customer_name}</span>
                   <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${ORDER_STATUS_COLORS[o.status]}`}>
-                    {statusLabel(o.status, isModa)}
+                    {statusLabel(o.status, isRetail)}
                   </span>
                   {o.is_preview && (
                     <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold bg-violet-100 text-violet-700">

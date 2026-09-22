@@ -8,6 +8,7 @@ import { dispatchPrint, type PrinterVendor } from "@/lib/thermal-printer";
 import { upsertCustomerFromOrder } from "@/lib/customers";
 import { toE164 } from "@/lib/phone";
 import { resolveVendorPlan } from "@/lib/plans";
+import { orderNeedsKitchen } from "@/lib/order-utils";
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 
@@ -279,7 +280,10 @@ export async function POST(request: Request) {
             if (printerVendor?.auto_print) {
               const planRows = await queryMany<any>(`SELECT * FROM plans`);
               if (resolveVendorPlan(printerVendor as any, planRows || []).can("printer")) {
-                const printed = await dispatchPrint({ vendor: printerVendor, order, type: "comanda" });
+                // Sin ítems de cocina (comercio/moda o bebidas): imprime el
+                // ticket del pedido en vez de la comanda.
+                const printType = orderNeedsKitchen(order) ? "comanda" : "retiro";
+                const printed = await dispatchPrint({ vendor: printerVendor, order, type: printType });
                 if (!printed.ok) logApiError("mp-webhook/print", new Error(printed.error || "print falló"));
               }
             }

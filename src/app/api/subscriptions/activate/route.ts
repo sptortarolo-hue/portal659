@@ -37,9 +37,9 @@ export async function POST(request: Request) {
     );
   }
 
-  if (vendor.vertical !== "gastronomia") {
+  if (vendor.vertical !== "gastronomia" && vendor.vertical !== "comercio") {
     return NextResponse.json(
-      { error: "Los planes pagos están disponibles solo para gastronomía por ahora" },
+      { error: "Los planes pagos están disponibles para gastronomía y comercios de barrio" },
       { status: 400 }
     );
   }

@@ -20,14 +20,14 @@ import {
 } from "@/lib/order-utils";
 import type { Order, OrderStatus } from "@/types/database";
 
-function Timeline({ status, method, isModa }: { status: OrderStatus; method: "delivery" | "pickup"; isModa?: boolean }) {
-  const stepOrder = flowSteps(!!isModa);
+function Timeline({ status, method, isRetail }: { status: OrderStatus; method: "delivery" | "pickup"; isRetail?: boolean }) {
+  const stepOrder = flowSteps(!!isRetail);
   const currentIdx = stepOrder.indexOf(status);
   const isCancelled = status === "cancelled";
   const pct = progressPercent(status);
 
   const stepLabel = (step: OrderStatus) =>
-    step === "ready" ? orderReadyLabel({ channel: "app", method }) : statusLabel(step, !!isModa);
+    step === "ready" ? orderReadyLabel({ channel: "app", method }) : statusLabel(step, !!isRetail);
 
   return (
     <div className="relative mt-3 mb-2">
@@ -73,7 +73,7 @@ function OrderCard({ order, onReorder }: { order: Order & { track_token?: string
   }, [order.estimated_minutes, order.status, order.created_at]);
 
   const vendor = order.vendors;
-  const isModa = vendor?.vertical === "moda";
+  const isRetail = vendor?.vertical === "moda" || vendor?.vertical === "comercio";
   const isDone = order.status === "completed" || order.status === "cancelled";
   const phone = vendor?.whatsapp || vendor?.phone || "";
 
@@ -85,7 +85,7 @@ function OrderCard({ order, onReorder }: { order: Order & { track_token?: string
           <p className="text-[11px] text-muted-foreground/60">{timeAgo(order.created_at)}</p>
         </div>
         <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${ORDER_STATUS_COLORS[order.status]}`}>
-          {order.status === "ready" ? orderReadyLabel(order) : statusLabel(order.status, isModa)}
+          {order.status === "ready" ? orderReadyLabel(order) : statusLabel(order.status, isRetail)}
         </span>
       </div>
 
@@ -98,7 +98,7 @@ function OrderCard({ order, onReorder }: { order: Order & { track_token?: string
         </div>
       )}
 
-      <Timeline status={order.status} method={order.method} isModa={isModa} />
+      <Timeline status={order.status} method={order.method} isRetail={isRetail} />
 
       <div className="mt-2 space-y-1">
         {order.items.map((item, i) => (

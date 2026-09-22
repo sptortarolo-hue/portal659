@@ -5,7 +5,7 @@ import type { Order, OrderStatus } from "@/types/database";
 import {
   ORDER_STATUS_LABELS,
   ORDER_STATUS_COLORS,
-  MODA_STATUS_LABELS,
+  RETAIL_STATUS_LABELS,
   flowSteps,
   nextStatusFor,
   orderCondition,
@@ -16,7 +16,7 @@ import { AlertTriangle, ChevronRight, Banknote, MessageSquare, CheckCircle, Truc
 
 type OrdersKanbanProps = {
   orders: Order[];
-  isModa: boolean;
+  isRetail: boolean;
   selectedOrder: Order | null;
   onSelectOrder: (order: Order | null) => void;
   onRefresh?: () => void;
@@ -35,18 +35,18 @@ const ACTIVE_STATUSES: OrderStatus[] = [
 
 function OrderCard({
   order,
-  isModa,
+  isRetail,
   onClick,
   onNextStatus,
   style,
 }: {
   order: Order;
-  isModa: boolean;
+  isRetail: boolean;
   onClick: () => void;
   onNextStatus: () => void;
   style?: React.CSSProperties;
 }) {
-  const statusLabels = isModa ? MODA_STATUS_LABELS : ORDER_STATUS_LABELS;
+  const statusLabels = isRetail ? RETAIL_STATUS_LABELS : ORDER_STATUS_LABELS;
   const endMs = ["completed", "cancelled"].includes(order.status) && order.closed_at
     ? new Date(order.closed_at).getTime()
     : Date.now();
@@ -115,11 +115,11 @@ function OrderCard({
 
       {!["cancelled"].includes(order.status) && (
         <div className="flex items-center gap-0.5 mb-2">
-          {flowSteps(isModa).map((step, idx) => (
+          {flowSteps(isRetail).map((step, idx) => (
             <div
               key={step}
               className={`h-1.5 flex-1 rounded-full transition-all ${
-                flowSteps(isModa).indexOf(step) <= flowSteps(isModa).indexOf(order.status as OrderStatus)
+                flowSteps(isRetail).indexOf(step) <= flowSteps(isRetail).indexOf(order.status as OrderStatus)
                   ? "bg-primary"
                   : "bg-muted"
               }`}
@@ -164,27 +164,27 @@ function OrderCard({
 function KanbanColumn({
   status,
   orders,
-  isModa,
+  isRetail,
   onSelectOrder,
   onNextStatus,
   count,
 }: {
   status: OrderStatus;
   orders: Order[];
-  isModa: boolean;
+  isRetail: boolean;
   onSelectOrder: (order: Order) => void;
   onNextStatus: (order: Order) => void;
   count: number;
 }) {
-  const statusLabels = isModa ? MODA_STATUS_LABELS : ORDER_STATUS_LABELS;
+  const statusLabels = isRetail ? RETAIL_STATUS_LABELS : ORDER_STATUS_LABELS;
 
   const getEmptyIcon = () => {
     switch (status) {
       case "new":
         return <Plus className="h-6 w-6 mx-auto mb-2 opacity-30" />;
       case "confirmed":
-        // En moda "aceptado" es para empaquetar, no cocina.
-        return isModa
+        // En retail "aceptado" es para empaquetar, no cocina.
+        return isRetail
           ? <Package className="h-6 w-6 mx-auto mb-2 opacity-30" />
           : <ChefHat className="h-6 w-6 mx-auto mb-2 opacity-30" />;
       case "preparing":
@@ -251,7 +251,7 @@ function KanbanColumn({
             <OrderCard
               key={order.id}
               order={order}
-              isModa={isModa}
+              isRetail={isRetail}
               onClick={() => onSelectOrder(order)}
               onNextStatus={() => onNextStatus(order)}
               style={{ animationDelay: `${index * 50}ms` }}
@@ -265,14 +265,14 @@ function KanbanColumn({
 
 export function OrdersKanban({
   orders,
-  isModa,
+  isRetail,
   selectedOrder,
   onSelectOrder,
   onRefresh,
   isLoading,
   focusStatus,
 }: OrdersKanbanProps) {
-  const steps = flowSteps(isModa);
+  const steps = flowSteps(isRetail);
   const activeSteps = steps.filter((s) => ACTIVE_STATUSES.includes(s));
   // Con filtro de estado (ej. clic en "Enviados"), mostrar solo esa columna
   // para que nunca quede fuera de pantalla.
@@ -313,12 +313,12 @@ export function OrdersKanban({
   const handleNextStatus = useCallback(
     async (order: Order) => {
       const needsKitchen = (order.items || []).some((i) => i?.requires_prep !== false);
-      const next = nextStatusFor(order.status, order.method, isModa, order.channel, needsKitchen);
+      const next = nextStatusFor(order.status, order.method, isRetail, order.channel, needsKitchen);
       if (!next) return;
 
       try {
         const payload: Record<string, unknown> = { status: next };
-        if (next === "preparing" && !isModa) {
+        if (next === "preparing" && !isRetail) {
           payload.estimated_minutes = 30;
         }
         const res = await fetch(`/api/vendor/orders/${order.id}`, {
@@ -343,7 +343,7 @@ export function OrdersKanban({
         console.error("Error al actualizar el pedido");
       }
     },
-    [isModa, onRefresh]
+    [isRetail, onRefresh]
   );
 
   // Filtro terminal (ej. "completed"): el Kanban solo muestra estados activos.
@@ -364,7 +364,7 @@ export function OrdersKanban({
           key={status}
           status={status}
           orders={ordersByStatus[status] || []}
-          isModa={isModa}
+          isRetail={isRetail}
           onSelectOrder={onSelectOrder}
           onNextStatus={handleNextStatus}
           count={ordersByStatus[status]?.length || 0}

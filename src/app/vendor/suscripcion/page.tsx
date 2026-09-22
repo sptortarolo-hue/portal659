@@ -263,7 +263,7 @@ export default function VendorSuscripcionPage() {
           <>
           {!eff.eligibleForPaid && (
             <div className="rounded-2xl border border-border bg-card p-5 text-sm text-muted-foreground">
-              Los planes de pago están disponibles por ahora solo para <b>gastronomía</b>.
+              Los planes de pago están disponibles para <b>gastronomía</b> y <b>comercios de barrio</b>.
               Para tu rubro, el plan <b>Gratuito</b> incluye tu ficha y vidriera completa.
             </div>
           )}

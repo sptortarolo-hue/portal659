@@ -2,6 +2,7 @@ import { gateRequest, gateError } from "@/lib/subscription-gate";
 import { queryMany, withTransaction } from "@/lib/db";
 import { nextOrderNumber } from "@/lib/order-number";
 import { cashDiscountForItems } from "@/lib/cash-discount";
+import { adjustStockForItems, OutOfStockError } from "@/lib/stock";
 import { upsertCustomerFromOrder, isRealCustomerPhone } from "@/lib/customers";
 import { toE164 } from "@/lib/phone";
 import { NextResponse } from "next/server";
@@ -143,7 +144,17 @@ export async function POST(request: Request) {
   // En sesión de prueba todo nace marcado como prueba.
   const previewOrder = gate.previewSession === true;
   const customerE164 = toE164(customerPhoneClean);
-  const order = await withTransaction(async (tx) => {
+  let order: Record<string, any> | null = null;
+  try {
+    order = await withTransaction(async (tx) => {
+    // Stock: la venta de mostrador descuenta igual que el canal app (la
+    // función es no-op para productos sin stock_control — gastro no nota el
+    // cambio). Al cancelar el pedido se repone (orders/[id]).
+    // Pedidos de prueba (preview) no tocan el stock real.
+    if (!previewOrder) {
+      await adjustStockForItems(tx, normalizedItems, "decrement");
+    }
+
     const pickupNumber = await nextOrderNumber(tx, gate.vendor.id);
     const order = await tx.queryOne<Record<string, any>>(
       `INSERT INTO orders (vendor_id, customer_name, customer_phone, customer_address, method, payment_method, items, total, status, channel, paid_at, notes, pickup_number, is_preview, cash_pct, cash_discount)
@@ -180,8 +191,14 @@ export async function POST(request: Request) {
       });
     }
 
-    return order;
+    return order ?? null;
   });
+  } catch (e) {
+    if (e instanceof OutOfStockError) {
+      return NextResponse.json({ error: e.message }, { status: 409 });
+    }
+    throw e;
+  }
 
   return NextResponse.json({ ok: true, orderId: order?.id, order });
 }

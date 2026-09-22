@@ -66,7 +66,9 @@ type VariantRow = {
 const MAX_EXTRA_IMAGES = 7;
 
 /** Gestión completa de platos/productos (listado + ficha inline + modificadores), sin ir a Configuración. */
-export function ProductManager({ isModa = false, showStock = true, showPrep = false, showCosts = false, variants, productImages, onCrop, onChanged }: Props) {
+export function ProductManager({ isModa = false, isComercio = false, showStock = true, showPrep = false, showCosts = false, variants, productImages, onCrop, onChanged }: Props) {
+  // Wording por vertical: gastro habla de "platos", retail de "productos".
+  const noun = isModa || isComercio ? "Producto" : "Plato";
   const [offers, setOffers] = useState<OfferRow[]>([]);
   const [categories, setCategories] = useState<MenuCategory[]>([]);
   const [costByProduct, setCostByProduct] = useState<Record<string, CostInfo>>({});
@@ -86,7 +88,10 @@ export function ProductManager({ isModa = false, showStock = true, showPrep = fa
   const [offStockControl, setOffStockControl] = useState(false);
   const [offPromoPrice, setOffPromoPrice] = useState("");
   const [offStockLowThreshold, setOffStockLowThreshold] = useState(5);
-  const [offRequiresPrep, setOffRequiresPrep] = useState(true);
+  // Default de "Requiere elaboración": sigue a showPrep — los verticales sin
+  // cocina (retail, servicio) nunca preparan: sus productos quedan en false
+  // aunque el switch no se muestre (así no entran al flow de cocina del POS).
+  const [offRequiresPrep, setOffRequiresPrep] = useState(showPrep);
   const [offCashExcluded, setOffCashExcluded] = useState(false);
 
   // Moda: variantes (color × talle) + galería.
@@ -150,7 +155,7 @@ export function ProductManager({ isModa = false, showStock = true, showPrep = fa
     setOffStockControl(false);
     setOffPromoPrice("");
     setOffStockLowThreshold(5);
-    setOffRequiresPrep(true);
+    setOffRequiresPrep(showPrep);
     setOffCashExcluded(false);
     setOffHasVariants(false);
     setVariantRows([]);
@@ -172,7 +177,8 @@ export function ProductManager({ isModa = false, showStock = true, showPrep = fa
     setOffStockControl(!!offer.stock_control);
     setOffPromoPrice(offer.promo_price ? String(offer.promo_price) : "");
     setOffStockLowThreshold(offer.stock_low_threshold ?? 5);
-    setOffRequiresPrep(offer.requires_prep !== false);
+    // Sin switch visible (retail): al guardar queda en false, nunca cocina.
+    setOffRequiresPrep(showPrep ? offer.requires_prep !== false : false);
     setOffCashExcluded(!!offer.cash_discount_excluded);
     setOffHasVariants(!!offer.has_variants);
     setVariantRows(
@@ -340,7 +346,7 @@ export function ProductManager({ isModa = false, showStock = true, showPrep = fa
 
     setSaving(false);
     resetForm();
-    setMsg(editingId ? (isModa ? "Producto actualizado" : "Plato actualizado") : (isModa ? "Producto agregado" : "Plato agregado"));
+    setMsg(editingId ? `${noun} actualizado` : `${noun} agregado`);
     load();
     onChanged?.();
   }
@@ -367,7 +373,7 @@ export function ProductManager({ isModa = false, showStock = true, showPrep = fa
     if (!confirm(`¿Eliminar "${offer.name}"? Esta acción no se puede deshacer.`)) return;
     await fetch(`/api/vendor/offers/${offer.id}`, { method: "DELETE" });
     if (editingId === offer.id) resetForm();
-    setMsg(isModa ? "Producto eliminado" : "Plato eliminado");
+    setMsg(`${noun} eliminado`);
     load(); onChanged?.();
   }
 
@@ -514,6 +520,7 @@ export function ProductManager({ isModa = false, showStock = true, showPrep = fa
         showPrep={showPrep}
         offRequiresPrep={offRequiresPrep} setOffRequiresPrep={setOffRequiresPrep}
         offCashExcluded={offCashExcluded} setOffCashExcluded={setOffCashExcluded}
+        noun={noun.toLowerCase()}
       />
       {editingId && <ProductModifiersBlock productId={editingId} productName={offName} />}
     </div>
@@ -522,9 +529,9 @@ export function ProductManager({ isModa = false, showStock = true, showPrep = fa
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="font-display text-xl font-semibold">{isModa ? "Catálogo" : "Menú y catálogo"}</h2>
+        <h2 className="font-display text-xl font-semibold">{isModa || isComercio ? "Catálogo" : "Menú y catálogo"}</h2>
         <Button size="sm" onClick={() => { if (editingId || showForm) resetForm(); else setShowForm(true); }}>
-          {editingId || showForm ? "Cancelar" : `+ ${isModa ? "Producto" : "Plato"}`}
+          {editingId || showForm ? "Cancelar" : `+ ${noun}`}
         </Button>
       </div>
 
@@ -545,6 +552,7 @@ export function ProductManager({ isModa = false, showStock = true, showPrep = fa
           editForm={editingId ? offerFormNode : undefined}
           onEditModifiers={(offer) => startEdit(offer)}
           costByProduct={showCosts ? costByProduct : undefined}
+          emptyText={`Todavía no cargaste ${isModa || isComercio ? "productos" : "platos"}.`}
         />
       )}
     </div>

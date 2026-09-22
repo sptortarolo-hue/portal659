@@ -118,7 +118,7 @@ export default function SeguimientoPedidoPage() {
   }
 
   const vendor = order.vendors;
-  const isModa = vendor?.vertical === "moda";
+  const isRetail = vendor?.vertical === "moda" || vendor?.vertical === "comercio";
   const isDone = order.status === "completed" || order.status === "cancelled";
   const phone = vendor?.whatsapp || vendor?.phone || "";
 
@@ -138,14 +138,14 @@ export default function SeguimientoPedidoPage() {
       <div className="rounded-2xl border border-border bg-card p-4 mb-4">
         <div className="flex items-center justify-between mb-2">
           <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${ORDER_STATUS_COLORS[order.status]}`}>
-            {order.status === "ready" ? orderReadyLabel({ channel: "app", method: order.method }) : statusLabel(order.status, isModa)}
+            {order.status === "ready" ? orderReadyLabel({ channel: "app", method: order.method }) : statusLabel(order.status, isRetail)}
           </span>
           {countdown !== null && countdown > 0 && (
             <span className="text-xs font-medium text-primary">~{countdown} min</span>
           )}
         </div>
 
-        <OrderTimeline status={order.status} method={order.method} isModa={isModa} />
+        <OrderTimeline status={order.status} method={order.method} isRetail={isRetail} />
 
         <div className="mt-3 space-y-1">
           {order.items.map((item, i) => (

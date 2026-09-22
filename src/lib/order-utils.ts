@@ -141,9 +141,10 @@ export const ORDER_STATUS_COLORS: Record<OrderStatus, string> = {
   cancelled: "bg-red-100 text-red-600 border-red-200",
 };
 
-// Moda (indumentaria): el pedido se acepta/rechaza por stock y se empaqueta;
-// no hay cocina. Los estados son los mismos, cambian los nombres visibles.
-export const MODA_STATUS_LABELS: Record<OrderStatus, string> = {
+// Retail (moda y comercio de barrio): el pedido se acepta/rechaza por stock
+// y se empaqueta; no hay cocina. Los estados son los mismos, cambian los
+// nombres visibles.
+export const RETAIL_STATUS_LABELS: Record<OrderStatus, string> = {
   new: "Por aceptar",
   confirmed: "Aceptado",
   preparing: "Empaquetando",
@@ -153,12 +154,16 @@ export const MODA_STATUS_LABELS: Record<OrderStatus, string> = {
   cancelled: "Cancelado",
 };
 
-export function statusLabel(status: OrderStatus, isModa: boolean): string {
-  return isModa ? MODA_STATUS_LABELS[status] : ORDER_STATUS_LABELS[status];
+/** @deprecated usar RETAIL_STATUS_LABELS (queda como alias por compatibilidad). */
+export const MODA_STATUS_LABELS = RETAIL_STATUS_LABELS;
+
+/** `isRetail` = vertical moda o comercio (flow con aceptación explícita). */
+export function statusLabel(status: OrderStatus, isRetail: boolean): string {
+  return isRetail ? RETAIL_STATUS_LABELS[status] : ORDER_STATUS_LABELS[status];
 }
 
-export function flowSteps(isModa: boolean): OrderStatus[] {
-  return isModa
+export function flowSteps(isRetail: boolean): OrderStatus[] {
+  return isRetail
     ? ["new", "confirmed", "preparing", "ready", "sent", "completed"]
     : ["new", "preparing", "ready", "sent", "completed"];
 }
@@ -168,14 +173,14 @@ export function flowSteps(isModa: boolean): OrderStatus[] {
  * - Mostrador/mesa SIN cocina (solo bebidas/packs): `new` salta a `ready`
  *   (2 pasos: "Listo p/ entregar"), sin pasar por comanda.
  * - Mostrador/mesa CON cocina: flow normal (`new` → `preparing` → ...).
- * - Moda (app): `new` → `confirmed` (aceptación explícita) → empaquetado.
+ * - Retail (moda/comercio, app): `new` → `confirmed` (aceptación explícita).
  * - Gastro/app: `new` → `preparing`.
  * `null` en estados terminales.
  */
 export function nextStatusFor(
   status: OrderStatus,
   method?: "delivery" | "pickup",
-  isModa: boolean = false,
+  isRetail: boolean = false,
   channel?: Order["channel"],
   needsKitchen: boolean = true
 ): OrderStatus | null {
@@ -188,7 +193,7 @@ export function nextStatusFor(
     return "ready";
   switch (status) {
     case "new":
-      return isModa ? "confirmed" : "preparing";
+      return isRetail ? "confirmed" : "preparing";
     case "confirmed":
       return "preparing";
     case "preparing":
@@ -370,7 +375,7 @@ export function buildContextualWhatsApp(
   vendorName: string,
   transfer?: { alias: string | null; cbu: string | null; holder: string | null },
   resolveTransferMessage?: () => string | null,
-  isModa: boolean = false,
+  isRetail: boolean = false,
 ): ContextualWaResult | null {
   const phone = order.customer_phone?.replace(/\D/g, "");
   if (!phone) return null;
@@ -407,7 +412,7 @@ export function buildContextualWhatsApp(
   }
 
   if (["new", "confirmed", "preparing"].includes(order.status)) {
-    const confirmMsg = isModa
+    const confirmMsg = isRetail
       ? `Hola ${order.customer_name}! Tu pedido #${order.id.slice(0, 8)} de ${vendorName} fue confirmado y ya lo estamos empaquetando. Te avisamos cuando esté. 📦`
       : `Hola ${order.customer_name}! Tu pedido #${order.id.slice(0, 8)} de ${vendorName} fue confirmado y ya está en preparación. Te avisamos cuando esté. 🍳`;
     const stageLabel =

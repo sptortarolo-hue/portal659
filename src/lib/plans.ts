@@ -14,18 +14,34 @@ export const PLAN_IDS: Record<PlanSlug, string> = {
 
 export const PLAN_SLUGS: PlanSlug[] = ["gratuito", "pedidos", "gestion"];
 
-// Los planes pagos están disponibles solo para gastronomía por ahora.
+// Los planes pagos están disponibles para gastronomía y comercio de barrio.
 export const PAID_PLAN_SLUGS: PlanSlug[] = ["pedidos", "gestion"];
 
 export const GASTRO_VERTICAL = "gastronomia";
 export const MODA_VERTICAL = "moda";
+export const COMERCIO_VERTICAL = "comercio";
 
-export function isGastroVendor(vendor: Pick<Vendor, "vertical">): boolean {
+export function isGastroVendor(vendor: { vertical?: string | null }): boolean {
   return vendor.vertical === GASTRO_VERTICAL;
 }
 
-export function isModaVendor(vendor: Pick<Vendor, "vertical">): boolean {
+export function isModaVendor(vendor: { vertical?: string | null }): boolean {
   return vendor.vertical === MODA_VERTICAL;
+}
+
+export function isComercioVendor(vendor: { vertical?: string | null }): boolean {
+  return vendor.vertical === COMERCIO_VERTICAL;
+}
+
+/**
+ * Verticales "retail": venden productos físicos (con stock) sin cocina.
+ * Comparten el flow de pedido con aceptación explícita (estilo moda):
+ * new → confirmed → preparing ("Empaquetando") → ready → sent → completed.
+ */
+export const RETAIL_VERTICALS: string[] = [MODA_VERTICAL, COMERCIO_VERTICAL];
+
+export function isRetailVendor(vendor: { vertical?: string | null }): boolean {
+  return !!vendor.vertical && RETAIL_VERTICALS.includes(vendor.vertical);
 }
 
 export type FeatureKey = keyof PlanFeatures;
@@ -66,6 +82,24 @@ const MODA_FEATURES: PlanFeatures = {
   ...GRATUITO_FEATURES,
   cart: true,
   emits_orders: true,
+};
+
+// Comercio de barrio (retail: almacén, kiosco, ferretería, librería...):
+// venta online con retiro/delivery + mostrador. Usa los MISMOS planes pagos
+// que gastronomía, pero NUNCA las features de cocina/salón aunque el plan
+// gestión las traiga en su JSONB (kds/mesas/recipes quedan enmascaradas).
+const COMERCIO_FREE_FEATURES: PlanFeatures = {
+  ...GRATUITO_FEATURES,
+  cart: true,
+  emits_orders: true,
+};
+
+// Features del plan que no aplican al vertical comercio (forzadas a false).
+// pos/printer/caja/crm/analytics/reviews SÍ aplican con el plan pago.
+const COMERCIO_FEATURE_MASK: Partial<Record<FeatureKey, false>> = {
+  kds: false,
+  mesas: false,
+  recipes: false,
 };
 
 export function featureOf(plan: Plan | null | undefined, feature: FeatureKey): boolean {
@@ -118,7 +152,7 @@ export function resolveVendorPlan(
       trialActive: false,
       active: false,
       expired: false,
-      eligibleForPaid: isGastroVendor(vendor),
+      eligibleForPaid: isGastroVendor(vendor) || isComercioVendor(vendor),
       can: () => true,
       analyticsDays: 99999,
       maxProducts: null,
@@ -156,12 +190,19 @@ export function resolveVendorPlan(
   else if (active) status = "active";
   else status = expired ? "expired" : "gratuito";
 
-  // Los comercios no-gastronomía no pueden tener planes pagos por ahora:
-  // si por admin quedaron con uno, se resuelve como gratuito igual.
-  const eligibleForPaid = isGastroVendor(vendor);
+  // Gastro y comercio pueden tener planes pagos; el resto de los verticales
+  // (moda cae por su propia rama) resuelven siempre como gratuito.
+  const eligibleForPaid = isGastroVendor(vendor) || isComercioVendor(vendor);
 
   const can = (feature: FeatureKey): boolean => {
     if (isModaVendor(vendor)) return MODA_FEATURES[feature] === true;
+    if (isComercioVendor(vendor)) {
+      // Mask del vertical: gestión trae kds/mesas/recipes en su JSONB, pero
+      // un comercio nunca las usa (no tiene cocina ni salón).
+      if (COMERCIO_FEATURE_MASK[feature] === false) return false;
+      if (trialActive || active) return featureOf(plan, feature);
+      return COMERCIO_FREE_FEATURES[feature] === true;
+    }
     if (!eligibleForPaid) return GRATUITO_FEATURES[feature] === true;
     if (trialActive || active) return featureOf(plan, feature);
     return FREE_GASTRO_FEATURES[feature] === true;

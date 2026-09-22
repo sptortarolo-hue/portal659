@@ -110,7 +110,24 @@ rclone copy "$BACKUP_ROOT/db" "R2:$R2_BUCKET/db" --no-traverse 2>&1 >/dev/null \
   || { echo "[$NOW] ERROR: fallo el push a R2 (copia local queda)"; exit 1; }
 echo "[$NOW] push a R2 OK"
 
-# --- 4. Retención ----------------------------------------------------------------
+# --- 4b. Verificación post-subida -------------------------------------------
+R2_DB_COUNT=$(rclone ls "R2:$R2_BUCKET/db" --max-depth 1 2>/dev/null | wc -l | tr -d ' ')
+R2_UP_COUNT=$(rclone ls "R2:$R2_BUCKET/uploads" --max-depth 1 2>/dev/null | wc -l | tr -d ' ')
+if [ "$R2_DB_COUNT" = "0" ] || [ "$R2_UP_COUNT" = "0" ]; then
+  echo "[$NOW] CRITICAL: R2 quedó vacío después del push (db=$R2_DB_COUNT uploads=$R2_UP_COUNT) — reintentando"
+  rclone copy "$BACKUP_ROOT/db" "R2:$R2_BUCKET/db" --no-traverse 2>&1 >/dev/null \
+    && rclone copy "$BACKUP_ROOT/uploads" "R2:$R2_BUCKET/uploads" --no-traverse 2>&1 >/dev/null \
+    || { echo "[$NOW] CRITICAL: re-intento falló, R2 inaccesible"; exit 1; }
+  R2_DB_COUNT=$(rclone ls "R2:$R2_BUCKET/db" --max-depth 1 2>/dev/null | wc -l | tr -d ' ')
+  R2_UP_COUNT=$(rclone ls "R2:$R2_BUCKET/uploads" --max-depth 1 2>/dev/null | wc -l | tr -d ' ')
+  if [ "$R2_DB_COUNT" = "0" ] || [ "$R2_UP_COUNT" = "0" ]; then
+    echo "[$NOW] CRITICAL: R2 sigue vacío tras re-intento (db=$R2_DB_COUNT uploads=$R2_UP_COUNT)"
+    exit 1
+  fi
+fi
+echo "[$NOW] verificado en R2: db=$R2_DB_COUNT archivos, uploads=$R2_UP_COUNT archivos"
+
+# --- 5. Retención -------------------------------------------------------------
 find "$BACKUP_ROOT/db" -name 'portal659-*.sql.gz' -mtime +14 -delete 2>/dev/null || true
 find "$BACKUP_ROOT/uploads" -name 'uploads-*.tar.gz' -mtime +14 -delete 2>/dev/null || true
 rclone delete "R2:$R2_BUCKET/db" --min-age 30d >/dev/null 2>&1 || true

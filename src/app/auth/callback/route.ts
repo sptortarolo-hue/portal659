@@ -2,12 +2,16 @@ import { createHash } from "crypto";
 import { NextResponse } from "next/server";
 import { queryOne } from "@/lib/db";
 import { signAccessToken } from "@/lib/auth";
+import { getSiteUrl } from "@/lib/site-url";
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const token = url.searchParams.get("token");
   const type = url.searchParams.get("type");
-  const origin = url.origin;
+  // En prod la app corre detrás de nginx y request.url trae el origen
+  // interno (localhost:3000): usar el dominio canónico para que los
+  // redirects lleguen al navegador del usuario (ver getSiteUrl).
+  const origin = getSiteUrl(request);
 
   if (!token) {
     return NextResponse.redirect(`${origin}/login?error=missing_token`);

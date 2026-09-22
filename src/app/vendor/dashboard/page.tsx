@@ -1181,15 +1181,15 @@ function VendorDashboardInner() {
             <>
               <div className={tab === "config" ? "" : "hidden"}>{configContent}</div>
               <div className={tab === "menu" ? "" : "hidden"}>
-                {isGastro ? (
+                {isGastro || isComercio ? (
                   <MemoMenuStudio
                     offers={offers}
                     categories={categories}
                     reload={loadData}
                     msg={msg}
                     setMsg={setMsg}
-                    showCosts
-                    hasRecipes={effectivePlan.can("recipes")}
+                    showCosts={isGastro}
+                    hasRecipes={false}
                   />
                 ) : (
                   <MemoProductManager

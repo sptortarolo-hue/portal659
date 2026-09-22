@@ -1,6 +1,6 @@
-"use client";
+﻿"use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -14,13 +14,6 @@ import { ProductModifiersBlock } from "@/components/dashboard/modifier-editor";
 import { SIZE_GUIDE_TEMPLATES, templateToText } from "@/lib/size-guides";
 import type { ProductVariant, ProductImage } from "@/types/database";
 
-const COMERCIO_CATEGORIES = [
-  "verdulería", "carnicería", "pollajería", "kiosko", "almacén",
-  "fiambrería", "panadería", "licorería", "ferretería", "librería",
-  "farmacia", "droguería", "floristería", "pet shop", "peluquería canina",
-  "veterinaria", "alimentos", "accesorios", "guardería", "papelería",
-  "óptica", "otros",
-];
 
 type MenuCategory = { id: string; name: string; position: number };
 
@@ -40,12 +33,11 @@ type OfferRow = {
   requires_prep?: boolean;
   cash_discount_excluded?: boolean;
   has_variants?: boolean;
-  pack_size?: number | null;
 };
 
 type Props = {
   isModa?: boolean;
-  /** Comercio del barrio: usa el mismo editor genérico (sin variantes). */
+  /** Comercio del barrio: usa el mismo editor gen├®rico (sin variantes). */
   isComercio?: boolean;
   showStock?: boolean;
   showPrep?: boolean;
@@ -53,7 +45,7 @@ type Props = {
   showCosts?: boolean;
   /** Variantes de todos los productos (solo moda). */
   variants?: ProductVariant[];
-  /** Galería de todos los productos (solo moda). */
+  /** Galer├¡a de todos los productos (solo moda). */
   productImages?: ProductImage[];
   onCrop?: (target: "offer") => void;
   onChanged?: () => void;
@@ -70,10 +62,10 @@ type VariantRow = {
   sku: string;
 };
 
-// Galería moda: 1 portada (image_url) + hasta 7 extras (product_images).
+// Galer├¡a moda: 1 portada (image_url) + hasta 7 extras (product_images).
 const MAX_EXTRA_IMAGES = 7;
 
-/** Gestión completa de platos/productos (listado + ficha inline + modificadores), sin ir a Configuración. */
+/** Gesti├│n completa de platos/productos (listado + ficha inline + modificadores), sin ir a Configuraci├│n. */
 export function ProductManager({ isModa = false, isComercio = false, showStock = true, showPrep = false, showCosts = false, variants, productImages, onCrop, onChanged }: Props) {
   // Wording por vertical: gastro habla de "platos", retail de "productos".
   const noun = isModa || isComercio ? "Producto" : "Plato";
@@ -96,27 +88,17 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
   const [offStockControl, setOffStockControl] = useState(false);
   const [offPromoPrice, setOffPromoPrice] = useState("");
   const [offStockLowThreshold, setOffStockLowThreshold] = useState(5);
-  // Default de "Requiere elaboración": sigue a showPrep — los verticales sin
+  // Default de "Requiere elaboraci├│n": sigue a showPrep ÔÇö los verticales sin
   // cocina (retail, servicio) nunca preparan: sus productos quedan en false
-  // aunque el switch no se muestre (así no entran al flow de cocina del POS).
+  // aunque el switch no se muestre (as├¡ no entran al flow de cocina del POS).
   const [offRequiresPrep, setOffRequiresPrep] = useState(showPrep);
   const [offCashExcluded, setOffCashExcluded] = useState(false);
-  const [offPackSize, setOffPackSize] = useState("");
-  // Búsqueda y filtros en la lista.
-  const [search, setSearch] = useState("");
-  const [catFilter, setCatFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "paused" | "nostock">("all");
-  // Operaciones masivas de precio.
-  const [bulkOpen, setBulkOpen] = useState(false);
-  const [bulkOp, setBulkOp] = useState<"pct_up" | "pct_down" | "add" | "set">("pct_up");
-  const [bulkValue, setBulkValue] = useState("");
-  const [bulkSaving, setBulkSaving] = useState(false);
 
-  // Moda: variantes (color × talle) + galería.
+  // Moda: variantes (color ├ù talle) + galer├¡a.
   const [offHasVariants, setOffHasVariants] = useState(false);
   const [variantRows, setVariantRows] = useState<VariantRow[]>([]);
   const [galleryUrls, setGalleryUrls] = useState<{ url: string; color: string | null }[]>([]);
-  // Guía de talles (texto, una línea por talle).
+  // Gu├¡a de talles (texto, una l├¡nea por talle).
   const [offSizeGuide, setOffSizeGuide] = useState("");
 
   const load = useCallback(async () => {
@@ -142,52 +124,6 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
 
   useEffect(() => { load(); }, [load]);
 
-  // Filtrado de la lista de productos.
-  const filteredOffers = useMemo(() => {
-    return offers.filter((o) => {
-      const matchSearch = !search || o.name.toLowerCase().includes(search.toLowerCase());
-      const matchCat = catFilter === "all" || o.category === catFilter;
-      const matchStatus =
-        statusFilter === "all" ||
-        (statusFilter === "active" && o.available) ||
-        (statusFilter === "paused" && !o.available) ||
-        (statusFilter === "nostock" && o.stock !== null && o.stock <= (o.stock_low_threshold ?? 5));
-      return matchSearch && matchCat && matchStatus;
-    });
-  }, [offers, search, catFilter, statusFilter]);
-
-  // Operaciones masivas de precio.
-  async function applyBulk() {
-    const value = Number(bulkValue);
-    if (!bulkOp || isNaN(value)) { setMsg("Completá un valor numérico"); return; }
-    setBulkSaving(true);
-    setMsg("");
-    try {
-      await Promise.all(filteredOffers.map(async (o) => {
-        const newPrice = (() => {
-          if (bulkOp === "pct_up") return Math.round(o.price * (100 + value) / 100);
-          if (bulkOp === "pct_down") return Math.round(o.price * (100 - value) / 100);
-          if (bulkOp === "add") return Math.max(0, o.price + value);
-          if (bulkOp === "set") return Math.max(0, value);
-          return o.price;
-        })();
-        if (newPrice !== o.price) {
-          await fetch(`/api/vendor/offers/${o.id}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ price: newPrice }),
-          });
-        }
-      }));
-      setBulkOpen(false);
-      setBulkValue("");
-      setMsg(`Precios actualizados para ${filteredOffers.length} productos`);
-      load();
-      onChanged?.();
-    } catch { setMsg("Error al actualizar precios"); }
-    finally { setBulkSaving(false); }
-  }
-
   const variantsByProduct = useCallback(() => {
     const map: Record<string, ProductVariant[]> = {};
     for (const v of variants || []) {
@@ -212,7 +148,7 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
     setOffName("");
     setOffDesc("");
     setOffPrice("");
-    setOffCategory(isModa ? "ropa" : isComercio ? COMERCIO_CATEGORIES[0] : "otras");
+    setOffCategory(isModa ? "ropa" : "otras");
     setOffFile(null);
     setOffPreview(null);
     setOffStock(0);
@@ -221,7 +157,6 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
     setOffStockLowThreshold(5);
     setOffRequiresPrep(showPrep);
     setOffCashExcluded(false);
-    setOffPackSize("");
     setOffHasVariants(false);
     setVariantRows([]);
     setGalleryUrls([]);
@@ -246,7 +181,6 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
     setOffRequiresPrep(showPrep ? offer.requires_prep !== false : false);
     setOffCashExcluded(!!offer.cash_discount_excluded);
     setOffHasVariants(!!offer.has_variants);
-    setOffPackSize(offer.pack_size ? String(offer.pack_size) : "");
     setVariantRows(
       existing.map((v) => ({
         color: v.color,
@@ -279,7 +213,7 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
     if (!files) return;
     const room = MAX_EXTRA_IMAGES - galleryUrls.length;
     if (room <= 0) {
-      setMsg(`Máximo ${MAX_EXTRA_IMAGES} fotos extra (más la portada)`);
+      setMsg(`M├íximo ${MAX_EXTRA_IMAGES} fotos extra (m├ís la portada)`);
       return;
     }
     const added: { url: string; color: string | null }[] = [];
@@ -287,12 +221,12 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
       const fd = new FormData();
       fd.append("file", f);
       fd.append("folder", "offers");
-      const res = await fetch("/api/vendor/upload", { method: "POST", body: fd });
-      const data = await res.json().catch(() => ({ url: null }));
-      if (data.url) added.push({ url: data.url, color: null });
+      const upRes = await fetch("/api/vendor/upload", { method: "POST", body: fd });
+      const upData = await upRes.json().catch(() => ({ url: null }));
+      if (upData.url) added.push({ url: upData.url, color: null });
     }
     setGalleryUrls((prev) => [...prev, ...added].slice(0, MAX_EXTRA_IMAGES));
-    if (files.length > room) setMsg(`Se agregaron ${room}; máximo ${MAX_EXTRA_IMAGES} fotos extra`);
+    if (files.length > room) setMsg(`Se agregaron ${room}; m├íximo ${MAX_EXTRA_IMAGES} fotos extra`);
   }
 
   function moveGalleryUrl(i: number, dir: -1 | 1) {
@@ -321,7 +255,7 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
 
   async function handleSubmit() {
     if (!offName.trim() || !offPrice) {
-      setMsg("Completá nombre y precio");
+      setMsg("Complet├í nombre y precio");
       return;
     }
     setSaving(true);
@@ -368,7 +302,6 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
           stock_low_threshold: offStockControl ? offStockLowThreshold : null,
           requires_prep: offRequiresPrep,
           cash_discount_excluded: offCashExcluded,
-          pack_size: offPackSize ? (Number(offPackSize) >= 2 ? Math.floor(Number(offPackSize)) : null) : null,
         };
 
     const res = editingId
@@ -389,7 +322,7 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
       return;
     }
 
-    // Moda: guardar variantes + galería tras el producto.
+    // Moda: guardar variantes + galer├¡a tras el producto.
     const productId = editingId ?? data.offer?.id;
     if (isModa && productId) {
       if (offHasVariants) {
@@ -438,7 +371,7 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
   }
 
   async function deleteOffer(offer: OfferRow) {
-    if (!confirm(`¿Eliminar "${offer.name}"? Esta acción no se puede deshacer.`)) return;
+    if (!confirm(`┬┐Eliminar "${offer.name}"? Esta acci├│n no se puede deshacer.`)) return;
     await fetch(`/api/vendor/offers/${offer.id}`, { method: "DELETE" });
     if (editingId === offer.id) resetForm();
     setMsg(`${noun} eliminado`);
@@ -449,18 +382,18 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
     <Card className="p-4 mb-4">
       <div className="flex items-center justify-between mb-3">
         <h3 className="font-semibold">{editingId ? "Editar producto" : "Nuevo producto"}</h3>
-        <Button type="button" variant="ghost" size="sm" onClick={resetForm}>✕</Button>
+        <Button type="button" variant="ghost" size="sm" onClick={resetForm}>Ô£ò</Button>
       </div>
       <div className="space-y-3">
         <div className="grid grid-cols-2 gap-3">
           <div><Label>Nombre</Label><Input value={offName} onChange={(e) => setOffName(e.target.value)} required /></div>
           <div><Label>Precio ($)</Label><Input type="number" step="0.01" value={offPrice} onChange={(e) => setOffPrice(e.target.value)} required /></div>
         </div>
-        <div><Label>Precio promo ($)</Label><Input type="number" step="0.01" value={offPromoPrice} onChange={(e) => setOffPromoPrice(e.target.value)} placeholder="Vacío si no está en oferta" /></div>
-        <div><Label>Categoría</Label><select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={offCategory} onChange={(e) => setOffCategory(e.target.value)}>{categories.length === 0 && <option value="ropa">ropa</option>}{categories.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}</select></div>
+        <div><Label>Precio promo ($)</Label><Input type="number" step="0.01" value={offPromoPrice} onChange={(e) => setOffPromoPrice(e.target.value)} placeholder="Vac├¡o si no est├í en oferta" /></div>
+        <div><Label>Categor├¡a</Label><select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={offCategory} onChange={(e) => setOffCategory(e.target.value)}>{categories.length === 0 && <option value="ropa">ropa</option>}{categories.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}</select></div>
         <div className="flex items-center gap-2">
           <Switch checked={offHasVariants} onCheckedChange={setOffHasVariants} />
-          <span className="text-sm text-muted-foreground">Usar variantes (color × talle)</span>
+          <span className="text-sm text-muted-foreground">Usar variantes (color ├ù talle)</span>
         </div>
         {!offHasVariants && (
           <div className="grid grid-cols-2 gap-3">
@@ -472,7 +405,7 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
         {offHasVariants && (
           <div className="border border-border rounded-lg p-3 space-y-2">
             <div className="flex items-center justify-between">
-              <Label className="text-sm">Variantes (color × talle)</Label>
+              <Label className="text-sm">Variantes (color ├ù talle)</Label>
               <Button type="button" size="sm" variant="outline" onClick={addVariantRow}>+ Fila</Button>
             </div>
             <div className="hidden sm:grid sm:grid-cols-7 gap-2 text-xs font-medium text-muted-foreground px-1">
@@ -490,25 +423,25 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
                   <QuantityInput value={row.stock} onChange={(v) => updateVariantRow(i, "stock", v)} min={0} />
                 </div>
                 <div className="min-w-0">
-                  <Input className="h-8" value={row.sku} onChange={(e) => updateVariantRow(i, "sku", e.target.value)} placeholder="Código" />
+                  <Input className="h-8" value={row.sku} onChange={(e) => updateVariantRow(i, "sku", e.target.value)} placeholder="C├│digo" />
                 </div>
-                <Button type="button" variant="ghost" size="sm" className="text-red-600" onClick={() => setVariantRows((prev) => prev.filter((_, idx) => idx !== i))}>🗑️</Button>
+                <Button type="button" variant="ghost" size="sm" className="text-red-600" onClick={() => setVariantRows((prev) => prev.filter((_, idx) => idx !== i))}>­ƒùæ´©Å</Button>
               </div>
             ))}
           </div>
         )}
 
-        <div><Label>Guía de talles (opcional)</Label>
-          <Textarea value={offSizeGuide} onChange={(e) => setOffSizeGuide(e.target.value)} placeholder={"Una línea por talle:\nM: Pecho 96 cm · Largo 69 cm"} className="h-20" />
+        <div><Label>Gu├¡a de talles (opcional)</Label>
+          <Textarea value={offSizeGuide} onChange={(e) => setOffSizeGuide(e.target.value)} placeholder={"Una l├¡nea por talle:\nM: Pecho 96 cm ┬À Largo 69 cm"} className="h-20" />
           <div className="flex items-center gap-2 mt-1">
             <span className="text-xs text-muted-foreground">Plantilla:</span>
             <select
               className="h-8 rounded-md border border-input bg-background px-2 text-xs"
               value=""
               onChange={(e) => { if (e.target.value) setOffSizeGuide(templateToText(e.target.value)); }}
-              aria-label="Copiar plantilla de guía de talles"
+              aria-label="Copiar plantilla de gu├¡a de talles"
             >
-              <option value="">Copiar de…</option>
+              <option value="">Copiar deÔÇª</option>
               {SIZE_GUIDE_TEMPLATES.map((t) => (
                 <option key={t.id} value={t.id}>{t.label}</option>
               ))}
@@ -517,7 +450,7 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
           <p className="text-xs text-muted-foreground mt-0.5">Se muestra en la ficha del producto con el selector de talles.</p>
         </div>
 
-        <div><Label>Fotos extra ({galleryUrls.length}/{MAX_EXTRA_IMAGES}) — frente, espalda/en modelo, detalle de tela, escala</Label>
+        <div><Label>Fotos extra ({galleryUrls.length}/{MAX_EXTRA_IMAGES}) ÔÇö frente, espalda/en modelo, detalle de tela, escala</Label>
           <Input type="file" accept="image/*" multiple disabled={galleryUrls.length >= MAX_EXTRA_IMAGES} onChange={(e) => handleGalleryUpload(e.target.files)} />
           {galleryUrls.length > 0 && (
             <div className="flex gap-2 mt-2 flex-wrap">
@@ -526,11 +459,11 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
                 return (
                 <div key={i} className="relative h-16 w-16 rounded-lg overflow-hidden group border border-border">
                   <img src={g.url} alt={`Foto extra ${i + 1}`} className="w-full h-full object-cover" />
-                  <button type="button" onClick={() => setGalleryUrls((prev) => prev.filter((_, idx) => idx !== i))} title="Quitar" className="absolute top-0 right-0 bg-black/60 text-white text-xs h-4 w-4 rounded-full">✕</button>
+                  <button type="button" onClick={() => setGalleryUrls((prev) => prev.filter((_, idx) => idx !== i))} title="Quitar" className="absolute top-0 right-0 bg-black/60 text-white text-xs h-4 w-4 rounded-full">Ô£ò</button>
                   <div className="absolute bottom-0 inset-x-0 flex justify-center gap-0.5 bg-black/50 py-0.5 sm:opacity-0 sm:group-hover:opacity-100 transition">
-                    <button type="button" disabled={i === 0} onClick={() => moveGalleryUrl(i, -1)} title="Mover antes" className="text-white text-[10px] px-1 disabled:opacity-30">◀</button>
-                    <button type="button" disabled={i === galleryUrls.length - 1} onClick={() => moveGalleryUrl(i, 1)} title="Mover después" className="text-white text-[10px] px-1 disabled:opacity-30">▶</button>
-                    <button type="button" onClick={() => makeCoverFromGallery(i)} title="Hacer portada" className="text-amber-300 text-[10px] px-1">★</button>
+                    <button type="button" disabled={i === 0} onClick={() => moveGalleryUrl(i, -1)} title="Mover antes" className="text-white text-[10px] px-1 disabled:opacity-30">ÔùÇ</button>
+                    <button type="button" disabled={i === galleryUrls.length - 1} onClick={() => moveGalleryUrl(i, 1)} title="Mover despu├®s" className="text-white text-[10px] px-1 disabled:opacity-30">ÔûÂ</button>
+                    <button type="button" onClick={() => makeCoverFromGallery(i)} title="Hacer portada" className="text-amber-300 text-[10px] px-1">Ôÿà</button>
                   </div>
                   {colorOptions.length > 0 && (
                     <select
@@ -552,7 +485,7 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
             </div>
           )}
           {galleryUrls.length >= MAX_EXTRA_IMAGES && (
-            <p className="text-xs text-muted-foreground mt-1">Llegaste al máximo de {MAX_EXTRA_IMAGES} fotos extra (más la portada).</p>
+            <p className="text-xs text-muted-foreground mt-1">Llegaste al m├íximo de {MAX_EXTRA_IMAGES} fotos extra (m├ís la portada).</p>
           )}
         </div>
 
@@ -560,7 +493,7 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
           <div><Label>Foto principal (portada)</Label><Input type="file" accept="image/*" onChange={(e) => { const f = e.target.files?.[0] || null; if (f) { onCrop?.("offer"); setOffFile(f); setOffPreview(URL.createObjectURL(f)); } }} />{offPreview && <img src={offPreview} alt="Portada" className="mt-2 h-16 w-full object-cover rounded-lg" />}</div>
         </div>
 
-        <div><Label>Descripción</Label><Textarea value={offDesc} onChange={(e) => setOffDesc(e.target.value)} /></div>
+        <div><Label>Descripci├│n</Label><Textarea value={offDesc} onChange={(e) => setOffDesc(e.target.value)} /></div>
         <Button type="button" onClick={() => handleSubmit()} disabled={saving} className="w-full">{saving ? "Guardando..." : editingId ? "Guardar" : "Agregar"}</Button>
       </div>
     </Card>
@@ -568,29 +501,28 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
 
   const offerFormNode = isModa ? modaFormNode : (
     <div className="space-y-3">
-        <OfferForm
-          categories={categories}
-          editingId={editingId}
-          offName={offName} setOffName={setOffName}
-          offDesc={offDesc} setOffDesc={setOffDesc}
-          offPrice={offPrice} setOffPrice={setOffPrice}
-          offCategory={offCategory} setOffCategory={setOffCategory}
-          offFile={offFile} setOffFile={setOffFile}
-          offPreview={offPreview} setOffPreview={setOffPreview}
-          saving={saving}
-          onSubmit={handleSubmit}
-          onClose={resetForm}
-          showStock={showStock}
-          offStock={offStock} setOffStock={setOffStock}
-          offStockControl={offStockControl} setOffStockControl={setOffStockControl}
-          offPromoPrice={offPromoPrice} setOffPromoPrice={setOffPromoPrice}
-          offStockLowThreshold={offStockLowThreshold} setOffStockLowThreshold={setOffStockLowThreshold}
-          showPrep={showPrep}
-          offRequiresPrep={offRequiresPrep} setOffRequiresPrep={setOffRequiresPrep}
-          offCashExcluded={offCashExcluded} setOffCashExcluded={setOffCashExcluded}
-          offPackSize={offPackSize} setOffPackSize={setOffPackSize}
-          noun={noun.toLowerCase()}
-        />
+      <OfferForm
+        categories={categories}
+        editingId={editingId}
+        offName={offName} setOffName={setOffName}
+        offDesc={offDesc} setOffDesc={setOffDesc}
+        offPrice={offPrice} setOffPrice={setOffPrice}
+        offCategory={offCategory} setOffCategory={setOffCategory}
+        offFile={offFile} setOffFile={setOffFile}
+        offPreview={offPreview} setOffPreview={setOffPreview}
+        saving={saving}
+        onSubmit={handleSubmit}
+        onClose={resetForm}
+        showStock={showStock}
+        offStock={offStock} setOffStock={setOffStock}
+        offStockControl={offStockControl} setOffStockControl={setOffStockControl}
+        offPromoPrice={offPromoPrice} setOffPromoPrice={setOffPromoPrice}
+        offStockLowThreshold={offStockLowThreshold} setOffStockLowThreshold={setOffStockLowThreshold}
+        showPrep={showPrep}
+        offRequiresPrep={offRequiresPrep} setOffRequiresPrep={setOffRequiresPrep}
+        offCashExcluded={offCashExcluded} setOffCashExcluded={setOffCashExcluded}
+        noun={noun.toLowerCase()}
+      />
       {editingId && <ProductModifiersBlock productId={editingId} productName={offName} />}
     </div>
   );
@@ -598,7 +530,7 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="font-display text-xl font-semibold">{isModa || isComercio ? "Catálogo" : "Menú y catálogo"}</h2>
+        <h2 className="font-display text-xl font-semibold">{isModa || isComercio ? "Cat├ílogo" : "Men├║ y cat├ílogo"}</h2>
         <Button size="sm" onClick={() => { if (editingId || showForm) resetForm(); else setShowForm(true); }}>
           {editingId || showForm ? "Cancelar" : `+ ${noun}`}
         </Button>
@@ -606,53 +538,13 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
 
       {msg && <p className="text-sm text-green-600">{msg}</p>}
 
-      {/* Barra de búsqueda y filtros */}
-      <div className="flex flex-wrap gap-2 items-center">
-        <Input
-          placeholder="Buscar producto…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="max-w-xs"
-        />
-        <select className="rounded-md border border-input bg-background px-2 py-1 text-sm" value={catFilter} onChange={(e) => setCatFilter(e.target.value)}>
-          <option value="all">Todas las categorías</option>
-          {categories.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}
-        </select>
-        <select className="rounded-md border border-input bg-background px-2 py-1 text-sm" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as any)}>
-          <option value="all">Todos</option>
-          <option value="active">Activos</option>
-          <option value="paused">Pausados</option>
-          <option value="nostock">Sin stock</option>
-        </select>
-        <span className="text-xs text-muted-foreground">{filteredOffers.length} producto{filteredOffers.length !== 1 ? "s" : ""}</span>
-      </div>
-
-      {/* Operaciones masivas */}
-      <div className="flex flex-wrap gap-2 items-center">
-        {bulkOpen ? (
-          <>
-            <select className="rounded-md border border-input bg-background px-2 py-1 text-sm" value={bulkOp} onChange={(e) => setBulkOp(e.target.value as any)}>
-              <option value="pct_up">Subir %</option>
-              <option value="pct_down">Bajar %</option>
-              <option value="add">Sumar $</option>
-              <option value="set">Precio fijo $</option>
-            </select>
-            <Input type="number" step="0.01" value={bulkValue} onChange={(e) => setBulkValue(e.target.value)} placeholder="Valor" className="w-28" />
-            <Button size="sm" onClick={applyBulk} disabled={bulkSaving}>{bulkSaving ? "Aplicando…" : "Aplicar"}</Button>
-            <Button size="sm" variant="ghost" onClick={() => setBulkOpen(false)}>Cancelar</Button>
-          </>
-        ) : (
-          <Button size="sm" variant="outline" onClick={() => setBulkOpen(true)}>⚡ Acción masiva</Button>
-        )}
-      </div>
-
       {showForm && !editingId && offerFormNode}
 
       {loading ? (
         <div className="space-y-2">{[...Array(4)].map((_, i) => <div key={i} className="h-16 rounded-xl bg-muted animate-pulse" />)}</div>
       ) : (
         <OfferList
-          offers={filteredOffers}
+          offers={offers}
           onEdit={startEdit}
           onToggleFeatured={toggleFeatured}
           onToggleAvailable={toggleAvailable}
@@ -661,7 +553,7 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
           editForm={editingId ? offerFormNode : undefined}
           onEditModifiers={(offer) => startEdit(offer)}
           costByProduct={showCosts ? costByProduct : undefined}
-          emptyText={`Todavía no cargaste ${isModa || isComercio ? "productos" : "platos"}.`}
+          emptyText={`Todav├¡a no cargaste ${isModa || isComercio ? "productos" : "platos"}.`}
         />
       )}
     </div>

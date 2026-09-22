@@ -12,34 +12,56 @@ import { orderNeedsKitchen } from "@/lib/order-utils";
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 
+/**
+ * Verificación de firma de webhooks de Mercado Pago (esquema v1).
+ * Header: `x-signature: ts=<ts>,v1=<sha256hex>`.
+ * MP NO firma el body: firma el manifiesto
+ *   `id:<data.id>;request-id:<x-request-id>;ts:<ts>;`
+ * con HMAC-SHA256 usando el secret del panel (Docs MP → Webhooks → "Validar
+ * firma"). Por eso la parseamos por clave/valor y comparamos timing-safe.
+ */
 function verifyMercadoPagoSignature(
-  body: string,
   signatureHeader: string | null,
+  requestId: string | null,
+  dataId: string | null,
   webhookSecret: string
 ): boolean {
-  if (!signatureHeader) return false;
-  const parts = signatureHeader.split(",");
-  if (parts.length < 3) return false;
-  const hash = parts[2];
-  const expected = crypto
-    .createHmac("sha256", webhookSecret)
-    .update(body)
-    .digest("hex");
-  return hash === expected;
+  if (!signatureHeader || !requestId || !dataId) return false;
+  const parsed: Record<string, string> = {};
+  for (const part of signatureHeader.split(",")) {
+    const idx = part.indexOf("=");
+    if (idx === -1) continue;
+    parsed[part.slice(0, idx).trim()] = part.slice(idx + 1).trim();
+  }
+  const ts = parsed["ts"];
+  const v1 = parsed["v1"];
+  if (!ts || !v1) return false;
+  const manifest = `id:${dataId};request-id:${requestId};ts:${ts};`;
+  const expected = crypto.createHmac("sha256", webhookSecret).update(manifest).digest("hex");
+  const a = Buffer.from(expected, "utf8");
+  const b = Buffer.from(v1, "utf8");
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
 export async function POST(request: Request) {
   const bodyText = await request.text();
   const MP_WEBHOOK_SECRET = process.env.MP_WEBHOOK_SECRET;
+  const body = JSON.parse(bodyText);
 
   if (MP_WEBHOOK_SECRET) {
     const signature = request.headers.get("x-signature");
-    if (!verifyMercadoPagoSignature(bodyText, signature, MP_WEBHOOK_SECRET)) {
+    const requestId = request.headers.get("x-request-id");
+    const url = new URL(request.url);
+    const dataId =
+      url.searchParams.get("data.id") ||
+      (body?.data?.id != null ? String(body.data.id) : null);
+    if (!verifyMercadoPagoSignature(signature, requestId, dataId, MP_WEBHOOK_SECRET)) {
+      console.warn(
+        `[mp-webhook] firma rechazada (data.id=${dataId || "?"}, request-id=${requestId || "?"})`
+      );
       return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
     }
   }
-
-  const body = JSON.parse(bodyText);
 
   if (body.type === "payment") {
     const paymentId = body.data?.id;

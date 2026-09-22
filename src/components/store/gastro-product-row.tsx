@@ -11,6 +11,7 @@ import { useToast } from "@/lib/toast";
 import { volumeBadgeText } from "@/lib/volume-pricing";
 import {
   BIG_GROUP_THRESHOLD,
+  activeOptions,
   categoriesOf,
   effectiveMax,
   filterOptions,
@@ -413,8 +414,9 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
                     const missing = missingCount(mod, groupSelected.length);
                     const q = queries[mod.group_name] || "";
                     const activeCat = cats[mod.group_name] ?? null;
-                    const catsList = isBig ? categoriesOf(mod.options) : [];
-                    const visible = isBig ? filterOptions(mod.options, q, activeCat) : mod.options;
+                    const usable = activeOptions(mod.options);
+                    const catsList = isBig ? categoriesOf(usable) : [];
+                    const visible = isBig ? filterOptions(usable, q, activeCat) : usable;
                     return (
                       <div key={mod.id}>
                         <div className="flex items-center justify-between mb-2">

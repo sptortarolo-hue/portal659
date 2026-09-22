@@ -12,6 +12,8 @@ function normalizeOptions(options: unknown): ModifierOption[] {
       price_mod: Number(o?.price_mod ?? o?.price ?? 0) || 0,
       // Familia opcional (filtro en la hoja de gustos). Se guarda en el JSONB.
       ...(String(o?.category ?? "").trim() ? { category: String(o.category).trim().slice(0, 40) } : {}),
+      // Gusto pausado (ej: se acabó el pistacho): se oculta sin borrarlo.
+      ...(o?.available === false ? { available: false } : {}),
     }))
     .filter((o) => o.label !== "");
 }

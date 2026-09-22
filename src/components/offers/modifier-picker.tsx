@@ -5,6 +5,7 @@ import type { ProductModifier, ModifierOption } from "@/types/database";
 import type { CartModifier } from "@/lib/cart";
 import {
   BIG_GROUP_THRESHOLD,
+  activeOptions,
   categoriesOf,
   effectiveMax,
   filterOptions,
@@ -142,7 +143,7 @@ export function ModifierPicker({
                     </span>
                   </div>
                   <div className="space-y-1.5">
-                    {mod.options.map((opt) => {
+                    {activeOptions(mod.options).map((opt) => {
                       const isChecked = groupSelected.some((o) => o.label === opt.label);
                       return (
                         <button
@@ -190,8 +191,9 @@ export function ModifierPicker({
             // Modo hoja (grupo grande, ej: gustos de heladería).
             const q = queries[mod.group_name] || "";
             const activeCat = cats[mod.group_name] ?? null;
-            const catsList = categoriesOf(mod.options);
-            const visible = filterOptions(mod.options, q, activeCat);
+            const usable = activeOptions(mod.options);
+            const catsList = categoriesOf(usable);
+            const visible = filterOptions(usable, q, activeCat);
             return (
               <div key={mod.id} className="mb-4 rounded-xl bg-primary/5 border border-primary/20 p-3 -mx-1">
                 <div className="flex items-center justify-between mb-1">

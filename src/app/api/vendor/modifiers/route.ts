@@ -1,5 +1,6 @@
 import { getVendorByRequest } from "@/lib/vendor-utils";
 import { queryMany, queryOne, withTransaction } from "@/lib/db";
+import { isMissingColumnError, queryEffectiveModifiers } from "@/lib/modifier-rules";
 import { NextResponse } from "next/server";
 import type { ModifierOption } from "@/types/database";
 
@@ -12,6 +13,8 @@ function normalizeOptions(options: unknown): ModifierOption[] {
       price_mod: Number(o?.price_mod ?? o?.price ?? 0) || 0,
       // Familia opcional (filtro en la hoja de gustos). Se guarda en el JSONB.
       ...(String(o?.category ?? "").trim() ? { category: String(o.category).trim().slice(0, 40) } : {}),
+      // Gusto pausado (ej: se acabó el pistacho): se oculta sin borrarlo.
+      ...(o?.available === false ? { available: false } : {}),
     }))
     .filter((o) => o.label !== "");
 }
@@ -35,29 +38,38 @@ export async function GET(request: Request) {
   let groups;
   let links;
   if (productId) {
-    groups = await queryMany<Record<string, unknown>>(
-      `SELECT g.*, l.position
-       FROM modifier_groups g
-       JOIN product_modifier_links l ON l.group_id = g.id
-       WHERE l.product_id = $1
-       ORDER BY g.is_variant DESC, l.position ASC`,
-      [productId]
-    );
-    return NextResponse.json({ groups: groups || [], assignments: { [productId]: (groups || []).map((g) => g.id) }, modifiers: (groups || []).map((g) => ({ ...g, product_id: productId })) });
+    // Valores efectivos por producto (override por link si existe).
+    const eff = await queryEffectiveModifiers(queryMany, [productId]);
+    groups = eff;
+    return NextResponse.json({ groups: eff || [], assignments: { [productId]: (eff || []).map((g) => g.id) }, modifiers: (eff || []).map((g) => ({ ...g, product_id: productId })) });
   }
 
   groups = await queryMany<Record<string, unknown>>(
     `SELECT * FROM modifier_groups WHERE vendor_id = $1 ORDER BY is_variant DESC, created_at ASC`,
     [vendor.id]
   );
-  links = await queryMany<Record<string, unknown>>(
-    `SELECT l.product_id, l.group_id, l.position
-     FROM product_modifier_links l
-     JOIN modifier_groups g ON g.id = l.group_id
-     WHERE g.vendor_id = $1
-     ORDER BY g.is_variant DESC, l.position ASC`,
-    [vendor.id]
-  );
+  // Links con overrides por producto (NULL = default del grupo). Fallback si
+  // la migración migrate-link-overrides.sql aún no se aplicó.
+  try {
+    links = await queryMany<Record<string, unknown>>(
+      `SELECT l.product_id, l.group_id, l.position, l.max_selections AS link_max, l.min_selections AS link_min
+       FROM product_modifier_links l
+       JOIN modifier_groups g ON g.id = l.group_id
+       WHERE g.vendor_id = $1
+       ORDER BY g.is_variant DESC, l.position ASC`,
+      [vendor.id]
+    );
+  } catch (e) {
+    if (!isMissingColumnError(e)) throw e;
+    links = await queryMany<Record<string, unknown>>(
+      `SELECT l.product_id, l.group_id, l.position
+       FROM product_modifier_links l
+       JOIN modifier_groups g ON g.id = l.group_id
+       WHERE g.vendor_id = $1
+       ORDER BY g.is_variant DESC, l.position ASC`,
+      [vendor.id]
+    );
+  }
 
   const productIdsByGroup: Record<string, string[]> = {};
   const assignments: Record<string, string[]> = {};
@@ -69,7 +81,9 @@ export async function GET(request: Request) {
     (productIdsByGroup[gid] ||= []).push(pid);
     (assignments[pid] ||= []).push(gid);
     const group = (groups || []).find((g) => g.id === gid);
-    if (group) flat.push({ ...group, product_id: pid, position: l.position });
+    // Overrides por link (NULL = default del grupo). Ausentes si la migración
+    // migrate-link-overrides.sql aún no se aplicó.
+    if (group) flat.push({ ...group, product_id: pid, position: l.position, link_max: l.link_max ?? null, link_min: l.link_min ?? null });
   }
 
   const groupsWithMeta = (groups || []).map((g) => ({

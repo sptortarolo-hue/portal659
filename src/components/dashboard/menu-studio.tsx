@@ -62,6 +62,8 @@ type Props = {
   isComercio?: boolean;
   /** Plan del comercio: si no tiene recetas, la solapa Receta muestra PlanLock. */
   hasRecipes?: boolean;
+  /** Muestra el Kit heladería en la solapa Opciones (solo gastronomía). */
+  enableHeladeriaKit?: boolean;
 };
 
 type View = "productos" | "categorias" | "opciones" | "volumen";
@@ -110,6 +112,7 @@ export function MenuStudio({
   showCosts = false,
   hasRecipes = false,
   isComercio = false,
+  enableHeladeriaKit = false,
 }: Props) {
   const [view, setView] = useState<View>("productos");
   const [showImport, setShowImport] = useState(false);
@@ -759,7 +762,11 @@ export function MenuStudio({
       )}
 
       {view === "opciones" && (
-        <ModifierLibrary products={offers.map((o) => ({ id: o.id, name: o.name }))} />
+        <ModifierLibrary
+          products={offers.map((o) => ({ id: o.id, name: o.name }))}
+          onChanged={reload}
+          enableHeladeriaKit={enableHeladeriaKit}
+        />
       )}
 
       {view === "volumen" && (

@@ -169,7 +169,7 @@ function GroupForm({
                 value={o.label}
                 onChange={(e) => setOpt(i, { label: e.target.value })}
                 placeholder="Opción"
-                className="flex-1"
+                className={`flex-1 ${o.available === false ? "opacity-50" : ""}`}
               />
               <Input
                 value={o.category || ""}
@@ -186,6 +186,16 @@ function GroupForm({
                 placeholder="$"
                 className="w-20"
               />
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                title={o.available === false ? "Pausado (oculto en la venta). Tocá para reactivar." : "Pausar (ocultar en la venta sin borrar)"}
+                className={o.available === false ? "text-amber-600" : "text-muted-foreground"}
+                onClick={() => setOpt(i, o.available === false ? { available: undefined } : { available: false })}
+              >
+                {o.available === false ? "🚫" : "👁"}
+              </Button>
               <Button type="button" variant="ghost" size="sm" className="text-red-600" onClick={() => removeOpt(i)} disabled={options.length <= 1}>
                 ✕
               </Button>
@@ -247,8 +257,141 @@ function GroupForm({
   );
 }
 
+/** Kit heladería de un click: 1/4, 1/2, 1 kg (+ cucuruchos) con UN grupo
+ *  "Gustos" y override de cantidad por tamaño. Solo gastronomía. */
+export function HeladeriaKitCard({ onDone }: { onDone?: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [prices, setPrices] = useState({ cuarto: "", medio: "", kilo: "", cuc2: "", cuc3: "" });
+  const [maxs, setMaxs] = useState({ cuarto: "2", medio: "3", kilo: "5" });
+  const [mins, setMins] = useState({ cuarto: "1", medio: "1", kilo: "1" });
+  const [withCuc, setWithCuc] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [error, setError] = useState("");
+
+  function setP(k: keyof typeof prices, v: string) {
+    setPrices((p) => ({ ...p, [k]: v }));
+  }
+
+  async function submit() {
+    setError("");
+    setMsg("");
+    setSaving(true);
+    try {
+      const res = await fetch("/api/vendor/heladeria-kit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prices: {
+            cuarto: Number(prices.cuarto) || 0,
+            medio: Number(prices.medio) || 0,
+            kilo: Number(prices.kilo) || 0,
+            cucurucho_2: Number(prices.cuc2) || 0,
+            cucurucho_3: Number(prices.cuc3) || 0,
+          },
+          max: { cuarto: maxs.cuarto, medio: maxs.medio, kilo: maxs.kilo },
+          min: { cuarto: mins.cuarto, medio: mins.medio, kilo: mins.kilo },
+          include_cucuruchos: withCuc,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok || json.error) throw new Error(json.error || "No se pudo crear el kit");
+      const n = (json.products || []).length;
+      setMsg(`Kit creado: ${n} productos + grupo Gustos con 28 sabores. Ajustá precios y gustos a gusto.`);
+      setOpen(false);
+      onDone?.();
+    } catch (e) {
+      setError((e as Error).message || "No se pudo crear el kit");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="w-full rounded-xl border border-dashed border-primary/40 bg-primary/5 px-4 py-3 text-sm font-medium text-primary hover:bg-primary/10 transition-colors"
+      >
+        🍨 Kit heladería: crear 1/4, 1/2, 1 kg + gustos de un click
+      </button>
+    );
+  }
+
+  const priceInput = (k: keyof typeof prices, label: string) => (
+    <div>
+      <Label className="text-xs text-muted-foreground">{label}</Label>
+      <Input
+        type="number"
+        min={0}
+        step="0.01"
+        value={prices[k]}
+        onChange={(e) => setP(k, e.target.value)}
+        placeholder="$"
+        className="mt-1"
+      />
+    </div>
+  );
+
+  return (
+    <Card className="p-4 border-primary/30 space-y-3">
+      <div className="flex items-center justify-between">
+        <h4 className="font-medium text-sm">🍨 Kit heladería</h4>
+        <Button type="button" variant="ghost" size="sm" onClick={() => setOpen(false)}>Cerrar</Button>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Crea los tamaños con venta directa (sin cocina) y un único grupo “Gustos” con 28 sabores
+        iniciales. La cantidad por tamaño se configura acá y queda editable por producto después.
+      </p>
+      <div className="grid grid-cols-3 gap-2">
+        {priceInput("cuarto", "1/4 kg $")}
+        {priceInput("medio", "1/2 kg $")}
+        {priceInput("kilo", "1 kg $")}
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        {(["cuarto", "medio", "kilo"] as const).map((k) => (
+          <div key={k} className="flex gap-1">
+            <div className="flex-1">
+              <Label className="text-xs text-muted-foreground">Mín {k === "cuarto" ? "1/4" : k === "medio" ? "1/2" : "1kg"}</Label>
+              <Input
+                type="number" min={0} max={8} value={mins[k]}
+                onChange={(e) => setMins((p) => ({ ...p, [k]: e.target.value }))}
+                className="mt-1" title="Mínimo de gustos"
+              />
+            </div>
+            <div className="flex-1">
+              <Label className="text-xs text-muted-foreground">Máx</Label>
+              <Input
+                type="number" min={1} max={8} value={maxs[k]}
+                onChange={(e) => setMaxs((p) => ({ ...p, [k]: e.target.value }))}
+                className="mt-1" title="Máximo de gustos"
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+      <label className="flex items-center gap-2 text-sm cursor-pointer">
+        <input type="checkbox" checked={withCuc} onChange={(e) => setWithCuc(e.target.checked)} className="h-4 w-4" />
+        Incluir cucuruchos (2 y 3 bochas, con sus gustos)
+      </label>
+      {withCuc && (
+        <div className="grid grid-cols-2 gap-2">
+          {priceInput("cuc2", "Cucurucho 2 bochas $")}
+          {priceInput("cuc3", "Cucurucho 3 bochas $")}
+        </div>
+      )}
+      {error && <p className="text-sm text-red-600">{error}</p>}
+      {msg && <p className="text-sm text-green-600">{msg}</p>}
+      <Button type="button" className="w-full" disabled={saving} onClick={submit}>
+        {saving ? "Creando..." : "Crear kit"}
+      </Button>
+    </Card>
+  );
+}
+
 /** Biblioteca de grupos de modificadores (definidos una vez, asignados a N platos). */
-export function ModifierLibrary({ products }: { products: Product[] }) {
+export function ModifierLibrary({ products, onChanged, enableHeladeriaKit = false }: { products: Product[]; onChanged?: () => void; enableHeladeriaKit?: boolean }) {
   const [groups, setGroups] = useState<GroupRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
@@ -309,6 +452,9 @@ export function ModifierLibrary({ products }: { products: Product[] }) {
 
   return (
     <div className="space-y-3">
+      {enableHeladeriaKit && (
+        <HeladeriaKitCard onDone={() => { load(); onChanged?.(); }} />
+      )}
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
           Definí cada grupo una vez y asignalo a 1 o N platos.
@@ -392,10 +538,16 @@ export function ProductModifiersBlock({
 }) {
   const [groups, setGroups] = useState<GroupRow[]>([]);
   const [assigned, setAssigned] = useState<string[]>([]);
+  // Filas del link (traen link_max/link_min = override propio de este plato).
+  const [flat, setFlat] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
+  // Edición del override de cantidad para un grupo asignado.
+  const [ovEditing, setOvEditing] = useState<string | null>(null);
+  const [ovMax, setOvMax] = useState("");
+  const [ovMin, setOvMin] = useState("");
 
   const load = useCallback(async () => {
     if (!productId) {
@@ -407,6 +559,7 @@ export function ProductModifiersBlock({
     if (!data.error) {
       setGroups(data.groups || []);
       setAssigned((data.assignments && data.assignments[productId]) || []);
+      setFlat(((data.modifiers || []) as Record<string, unknown>[]).filter((m) => m.product_id === productId));
     }
     setLoading(false);
   }, [productId]);
@@ -471,6 +624,26 @@ export function ProductModifiersBlock({
     if (!res.ok || json.error) throw new Error(json.error || "No se pudo crear");
     setCreating(false);
     setMsg("Grupo creado y asignado");
+    load();
+  }
+
+  async function saveOverride(gid: string) {
+    setBusy(gid);
+    const res = await fetch("/api/vendor/modifier-links", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        group_id: gid,
+        product_id: productId,
+        max_selections: ovMax === "" ? null : Number(ovMax),
+        min_selections: ovMin === "" ? null : Number(ovMin),
+      }),
+    });
+    setBusy(null);
+    const json = await res.json();
+    if (json.error) return setMsg(json.error);
+    setOvEditing(null);
+    setMsg("Cantidad por plato actualizada");
     load();
   }
 
@@ -542,9 +715,18 @@ export function ProductModifiersBlock({
         </p>
       ) : (
         <div className="space-y-1.5">
-          {assignedGroups.map((g, i) => (
-            <div key={g.id} className="flex items-center justify-between gap-2 rounded-lg border border-border px-3 py-2">
-              <div className="flex items-center gap-2 min-w-0">
+          {assignedGroups.map((g, i) => {
+            // Override propio de este plato (NULL = default del grupo).
+            const link = flat.find((m) => m.id === g.id);
+            const linkMax = link?.link_max != null ? Number(link.link_max) : null;
+            const linkMin = link?.link_min != null ? Number(link.link_min) : null;
+            const effMax = linkMax ?? g.max_selections;
+            const effMin = (g.required || g.is_variant) ? (linkMin ?? (g.min_selections ?? 1)) : 0;
+            const hasOverride = linkMax != null || linkMin != null;
+            return (
+            <div key={g.id} className="rounded-lg border border-border px-3 py-2">
+              <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0 flex-wrap">
                 <span className={`text-sm font-medium ${g.is_variant ? "text-primary" : ""}`}>
                   {g.is_variant ? "⭐ " : ""}{g.group_name}
                 </span>
@@ -554,14 +736,49 @@ export function ProductModifiersBlock({
                 {g.required && !g.is_variant && (
                   <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">obligatorio</span>
                 )}
+                <span
+                  className={`text-[10px] px-1.5 py-0.5 rounded-full ${hasOverride ? "bg-primary/10 text-primary font-medium" : "bg-muted text-muted-foreground"}`}
+                  title={hasOverride ? "Cantidad propia de este plato (override del default del grupo)" : "Default del grupo"}
+                >
+                  máx {effMax}{effMin > 0 ? ` · mín ${effMin}` : ""}
+                </span>
               </div>
               <div className="flex items-center gap-1 flex-shrink-0">
+                <button
+                  type="button"
+                  title="Cantidad propia de este plato (ej: 2 gustos en el 1/4)"
+                  onClick={() => {
+                    if (ovEditing === g.id) return setOvEditing(null);
+                    setOvMax(linkMax != null ? String(linkMax) : "");
+                    setOvMin(linkMin != null ? String(linkMin) : "");
+                    setOvEditing(g.id);
+                  }}
+                  className={`p-1 rounded hover:bg-muted ${ovEditing === g.id ? "text-primary" : "text-muted-foreground"}`}
+                >✎</button>
                 <button type="button" onClick={() => move(g.id, -1)} disabled={i === 0 || busy === g.id} className="p-1 rounded hover:bg-muted text-muted-foreground disabled:opacity-30">↑</button>
                 <button type="button" onClick={() => move(g.id, 1)} disabled={i === assignedGroups.length - 1 || busy === g.id} className="p-1 rounded hover:bg-muted text-muted-foreground disabled:opacity-30">↓</button>
                 <button type="button" onClick={() => unassignGroup(g.id)} disabled={busy === g.id} className="p-1 rounded hover:bg-red-50 text-red-600">✕</button>
               </div>
+              </div>
+              {ovEditing === g.id && (
+                <div className="flex items-center gap-2 mt-2 pt-2 border-t border-border">
+                  <span className="text-[11px] text-muted-foreground">En este plato (vacío = default):</span>
+                  <Input
+                    type="number" min={0} placeholder="Mín" title="Mínimo en este plato"
+                    value={ovMin} onChange={(e) => setOvMin(e.target.value)} className="w-20 h-8 text-xs"
+                  />
+                  <Input
+                    type="number" min={1} placeholder="Máx" title="Máximo en este plato"
+                    value={ovMax} onChange={(e) => setOvMax(e.target.value)} className="w-20 h-8 text-xs"
+                  />
+                  <Button type="button" size="sm" className="h-8 text-xs" disabled={busy === g.id} onClick={() => saveOverride(g.id)}>
+                    Guardar
+                  </Button>
+                </div>
+              )}
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

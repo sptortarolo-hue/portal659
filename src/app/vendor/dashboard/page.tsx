@@ -1191,6 +1191,7 @@ function VendorDashboardInner() {
                     showCosts={isGastro}
                     hasRecipes={false}
                     isComercio={isComercio}
+                    enableHeladeriaKit={isGastro}
                   />
                 ) : (
                   <MemoProductManager

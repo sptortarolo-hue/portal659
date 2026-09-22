@@ -80,6 +80,11 @@ export function missingText(mod: ModifierGroupRule, selectedCount: number): stri
   return missing === 1 ? "Te falta 1" : `Te faltan ${missing}`;
 }
 
+/** Opciones visibles para elegir (excluye pausadas con available === false). */
+export function activeOptions(options: ModifierOption[]): ModifierOption[] {
+  return (options || []).filter((o) => o?.available !== false);
+}
+
 /** Familias presentes en las opciones (para chips de filtro). */
 export function categoriesOf(options: ModifierOption[]): string[] {
   const seen: string[] = [];

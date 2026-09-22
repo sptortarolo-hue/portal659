@@ -1,5 +1,6 @@
 import { getVendorByRequest, resolveCategoryName } from "@/lib/vendor-utils";
 import { queryMany, queryOne } from "@/lib/db";
+import { queryEffectiveModifiers } from "@/lib/modifier-rules";
 import { resolveVendorPlan } from "@/lib/plans";
 import { NextResponse } from "next/server";
 import type { Plan, Vendor } from "@/types/database";
@@ -19,15 +20,9 @@ export async function GET(request: Request) {
   let allModifiers: Record<string, unknown>[] = [];
   if (productIds.length > 0) {
     try {
-      allModifiers = await queryMany<Record<string, unknown>>(
-        `SELECT g.id, g.group_name, g.options, g.required, g.max_selections, g.is_variant,
-                l.product_id, l.position
-         FROM product_modifier_links l
-         JOIN modifier_groups g ON g.id = l.group_id
-         WHERE l.product_id = ANY($1)
-         ORDER BY g.is_variant DESC, l.position ASC`,
-        [productIds]
-      );
+      // Valores efectivos (override por link si existe) con fallback por nivel
+      // de migración adentro del helper; legacy solo si no hay tablas nuevas.
+      allModifiers = await queryEffectiveModifiers(queryMany, productIds);
     } catch {
       try {
         allModifiers = await queryMany<Record<string, unknown>>(

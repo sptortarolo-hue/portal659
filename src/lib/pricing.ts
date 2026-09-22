@@ -1,5 +1,6 @@
 import type { Tx } from "@/lib/db";
 import type { OrderItem } from "@/types/database";
+import { queryEffectiveModifiers, type EffectiveModifierRow } from "@/lib/modifier-rules";
 import { cashAppliesToItem, cashPrice, normalizeCashPct } from "@/lib/cash-discount";
 import {
   applyVolumePricing,
@@ -131,6 +132,8 @@ export async function resolveOrderPricing(opts: {
   // cantidades (caso heladería: "Gustos" min 2 / max 2 en el 1/4 kg).
   type GroupRule = { name: string; required: boolean; max: number; min: number | null; labels: Set<string> };
   let rulesByProduct = new Map<string, GroupRule[]>();
+  // Gustos pausados (available === false): se rechazan como no disponibles.
+  let unavailableByProduct = new Map<string, Set<string>>();
   if (productIds.size) {
     const modRows = await tx.query<{ product_id: string; options: { label?: string; price_mod?: number }[] }>(
       `SELECT l.product_id, g.options
@@ -153,34 +156,28 @@ export async function resolveOrderPricing(opts: {
         inner.set(label, Number(o?.price_mod ?? 0) || 0);
       }
     }
-    // Reglas de cantidad por grupo. Si la migración migrate-min-selections.sql
-    // aún no se aplicó, reintentamos sin la columna (min = legacy).
-    type RuleRow = { product_id: string; group_name: string; required: boolean; max_selections: number; min_selections: number | null; options: { label?: string }[] };
-    let ruleRows: RuleRow[] = [];
-    try {
-      ruleRows = await tx.query<RuleRow>(
-        `SELECT l.product_id, g.group_name, g.required, g.max_selections, g.min_selections, g.options
-         FROM product_modifier_links l
-         JOIN modifier_groups g ON g.id = l.group_id
-         WHERE l.product_id = ANY($1)`,
-        [[...productIds]]
-      );
-    } catch {
-      const legacy = await tx.query<Omit<RuleRow, "min_selections">>(
-        `SELECT l.product_id, g.group_name, g.required, g.max_selections, g.options
-         FROM product_modifier_links l
-         JOIN modifier_groups g ON g.id = l.group_id
-         WHERE l.product_id = ANY($1)`,
-        [[...productIds]]
-      );
-      ruleRows = (legacy || []).map((r) => ({ ...r, min_selections: null }));
-    }
+    // Reglas de cantidad por grupo (efectivas: override por link si existe).
+    // El helper cae por nivel de migración solo (columna inexistente).
+    const ruleRows: EffectiveModifierRow[] = await queryEffectiveModifiers(
+      <T extends Record<string, unknown>>(sql: string, params: unknown[]) => tx.query<T>(sql, params),
+      [...productIds]
+    );
     rulesByProduct = new Map();
+    unavailableByProduct = new Map();
     for (const r of ruleRows || []) {
       const labels = new Set<string>();
       for (const o of Array.isArray(r.options) ? r.options : []) {
         const label = String(o?.label ?? "").trim();
-        if (label) labels.add(label);
+        if (!label) continue;
+        labels.add(label);
+        if (o?.available === false) {
+          let un = unavailableByProduct.get(r.product_id);
+          if (!un) {
+            un = new Set();
+            unavailableByProduct.set(r.product_id, un);
+          }
+          un.add(label);
+        }
       }
       const list = rulesByProduct.get(r.product_id) || [];
       list.push({
@@ -291,7 +288,11 @@ export async function resolveOrderPricing(opts: {
     let modsPerUnit = 0;
     if (labels.length > 0) {
       const modsForProduct = modifierMap.get(product.id);
+      const unavailable = unavailableByProduct.get(product.id);
       for (const label of labels) {
+        if (unavailable?.has(label)) {
+          throw new PricingError(`"${label}" no está disponible por el momento en "${product.name}".`);
+        }
         const mod = modsForProduct?.get(label);
         if (mod == null) {
           throw new PricingError(`Modificador "${label}" no existe más en "${product.name}".`);

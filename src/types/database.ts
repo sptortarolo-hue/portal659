@@ -120,6 +120,8 @@ export type ModifierOption = {
   price_mod: number;
   /** Familia opcional para agrupar/filtrar (ej: "Cremas", "Chocolates"). Vive en el JSONB: sin migración. */
   category?: string;
+  /** Gusto pausado (ej: se acabó el pistacho): se oculta sin borrarlo. Ausente = disponible. */
+  available?: boolean;
 };
 
 /** Unidad base de un insumo: peso (g), volumen (ml) o unidad (u). */

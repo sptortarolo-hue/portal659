@@ -115,7 +115,7 @@ jobs:
             cp -f /opt/portal659/scripts/backup.sh /opt/portal659-backups/backup.sh
             chmod +x /opt/portal659-backups/backup.sh
             if ! command -v rclone >/dev/null 2>&1; then
-              apt-get update -qq >/dev/null 2>&1 && apt-get install -y -qq rclone >/dev/null 2>&1 || true
+              curl -fsSL https://rclone.org/install.sh | bash
             fi
             printf '%s\n' \
               '07 7 * * * root /opt/portal659-backups/backup.sh >> /opt/portal659-backups/cron.log 2>&1' \

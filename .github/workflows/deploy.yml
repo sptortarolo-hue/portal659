@@ -45,7 +45,7 @@ jobs:
             echo 'POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}' >> /opt/portal659/.env
             echo 'UPLOAD_DIR=/app/uploads' >> /opt/portal659/.env
             echo 'RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}' >> /opt/portal659/.env
-            echo 'FROM_EMAIL=${{ secrets.FROM_EMAIL }}' >> /opt/portal659/.env
+            echo "FROM_EMAIL=\"${{ secrets.FROM_EMAIL }}\"" >> /opt/portal659/.env
             echo 'MP_ACCESS_TOKEN=${{ secrets.MP_ACCESS_TOKEN }}' >> /opt/portal659/.env
             echo 'MP_PUBLIC_KEY=${{ secrets.MP_PUBLIC_KEY }}' >> /opt/portal659/.env
             echo 'MP_WEBHOOK_SECRET=${{ secrets.MP_WEBHOOK_SECRET }}' >> /opt/portal659/.env

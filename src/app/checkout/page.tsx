@@ -34,6 +34,10 @@ export default function CheckoutPage() {
   const [pendingOrder, setPendingOrder] = useState<{ orderId: string; message: string; waNumber: string; trackToken?: string } | null>(null);
   const [prefillInfo, setPrefillInfo] = useState<{ found: boolean; name?: string | null } | null>(null);
   const [doneTrackToken, setDoneTrackToken] = useState<string | null>(null);
+  // Snapshot del nombre del comercio al confirmar: confirmSend limpia el
+  // carrito (vendor=null) y la página de éxito debe seguir mostrándolo.
+  const [doneVendorName, setDoneVendorName] = useState<string | null>(null);
+  const [doneIsPreview, setDoneIsPreview] = useState(false);
   // Vuelta de Mercado Pago (back_urls: /checkout?payment=success|pending|failure&vendor=<slug>).
   // El pedido lo crea el webhook de forma asíncrona; el token de seguimiento
   // se obtiene con un poll corto a /api/orders/latest-token.
@@ -247,6 +251,59 @@ export default function CheckoutPage() {
             Volver a la tienda
           </Button>
         </div>
+      </main>
+    );
+  }
+
+  // Éxito post-confirmación (usa snapshots: el carrito ya se limpió).
+  if (done) {
+    return (
+      <main className="container mx-auto px-4 py-20 max-w-md text-center">
+        <div className="text-6xl mb-4 animate-bounce-in">✅</div>
+        <h1 className="font-display text-3xl font-semibold mb-4">
+          Pedido enviado
+        </h1>
+        <p className="text-muted-foreground mb-4">
+          Se abrió WhatsApp con tu pedido para{" "}
+          <span className="font-medium">{doneVendorName || "el local"}</span>.
+          {doneIsPreview && (
+            <span className="block mt-1 text-xs font-semibold text-amber-700">
+              🧪 Fue un pedido de prueba.
+            </span>
+          )}
+        </p>
+        <p className="text-sm text-muted-foreground/70 mb-6">
+          Seguí el estado de tu pedido con tu número de WhatsApp en{" "}
+          <button onClick={() => router.push("/mis-pedidos")} className="underline text-primary hover:text-primary/80">
+            Mis pedidos
+          </button>
+          {doneTrackToken && (
+            <>
+              {" · "}
+              <button onClick={() => router.push(`/seguimiento/${doneTrackToken}`)} className="underline text-primary hover:text-primary/80">
+                Ver seguimiento en vivo
+              </button>
+            </>
+          )}
+        </p>
+        {!userId && (
+          <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4 mb-6 text-left">
+            <p className="font-semibold text-sm mb-1">📋 ¿Guardamos tus datos para la próxima?</p>
+            <p className="text-xs text-muted-foreground leading-relaxed mb-3">
+              Creá tu cuenta gratis y tené tus favoritos, tus datos de contacto ya cargados,
+              tu historial de pedidos y acceso a dejar reseñas.
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full"
+              onClick={() => router.push("/registro?next=/perfil")}
+            >
+              Crear mi cuenta gratis
+            </Button>
+          </div>
+        )}
+        <Button onClick={() => router.push("/")}>Seguir viendo ofertas</Button>
       </main>
     );
   }
@@ -489,6 +546,8 @@ export default function CheckoutPage() {
   function confirmSend() {
     if (!pendingOrder) return;
     setLoading(true);
+    setDoneVendorName(v?.storeName || null);
+    setDoneIsPreview(isPreview);
     window.open(
       `https://wa.me/${pendingOrder.waNumber}?text=${encodeURIComponent(pendingOrder.message)}`,
       "_blank"
@@ -499,58 +558,6 @@ export default function CheckoutPage() {
     setPendingOrder(null);
     setDone(true);
     setLoading(false);
-  }
-
-  if (done) {
-    return (
-      <main className="container mx-auto px-4 py-20 max-w-md text-center">
-        <div className="text-6xl mb-4 animate-bounce-in">✅</div>
-        <h1 className="font-display text-3xl font-semibold mb-4">
-          Pedido enviado
-        </h1>
-        <p className="text-muted-foreground mb-4">
-          Se abrió WhatsApp con tu pedido para{" "}
-          <span className="font-medium">{v.storeName}</span>.
-          {isPreview && (
-            <span className="block mt-1 text-xs font-semibold text-amber-700">
-              🧪 Fue un pedido de prueba.
-            </span>
-          )}
-        </p>
-        <p className="text-sm text-muted-foreground/70 mb-6">
-          Seguí el estado de tu pedido con tu número de WhatsApp en{" "}
-          <button onClick={() => router.push("/mis-pedidos")} className="underline text-primary hover:text-primary/80">
-            Mis pedidos
-          </button>
-          {doneTrackToken && (
-            <>
-              {" · "}
-              <button onClick={() => router.push(`/seguimiento/${doneTrackToken}`)} className="underline text-primary hover:text-primary/80">
-                Ver seguimiento en vivo
-              </button>
-            </>
-          )}
-        </p>
-        {!userId && (
-          <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4 mb-6 text-left">
-            <p className="font-semibold text-sm mb-1">📋 ¿Guardamos tus datos para la próxima?</p>
-            <p className="text-xs text-muted-foreground leading-relaxed mb-3">
-              Creá tu cuenta gratis y tené tus favoritos, tus datos de contacto ya cargados,
-              tu historial de pedidos y acceso a dejar reseñas.
-            </p>
-            <Button
-              variant="outline"
-              size="sm"
-              className="w-full"
-              onClick={() => router.push("/registro?next=/perfil")}
-            >
-              Crear mi cuenta gratis
-            </Button>
-          </div>
-        )}
-        <Button onClick={() => router.push("/")}>Seguir viendo ofertas</Button>
-      </main>
-    );
   }
 
   return (

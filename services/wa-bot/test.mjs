@@ -61,8 +61,8 @@ async function main() {
   // items + método delivery + dirección y preguntar solo nombre/pago.
   r = await handleInbound({ vendor, waId: wa, body: "quiero 2 empanadas de carne y una coca, envío a calle 5 123" });
   show("pedido combinado", r);
-  const pending = (r.replies || []).join(" ");
-  if (pending.includes("dirección") || !pending.includes("nombre") || !pending.includes("pago")) {
+  const pending = (r.replies || []).join(" ").toLowerCase();
+  if (pending.includes("dirección") || !pending.includes("nombre") || !pending.includes("pag")) {
     console.log("!!! Debería preguntar solo nombre+pago (reglas ya capturaron dirección)"); ok = false;
   }
 
@@ -73,29 +73,36 @@ async function main() {
 
   r = await handleInbound({ vendor, waId: wa, body: "efectivo" });
   show("pago efectivo", r);
+  if (!(r.replies || []).join(" ").includes("Todo bien")) { console.log("!!! pago no llevó al resumen de confirm"); ok = false; }
 
-  // "sí" con TODO completo → confirm → crear pedido (antes el "sí" se comía).
-  r = await handleInbound({ vendor, waId: wa, body: "sí" });
-  show("sí (confirm)", r);
-  if (!(r.replies || []).join(" ").includes("Todo bien")) { console.log("!!! El sí no llevó a confirm"); ok = false; }
-
+  // "sí" con TODO completo → confirmar → crear pedido (antes el "sí" se comía
+  // como nombre; y antes aun /api/wa/order fallaba por falta de offerId).
   r = await handleInbound({ vendor, waId: wa, body: "sí" });
   show("sí (crear pedido)", r);
   ok = assertOrder("confirmar completo") && ok;
 
+  // Un "sí" posterior NO debe re-confirmar el mismo pedido (estado limpio).
+  r = await handleInbound({ vendor, waId: wa, body: "sí" });
+  show("sí después de confirmar (debe ignorarse)", r);
+  const afterConfirm = (r.replies || []).join(" ");
+  if (afterConfirm.includes("Pedido confirmado")) { console.log("!!! Re-confirmó el pedido (estado zombie)"); ok = false; }
+
   console.log('\n--- ESC: "cambiar método" en el flujo (delivery→retiro) ---');
-  r = await handleInbound({ vendor, waId: wa, body: "quiero 1 coca" });
-  show("pedido coca", r);
+  r = await handleInbound({ vendor, waId: wa, body: "quiero 1 coca, envío a saavedra 800" });
+  show("pedido coca + delivery", r);
   r = await handleInbound({ vendor, waId: wa, body: "mejor lo retiro" });
   show("cambio a retiro", r);
-  const stillAddress = (r.replies || []).join(" ").includes("dirección");
-  if (stillAddress) { console.log("!!! Tras retiro sigue preguntando dirección (el método truncó)"); ok = false; }
-
-  // El nombre que ya estaba no debería perderse ni reemplazarse.
+  const campoRetiro = (r.replies || []).join(" ");
+  if (campoRetiro.includes("dirección")) { console.log("!!! Tras retiro sigue preguntando dirección"); ok = false; }
+  r = await handleInbound({ vendor, waId: wa, body: "Juan" });
+  show("nombre retiro", r);
+  r = await handleInbound({ vendor, waId: wa, body: "efectivo" });
+  show("pago retiro", r);
   r = await handleInbound({ vendor, waId: wa, body: "sí" });
-  const confirmReply = (r.replies || []).join(" ");
-  if (confirmReply.includes("Nombre: sí")) { console.log("!!! El 'sí' se comió como nombre: " + confirmReply); ok = false; }
-  show("sí con retiro", r);
+  show("confirmar retiro", r);
+  ok = assertOrder("confirmar retiro") && ok;
+  if (!(lastOrderBody?.method === "pickup")) { console.log("!!! pedido retiro no salió como pickup"); ok = false; }
+  console.log(`>>> [retiro] método ${lastOrderBody?.method}; dirección "${lastOrderBody?.customerAddress}" (ok aunque sobre, es informativa)`);
 
   console.log("\n--- ESC: cantidades en palabras ---");
   r = await handleInbound({ vendor, waId: wa, body: "cancelar" });

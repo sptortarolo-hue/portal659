@@ -186,11 +186,13 @@ async function handleStep({ vendor, text, state, replies, waId }) {
         replies.push(transferText(vendor, order.total));
       } else {
         replies.push("✅ ¡Pedido confirmado! Te avisamos por acá cuando esté listo.");
+        state._cleared = true;
         await clearState(vendor.id, waId);
       }
       return;
     }
     if (RE_NO.test(t)) {
+      state._cleared = true;
       await clearState(vendor.id, waId);
       replies.push("Dale, lo cancelamos. Cuando quieras retomamos. 👍");
       return;
@@ -277,6 +279,7 @@ async function handleStep({ vendor, text, state, replies, waId }) {
 
   // "no" en medio del flujo = cancela.
   if (!got && RE_NO.test(t)) {
+    state._cleared = true;
     await clearState(vendor.id, waId);
     replies.push("Dale, lo cancelamos. Cuando quieras retomamos. 👍");
     return;
@@ -471,6 +474,10 @@ async function notifyHandoff(vendorId, waId, text) {
 // ———————————————————————————————————————————————————————————————————————————
 
 async function persist(state, vendorId, waId, replies) {
+  // Si el handler ya limpió el estado (pedido confirmado / cancelado), NO
+  // volverlo a guardar: re-seriarlo acá re-creaba el chat zombie (un segundo
+  // "sí" re-confirmaba el mismo pedido).
+  if (state._cleared) return { replies };
   await setState(vendorId, waId, state, state.step === "awaiting_receipt" ? AWAITING_RECEIPT_TTL : undefined);
   return { replies };
 }

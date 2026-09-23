@@ -29,8 +29,10 @@ const TOKEN_TTL_MS = 12 * 60 * 60 * 1000;
 const REFRESH_BUFFER_MS = 5 * 60 * 1000;
 
 function soapFetch(url: string, body: string, action: string): Promise<string> {
+  // 15s por llamada (3 SOAP secuenciales = 45s peor caso, debajo del
+  // proxy_read_timeout de 90s de nginx). Un abort se mapea a error legible.
   const ac = new AbortController();
-  const timeout = setTimeout(() => ac.abort(), 25000);
+  const timeout = setTimeout(() => ac.abort(), 15000);
   return fetch(url, {
     method: "POST",
     headers: {
@@ -44,6 +46,14 @@ function soapFetch(url: string, body: string, action: string): Promise<string> {
       const text = await res.text();
       if (!res.ok) throw new ArcaError(`WSAA HTTP ${res.status}`, text.slice(0, 500));
       return text;
+    })
+    .catch((e: unknown) => {
+      if (e instanceof ArcaError) throw e;
+      const msg = e instanceof Error ? e.message : String(e);
+      if (e instanceof Error && (e.name === "AbortError" || /abort/i.test(msg))) {
+        throw new ArcaError(`ARCA no respondió en 15s (login ${action})`);
+      }
+      throw new ArcaError(`Sin conexión a ARCA (${msg.slice(0, 120)})`);
     })
     .finally(() => clearTimeout(timeout));
 }

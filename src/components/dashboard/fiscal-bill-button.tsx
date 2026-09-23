@@ -64,8 +64,10 @@ export function FiscalBillButton({ orderId }: { orderId: string }) {
       if (res.ok && data.invoice) {
         setExisting(data.invoice);
         setMsg("Comprobante emitido ✓");
+      } else if (data.error) {
+        setErr(data.error);
       } else {
-        setErr(data.error || "ARCA no respondió (el cobro queda como sin fiscal)");
+        setErr("Se cortó esperando a ARCA (probá Probar conexión en Config → Fiscal)");
       }
     } catch {
       setErr("Sin conexión (el cobro queda como sin fiscal)");

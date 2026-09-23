@@ -98,12 +98,18 @@ export async function POST(request: Request) {
   }
 
   const env = vendor.fiscal_env === "prod" ? "prod" : "homo";
+  // Log por etapa (sin secretos) → visible en `docker logs` como [fiscal].
+  const t0 = Date.now();
+  const flog = (stage: string, extra?: string) =>
+    console.log(`[fiscal] vendor=${vendor.id} order=${orderId} env=${env} stage=${stage} +${Date.now() - t0}ms${extra ? ` ${extra}` : ""}`);
   try {
+    flog("start", `ptoVta=${ptoVta} total=${total}`);
     const r = await emitirFacturaC(
       { env, cuit, certPem, keyPem },
       ptoVta,
       total
     );
+    flog("cae-ok", `cbte=${r.puntoVenta}-${r.cbteNro}${r.recovered ? " recovered" : ""}`);
     try {
       const saved = await queryOne<FiscalInvoice>(
         `INSERT INTO invoices (vendor_id, order_id, cbte_tipo, punto_venta, cbte_nro, cae, cae_vto, total, receptor_doc_tipo, receptor_doc_nro, env)
@@ -124,6 +130,7 @@ export async function POST(request: Request) {
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Error de ARCA";
     const code = e instanceof ArcaError ? "arca_error" : "fiscal_error";
+    flog("error", `${code}: ${msg.slice(0, 200)}`);
     return NextResponse.json({ error: msg, code }, { status: 502 });
   }
 }

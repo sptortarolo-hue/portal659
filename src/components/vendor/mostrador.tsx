@@ -406,8 +406,12 @@ export function Mostrador() {
             setMsg(
               `${baseMsg} · 🧾 Factura C ${String(inv.punto_venta).padStart(4, "0")}-${String(inv.cbte_nro).padStart(8, "0")} (CAE …${String(inv.cae).slice(-4)})`
             );
+          } else if (fdata.error) {
+            setMsg(`${baseMsg} · ⚠️ Cobrado sin fiscal: ${fdata.error} (reintentá desde Config → Fiscal)`);
           } else {
-            setMsg(`${baseMsg} · ⚠️ Cobrado sin fiscal: ${fdata.error || "ARCA no respondió"} (reintentá desde Config → Fiscal)`);
+            // Respuesta vacía: el proxy cortó antes de que el portal
+            // contestara (ARCA lento) o el portal no llegó a responder.
+            setMsg(`${baseMsg} · ⚠️ Cobrado sin fiscal: se cortó esperando a ARCA (probá "Probar conexión" en Config → Fiscal)`);
           }
         })
         .catch(() => {

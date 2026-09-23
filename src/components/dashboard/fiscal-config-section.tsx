@@ -52,6 +52,8 @@ export function FiscalConfigSection() {
   const [csrPem, setCsrPem] = useState<string | null>(null);
   const [csrBusy, setCsrBusy] = useState(false);
   const [csrCopied, setCsrCopied] = useState(false);
+  const [pingBusy, setPingBusy] = useState(false);
+  const [pingResult, setPingResult] = useState<{ ok: boolean; ms?: number; error?: string } | null>(null);
   const certFileRef = useRef<HTMLInputElement>(null);
   const keyFileRef = useRef<HTMLInputElement>(null);
 
@@ -115,6 +117,24 @@ export function FiscalConfigSection() {
     }
   }
 
+  // Prueba solo el login WSAA (rápido, sin emitir ni gastar numeración).
+  async function pingArca() {
+    setPingBusy(true);
+    setPingResult(null);
+    try {
+      const res = await fetch("/api/vendor/fiscal/ping", { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setPingResult({ ok: true, ms: data.ms });
+      } else {
+        setPingResult({ ok: false, error: data.error || "ARCA no contestó (revisá docker logs [fiscal])" });
+      }
+    } catch {
+      setPingResult({ ok: false, error: "Se cortó esperando a ARCA (proxy o red del VPS)" });
+    }
+    setPingBusy(false);
+  }
+
   async function save(data: Record<string, unknown>) {
     setSaving(true);
     setMsg(null);
@@ -169,6 +189,19 @@ export function FiscalConfigSection() {
               ? `✅ Lista para facturar (${status.fiscal_env === "prod" ? "producción" : "prueba"})`
               : "⚠️ Completá CUIT, punto de venta y certificado para activar"}
           </div>
+
+          {status.ready && (
+            <div className="flex items-center gap-2">
+              <Button type="button" size="sm" variant="outline" disabled={pingBusy} onClick={pingArca}>
+                {pingBusy ? "Probando…" : "📡 Probar conexión con ARCA"}
+              </Button>
+              {pingResult && (
+                <span className={`text-xs font-medium ${pingResult.ok ? "text-green-600" : "text-red-600"}`}>
+                  {pingResult.ok ? `✅ ARCA responde (${pingResult.ms}ms)` : `⚠️ ${pingResult.error}`}
+                </span>
+              )}
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-2">
             <div>

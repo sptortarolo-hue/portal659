@@ -15,8 +15,9 @@ const WSFE_URL: Record<ArcaEnv, string> = {
 };
 
 function soapFetch(url: string, body: string, action: string): Promise<string> {
+  // Ver wsaa.ts: 15s por llamada para no superar el timeout del proxy.
   const ac = new AbortController();
-  const timeout = setTimeout(() => ac.abort(), 25000);
+  const timeout = setTimeout(() => ac.abort(), 15000);
   return fetch(url, {
     method: "POST",
     headers: {
@@ -30,6 +31,14 @@ function soapFetch(url: string, body: string, action: string): Promise<string> {
       const text = await res.text();
       if (!res.ok) throw new ArcaError(`WSFE HTTP ${res.status}`, text.slice(0, 500));
       return text;
+    })
+    .catch((e: unknown) => {
+      if (e instanceof ArcaError) throw e;
+      const msg = e instanceof Error ? e.message : String(e);
+      if (e instanceof Error && (e.name === "AbortError" || /abort/i.test(msg))) {
+        throw new ArcaError("ARCA no respondió en 15s (facturación)");
+      }
+      throw new ArcaError(`Sin conexión a ARCA (${msg.slice(0, 120)})`);
     })
     .finally(() => clearTimeout(timeout));
 }

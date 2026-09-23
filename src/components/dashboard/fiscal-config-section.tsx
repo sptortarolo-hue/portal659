@@ -117,6 +117,20 @@ export function FiscalConfigSection() {
     }
   }
 
+  // WSASS / Adm. de Certificados piden SUBIR el CSR como archivo (.csr).
+  function downloadCsr() {
+    if (!csrPem) return;
+    const blob = new Blob([csrPem], { type: "application/pkcs10" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "portal659.csr";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
   // Prueba solo el login WSAA (rápido, sin emitir ni gastar numeración).
   async function pingArca() {
     setPingBusy(true);
@@ -294,9 +308,17 @@ export function FiscalConfigSection() {
                       value={csrPem}
                       className="w-full rounded-lg border border-input bg-muted p-2 font-mono text-[10px] leading-tight"
                     />
-                    <Button type="button" size="sm" variant="outline" onClick={copyCsr}>
-                      {csrCopied ? "¡Copiado!" : "📋 Copiar CSR"}
-                    </Button>
+                    <div className="flex gap-1.5">
+                      <Button type="button" size="sm" variant="outline" onClick={copyCsr}>
+                        {csrCopied ? "¡Copiado!" : "📋 Copiar CSR"}
+                      </Button>
+                      <Button type="button" size="sm" variant="outline" onClick={downloadCsr}>
+                        ⬇️ Descargar .csr
+                      </Button>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      En ARCA (WSASS o Adm. de Certificados) subí el archivo descargado.
+                    </p>
                   </div>
                 )}
               </div>

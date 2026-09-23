@@ -4,6 +4,7 @@ import { config } from "./src/config.mjs";
 import { vendorByToken } from "./src/db.mjs";
 import { handleInbound, handleInboundMedia } from "./src/bot.mjs";
 import { getState } from "./src/state.mjs";
+import { llmStats } from "./src/nlu.mjs";
 import { countOutbound, markNewChat } from "./src/limits.mjs";
 import { addClient, removeClient, getClient, sendText, sendTyping, sendPaused, clientCount, forEachClient } from "./src/relay.mjs";
 import { saveQrToken, clearQrToken, setBotStatus } from "./src/state.mjs";
@@ -25,7 +26,8 @@ const server = createServer(async (req, res) => {
   if (url.pathname === "/health") {
     res.writeHead(200, { "content-type": "application/json" });
     res.end(JSON.stringify({
-      ok: true, clients: clientCount(), llm: !!config.llmApiKey,
+      ok: true, clients: clientCount(),
+      llm: { hasKey: !!config.llmApiKey, ...llmStats },
       stats,
       limits: { replyDelayMinMs: config.replyDelayMinMs, replyDelayMaxMs: config.replyDelayMaxMs, replyGapMs: config.replyGapMs, maxMsgPerHour: config.maxMsgPerHour, maxMsgPerDay: config.maxMsgPerDay, maxNewChatsPerHour: config.maxNewChatsPerHour },
     }));

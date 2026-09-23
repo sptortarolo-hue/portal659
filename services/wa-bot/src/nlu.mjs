@@ -179,6 +179,10 @@ Reglas:
 - Si el cliente agrega productos sin re-declarar todo (ej. "agregá una coca"), devolvé SOLO los items nuevos.
 - Si el cliente solo saluda, pregunta, o pide el menú: "complete" false e "items" [].`;
 
+// Telemetría de uso del LLM (expuesta en /health del cerebro): así se verifica
+// en 1 comando si el bot está usando IA y con qué modelo respondió por última vez.
+export const llmStats = { ok: 0, fail: 0, cooldown: 0, lastModel: null, lastAt: null };
+
 export async function parseWithLlm(message, products, ctx = null) {
   if (!config.llmApiKey) {
     if (!parseWithLlm._reported) {
@@ -189,10 +193,19 @@ export async function parseWithLlm(message, products, ctx = null) {
   }
 
   const model = await resolveModel();
-  if (!model) return null;
+  if (!model) {
+    llmStats.cooldown++;
+    return null;
+  }
 
   const parsed = await callOnce(message, products, model, ctx);
-  if (parsed !== null) return { ...parsed, __llm: true };
+  if (parsed !== null) {
+    llmStats.ok++;
+    llmStats.lastModel = model;
+    llmStats.lastAt = new Date().toISOString();
+    console.log(`[bot] LLM ok (${model}): items=${parsed.items?.length ?? 0}`);
+    return { ...parsed, __llm: true };
+  }
 
   // Si el modelo pinchó (410/404/402/429), rotar alternativas 1 vez.
   if (parseWithLlm._modelDeprecated) {
@@ -212,19 +225,31 @@ export async function parseWithLlm(message, products, ctx = null) {
         console.log(`[bot] ${kind} retry con ${alt}`);
         const retry = await callOnce(message, products, alt, ctx);
         if (retry !== null) {
+          llmStats.ok++;
+          llmStats.lastModel = alt;
+          llmStats.lastAt = new Date().toISOString();
+          console.log(`[bot] LLM ok (${alt}): items=${retry.items?.length ?? 0}`);
           resolvedModelCache = alt;
           return { ...retry, __llm: true };
         }
       }
+      llmStats.fail++;
       return null;
     }
 
     const fresh = await resolveModel();
     if (fresh) {
       const retry = await callOnce(message, products, fresh, ctx);
-      if (retry !== null) return { ...retry, __llm: true };
+      if (retry !== null) {
+        llmStats.ok++;
+        llmStats.lastModel = fresh;
+        llmStats.lastAt = new Date().toISOString();
+        console.log(`[bot] LLM ok (${fresh}): items=${retry.items?.length ?? 0}`);
+        return { ...retry, __llm: true };
+      }
     }
   }
+  llmStats.fail++;
   return null;
 }
 

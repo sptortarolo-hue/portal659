@@ -49,6 +49,9 @@ export function FiscalConfigSection() {
   const [env, setEnv] = useState("homo");
   const [certPem, setCertPem] = useState("");
   const [keyPem, setKeyPem] = useState("");
+  const [csrPem, setCsrPem] = useState<string | null>(null);
+  const [csrBusy, setCsrBusy] = useState(false);
+  const [csrCopied, setCsrCopied] = useState(false);
   const certFileRef = useRef<HTMLInputElement>(null);
   const keyFileRef = useRef<HTMLInputElement>(null);
 
@@ -81,6 +84,35 @@ export function FiscalConfigSection() {
     const reader = new FileReader();
     reader.onload = () => set(String(reader.result || ""));
     reader.readAsText(f);
+  }
+
+  // Genera clave + CSR en el server (la clave queda cifrada ahí).
+  async function generateCsr() {
+    setCsrBusy(true);
+    setErr(null);
+    try {
+      const res = await fetch("/api/vendor/fiscal/csr", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        setErr(data.error || "No se pudo generar el CSR");
+      } else {
+        setCsrPem(data.csr_pem);
+        setCsrCopied(false);
+      }
+    } catch {
+      setErr("Sin conexión, reintentá");
+    }
+    setCsrBusy(false);
+  }
+
+  async function copyCsr() {
+    if (!csrPem) return;
+    try {
+      await navigator.clipboard.writeText(csrPem);
+      setCsrCopied(true);
+    } catch {
+      /* portapapeles no disponible: seleccionar manual */
+    }
   }
 
   async function save(data: Record<string, unknown>) {
@@ -192,17 +224,44 @@ export function FiscalConfigSection() {
           </div>
 
           <div className="rounded-xl border border-border p-3 space-y-2">
-            <Label>Certificado y clave ARCA (.crt + .key)</Label>
+            <Label>Certificado ARCA (.crt)</Label>
             {status.has_cert && status.cert_info ? (
               <p className="text-xs text-muted-foreground">
                 ✅ {status.cert_info.subject} · vence{" "}
                 {new Date(status.cert_info.notAfter).toLocaleDateString("es-AR")}
               </p>
             ) : (
-              <p className="text-xs text-muted-foreground">
-                Se generan con tu clave fiscal (WSASS para prueba, Administrador de
-                Certificados para producción) y se guardan cifrados.
-              </p>
+              <div className="space-y-2">
+                <p className="text-xs text-muted-foreground">
+                  Sin terminal ni OpenSSL: generá la clave acá, pegá el CSR en ARCA
+                  (WSASS para prueba, Administrador de Certificados para producción)
+                  y subí el .crt que te devuelve. Todo se guarda cifrado.
+                </p>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={saving || csrBusy || !cuit.replace(/\D/g, "")}
+                  onClick={generateCsr}
+                  title={!cuit.replace(/\D/g, "") ? "Cargá primero el CUIT arriba" : undefined}
+                >
+                  {csrBusy ? "Generando…" : "🔑 Generar clave + CSR"}
+                </Button>
+                {csrPem && (
+                  <div className="space-y-1">
+                    <Label>CSR (pegá esto en ARCA)</Label>
+                    <textarea
+                      readOnly
+                      rows={5}
+                      value={csrPem}
+                      className="w-full rounded-lg border border-input bg-muted p-2 font-mono text-[10px] leading-tight"
+                    />
+                    <Button type="button" size="sm" variant="outline" onClick={copyCsr}>
+                      {csrCopied ? "¡Copiado!" : "📋 Copiar CSR"}
+                    </Button>
+                  </div>
+                )}
+              </div>
             )}
             <div className="flex gap-1.5">
               <Button type="button" size="sm" variant="outline" onClick={() => certFileRef.current?.click()}>
@@ -228,14 +287,16 @@ export function FiscalConfigSection() {
             </div>
             {(certPem || keyPem) && (
               <p className="text-xs font-medium">
-                {certPem ? "✅ cert cargado" : "⬜ falta cert"} · {keyPem ? "✅ clave cargada" : "⬜ falta clave"}
+                {certPem ? "✅ cert cargado" : "⬜ falta cert"}
+                {keyPem ? " · ✅ clave cargada" : ""}
               </p>
             )}
             <Button
               type="button"
               size="sm"
-              disabled={saving || !certPem || !keyPem}
-              onClick={() => save({ cert_pem: certPem, key_pem: keyPem })}
+              disabled={saving || !certPem}
+              onClick={() => save(keyPem ? { cert_pem: certPem, key_pem: keyPem } : { cert_pem: certPem })}
+              title={keyPem ? undefined : "Se valida contra la clave generada en el portal"}
             >
               {saving ? "Validando…" : "Validar y guardar certificado"}
             </Button>

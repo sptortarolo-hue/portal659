@@ -105,15 +105,31 @@ export async function PATCH(request: Request) {
     }
     updates.fiscal_env = body.fiscal_env;
   }
-  // Certificado + clave: se validan (parseo + vigencia) y se guardan cifrados.
+  // Certificado (+ clave): se validan (parseo + vigencia) y se guardan
+  // cifrados. Si la clave se generó en el portal (botón CSR), alcanza con
+  // subir solo el .crt: se valida contra la clave guardada.
   if (body.cert_pem !== undefined || body.key_pem !== undefined) {
     const certPem = String(body.cert_pem || "").trim();
-    const keyPem = String(body.key_pem || "").trim();
-    if (!certPem || !keyPem) {
-      return NextResponse.json(
-        { error: "Subí el certificado (.crt) y la clave (.key) juntos" },
-        { status: 400 }
-      );
+    let keyPem = String(body.key_pem || "").trim();
+    if (!certPem) {
+      return NextResponse.json({ error: "Subí el certificado (.crt)" }, { status: 400 });
+    }
+    if (!keyPem) {
+      const stored = vendor.fiscal_key;
+      if (!stored) {
+        return NextResponse.json(
+          { error: "Generá primero la clave con el botón CSR, o subí .crt + .key juntos" },
+          { status: 400 }
+        );
+      }
+      try {
+        keyPem = decryptFiscalSecret(stored);
+      } catch {
+        return NextResponse.json(
+          { error: "No se pudo leer la clave guardada (regenerá el CSR)" },
+          { status: 500 }
+        );
+      }
     }
     try {
       validateCertKeyPair(certPem, keyPem);
@@ -124,7 +140,10 @@ export async function PATCH(request: Request) {
       );
     }
     updates.fiscal_cert = encryptFiscalSecret(certPem);
-    updates.fiscal_key = encryptFiscalSecret(keyPem);
+    // Solo se pisa la clave si se subió una nueva (la del portal sigue si no).
+    if (body.key_pem !== undefined && String(body.key_pem || "").trim()) {
+      updates.fiscal_key = encryptFiscalSecret(keyPem);
+    }
   }
 
   if (Object.keys(updates).length === 0) {

@@ -88,10 +88,27 @@ export function validateCertKeyPair(
   } catch {
     throw new ArcaError("Certificado ARCA inválido (no es un PEM X.509 válido)");
   }
+  let key: forge.pki.PrivateKey;
   try {
-    forge.pki.privateKeyFromPem(keyPem);
+    key = forge.pki.privateKeyFromPem(keyPem);
   } catch {
     throw new ArcaError("Clave privada ARCA inválida (no es un PEM válido)");
+  }
+  // La clave tiene que ser la pareja del certificado (si no, ARCA rechaza
+  // el login recién al facturar). Se comparan las claves públicas.
+  try {
+    const rsa = key as unknown as { n?: unknown; e?: unknown };
+    if (!rsa.n || !rsa.e) throw new Error("no-rsa");
+    const fromKey = forge.pki.publicKeyToPem(
+      forge.pki.setRsaPublicKey(rsa.n as never, rsa.e as never)
+    );
+    const fromCert = forge.pki.publicKeyToPem(cert.publicKey);
+    if (fromKey !== fromCert) {
+      throw new ArcaError("El certificado no corresponde a esa clave privada");
+    }
+  } catch (e) {
+    if (e instanceof ArcaError) throw e;
+    // Claves no-RSA: no se bloquea.
   }
   if (cert.validity.notAfter.getTime() < Date.now()) {
     throw new ArcaError("El certificado ARCA está vencido (generá uno nuevo con clave fiscal)");

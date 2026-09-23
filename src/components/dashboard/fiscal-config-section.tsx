@@ -131,6 +131,33 @@ export function FiscalConfigSection() {
     URL.revokeObjectURL(url);
   }
 
+  // Borra certificado + clave (sale de fiscal hasta subir otro).
+  async function deleteCreds() {
+    if (!window.confirm("¿Eliminar el certificado y la clave ARCA? Vas a quedar sin facturación hasta subir otro.")) return;
+    setSaving(true);
+    setErr(null);
+    try {
+      const res = await fetch("/api/vendor/fiscal/config", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clear_fiscal_creds: true }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setErr(data.error || "No se pudo eliminar");
+      } else {
+        setMsg("Certificado eliminado ✓");
+        setCertPem("");
+        setKeyPem("");
+        setCsrPem(null);
+        load();
+      }
+    } catch {
+      setErr("Sin conexión, reintentá");
+    }
+    setSaving(false);
+  }
+
   // Prueba solo el login WSAA (rápido, sin emitir ni gastar numeración).
   async function pingArca() {
     setPingBusy(true);
@@ -276,12 +303,24 @@ export function FiscalConfigSection() {
           <div className="rounded-xl border border-border p-3 space-y-2">
             <Label>Certificado ARCA (.crt)</Label>
             {status.has_cert && status.cert_info ? (
-              <p className="text-xs text-muted-foreground">
-                ✅ {status.cert_info.subject} · vence{" "}
-                {new Date(status.cert_info.notAfter).toLocaleDateString("es-AR")}
-                <br />
-                <span className="opacity-80">Emitido por: {status.cert_info.issuer}</span>
-              </p>
+              <div className="space-y-1.5">
+                <p className="text-xs text-muted-foreground">
+                  ✅ {status.cert_info.subject} · vence{" "}
+                  {new Date(status.cert_info.notAfter).toLocaleDateString("es-AR")}
+                  <br />
+                  <span className="opacity-80">Emitido por: {status.cert_info.issuer}</span>
+                </p>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={saving}
+                  className="text-red-600 border-red-200 hover:bg-red-50"
+                  onClick={deleteCreds}
+                >
+                  🗑️ Eliminar certificado
+                </Button>
+              </div>
             ) : (
               <div className="space-y-2">
                 <p className="text-xs text-muted-foreground">

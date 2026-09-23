@@ -105,6 +105,12 @@ export async function PATCH(request: Request) {
     }
     updates.fiscal_env = body.fiscal_env;
   }
+  // Borra certificado + clave (el comercio queda sin fiscal hasta subir otro).
+  if (body.clear_fiscal_creds === true) {
+    updates.fiscal_cert = null;
+    updates.fiscal_key = null;
+  }
+
   // Certificado (+ clave): se validan (parseo + vigencia) y se guardan
   // cifrados. Si la clave se generó en el portal (botón CSR), alcanza con
   // subir solo el .crt: se valida contra la clave guardada.

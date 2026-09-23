@@ -177,8 +177,10 @@ export function signTra(tra: string, certPem: string, keyPem: string): string {
 }
 
 function parseLoginResponse(xml: string): { token: string; sign: string } {
-  const token = xml.match(/<token>([\s\S]*?)<\/token>/)?.[1]?.trim();
-  const sign = xml.match(/<sign>([\s\S]*?)<\/sign>/)?.[1]?.trim();
+  // Tolerante a namespaces (<ns:token>) y atributos (<token xsi:type=...>):
+  // un TA válido perdido acá deja a WSAA negando nuevos por 12 h.
+  const token = xml.match(/<(?:\w+:)?token(?:\s[^>]*)?>([\s\S]*?)<\/(?:\w+:)?token>/)?.[1]?.trim();
+  const sign = xml.match(/<(?:\w+:)?sign(?:\s[^>]*)?>([\s\S]*?)<\/(?:\w+:)?sign>/)?.[1]?.trim();
   if (!token || !sign) {
     const fault = xml.match(/<faultstring>([\s\S]*?)<\/faultstring>/)?.[1]?.trim();
     if (fault?.includes("coe.alreadyAuthenticated")) {

@@ -70,6 +70,7 @@ import { OpenToggle } from "@/components/vendor/open-toggle";
 import { PrepTimeControl } from "@/components/vendor/prep-time-control";
 import { PrinterStatus } from "@/components/vendor/printer-status";
 import { OfflineBanner } from "@/components/vendor/offline-banner";
+import { OfflineConflicts } from "@/components/vendor/offline-conflicts";
 import { usePendingSyncCount } from "@/hooks/use-online-status";
 import { clearVendorData, ensurePersisted, saveVendorSnapshot } from "@/lib/offline-db";
 import { syncOutbox } from "@/lib/sync-engine";
@@ -1320,9 +1321,12 @@ function VendorDashboardInner() {
 
         {msg && <div className="px-4 pt-3"><p className="text-sm text-green-600 bg-green-50 rounded-lg px-3 py-2">{msg}</p></div>}
 
-        {/* Estado offline vendor (F1): banner solo visible sin conexión o con pendientes */}
+        {/* Estado offline vendor (F1/F4): banner + conflictos con error */}
         <div className="px-4 pt-3 [&:empty]:hidden [&:empty]:pt-0">
           <OfflineBanner vendorId={vendor.id} />
+        </div>
+        <div className="px-4 pt-2 [&:empty]:hidden [&:empty]:pt-0">
+          <OfflineConflicts vendorId={vendor.id} />
         </div>
 
         {/* Banner de suscripción — solo en Hoy */}

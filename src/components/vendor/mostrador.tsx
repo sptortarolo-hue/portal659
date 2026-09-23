@@ -9,6 +9,17 @@ import { cashDiscountForItems, normalizeCashPct } from "@/lib/cash-discount";
 import { toE164 } from "@/lib/phone";
 import { getCatalogSnapshot, saveCatalogSnapshot } from "@/lib/offline-db";
 import { enqueueOfflineAction, isNetworkError, newClientKey, nextProvisionalNumber } from "@/lib/offline-actions";
+import { checkOfflineAllowed, offlineDeniedMsg } from "@/lib/offline-plan";
+import { dispatchOfflinePrint, markPrintsDone } from "@/lib/local-print";
+import { printsAdd } from "@/lib/offline-db";
+import type { ContingencyKind } from "@/lib/offline-print";
+
+const OFFLINE_PAYMENT_LABELS: Record<string, string> = {
+  efectivo: "Efectivo",
+  transferencia: "Transferencia",
+  tarjeta: "Tarjeta",
+  mixto: "Mixto",
+};
 import { SYNC_COMPLETED_EVENT } from "@/lib/sync-engine";
 
 type ModifierOption = { label: string; price_mod: number };
@@ -406,32 +417,86 @@ export function Mostrador({ vendorId }: { vendorId?: string | null }) {
         setSaving(false);
         return;
       }
+      // Gate F4: vender offline exige plan verificado dentro del grace period.
+      const gate = await checkOfflineAllowed(vendorId);
+      if (!gate.allowed) {
+        setMsg(offlineDeniedMsg(gate));
+        setSaving(false);
+        return;
+      }
       const localId = await enqueueOfflineAction({
         vendorId,
         scope: "pos",
         type: "pos_order",
         payload,
-        print:
-          withReceipt && !isDelivery
-            ? {
-                doc: isRetail ? "ticket" : "retiro",
-                payload: {
-                  items: payload.items,
-                  total: payableTotal,
-                  payment,
-                  customerName: payload.customerName,
-                  method,
-                },
-              }
-            : needsKitchen
-              ? {
-                  doc: "comanda",
-                  payload: { items: payload.items, customerName: payload.customerName },
-                }
-              : undefined,
       });
       const prov = nextProvisionalNumber(vendorId);
       const nowIso = new Date().toISOString();
+      // Documentos a imprimir (igual que online: comanda si hay cocina +
+      // comprobante si lo pidió). Se encolan y se intentan en listener local.
+      const printDocs: { doc: ContingencyKind; kind: "comanda" | "ticket" | "retiro"; payload: Record<string, any> }[] = [];
+      if (needsKitchen) {
+        printDocs.push({
+          doc: "COMANDA",
+          kind: "comanda",
+          payload: { items: payload.items, customerName: payload.customerName },
+        });
+      }
+      if (withReceipt && !isDelivery) {
+        const kind = (isRetail ? "ticket" : "retiro") as "ticket" | "retiro";
+        printDocs.push({
+          doc: isRetail ? "TICKET" : "RETIRO",
+          kind,
+          payload: {
+            items: payload.items,
+            total: payableTotal,
+            payment: payload.paymentMethod,
+            customerName: payload.customerName,
+            method,
+          },
+        });
+      }
+      let printedCount = 0;
+      for (const d of printDocs) {
+        const printId = await printsAdd({
+          vendorId,
+          orderLocalId: localId,
+          doc: d.kind,
+          payload: d.payload,
+        });
+        const items = ((d.payload.items || []) as any[]).map((i) => ({
+          qty: Number(i.qty) || 1,
+          name: String(i.name || ""),
+          modifiers: Array.isArray(i.modifiers) ? i.modifiers.map((m: any) => String(m)) : [],
+        }));
+        const r = await dispatchOfflinePrint(vendorId, {
+          kind: d.doc,
+          provisional: prov,
+          customerName: String(d.payload.customerName || ""),
+          items,
+          total: Number(d.payload.total ?? 0),
+          paymentLabel: OFFLINE_PAYMENT_LABELS[payment] ?? payment,
+          cashPct:
+            d.doc !== "COMANDA" && payment === "efectivo" && activeCashDiscount > 0
+              ? cashResult.cashPct
+              : 0,
+          cashTotal:
+            d.doc !== "COMANDA" && payment === "efectivo" && activeCashDiscount > 0
+              ? payableTotal
+              : 0,
+          createdAt: Date.now(),
+        }).catch(() => ({ printed: false as const }));
+        if (r.printed) {
+          printedCount++;
+          if (printId != null) {
+            const { printsPatch } = await import("@/lib/offline-db");
+            printsPatch(printId, { printed: true }).catch(() => {});
+          }
+        }
+      }
+      if (printDocs.length > 0 && printedCount === printDocs.length) {
+        await markPrintsDone(vendorId, localId).catch(() => {});
+      }
       setRecent((prev) =>
         [{
           id: localId,
@@ -449,7 +514,12 @@ export function Mostrador({ vendorId }: { vendorId?: string | null }) {
           method,
         }, ...prev].slice(0, 20)
       );
-      setMsg(`📡 Sin conexión: venta P-${prov} guardada en este equipo, se envía al reconectar`);
+      let offMsg = `📡 Sin conexión: venta P-${prov} guardada en este equipo, se envía al reconectar`;
+      if (printDocs.length > 0) {
+        offMsg += printedCount === printDocs.length ? " · 🖨️ impresa local" : " · 🖨️ comprobante en cola";
+      }
+      if (withFiscal && fiscalReady) offMsg += " · 🧾 sin factura (requiere conexión)";
+      setMsg(offMsg);
       clearSaleForm();
     };
 
@@ -589,35 +659,47 @@ export function Mostrador({ vendorId }: { vendorId?: string | null }) {
   }
 
   // Al sincronizar (F3), las ventas pendientes se reemplazan por los datos
-  // reales del servidor (Nro. definitivo, total recalculado).
+  // reales del servidor (Nro. definitivo, total recalculado). Los localIds
+  // descartados desde el visor de conflictos (F4) se eliminan del listado.
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent)?.detail as
-        | { mappings?: Record<string, { orderId: string; pickup_number?: number | null; total?: number | null; order?: any }> }
+        | {
+            mappings?: Record<string, { orderId: string; pickup_number?: number | null; total?: number | null; order?: any }>;
+            syncedLocalIds?: string[];
+          }
         | undefined;
-      const mappings = detail?.mappings;
-      if (!mappings || Object.keys(mappings).length === 0) return;
+      const mappings = detail?.mappings ?? {};
+      const synced = new Set(detail?.syncedLocalIds ?? []);
+      if (Object.keys(mappings).length === 0 && synced.size === 0) return;
       setRecent((prev) =>
-        prev.map((o) => {
-          if (!o.localId) return o;
-          const m = mappings[o.localId];
-          if (!m?.orderId) return o;
-          const ord = m.order as any | undefined;
-          return {
-            ...o,
-            id: m.orderId,
-            pending: false,
-            estimated: false,
-            provisional: null,
-            total: Number(m.total ?? ord?.total ?? o.total),
-            payment_method: ord?.payment_method ?? o.payment_method,
-            paid_at: ord?.paid_at ?? o.paid_at,
-            status: ord?.status ?? o.status,
-            created_at: ord?.created_at ?? o.created_at,
-            pickup_number: m.pickup_number ?? ord?.pickup_number ?? null,
-            method: ord?.method ?? o.method,
-          };
-        })
+        prev
+          .filter((o) => {
+            if (!o.localId || !synced.has(o.localId)) return true;
+            // Sincronizado con pedido real → se reemplaza abajo; descartado
+            // (sin mapping) → se elimina del listado.
+            return !!mappings[o.localId]?.orderId;
+          })
+          .map((o) => {
+            if (!o.localId) return o;
+            const m = mappings[o.localId];
+            if (!m?.orderId) return o;
+            const ord = m.order as any | undefined;
+            return {
+              ...o,
+              id: m.orderId,
+              pending: false,
+              estimated: false,
+              provisional: null,
+              total: Number(m.total ?? ord?.total ?? o.total),
+              payment_method: ord?.payment_method ?? o.payment_method,
+              paid_at: ord?.paid_at ?? o.paid_at,
+              status: ord?.status ?? o.status,
+              created_at: ord?.created_at ?? o.created_at,
+              pickup_number: m.pickup_number ?? ord?.pickup_number ?? null,
+              method: ord?.method ?? o.method,
+            };
+          })
       );
     };
     window.addEventListener(SYNC_COMPLETED_EVENT, handler);

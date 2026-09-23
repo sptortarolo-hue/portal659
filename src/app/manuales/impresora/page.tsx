@@ -250,6 +250,43 @@ export default function ImpresoraPage() {
           <img src="/manuales/capturas/39-fallback-print.png" alt="Fallback impresión" className="rounded-xl border border-border shadow-sm w-full max-w-sm" />
         </div>
 
+        {/* 11 */}
+        <div>
+          <h2 className="font-display text-lg font-semibold mb-3">11. Vender e imprimir sin internet</h2>
+          <p className="mb-3">
+            Si se corta internet, el Mostrador y las Mesas <span className="font-medium">siguen vendiendo</span>:
+            las ventas se guardan en el equipo con número provisorio (P-…) y se envían solas al reconectar
+            (con el número definitivo). La impresión también puede seguir, con estas condiciones:
+          </p>
+          <div className="overflow-x-auto mb-3">
+            <table className="w-full text-sm border border-border rounded-lg overflow-hidden">
+              <thead className="bg-muted/50">
+                <tr>
+                  <th className="text-left px-3 py-2 font-medium">Dónde usás el panel</th>
+                  <th className="text-left px-3 py-2 font-medium">Sin internet imprime</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr className="border-t border-border"><td className="px-3 py-2">PC con el agente instalado</td><td className="px-3 py-2">✅ Sí, si el panel está abierto en esa PC</td></tr>
+                <tr className="border-t border-border"><td className="px-3 py-2">Celular/tablet Android con la app Portal Print</td><td className="px-3 py-2">✅ Sí, si el panel está abierto en ese mismo equipo</td></tr>
+                <tr className="border-t border-border"><td className="px-3 py-2">iPhone / iPad, o panel y app en equipos distintos</td><td className="px-3 py-2">⚠️ No: queda en cola y se imprime al reconectar</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <ul className="list-disc pl-5 space-y-1 mb-3">
+            <li>El ticket sin internet es <span className="font-medium">provisorio</span>: solo texto, sin logo y <span className="font-medium">sin factura</span> (la factura y el cierre de caja exigen conexión).</li>
+            <li>Lo impreso sin internet <span className="font-medium">no se vuelve a imprimir</span> al reconectar.</li>
+            <li>Lo que no salió queda en <span className="font-medium">cola en el banner</span> con el botón <span className="font-medium">&quot;Imprimir ahora&quot;</span> (sale con número definitivo).</li>
+          </ul>
+          <h3 className="font-semibold mb-2">Checklist de contingencia (hacerlo con internet, de día)</h3>
+          <ol className="list-decimal pl-5 space-y-1">
+            <li>Actualizá el agente PC o la app Android a la última versión.</li>
+            <li>En <span className="font-medium">Configuración → Impresora térmica → Impresión sin internet</span>, tocá <span className="font-medium">&quot;Detectar impresión local&quot;</span>: tiene que decir 🟢.</li>
+            <li>Tocá <span className="font-medium">&quot;Probar impresión local&quot;</span> y verificá que sale el ticket provisorio.</li>
+            <li>Apagá el Wi-Fi un minuto, cobrá una venta de prueba y comprobá que sale con número P-….</li>
+          </ol>
+        </div>
+
         {/* Tips */}
         <div className="bg-primary/5 border border-primary/20 rounded-xl p-5">
           <h2 className="font-display text-lg font-semibold mb-3">Tips y troubleshooting</h2>

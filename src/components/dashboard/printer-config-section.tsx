@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { CollapsibleSection } from "@/components/ui/collapsible-section";
+import { dispatchOfflinePrint, probeLocalListeners, type LocalListener } from "@/lib/local-print";
 import type { Vendor } from "@/types/database";
 
 type Props = {
@@ -46,6 +47,46 @@ export function PrinterConfigSection({
   const [queueLoading, setQueueLoading] = useState(false);
 
   const [printerSectionOpen, setPrinterSectionOpen] = useState(false);
+
+  // Impresión sin internet (contingencia, track Impresión F4): detecta
+  // listeners locales en ESTE equipo (agente PC :8792 / app Android :8793).
+  // Funciona sin internet (localhost). Requiere app/agente actualizados.
+  const [localListeners, setLocalListeners] = useState<LocalListener[] | null>(null);
+  const [localProbing, setLocalProbing] = useState(false);
+  const [localTesting, setLocalTesting] = useState(false);
+
+  const probeLocal = async () => {
+    setLocalProbing(true);
+    try {
+      setLocalListeners(await probeLocalListeners());
+    } finally {
+      setLocalProbing(false);
+    }
+  };
+
+  const testLocalPrint = async () => {
+    if (!vendor?.id) {
+      setMsg("Sin comercio cargado");
+      return;
+    }
+    setLocalTesting(true);
+    try {
+      const r = await dispatchOfflinePrint(vendor.id, {
+        kind: "TICKET",
+        items: [{ qty: 1, name: "Prueba de impresión local" }],
+        total: 0,
+        createdAt: Date.now(),
+      });
+      setMsg(
+        r.printed
+          ? `✅ Prueba local impresa (${r.via}): ticket provisorio sin validez fiscal`
+          : `❌ No se pudo imprimir local: ${r.error || "sin listener"}`
+      );
+    } finally {
+      setLocalTesting(false);
+    }
+    setTimeout(() => setMsg(""), 4000);
+  };
 
   useEffect(() => {
     const handler = () => setPrinterSectionOpen(true);
@@ -455,6 +496,39 @@ export function PrinterConfigSection({
         <Button variant="outline" size="sm" type="button" onClick={testPrinter}>
           🖨️ Imprimir prueba
         </Button>
+
+        <details className="rounded-lg border px-3 py-2 text-xs">
+          <summary className="cursor-pointer font-medium">
+            📡 Impresión sin internet (contingencia)
+          </summary>
+          <p className="mt-2 text-muted-foreground">
+            Si se corta internet, el ticket provisorio (solo-texto, sin logo ni
+            factura) sale por el agente PC o la app Android <strong>de este mismo
+            equipo</strong> directo a la impresora. Requiere agente/app actualizados
+            y corriendo acá.
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" type="button" onClick={probeLocal} disabled={localProbing}>
+              {localProbing ? "Detectando…" : "Detectar impresión local"}
+            </Button>
+            <Button variant="outline" size="sm" type="button" onClick={testLocalPrint} disabled={localTesting}>
+              {localTesting ? "Imprimiendo…" : "🧪 Probar impresión local"}
+            </Button>
+          </div>
+          {localListeners !== null && (
+            <p className="mt-2 text-muted-foreground">
+              {localListeners.length === 0 ? (
+                <>🔴 Sin listener local en este equipo (abrí el agente o la app acá).</>
+              ) : (
+                <>🟢 Listener local: {localListeners.map((l) => `${l.service} (:${l.port})`).join(", ")}</>
+              )}
+            </p>
+          )}
+          <p className="mt-1 text-[10px] text-muted-foreground/70">
+            Cobertura: panel en PC con agente, o panel en Android con la app en el
+            mismo equipo. iOS y equipos cruzados encolan para imprimir al reconectar.
+          </p>
+        </details>
 
         {printMode === "app" && (
           <div className="rounded-lg border p-3 space-y-2">

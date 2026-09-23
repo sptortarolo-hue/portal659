@@ -186,6 +186,11 @@ export const SNAP_TTL = {
   tables: 5 * 60 * 1000,
 };
 
+/** Tope de intentos antes de marcar una acción como terminal (la usa F3). */
+export const OUTBOX_MAX_ATTEMPTS = 5;
+/** TTL de muertos en outbox: 30 días. Nunca toca pendientes (F4). */
+export const OUTBOX_DEAD_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
 // ------------------------------------------------------- Outbox ---
 
 export async function outboxAdd(action: Omit<OutboxAction, "id" | "createdAt" | "attempts">): Promise<number | null> {
@@ -269,6 +274,32 @@ export function emitOutboxChanged(): void {
   }
 }
 
+/**
+ * Purga muertos viejos del outbox (terminales hace +30 días). Nunca toca
+ * pendientes: solo `attempts >= MAX` (visibles en el visor hasta purgarse).
+ */
+export async function purgeDeadOutbox(
+  vendorId: string,
+  olderThanMs = OUTBOX_DEAD_TTL_MS
+): Promise<number> {
+  try {
+    const rows = await outboxList(vendorId);
+    const cutoff = Date.now() - olderThanMs;
+    let n = 0;
+    for (const r of rows) {
+      if (r.id == null) continue;
+      if ((r.attempts || 0) >= OUTBOX_MAX_ATTEMPTS && r.createdAt < cutoff) {
+        await outboxRemove(r.id);
+        n++;
+      }
+    }
+    if (n > 0) emitOutboxChanged();
+    return n;
+  } catch {
+    return 0;
+  }
+}
+
 // --------------------------------- Mapeo localId -> pedido real ---
 
 /** Info del servidor para una acción local ya sincronizada. */
@@ -296,6 +327,8 @@ export async function idmapSet(vendorId: string, localId: string, ref: SyncedRef
 
 // ------------------------------------------------------- Prints ---
 
+// ------------------------------------------------------- Prints ---
+
 export async function printsAdd(job: Omit<PrintJob, "id" | "createdAt" | "attempts" | "printed">): Promise<number | null> {
   try {
     const id = await tx<number>("prints", "readwrite", (s) =>
@@ -304,6 +337,57 @@ export async function printsAdd(job: Omit<PrintJob, "id" | "createdAt" | "attemp
     return typeof id === "number" ? id : null;
   } catch {
     return null;
+  }
+}
+
+export async function printsList(vendorId: string): Promise<PrintJob[]> {
+  try {
+    const db = await openDb();
+    const rows: PrintJob[] = await new Promise((resolve, reject) => {
+      const out: PrintJob[] = [];
+      const t = db.transaction("prints", "readonly");
+      const idx = t.objectStore("prints").index("by-vendor");
+      const req = idx.openCursor(IDBKeyRange.only(vendorId));
+      req.onsuccess = () => {
+        const cur = req.result;
+        if (!cur) return resolve(out);
+        out.push(cur.value as PrintJob);
+        cur.continue();
+      };
+      req.onerror = () => reject(req.error ?? new Error("IDB error"));
+    });
+    return rows.sort((a, b) => (a.id ?? 0) - (b.id ?? 0));
+  } catch {
+    return [];
+  }
+}
+
+export async function printsPatch(
+  id: number,
+  patch: Partial<Pick<PrintJob, "attempts" | "printed" | "orderId">>
+): Promise<void> {  try {
+    const db = await openDb();
+    await new Promise<void>((resolve, reject) => {
+      const t = db.transaction("prints", "readwrite");
+      const store = t.objectStore("prints");
+      const req = store.get(id);
+      req.onsuccess = () => {
+        const cur = req.result as PrintJob | undefined;
+        if (cur) store.put({ ...cur, ...patch });
+        resolve();
+      };
+      req.onerror = () => reject(req.error ?? new Error("IDB error"));
+    });
+  } catch {
+    /* noop */
+  }
+}
+
+export async function printsRemove(id: number): Promise<void> {
+  try {
+    await tx("prints", "readwrite", (s) => s.delete(id));
+  } catch {
+    /* noop */
   }
 }
 

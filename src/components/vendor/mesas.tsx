@@ -9,6 +9,8 @@ import { ProductPickCard } from "@/components/vendor/product-pick-card";
 import { cashDiscountForItems, normalizeCashPct } from "@/lib/cash-discount";
 import { getCatalogSnapshot, getTablesSnapshot, saveCatalogSnapshot, saveTablesSnapshot, outboxList } from "@/lib/offline-db";
 import { enqueueOfflineAction, isNetworkError, newClientKey, nextProvisionalNumber } from "@/lib/offline-actions";
+import { checkOfflineAllowed, offlineDeniedMsg } from "@/lib/offline-plan";
+import { dispatchOfflinePrint, markPrintsDone } from "@/lib/local-print";
 import { SYNC_COMPLETED_EVENT } from "@/lib/sync-engine";
 
 type Table = {
@@ -45,6 +47,17 @@ type Product = {
   pack_size?: number | null;
   modifiers?: ProductModifier[];
 };
+
+/** Items al formato del ticket de contingencia (modificadores como labels). */
+function toContingencyItems(list: any[]): { qty: number; name: string; modifiers: string[] }[] {
+  return (list || []).map((i) => ({
+    qty: Number(i?.qty) || 1,
+    name: String(i?.name || ""),
+    modifiers: Array.isArray(i?.modifiers)
+      ? i.modifiers.map((m: any) => (typeof m === "string" ? m : String(m?.label || ""))).filter(Boolean)
+      : [],
+  }));
+}
 
 /** Tamaño del pack (1 = venta por unidad). */
 function packOf(p: Product): number {
@@ -99,6 +112,13 @@ const PAYMENT_OPTIONS = [
   { key: "tarjeta", label: "💳 Tarjeta" },
   { key: "mixto", label: "🪙 Mixto" },
 ];
+
+const PAYMENT_LABELS: Record<string, string> = {
+  efectivo: "Efectivo",
+  transferencia: "Transferencia",
+  tarjeta: "Tarjeta",
+  mixto: "Mixto",
+};
 
 export function Mesas({ vendorId }: { vendorId?: string | null }) {
   const [tables, setTables] = useState<Table[]>([]);
@@ -483,6 +503,12 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
         setMsg("Sin conexión y sin contexto del comercio: no se puede guardar");
         return;
       }
+      // Gate F4: operar offline exige plan verificado dentro del grace period.
+      const gateAdd = await checkOfflineAllowed(vendorId);
+      if (!gateAdd.allowed) {
+        setMsg(offlineDeniedMsg(gateAdd));
+        return;
+      }
       const tableId = selected.id;
       const tableName = selected.name;
       const needsKitchen = cart.some((i) => i.requires_prep !== false);
@@ -496,10 +522,23 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
         print: needsKitchen
           ? {
               doc: "comanda",
-              payload: { items: payload.items, tableName: selected.name },
+              payload: { items: payload.items, tableName },
             }
           : undefined,
       });
+      // Comanda local inmediata (F1 impresión): si hay listener en este
+      // equipo sale ya; si no, queda en cola para reimpresión manual.
+      if (needsKitchen) {
+        const r = await dispatchOfflinePrint(vendorId, {
+          kind: "COMANDA",
+          provisional: prov,
+          tableName,
+          items: toContingencyItems(payload.items as any[]),
+          total: Number(payload.total) || 0,
+          createdAt: Date.now(),
+        }).catch(() => ({ printed: false as const }));
+        if (r.printed) await markPrintsDone(vendorId, localId).catch(() => {});
+      }
       setLocalAdds((prev) => [
         ...prev,
         {
@@ -588,6 +627,12 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
     const goOfflineClose = async () => {
       if (!vendorId) {
         setMsg("Sin conexión y sin contexto del comercio: no se puede guardar");
+        return;
+      }
+      // Gate F4: operar offline exige plan verificado dentro del grace period.
+      const gateClose = await checkOfflineAllowed(vendorId);
+      if (!gateClose.allowed) {
+        setMsg(offlineDeniedMsg(gateClose));
         return;
       }
       const prov = nextProvisionalNumber(vendorId);
@@ -696,6 +741,45 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
   // más el carrito pendiente. No cierra ni cobra.
   async function printPrecuenta() {
     if (!selected || !hasAccount) return;
+    // Offline (F1 impresión): precuenta de contingencia por listener local
+    // (agente PC / app Android en este equipo). No se encola: es reimprimible.
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      if (!vendorId) {
+        setMsg("Sin contexto del comercio para imprimir");
+        return;
+      }
+      const tableName = selected.name;
+      setPrintingTicket(true);
+      try {
+        const contItems = [
+          ...toContingencyItems(openOrders.flatMap((o) => (o.items || []))),
+          ...toContingencyItems(tableAdds.flatMap((a) => (a.items || []))),
+          ...toContingencyItems(cart),
+        ];
+        const r = await dispatchOfflinePrint(vendorId, {
+          kind: "PRECUENTA",
+          tableName,
+          items: contItems,
+          total: mesaTotalNotDiscounted,
+          paymentLabel: PAYMENT_LABELS[payment] ?? payment,
+          cashPct: mesaCash.cashDiscount > 0 ? mesaCash.cashPct : 0,
+          cashTotal:
+            mesaCash.cashDiscount > 0 ? Math.max(0, mesaTotalNotDiscounted - mesaCash.cashDiscount) : 0,
+          createdAt: Date.now(),
+        });
+        setMsg(
+          r.printed
+            ? "🖨️ Precuenta provisoria impresa local"
+            : `No se pudo imprimir local (${r.error || "sin listener"}): la cuenta sigue en pantalla`
+        );
+      } catch {
+        setMsg("No se pudo imprimir la precuenta sin conexión");
+      } finally {
+        setPrintingTicket(false);
+        setTimeout(() => setMsg(""), 3000);
+      }
+      return;
+    }
     const items = [
       ...openOrders.flatMap((o) => (o.items || [])),
       ...tableAdds.flatMap((a) => (a.items || [])),

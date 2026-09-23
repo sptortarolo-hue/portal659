@@ -21,6 +21,8 @@ import {
   outboxList,
   outboxRemove,
   outboxUpdate,
+  purgeDeadOutbox,
+  OUTBOX_MAX_ATTEMPTS,
   type OutboxAction,
   type SyncedRef,
 } from "./offline-db";
@@ -37,7 +39,6 @@ export type SyncSummary = {
 };
 
 export const SYNC_COMPLETED_EVENT = "portal:sync-completed";
-const MAX_ATTEMPTS = 5;
 const running = new Set<string>();
 
 type FetchResult = { status: number; data: any };
@@ -203,6 +204,12 @@ export async function syncOutbox(vendorId: string): Promise<SyncSummary> {
   }
   running.add(vendorId);
   try {
+    // Higiene (F4): purga muertos de +30 días antes de drenar.
+    try {
+      await purgeDeadOutbox(vendorId);
+    } catch {
+      /* noop */
+    }
     if (typeof navigator !== "undefined" && !navigator.onLine) {
       summary.offline = true;
       summary.pending = (await outboxList(vendorId).catch(() => [])).length;
@@ -216,7 +223,7 @@ export async function syncOutbox(vendorId: string): Promise<SyncSummary> {
     // se saltean sin reintentar.
     let stopped = false;
     for (let pass = 0; pass < 5 && !stopped; pass++) {
-      const actions = (await outboxList(vendorId)).filter((a) => (a.attempts || 0) < MAX_ATTEMPTS);
+      const actions = (await outboxList(vendorId)).filter((a) => (a.attempts || 0) < OUTBOX_MAX_ATTEMPTS);
       if (actions.length === 0) break;
       let progressed = false;
       for (const a of actions) {
@@ -259,7 +266,7 @@ export async function syncOutbox(vendorId: string): Promise<SyncSummary> {
         }
         if ((res as { dead?: string }).dead) {
           const msg = (res as { dead: string }).dead;
-          await outboxUpdate(a.id, { attempts: MAX_ATTEMPTS, lastError: msg });
+          await outboxUpdate(a.id, { attempts: OUTBOX_MAX_ATTEMPTS, lastError: msg });
           summary.dead++;
           summary.failed++;
           if (summary.errors.length < 3) summary.errors.push(msg);
@@ -271,7 +278,7 @@ export async function syncOutbox(vendorId: string): Promise<SyncSummary> {
         // frena la pasada; el próximo trigger retoma. No suma a `failed`
         // (todavía puede sincronizar).
         const attempts = (a.attempts || 0) + 1;
-        if (attempts >= MAX_ATTEMPTS) {
+        if (attempts >= OUTBOX_MAX_ATTEMPTS) {
           await outboxUpdate(a.id, { attempts, lastError: "Demasiados reintentos" });
           summary.dead++;
           summary.failed++;

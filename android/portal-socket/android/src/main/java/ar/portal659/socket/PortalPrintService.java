@@ -17,8 +17,14 @@ import android.util.Base64;
 
 import org.json.JSONObject;
 
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.ServerSocket;
 import java.net.Socket;
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -71,6 +77,7 @@ public class PortalPrintService extends Service {
         if (!running.getAndSet(true)) {
             acquireLocks();
             startForegroundInternal("Portal Print activo", "Manteniendo la conexión con la impresora");
+            startLocalServer();
         }
         connectRelay();
         return START_STICKY;
@@ -81,6 +88,7 @@ public class PortalPrintService extends Service {
         running.set(false);
         releaseLocks();
         disconnect();
+        stopLocalServer();
         printExecutor.shutdownNow();
         super.onDestroy();
     }
@@ -258,6 +266,164 @@ public class PortalPrintService extends Service {
 
     private void setConn(String status) {
         prefs().edit().putString(KEY_CONN, status).apply();
+    }
+
+    // --------------------------------------- servidor local offline
+
+    private static final int LOCAL_PORT = 8793;
+    private ServerSocket localServer;
+    private Thread localThread;
+
+    /**
+     * Servidor local de impresión offline (Track Impresión F3).
+     * Solo loopback 127.0.0.1:8793: la PWA hace fetch sin mixed content
+     * (origen trustworthy) y ningún otro equipo de la red llega a este
+     * puerto. Mismo contrato que el agente PC:
+     *   POST /local-print { token, payload(base64), printerIp?, printerPort? }
+     *   GET /local-status (diagnóstico, sin auth).
+     * Sin dependencias nuevas: ServerSocket + org.json (ya usados).
+     */
+    private void startLocalServer() {
+        if (localThread != null && localThread.isAlive()) return;
+        localThread = new Thread(() -> {
+            try {
+                ServerSocket ss = new ServerSocket(LOCAL_PORT, 4, InetAddress.getByName("127.0.0.1"));
+                localServer = ss;
+                while (running.get() && !ss.isClosed()) {
+                    try {
+                        Socket sock = ss.accept();
+                        printExecutor.execute(() -> serveLocal(sock));
+                    } catch (Exception ignored) {
+                        if (ss.isClosed()) break;
+                    }
+                }
+            } catch (Exception ignored) {}
+        }, "portalprint-local");
+        localThread.setDaemon(true);
+        localThread.start();
+    }
+
+    private void stopLocalServer() {
+        try { if (localServer != null) localServer.close(); } catch (Exception ignored) {}
+        localServer = null;
+        localThread = null;
+    }
+
+    private void serveLocal(Socket sock) {
+        try (Socket s = sock) {
+            s.setSoTimeout(10000);
+            InputStream in = s.getInputStream();
+            OutputStream out = s.getOutputStream();
+            String head = readHttpHead(in);
+            if (head == null) return;
+            String[] requestLine = head.split("\r\n")[0].split(" ");
+            String method = requestLine.length > 0 ? requestLine[0] : "";
+            String rawPath = requestLine.length > 1 ? requestLine[1] : "/";
+            String path = rawPath.split("\\?")[0];
+            if ("GET".equals(method) && "/local-status".equals(path)) {
+                writeJson(out, 200, "{\"ok\":true,\"service\":\"portal-print\",\"local\":true,\"port\":" + LOCAL_PORT + "}");
+                return;
+            }
+            if (!"POST".equals(method) || !"/local-print".equals(path)) {
+                writeJson(out, 404, "{\"ok\":false,\"error\":\"no encontrado\"}");
+                return;
+            }
+            int contentLength = contentLengthOf(head);
+            if (contentLength < 0 || contentLength > 8 * 1024 * 1024) {
+                writeJson(out, 413, "{\"ok\":false,\"error\":\"cuerpo inválido\"}");
+                return;
+            }
+            byte[] body = readFully(in, contentLength);
+            if (body == null) {
+                writeJson(out, 400, "{\"ok\":false,\"error\":\"cuerpo incompleto\"}");
+                return;
+            }
+            writeJson(out, 200, handleLocalPrint(new String(body, StandardCharsets.UTF_8)));
+        } catch (Exception ignored) {}
+    }
+
+    private String readHttpHead(InputStream in) throws Exception {
+        ByteArrayOutputStream buf = new ByteArrayOutputStream();
+        int a = -1, b = -1, c = -1, d = -1;
+        int total = 0;
+        int r;
+        while ((r = in.read()) != -1) {
+            buf.write(r);
+            a = b; b = c; c = d; d = r;
+            if (++total > 65536) return null;
+            if (a == '\r' && b == '\n' && c == '\r' && d == '\n') break;
+        }
+        if (total == 0) return null;
+        return buf.toString("UTF-8");
+    }
+
+    private int contentLengthOf(String head) {
+        for (String line : head.split("\r\n")) {
+            int colon = line.indexOf(':');
+            if (colon > 0 && line.substring(0, colon).trim().equalsIgnoreCase("Content-Length")) {
+                try {
+                    return Integer.parseInt(line.substring(colon + 1).trim());
+                } catch (NumberFormatException e) {
+                    return -1;
+                }
+            }
+        }
+        return -1;
+    }
+
+    private byte[] readFully(InputStream in, int n) throws Exception {
+        byte[] buf = new byte[n];
+        int off = 0;
+        while (off < n) {
+            int r = in.read(buf, off, n - off);
+            if (r == -1) return null;
+            off += r;
+        }
+        return buf;
+    }
+
+    private void writeJson(OutputStream out, int status, String json) throws Exception {
+        byte[] body = json.getBytes(StandardCharsets.UTF_8);
+        String head = "HTTP/1.1 " + status + " OK\r\nContent-Type: application/json\r\nContent-Length: "
+            + body.length + "\r\nConnection: close\r\n\r\n";
+        out.write(head.getBytes(StandardCharsets.UTF_8));
+        out.write(body);
+        out.flush();
+    }
+
+    private String handleLocalPrint(String bodyText) {
+        try {
+            JSONObject body = new JSONObject(bodyText);
+            String configured = cfg(KEY_TOKEN, "");
+            if (configured.isEmpty()) return "{\"ok\":false,\"error\":\"app sin token configurado\"}";
+            if (!configured.equals(body.optString("token", ""))) {
+                return "{\"ok\":false,\"error\":\"token inválido\"}";
+            }
+            byte[] data;
+            try {
+                data = Base64.decode(body.optString("payload", ""), Base64.DEFAULT);
+            } catch (IllegalArgumentException e) {
+                return "{\"ok\":false,\"error\":\"payload inválido\"}";
+            }
+            if (data.length == 0) return "{\"ok\":false,\"error\":\"payload vacío\"}";
+            String ip = body.optString("printerIp", "");
+            if (ip.isEmpty()) ip = cfg(KEY_PRINTER_IP, "");
+            int port = body.has("printerPort")
+                ? body.optInt("printerPort", prefs().getInt(KEY_PRINTER_PORT, 9100))
+                : prefs().getInt(KEY_PRINTER_PORT, 9100);
+            if (ip.isEmpty()) return "{\"ok\":false,\"error\":\"sin IP de impresora\"}";
+            try (Socket socket = new Socket()) {
+                socket.connect(new InetSocketAddress(ip, port), 5000);
+                socket.getOutputStream().write(data);
+                socket.getOutputStream().flush();
+                return "{\"ok\":true}";
+            } catch (Exception e) {
+                String msg = e.getMessage() != null ? e.getMessage().replace('"', '\'') : "error TCP";
+                return "{\"ok\":false,\"error\":\"TCP " + ip + ":" + port + " -> " + msg + "\"}";
+            }
+        } catch (Exception e) {
+            return "{\"ok\":false,\"error\":\"JSON inválido\"}";
+        }
     }
 
     // ---------------------------------------------------------------- notification

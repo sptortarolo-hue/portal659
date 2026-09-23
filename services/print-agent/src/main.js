@@ -9,6 +9,7 @@ const { execFile } = require("node:child_process");
 const { existsSync, readFileSync, writeFileSync, mkdirSync } = require("node:fs");
 const { join, dirname } = require("node:path");
 const { createRelay, sanitizeAgentConfig, validateConnectionConfig } = require("./relay");
+const { createLocalServer } = require("./local-server");
 
 const APP_NAME = "Portal Print Agent";
 const RUN_KEY = "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run";
@@ -17,6 +18,7 @@ const RUN_VALUE = "PortalPrintAgent";
 let mainWindow = null;
 let tray = null;
 let relay = null;
+let localServer = null;
 let isQuitting = false;
 let config = null;
 let lastStatus = null;
@@ -270,6 +272,21 @@ if (!gotLock) {
     });
     lastStatus = relay.getStatus();
 
+    // Servidor local offline (127.0.0.1:8792): la PWA imprime el ticket de
+    // contingencia sin pasar por el VPS. Solo-loopback, token del comercio.
+    localServer = createLocalServer({
+      getConfig: () => config,
+      onEvent: (payload) => {
+        if (!payload || typeof payload !== "object") return;
+        if ((payload.type === "print" || payload.type === "error") && mainWindow && !mainWindow.isDestroyed()) {
+          try {
+            mainWindow.webContents.send(payload.type, payload);
+          } catch {}
+        }
+      },
+    });
+    localServer.start();
+
     registerIpc();
     createWindow();
     createTray(lastStatus);
@@ -288,6 +305,7 @@ if (!gotLock) {
   app.on("before-quit", () => {
     isQuitting = true;
     relay && relay.stop();
+    localServer && localServer.stop();
   });
 
   app.on("window-all-closed", () => {

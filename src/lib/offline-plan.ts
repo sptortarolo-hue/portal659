@@ -10,6 +10,7 @@
  */
 import { resolveVendorPlan } from "./plans";
 import type { Plan } from "@/types/database";
+import { getVendorSnapshot } from "./offline-db";
 
 /** Ventana durante la cual se puede vender offline tras el último check. */
 export const OFFLINE_GRACE_MS = 7 * 24 * 60 * 60 * 1000;
@@ -68,4 +69,31 @@ export function ageLabel(ageMs: number): string {
   const hours = Math.floor(mins / 60);
   if (hours < 48) return `hace ${hours} h`;
   return `hace ${Math.floor(hours / 24)} días`;
+}
+
+export type OfflineGate =
+  | { allowed: true; plan: OfflinePlan }
+  | { allowed: false; reason: "no-snapshot" | "grace-expired"; ageMs: number | null };
+
+/**
+ * Gate de acciones offline (F4): vender sin red exige snapshot con plan
+ * dentro del grace period. Sin snapshot no hay catálogo (nada que vender);
+ * con grace vencido se bloquea hasta reconectar. El servidor revalida todo
+ * al sincronizar de todos modos.
+ */
+export async function checkOfflineAllowed(vendorId: string): Promise<OfflineGate> {
+  const snap = await getVendorSnapshot(vendorId).catch(() => null);
+  if (!snap) return { allowed: false, reason: "no-snapshot", ageMs: null };
+  const plan = resolveOfflinePlan(snap.vendor, snap.plans, snap.cachedAt);
+  if (!plan) return { allowed: false, reason: "no-snapshot", ageMs: null };
+  if (plan.expired) return { allowed: false, reason: "grace-expired", ageMs: plan.ageMs };
+  return { allowed: true, plan };
+}
+
+/** Mensaje humano para un gate denegado (se muestra en el msg de la pestaña). */
+export function offlineDeniedMsg(gate: Extract<OfflineGate, { allowed: false }>): string {
+  if (gate.reason === "grace-expired") {
+    return `Sin conexión y con plan sin verificar (${ageLabel(gate.ageMs ?? OFFLINE_GRACE_MS)}): reconectá para seguir vendiendo`;
+  }
+  return "Sin conexión y sin datos guardados de este comercio: conectate una vez para habilitar el modo offline";
 }

@@ -11,14 +11,14 @@ export const config = {
   llmBaseUrl: (process.env.LLM_BASE_URL || "https://integrate.api.nvidia.com/v1").replace(/\/$/, ""),
   llmSiteUrl: process.env.LLM_SITE_URL || process.env.NEXT_PUBLIC_SITE_URL || "https://www.portal659.com.ar",
   llmSiteName: process.env.LLM_SITE_NAME || "Portal 659 wa-bot",
-  // Modelo default. Si va por Gemini (free: gemini-2.0-flash) u OpenRouter
-// (free vivo en el catálogo), un modelo que sabemos disponible.
+  // Modelo default. Si va por Gemini, el alias flash-latest auto-trackea las
+// actualizaciones de Google (gemini-2.0-flash quedó deprecado sep-2026).
   llmModel:
     process.env.LLM_MODEL ||
     (process.env.LLM_BASE_URL?.includes("openrouter")
       ? "google/gemma-4-31b-it:free"
       : process.env.LLM_BASE_URL?.includes("generativelanguage")
-        ? "gemini-2.0-flash"
+        ? "gemini-flash-latest"
         : "google/gemma-4-31b-it"),
   // ————— Anti-ban (pacing humano + rate limits) —————
   replyDelayMinMs: Number(process.env.WA_REPLY_DELAY_MIN_MS || 1200),

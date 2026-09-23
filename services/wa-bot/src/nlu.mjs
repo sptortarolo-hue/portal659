@@ -23,7 +23,9 @@ const EXCLUDE = /vision|guard|embed|rerank|code|chatqa|nemo(retriever|guard)/i;
 // Alternativas por proveedor (rotación anti-429/410). El primer candidato vivo
 // se cachea; si enfrió, rota al siguiente SIN reintentarlo.
 const ALTERNATIVAS = {
-  gemini: ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-2.0-flash-lite"],
+  // Verificados contra el catálogo real de Gemini (sep-2026: gemini-2.0-flash
+  // quedó deprecado — el alias flash-latest auto-trackea y no vuelve a pasar).
+  gemini: ["gemini-flash-latest", "gemini-2.5-flash", "gemini-flash-lite-latest", "gemini-2.5-flash-lite"],
   openrouter: [
     "google/gemma-4-31b-it:free",
     "google/gemma-4-26b-a4b-it:free",

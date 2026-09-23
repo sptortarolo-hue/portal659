@@ -72,6 +72,8 @@ import { PrinterStatus } from "@/components/vendor/printer-status";
 import { OfflineBanner } from "@/components/vendor/offline-banner";
 import { usePendingSyncCount } from "@/hooks/use-online-status";
 import { clearVendorData, ensurePersisted, saveVendorSnapshot } from "@/lib/offline-db";
+import { syncOutbox } from "@/lib/sync-engine";
+import { useToast } from "@/lib/toast";
 import { DeliveryBoard } from "@/components/vendor/delivery-board";
 import type { ProductModifier, VendorGallery, Booking, Vertical, Product as DBProduct, Order, ProductVariant, ProductImage, OrderItem, PlanStatus, Plan, Vendor as VendorDB } from "@/types/database";
 
@@ -238,6 +240,7 @@ function VendorDashboardInner() {
   const [cropTarget, setCropTarget] = useState<"cover" | "logo" | "offer">("cover");
 
   // Callbacks estables para el hook de teclado y los tabs memoizados.
+  const { addToast } = useToast();
   const handleTabChange = useCallback((t: DashTab) => setTab(t), []);
   const openOrderDetail = useCallback((o: Order) => setSelectedOrder(o), []);
 
@@ -390,6 +393,57 @@ function VendorDashboardInner() {
     }
     prevVendorIdRef.current = vendor.id;
   }, [vendor?.id]);
+
+  // --- Sync engine offline (F3): drena el outbox al reconectar ---
+  // Triggers: mount, evento outbox-changed (tras encolar/sincronizar),
+  // online, pestaña visible y polling 30s (fallback iOS sin Background Sync).
+  // Con outbox vacío es 1 lectura IDB, sin red.
+  useEffect(() => {
+    if (!vendor?.id) return;
+    const vendorId = vendor.id;
+    let disposed = false;
+    const run = async () => {
+      if (disposed || typeof navigator === "undefined" || !navigator.onLine) return;
+      let summary;
+      try {
+        summary = await syncOutbox(vendorId);
+      } catch {
+        return;
+      }
+      if (disposed) return;
+      if (summary.authError) {
+        addToast("Sesión vencida: volvé a entrar para sincronizar lo pendiente", "error");
+        return;
+      }
+      if (summary.synced > 0) {
+        addToast(
+          `✅ ${summary.synced} venta${summary.synced === 1 ? "" : "s"} sincronizada${summary.synced === 1 ? "" : "s"}`,
+          "success"
+        );
+        loadOrdersOnly();
+      }
+      for (const err of summary.errors.slice(0, 2)) {
+        addToast(`⚠️ Sin sincronizar: ${err}`, "error");
+      }
+    };
+    const onOutbox = () => run();
+    const onOnline = () => run();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") run();
+    };
+    window.addEventListener("portal:outbox-changed", onOutbox);
+    window.addEventListener("online", onOnline);
+    document.addEventListener("visibilitychange", onVisible);
+    const interval = setInterval(run, 30000);
+    run();
+    return () => {
+      disposed = true;
+      window.removeEventListener("portal:outbox-changed", onOutbox);
+      window.removeEventListener("online", onOnline);
+      document.removeEventListener("visibilitychange", onVisible);
+      clearInterval(interval);
+    };
+  }, [vendor?.id, loadOrdersOnly, addToast]);
 
   // Vuelta del OAuth de Mercado Pago: mostrar feedback al comercio y limpiar la URL.
   useEffect(() => {

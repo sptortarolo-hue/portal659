@@ -8,6 +8,8 @@ import { ProductPickCard } from "@/components/vendor/product-pick-card";
 import { cashDiscountForItems, normalizeCashPct } from "@/lib/cash-discount";
 import { toE164 } from "@/lib/phone";
 import { getCatalogSnapshot, saveCatalogSnapshot } from "@/lib/offline-db";
+import { enqueueOfflineAction, isNetworkError, newClientKey, nextProvisionalNumber } from "@/lib/offline-actions";
+import { SYNC_COMPLETED_EVENT } from "@/lib/sync-engine";
 
 type ModifierOption = { label: string; price_mod: number };
 type ProductModifier = {
@@ -99,6 +101,13 @@ type MostradorOrder = {
   customer_name?: string;
   pickup_number?: number | null;
   method?: string;
+  /** Venta offline pendiente de sincronizar (UI optimista, F2). */
+  pending?: boolean;
+  /** El total es estimado (el servidor recalcula al sincronizar). */
+  estimated?: boolean;
+  /** Número provisorio del día (P-N): se reemplaza por el Nro. real. */
+  provisional?: number | null;
+  localId?: string;
 };
 
 const PAYMENT_OPTIONS = [
@@ -361,22 +370,112 @@ export function Mostrador({ vendorId }: { vendorId?: string | null }) {
     // Solo entra a cocina si al menos un ítem requiere elaboración.
     const needsKitchen = items.some((i) => i.requires_prep !== false);
 
+    // El client_key viaja SIEMPRE (online también): un timeout con reintento
+    // no duplica gracias a la idempotencia del servidor (Fase 0).
+    const payload = {
+      items: items.map((i) => ({ ...i, modifiers: (i.modifiers || []).map((m) => m.label) })),
+      total,
+      paymentMethod: payment,
+      customerName: customerName || "Mostrador",
+      method,
+      customerPhone: isDelivery ? deliveryPhoneE164 : undefined,
+      customerAddress: isDelivery ? customerAddress : undefined,
+      notes: notes.trim() || null,
+      client_key: newClientKey(),
+      occurred_at: new Date().toISOString(),
+    };
+
+    const clearSaleForm = () => {
+      setItems([]);
+      setCustomerName("");
+      setCustomerPhone("");
+      setCustomerAddress("");
+      setNotes("");
+      setSheetOpen(false);
+      setSaving(false);
+    };
+
     setSaving(true);
     setMsg("");
-    const res = await fetch("/api/vendor/pos/order", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        items: items.map((i) => ({ ...i, modifiers: (i.modifiers || []).map((m) => m.label) })),
-        total,
-        paymentMethod: payment,
-        customerName: customerName || "Mostrador",
-        method,
-        customerPhone: isDelivery ? deliveryPhoneE164 : undefined,
-        customerAddress: isDelivery ? customerAddress : undefined,
-        notes: notes.trim() || null,
-      }),
-    });
+
+    // Camino offline (F2): sin red → encolar + UI optimista con número
+    // provisorio. El sync engine (F3) lo envía al reconectar.
+    const goOffline = async () => {
+      if (!vendorId) {
+        setMsg("Sin conexión y sin contexto del comercio: no se puede guardar");
+        setSaving(false);
+        return;
+      }
+      const localId = await enqueueOfflineAction({
+        vendorId,
+        scope: "pos",
+        type: "pos_order",
+        payload,
+        print:
+          withReceipt && !isDelivery
+            ? {
+                doc: isRetail ? "ticket" : "retiro",
+                payload: {
+                  items: payload.items,
+                  total: payableTotal,
+                  payment,
+                  customerName: payload.customerName,
+                  method,
+                },
+              }
+            : needsKitchen
+              ? {
+                  doc: "comanda",
+                  payload: { items: payload.items, customerName: payload.customerName },
+                }
+              : undefined,
+      });
+      const prov = nextProvisionalNumber(vendorId);
+      const nowIso = new Date().toISOString();
+      setRecent((prev) =>
+        [{
+          id: localId,
+          localId,
+          total: payableTotal,
+          estimated: true,
+          pending: true,
+          provisional: prov,
+          payment_method: payment,
+          paid_at: nowIso,
+          status: needsKitchen ? "preparing" : "new",
+          created_at: nowIso,
+          pickup_number: null,
+          customer_name: customerName || "Mostrador",
+          method,
+        }, ...prev].slice(0, 20)
+      );
+      setMsg(`📡 Sin conexión: venta P-${prov} guardada en este equipo, se envía al reconectar`);
+      clearSaleForm();
+    };
+
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      await goOffline();
+      return;
+    }
+
+    let res: Response;
+    try {
+      res = await fetch("/api/vendor/pos/order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+    } catch (e) {
+      // Solo el fallo de conectividad cae al camino offline; cualquier otro
+      // error mantiene el comportamiento anterior.
+      if (isNetworkError(e)) {
+        await goOffline();
+        return;
+      }
+      setMsg("No se pudo registrar el pedido");
+      setSaving(false);
+      return;
+    }
     const data = await res.json().catch(() => ({}));
     if (!data.ok) {
       setMsg(data.error || "No se pudo registrar el pedido");
@@ -416,13 +515,7 @@ export function Mostrador({ vendorId }: { vendorId?: string | null }) {
       ? "Pedido a domicilio registrado"
       : `Cobrado $${netTotal.toLocaleString("es-AR")}${withReceipt ? (isRetail ? " · comprobante" : " · comprobante de retiro") : ""}`;
     setMsg(baseMsg);
-    setItems([]);
-    setCustomerName("");
-    setCustomerPhone("");
-    setCustomerAddress("");
-    setNotes("");
-    setSheetOpen(false);
-    setSaving(false);
+    clearSaleForm();
 
     // Fiscal opt-in por venta, en segundo plano: el cobro nunca se traba
     // por ARCA (el mostrador queda libre al instante).
@@ -494,6 +587,42 @@ export function Mostrador({ vendorId }: { vendorId?: string | null }) {
       setConverting(false);
     }
   }
+
+  // Al sincronizar (F3), las ventas pendientes se reemplazan por los datos
+  // reales del servidor (Nro. definitivo, total recalculado).
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail as
+        | { mappings?: Record<string, { orderId: string; pickup_number?: number | null; total?: number | null; order?: any }> }
+        | undefined;
+      const mappings = detail?.mappings;
+      if (!mappings || Object.keys(mappings).length === 0) return;
+      setRecent((prev) =>
+        prev.map((o) => {
+          if (!o.localId) return o;
+          const m = mappings[o.localId];
+          if (!m?.orderId) return o;
+          const ord = m.order as any | undefined;
+          return {
+            ...o,
+            id: m.orderId,
+            pending: false,
+            estimated: false,
+            provisional: null,
+            total: Number(m.total ?? ord?.total ?? o.total),
+            payment_method: ord?.payment_method ?? o.payment_method,
+            paid_at: ord?.paid_at ?? o.paid_at,
+            status: ord?.status ?? o.status,
+            created_at: ord?.created_at ?? o.created_at,
+            pickup_number: m.pickup_number ?? ord?.pickup_number ?? null,
+            method: ord?.method ?? o.method,
+          };
+        })
+      );
+    };
+    window.addEventListener(SYNC_COMPLETED_EVENT, handler);
+    return () => window.removeEventListener(SYNC_COMPLETED_EVENT, handler);
+  }, []);
 
   if (loading) return <p className="text-sm text-muted-foreground">Cargando mostrador...</p>;
 
@@ -761,6 +890,7 @@ export function Mostrador({ vendorId }: { vendorId?: string | null }) {
           <div className="space-y-1.5">
             {recent.map((o) => {
               const canConvert =
+                !o.pending &&
                 (o.method !== "delivery") &&
                 o.status !== "completed" &&
                 o.status !== "cancelled";
@@ -769,8 +899,14 @@ export function Mostrador({ vendorId }: { vendorId?: string | null }) {
                   <div className="flex items-center justify-between text-xs gap-2">
                     <div className="flex items-center gap-2 min-w-0 flex-wrap">
                       <Badge variant="secondary" className="text-[9px]">{o.payment_method}</Badge>
-                      {o.pickup_number != null && (
-                        <Badge className="text-[9px] bg-status-new/15 text-status-new">Nro. {o.pickup_number}</Badge>
+                      {o.pending ? (
+                        <Badge className="text-[9px] bg-amber-100 text-amber-800">
+                          📡 P-{o.provisional} · pendiente{o.estimated ? " (est.)" : ""}
+                        </Badge>
+                      ) : (
+                        o.pickup_number != null && (
+                          <Badge className="text-[9px] bg-status-new/15 text-status-new">Nro. {o.pickup_number}</Badge>
+                        )
                       )}
                       {o.method === "delivery" && (
                         <Badge className="text-[9px] bg-blue-100 text-blue-700">🛵 A domicilio</Badge>

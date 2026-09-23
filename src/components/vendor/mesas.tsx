@@ -7,7 +7,9 @@ import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import { ModifierPicker } from "@/components/offers/modifier-picker";
 import { ProductPickCard } from "@/components/vendor/product-pick-card";
 import { cashDiscountForItems, normalizeCashPct } from "@/lib/cash-discount";
-import { getCatalogSnapshot, getTablesSnapshot, saveCatalogSnapshot, saveTablesSnapshot } from "@/lib/offline-db";
+import { getCatalogSnapshot, getTablesSnapshot, saveCatalogSnapshot, saveTablesSnapshot, outboxList } from "@/lib/offline-db";
+import { enqueueOfflineAction, isNetworkError, newClientKey, nextProvisionalNumber } from "@/lib/offline-actions";
+import { SYNC_COMPLETED_EVENT } from "@/lib/sync-engine";
 
 type Table = {
   id: string;
@@ -67,6 +69,30 @@ type Order = {
   pickup_number?: number | null;
 };
 
+/** Consumición guardada offline (pendiente de sync). Items = formato carrito. */
+type LocalAdd = {
+  localId: string;
+  clientKey: string;
+  tableId: string;
+  items: { product_id: string; name: string; price: number; qty: number; requires_prep: boolean; modifiers?: CartModifier[]; packSize?: number }[];
+  total: number;
+  payment: string;
+  createdAt: number;
+  provisional: number;
+};
+
+/** Cierre de mesa guardado offline (pendiente de sync). */
+type LocalClose = {
+  localId: string;
+  clientKey: string;
+  tableId: string;
+  tableName: string;
+  total: number;
+  estimated: boolean;
+  createdAt: number;
+  provisional: number;
+};
+
 const PAYMENT_OPTIONS = [
   { key: "efectivo", label: "💵 Efectivo" },
   { key: "transferencia", label: "🏦 Transferencia" },
@@ -97,6 +123,10 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
   const [printingTicket, setPrintingTicket] = useState(false);
   // % descuento en efectivo del comercio (0 = sin descuento).
   const [cashPct, setCashPct] = useState(0);
+  // Ledger offline (F2): consumiciones y cierres guardados sin red,
+  // pendientes de sync. Se rehidratan del outbox al montar.
+  const [localAdds, setLocalAdds] = useState<LocalAdd[]>([]);
+  const [localCloses, setLocalCloses] = useState<LocalClose[]>([]);
 
   const load = useCallback(async () => {
     // Snapshot local primero (stale-while-revalidate, Track Ventas F1):
@@ -179,6 +209,61 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
 
   useEffect(() => { load(); }, [load]);
 
+  // Al sincronizar (F3): se descartan las consumiciones/cierres ya enviados
+  // y se refresca la cuenta real del servidor (con Nros. y totales finales).
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail as { syncedLocalIds?: string[] } | undefined;
+      const ids = detail?.syncedLocalIds;
+      if (!ids || ids.length === 0) return;
+      const set = new Set(ids);
+      setLocalAdds((prev) => prev.filter((a) => !set.has(a.localId)));
+      setLocalCloses((prev) => prev.filter((c) => !set.has(c.localId)));
+      load().catch(() => {});
+    };
+    window.addEventListener(SYNC_COMPLETED_EVENT, handler);
+    return () => window.removeEventListener(SYNC_COMPLETED_EVENT, handler);
+  }, [load]);
+
+  // Rehidratar ledger offline desde el outbox (sobrevive reload sin red).
+  useEffect(() => {
+    if (!vendorId) return;
+    outboxList(vendorId, "mesas")
+      .then((actions) => {
+        const adds: LocalAdd[] = [];
+        const closes: LocalClose[] = [];
+        for (const a of actions) {
+          if (!a.localId) continue;
+          if (a.type === "consumicion") {
+            adds.push({
+              localId: a.localId,
+              clientKey: String(a.payload.client_key || ""),
+              tableId: String(a.payload.tableId || ""),
+              items: Array.isArray(a.payload.items) ? a.payload.items : [],
+              total: Number(a.payload.total) || 0,
+              payment: String(a.payload.paymentMethod || "efectivo"),
+              createdAt: a.createdAt,
+              provisional: Number((a.payload as any).__provisional) || 0,
+            });
+          } else if (a.type === "table_close") {
+            closes.push({
+              localId: a.localId,
+              clientKey: String(a.payload.client_key || ""),
+              tableId: String(a.payload.tableId || ""),
+              tableName: String((a.payload as any).tableName || "Mesa"),
+              total: Number((a.payload as any).__closeTotal) || 0,
+              estimated: true,
+              createdAt: a.createdAt,
+              provisional: Number((a.payload as any).__provisional) || 0,
+            });
+          }
+        }
+        if (adds.length > 0) setLocalAdds(adds);
+        if (closes.length > 0) setLocalCloses(closes);
+      })
+      .catch(() => {});
+  }, [vendorId]);
+
   // Cuenta activa: solo consumiciones en curso (no liquidadas ni canceladas).
   // Al cerrar la mesa esas pasan a 'completed' (comprobante histórico) y dejan
   // de sumar al reabrir: reabrir siempre arranca en cero (modelo "cuenta abierta").
@@ -200,6 +285,19 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
   );
   const selectedTotal = openOrders.reduce((s, o) => s + Number(o.total), 0);
 
+  // Ledger offline de la mesa seleccionada (F2).
+  const tableAdds = useMemo(
+    () => (selected ? localAdds.filter((a) => a.tableId === selected.id) : []),
+    [localAdds, selected]
+  );
+  const tableCloses = useMemo(
+    () => (selected ? localCloses.filter((c) => c.tableId === selected.id) : []),
+    [localCloses, selected]
+  );
+  const localAddsTotal = tableAdds.reduce((s, a) => s + Number(a.total), 0);
+  /** La mesa tiene cuenta (servidor o pendiente offline). */
+  const hasAccount = openOrders.length > 0 || cart.length > 0 || tableAdds.length > 0;
+
   // Descuento en efectivo de la mesa (misma fórmula que el servidor):
   // ítems de las consumiciones abiertas + lo pendiente de cargar.
   const productCashFlags = useMemo(
@@ -216,6 +314,8 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
     const lines = [
       ...openOrders.flatMap((o) => o.items || []),
       ...cart,
+      // Consumiciones offline pendientes: entran al estimado de efectivo.
+      ...tableAdds.flatMap((a) => a.items || []),
     ];
     return cashDiscountForItems(
       lines.map((i: any) => {
@@ -236,7 +336,7 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
       }),
       cashPct
     );
-  }, [openOrders, cart, cashPct, productCashFlags]);
+  }, [openOrders, cart, tableAdds, cashPct, productCashFlags]);
 
   // Chips de categoría agrupados por clave normalizada (trim+lowercase):
   // "Pizzas", "pizzas" o " Pizzas" forman un solo chip (igual que el micrositio).
@@ -367,16 +467,78 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
 
   async function addConsumicion() {
     if (!selected || cart.length === 0) return;
-    const res = await fetch("/api/vendor/pos/consumicion", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        tableId: selected.id,
-        items: cart.map((i) => ({ ...i, modifiers: (i.modifiers || []).map((m) => m.label) })),
-        total: cart.reduce((s, i) => s + i.price * i.qty, 0),
-        paymentMethod: payment,
-      }),
-    });
+    // El client_key viaja SIEMPRE (Fase 0): un timeout con reintento no
+    // duplica gracias a la idempotencia del servidor.
+    const payload = {
+      tableId: selected.id,
+      items: cart.map((i) => ({ ...i, modifiers: (i.modifiers || []).map((m) => m.label) })),
+      total: cart.reduce((s, i) => s + i.price * i.qty, 0),
+      paymentMethod: payment,
+      client_key: newClientKey(),
+      occurred_at: new Date().toISOString(),
+    };
+
+    const goOfflineAdd = async () => {
+      if (!vendorId || !selected) {
+        setMsg("Sin conexión y sin contexto del comercio: no se puede guardar");
+        return;
+      }
+      const tableId = selected.id;
+      const tableName = selected.name;
+      const needsKitchen = cart.some((i) => i.requires_prep !== false);
+      const prov = nextProvisionalNumber(vendorId);
+      (payload as any).__provisional = prov;
+      const localId = await enqueueOfflineAction({
+        vendorId,
+        scope: "mesas",
+        type: "consumicion",
+        payload,
+        print: needsKitchen
+          ? {
+              doc: "comanda",
+              payload: { items: payload.items, tableName: selected.name },
+            }
+          : undefined,
+      });
+      setLocalAdds((prev) => [
+        ...prev,
+        {
+          localId,
+          clientKey: payload.client_key,
+          tableId,
+          items: cart.map((i) => ({ ...i })),
+          total: payload.total,
+          payment,
+          createdAt: Date.now(),
+          provisional: prov,
+        },
+      ]);
+      setTables((prev) => prev.map((x) => (x.id === tableId ? { ...x, status: "ocupada" } : x)));
+      setCart([]);
+      setMsg(`📡 Consumición P-${prov} guardada en ${tableName}, se envía al reconectar`);
+      setTimeout(() => setMsg(""), 2500);
+    };
+
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      await goOfflineAdd();
+      return;
+    }
+    let res: Response;
+    try {
+      res = await fetch("/api/vendor/pos/consumicion", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+    } catch (e) {
+      if (isNetworkError(e)) {
+        await goOfflineAdd();
+        return;
+      }
+      setMsg("No se pudo cargar");
+      setTimeout(() => setMsg(""), 2500);
+      return;
+    }
     const data = await res.json();
     if (data.ok) {
       if (data.table?.status === "ocupada") {
@@ -391,14 +553,125 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
 
   async function closeTable() {
     if (!selected) return;
-    const res = await fetch(`/api/vendor/tables/${selected.id}/close`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ paymentMethod: payment }),
-    });
+    const tableId = selected.id;
+    const tableName = selected.name;
+    const adds = localAdds.filter((a) => a.tableId === tableId);
+    // Si hay carrito sin cargar, primero se encola como consumición (el sync
+    // FIFO la aplica antes del cierre). Online el carrito no entra al cierre
+    // (comportamiento actual, no se toca).
+    const cartPayload =
+      cart.length > 0
+        ? {
+            tableId,
+            items: cart.map((i) => ({ ...i, modifiers: (i.modifiers || []).map((m) => m.label) })),
+            total: cart.reduce((s, i) => s + i.price * i.qty, 0),
+            paymentMethod: payment,
+            client_key: newClientKey(),
+            occurred_at: new Date().toISOString(),
+          }
+        : null;
+    const expected_keys = [
+      ...adds.map((a) => a.clientKey),
+      ...(cartPayload ? [cartPayload.client_key as string] : []),
+    ];
+    const payload = {
+      paymentMethod: payment,
+      client_key: newClientKey(),
+      occurred_at: new Date().toISOString(),
+      expected_keys,
+      // Meta solo-cliente (el servidor la ignora): permite rehidratar el
+      // ledger tras un reload sin red.
+      tableId,
+      tableName,
+    };
+
+    const goOfflineClose = async () => {
+      if (!vendorId) {
+        setMsg("Sin conexión y sin contexto del comercio: no se puede guardar");
+        return;
+      }
+      const prov = nextProvisionalNumber(vendorId);
+      (payload as any).__provisional = prov;
+      (payload as any).__closeTotal = Math.max(
+        0,
+        Math.round((selectedTotal + cartTotal + localAddsTotal - (payment === "efectivo" ? mesaCash.cashDiscount : 0)) * 100) / 100
+      );
+      if (cartPayload) {
+        const cartProv = nextProvisionalNumber(vendorId);
+        (cartPayload as any).__provisional = cartProv;
+        const cartLocalId = await enqueueOfflineAction({
+          vendorId,
+          scope: "mesas",
+          type: "consumicion",
+          payload: cartPayload,
+        });
+        setLocalAdds((prev) => [
+          ...prev,
+          {
+            localId: cartLocalId,
+            clientKey: cartPayload.client_key as string,
+            tableId,
+            items: cart.map((i) => ({ ...i })),
+            total: cartPayload.total as number,
+            payment,
+            createdAt: Date.now(),
+            provisional: cartProv,
+          },
+        ]);
+      }
+      const localId = await enqueueOfflineAction({
+        vendorId,
+        scope: "mesas",
+        type: "table_close",
+        payload,
+      });
+      const closeTotal = (payload as any).__closeTotal as number;
+      // Efecto local: la mesa queda libre y su cuenta como cerrada pendiente.
+      // Al sincronizar, el servidor valida expected_keys (Fase 0) y cierra.
+      setTables((prev) => prev.map((x) => (x.id === tableId ? { ...x, status: "libre" } : x)));
+      setLocalAdds((prev) => prev.filter((a) => a.tableId !== tableId));
+      setLocalCloses((prev) => [
+        ...prev,
+        {
+          localId,
+          clientKey: payload.client_key as string,
+          tableId,
+          tableName,
+          total: closeTotal,
+          estimated: true,
+          createdAt: Date.now(),
+          provisional: prov,
+        },
+      ]);
+      setSelected(null);
+      setCart([]);
+      setMsg(`📡 ${tableName} cobrada ($${closeTotal.toLocaleString("es-AR")}, estimado) — se sincroniza al reconectar`);
+      setTimeout(() => setMsg(""), 3000);
+    };
+
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      await goOfflineClose();
+      return;
+    }
+    let res: Response;
+    try {
+      res = await fetch(`/api/vendor/tables/${tableId}/close`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paymentMethod: payment }),
+      });
+    } catch (e) {
+      if (isNetworkError(e)) {
+        await goOfflineClose();
+        return;
+      }
+      setMsg("No se pudo cerrar la mesa");
+      setTimeout(() => setMsg(""), 3000);
+      return;
+    }
     const data = await res.json();
     if (data.ok) {
-      setTables((prev) => prev.map((x) => (x.id === selected.id ? { ...x, status: "libre" } : x)));
+      setTables((prev) => prev.map((x) => (x.id === tableId ? { ...x, status: "libre" } : x)));
       setSelected(null);
       setCart([]);
       await load();
@@ -414,16 +687,18 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
 
   const cartCount = cart.reduce((s, i) => s + i.qty, 0);
   const cartTotal = cart.reduce((s, i) => s + i.price * i.qty, 0);
-  const mesaTotalNotDiscounted = selectedTotal + cartTotal;
+  // El total en vivo incluye consumiciones offline pendientes (estimado).
+  const mesaTotalNotDiscounted = selectedTotal + cartTotal + localAddsTotal;
   // Con efectivo se cobra el total con descuento; con otros medios, el pleno.
   const mesaPayTotal = Math.max(0, Math.round((mesaTotalNotDiscounted - (payment === "efectivo" ? mesaCash.cashDiscount : 0)) * 100) / 100);
 
   // Precuenta de la mesa (ticket térmico, sin cerrar): incluye lo ya cargado
   // más el carrito pendiente. No cierra ni cobra.
   async function printPrecuenta() {
-    if (!selected || (openOrders.length === 0 && cart.length === 0)) return;
+    if (!selected || !hasAccount) return;
     const items = [
       ...openOrders.flatMap((o) => (o.items || [])),
+      ...tableAdds.flatMap((a) => (a.items || [])),
       ...cart.map((i) => ({
         name: i.name,
         price: i.price,
@@ -440,7 +715,7 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
           type: "precuenta",
           tableName: selected.name,
           items,
-          total: selectedTotal + cartTotal,
+          total: mesaTotalNotDiscounted,
           // Info de efectivo para el ticket: "Efectivo (-X%): $Y".
           cashPct: mesaCash.cashDiscount > 0 ? mesaCash.cashPct : 0,
           cashTotal: mesaCash.cashDiscount > 0 ? Math.max(0, mesaTotalNotDiscounted - mesaCash.cashDiscount) : 0,
@@ -545,9 +820,37 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
           </div>
         </div>
       ))}
-      {openOrders.length === 0 && selected?.status === "ocupada" && (
+      {openOrders.length === 0 && selected?.status === "ocupada" && tableAdds.length === 0 && (
         <p className="text-xs text-muted-foreground">Mesa ocupada sin consumiciones registradas.</p>
       )}
+      {/* Consumiciones offline pendientes de sync (F2). */}
+      {tableAdds.map((a) => (
+        <div key={a.localId} className="rounded-xl border border-amber-300 bg-amber-50/60 p-3 dark:bg-amber-950/20">
+          <div className="flex items-center justify-between text-xs mb-1">
+            <span className="text-muted-foreground">
+              {new Date(a.createdAt).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })} · P-{a.provisional} · 📡 pendiente
+            </span>
+            <span className="font-semibold tabular-nums">${Number(a.total).toLocaleString("es-AR")}</span>
+          </div>
+          <div className="text-xs space-y-0.5">
+            {(a.items || []).map((i, idx) => (
+              <p key={idx} className="text-muted-foreground">
+                {i.qty}x {i.name}
+                {(i.modifiers || []).length > 0 && (
+                  <span className="text-red-500"> ({(i.modifiers || []).map((m) => m.label).join(", ")})</span>
+                )}
+              </p>
+            ))}
+          </div>
+        </div>
+      ))}
+      {/* Cierres offline pendientes de sync (F2). */}
+      {tableCloses.map((c) => (
+        <div key={c.localId} className="flex items-center justify-between gap-2 rounded-xl border border-amber-300 bg-amber-50/60 px-3 py-2 text-xs dark:bg-amber-950/20">
+          <span className="text-muted-foreground">📡 Cierre P-{c.provisional} de {c.tableName} · pendiente de sync</span>
+          <span className="font-semibold tabular-nums shrink-0">${Number(c.total).toLocaleString("es-AR")} (est.)</span>
+        </div>
+      ))}
     </div>
   );
 
@@ -692,12 +995,12 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
                   <Button
                     size="sm"
                     variant="outline"
-                    disabled={printingTicket || (openOrders.length === 0 && cart.length === 0)}
+                    disabled={printingTicket || !hasAccount}
                     onClick={printPrecuenta}
                   >
                     {printingTicket ? "Imprimiendo..." : "🖨️ Precuenta"}
                   </Button>
-                  <Button size="sm" variant="default" disabled={openOrders.length === 0 && cart.length === 0} onClick={closeTable}>
+                  <Button size="sm" variant="default" disabled={!hasAccount} onClick={closeTable}>
                     Cobrar y cerrar
                   </Button>
                 </div>
@@ -722,10 +1025,10 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
                   {mobileView === "catalog" ? selected.name : `Cuenta · ${selected.name}`}
                 </h3>
                 <p className="text-[11px] text-muted-foreground">
-                  {selected.status === "ocupada" ? "Ocupada" : "Libre"} · ${(selectedTotal + cartTotal).toLocaleString("es-AR")}
+                  {selected.status === "ocupada" ? "Ocupada" : "Libre"} · ${mesaTotalNotDiscounted.toLocaleString("es-AR")}
                 </p>
               </div>
-              {selected.status === "libre" && openOrders.length === 0 && cart.length === 0 && (
+              {selected.status === "libre" && !hasAccount && (
                 <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => deleteTable(selected)}>Eliminar</Button>
               )}
             </header>
@@ -802,7 +1105,7 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
                       )}
                     </span>
                     <span className="text-base font-bold tabular-nums">
-                      ${(selectedTotal + cartTotal).toLocaleString("es-AR")}
+                      ${mesaTotalNotDiscounted.toLocaleString("es-AR")}
                     </span>
                   </button>
                 </footer>
@@ -878,14 +1181,14 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
                       <Button
                         size="sm"
                         variant="outline"
-                        disabled={printingTicket || (openOrders.length === 0 && cart.length === 0)}
+                        disabled={printingTicket || !hasAccount}
                         onClick={printPrecuenta}
                       >
                         {printingTicket ? "Imprimiendo..." : "🖨️ Precuenta"}
                       </Button>
                       <Button
                         size="sm"
-                        disabled={openOrders.length === 0 && cart.length === 0}
+                        disabled={!hasAccount}
                         onClick={closeTable}
                       >
                         Cobrado y cerrar

@@ -3,9 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import {
-  timeAgo,
   canTransition,
-  ORDER_STATUS_LABELS,
   KDS_COLUMNS,
   buildClientWhatsAppUrl,
   orderCondition,
@@ -13,6 +11,7 @@ import {
   orderCompleteActionLabel,
   orderNeedsKitchen,
   nextStatusFor,
+  kitchenProgress,
   CONDITION_META,
 } from "@/lib/order-utils";
 import { playNewOrderSound, playOrderReadySound, playUrgentSound, resumeAudioContext } from "@/lib/sounds";
@@ -104,11 +103,13 @@ function getTimeColor(elapsed: number, estimated: number | null): string {
 }
 
 function TicketCard({
-  order, now, vendorName, accessToken, onAction, onUndo,
+  order, now, vendorName, accessToken, onAction, onUndo, onToggleItem, onMarkAll,
 }: {
   order: Order; now: number; vendorName: string; accessToken: string;
-  onAction: (orderId: string, status: OrderStatus) => void;
+  onAction: (orderId: string, status: OrderStatus) => Promise<string | null>;
   onUndo: (orderId: string, status: OrderStatus) => void;
+  onToggleItem: (orderId: string, index: number) => void;
+  onMarkAll: (orderId: string) => void;
 }) {
   const created = new Date(order.created_at).getTime();
   const elapsed = Math.floor((now - created) / 60000);
@@ -132,8 +133,43 @@ function TicketCard({
   const [printStatus, setPrintStatus] = useState<"ok" | "error" | null>(null);
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  function handleAction(status: OrderStatus) {
-    onAction(order.id, status);
+  const progress = kitchenProgress(order);
+  const allDone = progress.total > 0 && progress.done >= progress.total;
+  // El cierre "Listo" exige todo tildado (gate estricto, también en server).
+  const blockedByKitchen = nextStatus === "ready" && !allDone;
+  const [toggling, setToggling] = useState<number | null>(null);
+  const [markingAll, setMarkingAll] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  // Solo se tilda en estados operativos de cocina.
+  const canTick = order.status === "new" || order.status === "preparing";
+
+  function handleToggle(index: number) {
+    if (!canTick || toggling !== null) return;
+    setToggling(index);
+    vibrate([20]);
+    onToggleItem(order.id, index);
+    // Se libera al llegar el polling/refresh (el estado es server-driven).
+    setTimeout(() => setToggling(null), 1500);
+  }
+
+  function handleMarkAll() {
+    if (!canTick || markingAll || allDone) return;
+    setMarkingAll(true);
+    vibrate([20]);
+    onMarkAll(order.id);
+    setTimeout(() => setMarkingAll(false), 1500);
+  }
+
+  async function handleAction(status: OrderStatus) {
+    setActionError(null);
+    const err = await onAction(order.id, status);
+    if (err) {
+      setActionError(err);
+      vibrate([100, 50, 100]);
+      setTimeout(() => setActionError(null), 4000);
+      return;
+    }
     setUndoVisible(true);
     vibrate([30]);
     if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
@@ -204,27 +240,77 @@ function TicketCard({
         </div>
       </div>
 
-      {/* Items */}
-      <div className="space-y-0.5 mb-1.5">
-        {(order.items || []).slice(0, 4).map((item, i) => (
-          <div key={i} className="flex items-start gap-1 text-[13px] leading-tight">
-            <span className="font-bold text-foreground tabular-nums min-w-[22px] flex-shrink-0">{item.qty}x</span>
-            {/* min-w-0 flex-1 + wrap: sin esto un nombre o modifier largo
-                ensanchaba la tarjeta y la página se iba de pantalla en mobile.
-                Los modifiers NO se truncan: cocina los necesita completos. */}
-            <span className="min-w-0 flex-1 break-words text-foreground font-medium">
-              {item.name}
-              {item.modifiers && item.modifiers.length > 0 && (
-                <span className="text-[10px] font-bold text-red-600 dark:text-red-400">
-                  {" "}({item.modifiers.join(", ")})
-                </span>
-              )}
-            </span>
+      {/* Progreso de cocina */}
+      {progress.total > 0 && (
+        <div className="flex items-center gap-2 mb-1.5">
+          <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all ${allDone ? "bg-green-500" : "bg-primary"}`}
+              style={{ width: `${Math.round((progress.done / progress.total) * 100)}%` }}
+            />
           </div>
-        ))}
-        {(order.items || []).length > 4 && (
-          <p className="text-[10px] text-muted-foreground pl-7">+{order.items.length - 4} más</p>
-        )}
+          <span className={`text-[10px] font-extrabold tabular-nums ${allDone ? "text-green-600 dark:text-green-400" : "text-muted-foreground"}`}>
+            {progress.done}/{progress.total}
+          </span>
+          {canTick && !allDone && (
+            <button
+              onClick={(e) => { e.stopPropagation(); handleMarkAll(); }}
+              disabled={markingAll}
+              className="text-[10px] font-bold text-primary hover:underline disabled:opacity-50"
+            >
+              {markingAll ? "…" : "Todos"}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Items con checkbox de cocina (se muestran TODOS: cocina los necesita completos) */}
+      <div className="space-y-0.5 mb-1.5">
+        {(order.items || []).map((item, i) => {
+          const done = progress.flags[i] === true;
+          const row = (
+            <>
+              <span
+                className={`mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md border-2 text-[12px] font-bold transition-colors ${
+                  done
+                    ? "border-green-500 bg-green-500 text-white"
+                    : "border-muted-foreground/40 bg-transparent text-transparent"
+                }`}
+                aria-hidden
+              >
+                ✓
+              </span>
+              <span className="font-bold text-foreground tabular-nums min-w-[22px] flex-shrink-0">{item.qty}x</span>
+              {/* min-w-0 flex-1 + wrap: sin esto un nombre o modifier largo
+                  ensanchaba la tarjeta y la página se iba de pantalla en mobile.
+                  Los modifiers NO se truncan: cocina los necesita completos. */}
+              <span className={`min-w-0 flex-1 break-words font-medium ${done ? "text-muted-foreground line-through opacity-70" : "text-foreground"}`}>
+                {item.name}
+                {item.modifiers && item.modifiers.length > 0 && (
+                  <span className="text-[10px] font-bold text-red-600 dark:text-red-400">
+                    {" "}({item.modifiers.join(", ")})
+                  </span>
+                )}
+              </span>
+            </>
+          );
+          return canTick ? (
+            <button
+              key={i}
+              onClick={(e) => { e.stopPropagation(); handleToggle(i); }}
+              disabled={toggling !== null}
+              className={`flex w-full items-start gap-1.5 rounded-lg px-1 py-1 text-left text-[13px] leading-tight transition-colors active:scale-[0.99] ${toggling === i ? "opacity-50" : "hover:bg-muted/60"}`}
+              aria-pressed={done}
+              aria-label={`Tildar ${item.qty}x ${item.name}`}
+            >
+              {row}
+            </button>
+          ) : (
+            <div key={i} className="flex items-start gap-1.5 px-1 py-0.5 text-[13px] leading-tight">
+              {row}
+            </div>
+          );
+        })}
       </div>
 
       {/* Notes */}
@@ -266,6 +352,11 @@ function TicketCard({
       </div>
 
       {/* Action + Undo */}
+      {actionError && (
+        <p className="mt-2 rounded-lg bg-red-50 border border-red-200 px-2 py-1.5 text-[11px] font-bold text-red-600 dark:bg-red-950/30 dark:border-red-900 dark:text-red-400">
+          ⚠️ {actionError}
+        </p>
+      )}
       {!isTerminal && canAct && (
         <div className="mt-2 flex gap-1.5">
           {undoVisible ? (
@@ -273,6 +364,10 @@ function TicketCard({
               className="flex-1 py-2 sm:py-2.5 rounded-lg bg-muted text-xs sm:text-sm font-bold text-muted-foreground hover:bg-muted/80 transition-colors">
               ↩️ Deshacer
             </button>
+          ) : blockedByKitchen ? (
+            <div className="flex-1 py-2 sm:py-2.5 rounded-lg bg-muted text-muted-foreground text-xs sm:text-sm font-bold text-center">
+              ☐ Tildá todo ({progress.done}/{progress.total})
+            </div>
           ) : (
             <button onClick={() => handleAction(nextStatus!)}
               className="flex-1 py-2 sm:py-2.5 rounded-lg bg-primary text-primary-foreground text-xs sm:text-sm font-bold hover:bg-primary/90 transition-colors active:scale-[0.97]">
@@ -285,9 +380,84 @@ function TicketCard({
   );
 }
 
+/** Fila agregada por producto (vista "Por producto"): suma pendientes de todos los tickets activos. */
+function ProductAggregate({ orders }: { orders: Order[] }) {
+  const rows = (() => {
+    const map = new Map<string, { name: string; modifiers: string; pending: number; total: number; tickets: Set<string> }>();
+    for (const o of orders) {
+      if (o.status === "completed" || o.status === "cancelled") continue;
+      const { flags } = kitchenProgress(o);
+      (o.items || []).forEach((it, idx) => {
+        if (it?.requires_prep === false) return;
+        const key = `${it.name}||${(it.modifiers || []).join(",")}`;
+        let row = map.get(key);
+        if (!row) {
+          row = { name: it.name, modifiers: (it.modifiers || []).join(", "), pending: 0, total: 0, tickets: new Set() };
+          map.set(key, row);
+        }
+        row.total += it.qty;
+        if (!flags[idx]) row.pending += it.qty;
+        row.tickets.add(o.pickup_number != null ? `Nro. ${o.pickup_number}` : `#${o.id.slice(0, 6)}`);
+      });
+    }
+    return [...map.values()].sort((a, b) => b.pending - a.pending || b.total - a.total);
+  })();
+
+  if (rows.length === 0) {
+    return (
+      <div className="text-center py-12">
+        <div className="text-4xl mb-3">🎉</div>
+        <p className="text-sm font-medium text-muted-foreground">Nada pendiente en cocina</p>
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-2 pb-4">
+      {rows.map((r) => (
+        <div
+          key={`${r.name}||${r.modifiers}`}
+          className={`rounded-xl border border-border bg-card p-2.5 ${r.pending === 0 ? "opacity-60" : ""}`}
+        >
+          <div className="flex items-center gap-2">
+            <span
+              className={`flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md border-2 text-[13px] font-bold ${
+                r.pending === 0 ? "border-green-500 bg-green-500 text-white" : "border-muted-foreground/40 text-transparent"
+              }`}
+              aria-hidden
+            >
+              ✓
+            </span>
+            <span className={`font-extrabold tabular-nums ${r.pending === 0 ? "text-green-600 dark:text-green-400" : "text-foreground"}`}>
+              {r.pending}x
+            </span>
+            <span className={`min-w-0 flex-1 break-words text-[13px] font-medium ${r.pending === 0 ? "text-muted-foreground line-through" : "text-foreground"}`}>
+              {r.name}
+              {r.modifiers && (
+                <span className="text-[10px] font-bold text-red-600 dark:text-red-400"> ({r.modifiers})</span>
+              )}
+            </span>
+            {r.pending < r.total && (
+              <span className="text-[10px] font-bold text-muted-foreground tabular-nums flex-shrink-0">
+                de {r.total}
+              </span>
+            )}
+          </div>
+          <p className="text-[10px] text-muted-foreground mt-1 pl-8 truncate">
+            🧾 {[...r.tickets].join(" · ")}
+          </p>
+        </div>
+      ))}
+      <p className="text-center text-[11px] text-muted-foreground pt-1">
+        Resumen para cantar producción — tildá los ítems desde la vista Por pedido.
+      </p>
+    </div>
+  );
+}
+
 export default function ComandaKDS({ vendorId, vendorName, accessToken, prepTimeMin = null }: Props) {
   const [orders, setOrders] = useState<Order[]>([]);
   const [activeTab, setActiveTab] = useState<OrderStatus | "all">("new");
+  const [boardView, setBoardView] = useState<"tickets" | "products">("tickets");
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
@@ -398,15 +568,24 @@ export default function ComandaKDS({ vendorId, vendorName, accessToken, prepTime
     return () => clearInterval(interval);
   }, [activeTab]);
 
-  async function handleAction(orderId: string, status: OrderStatus) {
+  async function handleAction(orderId: string, status: OrderStatus): Promise<string | null> {
     const estimated = status === "preparing" ? (prepTimeMin ?? 30) : undefined;
     setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, status } : o)));
     try {
-      await fetch(`/api/vendor/orders/${orderId}`, {
+      const res = await fetch(`/api/vendor/orders/${orderId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
         body: JSON.stringify({ status, estimated_minutes: estimated }),
       });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        // Revierte el optimista y muestra el motivo (ej. cocina incompleta).
+        fetchOrders();
+        return (data as { error?: string }).error || "No se pudo actualizar";
+      }
+      if (data.order) {
+        setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, ...(data.order as Partial<Order>) } : o)));
+      }
       const order = ordersRef.current.find((o) => o.id === orderId);
       if (status === "preparing" && order && orderNeedsKitchen(order)) {
         fetch("/api/print", {
@@ -415,7 +594,62 @@ export default function ComandaKDS({ vendorId, vendorName, accessToken, prepTime
           body: JSON.stringify({ orderId }),
         }).catch(() => {});
       }
-    } catch { fetchOrders(); }
+      return null;
+    } catch { fetchOrders(); return "Sin conexión, reintentá"; }
+  }
+
+  /** Tildado optimista de un ítem (el server es la fuente de verdad). */
+  function handleToggleItem(orderId: string, index: number) {
+    setOrders((prev) =>
+      prev.map((o) => {
+        if (o.id !== orderId) return o;
+        const len = (o.items || []).length;
+        const base = Array.isArray(o.kitchen_done) ? [...o.kitchen_done] : [];
+        while (base.length < len) base.push(false);
+        if (index < 0 || index >= len) return o;
+        base[index] = !base[index];
+        return { ...o, kitchen_done: base };
+      })
+    );
+    fetch(`/api/vendor/orders/${orderId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+      body: JSON.stringify({ toggle_item: index }),
+    })
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || (data as { order?: unknown }).order) {
+          if (res.ok && (data as { order?: Order }).order) {
+            setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, kitchen_done: (data as { order: Order }).order.kitchen_done } : o)));
+          } else {
+            fetchOrders();
+          }
+        }
+      })
+      .catch(() => fetchOrders());
+  }
+
+  /** Marca todos los ítems del pedido como listos. */
+  function handleMarkAll(orderId: string) {
+    const order = ordersRef.current.find((o) => o.id === orderId);
+    if (!order) return;
+    const full = Array.from({ length: (order.items || []).length }, () => true);
+    setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, kitchen_done: full } : o)));
+    fetch(`/api/vendor/orders/${orderId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+      body: JSON.stringify({ kitchen_done: full }),
+    })
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && (data as { order?: Order }).order) {
+          setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, kitchen_done: (data as { order: Order }).order.kitchen_done } : o)));
+          vibrate([30, 50, 30]);
+        } else {
+          fetchOrders();
+        }
+      })
+      .catch(() => fetchOrders());
   }
 
   function handleUndo(orderId: string, _currentStatus: OrderStatus) {
@@ -519,6 +753,8 @@ export default function ComandaKDS({ vendorId, vendorName, accessToken, prepTime
                 accessToken={accessToken}
                 onAction={handleAction}
                 onUndo={handleUndo}
+                onToggleItem={handleToggleItem}
+                onMarkAll={handleMarkAll}
               />
             ))
           )}
@@ -599,6 +835,21 @@ export default function ComandaKDS({ vendorId, vendorName, accessToken, prepTime
         </div>
       )}
 
+      {/* Vista: Por pedido | Por producto */}
+      <div className="flex gap-1.5">
+        {(["tickets", "products"] as const).map((v) => (
+          <button
+            key={v}
+            onClick={() => setBoardView(v)}
+            className={`flex-1 py-1.5 rounded-xl text-[11px] font-bold transition-all ${
+              boardView === v ? "bg-foreground text-background shadow-sm" : "bg-muted text-muted-foreground"
+            }`}
+          >
+            {v === "tickets" ? "🧾 Por pedido" : "📊 Por producto"}
+          </button>
+        ))}
+      </div>
+
       {/* Mobile: single column with tabs */}
       <div
         ref={listRef}
@@ -607,7 +858,9 @@ export default function ComandaKDS({ vendorId, vendorName, accessToken, prepTime
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
       >
-        {activeTab === "all" ? (
+        {boardView === "products" ? (
+          <ProductAggregate orders={activeOrders} />
+        ) : activeTab === "all" ? (
           activeOrders
             .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
             .map((order) => (
@@ -619,6 +872,8 @@ export default function ComandaKDS({ vendorId, vendorName, accessToken, prepTime
                 accessToken={accessToken}
                 onAction={handleAction}
                 onUndo={handleUndo}
+                onToggleItem={handleToggleItem}
+                onMarkAll={handleMarkAll}
               />
             ))
         ) : (
@@ -631,26 +886,35 @@ export default function ComandaKDS({ vendorId, vendorName, accessToken, prepTime
               accessToken={accessToken}
               onAction={handleAction}
               onUndo={handleUndo}
+              onToggleItem={handleToggleItem}
+              onMarkAll={handleMarkAll}
             />
           ))
         )}
-        {((activeTab === "all" && activeOrders.length === 0) ||
-          (activeTab !== "all" && columnOrders(activeTab as OrderStatus).length === 0)) && (
-          <div className="text-center py-12">
-            <div className="text-4xl mb-3">🎉</div>
-            <p className="text-sm font-medium text-muted-foreground">
-              {activeTab === "new" ? "No hay pedidos nuevos" : `Sin pedidos en ${tabs.find((t) => t.key === activeTab)?.label}`}
-            </p>
-          </div>
-        )}
+        {boardView === "tickets" &&
+          ((activeTab === "all" && activeOrders.length === 0) ||
+            (activeTab !== "all" && columnOrders(activeTab as OrderStatus).length === 0)) && (
+            <div className="text-center py-12">
+              <div className="text-4xl mb-3">🎉</div>
+              <p className="text-sm font-medium text-muted-foreground">
+                {activeTab === "new" ? "No hay pedidos nuevos" : `Sin pedidos en ${tabs.find((t) => t.key === activeTab)?.label}`}
+              </p>
+            </div>
+          )}
       </div>
 
-      {/* Desktop: kanban board */}
-      <div className="hidden sm:grid kds-kanban">
-        {KDS_COLUMNS.filter((c) => c.status !== "sent").map((col) =>
-          renderColumn(col.status, col.label, col.emoji)
-        )}
-      </div>
+      {/* Desktop: kanban board o agregado por producto */}
+      {boardView === "products" ? (
+        <div className="hidden sm:block max-w-3xl">
+          <ProductAggregate orders={activeOrders} />
+        </div>
+      ) : (
+        <div className="hidden sm:grid kds-kanban">
+          {KDS_COLUMNS.filter((c) => c.status !== "sent").map((col) =>
+            renderColumn(col.status, col.label, col.emoji)
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -55,7 +55,7 @@ function customerNotificationText(
 }
 
 const RETURN_COLUMNS =
-  "customer_phone, customer_name, customer_address, total, payment_method, payment_status, notes, modification_notes, method, items, pickup_number, transfer_proof_url";
+  "customer_phone, customer_name, customer_address, total, payment_method, payment_status, notes, modification_notes, method, items, pickup_number, transfer_proof_url, CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'kitchen_done') THEN kitchen_done ELSE '[]'::jsonb END AS kitchen_done";
 
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   const params = await context.params;
@@ -99,6 +99,8 @@ export async function PATCH(
   const method = body.method;
   const customer_phone = body.customer_phone;
   const customer_address = body.customer_address;
+  const toggleItem = body.toggle_item;
+  const rawKitchenDone = body.kitchen_done;
 
   // Conversión de mostrador pickup → delivery en el medio del circuito.
   const isConvertDelivery =
@@ -106,9 +108,25 @@ export async function PATCH(
     !status &&
     !payment_status &&
     rawItems === undefined &&
-    modification_notes === undefined;
+    modification_notes === undefined &&
+    toggleItem === undefined &&
+    rawKitchenDone === undefined;
 
   const isModifyOnly = !status && !payment_status && (rawItems !== undefined || modification_notes !== undefined);
+
+  // Tildado de cocina (KDS acumulativo): alterna o reemplaza el array de
+  // progreso sin cambiar el estado del pedido. Solo en estados operativos.
+  const isKitchenOnly =
+    !status && !payment_status && rawItems === undefined &&
+    modification_notes === undefined && !isConvertDelivery &&
+    (toggleItem !== undefined || rawKitchenDone !== undefined);
+
+  if (toggleItem !== undefined && (!Number.isInteger(toggleItem) || toggleItem < 0)) {
+    return NextResponse.json({ error: "Ítem inválido" }, { status: 400 });
+  }
+  if (rawKitchenDone !== undefined && !Array.isArray(rawKitchenDone)) {
+    return NextResponse.json({ error: "Progreso inválido" }, { status: 400 });
+  }
 
   if (status && !["new", "confirmed", "preparing", "ready", "sent", "completed", "cancelled"].includes(status)) {
     return NextResponse.json({ error: "Estado inválido" }, { status: 400 });
@@ -118,8 +136,12 @@ export async function PATCH(
     return NextResponse.json({ error: "Estado de pago inválido" }, { status: 400 });
   }
 
-  const currentOrder = await queryOne<{ status: string; payment_status: string; payment_method: string; channel: string; method: string; items: OrderItem[] | null; customer_phone: string | null; total: number; is_preview: boolean | null }>(
-    `SELECT status, payment_status, payment_method, channel, method, items, customer_phone, total, is_preview FROM orders WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
+  const currentOrder = await queryOne<{ status: string; payment_status: string; payment_method: string; channel: string; method: string; items: OrderItem[] | null; customer_phone: string | null; total: number; is_preview: boolean | null; kitchen_done: boolean[] | null }>(
+    `SELECT status, payment_status, payment_method, channel, method, items, customer_phone, total, is_preview,
+      -- Tolerante a migración de progreso de cocina sin aplicar.
+      CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'kitchen_done')
+        THEN kitchen_done ELSE '[]'::jsonb END AS kitchen_done
+      FROM orders WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
     [params.id, vendor.id]
   );
 
@@ -175,10 +197,59 @@ export async function PATCH(
     );
   }
 
+  if (isKitchenOnly && (currentOrder.status === "completed" || currentOrder.status === "cancelled")) {
+    return NextResponse.json(
+      { error: "No se puede tildar un pedido ya finalizado" },
+      { status: 400 }
+    );
+  }
+
+  // Cierre estricto de cocina (solo gastronomía con elaboración): para
+  // marcar "Listo" todos los ítems tienen que estar tildados en el KDS.
+  // Retail (moda/comercio) y pedidos sin cocina no pasan por este gate.
+  if (status === "ready") {
+    const vertical = fullVendor?.vertical ?? null;
+    const isGastro = vertical === null || vertical === "gastronomia";
+    const needsKitchen = (currentOrder.items || []).some(
+      (i) => (i as OrderItem)?.requires_prep !== false
+    );
+    if (isGastro && needsKitchen) {
+      const itemsLen = (currentOrder.items || []).length;
+      const rawDone = Array.isArray(currentOrder.kitchen_done) ? currentOrder.kitchen_done : [];
+      const pending = itemsLen - rawDone.filter(Boolean).length;
+      // Si el pedido trae ítems legacy con `done` embebido, también cuentan.
+      const legacyDone = (currentOrder.items || []).filter(
+        (it, idx) => idx >= rawDone.length && (it as { done?: boolean })?.done === true
+      ).length;
+      if (pending - legacyDone > 0) {
+        return NextResponse.json(
+          { error: `Faltan ${pending - legacyDone} ítems por tildar en cocina`, code: "kitchen_incomplete" },
+          { status: 409 }
+        );
+      }
+    }
+  }
+
   let order: Record<string, unknown> | null = null;
   try {
     order = await withTransaction(async (tx) => {
       const updateData: Record<string, unknown> = {};
+      // Tolerante a migración de progreso de cocina sin aplicar.
+      let hasKitchenCol = false;
+      try {
+        const col = await tx.query<{ exists: boolean }>(
+          `SELECT EXISTS (
+             SELECT 1 FROM information_schema.columns
+             WHERE table_name = 'orders' AND column_name = 'kitchen_done'
+           ) AS exists`
+        );
+        hasKitchenCol = col[0]?.exists === true;
+      } catch {
+        hasKitchenCol = false;
+      }
+      if (isKitchenOnly && !hasKitchenCol) {
+        throw new PricingError("Progreso de cocina no disponible (falta migración)");
+      }
       if (status) updateData.status = status;
       if (status === "completed" || status === "cancelled") updateData.closed_at = new Date().toISOString();
       if (estimated_minutes !== undefined) updateData.estimated_minutes = estimated_minutes;
@@ -240,6 +311,36 @@ export async function PATCH(
           await adjustStockForItems(tx, currentOrder.items, "increment");
           await adjustStockForItems(tx, pricing.items, "decrement");
         }
+        // Ítems nuevos = producción nueva: se resetea el tildado de cocina.
+        if (hasKitchenCol) {
+          updateData.kitchen_done = JSON.stringify(
+            Array.from({ length: pricing.items.length }, () => false)
+          );
+        }
+      }
+
+      // Tildado de cocina (KDS acumulativo): se normaliza al largo de items.
+      if (isKitchenOnly) {
+        const itemsLen = (currentOrder.items || []).length;
+        if (toggleItem !== undefined && (toggleItem as number) >= itemsLen) {
+          throw new PricingError("Ítem inválido");
+        }
+        const base = Array.isArray(currentOrder.kitchen_done)
+          ? currentOrder.kitchen_done
+          : [];
+        // Legacy: ítems con `done` embebido cuentan como tildados.
+        const normalized: boolean[] = Array.from({ length: itemsLen }, (_, i) =>
+          i < base.length ? base[i] === true : (currentOrder.items?.[i] as { done?: boolean } | undefined)?.done === true
+        );
+        if (toggleItem !== undefined) {
+          normalized[toggleItem as number] = !normalized[toggleItem as number];
+        } else {
+          const incoming = rawKitchenDone as unknown[];
+          for (let i = 0; i < normalized.length; i++) {
+            if (i < incoming.length) normalized[i] = incoming[i] === true;
+          }
+        }
+        updateData.kitchen_done = JSON.stringify(normalized);
       }
 
       const setClauses: string[] = [];

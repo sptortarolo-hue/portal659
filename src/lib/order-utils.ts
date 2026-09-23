@@ -11,6 +11,35 @@ export function orderNeedsKitchen(
   return (order.items || []).some((i) => i?.requires_prep !== false);
 }
 
+/**
+ * Progreso de cocina de un pedido (comanda acumulativa con checkbox).
+ * Normaliza `kitchen_done` al largo de `items`: lo que falte se trata
+ * como pendiente (false). Acepta el formato legacy con `done` embebido
+ * en el ítem para pedidos que lo traigan así.
+ */
+export function kitchenProgress(
+  order: Pick<Order, "items" | "kitchen_done">
+): { done: number; total: number; flags: boolean[] } {
+  const items = order.items || [];
+  const raw = Array.isArray(order.kitchen_done) ? order.kitchen_done : [];
+  const flags = items.map((it, idx) =>
+    idx < raw.length ? raw[idx] === true : (it as { done?: boolean })?.done === true
+  );
+  return { done: flags.filter(Boolean).length, total: items.length, flags };
+}
+
+/** True si todos los ítems del pedido están tildados en cocina. */
+export function allItemsDone(order: Pick<Order, "items" | "kitchen_done">): boolean {
+  const { done, total } = kitchenProgress(order);
+  return total > 0 && done >= total;
+}
+
+/** Normaliza un array de tildes al largo de los ítems (recorta/rellena). */
+export function normalizeKitchenDone(itemsLength: number, raw: unknown): boolean[] {
+  const arr = Array.isArray(raw) ? raw : [];
+  return Array.from({ length: itemsLength }, (_, i) => arr[i] === true);
+}
+
 const VALID_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
   // "confirmed" es legacy del flow retail con aceptación explícita (pedidos
   // en vuelo): se sigue aceptando como origen/destino pero la UI ya no lo

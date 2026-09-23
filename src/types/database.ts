@@ -503,6 +503,8 @@ export type Order = {
   updated_at: string;
   /** Momento en que el pedido se cerró (completed/cancelled). Frena el cronómetro. */
   closed_at?: string | null;
+  /** Progreso de cocina por ítem (array paralelo a `items`). true = tildado. */
+  kitchen_done?: boolean[] | null;
 };
 
 export type OrderItem = {
@@ -517,6 +519,8 @@ export type OrderItem = {
   pack_size?: number;
   modifiers?: string[];
   requires_prep?: boolean;
+  /** Tilde de cocina (KDS acumulativo). true = ítem ya elaborado. */
+  done?: boolean;
 };
 
 export type OrderStatusLog = {

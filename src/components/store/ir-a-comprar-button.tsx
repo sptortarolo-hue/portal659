@@ -1,10 +1,10 @@
 "use client";
 
 /**
- * Botón del micrositio que scrollea hasta el menú, dejándolo justo debajo del
+ * Botón del micrositio que scrollea hasta el menú/catálogo, dejándolo justo debajo del
  * nav sticky de categorías (mismo destino que el link compartido por WhatsApp
  * con ?menu=1). El label varía: con carrito "🛒 Ir a comprar", en modo lectura
- * (venta online apagada) "📋 Ver la carta".
+ * (venta online apagada) "📋 Ver el catálogo" (retail) / "📋 Ver la carta" (gastro).
  */
 export function IrAComprarButton({ label }: { label?: string }) {
   function goToMenu() {

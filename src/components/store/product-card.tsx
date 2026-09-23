@@ -16,6 +16,10 @@ type VendorBrief = {
   cashDiscountPct?: number | null;
 };
 
+function isRetailVertical(vertical: string | null | undefined): boolean {
+  return vertical === "moda" || vertical === "comercio";
+}
+
 type Props = {
   product: any;
   variants?: any[];
@@ -172,7 +176,7 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
             ) : (
               <span className="text-xs text-white/90">{imgs.length > 0 ? `${imgs.length} foto${imgs.length > 1 ? "s" : ""}` : "Ver"}</span>
             )}
-            <span className="text-sm text-white hover:underline">Ver →</span>
+            <span className="text-sm text-white hover:underline">{isRetailVertical(vendor.vertical) ? "Ver producto" : "Ver →"}</span>
           </div>
         </button>
 

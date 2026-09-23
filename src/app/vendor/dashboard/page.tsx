@@ -624,10 +624,20 @@ function VendorDashboardInner() {
       vendor ? resolveVendorPlan(vendor, plans).can : () => false,
     [vendor, plans]
   );
+
+  // Verticales: declarados ANTES del useMemo de dashboardProps para que estén disponibles.
+  const isService = vendor?.vertical === "servicio";
+  const isGastro = vendor?.vertical === "gastronomia";
+  const isComercio = vendor?.vertical === "comercio";
+  const isModa = vendor?.vertical === "moda";
+  // Retail (moda y comercio): flow de pedido con aceptación explícita y sin cocina.
+  const isRetail = isModa || isComercio;
+
   const dashboardProps = useMemo(() => ({
     vendor, offers, categories, modifiers, gallery, bookings, msg,
     setMsg, reload: loadData, saveVendor, uploading: false, onCrop: openCrop,
-  }), [vendor, offers, categories, modifiers, gallery, bookings, msg, loadData, saveVendor, openCrop]);
+    isRetail,
+  }), [vendor, offers, categories, modifiers, gallery, bookings, msg, loadData, saveVendor, openCrop, isRetail]);
 
   if (loading) return <main className="container mx-auto px-4 py-8"><p className="text-muted-foreground">Cargando...</p></main>;
 
@@ -665,12 +675,7 @@ function VendorDashboardInner() {
     );
   }
 
-  const isService = vendor?.vertical === "servicio";
-  const isGastro = vendor?.vertical === "gastronomia";
-  const isComercio = vendor?.vertical === "comercio";
-  const isModa = vendor?.vertical === "moda";
-  // Retail (moda y comercio): flow de pedido con aceptación explícita y sin cocina.
-  const isRetail = isModa || isComercio;
+  // Las constantes isService/isGastro/isComercio/isModa/isRetail ya declaradas arriba.
 
   // Retail: labels y pasos del flow con aceptación explícita ("Empaquetando", etc.).
   const statusLabels: Record<Order["status"], string> = isRetail ? RETAIL_STATUS_LABELS : STATUS_LABELS;
@@ -1143,7 +1148,7 @@ function VendorDashboardInner() {
                 {isGastro && (
                   <PrepTimeControl vendor={vendor} onSaved={(v) => setVendor(v)} />
                 )}
-                {(isGastro || (isComercio && effectivePlan.can("printer"))) && (
+                {(isGastro || ((isComercio || isModa) && effectivePlan.can("printer"))) && (
                   <PrinterStatus vendor={vendor} onOpenConfig={() => {
                     setTab("config");
                     window.dispatchEvent(new Event("portal:open-printer-config"));
@@ -1176,7 +1181,7 @@ function VendorDashboardInner() {
               {isGastro && (
                 <PrepTimeControl vendor={vendor} onSaved={(v) => setVendor(v)} />
               )}
-              {(isGastro || (isComercio && effectivePlan.can("printer"))) && (
+              {(isGastro || ((isComercio || isModa) && effectivePlan.can("printer"))) && (
                 <PrinterStatus vendor={vendor} onOpenConfig={() => {
                   setTab("config");
                   window.dispatchEvent(new Event("portal:open-printer-config"));
@@ -1317,9 +1322,7 @@ function VendorDashboardInner() {
                   ) : (
                     <PlanLock
                       title="Mostrador"
-                      description={isModa
-                        ? "Vas a poder armar ventas y cobrarlas en el local. Lo estamos habilitando para tu rubro."
-                        : "Armá pedidos y cobrá en el local con impresión de ticket. Parte del plan Gestión integral."}
+                      description="Armá pedidos y cobrá en el local con impresión de ticket. Parte del plan Gestión integral."
                     />
                   )}
                 </div>
@@ -1499,12 +1502,12 @@ function VendorDashboardInner() {
                   <FileText className="h-5 w-5" />Recetas
                 </button>
               )}
-              {(isGastro || isComercio) && (
+              {(isGastro || isComercio || isModa) && (
                 <button onClick={() => { setTab("caja"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "caja" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
                   <DollarSign className="h-5 w-5" />Caja
                 </button>
               )}
-              {(isGastro || isComercio) && (
+              {(isGastro || isComercio || isModa) && (
                 <button onClick={() => { setTab("clientes"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "clientes" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
                   <Users className="h-5 w-5" />Clientes
                 </button>

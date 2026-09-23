@@ -34,13 +34,13 @@ const OPERACION_ITEMS: { tab: Tab; label: string; icon: typeof Package; show: (g
   { tab: "comanda", label: "Comanda", icon: ChefHat, show: (g, m, c) => !m && !c, badge: (_, c) => c },
   { tab: "pos", label: "Mostrador", icon: ShoppingBag, show: () => true },
   { tab: "mesas", label: "Mesas", icon: LayoutGrid, show: (g) => g },
-  { tab: "caja", label: "Caja", icon: DollarSign, show: (g, m, c) => g || c },
+  { tab: "caja", label: "Caja", icon: DollarSign, show: (g, m, c) => g || c || m },
 ];
 
 const GESTION_ITEMS: { tab: Tab; label: string; icon: typeof UtensilsCrossed; show: (g: boolean, m: boolean, c: boolean) => boolean; suffix?: (count: number) => string }[] = [
   { tab: "menu", label: "Menú", icon: UtensilsCrossed, show: () => true, suffix: (c) => `${c}` },
   { tab: "recetas", label: "Recetas", icon: Calculator, show: (g) => g },
-  { tab: "clientes", label: "Clientes", icon: Users, show: (g, m, c) => g || c },
+  { tab: "clientes", label: "Clientes", icon: Users, show: (g, m, c) => g || c || m },
   { tab: "config", label: "Configuración", icon: Settings, show: () => true },
 ];
 

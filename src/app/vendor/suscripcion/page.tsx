@@ -46,7 +46,7 @@ const PLAN_COPY: Record<string, { title: string; desc: string }> = {
   },
   gestion: {
     title: "Gestión integral",
-    desc: "Todo lo de Pedidos, más pago online, comanda, mostrador y mesas.",
+    desc: "Todo lo de Pedidos, más cobro online, mostrador, caja, clientes e impresión (gastro suma comanda y mesas).",
   },
   oficios: {
     title: "Oficios",
@@ -297,7 +297,7 @@ export default function VendorSuscripcionPage() {
           <>
           {!eff.eligibleForPaid && (
             <div className="rounded-2xl border border-border bg-card p-5 text-sm text-muted-foreground">
-              Los planes de pago están disponibles para <b>gastronomía</b>, <b>comercios de barrio</b> y <b>servicios</b> (plan Oficios).
+              Los planes de pago están disponibles para <b>gastronomía</b>, <b>comercios de barrio</b>, <b>moda</b> y <b>servicios</b> (plan Oficios).
               Para tu rubro, el plan <b>Gratuito</b> incluye tu ficha y vidriera completa.
             </div>
           )}

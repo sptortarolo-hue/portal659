@@ -15,7 +15,8 @@ export const PLAN_IDS: Record<PlanSlug, string> = {
 
 export const PLAN_SLUGS: PlanSlug[] = ["gratuito", "pedidos", "gestion", "oficios"];
 
-// Los planes pagos están disponibles para gastronomía, comercio de barrio y servicios.
+// Los planes pagos están disponibles para gastronomía, comercio de barrio,
+// moda y servicios.
 export const PAID_PLAN_SLUGS: PlanSlug[] = ["pedidos", "gestion", "oficios"];
 
 export const GASTRO_VERTICAL = "gastronomia";
@@ -84,13 +85,19 @@ const FREE_GASTRO_FEATURES: PlanFeatures = {
 };
 
 // Moda (indumentaria) vende con carrito + pedidos desde el micrositio.
-// No usa cocina (kds), mesas ni POS por ahora: la definición de planes
-// pagos para moda queda pendiente (ver AGENTS.md).
+// Gratis: carrito con tope propio de 5 pedidos/mes (MODA_FREE_ORDERS_MONTH,
+// NO la fila "gratuito": esos 20 son de gastro/comercio). Con plan pago
+// vigente (Pedidos/Gestión, mismos precios que gastro) suma lo del plan con
+// mask de vertical (sin kds/mesas/recipes). Variantes, guía de talles y
+// fotos por color no están gateadas (son el producto mismo).
 const MODA_FEATURES: PlanFeatures = {
   ...GRATUITO_FEATURES,
   cart: true,
   emits_orders: true,
 };
+
+/** Tope mensual de pedidos online del plan gratuito de moda (propio, no el de gastro). */
+export const MODA_FREE_ORDERS_MONTH = 5;
 
 // Comercio de barrio (retail: almacén, kiosco, ferretería, librería...):
 // venta online con retiro/delivery + mostrador. Usa los MISMOS planes pagos
@@ -120,6 +127,15 @@ const SERVICIO_FEATURE_MASK: Partial<Record<FeatureKey, false>> = {
   pos: false,
   variants: false,
   modifiers: false,
+  recipes: false,
+};
+
+// Features del plan que no aplican al vertical moda (forzadas a false).
+// pos/printer/caja/crm/analytics/reviews/mp SÍ aplican con el plan pago
+// (Mostrador con variantes + Caja + Clientes + impresión de ticket).
+const MODA_FEATURE_MASK: Partial<Record<FeatureKey, false>> = {
+  kds: false,
+  mesas: false,
   recipes: false,
 };
 
@@ -183,7 +199,7 @@ export function resolveVendorPlan(
       trialActive: false,
       active: false,
       expired: false,
-      eligibleForPaid: isGastroVendor(vendor) || isComercioVendor(vendor) || isServicioVendor(vendor),
+      eligibleForPaid: isGastroVendor(vendor) || isComercioVendor(vendor) || isServicioVendor(vendor) || isModaVendor(vendor),
       can: () => true,
       analyticsDays: 99999,
       maxProducts: null,
@@ -222,12 +238,18 @@ export function resolveVendorPlan(
   else if (active) status = "active";
   else status = expired ? "expired" : "gratuito";
 
-  // Gastro, comercio y servicios pueden tener planes pagos; el resto de los
-  // verticales (moda cae por su propia rama) resuelven siempre como gratuito.
-  const eligibleForPaid = isGastroVendor(vendor) || isComercioVendor(vendor) || isServicioVendor(vendor);
+  // Gastro, comercio, moda y servicios pueden tener planes pagos; el resto de
+  // los verticales resuelven siempre como gratuito.
+  const eligibleForPaid = isGastroVendor(vendor) || isComercioVendor(vendor) || isServicioVendor(vendor) || isModaVendor(vendor);
 
   const can = (feature: FeatureKey): boolean => {
-    if (isModaVendor(vendor)) return MODA_FEATURES[feature] === true;
+    if (isModaVendor(vendor)) {
+      // Mask del vertical: gestión trae kds/mesas/recipes en su JSONB, pero
+      // un local de ropa nunca los usa (no tiene cocina ni salón).
+      if (MODA_FEATURE_MASK[feature] === false) return false;
+      if (trialActive || active) return featureOf(plan, feature);
+      return MODA_FEATURES[feature] === true;
+    }
     if (isComercioVendor(vendor)) {
       // Mask del vertical: gestión trae kds/mesas/recipes en su JSONB, pero
       // un comercio nunca las usa (no tiene cocina ni salón).
@@ -246,11 +268,16 @@ export function resolveVendorPlan(
     return FREE_GASTRO_FEATURES[feature] === true;
   };
 
-  // Límites (productos y pedidos/mes): para el gastro pago vigente se leen del
+  // Límites (productos y pedidos/mes): para el plan pago vigente se leen del
   // plan; en cualquier otro caso (gratuito o pago vencido) se leen del plan
   // "gratuito" para que el admin pueda configurar el tope sin tocar código.
+  // Excepción: moda gratis/vencido usa su tope propio (5, no los 20 de gastro).
   const freePlanRow = plans.find((p) => p.slug === "gratuito") ?? null;
   const limitRow = trialActive || active ? plan : freePlanRow;
+  const maxOrdersMonth =
+    isModaVendor(vendor) && !(trialActive || active)
+      ? MODA_FREE_ORDERS_MONTH
+      : (limitRow?.max_orders_month ?? null);
 
   return {
     plan,
@@ -263,7 +290,7 @@ export function resolveVendorPlan(
     can,
     analyticsDays: trialActive || active ? (plan?.features.analytics_days ?? 0) : 0,
     maxProducts: limitRow?.max_products ?? null,
-    maxOrdersMonth: limitRow?.max_orders_month ?? null,
+    maxOrdersMonth,
     maxQuotesMonth: limitRow?.max_quotes_month ?? null,
     hasTrial: trialEndsAt !== null && now < trialEndsAt,
     trialEndsAt: vendor.trial_ends_at,

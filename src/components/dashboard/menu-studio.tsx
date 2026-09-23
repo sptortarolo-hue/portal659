@@ -786,6 +786,7 @@ export function MenuStudio({
             `${isComercio ? "Catálogo" : "Menú"} importado: ${sum.imported} ${itemLabelPlural} nuevos, ${sum.updated} actualizados, ${sum.createdCategories.length} categorías creadas.`
           );
         }}
+        isComercio={isComercio}
       />
 
       {/* Precios masivos (desktop) */}

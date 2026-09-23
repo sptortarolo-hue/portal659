@@ -34,9 +34,16 @@ type Props = {
   open: boolean;
   onClose: () => void;
   onImported: (sum: { imported: number; updated: number; createdCategories: string[]; errors: { name: string; error: string }[] }) => void;
+  isComercio?: boolean;
+  isModa?: boolean;
 };
 
-export function MenuImportModal({ open, onClose, onImported }: Props) {
+export function MenuImportModal({ open, onClose, onImported, isComercio = false, isModa = false }: Props) {
+  const isRetail = isComercio || isModa;
+  const itemLabel = isRetail ? "productos" : "platos";
+  const itemLabelPlural = isRetail ? "productos" : "platos";
+  const itemLabelCapitalized = isRetail ? "Productos" : "Platos";
+
   const [file, setFile] = useState<File | null>(null);
   const [step, setStep] = useState<"upload" | "preview" | "done">("upload");
   const [analyze, setAnalyze] = useState<AnalyzeResult | null>(null);
@@ -113,7 +120,7 @@ export function MenuImportModal({ open, onClose, onImported }: Props) {
     onClose();
   }
 
-  return (
+return (
     <Modal
       open={open}
       onClose={handleClose}
@@ -122,7 +129,7 @@ export function MenuImportModal({ open, onClose, onImported }: Props) {
         <div className="flex w-full gap-3">
           {step === "preview" && (
             <Button type="button" className="flex-1" disabled={loading || items.length === 0} onClick={handleImport}>
-              {loading ? "Importando..." : `Importar ${items.length} platos`}
+              {loading ? "Importando..." : `Importar ${items.length} ${itemLabel}`}
             </Button>
           )}
           <Button type="button" variant="outline" className="flex-1" onClick={handleClose}>
@@ -276,8 +283,8 @@ export function MenuImportModal({ open, onClose, onImported }: Props) {
           <div className="rounded-xl border border-fresh bg-fresh/20 p-4">
             <p className="font-semibold text-fresh-foreground">✅ Menú importado</p>
             <ul className="mt-2 space-y-1 text-sm text-muted-foreground">
-              <li>Platos importados: <strong>{result.imported}</strong></li>
-              <li>Platos actualizados: <strong>{result.updated}</strong></li>
+              <li>${itemLabelPlural.charAt(0).toUpperCase() + itemLabelPlural.slice(1)} importados: <strong>{result.imported}</strong></li>
+              <li>${itemLabelPlural.charAt(0).toUpperCase() + itemLabelPlural.slice(1)} actualizados: <strong>{result.updated}</strong></li>
               <li>Categorías creadas: <strong>{result.createdCategories.length}</strong></li>
             </ul>
           </div>

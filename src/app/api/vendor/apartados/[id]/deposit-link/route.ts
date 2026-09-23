@@ -19,12 +19,13 @@ export async function POST(
   if (!gate.ok) {
     return NextResponse.json({ error: gate.error }, { status: gate.status });
   }
-  // MVP: apartados de moda (sin plan pago que gatear); otros verticales
-  // requieren la feature `deposits` (plan Oficios).
+  // Crear el apartado es gratis; el link de Mercado Pago requiere cobrar
+  // online: plan Gestión integral en moda, feature `deposits` (Oficios) en
+  // otros verticales.
   const isModa = gate.vendor.vertical === "moda";
-  if (!isModa && !gate.plan.can("deposits")) {
+  if (isModa ? !gate.plan.can("mp_payments") : !gate.plan.can("deposits")) {
     return NextResponse.json(
-      { error: "Cobrar seña online requiere un plan con depósitos." },
+      { error: "El link de Mercado Pago para la seña es del plan Gestión integral." },
       { status: 403 }
     );
   }

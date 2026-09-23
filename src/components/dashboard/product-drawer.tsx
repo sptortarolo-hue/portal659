@@ -20,6 +20,7 @@ export function ProductDrawer({
   datosNode,
   opcionesNode,
   recetaNode,
+  isRetail = false,
 }: {
   open: boolean;
   title: string;
@@ -32,6 +33,8 @@ export function ProductDrawer({
   datosNode: ReactNode;
   opcionesNode: ReactNode;
   recetaNode: ReactNode;
+  /** Si es retail (moda/comercio), cambia "plato" por "producto". */
+  isRetail?: boolean;
 }) {
   const [tab, setTab] = useState<DrawerTab>("datos");
 
@@ -51,7 +54,7 @@ export function ProductDrawer({
     <Drawer open={open} onClose={onClose} title={title} subtitle={subtitle}>
       <div className="space-y-4">
         <div className="flex rounded-xl border border-border overflow-hidden text-sm font-medium">
-          {TABS.map((t) => (
+{TABS.map((t) => (
             <button
               key={t.id}
               type="button"
@@ -61,10 +64,10 @@ export function ProductDrawer({
                 tab === t.id
                   ? "bg-primary text-primary-foreground"
                   : t.disabled
-                    ? "text-muted-foreground/50 cursor-not-allowed"
-                    : "text-muted-foreground hover:bg-muted/60"
+                  ? "text-muted-foreground/50 cursor-not-allowed"
+                  : "text-muted-foreground hover:bg-muted/60"
               }`}
-              title={t.disabled ? "Guardá el plato primero" : undefined}
+              title={t.disabled ? (isRetail ? "Guardá el producto primero" : "Guardá el plato primero") : undefined}
             >
               {t.icon} {t.label}
             </button>
@@ -77,7 +80,7 @@ export function ProductDrawer({
 
         {isNew && tab !== "datos" ? (
           <p className="text-xs text-muted-foreground">
-            Guardá el plato primero; después le asignás opciones y receta.
+            {isRetail ? "Guardá el producto primero; después le asignás opciones." : "Guardá el plato primero; después le asignás opciones y receta."}
           </p>
         ) : null}
       </div>

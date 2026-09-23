@@ -48,8 +48,9 @@ export async function POST(request: Request) {
     ? (paymentMethod as PaymentMethod)
     : "efectivo";
 
-  const normalizedItems: { product_id?: any; name: any; price: number; qty: number; modifiers?: any; requires_prep: boolean; pack_size?: number }[] = items.map((i: any) => ({
+  const normalizedItems: { product_id?: any; variant_id?: any; name: any; price: number; qty: number; modifiers?: any; requires_prep: boolean; pack_size?: number }[] = items.map((i: any) => ({
     product_id: i.product_id || undefined,
+    variant_id: i.variant_id || undefined,
     name: i.name,
     price: Number(i.price),
     qty: Number(i.qty) || 1,
@@ -112,23 +113,32 @@ export async function POST(request: Request) {
   let cashPct = 0;
   if (payment === "efectivo") {
     const ids = Array.from(new Set(normalizedItems.map((i) => i.product_id).filter(Boolean))) as string[];
+    const vids = Array.from(new Set(normalizedItems.map((i) => i.variant_id).filter(Boolean))) as string[];
     const prows = ids.length
       ? await queryMany<{ id: string; promo_price: number | null; cash_discount_excluded: boolean | null }>(
           `SELECT id, promo_price, cash_discount_excluded FROM products WHERE vendor_id = $1 AND id = ANY($2)`,
           [gate.vendor.id, ids]
         )
       : [];
+    const vrows = vids.length
+      ? await queryMany<{ id: string; product_id: string; promo: number | null }>(
+          `SELECT id, product_id, promo FROM product_variants WHERE vendor_id = $1 AND id = ANY($2)`,
+          [gate.vendor.id, vids]
+        )
+      : [];
     const pmap = new Map((prows || []).map((p) => [p.id, p]));
+    const vmap = new Map((vrows || []).map((v) => [v.id, v]));
     const res = cashDiscountForItems(
       normalizedItems.map((i) => {
         const p = i.product_id ? pmap.get(i.product_id) : undefined;
+        const v = i.variant_id ? vmap.get(i.variant_id) : undefined;
         // Con pack ya normalizado: price = precio del paquete; el cash corre
         // por paquetes (qty/pack) → sin drift de decimales.
         const pack = ((i as any).pack_size as number) >= 2 ? ((i as any).pack_size as number) : 0;
         return {
           unitPrice: i.price,
           qty: pack ? i.qty / pack : i.qty,
-          hasPromo: p ? p.promo_price != null : false,
+          hasPromo: v ? v.promo != null : (p ? p.promo_price != null : false),
           excluded: p?.cash_discount_excluded ?? null,
         };
       }),

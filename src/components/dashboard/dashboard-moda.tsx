@@ -18,6 +18,7 @@ import { MpConnectCard } from "@/components/dashboard/mp-connect-card";
 import { HoursEditor } from "@/components/dashboard/hours-editor";
 import { SIZE_GUIDE_TEMPLATES, templateToText } from "@/lib/size-guides";
 import { LocationPicker } from "./location-picker";
+import { PrinterConfigSection } from "@/components/dashboard/printer-config-section";
 import type { Vendor, Product, ProductVariant, ProductImage } from "@/types/database";
 
 const PAYMENT_OPTIONS = [
@@ -647,6 +648,13 @@ export default function DashboardModa({
           </div>
         </div>
       </CollapsibleSection>
+
+      <PrinterConfigSection
+        vendor={vendor}
+        saveVendor={saveVendor}
+        setMsg={setMsg}
+        autoPrintDesc="Imprime el ticket automáticamente cuando entra un pedido online pago"
+      />
 
       <Button type="submit" className="w-full" disabled={saving || uploading}>{saving ? "Guardando..." : "Guardar cambios"}</Button>
     </form>

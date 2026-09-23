@@ -787,6 +787,7 @@ export default async function TiendaPage({
         <StickyWhatsApp
           url={`https://wa.me/${waNumber}?text=${encodeURIComponent(waText)}`}
           isService={isService}
+          isRetail={isCatalog}
           isUrgent={isService && v.urgent_enabled}
           urgentUrl={`https://wa.me/${waNumber}?text=${encodeURIComponent(`🚨 URGENTE - Necesito ${v.store_name} lo antes posible.`)}`}
           urgentLabel={urgentSurcharge != null ? `🚨 Urgente +${urgentSurcharge}%` : undefined}

@@ -390,8 +390,12 @@ export function HeladeriaKitCard({ onDone }: { onDone?: () => void }) {
   );
 }
 
-/** Biblioteca de grupos de modificadores (definidos una vez, asignados a N platos). */
-export function ModifierLibrary({ products, onChanged, enableHeladeriaKit = false }: { products: Product[]; onChanged?: () => void; enableHeladeriaKit?: boolean }) {
+/** Biblioteca de grupos de modificadores (definidos una vez, asignados a N productos). */
+export function ModifierLibrary({ products, onChanged, enableHeladeriaKit = false, isComercio = false, isModa = false }: { products: Product[]; onChanged?: () => void; enableHeladeriaKit?: boolean; isComercio?: boolean; isModa?: boolean }) {
+  const isRetail = isComercio || isModa;
+  const itemLabel = isRetail ? "producto" : "plato";
+  const itemLabelPlural = isRetail ? "productos" : "platos";
+
   const [groups, setGroups] = useState<GroupRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
@@ -440,7 +444,7 @@ export function ModifierLibrary({ products, onChanged, enableHeladeriaKit = fals
   }
 
   async function remove(g: GroupRow) {
-    if (!confirm(`¿Eliminar el grupo "${g.group_name}"? Se desasigna de todos los platos.`)) return;
+    if (!confirm(`¿Eliminar el grupo "${g.group_name}"? Se desasigna de todos los {itemLabelPlural}.`)) return;
     setBusy(g.id);
     await fetch(`/api/vendor/modifiers/${g.id}`, { method: "DELETE" });
     setBusy(null);
@@ -456,8 +460,8 @@ export function ModifierLibrary({ products, onChanged, enableHeladeriaKit = fals
         <HeladeriaKitCard onDone={() => { load(); onChanged?.(); }} />
       )}
       <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">
-          Definí cada grupo una vez y asignalo a 1 o N platos.
+<p className="text-sm text-muted-foreground">
+            Definí cada grupo una vez y asignalo a 1 o N {itemLabelPlural}.
         </p>
         <Button type="button" size="sm" onClick={() => { setCreating(!creating); setEditing(null); }}>
           {creating ? "Cancelar" : "+ Grupo"}
@@ -504,7 +508,7 @@ export function ModifierLibrary({ products, onChanged, enableHeladeriaKit = fals
                     <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">Hasta {g.max_selections}</span>
                   )}
                   <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">
-                    {g.products_count || 0} plato{(g.products_count || 0) !== 1 ? "s" : ""}
+                    {g.products_count || 0} {itemLabelPlural.slice(0, -1)}{(g.products_count || 0) !== 1 ? "s" : ""}
                   </span>
                 </div>
                 <div className="flex items-center gap-1 flex-shrink-0">
@@ -528,14 +532,21 @@ export function ModifierLibrary({ products, onChanged, enableHeladeriaKit = fals
   );
 }
 
-/** Editor de modificadores dentro de la ficha de un plato. */
+/** Editor de modificadores dentro de la ficha de un producto. */
 export function ProductModifiersBlock({
   productId,
   productName,
+  isComercio = false,
+  isModa = false,
 }: {
   productId: string | null;
   productName?: string;
+  isComercio?: boolean;
+  isModa?: boolean;
 }) {
+  const isRetail = isComercio || isModa;
+  const itemLabel = isRetail ? "producto" : "plato";
+
   const [groups, setGroups] = useState<GroupRow[]>([]);
   const [assigned, setAssigned] = useState<string[]>([]);
   // Filas del link (traen link_max/link_min = override propio de este plato).
@@ -570,7 +581,7 @@ export function ProductModifiersBlock({
     return (
       <div className="rounded-xl border border-dashed border-border p-4 text-center">
         <p className="text-xs text-muted-foreground">
-          Guardá el plato para poder asignarle modificadores.
+          Guardá el {itemLabel} para poder asignarle modificadores.
         </p>
       </div>
     );
@@ -643,7 +654,7 @@ export function ProductModifiersBlock({
     const json = await res.json();
     if (json.error) return setMsg(json.error);
     setOvEditing(null);
-    setMsg("Cantidad por plato actualizada");
+    setMsg(`Cantidad por ${itemLabel} actualizada`);
     load();
   }
 
@@ -682,7 +693,7 @@ export function ProductModifiersBlock({
 
       {creating && (
         <GroupForm
-          products={[{ id: productId, name: productName || "este plato" }]}
+          products={[{ id: productId, name: productName || `este ${itemLabel}` }]}
           submitLabel="Crear y asignar"
           onCancel={() => setCreating(false)}
           onSubmit={createAndAssign}
@@ -711,7 +722,7 @@ export function ProductModifiersBlock({
         <div className="h-10 rounded-lg bg-muted animate-pulse" />
       ) : assignedGroups.length === 0 && !creating ? (
         <p className="text-xs text-muted-foreground">
-          Este plato no tiene modificadores todavía.
+          Este {itemLabel} no tiene modificadores todavía.
         </p>
       ) : (
         <div className="space-y-1.5">
@@ -738,7 +749,7 @@ export function ProductModifiersBlock({
                 )}
                 <span
                   className={`text-[10px] px-1.5 py-0.5 rounded-full ${hasOverride ? "bg-primary/10 text-primary font-medium" : "bg-muted text-muted-foreground"}`}
-                  title={hasOverride ? "Cantidad propia de este plato (override del default del grupo)" : "Default del grupo"}
+                  title={hasOverride ? `Cantidad propia de este ${itemLabel} (override del default del grupo)` : "Default del grupo"}
                 >
                   máx {effMax}{effMin > 0 ? ` · mín ${effMin}` : ""}
                 </span>
@@ -746,7 +757,7 @@ export function ProductModifiersBlock({
               <div className="flex items-center gap-1 flex-shrink-0">
                 <button
                   type="button"
-                  title="Cantidad propia de este plato (ej: 2 gustos en el 1/4)"
+                  title={`Cantidad propia de este ${itemLabel} (ej: 2 gustos en el 1/4)`}
                   onClick={() => {
                     if (ovEditing === g.id) return setOvEditing(null);
                     setOvMax(linkMax != null ? String(linkMax) : "");
@@ -762,13 +773,13 @@ export function ProductModifiersBlock({
               </div>
               {ovEditing === g.id && (
                 <div className="flex items-center gap-2 mt-2 pt-2 border-t border-border">
-                  <span className="text-[11px] text-muted-foreground">En este plato (vacío = default):</span>
+                  <span className="text-[11px] text-muted-foreground">En este {itemLabel} (vacío = default):</span>
                   <Input
-                    type="number" min={0} placeholder="Mín" title="Mínimo en este plato"
+                    type="number" min={0} placeholder="Mín" title={`Mínimo en este ${itemLabel}`}
                     value={ovMin} onChange={(e) => setOvMin(e.target.value)} className="w-20 h-8 text-xs"
                   />
                   <Input
-                    type="number" min={1} placeholder="Máx" title="Máximo en este plato"
+                    type="number" min={1} placeholder="Máx" title={`Máximo en este ${itemLabel}`}
                     value={ovMax} onChange={(e) => setOvMax(e.target.value)} className="w-20 h-8 text-xs"
                   />
                   <Button type="button" size="sm" className="h-8 text-xs" disabled={busy === g.id} onClick={() => saveOverride(g.id)}>

@@ -46,10 +46,12 @@ type Props = {
   saveVendor: (data: Record<string, unknown>) => Promise<void>;
   uploading: boolean;
   onCrop: (target: "cover" | "logo" | "offer") => void;
+  isRetail?: boolean;
 };
 
 export default function DashboardGenerico({
   vendor, offers, categories, msg, setMsg, reload, saveVendor, uploading, onCrop,
+  isRetail = false,
 }: Props) {
   const [storeName, setStoreName] = useState("");
   const [storeVertical, setStoreVertical] = useState("comercio");
@@ -141,7 +143,7 @@ export default function DashboardGenerico({
     setShowNew(false);
     setEditingId(null);
     setOffName(""); setOffDesc(""); setOffPrice(""); setOffCategory(""); setOffFile(null); setOffPreview(null);
-    setMsg(editingId ? "Plato actualizado" : "Plato agregado");
+    setMsg(editingId ? (isRetail ? "Producto actualizado" : "Plato actualizado") : (isRetail ? "Producto agregado" : "Plato agregado"));
     reload();
     setSaving(false);
   }
@@ -284,6 +286,7 @@ onAdd={async (name) => { const r = await apiJson("/api/vendor/categories", { met
           onDelete={deleteOffer}
           editingId={editingId}
           editForm={editingId ? offerFormNode : undefined}
+          emptyText={isRetail ? "Todavía no cargaste productos." : "Todavía no cargaste platos."}
         />
       </CollapsibleSection>
     </form>

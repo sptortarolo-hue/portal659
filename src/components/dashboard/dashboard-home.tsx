@@ -198,7 +198,7 @@ export function DashboardHome({
       desc: "Cobros del día y cierre (Z)",
       icon: DollarSign,
       accent: "bg-emerald-100 text-emerald-700",
-      show: can("pos") && !isModa,
+      show: can("pos"),
     },
     {
       tab: "clientes",
@@ -206,7 +206,7 @@ export function DashboardHome({
       desc: "Tu libro de clientes",
       icon: Users,
       accent: "bg-cyan-100 text-cyan-700",
-      show: can("crm") && !isModa,
+      show: can("crm"),
     },
     {
       tab: "recetas",

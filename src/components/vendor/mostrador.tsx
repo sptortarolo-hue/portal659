@@ -33,7 +33,20 @@ type Product = {
   cash_discount_excluded?: boolean | null;
   /** Venta en packs (ej: 6). El precio es del paquete; la unidad se deriva. */
   pack_size?: number | null;
+  /** Moda: el producto se vende por variante (color × talle). */
+  has_variants?: boolean;
   modifiers?: ProductModifier[];
+};
+
+/** Variante de producto (moda): precio y promo propios, stock por combinación. */
+type ProductVariant = {
+  id: string;
+  product_id: string;
+  color: string;
+  talle: string;
+  price: number;
+  promo: number | null;
+  stock: number;
 };
 
 /** Tamaño del pack (1 = venta por unidad). */
@@ -54,6 +67,9 @@ function packPriceOf(p: Product): number {
 
 type LineItem = {
   product_id: string;
+  /** Variante elegida (moda). El nombre ya lleva " (Color · Talle)" para que
+    Kanban, detalle, ticket y WhatsApp la muestren sin resolver nada. */
+  variant_id?: string;
   name: string;
   price: number;
   qty: number;
@@ -65,6 +81,12 @@ type LineItem = {
   /** Pack (stepper de a N). */
   packSize?: number;
 };
+
+/** Key de línea: producto + variante + modificadores (dos talles del mismo
+  producto son líneas distintas). */
+function lineKey(productId: string, variantId: string | undefined, modifiers?: CartModifier[]): string {
+  return `${productId}|${variantId || ""}|${(modifiers || []).map((m) => m.label).sort().join(",")}`;
+}
 
 type MostradorOrder = {
   id: string;
@@ -102,6 +124,12 @@ export function Mostrador() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [modifiersMap, setModifiersMap] = useState<Record<string, ProductModifier[]>>({});
   const [pickerProduct, setPickerProduct] = useState<Product | null>(null);
+  // Variante pendiente cuando el producto tiene variantes Y modificadores
+  // (primero se elige variante, después abre el picker de modificadores).
+  const [pendingVariant, setPendingVariant] = useState<ProductVariant | null>(null);
+  // Producto con variantes tocado: hay que elegir color × talle.
+  const [variantPicker, setVariantPicker] = useState<Product | null>(null);
+  const [variantsMap, setVariantsMap] = useState<Record<string, ProductVariant[]>>({});
   const [convertOrderId, setConvertOrderId] = useState<string | null>(null);
   const [convertPhone, setConvertPhone] = useState("");
   const [convertAddress, setConvertAddress] = useState("");
@@ -156,16 +184,25 @@ export function Mostrador() {
   useEffect(() => {
     (async () => {
       try {
-        const [offRes, ordRes, meRes] = await Promise.all([
+        const [offRes, ordRes, meRes, varRes] = await Promise.all([
           fetch("/api/vendor/offers"),
           fetch("/api/vendor/orders"),
           fetch("/api/vendor/me"),
+          fetch("/api/vendor/variants").catch(() => null),
         ]);
         const off = await offRes.json();
         const ord = await ordRes.json();
         const me = await meRes.json().catch(() => null);
+        const vdata = varRes ? await varRes.json().catch(() => null) : null;
         setCashPct(normalizeCashPct(me?.vendor?.cash_discount_pct));
         setIsRetail(me?.vendor?.vertical === "comercio" || me?.vendor?.vertical === "moda");
+        const vmap: Record<string, ProductVariant[]> = {};
+        for (const v of (vdata?.variants || []) as ProductVariant[]) {
+          if (!v || !v.product_id) continue;
+          if (!vmap[v.product_id]) vmap[v.product_id] = [];
+          vmap[v.product_id].push(v);
+        }
+        setVariantsMap(vmap);
         const today = new Date().toDateString();
         const modsMap = off.modifiersByProduct || {};
         setModifiersMap(modsMap);
@@ -195,37 +232,72 @@ export function Mostrador() {
   }, [products, query, activeCat]);
 
   function add(p: Product) {
+    // Moda: primero se elige color × talle (el precio y el stock son por combinación).
+    const variants = variantsMap[p.id] || [];
+    if (p.has_variants && variants.length > 0) {
+      setPendingVariant(null);
+      setVariantPicker(p);
+      return;
+    }
     const mods = modifiersMap[p.id] || [];
     if (mods.length > 0) {
+      setPendingVariant(null);
       setPickerProduct(p);
       return;
     }
-    addLine(p, packOf(p), unitPriceOf(p), []);
+    addLine(p, null, packOf(p), unitPriceOf(p), []);
   }
 
-  function addLine(p: Product, qty: number, unitPrice: number, modifiers?: CartModifier[]) {
+  /** Variante elegida en el picker: o va directo a la línea, o encadena al
+    picker de modificadores (con la base de la variante). */
+  function chooseVariant(p: Product, v: ProductVariant) {
+    const mods = modifiersMap[p.id] || [];
+    if (mods.length > 0) {
+      setPendingVariant(v);
+      setVariantPicker(null);
+      setPickerProduct(p);
+      return;
+    }
+    setVariantPicker(null);
+    addLine(p, v, 1, Number(v.promo ?? v.price), []);
+  }
+
+  function addLine(p: Product, v: ProductVariant | null, qty: number, unitPrice: number, modifiers?: CartModifier[]) {
+    const name = v ? `${p.name} (${v.color} · ${v.talle})` : p.name;
+    const key = lineKey(p.id, v?.id, modifiers);
+    // Capado a stock de la variante en cliente (el servidor valida igual).
+    const maxStock = v ? Math.max(0, Math.floor(Number(v.stock ?? 0))) : null;
     setItems((prev) => {
-      const key = `${p.id}|${(modifiers || []).map((m) => m.label).sort().join(",")}`;
-      const found = prev.find((i) => `${i.product_id}|${(i.modifiers || []).map((m) => m.label).sort().join(",")}` === key);
-      if (found) return prev.map((i) => (i === found ? { ...i, qty: i.qty + qty } : i));
+      const found = prev.find((i) => lineKey(i.product_id, i.variant_id, i.modifiers) === key);
+      if (found) {
+        if (maxStock != null && found.qty + qty > maxStock) return prev;
+        return prev.map((i) => (i === found ? { ...i, qty: i.qty + qty } : i));
+      }
+      if (maxStock != null && qty > maxStock) return prev;
       return [...prev, {
-        product_id: p.id, name: p.name, price: unitPrice, qty,
+        product_id: p.id, variant_id: v?.id, name, price: unitPrice, qty,
         requires_prep: p.requires_prep !== false, modifiers,
-        hasPromo: p.promo_price != null, cashExcluded: p.cash_discount_excluded === true,
+        hasPromo: v ? v.promo != null : p.promo_price != null,
+        cashExcluded: p.cash_discount_excluded === true,
         packSize: packOf(p),
       }];
     });
   }
 
   function handleModConfirm(selected: CartModifier[], finalPrice: number) {
-    if (pickerProduct) addLine(pickerProduct, packOf(pickerProduct), finalPrice, selected);
+    if (pickerProduct) {
+      const v = pendingVariant;
+      if (v) addLine(pickerProduct, v, 1, finalPrice, selected);
+      else addLine(pickerProduct, null, packOf(pickerProduct), finalPrice, selected);
+    }
     setPickerProduct(null);
+    setPendingVariant(null);
   }
 
-  function changeQty(id: string, delta: number) {
+  function changeQty(key: string, delta: number) {
     setItems((prev) =>
       prev
-        .map((i) => (i.product_id === id ? { ...i, qty: i.qty + delta * (i.packSize || 1) } : i))
+        .map((i) => (lineKey(i.product_id, i.variant_id, i.modifiers) === key ? { ...i, qty: i.qty + delta * (i.packSize || 1) } : i))
         .filter((i) => i.qty > 0)
     );
   }
@@ -405,7 +477,7 @@ export function Mostrador() {
       <div className="flex-1 space-y-1.5 min-h-0 overflow-y-auto">
         {items.length === 0 && <p className="text-xs text-muted-foreground text-center py-6">Tocá productos para armar el pedido</p>}
         {items.map((i) => (
-          <div key={`${i.product_id}|${(i.modifiers || []).map((m) => m.label).join(",")}`} className="flex items-center gap-2 text-sm">
+          <div key={lineKey(i.product_id, i.variant_id, i.modifiers)} className="flex items-center gap-2 text-sm">
             <span className="flex-1 min-w-0 line-clamp-2 break-words">
               {i.name}
               {(i.modifiers || []).length > 0 && (
@@ -415,9 +487,9 @@ export function Mostrador() {
               )}
             </span>
             <div className="flex items-center gap-1">
-              <button onClick={() => changeQty(i.product_id, -1)} className="h-6 w-6 rounded-md bg-muted hover:bg-accent">−</button>
+              <button onClick={() => changeQty(lineKey(i.product_id, i.variant_id, i.modifiers), -1)} className="h-6 w-6 rounded-md bg-muted hover:bg-accent">−</button>
               <span className="w-5 text-center tabular-nums">{i.qty}</span>
-              <button onClick={() => changeQty(i.product_id, 1)} className="h-6 w-6 rounded-md bg-muted hover:bg-accent">+</button>
+              <button onClick={() => changeQty(lineKey(i.product_id, i.variant_id, i.modifiers), 1)} className="h-6 w-6 rounded-md bg-muted hover:bg-accent">+</button>
             </div>
             <span className="w-16 text-right tabular-nums">${(Math.round(i.price * i.qty * 100) / 100).toLocaleString("es-AR")}</span>
           </div>
@@ -662,11 +734,52 @@ export function Mostrador() {
       {pickerProduct && (
         <ModifierPicker
           modifiers={modifiersMap[pickerProduct.id] || []}
-          productName={pickerProduct.name}
-            basePrice={unitPriceOf(pickerProduct)}
+          productName={pendingVariant ? `${pickerProduct.name} (${pendingVariant.color} · ${pendingVariant.talle})` : pickerProduct.name}
+          basePrice={pendingVariant ? Number(pendingVariant.promo ?? pendingVariant.price) : unitPriceOf(pickerProduct)}
           onConfirm={handleModConfirm}
-          onCancel={() => setPickerProduct(null)}
+          onCancel={() => { setPickerProduct(null); setPendingVariant(null); }}
         />
+      )}
+
+      {variantPicker && (
+        <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center bg-black/50 p-4" onClick={() => setVariantPicker(null)}>
+          <div className="w-full max-w-sm rounded-2xl bg-card border border-border p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="font-display text-base font-semibold">{variantPicker.name}</h3>
+              <button onClick={() => setVariantPicker(null)} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground" aria-label="Cerrar">✕</button>
+            </div>
+            <p className="text-xs text-muted-foreground mb-3">Elegí color y talle</p>
+            <div className="space-y-1.5 max-h-72 overflow-y-auto">
+              {(variantsMap[variantPicker.id] || []).map((v) => {
+                const stock = Math.max(0, Math.floor(Number(v.stock ?? 0)));
+                const price = Number(v.promo ?? v.price);
+                return (
+                  <button
+                    key={v.id}
+                    disabled={stock <= 0}
+                    onClick={() => chooseVariant(variantPicker, v)}
+                    className="w-full flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm text-left hover:border-primary disabled:opacity-40"
+                  >
+                    <span className="flex-1 min-w-0">
+                      <span className="font-medium">{v.color} · {v.talle}</span>
+                      <span className="block text-[11px] text-muted-foreground">
+                        {stock <= 0 ? "Sin stock" : stock <= 5 ? `¡Quedan ${stock}!` : `Stock: ${stock}`}
+                      </span>
+                    </span>
+                    <span className="tabular-nums font-semibold">
+                      {v.promo != null && (
+                        <span className="mr-1.5 text-xs text-muted-foreground line-through font-normal">
+                          ${Number(v.price).toLocaleString("es-AR")}
+                        </span>
+                      )}
+                      ${price.toLocaleString("es-AR")}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

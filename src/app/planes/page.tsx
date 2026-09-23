@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 
 export const dynamic = "force-dynamic";
 
-const FEATURE_LABELS: Record<string, string> = {
+export const FEATURE_LABELS: Record<string, string> = {
   info: "Ficha de comercio + menú informativo",
   cart: "Carrito y pedido online",
   emits_orders: "Pedidos por la app con avisos",
@@ -64,7 +64,7 @@ export default async function PlanesPage() {
             comercio de barrio.
           </p>
           <p className="text-xs text-muted-foreground mt-2">
-            Los planes pagos están disponibles para <b>gastronomía</b>, <b>comercios de barrio</b> y <b>servicios</b> (plan Oficios).
+            Los planes pagos están disponibles para <b>gastronomía</b>, <b>comercios de barrio</b>, <b>moda</b> y <b>servicios</b> (plan Oficios). Gastronomía, comercio y moda comparten Pedidos y Gestión (sin cocina ni mesas fuera de gastro); servicios usa Oficios.
           </p>
         </div>
 
@@ -182,11 +182,12 @@ export default async function PlanesPage() {
 
         <div className="mt-10 rounded-2xl border border-border bg-card p-6 text-center">
           <h3 className="font-display text-lg font-semibold mb-1">
-            ¿Tu rubro todavía no tiene planes?
+            Topes del plan gratuito
           </h3>
           <p className="text-sm text-muted-foreground max-w-md mx-auto">
-            Estamos habilitando planes para otros rubros muy pronto. Mientras tanto,
-            arrancá gratis con tu vidriera.
+            Gastronomía y comercios: 20 pedidos online por mes. Moda: 5 pedidos
+            por mes. Servicios: 5 solicitudes (presupuestos + turnos) por mes.
+            Salud y otros rubros usan el gratuito como vidriera de contacto.
           </p>
         </div>
       </div>

@@ -69,6 +69,9 @@ import { CustomersManager } from "@/components/dashboard/customers-manager";
 import { OpenToggle } from "@/components/vendor/open-toggle";
 import { PrepTimeControl } from "@/components/vendor/prep-time-control";
 import { PrinterStatus } from "@/components/vendor/printer-status";
+import { OfflineBanner } from "@/components/vendor/offline-banner";
+import { usePendingSyncCount } from "@/hooks/use-online-status";
+import { clearVendorData, ensurePersisted, saveVendorSnapshot } from "@/lib/offline-db";
 import { DeliveryBoard } from "@/components/vendor/delivery-board";
 import type { ProductModifier, VendorGallery, Booking, Vertical, Product as DBProduct, Order, ProductVariant, ProductImage, OrderItem, PlanStatus, Plan, Vendor as VendorDB } from "@/types/database";
 
@@ -360,6 +363,34 @@ function VendorDashboardInner() {
     loadData();
   }, [impersonatingId, loadData]);
 
+  // --- Offline vendor (F1) ---
+  // Anti-eviction del almacenamiento local (best-effort).
+  useEffect(() => {
+    ensurePersisted();
+  }, []);
+  // Snapshot vendor+planes tras cada carga exitosa: es lo que permite el
+  // bootstrap offline (catálogo/config/plan sin red) y el plan offline.
+  useEffect(() => {
+    if (vendor?.id && plans.length > 0) {
+      saveVendorSnapshot(vendor.id, {
+        vendor: vendor as unknown as Record<string, any>,
+        plans: plans as unknown as Record<string, any>[],
+      }).catch(() => {});
+    }
+  }, [vendor, plans]);
+  // Protección multi-usuario: al cambiar de comercio (logout/login con otro
+  // usuario, impersonación admin) se evictan las cachés de lectura del
+  // anterior. El outbox/prints pendientes SE PRESERVA (clearVendorData no lo
+  // toca: son ventas cobradas que se sincronizan al volver a ese vendor).
+  const prevVendorIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!vendor?.id) return;
+    if (prevVendorIdRef.current && prevVendorIdRef.current !== vendor.id) {
+      clearVendorData(prevVendorIdRef.current).catch(() => {});
+    }
+    prevVendorIdRef.current = vendor.id;
+  }, [vendor?.id]);
+
   // Vuelta del OAuth de Mercado Pago: mostrar feedback al comercio y limpiar la URL.
   useEffect(() => {
     if (!searchParams) return;
@@ -629,6 +660,9 @@ function VendorDashboardInner() {
   // Estos hooks van ANTES de cualquier `return` temprano: si un hook corre en
   // algunos renders y en otros no, React tira error #310 y cae el dashboard.
   // `can` estable entre renders (misma identidad mientras no cambien vendor/planes).
+  // --- Offline vendor (F1): pendientes por pestaña (badges del sidebar) ---
+  const pendingPosCount = usePendingSyncCount(vendor?.id, "pos");
+  const pendingMesasCount = usePendingSyncCount(vendor?.id, "mesas");
   const canFeature = useMemo(
     (): ((feature: FeatureKey) => boolean) =>
       vendor ? resolveVendorPlan(vendor, plans).can : () => false,
@@ -1108,6 +1142,8 @@ function VendorDashboardInner() {
         isService={isService}
         pendingQuotesCount={pendingQuotesCount}
         pendingBookingsCount={pendingBookingsCount}
+        pendingPosCount={pendingPosCount}
+        pendingMesasCount={pendingMesasCount}
         planName={effectivePlan.plan?.name ?? null}
         planSlug={effectivePlan.plan?.slug ?? null}
       />
@@ -1230,6 +1266,11 @@ function VendorDashboardInner() {
 
         {msg && <div className="px-4 pt-3"><p className="text-sm text-green-600 bg-green-50 rounded-lg px-3 py-2">{msg}</p></div>}
 
+        {/* Estado offline vendor (F1): banner solo visible sin conexión o con pendientes */}
+        <div className="px-4 pt-3 [&:empty]:hidden [&:empty]:pt-0">
+          <OfflineBanner vendorId={vendor.id} />
+        </div>
+
         {/* Banner de suscripción — solo en Hoy */}
         {tab === "hoy" && <PlanBanner plan={planBannerData as any} />}
 
@@ -1332,7 +1373,7 @@ function VendorDashboardInner() {
               {mountedTabs.has("pos") && (
                 <div className={tab === "pos" ? "" : "hidden"}>
                   {effectivePlan.can("pos") ? (
-                    <MemoMostrador />
+                    <MemoMostrador vendorId={vendor.id} />
                   ) : (
                     <PlanLock
                       title="Mostrador"
@@ -1344,7 +1385,7 @@ function VendorDashboardInner() {
               {mountedTabs.has("mesas") && (
                 <div className={tab === "mesas" ? "" : "hidden"}>
                   {effectivePlan.can("mesas") ? (
-                    <MemoMesas />
+                    <MemoMesas vendorId={vendor.id} />
                   ) : (
                     <PlanLock
                       title="Gestión de mesas"

@@ -7,6 +7,7 @@ import { ModifierPicker } from "@/components/offers/modifier-picker";
 import { ProductPickCard } from "@/components/vendor/product-pick-card";
 import { cashDiscountForItems, normalizeCashPct } from "@/lib/cash-discount";
 import { toE164 } from "@/lib/phone";
+import { getCatalogSnapshot, saveCatalogSnapshot } from "@/lib/offline-db";
 
 type ModifierOption = { label: string; price_mod: number };
 type ProductModifier = {
@@ -107,7 +108,7 @@ const PAYMENT_OPTIONS = [
   { key: "mixto", label: "🪙 Mixto" },
 ];
 
-export function Mostrador() {
+export function Mostrador({ vendorId }: { vendorId?: string | null }) {
   const [products, setProducts] = useState<Product[]>([]);
   const [items, setItems] = useState<LineItem[]>([]);
   const [payment, setPayment] = useState("efectivo");
@@ -192,7 +193,23 @@ export function Mostrador() {
   }, [products]);
 
   useEffect(() => {
+    let cancelled = false;
     (async () => {
+      // Snapshot local primero (stale-while-revalidate, Track Ventas F1):
+      // pinta el catálogo de inmediato y permite operar si no hay red; la
+      // red refresca después y reescribe el snapshot.
+      if (vendorId) {
+        try {
+          const snap = await getCatalogSnapshot(vendorId);
+          if (snap && !cancelled) {
+            setCashPct(snap.cashPct);
+            setIsRetail(snap.vertical === "comercio" || snap.vertical === "moda");
+            setModifiersMap((snap.modifiersByProduct || {}) as any);
+            if (snap.variantsMap) setVariantsMap(snap.variantsMap as any);
+            setProducts(((snap.products || []) as any[]).filter((o: any) => o.available !== false));
+          }
+        } catch { /* sin snapshot: espera a la red */ }
+      }
       try {
         const [offRes, ordRes, meRes, varRes] = await Promise.all([
           fetch("/api/vendor/offers"),
@@ -204,8 +221,11 @@ export function Mostrador() {
         const ord = await ordRes.json();
         const me = await meRes.json().catch(() => null);
         const vdata = varRes ? await varRes.json().catch(() => null) : null;
-        setCashPct(normalizeCashPct(me?.vendor?.cash_discount_pct));
-        setIsRetail(me?.vendor?.vertical === "comercio" || me?.vendor?.vertical === "moda");
+        if (cancelled) return;
+        const pct = normalizeCashPct(me?.vendor?.cash_discount_pct);
+        const vertical = (me?.vendor?.vertical as string | undefined) ?? null;
+        setCashPct(pct);
+        setIsRetail(vertical === "comercio" || vertical === "moda");
         const vmap: Record<string, ProductVariant[]> = {};
         for (const v of (vdata?.variants || []) as ProductVariant[]) {
           if (!v || !v.product_id) continue;
@@ -216,21 +236,36 @@ export function Mostrador() {
         const today = new Date().toDateString();
         const modsMap = off.modifiersByProduct || {};
         setModifiersMap(modsMap);
-        setProducts((off.offers || [])
+        const mapped = (off.offers || [])
           .filter((o: any) => o.available !== false)
-          .map((o: any) => ({ ...o, modifiers: modsMap[o.id] || [] }))
-        );
+          .map((o: any) => ({ ...o, modifiers: modsMap[o.id] || [] }));
+        setProducts(mapped);
         setRecent(
           (ord.orders || [])
             .filter((o: any) => o.channel === "mostrador")
             .filter((o: any) => new Date(o.created_at).toDateString() === today)
             .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
         );
+        // Snapshot para operar offline (fire-and-forget).
+        const vid = vendorId || (me?.vendor?.id as string | undefined) || null;
+        if (vid) {
+          saveCatalogSnapshot(vid, {
+            products: mapped,
+            categories: [],
+            modifiersByProduct: modsMap,
+            variantsMap: vmap as unknown as Record<string, Record<string, any>[]>,
+            cashPct: pct,
+            vertical,
+          }).catch(() => {});
+        }
       } catch { /* noop */ } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     })();
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [vendorId]);
 
   const filtered = useMemo(() => {
     const q = query.toLowerCase();

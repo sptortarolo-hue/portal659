@@ -1,6 +1,14 @@
 import { gateRequest, gateError } from "@/lib/subscription-gate";
 import { queryOne, queryMany, withTransaction } from "@/lib/db";
 import { cashDiscountForItems, normalizeCashPct } from "@/lib/cash-discount";
+import {
+  claimSyncKey,
+  findMissingSyncKeys,
+  getOfflineSyncCaps,
+  normalizeClientKey,
+  releaseSyncKey,
+  storeSyncResult,
+} from "@/lib/sync-idempotency";
 import { NextResponse } from "next/server";
 
 export async function POST(
@@ -19,14 +27,68 @@ export async function POST(
     ? body.paymentMethod
     : "efectivo";
 
+  // Idempotencia del sync offline (Fase 0) + gate causal: el cierre solo es
+  // válido si las consumiciones previas ya están sincronizadas. El cliente
+  // offline manda expected_keys (client_keys de lo cargado en la mesa); si
+  // falta alguna, responde 409 `sync_pending` para que las sincronice primero.
+  const caps = await getOfflineSyncCaps();
+  const clientKey = caps.syncTable ? normalizeClientKey(body?.client_key) : null;
+  const expectedKeys =
+    caps.syncTable && caps.ordersClientKey && Array.isArray(body?.expected_keys)
+      ? (body.expected_keys as unknown[])
+          .filter((k): k is string => typeof k === "string")
+          .map((k) => k.trim().slice(0, 64))
+          .filter(Boolean)
+          .slice(0, 100)
+      : [];
+
+  if (clientKey) {
+    const claimed = await withTransaction(async (tx) =>
+      claimSyncKey(tx, gate.vendor.id, clientKey, "table_close")
+    );
+    if (!claimed.fresh) {
+      if (claimed.inProgress || !claimed.result) {
+        return NextResponse.json(
+          { error: "Sincronización en curso, reintentá en unos segundos", code: "sync_in_progress" },
+          { status: 409 }
+        );
+      }
+      return NextResponse.json({ ...(claimed.result as Record<string, unknown>), dedup: true });
+    }
+  }
+  const abortClaim = async () => {
+    if (!clientKey) return;
+    try {
+      await withTransaction(async (tx) => releaseSyncKey(tx, gate.vendor.id, clientKey));
+    } catch {
+      /* best-effort */
+    }
+  };
+
   const table = await queryOne<Record<string, any>>(
     `SELECT id, name, status FROM tables WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
     [id, gate.vendor.id]
   );
 
-  if (!table) return NextResponse.json({ error: "Mesa no encontrada" }, { status: 404 });
+  if (!table) { await abortClaim(); return NextResponse.json({ error: "Mesa no encontrada" }, { status: 404 }); }
   if (table.status !== "ocupada") {
+    await abortClaim();
     return NextResponse.json({ error: "La mesa está libre" }, { status: 400 });
+  }
+
+  if (expectedKeys.length > 0) {
+    const missing = await findMissingSyncKeys(gate.vendor.id, expectedKeys);
+    if (missing.length > 0) {
+      await abortClaim();
+      return NextResponse.json(
+        {
+          error: "Hay consumiciones sin sincronizar en esta mesa. Sincronizalas antes de cerrar.",
+          code: "sync_pending",
+          missing,
+        },
+        { status: 409 }
+      );
+    }
   }
 
   const orders = await queryMany<Record<string, any>>(
@@ -111,7 +173,7 @@ export async function POST(
     await tx.query(`UPDATE tables SET status = 'libre' WHERE id = $1`, [table.id]);
   });
 
-  return NextResponse.json({
+  const result = {
     ok: true,
     table: { ...table, status: "libre" },
     total: Math.round(total * 100) / 100,
@@ -119,5 +181,15 @@ export async function POST(
     cashPct: cashPct || 0,
     ordersClosed: list.length,
     paymentMethod,
-  });
+  };
+  if (clientKey) {
+    try {
+      await withTransaction(async (tx) =>
+        storeSyncResult(tx, gate.vendor.id, clientKey, null, result)
+      );
+    } catch {
+      /* el cierre ya se aplicó: no fallar el request por el log */
+    }
+  }
+  return NextResponse.json(result);
 }

@@ -153,6 +153,37 @@ export async function PATCH(
     return NextResponse.json({ error: "Pedido no encontrado" }, { status: 404 });
   }
 
+  // Idempotencia del sync offline (Fase 0): un reintento que ya dejó el
+  // pedido en el estado/pago objetivo devuelve el pedido actual con
+  // dedup:true, en vez de 400 por transición inválida (canTransition no
+  // acepta quedarse en el mismo estado).
+  {
+    const wantsStatus = typeof status === "string" ? status : undefined;
+    const wantsPayment =
+      payment_status === "paid" || payment_status === "pending" ? payment_status : undefined;
+    const hasOtherOps =
+      estimated_minutes !== undefined ||
+      rawItems !== undefined ||
+      modification_notes !== undefined ||
+      method !== undefined ||
+      customer_phone !== undefined ||
+      customer_address !== undefined ||
+      toggleItem !== undefined ||
+      rawKitchenDone !== undefined;
+    if (
+      !hasOtherOps &&
+      (wantsStatus !== undefined || wantsPayment !== undefined) &&
+      (wantsStatus === undefined || wantsStatus === currentOrder.status) &&
+      (wantsPayment === undefined || wantsPayment === currentOrder.payment_status)
+    ) {
+      const same = await queryOne<Record<string, unknown>>(
+        `SELECT ${RETURN_COLUMNS} FROM orders WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
+        [params.id, vendor.id]
+      );
+      return NextResponse.json({ order: same ?? null, dedup: true });
+    }
+  }
+
   const ADVANCE_STATUSES = ["preparing", "ready", "sent", "completed"];
   if (
     status &&

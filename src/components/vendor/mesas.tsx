@@ -7,6 +7,7 @@ import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import { ModifierPicker } from "@/components/offers/modifier-picker";
 import { ProductPickCard } from "@/components/vendor/product-pick-card";
 import { cashDiscountForItems, normalizeCashPct } from "@/lib/cash-discount";
+import { getCatalogSnapshot, getTablesSnapshot, saveCatalogSnapshot, saveTablesSnapshot } from "@/lib/offline-db";
 
 type Table = {
   id: string;
@@ -73,7 +74,7 @@ const PAYMENT_OPTIONS = [
   { key: "mixto", label: "🪙 Mixto" },
 ];
 
-export function Mesas() {
+export function Mesas({ vendorId }: { vendorId?: string | null }) {
   const [tables, setTables] = useState<Table[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -98,6 +99,28 @@ export function Mesas() {
   const [cashPct, setCashPct] = useState(0);
 
   const load = useCallback(async () => {
+    // Snapshot local primero (stale-while-revalidate, Track Ventas F1):
+    // pinta mesas y catálogo de inmediato; la red refresca después.
+    if (vendorId) {
+      try {
+        const [cat, tab] = await Promise.all([
+          getCatalogSnapshot(vendorId),
+          getTablesSnapshot(vendorId),
+        ]);
+        if (cat) {
+          setCashPct(cat.cashPct);
+          setModifiersMap((cat.modifiersByProduct || {}) as any);
+          setProducts(((cat.products || []) as any[])
+            .filter((x: any) => x.available !== false)
+            .map((x: any) => ({ ...x })));
+        }
+        if (tab) {
+          if (Array.isArray(tab.tables)) setTables(tab.tables as any);
+          if (Array.isArray(tab.orders)) setOrders(tab.orders as any);
+          if (typeof tab.cashPct === "number") setCashPct(tab.cashPct);
+        }
+      } catch { /* sin snapshot: espera a la red */ }
+    }
     // Timeout: si la red queda colgada (p. ej. conexión móvil suspendida),
     // mostramos error con reintento en lugar de un spinner/"Cargando" eterno.
     const ac = new AbortController();
@@ -113,15 +136,37 @@ export function Mesas() {
       const o = await oRes.json();
       const p = await pRes.json();
       const me = await mRes.json().catch(() => null);
-      if (me?.vendor) setCashPct(normalizeCashPct(me.vendor.cash_discount_pct));
+      const pct = normalizeCashPct(me?.vendor?.cash_discount_pct);
+      if (me?.vendor) setCashPct(pct);
       if (t.tables) setTables(t.tables);
       if (o.orders) setOrders(o.orders);
+      let modsMap: Record<string, ProductModifier[]> = {};
+      let mapped: Product[] = [];
       if (p.offers) {
-        const modsMap = p.modifiersByProduct || {};
+        modsMap = p.modifiersByProduct || {};
         setModifiersMap(modsMap);
-        setProducts((p.offers || [])
+        mapped = (p.offers || [])
           .filter((x: any) => x.available !== false)
-          .map((x: any) => ({ ...x, modifiers: modsMap[x.id] || [] })));
+          .map((x: any) => ({ ...x, modifiers: modsMap[x.id] || [] }));
+        setProducts(mapped);
+      }
+      // Snapshots para operar offline (fire-and-forget).
+      const vid = vendorId || (me?.vendor?.id as string | undefined) || null;
+      if (vid) {
+        saveCatalogSnapshot(vid, {
+          products: mapped,
+          categories: [],
+          modifiersByProduct: modsMap,
+          cashPct: pct,
+          vertical: (me?.vendor?.vertical as string | undefined) ?? null,
+        }).catch(() => {});
+        if (t.tables || o.orders) {
+          saveTablesSnapshot(vid, {
+            tables: t.tables || [],
+            orders: o.orders || [],
+            cashPct: pct,
+          }).catch(() => {});
+        }
       }
       setLoadError(false);
     } catch {
@@ -130,7 +175,7 @@ export function Mesas() {
       clearTimeout(timeout);
       setLoading(false);
     }
-  }, []);
+  }, [vendorId]);
 
   useEffect(() => { load(); }, [load]);
 

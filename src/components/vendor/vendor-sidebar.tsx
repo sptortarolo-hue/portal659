@@ -24,6 +24,9 @@ interface VendorSidebarProps {
   isService?: boolean;
   pendingQuotesCount?: number;
   pendingBookingsCount?: number;
+  /** Pendientes offline por pestaña (outbox IndexedDB, Track Ventas F1). */
+  pendingPosCount?: number;
+  pendingMesasCount?: number;
   planName: string | null;
   planSlug: string | null;
 }
@@ -57,6 +60,7 @@ function NavButton({
   label,
   badge,
   suffix,
+  syncBadge,
 }: {
   active: boolean;
   onClick: () => void;
@@ -64,6 +68,8 @@ function NavButton({
   label: string;
   badge?: number;
   suffix?: string;
+  /** Pendientes offline: píldora ámbar con conteo (no tapa el badge rojo). */
+  syncBadge?: number;
 }) {
   return (
     <button
@@ -81,6 +87,14 @@ function NavButton({
       {badge != null && badge > 0 && (
         <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[10px] font-bold bg-red-500 text-white">
           {badge}
+        </span>
+      )}
+      {syncBadge != null && syncBadge > 0 && (
+        <span
+          title={`${syncBadge} acción${syncBadge === 1 ? "" : "es"} sin sincronizar`}
+          className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[10px] font-bold bg-amber-400 text-amber-950"
+        >
+          ⇅{syncBadge}
         </span>
       )}
       {suffix != null && (
@@ -109,6 +123,8 @@ export default function VendorSidebar({
   isService = false,
   pendingQuotesCount = 0,
   pendingBookingsCount = 0,
+  pendingPosCount = 0,
+  pendingMesasCount = 0,
   planName,
   planSlug,
 }: VendorSidebarProps) {
@@ -206,6 +222,10 @@ export default function VendorSidebar({
               ) : (
                 OPERACION_ITEMS.filter((i) => i.show(isGastro, isModa, isComercio)).map((item) => {
                   const count = item.badge ? item.badge(orderCount, kitchenCount) : 0;
+                  const sync =
+                    item.tab === "pos" ? pendingPosCount ?? 0
+                    : item.tab === "mesas" ? pendingMesasCount ?? 0
+                    : 0;
                   return (
                     <NavButton
                       key={item.tab}
@@ -214,6 +234,7 @@ export default function VendorSidebar({
                       icon={item.icon}
                       label={item.label}
                       badge={count}
+                      syncBadge={sync}
                     />
                   );
                 })

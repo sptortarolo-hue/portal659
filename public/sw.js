@@ -1,10 +1,32 @@
-// v13: /uploads/* ni se intercepta (bypass total). El browser gestiona la
-// foto directo: sus reintentos TLS, su caché `immutable` y sus errores
-// nativos. El SW solo mediaba para devolver 503 sintéticos ante fallos
-// transitorios (fotos que solo cargaban tras varios F5). Purga cachés v12.
-// v12: fotos y navegaciones ya no se cacheaban (HTML pre-deploy = JS muerto).
-const CACHE_NAME = "portal659-v13";
+// v14: + caché de respaldo (network-first) para GETs vendor críticos:
+// /api/vendor/me|offers|categories|modifiers|tables|orders y
+// /api/subscriptions/me. Solo 200+JSON; solo se sirve de caché si la red
+// falla (modo offline vendor). /api/auth/* nunca se cachea. Purga v13+v14
+// documental: al cambiar la estrategia, bumpear versión (ver AGENTS.md).
+const CACHE_NAME = "portal659-v14";
+const API_CACHE = "portal659-api-v14";
+const CURRENT_CACHES = new Set([CACHE_NAME, API_CACHE]);
 const OFFLINE_URL = "/offline.html";
+
+// GETs vendor cacheables (prefijos de pathname, mismo origen).
+const CACHEABLE_API_PREFIXES = [
+  "/api/vendor/me",
+  "/api/vendor/offers",
+  "/api/vendor/categories",
+  "/api/vendor/modifiers",
+  "/api/vendor/tables",
+  "/api/vendor/orders",
+  "/api/subscriptions/me",
+];
+
+function isCacheableApi(url) {
+  if (url.origin !== self.location.origin) return false;
+  // Nunca tokens/sesión.
+  if (url.pathname.startsWith("/api/auth/")) return false;
+  return CACHEABLE_API_PREFIXES.some(
+    (p) => url.pathname === p || url.pathname.startsWith(p + "/")
+  );
+}
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -23,7 +45,7 @@ self.addEventListener("activate", (event) => {
     caches.keys().then((names) =>
       Promise.all(
         names
-          .filter((name) => name !== CACHE_NAME)
+          .filter((name) => !CURRENT_CACHES.has(name))
           .map((name) => caches.delete(name))
       )
     )
@@ -71,12 +93,45 @@ self.addEventListener("fetch", (event) => {
   const { request } = event;
 
   if (request.method !== "GET") return;
-  if (request.url.includes("/api/")) return;
-  if (request.url.includes("/_next/")) return;
+  // APIs vendor cacheables: network-first con fallback a caché (offline).
+  // El resto de /api/ sigue sin interceptarse (webhooks, mutaciones, auth).
+  let apiFallback = null;
+  try {
+    const url = new URL(request.url);
+    if (url.pathname.includes("/api/") && !isCacheableApi(url)) return;
+    if (isCacheableApi(url)) apiFallback = true;
+  } catch {
+    return;
+  }
+  if (!apiFallback && request.url.includes("/_next/")) return;
   // Bypass total de fotos: ni siquiera se interceptan (ver nota v13).
   try {
     if (new URL(request.url).pathname.startsWith("/uploads/")) return;
   } catch {
+    return;
+  }
+
+  if (apiFallback) {
+    event.respondWith(
+      (async () => {
+        try {
+          const networkResponse = await fetch(request);
+          const ct = networkResponse.headers.get("content-type") || "";
+          if (networkResponse.status === 200 && ct.includes("application/json")) {
+            const cache = await caches.open(API_CACHE);
+            cache.put(request, networkResponse.clone()).catch(() => {});
+          }
+          return networkResponse;
+        } catch {
+          const cached = await caches.match(request);
+          if (cached) return cached;
+          return new Response(JSON.stringify({ error: "Sin conexión" }), {
+            status: 503,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      })()
+    );
     return;
   }
 

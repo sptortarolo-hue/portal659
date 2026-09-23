@@ -5,6 +5,12 @@ import { cashDiscountForItems } from "@/lib/cash-discount";
 import { adjustStockForItems, OutOfStockError } from "@/lib/stock";
 import { upsertCustomerFromOrder, isRealCustomerPhone } from "@/lib/customers";
 import { toE164 } from "@/lib/phone";
+import {
+  findOrderByClientKey,
+  getOfflineSyncCaps,
+  normalizeClientKey,
+  parseOccurredAt,
+} from "@/lib/sync-idempotency";
 import { NextResponse } from "next/server";
 
 const PAYMENT_METHODS = ["efectivo", "transferencia", "tarjeta", "mixto", "whatsapp"] as const;
@@ -32,6 +38,24 @@ export async function POST(request: Request) {
     method,
     notes,
   } = body;
+
+  // Idempotencia del sync offline (Fase 0): si esta acción ya se procesó
+  // (reintento tras timeout), se devuelve el pedido existente sin re-ejecutar.
+  const caps = await getOfflineSyncCaps();
+  const clientKey = caps.ordersClientKey ? normalizeClientKey((body as any)?.client_key) : null;
+  const occurredAt = caps.ordersOccurredAt
+    ? parseOccurredAt((body as any)?.occurred_at) ?? new Date().toISOString()
+    : null;
+  if (clientKey) {
+    try {
+      const existing = await findOrderByClientKey(gate.vendor.id, clientKey);
+      if (existing) {
+        return NextResponse.json({ ok: true, orderId: existing.id, order: existing, dedup: true });
+      }
+    } catch {
+      /* columna sin migrar: se sigue sin idempotencia */
+    }
+  }
 
   if (!items || !Array.isArray(items) || items.length === 0 || !total) {
     return NextResponse.json({ error: "Faltan productos o total" }, { status: 400 });
@@ -154,6 +178,12 @@ export async function POST(request: Request) {
   // En sesión de prueba todo nace marcado como prueba.
   const previewOrder = gate.previewSession === true;
   const customerE164 = toE164(customerPhoneClean);
+  // Columnas offline (solo si la migración está aplicada): client_key para
+  // idempotencia + occurred_at (hora real de la venta según el dispositivo).
+  const syncCols = [
+    ...(caps.ordersClientKey ? ["client_key"] : []),
+    ...(caps.ordersOccurredAt ? ["occurred_at"] : []),
+  ];
   let order: Record<string, any> | null = null;
   try {
     order = await withTransaction(async (tx) => {
@@ -166,27 +196,37 @@ export async function POST(request: Request) {
     }
 
     const pickupNumber = await nextOrderNumber(tx, gate.vendor.id);
+    const cols = [
+      "vendor_id", "customer_name", "customer_phone", "customer_address",
+      "method", "payment_method", "items", "total", "status", "channel",
+      "paid_at", "notes", "pickup_number", "is_preview", "cash_pct",
+      "cash_discount",
+      ...syncCols,
+    ];
+    const vals: unknown[] = [
+      gate.vendor.id,
+      customerName?.trim() || "Mostrador",
+      isDelivery ? customerPhoneClean : "",
+      isDelivery ? (customerAddress?.trim() || null) : null,
+      isDelivery ? "delivery" : "pickup",
+      payment,
+      JSON.stringify(normalizedItems),
+      finalTotal,
+      status,
+      "mostrador",
+      now,
+      notes || null,
+      pickupNumber,
+      previewOrder,
+      cashPct,
+      cashDiscount,
+      ...(caps.ordersClientKey ? [clientKey] : []),
+      ...(caps.ordersOccurredAt ? [occurredAt] : []),
+    ];
+    const placeholders = vals.map((_, i) => `$${i + 1}`).join(", ");
     const order = await tx.queryOne<Record<string, any>>(
-      `INSERT INTO orders (vendor_id, customer_name, customer_phone, customer_address, method, payment_method, items, total, status, channel, paid_at, notes, pickup_number, is_preview, cash_pct, cash_discount)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'mostrador', $10, $11, $12, $13, $14, $15)
-       RETURNING *`,
-      [
-        gate.vendor.id,
-        customerName?.trim() || "Mostrador",
-        isDelivery ? customerPhoneClean : "",
-        isDelivery ? (customerAddress?.trim() || null) : null,
-        isDelivery ? "delivery" : "pickup",
-        payment,
-        JSON.stringify(normalizedItems),
-        finalTotal,
-        status,
-        now,
-        notes || null,
-        pickupNumber,
-        previewOrder,
-        cashPct,
-        cashDiscount,
-      ]
+      `INSERT INTO orders (${cols.join(", ")}) VALUES (${placeholders}) RETURNING *`,
+      vals
     );
 
     // CRM: el delivery lleva teléfono del cliente → ficha (el pickup guarda
@@ -206,6 +246,18 @@ export async function POST(request: Request) {
   } catch (e) {
     if (e instanceof OutOfStockError) {
       return NextResponse.json({ error: e.message }, { status: 409 });
+    }
+    // Carrera de reintentos con la misma client_key (el pre-chequeo pasó en
+    // paralelo): el índice único frenó el duplicado → devolver el existente.
+    if (clientKey && caps.ordersClientKey && (e as { code?: string })?.code === "23505") {
+      try {
+        const existing = await findOrderByClientKey(gate.vendor.id, clientKey);
+        if (existing) {
+          return NextResponse.json({ ok: true, orderId: existing.id, order: existing, dedup: true });
+        }
+      } catch {
+        /* sigue al throw original */
+      }
     }
     throw e;
   }

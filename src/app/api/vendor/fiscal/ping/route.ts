@@ -3,6 +3,7 @@ import { getVendorByRequest } from "@/lib/vendor-utils";
 import { resolveVendorPlan } from "@/lib/plans";
 import { decryptFiscalSecret, isValidCuit } from "@/lib/arca/crypto";
 import { ArcaError, getWsaaTicket } from "@/lib/arca/wsaa";
+import { explainArcaFault } from "@/lib/arca/faults";
 import type { Plan, Vendor } from "@/types/database";
 import { NextResponse } from "next/server";
 
@@ -61,6 +62,7 @@ export async function POST(request: Request) {
     const msg = e instanceof Error ? e.message : "Error de ARCA";
     console.log(`[fiscal] vendor=${vendor.id} env=${env} stage=ping-error +${Date.now() - t0}ms ${msg.slice(0, 200)}`);
     const code = e instanceof ArcaError ? "arca_error" : "fiscal_error";
-    return NextResponse.json({ error: msg, code }, { status: 502 });
+    const hint = explainArcaFault(msg);
+    return NextResponse.json({ error: msg, code, ...(hint ? { hint } : {}) }, { status: 502 });
   }
 }

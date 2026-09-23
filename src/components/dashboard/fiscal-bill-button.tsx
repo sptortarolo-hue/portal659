@@ -65,7 +65,7 @@ export function FiscalBillButton({ orderId }: { orderId: string }) {
         setExisting(data.invoice);
         setMsg("Comprobante emitido ✓");
       } else if (data.error) {
-        setErr(data.error);
+        setErr(data.hint ? `${data.error} 💡 ${data.hint}` : data.error);
       } else {
         setErr("Se cortó esperando a ARCA (probá Probar conexión en Config → Fiscal)");
       }

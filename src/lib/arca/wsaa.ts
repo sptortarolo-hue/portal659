@@ -101,7 +101,7 @@ function buildTra(service: string): string {
 export function validateCertKeyPair(
   certPem: string,
   keyPem: string
-): { subject: string; notAfter: string } {
+): { subject: string; issuer: string; notAfter: string } {
   let cert: forge.pki.Certificate;
   try {
     cert = forge.pki.certificateFromPem(certPem);
@@ -136,7 +136,11 @@ export function validateCertKeyPair(
   const cn =
     cert.subject.attributes.find((a) => a.shortName === "CN")?.value?.toString() ||
     cert.subject.toString();
-  return { subject: cn, notAfter: cert.validity.notAfter.toISOString() };
+  // Emisor: sirve para detectar entorno equivocado (cert de prod en homo o viceversa).
+  const issuer =
+    cert.issuer.attributes.find((a) => a.shortName === "CN")?.value?.toString() ||
+    cert.issuer.toString();
+  return { subject: cn, issuer, notAfter: cert.validity.notAfter.toISOString() };
 }
 
 /** Firma CMS (PKCS#7 attached) del TRA. Lanza si el par cert/key no parsea. */

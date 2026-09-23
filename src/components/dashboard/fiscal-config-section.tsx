@@ -13,7 +13,7 @@ type FiscalStatus = {
   fiscal_punto_venta: number | null;
   fiscal_env: string;
   has_cert: boolean;
-  cert_info: { subject: string; notAfter: string } | null;
+  cert_info: { subject: string; issuer: string; notAfter: string } | null;
   ready: boolean;
 };
 
@@ -53,7 +53,7 @@ export function FiscalConfigSection() {
   const [csrBusy, setCsrBusy] = useState(false);
   const [csrCopied, setCsrCopied] = useState(false);
   const [pingBusy, setPingBusy] = useState(false);
-  const [pingResult, setPingResult] = useState<{ ok: boolean; ms?: number; error?: string } | null>(null);
+  const [pingResult, setPingResult] = useState<{ ok: boolean; ms?: number; error?: string; hint?: string } | null>(null);
   const certFileRef = useRef<HTMLInputElement>(null);
   const keyFileRef = useRef<HTMLInputElement>(null);
 
@@ -127,7 +127,7 @@ export function FiscalConfigSection() {
       if (res.ok) {
         setPingResult({ ok: true, ms: data.ms });
       } else {
-        setPingResult({ ok: false, error: data.error || "ARCA no contestó (revisá docker logs [fiscal])" });
+        setPingResult({ ok: false, error: data.error || "ARCA no contestó (revisá docker logs [fiscal])", hint: data.hint });
       }
     } catch {
       setPingResult({ ok: false, error: "Se cortó esperando a ARCA (proxy o red del VPS)" });
@@ -198,6 +198,9 @@ export function FiscalConfigSection() {
               {pingResult && (
                 <span className={`text-xs font-medium ${pingResult.ok ? "text-green-600" : "text-red-600"}`}>
                   {pingResult.ok ? `✅ ARCA responde (${pingResult.ms}ms)` : `⚠️ ${pingResult.error}`}
+                  {!pingResult.ok && pingResult.hint && (
+                    <><br />💡 {pingResult.hint}</>
+                  )}
                 </span>
               )}
             </div>
@@ -262,6 +265,8 @@ export function FiscalConfigSection() {
               <p className="text-xs text-muted-foreground">
                 ✅ {status.cert_info.subject} · vence{" "}
                 {new Date(status.cert_info.notAfter).toLocaleDateString("es-AR")}
+                <br />
+                <span className="opacity-80">Emitido por: {status.cert_info.issuer}</span>
               </p>
             ) : (
               <div className="space-y-2">

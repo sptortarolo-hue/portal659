@@ -203,6 +203,16 @@ function VendorDashboardInner() {
   }, []);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  // Fullscreen del navegador (modo cocina de la Comanda).
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  useEffect(() => {
+    const onFs = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", onFs);
+    return () => document.removeEventListener("fullscreenchange", onFs);
+  }, []);
+  // Modo cocina puro: fullscreen + pestaña Comanda. En sm+ se esconde todo
+  // el cromo (sidebar, header, bottom nav); en celu (<sm) no se esconde nada.
+  const kitchenMode = isFullscreen && tab === "comanda";
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState("");
   const [plans, setPlans] = useState<Plan[]>([]);
@@ -1078,7 +1088,9 @@ function VendorDashboardInner() {
 
   return (
     <div className="min-h-screen bg-background flex">
-      {/* Sidebar — desktop: always visible; mobile: slide-in */}
+      {/* Sidebar — desktop: always visible; mobile: slide-in.
+          En modo cocina (sm+) se desmonta: pantalla pura para la Comanda. */}
+      {!kitchenMode && (
       <VendorSidebar
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
@@ -1099,11 +1111,13 @@ function VendorDashboardInner() {
         planName={effectivePlan.plan?.name ?? null}
         planSlug={effectivePlan.plan?.slug ?? null}
       />
+      )}
 
       {/* Content area — min-w-0: evita que el min-content de los controles del
           header (etiquetas nowrap) estire el flex item más allá del viewport
-          y desborde en mobile. */}
-      <div className="flex-1 flex flex-col min-h-screen lg:ml-64 min-w-0">
+          y desborde en mobile. En modo cocina no hay sidebar: se quita el
+          offset lg:ml-64 para usar todo el ancho. */}
+      <div className={`flex-1 flex flex-col min-h-screen min-w-0 ${kitchenMode ? "" : "lg:ml-64"}`}>
         {impersonatingId && (
           <div className="bg-amber-50 border-b border-amber-200">
             <div className="container mx-auto px-4 py-2 flex items-center justify-between gap-3 text-sm text-amber-900">
@@ -1121,7 +1135,7 @@ function VendorDashboardInner() {
             SIN backdrop-blur: sticky + backdrop-filter tiene un bug de
             compositing en Chrome/WebView Android (la barra "desaparece"
             durante el scroll). Fondo sólido va bien en todos lados. */}
-        <div className="sticky top-14 sm:top-0 z-30 bg-background border-b border-border">
+        <div className={`sticky top-14 sm:top-0 z-30 bg-background border-b border-border ${kitchenMode ? "sm:hidden" : ""}`}>
           <div className="px-3 sm:px-4 py-2 sm:py-2.5">
             {/* Fila 1: menú + título + compartir (+ controles en desktop) */}
             <div className="flex items-center gap-2 sm:gap-3">
@@ -1421,8 +1435,10 @@ function VendorDashboardInner() {
           )}
         </div>
 
-        {/* Mobile bottom nav */}
-        <nav className="lg:hidden fixed bottom-0 inset-x-0 bg-card/95 backdrop-blur-sm border-t border-border z-50" style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
+        {/* Mobile bottom nav — SIN backdrop-blur (fondo sólido): sticky/fixed +
+            backdrop-filter tiene un bug de compositing que la hace
+            "desaparecer". En modo cocina se oculta en sm+ (celu intacto). */}
+        <nav className={`lg:hidden fixed bottom-0 inset-x-0 bg-card border-t border-border z-50 ${kitchenMode ? "sm:hidden" : ""}`} style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
           <div className="flex">
             <button onClick={() => setTab("hoy")} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors relative ${tab === "hoy" ? "text-primary" : "text-muted-foreground"}`}>
               <Home className="h-5 w-5" />Hoy
@@ -1472,9 +1488,8 @@ function VendorDashboardInner() {
         </nav>
 
         {moreOpen && (
+          <div className={kitchenMode ? "sm:hidden" : ""}>
           <div className="lg:hidden fixed inset-0 z-40 bg-black/50" onClick={() => setMoreOpen(false)} />
-        )}
-        {moreOpen && (
           <div className="lg:hidden fixed bottom-0 inset-x-0 z-50 bg-card rounded-t-2xl border-t border-border p-4 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)] shadow-xl">
             <button onClick={() => setMoreOpen(false)} className="mx-auto block w-10 h-1.5 bg-muted rounded-full mb-4" aria-label="Cerrar" />
             <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wide mb-2">Administración</p>
@@ -1527,6 +1542,7 @@ function VendorDashboardInner() {
                 </>
               )}
             </div>
+          </div>
           </div>
         )}
       </div>

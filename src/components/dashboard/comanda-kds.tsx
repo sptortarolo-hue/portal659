@@ -458,6 +458,27 @@ export default function ComandaKDS({ vendorId, vendorName, accessToken, prepTime
   const [orders, setOrders] = useState<Order[]>([]);
   const [activeTab, setActiveTab] = useState<OrderStatus | "all">("new");
   const [boardView, setBoardView] = useState<"tickets" | "products">("tickets");
+  // Fullscreen del navegador (modo cocina: la página esconde sidebar, header
+  // y bottom nav en sm+ mientras esté activo + esta pestaña visible).
+  const [isFs, setIsFs] = useState(false);
+  useEffect(() => {
+    const onFs = () => setIsFs(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", onFs);
+    return () => {
+      document.removeEventListener("fullscreenchange", onFs);
+      // Al salir de la Comanda no quedar atrapado sin navegación.
+      if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    };
+  }, []);
+
+  function toggleFullscreen() {
+    resumeAudioContext();
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    } else {
+      document.exitFullscreen().catch(() => {});
+    }
+  }
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
@@ -789,17 +810,15 @@ export default function ComandaKDS({ vendorId, vendorName, accessToken, prepTime
             </button>
           )}
           <button
-            onClick={() => {
-              if (!document.fullscreenElement) {
-                document.documentElement.requestFullscreen().catch(() => {});
-              } else {
-                document.exitFullscreen().catch(() => {});
-              }
-            }}
-            className="hidden sm:inline-flex text-xs px-2 py-1.5 rounded-lg bg-muted text-muted-foreground font-medium hover:bg-muted/80 transition-colors"
-            title="Pantalla completa"
+            onClick={toggleFullscreen}
+            className={`hidden sm:inline-flex text-xs px-2 py-1.5 rounded-lg font-medium transition-colors ${
+              isFs
+                ? "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900"
+                : "bg-muted text-muted-foreground hover:bg-muted/80"
+            }`}
+            title={isFs ? "Salir de pantalla completa" : "Pantalla completa"}
           >
-            ⛶
+            {isFs ? "✕ Salir" : "⛶"}
           </button>
         </div>
       </div>
@@ -914,6 +933,17 @@ export default function ComandaKDS({ vendorId, vendorName, accessToken, prepTime
             renderColumn(col.status, col.label, col.emoji)
           )}
         </div>
+      )}
+
+      {/* Salida flotante del modo cocina (la página esconde su nav en sm+). */}
+      {isFs && (
+        <button
+          onClick={toggleFullscreen}
+          className="fixed bottom-4 right-4 z-[70] rounded-full bg-red-600 px-4 py-3 text-sm font-bold text-white shadow-lg active:scale-95"
+          aria-label="Salir de pantalla completa"
+        >
+          ✕ Salir
+        </button>
       )}
     </div>
   );

@@ -29,7 +29,10 @@ function soapFetch(url: string, body: string, action: string): Promise<string> {
   })
     .then(async (res) => {
       const text = await res.text();
-      if (!res.ok) throw new ArcaError(`WSFE HTTP ${res.status}`, text.slice(0, 500));
+      if (!res.ok) {
+        const fault = text.match(/<faultstring>([\s\S]*?)<\/faultstring>/)?.[1]?.trim().slice(0, 200);
+        throw new ArcaError(`WSFE HTTP ${res.status}${fault ? `: ${fault}` : ""}`, text.slice(0, 500));
+      }
       return text;
     })
     .catch((e: unknown) => {

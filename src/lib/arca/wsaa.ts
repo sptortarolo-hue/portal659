@@ -44,7 +44,13 @@ function soapFetch(url: string, body: string, action: string): Promise<string> {
   })
     .then(async (res) => {
       const text = await res.text();
-      if (!res.ok) throw new ArcaError(`WSAA HTTP ${res.status}`, text.slice(0, 500));
+      if (!res.ok) {
+        // El faultstring dice el motivo real (cert no asociado, TRA
+        // vencido, CMS inválido...). Va en el mensaje para que salga en
+        // los logs [fiscal]; no contiene secretos.
+        const fault = text.match(/<faultstring>([\s\S]*?)<\/faultstring>/)?.[1]?.trim().slice(0, 200);
+        throw new ArcaError(`WSAA HTTP ${res.status}${fault ? `: ${fault}` : ""}`, text.slice(0, 500));
+      }
       return text;
     })
     .catch((e: unknown) => {
@@ -71,7 +77,11 @@ function buildTra(service: string): string {
   const now = Date.now();
   const gen = new Date(now - 10 * 60 * 1000);
   const exp = new Date(now + 10 * 60 * 1000);
-  const fmt = (d: Date) => d.toISOString().replace(/\.\d+Z$/, "-03:00");
+  // El server corre en UTC: hay que expresar el instante en hora ART
+  // (UTC-3, sin DST desde 2009). Antes se etiquetaba el UTC como -03:00
+  // y el TRA quedaba 3h en el futuro → WSAA lo rechazaba con HTTP 500.
+  const fmt = (d: Date) =>
+    new Date(d.getTime() - 3 * 3600 * 1000).toISOString().replace(/\.\d+Z$/, "-03:00");
   const uniqueId = Math.floor(now / 1000);
   return (
     `<?xml version="1.0" encoding="UTF-8"?>` +

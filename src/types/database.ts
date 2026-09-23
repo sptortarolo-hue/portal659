@@ -376,6 +376,8 @@ export type Vendor = {
   accepts_online_orders?: boolean | null;
   /** % de descuento en efectivo (NULL/0 = sin descuento). Requiere Efectivo en payment_methods. */
   cash_discount_pct?: number | null;
+  /** Cierre estricto de cocina: true = Listo exige tildar todo (default). */
+  kitchen_strict_close?: boolean | null;
   plan_id: string | null;
   plan_status: PlanStatus;
   plan_expires_at: string | null;

@@ -96,6 +96,7 @@ export async function POST(request: Request) {
     food_cost_bad,
     accepts_online_orders,
     cash_discount_pct,
+    kitchen_strict_close,
   } = body;
 
   const VALID_VERTICALS = ["gastronomia", "comercio", "servicio", "moda", "salud", "otro"];
@@ -189,6 +190,7 @@ export async function POST(request: Request) {
     if (food_cost_bad !== undefined) payload.food_cost_bad = b;
   }
   if (accepts_online_orders !== undefined) payload.accepts_online_orders = accepts_online_orders === true;
+  if (kitchen_strict_close !== undefined) payload.kitchen_strict_close = kitchen_strict_close !== false;
   if (cash_discount_pct !== undefined) {
     if (cash_discount_pct === null || cash_discount_pct === "") {
       payload.cash_discount_pct = null;
@@ -227,6 +229,7 @@ export async function POST(request: Request) {
         "urgent_enabled",
         "urgent_surcharge_pct",
         "deposit_default_pct",
+        "kitchen_strict_close",
       ].filter((k) => k in payload && msg.includes(k));
       if (droppable.length > 0) {
         for (const k of droppable) delete payload[k];

@@ -103,13 +103,15 @@ function getTimeColor(elapsed: number, estimated: number | null): string {
 }
 
 function TicketCard({
-  order, now, vendorName, accessToken, onAction, onUndo, onToggleItem, onMarkAll,
+  order, now, vendorName, accessToken, onAction, onUndo, onToggleItem, onMarkAll, strictClose,
 }: {
   order: Order; now: number; vendorName: string; accessToken: string;
   onAction: (orderId: string, status: OrderStatus) => Promise<string | null>;
   onUndo: (orderId: string, status: OrderStatus) => void;
   onToggleItem: (orderId: string, index: number) => void;
   onMarkAll: (orderId: string) => void;
+  /** Gate estricto (on/off "Exigir tildado" del comercio). */
+  strictClose: boolean;
 }) {
   const created = new Date(order.created_at).getTime();
   const elapsed = Math.floor((now - created) / 60000);
@@ -135,8 +137,9 @@ function TicketCard({
 
   const progress = kitchenProgress(order);
   const allDone = progress.total > 0 && progress.done >= progress.total;
-  // El cierre "Listo" exige todo tildado (gate estricto, también en server).
-  const blockedByKitchen = nextStatus === "ready" && !allDone;
+  // El cierre "Listo" exige todo tildado si el comercio lo tiene activado
+  // (on/off "Exigir tildado"; el gate vive también en el server).
+  const blockedByKitchen = strictClose && nextStatus === "ready" && !allDone;
   const [toggling, setToggling] = useState<number | null>(null);
   const [markingAll, setMarkingAll] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -485,6 +488,9 @@ export default function ComandaKDS({ vendorId, vendorName, accessToken, prepTime
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
+  // On/off "Exigir tildado" (persistido por comercio; default true = estricto).
+  const [strictClose, setStrictClose] = useState(true);
+  const [strictSaving, setStrictSaving] = useState(false);
   const [pullDistance, setPullDistance] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
@@ -532,6 +538,39 @@ export default function ComandaKDS({ vendorId, vendorName, accessToken, prepTime
   }
 
   useEffect(() => { fetchOrders(); }, []);
+
+  // On/off "Exigir tildado": se lee del comercio y persiste por comercio
+  // (el gate es server-side, así Pedidos también lo respeta).
+  useEffect(() => {
+    fetch("/api/vendor/me")
+      .then((r) => r.json())
+      .then((d) => {
+        const v = d?.vendor?.kitchen_strict_close;
+        if (v !== undefined && v !== null) setStrictClose(v !== false);
+      })
+      .catch(() => {});
+  }, []);
+
+  async function toggleStrict() {
+    const next = !strictClose;
+    setStrictClose(next);
+    setStrictSaving(true);
+    try {
+      const res = await fetch("/api/vendor/me", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kitchen_strict_close: next }),
+      });
+      const data = await res.json().catch(() => ({}));
+      const saved = data?.vendor?.kitchen_strict_close;
+      if (!res.ok || (saved !== undefined && saved !== null && (saved !== false) !== next)) {
+        setStrictClose(!next);
+      }
+    } catch {
+      setStrictClose(!next);
+    }
+    setStrictSaving(false);
+  }
 
   // Polling: detecta pedidos nuevos y cambios de estado (reemplaza realtime)
   useEffect(() => {
@@ -744,6 +783,7 @@ export default function ComandaKDS({ vendorId, vendorName, accessToken, prepTime
         onUndo={handleUndo}
         onToggleItem={handleToggleItem}
         onMarkAll={handleMarkAll}
+        strictClose={strictClose}
       />
     );
   }
@@ -767,6 +807,20 @@ export default function ComandaKDS({ vendorId, vendorName, accessToken, prepTime
             }`}
           >
             {soundEnabled ? "🔊" : "🔇"}
+          </button>
+          {/* On/off "Exigir tildado": con OFF se puede marcar Listo (acá y en
+              Pedidos) sin tildar todo. Persiste por comercio. */}
+          <button
+            onClick={toggleStrict}
+            disabled={strictSaving}
+            className={`text-xs px-2 py-1.5 rounded-lg font-medium transition-colors disabled:opacity-50 ${
+              strictClose
+                ? "bg-primary/10 text-primary"
+                : "bg-muted text-muted-foreground"
+            }`}
+            title={strictClose ? "Listo exige tildar todo (tocá para permitir cierre sin tildar)" : "Cierre libre: Listo no exige tildar (tocá para exigir)"}
+          >
+            {strictClose ? "☑️ Exigir tildado" : "⬜ Cierre libre"}
           </button>
           {permission !== "granted" && (
             <button onClick={requestPermission} className="text-xs px-2 py-1.5 rounded-lg bg-primary/10 text-primary font-medium">

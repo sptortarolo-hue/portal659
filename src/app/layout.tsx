@@ -11,6 +11,7 @@ import { PushSubscribe } from "@/components/pwa/push-subscribe";
 import { ToastProvider } from "@/lib/toast";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { ThemeProvider } from "@/components/ui/theme-provider";
+import { ThemeColorSync } from "@/components/ui/theme-color-sync";
 import { ScrollToTop } from "@/components/ui/scroll-to-top";
 import { BottomNav } from "@/components/nav/bottom-nav";
 import { OnboardingOverlay } from "@/components/onboarding/onboarding-overlay";
@@ -76,6 +77,7 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         <meta name="apple-mobile-web-app-title" content="Portal659" />
         <meta name="theme-color" content="#4f46e5" />
+        <meta name="color-scheme" content="light dark" />
         <meta name="mobile-web-app-capable" content="yes" />
         <script
           dangerouslySetInnerHTML={{
@@ -88,6 +90,7 @@ export default function RootLayout({
         suppressHydrationWarning
       >
         <ThemeProvider>
+          <ThemeColorSync />
           <CartProvider>
             <ToastProvider>
               <ServiceWorkerRegistration />

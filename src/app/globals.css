@@ -74,6 +74,13 @@
     overflow-x: clip;
   }
 
+  /* Fondo también en html (no solo body): con barras del sistema
+     transparentes (edge-to-edge en Android) el área detrás muestra el
+     fondo del tema en vez de un flash blanco al navegar en oscuro. */
+  html {
+    background-color: var(--color-background);
+  }
+
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);

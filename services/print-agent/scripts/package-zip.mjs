@@ -59,8 +59,12 @@ async function main() {
   trimLocales();
 
   // bsdtar crea .zip con -a (extensión .zip => compresor zip).
-  execFileSync("tar", ["-a", "-c", "-f", OUT, "-C", join(ROOT, "dist"), "Portal Print Agent"], {
+  // OJO: bsdtar interpreta "C:\..." del -f como host remoto ("C:"); por eso
+  // se corre con cwd=dist y rutas relativas (mismo layout: carpeta superior
+  // "Portal Print Agent/").
+  execFileSync("tar", ["-a", "-c", "-f", "portal-print-agent.zip", "Portal Print Agent"], {
     stdio: "inherit",
+    cwd: join(ROOT, "dist"),
   });
 
   rmSync(STAGING, { recursive: true, force: true });

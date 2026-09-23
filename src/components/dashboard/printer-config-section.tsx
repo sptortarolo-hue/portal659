@@ -300,7 +300,7 @@ export function PrinterConfigSection({
               </summary>
 
               <a
-                href="/uploads/downloads/portal-print-agent.zip?v=3"
+                href="/uploads/downloads/portal-print-agent.zip?v=4"
                 download="portal-print-agent.zip"
                 className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-fresh text-fresh-foreground px-4 py-2.5 text-sm font-semibold hover:bg-fresh/80 active:scale-[0.98] transition-all"
               >

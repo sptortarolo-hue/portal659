@@ -291,13 +291,6 @@ export function orderCompleteActionLabel(order: Pick<Order, "channel" | "method"
   }
 }
 
-export const KDS_COLUMNS: { status: OrderStatus; label: string; emoji: string }[] = [
-  { status: "new", label: "Nuevos", emoji: "🆕" },
-  { status: "preparing", label: "Preparando", emoji: "🍳" },
-  { status: "ready", label: "Listos", emoji: "📦" },
-  { status: "sent", label: "Enviados", emoji: "🚚" },
-];
-
 /** Etiqueta visible del número de pedido diario (ej. "Nro. 12" para comanda, "Retiro Nro. 7" para retiros). */
 export function orderNumberLabel(order: Pick<Order, "channel" | "method"> & { pickup_number?: number | null; table_name?: string | null }): string {
   const n = order.pickup_number;

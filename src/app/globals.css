@@ -235,36 +235,24 @@ html.dark {
   animation: ticket-enter 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-/* KDS Kanban board */
-.kds-kanban {
+/* KDS: riel único acumulativo (sin columnas por estado). Grid denso que se
+   acomoda al ancho: las tarjetas fluyen por orden de llegada. */
+.kds-rail {
   display: none;
 }
 @media (min-width: 640px) {
-  .kds-kanban {
+  .kds-rail {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 1rem;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 0.75rem;
     align-items: start;
   }
 }
 @media (min-width: 1280px) {
-  .kds-kanban {
-    grid-template-columns: repeat(3, minmax(300px, 1fr));
-    gap: 1.25rem;
+  .kds-rail {
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 1rem;
   }
-}
-.kds-kanban-column {
-  max-height: calc(100vh - 10rem);
-  overflow-y: auto;
-  overscroll-behavior-y: contain;
-  scrollbar-width: thin;
-}
-.kds-kanban-column::-webkit-scrollbar {
-  width: 4px;
-}
-.kds-kanban-column::-webkit-scrollbar-thumb {
-  background: var(--color-border);
-  border-radius: 2px;
 }
 
 /* Destacado del producto (oferta de hoy al llegar del link): anillo ámbar

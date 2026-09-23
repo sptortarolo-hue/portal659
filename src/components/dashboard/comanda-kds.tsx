@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import {
   canTransition,
-  KDS_COLUMNS,
+  ORDER_STATUS_LABELS,
   buildClientWhatsAppUrl,
   orderCondition,
   orderReadyLabel,
@@ -223,6 +223,10 @@ function TicketCard({
           <span className="font-mono text-[13px] font-extrabold text-foreground">{order.pickup_number != null ? `Nro. ${order.pickup_number}` : `#${order.id.slice(0, 6)}`}</span>
           <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${CONDITION_META[orderCondition(order)].pillClass}`}>
             {CONDITION_META[orderCondition(order)].label}
+          </span>
+          {/* Estado del pedido (el riel único no tiene columnas por estado). */}
+          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${getStatusBg(order.status)}`}>
+            {ORDER_STATUS_LABELS[order.status] || order.status}
           </span>
           {order.modification_notes && (
             <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-400">Editado</span>
@@ -456,7 +460,6 @@ function ProductAggregate({ orders }: { orders: Order[] }) {
 
 export default function ComandaKDS({ vendorId, vendorName, accessToken, prepTimeMin = null }: Props) {
   const [orders, setOrders] = useState<Order[]>([]);
-  const [activeTab, setActiveTab] = useState<OrderStatus | "all">("new");
   const [boardView, setBoardView] = useState<"tickets" | "products">("tickets");
   // Fullscreen del navegador (modo cocina: la página esconde sidebar, header
   // y bottom nav en sm+ mientras esté activo + esta pestaña visible).
@@ -577,17 +580,18 @@ export default function ComandaKDS({ vendorId, vendorName, accessToken, prepTime
   }, [accessToken]);
 
   useEffect(() => {
-    if (activeTab !== "new") return;
     const interval = setInterval(() => {
-      const newOrders = ordersRef.current.filter((o) => o.status === "new");
-      const overdue = newOrders.filter((o) => {
-        const elapsed = Math.floor((Date.now() - new Date(o.created_at).getTime()) / 60000);
-        return o.estimated_minutes != null && elapsed > o.estimated_minutes;
-      });
+      const overdue = ordersRef.current.filter(
+        (o) =>
+          o.status !== "completed" &&
+          o.status !== "cancelled" &&
+          o.estimated_minutes != null &&
+          Math.floor((Date.now() - new Date(o.created_at).getTime()) / 60000) > o.estimated_minutes
+      );
       if (overdue.length > 0 && soundEnabledRef.current) playUrgentSound();
     }, 30000);
     return () => clearInterval(interval);
-  }, [activeTab]);
+  }, []);
 
   async function handleAction(orderId: string, status: OrderStatus): Promise<string | null> {
     const estimated = status === "preparing" ? (prepTimeMin ?? 30) : undefined;
@@ -703,17 +707,11 @@ export default function ComandaKDS({ vendorId, vendorName, accessToken, prepTime
   const activeOrders = orders.filter((o) => o.status !== "completed" && o.status !== "cancelled");
   const activeCount = activeOrders.length;
 
-  const columnOrders = (status: OrderStatus) =>
-    orders
-      .filter((o) => o.status === status)
-      .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-
-  const tabs: { key: OrderStatus | "all"; label: string; emoji: string; count: number }[] = [
-    { key: "new", label: "Nuevos", emoji: "🆕", count: columnOrders("new").length },
-    { key: "preparing", label: "Preparando", emoji: "🍳", count: columnOrders("preparing").length },
-    { key: "ready", label: "Listos", emoji: "📦", count: columnOrders("ready").length },
-    { key: "all", label: "Todos", emoji: "📋", count: activeCount },
-  ];
+  // Riel único acumulativo: todo lo activo por orden de llegada
+  // (más viejo primero). Sin columnas ni tabs por estado.
+  const railOrders = [...activeOrders].sort(
+    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+  );
 
   if (loading) {
     return (
@@ -734,55 +732,21 @@ export default function ComandaKDS({ vendorId, vendorName, accessToken, prepTime
     );
   }
 
-  const renderColumn = (status: OrderStatus, label: string, emoji: string) => {
-    const items = columnOrders(status);
-    const avgMinutes = items.length > 0
-      ? Math.round(items.reduce((sum, o) => {
-          const elapsed = (now - new Date(o.created_at).getTime()) / 60000;
-          return sum + elapsed;
-        }, 0) / items.length)
-      : null;
-    const overdueCount = items.filter((o) => {
-      const remaining = o.estimated_minutes ? o.estimated_minutes - (now - new Date(o.created_at).getTime()) / 60000 : null;
-      return remaining !== null && remaining <= 0;
-    }).length;
+  function renderRailTicket(order: Order) {
     return (
-      <div key={status} className="flex flex-col min-w-0">
-        <div className={`flex items-center gap-1.5 mb-2 px-2 ${getStatusBg(status)} rounded-lg py-2`}>
-          <span className="text-base">{emoji}</span>
-          <span className="text-sm font-bold text-foreground">{label}</span>
-          {items.length > 0 && (
-            <span className="ml-auto text-xs font-bold bg-foreground/10 text-foreground px-2 py-0.5 rounded-full">{items.length}</span>
-          )}
-          {overdueCount > 0 && (
-            <span className="text-xs font-bold bg-red-500 text-white px-1.5 py-0.5 rounded-full animate-pulse">{overdueCount}</span>
-          )}
-          {avgMinutes !== null && (
-            <span className="text-[10px] text-muted-foreground ml-0.5">~{avgMinutes}m</span>
-          )}
-        </div>
-        <div className="space-y-2 kds-kanban-column">
-          {items.length === 0 ? (
-            <div className="text-center py-6 text-muted-foreground text-xs">Sin pedidos</div>
-          ) : (
-            items.map((order) => (
-              <TicketCard
-                key={order.id}
-                order={order}
-                now={now}
-                vendorName={vendorName}
-                accessToken={accessToken}
-                onAction={handleAction}
-                onUndo={handleUndo}
-                onToggleItem={handleToggleItem}
-                onMarkAll={handleMarkAll}
-              />
-            ))
-          )}
-        </div>
-      </div>
+      <TicketCard
+        key={order.id}
+        order={order}
+        now={now}
+        vendorName={vendorName}
+        accessToken={accessToken}
+        onAction={handleAction}
+        onUndo={handleUndo}
+        onToggleItem={handleToggleItem}
+        onMarkAll={handleMarkAll}
+      />
     );
-  };
+  }
 
   return (
     <div className="space-y-3">
@@ -823,29 +787,6 @@ export default function ComandaKDS({ vendorId, vendorName, accessToken, prepTime
         </div>
       </div>
 
-      {/* Tab pills — mobile only */}
-      <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide -mx-4 px-4 sm:hidden">
-        {tabs.map((t) => (
-          <button
-            key={t.key}
-            onClick={() => setActiveTab(t.key)}
-            className={`flex-shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-[11px] font-bold transition-all ${
-              activeTab === t.key
-                ? "bg-primary text-primary-foreground shadow-sm"
-                : "bg-muted text-muted-foreground"
-            }`}
-          >
-            <span>{t.emoji}</span>
-            {t.label}
-            {t.count > 0 && (
-              <span className={`text-[9px] px-1 py-0.5 rounded-full font-bold ${
-                activeTab === t.key ? "bg-primary-foreground/20" : "bg-foreground/10"
-              }`}>{t.count}</span>
-            )}
-          </button>
-        ))}
-      </div>
-
       {/* Pull to refresh indicator */}
       {pullDistance > 0 && (
         <div className="text-center py-1" style={{ height: pullDistance / 2 }}>
@@ -869,7 +810,7 @@ export default function ComandaKDS({ vendorId, vendorName, accessToken, prepTime
         ))}
       </div>
 
-      {/* Mobile: single column with tabs */}
+      {/* Mobile: riel único acumulativo */}
       <div
         ref={listRef}
         className="sm:hidden space-y-2 pb-4"
@@ -879,59 +820,35 @@ export default function ComandaKDS({ vendorId, vendorName, accessToken, prepTime
       >
         {boardView === "products" ? (
           <ProductAggregate orders={activeOrders} />
-        ) : activeTab === "all" ? (
-          activeOrders
-            .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
-            .map((order) => (
-              <TicketCard
-                key={order.id}
-                order={order}
-                now={now}
-                vendorName={vendorName}
-                accessToken={accessToken}
-                onAction={handleAction}
-                onUndo={handleUndo}
-                onToggleItem={handleToggleItem}
-                onMarkAll={handleMarkAll}
-              />
-            ))
         ) : (
-          columnOrders(activeTab as OrderStatus).map((order) => (
-            <TicketCard
-              key={order.id}
-              order={order}
-              now={now}
-              vendorName={vendorName}
-              accessToken={accessToken}
-              onAction={handleAction}
-              onUndo={handleUndo}
-              onToggleItem={handleToggleItem}
-              onMarkAll={handleMarkAll}
-            />
-          ))
+          railOrders.map(renderRailTicket)
         )}
-        {boardView === "tickets" &&
-          ((activeTab === "all" && activeOrders.length === 0) ||
-            (activeTab !== "all" && columnOrders(activeTab as OrderStatus).length === 0)) && (
-            <div className="text-center py-12">
-              <div className="text-4xl mb-3">🎉</div>
-              <p className="text-sm font-medium text-muted-foreground">
-                {activeTab === "new" ? "No hay pedidos nuevos" : `Sin pedidos en ${tabs.find((t) => t.key === activeTab)?.label}`}
-              </p>
-            </div>
-          )}
+        {boardView === "tickets" && railOrders.length === 0 && (
+          <div className="text-center py-12">
+            <div className="text-4xl mb-3">🎉</div>
+            <p className="text-sm font-medium text-muted-foreground">
+              No hay pedidos en cocina
+            </p>
+          </div>
+        )}
       </div>
 
-      {/* Desktop: kanban board o agregado por producto */}
+      {/* Desktop: riel denso que se acomoda al ancho, o agregado por producto */}
       {boardView === "products" ? (
         <div className="hidden sm:block max-w-3xl">
           <ProductAggregate orders={activeOrders} />
         </div>
       ) : (
-        <div className="hidden sm:grid kds-kanban">
-          {KDS_COLUMNS.filter((c) => c.status !== "sent").map((col) =>
-            renderColumn(col.status, col.label, col.emoji)
-          )}
+        <div className="hidden sm:grid kds-rail">
+          {railOrders.map(renderRailTicket)}
+        </div>
+      )}
+      {boardView === "tickets" && railOrders.length === 0 && (
+        <div className="hidden sm:block text-center py-12">
+          <div className="text-4xl mb-3">🎉</div>
+          <p className="text-sm font-medium text-muted-foreground">
+            No hay pedidos en cocina
+          </p>
         </div>
       )}
 

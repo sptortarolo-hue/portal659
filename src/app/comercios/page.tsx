@@ -10,13 +10,10 @@ import type { Plan, Vendor } from "@/types/database";
 export const dynamic = "force-dynamic";
 
 export const metadata = {
-  title: "Sumá tu comercio al barrio — Portal 659",
+  title: "Sumá tu comercio u oficio al barrio, 0% comisión — Portal 659",
   description:
-    "Mostrá tu comercio en Portal 659, el centro comercial de tu barrio: carta con QR, pedidos por app o WhatsApp, mostrador y mesas. Empezá gratis. 0% comisión por venta.",
+    "Mostrá tu comercio u oficio en Portal 659, el centro comercial de tu barrio: catálogo con QR, pedidos por app o WhatsApp, mostrador, mesas y facturación. Empezá gratis, 0% comisión por venta para siempre.",
 };
-
-/** WhatsApp de atención del proyecto (para comercios que prefieren hablar con una persona). */
-const CONTACT_WA = "5492212010898";
 
 const VERTICAL_OFFERS = [
   {
@@ -28,7 +25,7 @@ const VERTICAL_OFFERS = [
       "Carta digital con QR para tus mesas",
       "Pedidos online con carrito y opciones",
       "Comanda digital para tu cocina",
-      "Impresión automática de tickets",
+      "Facturación electrónica con CAE",
     ],
   },
   {
@@ -64,7 +61,7 @@ const VERTICAL_OFFERS = [
       "Solicitudes de presupuestos online",
       "Agenda de turnos coordinada",
       "Cobro de señas por Mercado Pago",
-      "Destacado en el buscador de servicios",
+      "Lo cargás en minutos, desde el celu",
     ],
   },
 ] as const;
@@ -73,7 +70,7 @@ const HOW_IT_WORKS = [
   {
     step: "1",
     title: "Creás tu cuenta",
-    desc: "Elegís tu rubro y cargás tus datos. En dos minutos ya tenés tu vidriera online.",
+    desc: "Elegís tu rubro y cargás tus datos, solo y sin instalar nada. En dos minutos ya tenés tu vidriera online.",
   },
   {
     step: "2",
@@ -89,9 +86,14 @@ const HOW_IT_WORKS = [
 
 const BENEFITS = [
   {
+    icon: "💸",
+    title: "0% comisión, la plata es tuya",
+    desc: "Cobrá en efectivo, transferencia o Mercado Pago directo en tu cuenta. Nunca un porcentaje de tus ventas.",
+  },
+  {
     icon: "💬",
     title: "Contacto Directo",
-    desc: "Recibís los pedidos y consultas directo en tu WhatsApp. Sin comisiones, sin intermediarios.",
+    desc: "Recibís los pedidos y consultas directo en tu WhatsApp. Sin intermediarios.",
   },
   {
     icon: "📱",
@@ -106,17 +108,12 @@ const BENEFITS = [
   {
     icon: "🧾",
     title: "Herramientas de Gestión",
-    desc: "Mostrador, Caja, CRM de clientes e Impresoras térmicas para profesionalizar tu negocio.",
+    desc: "Mostrador, Caja, CRM de clientes, impresoras térmicas y facturación electrónica para profesionalizar tu negocio.",
   },
   {
     icon: "📊",
     title: "Estadísticas y Reseñas",
     desc: "Sabés qué es lo que más se vende y qué opinan tus clientes para seguir mejorando.",
-  },
-  {
-    icon: "💸",
-    title: "Pagos Online",
-    desc: "Cobrá señas o pedidos completos vía Mercado Pago. La plata cae directo en tu cuenta.",
   },
 ] as const;
 
@@ -140,6 +137,14 @@ const FAQS = [
   {
     q: "Ya uso WhatsApp, ¿para qué la app?",
     a: "Porque con Portal 659 el pedido llega armado (detalle, cantidades, opciones y dirección), tu carta queda publicada y actualizada siempre, y tenés QR, comanda y estadísticas. Tu WhatsApp sigue siendo el mismo.",
+  },
+  {
+    q: "¿Cobran comisión como las apps de delivery?",
+    a: "No, nunca. Ni en el plan gratis ni en los pagos: 0% de comisión por venta, para siempre. Solo pagás la herramienta si elegís un plan pago.",
+  },
+  {
+    q: "No entiendo de tecnología, ¿puedo igual?",
+    a: "Sí. No instalás nada y todo es guiado paso a paso desde el navegador del celu: crear la cuenta, cargar productos y compartir tu QR te lleva minutos.",
   },
 ] as const;
 
@@ -172,13 +177,14 @@ export default async function ComerciosLanding() {
             Para comercios · {zone.name}
           </p>
            <h1 className="font-display text-3xl sm:text-5xl font-semibold text-white leading-tight">
-             ¿Tenés un comercio en el barrio?
-             <span className="block text-sun">Llevalo al celular de tus vecinos.</span>
-           </h1>
-           <p className="mt-4 text-sm sm:text-base text-white/85 max-w-xl mx-auto">
-             Portal 659 es el centro comercial de {zone.name}. Tu catálogo
-             con QR, pedidos por app, WhatsApp y herramientas de gestión. 0% de comisión por venta.
-           </p>
+              ¿Tenés un comercio u oficio en el barrio?
+              <span className="block text-sun">Vendé sin pagar comisión.</span>
+            </h1>
+            <p className="mt-4 text-sm sm:text-base text-white/85 max-w-xl mx-auto">
+              Portal 659 es el centro comercial de {zone.name}. Tu catálogo
+              con QR en el celular de tus vecinos, pedidos por app o WhatsApp y
+              herramientas de gestión. <strong className="text-white">0% de comisión por venta, para siempre.</strong>
+            </p>
           <div className="mt-6 flex flex-col sm:flex-row items-center justify-center gap-3">
             <Link
               href="/register"
@@ -194,7 +200,7 @@ export default async function ComerciosLanding() {
             </a>
           </div>
           <div className="mt-6 flex flex-wrap items-center justify-center gap-2 text-[11px] text-white/80">
-            <span className="rounded-full bg-white/10 px-3 py-1">0% comisión por venta</span>
+            <span className="rounded-full bg-sun/20 border border-sun/40 text-sun px-3 py-1 font-bold">0% comisión, la plata es tuya</span>
             <span className="rounded-full bg-white/10 px-3 py-1">Sin instalar nada</span>
             <span className="rounded-full bg-white/10 px-3 py-1">En 10 minutos estás online</span>
           </div>
@@ -265,7 +271,7 @@ export default async function ComerciosLanding() {
           Planes para crecer
         </h2>
         <p className="text-center text-sm text-muted-foreground mb-8 max-w-xl mx-auto">
-          Empezás gratis y podés subir de plan cuando quieras. Los cobros siempre van a tu cuenta.
+          Empezás gratis y subís de plan cuando quieras. <strong className="text-foreground">0% comisión en todos los planes, para siempre:</strong> solo pagás la herramienta, nunca un porcentaje de tus ventas.
         </p>
         <div className="grid md:grid-cols-2 gap-6">
           {plansList.map((plan) => {
@@ -281,11 +287,14 @@ export default async function ComerciosLanding() {
                   plan.popular ? "border-primary shadow-xl shadow-primary/10" : "border-border"
                 }`}
               >
-                {plan.popular && (
-                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-primary text-primary-foreground text-[10px] font-bold px-3 py-1">
+                {/* Pill en flujo (nunca absoluto): no puede tapar el nombre. */}
+                <div className="mb-3 min-h-6">
+                  {plan.popular && (
+                    <span className="rounded-full bg-primary text-primary-foreground text-[10px] font-bold px-3 py-1">
                       MÁS ELEGIDO
                     </span>
-                )}
+                  )}
+                </div>
                 <div className="flex items-baseline gap-2 mb-1">
                   <h3 className="font-display text-xl font-bold">{plan.name}</h3>
                   {plan.price_monthly === 0 && <span className="text-xs font-medium text-primary bg-primary/10 px-2 py-0.5 rounded-full">Gratis</span>}
@@ -384,10 +393,10 @@ export default async function ComerciosLanding() {
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_30%,rgba(163,230,53,0.2),transparent_50%)]" />
           <div className="relative z-10">
             <h2 className="font-display text-2xl sm:text-3xl font-semibold text-white">
-              Empezá gratis hoy
+              Empezá gratis hoy, sin comisión
             </h2>
             <p className="mt-2 text-sm text-white/85 max-w-md mx-auto">
-              Escaneá el código o apretá el botón. Tu comercio online en minutos.
+              Escaneá el código o apretá el botón. Tu comercio online en minutos, 0% por venta.
             </p>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
@@ -402,16 +411,6 @@ export default async function ComerciosLanding() {
               >
                 Crear mi comercio gratis
               </Link>
-              <a
-                href={`https://wa.me/${CONTACT_WA}?text=${encodeURIComponent(
-                  "Hola! Quiero sumar mi comercio a Portal 659 y tengo unas preguntas."
-                )}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="rounded-full border border-white/40 bg-white/10 text-white px-8 py-3 text-sm font-medium hover:bg-white/20 transition-colors"
-              >
-                💬 Hablar con Portal 659
-              </a>
             </div>
             <p className="mt-4 text-[11px] text-white/60">
               ¿Preferís mirar primero? Entrá a <Link href="/" className="underline">portal659.com.ar</Link> y mirá los comercios del barrio.

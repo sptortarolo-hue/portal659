@@ -105,16 +105,20 @@ export default async function PlanesPage() {
                     : "border-border"
                 }`}
               >
-                {plan.popular && (
-                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-primary text-primary-foreground text-[10px] font-bold px-3 py-1">
-                    MÁS ELEGIDO
-                  </span>
-                )}
-                {plan.badge && plan.badge !== "Gratuito" && (
-                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-sun text-ink text-[10px] font-bold px-3 py-1">
-                    {plan.badge}
-                  </span>
-                )}
+                {/* Pills en flujo (nunca absolutos): no pueden tapar el nombre
+                    ni pisarse entre sí; el espaciador alinea los nombres. */}
+                <div className="flex flex-wrap gap-1.5 mb-3 min-h-6">
+                  {plan.popular && (
+                    <span className="rounded-full bg-primary text-primary-foreground text-[10px] font-bold px-3 py-1">
+                      MÁS ELEGIDO
+                    </span>
+                  )}
+                  {plan.badge && plan.badge !== "Gratuito" && (
+                    <span className="rounded-full bg-sun text-ink text-[10px] font-bold px-3 py-1">
+                      {plan.badge}
+                    </span>
+                  )}
+                </div>
 
                 <h2 className="font-display text-lg font-semibold">{plan.name}</h2>
                 <p className="text-xs text-muted-foreground mt-0.5 min-h-8">{plan.description}</p>

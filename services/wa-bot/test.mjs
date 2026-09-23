@@ -6,6 +6,14 @@ const MOCK_MENU = {
     { id: "p2", name: "Empanada de jamón y queso", price: 1300, category: "Empanadas" },
     { id: "p3", name: "Coca-Cola 500ml", price: 1000, category: "Bebidas" },
     { id: "p4", name: "Pizza muzzarella", price: 8000, category: "Pizzas" },
+    { id: "p5", name: "Helado 1/4 kg", price: 5000, category: "Helados", modifiers: [
+      { group_name: "Gustos", required: true, max_selections: 2, options: [{ label: "Chocolate" }, { label: "Frutilla" }, { label: "Dulce de leche" }] },
+    ] },
+    { id: "p6", name: "Remera", price: 8000, category: "Moda", variants: [
+      { id: "v6a", color: "Negro", talle: "S" },
+      { id: "v6b", color: "Negro", talle: "M" },
+      { id: "v6c", color: "Blanco", talle: "S" },
+    ] },
   ],
 };
 
@@ -140,6 +148,49 @@ async function main() {
   show("re-declaración", r);
   if (!(r.replies || []).join(" ").includes("×3")) { console.log("!!! re-declaración no resolvió a ×3 (no duplicó)"); ok = false; }
   if ((r.replies || []).join(" ").includes("×12")) { console.log("!!! quedó ×12 (duplicó)"); ok = false; }
+
+  console.log("\n--- ESC: variantes (moda) ---");
+  const waModa = "5491100000002";
+  r = await handleInbound({ vendor, waId: waModa, body: "quiero una remera negra talle m" });
+  show("remera negra talle M", r);
+  r = await handleInbound({ vendor, waId: waModa, body: "retiro" });
+  r = await handleInbound({ vendor, waId: waModa, body: "Marta" });
+  r = await handleInbound({ vendor, waId: waModa, body: "efectivo" });
+  r = await handleInbound({ vendor, waId: waModa, body: "sí" });
+  show("crear pedido remera", r);
+  ok = assertOrder("remera") && ok;
+  const vi = (lastOrderBody?.items || [])[0];
+  if (vi?.variantId !== "v6b") { console.log(`!!! variante no resuelta (esperado v6b, salió ${vi?.variantId})`); ok = false; }
+  else { console.log(">>> OK: variante negra/M → variantId v6b (el server cobra por variante)"); }
+
+  console.log("\n--- ESC: opciones requeridas (gustos) ---");
+  const waHel = "5491100000003";
+  r = await handleInbound({ vendor, waId: waHel, body: "quiero un helado" });
+  show("helado (debe pedir gustos)", r);
+  if (!(r.replies || []).join(" ").toLowerCase().includes("gustos")) { console.log("!!! no pidió los gustos requeridos"); ok = false; }
+  r = await handleInbound({ vendor, waId: waHel, body: "chocolate y frutilla" });
+  show("gustos", r);
+  const gustosTxt = (r.replies || []).join(" ");
+  if (!gustosTxt.includes("Chocolate") || !gustosTxt.includes("Frutilla")) { console.log("!!! los gustos no se adjuntaron al ítem"); ok = false; }
+  r = await handleInbound({ vendor, waId: waHel, body: "retiro" });
+  r = await handleInbound({ vendor, waId: waHel, body: "Pedro" });
+  r = await handleInbound({ vendor, waId: waHel, body: "efectivo" });
+  r = await handleInbound({ vendor, waId: waHel, body: "sí" });
+  ok = assertOrder("helado") && ok;
+  const hi = (lastOrderBody?.items || [])[0];
+  if (!hi?.modifiers?.includes("Chocolate") || !hi?.modifiers?.includes("Frutilla")) { console.log("!!! el pedido no lleva los gustos: " + JSON.stringify(hi?.modifiers)); ok = false; }
+  else { console.log(">>> OK: pedido con gustos Chocolate + Frutilla"); }
+
+  console.log("\n--- ESC: teléfono real (relay SenderAlt) ---");
+  r = await handleInbound({ vendor, waId: "1234567890@lid", waPhone: "1155551234", body: "quiero 1 coca, retiro" });
+  r = await handleInbound({ vendor, waId: "1234567890@lid", waPhone: "1155551234", body: "Ana" });
+  r = await handleInbound({ vendor, waId: "1234567890@lid", waPhone: "1155551234", body: "efectivo" });
+  r = await handleInbound({ vendor, waId: "1234567890@lid", waPhone: "1155551234", body: "sí" });
+  show("crear pedido teléfono real", r);
+  ok = assertOrder("teléfono real") && ok;
+  if (String(lastOrderBody?.customerPhone).startsWith("lid:")) { console.log("!!! guardó lid: en vez del teléfono: " + lastOrderBody?.customerPhone); ok = false; }
+  else if (lastOrderBody?.customerPhone !== "5491155551234") { console.log("!!! teléfono no normalizado: " + lastOrderBody?.customerPhone); ok = false; }
+  else { console.log(">>> OK: teléfono real 5491155551234 (no lid:)"); }
 
   if (!ok) { console.error("\n=== HAY FALLOS ==="); process.exit(1); }
   console.log("\n=== TODO OK ===");

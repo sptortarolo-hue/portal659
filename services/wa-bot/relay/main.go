@@ -181,17 +181,19 @@ func main() {
 }
 
 type inboundMsg struct {
-	waID string // parte numérica del JID (celular del cliente)
-	body string
+	waID    string // parte numérica del JID (celular del cliente)
+	waPhone string // teléfono real (SenderAlt) cuando el chat es LID, si hay
+	body    string
 }
 
 // mediaMsg es una imagen/PDF descargada (ej. comprobante de transferencia)
 // que el cliente manda al chat del bot. Viaja al cerebro como base64 por WS.
 type mediaMsg struct {
-	waID string
-	mime string
-	name string
-	data []byte
+	waID    string
+	waPhone string
+	mime    string
+	name    string
+	data    []byte
 }
 
 // qrMsg es el mensaje WS del relay → cerebro con el payload del QR (para que
@@ -344,6 +346,15 @@ func (r *relay) onMessage(m *events.Message) {
 	}
 	chatJID := m.Info.Chat.String()
 
+	// Teléfono real del emisor: los chats de no-contactos son LID (xxxxx@lid)
+	// sin teléfono. SenderAlt trae el teléfono (xxxxx@s.whatsapp.net) cuando el
+	// chat es LID — sin esto los pedidos guardaban "lid:xxx" y el comercio no
+	// podía escribirle por fuera del chat.
+	waPhone := ""
+	if alt := m.Info.SenderAlt; !alt.IsEmpty() && alt.Server == types.DefaultUserServer {
+		waPhone = alt.User
+	}
+
 	// 1) Media (imagen o PDF): descargar y mandar al cerebro (p.ej. comprobante
 	//    de transferencia). Se hace antes del texto: una foto viene sin caption.
 	if mm, ok := extractMedia(m.Message); ok {
@@ -361,14 +372,14 @@ func (r *relay) onMessage(m *events.Message) {
 		}
 		fmt.Printf("INBOUND_MEDIA=%s mime=%s size=%d chat=%s\n", mm.kind, mime, len(data), chatJID)
 		select {
-		case r.media <- mediaMsg{waID: chatJID, mime: mime, name: fileName, data: data}:
+		case r.media <- mediaMsg{waID: chatJID, waPhone: waPhone, mime: mime, name: fileName, data: data}:
 		default:
 			log.Printf("media queue llena, descartando")
 		}
 		// Si la foto lleva caption, procesar también el texto (ej. "ya pagué").
 		if cap := getText(m.Message); cap != "" {
 			fmt.Printf("INBOUND=%s len=%d\n", chatJID, len(cap))
-			r.inbound <- inboundMsg{waID: chatJID, body: cap}
+			r.inbound <- inboundMsg{waID: chatJID, waPhone: waPhone, body: cap}
 		}
 		return
 	}
@@ -381,8 +392,8 @@ func (r *relay) onMessage(m *events.Message) {
 		fmt.Printf("INBOUND_EMPTY=%s chat=%s\n", messageType(m.Message), chatJID)
 		return
 	}
-	fmt.Printf("INBOUND=%s len=%d\n", chatJID, len(text))
-	r.inbound <- inboundMsg{waID: chatJID, body: text}
+	fmt.Printf("INBOUND=%s len=%d phone=%s\n", chatJID, len(text), waPhone)
+	r.inbound <- inboundMsg{waID: chatJID, waPhone: waPhone, body: text}
 }
 
 // extractMedia inspecciona el mensaje (tras unwrap) y devuelve la referencia
@@ -549,12 +560,13 @@ func (r *relay) wsURL() string {
 }
 
 type wsOut struct {
-	Type string `json:"type"`
-	WaID string `json:"wa_id,omitempty"`
-	Body string `json:"body,omitempty"`
-	Mime string `json:"mime,omitempty"`
-	Name string `json:"name,omitempty"`
-	Data string `json:"data,omitempty"` // base64 (solo type image/file)
+	Type    string `json:"type"`
+	WaID    string `json:"wa_id,omitempty"`
+	WaPhone string `json:"wa_phone,omitempty"` // teléfono real (SenderAlt) si el chat es LID
+	Body    string `json:"body,omitempty"`
+	Mime    string `json:"mime,omitempty"`
+	Name    string `json:"name,omitempty"`
+	Data    string `json:"data,omitempty"` // base64 (solo type image/file)
 }
 
 type wsIn struct {
@@ -570,7 +582,7 @@ func (r *relay) writeLoop(ctx context.Context, conn *websocket.Conn) {
 		case <-ctx.Done():
 			return
 		case m := <-r.inbound:
-			if err := conn.WriteJSON(wsOut{Type: "message", WaID: m.waID, Body: m.body}); err != nil {
+			if err := conn.WriteJSON(wsOut{Type: "message", WaID: m.waID, WaPhone: m.waPhone, Body: m.body}); err != nil {
 				return
 			}
 		case mm := <-r.media:
@@ -580,11 +592,12 @@ func (r *relay) writeLoop(ctx context.Context, conn *websocket.Conn) {
 				kind = "file"
 			}
 			if err := conn.WriteJSON(wsOut{
-				Type: kind,
-				WaID: mm.waID,
-				Mime: mm.mime,
-				Name: mm.name,
-				Data: base64.StdEncoding.EncodeToString(mm.data),
+				Type:    kind,
+				WaID:    mm.waID,
+				WaPhone: mm.waPhone,
+				Mime:    mm.mime,
+				Name:    mm.name,
+				Data:    base64.StdEncoding.EncodeToString(mm.data),
 			}); err != nil {
 				return
 			}

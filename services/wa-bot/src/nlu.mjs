@@ -161,7 +161,7 @@ Dado el mensaje del cliente y la lista de productos disponibles, devolvé SOLO u
 
 {
   "complete": boolean,
-  "items": [{"name": string, "qty": number, "modifiers": [string]}],
+  "items": [{"name": string, "qty": number, "modifiers": [string], "variant": {"color": string|null, "talle": string|null}}],
   "method": "pickup" | "delivery" | null,
   "payment": "efectivo" | "transferencia" | null,
   "customerName": string | null,
@@ -172,11 +172,12 @@ Dado el mensaje del cliente y la lista de productos disponibles, devolvé SOLO u
 
 Reglas:
 - "complete": true si el mensaje tiene información suficiente para armar el pedido (productos + método + nombre; si es delivery también dirección; si el pago es solo efectivo/transferencia coordinado por WhatsApp, no falta nada de pago).
-- "items": productos pedidos. "name" debe coincidir con alguno de la lista de productos (usá el nombre exacto si existe). "qty" es número (default 1; "una docena" = 12, "media docena" = 6). "modifiers" solo si dice explícitamente (p. ej. "sin cebolla", "doble queso").
+- "items": productos pedidos. "name" debe coincidir con alguno de la lista de productos (usá el nombre exacto si existe). "qty" es número (default 1; "una docena" = 12, "media docena" = 6). "modifiers" solo si dice explícitamente (p. ej. "sin cebolla", "doble queso", los gustos).
+- "variant": si el producto tiene variantes (las ves entre paréntesis) y el cliente aclara color o talle, extraé la variante (ej. "una remera negra talle M" → {"color": "negro", "talle": "M"}). Si no aclara, null. Si el producto no tiene variantes, null.
 - "method": "pickup"/"delivery" si lo aclara, si no null.
 - "payment": "transferencia" si dice pagar con transferencia/transfer/alias/CBU, "efectivo" si dice en efectivo/efectivo al recibir, si no null.
 - Extraé nombre/teléfono/dirección solo si el cliente los da.
-- Usá el CONTEXTO (carrito actual, preguntas pendientes, últimos mensajes) para entender a qué responde el cliente: si le preguntaste el nombre y contesta un nombre, extraelo; si le preguntaste la dirección y contesta una dirección, extraela.
+- Usá el CONTEXTO (carrito actual, preguntas pendientes, últimos mensajes) para entender a qué responde el cliente: si le preguntaste el nombre y contesta un nombre, extraelo; si le preguntaste los gustos y contesta gustos, ponelos en "modifiers" del ítem al que corresponden.
 - Si el cliente corrige o re-declara el pedido (ej. "no, mejor solo 3 empanadas"), devolvé en "items" el carrito COMPLETO actualizado (todos los productos que quedan, con sus cantidades finales).
 - Si el cliente agrega productos sin re-declarar todo (ej. "agregá una coca"), devolvé SOLO los items nuevos.
 - Si el cliente solo saluda, pregunta, o pide el menú: "complete" false e "items" [].`;
@@ -256,8 +257,33 @@ export async function parseWithLlm(message, products, ctx = null) {
 }
 
 async function callOnce(message, products, model, ctx = null) {
-  const menu = products
-    .map((p) => `${p.id}|${p.name}|$${p.price}`)
+  // Menú enriquecido: por producto, sus grupos de modificadores (opciones +
+  // required/máx) y variantes (color/talle). Sin esto la IA no sabe que esas
+  // opciones existen y no las extrae.
+  const menu = products.slice(0, 40)
+    .map((p) => {
+      let line = `${p.id}|${p.name}|$${p.price}`;
+      const groups = (p.modifiers || [])
+        .map((g) => {
+          const opts = (Array.isArray(g.options) ? g.options : [])
+            .map((o) => (typeof o === "string" ? o : o?.label))
+            .filter(Boolean)
+            .slice(0, 8);
+          if (!opts.length) return null;
+          const req = g.required
+            ? ` (obligatorio${Number(g.max_selections) > 1 ? `, elegí ${g.max_selections}` : ""})`
+            : "";
+          return `${g.group_name}: ${opts.join(", ")}${req}`;
+        })
+        .filter(Boolean);
+      if (groups.length) line += ` [${groups.join(" | ")}]`;
+      const variants = (p.variants || [])
+        .map((v) => `${v.color || "?"}${v.talle ? "/" + v.talle : ""}`)
+        .filter((s) => s !== "?")
+        .slice(0, 12);
+      if (variants.length) line += ` (variantes: ${variants.join(", ")})`;
+      return line;
+    })
     .join("\n");
 
   // Contexto de conversación: carrito actual + qué se le preguntó + historial.
@@ -356,6 +382,10 @@ const NUM_WORDS = {
   seis: 6, siete: 7, ocho: 8, nueve: 9, diez: 10, once: 11, doce: 12,
 };
 
+// Colores comunes (para variantes moda: "una remera negra talle M"). El stem
+// (negro→negr, rojo→roj) matchea el género de la palabra sin exactitud.
+const COLORS = ["negro", "blanco", "rojo", "azul", "verde", "amarillo", "gris", "rosa", "naranja", "celeste", "bordo", "beige", "violeta", "fucsia", "marron", "lila"];
+
 export function parseByRules(message, products) {
   // Prioridad: el match de reglas mínimas (greeting/menú) gana sobre el extractor.
   const m = String(message || "").trim();
@@ -427,8 +457,28 @@ function extractFromText(text, products) {
       qty *= name.startsWith("media") ? 6 : 12;
       name = docena[1].trim();
     }
-    const p = matchProduct(products, name);
-    if (p) out.push({ offerId: p.id, name: p.name, qty: Math.max(1, qty), modifiers: [] });
+    const p0 = matchProduct(products, name);
+    let p = p0;
+    if (!p) {
+      // Sin match: reintentar SIN colores/talles ("remera negra talle m" →
+      // "remera") — esas palabras rompen la intersección del match.
+      const stems = COLORS.map((c) => c.slice(0, Math.max(3, c.length - 1))).join("|");
+      const bare = name.replace(new RegExp(`\\btalle\\s+\\S+|\\b(?:${stems})\\S*`, "gi"), "").replace(/\s+/g, " ").trim();
+      if (bare && bare !== name) p = matchProduct(products, bare);
+    }
+    if (p) {
+      // Variantes (moda): "talle M" y color del chunk → el item lleva variant
+      // y matchVariant (bot) resuelve el variantId. Solo aplica si el producto
+      // tiene variantes; en gastro es inofensivo.
+      const variant = {};
+      const tm = /talle\s+([a-z0-9]{1,4})\b/i.exec(norm);
+      if (tm) variant.talle = tm[1].toUpperCase();
+      for (const c of COLORS) {
+        const stem = c.slice(0, Math.max(3, c.length - 1));
+        if (new RegExp(`\\b${stem}`, "i").test(norm)) { variant.color = c; break; }
+      }
+      out.push({ offerId: p.id, name: p.name, qty: Math.max(1, qty), modifiers: [], variant: Object.keys(variant).length ? variant : undefined });
+    }
   }
   return out;
 }

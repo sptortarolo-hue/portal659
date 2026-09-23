@@ -155,7 +155,7 @@ async function attach(ws, token) {
       }
     }
 
-    const result = await handleInbound({ vendor, waId: msg.wa_id, body: msg.body });
+    const result = await handleInbound({ vendor, waId: msg.wa_id, body: msg.body, waPhone: msg.wa_phone });
     if (result.handoff) {
       console.log(`[bot] handoff de ${msg.wa_id} (bot apagado) -> responde el dueño`);
       return;

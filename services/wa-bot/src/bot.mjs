@@ -16,6 +16,7 @@ const DEFAULT_STATE = {
   pausedUntil: 0,
   orderId: null,
   history: [],        // [{ role: "user"|"bot", text }] — contexto para la IA (cap 8)
+  pendingMods: null,  // { offerId, group, options, max } — opciones requeridas pendientes
 };
 
 const AWAITING_RECEIPT_TTL = 15 * 60; // 15 min para acreditar el comprobante
@@ -67,8 +68,10 @@ function resolveOfferIds(products, items) {
       const prod =
         (p.offerId && products.find((x) => String(x.id) === String(p.offerId))) ||
         matchProduct(products, p.name);
+      const variant = prod ? matchVariant(prod, p) : null;
       return {
         offerId: prod?.id || p.offerId || p.id,
+        variantId: variant?.id,
         name: p.name,
         qty: Math.max(1, Number(p.qty) || 1),
         modifiers: Array.isArray(p.modifiers) ? p.modifiers : [],
@@ -77,16 +80,57 @@ function resolveOfferIds(products, items) {
     .filter((p) => p.offerId);
 }
 
+/** Matchea la variante (color/talle) de un item contra las variantes reales
+ *  del producto. Tolerante a género/acento ("negra"→negro). Solo productos con
+ *  variantes; sin match → null (producto genérico, el server cobra precio base). */
+function matchVariant(product, item) {
+  if (!Array.isArray(product?.variants) || !product.variants.length) return null;
+  const v = item?.variant || {};
+  const norm = (s) => String(s || "").toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu, "").replace(/[^a-z0-9]/g, "").trim();
+  const color = norm(v.color);
+  const talle = norm(v.talle);
+  if (!color && !talle) return null;
+  let found = null;
+  if (color && talle) {
+    found = product.variants.find((x) => norm(x.color) === color && norm(x.talle) === talle);
+    if (!found) found = product.variants.find((x) => norm(x.color).includes(color) && norm(x.talle) === talle);
+    if (!found) found = product.variants.find((x) => norm(x.color) === color && norm(x.talle).includes(talle));
+  }
+  if (!found && color) {
+    found = product.variants.find((x) => norm(x.color) === color);
+    if (!found) found = product.variants.find((x) => norm(x.color).includes(color) || color.includes(norm(x.color)));
+  }
+  if (!found && talle) {
+    found = product.variants.find((x) => norm(x.talle) === talle);
+  }
+  return found?.id ? found : null;
+}
+
 function enrichParsed(products, parsed) {
   if (!parsed) return parsed;
   parsed.items = resolveOfferIds(products, parsed.items);
   return parsed;
 }
 
-export async function handleInbound({ vendor, waId, body }) {
+// Teléfono real: el relay manda SenderAlt (el teléfono del emisor cuando el
+// chat es LID — los no-contactos llegan como xxxxx@lid sin teléfono). Gana
+// sobre el lid: del chat JID; si no hay, lid: como fallback.
+function phoneFor(waId, waPhone) {
+  const p = String(waPhone || "").replace(/[^\d]/g, "");
+  if (p.length >= 6) return normalizePhone(p);
+  return normalizePhone(waId);
+}
+
+export async function handleInbound({ vendor, waId, body, waPhone }) {
   const text = String(body || "").trim();
   const state = (await getState(vendor.id, waId)) || { ...DEFAULT_STATE };
   if (!Array.isArray(state.history)) state.history = [];
+  // El teléfono real del relay actualiza un lid: previo (el primer mensaje
+  // puede no haberlo traído).
+  const ph = phoneFor(waId, waPhone);
+  if (!state.customerPhone || (String(state.customerPhone).startsWith("lid:") && !ph.startsWith("lid:"))) {
+    state.customerPhone = ph;
+  }
   const replies = [];
 
   try {
@@ -179,6 +223,8 @@ async function handleIdle({ vendor, text, state, replies, waId }) {
   if (parsed?.items?.length) {
     state.welcomed = true;
     applyParsed(state, parsed, waId);
+    // Opciones requeridas (gustos): preguntar antes de seguir con el resto.
+    if (maybeAskRequiredMods(state, products, replies)) return;
     advanceAndAsk(state, vendor, replies);
     return;
   }
@@ -239,6 +285,7 @@ async function handleStep({ vendor, text, state, replies, waId }) {
       changed = true;
     }
     if (changed) {
+      if (maybeAskRequiredMods(state, products, replies)) return;
       advanceAndAsk(state, vendor, replies);
       return;
     }
@@ -255,6 +302,48 @@ async function handleStep({ vendor, text, state, replies, waId }) {
   // Pasos method/address/name/payment: el mensaje puede traer TODO junto
   // ("envío a calle 5 123, Juan Pérez, transferencia"). Extraemos todo lo que falte.
   const products = await getMenu(vendor.id);
+
+  // Pendiente: opciones requeridas de un producto (ej. gustos del helado).
+  // El mensaje entero son las opciones → matchear contra las del grupo y adjuntarlas.
+  if (state.pendingMods) {
+    const pm = state.pendingMods;
+    const item = state.items.find((i) => String(i.offerId) === String(pm.offerId));
+    const matched = [];
+    for (const s of splitLabels(t)) {
+      const ns = normLabel(s);
+      if (!ns) continue;
+      const opt = pm.options.find((o) => {
+        const no = normLabel(o);
+        return no === ns || no.includes(ns) || ns.includes(no);
+      });
+      if (opt && !matched.includes(opt)) matched.push(opt);
+    }
+    if (matched.length) {
+      if (item) {
+        // Reemplazar las opciones del grupo (el cliente redefine) con lo nuevo,
+        // respetando el máx del grupo. Otras opciones (otros grupos) quedan.
+        const others = (item.modifiers || []).filter((m) => {
+          const label = typeof m === "string" ? m : m?.label;
+          if (!label) return false;
+          return !pm.options.some((o) => normLabel(o) === normLabel(label));
+        });
+        item.modifiers = [...others, ...matched.slice(0, pm.max)];
+      }
+      state.pendingMods = null;
+      state.handoffCount = 0;
+      advanceAndAsk(state, vendor, replies);
+      return;
+    }
+    // No matcheó ninguna opción: repetir la pregunta.
+    state.handoffCount = (state.handoffCount || 0) + 1;
+    if (state.handoffCount >= MAX_PARSE_MISSES) {
+      state.pendingMods = null;
+      return handoffHuman(vendor, waId, text, state);
+    }
+    replies.push(`🧩 No entendí qué ${pm.group.toLowerCase()} querés — escribí las opciones que querés (ej: *"${pm.options.slice(0, 2).join(" y ")}"*).`);
+    return;
+  }
+
   const parsed = enrichParsed(
     products,
     (await parseWithLlm(t, products, llmCtx(state, vendor)).catch(() => null)) || parseByRules(t, products)
@@ -346,6 +435,8 @@ async function handleStep({ vendor, text, state, replies, waId }) {
 
   if (got) {
     state.handoffCount = 0;
+    // Opciones requeridas: si el item agregado exige opciones, preguntarlas ya.
+    if (maybeAskRequiredMods(state, products, replies)) return;
     advanceAndAsk(state, vendor, replies);
     return;
   }
@@ -394,14 +485,60 @@ function pendingQuestions(state) {
   if (fields.includes("name")) lines.push("👤 ¿A nombre de quién va el pedido?");
   if (fields.includes("payment")) lines.push("💳 ¿Pagás en *efectivo* o por *transferencia*?");
   const cart = state.items.length
-    ? `Tu pedido:\n${state.items.map((i) => `• ${i.name} ×${i.qty}`).join("\n")}\n\n`
+    ? `Tu pedido:\n${state.items.map((i) => `• ${itemDisplay(i)}`).join("\n")}\n\n`
     : "";
   const questions = lines.length ? `${lines.join("\n")}\n\n` : "";
   return `${cart}${questions}Respondé todo junto en un mensaje (ej: *"envío a calle 5 123, Juan, transferencia"*), o de a una cosa. 👇`;
 }
 
+function itemDisplay(i) {
+  const mods = (i.modifiers || []).map((m) => (typeof m === "string" ? m : m?.label)).filter(Boolean);
+  return `${i.name} ×${i.qty}${mods.length ? ` (${mods.join(", ")})` : ""}`;
+}
+
+// ———————————————————————————————————————————————————————————————————————————
+// Opciones requeridas (ej. gustos del helado: el producto exige el grupo)
+// ———————————————————————————————————————————————————————————————————————————
+
+const normLabel = (s) =>
+  String(s || "").toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu, "").replace(/[^a-z0-9]/g, " ").replace(/\s+/g, " ").trim();
+
+const splitLabels = (t) =>
+  String(t).split(/[,\n;]| e | y |\s*\+\s*/i).map((s) => s.trim()).filter(Boolean);
+
+/** Si algún item del carrito tiene producto con grupo requerido y el cliente
+ *  no dijo opciones para ese grupo → pregunta (numeradas) y devuelve true.
+ *  El state queda con pendingMods; la próxima respuesta se adjunta al item. */
+function maybeAskRequiredMods(state, products, replies) {
+  if (state.pendingMods) return true;
+  for (const i of state.items) {
+    const p = products.find((x) => String(x.id) === String(i.offerId));
+    if (!p) continue;
+    for (const g of p.modifiers || []) {
+      if (!g.required) continue;
+      const opts = (Array.isArray(g.options) ? g.options : [])
+        .map((o) => (typeof o === "string" ? o : o?.label))
+        .filter(Boolean);
+      if (!opts.length) continue;
+      const has = (i.modifiers || []).some((m) => {
+        const label = normLabel(typeof m === "string" ? m : m?.label);
+        return label && opts.some((o) => normLabel(o) === label || normLabel(o).includes(label));
+      });
+      if (has) continue;
+      const max = Math.max(1, Number(g.max_selections) || 1);
+      state.pendingMods = { offerId: i.offerId, name: p.name, group: String(g.group_name || "opciones"), options: opts, max };
+      state.step = "flow";
+      state.pendingFields = [];
+      const lista = opts.slice(0, 8).join(", ");
+      replies.push(`🧩 ¿Qué ${String(g.group_name || "opciones").toLowerCase()} querés en *${p.name}*? (elegí ${max === 1 ? "1" : `hasta ${max}`}: ${lista})`);
+      return true;
+    }
+  }
+  return false;
+}
+
 function summaryText(state, vendor) {
-  const lines = state.items.map((i) => `• ${i.name} ×${i.qty}`);
+  const lines = state.items.map((i) => `• ${itemDisplay(i)}`);
   const method = state.method === "delivery" ? `🛵 Envío a ${state.customerAddress}` : "🏬 Retiro en el local";
   const payment =
     state.payment === "transferencia" ? "🏦 Transferencia" :
@@ -488,12 +625,13 @@ function shortReGreet(state, vendor) {
 function applyParsed(state, parsed, waId) {
   state.items = (parsed.items || []).map((p) => ({
     offerId: p.offerId || p.id,
+    variantId: p.variantId,
     name: p.name,
     qty: Math.max(1, Number(p.qty) || 1),
     modifiers: p.modifiers || [],
   }));
   if (parsed.customerName) state.customerName = parsed.customerName;
-  if (!state.customerPhone) state.customerPhone = normalizePhone(waId);
+  // El teléfono lo setea handleInbound (teléfono real del relay > lid:).
   if (parsed.note) state.note = parsed.note;
   if (parsed.method === "pickup" || parsed.method === "delivery") state.method = parsed.method;
   if (parsed.customerAddress) state.customerAddress = parsed.customerAddress;
@@ -503,15 +641,20 @@ function applyParsed(state, parsed, waId) {
 function mergeItems(state, newItems) {
   for (const p of newItems) {
     const offerId = p.offerId || p.id;
+    const variantId = p.variantId || null;
     const mods = p.modifiers || [];
-    const existing = state.items.find((i) => i.offerId === offerId && (i.modifiers || []).length === mods.length);
+    // El key incluye variantId: dos items del mismo producto con variante
+    // distinta (negro/S vs blanco/M) NO se combinan.
+    const existing = state.items.find(
+      (i) => i.offerId === offerId && (i.variantId || null) === variantId && (i.modifiers || []).length === mods.length
+    );
     if (existing) existing.qty += Math.max(1, Number(p.qty) || 1);
-    else state.items.push({ offerId, name: p.name, qty: Math.max(1, Number(p.qty) || 1), modifiers: mods });
+    else state.items.push({ offerId, variantId, name: p.name, qty: Math.max(1, Number(p.qty) || 1), modifiers: mods });
   }
-  // Dedupe de defensa: jamás dos entradas del mismo producto (offerId+mods).
+  // Dedupe de defensa: jamás dos entradas del mismo producto+variante+mods.
   const seen = new Map();
   state.items = state.items.filter((i) => {
-    const k = `${i.offerId}|${(i.modifiers || []).map((m) => (typeof m === "string" ? m : m.label || m.group)).join(",")}`;
+    const k = `${i.offerId}|${i.variantId || ""}|${(i.modifiers || []).map((m) => (typeof m === "string" ? m : m.label || m.group)).join(",")}`;
     if (seen.has(k)) {
       seen.get(k).qty += i.qty;
       return false;
@@ -536,7 +679,7 @@ async function createOrder(vendorId, state) {
       customerAddress: state.customerAddress || null,
       method: state.method || "pickup",
       paymentMethod: state.payment || "whatsapp",
-      items: state.items.map((i) => ({ offerId: i.offerId, qty: i.qty, modifiers: i.modifiers })),
+      items: state.items.map((i) => ({ offerId: i.offerId, variantId: i.variantId || null, qty: i.qty, modifiers: i.modifiers })),
       notes: state.note || null,
     }),
   });

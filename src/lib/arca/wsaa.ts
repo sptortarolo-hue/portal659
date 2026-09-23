@@ -287,17 +287,18 @@ export async function getWsaaTicket(
   const job = (async (): Promise<WsaaTicket> => {
     const tra = buildTra("wsfe");
     const cms = signTra(tra, certPem, keyPem);
-    // Namespace EXACTO del WSDL oficial (wsaahomo...?wsdl): con el viejo
-    // (...dvadac.dgr...) WSAA responde "no se ha podido interpretar el XML
-    // contra el SCHEMA". Estilo default-ns como los ejemplos publicados.
+    // Namespace histórico (...dvadac.dgr...) + SOAPAction "loginCms": es la
+    // combinación que el servicio real acepta (evidencia: con ella el XML
+    // valida y se llega a faults de negocio; con la del WSDL publicado
+    // (...desein... + action vacía) rechaza el schema con ns1:xml.bad).
+    // Estilo default-ns como los ejemplos publicados.
     const envelope =
       `<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">` +
       `<soapenv:Header/><soapenv:Body>` +
-      `<loginCms xmlns="http://wsaa.view.sua.dvadac.desein.afip.gov">` +
+      `<loginCms xmlns="http://wsaa.view.sua.dvadac.dgr.afip.gov">` +
       `<in0>${cms}</in0></loginCms>` +
       `</soapenv:Body></soapenv:Envelope>`;
-    // El WSDL declara soapAction="" para loginCms.
-    const xml = await soapFetch(WSAA_URL[env], envelope, "");
+    const xml = await soapFetch(WSAA_URL[env], envelope, "loginCms");
     const { token, sign } = parseLoginResponse(xml);
     const ticket: WsaaTicket = { token, sign, expiresAtMs: Date.now() + TOKEN_TTL_MS };
     ticketCache.set(cacheKey, ticket);

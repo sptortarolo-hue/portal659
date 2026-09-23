@@ -200,6 +200,14 @@ export async function outboxAdd(action: Omit<OutboxAction, "id" | "createdAt" | 
 }
 
 export async function outboxCount(vendorId: string, scope?: OutboxAction["scope"]): Promise<number> {
+  const rows = await outboxList(vendorId, scope);
+  return rows.length;
+}
+
+export async function outboxList(
+  vendorId: string,
+  scope?: OutboxAction["scope"]
+): Promise<OutboxAction[]> {
   try {
     const db = await openDb();
     const rows: OutboxAction[] = await new Promise((resolve, reject) => {
@@ -215,9 +223,74 @@ export async function outboxCount(vendorId: string, scope?: OutboxAction["scope"
       };
       req.onerror = () => reject(req.error ?? new Error("IDB error"));
     });
-    return scope ? rows.filter((r) => r.scope === scope).length : rows.length;
+    const filtered = scope ? rows.filter((r) => r.scope === scope) : rows;
+    return filtered.sort((a, b) => (a.id ?? 0) - (b.id ?? 0));
   } catch {
-    return 0;
+    return [];
+  }
+}
+
+export async function outboxRemove(id: number): Promise<void> {
+  try {
+    await tx("outbox", "readwrite", (s) => s.delete(id));
+  } catch {
+    /* noop */
+  }
+}
+
+export async function outboxUpdate(
+  id: number,
+  patch: Partial<Pick<OutboxAction, "attempts" | "lastError" | "payload">>
+): Promise<void> {
+  try {
+    const db = await openDb();
+    await new Promise<void>((resolve, reject) => {
+      const t = db.transaction("outbox", "readwrite");
+      const store = t.objectStore("outbox");
+      const req = store.get(id);
+      req.onsuccess = () => {
+        const cur = req.result as OutboxAction | undefined;
+        if (cur) store.put({ ...cur, ...patch });
+        resolve();
+      };
+      req.onerror = () => reject(req.error ?? new Error("IDB error"));
+    });
+  } catch {
+    /* noop */
+  }
+}
+
+/** Avisa a badges/UI que el outbox cambió (lo escucha usePendingSyncCount). */
+export function emitOutboxChanged(): void {
+  try {
+    window.dispatchEvent(new Event("portal:outbox-changed"));
+  } catch {
+    /* noop */
+  }
+}
+
+// --------------------------------- Mapeo localId -> pedido real ---
+
+/** Info del servidor para una acción local ya sincronizada. */
+export type SyncedRef = {
+  orderId: string;
+  pickup_number?: number | null;
+  total?: number | null;
+};
+
+const idmapKey = (vendorId: string) => `vendor:${vendorId}:idmap`;
+
+export async function idmapGet(vendorId: string): Promise<Record<string, SyncedRef>> {
+  return (await kvGet<Record<string, SyncedRef>>(idmapKey(vendorId))) ?? {};
+}
+
+export async function idmapSet(vendorId: string, localId: string, ref: SyncedRef): Promise<void> {
+  try {
+    const map = await idmapGet(vendorId);
+    map[localId] = ref;
+    await kvSet(idmapKey(vendorId), map);
+  } catch {
+    /* noop */
   }
 }
 

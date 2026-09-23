@@ -13,6 +13,7 @@ type FiscalStatus = {
   fiscal_punto_venta: number | null;
   fiscal_env: string;
   has_cert: boolean;
+  has_key: boolean;
   cert_info: { subject: string; issuer: string; notAfter: string } | null;
   ready: boolean;
 };
@@ -29,6 +30,76 @@ type InvoiceRow = {
   pickup_number: number | null;
   customer_name: string | null;
 };
+
+/**
+ * Asistente guiado de 5 pasos (estilo facturadores SaaS): cada paso muestra
+ * su estado automático y el actual queda resaltado. El paso 3 (pegar el CSR
+ * en ARCA) es manual y el comercio lo marca como hecho.
+ */
+function FiscalSteps({
+  env,
+  step1Done,
+  step2Done,
+  step3Done,
+  step4Done,
+  step5Done,
+  onStep3Done,
+}: {
+  env: string;
+  step1Done: boolean;
+  step2Done: boolean;
+  step3Done: boolean;
+  step4Done: boolean;
+  step5Done: boolean;
+  onStep3Done: () => void;
+}) {
+  const steps = [
+    { done: step1Done, label: "Cargá CUIT y punto de venta", anchor: null as string | null },
+    { done: step2Done, label: "Generá la clave + CSR acá", anchor: null },
+    {
+      done: step3Done,
+      label:
+        env === "prod"
+          ? "Pegá el CSR en Adm. de Certificados (ARCA)"
+          : "Pegá el CSR en WSASS (ARCA)",
+      anchor: "https://www.arca.gob.ar/",
+    },
+    { done: step4Done, label: "Pegá acá el .crt que te devuelve ARCA", anchor: null },
+    { done: step5Done, label: "Probá la conexión", anchor: null },
+  ];
+  const current = steps.findIndex((s) => !s.done);
+  return (
+    <ol className="space-y-1 rounded-xl border border-border bg-muted/40 p-2.5">
+      {steps.map((s, i) => (
+        <li key={i} className="flex items-center gap-2 text-xs">
+          <span aria-hidden>{s.done ? "✅" : i === current ? "➡️" : "⬜"}</span>
+          <span className={s.done ? "text-muted-foreground line-through" : i === current ? "font-bold" : ""}>
+            {i + 1}. {s.label}
+          </span>
+          {s.anchor && !s.done && (
+            <a
+              href={s.anchor}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="ml-auto flex-shrink-0 text-primary underline"
+            >
+              Abrir ARCA
+            </a>
+          )}
+          {i === 2 && !s.done && (
+            <button
+              type="button"
+              onClick={onStep3Done}
+              className="ml-auto flex-shrink-0 text-[11px] font-bold text-primary hover:underline"
+            >
+              Ya lo pegué
+            </button>
+          )}
+        </li>
+      ))}
+    </ol>
+  );
+}
 
 /**
  * Sección "Facturación electrónica ARCA" (plan Gestión).
@@ -54,6 +125,8 @@ export function FiscalConfigSection() {
   const [csrCopied, setCsrCopied] = useState(false);
   const [pingBusy, setPingBusy] = useState(false);
   const [pingResult, setPingResult] = useState<{ ok: boolean; ms?: number; error?: string; hint?: string } | null>(null);
+  // Paso 3 (pegar CSR en ARCA) es manual: el comercio lo marca como hecho.
+  const [arcaStepDone, setArcaStepDone] = useState(false);
   const certFileRef = useRef<HTMLInputElement>(null);
   const keyFileRef = useRef<HTMLInputElement>(null);
 
@@ -231,6 +304,16 @@ export function FiscalConfigSection() {
               : "⚠️ Completá CUIT, punto de venta y certificado para activar"}
           </div>
 
+          <FiscalSteps
+            env={status.fiscal_env}
+            step1Done={!!(status.cuit && status.fiscal_punto_venta)}
+            step2Done={status.has_key || !!csrPem}
+            step3Done={arcaStepDone || status.has_cert}
+            step4Done={status.has_cert}
+            step5Done={!!pingResult?.ok}
+            onStep3Done={() => setArcaStepDone(true)}
+          />
+
           {status.ready && (
             <div className="flex items-center gap-2">
               <Button type="button" size="sm" variant="outline" disabled={pingBusy} onClick={pingArca}>
@@ -362,12 +445,22 @@ export function FiscalConfigSection() {
                 )}
               </div>
             )}
+            <div className="space-y-1">
+              <Label>Pegar certificado (.crt que te devuelve ARCA)</Label>
+              <textarea
+                rows={4}
+                value={certPem}
+                onChange={(e) => setCertPem(e.target.value)}
+                placeholder="-----BEGIN CERTIFICATE----- ..."
+                className="w-full rounded-lg border border-input bg-background p-2 font-mono text-[10px] leading-tight"
+              />
+            </div>
             <div className="flex gap-1.5">
               <Button type="button" size="sm" variant="outline" onClick={() => certFileRef.current?.click()}>
-                📄 .crt
+                📄 Subir .crt
               </Button>
               <Button type="button" size="sm" variant="outline" onClick={() => keyFileRef.current?.click()}>
-                🔑 .key
+                🔑 Subir .key (solo vía manual)
               </Button>
               <input
                 ref={certFileRef}

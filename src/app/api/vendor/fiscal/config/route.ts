@@ -56,6 +56,7 @@ export async function GET(request: Request) {
     fiscal_punto_venta: vendor.fiscal_punto_venta ?? null,
     fiscal_env: vendor.fiscal_env || "homo",
     has_cert: hasCert,
+    has_key: !!vendor.fiscal_key,
     cert_info: certInfo,
     ready,
   });

@@ -40,6 +40,8 @@ export type PlanFeatures = {
   quotes_respond: boolean;
   /** Cobrar seña por Mercado Pago en presupuestos/turnos (servicios, Oficios). */
   deposits: boolean;
+  /** Facturación electrónica ARCA (Factura C, plan Gestión integral). */
+  fiscal: boolean;
 };
 
 export type Plan = {
@@ -378,6 +380,18 @@ export type Vendor = {
   plan_status: PlanStatus;
   plan_expires_at: string | null;
   trial_ends_at: string | null;
+  /** CUIT del comercio para facturación electrónica ARCA. NULL = sin fiscal. */
+  cuit?: string | null;
+  /** Condición frente al IVA (v1: solo "monotributo" → Factura C). */
+  fiscal_cond_iva?: string | null;
+  /** Punto de venta electrónico ARCA. NULL = sin configurar. */
+  fiscal_punto_venta?: number | null;
+  /** Certificado X.509 (PEM, CIFRADO en reposo). */
+  fiscal_cert?: string | null;
+  /** Clave privada (PEM, CIFRADA en reposo). */
+  fiscal_key?: string | null;
+  /** Entorno ARCA: "homo" (prueba) | "prod". */
+  fiscal_env?: string | null;
   /** Token secreto del link de preview compartible. NULL = sin preview compartido. */
   preview_token?: string | null;
   /** Expiración opcional del token de preview. NULL = sin expiración. */

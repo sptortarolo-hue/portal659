@@ -18,6 +18,7 @@ import {
   CONDITION_META,
 } from "@/lib/order-utils";
 import { buildModifiedOrderMessage, buildTransferInstructionsMessage } from "@/lib/whatsapp-message";
+import { FiscalBillButton } from "@/components/dashboard/fiscal-bill-button";
 import { orderLineTotal, derivedUnitPrice } from "@/lib/order-line";
 import type { Order, OrderStatus, OrderItem, Product as DBProduct } from "@/types/database";
 
@@ -802,6 +803,7 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
                   )}
                 </>
               )}
+              <FiscalBillButton orderId={order.id} />
               {contextualWa && (
                 <a href={contextualWa.url} target="_blank" rel="noopener noreferrer" className="block">
                   <Button variant="outline" className="w-full border-green-200 bg-green-50 text-green-700 hover:bg-green-100">
@@ -827,9 +829,10 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
             </div>
           )}
 
-          {/* Completed: reimprimir ticket (recibo) */}
+          {/* Completed: reimprimir ticket (recibo) + facturar */}
           {isCompleted && !editing && (
             <div className="space-y-2 pt-2 border-t border-border">
+              <FiscalBillButton orderId={order.id} />
               {canPrint ? (
                 <Button
                   variant="outline"

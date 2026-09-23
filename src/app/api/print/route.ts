@@ -1,7 +1,7 @@
 import { query, queryOne, queryMany } from "@/lib/db";
 import { getVendorByRequest } from "@/lib/vendor-utils";
 import { NextResponse } from "next/server";
-import { dispatchPrint, type CashClosingPrintData, type PrinterVendor } from "@/lib/thermal-printer";
+import { dispatchPrint, type CashClosingPrintData, type FiscalPrintInfo, type PrinterVendor } from "@/lib/thermal-printer";
 import { resolveVendorPlan } from "@/lib/plans";
 import type { Order, Plan, Vendor } from "@/types/database";
 
@@ -96,6 +96,47 @@ export async function POST(request: Request) {
   // Retail (moda/comercio): el ticket sale como COMPROBANTE con Nro. diario
   // y datos del cliente; gastronomía mantiene TICKET.
   const isRetailVendor = vendor.vertical === "moda" || vendor.vertical === "comercio";
+  // Bloque fiscal: si el pedido tiene comprobante ARCA, el ticket lo imprime
+  // con CAE + QR (tolerante a migración fiscal sin aplicar).
+  let fiscal: FiscalPrintInfo | null = null;
+  if (resolvedType === "ticket") {
+    try {
+      const inv = await queryOne<{
+        punto_venta: number;
+        cbte_nro: number;
+        cae: string;
+        cae_vto: string;
+        total: number;
+      }>(
+        `SELECT punto_venta, cbte_nro, cae,
+                CASE WHEN pg_typeof(cae_vto) = 'date'::regtype THEN to_char(cae_vto, 'YYYYMMDD') ELSE cae_vto::text END AS cae_vto,
+                total
+         FROM invoices WHERE vendor_id = $1 AND order_id = $2 LIMIT 1`,
+        [vendor.id, orderId]
+      );
+      if (inv && vendor.cuit) {
+        const { buildQrUrl } = await import("@/lib/arca/qr");
+        fiscal = {
+          cuit: vendor.cuit,
+          puntoVenta: Number(inv.punto_venta),
+          cbteNro: Number(inv.cbte_nro),
+          cae: String(inv.cae),
+          caeVto: String(inv.cae_vto).replace(/\D/g, ""),
+          qrUrl: buildQrUrl({
+            cuit: vendor.cuit,
+            ptoVta: Number(inv.punto_venta),
+            cbteTipo: 11,
+            cbteNro: Number(inv.cbte_nro),
+            importe: Number(inv.total),
+            cae: String(inv.cae),
+            fecha: new Date(),
+          }),
+        };
+      }
+    } catch {
+      fiscal = null;
+    }
+  }
   const result = await dispatchPrint({
     vendor,
     order,
@@ -106,6 +147,7 @@ export async function POST(request: Request) {
       ...(resolvedType === "ticket" && isRetailVendor
         ? { docTitle: "COMPROBANTE", retail: true }
         : {}),
+      ...(fiscal ? { fiscal } : {}),
     },
   });
   await recordLastPrint(vendor.id, result);

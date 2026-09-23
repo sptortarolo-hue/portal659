@@ -19,6 +19,7 @@ import { HoursEditor } from "@/components/dashboard/hours-editor";
 import { SIZE_GUIDE_TEMPLATES, templateToText } from "@/lib/size-guides";
 import { LocationPicker } from "./location-picker";
 import { PrinterConfigSection } from "@/components/dashboard/printer-config-section";
+import { FiscalConfigSection } from "@/components/dashboard/fiscal-config-section";
 import type { Vendor, Product, ProductVariant, ProductImage } from "@/types/database";
 
 const PAYMENT_OPTIONS = [
@@ -655,6 +656,8 @@ export default function DashboardModa({
         setMsg={setMsg}
         autoPrintDesc="Imprime el ticket automáticamente cuando entra un pedido online pago"
       />
+
+      <FiscalConfigSection />
 
       <Button type="submit" className="w-full" disabled={saving || uploading}>{saving ? "Guardando..." : "Guardar cambios"}</Button>
     </form>

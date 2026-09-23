@@ -73,6 +73,7 @@ const GRATUITO_FEATURES: PlanFeatures = {
   crm: false,
   quotes_respond: false,
   deposits: false,
+  fiscal: false,
 };
 
 // Features del plan Gratuito para gastronomía: carta completa + carrito +
@@ -119,6 +120,7 @@ const SERVICIO_FREE_FEATURES: PlanFeatures = {
 
 // Features que no aplican al vertical servicios (forzadas a false aunque el
 // JSONB del plan las traiga: un plomero no tiene cocina, salón ni POS).
+// fiscal tampoco en v1 (sin circuito de cobro de pedidos).
 const SERVICIO_FEATURE_MASK: Partial<Record<FeatureKey, false>> = {
   cart: false,
   emits_orders: false,
@@ -128,6 +130,7 @@ const SERVICIO_FEATURE_MASK: Partial<Record<FeatureKey, false>> = {
   variants: false,
   modifiers: false,
   recipes: false,
+  fiscal: false,
 };
 
 // Features del plan que no aplican al vertical moda (forzadas a false).

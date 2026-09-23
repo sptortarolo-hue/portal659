@@ -21,6 +21,7 @@ import {
 } from "@/components/dashboard/shared";
 import { MpConnectCard } from "@/components/dashboard/mp-connect-card";
 import { PrinterConfigSection } from "@/components/dashboard/printer-config-section";
+import { FiscalConfigSection } from "@/components/dashboard/fiscal-config-section";
 import { HoursEditor } from "@/components/dashboard/hours-editor";
 import { LocationPicker } from "./location-picker";
 import { ModifierLibrary } from "@/components/dashboard/modifier-editor";
@@ -586,6 +587,8 @@ export default function DashboardComercio({
         setMsg={setMsg}
         autoPrintDesc="Imprime el ticket automáticamente cuando entra un pedido online pago"
       />
+
+      <FiscalConfigSection />
 
       <CollapsibleSection
         icon="🛍️"

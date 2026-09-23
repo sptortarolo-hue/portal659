@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { LivePreview, TransferConfig, DeliveryFeeConfig } from "@/components/dashboard/shared";
 import { MpConnectCard } from "@/components/dashboard/mp-connect-card";
 import { PrinterConfigSection } from "@/components/dashboard/printer-config-section";
+import { FiscalConfigSection } from "@/components/dashboard/fiscal-config-section";
 import { HoursEditor } from "@/components/dashboard/hours-editor";
 import { LocationPicker } from "./location-picker";
 import { StaffManager } from "@/components/vendor/staff-manager";
@@ -528,6 +529,8 @@ export default function DashboardGastro({
       </CollapsibleSection>
 
       <PrinterConfigSection vendor={vendor} saveVendor={saveVendor} setMsg={setMsg} />
+
+      <FiscalConfigSection />
 
       <CollapsibleSection icon="🍽️" title="Menú" defaultOpen>
         <div className="space-y-3">

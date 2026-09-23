@@ -139,6 +139,16 @@ export function Mostrador() {
   const [cashPct, setCashPct] = useState(0);
   // Retail (comercio/moda): textos sin referencias a cocina/comida.
   const [isRetail, setIsRetail] = useState(false);
+  // Fiscal ARCA (plan Gestión + config completa): toggle por venta.
+  const [fiscalReady, setFiscalReady] = useState(false);
+  const [withFiscal, setWithFiscal] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/vendor/fiscal/config")
+      .then((r) => r.json())
+      .then((d) => setFiscalReady(d?.ready === true))
+      .catch(() => {});
+  }, []);
 
   const total = useMemo(() => items.reduce((s, i) => s + i.price * i.qty, 0), [items]);
 
@@ -367,11 +377,10 @@ export function Mostrador() {
     // El servidor recalcula el descuento en efectivo (pos/order): el total
     // cobrado real viene en data.order.total.
     const netTotal = Number(data.order?.total ?? total);
-    setMsg(
-      isDelivery
-        ? "Pedido a domicilio registrado"
-        : `Cobrado $${netTotal.toLocaleString("es-AR")}${withReceipt ? (isRetail ? " · comprobante" : " · comprobante de retiro") : ""}`
-    );
+    const baseMsg = isDelivery
+      ? "Pedido a domicilio registrado"
+      : `Cobrado $${netTotal.toLocaleString("es-AR")}${withReceipt ? (isRetail ? " · comprobante" : " · comprobante de retiro") : ""}`;
+    setMsg(baseMsg);
     setItems([]);
     setCustomerName("");
     setCustomerPhone("");
@@ -379,6 +388,32 @@ export function Mostrador() {
     setNotes("");
     setSheetOpen(false);
     setSaving(false);
+
+    // Fiscal opt-in por venta, en segundo plano: el cobro nunca se traba
+    // por ARCA (el mostrador queda libre al instante).
+    if (withFiscal && fiscalReady && data.orderId) {
+      const fiscalOrderId = data.orderId as string;
+      setMsg(`${baseMsg} · 🧾 Facturando…`);
+      fetch("/api/vendor/fiscal/emitir", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId: fiscalOrderId }),
+      })
+        .then(async (fres) => {
+          const fdata = await fres.json().catch(() => ({}));
+          if (fres.ok && fdata.invoice) {
+            const inv = fdata.invoice;
+            setMsg(
+              `${baseMsg} · 🧾 Factura C ${String(inv.punto_venta).padStart(4, "0")}-${String(inv.cbte_nro).padStart(8, "0")} (CAE …${String(inv.cae).slice(-4)})`
+            );
+          } else {
+            setMsg(`${baseMsg} · ⚠️ Cobrado sin fiscal: ${fdata.error || "ARCA no respondió"} (reintentá desde Config → Fiscal)`);
+          }
+        })
+        .catch(() => {
+          setMsg(`${baseMsg} · ⚠️ Cobrado sin fiscal: sin conexión (reintentá desde Config → Fiscal)`);
+        });
+    }
     setRecent((prev) =>
       [{ id: data.orderId, total: Number(data.order?.total ?? total), payment_method: data.order?.payment_method ?? payment, paid_at: data.order?.paid_at ?? new Date().toISOString(), status: data.order?.status ?? "preparing", created_at: data.order?.created_at ?? new Date().toISOString(), pickup_number: data.order?.pickup_number ?? null, method: data.order?.method ?? method }, ...prev].slice(0, 20)
     );
@@ -590,6 +625,28 @@ export function Mostrador() {
           )}
         </div>
 
+        {fiscalReady && (
+          <button
+            type="button"
+            onClick={() => setWithFiscal((v) => !v)}
+            className={`flex w-full items-center gap-2 rounded-xl border px-3 py-2 text-left text-xs font-medium transition-colors ${
+              withFiscal
+                ? "border-primary bg-primary/5 text-primary"
+                : "border-border text-muted-foreground"
+            }`}
+            aria-pressed={withFiscal}
+          >
+            <span
+              className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md border-2 text-[12px] font-bold ${
+                withFiscal ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/40 text-transparent"
+              }`}
+              aria-hidden
+            >
+              ✓
+            </span>
+            🧾 Con comprobante fiscal (Factura C)
+          </button>
+        )}
         <Button className="w-full" disabled={items.length === 0 || saving} onClick={() => charge(true)}>
           {saving ? "Cobrando..." : method === "pickup" ? (isRetail ? "Cobrar + comprobante" : "Cobrar + comprobante de retiro") : "Cobrar y despachar"}
         </Button>

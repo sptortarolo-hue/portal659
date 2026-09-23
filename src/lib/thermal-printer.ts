@@ -546,7 +546,53 @@ export type ReceiptExtra = {
   docTitle?: string;
   /** Comprobante de venta retail: Nro. diario grande + datos del cliente. */
   retail?: boolean;
+  /** Factura electrónica ARCA (se imprime bloque fiscal con CAE + QR). */
+  fiscal?: FiscalPrintInfo | null;
 };
+
+/** Datos fiscales para el bloque impreso del ticket (Factura C). */
+export type FiscalPrintInfo = {
+  cuit: string;
+  puntoVenta: number;
+  cbteNro: number;
+  cae: string;
+  /** Vencimiento CAE en YYYYMMDD. */
+  caeVto: string;
+  /** URL de verificación ARCA (QR). Se genera al imprimir si no viene. */
+  qrUrl?: string;
+};
+
+/** Bloque fiscal del ticket: Factura C + CAE + QR ARCA. Nunca rompe la impresión. */
+async function composeFiscalBlock(
+  printer: any,
+  width: number,
+  fiscal: FiscalPrintInfo
+): Promise<void> {
+  const separator = separatorFor(width);
+  const vto =
+    fiscal.caeVto.length === 8
+      ? `${fiscal.caeVto.slice(6, 8)}/${fiscal.caeVto.slice(4, 6)}/${fiscal.caeVto.slice(0, 4)}`
+      : fiscal.caeVto;
+  printer.alignCenter();
+  printer.println(separator);
+  printer.bold(true);
+  printer.println(
+    `FACTURA C ${String(fiscal.puntoVenta).padStart(4, "0")}-${String(fiscal.cbteNro).padStart(8, "0")}`
+  );
+  printer.bold(false);
+  printer.println(`CUIT emisor: ${fiscal.cuit}`);
+  printer.println(`CAE: ${fiscal.cae}`);
+  printer.println(`Vto. CAE: ${vto}`);
+  if (fiscal.qrUrl) {
+    try {
+      printer.printQR(fiscal.qrUrl, { cellSize: 6, correction: "M", model: 2 });
+      printer.println("");
+    } catch {
+      printer.println("QR: ver en arca.gob.ar/fe/qr");
+    }
+  }
+  printer.alignLeft();
+}
 
 async function composeReceipt(
   printer: any,
@@ -631,6 +677,10 @@ async function composeReceipt(
   }
   if (extra?.retail && order.method === "delivery" && order.customer_address) {
     printer.println(`Dir: ${order.customer_address}`);
+  }
+
+  if (extra?.fiscal) {
+    await composeFiscalBlock(printer, width, extra.fiscal);
   }
 
   printer.println("");
@@ -1163,6 +1213,8 @@ export async function dispatchPrint(params: {
     cashTotal?: number;
     /** Cierre de caja (Z) guardado, para imprimir tal cual. */
     closing?: CashClosingPrintData;
+    /** Factura electrónica ARCA (bloque fiscal con CAE + QR en ticket). */
+    fiscal?: FiscalPrintInfo | null;
   };
 }): Promise<DispatchResult> {
   const { vendor } = params;

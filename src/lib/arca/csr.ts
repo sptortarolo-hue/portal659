@@ -31,7 +31,9 @@ export function generateKeyAndCsr(input: CsrInput): { keyPem: string; csrPem: st
     { shortName: "C", value: "AR" },
     { shortName: "O", value: org },
     { shortName: "CN", value: system },
-    { shortName: "serialNumber", value: `CUIT ${cuit}` },
+    // node-forge no mapea shortName "serialNumber" (lanza "Attribute type
+    // not specified"): se usa el OID X.520 explícito 2.5.4.5.
+    { type: "2.5.4.5", value: `CUIT ${cuit}` },
   ]);
   csr.sign(keys.privateKey);
 

@@ -307,12 +307,14 @@ async function callOnce(message, products, model, ctx = null) {
   if (res.status === 410 || res.status === 404 || res.status === 429) {
     markCooldown(model);
     parseWithLlm._modelDeprecated = true;
-    console.error(`[bot] LLM modelo ${model} no responde o fue rate-limited (${res.status}) — re-descubriendo en el próximo mensaje`);
+    const snippet = (await res.text().catch(() => "")).slice(0, 300);
+    console.error(`[bot] LLM modelo ${model} no responde o fue rate-limited (${res.status}) — re-descubriendo en el próximo mensaje | ${snippet}`);
     return null;
   }
   if (res.status === 402 || res.status === 403) {
     parseWithLlm._modelDeprecated = true;
-    console.error(`[bot] LLM modelo ${model} no está en el tier gratis (${res.status}) — probando otro`);
+    const snippet = (await res.text().catch(() => "")).slice(0, 300);
+    console.error(`[bot] LLM modelo ${model} no está en el tier gratis (${res.status}) — probando otro | ${snippet}`);
     return null;
   }
   if (!res.ok) {

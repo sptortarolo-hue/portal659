@@ -190,7 +190,54 @@ function parseLoginResponse(xml: string): { token: string; sign: string } {
 }
 
 /**
- * Token WSAA para el servicio `wsfe`, con cache + coalescencia.
+ * Cache persistente del TA (token+sign cifrados) en `fiscal_ta_cache`.
+ * Sin esto, cada deploy/reinicio pierde el ticket y WSAA rechaza el nuevo
+ * con "El CEE ya posee un TA valido" hasta su vencimiento (12 h).
+ * Tolerante a tabla sin migrar: cae a solo-memoria.
+ */
+async function loadPersistedTicket(env: ArcaEnv, cuit: string): Promise<WsaaTicket | null> {
+  try {
+    const { queryOne } = await import("@/lib/db");
+    const { decryptFiscalSecret } = await import("@/lib/arca/crypto");
+    const row = await queryOne<{ token: string; sign: string; expires_at: string }>(
+      `SELECT token, sign, expires_at FROM fiscal_ta_cache
+        WHERE env = $1 AND cuit = $2 AND service = 'wsfe' LIMIT 1`,
+      [env, cuit]
+    );
+    if (!row) return null;
+    const expiresAtMs = new Date(row.expires_at).getTime();
+    if (!Number.isFinite(expiresAtMs) || expiresAtMs - Date.now() <= REFRESH_BUFFER_MS) return null;
+    const ticket: WsaaTicket = {
+      token: decryptFiscalSecret(row.token),
+      sign: decryptFiscalSecret(row.sign),
+      expiresAtMs,
+    };
+    ticketCache.set(`${env}:${cuit}`, ticket);
+    return ticket;
+  } catch {
+    return null;
+  }
+}
+
+async function savePersistedTicket(env: ArcaEnv, cuit: string, ticket: WsaaTicket): Promise<void> {
+  try {
+    const { query } = await import("@/lib/db");
+    const { encryptFiscalSecret } = await import("@/lib/arca/crypto");
+    await query(
+      `INSERT INTO fiscal_ta_cache (env, cuit, service, token, sign, expires_at, updated_at)
+       VALUES ($1, $2, 'wsfe', $3, $4, $5, now())
+       ON CONFLICT (env, cuit, service) DO UPDATE SET
+         token = EXCLUDED.token, sign = EXCLUDED.sign,
+         expires_at = EXCLUDED.expires_at, updated_at = now()`,
+      [env, cuit, encryptFiscalSecret(ticket.token), encryptFiscalSecret(ticket.sign), new Date(ticket.expiresAtMs).toISOString()]
+    );
+  } catch {
+    /* sin tabla: el cache queda solo en memoria */
+  }
+}
+
+/**
+ * Token WSAA para el servicio `wsfe`, con cache (memoria + DB) y coalescencia.
  * `certPem`/`keyPem` van DESCIFRADOS (nunca viajan a logs).
  */
 export async function getWsaaTicket(
@@ -202,6 +249,9 @@ export async function getWsaaTicket(
   const cacheKey = `${env}:${cuit}`;
   const cached = ticketCache.get(cacheKey);
   if (cached && cached.expiresAtMs - Date.now() > REFRESH_BUFFER_MS) return cached;
+
+  const persisted = await loadPersistedTicket(env, cuit);
+  if (persisted) return persisted;
 
   const running = inflight.get(cacheKey);
   if (running) return running;
@@ -218,6 +268,7 @@ export async function getWsaaTicket(
     const { token, sign } = parseLoginResponse(xml);
     const ticket: WsaaTicket = { token, sign, expiresAtMs: Date.now() + TOKEN_TTL_MS };
     ticketCache.set(cacheKey, ticket);
+    await savePersistedTicket(env, cuit, ticket);
     return ticket;
   })();
 
@@ -229,7 +280,16 @@ export async function getWsaaTicket(
   }
 }
 
-/** Invalida el token cacheado (ej. si WSFE lo rechaza por vencido). */
-export function dropWsaaTicket(env: ArcaEnv, cuit: string): void {
+/** Invalida el token cacheado en memoria y DB (ej. si WSFE lo rechaza). */
+export async function dropWsaaTicket(env: ArcaEnv, cuit: string): Promise<void> {
   ticketCache.delete(`${env}:${cuit}`);
+  try {
+    const { query } = await import("@/lib/db");
+    await query(
+      `DELETE FROM fiscal_ta_cache WHERE env = $1 AND cuit = $2 AND service = 'wsfe'`,
+      [env, cuit]
+    );
+  } catch {
+    /* sin tabla: nada que borrar */
+  }
 }

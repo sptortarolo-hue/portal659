@@ -83,7 +83,7 @@ async function withTicket<T>(
   } catch (e) {
     // Si el token estaba vencido del lado de ARCA, se invalida y se reintenta 1 vez.
     if (e instanceof ArcaError && /ta\.expir|token|sign/i.test(e.message + (e.detail || ""))) {
-      dropWsaaTicket(auth.env, auth.cuit);
+      await dropWsaaTicket(auth.env, auth.cuit);
       const t2 = await getWsaaTicket(auth.env, auth.cuit, auth.certPem, auth.keyPem);
       return fn(t2.token, t2.sign);
     }

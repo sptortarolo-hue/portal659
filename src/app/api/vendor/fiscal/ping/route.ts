@@ -60,7 +60,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, env, ms });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Error de ARCA";
-    console.log(`[fiscal] vendor=${vendor.id} env=${env} stage=ping-error +${Date.now() - t0}ms ${msg.slice(0, 200)}`);
+    const detail = e instanceof ArcaError ? (e.detail || "").slice(0, 200) : "";
+    console.log(`[fiscal] vendor=${vendor.id} env=${env} stage=ping-error +${Date.now() - t0}ms ${msg.slice(0, 200)}${detail && !msg.includes(detail.slice(0, 40)) ? ` | ${detail}` : ""}`);
     const code = e instanceof ArcaError ? "arca_error" : "fiscal_error";
     const hint = explainArcaFault(msg);
     return NextResponse.json({ error: msg, code, ...(hint ? { hint } : {}) }, { status: 502 });

@@ -47,9 +47,10 @@ function soapFetch(url: string, body: string, action: string): Promise<string> {
       if (!res.ok) {
         // El faultstring dice el motivo real (cert no asociado, TRA
         // vencido, CMS inválido...). Va en el mensaje para que salga en
-        // los logs [fiscal]; no contiene secretos.
+        // los logs [fiscal]; no contiene secretos. El cuerpo se redacta
+        // (sin token/sign) para diagnóstico completo.
         const fault = text.match(/<faultstring>([\s\S]*?)<\/faultstring>/)?.[1]?.trim().slice(0, 200);
-        throw new ArcaError(`WSAA HTTP ${res.status}${fault ? `: ${fault}` : ""}`, text.slice(0, 500));
+        throw new ArcaError(`WSAA HTTP ${res.status}${fault ? `: ${fault}` : ""}`, redactXml(text).slice(0, 1500));
       }
       return text;
     })
@@ -73,6 +74,17 @@ export class ArcaError extends Error {
   }
 }
 
+/**
+ * Redacta credenciales de un XML de ARCA (contenido de token/sign) para
+ * poder loguearlo sin filtrar secretos. Estructura intacta para diagnóstico.
+ */
+export function redactXml(xml: string): string {
+  return xml.replace(
+    /<(?:\w+:)?(token|sign)(?:\s[^>]*)?>[\s\S]*?<\/(?:\w+:)?\1>/gi,
+    "<$1>···</$1>"
+  );
+}
+
 function buildTra(service: string): string {
   const now = Date.now();
   const gen = new Date(now - 10 * 60 * 1000);
@@ -82,7 +94,11 @@ function buildTra(service: string): string {
   // y el TRA quedaba 3h en el futuro → WSAA lo rechazaba con HTTP 500.
   const fmt = (d: Date) =>
     new Date(d.getTime() - 3 * 3600 * 1000).toISOString().replace(/\.\d+Z$/, "-03:00");
-  const uniqueId = Math.floor(now / 1000);
+  // Único por llamada (ms + azar): dos logins en el mismo segundo con el
+  // mismo uniqueId pueden leerse como replay del lado de ARCA.
+  const uniqueId = `${now}${Math.floor(Math.random() * 1000)
+    .toString()
+    .padStart(3, "0")}`;
   return (
     `<?xml version="1.0" encoding="UTF-8"?>` +
     `<loginTicketRequest version="1.0">` +
@@ -186,7 +202,8 @@ function parseLoginResponse(xml: string): { token: string; sign: string } {
     if (fault?.includes("coe.alreadyAuthenticated")) {
       throw new ArcaError("ARCA: login duplicado en curso (reintentá en unos segundos)", fault);
     }
-    throw new ArcaError("ARCA no devolvió token (¿certificado asociado al WS?)", fault || xml.slice(0, 500));
+    // Cuerpo redactado (sin credenciales aunque el formato sea inesperado).
+    throw new ArcaError("ARCA no devolvió token (¿certificado asociado al WS?)", fault || redactXml(xml).slice(0, 1500));
   }
   return { token, sign };
 }

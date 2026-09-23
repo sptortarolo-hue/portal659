@@ -5,7 +5,7 @@
  * v1 del módulo: solo Factura C de monotributo. Los importes van con 2
  * decimales; en C el neto = total (sin IVA discriminado).
  */
-import { ArcaError, dropWsaaTicket, getWsaaTicket, type ArcaEnv } from "./wsaa";
+import { ArcaError, dropWsaaTicket, getWsaaTicket, redactXml, type ArcaEnv } from "./wsaa";
 
 export const CBTE_FACTURA_C = 11;
 
@@ -31,7 +31,7 @@ function soapFetch(url: string, body: string, action: string): Promise<string> {
       const text = await res.text();
       if (!res.ok) {
         const fault = text.match(/<faultstring>([\s\S]*?)<\/faultstring>/)?.[1]?.trim().slice(0, 200);
-        throw new ArcaError(`WSFE HTTP ${res.status}${fault ? `: ${fault}` : ""}`, text.slice(0, 500));
+        throw new ArcaError(`WSFE HTTP ${res.status}${fault ? `: ${fault}` : ""}`, redactXml(text).slice(0, 1500));
       }
       return text;
     })

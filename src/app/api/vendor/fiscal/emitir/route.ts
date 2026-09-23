@@ -131,7 +131,7 @@ export async function POST(request: Request) {
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Error de ARCA";
     const code = e instanceof ArcaError ? "arca_error" : "fiscal_error";
-    const detail = e instanceof ArcaError ? (e.detail || "").slice(0, 200) : "";
+    const detail = e instanceof ArcaError ? (e.detail || "").slice(0, 800) : "";
     flog("error", `${code}: ${msg.slice(0, 200)}${detail && !msg.includes(detail.slice(0, 40)) ? ` | ${detail}` : ""}`);
     const hint = explainArcaFault(msg);
     return NextResponse.json({ error: msg, code, ...(hint ? { hint } : {}) }, { status: 502 });

@@ -85,7 +85,7 @@ export default function ImpresoraPage() {
           </ol>
 
           <h3 className="font-semibold mb-2">3.3 Configurá la app en el celular</h3>
-          <p className="mb-3">Abri la app <span className="font-medium">Portal Print</span> en tu celular:</p>
+          <p className="mb-3">Abrí la app <span className="font-medium">Portal Print</span> en tu celular:</p>
           <ol className="list-decimal pl-5 space-y-1 mb-4">
             <li><span className="font-medium">Conectá el celular al mismo Wi-Fi</span> que la impresora.</li>
             <li>Pegá el <span className="font-medium">token</span> que ves en el dashboard (tocá &quot;Copiar&quot;).</li>

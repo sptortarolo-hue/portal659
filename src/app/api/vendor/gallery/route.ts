@@ -1,4 +1,4 @@
-import { getVendorByRequest } from "@/lib/vendor-utils";
+﻿import { getVendorByRequest } from "@/lib/vendor-utils";
 import { queryMany, queryOne } from "@/lib/db";
 import { NextResponse } from "next/server";
 
@@ -16,7 +16,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   const { vendor } = await getVendorByRequest(request);
-  if (!vendor) return NextResponse.json({ error: "Vendor no encontrado" }, { status: 404 });
+  if (!vendor) return NextResponse.json({ error: "Comercio no encontrado" }, { status: 404 });
 
   const body = await request.json();
   const { image_url, caption } = body;

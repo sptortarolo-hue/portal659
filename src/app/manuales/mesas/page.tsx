@@ -224,7 +224,7 @@ export default function MesasPage() {
         <div>
           <h2 className="font-display text-lg font-semibold mb-3">10. Tips y buenas prácticas</h2>
           <ul className="list-disc list-inside space-y-2 text-muted-foreground">
-            <li><span className="font-medium">Cargá de a poco:</span> aggregate los pedidos de a medida que el cliente los va pidiendo. No esperés a que termine de pedir todo.</li>
+            <li><span className="font-medium">Cargá de a poco:</span> agregá los pedidos de a medida que el cliente los va pidiendo. No esperés a que termine de pedir todo.</li>
             <li><span className="font-medium">Revisá la precuenta</span> antes de cobrar para asegurarte de que todo esté correcto.</li>
             <li><span className="font-medium">Usá la descripción del producto</span> para notas especiales (ej: "sin cebolla", "poco cocida").</li>
             <li><span className="font-medium">Si tenés impresora</span>, la comanda se envía automáticamente al guardar consumiciones que requieran cocina.</li>

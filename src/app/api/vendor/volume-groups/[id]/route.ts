@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
   const { vendor } = await getVendorByRequest(request);
-  if (!vendor) return NextResponse.json({ error: "Vendor no encontrado" }, { status: 404 });
+  if (!vendor) return NextResponse.json({ error: "Comercio no encontrado" }, { status: 404 });
   const vrow = await queryOne<{ vertical: string | null }>(
     `SELECT vertical FROM vendors WHERE id = $1 LIMIT 1`,
     [vendor.id]
@@ -77,7 +77,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
 export async function DELETE(request: Request, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
   const { vendor } = await getVendorByRequest(request);
-  if (!vendor) return NextResponse.json({ error: "Vendor no encontrado" }, { status: 404 });
+  if (!vendor) return NextResponse.json({ error: "Comercio no encontrado" }, { status: 404 });
 
   try {
     const rows = await queryMany<{ id: string }>(

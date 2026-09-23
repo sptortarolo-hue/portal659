@@ -28,7 +28,7 @@ export const POST = withRateLimit(async (request: Request) => {
     html: `
       <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px">
         <h1 style="color:#4f46e5">Recuperación de contraseña</h1>
-        <p>Recibimos un pedido para restablecer tu contraseña.</p>
+        <p>Recibimos una solicitud para restablecer tu contraseña.</p>
         <p><a href="${siteUrl}/reset-password?token=${token}" style="background:#4f46e5;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;display:inline-block">Restablecer contraseña</a></p>
         <p style="color:#666;font-size:14px">El enlace expira en 1 hora. Si no lo pediste vos, ignorá este correo.</p>
         <hr style="border:none;border-top:1px solid #eee;margin:20px 0">

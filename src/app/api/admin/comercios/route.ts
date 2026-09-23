@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { isAdmin } from "@/lib/admin-utils";
 import { queryMany, queryOne, query, withTransaction } from "@/lib/db";
 import { seedDefaultCategories } from "@/lib/vendor-utils";
@@ -64,7 +64,7 @@ export async function GET(request: Request) {
     );
     for (const r of rows) waEnabled[r.vendor_id] = r.enabled !== false;
   } catch {
-    /* tabla vendor_wa_bots aún no migrada */
+    /* tabla vendor_wa_bots aÃºn no migrada */
   }
 
   const out = vendors.map((v) => ({ ...v, wa_bot_enabled: !!waEnabled[v.id] }));
@@ -128,7 +128,7 @@ export async function PATCH(request: Request) {
       `SELECT verified FROM vendors WHERE id = $1`,
       [vendorId]
     );
-    if (!vendor) return NextResponse.json({ error: "Vendor no encontrado" }, { status: 404 });
+    if (!vendor) return NextResponse.json({ error: "Comercio no encontrado" }, { status: 404 });
     await query(`UPDATE vendors SET verified = $1 WHERE id = $2`, [!vendor.verified, vendorId]);
     return NextResponse.json({ ok: true, verified: !vendor.verified });
   }
@@ -138,10 +138,10 @@ export async function PATCH(request: Request) {
       `SELECT is_admin, user_id FROM vendors WHERE id = $1`,
       [vendorId]
     );
-    if (!vendor) return NextResponse.json({ error: "Vendor no encontrado" }, { status: 404 });
+    if (!vendor) return NextResponse.json({ error: "Comercio no encontrado" }, { status: 404 });
     const next = !vendor.is_admin;
     await query(`UPDATE vendors SET is_admin = $1 WHERE id = $2`, [next, vendorId]);
-    // El permiso real está en profiles.is_admin (getAuthUser lee de profiles).
+    // El permiso real estÃ¡ en profiles.is_admin (getAuthUser lee de profiles).
     if (vendor.user_id) {
       await query(`UPDATE profiles SET is_admin = $1 WHERE id = $2`, [next, vendor.user_id]);
     }
@@ -150,13 +150,13 @@ export async function PATCH(request: Request) {
 
   // Kill switch del bot de WhatsApp: habilita/deshabilita el bot de un comercio.
   // La tabla existe tras migrate-pilot-whatsapp-bot.sql; sin migrar devuelve
-  // un 500 claro para que se aplique la migración.
+  // un 500 claro para que se aplique la migraciÃ³n.
   if (action === "toggle_wa_bot") {
     const vendor = await queryOne<{ id: string }>(
       `SELECT id FROM vendors WHERE id = $1`,
       [vendorId]
     );
-    if (!vendor) return NextResponse.json({ error: "Vendor no encontrado" }, { status: 404 });
+    if (!vendor) return NextResponse.json({ error: "Comercio no encontrado" }, { status: 404 });
 
     try {
       const cur = await queryOne<{ enabled: boolean }>(
@@ -184,24 +184,24 @@ export async function PATCH(request: Request) {
       `SELECT visible FROM vendors WHERE id = $1`,
       [vendorId]
     );
-    if (!vendor) return NextResponse.json({ error: "Vendor no encontrado" }, { status: 404 });
+    if (!vendor) return NextResponse.json({ error: "Comercio no encontrado" }, { status: 404 });
     await query(`UPDATE vendors SET visible = $1 WHERE id = $2`, [!vendor.visible, vendorId]);
     return NextResponse.json({ ok: true, visible: !vendor.visible });
   }
 
-  // Publicación con aprobación: rechazar limpia la solicitud pendiente.
+  // PublicaciÃ³n con aprobaciÃ³n: rechazar limpia la solicitud pendiente.
   if (action === "clear_publish_request") {
     await query(`UPDATE vendors SET publish_requested_at = NULL WHERE id = $1`, [vendorId]);
     return NextResponse.json({ ok: true, requested: false });
   }
 
-  // Aprobar publicación: visible + limpia la solicitud.
+  // Aprobar publicaciÃ³n: visible + limpia la solicitud.
   if (action === "approve_publish") {
     const vendor = await queryOne<{ id: string }>(
       `SELECT id FROM vendors WHERE id = $1`,
       [vendorId]
     );
-    if (!vendor) return NextResponse.json({ error: "Vendor no encontrado" }, { status: 404 });
+    if (!vendor) return NextResponse.json({ error: "Comercio no encontrado" }, { status: 404 });
     await query(
       `UPDATE vendors SET visible = true, publish_requested_at = NULL WHERE id = $1`,
       [vendorId]
@@ -225,7 +225,7 @@ export async function PATCH(request: Request) {
     if (!planSlug) return NextResponse.json({ error: "planSlug es requerido" }, { status: 400 });
 
     // Cobro manual (el pago es por fuera: efectivo / transferencia / MP).
-    // Se registra en la suscripción; null = sin cobrar.
+    // Se registra en la suscripciÃ³n; null = sin cobrar.
     const validMethods = ["efectivo", "transferencia", "mercadopago"];
     const method = paymentMethod && validMethods.includes(paymentMethod) ? paymentMethod : null;
     const billedAmount = amount != null && Number(amount) >= 0 ? Number(amount) : null;
@@ -235,7 +235,7 @@ export async function PATCH(request: Request) {
       [["gratuito", "pedidos", "gestion"]]
     );
     const plan = plans.find((p) => p.slug === planSlug);
-    if (!plan) return NextResponse.json({ error: "Plan inválido" }, { status: 400 });
+    if (!plan) return NextResponse.json({ error: "Plan invÃ¡lido" }, { status: 400 });
 
     if (planSlug === "gratuito") {
       await query(
@@ -276,7 +276,7 @@ export async function PATCH(request: Request) {
           plan.id,
           periodStart,
           periodEnd,
-          note || `Activado por administrador (${periodDays} días)`,
+          note || `Activado por administrador (${periodDays} dÃ­as)`,
           method,
           billedAmount,
           method ? new Date().toISOString() : null,
@@ -287,13 +287,13 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ ok: true, plan: planSlug, periodEnd, paymentMethod: method });
   }
 
-  // Registrar cobro manual de la última suscripción del comercio
+  // Registrar cobro manual de la Ãºltima suscripciÃ³n del comercio
   // (efectivo / transferencia / mercadopago). No toca el plan, solo el pago.
   if (action === "record_payment") {
     const { paymentMethod, amount, subscriptionId } = body;
     const validMethods = ["efectivo", "transferencia", "mercadopago"];
     if (!paymentMethod || !validMethods.includes(paymentMethod)) {
-      return NextResponse.json({ error: "paymentMethod inválido (efectivo / transferencia / mercadopago)" }, { status: 400 });
+      return NextResponse.json({ error: "paymentMethod invÃ¡lido (efectivo / transferencia / mercadopago)" }, { status: 400 });
     }
     const billedAmount = amount != null && Number(amount) >= 0 ? Number(amount) : null;
 
@@ -315,7 +315,7 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ ok: true, subscriptionId: sub.id, paymentMethod, amount: billedAmount });
   }
 
-  return NextResponse.json({ error: "Acción inválida" }, { status: 400 });
+  return NextResponse.json({ error: "AcciÃ³n invÃ¡lida" }, { status: 400 });
 }
 
 export async function DELETE(request: Request) {

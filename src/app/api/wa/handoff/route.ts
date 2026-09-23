@@ -1,11 +1,11 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { queryOne } from "@/lib/db";
 import { authWaBot } from "@/lib/wa-bot";
 
 /**
- * POST /api/wa/handoff — el bot de WhatsApp detectó que el cliente quiere
+ * POST /api/wa/handoff â€” el bot de WhatsApp detectÃ³ que el cliente quiere
  * hablar con una persona (o que no lo entiende 2 veces seguidas). Se crea una
- * notificación + push al dueño y el bot queda en pausa en ese chat 30 min.
+ * notificaciÃ³n + push al dueÃ±o y el bot queda en pausa en ese chat 30 min.
  */
 export async function POST(request: Request) {
   if (!authWaBot(request)) {
@@ -25,7 +25,7 @@ export async function POST(request: Request) {
     `SELECT user_id, store_name FROM vendors WHERE id = $1 LIMIT 1`,
     [vendorId]
   );
-  if (!vendor) return NextResponse.json({ error: "Vendor no encontrado" }, { status: 404 });
+  if (!vendor) return NextResponse.json({ error: "Comercio no encontrado" }, { status: 404 });
 
   const phoneDigits = waId.replace(/[^\d]/g, "");
   const contact = phoneDigits || waId;
@@ -34,8 +34,8 @@ export async function POST(request: Request) {
     `INSERT INTO notifications (user_id, title, body, type, link) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
     [
       vendor.user_id,
-      "🗣️ Un cliente quiere hablar con vos",
-      `En el WhatsApp del bot: ${contact}${lastMessage ? ` — "${lastMessage}"` : ""}. Contestale desde tu WhatsApp (el bot queda en pausa 30 min).`,
+      "ðŸ—£ï¸ Un cliente quiere hablar con vos",
+      `En el WhatsApp del bot: ${contact}${lastMessage ? ` â€” "${lastMessage}"` : ""}. Contestale desde tu WhatsApp (el bot queda en pausa 30 min).`,
       "wa_handoff",
       "/vendor/dashboard",
     ]
@@ -44,8 +44,8 @@ export async function POST(request: Request) {
   try {
     const { sendPushToUser } = await import("@/lib/push");
     await sendPushToUser(vendor.user_id, {
-      title: "🗣️ Un cliente quiere hablar con vos",
-      body: `En el WhatsApp del bot: ${contact}${lastMessage ? ` — "${lastMessage}"` : ""}. Contestale desde tu WhatsApp.`,
+      title: "ðŸ—£ï¸ Un cliente quiere hablar con vos",
+      body: `En el WhatsApp del bot: ${contact}${lastMessage ? ` â€” "${lastMessage}"` : ""}. Contestale desde tu WhatsApp.`,
       link: "/vendor/dashboard",
     });
   } catch {
@@ -54,3 +54,4 @@ export async function POST(request: Request) {
 
   return NextResponse.json({ ok: true });
 }
+

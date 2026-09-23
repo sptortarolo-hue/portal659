@@ -1,8 +1,8 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { queryOne, queryMany } from "@/lib/db";
 import { authWaBot } from "@/lib/wa-bot";
 
-/** Menú público de un vendor, listo para que el bot (NLU) lo consuma.
+/** MenÃº pÃºblico de un vendor, listo para que el bot (NLU) lo consuma.
  *  Exige `WA_BOT_SECRET` (endpoint interno). Devuelve productos + modificadores
  *  (grupos/opciones) + variantes, sin depender del render del micrositio. */
 export async function GET(request: Request) {
@@ -21,7 +21,7 @@ export async function GET(request: Request) {
     `SELECT id, store_name, vertical FROM vendors WHERE id = $1 LIMIT 1`,
     [vendorId]
   );
-  if (!vendor) return NextResponse.json({ error: "Vendor no encontrado" }, { status: 404 });
+  if (!vendor) return NextResponse.json({ error: "Comercio no encontrado" }, { status: 404 });
 
   const products = await queryMany<any>(
     `SELECT id, name, description, price, promo_price, category, available,

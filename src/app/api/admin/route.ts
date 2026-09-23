@@ -85,7 +85,7 @@ export async function PATCH(request: Request) {
       `SELECT verified FROM vendors WHERE id = $1`,
       [vendorId]
     );
-    if (!vendor) return NextResponse.json({ error: "Vendor no encontrado" }, { status: 404 });
+    if (!vendor) return NextResponse.json({ error: "Comercio no encontrado" }, { status: 404 });
     await query(`UPDATE vendors SET verified = $1 WHERE id = $2`, [!vendor.verified, vendorId]);
     return NextResponse.json({ ok: true });
   }
@@ -95,7 +95,7 @@ export async function PATCH(request: Request) {
       `SELECT is_admin, user_id FROM vendors WHERE id = $1`,
       [vendorId]
     );
-    if (!vendor) return NextResponse.json({ error: "Vendor no encontrado" }, { status: 404 });
+    if (!vendor) return NextResponse.json({ error: "Comercio no encontrado" }, { status: 404 });
     const next = !vendor.is_admin;
     await query(`UPDATE vendors SET is_admin = $1 WHERE id = $2`, [next, vendorId]);
     // El permiso real está en profiles.is_admin: sincronizar.

@@ -55,7 +55,7 @@ export function orderConfirmationEmail(vendorName: string, items: any[], total: 
     html: `
       <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px">
         <h1 style="color:#4f46e5">Tu pedido fue confirmado</h1>
-        <p>Hacemos tu pedido en <strong>${vendorName}</strong>.</p>
+        <p>Estamos preparando tu pedido en <strong>${vendorName}</strong>.</p>
         <table style="width:100%;border-collapse:collapse;margin:20px 0">
           ${itemRows}
           <tr><td style="padding:8px;font-weight:bold;border-top:2px solid #4f46e5">Total</td><td style="padding:8px;font-weight:bold;text-align:right;border-top:2px solid #4f46e5">$${total.toLocaleString("es-AR")}</td></tr>

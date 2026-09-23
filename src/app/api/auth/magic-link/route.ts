@@ -29,7 +29,7 @@ export const POST = withRateLimit(async (request: Request) => {
     html: `
       <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px">
         <h1 style="color:#4f46e5">Iniciá sesión</h1>
-        <p>Hacé click en el siguiente enlace para entrar a Portal 659:</p>
+        <p>Hacé clic en el siguiente enlace para entrar a Portal 659:</p>
         <p><a href="${link}" style="background:#4f46e5;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;display:inline-block">Entrar</a></p>
         <p style="color:#666;font-size:14px">El enlace expira en 30 minutos.</p>
         <hr style="border:none;border-top:1px solid #eee;margin:20px 0">

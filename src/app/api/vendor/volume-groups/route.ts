@@ -1,4 +1,4 @@
-import { getVendorByRequest } from "@/lib/vendor-utils";
+﻿import { getVendorByRequest } from "@/lib/vendor-utils";
 import { queryMany, queryOne, withTransaction } from "@/lib/db";
 import { validateVolumeGroupPayload } from "@/lib/volume-pricing";
 import { NextResponse } from "next/server";
@@ -46,16 +46,16 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   const { vendor } = await getVendorByRequest(request);
-  if (!vendor) return NextResponse.json({ error: "Vendor no encontrado" }, { status: 404 });
+  if (!vendor) return NextResponse.json({ error: "Comercio no encontrado" }, { status: 404 });
   const vrow = await queryOne<{ vertical: string | null }>(
     `SELECT vertical FROM vendors WHERE id = $1 LIMIT 1`,
     [vendor.id]
   );
   if (vrow?.vertical && vrow.vertical !== "gastronomia") {
-    return NextResponse.json({ error: "Los precios por volumen están disponibles para gastronomía" }, { status: 403 });
+    return NextResponse.json({ error: "Los precios por volumen estÃ¡n disponibles para gastronomÃ­a" }, { status: 403 });
   }
   if (!(await tablesReady())) {
-    return NextResponse.json({ error: "Falta aplicar la migración de precios por volumen" }, { status: 503 });
+    return NextResponse.json({ error: "Falta aplicar la migraciÃ³n de precios por volumen" }, { status: 503 });
   }
 
   const body = await request.json().catch(() => ({}));
@@ -81,7 +81,7 @@ export async function POST(request: Request) {
     const ids = new Set((g.product_ids || []).map(String));
     if (v.value.productIds.some((id) => ids.has(id))) {
       return NextResponse.json(
-        { error: `Uno de esos productos ya está en el grupo "${g.name}"` },
+        { error: `Uno de esos productos ya estÃ¡ en el grupo "${g.name}"` },
         { status: 400 }
       );
     }
@@ -107,3 +107,4 @@ export async function POST(request: Request) {
 
   return NextResponse.json({ group: created });
 }
+

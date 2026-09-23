@@ -176,7 +176,7 @@ export function buildModifiedOrderMessage(params: {
     modLine,
     addressLine,
     "",
-      "Si esta todo bien, respondeme *SI* para confirmar.",
+      "Si está todo bien, respondeme *SI* para confirmar.",
       sep,
     ].filter((l) => l !== null && l !== undefined && l !== "").join("\n");
 }

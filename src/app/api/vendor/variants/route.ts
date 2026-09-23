@@ -1,4 +1,4 @@
-import { getVendorByRequest } from "@/lib/vendor-utils";
+﻿import { getVendorByRequest } from "@/lib/vendor-utils";
 import { queryMany, queryOne, withTransaction } from "@/lib/db";
 import { NextResponse } from "next/server";
 
@@ -34,7 +34,7 @@ export async function GET(request: Request) {
 
 export async function PUT(request: Request) {
   const { vendor } = await getVendorByRequest(request);
-  if (!vendor) return NextResponse.json({ error: "Vendor no encontrado" }, { status: 404 });
+  if (!vendor) return NextResponse.json({ error: "Comercio no encontrado" }, { status: 404 });
 
   const body = await request.json();
   const { product_id, variants } = body;
@@ -60,8 +60,8 @@ export async function PUT(request: Request) {
     position: i,
   }));
 
-  // Transacción atómica: si un INSERT falla en el medio, no quedan variantes
-  // parciales (antes iba DELETE + INSERT sueltos y un fallo corrompía el menú).
+  // TransacciÃ³n atÃ³mica: si un INSERT falla en el medio, no quedan variantes
+  // parciales (antes iba DELETE + INSERT sueltos y un fallo corrompÃ­a el menÃº).
   await withTransaction(async (tx) => {
     await tx.queryVoid(`DELETE FROM product_variants WHERE product_id = $1`, [product_id]);
     for (const row of rows) {

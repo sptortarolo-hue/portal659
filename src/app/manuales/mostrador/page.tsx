@@ -125,7 +125,7 @@ export default function MostradorPage() {
                 </tr>
               </thead>
               <tbody>
-                <tr className="border-t border-border"><td className="px-3 py-2">💵 Efectivo</td><td className="px-3 py-2">Pago en cash (por defecto)</td></tr>
+                <tr className="border-t border-border"><td className="px-3 py-2">💵 Efectivo</td><td className="px-3 py-2">Pago en efectivo (por defecto)</td></tr>
                 <tr className="border-t border-border"><td className="px-3 py-2">🏦 Transferencia</td><td className="px-3 py-2">Depósito o transferencia bancaria</td></tr>
                 <tr className="border-t border-border"><td className="px-3 py-2">💳 Tarjeta</td><td className="px-3 py-2">Débito, crédito o QR</td></tr>
                 <tr className="border-t border-border"><td className="px-3 py-2">🪙 Mixto</td><td className="px-3 py-2">Combina métodos</td></tr>

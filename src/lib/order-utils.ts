@@ -302,11 +302,11 @@ export function buildClientWhatsAppMessage(
   switch (status) {
     case "ready":
       if (order.method === "pickup") {
-        return `Hola ${order.customer_name}! Tu pedido #${orderId} de ${vendorName} ya esta listo para retirar. Pasalo a buscar cuando quieras!`;
+        return `Hola ${order.customer_name}! Tu pedido #${orderId} de ${vendorName} ya está listo para retirar. Pasalo a buscar cuando quieras!`;
       }
-      return `Hola ${order.customer_name}! Tu pedido #${orderId} de ${vendorName} esta casi listo, saliendo para tu domicilio.`;
+      return `Hola ${order.customer_name}! Tu pedido #${orderId} de ${vendorName} está casi listo, saliendo para tu domicilio.`;
     case "sent":
-      return `Hola ${order.customer_name}! Tu pedido #${orderId} de ${vendorName} ya salio para entregar. Gracias por tu compra!`;
+      return `Hola ${order.customer_name}! Tu pedido #${orderId} de ${vendorName} ya salió para entregar. Gracias por tu compra!`;
     case "completed":
       return `Hola ${order.customer_name}! Tu pedido #${orderId} de ${vendorName} fue entregado. Gracias por elegirnos!`;
     default:
@@ -361,7 +361,7 @@ export function buildOrderWhatsAppMessage(params: {
     `Total: $${params.total.toLocaleString("es-AR")}`,
     `Nombre: ${params.customerName}`,
     `WhatsApp: ${params.customerPhone}`,
-    params.method === "delivery" ? `Direccion: ${params.address || "sin direccion"}` : "Retiro en el local",
+    params.method === "delivery" ? `Dirección: ${params.address || "sin dirección"}` : "Retiro en el local",
     notesLine,
     paymentLine,
   ].filter(Boolean).join("\n");

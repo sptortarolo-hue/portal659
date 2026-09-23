@@ -473,7 +473,7 @@ async function composeComanda(printer: any, vendor: PrinterVendor, order: Order)
     printer.alignCenter();
     printer.setTextSize(2, 2);
     printer.bold(true);
-    const m = order.method === "delivery" ? "ENVIO" : "RETIRO";
+    const m = order.method === "delivery" ? "ENVÍO" : "RETIRO";
     printer.println(`${m} Nro. ${order.pickup_number}`);
     printer.bold(false);
     printer.setTextSize(0, 0);
@@ -572,7 +572,7 @@ async function composeReceipt(
   if (extra?.retail && order.pickup_number != null) {
     printer.bold(true);
     printer.setTextSize(2, 2);
-    const m = order.method === "delivery" ? "ENVIO" : "RETIRO";
+    const m = order.method === "delivery" ? "ENVÍO" : "RETIRO";
     printer.println(`${m} Nro. ${order.pickup_number}`);
     printer.bold(false);
     printer.setTextSize(0, 0);
@@ -620,7 +620,7 @@ async function composeReceipt(
   const paidStr = order.paid_at ? "PAGADO" : "PENDIENTE";
   printer.println("");
   printer.bold(!!order.paid_at);
-  printer.println(`Pago: ${paymentStr} â€” ${paidStr}`);
+  printer.println(`Pago: ${paymentStr} — ${paidStr}`);
   printer.bold(false);
 
   if (order.customer_name && (extra?.retail || order.channel !== "app")) {
@@ -652,8 +652,8 @@ async function composeRetiroReceipt(printer: any, vendor: PrinterVendor, order: 
   printer.bold(false);
   printer.println(separator);
 
-  printer.println("Retira tu pedido en el mostrador");
-  printer.println("con tu numero.");
+  printer.println("Retirá tu pedido en el mostrador");
+  printer.println("con tu número.");
   printer.println(separator);
   printer.println("www.portal659.com.ar");
   printer.println("El centro comercial de tu barrio");
@@ -671,7 +671,7 @@ async function composeDespacho(printer: any, order: Order): Promise<void> {
   printer.setTextSize(1, 1);
 
   printer.bold(true);
-  printer.println("ENVIO");
+  printer.println("ENVÍO");
   if (order.pickup_number != null) {
     printer.setTextSize(2, 2);
     printer.println(`Nro. ${order.pickup_number}`);
@@ -768,7 +768,7 @@ async function composePrecuenta(
 
   printer.alignLeft();
   printer.println("");
-  printer.println("Gracias! Confirma el pago");
+  printer.println("Gracias! Confirmá el pago");
   printer.println("en caja para cerrar la cuenta.");
   printer.println("");
   composeFooter(printer, width);
@@ -858,12 +858,12 @@ async function composeTest(printer: any, vendor: PrinterVendor): Promise<void> {
   printer.alignCenter();
   await composeStoreHeader(printer, vendor, width);
   printer.println("");
-  printer.println("PRUEBA DE IMPRESION");
+  printer.println("PRUEBA DE IMPRESIÓN");
   printer.println(separatorFor(width));
   printer.alignLeft();
   printer.println("");
-  printer.println("Si puedes leer esto,");
-  printer.println("la impresora esta funcionando correctamente.");
+  printer.println("Si podés leer esto,");
+  printer.println("la impresora está funcionando correctamente.");
   printer.println("");
   printer.println(`Ancho: ${vendor.paper_size || "80mm"}`);
   printer.println("Relay: Portal Print disponible");

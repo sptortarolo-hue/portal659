@@ -90,9 +90,9 @@ export async function PATCH(
 
   const fullVendor = await queryOne<{ id: string; store_name: string; slug: string | null; block_unpaid_orders: boolean; vertical: string; delivery_fee: number | null; free_delivery_min: number | null; cash_discount_pct: number | null; kitchen_strict_close: boolean | null }>(
     `SELECT id, store_name, slug, block_unpaid_orders, vertical, delivery_fee, free_delivery_min, cash_discount_pct,
-      -- Tolerante a migración de cierre estricto sin aplicar (default: exige).
+      -- Tolerante a migración de cierre estricto sin aplicar (default: libre).
       CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'vendors' AND column_name = 'kitchen_strict_close')
-        THEN kitchen_strict_close ELSE true END AS kitchen_strict_close
+        THEN kitchen_strict_close ELSE false END AS kitchen_strict_close
       FROM vendors WHERE id = $1 LIMIT 1`,
     [vendor.id]
   );

@@ -488,8 +488,8 @@ export default function ComandaKDS({ vendorId, vendorName, accessToken, prepTime
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
-  // On/off "Exigir tildado" (persistido por comercio; default true = estricto).
-  const [strictClose, setStrictClose] = useState(true);
+  // On/off "Exigir tildado" (persistido por comercio; default false = libre).
+  const [strictClose, setStrictClose] = useState(false);
   const [strictSaving, setStrictSaving] = useState(false);
   const [pullDistance, setPullDistance] = useState(0);
   const [refreshing, setRefreshing] = useState(false);

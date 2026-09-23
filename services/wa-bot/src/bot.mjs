@@ -1,6 +1,6 @@
 import { config } from "./config.mjs";
 import { getState, setState, clearState } from "./state.mjs";
-import { getMenu, matchProduct, menuSummary } from "./menu.mjs";
+import { getMenu, getMenuSync, matchProduct, menuSummary } from "./menu.mjs";
 import { parseWithLlm, parseByRules } from "./nlu.mjs";
 
 const DEFAULT_STATE = {
@@ -123,6 +123,17 @@ export async function handleInbound({ vendor, waId, body }) {
 
   } catch (e) {
     console.error("[bot] error:", e?.message, "|", e?.stack?.split("\n")[1]);
+    const msg = String(e?.message || "");
+    // Errores de negocio del API de pedidos (mensajes ya amigables: comercio
+    // cerrado, tope del plan, modificador inexistente, stock, pack) → mostrar
+    // tal cual: "Uy, hubo un error" genérico hacía que el cliente no entienda
+    // por qué su "sí" no confirmaba. El estado NO se limpia: puede corregir.
+    if (msg && !/fetch|network|timeout|ENOTFOUND|ECONNREFUSED|EAI_AGAIN|etag/i.test(msg)) {
+      const fixHint = state.step === "confirm"
+        ? "\n\nEscribí qué querés cambiar del pedido, o *cancelar* y arrancamos de nuevo."
+        : "";
+      return { replies: [`${msg}${fixHint}`] };
+    }
     // No limpiar el state: un error transitorio no debe resetear el pedido.
     return { replies: ["Uy, hubo un error. Mandame el mensaje de nuevo en un segundo. 🙏"] };
   }
@@ -209,14 +220,25 @@ async function handleStep({ vendor, text, state, replies, waId }) {
       replies.push("Dale, lo cancelamos. Cuando quieras retomamos. 👍");
       return;
     }
-    // Corrección: el cliente pide cambiar algo → re-parsear y actualizar el resumen.
+// Corrección: el cliente pide cambiar algo → re-parsear y actualizar el resumen.
+    // También se aplican cambios de método/dirección/nombre/pago (antes solo
+    // re-parseaba items: "mejor lo retiro" o "ahora efectivo" en el confirm
+    // se ignoraban con el mensaje genérico).
     const products = await getMenu(vendor.id);
     const parsed = enrichParsed(
       products,
       (await parseWithLlm(t, products, llmCtx(state, vendor)).catch(() => null)) || parseByRules(t, products)
     );
+    let changed = false;
+    if (parsed?.method && parsed.method !== state.method) { state.method = parsed.method; changed = true; }
+    if (parsed?.customerAddress && parsed.customerAddress !== state.customerAddress) { state.customerAddress = parsed.customerAddress; changed = true; }
+    if (parsed?.customerName && parsed.customerName !== state.customerName) { state.customerName = parsed.customerName; changed = true; }
+    if (parsed?.payment && parsed.payment !== state.payment) { state.payment = parsed.payment; changed = true; }
     if (parsed?.items?.length) {
       applyParsed(state, parsed, waId);
+      changed = true;
+    }
+    if (changed) {
       advanceAndAsk(state, vendor, replies);
       return;
     }
@@ -292,7 +314,7 @@ async function handleStep({ vendor, text, state, replies, waId }) {
     const still = missingFields(state, vendor);
     if (still.length === 0) {
       state.step = "confirm";
-      replies.push(summaryText(state));
+      replies.push(summaryText(state, vendor));
       return;
     }
     replies.push(pendingQuestions(state));
@@ -344,9 +366,9 @@ function advanceAndAsk(state, vendor, replies) {
   const missing = missingFields(state, vendor);
 
   if (missing.length === 0) {
-    // Todo completo: resumen + confirmación.
+    // Todo completo: resumen (con total estimado) + confirmación.
     state.step = "confirm";
-    replies.push(summaryText(state));
+    replies.push(summaryText(state, vendor));
     return;
   }
 
@@ -378,21 +400,78 @@ function pendingQuestions(state) {
   return `${cart}${questions}Respondé todo junto en un mensaje (ej: *"envío a calle 5 123, Juan, transferencia"*), o de a una cosa. 👇`;
 }
 
-function summaryText(state) {
+function summaryText(state, vendor) {
   const lines = state.items.map((i) => `• ${i.name} ×${i.qty}`);
   const method = state.method === "delivery" ? `🛵 Envío a ${state.customerAddress}` : "🏬 Retiro en el local";
   const payment =
     state.payment === "transferencia" ? "🏦 Transferencia" :
     state.payment === "efectivo" ? "💵 Efectivo" : "💳 Coordinamos por WhatsApp";
+  const estimate = orderTotalEstimate(state, vendor);
+  const totalLine = estimate.total != null
+    ? `💰 Total: $${Math.round(estimate.total).toLocaleString("es-AR")}${estimate.aprox ? " (aprox)" : ""}`
+    : "";
   return [
     "✅ Tu pedido:",
     lines.join("\n"),
     "",
     `${method} · ${payment}`,
     state.customerName ? `Nombre: ${state.customerName}` : "",
+    totalLine,
     "",
     "¿Todo bien? Contestá *sí* para confirmar o *no* para cambiarlo.",
   ].filter(Boolean).join("\n");
+}
+
+/** Estimación del total con los precios del menú (promo-aware) + modificadores
+ *  + envío + descuento en efectivo. El server recomputa el total EXACTO al
+ *  crear el pedido (autoritativo) — acá es para que el cliente vea cuánto sale
+ *  ANTES de confirmar. Con modificadores marca "(aprox)". */
+function orderTotalEstimate(state, vendor) {
+  try {
+    const products = getMenuSync(vendor.id);
+    let subtotal = 0;
+    let hasMods = false;
+    let incomplete = false;
+    let modsUnknown = false;
+    for (const i of state.items) {
+      const p = products.find((x) => String(x.id) === String(i.offerId));
+      if (!p || p.price == null) { incomplete = true; continue; }
+      let unit = Number(p.price);
+      const mods = Array.isArray(i.modifiers) ? i.modifiers : [];
+      if (mods.length) {
+        hasMods = true;
+        const modPrice = new Map();
+        for (const g of p.modifiers || []) {
+          for (const o of Array.isArray(g.options) ? g.options : []) {
+            const label = String(o?.label ?? "").trim();
+            if (label) modPrice.set(label, Number(o?.price_mod ?? 0) || 0);
+          }
+        }
+        for (const m of mods) {
+          const label = typeof m === "string" ? m : m?.label;
+          if (!label) continue;
+          const mp = modPrice.get(String(label));
+          if (mp == null) modsUnknown = true;
+          else unit += mp;
+        }
+      }
+      subtotal += unit * i.qty;
+    }
+    let total = subtotal;
+    if (state.method === "delivery") {
+      const fee = Number(vendor?.delivery_fee) || 0;
+      const freeMin = Number(vendor?.free_delivery_min) || 0;
+      if (fee > 0 && !(freeMin > 0 && subtotal >= freeMin)) total += fee;
+    }
+    if (state.payment === "efectivo") {
+      const pct = Number(vendor?.cash_discount_pct) || 0;
+      if (pct > 0) total = Math.round(total * (100 - pct)) / 100;
+    }
+    return { total: Math.round(total * 100) / 100, aprox: hasMods || modsUnknown || incomplete };
+  } catch (e) {
+    console.error("[bot] estimate err:", e?.message || e);
+    return { total: null, aprox: false };
+  }
 }
 
 function shortReGreet(state, vendor) {

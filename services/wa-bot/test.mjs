@@ -11,6 +11,7 @@ const MOCK_MENU = {
 
 let lastOrderBody = null;
 let orderCalls = 0;
+let orderFail = null; // { status, error } para simular errores de negocio
 const realFetch = globalThis.fetch;
 globalThis.fetch = async (url, opts) => {
   const u = String(url);
@@ -18,6 +19,7 @@ globalThis.fetch = async (url, opts) => {
   if (u.includes("/api/wa/order")) {
     orderCalls++;
     lastOrderBody = JSON.parse(opts?.body || "{}");
+    if (orderFail) return { ok: false, status: orderFail.status, json: async () => orderFail };
     return { ok: true, json: async () => ({ ok: true, orderId: "ord-123", total: 4400 }) };
   }
   if (u.includes("/api/wa/handoff")) return { ok: true, json: async () => ({ ok: true }) };
@@ -31,6 +33,9 @@ const vendor = {
   enabled: true,
   transfer_alias: "chesancho.mp",
   transfer_cbu: null,
+  delivery_fee: 500,
+  free_delivery_min: 5000,
+  cash_discount_pct: 10,
 };
 
 const wa = "5491134567890";
@@ -74,6 +79,12 @@ async function main() {
   r = await handleInbound({ vendor, waId: wa, body: "efectivo" });
   show("pago efectivo", r);
   if (!(r.replies || []).join(" ").includes("Todo bien")) { console.log("!!! pago no llevó al resumen de confirm"); ok = false; }
+  // Total estimado en el resumen: empanada 1200×2 + coca 1000×1 = 3400,
+  // + envío 500 (subtotal < free_delivery_min 5000) = 3900, -10% efectivo = 3510.
+  const totalTxt = (r.replies || []).join(" ");
+  if (!totalTxt.includes("Total: $")) { console.log("!!! el resumen no muestra el total"); ok = false; }
+  else if (!totalTxt.includes("3.510")) { console.log("!!! el total estimado no cuadra (esperado $3.510 con envío y descuento): " + (totalTxt.match(/Total: \$[\d.]+/) || ["?"])[0]); ok = false; }
+  else { console.log(">>> OK: total estimado $3.510 (items + envío − 10% efectivo)"); }
 
   // "sí" con TODO completo → confirmar → crear pedido (antes el "sí" se comía
   // como nombre; y antes aun /api/wa/order fallaba por falta de offerId).
@@ -86,6 +97,20 @@ async function main() {
   show("sí después de confirmar (debe ignorarse)", r);
   const afterConfirm = (r.replies || []).join(" ");
   if (afterConfirm.includes("Pedido confirmado")) { console.log("!!! Re-confirmó el pedido (estado zombie)"); ok = false; }
+
+  console.log("\n--- ESC: error de negocio al confirmar → mensaje claro ---");
+  r = await handleInbound({ vendor, waId: wa, body: "quiero 1 coca, retiro" });
+  show("pedido", r);
+  r = await handleInbound({ vendor, waId: wa, body: "Juana" });
+  r = await handleInbound({ vendor, waId: wa, body: "efectivo" });
+  orderFail = { status: 409, error: "El comercio está cerrado en este momento. Probá cuando abra o escribile por WhatsApp." };
+  r = await handleInbound({ vendor, waId: wa, body: "sí" });
+  show("sí con comercio cerrado", r);
+  const errTxt = (r.replies || []).join(" ");
+  if (!errTxt.includes("cerrado")) { console.log("!!! el error de negocio no se muestra tal cual: " + errTxt.slice(0, 120)); ok = false; }
+  else if (errTxt.includes("Uy, hubo un error")) { console.log("!!! cayó al genérico en vez del mensaje de negocio"); ok = false; }
+  else { console.log(">>> OK: error de negocio visible (el cliente sabe por qué no confirmó)"); }
+  orderFail = null;
 
   console.log('\n--- ESC: "cambiar método" en el flujo (delivery→retiro) ---');
   r = await handleInbound({ vendor, waId: wa, body: "quiero 1 coca, envío a saavedra 800" });

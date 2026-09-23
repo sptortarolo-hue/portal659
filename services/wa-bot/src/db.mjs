@@ -32,7 +32,8 @@ export async function vendorByToken(token) {
   if (!token) return null;
   return queryOne(
     `SELECT v.id, v.store_name, v.slug, v.vertical, vb.wa_phone, vb.enabled, vb.status,
-            v.transfer_alias, v.transfer_cbu, v.transfer_holder
+            v.transfer_alias, v.transfer_cbu, v.transfer_holder,
+            v.delivery_fee, v.free_delivery_min, v.cash_discount_pct
      FROM vendor_wa_bots vb
      JOIN vendors v ON v.id = vb.vendor_id
      WHERE vb.token = $1 LIMIT 1`,

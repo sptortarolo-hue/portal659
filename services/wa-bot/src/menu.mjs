@@ -25,6 +25,13 @@ export async function getMenu(vendorId) {
   }
 }
 
+/** Versión sync que lee SOLO el cache (poblado por getMenu en la conversación).
+ *  Para el total estimado del resumen: si no hay cache, devuelve [] (sin total). */
+export function getMenuSync(vendorId) {
+  const hit = cache.get(vendorId);
+  return hit?.products || [];
+}
+
 /** Mapea un nombre libre a un producto del menú. Mejorado con stem + "contains" para typos/variantes. */
 export function matchProduct(products, name) {
   const n = normalizeForMatch(name);

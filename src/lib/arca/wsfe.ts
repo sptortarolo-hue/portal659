@@ -46,17 +46,32 @@ function soapFetch(url: string, body: string, action: string): Promise<string> {
     .finally(() => clearTimeout(timeout));
 }
 
+/** Tag tolerante a namespaces/prefijos (<ns:Tag>, <Tag x=...>). */
 function tag(xml: string, name: string): string | null {
-  return xml.match(new RegExp(`<${name}>([\\s\\S]*?)<\\/${name}>`))?.[1]?.trim() ?? null;
+  return (
+    xml
+      .match(new RegExp(`<(?:\\w+:)?${name}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/(?:\\w+:)?${name}>`))?.[1]
+      ?.trim() ?? null
+  );
 }
 
-/** Extrae errores ARCA `<Err><Code>x</Code><Msg>y</Msg></Err>`. */
+/** Extrae errores ARCA `<Err><Code>x</Code><Msg>y</Msg></Err>` (tolera prefijos). */
 export function parseArcaErrors(xml: string): { code: string; msg: string }[] {
   const out: { code: string; msg: string }[] = [];
-  const re = /<Err>\s*<Code>([\s\S]*?)<\/Code>\s*<Msg>([\s\S]*?)<\/Msg>\s*<\/Err>/g;
+  const t = (n: string) => `(?:<\\w+:)?${n}(?:\\s[^>]*)?>`;
+  const c = (n: string) => `<\\/(?:\\w+:)?${n}>`;
+  const re = new RegExp(`${t("Err")}\\s*${t("Code")}([\\s\\S]*?)${c("Code")}\\s*${t("Msg")}([\\s\\S]*?)${c("Msg")}\\s*${c("Err")}`, "g");
   let m: RegExpExecArray | null;
   while ((m = re.exec(xml)) !== null) out.push({ code: m[1].trim(), msg: m[2].trim() });
   return out;
+}
+
+/** Extrae observaciones `<Obs><Code>x</Code><Msg>y</Msg></Obs>` (tolera prefijos). */
+function parseArcaObs(xml: string): string[] {
+  const t = (n: string) => `(?:<\\w+:)?${n}(?:\\s[^>]*)?>`;
+  const c = (n: string) => `<\\/(?:\\w+:)?${n}>`;
+  const re = new RegExp(`${t("Obs")}\\s*${t("Code")}[\\s\\S]*?${c("Code")}\\s*${t("Msg")}([\\s\\S]*?)${c("Msg")}\\s*${c("Obs")}`, "g");
+  return [...xml.matchAll(re)].map((m) => m[1].trim());
 }
 
 function authBlock(token: string, sign: string, cuit: string): string {
@@ -180,14 +195,14 @@ export async function solicitarCaeC(
     }
     const resultado = tag(xml, "Resultado");
     if (resultado === "R") {
-      const obs = [...xml.matchAll(/<Obs>\s*<Code>[\s\S]*?<\/Code>\s*<Msg>([\s\S]*?)<\/Msg>\s*<\/Obs>/g)].map((m) => m[1].trim());
-      throw new ArcaError(`ARCA rechazó el comprobante${obs[0] ? `: ${obs[0]}` : ""}`, xml.slice(0, 500));
+      const obs = parseArcaObs(xml);
+      throw new ArcaError(`ARCA rechazó el comprobante${obs[0] ? `: ${obs[0]}` : ""}`, redactXml(xml).slice(0, 1500));
     }
     const cae = tag(xml, "CAE");
     const caeVto = tag(xml, "CAEFchVto");
     const cbte = tag(xml, "CbteDesde");
-    if (!cae || !caeVto) throw new ArcaError("ARCA no devolvió CAE", xml.slice(0, 500));
-    const observaciones = [...xml.matchAll(/<Obs>\s*<Code>[\s\S]*?<\/Code>\s*<Msg>([\s\S]*?)<\/Msg>\s*<\/Obs>/g)].map((m) => m[1].trim());
+    if (!cae || !caeVto) throw new ArcaError("ARCA no devolvió CAE", redactXml(xml).slice(0, 1500));
+    const observaciones = parseArcaObs(xml);
     return {
       cbteNro: cbte ? Number(cbte) : input.cbteNro,
       cae,

@@ -49,7 +49,7 @@ function soapFetch(url: string, body: string, action: string): Promise<string> {
         // vencido, CMS inválido...). Va en el mensaje para que salga en
         // los logs [fiscal]; no contiene secretos. El cuerpo se redacta
         // (sin token/sign) para diagnóstico completo.
-        const fault = text.match(/<faultstring>([\s\S]*?)<\/faultstring>/)?.[1]?.trim().slice(0, 200);
+        const fault = faultString(text)?.slice(0, 200);
         throw new ArcaError(`WSAA HTTP ${res.status}${fault ? `: ${fault}` : ""}`, redactXml(text).slice(0, 1500));
       }
       return text;
@@ -82,6 +82,15 @@ export function redactXml(xml: string): string {
   return xml.replace(
     /<(?:\w+:)?(token|sign)(?:\s[^>]*)?>[\s\S]*?<\/(?:\w+:)?\1>/gi,
     "<$1>···</$1>"
+  );
+}
+
+/** faultstring tolerante a prefijos de namespace. */
+export function faultString(xml: string): string | null {
+  return (
+    xml
+      .match(/<(?:\w+:)?faultstring(?:\s[^>]*)?>([\s\S]*?)<\/(?:\w+:)?faultstring>/)?.[1]
+      ?.trim() ?? null
   );
 }
 
@@ -198,7 +207,7 @@ function parseLoginResponse(xml: string): { token: string; sign: string } {
   const token = xml.match(/<(?:\w+:)?token(?:\s[^>]*)?>([\s\S]*?)<\/(?:\w+:)?token>/)?.[1]?.trim();
   const sign = xml.match(/<(?:\w+:)?sign(?:\s[^>]*)?>([\s\S]*?)<\/(?:\w+:)?sign>/)?.[1]?.trim();
   if (!token || !sign) {
-    const fault = xml.match(/<faultstring>([\s\S]*?)<\/faultstring>/)?.[1]?.trim();
+    const fault = faultString(xml);
     if (fault?.includes("coe.alreadyAuthenticated")) {
       throw new ArcaError("ARCA: login duplicado en curso (reintentá en unos segundos)", fault);
     }
@@ -278,12 +287,17 @@ export async function getWsaaTicket(
   const job = (async (): Promise<WsaaTicket> => {
     const tra = buildTra("wsfe");
     const cms = signTra(tra, certPem, keyPem);
+    // Namespace EXACTO del WSDL oficial (wsaahomo...?wsdl): con el viejo
+    // (...dvadac.dgr...) WSAA responde "no se ha podido interpretar el XML
+    // contra el SCHEMA". Estilo default-ns como los ejemplos publicados.
     const envelope =
-      `<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" ` +
-      `xmlns:wsaa="http://wsaa.view.sua.dvadac.dgr.afip.gov">` +
-      `<soapenv:Header/><soapenv:Body><wsaa:loginCms><wsaa:in0>${cms}</wsaa:in0>` +
-      `</wsaa:loginCms></soapenv:Body></soapenv:Envelope>`;
-    const xml = await soapFetch(WSAA_URL[env], envelope, "loginCms");
+      `<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">` +
+      `<soapenv:Header/><soapenv:Body>` +
+      `<loginCms xmlns="http://wsaa.view.sua.dvadac.desein.afip.gov">` +
+      `<in0>${cms}</in0></loginCms>` +
+      `</soapenv:Body></soapenv:Envelope>`;
+    // El WSDL declara soapAction="" para loginCms.
+    const xml = await soapFetch(WSAA_URL[env], envelope, "");
     const { token, sign } = parseLoginResponse(xml);
     const ticket: WsaaTicket = { token, sign, expiresAtMs: Date.now() + TOKEN_TTL_MS };
     ticketCache.set(cacheKey, ticket);

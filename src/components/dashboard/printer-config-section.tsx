@@ -267,7 +267,7 @@ export function PrinterConfigSection({
               </summary>
 
               <a
-                href="/downloads/portal-print.apk"
+                href="/downloads/portal-print.apk?v=2"
                 download="portal-print.apk"
                 className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-primary text-primary-foreground px-4 py-2.5 text-sm font-semibold hover:bg-primary/90 active:scale-[0.98] transition-all"
               >

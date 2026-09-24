@@ -346,6 +346,7 @@ function VendorDashboardInner() {
           // Repartidores no operan offline (su vista exige servidor).
           if (snap?.vendor && (snap.staffRole ?? null) !== "delivery") {
             setVendor(snap.vendor as unknown as Vendor);
+            if (snap.staffRole) setStaffRole(snap.staffRole as "owner" | "delivery");
             if (Array.isArray(snap.plans) && snap.plans.length > 0) {
               setPlans(snap.plans as unknown as Plan[]);
             }
@@ -417,9 +418,10 @@ function VendorDashboardInner() {
       saveVendorSnapshot(vendor.id, {
         vendor: vendor as unknown as Record<string, any>,
         plans: plans as unknown as Record<string, any>[],
+        staffRole: staffRole ?? null,
       }).catch(() => {});
     }
-  }, [vendor, plans]);
+  }, [vendor, plans, staffRole]);
   // Protección multi-usuario: al cambiar de comercio (logout/login con otro
   // usuario, impersonación admin) se evictan las cachés de lectura del
   // anterior. El outbox/prints pendientes SE PRESERVA (clearVendorData no lo
@@ -1487,8 +1489,10 @@ function VendorDashboardInner() {
               {mountedTabs.has("comanda") && (
                 <div className={tab === "comanda" ? "" : "hidden"}>
                   {effectivePlan.can("kds") ? (
-                    accessToken && vendor && (
-                      <MemoComandaKDS vendorId={vendor.id} vendorName={vendor.store_name} accessToken={accessToken} prepTimeMin={vendor.prep_time_min ?? null} />
+                    // Sin red tras bootstrap (F6) no hay token: igual se monta
+                    // (sus fetch fallan suave y el ledger local mergea).
+                    ((accessToken || bootstrappedAt) && vendor) && (
+                      <MemoComandaKDS vendorId={vendor.id} vendorName={vendor.store_name} accessToken={accessToken ?? ""} prepTimeMin={vendor.prep_time_min ?? null} />
                     )
                   ) : (
                     <PlanLock

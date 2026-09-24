@@ -698,6 +698,14 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
       await goOfflineClose();
       return;
     }
+    // Con consumiciones pendientes offline, el cierre online directo las
+    // dejaría afuera (el servidor solo ve lo suyo) y al sincronizar
+    // reabrirían la mesa como cuenta fantasma. Se encola el cierre con
+    // expected_keys: online se sincroniza al instante por el trigger.
+    if (adds.length > 0) {
+      await goOfflineClose();
+      return;
+    }
     let res: Response;
     try {
       res = await fetch(`/api/vendor/tables/${tableId}/close`, {
@@ -782,7 +790,18 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
     }
     const items = [
       ...openOrders.flatMap((o) => (o.items || [])),
-      ...tableAdds.flatMap((a) => (a.items || [])),
+      // Consumiciones offline: normalizar modificadores a labels (vienen
+      // como objetos del carrito; el motor térmico espera strings).
+      ...tableAdds.flatMap((a) =>
+        (a.items || []).map((i: any) => ({
+          name: i.name,
+          price: i.price,
+          qty: i.qty,
+          modifiers: Array.isArray(i.modifiers)
+            ? i.modifiers.map((m: any) => (typeof m === "string" ? m : String(m?.label || ""))).filter(Boolean)
+            : [],
+        }))
+      ),
       ...cart.map((i) => ({
         name: i.name,
         price: i.price,

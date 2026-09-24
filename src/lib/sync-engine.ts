@@ -270,6 +270,27 @@ export async function syncOutbox(vendorId: string): Promise<SyncSummary> {
           summary.dead++;
           summary.failed++;
           if (summary.errors.length < 3) summary.errors.push(msg);
+          // Cascada: las acciones que dependían de este localId (ej. avances
+          // de cocina de un pedido que nunca se creó) nunca van a resolverse:
+          // se marcan muertas con el motivo para que el visor las muestre.
+          if (a.localId) {
+            try {
+              const rest = await outboxList(vendorId);
+              for (const d of rest) {
+                if (d.id == null || (d.attempts || 0) >= OUTBOX_MAX_ATTEMPTS) continue;
+                if ((d.payload as any)?.__afterLocalId === a.localId) {
+                  await outboxUpdate(d.id, {
+                    attempts: OUTBOX_MAX_ATTEMPTS,
+                    lastError: `Origen sin sincronizar: ${msg}`,
+                  });
+                  summary.dead++;
+                  summary.failed++;
+                }
+              }
+            } catch {
+              /* noop */
+            }
+          }
           progressed = true;
           emitOutboxChanged();
           continue;

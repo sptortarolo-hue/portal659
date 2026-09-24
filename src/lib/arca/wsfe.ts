@@ -20,8 +20,8 @@ function soapFetch(
   action: string,
   opts: { retryNetwork?: boolean } = {}
 ): Promise<string> {
-  // Ver wsaa.ts: 15s por llamada + conexión fresca (reelige backend) +
-  // reintento ante xml.bad (el XML no se procesó: seguro repetir).
+  // 25s por llamada (homo se pone lento a ratos) + conexión fresca (reelige
+  // backend) + reintento ante xml.bad (el XML no se procesó: seguro repetir).
   // `retryNetwork`: solo en lecturas (último/consultar). En solicitar NO:
   // un timeout con resultado ambiguo + retry podría duplicar el CAE
   // (para eso ya existe el recupero 10016 + consultar).
@@ -29,7 +29,7 @@ function soapFetch(
   const retryNetwork = opts.retryNetwork === true;
   const run = (attempt: number): Promise<string> => {
     const ac = new AbortController();
-    const timeout = setTimeout(() => ac.abort(), 15000);
+    const timeout = setTimeout(() => ac.abort(), 25000);
     return fetch(url, {
       method: "POST",
       headers: {
@@ -55,11 +55,19 @@ function soapFetch(
           e instanceof ArcaError
             ? (e as { xmlBad?: boolean }).xmlBad === true
             : retryNetwork;
-        if (retryable && attempt < MAX_ATTEMPTS) return run(attempt + 1);
+        if (retryable && attempt < MAX_ATTEMPTS) {
+          // Backend que atendió (ns3:hostname) para ver la rotación en logs.
+          const host =
+            e instanceof ArcaError
+              ? (e.detail || "").match(/hostname[^>]*>([^<]*)</)?.[1] || "?"
+              : "?";
+          console.log(`[fiscal] wsfe att=${attempt} backend=${host} reintenta (${action.split("/").pop()})`);
+          return run(attempt + 1);
+        }
         if (e instanceof ArcaError) throw e;
         const msg = e instanceof Error ? e.message : String(e);
         if (e instanceof Error && (e.name === "AbortError" || /abort/i.test(msg))) {
-          throw new ArcaError("ARCA no respondió en 15s (facturación)");
+          throw new ArcaError("ARCA no respondió en 25s (facturación)");
         }
         throw new ArcaError(`Sin conexión a ARCA (${msg.slice(0, 120)})`);
       })
@@ -89,7 +97,7 @@ export function parseArcaErrors(xml: string): { code: string; msg: string }[] {
 }
 
 /** Extrae observaciones `<Obs><Code>x</Code><Msg>y</Msg></Obs>` (tolera prefijos). */
-function parseArcaObs(xml: string): string[] {
+export function parseArcaObs(xml: string): string[] {
   const t = (n: string) => `(?:<\\w+:)?${n}(?:\\s[^>]*)?>`;
   const c = (n: string) => `<\\/(?:\\w+:)?${n}>`;
   const re = new RegExp(`${t("Obs")}\\s*${t("Code")}[\\s\\S]*?${c("Code")}\\s*${t("Msg")}([\\s\\S]*?)${c("Msg")}\\s*${c("Obs")}`, "g");

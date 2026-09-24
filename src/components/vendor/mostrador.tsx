@@ -608,7 +608,8 @@ export function Mostrador({ vendorId }: { vendorId?: string | null }) {
               `${baseMsg} · 🧾 Factura C ${String(inv.punto_venta).padStart(4, "0")}-${String(inv.cbte_nro).padStart(8, "0")} (CAE …${String(inv.cae).slice(-4)})`
             );
           } else if (fdata.error) {
-            setMsg(`${baseMsg} · ⚠️ Cobrado sin fiscal: ${fdata.error} (reintentá desde Config → Fiscal)`);
+            const hint = fdata.hint ? ` 💡 ${fdata.hint}` : "";
+            setMsg(`${baseMsg} · ⚠️ Cobrado sin fiscal: ${fdata.error}${hint} (reintentá desde Config → Fiscal)`);
           } else {
             // Respuesta vacía: el proxy cortó antes de que el portal
             // contestara (ARCA lento) o el portal no llegó a responder.

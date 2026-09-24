@@ -5,6 +5,7 @@ import { decryptFiscalSecret, isValidCuit } from "@/lib/arca/crypto";
 import { ArcaError } from "@/lib/arca/wsaa";
 import { explainArcaFault } from "@/lib/arca/faults";
 import { emitirFacturaC } from "@/lib/arca/emit";
+import { parseArcaObs } from "@/lib/arca/wsfe";
 import type { Order, Plan, Vendor } from "@/types/database";
 import { NextResponse } from "next/server";
 
@@ -131,9 +132,13 @@ export async function POST(request: Request) {
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Error de ARCA";
     const code = e instanceof ArcaError ? "arca_error" : "fiscal_error";
-    const detail = e instanceof ArcaError ? (e.detail || "").slice(0, 800) : "";
+    // Detail largo: incluye las <Observaciones> completas del rechazo (R).
+    const detail = e instanceof ArcaError ? (e.detail || "").slice(0, 4000) : "";
     flog("error", `${code}: ${msg.slice(0, 200)}${detail && !msg.includes(detail.slice(0, 40)) ? ` | ${detail}` : ""}`);
     const hint = explainArcaFault(msg);
-    return NextResponse.json({ error: msg, code, ...(hint ? { hint } : {}) }, { status: 502 });
+    // Obs parseadas aparte para la UI (lista completa, no solo la primera).
+    const obs = e instanceof ArcaError ? parseArcaObs(e.detail || "") : [];
+    const fullMsg = obs.length > 0 ? `${msg} (${obs.join(" | ").slice(0, 500)})` : msg;
+    return NextResponse.json({ error: fullMsg, code, ...(hint ? { hint } : {}) }, { status: 502 });
   }
 }

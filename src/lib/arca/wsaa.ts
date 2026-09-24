@@ -71,10 +71,10 @@ function soapFetch(url: string, body: string, action: string): Promise<string> {
   // 15s por llamada. `Connection: close` fuerza conexión fresca por intento:
   // ARCA balancea entre varios backends (wsaaext0, wsaaext1...) y el pool
   // keep-alive puede dejar clavado un backend roto; cada intento reelige.
-  // Reintentos (máx 3): xml.bad (no se procesó nada) y fallos de red/timeout.
+  // Reintentos (máx 2): xml.bad (no se procesó nada) y fallos de red/timeout.
   // Para login es seguro: en el peor caso ARCA responde "ya posee TA" y se
   // informa sin loopear.
-  const MAX_ATTEMPTS = 3;
+  const MAX_ATTEMPTS = 2;
   const run = (attempt: number): Promise<string> => {
     const ac = new AbortController();
     const timeout = setTimeout(() => ac.abort(), 15000);
@@ -114,7 +114,14 @@ function soapFetch(url: string, body: string, action: string): Promise<string> {
           e instanceof ArcaError
             ? (e as { xmlBad?: boolean }).xmlBad === true
             : true; // red/timeout: reintentar (login no duplica nada)
-        if (retryable && attempt < MAX_ATTEMPTS) return run(attempt + 1);
+        if (retryable && attempt < MAX_ATTEMPTS) {
+          const host =
+            e instanceof ArcaError
+              ? (e.detail || "").match(/hostname[^>]*>([^<]*)</)?.[1] || "?"
+              : "?";
+          console.log(`[fiscal] wsaa att=${attempt} backend=${host} reintenta`);
+          return run(attempt + 1);
+        }
         if (e instanceof ArcaError) throw e;
         const msg = e instanceof Error ? e.message : String(e);
         if (e instanceof Error && (e.name === "AbortError" || /abort/i.test(msg))) {

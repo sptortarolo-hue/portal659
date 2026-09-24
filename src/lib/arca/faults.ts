@@ -15,6 +15,9 @@ export function explainArcaFault(message: string): string | null {
   if (m.includes("ya posee") || (m.includes("posee") && m.includes("ta "))) {
     return "ARCA indica que ya hay un ticket válido vigente (login reciente, reinicio del portal u otro sistema con el mismo CUIT): no emite otro hasta su vencimiento (máx. 12 h). Reintentá más tarde; una vez obtenido, el portal lo reutiliza solo.";
   }
+  if (m.includes("no respondió en") || m.includes("sin conexión")) {
+    return "ARCA está lento o caído (homo se cae seguido): reintentá en unos minutos. El cobro ya quedó registrado, la factura se puede emitir después sin duplicar.";
+  }
   if (
     m.includes("no autorizado") ||
     m.includes("not authorized") ||

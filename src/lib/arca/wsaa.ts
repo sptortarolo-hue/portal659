@@ -165,11 +165,11 @@ function buildTra(service: string): string {
   // y el TRA quedaba 3h en el futuro → WSAA lo rechazaba con HTTP 500.
   const fmt = (d: Date) =>
     new Date(d.getTime() - 3 * 3600 * 1000).toISOString().replace(/\.\d+Z$/, "-03:00");
-  // Único por llamada (ms + azar): dos logins en el mismo segundo con el
-  // mismo uniqueId pueden leerse como replay del lado de ARCA.
-  const uniqueId = `${now}${Math.floor(Math.random() * 1000)
-    .toString()
-    .padStart(3, "0")}`;
+  // Segundos (10 dígitos), como pyafipws y el manual oficial. NO usar ms ni
+  // azar: el TRA tiene schema propio en ARCA y el uniqueId largo (16
+  // dígitos) gatilla "No se ha podido interpretar el XML contra el SCHEMA".
+  // La colisión mismo-segundo la maneja WSAA con coe.alreadyAuthenticated.
+  const uniqueId = Math.floor(now / 1000);
   return (
     `<?xml version="1.0" encoding="UTF-8"?>` +
     `<loginTicketRequest version="1.0">` +

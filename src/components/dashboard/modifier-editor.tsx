@@ -73,6 +73,10 @@ function GroupForm({
         label: o.label.trim(),
         price_mod: Number(o.price_mod) || 0,
         ...(String(o.category ?? "").trim() ? { category: String(o.category).trim().slice(0, 40) } : {}),
+        // El pausado (👁/🚫) tiene que sobrevivir al guardado: si se pierde
+        // acá, el gusto vuelve a mostrarse en la venta (misma normalización
+        // que hace el servidor en /api/vendor/modifiers).
+        ...(o.available === false ? { available: false } : {}),
       }))
       .filter((o) => o.label !== "");
     if (!name.trim()) return setError("Indicá el nombre del grupo");
@@ -320,12 +324,13 @@ export function HeladeriaKitCard({ onDone }: { onDone?: () => void }) {
   }
 
   const priceInput = (k: keyof typeof prices, label: string) => (
-    <div>
+    <div className="min-w-0">
       <Label className="text-xs text-muted-foreground">{label}</Label>
       <Input
         type="number"
         min={0}
         step="0.01"
+        inputMode="decimal"
         value={prices[k]}
         onChange={(e) => setP(k, e.target.value)}
         placeholder="$"
@@ -344,29 +349,34 @@ export function HeladeriaKitCard({ onDone }: { onDone?: () => void }) {
         Crea los tamaños con venta directa (sin cocina) y un único grupo “Gustos” con 28 sabores
         iniciales. La cantidad por tamaño se configura acá y queda editable por producto después.
       </p>
-      <div className="grid grid-cols-3 gap-2">
-        {priceInput("cuarto", "1/4 kg $")}
-        {priceInput("medio", "1/2 kg $")}
-        {priceInput("kilo", "1 kg $")}
-      </div>
-      <div className="grid grid-cols-3 gap-2">
+      {/* Un bloque por tamaño: en mobile apilan a ancho completo, en
+          desktop quedan 3 grupos alineados en vez de 6 inputs en una fila. */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
         {(["cuarto", "medio", "kilo"] as const).map((k) => (
-          <div key={k} className="flex gap-1">
-            <div className="flex-1">
-              <Label className="text-xs text-muted-foreground">Mín {k === "cuarto" ? "1/4" : k === "medio" ? "1/2" : "1kg"}</Label>
-              <Input
-                type="number" min={0} max={8} value={mins[k]}
-                onChange={(e) => setMins((p) => ({ ...p, [k]: e.target.value }))}
-                className="mt-1" title="Mínimo de gustos"
-              />
-            </div>
-            <div className="flex-1">
-              <Label className="text-xs text-muted-foreground">Máx</Label>
-              <Input
-                type="number" min={1} max={8} value={maxs[k]}
-                onChange={(e) => setMaxs((p) => ({ ...p, [k]: e.target.value }))}
-                className="mt-1" title="Máximo de gustos"
-              />
+          <div key={k} className="rounded-lg border border-border p-2.5 space-y-2 min-w-0">
+            <p className="text-xs font-semibold">
+              {k === "cuarto" ? "1/4 kg" : k === "medio" ? "1/2 kg" : "1 kg"}
+            </p>
+            {priceInput(k, "Precio $")}
+            <div className="grid grid-cols-2 gap-2">
+              <div className="min-w-0">
+                <Label className="text-xs text-muted-foreground">Mín gustos</Label>
+                <Input
+                  type="number" min={0} max={8} value={mins[k]}
+                  inputMode="numeric"
+                  onChange={(e) => setMins((p) => ({ ...p, [k]: e.target.value }))}
+                  className="mt-1" title="Mínimo de gustos"
+                />
+              </div>
+              <div className="min-w-0">
+                <Label className="text-xs text-muted-foreground">Máx gustos</Label>
+                <Input
+                  type="number" min={1} max={8} value={maxs[k]}
+                  inputMode="numeric"
+                  onChange={(e) => setMaxs((p) => ({ ...p, [k]: e.target.value }))}
+                  className="mt-1" title="Máximo de gustos"
+                />
+              </div>
             </div>
           </div>
         ))}
@@ -518,8 +528,10 @@ export function ModifierLibrary({ products, onChanged, enableHeladeriaKit = fals
               </div>
               <div className="flex flex-wrap gap-1 mt-2">
                 {(g.options || []).map((o, i) => (
-                  <span key={i} className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
+                  <span key={i} className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] ${o.available === false ? "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" : "bg-muted text-muted-foreground"}`}>
+                    {o.available === false && <span title="Pausado (oculto en la venta)">🚫</span>}
                     {o.label}
+                    {o.category ? <span className="opacity-70">· {o.category}</span> : null}
                     {o.price_mod !== 0 && <span className="text-primary">{o.price_mod > 0 ? `+$${o.price_mod}` : `$${o.price_mod}`}</span>}
                   </span>
                 ))}

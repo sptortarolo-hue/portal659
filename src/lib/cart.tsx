@@ -52,6 +52,8 @@ export type CartVolumeGroup = {
   combineCash: boolean;
   extrasIncluded: boolean;
   tiers: { minQty: number; kind: "fixed_total" | "percent_off"; value: number }[];
+  /** Nombres de los miembros (lo arma el server para mostrar "se combina con"). */
+  memberNames?: string[];
 };
 
 export type CartVendor = {

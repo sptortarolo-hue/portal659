@@ -22,6 +22,7 @@ import { ScrollToProduct } from "@/components/store/scroll-to-product";
 import { IrAComprarButton } from "@/components/store/ir-a-comprar-button";
 import { CategoryNav } from "@/components/store/category-nav";
 import { VolumeProgress } from "@/components/store/volume-progress";
+import { VolumeGroupBanner } from "@/components/store/volume-group-banner";
 import { WeeklyHours } from "@/components/store/weekly-hours";
 import { StickyStoreBar } from "@/components/store/sticky-store-bar";
 import { VendorShareButton } from "@/components/store/vendor-share-button";
@@ -255,6 +256,8 @@ export default async function TiendaPage({
   // Precios por volumen (solo gastro): grupos + tramos para badges y espejo.
   // Tolerante a tabla sin migrar.
   let volumeGroups: any[] = [];
+  // Nombres de productos para comunicar "se combina con" (Fase combinables).
+  const nameById = new Map((offers || []).map((o: any) => [String(o.id), String(o.name)]));
   if (isGastro) {
     try {
       const gRows: any[] = await queryMany<any>(
@@ -277,15 +280,19 @@ export default async function TiendaPage({
           });
         }
         volumeGroups = gRows
-          .map((g: any) => ({
-            id: g.id,
-            name: g.name,
-            productIds: Array.isArray(g.product_ids) ? g.product_ids.map(String) : [],
-            combinePromo: g.combine_promo === true,
-            combineCash: g.combine_cash === true,
-            extrasIncluded: g.extras_mode === "included",
-            tiers: tiersByGroup[g.id] || [],
-          }))
+          .map((g: any) => {
+            const ids = Array.isArray(g.product_ids) ? g.product_ids.map(String) : [];
+            return {
+              id: g.id,
+              name: g.name,
+              productIds: ids,
+              combinePromo: g.combine_promo === true,
+              combineCash: g.combine_cash === true,
+              extrasIncluded: g.extras_mode === "included",
+              tiers: tiersByGroup[g.id] || [],
+              memberNames: ids.map((id: string) => nameById.get(id)).filter(Boolean),
+            };
+          })
           .filter((g: any) => g.productIds.length > 0 && g.tiers.length > 0);
       }
     } catch {
@@ -653,6 +660,7 @@ export default async function TiendaPage({
             ) : (
               <>
                 {sections.length > 0 && <CategoryNav sections={sections} catalog={isCatalog} />}
+                {isGastro && acceptsCart && volumeGroups.length > 0 && <VolumeGroupBanner groups={volumeGroups} />}
                 {isGastro && acceptsCart && volumeGroups.length > 0 && <VolumeProgress groups={volumeGroups} />}
                 {sections.map((s, i) => (
                   <section key={s.name} id={`seccion-${i}`} className="mb-10 scroll-mt-[184px] sm:scroll-mt-24">

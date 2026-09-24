@@ -305,10 +305,17 @@ export function volumeBadgeText(
 ): string | null {
   const found = tiersForProduct(groups, offerId);
   if (!found) return null;
+  // Grupo multi-producto = combinable/surtido: se explicita para que el
+  // cliente entienda que mezcla con otros antes de agregar al carrito.
+  const mixed = (found.group.productIds || []).length > 1;
   const parts = found.tiers.slice(0, 2).map((t) =>
     t.kind === "fixed_total"
-      ? `Llevá ${t.minQty} y pagá ${fmtMoney(Number(t.value))}`
-      : `${t.minQty}+ con ${Number(t.value).toLocaleString("es-AR")}% off`
+      ? mixed
+        ? `${t.minQty} surtidos x ${fmtMoney(Number(t.value))}`
+        : `Llevá ${t.minQty} y pagá ${fmtMoney(Number(t.value))}`
+      : mixed
+        ? `${t.minQty}+ surtidos con ${Number(t.value).toLocaleString("es-AR")}% off`
+        : `${t.minQty}+ con ${Number(t.value).toLocaleString("es-AR")}% off`
   );
   return `📦 ${parts.join(" · ")}`;
 }

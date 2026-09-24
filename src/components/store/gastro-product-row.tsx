@@ -76,6 +76,7 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
   const [queries, setQueries] = useState<Record<string, string>>({});
   const [cats, setCats] = useState<Record<string, string | null>>({});
   const [hints, setHints] = useState<Record<string, string>>({});
+  const [showCombo, setShowCombo] = useState(false);
   const sheetBodyRef = useRef<HTMLDivElement | null>(null);
 
   // Al abrir una ficha CON opciones: la foto de 45vh las dejaba debajo del
@@ -138,6 +139,29 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
     })),
     product.id
   );
+  // Grupo de volumen de este producto (si combina con otros).
+  const volGroup =
+    (vendor.volumeGroups || []).find((g) =>
+      (g.productIds || []).map(String).includes(String(product.id))
+    ) || null;
+  const volOthers = (volGroup?.memberNames || []).filter((n) => n && n !== product.name);
+  const volTier = volGroup?.tiers?.[0];
+  const comboBox =
+    volGroup && volOthers.length > 0 ? (
+      <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
+        <p className="font-semibold">🧊 {volGroup.name}: se combinan entre sí</p>
+        <ul className="mt-1 space-y-0.5 list-disc list-inside">
+          {volOthers.map((n) => (
+            <li key={n}>{n}</li>
+          ))}
+        </ul>
+        {volTier && volTier.kind === "fixed_total" && (
+          <p className="mt-1 font-medium">
+            Sumá {volTier.minQty} entre todos y pagás ${Number(volTier.value).toLocaleString("es-AR")}
+          </p>
+        )}
+      </div>
+    ) : null;
 
   const modTotal = Object.values(selected)
     .flat()
@@ -210,7 +234,8 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
 
   // Desktop: fila compacta con botón directo (comportamiento actual).
   const desktopRow = (
-    <div className="hidden sm:flex border border-border rounded-xl p-4 bg-card items-start justify-between gap-4 hover:shadow-md transition-shadow scroll-mt-24">
+    <div className="hidden sm:block border border-border rounded-xl p-4 bg-card hover:shadow-md transition-shadow scroll-mt-24">
+      <div className="flex items-start justify-between gap-4">
       <div className="flex items-start gap-3 min-w-0">
         {product.image_url ? (
           <div className="h-20 w-20 rounded-xl overflow-hidden flex-shrink-0">
@@ -228,7 +253,12 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
             {pack > 1 && <Badge className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] whitespace-nowrap">De a {pack}</Badge>}
           {outStock && <Badge variant="secondary" className="bg-red-100 text-red-700 text-[10px]">Sin stock</Badge>}
           {volBadge && acceptsCart && !outStock && (
-            <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-1.5 py-0.5 whitespace-nowrap">{volBadge}</span>
+            <button
+              type="button"
+              onClick={() => setShowCombo((v) => !v)}
+              title={comboBox ? "Ver con qué se combina" : undefined}
+              className={`text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-1.5 py-0.5 whitespace-nowrap ${comboBox ? "cursor-pointer hover:bg-emerald-100" : ""}`}
+            >{volBadge}</button>
           )}
           </div>
           {product.description && (
@@ -261,7 +291,11 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
           ) : (
             <a href={consultHref} target="_blank" rel="noopener noreferrer" className="rounded-md px-3 py-1.5 text-sm font-medium text-center bg-primary text-primary-foreground hover:bg-primary/90">Consultar</a>
           ))}
+        </div>
       </div>
+      {showCombo && comboBox && (
+        <div className="mt-3">{comboBox}</div>
+      )}
     </div>
   );
 
@@ -398,6 +432,8 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
               {product.description && (
                 <p className="text-sm text-muted-foreground">{product.description}</p>
               )}
+
+              {comboBox}
 
               {outStock && (
                 <p className="text-sm font-medium text-red-600 text-center py-2">Sin stock por el momento</p>

@@ -6,6 +6,7 @@ import { useCart } from "@/lib/cart";
 import { cartLineTotal } from "@/lib/order-line";
 import { mirrorVolume } from "@/lib/volume-mirror";
 import { ProductImage } from "@/components/product-image";
+import { VolumeProgress } from "@/components/store/volume-progress";
 
 export function CartDrawer() {
   const { open, setOpen, items, vendor, total, count, setQty, removeItem, clear } = useCart();
@@ -144,6 +145,9 @@ export function CartDrawer() {
         {/* Footer */}
         {items.length > 0 && vendor && (
           <div className="border-t border-border px-6 pt-4 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)] space-y-3 bg-card">
+            {vendor.volumeGroups && vendor.volumeGroups.length > 0 && (
+              <VolumeProgress groups={vendor.volumeGroups} showMembers />
+            )}
             {vol.volumeDiscount > 0 && (
               <div className="flex items-center justify-between text-sm font-medium text-emerald-700">
                 <span>📦 Desc. volumen{vol.applied.length > 0 ? ` (${vol.applied.map((a) => a.label).join(" · ")})` : ""}</span>

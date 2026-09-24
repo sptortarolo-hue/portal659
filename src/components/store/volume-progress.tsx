@@ -6,13 +6,14 @@ import { useCart, type CartVolumeGroup } from "@/lib/cart";
 /**
  * Progreso hacia los precios por volumen ("Sumás 9/12 para la docena").
  * Espejo visual: el servidor recalcula y manda.
+ * Con showMembers, sugiere con qué se combina (carrito).
  */
-export function VolumeProgress({ groups }: { groups: CartVolumeGroup[] }) {
+export function VolumeProgress({ groups, showMembers = false }: { groups: CartVolumeGroup[]; showMembers?: boolean }) {
   const { items } = useCart();
 
   const rows = useMemo(() => {
     if (!groups || groups.length === 0 || items.length === 0) return [];
-    const out: { id: string; name: string; qty: number; nextMin: number; nextLabel: string; done: boolean }[] = [];
+    const out: { id: string; name: string; qty: number; nextMin: number; nextLabel: string; done: boolean; members: string[] }[] = [];
     for (const g of groups) {
       const ids = new Set((g.productIds || []).map(String));
       const qty = items.reduce((s, i) => (ids.has(String(i.offerId)) ? s + i.qty : s), 0);
@@ -25,7 +26,15 @@ export function VolumeProgress({ groups }: { groups: CartVolumeGroup[] }) {
         next.kind === "fixed_total"
           ? `${next.minQty}x $${Number(next.value).toLocaleString("es-AR")}`
           : `${next.minQty}+ con ${Number(next.value).toLocaleString("es-AR")}% off`;
-      out.push({ id: g.id, name: g.name, qty, nextMin: next.minQty, nextLabel, done });
+      out.push({
+        id: g.id,
+        name: g.name,
+        qty,
+        nextMin: next.minQty,
+        nextLabel,
+        done,
+        members: (g.memberNames || []).filter(Boolean),
+      });
     }
     return out;
   }, [groups, items]);
@@ -60,6 +69,11 @@ export function VolumeProgress({ groups }: { groups: CartVolumeGroup[] }) {
                 style={{ width: `${Math.min(100, Math.round((r.qty / r.nextMin) * 100))}%` }}
               />
             </div>
+          )}
+          {showMembers && !r.done && r.members.length > 1 && (
+            <p className="mt-1.5 text-muted-foreground">
+              Sumá {r.nextMin - r.qty} más entre: {r.members.join(" · ")}
+            </p>
           )}
         </div>
       ))}

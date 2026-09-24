@@ -28,19 +28,53 @@ const inflight = new Map<string, Promise<WsaaTicket>>();
 const TOKEN_TTL_MS = 12 * 60 * 60 * 1000;
 const REFRESH_BUFFER_MS = 5 * 60 * 1000;
 
+/** Diagnóstico de red: IPs que resuelve el host (nunca frena la llamada). */
+async function resolvedIps(hostname: string): Promise<string> {
+  try {
+    const dns = await import("node:dns/promises");
+    const recs = await Promise.race([
+      dns.lookup(hostname, { all: true }),
+      new Promise<null>((r) => setTimeout(() => r(null), 2000)),
+    ]);
+    if (!recs) return "?";
+    return (recs as { address: string }[]).map((r) => r.address).join(",");
+  } catch {
+    return "?";
+  }
+}
+
+/** Log de wire-diagnóstico: longitudes + prefijos (SIN secretos: del CMS
+ *  solo los primeros 40 chars = headers ASN.1, sin key ni cert). */
+function wireLog(url: string, body: string, ips: string): void {
+  try {
+    const in0 = body.indexOf("<in0>");
+    const head = in0 >= 0 ? body.slice(0, Math.min(in0, 300)) : body.slice(0, 300);
+    const cms = in0 >= 0 ? body.slice(in0 + 5, body.indexOf("</in0>")) : "";
+    console.log(
+      `[fiscal] wire host=${new URL(url).hostname} ips=${ips} ` +
+        `env-bytes=${body.length} cms-len=${cms.length} cms-head=${cms.slice(0, 40)} head=${head.replace(/\s+/g, " ").slice(0, 220)}`
+    );
+  } catch {
+    /* diagnóstico best-effort */
+  }
+}
+
 function soapFetch(url: string, body: string, action: string): Promise<string> {
   // 15s por llamada (3 SOAP secuenciales = 45s peor caso, debajo del
   // proxy_read_timeout de 90s de nginx). Un abort se mapea a error legible.
   const ac = new AbortController();
   const timeout = setTimeout(() => ac.abort(), 15000);
-  return fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "text/xml; charset=utf-8",
-      SOAPAction: action,
-    },
-    body,
-    signal: ac.signal,
+  return resolvedIps(new URL(url).hostname).then((ips) => {
+    wireLog(url, body, ips);
+    return fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "text/xml; charset=utf-8",
+        SOAPAction: action,
+      },
+      body,
+      signal: ac.signal,
+    });
   })
     .then(async (res) => {
       const text = await res.text();

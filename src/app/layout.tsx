@@ -78,18 +78,20 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         <meta name="apple-mobile-web-app-title" content="Portal659" />
-        <meta id="theme-color-meta" name="theme-color" content="#4f46e5" />
+        <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff" />
+        <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#000000" />
         <meta name="color-scheme" content="light dark" />
         <meta name="mobile-web-app-capable" content="yes" />
         <script
           dangerouslySetInnerHTML={{
             // Pre-paint (antes del primer frame): resuelve el tema con la
-            // misma lógica del ThemeProvider y fija clase + theme-color +
-            // fondo del <html>. Sin esto, al refrescar las barras del
-            // sistema pintan con el color estático y repintan después
-            // (parpadeo blanco/negro en oscuro). ThemeColorSync mantiene
-            // los cambios de tema en runtime.
-            __html: `(function(){try{var t=localStorage.getItem("portal659-theme-v2");var d=t==="dark"||(t==="system"&&matchMedia("(prefers-color-scheme: dark)").matches)||(!t&&matchMedia("(min-width: 1024px)").matches);if(d)document.documentElement.classList.add("dark");var c=d?"#0f1117":"#ffffff";var m=document.getElementById("theme-color-meta")||document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute("content",c);document.documentElement.style.backgroundColor=c}catch(e){}})()`,
+            // misma lógica del ThemeProvider. Las barras del sistema usan el
+            // color del modo (negro en oscuro, blanco en claro); el fondo del
+            // <html> usa el fondo de página para mimetizarse con el contenido.
+            // Sin esto, al refrescar repintan después (parpadeo). Las metas
+            // con media ya cubren el caso por defecto sin JS; acá se corrige
+            // la preferencia guardada. ThemeColorSync mantiene runtime.
+            __html: `(function(){try{var t=localStorage.getItem("portal659-theme-v2");var d=t==="dark"||(t==="system"&&matchMedia("(prefers-color-scheme: dark)").matches)||(!t&&matchMedia("(min-width: 1024px)").matches);if(d)document.documentElement.classList.add("dark");var bar=d?"#000000":"#ffffff";var bg=d?"#0f1117":"#ffffff";var ms=document.querySelectorAll('meta[name="theme-color"]');for(var i=0;i<ms.length;i++)ms[i].setAttribute("content",bar);document.documentElement.style.backgroundColor=bg}catch(e){}})()`,
           }}
         />
       </head>

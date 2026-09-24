@@ -3,17 +3,26 @@
 import { useState } from "react";
 import { useOnlineStatus, usePendingPrintsCount, usePendingSyncCount } from "@/hooks/use-online-status";
 import { flushPendingPrints } from "@/lib/local-print";
+import { ageLabel } from "@/lib/offline-plan";
 import { useToast } from "@/lib/toast";
 
 /**
- * Banner global de estado offline (Track Ventas F1 + Impresión F1).
+ * Banner global de estado offline (Track Ventas F1/F4/F6 + Impresión F1).
  * - Sin conexión: avisa que las ventas se guardan en el equipo + pendientes.
+ *   Si el dashboard booteó desde snapshot (F6), indica la edad de los datos.
  * - Online con pendientes: aviso sutil de sincronización en curso.
  * - Trabajos de impresión en cola: botón manual "Imprimir pendientes" (la
  *   reimpresión nunca es automática: evita duplicar comandas en cocina).
  * - Online sin pendientes: no renderiza nada.
  */
-export function OfflineBanner({ vendorId }: { vendorId: string | null | undefined }) {
+export function OfflineBanner({
+  vendorId,
+  snapshotAt = null,
+}: {
+  vendorId: string | null | undefined;
+  /** Timestamp del snapshot si el dashboard booteó offline (F6). */
+  snapshotAt?: number | null;
+}) {
   const online = useOnlineStatus();
   const pending = usePendingSyncCount(vendorId);
   const pendingPrints = usePendingPrintsCount(vendorId);
@@ -49,6 +58,9 @@ export function OfflineBanner({ vendorId }: { vendorId: string | null | undefine
           {!online ? (
             <>
               📡 Sin conexión — las ventas se guardan en este equipo y se sincronizan al reconectar
+              {typeof snapshotAt === "number" && (
+                <span className="ml-1">(datos guardados {ageLabel(Date.now() - snapshotAt)})</span>
+              )}
               {pending > 0 && (
                 <span className="ml-1 font-bold tabular-nums">
                   ({pending} pendiente{pending === 1 ? "" : "s"})

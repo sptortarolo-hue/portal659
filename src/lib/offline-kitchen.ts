@@ -80,8 +80,15 @@ function normalizeItems(raw: unknown): OrderItem[] {
 
 /**
  * Pedidos de cocina pendientes (para mergear en el KDS). Excluye los ya
- * sincronizados (están en el idmap: el servidor los devuelve) y los que
- * quedaron en estado terminal por replay — esos los muestra el servidor.
+ * sincronizados (están en el idmap: el servidor los devuelve).
+ *
+ * Semántica espejo del servidor:
+ * - Mostrador: cada venta = un ticket (igual que online).
+ * - Mesa: las consumiciones pendientes de la MISMA mesa se agrupan en UNA
+ *   tarjeta (el servidor las mergea en la cuenta abierta). La dependencia
+ *   de las transiciones apunta al primer ADD (el que crea la cuenta).
+ * - Mesas con cierre offline pendiente no se muestran (la cocina terminó;
+ *   el servidor las marca completed al sincronizar).
  */
 export async function getLocalKitchenOrders(vendorId: string): Promise<Order[]> {
   let actions: OutboxAction[] = [];
@@ -107,24 +114,39 @@ export async function getLocalKitchenOrders(vendorId: string): Promise<Order[]> 
   const creates = actions.filter(
     (a) => (a.type === "pos_order" || a.type === "consumicion") && !!a.localId && !idmap[a.localId as string]
   );
-  const out: Order[] = [];
-  for (const c of creates) {
+  // Mesas ya cerradas offline: su cuenta sale del KDS (igual que completed).
+  const closedTables = new Set(
+    actions
+      .filter((a) => a.type === "table_close")
+      .map((a) => String((a.payload as Record<string, any>)?.tableId || ""))
+      .filter(Boolean)
+  );
+
+  const buildView = (
+    c: OutboxAction,
+    extraItems: OrderItem[] = [],
+    extraTotal = 0
+  ): Order | null => {
     const localId = c.localId as string;
     const p = (c.payload || {}) as Record<string, any>;
-    const items = normalizeItems(p.items);
+    if (c.type === "consumicion" && closedTables.has(String(p.tableId || ""))) return null;
+    const items = [...normalizeItems(p.items), ...extraItems];
     const needsKitchen = items.some((i) => i.requires_prep !== false);
     const isDelivery = p.method === "delivery";
     let status: OrderStatus =
       c.type === "consumicion" ? "new" : needsKitchen || isDelivery ? "preparing" : "new";
+    // Fold en orden FIFO: el último STATUS/CANCEL que referencie a este
+    // grupo (cualquiera de sus ADDs) gana.
+    const groupIds = new Set<string>([localId, ...(((c as any).__groupIds as string[] | undefined) || [])]);
     for (const s of actions) {
       const sp = (s.payload || {}) as Record<string, any>;
-      if (sp.__afterLocalId !== localId) continue;
+      if (!sp.__afterLocalId || !groupIds.has(String(sp.__afterLocalId))) continue;
       if (s.type === "order_status" && typeof sp.status === "string") status = sp.status as OrderStatus;
       if (s.type === "order_cancel") status = "cancelled";
     }
     const createdAt = new Date(Number(c.createdAt) || Date.now()).toISOString();
     const tableId = typeof p.tableId === "string" ? p.tableId : null;
-    out.push({
+    return {
       id: localId,
       vendor_id: vendorId,
       customer_id: null,
@@ -136,7 +158,7 @@ export async function getLocalKitchenOrders(vendorId: string): Promise<Order[]> 
       method: (isDelivery ? "delivery" : "pickup") as Order["method"],
       payment_method: (p.paymentMethod || "efectivo") as Order["payment_method"],
       items,
-      total: Number(p.total) || 0,
+      total: (Number(p.total) || 0) + extraTotal,
       status,
       notes: (p.notes as string) ?? null,
       modification_notes: null,
@@ -150,7 +172,31 @@ export async function getLocalKitchenOrders(vendorId: string): Promise<Order[]> 
       provisional: Number((p as any).__provisional) || null,
       created_at: createdAt,
       updated_at: createdAt,
-    });
+    };
+  };
+
+  const out: Order[] = [];
+  // Mostrador: un ticket por venta. Mesa: un ticket por mesa (agrupa ADDs).
+  const mesaGroups = new Map<string, OutboxAction[]>();
+  for (const c of creates) {
+    if (c.type !== "consumicion") {
+      const v = buildView(c);
+      if (v) out.push(v);
+      continue;
+    }
+    const tid = String((c.payload as Record<string, any>)?.tableId || "");
+    if (!mesaGroups.has(tid)) mesaGroups.set(tid, []);
+    mesaGroups.get(tid)!.push(c);
+  }
+  for (const [, group] of mesaGroups) {
+    const [first, ...rest] = group;
+    // Las transiciones de cualquier ADD del grupo aplican a la tarjeta:
+    // se registran los ids del grupo para el fold.
+    (first as any).__groupIds = group.map((g) => g.localId as string);
+    const extraItems = rest.flatMap((g) => normalizeItems((g.payload as Record<string, any>)?.items));
+    const extraTotal = rest.reduce((s, g) => s + (Number((g.payload as Record<string, any>)?.total) || 0), 0);
+    const v = buildView(first, extraItems, extraTotal);
+    if (v) out.push(v);
   }
   return out;
 }

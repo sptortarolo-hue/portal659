@@ -72,7 +72,7 @@ import { PrinterStatus } from "@/components/vendor/printer-status";
 import { OfflineBanner } from "@/components/vendor/offline-banner";
 import { OfflineConflicts } from "@/components/vendor/offline-conflicts";
 import { usePendingSyncCount } from "@/hooks/use-online-status";
-import { clearVendorData, ensurePersisted, saveVendorSnapshot } from "@/lib/offline-db";
+import { clearVendorData, ensurePersisted, getVendorSnapshot, saveVendorSnapshot } from "@/lib/offline-db";
 import { enqueueOrderPatch, isLocalOrderId } from "@/lib/offline-kitchen";
 import { syncOutbox } from "@/lib/sync-engine";
 import { useToast } from "@/lib/toast";
@@ -303,9 +303,12 @@ function VendorDashboardInner() {
     } catch { /* noop */ }
   }, []);
 
+  // Bootstrap offline (F6): timestamp del snapshot cuando vendor se hidrató
+  // sin red (null = carga normal online). Lo muestra el banner.
+  const [bootstrappedAt, setBootstrappedAt] = useState<number | null>(null);
+
   const loadData = useCallback(async () => {
-    try {
-      const [meRes, offersRes, ordersRes, catsRes, modsRes, galRes, bkRes, variantsRes, imagesRes, plansRes, subsMeRes] = await Promise.all([
+    try {      const [meRes, offersRes, ordersRes, catsRes, modsRes, galRes, bkRes, variantsRes, imagesRes, plansRes, subsMeRes] = await Promise.all([
         fetch("/api/vendor/me").catch(() => null),
         fetch("/api/vendor/offers").catch(() => null),
         fetch("/api/vendor/orders").catch(() => null),
@@ -331,9 +334,43 @@ function VendorDashboardInner() {
       const plansData = plansRes?.ok ? await plansRes.json().catch(() => ({})) : {};
       const subsMeData = subsMeRes?.ok ? await subsMeRes.json().catch(() => ({})) : {};
 
+      // Bootstrap offline (F6): si TODOS los fetch fallaron por red, hidratar
+      // desde el snapshot (último vendor visto en este equipo). Un 401 es
+      // sesión inválida y sigue a login (no confundir: acá solo nulls = red).
+      const allFailed = [meRes, offersRes, ordersRes, catsRes, modsRes, galRes, bkRes, variantsRes, imagesRes, plansRes, subsMeRes].every((r) => r === null);
+      if (allFailed) {
+        let ok = false;
+        try {
+          const lastId = window.localStorage.getItem("portal659_last_vendor");
+          const snap = lastId ? await getVendorSnapshot(lastId) : null;
+          // Repartidores no operan offline (su vista exige servidor).
+          if (snap?.vendor && (snap.staffRole ?? null) !== "delivery") {
+            setVendor(snap.vendor as unknown as Vendor);
+            if (Array.isArray(snap.plans) && snap.plans.length > 0) {
+              setPlans(snap.plans as unknown as Plan[]);
+            }
+            setBootstrappedAt(snap.cachedAt);
+            ok = true;
+          }
+        } catch {
+          /* sin snapshot: cae al flujo normal (setup/login) */
+        } finally {
+          setLoading(false);
+        }
+        if (ok) return;
+      }
+
       if (me.error === "No autenticado") { router.push("/login"); return; }
       if (me.preview) setPreviewSession(true);
-      if (me.vendor) setVendor(me.vendor);
+      if (me.vendor) {
+        setVendor(me.vendor);
+        setBootstrappedAt(null);
+        try {
+          window.localStorage.setItem("portal659_last_vendor", String((me.vendor as any).id || ""));
+        } catch {
+          /* noop */
+        }
+      }
       if (me.staffRole) setStaffRole(me.staffRole);
       if (me.userId) setUserId(me.userId);
       if (off.offers) setOffers(off.offers);
@@ -1354,9 +1391,9 @@ function VendorDashboardInner() {
 
         {msg && <div className="px-4 pt-3"><p className="text-sm text-green-600 bg-green-50 rounded-lg px-3 py-2">{msg}</p></div>}
 
-        {/* Estado offline vendor (F1/F4): banner + conflictos con error */}
+        {/* Estado offline vendor (F1/F4/F6): banner + conflictos con error */}
         <div className="px-4 pt-3 [&:empty]:hidden [&:empty]:pt-0">
-          <OfflineBanner vendorId={vendor.id} />
+          <OfflineBanner vendorId={vendor.id} snapshotAt={bootstrappedAt} />
         </div>
         <div className="px-4 pt-2 [&:empty]:hidden [&:empty]:pt-0">
           <OfflineConflicts vendorId={vendor.id} />

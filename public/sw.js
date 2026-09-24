@@ -1,11 +1,16 @@
-// v14: + caché de respaldo (network-first) para GETs vendor críticos:
-// /api/vendor/me|offers|categories|modifiers|tables|orders y
-// /api/subscriptions/me. Solo 200+JSON; solo se sirve de caché si la red
-// falla (modo offline vendor). /api/auth/* nunca se cachea. Purga v13+v14
-// documental: al cambiar la estrategia, bumpear versión (ver AGENTS.md).
-const CACHE_NAME = "portal659-v14";
-const API_CACHE = "portal659-api-v14";
-const CURRENT_CACHES = new Set([CACHE_NAME, API_CACHE]);
+// v15: + doc-cache SOLO para navegaciones /vendor/* (network-first).
+// Motivo: recargar el panel sin red debe bootear (F6 bootstrap desde
+// snapshot); sin documento cacheado el reload cae a offline.html y el
+// modo offline exige pestaña ya abierta. Seguro contra HTML viejo:
+// - Online SIEMPRE gana la red (el fallback solo se sirve si fetch tira).
+// - Tras un deploy hay red por definición → HTML fresco.
+// - Si el HTML cacheado referencia chunks ausentes, la app muestra su
+//   ErrorBoundary (no pantalla muerta). Nunca se precachea ni se sirve
+//   teniendo red (lección v12/v13). Purga v14. Otros paths: sin cambios.
+const CACHE_NAME = "portal659-v15";
+const API_CACHE = "portal659-api-v15";
+const DOC_CACHE = "portal659-doc-v15";
+const CURRENT_CACHES = new Set([CACHE_NAME, API_CACHE, DOC_CACHE]);
 const OFFLINE_URL = "/offline.html";
 
 // GETs vendor cacheables (prefijos de pathname, mismo origen).
@@ -129,6 +134,45 @@ self.addEventListener("fetch", (event) => {
             status: 503,
             headers: { "Content-Type": "application/json" },
           });
+        }
+      })()
+    );
+    return;
+  }
+
+  // Documento del panel vendor (F6): network-first. Con red, siempre fresco
+  // (tras un deploy hay red por definición). Sin red, el HTML cacheado
+  // permite bootear el dashboard desde el snapshot de IndexedDB.
+  let docFallback = false;
+  try {
+    const url = new URL(request.url);
+    if (
+      request.mode === "navigate" &&
+      url.origin === self.location.origin &&
+      url.pathname.startsWith("/vendor/")
+    ) {
+      docFallback = true;
+    }
+  } catch {
+    docFallback = false;
+  }
+  if (docFallback) {
+    event.respondWith(
+      (async () => {
+        try {
+          const networkResponse = await fetch(request);
+          const ct = networkResponse.headers.get("content-type") || "";
+          if (networkResponse.status === 200 && ct.includes("text/html")) {
+            const cache = await caches.open(DOC_CACHE);
+            cache.put(request, networkResponse.clone()).catch(() => {});
+          }
+          return networkResponse;
+        } catch {
+          const cachedResponse = await caches.match(request);
+          if (cachedResponse) return cachedResponse;
+          const offlineResponse = await caches.match(OFFLINE_URL);
+          if (offlineResponse) return offlineResponse;
+          return new Response("Offline", { status: 503, statusText: "Offline" });
         }
       })()
     );

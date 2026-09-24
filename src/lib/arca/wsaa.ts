@@ -59,44 +59,69 @@ function wireLog(url: string, body: string, ips: string): void {
   }
 }
 
+/** Fault de schema (el XML no se procesó: seguro reintentar con otra conexión). */
+function isXmlBad(text: string): boolean {
+  return text.includes("xml.bad");
+}
+
 function soapFetch(url: string, body: string, action: string): Promise<string> {
-  // 15s por llamada (3 SOAP secuenciales = 45s peor caso, debajo del
-  // proxy_read_timeout de 90s de nginx). Un abort se mapea a error legible.
-  const ac = new AbortController();
-  const timeout = setTimeout(() => ac.abort(), 15000);
-  return resolvedIps(new URL(url).hostname).then((ips) => {
-    wireLog(url, body, ips);
-    return fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "text/xml; charset=utf-8",
-        SOAPAction: action,
-      },
-      body,
-      signal: ac.signal,
-    });
-  })
-    .then(async (res) => {
-      const text = await res.text();
-      if (!res.ok) {
-        // El faultstring dice el motivo real (cert no asociado, TRA
-        // vencido, CMS inválido...). Va en el mensaje para que salga en
-        // los logs [fiscal]; no contiene secretos. El cuerpo se redacta
-        // (sin token/sign) para diagnóstico completo.
-        const fault = faultString(text)?.slice(0, 200);
-        throw new ArcaError(`WSAA HTTP ${res.status}${fault ? `: ${fault}` : ""}`, redactXml(text).slice(0, 1500));
-      }
-      return text;
-    })
-    .catch((e: unknown) => {
-      if (e instanceof ArcaError) throw e;
-      const msg = e instanceof Error ? e.message : String(e);
-      if (e instanceof Error && (e.name === "AbortError" || /abort/i.test(msg))) {
-        throw new ArcaError(`ARCA no respondió en 15s (login ${action})`);
-      }
-      throw new ArcaError(`Sin conexión a ARCA (${msg.slice(0, 120)})`);
-    })
-    .finally(() => clearTimeout(timeout));
+  // 15s por llamada. `Connection: close` fuerza conexión fresca por intento:
+  // ARCA balancea entre varios backends (wsaaext0, wsaaext1...) y el pool
+  // keep-alive puede dejar clavado un backend roto; cada intento reelige.
+  // Reintentos (máx 2 intentos): xml.bad (no se procesó nada) y fallos de
+  // red/timeout. Para login es seguro: en el peor caso ARCA responde
+  // "ya posee TA" y se informa sin loopear.
+  const MAX_ATTEMPTS = 2;
+  const run = (attempt: number): Promise<string> => {
+    const ac = new AbortController();
+    const timeout = setTimeout(() => ac.abort(), 15000);
+    return resolvedIps(new URL(url).hostname)
+      .then((ips) => {
+        wireLog(url, body, `${ips} att=${attempt}`);
+        return fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "text/xml; charset=utf-8",
+            SOAPAction: action,
+            Connection: "close",
+          },
+          body,
+          signal: ac.signal,
+        });
+      })
+      .then(async (res) => {
+        const text = await res.text();
+        if (!res.ok) {
+          // El faultstring dice el motivo real (cert no asociado, TRA
+          // vencido, CMS inválido...). Va en el mensaje para que salga en
+          // los logs [fiscal]; no contiene secretos. El cuerpo se redacta
+          // (sin token/sign) para diagnóstico completo.
+          const fault = faultString(text)?.slice(0, 200);
+          const err = new ArcaError(
+            `WSAA HTTP ${res.status}${fault ? `: ${fault}` : ""}`,
+            redactXml(text).slice(0, 1500)
+          );
+          (err as { xmlBad?: boolean }).xmlBad = isXmlBad(text);
+          throw err;
+        }
+        return text;
+      })
+      .catch((e: unknown) => {
+        const retryable =
+          e instanceof ArcaError
+            ? (e as { xmlBad?: boolean }).xmlBad === true
+            : true; // red/timeout: reintentar (login no duplica nada)
+        if (retryable && attempt < MAX_ATTEMPTS) return run(attempt + 1);
+        if (e instanceof ArcaError) throw e;
+        const msg = e instanceof Error ? e.message : String(e);
+        if (e instanceof Error && (e.name === "AbortError" || /abort/i.test(msg))) {
+          throw new ArcaError(`ARCA no respondió en 15s (login ${action})`);
+        }
+        throw new ArcaError(`Sin conexión a ARCA (${msg.slice(0, 120)})`);
+      })
+      .finally(() => clearTimeout(timeout));
+  };
+  return run(1);
 }
 
 export class ArcaError extends Error {

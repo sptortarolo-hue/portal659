@@ -14,36 +14,58 @@ const WSFE_URL: Record<ArcaEnv, string> = {
   prod: "https://servicios1.afip.gov.ar/wsfev1/service.asmx",
 };
 
-function soapFetch(url: string, body: string, action: string): Promise<string> {
-  // Ver wsaa.ts: 15s por llamada para no superar el timeout del proxy.
-  const ac = new AbortController();
-  const timeout = setTimeout(() => ac.abort(), 15000);
-  return fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "text/xml; charset=utf-8",
-      SOAPAction: action,
-    },
-    body,
-    signal: ac.signal,
-  })
-    .then(async (res) => {
-      const text = await res.text();
-      if (!res.ok) {
-        const fault = text.match(/<faultstring>([\s\S]*?)<\/faultstring>/)?.[1]?.trim().slice(0, 200);
-        throw new ArcaError(`WSFE HTTP ${res.status}${fault ? `: ${fault}` : ""}`, redactXml(text).slice(0, 1500));
-      }
-      return text;
+function soapFetch(
+  url: string,
+  body: string,
+  action: string,
+  opts: { retryNetwork?: boolean } = {}
+): Promise<string> {
+  // Ver wsaa.ts: 15s por llamada + conexión fresca (reelige backend) +
+  // reintento ante xml.bad (el XML no se procesó: seguro repetir).
+  // `retryNetwork`: solo en lecturas (último/consultar). En solicitar NO:
+  // un timeout con resultado ambiguo + retry podría duplicar el CAE
+  // (para eso ya existe el recupero 10016 + consultar).
+  const MAX_ATTEMPTS = 2;
+  const retryNetwork = opts.retryNetwork === true;
+  const run = (attempt: number): Promise<string> => {
+    const ac = new AbortController();
+    const timeout = setTimeout(() => ac.abort(), 15000);
+    return fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "text/xml; charset=utf-8",
+        SOAPAction: action,
+        Connection: "close",
+      },
+      body,
+      signal: ac.signal,
     })
-    .catch((e: unknown) => {
-      if (e instanceof ArcaError) throw e;
-      const msg = e instanceof Error ? e.message : String(e);
-      if (e instanceof Error && (e.name === "AbortError" || /abort/i.test(msg))) {
-        throw new ArcaError("ARCA no respondió en 15s (facturación)");
-      }
-      throw new ArcaError(`Sin conexión a ARCA (${msg.slice(0, 120)})`);
-    })
-    .finally(() => clearTimeout(timeout));
+      .then(async (res) => {
+        const text = await res.text();
+        if (!res.ok) {
+          const fault = text.match(/<faultstring>([\s\S]*?)<\/faultstring>/)?.[1]?.trim().slice(0, 200);
+          const err = new ArcaError(`WSFE HTTP ${res.status}${fault ? `: ${fault}` : ""}`, redactXml(text).slice(0, 1500));
+          (err as { xmlBad?: boolean }).xmlBad = text.includes("xml.bad");
+          throw err;
+        }
+        return text;
+      })
+      .catch((e: unknown) => {
+        const retryable =
+          e instanceof ArcaError
+            ? (e as { xmlBad?: boolean }).xmlBad === true
+            : retryNetwork;
+        if (retryable && attempt < MAX_ATTEMPTS) return run(attempt + 1);
+        if (e instanceof ArcaError) throw e;
+        const msg = e instanceof Error ? e.message : String(e);
+        if (e instanceof Error && (e.name === "AbortError" || /abort/i.test(msg))) {
+          throw new ArcaError("ARCA no respondió en 15s (facturación)");
+        }
+        throw new ArcaError(`Sin conexión a ARCA (${msg.slice(0, 120)})`);
+      })
+      .finally(() => clearTimeout(timeout));
+  };
+  return run(1);
 }
 
 /** Tag tolerante a namespaces/prefijos (<ns:Tag>, <Tag x=...>). */
@@ -122,7 +144,8 @@ export async function ultimoAutorizado(
     const xml = await soapFetch(
       WSFE_URL[auth.env],
       body,
-      "http://ar.gov.afip.dif.FEV1/FECompUltimoAutorizado"
+      "http://ar.gov.afip.dif.FEV1/FECompUltimoAutorizado",
+      { retryNetwork: true }
     );
     const errs = parseArcaErrors(xml);
     if (errs.length > 0) throw new ArcaError(`ARCA: ${errs[0].msg}`, `code ${errs[0].code}`);
@@ -240,7 +263,8 @@ export async function consultarComprobante(
     const xml = await soapFetch(
       WSFE_URL[auth.env],
       body,
-      "http://ar.gov.afip.dif.FEV1/FECompConsultar"
+      "http://ar.gov.afip.dif.FEV1/FECompConsultar",
+      { retryNetwork: true }
     );
     const errs = parseArcaErrors(xml);
     if (errs.length > 0) return null;

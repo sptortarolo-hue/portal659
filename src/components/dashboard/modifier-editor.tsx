@@ -124,17 +124,20 @@ function GroupForm({
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        {/* Nombre full-width en mobile (Mín/Máx abajo en mitades);
+            una sola fila compacta en desktop. */}
+        <div className="flex flex-wrap sm:flex-nowrap sm:items-center gap-2">
           <Input
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Grupo (ej: Tamaño, Extras, Variante)"
-            className="flex-1"
+            className="flex-[1_1_100%] sm:flex-1 min-w-0"
           />
           <Input
             type="number"
             min={0}
-            className="w-20"
+            inputMode="numeric"
+            className="flex-1 sm:flex-none sm:w-20 min-w-0"
             value={minSel}
             onChange={(e) => setMinSel(e.target.value)}
             title="Mínimo de selecciones (vacío = 1 si es obligatorio)"
@@ -144,7 +147,8 @@ function GroupForm({
           <Input
             type="number"
             min={1}
-            className="w-20"
+            inputMode="numeric"
+            className="flex-1 sm:flex-none sm:w-20 min-w-0"
             value={maxSel}
             onChange={(e) => setMaxSel(e.target.value)}
             title="Máximo de selecciones"
@@ -168,41 +172,46 @@ function GroupForm({
 
         <div className="space-y-1.5">
           {options.map((o, i) => (
-            <div key={i} className="flex gap-2">
+            // Mobile: nombre full-width arriba, Familia/$/acciones abajo.
+            // Desktop: una sola fila compacta (igual que antes).
+            <div key={i} className="flex flex-wrap sm:flex-nowrap gap-2">
               <Input
                 value={o.label}
                 onChange={(e) => setOpt(i, { label: e.target.value })}
                 placeholder="Opción"
-                className={`flex-1 ${o.available === false ? "opacity-50" : ""}`}
+                className={`flex-[1_1_100%] sm:flex-1 min-w-0 ${o.available === false ? "opacity-50" : ""}`}
               />
               <Input
                 value={o.category || ""}
                 onChange={(e) => setOpt(i, { category: e.target.value })}
                 placeholder="Familia"
                 title="Familia para filtrar (ej: Cremas, Chocolates). Opcional."
-                className="w-24"
+                className="flex-1 sm:flex-none sm:w-24 min-w-0"
               />
               <Input
                 type="number"
                 step="0.01"
+                inputMode="decimal"
                 value={o.price_mod === 0 ? "" : String(o.price_mod)}
                 onChange={(e) => setOpt(i, { price_mod: Number(e.target.value) || 0 })}
                 placeholder="$"
-                className="w-20"
+                className="flex-1 sm:flex-none sm:w-20 min-w-0"
               />
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                title={o.available === false ? "Pausado (oculto en la venta). Tocá para reactivar." : "Pausar (ocultar en la venta sin borrar)"}
-                className={o.available === false ? "text-amber-600" : "text-muted-foreground"}
-                onClick={() => setOpt(i, o.available === false ? { available: undefined } : { available: false })}
-              >
-                {o.available === false ? "🚫" : "👁"}
-              </Button>
-              <Button type="button" variant="ghost" size="sm" className="text-red-600" onClick={() => removeOpt(i)} disabled={options.length <= 1}>
-                ✕
-              </Button>
+              <div className="flex gap-1 sm:gap-2 flex-shrink-0">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  title={o.available === false ? "Pausado (oculto en la venta). Tocá para reactivar." : "Pausar (ocultar en la venta sin borrar)"}
+                  className={o.available === false ? "text-amber-600" : "text-muted-foreground"}
+                  onClick={() => setOpt(i, o.available === false ? { available: undefined } : { available: false })}
+                >
+                  {o.available === false ? "🚫" : "👁"}
+                </Button>
+                <Button type="button" variant="ghost" size="sm" className="text-red-600" onClick={() => removeOpt(i)} disabled={options.length <= 1}>
+                  ✕
+                </Button>
+              </div>
             </div>
           ))}
           <Button type="button" variant="outline" size="sm" onClick={addOpt}>

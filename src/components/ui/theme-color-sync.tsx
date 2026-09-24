@@ -23,6 +23,8 @@ export function ThemeColorSync() {
       document.head.appendChild(meta);
     }
     meta.content = color;
+    // Mantiene el fondo inline que fija el script pre-paint del <head>.
+    document.documentElement.style.backgroundColor = color;
   }, [resolved]);
 
   return null;

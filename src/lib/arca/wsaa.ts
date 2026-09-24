@@ -368,19 +368,25 @@ export async function getWsaaTicket(
   const running = inflight.get(cacheKey);
   if (running) return running;
 
+  // Namespace = URL del servicio (por entorno): es la forma del único
+  // request con TA exitoso capturado byte a byte (pyafipws cassette
+  // test_login_cms.yaml, 2021-06-19, HTTP 200): prolog + prefijo ser: con
+  // la URL del servicio + <in0> sin calificar. Ni el tns1 del WSDL ni el
+  // histórico dgr validan de forma estable en homo.
+  const WSAA_OP_NS: Record<ArcaEnv, string> = {
+    homo: "https://wsaahomo.afip.gov.ar/ws/services/LoginCms",
+    prod: "https://wsaa.afip.gov.ar/ws/services/LoginCms",
+  };
+
   const job = (async (): Promise<WsaaTicket> => {
     const tra = buildTra("wsfe");
     const cms = signTra(tra, certPem, keyPem);
-    // Namespace histórico (...dvadac.dgr...) + SOAPAction "loginCms": es la
-    // combinación que el servicio real acepta (evidencia: con ella el XML
-    // valida y se llega a faults de negocio; con la del WSDL publicado
-    // (...desein... + action vacía) rechaza el schema con ns1:xml.bad).
-    // Estilo default-ns como los ejemplos publicados.
     const envelope =
-      `<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">` +
+      `<?xml version="1.0" encoding="UTF-8"?>` +
+      `<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" ` +
+      `xmlns:ser="${WSAA_OP_NS[env]}">` +
       `<soapenv:Header/><soapenv:Body>` +
-      `<loginCms xmlns="http://wsaa.view.sua.dvadac.dgr.afip.gov">` +
-      `<in0>${cms}</in0></loginCms>` +
+      `<ser:loginCms><in0>${cms}</in0></ser:loginCms>` +
       `</soapenv:Body></soapenv:Envelope>`;
     const xml = await soapFetch(WSAA_URL[env], envelope, "loginCms");
     const { token, sign } = parseLoginResponse(xml);

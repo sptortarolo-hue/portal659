@@ -30,7 +30,9 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   maximumScale: 5,
-  themeColor: "#4f46e5",
+  // Sin themeColor acá: hay UN solo meta theme-color (el de abajo, con id),
+  // gestionado por el script pre-paint + ThemeColorSync. Con dos metas
+  // compitiendo, Chrome usa una sola y las actualizaciones pegaban en otra.
 };
 
 export const metadata: Metadata = {
@@ -76,7 +78,7 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         <meta name="apple-mobile-web-app-title" content="Portal659" />
-        <meta name="theme-color" content="#4f46e5" />
+        <meta id="theme-color-meta" name="theme-color" content="#4f46e5" />
         <meta name="color-scheme" content="light dark" />
         <meta name="mobile-web-app-capable" content="yes" />
         <script
@@ -87,7 +89,7 @@ export default function RootLayout({
             // sistema pintan con el color estático y repintan después
             // (parpadeo blanco/negro en oscuro). ThemeColorSync mantiene
             // los cambios de tema en runtime.
-            __html: `(function(){try{var t=localStorage.getItem("portal659-theme-v2");var d=t==="dark"||(t==="system"&&matchMedia("(prefers-color-scheme: dark)").matches)||(!t&&matchMedia("(min-width: 1024px)").matches);if(d)document.documentElement.classList.add("dark");var c=d?"#0f1117":"#ffffff";var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute("content",c);document.documentElement.style.backgroundColor=c}catch(e){}})()`,
+            __html: `(function(){try{var t=localStorage.getItem("portal659-theme-v2");var d=t==="dark"||(t==="system"&&matchMedia("(prefers-color-scheme: dark)").matches)||(!t&&matchMedia("(min-width: 1024px)").matches);if(d)document.documentElement.classList.add("dark");var c=d?"#0f1117":"#ffffff";var m=document.getElementById("theme-color-meta")||document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute("content",c);document.documentElement.style.backgroundColor=c}catch(e){}})()`,
           }}
         />
       </head>

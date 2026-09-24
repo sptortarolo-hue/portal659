@@ -16,7 +16,12 @@ export function ThemeColorSync() {
 
   useEffect(() => {
     const color = resolved === "dark" ? DARK_BG : LIGHT_BG;
-    let meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+    let meta =
+      document.getElementById("theme-color-meta") as HTMLMetaElement | null;
+    if (!meta) {
+      meta =
+        document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+    }
     if (!meta) {
       meta = document.createElement("meta");
       meta.name = "theme-color";

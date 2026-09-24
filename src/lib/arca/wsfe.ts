@@ -88,7 +88,10 @@ function tag(xml: string, name: string): string | null {
 /** Extrae errores ARCA `<Err><Code>x</Code><Msg>y</Msg></Err>` (tolera prefijos). */
 export function parseArcaErrors(xml: string): { code: string; msg: string }[] {
   const out: { code: string; msg: string }[] = [];
-  const t = (n: string) => `(?:<\\w+:)?${n}(?:\\s[^>]*)?>`;
+  // OJO: el `<` va FUERA del grupo opcional. `(?:<\w+:)?` nunca consume un
+  // `<` suelto y en tags sin prefijo el literal fallaba contra `<Cod...`.
+  // Así se perdían todas las Obs/Err sin prefijo (forma real de ARCA).
+  const t = (n: string) => `<(?:\\w+:)?${n}(?:\\s[^>]*)?>`;
   const c = (n: string) => `<\\/(?:\\w+:)?${n}>`;
   const re = new RegExp(`${t("Err")}\\s*${t("Code")}([\\s\\S]*?)${c("Code")}\\s*${t("Msg")}([\\s\\S]*?)${c("Msg")}\\s*${c("Err")}`, "g");
   let m: RegExpExecArray | null;
@@ -98,7 +101,10 @@ export function parseArcaErrors(xml: string): { code: string; msg: string }[] {
 
 /** Extrae observaciones `<Obs><Code>x</Code><Msg>y</Msg></Obs>` (tolera prefijos). */
 export function parseArcaObs(xml: string): string[] {
-  const t = (n: string) => `(?:<\\w+:)?${n}(?:\\s[^>]*)?>`;
+  // OJO: el `<` va FUERA del grupo opcional. `(?:<\w+:)?` nunca consume un
+  // `<` suelto y en tags sin prefijo el literal fallaba contra `<Cod...`.
+  // Así se perdían todas las Obs/Err sin prefijo (forma real de ARCA).
+  const t = (n: string) => `<(?:\\w+:)?${n}(?:\\s[^>]*)?>`;
   const c = (n: string) => `<\\/(?:\\w+:)?${n}>`;
   const re = new RegExp(`${t("Obs")}\\s*${t("Code")}[\\s\\S]*?${c("Code")}\\s*${t("Msg")}([\\s\\S]*?)${c("Msg")}\\s*${c("Obs")}`, "g");
   return [...xml.matchAll(re)].map((m) => m[1].trim());

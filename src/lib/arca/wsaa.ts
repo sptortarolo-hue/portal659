@@ -50,9 +50,12 @@ function wireLog(url: string, body: string, ips: string): void {
     const in0 = body.indexOf("<in0>");
     const head = in0 >= 0 ? body.slice(0, Math.min(in0, 300)) : body.slice(0, 300);
     const cms = in0 >= 0 ? body.slice(in0 + 5, body.indexOf("</in0>")) : "";
+    // Un CMS válido es base64 puro (alfabeto A-Za-z0-9+/=). Cualquier otro
+    // char rompería el parseo XML del lado de ARCA: se detecta acá.
+    const cmsB64 = /^[A-Za-z0-9+/=]+$/.test(cms);
     console.log(
       `[fiscal] wire host=${new URL(url).hostname} ips=${ips} ` +
-        `env-bytes=${body.length} cms-len=${cms.length} cms-head=${cms.slice(0, 40)} head=${head.replace(/\s+/g, " ").slice(0, 220)}`
+        `env-bytes=${body.length} cms-len=${cms.length} cms-b64=${cmsB64} cms-head=${cms.slice(0, 40)} head=${head.replace(/\s+/g, " ").slice(0, 220)}`
     );
   } catch {
     /* diagnóstico best-effort */
@@ -68,10 +71,10 @@ function soapFetch(url: string, body: string, action: string): Promise<string> {
   // 15s por llamada. `Connection: close` fuerza conexión fresca por intento:
   // ARCA balancea entre varios backends (wsaaext0, wsaaext1...) y el pool
   // keep-alive puede dejar clavado un backend roto; cada intento reelige.
-  // Reintentos (máx 2 intentos): xml.bad (no se procesó nada) y fallos de
-  // red/timeout. Para login es seguro: en el peor caso ARCA responde
-  // "ya posee TA" y se informa sin loopear.
-  const MAX_ATTEMPTS = 2;
+  // Reintentos (máx 3): xml.bad (no se procesó nada) y fallos de red/timeout.
+  // Para login es seguro: en el peor caso ARCA responde "ya posee TA" y se
+  // informa sin loopear.
+  const MAX_ATTEMPTS = 3;
   const run = (attempt: number): Promise<string> => {
     const ac = new AbortController();
     const timeout = setTimeout(() => ac.abort(), 15000);

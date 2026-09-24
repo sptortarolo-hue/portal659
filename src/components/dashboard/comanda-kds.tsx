@@ -16,6 +16,13 @@ import {
 } from "@/lib/order-utils";
 import { playNewOrderSound, playOrderReadySound, playUrgentSound, resumeAudioContext } from "@/lib/sounds";
 import type { Order, OrderStatus } from "@/types/database";
+import {
+  enqueueOrderPatch,
+  getLocalKitchenOrders,
+  isLocalOrderId,
+} from "@/lib/offline-kitchen";
+import { SYNC_COMPLETED_EVENT } from "@/lib/sync-engine";
+import { dispatchOfflinePrint } from "@/lib/local-print";
 
 type Props = {
   vendorId: string;
@@ -103,9 +110,9 @@ function getTimeColor(elapsed: number, estimated: number | null): string {
 }
 
 function TicketCard({
-  order, now, vendorName, accessToken, onAction, onUndo, onToggleItem, onMarkAll, strictClose,
+  order, now, vendorName, vendorId, accessToken, onAction, onUndo, onToggleItem, onMarkAll, strictClose,
 }: {
-  order: Order; now: number; vendorName: string; accessToken: string;
+  order: Order; now: number; vendorName: string; vendorId: string; accessToken: string;
   onAction: (orderId: string, status: OrderStatus) => Promise<string | null>;
   onUndo: (orderId: string, status: OrderStatus) => void;
   onToggleItem: (orderId: string, index: number) => void;
@@ -188,6 +195,32 @@ function TicketCard({
   async function handlePrint() {
     setPrinting(true);
     setPrintStatus(null);
+    // Offline (F5 impresión): comanda de contingencia por listener local.
+    // Sin fallback a /vendor/imprimir (esa página exige servidor).
+    if (typeof navigator !== "undefined" && !navigator.onLine && vendorId) {
+      try {
+        const r = await dispatchOfflinePrint(vendorId, {
+          kind: "COMANDA",
+          provisional: order.provisional ?? null,
+          customerName: order.customer_name,
+          tableName: order.channel === "mesa" ? order.customer_name : null,
+          items: (order.items || []).map((i) => ({
+            qty: Number(i.qty) || 1,
+            name: String(i.name || ""),
+            modifiers: Array.isArray(i.modifiers) ? i.modifiers : [],
+          })),
+          total: Number(order.total) || 0,
+          createdAt: Date.now(),
+        });
+        setPrintStatus(r.printed ? "ok" : "error");
+        if (r.printed) vibrate([20]);
+      } catch {
+        setPrintStatus("error");
+      }
+      setPrinting(false);
+      setTimeout(() => setPrintStatus(null), 3000);
+      return;
+    }
     try {
       const res = await fetch("/api/print", {
         method: "POST",
@@ -223,7 +256,10 @@ function TicketCard({
       {/* Header */}
       <div className="flex items-center justify-between mb-1.5">
         <div className="flex items-center gap-1.5">
-          <span className="font-mono text-[13px] font-extrabold text-foreground">{order.pickup_number != null ? `Nro. ${order.pickup_number}` : `#${order.id.slice(0, 6)}`}</span>
+          <span className="font-mono text-[13px] font-extrabold text-foreground">{order.pickup_number != null ? `Nro. ${order.pickup_number}` : order.provisional != null ? `P-${order.provisional}` : `#${order.id.slice(0, 6)}`}</span>
+          {order.pending && (
+            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">📡 pendiente</span>
+          )}
           <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${CONDITION_META[orderCondition(order)].pillClass}`}>
             {CONDITION_META[orderCondition(order)].label}
           </span>
@@ -535,9 +571,51 @@ export default function ComandaKDS({ vendorId, vendorName, accessToken, prepTime
       clearTimeout(timeout);
     }
     setLoading(false);
+    // Re-mergear el ledger offline (este fetch reemplaza el estado solo con
+    // servidor; los pendientes locales se reponen acá).
+    loadLocalOrders();
   }
 
   useEffect(() => { fetchOrders(); }, []);
+
+  // Ledger offline (F5): pedidos vendidos sin red, pendientes de sync. Se
+  // mergean con los del servidor (el polling los preserva: nunca vienen con
+  // id del servidor). Al sincronizar se dropean y los trae el fetch.
+  const loadLocalOrders = useCallback(async () => {
+    if (!vendorId) return;
+    try {
+      const locals = await getLocalKitchenOrders(vendorId);
+      if (locals.length === 0) return;
+      setOrders((prev) => {
+        const prevIds = new Set(prev.map((o) => o.id));
+        const fresh = locals.filter((o) => !prevIds.has(o.id) && orderNeedsKitchen(o));
+        if (fresh.length === 0) return prev;
+        fresh.forEach((o) => previousStatusRef.current.set(o.id, o.status));
+        return [...prev, ...fresh];
+      });
+    } catch {
+      /* sin ledger: solo servidor */
+    }
+  }, [vendorId]);
+
+  useEffect(() => {
+    loadLocalOrders();
+    const onOutbox = () => loadLocalOrders();
+    const onSync = (e: Event) => {
+      const ids = (e as CustomEvent)?.detail?.syncedLocalIds as string[] | undefined;
+      if (ids && ids.length > 0) {
+        setOrders((prev) => prev.filter((o) => !ids.includes(o.id)));
+      }
+      loadLocalOrders();
+      fetchOrders();
+    };
+    window.addEventListener("portal:outbox-changed", onOutbox);
+    window.addEventListener(SYNC_COMPLETED_EVENT, onSync);
+    return () => {
+      window.removeEventListener("portal:outbox-changed", onOutbox);
+      window.removeEventListener(SYNC_COMPLETED_EVENT, onSync);
+    };
+  }, [loadLocalOrders]);
 
   // On/off "Exigir tildado": se lee del comercio y persiste por comercio
   // (el gate es server-side, así Pedidos también lo respeta).
@@ -634,7 +712,19 @@ export default function ComandaKDS({ vendorId, vendorName, accessToken, prepTime
 
   async function handleAction(orderId: string, status: OrderStatus): Promise<string | null> {
     const estimated = status === "preparing" ? (prepTimeMin ?? 30) : undefined;
+    const current = ordersRef.current.find((o) => o.id === orderId);
+    if (current) previousStatusRef.current.set(orderId, current.status);
     setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, status } : o)));
+    // Offline (F5): pedido local o sin red → se encola la transición (el
+    // sync la aplica con dependencia del create). El optimista ya quedó.
+    if ((isLocalOrderId(orderId) || (typeof navigator !== "undefined" && !navigator.onLine)) && vendorId) {
+      try {
+        await enqueueOrderPatch({ vendorId, orderId, kind: "order_status", status });
+        return null;
+      } catch {
+        return "Sin conexión: no se pudo encolar el cambio";
+      }
+    }
     try {
       const res = await fetch(`/api/vendor/orders/${orderId}`, {
         method: "PATCH",
@@ -778,6 +868,7 @@ export default function ComandaKDS({ vendorId, vendorName, accessToken, prepTime
         order={order}
         now={now}
         vendorName={vendorName}
+        vendorId={vendorId}
         accessToken={accessToken}
         onAction={handleAction}
         onUndo={handleUndo}

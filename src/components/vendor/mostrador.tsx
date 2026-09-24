@@ -424,13 +424,16 @@ export function Mostrador({ vendorId }: { vendorId?: string | null }) {
         setSaving(false);
         return;
       }
+      const prov = nextProvisionalNumber(vendorId);
+      // En el payload para que el KDS offline muestre el P-N (el servidor
+      // ignora campos desconocidos).
+      (payload as any).__provisional = prov;
       const localId = await enqueueOfflineAction({
         vendorId,
         scope: "pos",
         type: "pos_order",
         payload,
       });
-      const prov = nextProvisionalNumber(vendorId);
       const nowIso = new Date().toISOString();
       // Documentos a imprimir (igual que online: comanda si hay cocina +
       // comprobante si lo pidió). Se encolan y se intentan en listener local.

@@ -501,6 +501,10 @@ export type Order = {
   client_key?: string | null;
   /** Hora real de la venta según el dispositivo (offline). Reportes usan esta. */
   occurred_at?: string | null;
+  /** Vista local pendiente de sync (offline): no existe aún en el servidor. */
+  pending?: boolean;
+  /** Número provisorio del día (P-N) para vistas locales. */
+  provisional?: number | null;
   /** Comprobante de transferencia (imagen/PDF) que llegó por WhatsApp al bot. */
   transfer_proof_url?: string | null;
   /** Apartado/seña (moda): reserva con pago parcial + vencimiento. */

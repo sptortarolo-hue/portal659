@@ -73,6 +73,7 @@ import { OfflineBanner } from "@/components/vendor/offline-banner";
 import { OfflineConflicts } from "@/components/vendor/offline-conflicts";
 import { usePendingSyncCount } from "@/hooks/use-online-status";
 import { clearVendorData, ensurePersisted, saveVendorSnapshot } from "@/lib/offline-db";
+import { enqueueOrderPatch, isLocalOrderId } from "@/lib/offline-kitchen";
 import { syncOutbox } from "@/lib/sync-engine";
 import { useToast } from "@/lib/toast";
 import { DeliveryBoard } from "@/components/vendor/delivery-board";
@@ -578,6 +579,24 @@ function VendorDashboardInner() {
   }, []);
 
   async function updateOrderStatus(order: Order, status: Order["status"]) {
+    // Offline (F5): pedido local o sin red → se encola la transición con
+    // optimista local (el sync la aplica con dependencia del create).
+    if (
+      vendor?.id &&
+      (isLocalOrderId(order.id) || (typeof navigator !== "undefined" && !navigator.onLine))
+    ) {
+      try {
+        await enqueueOrderPatch({ vendorId: vendor.id, orderId: order.id, kind: "order_status", status });
+      } catch {
+        setMsg("Sin conexión: no se pudo encolar el cambio");
+        return;
+      }
+      const label = order.pickup_number != null ? `Nro. ${order.pickup_number}` : order.provisional != null ? `P-${order.provisional}` : `#${order.id.slice(0, 8)}`;
+      setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, status } : o)));
+      setSelectedOrder((prev) => (prev && prev.id === order.id ? { ...prev, status } : prev));
+      setMsg(`Pedido ${label} → ${statusLabels[status]} (pendiente de sync)`);
+      return;
+    }
     try {
       const payload: Record<string, unknown> = { status };
       // Gastronomía estima minutos de cocina desde la demora configurada (sin hardcodeo);
@@ -610,6 +629,20 @@ function VendorDashboardInner() {
   }
 
   async function markOrderPaid(orderId: string) {
+    // Offline (F5): se encola el pago con optimista local.
+    if (vendor?.id && (isLocalOrderId(orderId) || (typeof navigator !== "undefined" && !navigator.onLine))) {
+      try {
+        await enqueueOrderPatch({ vendorId: vendor.id, orderId, kind: "mark_paid" });
+      } catch {
+        setMsg("Sin conexión: no se pudo encolar el pago");
+        return;
+      }
+      const nowIso = new Date().toISOString();
+      setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, payment_status: "paid", paid_at: nowIso } : o)));
+      setSelectedOrder((prev) => (prev && prev.id === orderId ? { ...prev, payment_status: "paid", paid_at: nowIso } : prev));
+      setMsg(`Pago confirmado (pendiente de sync) · ${orders.find((o) => o.id === orderId)?.pickup_number ?? orderId.slice(0, 8)}`);
+      return;
+    }
     try {
       const res = await fetch(`/api/vendor/orders/${orderId}`, {
         method: "PATCH",

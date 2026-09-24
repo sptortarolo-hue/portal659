@@ -263,18 +263,33 @@ export function signTra(tra: string, certPem: string, keyPem: string): string {
   return Buffer.from(der, "binary").toString("base64");
 }
 
+/** Des-escapa entidades XML (&lt; &gt; &quot; &apos; &amp;, en ese orden). */
+function unescapeXml(s: string): string {
+  return s
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, "&");
+}
+
 function parseLoginResponse(xml: string): { token: string; sign: string } {
-  // Tolerante a namespaces (<ns:token>) y atributos (<token xsi:type=...>):
-  // un TA válido perdido acá deja a WSAA negando nuevos por 12 h.
-  const token = xml.match(/<(?:\w+:)?token(?:\s[^>]*)?>([\s\S]*?)<\/(?:\w+:)?token>/)?.[1]?.trim();
-  const sign = xml.match(/<(?:\w+:)?sign(?:\s[^>]*)?>([\s\S]*?)<\/(?:\w+:)?sign>/)?.[1]?.trim();
+  // WSAA devuelve el TA escapado como entidades dentro de loginCmsReturn
+  // (&lt;credentials&gt;&lt;token&gt;...): se des-escapa primero o el token
+  // nunca matchea ("ARCA no devolvió token" fantasma). Tolerante además a
+  // namespaces (<ns:token>) y atributos: un TA perdido acá deja a WSAA
+  // negando nuevos por 12 h.
+  const clean = unescapeXml(xml);
+  const token = clean.match(/<(?:\w+:)?token(?:\s[^>]*)?>([\s\S]*?)<\/(?:\w+:)?token>/)?.[1]?.trim();
+  const sign = clean.match(/<(?:\w+:)?sign(?:\s[^>]*)?>([\s\S]*?)<\/(?:\w+:)?sign>/)?.[1]?.trim();
   if (!token || !sign) {
-    const fault = faultString(xml);
+    const fault = faultString(clean);
     if (fault?.includes("coe.alreadyAuthenticated")) {
       throw new ArcaError("ARCA: login duplicado en curso (reintentá en unos segundos)", fault);
     }
-    // Cuerpo redactado (sin credenciales aunque el formato sea inesperado).
-    throw new ArcaError("ARCA no devolvió token (¿certificado asociado al WS?)", fault || redactXml(xml).slice(0, 1500));
+    // Cuerpo redactado sobre el texto des-escapado (un token escapado
+    // también se tapa: nunca filtrar credenciales al log).
+    throw new ArcaError("ARCA no devolvió token (¿certificado asociado al WS?)", fault || redactXml(clean).slice(0, 1500));
   }
   return { token, sign };
 }

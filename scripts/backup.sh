@@ -6,9 +6,12 @@
 # funciona en cualquier VPS con Docker.
 #
 # - DB:    docker exec portal659-db pg_dump → gzip (valida integridad + completitud)
-# - Files: tar del volumen uploads_data (fotos de productos/logos, downloads/)
+# - Files: tar del volumen uploads_data (fotos de productos/logos; se excluye
+#   downloads/ — el .zip del agente y APKs son reconstruibles y pesaban ~100MB
+#   por snapshot) → R2 (bucket privado; config por env vars, sin archivo)
 # - Push:  rclone → R2 (bucket privado; config por env vars, sin archivo de config)
-# - Retención: 14 días local, 30 días en R2
+# - Retención: 7 días local, 30 días en R2 (disco VPS de 20G: 14 días ×
+#   snapshots diarios + por deploy lo llenaban y volteaban Postgres)
 #
 # Env (del /opt/portal659/.env que escribe el deploy desde GitHub secrets):
 #   POSTGRES_USER / POSTGRES_DB (defaults portal659)
@@ -65,8 +68,10 @@ UPLOADS_FILE="$BACKUP_ROOT/uploads/uploads-$NOW.tar.gz"
 VOL=$(docker volume ls --format '{{.Name}}' | grep -E '(^|_)uploads_data$' | head -n 1)
 if [ -n "$VOL" ]; then
   echo "[$NOW] tar uploads (volumen $VOL) → $UPLOADS_FILE"
+  # Se excluye downloads/ (agente .zip/APKs reconstruibles): ahorra ~100MB
+  # por snapshot y no afecta el restore (las fotos van igual).
   docker run --rm -v "$VOL":/data:ro -v "$BACKUP_ROOT":/backup alpine:3 \
-    tar czf "/backup/uploads/$(basename "$UPLOADS_FILE")" -C /data .
+    tar czf "/backup/uploads/$(basename "$UPLOADS_FILE")" --exclude='./downloads' -C /data .
   if [ -s "$UPLOADS_FILE" ] && gzip -t "$UPLOADS_FILE" 2>/dev/null; then
     echo "[$NOW] uploads OK ($(du -h "$UPLOADS_FILE" | cut -f1))"
   else
@@ -128,10 +133,12 @@ fi
 echo "[$NOW] verificado en R2: db=$R2_DB_COUNT archivos, uploads=$R2_UP_COUNT archivos"
 
 # --- 5. Retención -------------------------------------------------------------
-find "$BACKUP_ROOT/db" -name 'portal659-*.sql.gz' -mtime +14 -delete 2>/dev/null || true
-find "$BACKUP_ROOT/uploads" -name 'uploads-*.tar.gz' -mtime +14 -delete 2>/dev/null || true
+# Local corta (7 días): el disco del VPS es chico y cada deploy suma un
+# snapshot. R2 (30 días, verificado post-push) es la copia de resguardo.
+find "$BACKUP_ROOT/db" -name 'portal659-*.sql.gz' -mtime +7 -delete 2>/dev/null || true
+find "$BACKUP_ROOT/uploads" -name 'uploads-*.tar.gz' -mtime +7 -delete 2>/dev/null || true
 rclone delete "R2:$R2_BUCKET/db" --min-age 30d >/dev/null 2>&1 || true
 rclone delete "R2:$R2_BUCKET/uploads" --min-age 30d >/dev/null 2>&1 || true
 
-echo "[$NOW] backup completo (retención: 14 días local, 30 días R2)"
+echo "[$NOW] backup completo (retención: 7 días local, 30 días R2)"
 exit 0

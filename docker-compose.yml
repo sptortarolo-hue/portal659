@@ -6,6 +6,13 @@ services:
         NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL}
     container_name: portal659
     restart: unless-stopped
+    # Rotación de logs: sin esto los *-json.log crecen sin límite y llenan el
+    # disco de 20G (incidente sep-2026: Postgres en PANIC por "No space left").
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
       interval: 30s
@@ -50,6 +57,11 @@ services:
       context: ./services/print-bridge
     container_name: portal659-printbridge
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     environment:
       - PORT=8791
       - PRINT_BRIDGE_SECRET=${PRINT_BRIDGE_SECRET}
@@ -69,6 +81,11 @@ services:
       context: ./services/wa-bot
     container_name: portal659-wabot
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     mem_limit: 256m
     environment:
       - PORT=8792
@@ -108,6 +125,11 @@ services:
     image: postgres:15-alpine
     container_name: portal659-db
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-portal659}
       POSTGRES_USER: ${POSTGRES_USER:-portal659}
@@ -127,6 +149,11 @@ services:
     image: nginx:alpine
     container_name: portal659-nginx
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     ports:
       - "80:80"
       - "443:443"

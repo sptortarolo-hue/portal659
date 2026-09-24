@@ -109,6 +109,10 @@ jobs:
             # nuevo, nginx apunta a un IP muerto y el sitio da 502. Restart = re-resuelve.
             docker restart portal659-nginx
             docker image prune -f
+            # Higiene de disco (incidente sep-2026: build cache + backups
+            # llenaron el disco de 20G y voltearon Postgres): no falla el
+            # deploy si no hay nada que podar.
+            docker builder prune -f || true
 
             # Backup diario self-managed (04:00 AR = 07:00 UTC). Self-healing:
             # reinstala rclone + script + crontab si faltan. /opt/portal659-backups

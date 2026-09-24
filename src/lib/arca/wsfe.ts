@@ -137,10 +137,10 @@ export async function ultimoAutorizado(
   return withTicket(auth, async (token, sign) => {
     const body =
       `<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" ` +
-      `xmlns:dif="http://ar.gov.afip.dif.FEV1/"><soap:Header/><soap:Body>` +
-      `<dif:FECompUltimoAutorizado>${authBlock(token, sign, auth.cuit)}` +
-      `<dif:PtoVta>${ptoVta}</dif:PtoVta><dif:CbteTipo>${cbteTipo}</dif:CbteTipo>` +
-      `</dif:FECompUltimoAutorizado></soap:Body></soap:Envelope>`;
+      `><soap:Header/><soap:Body>` +
+      `<FECompUltimoAutorizado xmlns="http://ar.gov.afip.dif.FEV1/">${authBlock(token, sign, auth.cuit)}` +
+      `<PtoVta>${ptoVta}</PtoVta><CbteTipo>${cbteTipo}</CbteTipo>` +
+      `</FECompUltimoAutorizado></soap:Body></soap:Envelope>`;
     const xml = await soapFetch(
       WSFE_URL[auth.env],
       body,
@@ -196,12 +196,12 @@ export async function solicitarCaeC(
       `<MonId>PES</MonId><MonCotiz>1</MonCotiz></FECAEDetRequest>`;
     const body =
       `<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" ` +
-      `xmlns:dif="http://ar.gov.afip.dif.FEV1/"><soap:Header/><soap:Body>` +
-      `<dif:FECAESolicitar>${authBlock(token, sign, auth.cuit)}` +
-      `<dif:FeCAEReq><dif:FeCabReq><dif:CantReg>1</dif:CantReg>` +
-      `<dif:PtoVta>${input.ptoVta}</dif:PtoVta><dif:CbteTipo>${CBTE_FACTURA_C}</dif:CbteTipo>` +
-      `</dif:FeCabReq><dif:FeDetReq>${det}</dif:FeDetReq></dif:FeCAEReq>` +
-      `</dif:FECAESolicitar></soap:Body></soap:Envelope>`;
+      `><soap:Header/><soap:Body>` +
+      `<FECAESolicitar xmlns="http://ar.gov.afip.dif.FEV1/">${authBlock(token, sign, auth.cuit)}` +
+      `<FeCAEReq><FeCabReq><CantReg>1</CantReg>` +
+      `<PtoVta>${input.ptoVta}</PtoVta><CbteTipo>${CBTE_FACTURA_C}</CbteTipo>` +
+      `</FeCabReq><FeDetReq>${det}</FeDetReq></FeCAEReq>` +
+      `</FECAESolicitar></soap:Body></soap:Envelope>`;
     const xml = await soapFetch(
       WSFE_URL[auth.env],
       body,
@@ -255,11 +255,11 @@ export async function consultarComprobante(
   return withTicket(auth, async (token, sign) => {
     const body =
       `<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" ` +
-      `xmlns:dif="http://ar.gov.afip.dif.FEV1/"><soap:Header/><soap:Body>` +
-      `<dif:FECompConsultar>${authBlock(token, sign, auth.cuit)}` +
-      `<dif:FeCompConsReq><dif:PtoVta>${ptoVta}</dif:PtoVta>` +
-      `<dif:CbteTipo>${CBTE_FACTURA_C}</dif:CbteTipo><dif:CbteNro>${cbteNro}</dif:CbteNro>` +
-      `</dif:FeCompConsReq></dif:FECompConsultar></soap:Body></soap:Envelope>`;
+      `><soap:Header/><soap:Body>` +
+      `<FECompConsultar xmlns="http://ar.gov.afip.dif.FEV1/">${authBlock(token, sign, auth.cuit)}` +
+      `<FeCompConsReq><PtoVta>${ptoVta}</PtoVta>` +
+      `<CbteTipo>${CBTE_FACTURA_C}</CbteTipo><CbteNro>${cbteNro}</CbteNro>` +
+      `</FeCompConsReq></FECompConsultar></soap:Body></soap:Envelope>`;
     const xml = await soapFetch(
       WSFE_URL[auth.env],
       body,

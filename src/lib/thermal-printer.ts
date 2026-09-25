@@ -590,32 +590,33 @@ function formatFiscalDate(input: string): string {
 }
 
 /**
- * Encabezado fiscal del ticket (tras logo/nombre): FACTURA C en doble alto
- * + ORIGINAL + número grande + fecha + CUIT. Entra en 80mm (48) y 58mm
- * (32: el número de 13 va a doble ancho justo).
+ * Encabezado fiscal del ticket (tras logo/nombre), estilo factura argentina:
+ * letra C en recuadro + ORIGINAL + FACTURA Nº en tamaño normal + fecha,
+ * CUIT y condición IVA. En 58mm (32) fecha y CUIT van en líneas separadas.
  */
 async function composeFiscalHeader(
   printer: any,
+  width: number,
   fiscal: FiscalPrintInfo
 ): Promise<void> {
   const nro = `${String(fiscal.puntoVenta).padStart(4, "0")}-${String(fiscal.cbteNro).padStart(8, "0")}`;
   printer.alignCenter();
   printer.bold(true);
-  printer.setTextSize(2, 2);
-  printer.println("FACTURA C");
-  printer.setTextSize(0, 0);
+  printer.println("+-----+");
+  printer.println("|  C  |");
+  printer.println("+-----+");
   printer.println("ORIGINAL");
   printer.bold(false);
-  printer.println("");
   printer.bold(true);
-  printer.setTextSize(2, 2);
-  printer.println(nro);
-  printer.setTextSize(0, 0);
+  printer.println(`FACTURA Nº ${nro}`);
   printer.bold(false);
-  if (fiscal.fechaEmision) {
-    printer.println(`Fecha: ${formatFiscalDate(fiscal.fechaEmision)}`);
+  const fecha = fiscal.fechaEmision ? formatFiscalDate(fiscal.fechaEmision) : null;
+  if (width > 32 && fecha) {
+    printer.println(`Fecha: ${fecha} · CUIT: ${fiscal.cuit}`);
+  } else {
+    if (fecha) printer.println(`Fecha: ${fecha}`);
+    printer.println(`CUIT: ${fiscal.cuit}`);
   }
-  printer.println(`CUIT: ${fiscal.cuit}`);
   const cond = condIvaLabel(fiscal.condIva);
   if (cond) printer.println(cond);
 }
@@ -623,10 +624,10 @@ async function composeFiscalHeader(
 const fiscalQrCache = new Map<string, Buffer>();
 
 /**
- * Bloque fiscal lado a lado (solo 80mm/576px): QR sutil a la izquierda
- * (~26mm) + columna de texto a la derecha (CAE, vto, verificación). Mismo
- * patrón que el encabezado con logo (bitmap único, cache en memoria).
- * Devuelve null si falla (el llamador usa el apilado).
+ * Bloque fiscal lado a lado (solo 80mm/576px): QR a la izquierda (~30mm,
+ * margen 2 para escaneo fácil) + columna de texto a la derecha (CAE, vto,
+ * verificación). Mismo patrón que el encabezado con logo (bitmap único,
+ * cache en memoria). Devuelve null si falla (el llamador usa el apilado).
  */
 async function renderFiscalSideQr(
   fiscal: FiscalPrintInfo,
@@ -640,18 +641,18 @@ async function renderFiscalSideQr(
   try {
     const QRCode = (await import("qrcode")).default;
     const qrBuf: Buffer = await QRCode.toBuffer(fiscal.qrUrl, {
-      width: 208,
-      margin: 1,
+      width: 240,
+      margin: 2,
     });
     const PI = await loadPureImage();
     const sharp = await loadSharp();
     const qrImg = await decodePng(PI, qrBuf);
     const W = 576;
-    const QR = 208;
+    const QR = 240;
     const PAD = 16;
     const textX = PAD + QR + 20;
-    const lines = [`CAE: ${cae}`, `Vto. CAE: ${vto}`, "", "Verificá en", "arca.gob.ar/fe/qr"];
-    const size = 30;
+    const lines = [`CAE:`, `${cae}`, `Vto: ${vto}`, "", "Verificá en", "arca.gob.ar/fe/qr"];
+    const size = 24;
     const canvas = PI.make(W, QR + PAD * 2);
     const ctx = canvas.getContext("2d");
     ctx.fillStyle = "white";
@@ -707,7 +708,7 @@ async function composeFiscalBlock(
   printer.println(`Vto. CAE: ${vto}`);
   if (fiscal.qrUrl) {
     try {
-      printer.printQR(fiscal.qrUrl, { cellSize: 3, correction: "M", model: 2 });
+      printer.printQR(fiscal.qrUrl, { cellSize: 4, correction: "M", model: 2 });
       printer.println("");
     } catch {
       printer.println("QR: ver en arca.gob.ar/fe/qr");
@@ -734,7 +735,7 @@ async function composeReceipt(
   await composeStoreHeader(printer, vendor, width);
   // Con fiscal, el encabezado de factura reemplaza al título genérico.
   if (extra?.fiscal) {
-    await composeFiscalHeader(printer, extra.fiscal);
+    await composeFiscalHeader(printer, width, extra.fiscal);
   } else {
     printer.println(extra?.docTitle || "TICKET");
   }

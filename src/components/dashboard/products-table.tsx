@@ -20,6 +20,8 @@ type Offer = {
   promo_price: number | null;
   requires_prep?: boolean;
   cash_discount_excluded?: boolean;
+  /** Solo sale en la sección Promo (no figura en el menú). */
+  promo_only?: boolean;
 };
 
 type CostInfo = { cost: number | null; pct: number | null; status: "ok" | "warn" | "bad" | "none" };
@@ -38,6 +40,7 @@ export function ProductsTable({
   onToggleFeatured,
   onToggleAvailable,
   onDelete,
+  onTogglePromoOnly,
 }: {
   offers: Offer[];
   costByProduct?: Record<string, CostInfo>;
@@ -48,6 +51,8 @@ export function ProductsTable({
   onToggleFeatured: (offer: Offer) => void;
   onToggleAvailable: (offer: Offer) => void;
   onDelete: (offer: Offer) => void;
+  /** Solo-promo (no figura en el menú). Opcional: solo gastro lo pasa. */
+  onTogglePromoOnly?: (offer: Offer) => void;
 }) {
   const allIds = offers.map((o) => o.id);
   const allSelected = allIds.length > 0 && allIds.every((id) => selected.has(id));
@@ -108,6 +113,9 @@ export function ProductsTable({
                         <span className="font-medium truncate">{offer.name}</span>
                         {offer.featured_today && (
                           <Badge className="bg-sun/20 text-ink text-[10px] px-1.5 py-0">Hoy</Badge>
+                        )}
+                        {offer.promo_only && (
+                          <Badge className="bg-violet-100 text-violet-700 text-[10px] px-1.5 py-0">Solo promo</Badge>
                         )}
                         {!offer.available && (
                           <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
@@ -182,6 +190,15 @@ export function ProductsTable({
                         icon: "⭐",
                         onClick: () => onToggleFeatured(offer),
                       },
+                      ...(onTogglePromoOnly
+                        ? [
+                            {
+                              label: offer.promo_only ? "Volver al menú" : "Solo promo",
+                              icon: "🏷️",
+                              onClick: () => onTogglePromoOnly(offer),
+                            },
+                          ]
+                        : []),
                       {
                         label: "Eliminar",
                         icon: "🗑️",

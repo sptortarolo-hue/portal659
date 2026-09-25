@@ -18,7 +18,7 @@ export async function PATCH(
     "available", "featured_today", "stock", "promo_price",
     "stock_low_threshold", "currency", "neighborhood", "type", "unit",
     "has_variants", "stock_control", "requires_prep", "cash_discount_excluded",
-    "pack_size", "size_guide",
+    "pack_size", "size_guide", "promo_only",
   ] as const;
 
   const safeUpdate: Record<string, unknown> = {};
@@ -61,6 +61,20 @@ export async function PATCH(
   }
   if ("cash_discount_excluded" in safeUpdate) {
     safeUpdate.cash_discount_excluded = safeUpdate.cash_discount_excluded === true;
+  }
+  // Solo-promo (vidriera): tolerante a migración sin aplicar.
+  if ("promo_only" in safeUpdate) {
+    const hasPromoOnly = await queryOne<{ exists: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1 FROM information_schema.columns
+         WHERE table_name = 'products' AND column_name = 'promo_only'
+       ) AS exists`
+    );
+    if (hasPromoOnly?.exists === true) {
+      safeUpdate.promo_only = safeUpdate.promo_only === true;
+    } else {
+      delete safeUpdate.promo_only;
+    }
   }
   // Normalizar categoría igual que al crear (evita variantes duplicadas).
   if ("category" in safeUpdate) {

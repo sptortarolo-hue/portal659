@@ -39,6 +39,8 @@ type Offer = {
   cash_discount_excluded?: boolean;
   /** Venta en packs (ej: 6). El precio es del paquete. */
   pack_size?: number | null;
+  /** Solo sale en la sección Promo (no figura en el menú). */
+  promo_only?: boolean;
 };
 
 type CostInfo = { cost: number | null; pct: number | null; status: "ok" | "warn" | "bad" | "none" };
@@ -340,6 +342,21 @@ export function MenuStudio({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ featured_today: !offer.featured_today }),
     });
+    reload();
+  }
+
+  async function togglePromoOnly(offer: Offer) {
+    const toPromo = !offer.promo_only;
+    if (toPromo && !(offer.promo_price != null && Number(offer.promo_price) > 0)) {
+      setMsg("Poné un precio promo antes de mandarlo a Solo promo");
+      return;
+    }
+    await fetch(`/api/vendor/offers/${offer.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ promo_only: toPromo }),
+    });
+    setMsg(toPromo ? `"${offer.name}" ahora sale solo en Promo` : `"${offer.name}" volvió al menú`);
     reload();
   }
 
@@ -711,6 +728,7 @@ export function MenuStudio({
               onEditModifiers={(offer) => startEdit(offer)}
               costByProduct={showCosts ? costByProduct : undefined}
               emptyText={isComercio ? "Todavía no cargaste productos." : undefined}
+              onTogglePromoOnly={togglePromoOnly}
             />
           </div>
           <div className="hidden lg:block">
@@ -731,6 +749,7 @@ export function MenuStudio({
                 onToggleFeatured={toggleFeatured}
                 onToggleAvailable={toggleAvailable}
                 onDelete={deleteOffer}
+                onTogglePromoOnly={togglePromoOnly}
               />
             )}
           </div>

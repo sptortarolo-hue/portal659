@@ -50,6 +50,8 @@ type Offer = {
   stock_control?: boolean;
   promo_price: number | null;
   requires_prep?: boolean;
+  /** Solo sale en la sección Promo (no figura en el menú). */
+  promo_only?: boolean;
 };
 
 type Modifier = {
@@ -238,7 +240,7 @@ export function OfferForm({
   );
 }
 
-export function OfferList({ offers, onEdit, onToggleFeatured, onToggleAvailable, onDelete, editingId, editForm, onEditModifiers, costByProduct, emptyText = "Todavía no cargaste platos." }: {
+export function OfferList({ offers, onEdit, onToggleFeatured, onToggleAvailable, onDelete, editingId, editForm, onEditModifiers, costByProduct, emptyText = "Todavía no cargaste platos.", onTogglePromoOnly }: {
   offers: Offer[];
   onEdit: (o: Offer) => void;
   onToggleFeatured: (o: Offer) => void;
@@ -251,6 +253,8 @@ export function OfferList({ offers, onEdit, onToggleFeatured, onToggleAvailable,
   costByProduct?: Record<string, { cost: number | null; pct: number | null; status: "ok" | "warn" | "bad" | "none" }>;
   /** Texto del estado vacío de la lista. */
   emptyText?: string;
+  /** Solo-promo (no figura en el menú). Opcional: solo gastro lo pasa. */
+  onTogglePromoOnly?: (o: Offer) => void;
 }) {
   const editAnchorRef = useRef<HTMLDivElement>(null);
 
@@ -281,6 +285,7 @@ export function OfferList({ offers, onEdit, onToggleFeatured, onToggleAvailable,
                     <span className="font-medium text-sm truncate">{offer.name}</span>
                     {offer.featured_today && <Badge className="bg-sun/20 text-ink text-[10px] px-1.5 py-0">Hoy</Badge>}
                     {!offer.available && <Badge variant="secondary" className="text-[10px] px-1.5 py-0">Pausado</Badge>}
+                    {offer.promo_only && <Badge className="bg-violet-100 text-violet-700 text-[10px] px-1.5 py-0">Solo promo</Badge>}
                     {costByProduct?.[offer.id]?.cost !== null && costByProduct?.[offer.id]?.cost !== undefined && (
                       <Badge
                         className={`text-[10px] px-1.5 py-0 tabular-nums ${
@@ -317,6 +322,9 @@ export function OfferList({ offers, onEdit, onToggleFeatured, onToggleAvailable,
                 <div className="hidden sm:flex items-center gap-1 flex-shrink-0">
                   <Button variant="outline" size="sm" onClick={() => onEdit(offer)}>Editar</Button>
                   <Button variant="outline" size="sm" onClick={() => onToggleFeatured(offer)}>{offer.featured_today ? "Quitar" : "Destacar"}</Button>
+                  {onTogglePromoOnly && (
+                    <Button variant="outline" size="sm" onClick={() => onTogglePromoOnly(offer)}>{offer.promo_only ? "A menú" : "Solo promo"}</Button>
+                  )}
                   <Button variant="outline" size="sm" onClick={() => onToggleAvailable(offer)}>{offer.available ? "Pausar" : "Activar"}</Button>
                   <Button variant="ghost" size="sm" className="text-red-600" onClick={() => onDelete(offer)}>Eliminar</Button>
                 </div>
@@ -327,6 +335,7 @@ export function OfferList({ offers, onEdit, onToggleFeatured, onToggleAvailable,
                       { label: "Editar", icon: "✏️", onClick: () => onEdit(offer) },
                       { label: "Modificadores", icon: "⚙️", onClick: () => onEditModifiers ? onEditModifiers(offer) : onEdit(offer) },
                       { label: offer.featured_today ? "Quitar de Hoy" : "Destacar Hoy", icon: "⭐", onClick: () => onToggleFeatured(offer) },
+                      ...(onTogglePromoOnly ? [{ label: offer.promo_only ? "Volver al menú" : "Solo promo", icon: "🏷️", onClick: () => onTogglePromoOnly(offer) }] : []),
                       { label: offer.available ? "Pausar" : "Activar", icon: offer.available ? "⏸️" : "▶️", onClick: () => onToggleAvailable(offer) },
                       { label: "Eliminar", icon: "🗑️", onClick: () => onDelete(offer), destructive: true },
                     ]}

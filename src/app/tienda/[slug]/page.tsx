@@ -23,6 +23,7 @@ import { IrAComprarButton } from "@/components/store/ir-a-comprar-button";
 import { CategoryNav } from "@/components/store/category-nav";
 import { VolumeProgress } from "@/components/store/volume-progress";
 import { PackCard } from "@/components/store/pack-card";
+import { PromoSection } from "@/components/store/promo-section";
 import { PackSheetHost } from "@/components/store/pack-sheet";
 import { WeeklyHours } from "@/components/store/weekly-hours";
 import { StickyStoreBar } from "@/components/store/sticky-store-bar";
@@ -239,19 +240,33 @@ export default async function TiendaPage({
   const norm = (s: string | null) => (s || "").toLowerCase().trim();
   type Section = { name: string; items: any[] };
   const sections: Section[] = [];
+  // Solo-promo: sale en la sección Promo, no en el menú (tolerante a
+  // migración sin aplicar: promo_only llega undefined y no excluye).
+  const menuOffers = (offers || []).filter((o: any) => o.promo_only !== true);
+  // Promo: precio promo válido y menor al de lista, ordenada por % off.
+  const promos = (offers || [])
+    .filter(
+      (o: any) =>
+        o.promo_price != null && Number(o.promo_price) > 0 && Number(o.promo_price) < Number(o.price)
+    )
+    .sort(
+      (a: any, b: any) =>
+        1 - Number(b.promo_price) / Number(b.price) - (1 - Number(a.promo_price) / Number(a.price))
+    );
+  // Packs multi-producto (para CTA + sección). Se calcula tras volumeGroups.
   if (cats && cats.length > 0) {
     const used = new Set<string>();
     for (const c of cats as any[]) {
-      const items = offers?.filter((o: any) => norm(o.category) === norm(c.name)) || [];
+      const items = menuOffers?.filter((o: any) => norm(o.category) === norm(c.name)) || [];
       if (items.length) {
         sections.push({ name: c.name, items });
         used.add(norm(c.name));
       }
     }
-    const leftovers = offers?.filter((o: any) => !used.has(norm(o.category))) || [];
+    const leftovers = menuOffers?.filter((o: any) => !used.has(norm(o.category))) || [];
     if (leftovers.length) sections.push({ name: "Otros", items: leftovers });
-  } else if (offers?.length) {
-    sections.push({ name: isCatalog ? "Catálogo" : "Menú", items: offers });
+  } else if (menuOffers?.length) {
+    sections.push({ name: isCatalog ? "Catálogo" : "Menú", items: menuOffers });
   }
 
   // Precios por volumen (solo gastro): grupos + tramos para badges y espejo.
@@ -308,6 +323,10 @@ export default async function TiendaPage({
       volumeGroups = [];
     }
   }
+  // Packs multi-producto (para CTA + sección).
+  const packGroups = (volumeGroups || []).filter(
+    (g: any) => (g.productIds || []).length > 1 && (g.tiers || []).length > 0
+  );
 
   const isService = v.vertical === "servicio";
   // Tope de solicitudes alcanzado: no se muestran los formularios (el POST
@@ -662,6 +681,24 @@ export default async function TiendaPage({
           <>
             {/* Menu sections */}
             <h2 id="menu" className="font-display text-2xl font-semibold mt-6 mb-4 scroll-mt-[152px] sm:scroll-mt-16">{isCatalog ? "Catálogo" : "Menú"}</h2>
+            {isGastro && acceptsCart && packGroups.length > 0 && (
+              <a
+                href="#packs"
+                className="flex items-center justify-between gap-2 rounded-2xl bg-primary text-primary-foreground px-4 py-3 mb-4 font-semibold text-sm hover:bg-primary/90 transition-colors"
+              >
+                <span>🧊 Armá tu pack y ahorrá</span>
+                <span aria-hidden="true">↓</span>
+              </a>
+            )}
+            {promos.length > 0 && (
+              <PromoSection
+                items={promos}
+                vendor={vendorBrief}
+                modifiersByProduct={modifiersByProduct}
+                acceptsCart={acceptsCart}
+                consultHref={waUrl}
+              />
+            )}
             {sections.length === 0 ? (
               <p className="text-muted-foreground text-center py-12">
                 Este local todavía no cargó {isCatalog ? "su catálogo" : "su menú"}.
@@ -791,15 +828,13 @@ export default async function TiendaPage({
         )}
 
         {/* Packs para armar: un punto de entrada por pack (multi-producto) */}
-        {isGastro && acceptsCart && volumeGroups.some((g: any) => (g.productIds || []).length > 1 && (g.tiers || []).length > 0) && (
-          <section className="mt-6 mb-10">
+        {isGastro && acceptsCart && packGroups.length > 0 && (
+          <section id="packs" className="mt-6 mb-10 scroll-mt-[184px] sm:scroll-mt-24">
             <h3 className="font-display text-xl font-semibold mb-3">🧊 Armá tu pack</h3>
             <div className="space-y-2">
-              {volumeGroups
-                .filter((g: any) => (g.productIds || []).length > 1 && (g.tiers || []).length > 0)
-                .map((g: any) => (
-                  <PackCard key={g.id} group={g} />
-                ))}
+              {packGroups.map((g: any) => (
+                <PackCard key={g.id} group={g} />
+              ))}
             </div>
           </section>
         )}

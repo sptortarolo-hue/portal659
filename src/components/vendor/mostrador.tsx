@@ -163,6 +163,10 @@ export function Mostrador({ vendorId }: { vendorId?: string | null }) {
   // Fiscal ARCA (plan Gestión + config completa): toggle por venta.
   const [fiscalReady, setFiscalReady] = useState(false);
   const [withFiscal, setWithFiscal] = useState(false);
+  // Pedido con CAE listo para reimprimir con bloque fiscal (el ticket que
+  // salió al cobrar no lo trae porque el CAE llega después, en fondo).
+  const [fiscalPrintId, setFiscalPrintId] = useState<string | null>(null);
+  const [fiscalPrinting, setFiscalPrinting] = useState(false);
 
   useEffect(() => {
     fetch("/api/vendor/fiscal/config")
@@ -592,6 +596,7 @@ export function Mostrador({ vendorId }: { vendorId?: string | null }) {
 
     // Fiscal opt-in por venta, en segundo plano: el cobro nunca se traba
     // por ARCA (el mostrador queda libre al instante).
+    setFiscalPrintId(null);
     if (withFiscal && fiscalReady && data.orderId) {
       const fiscalOrderId = data.orderId as string;
       setMsg(`${baseMsg} · 🧾 Facturando…`);
@@ -607,6 +612,7 @@ export function Mostrador({ vendorId }: { vendorId?: string | null }) {
             setMsg(
               `${baseMsg} · 🧾 Factura C ${String(inv.punto_venta).padStart(4, "0")}-${String(inv.cbte_nro).padStart(8, "0")} (CAE …${String(inv.cae).slice(-4)})`
             );
+            setFiscalPrintId(fiscalOrderId);
           } else if (fdata.error) {
             const hint = fdata.hint ? ` 💡 ${fdata.hint}` : "";
             setMsg(`${baseMsg} · ⚠️ Cobrado sin fiscal: ${fdata.error}${hint} (reintentá desde Config → Fiscal)`);
@@ -914,6 +920,36 @@ export function Mostrador({ vendorId }: { vendorId?: string | null }) {
   return (
     <div className="space-y-4">
       {msg && <p className="text-sm text-green-600 bg-green-50 rounded-lg px-3 py-2">{msg}</p>}
+      {fiscalPrintId && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-full"
+          disabled={fiscalPrinting}
+          onClick={async () => {
+            setFiscalPrinting(true);
+            try {
+              const res = await fetch("/api/print", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ orderId: fiscalPrintId, type: "ticket" }),
+              });
+              const data = await res.json().catch(() => ({}));
+              setMsg(
+                data.ok || data.skipped
+                  ? `${msg} · 🖨️ Ticket fiscal impreso ✓`
+                  : `${msg} · ⚠️ No se pudo imprimir: ${data.error || "revisá la impresora"}`
+              );
+              if (data.ok) setFiscalPrintId(null);
+            } catch {
+              setMsg(`${msg} · ⚠️ Sin conexión con la impresora`);
+            }
+            setFiscalPrinting(false);
+          }}
+        >
+          {fiscalPrinting ? "🖨️ Imprimiendo…" : "🖨️ Imprimir factura fiscal"}
+        </Button>
+      )}
 
       <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_360px] gap-4 items-start">
         <div className="min-w-0">{productsGrid}</div>

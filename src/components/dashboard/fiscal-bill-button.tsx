@@ -18,6 +18,8 @@ export function FiscalBillButton({ orderId }: { orderId: string }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [printing, setPrinting] = useState(false);
+  const [printMsg, setPrintMsg] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -41,12 +43,41 @@ export function FiscalBillButton({ orderId }: { orderId: string }) {
 
   if (!ready) return null;
 
+  // Reimprime el ticket CON el bloque fiscal (CAE + QR). El ticket que
+  // salió al cobrar no lo trae porque el CAE llega después (fondo).
+  async function reprint() {
+    setPrinting(true);
+    setPrintMsg(null);
+    try {
+      const res = await fetch("/api/print", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId, type: "ticket" }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (data.ok || data.skipped) {
+        setPrintMsg(data.skipped ? "Impresora no configurada" : "Ticket fiscal impreso ✓");
+      } else {
+        setPrintMsg(`No se pudo imprimir: ${data.error || "revisá la impresora"}`);
+      }
+    } catch {
+      setPrintMsg("Sin conexión con la impresora");
+    }
+    setPrinting(false);
+  }
+
   if (existing) {
     return (
-      <p className="w-full rounded-xl border border-green-300 bg-green-50 px-3 py-2 text-center text-xs font-bold text-green-700 dark:border-green-900 dark:bg-green-950 dark:text-green-400">
-        🧾 Factura C {String(existing.punto_venta).padStart(4, "0")}-
-        {String(existing.cbte_nro).padStart(8, "0")} · CAE …{String(existing.cae).slice(-4)}
-      </p>
+      <div className="space-y-1">
+        <p className="w-full rounded-xl border border-green-300 bg-green-50 px-3 py-2 text-center text-xs font-bold text-green-700 dark:border-green-900 dark:bg-green-950 dark:text-green-400">
+          🧾 Factura C {String(existing.punto_venta).padStart(4, "0")}-
+          {String(existing.cbte_nro).padStart(8, "0")} · CAE …{String(existing.cae).slice(-4)}
+        </p>
+        <Button variant="outline" className="w-full" disabled={printing} onClick={reprint}>
+          {printing ? "🖨️ Imprimiendo…" : "🖨️ Reimprimir ticket fiscal"}
+        </Button>
+        {printMsg && <p className="text-xs font-medium text-muted-foreground">{printMsg}</p>}
+      </div>
     );
   }
 

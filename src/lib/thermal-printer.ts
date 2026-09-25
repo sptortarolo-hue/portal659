@@ -601,6 +601,7 @@ async function composeFiscalHeader(
 ): Promise<void> {
   const nro = `${String(fiscal.puntoVenta).padStart(4, "0")}-${String(fiscal.cbteNro).padStart(8, "0")}`;
   printer.alignCenter();
+  printer.println(separatorFor(width));
   printer.bold(true);
   printer.println("+-----+");
   printer.println("|  C  |");

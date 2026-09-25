@@ -59,10 +59,10 @@ export function PromoSection({
                 />
               </div>
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <p className="font-bold leading-tight truncate">{o.name}</p>
+                <div className="flex items-start gap-2">
+                  <p className="font-bold leading-snug line-clamp-2 flex-1">{o.name}</p>
                   {pct > 0 && (
-                    <span className="text-[11px] font-bold text-white bg-red-500 rounded-full px-2 py-0.5 whitespace-nowrap">
+                    <span className="text-[11px] font-bold text-white bg-red-500 rounded-full px-2 py-0.5 whitespace-nowrap flex-shrink-0">
                       −{pct}%
                     </span>
                   )}

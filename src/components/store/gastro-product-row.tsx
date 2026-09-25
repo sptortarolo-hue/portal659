@@ -419,6 +419,13 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
                 </div>
                 {product.featured_today && <Badge className="bg-sun text-ink">Hoy</Badge>}
               </div>
+              {/* Precio por volumen del mismo producto (grupos de 1 o más):
+                  sub-línea bajo el precio, donde sale la de packs. */}
+              {volBadge && acceptsCart && !outStock && (
+                <p className={`text-xs font-medium ${volColor ? volColor.text : "text-muted-foreground"}`}>
+                  {volBadge}
+                </p>
+              )}
 
               {product.description && (
                 <p className="text-sm text-muted-foreground">{product.description}</p>

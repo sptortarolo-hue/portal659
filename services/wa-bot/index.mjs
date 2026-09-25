@@ -2,11 +2,10 @@ import { createServer } from "node:http";
 import { WebSocketServer, WebSocket } from "ws";
 import { config } from "./src/config.mjs";
 import { vendorByToken } from "./src/db.mjs";
-import { handleInbound, handleInboundMedia } from "./src/bot.mjs";
+import { handleInbound, handleInboundMedia, startAwaitingReceipt } from "./src/bot.mjs";
 import { getState } from "./src/state.mjs";
 import { llmStats } from "./src/nlu.mjs";
-import { countOutbound, markNewChat } from "./src/limits.mjs";
-import { addClient, removeClient, getClient, sendText, sendTyping, sendPaused, clientCount, forEachClient } from "./src/relay.mjs";
+import { addClient, removeClient, getClient, getClientByVendor, sendText, sendTyping, sendPaused, clientCount, forEachClient } from "./src/relay.mjs";
 import { saveQrToken, clearQrToken, setBotStatus } from "./src/state.mjs";
 
 // Telemetría de salud (anti-ban): contadores de proceso para /health y logs.
@@ -23,6 +22,84 @@ function humanDelay(textLen) {
 
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
+
+  // ————— POST /send: la app inyecta un mensaje saliente (p. ej. al ACEPTAR
+  // un pedido web con transferencia, avisar al cliente con los datos de pago).
+  // Auth WA_BOT_SECRET. Si el relay no está conectado responde sent:false y
+  // el flow sigue igual que siempre (silent). —————
+  if (url.pathname === "/send" && req.method === "POST") {
+    const auth = req.headers.authorization || "";
+    if (config.waBotSecret && auth !== `Bearer ${config.waBotSecret}`) {
+      res.writeHead(403, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "no autorizado" }));
+      return;
+    }
+    let body = {};
+    try {
+      const chunks = [];
+      for await (const c of req) chunks.push(c);
+      body = JSON.parse(Buffer.concat(chunks).toString() || "{}");
+    } catch {}
+    const vendorId = String(body.vendorId || "");
+    const waId = String(body.waId || "");
+    const text = String(body.text || "");
+    const orderId = body.orderId ? String(body.orderId) : null;
+    if (!vendorId || !waId || !text) {
+      res.writeHead(400, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "vendorId, waId y text requeridos" }));
+      return;
+    }
+
+    const c = getClientByVendor(vendorId);
+    if (!c || c.ws.readyState !== WebSocket.OPEN) {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: true, sent: false, reason: "sin_relay" }));
+      return;
+    }
+    // Kill switch por comercio.
+    if (c.vendor && c.vendor.enabled === false) {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: true, sent: false, reason: "bot_disabled" }));
+      return;
+    }
+    // Auto-mensaje: el WA del propio comercio no se le escribe a sí mismo.
+    const vendorWaDigits = String(c.vendor?.wa_phone || "").replace(/\D/g, "");
+    const waIdDigits = waId.replace(/\D/g, "");
+    if (vendorWaDigits && waIdDigits === vendorWaDigits) {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: true, sent: false, reason: "auto_mensaje" }));
+      return;
+    }
+    const st = await getState(vendorId, waId).catch(() => null);
+    // Ya esperando comprobante de ESTE pedido: no duplicar el mensaje (el
+    // flujo del asistente ya lo mandó al confirmar).
+    if (st?.step === "awaiting_receipt" && orderId && st?.orderId === orderId) {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: true, sent: false, reason: "ya_enviado" }));
+      return;
+    }
+    // El cliente está en medio de una conversación del asistente (armado de
+    // pedido o confirmación): no interrumpir, el flow sigue igual.
+    if (st?.step === "flow" || st?.step === "confirm") {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: true, sent: false, reason: "en_flujo" }));
+      return;
+    }
+
+    // Setear el estado de espera de comprobante (orderId del pedido web) y
+    // enviar con pacing humano, consistente con el resto del bot.
+    await startAwaitingReceipt({ id: vendorId }, waId, orderId, waId).catch(() => {});
+    await sleep(humanDelay(text.length));
+    sendTyping(c, waId);
+    sendText(c, waId, text);
+    sendPaused(c, waId);
+    stats.replies++;
+    console.log(`[send] app → ${waId} (orderId ${orderId || "-"}): ${text.slice(0, 80)}`);
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ ok: true, sent: true }));
+    return;
+  }
+
   if (url.pathname === "/health") {
     res.writeHead(200, { "content-type": "application/json" });
     res.end(JSON.stringify({

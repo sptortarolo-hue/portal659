@@ -759,6 +759,24 @@ function transferText(vendor, total) {
 // Media: comprobante de transferencia (foto/PDF)
 // ———————————————————————————————————————————————————————————————————————————
 
+/** State de "esperando comprobante" para pedidos creados por FUERA del flujo
+ *  del asistente (pedidos web). Lo llama el cerebro (POST /send) cuando el
+ *  comercio ACEPTA un pedido con transferencia: el comprobante que el cliente
+ *  mande por el chat entra por handleInboundMedia → /api/wa/receipt →
+ *  transfer_proof_url → visible en el panel. */
+export async function startAwaitingReceipt(vendor, waId, orderId, phone) {
+  const state = {
+    ...DEFAULT_STATE,
+    step: "awaiting_receipt",
+    orderId: orderId || null,
+    welcomed: true,
+    customerPhone: phoneFor(waId, null) || phone || null,
+    items: [],
+  };
+  await setState(vendor.id, waId, state, AWAITING_RECEIPT_TTL);
+  return state;
+}
+
 export async function handleInboundMedia({ vendor, waId, mime, name, buffer }) {
   const state = await getState(vendor.id, waId);
   if (!state || state.step !== "awaiting_receipt" || !state.orderId) return { handled: false };
@@ -778,7 +796,7 @@ export async function handleInboundMedia({ vendor, waId, mime, name, buffer }) {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       console.error("[bot] receipt:", res.status, JSON.stringify(data).slice(0, 80));
-      return { handled: true, replies: ["No lo pude guardar. Mandame la foto o el PDF de nuevo. 🙏"] };
+      return { handled: true, replies: [data.error || "No lo pude guardar. Mandame la foto o el PDF de nuevo. 🙏"] };
     }
     await clearState(vendor.id, waId);
     return { handled: true, replies: ["✅ Comprobante recibido. El comercio lo verifica y te avisa enseguida. 👍"] };

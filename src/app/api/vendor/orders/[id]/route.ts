@@ -493,6 +493,45 @@ export async function PATCH(
     }
   }
 
+  // Transferencia web: al ACEPTAR el pedido (sale de "new"), avisar al cliente
+  // por WhatsApp (el chat del bot) con los datos de pago y pedir el comprobante.
+  // El comprobante entra por el mismo chat → transfer_proof_url → visible acá.
+  // Si el bot no está conectado (celular apagado) no pasa nada: el flow sigue
+  // igual que siempre. Best-effort: nunca falla la aceptación por esto.
+  if (
+    status &&
+    currentOrder.status === "new" &&
+    status !== "cancelled" &&
+    currentOrder.payment_method === "transferencia" &&
+    (currentOrder.payment_status ?? "pending") === "pending" &&
+    currentOrder.is_preview !== true &&
+    !isCounterPickup &&
+    typeof order.customer_phone === "string" &&
+    order.customer_phone
+  ) {
+    try {
+      const vendorRow = await queryOne<{ transfer_alias: string | null; transfer_cbu: string | null; transfer_holder: string | null }>(
+        `SELECT transfer_alias, transfer_cbu, transfer_holder FROM vendors WHERE id = $1 LIMIT 1`,
+        [vendor.id]
+      );
+      const lines = ["✅ ¡Tu pedido fue aceptado!", "", "Para el pago (transferencia):"];
+      if (vendorRow?.transfer_alias) lines.push(`Alias: ${vendorRow.transfer_alias}`);
+      if (vendorRow?.transfer_cbu) lines.push(`CBU: ${vendorRow.transfer_cbu}`);
+      if (vendorRow?.transfer_holder) lines.push(`Titular: ${vendorRow.transfer_holder}`);
+      lines.push(`Monto: $${Number(order.total).toLocaleString("es-AR")}`);
+      lines.push("", "Mandanos la foto o el PDF del comprobante por acá y lo verificamos enseguida. 🙏");
+      const wabotUrl = (process.env.WABOT_URL || "http://wabot:8792").replace(/\/$/, "");
+      await fetch(`${wabotUrl}/send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.WA_BOT_SECRET || ""}` },
+        body: JSON.stringify({ vendorId: vendor.id, waId: order.customer_phone, text: lines.join("\n"), orderId: params.id }),
+        signal: AbortSignal.timeout(15_000),
+      });
+    } catch {
+      // best-effort: sin el bot conectado el flow sigue igual
+    }
+  }
+
   return NextResponse.json({ order });
 }
 

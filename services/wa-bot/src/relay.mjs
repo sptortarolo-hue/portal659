@@ -15,6 +15,14 @@ export function getClient(token) {
   return clients.get(token) || null;
 }
 
+/** Busca el cliente conectado por vendorId (la app no conoce los tokens). */
+export function getClientByVendor(vendorId) {
+  for (const c of clients.values()) {
+    if (String(c.vendor?.id) === String(vendorId)) return c;
+  }
+  return null;
+}
+
 export function clientCount() {
   return clients.size;
 }

@@ -1,4 +1,4 @@
-import { handleInbound } from "./src/bot.mjs";
+import { handleInbound, handleInboundMedia, startAwaitingReceipt } from "./src/bot.mjs";
 
 const MOCK_MENU = {
   products: [
@@ -20,6 +20,7 @@ const MOCK_MENU = {
 let lastOrderBody = null;
 let orderCalls = 0;
 let orderFail = null; // { status, error } para simular errores de negocio
+let receiptFail = null; // error simulado del /api/wa/receipt
 const realFetch = globalThis.fetch;
 globalThis.fetch = async (url, opts) => {
   const u = String(url);
@@ -29,6 +30,9 @@ globalThis.fetch = async (url, opts) => {
     lastOrderBody = JSON.parse(opts?.body || "{}");
     if (orderFail) return { ok: false, status: orderFail.status, json: async () => orderFail };
     return { ok: true, json: async () => ({ ok: true, orderId: "ord-123", total: 4400 }) };
+  }
+  if (u.includes("/api/wa/receipt")) {
+    return { ok: receiptFail ? false : true, status: receiptFail ? 409 : 200, json: async () => (receiptFail ? { error: receiptFail } : { ok: true, url: "https://x/receipt.jpg" }) };
   }
   if (u.includes("/api/wa/handoff")) return { ok: true, json: async () => ({ ok: true }) };
   return realFetch(url, opts);
@@ -191,6 +195,28 @@ async function main() {
   if (String(lastOrderBody?.customerPhone).startsWith("lid:")) { console.log("!!! guardó lid: en vez del teléfono: " + lastOrderBody?.customerPhone); ok = false; }
   else if (lastOrderBody?.customerPhone !== "5491155551234") { console.log("!!! teléfono no normalizado: " + lastOrderBody?.customerPhone); ok = false; }
   else { console.log(">>> OK: teléfono real 5491155551234 (no lid:)"); }
+
+  console.log("\n--- ESC: transferencia web (accept → espera comprobante) ---");
+  const waWeb = "5491100000004";
+  // El cerebro (POST /send) setea el estado al aceptar el pedido web.
+  await startAwaitingReceipt({ id: "vtest" }, waWeb, "ord-web-1", waWeb);
+  r = await handleInbound({ vendor, waId: waWeb, body: "ya pagué" });
+  show("cliente escribe en espera", r);
+  if (!(r.replies || []).join(" ").includes("comprobante")) { console.log("!!! el estado de espera no responde"); ok = false; }
+  // Comprobante por el chat (media) → /api/wa/receipt → transfer_proof_url.
+  r = await handleInboundMedia({ vendor, waId: waWeb, mime: "image/jpeg", name: "comprobante.jpg", buffer: Buffer.from("fake-image") });
+  show("comprobante recibido", r);
+  if (!(r.replies || []).join(" ").includes("recibido")) { console.log("!!! el comprobante no entró (state web)"); ok = false; }
+  // Después del comprobante el estado quedó limpio: un texto arranca fresco.
+  r = await handleInbound({ vendor, waId: waWeb, body: "hola" });
+  if (!(r.replies || []).join(" ").includes("asistente")) { console.log("!!! tras el comprobante el chat no arrancó fresco"); ok = false; }
+  // Comprobante de un pedido YA pagado → mensaje claro (no se guarda).
+  await startAwaitingReceipt({ id: "vtest" }, waWeb, "ord-web-2", waWeb);
+  receiptFail = "El pago ya fue acreditado — no hace falta el comprobante.";
+  r = await handleInboundMedia({ vendor, waId: waWeb, mime: "image/jpeg", name: "comprobante.jpg", buffer: Buffer.from("fake-image") });
+  show("comprobante con pedido ya pagado", r);
+  if (!(r.replies || []).join(" ").includes("acreditado")) { console.log("!!! el guard de pagado no responde"); ok = false; }
+  receiptFail = null;
 
   if (!ok) { console.error("\n=== HAY FALLOS ==="); process.exit(1); }
   console.log("\n=== TODO OK ===");

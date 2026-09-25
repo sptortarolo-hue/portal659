@@ -62,6 +62,10 @@ export async function POST(request: Request) {
   if (order.payment_method !== "transferencia") {
     return NextResponse.json({ error: "El pedido no es por transferencia" }, { status: 400 });
   }
+  if (order.payment_status === "paid") {
+    // Ya acreditado a mano: el comprobante ya no hace falta.
+    return NextResponse.json({ error: "El pago ya fue acreditado — no hace falta el comprobante." }, { status: 409 });
+  }
   if (order.transfer_proof_url) {
     // Ya hay uno: no pisa, pero responde la URL vieja — el PDF nuevo no hace falta.
     return NextResponse.json({ ok: true, url: order.transfer_proof_url, reused: true });

@@ -54,6 +54,8 @@ function GroupForm({
   onSubmit: (data: {
     name: string;
     product_ids: string[];
+    /** Subconjunto que combina entre sí; el resto va a grupos solo. */
+    combo_ids: string[];
     tiers: { min_qty: number; kind: "fixed_total" | "percent_off"; value: number }[];
     combine_promo: boolean;
     combine_cash: boolean;
@@ -62,6 +64,8 @@ function GroupForm({
 }) {
   const [name, setName] = useState(initial?.name || "");
   const [selected, setSelected] = useState<Set<string>>(new Set(initial?.product_ids || []));
+  // Subconjunto que combina entre sí (default: todos los tildados combinan).
+  const [combo, setCombo] = useState<Set<string>>(new Set(initial?.product_ids || []));
   const [tiers, setTiers] = useState<TierRow[]>(
     initial?.tiers?.length
       ? initial.tiers.map((t, i) => ({ id: `t${i}`, min_qty: Number(t.min_qty), kind: t.kind, value: Number(t.value) }))
@@ -83,7 +87,9 @@ function GroupForm({
   }
 
   // Resumen "se combinan entre sí": lo mismo que después ve el cliente.
-  const selectedNames = products.filter((p) => selected.has(p.id)).map((p) => p.name);
+  // Tocando cada chip se elige si combina (2+ arman el pozo) o queda solo.
+  const selectedList = products.filter((p) => selected.has(p.id));
+  const comboCount = selectedList.filter((p) => combo.has(p.id)).length;
   const firstTier = tiers.find((t) => Number.isFinite(t.min_qty) && Number(t.value) > 0);
   const summaryTier = firstTier
     ? firstTier.kind === "fixed_total"
@@ -96,6 +102,22 @@ function GroupForm({
       const next = new Set(prev);
       if (checked) next.add(id);
       else next.delete(id);
+      return next;
+    });
+    // Al tildar entra combinando; al destildar sale del combo también.
+    setCombo((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  function toggleCombo(id: string) {
+    setCombo((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   }
@@ -134,6 +156,7 @@ function GroupForm({
       await onSubmit({
         name: name.trim(),
         product_ids: Array.from(selected),
+        combo_ids: Array.from(combo).filter((id) => selected.has(id)),
         tiers: clean,
         combine_promo: combinePromo,
         combine_cash: combineCash,
@@ -224,20 +247,30 @@ function GroupForm({
               );
             })}
           </div>
-          {selectedNames.length > 0 && (
+          {selectedList.length > 0 && (
             <div className="mt-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2">
               <p className="text-xs font-semibold text-emerald-900">
-                🧊 Se combinan entre sí ({selectedNames.length})
+                🧊 Se combinan entre sí ({comboCount}) — tocá para cambiar
               </p>
               <div className="flex flex-wrap gap-1 mt-1.5">
-                {selectedNames.map((n) => (
-                  <span
-                    key={n}
-                    className="text-[11px] font-medium text-emerald-900 bg-white border border-emerald-200 rounded-full px-2 py-0.5"
-                  >
-                    {n}
-                  </span>
-                ))}
+                {selectedList.map((p) => {
+                  const inCombo = combo.has(p.id);
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => toggleCombo(p.id)}
+                      title={inCombo ? "Combina (tocá para dejar solo)" : "Solo (tocá para que combine)"}
+                      className={`text-[11px] font-medium rounded-full px-2 py-0.5 border transition-colors ${
+                        inCombo
+                          ? "text-emerald-900 bg-white border-emerald-300"
+                          : "text-muted-foreground bg-transparent border-dashed border-muted-foreground/50"
+                      }`}
+                    >
+                      {inCombo ? "✓ " : "○ "}{p.name}
+                    </button>
+                  );
+                })}
               </div>
               {summaryTier && (
                 <p className="text-xs text-emerald-700 mt-1.5">{summaryTier}</p>
@@ -357,16 +390,75 @@ export function VolumeEditor({ products, categories }: { products: Product[]; ca
     load();
   }, [load]);
 
-  async function save(data: Parameters<Parameters<typeof GroupForm>[0]["onSubmit"]>[0]) {
-    const url = editing ? `/api/vendor/volume-groups/${editing.id}` : "/api/vendor/volume-groups";
-    const r = await fetch(url, {
-      method: editing ? "PATCH" : "POST",
+  type SaveData = Parameters<Parameters<typeof GroupForm>[0]["onSubmit"]>[0];
+
+  async function postGroup(payload: {
+    name: string;
+    product_ids: string[];
+    tiers: SaveData["tiers"];
+    combine_promo: boolean;
+    combine_cash: boolean;
+    extras_mode: SaveData["extras_mode"];
+  }) {
+    const r = await fetch("/api/vendor/volume-groups", {
+      method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
+      body: JSON.stringify(payload),
     });
     const d = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(d.error || "No se pudo guardar");
-    setMsg(editing ? "Grupo actualizado" : "Grupo creado");
+  }
+
+  function soloName(productId: string, tiers: SaveData["tiers"]): string {
+    const p = products.find((x) => x.id === productId);
+    const base = p ? p.name : "Producto";
+    const tier = tiers[0];
+    const suffix = tier ? ` · ${tierLabel({ min_qty: tier.min_qty, kind: tier.kind, value: tier.value })} solo` : " solo";
+    return `${base}${suffix}`.slice(0, 60);
+  }
+
+  /**
+   * Guarda partiendo por combinable: los tildados (2+) van al grupo
+   * compartido; el resto va a un grupo solo por producto con el mismo tramo.
+   * Comparten precio pero no combinan. Al editar se recrea desde cero.
+   */
+  async function save(data: SaveData) {
+    const comboIds = data.combo_ids.filter((id) => data.product_ids.includes(id));
+    const soloIds = data.product_ids.filter((id) => !comboIds.includes(id));
+    const sharedIds = comboIds.length >= 2 ? comboIds : [];
+    const allSoloIds = [...soloIds, ...(comboIds.length >= 2 ? [] : comboIds)];
+    if (sharedIds.length === 0 && allSoloIds.length === 0) return;
+    if (editing) {
+      const del = await fetch(`/api/vendor/volume-groups/${editing.id}`, { method: "DELETE" });
+      if (!del.ok) {
+        const d = await del.json().catch(() => ({}));
+        throw new Error((d as { error?: string }).error || "No se pudo actualizar el grupo");
+      }
+    }
+    if (sharedIds.length > 0) {
+      await postGroup({
+        name: data.name,
+        product_ids: sharedIds,
+        tiers: data.tiers,
+        combine_promo: data.combine_promo,
+        combine_cash: data.combine_cash,
+        extras_mode: data.extras_mode,
+      });
+    }
+    for (const pid of allSoloIds) {
+      await postGroup({
+        name: soloName(pid, data.tiers),
+        product_ids: [pid],
+        tiers: data.tiers,
+        combine_promo: data.combine_promo,
+        combine_cash: data.combine_cash,
+        extras_mode: data.extras_mode,
+      });
+    }
+    const parts: string[] = [];
+    if (sharedIds.length > 0) parts.push(`grupo con ${sharedIds.length}`);
+    if (allSoloIds.length > 0) parts.push(`${allSoloIds.length} solo${allSoloIds.length !== 1 ? "s" : ""}`);
+    setMsg(`Guardado: ${parts.join(" + ")}`);
     setCreating(false);
     setEditing(null);
     load();
@@ -437,8 +529,13 @@ export function VolumeEditor({ products, categories }: { products: Product[]; ca
                   {(g.tiers || []).map(tierLabel).join(" · ")}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  🧊 Se combinan entre sí: {names.length > 0 ? names.slice(0, 4).join(" · ") : `${(g.product_ids || []).length} producto(s)`}
-                  {names.length > 4 ? ` y ${names.length - 4} más` : ""}
+                  {names.length > 1 ? (
+                    <>🧊 Se combinan entre sí: {names.slice(0, 4).join(" · ")}{names.length > 4 ? ` y ${names.length - 4} más` : ""}</>
+                  ) : names.length === 1 ? (
+                    <>🔒 Solo, no combina: {names[0]}</>
+                  ) : (
+                    <>{(g.product_ids || []).length} producto(s)</>
+                  )}
                   {g.combine_cash ? " · acumula efectivo" : ""}
                   {g.combine_promo ? " · acumula promo" : ""}
                 </p>

@@ -684,10 +684,13 @@ export default async function TiendaPage({
             {isGastro && acceptsCart && packGroups.length > 0 && (
               <a
                 href="#packs"
-                className="flex items-center justify-between gap-2 rounded-2xl bg-primary text-primary-foreground px-4 py-3 mb-4 font-semibold text-sm hover:bg-primary/90 transition-colors"
+                className="flex items-center justify-between gap-3 rounded-2xl bg-emerald-50 border border-emerald-200 px-4 py-3 mb-4 hover:shadow-md active:scale-[0.99] transition-all"
               >
-                <span>🧊 Armá tu pack y ahorrá</span>
-                <span aria-hidden="true">↓</span>
+                <span className="min-w-0">
+                  <span className="block font-semibold text-sm text-emerald-900">🧊 Armá tu pack a precio pack</span>
+                  <span className="block text-xs text-emerald-700 mt-0.5">Elegí tus gustos entre los combinables</span>
+                </span>
+                <span aria-hidden="true" className="text-emerald-700 font-bold flex-shrink-0">↓</span>
               </a>
             )}
             {promos.length > 0 && (

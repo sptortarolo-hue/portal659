@@ -9,6 +9,14 @@ import { ArcaError, dropWsaaTicket, getWsaaTicket, redactXml, type ArcaEnv } fro
 
 export const CBTE_FACTURA_C = 11;
 
+/**
+ * Condición frente al IVA del receptor (tabla FEParamGetCondicionIvaReceptor).
+ * 5 = Consumidor Final. Obligatorio desde RG 5616 (Obs 10246 si falta).
+ * v1 emite siempre a consumidor final (Doc 99/0): fijo en 5. Si a futuro
+ * hay A/B con receptor identificado, derivarlo del tipo de documento.
+ */
+export const CONDICION_IVA_CONSUMIDOR_FINAL = 5;
+
 const WSFE_URL: Record<ArcaEnv, string> = {
   homo: "https://wswhomo.afip.gov.ar/wsfev1/service.asmx",
   prod: "https://servicios1.afip.gov.ar/wsfev1/service.asmx",
@@ -207,7 +215,8 @@ export async function solicitarCaeC(
       `<CbteDesde>${input.cbteNro}</CbteDesde><CbteHasta>${input.cbteNro}</CbteHasta>` +
       `<CbteFch>${fch}</CbteFch><ImpTotal>${imp}</ImpTotal><ImpTotConc>0</ImpTotConc>` +
       `<ImpNeto>${imp}</ImpNeto><ImpOpEx>0</ImpOpEx><ImpTrib>0</ImpTrib><ImpIVA>0</ImpIVA>` +
-      `<MonId>PES</MonId><MonCotiz>1</MonCotiz></FECAEDetRequest>`;
+      `<MonId>PES</MonId><MonCotiz>1</MonCotiz>` +
+      `<CondicionIVAReceptorId>${CONDICION_IVA_CONSUMIDOR_FINAL}</CondicionIVAReceptorId></FECAEDetRequest>`;
     const body =
       `<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" ` +
       `><soap:Header/><soap:Body>` +

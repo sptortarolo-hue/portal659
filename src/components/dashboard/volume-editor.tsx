@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Card } from "@/components/ui/card";
 
-type Product = { id: string; name: string; category?: string | null };
+type Product = { id: string; name: string; category?: string | null; price?: number | null };
 type Category = { id?: string; name: string };
 
 type TierRow = { id: string; min_qty: number; kind: "fixed_total" | "percent_off"; value: number };
@@ -28,6 +28,14 @@ function tierLabel(t: { min_qty: number; kind: string; value: number }): string 
   return t.kind === "fixed_total"
     ? `${t.min_qty}x ${fmt$(Number(t.value))}`
     : `${t.min_qty}+ con ${Number(t.value).toLocaleString("es-AR")}% off`;
+}
+
+/** Nombres de los miembros del grupo ("se combinan entre sí"). */
+function memberNames(g: GroupRow, products: Product[]): string[] {
+  const byId = new Map(products.map((p) => [p.id, p.name]));
+  return (g.product_ids || [])
+    .map((id) => byId.get(String(id)))
+    .filter((n): n is string => !!n);
 }
 
 function GroupForm({
@@ -64,6 +72,24 @@ function GroupForm({
   const [extrasIncluded, setExtrasIncluded] = useState(initial?.extras_mode === "included");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [query, setQuery] = useState("");
+
+  function matchQuery(p: Product, q: string): boolean {
+    const needle = q.trim().toLowerCase();
+    if (!needle) return true;
+    if (p.name.toLowerCase().includes(needle)) return true;
+    if (p.price != null && String(Math.round(Number(p.price))).includes(needle.replace(/[^0-9]/g, "") || " ")) return true;
+    return false;
+  }
+
+  // Resumen "se combinan entre sí": lo mismo que después ve el cliente.
+  const selectedNames = products.filter((p) => selected.has(p.id)).map((p) => p.name);
+  const firstTier = tiers.find((t) => Number.isFinite(t.min_qty) && Number(t.value) > 0);
+  const summaryTier = firstTier
+    ? firstTier.kind === "fixed_total"
+      ? `Llevá ${Math.floor(Number(firstTier.min_qty))} y pagá ${fmt$(Number(firstTier.value))}`
+      : `${Math.floor(Number(firstTier.min_qty))}+ con ${Number(firstTier.value).toLocaleString("es-AR")}% off`
+    : null;
 
   function toggleProduct(id: string, checked: boolean) {
     setSelected((prev) => {
@@ -151,9 +177,17 @@ function GroupForm({
           <Label className="text-xs text-muted-foreground">
             Productos que suman al volumen ({selected.size})
           </Label>
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Buscar por nombre o precio…"
+            className="mt-1 h-8 text-sm"
+          />
           <div className="space-y-2 mt-1 max-h-52 overflow-y-auto">
             {cats.map((cat) => {
-              const items = products.filter((p) => (p.category || "otras") === cat);
+              const items = products
+                .filter((p) => (p.category || "otras") === cat)
+                .filter((p) => matchQuery(p, query));
               if (items.length === 0) return null;
               const ids = items.map((p) => p.id);
               const allIn = ids.every((id) => selected.has(id));
@@ -177,7 +211,12 @@ function GroupForm({
                           checked={selected.has(p.id)}
                           onChange={(e) => toggleProduct(p.id, e.target.checked)}
                         />
-                        <span className="truncate">{p.name}</span>
+                        <span className="truncate flex-1">{p.name}</span>
+                        {p.price != null && (
+                          <span className="text-xs text-muted-foreground tabular-nums flex-shrink-0">
+                            ${Number(p.price).toLocaleString("es-AR")}
+                          </span>
+                        )}
                       </label>
                     ))}
                   </div>
@@ -185,6 +224,26 @@ function GroupForm({
               );
             })}
           </div>
+          {selectedNames.length > 0 && (
+            <div className="mt-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2">
+              <p className="text-xs font-semibold text-emerald-900">
+                🧊 Se combinan entre sí ({selectedNames.length})
+              </p>
+              <div className="flex flex-wrap gap-1 mt-1.5">
+                {selectedNames.map((n) => (
+                  <span
+                    key={n}
+                    className="text-[11px] font-medium text-emerald-900 bg-white border border-emerald-200 rounded-full px-2 py-0.5"
+                  >
+                    {n}
+                  </span>
+                ))}
+              </div>
+              {summaryTier && (
+                <p className="text-xs text-emerald-700 mt-1.5">{summaryTier}</p>
+              )}
+            </div>
+          )}
         </div>
 
         <div>
@@ -357,7 +416,9 @@ export function VolumeEditor({ products, categories }: { products: Product[]; ca
         </p>
       )}
 
-      {groups.map((g) => (
+      {groups.map((g) => {
+        const names = memberNames(g, products);
+        return (
         <Card key={g.id} className="p-3">
           {editing?.id === g.id ? (
             <GroupForm
@@ -376,7 +437,8 @@ export function VolumeEditor({ products, categories }: { products: Product[]; ca
                   {(g.tiers || []).map(tierLabel).join(" · ")}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {(g.product_ids || []).length} producto{(g.product_ids || []).length !== 1 ? "s" : ""}
+                  🧊 Se combinan entre sí: {names.length > 0 ? names.slice(0, 4).join(" · ") : `${(g.product_ids || []).length} producto(s)`}
+                  {names.length > 4 ? ` y ${names.length - 4} más` : ""}
                   {g.combine_cash ? " · acumula efectivo" : ""}
                   {g.combine_promo ? " · acumula promo" : ""}
                 </p>
@@ -398,7 +460,8 @@ export function VolumeEditor({ products, categories }: { products: Product[]; ca
             </div>
           )}
         </Card>
-      ))}
+        );
+      })}
     </div>
   );
 }

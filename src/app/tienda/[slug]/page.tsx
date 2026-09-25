@@ -258,6 +258,13 @@ export default async function TiendaPage({
   let volumeGroups: any[] = [];
   // Nombres de productos para comunicar "se combina con" (Fase combinables).
   const nameById = new Map((offers || []).map((o: any) => [String(o.id), String(o.name)]));
+  // Detalle para el cartel "Armá tu pack" (foto + precio para quick-add).
+  const detailById = new Map(
+    (offers || []).map((o: any) => [
+      String(o.id),
+      { id: String(o.id), name: String(o.name), image: o.image_url || null, price: Number(o.price) || 0 },
+    ])
+  );
   if (isGastro) {
     try {
       const gRows: any[] = await queryMany<any>(
@@ -291,6 +298,7 @@ export default async function TiendaPage({
               extrasIncluded: g.extras_mode === "included",
               tiers: tiersByGroup[g.id] || [],
               memberNames: ids.map((id: string) => nameById.get(id)).filter(Boolean),
+              members: ids.map((id: string) => detailById.get(id)).filter(Boolean),
             };
           })
           .filter((g: any) => g.productIds.length > 0 && g.tiers.length > 0);
@@ -660,7 +668,7 @@ export default async function TiendaPage({
             ) : (
               <>
                 {sections.length > 0 && <CategoryNav sections={sections} catalog={isCatalog} />}
-                {isGastro && acceptsCart && volumeGroups.length > 0 && <VolumeGroupBanner groups={volumeGroups} />}
+                {isGastro && acceptsCart && volumeGroups.length > 0 && <VolumeGroupBanner groups={volumeGroups} vendor={vendorBrief} />}
                 {isGastro && acceptsCart && volumeGroups.length > 0 && <VolumeProgress groups={volumeGroups} />}
                 {sections.map((s, i) => (
                   <section key={s.name} id={`seccion-${i}`} className="mb-10 scroll-mt-[184px] sm:scroll-mt-24">

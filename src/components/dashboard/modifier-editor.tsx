@@ -65,6 +65,24 @@ function GroupForm({
   function removeOpt(i: number) {
     setOptions((prev) => prev.filter((_, idx) => idx !== i));
   }
+  /** Ordena A–Z por familia y, dentro de cada una, por etiqueta. */
+  function sortAZ() {
+    setOptions((prev) => {
+      const fam = (o: ModifierOption) => (o.category || "").trim().toLowerCase();
+      return [...prev].sort((a, b) => {
+        const fa = fam(a);
+        const fb = fam(b);
+        // Familias con nombre primero (A–Z), sin familia al final.
+        if (!fa && fb) return 1;
+        if (fa && !fb) return -1;
+        if (fa !== fb) return fa.localeCompare(fb, "es", { sensitivity: "base" });
+        return a.label.trim().localeCompare(b.label.trim(), "es", {
+          sensitivity: "base",
+          ignorePunctuation: true,
+        });
+      });
+    });
+  }
 
   async function handleSubmit() {
     setError("");
@@ -214,9 +232,21 @@ function GroupForm({
               </div>
             </div>
           ))}
-          <Button type="button" variant="outline" size="sm" onClick={addOpt}>
-            + Opción
-          </Button>
+          <div className="flex gap-1">
+            <Button type="button" variant="outline" size="sm" onClick={addOpt}>
+              + Opción
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={sortAZ}
+              disabled={options.length < 2}
+              title="Ordenar opciones A–Z dentro de cada familia"
+            >
+              A–Z
+            </Button>
+          </div>
         </div>
 
         <div>

@@ -250,7 +250,7 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
             <button
               type="button"
               onClick={() => openPack(volGroup.id)}
-              title="Ver pack combinable"
+              title={hasCombo ? "Ver pack combinable" : "Ver precio por cantidad"}
               className={`text-[10px] font-semibold rounded-full px-1.5 py-0.5 whitespace-nowrap border cursor-pointer ${volColor ? `${volColor.soft} ${volColor.border} ${volColor.text}` : "bg-emerald-50 border-emerald-200 text-emerald-700"}`}
             >{volBadge}</button>
           )}

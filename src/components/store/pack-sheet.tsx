@@ -48,8 +48,13 @@ export function PackSheet({
   const qty = items.reduce((s, i) => (ids.has(String(i.offerId)) ? s + i.qty : s), 0);
   const tiers = [...(group.tiers || [])].sort((a, b) => a.minQty - b.minQty);
   const next = tiers.find((t) => t.minQty > qty) || tiers[tiers.length - 1];
-  const tierText =
-    next.kind === "fixed_total"
+  // Solo (1 miembro): precio por cantidad, sin hablar de combinar.
+  const isSolo = (group.productIds || []).length <= 1;
+  const tierText = isSolo
+    ? next.kind === "fixed_total"
+      ? `Llevá ${next.minQty} y pagá $${Number(next.value).toLocaleString("es-AR")} · solo, no combina con otros`
+      : `${next.minQty}+ con ${Number(next.value).toLocaleString("es-AR")}% off · solo, no combina con otros`
+    : next.kind === "fixed_total"
       ? `pack x${next.minQty}, combinables entre sí · pagás $${Number(next.value).toLocaleString("es-AR")}`
       : `pack x${next.minQty}+, combinables entre sí · ${Number(next.value).toLocaleString("es-AR")}% off`;
   const members = (group.members || []).filter((m) => ids.has(String(m.id)));
@@ -80,7 +85,11 @@ export function PackSheet({
         <div className={`px-4 pt-3 pb-2 rounded-t-2xl sm:rounded-t-2xl ${c.soft} border-b ${c.border}`}>
           <div className="flex items-center justify-between gap-2">
             <p className={`text-sm font-bold ${c.strong}`}>
-              🧊 {mode === "festejo" ? "¡Pack completo! 🎉" : "Completá tu pack"}: {group.name}
+              {mode === "festejo"
+                ? `🧊 ¡Pack completo! 🎉: ${group.name}`
+                : isSolo
+                  ? `🧊 ${group.name}`
+                  : `🧊 Completá tu pack: ${group.name}`}
             </p>
             <button
               type="button"
@@ -172,7 +181,9 @@ export function PackSheet({
             })
           ) : (
             <p className="text-sm text-muted-foreground">
-              Se combinan entre sí: {(group.memberNames || []).filter(Boolean).join(" · ")}
+              {isSolo
+                ? "Precio por cantidad para este producto."
+                : `Se combinan entre sí: ${(group.memberNames || []).filter(Boolean).join(" · ")}`}
             </p>
           )}
         </div>

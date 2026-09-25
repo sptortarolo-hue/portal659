@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
+import { Fragment, useMemo } from "react";
 import { useCart } from "@/lib/cart";
 import { cartLineTotal } from "@/lib/order-line";
 import { mirrorVolume } from "@/lib/volume-mirror";
@@ -54,10 +54,28 @@ export function CartDrawer() {
               </p>
             </div>
           ) : (
-            items.map((item, idx) => {
+            (() => {
+              // Una línea por pack: miembros del mismo pack juntos con encabezado.
+              // Solo visual (totales intactos, el servidor recalcula y manda).
+              const order = items.map((_, idx) => idx);
+              const gkey = (idx: number) => vol.lines[idx]?.groupId || "";
+              order.sort((a, b) => gkey(a).localeCompare(gkey(b)));
+              let lastGroup = "\0";
+              return order.map((idx) => {
+              const item = items[idx];
+              const gid = gkey(idx);
+              const applied = gid ? vol.applied.find((a) => a.groupId === gid) : undefined;
+              const header = applied && gid !== lastGroup ? (
+                <p key={`gh-${gid}`} className="text-xs font-semibold text-emerald-700 pt-1">
+                  🧊 {applied.groupName} · {applied.label}
+                </p>
+              ) : null;
+              lastGroup = gid;
               const key = `${item.offerId}-${JSON.stringify(item.modifiers || [])}`;
               const lineTotal = cartLineTotal(item);
               return (
+                <Fragment key={key}>
+                {header}
                 <div
                   key={key}
                   className="border border-border rounded-xl p-3 space-y-2"
@@ -137,8 +155,10 @@ export function CartDrawer() {
                     </span>
                   </div>
                 </div>
+                </Fragment>
               );
-            })
+              });
+            })()
           )}
         </div>
 

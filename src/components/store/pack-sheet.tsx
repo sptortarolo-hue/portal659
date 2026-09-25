@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useCart, type CartVendor } from "@/lib/cart";
+import { useEffect, useMemo, useState } from "react";
+import { useCart, type CartVendor, type CartVolumeGroup } from "@/lib/cart";
+import { mirrorVolume } from "@/lib/volume-mirror";
 import { volumeGroupColor } from "@/lib/volume-pricing";
 import { ProductImage } from "@/components/product-image";
 
@@ -52,6 +53,23 @@ export function PackSheet({
       ? `pack x${next.minQty}, combinables entre sí · pagás $${Number(next.value).toLocaleString("es-AR")}`
       : `pack x${next.minQty}+, combinables entre sí · ${Number(next.value).toLocaleString("es-AR")}% off`;
   const members = (group.members || []).filter((m) => ids.has(String(m.id)));
+  // Ahorro vivo del pack (espejo; el servidor recalcula y manda).
+  const vol = useMemo(
+    () =>
+      mirrorVolume(items, [
+        {
+          id: group.id,
+          name: group.name,
+          productIds: group.productIds,
+          combinePromo: false,
+          combineCash: false,
+          extrasIncluded: false,
+          tiers: group.tiers,
+        } as CartVolumeGroup,
+      ]),
+    [items, group]
+  );
+  const missing = Math.max(0, next.minQty - qty);
 
   return (
     <div className="fixed inset-0 z-[70] bg-black/40 animate-fade-in-up" onClick={onClose}>
@@ -172,13 +190,20 @@ export function PackSheet({
               Ver carrito
             </button>
           ) : (
-            <button
-              type="button"
-              onClick={onClose}
-              className="block w-full rounded-xl bg-muted text-foreground text-center text-sm font-medium py-3 hover:bg-muted/80 transition-colors"
-            >
-              Seguir armando
-            </button>
+            <>
+              {vol.volumeDiscount > 0 && (
+                <p className={`text-xs font-semibold text-center mb-2 ${c.strong}`}>
+                  Te ahorrás ${Number(vol.volumeDiscount).toLocaleString("es-AR")} con este pack
+                </p>
+              )}
+              <button
+                type="button"
+                onClick={onClose}
+                className="block w-full rounded-xl bg-muted text-foreground text-center text-sm font-medium py-3 hover:bg-muted/80 transition-colors"
+              >
+                {missing > 0 ? `Te faltan ${missing} · Seguir armando` : "Seguir armando"}
+              </button>
+            </>
           )}
         </div>
       </div>

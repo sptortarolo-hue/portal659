@@ -22,7 +22,7 @@ import { ScrollToProduct } from "@/components/store/scroll-to-product";
 import { IrAComprarButton } from "@/components/store/ir-a-comprar-button";
 import { CategoryNav } from "@/components/store/category-nav";
 import { VolumeProgress } from "@/components/store/volume-progress";
-import { VolumeGroupBanner } from "@/components/store/volume-group-banner";
+import { PackCard } from "@/components/store/pack-card";
 import { PackSheetHost } from "@/components/store/pack-sheet";
 import { WeeklyHours } from "@/components/store/weekly-hours";
 import { StickyStoreBar } from "@/components/store/sticky-store-bar";
@@ -669,7 +669,6 @@ export default async function TiendaPage({
             ) : (
               <>
                 {sections.length > 0 && <CategoryNav sections={sections} catalog={isCatalog} />}
-                {isGastro && acceptsCart && volumeGroups.length > 0 && <VolumeProgress groups={volumeGroups} />}
                 {sections.map((s, i) => (
                   <section key={s.name} id={`seccion-${i}`} className="mb-10 scroll-mt-[184px] sm:scroll-mt-24">
                     <h3 className="font-display text-xl font-semibold mb-4 border-b border-border pb-2">
@@ -791,8 +790,19 @@ export default async function TiendaPage({
           </>
         )}
 
-        {/* Cartel de combinables al pie del catálogo (descubrimiento) */}
-        {isGastro && acceptsCart && volumeGroups.length > 0 && <VolumeGroupBanner groups={volumeGroups} vendor={vendorBrief} />}
+        {/* Packs para armar: un punto de entrada por pack (multi-producto) */}
+        {isGastro && acceptsCart && volumeGroups.some((g: any) => (g.productIds || []).length > 1 && (g.tiers || []).length > 0) && (
+          <section className="mt-6 mb-10">
+            <h3 className="font-display text-xl font-semibold mb-3">🧊 Armá tu pack</h3>
+            <div className="space-y-2">
+              {volumeGroups
+                .filter((g: any) => (g.productIds || []).length > 1 && (g.tiers || []).length > 0)
+                .map((g: any) => (
+                  <PackCard key={g.id} group={g} />
+                ))}
+            </div>
+          </section>
+        )}
         {isGastro && acceptsCart && volumeGroups.length > 0 && <PackSheetHost groups={volumeGroups} vendor={vendorBrief} />}
 
         {/* Reviews */}

@@ -371,11 +371,293 @@ function GroupForm({
   );
 }
 
+/**
+ * Wizard "Nuevo pack" en 3 pasos sin jerga: (1) nombre + cantidad + precio,
+ * (2) tildar productos agrupados por precio con "¿se mezcla?", (3) resumen.
+ * Crea grupo compartido + solos con el mismo tramo (reusa el split de save).
+ */
+function PackWizard({
+  products,
+  onCancel,
+  onSubmit,
+}: {
+  products: Product[];
+  onCancel: () => void;
+  onSubmit: GroupFormSubmit;
+}) {
+  const [step, setStep] = useState(0);
+  const [name, setName] = useState("");
+  const [qty, setQty] = useState(6);
+  const [price, setPrice] = useState<number | "">("");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [combo, setCombo] = useState<Set<string>>(new Set());
+  const [query, setQuery] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  function toggleProduct(id: string, checked: boolean) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+    setCombo((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  function toggleCombo(id: string) {
+    setCombo((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function togglePrice(priceKey: number) {
+    const ids = products.filter((p) => Math.round(Number(p.price) || 0) === priceKey).map((p) => p.id);
+    setSelected((prev) => {
+      const next = new Set(prev);
+      const allIn = ids.length > 0 && ids.every((id) => next.has(id));
+      const added: string[] = [];
+      for (const id of ids) {
+        if (allIn) next.delete(id);
+        else if (!next.has(id)) {
+          next.add(id);
+          added.push(id);
+        }
+      }
+      // Los recién tildados entran mezclando; los destildados salen del combo.
+      setCombo((cprev) => {
+        const cnext = new Set([...cprev].filter((id) => next.has(id)));
+        for (const id of added) cnext.add(id);
+        return cnext;
+      });
+      return next;
+    });
+  }
+
+  const q = query.trim().toLowerCase();
+  const visible = products.filter(
+    (p) => !q || p.name.toLowerCase().includes(q) || String(Math.round(Number(p.price) || 0)).includes(q.replace(/[^0-9]/g, "") || " ")
+  );
+  const byPrice = new Map<number, Product[]>();
+  for (const p of visible) {
+    const k = Math.round(Number(p.price) || 0);
+    if (!byPrice.has(k)) byPrice.set(k, []);
+    byPrice.get(k)!.push(p);
+  }
+  const priceKeys = [...byPrice.keys()].sort((a, b) => a - b);
+
+  const comboIds = [...combo].filter((id) => selected.has(id));
+  const soloIds = [...selected].filter((id) => !combo.has(id));
+  const nameOf = (id: string) => products.find((p) => p.id === id)?.name || "Producto";
+
+  async function handleSave() {
+    setError("");
+    setSaving(true);
+    try {
+      await onSubmit({
+        name: name.trim(),
+        product_ids: [...selected],
+        combo_ids: comboIds,
+        tiers: [{ min_qty: Math.floor(Number(qty)) || 6, kind: "fixed_total", value: Number(price) || 0 }],
+        combine_promo: false,
+        combine_cash: false,
+        extras_mode: "on_top",
+      });
+    } catch (err) {
+      setError((err as Error).message || "No se pudo guardar");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card className="p-4 border-primary/30">
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h4 className="font-medium text-sm">Nuevo pack (paso {step + 1} de 3)</h4>
+          <Button type="button" size="sm" variant="ghost" onClick={onCancel}>
+            Cancelar
+          </Button>
+        </div>
+
+        {step === 0 && (
+          <div className="space-y-3">
+            <div>
+              <Label className="text-xs text-muted-foreground">Nombre del pack</Label>
+              <Input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Ej: Pack x6 Palitos"
+                className="mt-1"
+                maxLength={60}
+              />
+            </div>
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <Label className="text-xs text-muted-foreground">¿Cuántos?</Label>
+                <Input
+                  type="number" min={2} max={99}
+                  value={qty}
+                  onChange={(e) => setQty(Math.floor(Number(e.target.value)) || 0)}
+                  className="mt-1"
+                />
+              </div>
+              <div className="flex-1">
+                <Label className="text-xs text-muted-foreground">Precio del pack $</Label>
+                <Input
+                  type="number" min={0} step="any"
+                  value={price}
+                  onChange={(e) => setPrice(e.target.value === "" ? "" : Number(e.target.value))}
+                  placeholder="Ej: 5400"
+                  className="mt-1"
+                />
+              </div>
+            </div>
+            <Button
+              type="button" size="sm" className="w-full"
+              disabled={!name.trim() || !(qty >= 2) || !(Number(price) > 0)}
+              onClick={() => setStep(1)}
+            >
+              Siguiente: elegir productos
+            </Button>
+          </div>
+        )}
+
+        {step === 1 && (
+          <div className="space-y-2">
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Buscar por nombre o precio…"
+              className="h-8 text-sm"
+            />
+            <div className="space-y-3 mt-1 max-h-64 overflow-y-auto">
+              {priceKeys.length === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-3">Sin resultados</p>
+              )}
+              {priceKeys.map((pk) => {
+                const items = byPrice.get(pk)!;
+                const allIn = items.every((p) => selected.has(p.id));
+                return (
+                  <div key={pk}>
+                    <button
+                      type="button"
+                      onClick={() => togglePrice(pk)}
+                      className="text-xs font-semibold text-primary hover:underline"
+                    >
+                      {allIn ? "✓" : "○"} ${pk.toLocaleString("es-AR")} ({items.filter((p) => selected.has(p.id)).length}/{items.length})
+                    </button>
+                    <div className="grid grid-cols-1 gap-1 mt-0.5">
+                      {items.map((p) => {
+                        const checked = selected.has(p.id);
+                        const inCombo = combo.has(p.id);
+                        return (
+                          <div key={p.id} className="flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-muted">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={(e) => toggleProduct(p.id, e.target.checked)}
+                            />
+                            <span className="truncate flex-1 text-sm">{p.name}</span>
+                            {checked && (
+                              <button
+                                type="button"
+                                onClick={() => toggleCombo(p.id)}
+                                title={inCombo ? "Se mezcla (tocá para solo)" : "Solo (tocá para mezclar)"}
+                                className={`text-[11px] font-medium rounded-full px-2 py-0.5 border transition-colors ${
+                                  inCombo
+                                    ? "text-emerald-900 bg-emerald-50 border-emerald-300"
+                                    : "text-muted-foreground border-dashed border-muted-foreground/50"
+                                }`}
+                              >
+                                {inCombo ? "✓ mezcla" : "○ solo"}
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="flex gap-2">
+              <Button type="button" size="sm" variant="outline" className="flex-1" onClick={() => setStep(0)}>
+                Atrás
+              </Button>
+              <Button
+                type="button" size="sm" className="flex-1"
+                disabled={selected.size === 0}
+                onClick={() => setStep(2)}
+              >
+                Siguiente: resumen
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {step === 2 && (
+          <div className="space-y-3">
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2">
+              <p className="text-sm font-semibold text-emerald-900">🧊 {name.trim()}</p>
+              <p className="text-xs text-emerald-700 mt-0.5">
+                Llevá {Math.floor(Number(qty)) || 6} y pagá ${Number(price).toLocaleString("es-AR")}
+              </p>
+              {comboIds.length >= 2 && (
+                <p className="text-xs text-emerald-900 mt-1.5 font-medium">
+                  Se mezclan: {comboIds.map(nameOf).join(" · ")}
+                </p>
+              )}
+              {soloIds.length > 0 && (
+                <p className="text-xs text-emerald-900 mt-1">
+                  Van solos: {soloIds.map(nameOf).join(" · ")}
+                </p>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <Button type="button" size="sm" variant="outline" className="flex-1" onClick={() => setStep(1)}>
+                Atrás
+              </Button>
+              <Button type="button" size="sm" className="flex-1" disabled={saving} onClick={handleSave}>
+                {saving ? "Guardando…" : "Crear pack"}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {error && <p className="text-xs text-red-600">{error}</p>}
+      </div>
+    </Card>
+  );
+}
+
+type VolumeSaveData = {
+  name: string;
+  product_ids: string[];
+  /** Subconjunto que combina entre sí; el resto va a grupos solo. */
+  combo_ids: string[];
+  tiers: { min_qty: number; kind: "fixed_total" | "percent_off"; value: number }[];
+  combine_promo: boolean;
+  combine_cash: boolean;
+  extras_mode: "on_top" | "included";
+};
+
+type GroupFormSubmit = (data: VolumeSaveData) => Promise<void>;
+
 /** Precios por volumen: grupos mixtos + tramos (solo gastronomía). */
 export function VolumeEditor({ products, categories }: { products: Product[]; categories: Category[] }) {
   const [groups, setGroups] = useState<GroupRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [wizardOpen, setWizardOpen] = useState(false);
   const [editing, setEditing] = useState<GroupRow | null>(null);
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
@@ -397,15 +679,13 @@ export function VolumeEditor({ products, categories }: { products: Product[]; ca
     load();
   }, [load]);
 
-  type SaveData = Parameters<Parameters<typeof GroupForm>[0]["onSubmit"]>[0];
-
   async function postGroup(payload: {
     name: string;
     product_ids: string[];
-    tiers: SaveData["tiers"];
+    tiers: VolumeSaveData["tiers"];
     combine_promo: boolean;
     combine_cash: boolean;
-    extras_mode: SaveData["extras_mode"];
+    extras_mode: VolumeSaveData["extras_mode"];
   }) {
     const r = await fetch("/api/vendor/volume-groups", {
       method: "POST",
@@ -416,7 +696,7 @@ export function VolumeEditor({ products, categories }: { products: Product[]; ca
     if (!r.ok) throw new Error(d.error || "No se pudo guardar");
   }
 
-  function soloName(productId: string, tiers: SaveData["tiers"]): string {
+  function soloName(productId: string, tiers: VolumeSaveData["tiers"]): string {
     const p = products.find((x) => x.id === productId);
     const base = p ? p.name : "Producto";
     const tier = tiers[0];
@@ -429,7 +709,7 @@ export function VolumeEditor({ products, categories }: { products: Product[]; ca
    * compartido; el resto va a un grupo solo por producto con el mismo tramo.
    * Comparten precio pero no combinan. Al editar se recrea desde cero.
    */
-  async function save(data: SaveData) {
+  async function save(data: VolumeSaveData) {
     const comboIds = data.combo_ids.filter((id) => data.product_ids.includes(id));
     const soloIds = data.product_ids.filter((id) => !comboIds.includes(id));
     const sharedIds = comboIds.length >= 2 ? comboIds : [];
@@ -487,23 +767,49 @@ export function VolumeEditor({ products, categories }: { products: Product[]; ca
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <p className="text-sm text-muted-foreground">
           Ej: 12 empanadas surtidas a precio de docena. El volumen suma entre gustos.
         </p>
-        <Button
-          type="button"
-          size="sm"
-          onClick={() => {
-            setCreating(!creating);
-            setEditing(null);
-          }}
-        >
-          {creating ? "Cancelar" : "+ Grupo"}
-        </Button>
+        <div className="flex gap-1 flex-shrink-0">
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => {
+              setWizardOpen(!wizardOpen);
+              setCreating(false);
+              setEditing(null);
+            }}
+          >
+            {wizardOpen ? "Cancelar" : "+ Pack"}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              setCreating(!creating);
+              setWizardOpen(false);
+              setEditing(null);
+            }}
+          >
+            {creating ? "Cancelar" : "+ Grupo"}
+          </Button>
+        </div>
       </div>
 
       {msg && <p className="text-xs text-green-700">{msg}</p>}
+
+      {wizardOpen && (
+        <PackWizard
+          products={products}
+          onCancel={() => setWizardOpen(false)}
+          onSubmit={async (data) => {
+            await save(data);
+            setWizardOpen(false);
+          }}
+        />
+      )}
 
       {creating && !editing && (
         <GroupForm products={products} categories={categories} submitLabel="Crear grupo" onSubmit={save} />

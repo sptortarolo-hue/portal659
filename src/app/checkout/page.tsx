@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, Fragment } from "react";
 import { useRouter } from "next/navigation";
 import { useCart } from "@/lib/cart";
 import { Button } from "@/components/ui/button";
@@ -623,10 +623,27 @@ export default function CheckoutPage() {
 
       {/* Order summary */}
       <div className="border border-border rounded-2xl p-4 mb-6 bg-card space-y-3">
-        {items.map((i, idx) => {
+        {(() => {
+          // Una línea por pack (solo visual; totales intactos).
+          const order = items.map((_, idx) => idx);
+          const gkey = (idx: number) => vol.lines[idx]?.groupId || "";
+          order.sort((a, b) => gkey(a).localeCompare(gkey(b)));
+          let lastGroup = "\0";
+          return order.map((idx) => {
+          const i = items[idx];
+          const gid = gkey(idx);
+          const applied = gid ? vol.applied.find((a) => a.groupId === gid) : undefined;
+          const header = applied && gid !== lastGroup ? (
+            <p key={`gh-${gid}`} className="text-xs font-semibold text-emerald-700">
+              🧊 {applied.groupName} · {applied.label}
+            </p>
+          ) : null;
+          lastGroup = gid;
           const lineTotal = cartLineTotal(i);
           return (
-            <div key={`${i.offerId}-${idx}`} className="flex items-center gap-3">
+            <Fragment key={`${i.offerId}-${idx}`}>
+            {header}
+            <div className="flex items-center gap-3">
               <div className="h-10 w-10 rounded-lg bg-muted flex items-center justify-center flex-shrink-0 text-sm font-bold text-muted-foreground">
                 {i.qty}x
               </div>
@@ -645,8 +662,10 @@ export default function CheckoutPage() {
                 ${lineTotal.toLocaleString("es-AR")}
               </span>
             </div>
+            </Fragment>
           );
-        })}
+          });
+        })()}
         <div className="border-t border-border pt-3 mt-2 space-y-1">
           <div className="flex justify-between text-sm text-muted-foreground">
             <span>Subtotal</span>

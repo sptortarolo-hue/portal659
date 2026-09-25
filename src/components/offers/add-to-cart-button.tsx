@@ -50,7 +50,7 @@ export function AddToCartButton({
   packPrice,
   image,
 }: AddToCartButtonProps) {
-  const { addItem } = useCart();
+  const { addItem, items } = useCart();
   const { addToast } = useToast();
   const [added, setAdded] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
@@ -75,10 +75,30 @@ export function AddToCartButton({
       } else {
         addToast(`${name} agregado al carrito`);
       }
+      // Pack combinable: si el producto es miembro de un grupo multi y el pack
+      // no estaba completo antes de este agregado, se abre el sheet (el host
+      // decide modo armado o festejo según el carrito).
+      const grp = (vendor.volumeGroups || []).find(
+        (g) =>
+          (g.productIds || []).length > 1 &&
+          (g.productIds || []).map(String).includes(String(offerId))
+      );
+      if (grp) {
+        const ids = new Set((grp.productIds || []).map(String));
+        const before = switched
+          ? 0
+          : items.reduce((s, i) => (ids.has(String(i.offerId)) ? s + i.qty : s), 0);
+        const top = [...(grp.tiers || [])].sort((a, b) => a.minQty - b.minQty).pop();
+        if (top && before < top.minQty) {
+          window.dispatchEvent(
+            new CustomEvent("portal659:open-pack", { detail: { groupId: grp.id } })
+          );
+        }
+      }
       setAdded(true);
       setTimeout(() => setAdded(false), 1500);
     },
-    [addItem, vendor, offerId, name, price, cashExcluded, origPrice, hasPromo, packSize, packPrice, image, addToast]
+    [addItem, items, vendor, offerId, name, price, cashExcluded, origPrice, hasPromo, packSize, packPrice, image, addToast]
   );
 
   const handleClick = useCallback(() => {

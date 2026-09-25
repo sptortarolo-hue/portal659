@@ -1,6 +1,7 @@
 "use client";
 
 import { useCart, type CartVendor } from "@/lib/cart";
+import { volumeGroupColor } from "@/lib/volume-pricing";
 import { ProductImage } from "@/components/product-image";
 
 export type BannerMember = {
@@ -46,25 +47,26 @@ export function VolumeGroupBanner({ groups, vendor }: { groups: BannerGroup[]; v
             ? `Llevá ${next.minQty} y pagá $${Number(next.value).toLocaleString("es-AR")}`
             : `${next.minQty}+ con ${Number(next.value).toLocaleString("es-AR")}% off`;
         const members = (g.members || []).filter((m) => ids.has(String(m.id)));
+        const c = volumeGroupColor(g.id);
         return (
-          <div key={g.id} className="rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2.5">
+          <div key={g.id} className={`rounded-2xl border px-3 py-2.5 ${c.border} ${c.soft}`}>
             <div className="flex items-center justify-between gap-2">
-              <p className="text-sm font-bold text-emerald-900">🧊 Armá tu pack: {g.name}</p>
+              <p className={`text-sm font-bold ${c.strong}`}>🧊 Armá tu pack: {g.name}</p>
               <span
                 className={`text-[11px] font-bold tabular-nums px-2 py-0.5 rounded-full whitespace-nowrap ${
-                  done ? "bg-emerald-500 text-white" : "bg-white text-emerald-800 border border-emerald-200"
+                  done ? `${c.solid} text-white` : `bg-white ${c.strong} border ${c.border}`
                 }`}
               >
                 {done ? "¡Pack completo! 🎉" : `Elegidos ${qty}/${next.minQty}`}
               </span>
             </div>
-            <p className="text-xs text-emerald-700 mt-0.5">
+            <p className={`text-xs mt-0.5 ${c.text}`}>
               {tierText} · tocá los gustos para armar tu pack, el descuento se aplica solo
             </p>
             {!done && qty > 0 && (
-              <div className="mt-1.5 h-1.5 rounded-full bg-emerald-900/10 overflow-hidden">
+              <div className="mt-1.5 h-1.5 rounded-full bg-black/10 overflow-hidden">
                 <div
-                  className="h-full rounded-full bg-emerald-500 transition-all"
+                  className={`h-full rounded-full ${c.bar} transition-all`}
                   style={{ width: `${Math.min(100, Math.round((qty / next.minQty) * 100))}%` }}
                 />
               </div>
@@ -81,7 +83,7 @@ export function VolumeGroupBanner({ groups, vendor }: { groups: BannerGroup[]; v
                   <div
                     key={m.id}
                     className={`rounded-xl bg-white border p-1.5 flex flex-col transition-colors ${
-                      marked ? "border-emerald-500 ring-1 ring-emerald-500" : "border-emerald-200"
+                      marked ? `${c.border} ring-1 ${c.ring}` : "border-emerald-200"
                     }`}
                   >
                     <div className="h-14 w-full rounded-lg overflow-hidden bg-accent relative">
@@ -92,7 +94,7 @@ export function VolumeGroupBanner({ groups, vendor }: { groups: BannerGroup[]; v
                         className="w-full h-full object-cover"
                       />
                       {marked && (
-                        <span className="absolute top-1 right-1 h-5 w-5 rounded-full bg-emerald-500 text-white text-[11px] font-bold flex items-center justify-center">
+                        <span className={`absolute top-1 right-1 h-5 w-5 rounded-full ${c.solid} text-white text-[11px] font-bold flex items-center justify-center`}>
                           ✓
                         </span>
                       )}

@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import { useCart, type CartVolumeGroup } from "@/lib/cart";
+import { volumeGroupColor } from "@/lib/volume-pricing";
 
 /**
  * Progreso hacia los precios por volumen ("Sumás 9/12 para la docena").
@@ -43,7 +44,9 @@ export function VolumeProgress({ groups, showMembers = false }: { groups: CartVo
 
   return (
     <div className="space-y-2 my-3">
-      {rows.map((r) => (
+      {rows.map((r) => {
+        const c = volumeGroupColor(r.id);
+        return (
         <div
           key={r.id}
           className={`rounded-xl border px-3 py-2 text-xs font-medium ${
@@ -54,6 +57,7 @@ export function VolumeProgress({ groups, showMembers = false }: { groups: CartVo
         >
           <div className="flex items-center justify-between gap-2">
             <span>
+              <span className={`inline-block h-2 w-2 rounded-full mr-1.5 ${c.solid}`} />
               📦 {r.name}:{" "}
               {r.done ? (
                 <>¡tenés {r.qty} y corre {r.nextLabel}! 🎉</>
@@ -65,7 +69,7 @@ export function VolumeProgress({ groups, showMembers = false }: { groups: CartVo
           {!r.done && (
             <div className="mt-1.5 h-1.5 rounded-full bg-border/60 overflow-hidden">
               <div
-                className="h-full rounded-full bg-emerald-500 transition-all"
+                className={`h-full rounded-full ${c.bar} transition-all`}
                 style={{ width: `${Math.min(100, Math.round((r.qty / r.nextMin) * 100))}%` }}
               />
             </div>
@@ -76,7 +80,8 @@ export function VolumeProgress({ groups, showMembers = false }: { groups: CartVo
             </p>
           )}
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

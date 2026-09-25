@@ -8,7 +8,8 @@ import { CashPrice } from "@/components/store/cash-price";
 import { cashAppliesToItem, cashPrice, normalizeCashPct } from "@/lib/cash-discount";
 import { useCart, type CartModifier, type CartVolumeGroup } from "@/lib/cart";
 import { useToast } from "@/lib/toast";
-import { volumeBadgeText } from "@/lib/volume-pricing";
+import { volumeBadgeText, volumeGroupColor } from "@/lib/volume-pricing";
+import { openPack } from "@/components/store/pack-sheet";
 import {
   BIG_GROUP_THRESHOLD,
   activeOptions,
@@ -66,7 +67,7 @@ type Props = {
  */
 export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart = true, consultHref }: Props) {
   const [open, setOpen] = useState(false);
-  const { addItem } = useCart();
+  const { addItem, items } = useCart();
   const { addToast } = useToast();
 
   // Estado inline de la ficha mobile (modificadores + cantidad).
@@ -76,7 +77,6 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
   const [queries, setQueries] = useState<Record<string, string>>({});
   const [cats, setCats] = useState<Record<string, string | null>>({});
   const [hints, setHints] = useState<Record<string, string>>({});
-  const [showCombo, setShowCombo] = useState(false);
   const sheetBodyRef = useRef<HTMLDivElement | null>(null);
 
   // Al abrir una ficha CON opciones: la foto de 45vh las dejaba debajo del
@@ -145,23 +145,8 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
       (g.productIds || []).map(String).includes(String(product.id))
     ) || null;
   const volOthers = (volGroup?.memberNames || []).filter((n) => n && n !== product.name);
-  const volTier = volGroup?.tiers?.[0];
-  const comboBox =
-    volGroup && volOthers.length > 0 ? (
-      <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
-        <p className="font-semibold">🧊 {volGroup.name}: se combinan entre sí</p>
-        <ul className="mt-1 space-y-0.5 list-disc list-inside">
-          {volOthers.map((n) => (
-            <li key={n}>{n}</li>
-          ))}
-        </ul>
-        {volTier && volTier.kind === "fixed_total" && (
-          <p className="mt-1 font-medium">
-            Sumá {volTier.minQty} entre todos y pagás ${Number(volTier.value).toLocaleString("es-AR")}
-          </p>
-        )}
-      </div>
-    ) : null;
+  const hasCombo = !!volGroup && volOthers.length > 0;
+  const volColor = volGroup ? volumeGroupColor(volGroup.id) : null;
 
   const modTotal = Object.values(selected)
     .flat()
@@ -228,6 +213,15 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
         ? "Se limpió el carrito anterior (solo podés pedir de un local a la vez)"
         : `${product.name}${pack > 1 ? ` (pack x${pack})` : ""} agregado al carrito`
     );
+    // Pack combinable: si el pack no estaba completo, se abre el sheet.
+    if (volGroup && (volGroup.productIds || []).length > 1) {
+      const ids = new Set((volGroup.productIds || []).map(String));
+      const before = switched
+        ? 0
+        : items.reduce((s, i) => (ids.has(String(i.offerId)) ? s + i.qty : s), 0);
+      const top = [...(volGroup.tiers || [])].sort((a, b) => a.minQty - b.minQty).pop();
+      if (top && before < top.minQty) openPack(volGroup.id);
+    }
     setOpen(false); // cierra la ficha y vuelve al menú
     setQty(pack);
   }
@@ -252,12 +246,12 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
             {product.featured_today && <Badge className="bg-sun text-ink hover:bg-sun">Hoy</Badge>}
             {pack > 1 && <Badge className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] whitespace-nowrap">De a {pack}</Badge>}
           {outStock && <Badge variant="secondary" className="bg-red-100 text-red-700 text-[10px]">Sin stock</Badge>}
-          {volBadge && acceptsCart && !outStock && (
+          {volBadge && acceptsCart && !outStock && volGroup && (
             <button
               type="button"
-              onClick={() => setShowCombo((v) => !v)}
-              title={comboBox ? "Ver con qué se combina" : undefined}
-              className={`text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-1.5 py-0.5 whitespace-nowrap ${comboBox ? "cursor-pointer hover:bg-emerald-100" : ""}`}
+              onClick={() => openPack(volGroup.id)}
+              title="Ver pack combinable"
+              className={`text-[10px] font-semibold rounded-full px-1.5 py-0.5 whitespace-nowrap border cursor-pointer ${volColor ? `${volColor.soft} ${volColor.border} ${volColor.text}` : "bg-emerald-50 border-emerald-200 text-emerald-700"}`}
             >{volBadge}</button>
           )}
           </div>
@@ -293,9 +287,6 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
           ))}
         </div>
       </div>
-      {showCombo && comboBox && (
-        <div className="mt-3">{comboBox}</div>
-      )}
     </div>
   );
 
@@ -433,7 +424,18 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
                 <p className="text-sm text-muted-foreground">{product.description}</p>
               )}
 
-              {comboBox}
+              {hasCombo && volGroup && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpen(false);
+                    openPack(volGroup.id);
+                  }}
+                  className={`w-full rounded-xl border px-3 py-2 text-xs font-semibold text-left ${volColor ? `${volColor.soft} ${volColor.border} ${volColor.strong}` : ""}`}
+                >
+                  🧊 Armar pack: ver combinables
+                </button>
+              )}
 
               {outStock && (
                 <p className="text-sm font-medium text-red-600 text-center py-2">Sin stock por el momento</p>

@@ -305,19 +305,55 @@ export function volumeBadgeText(
 ): string | null {
   const found = tiersForProduct(groups, offerId);
   if (!found) return null;
-  // Grupo multi-producto = combinable/surtido: se explicita para que el
-  // cliente entienda que mezcla con otros antes de agregar al carrito.
+  // Grupo multi-producto = pack combinable: marca corta "pack xN".
+  // El detalle ("combinables entre sí" + lista) vive en el sheet PackSheet.
   const mixed = (found.group.productIds || []).length > 1;
   const parts = found.tiers.slice(0, 2).map((t) =>
     t.kind === "fixed_total"
       ? mixed
-        ? `${t.minQty} surtidos x ${fmtMoney(Number(t.value))}`
+        ? `pack x${t.minQty} · ${fmtMoney(Number(t.value))}`
         : `Llevá ${t.minQty} y pagá ${fmtMoney(Number(t.value))}`
       : mixed
-        ? `${t.minQty}+ surtidos con ${Number(t.value).toLocaleString("es-AR")}% off`
+        ? `pack x${t.minQty}+ · ${Number(t.value).toLocaleString("es-AR")}% off`
         : `${t.minQty}+ con ${Number(t.value).toLocaleString("es-AR")}% off`
   );
   return `📦 ${parts.join(" · ")}`;
+}
+
+export type VolumeColor = {
+  /** Fondo pleno (contador completo, checks). */
+  solid: string;
+  /** Fondo suave (cartel, sheet). */
+  soft: string;
+  /** Borde. */
+  border: string;
+  /** Anillo de marcado. */
+  ring: string;
+  /** Texto sobre fondo suave. */
+  text: string;
+  /** Texto fuerte (títulos). */
+  strong: string;
+  /** Barra de progreso. */
+  bar: string;
+};
+
+const VOLUME_PALETTE: VolumeColor[] = [
+  { solid: "bg-emerald-500", soft: "bg-emerald-50", border: "border-emerald-200", ring: "ring-emerald-500", text: "text-emerald-700", strong: "text-emerald-900", bar: "bg-emerald-500" },
+  { solid: "bg-amber-500", soft: "bg-amber-50", border: "border-amber-200", ring: "ring-amber-500", text: "text-amber-700", strong: "text-amber-900", bar: "bg-amber-500" },
+  { solid: "bg-sky-500", soft: "bg-sky-50", border: "border-sky-200", ring: "ring-sky-500", text: "text-sky-700", strong: "text-sky-900", bar: "bg-sky-500" },
+  { solid: "bg-violet-500", soft: "bg-violet-50", border: "border-violet-200", ring: "ring-violet-500", text: "text-violet-700", strong: "text-violet-900", bar: "bg-violet-500" },
+  { solid: "bg-rose-500", soft: "bg-rose-50", border: "border-rose-200", ring: "ring-rose-500", text: "text-rose-700", strong: "text-rose-900", bar: "bg-rose-500" },
+];
+
+/**
+ * Color estable por combinación (para distinguir packs entre sí en badge,
+ * sheet y progresos). Clases Tailwind estáticas (no se arman dinámicas).
+ */
+export function volumeGroupColor(groupId: string): VolumeColor {
+  const s = String(groupId || "");
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return VOLUME_PALETTE[h % VOLUME_PALETTE.length];
 }
 
 /** Validación del payload del editor (API vendor). */

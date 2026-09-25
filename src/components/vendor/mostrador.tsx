@@ -573,16 +573,18 @@ export function Mostrador({ vendorId }: { vendorId?: string | null }) {
       }
       return Promise.resolve();
     };
+    // Comanda de cocina: sale al instante siempre (la cocina no espera al CAE).
+    // El ticket al cliente sale después: junto al CAE si hay fiscal, o
+    // encadenado a la comanda como antes si no hay.
+    const wantFiscalTicket = withFiscal && fiscalReady && data.orderId && withReceipt && !isDelivery;
     if (needsKitchen) {
-      fetch("/api/print", {
+      const comanda = fetch("/api/print", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ orderId: data.orderId, type: "comanda" }),
-      })
-        .then(printSaleDoc)
-        .catch(() => {});
-    } else {
-      printSaleDoc().catch(() => {});
+      });
+      if (!wantFiscalTicket) comanda.then(printSaleDoc).catch(() => {});
+      else comanda.catch(() => {});
     }
 
     // El servidor recalcula el descuento en efectivo (pos/order): el total
@@ -593,38 +595,60 @@ export function Mostrador({ vendorId }: { vendorId?: string | null }) {
       : `Cobrado $${netTotal.toLocaleString("es-AR")}${withReceipt ? (isRetail ? " · comprobante" : " · comprobante de retiro") : ""}`;
     setMsg(baseMsg);
     clearSaleForm();
-
-    // Fiscal opt-in por venta, en segundo plano: el cobro nunca se traba
-    // por ARCA (el mostrador queda libre al instante).
     setFiscalPrintId(null);
-    if (withFiscal && fiscalReady && data.orderId) {
+
+    // Fiscal opt-in por venta: se espera el CAE (hasta 60s) y se imprime UN
+    // solo ticket ya con Factura C + QR. La cocina ya recibió su comanda.
+    const wantFiscal = withFiscal && fiscalReady && data.orderId;
+    if (wantFiscal) {
       const fiscalOrderId = data.orderId as string;
-      setMsg(`${baseMsg} · 🧾 Facturando…`);
-      fetch("/api/vendor/fiscal/emitir", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderId: fiscalOrderId }),
-      })
-        .then(async (fres) => {
-          const fdata = await fres.json().catch(() => ({}));
-          if (fres.ok && fdata.invoice) {
-            const inv = fdata.invoice;
-            setMsg(
-              `${baseMsg} · 🧾 Factura C ${String(inv.punto_venta).padStart(4, "0")}-${String(inv.cbte_nro).padStart(8, "0")} (CAE …${String(inv.cae).slice(-4)})`
-            );
-            setFiscalPrintId(fiscalOrderId);
-          } else if (fdata.error) {
-            const hint = fdata.hint ? ` 💡 ${fdata.hint}` : "";
-            setMsg(`${baseMsg} · ⚠️ Cobrado sin fiscal: ${fdata.error}${hint} (reintentá desde Config → Fiscal)`);
-          } else {
-            // Respuesta vacía: el proxy cortó antes de que el portal
-            // contestara (ARCA lento) o el portal no llegó a responder.
-            setMsg(`${baseMsg} · ⚠️ Cobrado sin fiscal: se cortó esperando a ARCA (probá "Probar conexión" en Config → Fiscal)`);
-          }
-        })
-        .catch(() => {
-          setMsg(`${baseMsg} · ⚠️ Cobrado sin fiscal: sin conexión (reintentá desde Config → Fiscal)`);
+      setMsg(`${baseMsg} · 🧾 Facturando en ARCA…`);
+      try {
+        const fres = await fetch("/api/vendor/fiscal/emitir", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ orderId: fiscalOrderId }),
+          signal: AbortSignal.timeout(60000),
         });
+        const fdata = await fres.json().catch(() => ({}));
+        if (fres.ok && fdata.invoice) {
+          const inv = fdata.invoice;
+          const fiscalMsg =
+            `${baseMsg} · 🧾 Factura C ${String(inv.punto_venta).padStart(4, "0")}-${String(inv.cbte_nro).padStart(8, "0")} (CAE …${String(inv.cae).slice(-4)})`;
+          if (wantFiscalTicket) {
+            // Un solo paso: el ticket sale con el bloque fiscal incluido.
+            try {
+              await fetch("/api/print", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ orderId: fiscalOrderId, type: "ticket" }),
+              });
+              setMsg(`${fiscalMsg} · 🖨️ Impreso ✓`);
+            } catch {
+              setMsg(`${fiscalMsg} · ⚠️ No se pudo imprimir`);
+              setFiscalPrintId(fiscalOrderId);
+            }
+          } else {
+            setMsg(fiscalMsg);
+          }
+        } else if (fdata.error) {
+          const hint = fdata.hint ? ` 💡 ${fdata.hint}` : "";
+          setMsg(`${baseMsg} · ⚠️ Cobrado sin fiscal: ${fdata.error}${hint} (reintentá desde Config → Fiscal)`);
+          if (wantFiscalTicket) printSaleDoc().catch(() => {});
+        } else {
+          // Respuesta vacía o timeout: el CAE puede llegar igual en el
+          // server; sale el comprobante común y queda reimpresión fiscal.
+          setMsg(`${baseMsg} · ⚠️ Cobrado sin fiscal confirmado: ARCA tardó demasiado (revisá el detalle del pedido)`);
+          if (wantFiscalTicket) printSaleDoc().catch(() => {});
+          setFiscalPrintId(fiscalOrderId);
+        }
+      } catch {
+        setMsg(`${baseMsg} · ⚠️ Cobrado sin fiscal confirmado: sin conexión (reintentá desde Config → Fiscal)`);
+        if (wantFiscalTicket) printSaleDoc().catch(() => {});
+        setFiscalPrintId(fiscalOrderId);
+      }
+    } else if (!needsKitchen) {
+      printSaleDoc().catch(() => {});
     }
     setRecent((prev) =>
       [{ id: data.orderId, total: Number(data.order?.total ?? total), payment_method: data.order?.payment_method ?? payment, paid_at: data.order?.paid_at ?? new Date().toISOString(), status: data.order?.status ?? "preparing", created_at: data.order?.created_at ?? new Date().toISOString(), pickup_number: data.order?.pickup_number ?? null, method: data.order?.method ?? method }, ...prev].slice(0, 20)

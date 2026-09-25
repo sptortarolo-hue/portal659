@@ -102,8 +102,8 @@ export function CartDrawer() {
                     </button>
                   </div>
 
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center border border-border rounded-lg">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center border border-border rounded-lg flex-shrink-0">
                       <button
                         onClick={() =>
                           setQty(

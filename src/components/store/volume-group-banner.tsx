@@ -98,23 +98,25 @@ export function VolumeGroupBanner({ groups, vendor }: { groups: BannerGroup[]; v
                       )}
                     </div>
                     <p className="text-[11px] font-semibold leading-tight mt-1 line-clamp-2 min-h-7">{m.name}</p>
-                    <div className="flex items-center justify-between mt-1">
-                      <span className="text-[11px] font-bold tabular-nums">
+                    {/* Pie en columna (no en fila): en cards de ~92px el precio
+                        + stepper lado a lado se superponen en mobile. */}
+                    <div className="mt-1 min-w-0">
+                      <p className="text-[11px] font-bold tabular-nums truncate">
                         ${Number(m.price).toLocaleString("es-AR")}
-                      </span>
-                      <div className="flex items-center gap-1">
+                      </p>
+                      <div className="flex items-center justify-center gap-1 mt-1">
                         {marked && (
                           <button
                             type="button"
                             aria-label={`Quitar uno de ${m.name}`}
                             onClick={() => setQty(String(m.id), plainQty - 1)}
-                            className="h-7 w-7 rounded-full border border-emerald-300 text-emerald-800 text-base font-bold leading-none hover:bg-emerald-100 active:scale-95 transition-transform"
+                            className="h-6 w-6 flex-shrink-0 rounded-full border border-emerald-300 text-emerald-800 text-sm font-bold leading-none hover:bg-emerald-100 active:scale-95 transition-transform"
                           >
                             −
                           </button>
                         )}
                         {marked && (
-                          <span className="text-[11px] font-bold tabular-nums min-w-4 text-center">{plainQty}</span>
+                          <span className="text-[11px] font-bold tabular-nums min-w-5 text-center flex-shrink-0">{plainQty}</span>
                         )}
                         <button
                           type="button"
@@ -122,7 +124,7 @@ export function VolumeGroupBanner({ groups, vendor }: { groups: BannerGroup[]; v
                           onClick={() =>
                             addItem(vendor, { offerId: String(m.id), name: m.name, price: Number(m.price), qty: 1 })
                           }
-                          className="h-7 w-7 rounded-full bg-primary text-primary-foreground text-base font-bold leading-none hover:bg-primary/90 active:scale-95 transition-transform"
+                          className="h-6 w-6 flex-shrink-0 rounded-full bg-primary text-primary-foreground text-sm font-bold leading-none hover:bg-primary/90 active:scale-95 transition-transform"
                         >
                           +
                         </button>

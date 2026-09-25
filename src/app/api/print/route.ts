@@ -107,10 +107,11 @@ export async function POST(request: Request) {
         cae: string;
         cae_vto: string;
         total: number;
+        created_at: string;
       }>(
         `SELECT punto_venta, cbte_nro, cae,
                 CASE WHEN pg_typeof(cae_vto) = 'date'::regtype THEN to_char(cae_vto, 'YYYYMMDD') ELSE cae_vto::text END AS cae_vto,
-                total
+                total, created_at
          FROM invoices WHERE vendor_id = $1 AND order_id = $2 LIMIT 1`,
         [vendor.id, orderId]
       );
@@ -122,6 +123,8 @@ export async function POST(request: Request) {
           cbteNro: Number(inv.cbte_nro),
           cae: String(inv.cae),
           caeVto: String(inv.cae_vto).replace(/\D/g, ""),
+          fechaEmision: inv.created_at ? new Date(inv.created_at).toISOString() : null,
+          condIva: vendor.fiscal_cond_iva ?? null,
           qrUrl: buildQrUrl({
             cuit: vendor.cuit,
             ptoVta: Number(inv.punto_venta),

@@ -550,7 +550,7 @@ export type ReceiptExtra = {
   fiscal?: FiscalPrintInfo | null;
 };
 
-/** Datos fiscales para el bloque impreso del ticket (Factura C). */
+/** Datos fiscales para el ticket impreso (Factura C). */
 export type FiscalPrintInfo = {
   cuit: string;
   puntoVenta: number;
@@ -558,39 +558,162 @@ export type FiscalPrintInfo = {
   cae: string;
   /** Vencimiento CAE en YYYYMMDD. */
   caeVto: string;
+  /** Fecha de emisión del comprobante (ISO). */
+  fechaEmision?: string | null;
+  /** Condición IVA del emisor (vendors.fiscal_cond_iva). */
+  condIva?: string | null;
   /** URL de verificación ARCA (QR). Se genera al imprimir si no viene. */
   qrUrl?: string;
 };
 
-/** Bloque fiscal del ticket: Factura C + CAE + QR ARCA. Nunca rompe la impresión. */
+/** Etiqueta visible de la condición IVA del emisor. */
+function condIvaLabel(cond: string | null | undefined): string | null {
+  const c = (cond || "").trim().toLowerCase();
+  if (!c) return null;
+  if (c === "monotributo") return "Monotributo";
+  if (c === "responsable_inscripto") return "IVA Responsable Inscripto";
+  return cond!.trim();
+}
+
+/** Formato DD/MM/AAAA para fechas fiscales (acepta YYYYMMDD o ISO). */
+function formatFiscalDate(input: string): string {
+  const clean = (input || "").replace(/\D/g, "");
+  if (clean.length === 8) {
+    return `${clean.slice(6, 8)}/${clean.slice(4, 6)}/${clean.slice(0, 4)}`;
+  }
+  const d = new Date(input);
+  if (!Number.isNaN(d.getTime())) {
+    const p = (n: number) => String(n).padStart(2, "0");
+    return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()}`;
+  }
+  return input;
+}
+
+/**
+ * Encabezado fiscal del ticket (tras logo/nombre): FACTURA C en doble alto
+ * + ORIGINAL + número grande + fecha + CUIT. Entra en 80mm (48) y 58mm
+ * (32: el número de 13 va a doble ancho justo).
+ */
+async function composeFiscalHeader(
+  printer: any,
+  fiscal: FiscalPrintInfo
+): Promise<void> {
+  const nro = `${String(fiscal.puntoVenta).padStart(4, "0")}-${String(fiscal.cbteNro).padStart(8, "0")}`;
+  printer.alignCenter();
+  printer.bold(true);
+  printer.setTextSize(2, 2);
+  printer.println("FACTURA C");
+  printer.setTextSize(0, 0);
+  printer.println("ORIGINAL");
+  printer.bold(false);
+  printer.println("");
+  printer.bold(true);
+  printer.setTextSize(2, 2);
+  printer.println(nro);
+  printer.setTextSize(0, 0);
+  printer.bold(false);
+  if (fiscal.fechaEmision) {
+    printer.println(`Fecha: ${formatFiscalDate(fiscal.fechaEmision)}`);
+  }
+  printer.println(`CUIT: ${fiscal.cuit}`);
+  const cond = condIvaLabel(fiscal.condIva);
+  if (cond) printer.println(cond);
+}
+
+const fiscalQrCache = new Map<string, Buffer>();
+
+/**
+ * Bloque fiscal lado a lado (solo 80mm/576px): QR sutil a la izquierda
+ * (~26mm) + columna de texto a la derecha (CAE, vto, verificación). Mismo
+ * patrón que el encabezado con logo (bitmap único, cache en memoria).
+ * Devuelve null si falla (el llamador usa el apilado).
+ */
+async function renderFiscalSideQr(
+  fiscal: FiscalPrintInfo,
+  cae: string,
+  vto: string
+): Promise<Buffer | null> {
+  if (!fiscal.qrUrl) return null;
+  const key = `fiscal:${fiscal.cae}:${fiscal.cbteNro}`;
+  const cached = fiscalQrCache.get(key);
+  if (cached) return cached;
+  try {
+    const QRCode = (await import("qrcode")).default;
+    const qrBuf: Buffer = await QRCode.toBuffer(fiscal.qrUrl, {
+      width: 208,
+      margin: 1,
+    });
+    const PI = await loadPureImage();
+    const sharp = await loadSharp();
+    const qrImg = await decodePng(PI, qrBuf);
+    const W = 576;
+    const QR = 208;
+    const PAD = 16;
+    const textX = PAD + QR + 20;
+    const lines = [`CAE: ${cae}`, `Vto. CAE: ${vto}`, "", "Verificá en", "arca.gob.ar/fe/qr"];
+    const size = 30;
+    const canvas = PI.make(W, QR + PAD * 2);
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "white";
+    ctx.fillRect(0, 0, W, QR + PAD * 2);
+    ctx.drawImage(qrImg, PAD, PAD, QR, QR);
+    ctx.fillStyle = "black";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "alphabetic";
+    ctx.font = `${size}px ${FONT_NAME}`;
+    const lineHeight = Math.round(size * 1.25);
+    const blockH = lines.length * lineHeight;
+    const top = PAD + Math.round((QR - blockH) / 2);
+    lines.forEach((ln, i) => {
+      if (ln) ctx.fillText(ln, textX, top + (i + 1) * lineHeight);
+    });
+    const raw = await encodePng(PI, canvas);
+    const png = await sharp(raw).grayscale().threshold(150).png().toBuffer();
+    if (fiscalQrCache.size >= 200) fiscalQrCache.clear();
+    fiscalQrCache.set(key, png);
+    return png;
+  } catch {
+    return null;
+  }
+}
+
+/** Pie fiscal del ticket: receptor + CAE + QR ARCA sutil. Nunca rompe la impresión. */
 async function composeFiscalBlock(
   printer: any,
   width: number,
   fiscal: FiscalPrintInfo
 ): Promise<void> {
   const separator = separatorFor(width);
-  const vto =
-    fiscal.caeVto.length === 8
-      ? `${fiscal.caeVto.slice(6, 8)}/${fiscal.caeVto.slice(4, 6)}/${fiscal.caeVto.slice(0, 4)}`
-      : fiscal.caeVto;
+  const vto = formatFiscalDate(fiscal.caeVto);
+  // 80mm: QR a la izquierda + texto a la derecha en un solo bitmap
+  // (ahorra ~3 líneas). 58mm: apilado sutil con QR chico.
+  if (width > 32 && fiscal.qrUrl) {
+    const bitmap = await renderFiscalSideQr(fiscal, fiscal.cae, vto);
+    if (bitmap) {
+      printer.alignCenter();
+      printer.println(separator);
+      printer.println("A consumidor final");
+      printer.println(separator);
+      await printer.printImageBuffer(bitmap);
+      printer.alignLeft();
+      return;
+    }
+  }
   printer.alignCenter();
   printer.println(separator);
-  printer.bold(true);
-  printer.println(
-    `FACTURA C ${String(fiscal.puntoVenta).padStart(4, "0")}-${String(fiscal.cbteNro).padStart(8, "0")}`
-  );
-  printer.bold(false);
-  printer.println(`CUIT emisor: ${fiscal.cuit}`);
+  printer.println("A consumidor final");
+  printer.println(separator);
   printer.println(`CAE: ${fiscal.cae}`);
   printer.println(`Vto. CAE: ${vto}`);
   if (fiscal.qrUrl) {
     try {
-      printer.printQR(fiscal.qrUrl, { cellSize: 6, correction: "M", model: 2 });
+      printer.printQR(fiscal.qrUrl, { cellSize: 3, correction: "M", model: 2 });
       printer.println("");
     } catch {
       printer.println("QR: ver en arca.gob.ar/fe/qr");
     }
   }
+  printer.println("Verificá en arca.gob.ar/fe/qr");
   printer.alignLeft();
 }
 
@@ -609,7 +732,12 @@ async function composeReceipt(
 
   printer.alignCenter();
   await composeStoreHeader(printer, vendor, width);
-  printer.println(extra?.docTitle || "TICKET");
+  // Con fiscal, el encabezado de factura reemplaza al título genérico.
+  if (extra?.fiscal) {
+    await composeFiscalHeader(printer, extra.fiscal);
+  } else {
+    printer.println(extra?.docTitle || "TICKET");
+  }
   if (extra?.tableName) printer.println(`Mesa: ${extra.tableName}`);
   if (extra?.subLabel) printer.println(extra.subLabel);
   printer.println(separator);

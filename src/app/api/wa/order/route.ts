@@ -56,7 +56,7 @@ export async function POST(request: Request) {
       source: "wa-bot",
     });
 
-    return NextResponse.json({ ok: true, orderId: result.orderId, total: result.total });
+    return NextResponse.json({ ok: true, orderId: result.orderId, total: result.total, trackToken: result.trackToken });
   } catch (e) {
     if (e instanceof InvalidPhoneError) {
       return NextResponse.json({ error: e.message }, { status: 400 });

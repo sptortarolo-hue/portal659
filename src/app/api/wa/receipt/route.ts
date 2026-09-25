@@ -50,9 +50,9 @@ export async function POST(request: Request) {
   // El pedido existe, es del vendor correcto y todavía no tiene comprobante.
   const order = await queryOne<{
     id: string; vendor_id: string; customer_name: string; payment_method: string; payment_status: string;
-    transfer_proof_url: string | null; pickup_number: number | null; total: number;
+    transfer_proof_url: string | null; pickup_number: number | null; total: number; track_token: string | null;
   }>(
-    `SELECT id, vendor_id, customer_name, payment_method, payment_status, transfer_proof_url, pickup_number, total
+    `SELECT id, vendor_id, customer_name, payment_method, payment_status, transfer_proof_url, pickup_number, total, track_token
      FROM orders WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
     [orderId, vendorId]
   );
@@ -130,5 +130,5 @@ export async function POST(request: Request) {
     logApiError("wa-receipt/notify", e);
   }
 
-  return NextResponse.json({ ok: true, url });
+  return NextResponse.json({ ok: true, url, trackToken: order.track_token });
 }

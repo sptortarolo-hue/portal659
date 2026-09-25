@@ -52,6 +52,12 @@ function shopUrl(vendor) {
   return vendor.slug ? `${config.publicUrl}/tienda/${vendor.slug}` : "";
 }
 
+/** Link público de seguimiento del pedido (/seguimiento/[token]): el cliente
+ *  sigue el pedido en vivo y ahí se lo invita a registrarse. */
+function trackUrl(token) {
+  return token ? `${config.publicUrl}/seguimiento/${token}` : "";
+}
+
 // ———————————————————————————————————————————————————————————————————————————
 // Entrada principal
 // ———————————————————————————————————————————————————————————————————————————
@@ -253,8 +259,14 @@ async function handleStep({ vendor, text, state, replies, waId }) {
         state.orderId = order.orderId || order.id;
         replies.push("✅ Pedido confirmado. Quedó pendiente de pago.");
         replies.push(transferText(vendor, order.total));
+        if (order.trackToken) {
+          replies.push(`📦 Seguí tu pedido acá: ${trackUrl(order.trackToken)}`);
+        }
       } else {
         replies.push("✅ ¡Pedido confirmado! Te avisamos por acá cuando esté listo.");
+        if (order.trackToken) {
+          replies.push(`📦 Seguí tu pedido acá: ${trackUrl(order.trackToken)}`);
+        }
         state._cleared = true;
         await clearState(vendor.id, waId);
       }
@@ -799,7 +811,14 @@ export async function handleInboundMedia({ vendor, waId, mime, name, buffer }) {
       return { handled: true, replies: [data.error || "No lo pude guardar. Mandame la foto o el PDF de nuevo. 🙏"] };
     }
     await clearState(vendor.id, waId);
-    return { handled: true, replies: ["✅ Comprobante recibido. El comercio lo verifica y te avisa enseguida. 👍"] };
+    return {
+      handled: true,
+      replies: [
+        data.trackToken
+          ? `✅ Comprobante recibido. El comercio lo verifica y comienza a preparar tu pedido.\n\n📦 Seguí tu pedido acá: ${trackUrl(data.trackToken)}`
+          : "✅ Comprobante recibido. El comercio lo verifica y te avisa enseguida. 👍",
+      ],
+    };
   } catch (e) {
     console.error("[bot] receipt error:", e.message);
     return { handled: true, replies: ["Hubo un problema técnico. Probá reenviar en un segundo."] };

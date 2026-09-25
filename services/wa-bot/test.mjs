@@ -29,10 +29,10 @@ globalThis.fetch = async (url, opts) => {
     orderCalls++;
     lastOrderBody = JSON.parse(opts?.body || "{}");
     if (orderFail) return { ok: false, status: orderFail.status, json: async () => orderFail };
-    return { ok: true, json: async () => ({ ok: true, orderId: "ord-123", total: 4400 }) };
+    return { ok: true, json: async () => ({ ok: true, orderId: "ord-123", total: 4400, trackToken: "tok123" }) };
   }
   if (u.includes("/api/wa/receipt")) {
-    return { ok: receiptFail ? false : true, status: receiptFail ? 409 : 200, json: async () => (receiptFail ? { error: receiptFail } : { ok: true, url: "https://x/receipt.jpg" }) };
+    return { ok: receiptFail ? false : true, status: receiptFail ? 409 : 200, json: async () => (receiptFail ? { error: receiptFail } : { ok: true, url: "https://x/receipt.jpg", trackToken: "tok456" }) };
   }
   if (u.includes("/api/wa/handoff")) return { ok: true, json: async () => ({ ok: true }) };
   return realFetch(url, opts);
@@ -103,6 +103,9 @@ async function main() {
   r = await handleInbound({ vendor, waId: wa, body: "sí" });
   show("sí (crear pedido)", r);
   ok = assertOrder("confirmar completo") && ok;
+  const confirmReplies = (r.replies || []).join(" ");
+  if (!confirmReplies.includes("seguimiento/tok123")) { console.log("!!! la confirmación no lleva el link de seguimiento"); ok = false; }
+  else { console.log(">>> OK: confirmación con link de seguimiento"); }
 
   // Un "sí" posterior NO debe re-confirmar el mismo pedido (estado limpio).
   r = await handleInbound({ vendor, waId: wa, body: "sí" });
@@ -207,6 +210,9 @@ async function main() {
   r = await handleInboundMedia({ vendor, waId: waWeb, mime: "image/jpeg", name: "comprobante.jpg", buffer: Buffer.from("fake-image") });
   show("comprobante recibido", r);
   if (!(r.replies || []).join(" ").includes("recibido")) { console.log("!!! el comprobante no entró (state web)"); ok = false; }
+  if (!(r.replies || []).join(" ").includes("comienza a preparar") || !(r.replies || []).join(" ").includes("seguimiento/tok456")) {
+    console.log("!!! el mensaje de comprobante no lleva el link de seguimiento"); ok = false;
+  } else { console.log(">>> OK: comprobante con link de seguimiento + invitación (el cliente entra y se registra ahí)"); }
   // Después del comprobante el estado quedó limpio: un texto arranca fresco.
   r = await handleInbound({ vendor, waId: waWeb, body: "hola" });
   if (!(r.replies || []).join(" ").includes("asistente")) { console.log("!!! tras el comprobante el chat no arrancó fresco"); ok = false; }

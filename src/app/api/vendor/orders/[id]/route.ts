@@ -55,7 +55,7 @@ function customerNotificationText(
 }
 
 const RETURN_COLUMNS =
-  "customer_phone, customer_name, customer_address, total, payment_method, payment_status, notes, modification_notes, method, items, pickup_number, transfer_proof_url, CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'kitchen_done') THEN kitchen_done ELSE '[]'::jsonb END AS kitchen_done";
+  "customer_phone, customer_name, customer_address, total, payment_method, payment_status, notes, modification_notes, method, items, pickup_number, transfer_proof_url, track_token, CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'kitchen_done') THEN kitchen_done ELSE '[]'::jsonb END AS kitchen_done";
 
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   const params = await context.params;
@@ -520,6 +520,9 @@ export async function PATCH(
       if (vendorRow?.transfer_holder) lines.push(`Titular: ${vendorRow.transfer_holder}`);
       lines.push(`Monto: $${Number(order.total).toLocaleString("es-AR")}`);
       lines.push("", "Mandanos la foto o el PDF del comprobante por acá y lo verificamos enseguida. 🙏");
+      if (typeof order.track_token === "string" && order.track_token) {
+        lines.push(`📦 Seguí tu pedido acá: ${getSiteUrl()}/seguimiento/${order.track_token}`);
+      }
       const wabotUrl = (process.env.WABOT_URL || "http://wabot:8792").replace(/\/$/, "");
       await fetch(`${wabotUrl}/send`, {
         method: "POST",

@@ -104,7 +104,7 @@ export function PackSheet({
                 <div
                   key={m.id}
                   className={`flex items-center gap-3 rounded-xl border p-2 bg-card transition-colors ${
-                    marked ? `${c.border} ring-1 ${c.ring}` : "border-border"
+                    marked ? `${c.border} ring-1 ${c.ring}` : c.border
                   }`}
                 >
                   <div className="h-12 w-12 rounded-lg overflow-hidden bg-accent flex-shrink-0 relative">

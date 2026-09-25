@@ -305,16 +305,16 @@ export function volumeBadgeText(
 ): string | null {
   const found = tiersForProduct(groups, offerId);
   if (!found) return null;
-  // Grupo multi-producto = pack combinable: marca corta "pack xN".
-  // El detalle ("combinables entre sí" + lista) vive en el sheet PackSheet.
+  // Grupo multi-producto = pack combinable: chip identificador con precio.
+  // El detalle (lista de combinables) vive en el sheet PackSheet.
   const mixed = (found.group.productIds || []).length > 1;
   const parts = found.tiers.slice(0, 2).map((t) =>
     t.kind === "fixed_total"
       ? mixed
-        ? `pack x${t.minQty} · ${fmtMoney(Number(t.value))}`
+        ? `Pack x${t.minQty} · Combinables · ${fmtMoney(Number(t.value))}`
         : `Llevá ${t.minQty} y pagá ${fmtMoney(Number(t.value))}`
       : mixed
-        ? `pack x${t.minQty}+ · ${Number(t.value).toLocaleString("es-AR")}% off`
+        ? `Pack x${t.minQty}+ · Combinables · ${Number(t.value).toLocaleString("es-AR")}% off`
         : `${t.minQty}+ con ${Number(t.value).toLocaleString("es-AR")}% off`
   );
   return `📦 ${parts.join(" · ")}`;

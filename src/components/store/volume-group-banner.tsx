@@ -83,7 +83,7 @@ export function VolumeGroupBanner({ groups, vendor }: { groups: BannerGroup[]; v
                   <div
                     key={m.id}
                     className={`rounded-xl bg-white border p-1.5 flex flex-col transition-colors ${
-                      marked ? `${c.border} ring-1 ${c.ring}` : "border-emerald-200"
+                      marked ? `${c.border} ring-1 ${c.ring}` : c.border
                     }`}
                   >
                     <div className="h-14 w-full rounded-lg overflow-hidden bg-accent relative">
@@ -112,7 +112,7 @@ export function VolumeGroupBanner({ groups, vendor }: { groups: BannerGroup[]; v
                             type="button"
                             aria-label={`Quitar uno de ${m.name}`}
                             onClick={() => setQty(String(m.id), plainQty - 1)}
-                            className="h-6 w-6 flex-shrink-0 rounded-full border border-emerald-300 text-emerald-800 text-sm font-bold leading-none hover:bg-emerald-100 active:scale-95 transition-transform"
+                            className={`h-6 w-6 flex-shrink-0 rounded-full border text-sm font-bold leading-none active:scale-95 transition-transform ${c.border} ${c.text} hover:bg-black/5`}
                           >
                             −
                           </button>

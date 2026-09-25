@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Card } from "@/components/ui/card";
+import { volumeGroupColor, type VolumeColor } from "@/lib/volume-pricing";
 
 type Product = { id: string; name: string; category?: string | null; price?: number | null };
 type Category = { id?: string; name: string };
@@ -88,6 +89,12 @@ function GroupForm({
 
   // Resumen "se combinan entre sí": lo mismo que después ve el cliente.
   // Tocando cada chip se elige si combina (2+ arman el pozo) o queda solo.
+  // Color del grupo (verde por defecto al crear, sin id todavía).
+  const EMERALD: VolumeColor = {
+    solid: "bg-emerald-500", soft: "bg-emerald-50", border: "border-emerald-200",
+    ring: "ring-emerald-500", text: "text-emerald-700", strong: "text-emerald-900", bar: "bg-emerald-500",
+  };
+  const fc = initial?.id ? volumeGroupColor(initial.id) : EMERALD;
   const selectedList = products.filter((p) => selected.has(p.id));
   const comboCount = selectedList.filter((p) => combo.has(p.id)).length;
   const firstTier = tiers.find((t) => Number.isFinite(t.min_qty) && Number(t.value) > 0);
@@ -248,8 +255,8 @@ function GroupForm({
             })}
           </div>
           {selectedList.length > 0 && (
-            <div className="mt-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2">
-              <p className="text-xs font-semibold text-emerald-900">
+            <div className={`mt-2 rounded-xl border px-3 py-2 ${fc.border} ${fc.soft}`}>
+              <p className={`text-xs font-semibold ${fc.strong}`}>
                 🧊 Se combinan entre sí ({comboCount}) — tocá para cambiar
               </p>
               <div className="flex flex-wrap gap-1 mt-1.5">
@@ -263,7 +270,7 @@ function GroupForm({
                       title={inCombo ? "Combina (tocá para dejar solo)" : "Solo (tocá para que combine)"}
                       className={`text-[11px] font-medium rounded-full px-2 py-0.5 border transition-colors ${
                         inCombo
-                          ? "text-emerald-900 bg-white border-emerald-300"
+                          ? `${fc.strong} bg-white ${fc.border} ring-1 ${fc.ring}`
                           : "text-muted-foreground bg-transparent border-dashed border-muted-foreground/50"
                       }`}
                     >
@@ -273,7 +280,7 @@ function GroupForm({
                 })}
               </div>
               {summaryTier && (
-                <p className="text-xs text-emerald-700 mt-1.5">{summaryTier}</p>
+                <p className={`text-xs mt-1.5 ${fc.text}`}>{summaryTier}</p>
               )}
             </div>
           )}

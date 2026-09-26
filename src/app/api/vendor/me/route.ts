@@ -68,6 +68,8 @@ export async function POST(request: Request) {
     delivery_options,
     delivery_fee,
     free_delivery_min,
+    delivery_mode,
+    delivery_area_text,
     services_list,
     service_area,
     free_estimate,
@@ -136,6 +138,11 @@ export async function POST(request: Request) {
   if (delivery_options !== undefined) payload.delivery_options = delivery_options || "ambos";
   if (delivery_fee !== undefined) payload.delivery_fee = delivery_fee != null && delivery_fee !== "" ? Number(delivery_fee) : null;
   if (free_delivery_min !== undefined) payload.free_delivery_min = free_delivery_min != null && free_delivery_min !== "" ? Number(free_delivery_min) : null;
+  if (delivery_mode !== undefined) payload.delivery_mode = delivery_mode === "zones" ? "zones" : "flat";
+  if (delivery_area_text !== undefined) {
+    const t = typeof delivery_area_text === "string" ? delivery_area_text.trim().slice(0, 120) : "";
+    payload.delivery_area_text = t || null;
+  }
   if (services_list !== undefined) payload.services_list = services_list || null;
   if (service_area !== undefined) payload.service_area = service_area || null;
   if (free_estimate !== undefined) payload.free_estimate = free_estimate !== false;
@@ -230,6 +237,8 @@ export async function POST(request: Request) {
         "urgent_surcharge_pct",
         "deposit_default_pct",
         "kitchen_strict_close",
+        "delivery_mode",
+        "delivery_area_text",
       ].filter((k) => k in payload && msg.includes(k));
       if (droppable.length > 0) {
         for (const k of droppable) delete payload[k];

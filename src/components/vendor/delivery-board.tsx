@@ -15,6 +15,8 @@ type DeliveryOrder = {
   items: { name: string; qty: number }[];
   created_at: string;
   assigned_to: string | null;
+  delivery_zone_name?: string | null;
+  delivery_out_of_area?: boolean | null;
 };
 
 /**
@@ -207,6 +209,15 @@ function DeliveryCard({
       </p>
 
       {o.customer_address && <p className="text-xs mb-2">📍 {o.customer_address}</p>}
+      {(o.delivery_zone_name || o.delivery_out_of_area) && (
+        <p className="text-xs mb-2 font-semibold">
+          {o.delivery_out_of_area ? (
+            <span className="text-amber-700">⚠️ Otra zona — envío a convenir</span>
+          ) : (
+            <span className="text-blue-700">🗺️ {o.delivery_zone_name}</span>
+          )}
+        </p>
+      )}
 
       <div className="flex gap-2">
         {o.customer_phone && (

@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { ModifierPicker } from "@/components/offers/modifier-picker";
 import { ProductPickCard } from "@/components/vendor/product-pick-card";
 import { cashDiscountForItems, normalizeCashPct } from "@/lib/cash-discount";
+import { normalizeDeliveryMode, resolveDeliveryFee, type DeliverySelection } from "@/lib/delivery";
 import { toE164 } from "@/lib/phone";
 import { getCatalogSnapshot, saveCatalogSnapshot } from "@/lib/offline-db";
 import { enqueueOfflineAction, isNetworkError, newClientKey, nextProvisionalNumber } from "@/lib/offline-actions";
@@ -154,7 +155,21 @@ export function Mostrador({ vendorId }: { vendorId?: string | null }) {
   const [convertOrderId, setConvertOrderId] = useState<string | null>(null);
   const [convertPhone, setConvertPhone] = useState("");
   const [convertAddress, setConvertAddress] = useState("");
+  const [convertReferences, setConvertReferences] = useState("");
+  const [convertZoneId, setConvertZoneId] = useState("");
+  const [convertOutOfArea, setConvertOutOfArea] = useState(false);
+  const [convertManualFee, setConvertManualFee] = useState("");
   const [converting, setConverting] = useState(false);
+  // Envío por zona del comercio (venta directa a domicilio).
+  const [deliveryMode, setDeliveryMode] = useState<"flat" | "zones">("flat");
+  const [deliveryBaseFee, setDeliveryBaseFee] = useState<number | null>(null);
+  const [deliveryFreeMin, setDeliveryFreeMin] = useState<number | null>(null);
+  const [deliveryAreaText, setDeliveryAreaText] = useState<string | null>(null);
+  const [deliveryZones, setDeliveryZones] = useState<{ id: string; name: string; description: string | null; fee: number }[]>([]);
+  const [posZoneId, setPosZoneId] = useState("");
+  const [posOutOfArea, setPosOutOfArea] = useState(false);
+  const [posManualFee, setPosManualFee] = useState("");
+  const [posReferences, setPosReferences] = useState("");
   const [notes, setNotes] = useState("");
   // % descuento en efectivo del comercio (0 = sin descuento).
   const [cashPct, setCashPct] = useState(0);
@@ -197,7 +212,33 @@ export function Mostrador({ vendorId }: { vendorId?: string | null }) {
     [items, cashPct]
   );
   const activeCashDiscount = payment === "efectivo" ? cashResult.cashDiscount : 0;
-  const payableTotal = Math.max(0, Math.round((total - activeCashDiscount) * 100) / 100);
+  // Envío por zona EN VIVO (espejo visual; el servidor recalcula al cobrar).
+  // En mostrador el comerciante es autoridad: fuera de zona admite monto manual.
+  const posZonesMode = deliveryMode === "zones" && deliveryZones.length > 0;
+  const posZoneOut = posZoneId === "__OUT__";
+  const posActiveZoneId = posZoneOut ? "" : posZoneId || deliveryZones[0]?.id || "";
+  const posSelection: DeliverySelection =
+    method !== "delivery"
+      ? { kind: "pickup" }
+      : posZonesMode
+        ? posActiveZoneId
+          ? { kind: "zone", zoneId: posActiveZoneId }
+          : { kind: "out_of_area", manualFee: Number(posManualFee) || null }
+        : posOutOfArea
+          ? { kind: "out_of_area", manualFee: Number(posManualFee) || null }
+          : { kind: "in_area" };
+  const posResolvedDelivery = resolveDeliveryFee({
+    mode: deliveryMode,
+    baseFee: deliveryBaseFee,
+    freeMin: deliveryFreeMin,
+    zones: deliveryZones,
+    selection: posSelection,
+    netSubtotal: total,
+    allowManual: true,
+  });
+  const posDeliveryFee = method === "delivery" ? posResolvedDelivery.fee : 0;
+  const posOutOfAreaFlag = method === "delivery" && posResolvedDelivery.outOfArea;
+  const payableTotal = Math.max(0, Math.round((total - activeCashDiscount + posDeliveryFee) * 100) / 100);
 
   // Chips de categoría agrupados por clave normalizada (trim+lowercase):
   // "Pizzas", "pizzas" o " Pizzas" forman un solo chip (igual que el micrositio).
@@ -250,6 +291,22 @@ export function Mostrador({ vendorId }: { vendorId?: string | null }) {
         const vertical = (me?.vendor?.vertical as string | undefined) ?? null;
         setCashPct(pct);
         setIsRetail(vertical === "comercio" || vertical === "moda");
+        // Config de envío por zona (espejo visual; el servidor resuelve).
+        setDeliveryMode(normalizeDeliveryMode((me?.vendor as any)?.delivery_mode));
+        setDeliveryBaseFee((me?.vendor as any)?.delivery_fee != null ? Number((me?.vendor as any).delivery_fee) : null);
+        setDeliveryFreeMin((me?.vendor as any)?.free_delivery_min != null ? Number((me?.vendor as any).free_delivery_min) : null);
+        setDeliveryAreaText((me?.vendor as any)?.delivery_area_text != null ? String((me?.vendor as any).delivery_area_text) : null);
+        try {
+          const zres = await fetch("/api/vendor/delivery-zones");
+          const zdata = await zres.json().catch(() => ({}));
+          if (zres.ok && Array.isArray(zdata?.zones)) {
+            setDeliveryZones(
+              (zdata.zones as any[])
+                .filter((z) => z && z.active !== false)
+                .map((z) => ({ id: String(z.id), name: String(z.name ?? ""), description: z.description != null ? String(z.description) : null, fee: Number(z.fee) || 0 }))
+            );
+          }
+        } catch { /* sin zonas: modo flat */ }
         const vmap: Record<string, ProductVariant[]> = {};
         for (const v of (vdata?.variants || []) as ProductVariant[]) {
           if (!v || !v.product_id) continue;
@@ -385,6 +442,11 @@ export function Mostrador({ vendorId }: { vendorId?: string | null }) {
     // Solo entra a cocina si al menos un ítem requiere elaboración.
     const needsKitchen = items.some((i) => i.requires_prep !== false);
 
+    // Dirección + referencias en una línea (igual que el checkout web).
+    const addrTrim = customerAddress.trim();
+    const refTrim = posReferences.trim();
+    const fullAddr = addrTrim && refTrim ? `${addrTrim} — Ref: ${refTrim}` : addrTrim || refTrim || undefined;
+
     // El client_key viaja SIEMPRE (online también): un timeout con reintento
     // no duplica gracias a la idempotencia del servidor (Fase 0).
     const payload = {
@@ -394,7 +456,10 @@ export function Mostrador({ vendorId }: { vendorId?: string | null }) {
       customerName: customerName || "Mostrador",
       method,
       customerPhone: isDelivery ? deliveryPhoneE164 : undefined,
-      customerAddress: isDelivery ? customerAddress : undefined,
+      customerAddress: isDelivery ? fullAddr : undefined,
+      deliveryZoneId: isDelivery && posZonesMode && !posOutOfAreaFlag && posActiveZoneId ? posActiveZoneId : undefined,
+      deliveryOutOfArea: isDelivery ? posOutOfAreaFlag : false,
+      deliveryManualFee: isDelivery && posOutOfAreaFlag && Number(posManualFee) > 0 ? Number(posManualFee) : undefined,
       notes: notes.trim() || null,
       client_key: newClientKey(),
       occurred_at: new Date().toISOString(),
@@ -405,6 +470,9 @@ export function Mostrador({ vendorId }: { vendorId?: string | null }) {
       setCustomerName("");
       setCustomerPhone("");
       setCustomerAddress("");
+      setPosReferences("");
+      setPosOutOfArea(false);
+      setPosManualFee("");
       setNotes("");
       setSheetOpen(false);
       setSaving(false);
@@ -666,24 +734,47 @@ export function Mostrador({ vendorId }: { vendorId?: string | null }) {
     setConverting(true);
     setMsg("");
     try {
+      const cAddr = convertAddress.trim();
+      const cRef = convertReferences.trim();
+      const cFull = cAddr && cRef ? `${cAddr} — Ref: ${cRef}` : cAddr || cRef || null;
+      const cOut = posZonesMode ? convertZoneId === "__OUT__" : convertOutOfArea;
+      const cZone = posZonesMode && !cOut ? convertZoneId || deliveryZones[0]?.id || null : null;
       const res = await fetch(`/api/vendor/orders/${orderId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ method: "delivery", customer_phone: convertPhoneE164, customer_address: convertAddress.trim() || null }),
+        body: JSON.stringify({
+          method: "delivery",
+          customer_phone: convertPhoneE164,
+          customer_address: cFull,
+          delivery_zone_id: cZone,
+          delivery_out_of_area: cOut,
+          delivery_manual_fee: cOut && Number(convertManualFee) > 0 ? Number(convertManualFee) : undefined,
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || data.error) {
         setMsg(data.error || "No se pudo convertir a domicilio");
       } else {
+        const newTotal = Number((data.order as any)?.total);
         setRecent((prev) =>
           prev.map((o) =>
-            o.id === orderId ? { ...o, method: "delivery" } : o
+            o.id === orderId
+              ? { ...o, method: "delivery", total: Number.isFinite(newTotal) ? newTotal : o.total }
+              : o
           )
         );
         setConvertOrderId(null);
         setConvertPhone("");
         setConvertAddress("");
-        setMsg("Pedido convertido a envío a domicilio");
+        setConvertReferences("");
+        setConvertZoneId("");
+        setConvertOutOfArea(false);
+        setConvertManualFee("");
+        setMsg(
+          Number.isFinite(newTotal)
+            ? `Pedido convertido a domicilio · nuevo total $${newTotal.toLocaleString("es-AR")}`
+            : "Pedido convertido a envío a domicilio"
+        );
       }
     } catch {
       setMsg("Error de conexión al convertir");
@@ -861,11 +952,64 @@ export function Mostrador({ vendorId }: { vendorId?: string | null }) {
               placeholder="Teléfono del cliente *"
               className="w-full h-9 px-3 text-xs rounded-lg border border-input bg-background"
             />
+            {posZonesMode ? (
+              <select
+                value={posZoneOut ? "__OUT__" : posActiveZoneId}
+                onChange={(e) => setPosZoneId(e.target.value)}
+                className="w-full h-9 px-2 text-xs rounded-lg border border-input bg-background"
+              >
+                {deliveryZones.map((z) => (
+                  <option key={z.id} value={z.id}>
+                    {z.name} — ${Number(z.fee).toLocaleString("es-AR")}
+                  </option>
+                ))}
+                <option value="__OUT__">Otra zona (monto manual)</option>
+              </select>
+            ) : (
+              <div className="grid grid-cols-2 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setPosOutOfArea(false)}
+                  className={`rounded-lg py-1.5 text-[11px] font-medium border transition-colors ${
+                    !posOutOfArea ? "border-primary bg-primary/5 text-primary" : "border-border text-muted-foreground"
+                  }`}
+                >
+                  Dentro{deliveryAreaText ? ` (${deliveryAreaText.slice(0, 24)}${deliveryAreaText.length > 24 ? "…" : ""})` : ""}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPosOutOfArea(true)}
+                  className={`rounded-lg py-1.5 text-[11px] font-medium border transition-colors ${
+                    posOutOfArea ? "border-primary bg-primary/5 text-primary" : "border-border text-muted-foreground"
+                  }`}
+                >
+                  Fuera de zona
+                </button>
+              </div>
+            )}
+            {posOutOfAreaFlag && (
+              <input
+                type="number"
+                inputMode="decimal"
+                min="0"
+                value={posManualFee}
+                onChange={(e) => setPosManualFee(e.target.value)}
+                placeholder={`Monto del envío $ (vacío = provisorio $${Number(deliveryBaseFee || 0).toLocaleString("es-AR")})`}
+                className="w-full h-9 px-3 text-xs rounded-lg border border-input bg-background"
+              />
+            )}
             <input
               type="text"
               value={customerAddress}
               onChange={(e) => setCustomerAddress(e.target.value)}
-              placeholder="Dirección de entrega *"
+              placeholder="Dirección de entrega"
+              className="w-full h-9 px-3 text-xs rounded-lg border border-input bg-background"
+            />
+            <input
+              type="text"
+              value={posReferences}
+              onChange={(e) => setPosReferences(e.target.value)}
+              placeholder="Referencias (opcional: casa verde, portón…)"
               className="w-full h-9 px-3 text-xs rounded-lg border border-input bg-background"
             />
           </>
@@ -895,6 +1039,24 @@ export function Mostrador({ vendorId }: { vendorId?: string | null }) {
               <div className="flex items-center justify-between text-xs font-medium text-green-600 dark:text-green-400">
                 <span>💵 Desc. efectivo ({cashResult.cashPct}%)</span>
                 <span className="tabular-nums">−${activeCashDiscount.toLocaleString("es-AR")}</span>
+              </div>
+            </>
+          )}
+          {method === "delivery" && (
+            <>
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>Productos</span>
+                <span className="tabular-nums">${total.toLocaleString("es-AR")}</span>
+              </div>
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>Envío{posResolvedDelivery.zoneName ? ` (${posResolvedDelivery.zoneName})` : ""}</span>
+                {posOutOfAreaFlag && !(Number(posManualFee) > 0) ? (
+                  <span className="font-semibold text-amber-700">A convenir*</span>
+                ) : posResolvedDelivery.freeShipping ? (
+                  <span className="font-semibold text-green-600">🎉 ¡Gratis!</span>
+                ) : (
+                  <span className="tabular-nums">${posDeliveryFee.toLocaleString("es-AR")}{posOutOfAreaFlag ? "*" : ""}</span>
+                )}
               </div>
             </>
           )}
@@ -1068,6 +1230,7 @@ export function Mostrador({ vendorId }: { vendorId?: string | null }) {
                           onClick={() => {
                             if (convertOrderId === o.id) { setConvertOrderId(null); return; }
                             setConvertOrderId(o.id); setConvertPhone(""); setConvertAddress("");
+                            setConvertReferences(""); setConvertZoneId(""); setConvertOutOfArea(false); setConvertManualFee("");
                           }}
                           className="h-6 w-6 rounded-md bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100 flex items-center justify-center text-xs"
                         >
@@ -1094,6 +1257,55 @@ export function Mostrador({ vendorId }: { vendorId?: string | null }) {
                         placeholder="Dirección de entrega (opcional)"
                         className="w-full h-8 px-2 text-xs rounded-lg border border-input bg-background"
                       />
+                      <input
+                        type="text"
+                        value={convertReferences}
+                        onChange={(e) => setConvertReferences(e.target.value)}
+                        placeholder="Referencias (opcional)"
+                        className="w-full h-8 px-2 text-xs rounded-lg border border-input bg-background"
+                      />
+                      {posZonesMode ? (
+                        <select
+                          value={convertZoneId === "__OUT__" ? "__OUT__" : convertZoneId || deliveryZones[0]?.id || ""}
+                          onChange={(e) => setConvertZoneId(e.target.value)}
+                          className="w-full h-8 px-1 text-xs rounded-lg border border-input bg-background"
+                        >
+                          {deliveryZones.map((z) => (
+                            <option key={z.id} value={z.id}>
+                              {z.name} — ${Number(z.fee).toLocaleString("es-AR")}
+                            </option>
+                          ))}
+                          <option value="__OUT__">Otra zona (monto manual)</option>
+                        </select>
+                      ) : (
+                        <div className="grid grid-cols-2 gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setConvertOutOfArea(false)}
+                            className={`rounded-lg py-1 text-[11px] font-medium border ${!convertOutOfArea ? "border-primary bg-primary/5 text-primary" : "border-border text-muted-foreground"}`}
+                          >
+                            Dentro
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setConvertOutOfArea(true)}
+                            className={`rounded-lg py-1 text-[11px] font-medium border ${convertOutOfArea ? "border-primary bg-primary/5 text-primary" : "border-border text-muted-foreground"}`}
+                          >
+                            Fuera de zona
+                          </button>
+                        </div>
+                      )}
+                      {(convertZoneId === "__OUT__" || (!posZonesMode && convertOutOfArea)) && (
+                        <input
+                          type="number"
+                          inputMode="decimal"
+                          min="0"
+                          value={convertManualFee}
+                          onChange={(e) => setConvertManualFee(e.target.value)}
+                          placeholder="Monto del envío $ (vacío = provisorio)"
+                          className="w-full h-8 px-2 text-xs rounded-lg border border-input bg-background"
+                        />
+                      )}
                       <div className="flex gap-1.5">
                         <Button size="sm" className="h-7 text-xs flex-1" disabled={converting} onClick={() => convertToDelivery(o.id)}>
                           {converting ? "..." : "Confirmar envío"}

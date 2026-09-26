@@ -529,6 +529,15 @@ export function TransferConfig({
   );
 }
 
+type DeliveryZoneRow = {
+  id: string;
+  name: string;
+  description: string | null;
+  fee: number | string;
+  position: number;
+  active: boolean;
+};
+
 export function DeliveryFeeConfig({
   vendor,
   saveVendor,
@@ -536,14 +545,157 @@ export function DeliveryFeeConfig({
   vendor: any;
   saveVendor: (data: Record<string, unknown>) => Promise<void>;
 }) {
+  const [mode, setMode] = useState<string>(vendor?.delivery_mode === "zones" ? "zones" : "flat");
   const [fee, setFee] = useState<string>(vendor?.delivery_fee != null ? String(vendor.delivery_fee) : "");
   const [freeMin, setFreeMin] = useState<string>(vendor?.free_delivery_min != null ? String(vendor.free_delivery_min) : "");
+  const [areaText, setAreaText] = useState<string>(vendor?.delivery_area_text || "");
+  const [zones, setZones] = useState<DeliveryZoneRow[]>([]);
+  const [zonesReady, setZonesReady] = useState<boolean | null>(null);
+  const [newName, setNewName] = useState("");
+  const [newDesc, setNewDesc] = useState("");
+  const [newFee, setNewFee] = useState("");
+  const [zoneMsg, setZoneMsg] = useState("");
+  const [savingZone, setSavingZone] = useState(false);
+
+  // El guardado upstream reemplaza `vendor`: sincronizar estado local.
+  useEffect(() => {
+    setMode(vendor?.delivery_mode === "zones" ? "zones" : "flat");
+    setFee(vendor?.delivery_fee != null ? String(vendor.delivery_fee) : "");
+    setFreeMin(vendor?.free_delivery_min != null ? String(vendor.free_delivery_min) : "");
+    setAreaText(vendor?.delivery_area_text || "");
+  }, [vendor?.delivery_mode, vendor?.delivery_fee, vendor?.free_delivery_min, vendor?.delivery_area_text]);
+
+  const loadZones = useCallback(async () => {
+    try {
+      const res = await fetch("/api/vendor/delivery-zones");
+      if (res.status === 503) {
+        setZonesReady(false);
+        return;
+      }
+      const data = await res.json().catch(() => ({}));
+      setZones(Array.isArray(data?.zones) ? data.zones : []);
+      setZonesReady(true);
+    } catch {
+      setZonesReady(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (mode === "zones" && zonesReady === null) loadZones();
+  }, [mode, zonesReady, loadZones]);
+
+  function switchMode(m: string) {
+    setMode(m);
+    saveVendor({ delivery_mode: m });
+    if (m === "zones" && zonesReady === null) loadZones();
+  }
+
+  async function addZone() {
+    const name = newName.trim();
+    if (!name) {
+      setZoneMsg("Poné un nombre a la zona (ej: Garibaldi)");
+      return;
+    }
+    const nfee = Number(newFee);
+    if (!Number.isFinite(nfee) || nfee < 0) {
+      setZoneMsg("Precio de envío inválido");
+      return;
+    }
+    setSavingZone(true);
+    setZoneMsg("");
+    try {
+      const res = await fetch("/api/vendor/delivery-zones", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, description: newDesc.trim() || null, fee: nfee }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setZoneMsg(data?.error || "No se pudo crear la zona");
+      } else {
+        setNewName("");
+        setNewDesc("");
+        setNewFee("");
+        await loadZones();
+      }
+    } catch {
+      setZoneMsg("Error de red");
+    } finally {
+      setSavingZone(false);
+    }
+  }
+
+  async function patchZone(id: string, data: Record<string, unknown>) {
+    setZoneMsg("");
+    try {
+      const res = await fetch(`/api/vendor/delivery-zones/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) setZoneMsg(j?.error || "No se pudo actualizar");
+      else await loadZones();
+    } catch {
+      setZoneMsg("Error de red");
+    }
+  }
+
+  async function deleteZone(id: string, name: string) {
+    if (!window.confirm(`¿Eliminar la zona "${name}"? Los pedidos viejos conservan su nombre.`)) return;
+    try {
+      await fetch(`/api/vendor/delivery-zones/${id}`, { method: "DELETE" });
+      await loadZones();
+    } catch {
+      setZoneMsg("Error de red");
+    }
+  }
 
   return (
     <div className="space-y-3 rounded-xl border border-border p-3">
+      <div>
+        <Label>¿Cómo cobrás el envío?</Label>
+        <div className="grid grid-cols-2 gap-1.5 mt-1">
+          <button
+            type="button"
+            onClick={() => switchMode("flat")}
+            className={`rounded-lg py-1.5 px-2 text-xs font-medium border transition-colors ${
+              mode !== "zones" ? "border-primary bg-primary/5 text-primary" : "border-border text-muted-foreground"
+            }`}
+          >
+            💲 Tarifa única
+          </button>
+          <button
+            type="button"
+            onClick={() => switchMode("zones")}
+            className={`rounded-lg py-1.5 px-2 text-xs font-medium border transition-colors ${
+              mode === "zones" ? "border-primary bg-primary/5 text-primary" : "border-border text-muted-foreground"
+            }`}
+          >
+            🗺️ Por zona (máx 3)
+          </button>
+        </div>
+      </div>
+
+      <div>
+        <Label>Tu área de reparto habitual</Label>
+        <Input
+          className="mt-1"
+          type="text"
+          placeholder='Ej: Sicardi y Garibaldi, hasta la calle 22'
+          value={areaText}
+          onChange={(e) => setAreaText(e.target.value)}
+          onBlur={() => saveVendor({ delivery_area_text: areaText.trim() || null })}
+          maxLength={120}
+        />
+        <p className="text-xs text-muted-foreground mt-1">
+          En lenguaje del barrio: el cliente la lee para saber si está dentro o fuera.
+        </p>
+      </div>
+
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
-          <Label>Costo de envío ($)</Label>
+          <Label>{mode === "zones" ? "Envío fuera de zona / provisorio ($)" : "Costo de envío ($)"}</Label>
           <Input
             className="mt-1"
             type="number"
@@ -554,6 +706,11 @@ export function DeliveryFeeConfig({
             onChange={(e) => setFee(e.target.value)}
             onBlur={() => saveVendor({ delivery_fee: fee === "" ? null : Number(fee) })}
           />
+          {mode === "zones" && (
+            <p className="text-xs text-muted-foreground mt-1">
+              Se usa como provisorio cuando piden fuera de tus zonas (a convenir por WhatsApp).
+            </p>
+          )}
         </div>
         <div>
           <Label>Envío gratis desde ($)</Label>
@@ -570,8 +727,90 @@ export function DeliveryFeeConfig({
         </div>
       </div>
       <p className="text-xs text-muted-foreground">
-        Si el pedido a domicilio supera el monto de &quot;Envío gratis desde&quot;, no se cobra el costo de envío.
+        Si el pedido a domicilio supera el monto de &quot;Envío gratis desde&quot;, no se cobra el costo de envío (salvo fuera de zona).
       </p>
+
+      {mode === "zones" && (
+        <div className="rounded-lg border border-border p-2.5 space-y-2 bg-muted/30">
+          {zonesReady === false ? (
+            <p className="text-xs text-amber-700">
+              ⚠️ Falta aplicar la migración de zonas de envío en la base de datos (avisale al admin).
+            </p>
+          ) : (
+            <>
+              {zones.map((z) => (
+                <div key={z.id} className="flex items-center gap-2 rounded-lg border border-border bg-background px-2 py-1.5">
+                  <Switch
+                    checked={z.active !== false}
+                    onCheckedChange={(v) => patchZone(z.id, { active: v })}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold truncate">{z.name}</p>
+                    {z.description && <p className="text-[11px] text-muted-foreground truncate">{z.description}</p>}
+                  </div>
+                  <div className="flex items-center gap-1 text-xs font-bold tabular-nums">
+                    $<Input
+                      className="h-7 w-20 text-xs text-right"
+                      type="number"
+                      inputMode="decimal"
+                      min="0"
+                      defaultValue={String(z.fee ?? 0)}
+                      key={`${z.id}-${z.fee}`}
+                      onBlur={(e) => {
+                        const v = Number(e.target.value);
+                        if (Number.isFinite(v) && v >= 0 && v !== Number(z.fee)) patchZone(z.id, { fee: v });
+                      }}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => deleteZone(z.id, z.name)}
+                    className="text-muted-foreground hover:text-red-600 text-sm px-1"
+                    title="Eliminar zona"
+                  >
+                    🗑️
+                  </button>
+                </div>
+              ))}
+              {zones.length < 3 ? (
+                <div className="space-y-1.5 pt-1">
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <Input
+                      className="h-8 text-xs"
+                      placeholder="Nombre (ej: Garibaldi)"
+                      value={newName}
+                      onChange={(e) => setNewName(e.target.value)}
+                      maxLength={60}
+                    />
+                    <Input
+                      className="h-8 text-xs"
+                      type="number"
+                      inputMode="decimal"
+                      min="0"
+                      placeholder="Precio $"
+                      value={newFee}
+                      onChange={(e) => setNewFee(e.target.value)}
+                    />
+                  </div>
+                  <Input
+                    className="h-8 text-xs"
+                    placeholder="Descripción (ej: todo Garibaldi) — opcional"
+                    value={newDesc}
+                    onChange={(e) => setNewDesc(e.target.value)}
+                    maxLength={80}
+                  />
+                  <Button type="button" size="sm" className="w-full" disabled={savingZone} onClick={addZone}>
+                    {savingZone ? "Guardando…" : `＋ Agregar zona (${zones.length}/3)`}
+                  </Button>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">Llegaste al máximo de 3 zonas.</p>
+              )}
+              {zoneMsg && <p className="text-xs text-red-600">{zoneMsg}</p>}
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -14,6 +14,11 @@ type VendorBrief = {
   whatsapp: string;
   vertical?: string | null;
   cashDiscountPct?: number | null;
+  deliveryFee?: number | null;
+  freeDeliveryMin?: number | null;
+  deliveryMode?: "flat" | "zones" | null;
+  deliveryAreaText?: string | null;
+  deliveryZones?: { id: string; name: string; description: string | null; fee: number }[];
 };
 
 function isRetailVertical(vertical: string | null | undefined): boolean {

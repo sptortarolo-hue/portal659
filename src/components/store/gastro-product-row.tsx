@@ -33,6 +33,9 @@ type VendorBrief = {
   freeDeliveryMin?: number | null;
   cashDiscountPct?: number | null;
   volumeGroups?: CartVolumeGroup[];
+  deliveryMode?: "flat" | "zones" | null;
+  deliveryAreaText?: string | null;
+  deliveryZones?: { id: string; name: string; description: string | null; fee: number }[];
 };
 
 type Props = {

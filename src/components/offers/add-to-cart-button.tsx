@@ -21,6 +21,9 @@ type AddToCartButtonProps = {
     freeDeliveryMin?: number | null;
     cashDiscountPct?: number | null;
     volumeGroups?: CartVolumeGroup[];
+    deliveryMode?: "flat" | "zones" | null;
+    deliveryAreaText?: string | null;
+    deliveryZones?: { id: string; name: string; description: string | null; fee: number }[];
   };
   modifiers?: ProductModifier[];
   /** La promo de este ítem está excluida del descuento en efectivo. */

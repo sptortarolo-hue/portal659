@@ -25,6 +25,8 @@ export function buildOrderMessage(params: {
   cashPct?: number | null;
   volumeDiscount?: number | null;
   volumeLabel?: string;
+  /** Línea de envío ya compuesta (ej: "Envío (Garibaldi): $800" / "Envío: a convenir"). */
+  deliveryLine?: string;
 }): string {
   const lines = params.items.map((i) => {
     const modStr = i.modifiers && i.modifiers.length > 0
@@ -59,6 +61,7 @@ export function buildOrderMessage(params: {
     `Nombre: ${params.customerName}`,
     `WhatsApp: ${params.customerPhone}`,
     params.method === "delivery" ? `Dirección: ${params.address || "sin dirección"}` : "Retiro en el local",
+    params.method === "delivery" && params.deliveryLine ? params.deliveryLine : "",
     notesLine,
     paymentLine,
     cashLine,
@@ -83,6 +86,8 @@ export function buildComandaWhatsApp(params: {
   cashPct?: number | null;
   volumeDiscount?: number | null;
   volumeLabel?: string;
+  /** Línea de envío ya compuesta (ej: "Envío (Garibaldi): $800" / "⚠️ Envío a convenir"). */
+  deliveryLine?: string;
 }): string {
   const sep = "------------------------------";
   const id = params.orderId ? params.orderId.slice(0, 8) : "--------";
@@ -128,6 +133,7 @@ export function buildComandaWhatsApp(params: {
     sep,
     cashLine,
     volumeLine,
+    params.deliveryLine ? params.deliveryLine : "",
     `TOTAL: *$${params.total.toLocaleString("es-AR")}*`,
     "",
     `Cliente: ${params.customerName}`,

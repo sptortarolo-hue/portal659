@@ -263,6 +263,13 @@ function TicketCard({
           <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${CONDITION_META[orderCondition(order)].pillClass}`}>
             {CONDITION_META[orderCondition(order)].label}
           </span>
+          {order.method === "delivery" && ((order as any).delivery_zone_name || (order as any).delivery_out_of_area) && (
+            (order as any).delivery_out_of_area ? (
+              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">⚠️ A convenir</span>
+            ) : (
+              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-400">🗺️ {(order as any).delivery_zone_name}</span>
+            )
+          )}
           {/* Estado del pedido (el riel único no tiene columnas por estado). */}
           <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${getStatusBg(order.status)}`}>
             {ORDER_STATUS_LABELS[order.status] || order.status}

@@ -24,6 +24,8 @@ export const POST = withRateLimit(async (request: Request) => {
     customerId,
     items,
     notes,
+    deliveryZoneId,
+    deliveryOutOfArea,
   } = body;
 
   try {
@@ -39,6 +41,8 @@ export const POST = withRateLimit(async (request: Request) => {
       notes,
       deviceId: getDeviceId(request),
       source: "web",
+      deliveryZoneId: typeof deliveryZoneId === "string" ? deliveryZoneId : null,
+      deliveryOutOfArea: deliveryOutOfArea === true,
     });
 
     return NextResponse.json({
@@ -50,6 +54,9 @@ export const POST = withRateLimit(async (request: Request) => {
       volumeDiscount: result.volumeDiscount,
       volumeApplied: result.volumeApplied,
       trackToken: result.trackToken,
+      deliveryFee: result.deliveryFee,
+      deliveryZoneName: result.deliveryZoneName,
+      deliveryOutOfArea: result.deliveryOutOfArea,
     });
   } catch (e) {
     if (e instanceof InvalidPhoneError) {

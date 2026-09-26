@@ -66,6 +66,12 @@ export type CartVendor = {
   freeDeliveryMin?: number | null;
   /** "ambos" | "retiro" | "domicilio" — el checkout solo ofrece lo habilitado. */
   deliveryOptions?: string | null;
+  /** "flat" (default) | "zones" (hasta 3 tarifas por zona). */
+  deliveryMode?: "flat" | "zones" | null;
+  /** Área habitual en lenguaje barrial ("¿estás dentro de …?"). */
+  deliveryAreaText?: string | null;
+  /** Zonas activas (modo zones). */
+  deliveryZones?: { id: string; name: string; description: string | null; fee: number }[];
   /** % de descuento en efectivo del comercio (visual en checkout). */
   cashDiscountPct?: number | null;
   /** Reglas de volumen (espejo visual). */
@@ -113,6 +119,9 @@ function loadCart(): CartState {
               deliveryFee: parsed.vendor.deliveryFee ?? null,
               freeDeliveryMin: parsed.vendor.freeDeliveryMin ?? null,
               deliveryOptions: parsed.vendor.deliveryOptions ?? null,
+              deliveryMode: parsed.vendor.deliveryMode ?? null,
+              deliveryAreaText: parsed.vendor.deliveryAreaText ?? null,
+              deliveryZones: Array.isArray(parsed.vendor.deliveryZones) ? parsed.vendor.deliveryZones : undefined,
               cashDiscountPct: parsed.vendor.cashDiscountPct ?? null,
               volumeGroups: Array.isArray(parsed.vendor.volumeGroups) ? parsed.vendor.volumeGroups : undefined,
             }
@@ -172,7 +181,9 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
               : i
           )
         : [...base, item];
-      const next = { vendor: newVendor, items };
+      // Mismo comercio: merge para no perder campos que un botón parcial no
+      // conoce (ej: deliveryZones). Lo nuevo gana, lo viejo sobrevive.
+      const next = { vendor: reset || !prev.vendor ? newVendor : { ...prev.vendor, ...newVendor }, items };
       saveCart(next);
       return next;
     });

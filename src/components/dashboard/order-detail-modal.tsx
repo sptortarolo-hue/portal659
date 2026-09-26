@@ -350,6 +350,20 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
             {order.method === "delivery" && order.customer_address && (
               <p className="text-xs text-muted-foreground">📍 {order.customer_address}</p>
             )}
+            {order.method === "delivery" && ((order as any).delivery_zone_name || (order as any).delivery_out_of_area) && (
+              <p className="text-xs font-semibold">
+                {(order as any).delivery_out_of_area ? (
+                  <span className="text-amber-700">⚠️ Otra zona — envío a convenir</span>
+                ) : (
+                  <span className="text-muted-foreground">
+                    🗺️ Zona: {(order as any).delivery_zone_name}
+                    {(order as any).delivery_fee != null && Number((order as any).delivery_fee) > 0 && (
+                      <> · Envío ${Number((order as any).delivery_fee).toLocaleString("es-AR")}</>
+                    )}
+                  </span>
+                )}
+              </p>
+            )}
           </div>
 
           {/* Apartado / seña */}

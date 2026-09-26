@@ -22,6 +22,9 @@ type Props = {
     deliveryFee?: number | null;
     freeDeliveryMin?: number | null;
     cashDiscountPct?: number | null;
+    deliveryMode?: "flat" | "zones" | null;
+    deliveryAreaText?: string | null;
+    deliveryZones?: { id: string; name: string; description: string | null; fee: number }[];
   };
   stockControl?: boolean;
   /** La promo del producto está excluida del descuento en efectivo. */
@@ -79,7 +82,7 @@ export function VariantSelector({ productId, name, variants, vendor, stockContro
     if (current.talle) mods.push({ group: "Talle", label: current.talle, price_mod: 0 });
     // price_mod 0: el precio ya está definido en el producto según variante.
     const switched = addItem(
-      { id: vendor.id, slug: vendor.slug, storeName: vendor.storeName, whatsapp: vendor.whatsapp, vertical: vendor.vertical, deliveryFee: vendor.deliveryFee ?? null, freeDeliveryMin: vendor.freeDeliveryMin ?? null, cashDiscountPct: vendor.cashDiscountPct ?? null },
+      { id: vendor.id, slug: vendor.slug, storeName: vendor.storeName, whatsapp: vendor.whatsapp, vertical: vendor.vertical, deliveryFee: vendor.deliveryFee ?? null, freeDeliveryMin: vendor.freeDeliveryMin ?? null, cashDiscountPct: vendor.cashDiscountPct ?? null, deliveryMode: vendor.deliveryMode ?? null, deliveryAreaText: vendor.deliveryAreaText ?? null, deliveryZones: vendor.deliveryZones },
       { offerId: productId, variantId: current.id, name, price: price!, qty: n, modifiers: mods, cashExcluded: current.promo != null && cashExcluded, image: image ?? null }
     );
     addToast(n > 1 ? `${name} (${current.color} / ${current.talle}) × ${n} agregado al carrito` : `${name} (${current.color} / ${current.talle}) agregado al carrito`);

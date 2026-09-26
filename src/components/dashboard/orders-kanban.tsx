@@ -79,6 +79,17 @@ function OrderCard({
             <span className={`inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-full border ${CONDITION_META[orderCondition(order)].pillClass}`}>
               {CONDITION_META[orderCondition(order)].label}
             </span>
+            {order.method === "delivery" && ((order as any).delivery_zone_name || (order as any).delivery_out_of_area) && (
+              (order as any).delivery_out_of_area ? (
+                <span className="inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-amber-100 text-amber-700 border-amber-200">
+                  ⚠️ A convenir
+                </span>
+              ) : (
+                <span className="inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-blue-100 text-blue-700 border-blue-200">
+                  🗺️ {(order as any).delivery_zone_name}
+                </span>
+              )
+            )}
             {order.is_preview && (
               <span className="inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full border bg-violet-100 text-violet-700 border-violet-200">
                 🧪 PRUEBA

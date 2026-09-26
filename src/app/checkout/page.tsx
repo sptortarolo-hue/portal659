@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { buildComandaWhatsApp } from "@/lib/whatsapp-message";
+import { deliveryLabel, normalizeDeliveryMode, resolveDeliveryFee } from "@/lib/delivery";
 import { cashAppliesToItem, cashPrice, normalizeCashPct } from "@/lib/cash-discount";
 import { cartLineTotal } from "@/lib/order-line";
 import { mirrorVolume } from "@/lib/volume-mirror";
@@ -22,6 +23,9 @@ export default function CheckoutPage() {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
+  const [references, setReferences] = useState("");
+  const [inArea, setInArea] = useState(true);
+  const [zoneId, setZoneId] = useState("");
   const [notes, setNotes] = useState("");
   const [method, setMethod] = useState<"delivery" | "pickup">("delivery");
   const [paymentMethod, setPaymentMethod] = useState<"whatsapp" | "efectivo" | "transferencia">("whatsapp");
@@ -93,14 +97,43 @@ export default function CheckoutPage() {
   const vol = useMemo(() => mirrorVolume(items, vendor?.volumeGroups), [items, vendor]);
   const netSubtotal = total - vol.volumeDiscount;
 
-  const deliveryFee =
-  vendor &&
-  method === "delivery" &&
-  vendor.deliveryFee != null &&
-  !(vendor.freeDeliveryMin != null && netSubtotal >= Number(vendor.freeDeliveryMin))
-    ? Number(vendor.deliveryFee)
-    : 0;
+  // Envío por zona (espejo visual; el servidor recalcula y manda).
+  const vendorZones = Array.isArray(vendor?.deliveryZones) ? vendor.deliveryZones : [];
+  const zonesMode = normalizeDeliveryMode(vendor?.deliveryMode) === "zones" && vendorZones.length > 0;
+  const zoneOut = zoneId === "__OUT__";
+  const activeZoneId = zoneOut ? "" : zoneId || vendorZones[0]?.id || "";
+  const deliverySel =
+    method !== "delivery"
+      ? ({ kind: "pickup" } as const)
+      : zonesMode
+        ? activeZoneId
+          ? ({ kind: "zone", zoneId: activeZoneId } as const)
+          : ({ kind: "out_of_area" } as const)
+        : inArea
+          ? ({ kind: "in_area" } as const)
+          : ({ kind: "out_of_area" } as const);
+  const resolvedDelivery = resolveDeliveryFee({
+    mode: normalizeDeliveryMode(vendor?.deliveryMode),
+    baseFee: vendor?.deliveryFee,
+    freeMin: vendor?.freeDeliveryMin,
+    zones: vendorZones,
+    selection: deliverySel,
+    netSubtotal,
+  });
+  const deliveryFee = method === "delivery" ? resolvedDelivery.fee : 0;
+  const deliveryOutOfArea = method === "delivery" && resolvedDelivery.outOfArea;
+  const deliveryFreeShip = method === "delivery" && resolvedDelivery.freeShipping;
+  const deliveryZoneName = resolvedDelivery.zoneName;
   const grandTotal = total + deliveryFee;
+
+  // Dirección + referencias en una línea (así viaja a customer_address,
+  // WhatsApp, ticket e historial sin cambios de esquema).
+  const fullAddress = (() => {
+    const a = address.trim();
+    const r = references.trim();
+    if (!a && !r) return "";
+    return r ? `${a} — Ref: ${r}` : a;
+  })();
 
   // Espejo visual del descuento en efectivo (el servidor recalcula y manda).
   // % sobre la NETA DE LA LÍNEA (pack-native: nunca se deriva de unidades
@@ -330,10 +363,13 @@ export default function CheckoutPage() {
           )}
         </p>
         <p className="text-sm text-muted-foreground/70 mb-6">
-          Seguí el estado de tu pedido con tu número de WhatsApp en{" "}
-          <button onClick={() => router.push("/mis-pedidos")} className="underline text-primary hover:text-primary/80">
-            Mis pedidos
-          </button>
+          📍 Si tu dirección es difícil de encontrar, mandale tu ubicación por WhatsApp al comercio.
+          <span className="block mt-1">
+            Seguí el estado de tu pedido con tu número de WhatsApp en{" "}
+            <button onClick={() => router.push("/mis-pedidos")} className="underline text-primary hover:text-primary/80">
+              Mis pedidos
+            </button>
+          </span>
           {doneTrackToken && (
             <>
               {" · "}
@@ -465,8 +501,10 @@ export default function CheckoutPage() {
         total: mpTotal,
         customerName: name,
         customerPhone: cleanPhone,
-        customerAddress: method === "delivery" ? address : null,
+        customerAddress: method === "delivery" ? fullAddress || null : null,
         method,
+        deliveryZoneId: method === "delivery" && zonesMode && !deliveryOutOfArea ? activeZoneId || null : null,
+        deliveryOutOfArea: method === "delivery" && deliveryOutOfArea,
       }),
     });
 
@@ -521,12 +559,14 @@ export default function CheckoutPage() {
           vendorId: v.id,
           customerName: name,
           customerPhone: cleanPhone,
-          customerAddress: method === "delivery" ? address : null,
+          customerAddress: method === "delivery" ? fullAddress || null : null,
           method,
           paymentMethod,
           customerId: userId || null,
           isPreview,
           previewToken: previewCtx?.token ?? null,
+          deliveryZoneId: method === "delivery" && zonesMode && !deliveryOutOfArea ? activeZoneId || null : null,
+          deliveryOutOfArea: method === "delivery" && deliveryOutOfArea,
           items: items.map((i) => ({
             offerId: i.offerId,
             variantId: i.variantId,
@@ -549,6 +589,12 @@ export default function CheckoutPage() {
       }
 
       const waTotal = typeof data.total === "number" ? data.total : grandTotal;
+      const waFee = typeof data.deliveryFee === "number" ? data.deliveryFee : deliveryFee;
+      const waZone = typeof data.deliveryZoneName === "string" && data.deliveryZoneName ? data.deliveryZoneName : deliveryZoneName;
+      const waOutOfArea = data.deliveryOutOfArea === true || deliveryOutOfArea;
+      const waDeliveryLine = method === "delivery"
+        ? `Envío: ${deliveryLabel({ fee: waFee, zoneName: waZone, outOfArea: waOutOfArea, freeShipping: !waOutOfArea && deliveryFreeShip })}${waOutOfArea ? " ⚠️" : ""}`
+        : undefined;
       const waCashDiscount = typeof data.cashDiscount === "number" ? data.cashDiscount : 0;
       const waCashPct = typeof data.cashPct === "number" ? data.cashPct : 0;
       const waVolumeDiscount = typeof data.volumeDiscount === "number" ? data.volumeDiscount : 0;
@@ -572,7 +618,7 @@ export default function CheckoutPage() {
         customerName: name,
         customerPhone: cleanPhone,
         method,
-        address: method === "delivery" ? address : undefined,
+        address: method === "delivery" ? fullAddress || undefined : undefined,
         paymentMethod,
           notes: notes.trim() || undefined,
           trackUrl,
@@ -581,6 +627,7 @@ export default function CheckoutPage() {
           cashPct: waCashPct,
           volumeDiscount: waVolumeDiscount,
           volumeLabel: waVolumeLabel || undefined,
+          deliveryLine: waDeliveryLine,
         });
       const message = previewPrefix + waMessage;
 
@@ -671,11 +718,20 @@ export default function CheckoutPage() {
             <span>Subtotal</span>
             <span>${total.toLocaleString("es-AR")}</span>
           </div>
-          {deliveryFee > 0 && (
+          {method === "delivery" && (
             <div className="flex justify-between text-sm text-muted-foreground">
-              <span>Envío</span>
-              <span>${deliveryFee.toLocaleString("es-AR")}</span>
+              <span>Envío{deliveryZoneName ? ` (${deliveryZoneName})` : ""}</span>
+              {deliveryOutOfArea ? (
+                <span className="font-semibold text-amber-700">A convenir*</span>
+              ) : deliveryFreeShip ? (
+                <span className="font-semibold text-green-700">🎉 ¡Gratis!</span>
+              ) : (
+                <span>${deliveryFee.toLocaleString("es-AR")}</span>
+              )}
             </div>
+          )}
+          {deliveryOutOfArea && (
+            <p className="text-xs text-amber-700">⚠️ El comercio te confirma el costo de envío por WhatsApp.</p>
           )}
           {cashActive && cashDiscount > 0 && (
             <div className="flex justify-between text-sm font-medium text-green-700">
@@ -788,14 +844,74 @@ export default function CheckoutPage() {
           </div>
         </div>
         {method === "delivery" && (
-          <div className="animate-fade-in-up">
-            <Label htmlFor="address">Dirección</Label>
-            <Input
-              id="address"
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              placeholder="Calle y número"
-            />
+          <div className="animate-fade-in-up space-y-3">
+            {zonesMode ? (
+              <div>
+                <Label htmlFor="zone">Tu zona de entrega</Label>
+                <select
+                  id="zone"
+                  value={zoneOut ? "__OUT__" : activeZoneId}
+                  onChange={(e) => setZoneId(e.target.value)}
+                  className="mt-1 w-full h-10 px-3 text-sm rounded-xl border border-input bg-background"
+                >
+                  {vendorZones.map((z) => (
+                    <option key={z.id} value={z.id}>
+                      {z.name} — ${Number(z.fee).toLocaleString("es-AR")}{z.description ? ` (${z.description})` : ""}
+                    </option>
+                  ))}
+                  <option value="__OUT__">Otra zona (se coordina por WhatsApp)</option>
+                </select>
+              </div>
+            ) : (
+              <div>
+                <Label>¿Estás dentro de nuestra zona de reparto?</Label>
+                {v.deliveryAreaText && (
+                  <p className="text-xs text-muted-foreground mt-0.5">“{v.deliveryAreaText}”</p>
+                )}
+                <div className="grid grid-cols-2 gap-2 mt-1">
+                  <button
+                    type="button"
+                    onClick={() => setInArea(true)}
+                    className={`rounded-xl border-2 py-2 px-1 text-xs sm:text-sm font-medium transition-all ${
+                      inArea ? "border-primary bg-primary/5 text-primary" : "border-border text-muted-foreground"
+                    }`}
+                  >
+                    Sí, estoy dentro{vendor?.deliveryFee != null ? ` → $${Number(vendor.deliveryFee).toLocaleString("es-AR")}` : ""}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setInArea(false)}
+                    className={`rounded-xl border-2 py-2 px-1 text-xs sm:text-sm font-medium transition-all ${
+                      !inArea ? "border-primary bg-primary/5 text-primary" : "border-border text-muted-foreground"
+                    }`}
+                  >
+                    No, estoy más lejos
+                  </button>
+                </div>
+              </div>
+            )}
+            <div>
+              <Label htmlFor="address">Dirección</Label>
+              <Input
+                id="address"
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                placeholder="Calle, entrecalles o barrio"
+                required
+              />
+            </div>
+            <div>
+              <Label htmlFor="references">Referencias <span className="font-normal text-muted-foreground">(opcional)</span></Label>
+              <Input
+                id="references"
+                value={references}
+                onChange={(e) => setReferences(e.target.value)}
+                placeholder="Casa verde, portón de madera, negocio cercano…"
+              />
+              <p className="text-[11px] text-muted-foreground/70 mt-0.5">
+                Si tu calle no tiene número, contanos cómo ubicarte.
+              </p>
+            </div>
           </div>
         )}
 
@@ -916,7 +1032,7 @@ export default function CheckoutPage() {
         volumeLabel={volumeLabel || undefined}
         deliveryFee={deliveryFee}
         method={method}
-        address={method === "delivery" ? address : undefined}
+        address={method === "delivery" ? fullAddress || undefined : undefined}
         paymentMethod={paymentMethod}
         loading={loading}
       />

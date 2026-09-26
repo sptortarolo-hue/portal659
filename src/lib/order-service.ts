@@ -7,6 +7,8 @@ import { adjustStockForItems, OutOfStockError } from "@/lib/stock";
 import { isStoreOpen } from "@/lib/open-hours";
 import { PricingError, resolveOrderPricing, IncomingOrderItem } from "@/lib/pricing";
 import { nextOrderNumber } from "@/lib/order-number";
+import { fetchVendorDelivery } from "@/lib/delivery-server";
+import type { DeliverySelection } from "@/lib/delivery";
 import { toE164 } from "@/lib/phone";
 import { upsertCustomerFromOrder } from "@/lib/customers";
 import type { OrderItem } from "@/types/database";
@@ -36,6 +38,10 @@ export type CreateOrderInput = {
   deviceId?: string | null;
   /** "web" (default) | "wa-bot": el bot prefija las notas con "[Bot WA]". */
   source?: string | null;
+  /** Zona elegida (modo zones, canal web). Se valida server-side. */
+  deliveryZoneId?: string | null;
+  /** true = fuera del área habitual: entra a convenir (canal web). */
+  deliveryOutOfArea?: boolean | null;
 };
 
 export type CreateOrderResult = {
@@ -47,8 +53,12 @@ export type CreateOrderResult = {
   cashPct: number;
   volumeDiscount: number;
   volumeApplied: { groupName: string; label: string; qty: number }[];
-  /** Link público de seguimiento: /seguimiento/[trackToken]. */
+  /** Link público de seguimiento: /seguimiento/[token]. */
   trackToken: string;
+  /** Envío resuelto server-side (para mostrar el exacto en el resumen). */
+  deliveryFee: number;
+  deliveryZoneName: string | null;
+  deliveryOutOfArea: boolean;
 };
 
 /** Negocio: el comercio no acepta pedidos online (plan sin carrito). → 403 */
@@ -106,6 +116,8 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
     notes,
     deviceId,
     source,
+    deliveryZoneId,
+    deliveryOutOfArea,
   } = input;
 
   if (!vendorId || !customerName || !customerPhone || !items) {
@@ -197,10 +209,24 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
   let resolvedCashPct = 0;
   let resolvedVolumeDiscount = 0;
   let resolvedVolumeApplied: { groupName: string; label: string; qty: number }[] = [];
+  let resolvedDeliveryFee = 0;
+  let resolvedZoneName: string | null = null;
+  let resolvedOutOfArea = false;
 
   // Token público del link de seguimiento (/seguimiento/[token]). Se genera
   // acá y viaja en el mensaje de WhatsApp del pedido.
   const trackToken = crypto.randomBytes(20).toString("hex");
+
+  // Config de envío por zona (tolerante a migración sin aplicar: default flat).
+  const deliveryCfg = await fetchVendorDelivery(vendorId);
+  const isPickupOrder = method === "pickup";
+  const deliverySelection: DeliverySelection = isPickupOrder
+    ? { kind: "pickup" }
+    : deliveryOutOfArea === true
+      ? { kind: "out_of_area" }
+      : deliveryCfg.mode === "zones" && deliveryZoneId
+        ? { kind: "zone", zoneId: String(deliveryZoneId) }
+        : { kind: "in_area" };
 
   // Tolerante a migración de volumen sin aplicar: si la columna no existe,
   // el pedido se guarda igual (sin columna de descuento por volumen).
@@ -212,6 +238,16 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
   );
   const hasVolumeCol = volumeCol?.exists === true;
 
+  // Tolerante a migración de zonas sin aplicar: si las columnas no existen,
+  // el pedido se guarda igual (sin detalle de zona).
+  const zoneCol = await queryOne<{ exists: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1 FROM information_schema.columns
+       WHERE table_name = 'orders' AND column_name = 'delivery_zone_id'
+     ) AS exists`
+  );
+  const hasZoneCols = zoneCol?.exists === true;
+
   try {
     await withTransaction(async (tx) => {
       const paymentStatus = paymentMethodNorm === "transferencia" ? "pending" : "paid";
@@ -222,8 +258,11 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
         vendorId,
         items,
         method: isPickup ? "pickup" : "delivery",
-        deliveryFee: (vendorRow as any)?.delivery_fee,
-        freeDeliveryMin: (vendorRow as any)?.free_delivery_min,
+        deliveryFee: (vendorRow as any)?.delivery_fee ?? deliveryCfg.baseFee,
+        freeDeliveryMin: (vendorRow as any)?.free_delivery_min ?? deliveryCfg.freeMin,
+        deliveryMode: deliveryCfg.mode,
+        deliveryZones: deliveryCfg.zones,
+        deliverySelection,
         // Descuento en efectivo: corre con la misma fórmula que el checkout
         // muestra en pantalla (antes no se aplicaba server-side: el cliente
         // veía un precio y el pedido guardaba otro).
@@ -237,18 +276,29 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
       resolvedCashPct = pricing.cashPct;
       resolvedVolumeDiscount = pricing.volumeDiscount;
       resolvedVolumeApplied = pricing.volumeApplied;
+      resolvedDeliveryFee = pricing.deliveryFee;
+      resolvedZoneName = pricing.deliveryZoneName;
+      resolvedOutOfArea = pricing.deliveryOutOfArea;
 
       await adjustStockForItems(tx, resolvedItems, "decrement");
 
       pickupNumber = await nextOrderNumber(tx, vendorId);
 
-      // $16 = track_token; $17 = volume_discount (si la columna existe).
+      // $16 = track_token; después van las columnas opcionales con
+      // numeración dinámica (volumen y/o zona pueden faltar sin migrar).
+      let nextParam = 17;
       const volumeCols = hasVolumeCol ? ", volume_discount" : "";
-      const volumeVals = hasVolumeCol ? ", $17" : "";
+      const volumeVals = hasVolumeCol ? `, $${nextParam++}` : "";
       const volumeParams: unknown[] = hasVolumeCol ? [pricing.volumeDiscount] : [];
+      // Columnas de zona (si la migración está aplicada).
+      const zoneCols = hasZoneCols ? ", delivery_zone_id, delivery_zone_name, delivery_out_of_area, delivery_fee" : "";
+      const zoneVals = hasZoneCols ? `, $${nextParam++}, $${nextParam++}, $${nextParam++}, $${nextParam++}` : "";
+      const zoneParams: unknown[] = hasZoneCols
+        ? [pricing.deliveryZoneId, pricing.deliveryZoneName, pricing.deliveryOutOfArea, pricing.deliveryFee]
+        : [];
       const rows = await tx.query<{ id: string }>(
-        `INSERT INTO orders (vendor_id, customer_id, customer_name, customer_phone, customer_address, method, payment_method, items, total, status, notes, device_id, payment_status, pickup_number, cash_pct, cash_discount, track_token${volumeCols})
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'new', $10, $11, $12, $13, $14, $15, $16${volumeVals})
+        `INSERT INTO orders (vendor_id, customer_id, customer_name, customer_phone, customer_address, method, payment_method, items, total, status, notes, device_id, payment_status, pickup_number, cash_pct, cash_discount, track_token${volumeCols}${zoneCols})
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'new', $10, $11, $12, $13, $14, $15, $16${volumeVals}${zoneVals})
          RETURNING id`,
         [
           vendorId,
@@ -268,6 +318,7 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
           pricing.cashDiscount,
           trackToken,
           ...volumeParams,
+          ...zoneParams,
         ]
       );
       orderId = rows[0]?.id;
@@ -354,5 +405,5 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
     }
   }
 
-  return { orderId, total: resolvedTotal, items: resolvedItems, pickupNumber, cashDiscount: resolvedCashDiscount, cashPct: resolvedCashPct, volumeDiscount: resolvedVolumeDiscount, volumeApplied: resolvedVolumeApplied, trackToken };
+  return { orderId, total: resolvedTotal, items: resolvedItems, pickupNumber, cashDiscount: resolvedCashDiscount, cashPct: resolvedCashPct, volumeDiscount: resolvedVolumeDiscount, volumeApplied: resolvedVolumeApplied, trackToken, deliveryFee: resolvedDeliveryFee, deliveryZoneName: resolvedZoneName, deliveryOutOfArea: resolvedOutOfArea };
 }

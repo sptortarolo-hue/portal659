@@ -16,7 +16,7 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json();
-  const { vendorId, items, total, customerName, customerPhone, customerAddress, method, isPreview } = body;
+  const { vendorId, items, total, customerName, customerPhone, customerAddress, method, isPreview, deliveryZoneId, deliveryOutOfArea } = body;
 
   if (!vendorId || !items || !total) {
     return NextResponse.json({ error: "Faltan datos" }, { status: 400 });
@@ -89,6 +89,9 @@ export async function POST(request: Request) {
         customer_phone: customerPhone,
         customer_address: customerAddress || "",
         delivery_method: method || "delivery",
+        // Zona de envío (el webhook la valida contra el comercio y la persiste).
+        delivery_zone_id: typeof deliveryZoneId === "string" ? deliveryZoneId : "",
+        delivery_out_of_area: deliveryOutOfArea === true ? "1" : "",
         // JSON string: referencias para descontar stock al aprobarse el pago.
         stock_items: JSON.stringify(
           items.map((i: any) => ({

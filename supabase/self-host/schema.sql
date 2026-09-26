@@ -605,6 +605,39 @@ ALTER TABLE public.reviews ADD COLUMN IF NOT EXISTS replied_at timestamptz;
 ALTER TABLE public.vendors ADD COLUMN IF NOT EXISTS featured boolean NOT NULL DEFAULT false;
 
 -- ============================================================
+-- 029_delivery_zones.sql (envío por zona del comercio)
+-- ============================================================
+ALTER TABLE public.vendors
+  ADD COLUMN IF NOT EXISTS delivery_mode text NOT NULL DEFAULT 'flat'
+    CHECK (delivery_mode IN ('flat', 'zones')),
+  ADD COLUMN IF NOT EXISTS delivery_area_text text;
+
+CREATE TABLE IF NOT EXISTS public.delivery_zones (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  vendor_id uuid NOT NULL REFERENCES public.vendors(id) ON DELETE CASCADE,
+  name text NOT NULL,
+  description text,
+  fee numeric(10, 2) NOT NULL DEFAULT 0,
+  position integer NOT NULL DEFAULT 0,
+  active boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_delivery_zones_vendor
+  ON public.delivery_zones(vendor_id, position);
+
+ALTER TABLE public.orders
+  ADD COLUMN IF NOT EXISTS delivery_out_of_area boolean NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS delivery_zone_id uuid,
+  ADD COLUMN IF NOT EXISTS delivery_zone_name text,
+  ADD COLUMN IF NOT EXISTS delivery_fee numeric(10, 2) NOT NULL DEFAULT 0;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_orders_delivery_zone') THEN
+    ALTER TABLE public.orders ADD CONSTRAINT fk_orders_delivery_zone
+      FOREIGN KEY (delivery_zone_id) REFERENCES public.delivery_zones(id) ON DELETE SET NULL;
+  END IF;
+END $$;
+
+-- ============================================================
 -- Trigger updated_at para profiles
 -- ============================================================
 DROP TRIGGER IF EXISTS profiles_updated_at ON profiles;

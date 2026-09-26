@@ -306,24 +306,70 @@ export async function POST(request: Request) {
           price: Number(i.unit_price),
           qty: Number(i.quantity),
         }));
+        // Zona de envío (metadata del checkout): se valida contra el comercio.
+        // Zona inexistente/inactiva → fuera de zona (entra a convenir).
+        let mpZoneId: string | null = null;
+        let mpZoneName: string | null = null;
+        let mpOutOfArea = false;
+        if (!isPickup) {
+          try {
+            const { fetchVendorDelivery } = await import("@/lib/delivery-server");
+            const dcfg = await fetchVendorDelivery(vendorId);
+            const rawZone = typeof metadata.delivery_zone_id === "string" ? metadata.delivery_zone_id : "";
+            if (metadata.delivery_out_of_area === "1" || metadata.delivery_out_of_area === 1) {
+              mpOutOfArea = true;
+            } else if (dcfg.mode === "zones" && rawZone) {
+              const z = dcfg.zones.find((zz) => zz.id === rawZone);
+              if (z) {
+                mpZoneId = z.id;
+                mpZoneName = z.name;
+              } else {
+                mpOutOfArea = true;
+              }
+            }
+          } catch {
+            /* sin config: se guarda sin zona */
+          }
+        }
+        // Fee pagado = total MP − suma de ítems (en MP no hay cash ni cuotas
+        // raras: el espejo del checkout ya sumó el envío al total).
+        const mpItemsSum = orderItems.reduce((s: number, i: any) => s + (Number(i.price) || 0) * (Number(i.qty) || 0), 0);
+        const mpFee = !isPickup ? Math.max(0, Math.round(((Number(payment.transaction_amount) || 0) - mpItemsSum) * 100) / 100) : 0;
+        // Columnas de zona (tolerante a migración sin aplicar).
+        let mpZoneCols = false;
+        try {
+          const zc = await queryOne<{ exists: boolean }>(
+            `SELECT EXISTS (
+               SELECT 1 FROM information_schema.columns
+               WHERE table_name = 'orders' AND column_name = 'delivery_zone_id'
+             ) AS exists`
+          );
+          mpZoneCols = zc?.exists === true;
+        } catch {
+          mpZoneCols = false;
+        }
         let order: any = null;
         await withTransaction(async (tx) => {
+          const cols = `vendor_id, customer_name, customer_phone, customer_address, method, items, total, status, pickup_number, payment_method, payment_status, track_token, mp_payment_id${mpZoneCols ? ", delivery_zone_id, delivery_zone_name, delivery_out_of_area, delivery_fee" : ""}`;
+          const vals: unknown[] = [
+            vendorId,
+            customerName,
+            customerPhone,
+            customerAddress,
+            isPickup ? "pickup" : "delivery",
+            JSON.stringify(orderItems),
+            payment.transaction_amount,
+            pickupNumber,
+            trackToken,
+            String(payment.id ?? ""),
+            ...(mpZoneCols ? [mpZoneId, mpZoneName, mpOutOfArea, mpFee] : []),
+          ];
+          const placeholders = vals.map((_, i) => `$${i + 1}`).join(", ");
           const inserted = await tx.query<{ id: string }>(
-            `INSERT INTO orders (vendor_id, customer_name, customer_phone, customer_address, method, items, total, status, pickup_number, payment_method, payment_status, track_token, mp_payment_id)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, 'new', $8, 'mercadopago', 'paid', $9, $10)
+            `INSERT INTO orders (${cols})
+             VALUES (${placeholders})
              RETURNING id`,
-            [
-              vendorId,
-              customerName,
-              customerPhone,
-              customerAddress,
-              isPickup ? "pickup" : "delivery",
-              JSON.stringify(orderItems),
-              payment.transaction_amount,
-              pickupNumber,
-              trackToken,
-              String(payment.id ?? ""),
-            ]
+            vals
           );
           order = {
             id: inserted[0]?.id,

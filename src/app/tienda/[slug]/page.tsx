@@ -327,6 +327,26 @@ export default async function TiendaPage({
   const packGroups = (volumeGroups || []).filter(
     (g: any) => (g.productIds || []).length > 1 && (g.tiers || []).length > 0
   );
+  // Zonas de reparto propias (modo zones). Tolerante a migración sin aplicar.
+  let deliveryZones: { id: string; name: string; description: string | null; fee: number }[] = [];
+  if ((v as any).delivery_mode === "zones") {
+    try {
+      const zrows = await queryMany<any>(
+        `SELECT id, name, description, fee FROM delivery_zones
+         WHERE vendor_id = $1 AND active = true
+         ORDER BY position ASC, created_at ASC LIMIT 3`,
+        [v.id]
+      );
+      deliveryZones = (zrows || []).map((z: any) => ({
+        id: String(z.id),
+        name: String(z.name ?? ""),
+        description: z.description != null ? String(z.description) : null,
+        fee: Number(z.fee) || 0,
+      }));
+    } catch {
+      deliveryZones = [];
+    }
+  }
 
   const isService = v.vertical === "servicio";
   // Tope de solicitudes alcanzado: no se muestran los formularios (el POST
@@ -356,6 +376,9 @@ export default async function TiendaPage({
     deliveryFee: v.delivery_fee != null ? Number(v.delivery_fee) : null,
     freeDeliveryMin: v.free_delivery_min != null ? Number(v.free_delivery_min) : null,
     deliveryOptions: v.delivery_options || "ambos",
+    deliveryMode: ((v as any).delivery_mode === "zones" ? "zones" : "flat") as "flat" | "zones",
+    deliveryAreaText: (v as any).delivery_area_text != null ? String((v as any).delivery_area_text) : null,
+    deliveryZones,
     cashDiscountPct:
       String(v.payment_methods || "")
         .split(",")

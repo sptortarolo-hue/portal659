@@ -1,5 +1,7 @@
 import { gateRequest, gateError } from "@/lib/subscription-gate";
-import { queryMany, withTransaction } from "@/lib/db";
+import { queryMany, queryOne, withTransaction } from "@/lib/db";
+import { fetchVendorDelivery } from "@/lib/delivery-server";
+import { resolveDeliveryFee, type DeliverySelection } from "@/lib/delivery";
 import { nextOrderNumber } from "@/lib/order-number";
 import { cashDiscountForItems } from "@/lib/cash-discount";
 import { adjustStockForItems, OutOfStockError } from "@/lib/stock";
@@ -37,6 +39,9 @@ export async function POST(request: Request) {
     customerAddress,
     method,
     notes,
+    deliveryZoneId,
+    deliveryOutOfArea,
+    deliveryManualFee,
   } = body;
 
   // Idempotencia del sync offline (Fase 0): si esta acción ya se procesó
@@ -171,7 +176,28 @@ export async function POST(request: Request) {
     cashDiscount = res.cashDiscount;
     cashPct = res.cashPct;
   }
-  const finalTotal = Math.max(0, Math.round((Number(total) - cashDiscount) * 100) / 100);
+  // Envío por zona (el comerciante es autoridad: admite monto manual fuera
+  // de zona). El fee se suma al total; el espejo del mostrador ya lo mostró.
+  const deliveryCfg = isDelivery ? await fetchVendorDelivery(gate.vendor.id) : null;
+  const subtotalNum = Number(total) || 0;
+  let deliveryResolved = { fee: 0, zoneId: null as string | null, zoneName: null as string | null, outOfArea: false, freeShipping: false };
+  if (isDelivery && deliveryCfg) {
+    const sel: DeliverySelection = deliveryOutOfArea === true
+      ? { kind: "out_of_area", manualFee: Number(deliveryManualFee) || null }
+      : deliveryCfg.mode === "zones" && typeof deliveryZoneId === "string" && deliveryZoneId
+        ? { kind: "zone", zoneId: deliveryZoneId }
+        : { kind: "in_area" };
+    deliveryResolved = resolveDeliveryFee({
+      mode: deliveryCfg.mode,
+      baseFee: deliveryCfg.baseFee,
+      freeMin: deliveryCfg.freeMin,
+      zones: deliveryCfg.zones,
+      selection: sel,
+      netSubtotal: subtotalNum,
+      allowManual: true,
+    });
+  }
+  const finalTotal = Math.max(0, Math.round((subtotalNum - cashDiscount + deliveryResolved.fee) * 100) / 100);
 
   // Número de pedido diario universal (mostrador/delivery): además de
   // referenciarlo a la caja, el pedido queda con su número de oraculo en tickets.
@@ -184,6 +210,21 @@ export async function POST(request: Request) {
     ...(caps.ordersClientKey ? ["client_key"] : []),
     ...(caps.ordersOccurredAt ? ["occurred_at"] : []),
   ];
+  // Columnas de zona (tolerante a migración sin aplicar).
+  let hasZoneCols = false;
+  if (isDelivery) {
+    try {
+      const zc = await queryOne<{ exists: boolean }>(
+        `SELECT EXISTS (
+           SELECT 1 FROM information_schema.columns
+           WHERE table_name = 'orders' AND column_name = 'delivery_zone_id'
+         ) AS exists`
+      );
+      hasZoneCols = zc?.exists === true;
+    } catch {
+      hasZoneCols = false;
+    }
+  }
   let order: Record<string, any> | null = null;
   try {
     order = await withTransaction(async (tx) => {
@@ -202,6 +243,7 @@ export async function POST(request: Request) {
       "paid_at", "notes", "pickup_number", "is_preview", "cash_pct",
       "cash_discount",
       ...syncCols,
+      ...(hasZoneCols ? ["delivery_zone_id", "delivery_zone_name", "delivery_out_of_area", "delivery_fee"] : []),
     ];
     const vals: unknown[] = [
       gate.vendor.id,
@@ -222,6 +264,7 @@ export async function POST(request: Request) {
       cashDiscount,
       ...(caps.ordersClientKey ? [clientKey] : []),
       ...(caps.ordersOccurredAt ? [occurredAt] : []),
+      ...(hasZoneCols ? [deliveryResolved.zoneId, deliveryResolved.zoneName, deliveryResolved.outOfArea, deliveryResolved.fee] : []),
     ];
     const placeholders = vals.map((_, i) => `$${i + 1}`).join(", ");
     const order = await tx.queryOne<Record<string, any>>(

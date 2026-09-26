@@ -58,6 +58,31 @@ export type DispatchResult = {
   error?: string;
 };
 
+/** Datos de envío para los documentos impresos (zona autodeclarada). */
+function deliveryPrintInfo(order: Order): {
+  zoneName: string;
+  outOfArea: boolean;
+  fee: number;
+} {
+  const o = order as any;
+  return {
+    zoneName: o?.delivery_zone_name != null ? String(o.delivery_zone_name) : "",
+    outOfArea: o?.delivery_out_of_area === true,
+    fee: Number(o?.delivery_fee) || 0,
+  };
+}
+
+/** Línea de desglose del envío (comanda/ticket) o null si no corresponde. */
+function deliveryFeeLine(order: Order): string | null {
+  if (order.method !== "delivery") return null;
+  const d = deliveryPrintInfo(order);
+  if (d.outOfArea) return "Envío: A CONVENIR";
+  if (d.fee <= 0) return null;
+  return d.zoneName
+    ? `Envío (${d.zoneName}): $${d.fee.toLocaleString("es-AR")}`
+    : `Envío: $${d.fee.toLocaleString("es-AR")}`;
+}
+
 async function loadModule() {
   if (!ThermalPrinter) {
     const mod = await import("node-thermal-printer");
@@ -481,7 +506,10 @@ async function composeComanda(printer: any, vendor: PrinterVendor, order: Order)
   }
   printer.println("----------------------------------------");
 
-  const methodStr = order.method === "delivery" ? "Delivery" : "Retiro en local";
+  const comandaZone = order.method === "delivery" ? deliveryPrintInfo(order).zoneName : "";
+  const methodStr = order.method === "delivery"
+    ? (comandaZone ? `Delivery (${comandaZone})` : "Delivery")
+    : "Retiro en local";
   const paymentStr =
     order.payment_method === "efectivo" ? "Efectivo" :
     order.payment_method === "transferencia" ? "Transferencia" :
@@ -512,6 +540,10 @@ async function composeComanda(printer: any, vendor: PrinterVendor, order: Order)
   if (ticketVol > 0) {
     printer.println(`Desc. volumen: -$${ticketVol.toLocaleString("es-AR")}`);
   }
+  const ticketShip = deliveryFeeLine(order);
+  if (ticketShip) {
+    printer.println(ticketShip);
+  }
   printer.bold(true);
   printer.setTextSize(1, 1);
   printer.println(`TOTAL: $${Number(order.total).toLocaleString("es-AR")}`);
@@ -524,6 +556,11 @@ async function composeComanda(printer: any, vendor: PrinterVendor, order: Order)
   printer.println(`Tel: ${order.customer_phone}`);
   if (order.method === "delivery" && order.customer_address) {
     printer.println(`Dir: ${order.customer_address}`);
+  }
+  if (order.method === "delivery" && deliveryPrintInfo(order).outOfArea) {
+    printer.bold(true);
+    printer.println("** ENVIO A CONVENIR **");
+    printer.bold(false);
   }
 
   if (order.notes) {
@@ -781,6 +818,10 @@ async function composeReceipt(
     if (receiptVol > 0) {
       printer.println(`Desc. volumen: -$${receiptVol.toLocaleString("es-AR")}`);
     }
+    const receiptShip = deliveryFeeLine(order);
+    if (receiptShip) {
+      printer.println(receiptShip);
+    }
   printer.bold(true);
   printer.setTextSize(1, 1);
   printer.println(`TOTAL: $${Number(order.total).toLocaleString("es-AR")}`);
@@ -807,6 +848,11 @@ async function composeReceipt(
   }
   if (extra?.retail && order.method === "delivery" && order.customer_address) {
     printer.println(`Dir: ${order.customer_address}`);
+  }
+  if (order.method === "delivery" && deliveryPrintInfo(order).outOfArea) {
+    printer.bold(true);
+    printer.println("** ENVIO A CONVENIR **");
+    printer.bold(false);
   }
 
   if (extra?.fiscal) {
@@ -856,6 +902,12 @@ async function composeDespacho(printer: any, order: Order): Promise<void> {
     printer.setTextSize(2, 2);
     printer.println(`Nro. ${order.pickup_number}`);
     printer.setTextSize(1, 1);
+  }
+  const despachoZone = deliveryPrintInfo(order);
+  if (despachoZone.outOfArea) {
+    printer.println("ZONA: A CONVENIR");
+  } else if (despachoZone.zoneName) {
+    printer.println(`ZONA: ${despachoZone.zoneName}`);
   }
   printer.bold(false);
   printer.println("");

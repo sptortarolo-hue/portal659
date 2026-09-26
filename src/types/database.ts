@@ -321,6 +321,10 @@ export type Vendor = {
   delivery_options: string | null;
   delivery_fee?: number | null;
   free_delivery_min?: number | null;
+  /** Modo de envío: 'flat' (tarifa única) | 'zones' (hasta 3 zonas). */
+  delivery_mode?: "flat" | "zones" | null;
+  /** Área de reparto habitual en lenguaje barrial (ej: "Sicardi y Garibaldi, hasta la 22"). */
+  delivery_area_text?: string | null;
   services_list: string | null;
   service_area: string | null;
   free_estimate: boolean | null;
@@ -487,6 +491,14 @@ export type Order = {
   track_token?: string | null;
   /** Costo de envío del pedido (si aplica). */
   delivery_cost?: number | null;
+  /** Zona de reparto elegida (id). NULL = flat / fuera de zona / retiro. */
+  delivery_zone_id?: string | null;
+  /** Nombre denormalizado de la zona (ticket/historial aunque se borre). */
+  delivery_zone_name?: string | null;
+  /** true = fuera del área habitual: entra a convenir. */
+  delivery_out_of_area?: boolean | null;
+  /** Fee de envío resuelto server-side (desglose exacto en ticket/WhatsApp). */
+  delivery_fee?: number | null;
   /** Número legible del pedido (ticket). */
   order_number?: string | null;
   /** Descuento en efectivo aplicado (detalle para ticket/WhatsApp). */
@@ -529,6 +541,17 @@ export type Order = {
   closed_at?: string | null;
   /** Progreso de cocina por ítem (array paralelo a `items`). true = tildado. */
   kitchen_done?: boolean[] | null;
+};
+
+export type DeliveryZone = {
+  id: string;
+  vendor_id: string;
+  name: string;
+  description: string | null;
+  fee: number;
+  position: number;
+  active: boolean;
+  created_at: string;
 };
 
 export type OrderItem = {

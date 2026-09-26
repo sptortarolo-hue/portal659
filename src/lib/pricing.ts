@@ -1,5 +1,12 @@
 import type { Tx } from "@/lib/db";
 import type { OrderItem } from "@/types/database";
+import {
+  normalizeDeliveryMode,
+  resolveDeliveryFee,
+  type DeliveryMode,
+  type DeliverySelection,
+  type DeliveryZoneInfo,
+} from "@/lib/delivery";
 import { queryEffectiveModifiers, type EffectiveModifierRow } from "@/lib/modifier-rules";
 import { cashAppliesToItem, cashPrice, normalizeCashPct } from "@/lib/cash-discount";
 import {
@@ -49,6 +56,14 @@ export type ResolvedPricing = {
   items: OrderItem[];
   subtotal: number;
   deliveryFee: number;
+  /** Zona elegida (id) o null (flat / fuera de zona / retiro). */
+  deliveryZoneId: string | null;
+  /** Nombre denormalizado para ticket/historial. */
+  deliveryZoneName: string | null;
+  /** true = fuera del área: entra a convenir (fee provisorio). */
+  deliveryOutOfArea: boolean;
+  /** true = gratis por superar el monto. */
+  deliveryFreeShipping: boolean;
   total: number;
   /** Descuento en efectivo aplicado (0 si no corresponde). */
   cashDiscount: number;
@@ -81,6 +96,17 @@ export async function resolveOrderPricing(opts: {
   method?: string | null;
   deliveryFee?: number | null;
   freeDeliveryMin?: number | null;
+  /** Modo de envío del comercio ('flat' default). Zonas activas (modo zones). */
+  deliveryMode?: DeliveryMode | string | null;
+  deliveryZones?: DeliveryZoneInfo[] | null;
+  /**
+   * Selección de zona. Default: pickup → retiro; delivery → dentro del
+   * área (flat) o provisorio base (zones sin zona elegida). El canal web
+   * manda in_area | zone | out_of_area (sin monto manual).
+   */
+  deliverySelection?: DeliverySelection | null;
+  /** Solo rutas vendor (mostrador): permite monto manual fuera de zona. */
+  deliveryAllowManual?: boolean;
   /** Método de pago elegido (solo "efectivo" activa el descuento). */
   paymentMethod?: string | null;
   /** % de descuento en efectivo del comercio (0/NULL = sin descuento). */
@@ -467,12 +493,25 @@ export async function resolveOrderPricing(opts: {
     });
   }
 
-  const fee = method === "delivery" ? Number(opts.deliveryFee) || 0 : 0;
-  const freeMin = Number(opts.freeDeliveryMin) || 0;
+  // Envío por zona (helper único web + mostrador). Sin selección explícita
+  // se preserva el comportamiento histórico: delivery → fee base, pickup → 0.
+  const isDelivery = method === "delivery";
+  const selection: DeliverySelection =
+    opts.deliverySelection ||
+    (isDelivery ? { kind: "in_area" } : { kind: "pickup" });
   // El volumen es precio real: el neto cuenta para el envío gratis
   // (el cash, en cambio, es medio de pago y no afecta el umbral).
   const netSubtotal = round2(subtotal - volumeDiscount);
-  const deliveryFee = fee > 0 && !(freeMin > 0 && netSubtotal >= freeMin) ? fee : 0;
+  const resolvedDelivery = resolveDeliveryFee({
+    mode: normalizeDeliveryMode(opts.deliveryMode),
+    baseFee: opts.deliveryFee,
+    freeMin: opts.freeDeliveryMin,
+    zones: opts.deliveryZones || [],
+    selection,
+    netSubtotal,
+    allowManual: opts.deliveryAllowManual === true,
+  });
+  const deliveryFee = resolvedDelivery.fee;
 
   // Los descuentos van solo sobre productos (nunca sobre el envío).
   cashDiscount = round2(Math.min(cashDiscount, netSubtotal));
@@ -482,6 +521,10 @@ export async function resolveOrderPricing(opts: {
     items: outItems,
     subtotal: round2(subtotal),
     deliveryFee: round2(deliveryFee),
+    deliveryZoneId: resolvedDelivery.zoneId,
+    deliveryZoneName: resolvedDelivery.zoneName,
+    deliveryOutOfArea: resolvedDelivery.outOfArea,
+    deliveryFreeShipping: resolvedDelivery.freeShipping,
     total: round2(subtotal - volumeDiscount - cashDiscount + deliveryFee),
     cashDiscount,
     cashPct: cashActive ? cashPct : 0,

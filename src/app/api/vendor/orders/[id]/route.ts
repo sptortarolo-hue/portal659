@@ -8,6 +8,8 @@ import { canTransition } from "@/lib/order-utils";
 import { adjustStockForItems, OutOfStockError } from "@/lib/stock";
 import { isRetailVendor } from "@/lib/plans";
 import { PricingError, resolveOrderPricing } from "@/lib/pricing";
+import { fetchVendorDelivery } from "@/lib/delivery-server";
+import { resolveDeliveryFee, type DeliverySelection } from "@/lib/delivery";
 import { phoneVariantsAR } from "@/lib/phone";
 import { decrementCustomerFromOrder } from "@/lib/customers";
 import type { OrderItem, OrderStatus } from "@/types/database";
@@ -55,7 +57,7 @@ function customerNotificationText(
 }
 
 const RETURN_COLUMNS =
-  "customer_phone, customer_name, customer_address, total, payment_method, payment_status, notes, modification_notes, method, items, pickup_number, transfer_proof_url, track_token, CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'kitchen_done') THEN kitchen_done ELSE '[]'::jsonb END AS kitchen_done";
+  "customer_phone, customer_name, customer_address, total, payment_method, payment_status, notes, modification_notes, method, items, pickup_number, transfer_proof_url, track_token, CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'kitchen_done') THEN kitchen_done ELSE '[]'::jsonb END AS kitchen_done, CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'delivery_zone_id') THEN delivery_zone_id ELSE NULL END AS delivery_zone_id, CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'delivery_zone_name') THEN delivery_zone_name ELSE NULL END AS delivery_zone_name, CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'delivery_out_of_area') THEN delivery_out_of_area ELSE false END AS delivery_out_of_area, CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'delivery_fee') THEN delivery_fee ELSE 0 END AS delivery_fee";
 
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   const params = await context.params;
@@ -103,6 +105,9 @@ export async function PATCH(
   const method = body.method;
   const customer_phone = body.customer_phone;
   const customer_address = body.customer_address;
+  const delivery_zone_id = body.delivery_zone_id;
+  const delivery_out_of_area = body.delivery_out_of_area;
+  const delivery_manual_fee = body.delivery_manual_fee;
   const toggleItem = body.toggle_item;
   const rawKitchenDone = body.kitchen_done;
 
@@ -296,6 +301,43 @@ export async function PATCH(
         updateData.customer_address = typeof customer_address === "string" && customer_address.trim() ? customer_address.trim() : null;
         // pickup_number se mantiene igual: es el número universal del pedido
         // del día, y al convertir a delivery no debe "saltar" de nombre.
+        // Envío por zona: se suma el fee al total (el pedido nació en
+        // mostrador sin envío). El comerciante es autoridad: admite manual.
+        const deliveryCfg = await fetchVendorDelivery(vendor.id).catch(() => null);
+        if (deliveryCfg) {
+          const sel: DeliverySelection = delivery_out_of_area === true
+            ? { kind: "out_of_area", manualFee: Number(delivery_manual_fee) || null }
+            : deliveryCfg.mode === "zones" && typeof delivery_zone_id === "string" && delivery_zone_id
+              ? { kind: "zone", zoneId: delivery_zone_id }
+              : { kind: "in_area" };
+          const resolved = resolveDeliveryFee({
+            mode: deliveryCfg.mode,
+            baseFee: deliveryCfg.baseFee,
+            freeMin: deliveryCfg.freeMin,
+            zones: deliveryCfg.zones,
+            selection: sel,
+            netSubtotal: Number(currentOrder.total) || 0,
+            allowManual: true,
+          });
+          updateData.total = Math.max(0, Math.round(((Number(currentOrder.total) || 0) + resolved.fee) * 100) / 100);
+          // Columnas de zona (tolerante a migración sin aplicar).
+          try {
+            const zc = await tx.query<{ exists: boolean }>(
+              `SELECT EXISTS (
+                 SELECT 1 FROM information_schema.columns
+                 WHERE table_name = 'orders' AND column_name = 'delivery_zone_id'
+               ) AS exists`
+            );
+            if (zc[0]?.exists === true) {
+              updateData.delivery_zone_id = resolved.zoneId;
+              updateData.delivery_zone_name = resolved.zoneName;
+              updateData.delivery_out_of_area = resolved.outOfArea;
+              updateData.delivery_fee = resolved.fee;
+            }
+          } catch {
+            /* sin columnas: se sigue sin persistir la zona */
+          }
+        }
       }
       if (payment_status !== undefined) {
         updateData.payment_status = payment_status;

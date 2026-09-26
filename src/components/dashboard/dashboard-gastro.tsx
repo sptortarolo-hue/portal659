@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { ConfigSection, ConfigSections } from "@/components/dashboard/config-sections";
+import { ConfigSaveBar, ConfigSection, ConfigSections } from "@/components/dashboard/config-sections";
 import { Switch } from "@/components/ui/switch";
 import { ChipToggle } from "@/components/ui/chip-toggle";
 import { RadioCards } from "@/components/ui/radio-cards";
@@ -529,11 +529,11 @@ export default function DashboardGastro({
         <StaffManager storeName={vendor?.store_name} />
       </ConfigSection>
 
-      <ConfigSection id="impresora" label="Impresora" icon="🖨️">
+      <ConfigSection id="impresora" label="Impresora" icon="🖨️" status={vendor?.printer_ip || vendor?.print_mode ? "ok" : "off"}>
       <PrinterConfigSection vendor={vendor} saveVendor={saveVendor} setMsg={setMsg} />
       </ConfigSection>
 
-      <ConfigSection id="fiscal" label="Facturación" icon="🧾">
+      <ConfigSection id="fiscal" label="Facturación" icon="🧾" status={vendor?.fiscal_cert ? "ok" : vendor?.cuit ? "warn" : "off"}>
       <FiscalConfigSection defaultOpen />
       </ConfigSection>
 
@@ -583,9 +583,7 @@ export default function DashboardGastro({
         <p className="text-sm text-red-600">{msg}</p>
       )}
 
-      <Button type="submit" className="w-full" disabled={saving}>
-        {saving ? "Guardando..." : "Guardar cambios"}
-      </Button>
+      <ConfigSaveBar saving={saving} onDiscard={() => { setMsg(""); reload(); }} />
     </form>
   );
 }

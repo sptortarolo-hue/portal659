@@ -258,19 +258,6 @@ export default function DashboardGastro({
 
   return (
     <form onSubmit={handleSave} className="space-y-4">
-      <LivePreview
-        storeName={storeName}
-        storePreview={storePreview}
-        vendor={vendor}
-        logoPreview={logoPreview}
-        description={description}
-        hours={hours}
-        address={address}
-        paymentMethods={paymentMethods}
-        whatsapp={whatsapp}
-        isService={false}
-      />
-
       <ConfigSections storageKey="portal659-config-gastro" openEvents={[{ event: "portal:open-printer-config", sectionId: "impresora" }]} activeId={configSectionId} onActiveChange={onConfigSectionId}>
       <ConfigSection id="perfil" label="Perfil" icon="🏪">
         <div className="space-y-3">
@@ -587,6 +574,19 @@ export default function DashboardGastro({
       {msg && (
         <p className="text-sm text-red-600">{msg}</p>
       )}
+
+      <LivePreview
+        storeName={storeName}
+        storePreview={storePreview}
+        vendor={vendor}
+        logoPreview={logoPreview}
+        description={description}
+        hours={hours}
+        address={address}
+        paymentMethods={paymentMethods}
+        whatsapp={whatsapp}
+        isService={false}
+      />
 
       <ConfigSaveBar saving={saving} onDiscard={() => { setMsg(""); reload(); }} />
     </form>

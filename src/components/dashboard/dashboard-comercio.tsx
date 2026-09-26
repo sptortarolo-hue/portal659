@@ -347,19 +347,6 @@ export default function DashboardComercio({
 
   return (
     <form onSubmit={handleSave} className="space-y-4">
-      <LivePreview
-        storeName={storeName}
-        storePreview={storePreview}
-        vendor={vendor}
-        logoPreview={logoPreview}
-        description={description}
-        hours={hours}
-        address={address}
-        paymentMethods={paymentMethods}
-        whatsapp={whatsapp}
-        isService={isService}
-      />
-
       <ConfigSections storageKey="portal659-config-comercio" openEvents={[{ event: "portal:open-printer-config", sectionId: "impresora" }]} activeId={configSectionId} onActiveChange={onConfigSectionId}>
       <ConfigSection id="perfil" label="Perfil" icon="🏪" badge={isService ? "Servicio" : undefined}>
         <div className="space-y-3">
@@ -677,6 +664,18 @@ export default function DashboardComercio({
           {msg}
         </p>
       )}
+      <LivePreview
+        storeName={storeName}
+        storePreview={storePreview}
+        vendor={vendor}
+        logoPreview={logoPreview}
+        description={description}
+        hours={hours}
+        address={address}
+        paymentMethods={paymentMethods}
+        whatsapp={whatsapp}
+        isService={isService}
+      />
       <ConfigSaveBar saving={saving} onDiscard={() => { setMsg(""); reload(); }} />
     </form>
   );

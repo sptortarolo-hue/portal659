@@ -561,8 +561,6 @@ export default function DashboardModa({
   return (
     <>
     <form onSubmit={handleSave} className="space-y-4">
-      <LivePreview storeName={storeName} storePreview={storePreview} vendor={vendor} logoPreview={logoPreview} description={description} hours={hours} address={address} paymentMethods={paymentMethods} whatsapp={whatsapp} isService={false} />
-
       <ConfigSections storageKey="portal659-config-moda" openEvents={[{ event: "portal:open-printer-config", sectionId: "impresora" }]} activeId={configSectionId} onActiveChange={onConfigSectionId}>
       <ConfigSection id="perfil" label="Perfil" icon="🏪">
         <div className="space-y-3">
@@ -671,6 +669,7 @@ export default function DashboardModa({
       </ConfigSection>
       </ConfigSections>
 
+      <LivePreview storeName={storeName} storePreview={storePreview} vendor={vendor} logoPreview={logoPreview} description={description} hours={hours} address={address} paymentMethods={paymentMethods} whatsapp={whatsapp} isService={false} />
       <ConfigSaveBar saving={saving || uploading} onDiscard={() => { setMsg(""); reload(); }} />
     </form>
 

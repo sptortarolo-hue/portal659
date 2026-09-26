@@ -100,6 +100,10 @@ export default function CheckoutPage() {
   // Envío por zona (espejo visual; el servidor recalcula y manda).
   const vendorZones = Array.isArray(vendor?.deliveryZones) ? vendor.deliveryZones : [];
   const zonesMode = normalizeDeliveryMode(vendor?.deliveryMode) === "zones" && vendorZones.length > 0;
+  // Sin área cargada, la pregunta dentro/fuera no tiene referencia: no se
+  // muestra y se asume dentro (tarifa única automática, cero fricción).
+  const hasArea = !!vendor?.deliveryAreaText?.trim();
+  const inAreaEffective = hasArea ? inArea : true;
   const zoneOut = zoneId === "__OUT__";
   const activeZoneId = zoneOut ? "" : zoneId || vendorZones[0]?.id || "";
   const deliverySel =
@@ -109,7 +113,7 @@ export default function CheckoutPage() {
         ? activeZoneId
           ? ({ kind: "zone", zoneId: activeZoneId } as const)
           : ({ kind: "out_of_area" } as const)
-        : inArea
+        : inAreaEffective
           ? ({ kind: "in_area" } as const)
           : ({ kind: "out_of_area" } as const);
   const resolvedDelivery = resolveDeliveryFee({
@@ -862,12 +866,10 @@ export default function CheckoutPage() {
                   <option value="__OUT__">Otra zona (se coordina por WhatsApp)</option>
                 </select>
               </div>
-            ) : (
+            ) : hasArea ? (
               <div>
                 <Label>¿Estás dentro de nuestra zona de reparto?</Label>
-                {v.deliveryAreaText && (
-                  <p className="text-xs text-muted-foreground mt-0.5">“{v.deliveryAreaText}”</p>
-                )}
+                <p className="text-xs text-muted-foreground mt-0.5">“{v.deliveryAreaText}”</p>
                 <div className="grid grid-cols-2 gap-2 mt-1">
                   <button
                     type="button"
@@ -889,7 +891,7 @@ export default function CheckoutPage() {
                   </button>
                 </div>
               </div>
-            )}
+            ) : null}
             <div>
               <Label htmlFor="address">Dirección</Label>
               <Input

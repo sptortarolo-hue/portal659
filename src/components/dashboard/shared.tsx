@@ -690,6 +690,7 @@ export function DeliveryFeeConfig({
         />
         <p className="text-xs text-muted-foreground mt-1">
           En lenguaje del barrio: el cliente la lee para saber si está dentro o fuera.
+          Si la dejás vacía, no se le pregunta y siempre se cobra la tarifa única.
         </p>
       </div>
 

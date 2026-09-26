@@ -20,7 +20,7 @@ import { SIZE_GUIDE_TEMPLATES, templateToText } from "@/lib/size-guides";
 import { LocationPicker } from "./location-picker";
 import { PrinterConfigSection } from "@/components/dashboard/printer-config-section";
 import { ConfigSaveBar, ConfigSection, ConfigSections } from "@/components/dashboard/config-sections";
-import { FiscalConfigSection } from "@/components/dashboard/fiscal-config-section";
+import { FiscalTabShortcut } from "@/components/dashboard/fiscal-config-section";
 import type { Vendor, Product, ProductVariant, ProductImage } from "@/types/database";
 
 const PAYMENT_OPTIONS = [
@@ -665,7 +665,7 @@ export default function DashboardModa({
       </ConfigSection>
 
       <ConfigSection id="fiscal" label="Facturación" icon="🧾" status={vendor?.fiscal_cert ? "ok" : vendor?.cuit ? "warn" : "off"}>
-      <FiscalConfigSection defaultOpen />
+      <FiscalTabShortcut />
       </ConfigSection>
       </ConfigSections>
 

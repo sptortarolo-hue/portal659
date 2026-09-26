@@ -28,6 +28,7 @@ import {
   MessageSquare,
   DollarSign,
   Users,
+  Receipt,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 // Modal de recorte: solo se carga cuando se abre (fuera del bundle inicial).
@@ -66,6 +67,7 @@ import { PlanLock } from "@/components/vendor/plan-lock";
 import { Mostrador } from "@/components/vendor/mostrador";
 import { Mesas } from "@/components/vendor/mesas";
 import { CajaManager } from "@/components/dashboard/caja-manager";
+import { FiscalConfigSection } from "@/components/dashboard/fiscal-config-section";
 import { CustomersManager } from "@/components/dashboard/customers-manager";
 import { OpenToggle } from "@/components/vendor/open-toggle";
 import { PrepTimeControl } from "@/components/vendor/prep-time-control";
@@ -137,7 +139,7 @@ type Offer = DBProduct;
 
 type MenuCategory = { id: string; name: string; position: number };
 
-type DashTab = "hoy" | "config" | "menu" | "orders" | "history" | "comanda" | "analytics" | "pos" | "mesas" | "caja" | "clientes" | "reviews" | "recetas";
+type DashTab = "hoy" | "config" | "menu" | "orders" | "history" | "comanda" | "analytics" | "pos" | "mesas" | "caja" | "clientes" | "reviews" | "recetas" | "fiscal";
 
 // Tabs pesados con fetch propio: se memoizan para no re-renderizarlos en cada
 // tecla/búsqueda del dashboard (solo cambian cuando cambian sus props).
@@ -232,6 +234,28 @@ function VendorDashboardInner() {
     const handler = () => setTab("menu");
     window.addEventListener("portal:go-menu", handler);
     return () => window.removeEventListener("portal:go-menu", handler);
+  }, []);
+  // Atajo desde Configuración → pestaña Facturación (misma idea: la
+  // operatoria fiscal vive en su propia pestaña; Config muestra el acceso).
+  useEffect(() => {
+    const handler = () => setTab("fiscal");
+    window.addEventListener("portal:open-fiscal-tab", handler);
+    return () => window.removeEventListener("portal:open-fiscal-tab", handler);
+  }, []);
+  // Deep-link ?seccion=fiscal: va directo a la pestaña (el shell de Config
+  // igual abre su acceso; la pestaña manda).
+  useEffect(() => {
+    try {
+      const url = new URL(window.location.href);
+      if (url.searchParams.get("seccion") === "fiscal") {
+        url.searchParams.delete("seccion");
+        window.history.replaceState(window.history.state, "", url.toString());
+        setTab("fiscal");
+      }
+    } catch {
+      /* noop */
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
@@ -1264,6 +1288,7 @@ function VendorDashboardInner() {
     : tab === "analytics" ? "Estadísticas"
     : tab === "history" ? "Histórico"
     : tab === "reviews" ? "Reseñas"
+    : tab === "fiscal" ? "Facturación"
     : "Configuración";
 
   const todayLabel = new Date().toLocaleDateString("es-AR", {
@@ -1298,6 +1323,7 @@ function VendorDashboardInner() {
         pendingMesasCount={pendingMesasCount}
         planName={effectivePlan.plan?.name ?? null}
         planSlug={effectivePlan.plan?.slug ?? null}
+        canFiscal={effectivePlan.can("fiscal")}
         configNavSections={isService ? null : sectionsForVertical(vendor?.vertical)}
         activeConfigSection={configSection}
         onConfigSection={handleConfigSection}
@@ -1579,6 +1605,18 @@ function VendorDashboardInner() {
                   )}
                 </div>
               )}
+              {mountedTabs.has("fiscal") && (
+                <div className={tab === "fiscal" ? "" : "hidden"}>
+                  {effectivePlan.can("fiscal") ? (
+                    <FiscalConfigSection defaultOpen />
+                  ) : (
+                    <PlanLock
+                      title="Facturación electrónica"
+                      description="Emití Factura C y notas de crédito directo a ARCA, con QR en el ticket y reportes por período. Parte del plan Gestión integral."
+                    />
+                  )}
+                </div>
+              )}
               {mountedTabs.has("recetas") && (
                 <div className={tab === "recetas" ? "" : "hidden"}>
                   {isGastro && effectivePlan.can("recipes") ? (
@@ -1727,6 +1765,11 @@ function VendorDashboardInner() {
               {(isGastro || isComercio || isModa) && (
                 <button onClick={() => { setTab("clientes"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "clientes" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
                   <Users className="h-5 w-5" />Clientes
+                </button>
+              )}
+              {(isGastro || isComercio || isModa) && (
+                <button onClick={() => { setTab("fiscal"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "fiscal" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
+                  <Receipt className="h-5 w-5" />Facturación
                 </button>
               )}
               <button onClick={() => { setTab("config"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "config" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>

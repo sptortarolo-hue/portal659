@@ -629,3 +629,28 @@ export function FiscalConfigSection({ defaultOpen = false }: { defaultOpen?: boo
     </CollapsibleSection>
   );
 }
+
+/**
+ * Acceso compacto a la pestaña Facturación (se usa dentro de Config en
+ * lugar del wizard completo: la operatoria vive en su propia pestaña).
+ */
+export function FiscalTabShortcut() {
+  return (
+    <button
+      type="button"
+      onClick={() => window.dispatchEvent(new Event("portal:open-fiscal-tab"))}
+      className="w-full flex items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3 min-h-[52px] text-left active:bg-muted transition-colors"
+    >
+      <span className="text-xl" aria-hidden>
+        🧾
+      </span>
+      <span className="flex-1 min-w-0">
+        <span className="block text-sm font-medium">Abrir Facturación</span>
+        <span className="block text-xs text-muted-foreground truncate">
+          Comprobantes, notas de crédito y reportes.
+        </span>
+      </span>
+      <span className="text-muted-foreground flex-shrink-0">›</span>
+    </button>
+  );
+}

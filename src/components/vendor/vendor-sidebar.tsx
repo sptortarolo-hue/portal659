@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { X, Package, ChefHat, ShoppingBag, LayoutGrid, UtensilsCrossed, Settings, BarChart3, History, Star, ExternalLink, LogOut, Home, Sparkles, Calculator, Bot, DollarSign, Users, MessageSquare, CalendarDays, ClipboardList, ChevronLeft } from "lucide-react";
+import { X, Package, ChefHat, ShoppingBag, LayoutGrid, UtensilsCrossed, Settings, BarChart3, History, Star, ExternalLink, LogOut, Home, Sparkles, Calculator, Bot, DollarSign, Receipt, Users, MessageSquare, CalendarDays, ClipboardList, ChevronLeft } from "lucide-react";
 import {
   CONFIG_SECTION_GROUPS,
   CONFIG_SECTION_LABELS,
@@ -11,7 +11,7 @@ import {
 } from "@/components/dashboard/config-nav";
 import { StatusDot } from "@/components/dashboard/config-sections";
 
-type Tab = "hoy" | "config" | "menu" | "orders" | "history" | "comanda" | "analytics" | "pos" | "mesas" | "caja" | "clientes" | "reviews" | "recetas";
+type Tab = "hoy" | "config" | "menu" | "orders" | "history" | "comanda" | "analytics" | "pos" | "mesas" | "caja" | "clientes" | "reviews" | "recetas" | "fiscal";
 
 interface VendorSidebarProps {
   open: boolean;
@@ -36,6 +36,8 @@ interface VendorSidebarProps {
   pendingMesasCount?: number;
   planName: string | null;
   planSlug: string | null;
+  /** Plan Gestión con facturación (can("fiscal")): muestra la pestaña Facturación. */
+  canFiscal?: boolean;
   /** Secciones de Config (sidebar única): si viene y currentTab es config, la nav las muestra. */
   configNavSections?: string[] | null;
   activeConfigSection?: string;
@@ -139,6 +141,7 @@ export default function VendorSidebar({
   pendingMesasCount = 0,
   planName,
   planSlug,
+  canFiscal = false,
   configNavSections,
   activeConfigSection,
   onConfigSection,
@@ -312,6 +315,14 @@ export default function VendorSidebar({
                     />
                   );
                 })
+              )}
+              {!isService && canFiscal && (
+                <NavButton
+                  active={currentTab === "fiscal"}
+                  onClick={() => handleTab("fiscal")}
+                  icon={Receipt}
+                  label="Facturación"
+                />
               )}
             </div>
           </div>

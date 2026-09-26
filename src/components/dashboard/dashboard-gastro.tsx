@@ -14,7 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { LivePreview, TransferConfig, DeliveryFeeConfig } from "@/components/dashboard/shared";
 import { MpConnectCard } from "@/components/dashboard/mp-connect-card";
 import { PrinterConfigSection } from "@/components/dashboard/printer-config-section";
-import { FiscalConfigSection } from "@/components/dashboard/fiscal-config-section";
+import { FiscalTabShortcut } from "@/components/dashboard/fiscal-config-section";
 import { HoursEditor } from "@/components/dashboard/hours-editor";
 import { LocationPicker } from "./location-picker";
 import { StaffManager } from "@/components/vendor/staff-manager";
@@ -526,7 +526,7 @@ export default function DashboardGastro({
       </ConfigSection>
 
       <ConfigSection id="fiscal" label="Facturación" icon="🧾" status={vendor?.fiscal_cert ? "ok" : vendor?.cuit ? "warn" : "off"}>
-      <FiscalConfigSection defaultOpen />
+      <FiscalTabShortcut />
       </ConfigSection>
 
       <ConfigSection id="menu" label="Menú" icon="🍽️">

@@ -21,7 +21,7 @@ import {
 } from "@/components/dashboard/shared";
 import { MpConnectCard } from "@/components/dashboard/mp-connect-card";
 import { PrinterConfigSection } from "@/components/dashboard/printer-config-section";
-import { FiscalConfigSection } from "@/components/dashboard/fiscal-config-section";
+import { FiscalTabShortcut } from "@/components/dashboard/fiscal-config-section";
 import { HoursEditor } from "@/components/dashboard/hours-editor";
 import { LocationPicker } from "./location-picker";
 import { ModifierLibrary } from "@/components/dashboard/modifier-editor";
@@ -579,7 +579,7 @@ export default function DashboardComercio({
       </ConfigSection>
 
       <ConfigSection id="fiscal" label="Facturación" icon="🧾" status={vendor?.fiscal_cert ? "ok" : vendor?.cuit ? "warn" : "off"}>
-      <FiscalConfigSection defaultOpen />
+      <FiscalTabShortcut />
       </ConfigSection>
 
       <ConfigSection id="catalogo" label="Catálogo" icon="🛍️" badge={String(offers.length)}>

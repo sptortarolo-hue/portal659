@@ -42,7 +42,7 @@ export const CONFIG_SECTION_DESCS: Record<string, string> = {
   preparacion: "Demora que ven tus clientes en el micrositio.",
   equipo: "Personal de reparto.",
   impresora: "Tickets y comandas en papel.",
-  fiscal: "Factura electrónica ARCA.",
+  fiscal: "Abrir la pestaña Facturación: comprobantes, NC y reportes.",
   menu: "Acceso rápido a tu carta.",
   catalogo: "Categorías y modificadores.",
 };

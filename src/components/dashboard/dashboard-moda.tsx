@@ -58,6 +58,9 @@ type Props = {
   onCrop: (target: "cover" | "logo" | "offer") => void;
   variants: ProductVariant[];
   productImages: ProductImage[];
+  /** Sección de Config controlada por la página (sidebar única). */
+  configSectionId?: string;
+  onConfigSectionId?: (id: string) => void;
 };
 
 type VariantRow = {
@@ -85,6 +88,8 @@ export default function DashboardModa({
   onCrop,
   variants,
   productImages,
+  configSectionId,
+  onConfigSectionId,
 }: Props) {
   const [storeName, setStoreName] = useState(vendor?.store_name || "");
   const [storeVertical, setStoreVertical] = useState(vendor?.vertical || "moda");
@@ -558,7 +563,7 @@ export default function DashboardModa({
     <form onSubmit={handleSave} className="space-y-4">
       <LivePreview storeName={storeName} storePreview={storePreview} vendor={vendor} logoPreview={logoPreview} description={description} hours={hours} address={address} paymentMethods={paymentMethods} whatsapp={whatsapp} isService={false} />
 
-      <ConfigSections storageKey="portal659-config-moda" openEvents={[{ event: "portal:open-printer-config", sectionId: "impresora" }]}>
+      <ConfigSections storageKey="portal659-config-moda" openEvents={[{ event: "portal:open-printer-config", sectionId: "impresora" }]} activeId={configSectionId} onActiveChange={onConfigSectionId}>
       <ConfigSection id="perfil" label="Perfil" icon="🏪">
         <div className="space-y-3">
           <div><Label>Tipo de comercio</Label><select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={storeVertical} onChange={(e) => setStoreVertical(e.target.value)}>{VERTICAL_OPTIONS.map((v) => <option key={v.value} value={v.value}>{v.label}</option>)}</select></div>

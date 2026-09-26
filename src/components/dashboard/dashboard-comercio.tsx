@@ -54,6 +54,9 @@ type Props = {
   saveVendor: (data: Record<string, unknown>) => Promise<void>;
   uploading: boolean;
   onCrop: (target: "cover" | "logo" | "offer") => void;
+  /** Sección de Config controlada por la página (sidebar única). */
+  configSectionId?: string;
+  onConfigSectionId?: (id: string) => void;
 };
 
 const VERTICAL_OPTIONS = [
@@ -99,6 +102,8 @@ export default function DashboardComercio({
   saveVendor,
   uploading,
   onCrop,
+  configSectionId,
+  onConfigSectionId,
 }: Props) {
   const [storeName, setStoreName] = useState(vendor?.store_name || "");
   const [storeVertical, setStoreVertical] = useState(vendor?.vertical || "comercio");
@@ -355,7 +360,7 @@ export default function DashboardComercio({
         isService={isService}
       />
 
-      <ConfigSections storageKey="portal659-config-comercio" openEvents={[{ event: "portal:open-printer-config", sectionId: "impresora" }]}>
+      <ConfigSections storageKey="portal659-config-comercio" openEvents={[{ event: "portal:open-printer-config", sectionId: "impresora" }]} activeId={configSectionId} onActiveChange={onConfigSectionId}>
       <ConfigSection id="perfil" label="Perfil" icon="🏪" badge={isService ? "Servicio" : undefined}>
         <div className="space-y-3">
           <div>

@@ -3,18 +3,10 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import {
-  BookOpen,
-  CreditCard,
-  MapPin,
-  Phone,
-  Printer,
-  Receipt,
-  ShoppingBag,
-  Store,
-  Users,
-  Settings2,
-  type LucideIcon,
-} from "lucide-react";
+  CONFIG_SECTION_DESCS,
+  CONFIG_SECTION_GROUPS,
+  configSectionIcon,
+} from "@/components/dashboard/config-nav";
 
 export type ConfigSectionDef = {
   id: string;
@@ -75,46 +67,18 @@ type Props = {
   defaultId?: string;
   /** Eventos externos que abren una sección (ej. portal:open-printer-config). */
   openEvents?: Array<{ event: string; sectionId: string }>;
+  /** Modo controlado (lo maneja dashboard/page para la sidebar única). */
+  activeId?: string;
+  onActiveChange?: (id: string) => void;
   children: ReactNode;
 };
 
-const SECTION_ICONS: Record<string, LucideIcon> = {
-  perfil: Store,
-  ubicacion: MapPin,
-  contacto: Phone,
-  pagos: CreditCard,
-  equipo: Users,
-  impresora: Printer,
-  fiscal: Receipt,
-  menu: BookOpen,
-  catalogo: ShoppingBag,
-};
-
-const SECTION_DESCS: Record<string, string> = {
-  perfil: "Nombre, descripción, fotos y galería de tu vidriera.",
-  ubicacion: "Dónde estás y cuándo abrís.",
-  contacto: "Cómo te contactan tus clientes.",
-  pagos: "Medios de pago, entrega, Mercado Pago y venta online.",
-  equipo: "Tiempos, personal y reparto.",
-  impresora: "Tickets y comandas en papel.",
-  fiscal: "Factura electrónica ARCA.",
-  menu: "Acceso rápido a tu carta.",
-  catalogo: "Categorías y modificadores.",
-};
-
-const SECTION_GROUPS: Array<{ id: string; label: string; sections: string[] }> = [
-  { id: "negocio", label: "Local", sections: ["perfil", "ubicacion", "contacto"] },
-  { id: "ventas", label: "Ventas", sections: ["pagos", "menu", "catalogo"] },
-  { id: "operacion", label: "Operación", sections: ["equipo", "impresora", "fiscal"] },
-];
-
 function SectionIcon({ id, fallback, className }: { id: string; fallback: string; className?: string }) {
-  const Icon = SECTION_ICONS[id];
-  if (!Icon) return <span className={className}>{fallback}</span>;
+  const Icon = configSectionIcon(id);
   return <Icon className={className} aria-hidden />;
 }
 
-function StatusDot({ status }: { status: "ok" | "warn" | "off" }) {
+export function StatusDot({ status }: { status: "ok" | "warn" | "off" }) {
   const color =
     status === "ok" ? "bg-green-500" : status === "warn" ? "bg-amber-500" : "bg-muted-foreground/40";
   const title = status === "ok" ? "Configurado" : status === "warn" ? "Incompleto" : "Sin configurar";
@@ -130,7 +94,14 @@ function StatusDot({ status }: { status: "ok" | "warn" | "off" }) {
  * persiste en localStorage. Sin dependencias con el guardado (saveVendor
  * sigue igual en cada dashboard).
  */
-export function ConfigSections({ storageKey, defaultId, openEvents = [], children }: Props) {
+export function ConfigSections({
+  storageKey,
+  defaultId,
+  openEvents = [],
+  activeId: controlledId,
+  onActiveChange,
+  children,
+}: Props) {
   const defs: ConfigSectionDef[] = [];
   const walk = (nodes: ReactNode): void => {
     const arr = Array.isArray(nodes) ? nodes : [nodes];
@@ -174,19 +145,23 @@ export function ConfigSections({ storageKey, defaultId, openEvents = [], childre
   };
   walk(children);
 
-  const grouped = SECTION_GROUPS.map((g) => ({
+  const grouped = CONFIG_SECTION_GROUPS.map((g) => ({
     ...g,
     items: defs.filter((d) => g.sections.includes(d.id)),
   })).filter((g) => g.items.length > 0);
-  const ungrouped = defs.filter((d) => !SECTION_GROUPS.some((g) => g.sections.includes(d.id)));
+  const ungrouped = defs.filter((d) => !CONFIG_SECTION_GROUPS.some((g) => g.sections.includes(d.id)));
 
-  const [activeId, setActiveId] = useState<string>(() => defaultId ?? defs[0]?.id ?? "");
+  const [innerId, setInnerId] = useState<string>(() => defaultId ?? defs[0]?.id ?? "");
+  // Modo controlado (sidebar única de dashboard/page) o interno.
+  const activeId = controlledId ?? innerId;
   const [mobileOpen, setMobileOpen] = useState(false);
   // Hidrata la sección persistida solo en cliente (evita mismatch de SSR).
+  // En modo controlado lo maneja el padre (dashboard/page).
   useEffect(() => {
+    if (controlledId !== undefined) return;
     try {
       const saved = localStorage.getItem(storageKey);
-      if (saved && defs.some((d) => d.id === saved)) setActiveId(saved);
+      if (saved && defs.some((d) => d.id === saved)) setInnerId(saved);
     } catch {
       /* sin storage: default */
     }
@@ -196,7 +171,8 @@ export function ConfigSections({ storageKey, defaultId, openEvents = [], childre
   const active = defs.find((d) => d.id === activeId) ?? defs[0];
 
   const activate = (id: string, openMobile = true) => {
-    setActiveId(id);
+    if (onActiveChange) onActiveChange(id);
+    else setInnerId(id);
     if (openMobile) setMobileOpen(true);
     try {
       localStorage.setItem(storageKey, id);
@@ -231,7 +207,7 @@ export function ConfigSections({ storageKey, defaultId, openEvents = [], childre
 
   if (!active) return null;
 
-  const desc = SECTION_DESCS[active.id];
+  const desc = CONFIG_SECTION_DESCS[active.id];
 
   return (
     <div>
@@ -306,69 +282,14 @@ export function ConfigSections({ storageKey, defaultId, openEvents = [], childre
         )}
       </div>
 
-      {/* Desktop: sub-nav lateral agrupada + contenido. */}
-      <div className="hidden md:flex md:gap-5 md:items-start">
-        <nav className="flex flex-col w-60 shrink-0 gap-4 sticky top-24">
-          {grouped.map((g) => (
-            <div key={g.id}>
-              <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground px-3 mb-1">
-                {g.label}
-              </p>
-              <div className="flex flex-col gap-0.5">
-                {g.items.map((d) => (
-                  <button
-                    key={d.id}
-                    type="button"
-                    onClick={() => activate(d.id, false)}
-                    className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium text-left transition-colors ${
-                      d.id === active.id
-                        ? "bg-primary/10 text-primary"
-                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                    }`}
-                  >
-                    <SectionIcon id={d.id} fallback={d.icon} className="h-[18px] w-[18px] flex-shrink-0" />
-                    <span className="flex-1">{d.label}</span>
-                    {d.badge && (
-                      <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-bold">
-                        {d.badge}
-                      </span>
-                    )}
-                    {d.status && <StatusDot status={d.status} />}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ))}
-          {ungrouped.length > 0 && (
-            <div className="flex flex-col gap-0.5">
-              {ungrouped.map((d) => (
-                <button
-                  key={d.id}
-                  type="button"
-                  onClick={() => activate(d.id, false)}
-                  className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium text-left transition-colors ${
-                    d.id === active.id
-                      ? "bg-primary/10 text-primary"
-                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                  }`}
-                >
-                  <SectionIcon id={d.id} fallback={d.icon} className="h-[18px] w-[18px] flex-shrink-0" />
-                  <span className="flex-1">{d.label}</span>
-                  {d.status && <StatusDot status={d.status} />}
-                </button>
-              ))}
-            </div>
-          )}
-        </nav>
-
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
-            <h3 className="font-display text-base font-semibold">{active.label}</h3>
-            {active.status && <StatusDot status={active.status} />}
-          </div>
-          {desc && <p className="text-xs text-muted-foreground mb-3">{desc}</p>}
-          <div className="space-y-3">{active.content}</div>
+      {/* Desktop: contenido a ancho completo (la nav vive en la sidebar única). */}
+      <div className="hidden md:block">
+        <div className="flex items-center gap-2 mb-1">
+          <h3 className="font-display text-base font-semibold">{active.label}</h3>
+          {active.status && <StatusDot status={active.status} />}
         </div>
+        {desc && <p className="text-xs text-muted-foreground mb-3">{desc}</p>}
+        <div className="space-y-3">{active.content}</div>
       </div>
     </div>
   );

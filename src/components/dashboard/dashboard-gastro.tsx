@@ -29,6 +29,9 @@ type Props = {
   saveVendor: (data: Record<string, unknown>) => Promise<void>;
   uploading: boolean;
   onCrop: (target: "cover" | "logo" | "offer") => void;
+  /** Sección de Config controlada por la página (sidebar única). */
+  configSectionId?: string;
+  onConfigSectionId?: (id: string) => void;
 };
 
 const CATEGORY_SUGGESTIONS: Record<string, string[]> = {
@@ -77,6 +80,8 @@ export default function DashboardGastro({
   saveVendor,
   uploading,
   onCrop,
+  configSectionId,
+  onConfigSectionId,
 }: Props) {
   const [storeName, setStoreName] = useState(vendor?.store_name || "");
   const [storeCategory, setStoreCategory] = useState(vendor?.category || "otras");
@@ -266,7 +271,7 @@ export default function DashboardGastro({
         isService={false}
       />
 
-      <ConfigSections storageKey="portal659-config-gastro" openEvents={[{ event: "portal:open-printer-config", sectionId: "impresora" }]}>
+      <ConfigSections storageKey="portal659-config-gastro" openEvents={[{ event: "portal:open-printer-config", sectionId: "impresora" }]} activeId={configSectionId} onActiveChange={onConfigSectionId}>
       <ConfigSection id="perfil" label="Perfil" icon="🏪">
         <div className="space-y-3">
           <div>

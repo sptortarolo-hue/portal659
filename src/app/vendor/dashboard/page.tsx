@@ -37,6 +37,7 @@ const ImageCropModal = dynamic(
 );
 import { DEFAULT_ZONE } from "@/lib/config";
 import VendorSidebar from "@/components/vendor/vendor-sidebar";
+import { configSectionStatus as getConfigSectionStatus, sectionsForVertical } from "@/components/dashboard/config-nav";
 import { NotificationBell } from "@/components/nav/notification-bell";
 import { UserMenu } from "@/components/nav/user-menu";
 import { DashboardHome } from "@/components/dashboard/dashboard-home";
@@ -192,6 +193,30 @@ function VendorDashboardInner() {
   const [variants, setVariants] = useState<ProductVariant[]>([]);
   const [productImages, setProductImages] = useState<ProductImage[]>([]);
   const [tab, setTab] = useState<DashTab>("hoy");
+  // Sección activa de Config (sidebar única): se persiste por vertical con
+  // la misma key que usa el shell (ConfigSections) en cada dashboard.
+  const [configSection, setConfigSection] = useState<string>("perfil");
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(`portal659-config-${vendor?.vertical || "gastro"}`);
+      if (saved) setConfigSection(saved);
+    } catch {
+      /* sin storage: default */
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vendor?.vertical]);
+  const handleConfigSection = useCallback(
+    (id: string) => {
+      setConfigSection(id);
+      setTab("config");
+      try {
+        localStorage.setItem(`portal659-config-${vendor?.vertical || "gastro"}`, id);
+      } catch {
+        /* noop */
+      }
+    },
+    [vendor?.vertical]
+  );
   // Las pestañas pesadas (fetch propio: comanda, mostrador, mesas, analytics,
   // reviews) se montan recién cuando el usuario las abre por primera vez.
   // Así el arranque del dashboard hace ~12 requests en vez de ~20 y el pool
@@ -871,13 +896,13 @@ function VendorDashboardInner() {
   } as const;
 
   const configContent = isGastro ? (
-    <DashboardGastro {...dashboardProps} />
+    <DashboardGastro {...dashboardProps} configSectionId={configSection} onConfigSectionId={handleConfigSection} />
   ) : isComercio ? (
-    <DashboardComercio {...dashboardProps} />
+    <DashboardComercio {...dashboardProps} configSectionId={configSection} onConfigSectionId={handleConfigSection} />
   ) : isService ? (
     <DashboardServicio {...dashboardProps} />
   ) : isModa ? (
-    <DashboardModa {...dashboardProps} variants={variants} productImages={productImages} />
+    <DashboardModa {...dashboardProps} variants={variants} productImages={productImages} configSectionId={configSection} onConfigSectionId={handleConfigSection} />
   ) : (
     <DashboardGenerico {...dashboardProps} />
   );
@@ -1273,6 +1298,10 @@ function VendorDashboardInner() {
         pendingMesasCount={pendingMesasCount}
         planName={effectivePlan.plan?.name ?? null}
         planSlug={effectivePlan.plan?.slug ?? null}
+        configNavSections={isService ? null : sectionsForVertical(vendor?.vertical)}
+        activeConfigSection={configSection}
+        onConfigSection={handleConfigSection}
+        configSectionStatus={(id) => getConfigSectionStatus(id, vendor)}
       />
       )}
 

@@ -1,6 +1,15 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+
+/** Vista mobile (<md, 768px): el drill-down usa esta media para decidir si pushea historial. */
+function isMobileView(): boolean {
+  try {
+    return typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches;
+  } catch {
+    return false;
+  }
+}
 import { Button } from "@/components/ui/button";
 import {
   CONFIG_SECTION_DESCS,
@@ -170,10 +179,38 @@ export function ConfigSections({
 
   const active = defs.find((d) => d.id === activeId) ?? defs[0];
 
-  const activate = (id: string, openMobile = true) => {
+  // Refs para el listener de popstate (evita closures rancias).
+  const defsRef = useRef(defs);
+  defsRef.current = defs;
+  const onActiveChangeRef = useRef(onActiveChange);
+  onActiveChangeRef.current = onActiveChange;
+
+  /**
+   * Sincroniza el detalle mobile con el historial del browser: cada apertura
+   * pushea `?seccion=<id>` para que el botón atrás del celu vuelva al menú
+   * (o al detalle anterior) en vez de sacar al usuario de la página.
+   */
+  const pushCfgState = (id: string, replace = false) => {
+    if (!isMobileView()) return;
+    try {
+      const st = window.history.state as { cfg?: string } | null;
+      if (!replace && st && st.cfg === id) return; // ya es la entrada actual
+      const url = new URL(window.location.href);
+      url.searchParams.set("seccion", id);
+      if (replace) window.history.replaceState({ cfg: id }, "", url.toString());
+      else window.history.pushState({ cfg: id }, "", url.toString());
+    } catch {
+      /* noop */
+    }
+  };
+
+  const activate = (id: string, openMobile = true, replace = false) => {
     if (onActiveChange) onActiveChange(id);
     else setInnerId(id);
-    if (openMobile) setMobileOpen(true);
+    if (openMobile) {
+      setMobileOpen(true);
+      pushCfgState(id, replace);
+    }
     try {
       localStorage.setItem(storageKey, id);
     } catch {
@@ -182,6 +219,77 @@ export function ConfigSections({
     const mapped = openEvents.find((o) => o.sectionId === id);
     if (mapped) window.dispatchEvent(new Event(mapped.event));
   };
+
+  /** Cierre del detalle mobile: vuelve por historial si la entrada es nuestra. */
+  const closeMobile = () => {
+    try {
+      const st = window.history.state as { cfg?: string } | null;
+      if (st && st.cfg) {
+        window.history.back();
+        return;
+      }
+    } catch {
+      /* noop */
+    }
+    setMobileOpen(false);
+    try {
+      const url = new URL(window.location.href);
+      if (url.searchParams.has("seccion")) {
+        url.searchParams.delete("seccion");
+        window.history.replaceState(window.history.state, "", url.toString());
+      }
+    } catch {
+      /* noop */
+    }
+  };
+
+  // Botón atrás del sistema (Android/iOS): vuelve al menú o al detalle
+  // anterior de la pila en vez de salir de la página.
+  useEffect(() => {
+    const onPop = () => {
+      let cfg: string | undefined;
+      try {
+        cfg = (window.history.state as { cfg?: string } | null)?.cfg;
+      } catch {
+        cfg = undefined;
+      }
+      if (cfg && defsRef.current.some((d) => d.id === cfg)) {
+        if (onActiveChangeRef.current) onActiveChangeRef.current(cfg);
+        else setInnerId(cfg);
+        setMobileOpen(true);
+      } else {
+        setMobileOpen(false);
+      }
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [setInnerId]);
+
+  // En modo controlado, si el padre cambia la sección (sidebar/drawer en
+  // mobile), se abre el detalle para no dejar al usuario en el menú.
+  const lastActiveRef = useRef(activeId);
+  useEffect(() => {
+    if (controlledId === undefined) return;
+    if (lastActiveRef.current === activeId) return;
+    lastActiveRef.current = activeId;
+    if (isMobileView()) {
+      setMobileOpen(true);
+      pushCfgState(activeId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeId, controlledId]);
+
+  // Al montar: deep-link ?seccion=<id> (replace para no ensuciar el
+  // historial: atrás desde un link directo sale de la página, es natural).
+  useEffect(() => {
+    try {
+      const q = new URLSearchParams(window.location.search).get("seccion");
+      if (q && defs.some((d) => d.id === q)) activate(q, true, true);
+    } catch {
+      /* noop */
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Al montar, si la sección persistida tiene evento asociado (ej. la
   // impresora se abrió desde el header), se dispara para expandirla.
@@ -226,11 +334,16 @@ export function ConfigSections({
                       key={d.id}
                       type="button"
                       onClick={() => activate(d.id)}
-                      className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-muted transition-colors"
+                      className="w-full flex items-center gap-3 px-4 py-3 min-h-[52px] text-left active:bg-muted transition-colors"
                     >
                       <SectionIcon id={d.id} fallback={d.icon} className="h-5 w-5 text-muted-foreground flex-shrink-0" />
                       <span className="flex-1 min-w-0">
                         <span className="block text-sm font-medium">{d.label}</span>
+                        {CONFIG_SECTION_DESCS[d.id] && (
+                          <span className="block text-xs text-muted-foreground truncate">
+                            {CONFIG_SECTION_DESCS[d.id]}
+                          </span>
+                        )}
                       </span>
                       {d.badge && (
                         <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-bold">
@@ -254,7 +367,14 @@ export function ConfigSections({
                     className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-muted transition-colors"
                   >
                     <SectionIcon id={d.id} fallback={d.icon} className="h-5 w-5 text-muted-foreground flex-shrink-0" />
-                    <span className="flex-1 text-sm font-medium">{d.label}</span>
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-sm font-medium">{d.label}</span>
+                      {CONFIG_SECTION_DESCS[d.id] && (
+                        <span className="block text-xs text-muted-foreground truncate">
+                          {CONFIG_SECTION_DESCS[d.id]}
+                        </span>
+                      )}
+                    </span>
                     {d.status && <StatusDot status={d.status} />}
                     <span className="text-muted-foreground flex-shrink-0">›</span>
                   </button>
@@ -266,7 +386,7 @@ export function ConfigSections({
           <div>
             <button
               type="button"
-              onClick={() => setMobileOpen(false)}
+              onClick={closeMobile}
               className="flex items-center gap-1 text-xs font-bold text-primary mb-2 py-1"
             >
               <span aria-hidden>‹</span> Configuración

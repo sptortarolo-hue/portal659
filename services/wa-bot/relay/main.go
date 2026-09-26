@@ -637,16 +637,24 @@ func (r *relay) readLoop(ctx context.Context, conn *websocket.Conn) {
 	}
 }
 
-func (r *relay) sendText(ctx context.Context, waID, text string) {
-	// ParseJID respeta el server original: los chats de no-contactos son
-	// LID (xxxxx@lid). Hardcodear DefaultUserServer mandaba las respuestas
-	// a un destinatario inexistente y WhatsApp las descartaba en silencio.
+// parseJIDForSend resuelve el JID destino de un envío. ParseJID respeta el
+// server original: los chats de no-contactos son LID (xxxxx@lid) y mandarlos
+// a DefaultUserServer los descartaba en silencio. PERO un número sin
+// "@server" (el teléfono E.164 de un pedido web) sale de ParseJID como
+// JID{User:"", Server:numero} SIN error → SendMessage fallaba con
+// "unknown server <numero>". Si el user quedó vacío, armar el JID de
+// usuario normal (numero@s.whatsapp.net).
+func parseJIDForSend(waID string) types.JID {
 	jid, err := types.ParseJID(waID)
-	if err != nil {
-		// Compat: si llegó sin "@server", asumir usuario normal.
+	if err != nil || jid.User == "" {
 		jid = types.NewJID(waID, types.DefaultUserServer)
 	}
-	_, err = r.client.SendMessage(ctx, jid, &waProto.Message{Conversation: proto.String(text)})
+	return jid
+}
+
+func (r *relay) sendText(ctx context.Context, waID, text string) {
+	jid := parseJIDForSend(waID)
+	_, err := r.client.SendMessage(ctx, jid, &waProto.Message{Conversation: proto.String(text)})
 	if err != nil {
 		log.Printf("send a %s: %v", waID, err)
 	}
@@ -655,10 +663,7 @@ func (r *relay) sendText(ctx context.Context, waID, text string) {
 // sendPresence emite el indicador de tipeo ("typing") o su fin ("paused").
 // Es lo que hace que WhatsApp muestre "escribiendo..." para el dueño.
 func (r *relay) sendPresence(ctx context.Context, waID, kind string) {
-	jid, err := types.ParseJID(waID)
-	if err != nil {
-		jid = types.NewJID(waID, types.DefaultUserServer)
-	}
+	jid := parseJIDForSend(waID)
 	presence := types.ChatPresenceComposing
 	if kind == "paused" {
 		presence = types.ChatPresencePaused

@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { CollapsibleSection } from "@/components/ui/collapsible-section";
+import { ConfigSection, ConfigSections } from "@/components/dashboard/config-sections";
 import { Switch } from "@/components/ui/switch";
 import { QuantityInput } from "@/components/ui/quantity-input";
 import { ChipToggle } from "@/components/ui/chip-toggle";
@@ -355,12 +355,8 @@ export default function DashboardComercio({
         isService={isService}
       />
 
-      <CollapsibleSection
-        icon="🏪"
-        title="Tu comercio"
-        defaultOpen
-        badge={isService ? "Servicio" : undefined}
-      >
+      <ConfigSections storageKey="portal659-config-comercio" openEvents={[{ event: "portal:open-printer-config", sectionId: "impresora" }]}>
+      <ConfigSection id="perfil" label="Perfil" icon="🏪" badge={isService ? "Servicio" : undefined}>
         <div className="space-y-3">
           <div>
             <Label>Tipo</Label>
@@ -402,9 +398,9 @@ export default function DashboardComercio({
             </datalist>
           </div>
         </div>
-      </CollapsibleSection>
+      </ConfigSection>
 
-      <CollapsibleSection icon="📍" title="Ubicación y horarios">
+      <ConfigSection id="ubicacion" label="Ubicación y horarios" icon="📍">
         <div className="space-y-3">
           <div>
             <Label>Dirección</Label>
@@ -428,9 +424,9 @@ export default function DashboardComercio({
             <HoursEditor value={hours} onChange={setHours} />
           </div>
         </div>
-      </CollapsibleSection>
+      </ConfigSection>
 
-      <CollapsibleSection icon="📸" title="Fotos">
+      <ConfigSection id="perfil" label="Perfil" icon="🏪">
         <div className="space-y-3">
           <div>
             <Label>Foto del comercio</Label>
@@ -463,17 +459,17 @@ export default function DashboardComercio({
             )}
           </div>
         </div>
-      </CollapsibleSection>
+      </ConfigSection>
 
-      <CollapsibleSection icon="📝" title="Descripción">
+      <ConfigSection id="perfil" label="Perfil" icon="🏪">
         <Textarea
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           placeholder="Contá qué vendés..."
         />
-      </CollapsibleSection>
+      </ConfigSection>
 
-      <CollapsibleSection icon="📱" title="Contacto">
+      <ConfigSection id="contacto" label="Contacto y redes" icon="📱">
         <div className="space-y-3">
           <div>
             <Label>WhatsApp</Label>
@@ -492,9 +488,9 @@ export default function DashboardComercio({
             />
           </div>
         </div>
-      </CollapsibleSection>
+      </ConfigSection>
 
-      <CollapsibleSection icon="🌐" title="Redes sociales">
+      <ConfigSection id="contacto" label="Contacto y redes" icon="📱">
         <div className="space-y-3">
           <div>
             <Label>Instagram</Label>
@@ -513,9 +509,9 @@ export default function DashboardComercio({
             />
           </div>
         </div>
-      </CollapsibleSection>
+      </ConfigSection>
 
-      <CollapsibleSection icon="💳" title="Pago y entrega">
+      <ConfigSection id="pagos" label="Pagos y entrega" icon="💳">
         <div className="space-y-4">
           <div>
             <Label className="mb-2 block">Medios de pago</Label>
@@ -579,22 +575,22 @@ export default function DashboardComercio({
             />
           </div>
         </div>
-      </CollapsibleSection>
+      </ConfigSection>
 
+      <ConfigSection id="impresora" label="Impresora" icon="🖨️">
       <PrinterConfigSection
         vendor={vendor}
         saveVendor={saveVendor}
         setMsg={setMsg}
         autoPrintDesc="Imprime el ticket automáticamente cuando entra un pedido online pago"
       />
+      </ConfigSection>
 
-      <FiscalConfigSection />
+      <ConfigSection id="fiscal" label="Facturación" icon="🧾">
+      <FiscalConfigSection defaultOpen />
+      </ConfigSection>
 
-      <CollapsibleSection
-        icon="🛍️"
-        title="Catálogo"
-        badge={`${offers.length}`}
-      >
+      <ConfigSection id="catalogo" label="Catálogo" icon="🛍️" badge={String(offers.length)}>
         <div className="space-y-4">
           <p className="text-sm text-muted-foreground">
             Productos, precios, stock y fotos se gestionan con edición completa
@@ -660,11 +656,12 @@ export default function DashboardComercio({
             }}
           />
         </div>
-      </CollapsibleSection>
+      </ConfigSection>
 
-      <CollapsibleSection icon="⚙️" title="Modificadores">
+      <ConfigSection id="catalogo" label="Catálogo" icon="🛍️">
         <ModifierLibrary products={offers.map((o) => ({ id: o.id, name: o.name }))} />
-      </CollapsibleSection>
+      </ConfigSection>
+      </ConfigSections>
 
       {msg && (
         <p

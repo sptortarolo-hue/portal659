@@ -204,7 +204,7 @@ function FiscalReport() {
  * server) + entorno homo/prod + historial de comprobantes con CAE.
  * Sin plan Gestión muestra el upsell.
  */
-export function FiscalConfigSection() {
+export function FiscalConfigSection({ defaultOpen = false }: { defaultOpen?: boolean }) {
   const [status, setStatus] = useState<FiscalStatus | null>(null);
   const [invoices, setInvoices] = useState<InvoiceRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -372,7 +372,7 @@ export function FiscalConfigSection() {
   }
 
   return (
-    <CollapsibleSection icon="🧾" title="Facturación electrónica (ARCA)">
+    <CollapsibleSection icon="🧾" title="Facturación electrónica (ARCA)" defaultOpen={defaultOpen}>
       {loading || !status ? (
         <p className="text-sm text-muted-foreground">
           {loading ? "Cargando…" : "No se pudo cargar. Reintentá."}

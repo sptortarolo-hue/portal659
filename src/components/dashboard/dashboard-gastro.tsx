@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { CollapsibleSection } from "@/components/ui/collapsible-section";
+import { ConfigSection, ConfigSections } from "@/components/dashboard/config-sections";
 import { Switch } from "@/components/ui/switch";
 import { ChipToggle } from "@/components/ui/chip-toggle";
 import { RadioCards } from "@/components/ui/radio-cards";
@@ -266,7 +266,8 @@ export default function DashboardGastro({
         isService={false}
       />
 
-      <CollapsibleSection icon="🏪" title="Tu comercio" defaultOpen>
+      <ConfigSections storageKey="portal659-config-gastro" openEvents={[{ event: "portal:open-printer-config", sectionId: "impresora" }]}>
+      <ConfigSection id="perfil" label="Perfil" icon="🏪">
         <div className="space-y-3">
           <div>
             <Label>Nombre</Label>
@@ -292,9 +293,9 @@ export default function DashboardGastro({
             </datalist>
           </div>
         </div>
-      </CollapsibleSection>
+      </ConfigSection>
 
-      <CollapsibleSection icon="📍" title="Ubicación y horarios">
+      <ConfigSection id="ubicacion" label="Ubicación y horarios" icon="📍">
         <div className="space-y-3">
           <div>
             <Label>Dirección</Label>
@@ -318,9 +319,9 @@ export default function DashboardGastro({
             <HoursEditor value={hours} onChange={setHours} />
           </div>
         </div>
-      </CollapsibleSection>
+      </ConfigSection>
 
-      <CollapsibleSection icon="📸" title="Fotos">
+      <ConfigSection id="perfil" label="Perfil" icon="🏪">
         <div className="space-y-3">
           <div>
             <Label>Foto del comercio</Label>
@@ -367,17 +368,17 @@ export default function DashboardGastro({
             )}
           </div>
         </div>
-      </CollapsibleSection>
+      </ConfigSection>
 
-      <CollapsibleSection icon="📝" title="Descripción">
+      <ConfigSection id="perfil" label="Perfil" icon="🏪">
         <Textarea
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           placeholder="Contá qué hacés..."
         />
-      </CollapsibleSection>
+      </ConfigSection>
 
-      <CollapsibleSection icon="📱" title="Contacto">
+      <ConfigSection id="contacto" label="Contacto y redes" icon="📱">
         <div className="space-y-3">
           <div>
             <Label>WhatsApp</Label>
@@ -396,9 +397,9 @@ export default function DashboardGastro({
             />
           </div>
         </div>
-      </CollapsibleSection>
+      </ConfigSection>
 
-      <CollapsibleSection icon="🌐" title="Redes sociales">
+      <ConfigSection id="contacto" label="Contacto y redes" icon="📱">
         <div className="space-y-3">
           <div>
             <Label>Instagram</Label>
@@ -417,9 +418,9 @@ export default function DashboardGastro({
             />
           </div>
         </div>
-      </CollapsibleSection>
+      </ConfigSection>
 
-      <CollapsibleSection icon="💳" title="Pago y entrega">
+      <ConfigSection id="pagos" label="Pagos y entrega" icon="💳">
         <div className="space-y-4">
           <div>
             <Label className="mb-2 block">Medios de pago</Label>
@@ -483,9 +484,9 @@ export default function DashboardGastro({
             />
           </div>
         </div>
-      </CollapsibleSection>
+      </ConfigSection>
 
-      <CollapsibleSection icon="⏱️" title="Tiempo de preparación">
+      <ConfigSection id="equipo" label="Equipo y preparación" icon="⏱️">
         <div className="space-y-3">
             <div>
               <Label>Tiempo de preparación</Label>
@@ -522,17 +523,21 @@ export default function DashboardGastro({
               </p>
             </div>
         </div>
-      </CollapsibleSection>
+      </ConfigSection>
 
-      <CollapsibleSection icon="🛵" title="Equipo / Repartidor">
+      <ConfigSection id="equipo" label="Equipo y preparación" icon="⏱️">
         <StaffManager storeName={vendor?.store_name} />
-      </CollapsibleSection>
+      </ConfigSection>
 
+      <ConfigSection id="impresora" label="Impresora" icon="🖨️">
       <PrinterConfigSection vendor={vendor} saveVendor={saveVendor} setMsg={setMsg} />
+      </ConfigSection>
 
-      <FiscalConfigSection />
+      <ConfigSection id="fiscal" label="Facturación" icon="🧾">
+      <FiscalConfigSection defaultOpen />
+      </ConfigSection>
 
-      <CollapsibleSection icon="🍽️" title="Menú" defaultOpen>
+      <ConfigSection id="menu" label="Menú" icon="🍽️">
         <div className="space-y-3">
           <p className="text-sm text-muted-foreground">
             Platos, categorías, opciones, precios por volumen e importación de Excel ahora se
@@ -546,9 +551,9 @@ export default function DashboardGastro({
             🍽️ Ir al Menú
           </Button>
         </div>
-      </CollapsibleSection>
+      </ConfigSection>
 
-      <CollapsibleSection icon="🖼️" title={`Galería (${gallery.length})`}>
+      <ConfigSection id="perfil" label="Perfil" icon="🏪" badge={gallery.length > 0 ? String(gallery.length) : undefined}>
         <div className="space-y-3">
           <input ref={galleryFileRef} type="file" accept="image/*" onChange={handleGalleryUpload} className="hidden" />
           <Button type="button" onClick={() => galleryFileRef.current?.click()} disabled={galleryUploading} className="w-full" variant="outline">
@@ -571,7 +576,8 @@ export default function DashboardGastro({
             </div>
           )}
         </div>
-      </CollapsibleSection>
+      </ConfigSection>
+      </ConfigSections>
 
       {msg && (
         <p className="text-sm text-red-600">{msg}</p>

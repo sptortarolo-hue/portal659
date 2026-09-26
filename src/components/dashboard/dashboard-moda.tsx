@@ -19,6 +19,7 @@ import { HoursEditor } from "@/components/dashboard/hours-editor";
 import { SIZE_GUIDE_TEMPLATES, templateToText } from "@/lib/size-guides";
 import { LocationPicker } from "./location-picker";
 import { PrinterConfigSection } from "@/components/dashboard/printer-config-section";
+import { ConfigSection, ConfigSections } from "@/components/dashboard/config-sections";
 import { FiscalConfigSection } from "@/components/dashboard/fiscal-config-section";
 import type { Vendor, Product, ProductVariant, ProductImage } from "@/types/database";
 
@@ -557,48 +558,49 @@ export default function DashboardModa({
     <form onSubmit={handleSave} className="space-y-4">
       <LivePreview storeName={storeName} storePreview={storePreview} vendor={vendor} logoPreview={logoPreview} description={description} hours={hours} address={address} paymentMethods={paymentMethods} whatsapp={whatsapp} isService={false} />
 
-      <CollapsibleSection icon="🏪" title="Tu comercio" defaultOpen>
+      <ConfigSections storageKey="portal659-config-moda" openEvents={[{ event: "portal:open-printer-config", sectionId: "impresora" }]}>
+      <ConfigSection id="perfil" label="Perfil" icon="🏪">
         <div className="space-y-3">
           <div><Label>Tipo de comercio</Label><select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={storeVertical} onChange={(e) => setStoreVertical(e.target.value)}>{VERTICAL_OPTIONS.map((v) => <option key={v.value} value={v.value}>{v.label}</option>)}</select></div>
           <div><Label>Nombre</Label><Input value={storeName} onChange={(e) => setStoreName(e.target.value)} required /></div>
           <div><Label>Categoría</Label><Input value={storeCategory} onChange={(e) => setStoreCategory(e.target.value)} placeholder="Ej: ropa, calzado, accesorios..." /></div>
         </div>
-      </CollapsibleSection>
+      </ConfigSection>
 
-      <CollapsibleSection icon="📍" title="Ubicación y horarios">
+      <ConfigSection id="ubicacion" label="Ubicación y horarios" icon="📍">
         <div className="space-y-3">
           <div><Label>Dirección</Label><Input value={address} onChange={(e) => setAddress(e.target.value)} /></div>
           <LocationPicker lat={lat} lng={lng} onChange={(newLat, newLng) => { setLat(newLat); setLng(newLng); }} neighborhood={vendor?.neighborhood} />
           <div><Label>Horarios</Label><HoursEditor value={hours} onChange={setHours} /></div>
         </div>
-      </CollapsibleSection>
+      </ConfigSection>
 
-      <CollapsibleSection icon="📸" title="Fotos del local">
+      <ConfigSection id="perfil" label="Perfil" icon="🏪">
         <div className="space-y-3">
           <div><Label>Foto del comercio</Label><Input type="file" accept="image/*" onChange={(e) => { const f = e.target.files?.[0] || null; if (f) { setStoreFile(f); setStorePreview(URL.createObjectURL(f)); } }} />{storePreview && <img src={storePreview} alt="" className="mt-2 h-24 w-full object-cover rounded-lg" />}</div>
           <div><Label>Logo</Label><Input type="file" accept="image/*" onChange={(e) => { const f = e.target.files?.[0] || null; if (f) { setLogoFile(f); setLogoPreview(URL.createObjectURL(f)); } }} />{logoPreview && <img src={logoPreview} alt="" className="mt-2 h-16 w-16 object-cover rounded-full border" />}</div>
         </div>
-      </CollapsibleSection>
+      </ConfigSection>
 
-      <CollapsibleSection icon="📝" title="Descripción">
+      <ConfigSection id="perfil" label="Perfil" icon="🏪">
         <Textarea value={description} onChange={(e) => setDescription(e.target.value)} />
-      </CollapsibleSection>
+      </ConfigSection>
 
-      <CollapsibleSection icon="📱" title="Contacto">
+      <ConfigSection id="contacto" label="Contacto y redes" icon="📱">
         <div className="space-y-3">
           <div><Label>WhatsApp</Label><Input value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} /></div>
           <div><Label>Teléfono</Label><Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="2215550000" /></div>
         </div>
-      </CollapsibleSection>
+      </ConfigSection>
 
-      <CollapsibleSection icon="🌐" title="Redes sociales">
+      <ConfigSection id="contacto" label="Contacto y redes" icon="📱">
         <div className="space-y-3">
           <div><Label>Instagram</Label><Input value={instagram} onChange={(e) => setInstagram(e.target.value)} placeholder="@tulocal" /></div>
           <div><Label>Facebook</Label><Input value={facebook} onChange={(e) => setFacebook(e.target.value)} placeholder="https://facebook.com/tulocal" /></div>
         </div>
-      </CollapsibleSection>
+      </ConfigSection>
 
-      <CollapsibleSection icon="💳" title="Pago y entrega">
+      <ConfigSection id="pagos" label="Pagos y entrega" icon="💳">
         <div className="space-y-4">
           <div><Label className="mb-2 block">Medios de pago</Label><ChipToggle options={PAYMENT_OPTIONS} value={paymentMethods} onChange={setPaymentMethods} /></div>
           {paymentMethods.includes("Transferencia") && (
@@ -648,16 +650,21 @@ export default function DashboardModa({
             />
           </div>
         </div>
-      </CollapsibleSection>
+      </ConfigSection>
 
+      <ConfigSection id="impresora" label="Impresora" icon="🖨️">
       <PrinterConfigSection
         vendor={vendor}
         saveVendor={saveVendor}
         setMsg={setMsg}
         autoPrintDesc="Imprime el ticket automáticamente cuando entra un pedido online pago"
       />
+      </ConfigSection>
 
-      <FiscalConfigSection />
+      <ConfigSection id="fiscal" label="Facturación" icon="🧾">
+      <FiscalConfigSection defaultOpen />
+      </ConfigSection>
+      </ConfigSections>
 
       <Button type="submit" className="w-full" disabled={saving || uploading}>{saving ? "Guardando..." : "Guardar cambios"}</Button>
     </form>

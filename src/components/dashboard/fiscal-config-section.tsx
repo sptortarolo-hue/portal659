@@ -20,6 +20,7 @@ type FiscalStatus = {
 
 type InvoiceRow = {
   id: string;
+  cbte_tipo: number;
   cbte_nro: number;
   punto_venta: number;
   cae: string;
@@ -29,7 +30,14 @@ type InvoiceRow = {
   created_at: string;
   pickup_number: number | null;
   customer_name: string | null;
+  asoc_pto?: number | null;
+  asoc_nro?: number | null;
 };
+
+/** Etiqueta corta del comprobante (11 = Factura C, 13 = Nota de Crédito C). */
+function cbteLabel(tipo: number | null | undefined): string {
+  return tipo === 13 ? "NC" : "C";
+}
 
 /**
  * Asistente guiado de 5 pasos (estilo facturadores SaaS): cada paso muestra
@@ -507,11 +515,16 @@ export function FiscalConfigSection() {
                     className="flex items-center gap-2 rounded-lg bg-muted px-2 py-1.5 text-xs"
                   >
                     <span className="font-extrabold tabular-nums">
-                      C {String(inv.punto_venta).padStart(4, "0")}-{String(inv.cbte_nro).padStart(8, "0")}
+                      {cbteLabel(inv.cbte_tipo)} {String(inv.punto_venta).padStart(4, "0")}-{String(inv.cbte_nro).padStart(8, "0")}
                     </span>
                     <span className="text-muted-foreground tabular-nums">
                       ${Number(inv.total).toLocaleString("es-AR")}
                     </span>
+                    {inv.cbte_tipo === 13 && inv.asoc_nro != null && (
+                      <span className="text-muted-foreground" title="Factura anulada">
+                        → {String(inv.asoc_pto ?? inv.punto_venta).padStart(4, "0")}-{String(inv.asoc_nro).padStart(8, "0")}
+                      </span>
+                    )}
                     <span className="ml-auto text-muted-foreground tabular-nums" title={`CAE ${inv.cae}`}>
                       CAE …{inv.cae.slice(-4)}
                       {inv.env === "homo" ? " 🧪" : ""}

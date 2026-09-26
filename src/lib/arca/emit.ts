@@ -1,5 +1,5 @@
 /**
- * Orquestador de emisión: Factura C para un pedido cobrado.
+ * Orquestador de emisión: Factura C y Nota de Crédito C.
  *
  *   auth (cert descifrado) → último autorizado → próximo número →
  *   solicitar CAE → (si 10016/duplicado: consultar y recuperar) → QR.
@@ -10,9 +10,11 @@
 import { ArcaError } from "./wsaa";
 import {
   CBTE_FACTURA_C,
+  CBTE_NOTA_CREDITO_C,
   consultarComprobante,
   solicitarCaeC,
   ultimoAutorizado,
+  type CbteAsociado,
   type WsfeAuth,
 } from "./wsfe";
 import { buildQrUrl } from "./qr";
@@ -29,60 +31,116 @@ export type EmitirFacturaCResult = {
   recovered: boolean;
 };
 
-export async function emitirFacturaC(
+/** Fila de comprobante (espejo de `invoices` para las rutas API). */
+export type FiscalInvoice = {
+  id: string;
+  order_id: string;
+  cbte_tipo: number;
+  punto_venta: number;
+  cbte_nro: number;
+  cae: string;
+  cae_vto: string;
+  total: number;
+  env: string;
+  created_at: string;
+  asoc_tipo?: number | null;
+  asoc_pto?: number | null;
+  asoc_nro?: number | null;
+};
+
+export type EmitirComprobanteInput = {
+  cbteTipo: number;
+  puntoVenta: number;
+  total: number;
+  fecha?: Date;
+  cbtesAsoc?: CbteAsociado[];
+};
+
+async function emitirComprobante(
   auth: WsfeAuth,
-  puntoVenta: number,
-  total: number,
-  fecha?: Date
+  input: EmitirComprobanteInput
 ): Promise<EmitirFacturaCResult> {
-  const when = fecha ?? new Date();
-  const ultimo = await ultimoAutorizado(auth, puntoVenta, CBTE_FACTURA_C);
+  const when = input.fecha ?? new Date();
+  const ultimo = await ultimoAutorizado(auth, input.puntoVenta, input.cbteTipo);
   const cbteNro = ultimo + 1;
 
+  const qrFor = (nro: number, cae: string) =>
+    buildQrUrl({
+      cuit: auth.cuit,
+      ptoVta: input.puntoVenta,
+      cbteTipo: input.cbteTipo,
+      cbteNro: nro,
+      importe: input.total,
+      cae,
+      fecha: when,
+    });
+
   try {
-    const r = await solicitarCaeC(auth, { ptoVta: puntoVenta, cbteNro, total, fecha: when });
+    const r = await solicitarCaeC(auth, {
+      ptoVta: input.puntoVenta,
+      cbteNro,
+      total: input.total,
+      fecha: when,
+      cbteTipo: input.cbteTipo,
+      cbtesAsoc: input.cbtesAsoc,
+    });
     return {
-      cbteTipo: CBTE_FACTURA_C,
-      puntoVenta,
+      cbteTipo: input.cbteTipo,
+      puntoVenta: input.puntoVenta,
       cbteNro: r.cbteNro,
       cae: r.cae,
       caeVto: r.caeVto,
-      qrUrl: buildQrUrl({
-        cuit: auth.cuit,
-        ptoVta: puntoVenta,
-        cbteTipo: CBTE_FACTURA_C,
-        cbteNro: r.cbteNro,
-        importe: total,
-        cae: r.cae,
-        fecha: when,
-      }),
+      qrUrl: qrFor(r.cbteNro, r.cae),
       recovered: false,
     };
   } catch (e) {
     // Número ya autorizado (corte a mitad de camino o retry): se recupera
     // el CAE existente en vez de facturar duplicado.
     if (e instanceof ArcaError && (e as { duplicate?: boolean }).duplicate === true) {
-      const found = await consultarComprobante(auth, puntoVenta, cbteNro);
+      const found = await consultarComprobante(auth, input.puntoVenta, input.cbteTipo, cbteNro);
       if (found) {
         return {
-          cbteTipo: CBTE_FACTURA_C,
-          puntoVenta,
+          cbteTipo: input.cbteTipo,
+          puntoVenta: input.puntoVenta,
           cbteNro: found.cbteNro,
           cae: found.cae,
           caeVto: found.caeVto,
-          qrUrl: buildQrUrl({
-            cuit: auth.cuit,
-            ptoVta: puntoVenta,
-            cbteTipo: CBTE_FACTURA_C,
-            cbteNro: found.cbteNro,
-            importe: total,
-            cae: found.cae,
-            fecha: when,
-          }),
+          qrUrl: qrFor(found.cbteNro, found.cae),
           recovered: true,
         };
       }
     }
     throw e;
   }
+}
+
+export async function emitirFacturaC(
+  auth: WsfeAuth,
+  puntoVenta: number,
+  total: number,
+  fecha?: Date
+): Promise<EmitirFacturaCResult> {
+  return emitirComprobante(auth, {
+    cbteTipo: CBTE_FACTURA_C,
+    puntoVenta,
+    total,
+    fecha,
+  });
+}
+
+/** Nota de Crédito C por el total, asociada a la factura original. */
+export async function emitirNotaCreditoC(
+  auth: WsfeAuth,
+  puntoVenta: number,
+  total: number,
+  asociada: CbteAsociado,
+  fecha?: Date
+): Promise<EmitirFacturaCResult> {
+  return emitirComprobante(auth, {
+    cbteTipo: CBTE_NOTA_CREDITO_C,
+    puntoVenta,
+    total,
+    fecha,
+    cbtesAsoc: [asociada],
+  });
 }

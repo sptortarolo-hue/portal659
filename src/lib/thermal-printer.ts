@@ -599,6 +599,10 @@ export type FiscalPrintInfo = {
   fechaEmision?: string | null;
   /** Condición IVA del emisor (vendors.fiscal_cond_iva). */
   condIva?: string | null;
+  /** Título del documento (default "FACTURA C"). */
+  docLabel?: string | null;
+  /** Nro. de factura asociada (NC), ya formateado "0001-00000001". */
+  asocLabel?: string | null;
   /** URL de verificación ARCA (QR). Se genera al imprimir si no viene. */
   qrUrl?: string;
 };
@@ -637,6 +641,7 @@ async function composeFiscalHeader(
   fiscal: FiscalPrintInfo
 ): Promise<void> {
   const nro = `${String(fiscal.puntoVenta).padStart(4, "0")}-${String(fiscal.cbteNro).padStart(8, "0")}`;
+  const title = fiscal.docLabel || "FACTURA C";
   printer.alignCenter();
   printer.println(separatorFor(width));
   printer.bold(true);
@@ -644,10 +649,21 @@ async function composeFiscalHeader(
   printer.println("|  C  |");
   printer.println("+-----+");
   printer.println("ORIGINAL");
+  // Título en doble alto solo si entra (NOTA DE CRÉDITO C no entra en 58mm).
+  if (title.length * 2 <= width) {
+    printer.setTextSize(2, 2);
+    printer.println(title);
+    printer.setTextSize(0, 0);
+  } else {
+    printer.println(title);
+  }
   printer.bold(false);
   printer.bold(true);
-  printer.println(`FACTURA Nº ${nro}`);
+  printer.println(`Nº ${nro}`);
   printer.bold(false);
+  if (fiscal.asocLabel) {
+    printer.println(`Anula a: ${fiscal.asocLabel}`);
+  }
   const fecha = fiscal.fechaEmision ? formatFiscalDate(fiscal.fechaEmision) : null;
   if (width > 32 && fecha) {
     printer.println(`Fecha: ${fecha} · CUIT: ${fiscal.cuit}`);

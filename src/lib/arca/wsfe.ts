@@ -8,6 +8,8 @@
 import { ArcaError, dropWsaaTicket, getWsaaTicket, redactXml, type ArcaEnv } from "./wsaa";
 
 export const CBTE_FACTURA_C = 11;
+/** Nota de Crédito C (anulaciones/devoluciones, asociada a la factura). */
+export const CBTE_NOTA_CREDITO_C = 13;
 
 /**
  * Condición frente al IVA del receptor (tabla FEParamGetCondicionIvaReceptor).
@@ -177,6 +179,12 @@ export async function ultimoAutorizado(
   });
 }
 
+export type CbteAsociado = {
+  tipo: number;
+  ptoVta: number;
+  nro: number;
+};
+
 export type SolicitarCaeInput = {
   ptoVta: number;
   cbteNro: number;
@@ -184,6 +192,10 @@ export type SolicitarCaeInput = {
   total: number;
   /** Fecha del comprobante (default: hoy). */
   fecha?: Date;
+  /** Tipo de comprobante (default: Factura C). */
+  cbteTipo?: number;
+  /** Comprobantes asociados (obligatorio en NC: la factura original). */
+  cbtesAsoc?: CbteAsociado[];
 };
 
 export type SolicitarCaeResult = {
@@ -208,6 +220,12 @@ export async function solicitarCaeC(
   }
   const imp = money(input.total);
   const fch = yyyymmdd(input.fecha ?? new Date());
+  const asoc = (input.cbtesAsoc || [])
+    .map(
+      (a) =>
+        `<CbteAsoc><Tipo>${a.tipo}</Tipo><PtoVta>${a.ptoVta}</PtoVta><Nro>${a.nro}</Nro></CbteAsoc>`
+    )
+    .join("");
 
   return withTicket(auth, async (token, sign) => {
     const det =
@@ -216,13 +234,15 @@ export async function solicitarCaeC(
       `<CbteFch>${fch}</CbteFch><ImpTotal>${imp}</ImpTotal><ImpTotConc>0</ImpTotConc>` +
       `<ImpNeto>${imp}</ImpNeto><ImpOpEx>0</ImpOpEx><ImpTrib>0</ImpTrib><ImpIVA>0</ImpIVA>` +
       `<MonId>PES</MonId><MonCotiz>1</MonCotiz>` +
-      `<CondicionIVAReceptorId>${CONDICION_IVA_CONSUMIDOR_FINAL}</CondicionIVAReceptorId></FECAEDetRequest>`;
+      `<CondicionIVAReceptorId>${CONDICION_IVA_CONSUMIDOR_FINAL}</CondicionIVAReceptorId>` +
+      (asoc ? `<CbtesAsoc>${asoc}</CbtesAsoc>` : "") +
+      `</FECAEDetRequest>`;
     const body =
       `<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" ` +
       `><soap:Header/><soap:Body>` +
       `<FECAESolicitar xmlns="http://ar.gov.afip.dif.FEV1/">${authBlock(token, sign, auth.cuit)}` +
       `<FeCAEReq><FeCabReq><CantReg>1</CantReg>` +
-      `<PtoVta>${input.ptoVta}</PtoVta><CbteTipo>${CBTE_FACTURA_C}</CbteTipo>` +
+      `<PtoVta>${input.ptoVta}</PtoVta><CbteTipo>${input.cbteTipo ?? CBTE_FACTURA_C}</CbteTipo>` +
       `</FeCabReq><FeDetReq>${det}</FeDetReq></FeCAEReq>` +
       `</FECAESolicitar></soap:Body></soap:Envelope>`;
     const xml = await soapFetch(
@@ -273,6 +293,7 @@ export type ConsultarResult = {
 export async function consultarComprobante(
   auth: WsfeAuth,
   ptoVta: number,
+  cbteTipo: number,
   cbteNro: number
 ): Promise<ConsultarResult> {
   return withTicket(auth, async (token, sign) => {
@@ -281,7 +302,7 @@ export async function consultarComprobante(
       `><soap:Header/><soap:Body>` +
       `<FECompConsultar xmlns="http://ar.gov.afip.dif.FEV1/">${authBlock(token, sign, auth.cuit)}` +
       `<FeCompConsReq><PtoVta>${ptoVta}</PtoVta>` +
-      `<CbteTipo>${CBTE_FACTURA_C}</CbteTipo><CbteNro>${cbteNro}</CbteNro>` +
+      `<CbteTipo>${cbteTipo}</CbteTipo><CbteNro>${cbteNro}</CbteNro>` +
       `</FeCompConsReq></FECompConsultar></soap:Body></soap:Envelope>`;
     const xml = await soapFetch(
       WSFE_URL[auth.env],

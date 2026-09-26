@@ -101,22 +101,47 @@ export async function POST(request: Request) {
   let fiscal: FiscalPrintInfo | null = null;
   if (resolvedType === "ticket") {
     try {
-      const inv = await queryOne<{
+      // invoiceId opcional: reimprime un comprobante puntual (ej. la NC en
+      // vez de la factura). Sin él, el primero del pedido.
+      const invoiceId = typeof body.invoiceId === "string" && body.invoiceId ? body.invoiceId : null;
+      type InvRow = {
+        cbte_tipo: number;
         punto_venta: number;
         cbte_nro: number;
         cae: string;
         cae_vto: string;
         total: number;
         created_at: string;
-      }>(
-        `SELECT punto_venta, cbte_nro, cae,
-                CASE WHEN pg_typeof(cae_vto) = 'date'::regtype THEN to_char(cae_vto, 'YYYYMMDD') ELSE cae_vto::text END AS cae_vto,
-                total, created_at
-         FROM invoices WHERE vendor_id = $1 AND order_id = $2 LIMIT 1`,
-        [vendor.id, orderId]
-      );
+        asoc_pto: number | null;
+        asoc_nro: number | null;
+      };
+      const caeVtoSql = `CASE WHEN pg_typeof(cae_vto) = 'date'::regtype THEN to_char(cae_vto, 'YYYYMMDD') ELSE cae_vto::text END AS cae_vto`;
+      const whereSql = invoiceId
+        ? `WHERE vendor_id = $1 AND id = $2 LIMIT 1`
+        : `WHERE vendor_id = $1 AND order_id = $2 ORDER BY created_at ASC LIMIT 1`;
+      const whereVals = invoiceId ? [vendor.id, invoiceId] : [vendor.id, orderId];
+      // Tolerante a migrate-fiscal-nc.sql sin aplicar (sin asoc_* igual
+      // imprime la factura).
+      let inv: InvRow | null = null;
+      try {
+        inv =
+          (await queryOne<InvRow>(
+            `SELECT cbte_tipo, punto_venta, cbte_nro, cae, ${caeVtoSql}, total, created_at, asoc_pto, asoc_nro
+             FROM invoices ${whereSql}`,
+            whereVals
+          )) ?? null;
+      } catch {
+        inv =
+          (await queryOne<InvRow>(
+            `SELECT cbte_tipo, punto_venta, cbte_nro, cae, ${caeVtoSql}, total, created_at,
+                    NULL::integer AS asoc_pto, NULL::bigint AS asoc_nro
+             FROM invoices ${whereSql}`,
+            whereVals
+          )) ?? null;
+      }
       if (inv && vendor.cuit) {
         const { buildQrUrl } = await import("@/lib/arca/qr");
+        const cbteTipo = Number(inv.cbte_tipo) || 11;
         fiscal = {
           cuit: vendor.cuit,
           puntoVenta: Number(inv.punto_venta),
@@ -125,10 +150,15 @@ export async function POST(request: Request) {
           caeVto: String(inv.cae_vto).replace(/\D/g, ""),
           fechaEmision: inv.created_at ? new Date(inv.created_at).toISOString() : null,
           condIva: vendor.fiscal_cond_iva ?? null,
+          docLabel: cbteTipo === 13 ? "NOTA DE CRÉDITO C" : "FACTURA C",
+          asocLabel:
+            cbteTipo === 13 && inv.asoc_nro != null
+              ? `${String(inv.asoc_pto ?? inv.punto_venta).padStart(4, "0")}-${String(inv.asoc_nro).padStart(8, "0")}`
+              : null,
           qrUrl: buildQrUrl({
             cuit: vendor.cuit,
             ptoVta: Number(inv.punto_venta),
-            cbteTipo: 11,
+            cbteTipo,
             cbteNro: Number(inv.cbte_nro),
             importe: Number(inv.total),
             cae: String(inv.cae),

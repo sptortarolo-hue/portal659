@@ -4,16 +4,15 @@ import { resolveVendorPlan } from "@/lib/plans";
 import { decryptFiscalSecret, isValidCuit } from "@/lib/arca/crypto";
 import { ArcaError } from "@/lib/arca/wsaa";
 import { explainArcaFault } from "@/lib/arca/faults";
-import { emitirFacturaC, type FiscalInvoice } from "@/lib/arca/emit";
-import { parseArcaObs } from "@/lib/arca/wsfe";
+import { emitirNotaCreditoC } from "@/lib/arca/emit";
+import { CBTE_FACTURA_C, CBTE_NOTA_CREDITO_C, parseArcaObs } from "@/lib/arca/wsfe";
 import type { Order, Plan, Vendor } from "@/types/database";
+import type { FiscalInvoice } from "@/lib/arca/emit";
 import { NextResponse } from "next/server";
 
 /**
- * Emite la Factura C de un pedido cobrado (toggle "con comprobante fiscal").
- * Idempotente por pedido: si ya existe, devuelve la existente.
- * Si ARCA falla, responde 502 y el cobro sigue como "sin fiscal" (el cliente
- * reintenta desde el historial).
+ * Emite la Nota de Crédito C que anula (total) la factura de un pedido.
+ * Idempotente: si ya existe NC para esa factura, devuelve la existente.
  */
 export async function POST(request: Request) {
   const { vendor: gateVendor } = await getVendorByRequest(request);
@@ -44,22 +43,27 @@ export async function POST(request: Request) {
     [orderId, vendor.id]
   );
   if (!order) return NextResponse.json({ error: "Pedido no encontrado" }, { status: 404 });
-  if (order.status === "cancelled") {
-    return NextResponse.json({ error: "No se puede facturar un pedido cancelado" }, { status: 400 });
-  }
-  const total = Number(order.total);
-  if (!Number.isFinite(total) || total <= 0) {
-    return NextResponse.json({ error: "Total inválido para facturar" }, { status: 400 });
-  }
 
-  // Idempotencia: un pedido = un comprobante.
-  const existing = await queryOne<FiscalInvoice>(
-    `SELECT * FROM invoices WHERE vendor_id = $1 AND order_id = $2 LIMIT 1`,
-    [vendor.id, orderId]
+  // Factura original a anular.
+  const original = await queryOne<FiscalInvoice>(
+    `SELECT * FROM invoices WHERE vendor_id = $1 AND order_id = $2 AND cbte_tipo = $3 LIMIT 1`,
+    [vendor.id, orderId, CBTE_FACTURA_C]
   );
-  if (existing) return NextResponse.json({ ok: true, invoice: existing, recovered: true });
+  if (!original) {
+    return NextResponse.json(
+      { error: "Ese pedido no tiene factura para anular", code: "no_invoice" },
+      { status: 404 }
+    );
+  }
 
-  // Config fiscal completa.
+  // Idempotencia: una NC por factura (v1: anulación total).
+  const existingNc = await queryOne<FiscalInvoice>(
+    `SELECT * FROM invoices WHERE vendor_id = $1 AND cbte_tipo = $2
+      AND asoc_pto = $3 AND asoc_nro = $4 LIMIT 1`,
+    [vendor.id, CBTE_NOTA_CREDITO_C, original.punto_venta, original.cbte_nro]
+  );
+  if (existingNc) return NextResponse.json({ ok: true, invoice: existingNc, recovered: true });
+
   const cuit = (vendor.cuit || "").replace(/\D/g, "");
   const ptoVta = Number(vendor.fiscal_punto_venta);
   if (!cuit || !isValidCuit(cuit) || !Number.isInteger(ptoVta) || ptoVta <= 0) {
@@ -87,43 +91,26 @@ export async function POST(request: Request) {
   }
 
   const env = vendor.fiscal_env === "prod" ? "prod" : "homo";
-  // Log por etapa (sin secretos) → visible en `docker logs` como [fiscal].
-  const t0 = Date.now();
-  const flog = (stage: string, extra?: string) =>
-    console.log(`[fiscal] vendor=${vendor.id} order=${orderId} env=${env} stage=${stage} +${Date.now() - t0}ms${extra ? ` ${extra}` : ""}`);
+  const total = Number(original.total);
   try {
-    flog("start", `ptoVta=${ptoVta} total=${total}`);
-    const r = await emitirFacturaC(
+    const r = await emitirNotaCreditoC(
       { env, cuit, certPem, keyPem },
       ptoVta,
-      total
+      total,
+      { tipo: CBTE_FACTURA_C, ptoVta: Number(original.punto_venta), nro: Number(original.cbte_nro) }
     );
-    flog("cae-ok", `cbte=${r.puntoVenta}-${r.cbteNro}${r.recovered ? " recovered" : ""}`);
-    try {
-      const saved = await queryOne<FiscalInvoice>(
-        `INSERT INTO invoices (vendor_id, order_id, cbte_tipo, punto_venta, cbte_nro, cae, cae_vto, total, receptor_doc_tipo, receptor_doc_nro, env)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 99, '0', $9)
-         RETURNING *`,
-        [vendor.id, orderId, r.cbteTipo, r.puntoVenta, r.cbteNro, r.cae, r.caeVto, total, env]
-      );
-      return NextResponse.json({ ok: true, invoice: saved, qr_url: r.qrUrl, recovered: r.recovered });
-    } catch {
-      // Carrera: otro request lo guardó primero → devolver el existente.
-      const raced = await queryOne<FiscalInvoice>(
-        `SELECT * FROM invoices WHERE vendor_id = $1 AND order_id = $2 LIMIT 1`,
-        [vendor.id, orderId]
-      );
-      if (raced) return NextResponse.json({ ok: true, invoice: raced, recovered: true });
-      throw new ArcaError("No se pudo guardar el comprobante");
-    }
+    const saved = await queryOne<FiscalInvoice>(
+      `INSERT INTO invoices (vendor_id, order_id, cbte_tipo, punto_venta, cbte_nro, cae, cae_vto, total, receptor_doc_tipo, receptor_doc_nro, env, asoc_tipo, asoc_pto, asoc_nro)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 99, '0', $9, $10, $11, $12)
+       RETURNING *`,
+      [vendor.id, orderId, r.cbteTipo, r.puntoVenta, r.cbteNro, r.cae, r.caeVto, total, env,
+        CBTE_FACTURA_C, Number(original.punto_venta), Number(original.cbte_nro)]
+    );
+    return NextResponse.json({ ok: true, invoice: saved, qr_url: r.qrUrl, recovered: r.recovered });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Error de ARCA";
     const code = e instanceof ArcaError ? "arca_error" : "fiscal_error";
-    // Detail largo: incluye las <Observaciones> completas del rechazo (R).
-    const detail = e instanceof ArcaError ? (e.detail || "").slice(0, 4000) : "";
-    flog("error", `${code}: ${msg.slice(0, 200)}${detail && !msg.includes(detail.slice(0, 40)) ? ` | ${detail}` : ""}`);
     const hint = explainArcaFault(msg);
-    // Obs parseadas aparte para la UI (lista completa, no solo la primera).
     const obs = e instanceof ArcaError ? parseArcaObs(e.detail || "") : [];
     const fullMsg = obs.length > 0 ? `${msg} (${obs.join(" | ").slice(0, 500)})` : msg;
     return NextResponse.json({ error: fullMsg, code, ...(hint ? { hint } : {}) }, { status: 502 });

@@ -7,6 +7,7 @@ import {
   Receipt,
   ShoppingBag,
   Store,
+  Timer,
   Users,
   Settings2,
   type LucideIcon,
@@ -25,6 +26,7 @@ export const CONFIG_SECTION_ICONS: Record<string, LucideIcon> = {
   ubicacion: MapPin,
   contacto: Phone,
   pagos: CreditCard,
+  preparacion: Timer,
   equipo: Users,
   impresora: Printer,
   fiscal: Receipt,
@@ -37,7 +39,8 @@ export const CONFIG_SECTION_DESCS: Record<string, string> = {
   ubicacion: "Dónde estás y cuándo abrís.",
   contacto: "Cómo te contactan tus clientes.",
   pagos: "Medios de pago, entrega, Mercado Pago y venta online.",
-  equipo: "Tiempos, personal y reparto.",
+  preparacion: "Demora que ven tus clientes en el micrositio.",
+  equipo: "Personal de reparto.",
   impresora: "Tickets y comandas en papel.",
   fiscal: "Factura electrónica ARCA.",
   menu: "Acceso rápido a tu carta.",
@@ -51,7 +54,7 @@ export const CONFIG_SECTION_GROUPS: Array<{
 }> = [
   { id: "negocio", label: "Local", sections: ["perfil", "ubicacion", "contacto"] },
   { id: "ventas", label: "Ventas", sections: ["pagos", "menu", "catalogo"] },
-  { id: "operacion", label: "Operación", sections: ["equipo", "impresora", "fiscal"] },
+  { id: "operacion", label: "Operación", sections: ["preparacion", "equipo", "impresora", "fiscal"] },
 ];
 
 export const CONFIG_SECTION_FALLBACK_ICON: LucideIcon = Settings2;
@@ -61,7 +64,8 @@ export const CONFIG_SECTION_LABELS: Record<string, string> = {
   ubicacion: "Ubicación y horarios",
   contacto: "Contacto y redes",
   pagos: "Pagos y entrega",
-  equipo: "Equipo y preparación",
+  preparacion: "Tiempo de preparación",
+  equipo: "Repartidores",
   impresora: "Impresora",
   fiscal: "Facturación",
   menu: "Menú",
@@ -72,7 +76,7 @@ export const CONFIG_SECTION_LABELS: Record<string, string> = {
 export function sectionsForVertical(vertical: string | null | undefined): string[] {
   switch (vertical) {
     case "gastronomia":
-      return ["perfil", "ubicacion", "contacto", "pagos", "equipo", "impresora", "fiscal", "menu"];
+      return ["perfil", "ubicacion", "contacto", "pagos", "preparacion", "equipo", "impresora", "fiscal", "menu"];
     case "comercio":
       return ["perfil", "ubicacion", "contacto", "pagos", "impresora", "fiscal", "catalogo"];
     case "moda":

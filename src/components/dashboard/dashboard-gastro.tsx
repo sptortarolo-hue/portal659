@@ -491,7 +491,7 @@ export default function DashboardGastro({
         </div>
       </ConfigSection>
 
-      <ConfigSection id="equipo" label="Equipo y preparación" icon="⏱️">
+      <ConfigSection id="preparacion" label="Tiempo de preparación" icon="⏱️">
         <div className="space-y-3">
             <div>
               <Label>Tiempo de preparación</Label>
@@ -530,7 +530,7 @@ export default function DashboardGastro({
         </div>
       </ConfigSection>
 
-      <ConfigSection id="equipo" label="Equipo y preparación" icon="⏱️">
+      <ConfigSection id="equipo" label="Repartidores" icon="🛵">
         <StaffManager storeName={vendor?.store_name} />
       </ConfigSection>
 

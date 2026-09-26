@@ -53,17 +53,18 @@ export function ConfigSaveBar({
 }) {
   return (
     <div className="sticky bottom-[4.75rem] md:bottom-6 z-30 mt-2">
-      <div className="flex items-center gap-2 rounded-2xl border border-border bg-card p-2 shadow-lg">
+      <div className="flex items-center gap-1.5 rounded-2xl border border-border bg-card p-1.5 md:p-2 shadow-lg max-w-md mx-auto">
         <Button
           type="button"
           variant="outline"
-          className="flex-1"
+          size="sm"
+          className="flex-1 md:h-10 md:text-sm"
           onClick={onDiscard}
           disabled={saving}
         >
           Descartar
         </Button>
-        <Button type="submit" className="flex-1" disabled={saving}>
+        <Button type="submit" size="sm" className="flex-1 md:h-10 md:text-sm" disabled={saving}>
           {saving ? "Guardando…" : "Guardar cambios"}
         </Button>
       </div>

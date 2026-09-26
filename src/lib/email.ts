@@ -5,13 +5,20 @@
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
 const FROM_EMAIL = process.env.FROM_EMAIL || "Portal 659 <noreply@portal659.com>";
 
+type EmailAttachment = {
+  filename: string;
+  /** Contenido en base64. */
+  content: string;
+};
+
 type SendEmailParams = {
   to: string;
   subject: string;
   html: string;
+  attachments?: EmailAttachment[];
 };
 
-export async function sendEmail({ to, subject, html }: SendEmailParams): Promise<boolean> {
+export async function sendEmail({ to, subject, html, attachments }: SendEmailParams): Promise<boolean> {
   if (!RESEND_API_KEY) {
     console.log("[Email] RESEND_API_KEY no configurado, email no enviado:", subject);
     return false;
@@ -29,6 +36,7 @@ export async function sendEmail({ to, subject, html }: SendEmailParams): Promise
         to: [to],
         subject,
         html,
+        ...(attachments?.length ? { attachments } : {}),
       }),
     });
 
@@ -37,6 +45,19 @@ export async function sendEmail({ to, subject, html }: SendEmailParams): Promise
     console.error("[Email] Error al enviar email:", e);
     return false;
   }
+}
+
+export function invoiceEmail(params: {
+  storeName: string;
+  docLabel: string;
+  docNumber: string;
+  total: number;
+}): { subject: string; html: string } {
+  const total = `$${Number(params.total).toLocaleString("es-AR", { minimumFractionDigits: 2 })}`;
+  return {
+    subject: `${params.docLabel} ${params.docNumber} de ${params.storeName} (${total})`,
+    html: `<p>Hola! Te enviamos tu ${params.docLabel.toLowerCase()} <strong>${params.docNumber}</strong> de <strong>${params.storeName}</strong> por un total de <strong>${total}</strong>.</p><p>Va adjunta en PDF. Gracias por tu compra!</p>`,
+  };
 }
 
 export function orderConfirmationEmail(vendorName: string, items: any[], total: number): { subject: string; html: string } {

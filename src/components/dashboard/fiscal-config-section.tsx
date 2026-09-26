@@ -110,6 +110,95 @@ function FiscalSteps({
 }
 
 /**
+ * Reporte fiscal por período: facturado − anulado = neto, con tabla y
+ * export CSV (base del libro IVA ventas). Período default: mes actual.
+ */
+function FiscalReport() {
+  const now = new Date();
+  const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+  const today = now.toISOString().slice(0, 10);
+  const [desde, setDesde] = useState(monthStart);
+  const [hasta, setHasta] = useState(today);
+  const [data, setData] = useState<{
+    summary: { facturas: number; notas_credito: number; facturado: number; anulado: number; neto: number };
+  } | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  async function load(d: string, h: string) {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/vendor/fiscal/reporte?desde=${d}&hasta=${h}`);
+      const out = await res.json().catch(() => null);
+      if (res.ok && out?.summary) setData(out);
+    } catch {
+      /* panel tolerante */
+    }
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    load(desde, hasta);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const s = data?.summary;
+  return (
+    <div className="rounded-xl border border-border p-3 space-y-2">
+      <Label>Reporte del período</Label>
+      <div className="flex gap-1.5">
+        <input
+          type="date"
+          value={desde}
+          max={hasta}
+          onChange={(e) => {
+            setDesde(e.target.value);
+            load(e.target.value, hasta);
+          }}
+          className="min-w-0 flex-1 rounded-lg border border-input bg-background px-2 py-1.5 text-xs"
+        />
+        <input
+          type="date"
+          value={hasta}
+          min={desde}
+          max={today}
+          onChange={(e) => {
+            setHasta(e.target.value);
+            load(desde, e.target.value);
+          }}
+          className="min-w-0 flex-1 rounded-lg border border-input bg-background px-2 py-1.5 text-xs"
+        />
+        <a
+          href={`/api/vendor/fiscal/reporte?desde=${desde}&hasta=${hasta}&format=csv`}
+          className="flex-shrink-0 inline-flex items-center rounded-lg border border-border px-2.5 text-xs font-medium hover:bg-muted"
+        >
+          ⬇️ CSV
+        </a>
+      </div>
+      <div className="grid grid-cols-3 gap-1.5 text-center">
+        <div className="rounded-lg bg-muted px-1 py-2">
+          <p className="text-[10px] text-muted-foreground">Facturado{s ? ` (${s.facturas})` : ""}</p>
+          <p className="text-sm font-extrabold tabular-nums">
+            {loading ? "…" : `$${Number(s?.facturado ?? 0).toLocaleString("es-AR")}`}
+          </p>
+        </div>
+        <div className="rounded-lg bg-muted px-1 py-2">
+          <p className="text-[10px] text-muted-foreground">Anulado{s ? ` (${s.notas_credito})` : ""}</p>
+          <p className="text-sm font-extrabold tabular-nums text-amber-600">
+            {loading ? "…" : `$${Number(s?.anulado ?? 0).toLocaleString("es-AR")}`}
+          </p>
+        </div>
+        <div className="rounded-lg bg-muted px-1 py-2">
+          <p className="text-[10px] text-muted-foreground">Neto</p>
+          <p className="text-sm font-extrabold tabular-nums text-green-600">
+            {loading ? "…" : `$${Number(s?.neto ?? 0).toLocaleString("es-AR")}`}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
  * Sección "Facturación electrónica ARCA" (plan Gestión).
  * CUIT + punto de venta electrónico + certificado/clave (cifrados en el
  * server) + entorno homo/prod + historial de comprobantes con CAE.
@@ -505,6 +594,7 @@ export function FiscalConfigSection() {
           {msg && <p className="text-sm font-medium text-green-600">{msg}</p>}
           {err && <p className="text-sm font-medium text-red-600">⚠️ {err}</p>}
 
+          {status.ready && <FiscalReport />}
           {invoices.length > 0 && (
             <div>
               <Label>Últimos comprobantes</Label>

@@ -29,6 +29,9 @@ export function FiscalBillButton({ orderId }: { orderId: string }) {
   const [err, setErr] = useState<string | null>(null);
   const [printing, setPrinting] = useState(false);
   const [printMsg, setPrintMsg] = useState<string | null>(null);
+  const [emailTo, setEmailTo] = useState("");
+  const [emailBusy, setEmailBusy] = useState(false);
+  const [shareBusy, setShareBusy] = useState(false);
 
   async function refreshInvoices(): Promise<InvoiceRef[]> {
     const inv = await fetch("/api/vendor/fiscal/invoices").then((r) => r.json()).catch(() => null);
@@ -127,6 +130,45 @@ export function FiscalBillButton({ orderId }: { orderId: string }) {
             <Button variant="outline" className="w-full" disabled={printing} onClick={() => reprint(creditNote.id)}>
               {printing ? "🖨️ Imprimiendo…" : "🖨️ Imprimir nota de crédito"}
             </Button>
+            <div className="flex gap-1.5">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() =>
+                  window.open(`/api/vendor/fiscal/pdf?invoiceId=${creditNote.id}`, "_blank", "noopener")
+                }
+              >
+                📄 Ver PDF
+              </Button>
+              <Button
+                variant="outline"
+                className="flex-1 border-green-200 text-green-700"
+                disabled={shareBusy}
+                onClick={async () => {
+                  setShareBusy(true);
+                  setErr(null);
+                  try {
+                    const res = await fetch(`/api/vendor/fiscal/pdf?invoiceId=${creditNote.id}&format=url`);
+                    const data = await res.json().catch(() => ({}));
+                    if (!data.pdf_url) {
+                      setErr("No se pudo generar el link del PDF");
+                    } else {
+                      const nro = `${String(creditNote.punto_venta).padStart(4, "0")}-${String(creditNote.cbte_nro).padStart(8, "0")}`;
+                      window.open(
+                        `https://wa.me/?text=${encodeURIComponent(`Te paso tu nota de crédito ${nro}: ${data.pdf_url}`)}`,
+                        "_blank",
+                        "noopener"
+                      );
+                    }
+                  } catch {
+                    setErr("Sin conexión");
+                  }
+                  setShareBusy(false);
+                }}
+              >
+                {shareBusy ? "…" : "💬 Compartir"}
+              </Button>
+            </div>
           </div>
         ) : (
           <Button variant="outline" className="w-full text-red-600 border-red-200 hover:bg-red-50" disabled={ncBusy} onClick={issueCreditNote}>
@@ -137,6 +179,84 @@ export function FiscalBillButton({ orderId }: { orderId: string }) {
           {printing ? "🖨️ Imprimiendo…" : "🖨️ Reimprimir ticket fiscal"}
         </Button>
         {printMsg && <p className="text-xs font-medium text-muted-foreground">{printMsg}</p>}
+        <div className="flex gap-1.5">
+          <Button
+            variant="outline"
+            className="flex-1"
+            onClick={() =>
+              window.open(`/api/vendor/fiscal/pdf?invoiceId=${existing.id}`, "_blank", "noopener")
+            }
+          >
+            📄 Ver PDF
+          </Button>
+          <Button
+            variant="outline"
+            className="flex-1 border-green-200 text-green-700"
+            disabled={shareBusy}
+            onClick={async () => {
+              setShareBusy(true);
+              setErr(null);
+              try {
+                const res = await fetch(`/api/vendor/fiscal/pdf?invoiceId=${existing.id}&format=url`);
+                const data = await res.json().catch(() => ({}));
+                const url = data.pdf_url;
+                if (!url) {
+                  setErr("No se pudo generar el link del PDF");
+                } else {
+                  const nro = `${String(existing.punto_venta).padStart(4, "0")}-${String(existing.cbte_nro).padStart(8, "0")}`;
+                  window.open(
+                    `https://wa.me/?text=${encodeURIComponent(`Te paso tu comprobante ${nro}: ${url}`)}`,
+                    "_blank",
+                    "noopener"
+                  );
+                }
+              } catch {
+                setErr("Sin conexión");
+              }
+              setShareBusy(false);
+            }}
+          >
+            {shareBusy ? "…" : "💬 Compartir"}
+          </Button>
+        </div>
+        <div className="flex gap-1.5">
+          <input
+            type="email"
+            value={emailTo}
+            onChange={(e) => setEmailTo(e.target.value)}
+            placeholder="cliente@email.com"
+            className="min-w-0 flex-1 rounded-lg border border-input bg-background px-2 py-1.5 text-xs"
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={emailBusy || !emailTo}
+            onClick={async () => {
+              setEmailBusy(true);
+              setMsg(null);
+              setErr(null);
+              try {
+                const res = await fetch("/api/vendor/fiscal/enviar", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ invoiceId: existing.id, to: emailTo }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (res.ok) {
+                  setMsg(`Enviado a ${emailTo} ✓`);
+                  setEmailTo("");
+                } else {
+                  setErr(data.error || "No se pudo enviar");
+                }
+              } catch {
+                setErr("Sin conexión");
+              }
+              setEmailBusy(false);
+            }}
+          >
+            {emailBusy ? "…" : "📧 Enviar"}
+          </Button>
+        </div>
       </div>
     );
   }

@@ -1,15 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { X, Package, ChefHat, ShoppingBag, LayoutGrid, UtensilsCrossed, Settings, BarChart3, History, Star, ExternalLink, LogOut, Home, Sparkles, Calculator, Bot, DollarSign, Receipt, Users, MessageSquare, CalendarDays, ClipboardList, ChevronLeft } from "lucide-react";
-import {
-  CONFIG_SECTION_GROUPS,
-  CONFIG_SECTION_LABELS,
-  configSectionIcon,
-  type ConfigSectionStatus,
-} from "@/components/dashboard/config-nav";
-import { StatusDot } from "@/components/dashboard/config-sections";
+import { X, Package, ChefHat, ShoppingBag, LayoutGrid, UtensilsCrossed, Settings, BarChart3, History, Star, ExternalLink, LogOut, Home, Sparkles, Calculator, Bot, DollarSign, Receipt, Users, MessageSquare, CalendarDays, ClipboardList } from "lucide-react";
+import type { ConfigSectionStatus } from "@/components/dashboard/config-nav";
 
 type Tab = "hoy" | "config" | "menu" | "orders" | "history" | "comanda" | "analytics" | "pos" | "mesas" | "caja" | "clientes" | "reviews" | "recetas" | "fiscal";
 
@@ -38,6 +31,8 @@ interface VendorSidebarProps {
   planSlug: string | null;
   /** Plan Gestión con facturación (can("fiscal")): muestra la pestaña Facturación. */
   canFiscal?: boolean;
+  // Props heredadas de cuando la sidebar mutaba en Config (ya no se usan,
+  // pero se conservan opcionales para no tocar a los llamadores).
   /** Secciones de Config (sidebar única): si viene y currentTab es config, la nav las muestra. */
   configNavSections?: string[] | null;
   activeConfigSection?: string;
@@ -142,27 +137,9 @@ export default function VendorSidebar({
   planName,
   planSlug,
   canFiscal = false,
-  configNavSections,
-  activeConfigSection,
-  onConfigSection,
-  configSectionStatus,
 }: VendorSidebarProps) {
   function handleTab(tab: Tab) {
     onTabChange(tab);
-    onClose();
-  }
-
-  // En la pestaña Config, la sidebar muestra las secciones (una sola nav).
-  // "Atrás" vuelve a la lista de pestañas sin salir de Config.
-  const [sectionsOpen, setSectionsOpen] = useState(true);
-  useEffect(() => {
-    setSectionsOpen(true);
-  }, [currentTab]);
-  const showSections =
-    currentTab === "config" && (configNavSections?.length ?? 0) > 0 && sectionsOpen;
-
-  function handleSection(id: string) {
-    onConfigSection?.(id);
     onClose();
   }
 
@@ -213,51 +190,8 @@ export default function VendorSidebar({
           </button>
         </div>
 
-        {/* Nav: en Config muestra las secciones (una sola nav), si no las pestañas. */}
+        {/* Nav principal (siempre visible, también en la solapa Config). */}
         <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-5">
-          {showSections && configNavSections ? (
-            <>
-              <div>
-                <button
-                  onClick={() => setSectionsOpen(false)}
-                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold text-primary hover:bg-primary/10 transition-colors"
-                >
-                  <ChevronLeft className="h-4 w-4 flex-shrink-0" />
-                  Menú principal
-                </button>
-              </div>
-              {CONFIG_SECTION_GROUPS.map((g) => {
-                const items = (configNavSections ?? []).filter((id) => g.sections.includes(id));
-                if (items.length === 0) return null;
-                return (
-                  <div key={g.id}>
-                    <p className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{g.label}</p>
-                    <div className="space-y-0.5">
-                      {items.map((id) => {
-                        const Icon = configSectionIcon(id);
-                        const st = configSectionStatus?.(id);
-                        return (
-                          <button
-                            key={id}
-                            onClick={() => handleSection(id)}
-                            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-left transition-colors ${
-                              activeConfigSection === id
-                                ? "bg-primary/10 text-primary"
-                                : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                            }`}
-                          >
-                            <Icon className="h-5 w-5 flex-shrink-0" />
-                            <span className="flex-1">{CONFIG_SECTION_LABELS[id] ?? id}</span>
-                            {st && <StatusDot status={st} />}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
-            </>
-          ) : (
           <>
           {/* Inicio */}
           <div>
@@ -373,7 +307,6 @@ export default function VendorSidebar({
             </div>
           </div>
           </>
-          )}
         </nav>
 
         {/* Footer */}

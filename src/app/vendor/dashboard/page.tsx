@@ -38,7 +38,8 @@ const ImageCropModal = dynamic(
 );
 import { DEFAULT_ZONE } from "@/lib/config";
 import VendorSidebar from "@/components/vendor/vendor-sidebar";
-import { configSectionStatus as getConfigSectionStatus, sectionsForVertical } from "@/components/dashboard/config-nav";
+import { configSectionStatus as getConfigSectionStatus, sectionsForVertical, CONFIG_SECTION_GROUPS, CONFIG_SECTION_LABELS, configSectionIcon } from "@/components/dashboard/config-nav";
+import { StatusDot } from "@/components/dashboard/config-sections";
 import { NotificationBell } from "@/components/nav/notification-bell";
 import { UserMenu } from "@/components/nav/user-menu";
 import { DashboardHome } from "@/components/dashboard/dashboard-home";
@@ -1512,7 +1513,53 @@ function VendorDashboardInner() {
             </div>
           ) : (
             <>
-              <div className={tab === "config" ? "" : "hidden"}>{configContent}</div>
+              <div className={tab === "config" ? "" : "hidden"}>
+                <div className="flex gap-4 items-start">
+                  {/* Segunda columna de secciones (estilo Fudo): solo desktop y
+                      no-servicio. El menú principal queda intacto en la sidebar.
+                      En mobile mandan el drawer + el drill-down de Config. */}
+                  {!isService && (
+                    <nav className="hidden md:block w-56 flex-shrink-0 md:sticky md:top-24 self-start rounded-xl border border-border bg-card p-3 space-y-4">
+                      {CONFIG_SECTION_GROUPS.map((g) => {
+                        const items = (sectionsForVertical(vendor?.vertical) ?? []).filter((id) =>
+                          g.sections.includes(id)
+                        );
+                        if (items.length === 0) return null;
+                        return (
+                          <div key={g.id}>
+                            <p className="px-2 mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                              {g.label}
+                            </p>
+                            <div className="space-y-0.5">
+                              {items.map((id) => {
+                                const Icon = configSectionIcon(id);
+                                const st = getConfigSectionStatus(id, vendor);
+                                return (
+                                  <button
+                                    key={id}
+                                    type="button"
+                                    onClick={() => handleConfigSection(id)}
+                                    className={`w-full flex items-center gap-2.5 px-2 py-2 rounded-lg text-sm font-medium text-left transition-colors ${
+                                      configSection === id
+                                        ? "bg-primary/10 text-primary"
+                                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                                    }`}
+                                  >
+                                    <Icon className="h-4 w-4 flex-shrink-0" />
+                                    <span className="flex-1 truncate">{CONFIG_SECTION_LABELS[id] ?? id}</span>
+                                    {st && <StatusDot status={st} />}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </nav>
+                  )}
+                  <div className="flex-1 min-w-0">{configContent}</div>
+                </div>
+              </div>
               <div className={tab === "menu" ? "" : "hidden"}>
                 {isGastro || isComercio ? (
                   <MemoMenuStudio

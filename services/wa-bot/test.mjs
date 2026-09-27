@@ -21,6 +21,7 @@ let lastOrderBody = null;
 let orderCalls = 0;
 let orderFail = null; // { status, error } para simular errores de negocio
 let receiptFail = null; // error simulado del /api/wa/receipt
+let pendingReceiptId = null; // orderId del fallback (pending-receipt)
 const realFetch = globalThis.fetch;
 globalThis.fetch = async (url, opts) => {
   const u = String(url);
@@ -33,6 +34,9 @@ globalThis.fetch = async (url, opts) => {
   }
   if (u.includes("/api/wa/receipt")) {
     return { ok: receiptFail ? false : true, status: receiptFail ? 409 : 200, json: async () => (receiptFail ? { error: receiptFail } : { ok: true, url: "https://x/receipt.jpg", trackToken: "tok456" }) };
+  }
+  if (u.includes("/api/wa/pending-receipt")) {
+    return { ok: true, status: 200, json: async () => ({ orderId: pendingReceiptId, trackToken: "tok789" }) };
   }
   if (u.includes("/api/wa/handoff")) return { ok: true, json: async () => ({ ok: true }) };
   return realFetch(url, opts);
@@ -223,6 +227,18 @@ async function main() {
   show("comprobante con pedido ya pagado", r);
   if (!(r.replies || []).join(" ").includes("acreditado")) { console.log("!!! el guard de pagado no responde"); ok = false; }
   receiptFail = null;
+
+  console.log("\n--- ESC: comprobante SIN estado de espera (fallback por teléfono) ---");
+  // El cliente escribió primero / llegó tarde: el chat NO está en espera.
+  // El comprobante se maneja igual: fallback → pedido pendiente por teléfono.
+  const waWeb2 = "5491100000005"; // chat sin estado de espera
+  pendingReceiptId = "ord-web-3";
+  r = await handleInboundMedia({ vendor, waId: waWeb2, waPhone: waWeb2, mime: "image/jpeg", name: "comprobante.jpg", buffer: Buffer.from("fake-image") });
+  show("comprobante tarde (fallback)", r);
+  if (!(r.replies || []).join(" ").includes("recibido") || !(r.replies || []).join(" ").includes("seguimiento/tok456")) {
+    console.log("!!! el fallback por teléfono no subió el comprobante"); ok = false;
+  } else { console.log(">>> OK: comprobante manejado sin estado (fallback por teléfono + link)"); }
+  pendingReceiptId = null;
 
   if (!ok) { console.error("\n=== HAY FALLOS ==="); process.exit(1); }
   console.log("\n=== TODO OK ===");

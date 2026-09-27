@@ -78,25 +78,24 @@ const server = createServer(async (req, res) => {
       res.end(JSON.stringify({ ok: true, sent: false, reason: "ya_enviado" }));
       return;
     }
-    // El cliente está en medio de una conversación del asistente (armado de
-    // pedido o confirmación): no interrumpir, el flow sigue igual.
-    if (st?.step === "flow" || st?.step === "confirm") {
-      res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ ok: true, sent: false, reason: "en_flujo" }));
-      return;
-    }
+    // En medio del flujo del asistente: el mensaje IGUAL se manda (el comercio
+    // aceptó y el cliente debe saberlo) pero SIN tocar el estado — el carrito
+    // del asistente no se pierde. El comprobante entra por el fallback de
+    // teléfono (pending-receipt).
+    const enFlujo = st?.step === "flow" || st?.step === "confirm";
 
-    // Setear el estado de espera de comprobante (orderId del pedido web) y
-    // enviar con pacing humano, consistente con el resto del bot.
-    await startAwaitingReceipt({ id: vendorId }, waId, orderId, waId).catch(() => {});
+    if (!enFlujo) {
+      // Setear el estado de espera de comprobante (orderId del pedido web).
+      await startAwaitingReceipt({ id: vendorId }, waId, orderId, waId).catch(() => {});
+    }
     await sleep(humanDelay(text.length));
     sendTyping(c, waId);
     sendText(c, waId, text);
     sendPaused(c, waId);
     stats.replies++;
-    console.log(`[send] app → ${waId} (orderId ${orderId || "-"}): ${text.slice(0, 80)}`);
+    console.log(`[send] app → ${waId} (orderId ${orderId || "-"}${enFlujo ? ", en_flujo sin estado" : ""}): ${text.slice(0, 80)}`);
     res.writeHead(200, { "content-type": "application/json" });
-    res.end(JSON.stringify({ ok: true, sent: true }));
+    res.end(JSON.stringify({ ok: true, sent: true, enFlujo: enFlujo || undefined }));
     return;
   }
 
@@ -197,6 +196,7 @@ async function attach(ws, token) {
         const result = await handleInboundMedia({
           vendor,
           waId: msg.wa_id,
+          waPhone: msg.wa_phone || "",
           mime: msg.mime || "",
           name: msg.name || "",
           buffer,

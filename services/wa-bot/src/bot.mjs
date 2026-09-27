@@ -789,9 +789,34 @@ export async function startAwaitingReceipt(vendor, waId, orderId, phone) {
   return state;
 }
 
-export async function handleInboundMedia({ vendor, waId, mime, name, buffer }) {
-  const state = await getState(vendor.id, waId);
-  if (!state || state.step !== "awaiting_receipt" || !state.orderId) return { handled: false };
+/** Pedido de transferencia pendiente más reciente de un teléfono (sin
+ *  comprobante, últimas 48h). Para el fallback del comprobante. */
+async function findPendingReceiptOrder(vendorId, phone) {
+  try {
+    const res = await fetch(
+      `${config.appUrl}/api/wa/pending-receipt?vendorId=${encodeURIComponent(vendorId)}&phone=${encodeURIComponent(String(phone))}`,
+      { headers: { Authorization: `Bearer ${config.waBotSecret}` }, signal: AbortSignal.timeout(10_000) }
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.orderId || null;
+  } catch {
+    return null;
+  }
+}
+
+export async function handleInboundMedia({ vendor, waId, mime, name, buffer, waPhone }) {
+  let state = await getState(vendor.id, waId);
+  if (!state || state.step !== "awaiting_receipt" || !state.orderId) {
+    // FALLBACK: el comprobante llegó cuando el chat ya no estaba en espera
+    // (llegó tarde, el cliente escribió antes, o el estado se perdió).
+    // Buscar el pedido de transferencia pendiente más reciente de este teléfono
+    // y subirlo con ese orderId — el comprobante nunca se pierde.
+    const phone = waPhone || state?.customerPhone || waId;
+    const orderId = await findPendingReceiptOrder(vendor.id, phone);
+    if (!orderId) return { handled: false };
+    state = { step: "awaiting_receipt", orderId };
+  }
 
   try {
     const fd = new FormData();

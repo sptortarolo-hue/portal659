@@ -8,6 +8,8 @@ type OfferCardProps = {
   name: string;
   description: string | null;
   price: number;
+  /** Precio promo (si hay oferta válida se muestra tachado + descuento). */
+  promoPrice?: number | null;
   category: string | null;
   storeName: string;
   storeSlug: string;
@@ -21,6 +23,7 @@ export function OfferCard({
   name,
   description,
   price,
+  promoPrice,
   category,
   storeName,
   storeSlug,
@@ -29,6 +32,14 @@ export function OfferCard({
   imageUrl,
   vertical,
 }: OfferCardProps) {
+  // Misma regla de promo válida que el micrositio: menor que el normal y > 0.
+  const promo =
+    promoPrice != null && Number(promoPrice) > 0 && Number(promoPrice) < Number(price)
+      ? Number(promoPrice)
+      : null;
+  const pct = promo != null && Number(price) > 0
+    ? Math.round((1 - promo / Number(price)) * 100)
+    : null;
   const href = offerId
     ? `/tienda/${storeSlug}?menu=1&oferta=${encodeURIComponent(offerId)}`
     : `/tienda/${storeSlug}?menu=1`;
@@ -71,6 +82,11 @@ export function OfferCard({
                 Hoy
               </Badge>
             )}
+            {pct != null && (
+              <span className="rounded-full bg-red-500 text-white text-[10px] font-bold px-2 py-0.5">
+                -{pct}%
+              </span>
+            )}
             {category && (
               <span className="text-xs text-muted-foreground capitalize">
                 {category}
@@ -84,11 +100,22 @@ export function OfferCard({
             {description}
           </p>
         </CardContent>
-        <div className="px-6 pb-4 flex items-center justify-between">
-          <span className="font-bold text-lg text-foreground">
-            ${Number(price).toLocaleString("es-AR")}
-          </span>
-          <span className="text-xs text-muted-foreground">{storeName}</span>
+        <div className="px-6 pb-4 flex items-center justify-between gap-2">
+          {promo != null ? (
+            <span className="flex items-baseline gap-1.5 min-w-0">
+              <span className="text-xs text-muted-foreground line-through tabular-nums">
+                ${Number(price).toLocaleString("es-AR")}
+              </span>
+              <span className="font-bold text-lg text-primary tabular-nums">
+                ${promo.toLocaleString("es-AR")}
+              </span>
+            </span>
+          ) : (
+            <span className="font-bold text-lg text-foreground">
+              ${Number(price).toLocaleString("es-AR")}
+            </span>
+          )}
+          <span className="text-xs text-muted-foreground flex-shrink-0">{storeName}</span>
         </div>
       </Card>
     </Link>

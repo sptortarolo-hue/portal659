@@ -168,6 +168,7 @@ export default async function HomePage() {
                   name={o.name}
                   description={o.description}
                   price={Number(o.price)}
+                  promoPrice={o.promo_price != null ? Number(o.promo_price) : null}
                   category={o.category}
                   storeName={o.vendors?.store_name || ""}
                   storeSlug={o.vendors?.slug || ""}

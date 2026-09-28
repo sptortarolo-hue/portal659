@@ -161,7 +161,7 @@ Dado el mensaje del cliente y la lista de productos disponibles, devolvé SOLO u
 
 {
   "complete": boolean,
-  "items": [{"name": string, "qty": number, "modifiers": [string], "variant": {"color": string|null, "talle": string|null}}],
+  "items": [{"name": string, "qty": number, "modifiers": [string], "variant": {"color": string|null, "talle": string|null}, "said": string}],
   "method": "pickup" | "delivery" | null,
   "payment": "efectivo" | "transferencia" | null,
   "customerName": string | null,
@@ -173,10 +173,12 @@ Dado el mensaje del cliente y la lista de productos disponibles, devolvé SOLO u
 Reglas:
 - "complete": true si el mensaje tiene información suficiente para armar el pedido (productos + método + nombre; si es delivery también dirección; si el pago es solo efectivo/transferencia coordinado por WhatsApp, no falta nada de pago).
 - "items": productos pedidos. "name" debe coincidir con alguno de la lista de productos (usá el nombre exacto si existe). "qty" es número (default 1; "una docena" = 12, "media docena" = 6). "modifiers" solo si dice explícitamente (p. ej. "sin cebolla", "doble queso", los gustos).
+- "said": lo que el cliente LITERALMENTE escribió para ese item (ej. "quiero empanadas" → said "empanadas"). Sirve para saber si el cliente nombró el producto completo o fue genérico.
 - "variant": si el producto tiene variantes (las ves entre paréntesis) y el cliente aclara color o talle, extraé la variante (ej. "una remera negra talle M" → {"color": "negro", "talle": "M"}). Si no aclara, null. Si el producto no tiene variantes, null.
 - "method": "pickup"/"delivery" si lo aclara, si no null.
 - "payment": "transferencia" si dice pagar con transferencia/transfer/alias/CBU, "efectivo" si dice en efectivo/efectivo al recibir, si no null.
 - Extraé nombre/teléfono/dirección solo si el cliente los da.
+- Si el cliente PREGUNTA si tenemos algo (ej. "¿tenés empanadas?", "¿cuánto sale la pizza?"), NO lo trates como pedido: items [] y complete false.
 - Usá el CONTEXTO (carrito actual, preguntas pendientes, últimos mensajes) para entender a qué responde el cliente: si le preguntaste el nombre y contesta un nombre, extraelo; si le preguntaste los gustos y contesta gustos, ponelos en "modifiers" del ítem al que corresponden.
 - Si el cliente corrige o re-declara el pedido (ej. "no, mejor solo 3 empanadas"), devolvé en "items" el carrito COMPLETO actualizado (todos los productos que quedan, con sus cantidades finales).
 - Si el cliente agrega productos sin re-declarar todo (ej. "agregá una coca"), devolvé SOLO los items nuevos.
@@ -386,6 +388,16 @@ const NUM_WORDS = {
 // (negro→negr, rojo→roj) matchea el género de la palabra sin exactitud.
 const COLORS = ["negro", "blanco", "rojo", "azul", "verde", "amarillo", "gris", "rosa", "naranja", "celeste", "bordo", "beige", "violeta", "fucsia", "marron", "lila"];
 
+/** Nombre "desnudo": sin colores ni "talle X" ("remera negra talle m" →
+ *  "remera"). Para matchear candidatos cuando el said trae variantes. */
+export function bareName(name) {
+  const stems = COLORS.map((c) => c.slice(0, Math.max(3, c.length - 1))).join("|");
+  return String(name || "")
+    .replace(new RegExp(`\\btalle\\s+\\S+|\\b(?:${stems})\\S*`, "gi"), "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export function parseByRules(message, products) {
   // Prioridad: el match de reglas mínimas (greeting/menú) gana sobre el extractor.
   const m = String(message || "").trim();
@@ -419,8 +431,7 @@ export function parseByRules(message, products) {
   return null;
 }
 
-function extractFromText(text, products) {
-  // Casos:
+export function extractFromText(text, products) {  // Casos:
   //  - "3 empanadas y una coca" → [empanadas×3, coca×1]
   //  - "dos pizzas"          → [pizza×2]
   //  - "quiero dos empanadas" → qty detectada aunque haya verbos al principio.
@@ -477,13 +488,20 @@ function extractFromText(text, products) {
         const stem = c.slice(0, Math.max(3, c.length - 1));
         if (new RegExp(`\\b${stem}`, "i").test(norm)) { variant.color = c; break; }
       }
-      out.push({ offerId: p.id, name: p.name, qty: Math.max(1, qty), modifiers: [], variant: Object.keys(variant).length ? variant : undefined });
+      out.push({
+        offerId: p.id,
+        name: p.name,
+        qty: Math.max(1, qty),
+        modifiers: [],
+        variant: Object.keys(variant).length ? variant : undefined,
+        said: name, // lo que el cliente literalmente escribió (para desambiguar)
+      });
     }
   }
   return out;
 }
 
-function normalizeEs(s) {
+export function normalizeEs(s) {
   return String(s)
     .toLowerCase()
     .normalize("NFD")

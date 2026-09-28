@@ -154,10 +154,14 @@ async function main() {
   show("una docena", r);
   if (!(r.replies || []).join(" ").includes("×12")) { console.log("!!! docena no resolvió a ×12"); ok = false; }
 
-  // Re-declarar no duplica tras docena.
+  // Re-declarar no duplica tras docena: "solo 3 empanadas" (2 tipos) → pregunta
+  // cuál → "carne" resuelve con reemplazo (el docena ×12 se va).
   r = await handleInbound({ vendor, waId: wa, body: "no, mejor solo 3 empanadas" });
-  show("re-declaración", r);
-  if (!(r.replies || []).join(" ").includes("×3")) { console.log("!!! re-declaración no resolvió a ×3 (no duplicó)"); ok = false; }
+  show("re-declaración (pregunta cuál)", r);
+  if (!(r.replies || []).join(" ").includes("cuál")) { console.log("!!! la re-declaración ambigua no preguntó cuál"); ok = false; }
+  r = await handleInbound({ vendor, waId: wa, body: "carne" });
+  show("carne (resuelve)", r);
+  if (!(r.replies || []).join(" ").includes("×3")) { console.log("!!! re-declaración no resolvió a ×3"); ok = false; }
   if ((r.replies || []).join(" ").includes("×12")) { console.log("!!! quedó ×12 (duplicó)"); ok = false; }
 
   console.log("\n--- ESC: variantes (moda) ---");
@@ -202,6 +206,37 @@ async function main() {
   if (String(lastOrderBody?.customerPhone).startsWith("lid:")) { console.log("!!! guardó lid: en vez del teléfono: " + lastOrderBody?.customerPhone); ok = false; }
   else if (lastOrderBody?.customerPhone !== "5491155551234") { console.log("!!! teléfono no normalizado: " + lastOrderBody?.customerPhone); ok = false; }
   else { console.log(">>> OK: teléfono real 5491155551234 (no lid:)"); }
+
+  console.log("\n--- ESC: pregunta → respuesta (nunca ordena) ---");
+  const waQ = "5491100000006";
+  r = await handleInbound({ vendor, waId: waQ, body: "empanadas tenés?" });
+  show("empanadas tenés?", r);
+  const qTxt = (r.replies || []).join(" ").toLowerCase();
+  if (!qTxt.includes("tenemos") || !qTxt.includes("carne") || !qTxt.includes("jamón")) { console.log("!!! la pregunta no respondió con la lista"); ok = false; }
+  else { console.log(">>> OK: pregunta respondida con la lista (sin agregar al carrito)"); }
+  r = await handleInbound({ vendor, waId: waQ, body: "cuánto sale la pizza?" });
+  show("cuánto sale la pizza?", r);
+  if (!(r.replies || []).join(" ").includes("Pizza muzzarella") || !(r.replies || []).join(" ").includes("$8.000")) { console.log("!!! el precio de la pizza no se respondió"); ok = false; }
+
+  console.log("\n--- ESC: mención genérica → desambiguación ---");
+  const waG = "5491100000007";
+  r = await handleInbound({ vendor, waId: waG, body: "quiero empanadas" });
+  show("quiero empanadas (debe preguntar cuál)", r);
+  const gTxt = (r.replies || []).join(" ");
+  if (!gTxt.includes("cuál") || !gTxt.includes("1️⃣") || !gTxt.includes("2️⃣")) { console.log("!!! la mención genérica no desambiguó"); ok = false; }
+  else { console.log(">>> OK: desambiguación con opciones numeradas"); }
+  r = await handleInbound({ vendor, waId: waG, body: "3 de carne" });
+  show("3 de carne", r);
+  const g2 = (r.replies || []).join(" ");
+  if (!g2.includes("Empanada de carne ×3")) { console.log("!!! la elección no resolvió a ×3: " + g2.slice(0, 150)); ok = false; }
+  else { console.log(">>> OK: '3 de carne' resolvió (cuál + cuántas en un turno)"); }
+
+  console.log("\n--- ESC: mención exacta → directo (sin fricción) ---");
+  r = await handleInbound({ vendor, waId: waG, body: "quiero 2 pizzas muzzarella" });
+  show("quiero 2 pizzas muzzarella", r);
+  const e1 = (r.replies || []).join(" ");
+  if (e1.includes("cuál")) { console.log("!!! la mención exacta desambiguó (fricción innecesaria)"); ok = false; }
+  else { console.log(">>> OK: mención exacta sin fricción"); }
 
   console.log("\n--- ESC: transferencia web (accept → espera comprobante) ---");
   const waWeb = "5491100000004";

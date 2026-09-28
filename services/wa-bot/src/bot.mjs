@@ -1,7 +1,7 @@
 import { config } from "./config.mjs";
 import { getState, setState, clearState } from "./state.mjs";
-import { getMenu, getMenuSync, matchProduct, menuSummary } from "./menu.mjs";
-import { parseWithLlm, parseByRules } from "./nlu.mjs";
+import { getMenu, getMenuSync, matchProduct, matchAllProducts, normalizeForMatch, menuSummary } from "./menu.mjs";
+import { parseWithLlm, parseByRules, normalizeEs, extractFromText, bareName } from "./nlu.mjs";
 
 const DEFAULT_STATE = {
   step: "idle",
@@ -17,6 +17,7 @@ const DEFAULT_STATE = {
   orderId: null,
   history: [],        // [{ role: "user"|"bot", text }] — contexto para la IA (cap 8)
   pendingMods: null,  // { offerId, group, options, max } — opciones requeridas pendientes
+  pendingProduct: null, // { label, options, qty, fromRedeclare } — producto genérico a desambiguar
 };
 
 const AWAITING_RECEIPT_TTL = 15 * 60; // 15 min para acreditar el comprobante
@@ -34,6 +35,9 @@ const RE_DELIVERY = /\b(envío|envio|delivery|domicilio|despachen)\b/i;
 const RE_TRANSFER = /\b(transferencia|transferir|cbu|alias)\b/i;
 const RE_CASH     = /\b(efectivo|cash)\b/i;
 const RE_GREETING = /^(hola|buenas|buen día|buenos días|buenas tardes|buenas noches|hi|hey|hello)\b/i;
+// Intención de PREGUNTA ("empanadas tenés?", "cuánto sale la pizza?", "hay coca?"):
+// se RESPONDE con la lista, nunca se ordena.
+const RE_ASKWORDS = /\b(tenés|tenes|tienen|hay|queda|quedan|cuánto|cuanto|cuánta|cuantas|precio|precios|sale|cuesta|cuestan|vale)\b/i;
 
 function normalizePhone(waId) {
   const s = String(waId || "");
@@ -50,6 +54,11 @@ function acceptsTransfer(vendor) {
 
 function shopUrl(vendor) {
   return vendor.slug ? `${config.publicUrl}/tienda/${vendor.slug}` : "";
+}
+
+function isQuestion(text) {
+  const t = String(text || "");
+  return /\?/.test(t) || (RE_ASKWORDS.test(t) && t.split(" ").length <= 6);
 }
 
 /** Link público de seguimiento del pedido (/seguimiento/[token]): el cliente
@@ -81,6 +90,8 @@ function resolveOfferIds(products, items) {
         name: p.name,
         qty: Math.max(1, Number(p.qty) || 1),
         modifiers: Array.isArray(p.modifiers) ? p.modifiers : [],
+        said: p.said,
+        variant: p.variant,
       };
     })
     .filter((p) => p.offerId);
@@ -142,6 +153,12 @@ export async function handleInbound({ vendor, waId, body, waPhone }) {
   try {
     if (!vendor.enabled) return { replies: [], handoff: true };
 
+    // Arrays FRESCOS por conversación: el spread copia la REFERENCIA de los
+    // arrays del DEFAULT_STATE → cualquier mergeItems escribía en el array
+    // compartido y las conversaciones nuevas arrancaban con el carrito de otra.
+    if (!state.items || !Array.isArray(state.items) || state.items === DEFAULT_STATE.items) state.items = [];
+    if (!Array.isArray(state.history) || state.history === DEFAULT_STATE.history) state.history = [];
+
     // Cancelación global (siempre disponible, incluso durante la pausa de
     // handoff — antes el check de pausa la bloqueaba y el bot callaba hasta
     // para cancelar).
@@ -197,6 +214,60 @@ function llmCtx(state, vendor) {
 }
 
 // ———————————————————————————————————————————————————————————————————————————
+// Preguntas ("empanadas tenés?") → respuesta con la lista, nunca pedido
+// ———————————————————————————————————————————————————————————————————————————
+
+/** Productos que el cliente pregunta, desde el texto de la pregunta.
+ *  "empanadas tenés?" → [empanada de carne, empanada jamón y queso]. */
+function matchesFromQuestion(text, products) {
+  const t = String(text).replace(/\?/g, " ")
+    .replace(/\b(tenés|tenes|tienen|hay|queda|quedan|cuánto|cuanto|cuánta|cuantas|sale|cuesta|cuestan|precio|precios|vale)\b/gi, " ")
+    .replace(/\b(de|del|la|el|los|las|un|una|unos|unas)\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!t) return [];
+  const direct = matchAllProducts(products, t);
+  if (direct.length) return direct;
+  const out = [];
+  for (const w of t.split(" ")) {
+    if (w.length < 3) continue;
+    const m = matchAllProducts(products, w);
+    for (const x of m) {
+      if (!out.find((y) => y.id === x.id)) out.push(x);
+    }
+  }
+  return out;
+}
+
+function answerText(products) {
+  const lines = products.slice(0, 8).map((p) => `• ${p.name} — $${Number(p.price).toLocaleString("es-AR")}`);
+  return `Sí, tenemos:\n${lines.join("\n")}\n\n¿Querés pedir alguna? Decime cuál y cuántas. 🥟`;
+}
+
+function noMatchText(products, vendor) {
+  const lines = products.slice(0, 8).map((p) => `• ${p.name} — $${Number(p.price).toLocaleString("es-AR")}`);
+  return `De eso no tengo por ahora. Esto es lo que hay:\n${lines.join("\n")}\n\n¿Algo de acá? 🥟`;
+}
+
+// ———————————————————————————————————————————————————————————————————————————
+// Miss → clarificación con alternativas del menú (fallback tiered)
+// ———————————————————————————————————————————————————————————————————————————
+
+/** Sugerencias del menú por match parcial del texto ("quiero empanad"). */
+function alternativesText(text, products) {
+  const norm = normalizeEs(String(text));
+  const words = [...new Set(norm.split(" ").filter((w) => w.length >= 4))].slice(0, 3);
+  const out = [];
+  for (const w of words) {
+    const m = matchProduct(products, w);
+    if (m && !out.find((x) => x.id === m.id)) out.push(m);
+  }
+  if (!out.length) return null;
+  const lines = out.slice(0, 4).map((p) => `• ${p.name} — $${Number(p.price).toLocaleString("es-AR")}`);
+  return `¿Quizás querés decir:\n${lines.join("\n")}\n\nDecime cuál y cuántas. 🙏`;
+}
+
+// ———————————————————————————————————————————————————————————————————————————
 // Idle: primer contacto / pedido de una
 // ———————————————————————————————————————————————————————————————————————————
 
@@ -223,6 +294,16 @@ async function handleIdle({ vendor, text, state, replies, waId }) {
 
   // Pedido: IA primero, reglas después.
   const products = await getMenu(vendor.id);
+
+  // Pregunta ("empanadas tenés?", "cuánto sale la pizza?") → RESPONDER con la
+  // lista, nunca ordenar (antes el match se trataba como pedido y agregaba a
+  // ciegas).
+  if (isQuestion(text)) {
+    const matches = matchesFromQuestion(text, products);
+    replies.push(matches.length ? answerText(matches) : noMatchText(products, vendor));
+    return;
+  }
+
   let parsed = enrichParsed(
     products,
     (await parseWithLlm(text, products, llmCtx(state, vendor)).catch(() => null)) || parseByRules(text, products)
@@ -230,6 +311,34 @@ async function handleIdle({ vendor, text, state, replies, waId }) {
 
   if (parsed?.items?.length) {
     state.welcomed = true;
+    // Desambiguación: mención genérica → preguntar cuál/cuántas antes de agregar.
+    // Con 1 solo candidato → attach inmediato. Los campos se aplican igual.
+    const isAddition0 = /\b(agrega|agregá|agregar|también|tambien|sumá|suma|sumar|más|mas)(?=[\s.,!¡]|$)/i.test(text);
+    const shouldMerge0 =
+      isAddition0 && state.items.length > 0 &&
+      state.items.every((i) => parsed.items.some((p) => (p.offerId || p.id) === i.offerId));
+    const amb = ambiguousItems(products, parsed.items);
+    if (amb.length) {
+      const pp = amb[0];
+      const exactItems = parsed.items.filter((p) => !amb.includes(p));
+      const soloAmbiguo = exactItems.length === 0;
+      if (exactItems.length) applyExactItems(state, exactItems, shouldMerge0);
+      applyContactFields(state, parsed);
+      const options = matchAllProducts(products, bareName(pp.said) || pp.said);
+      if (options.length === 1) {
+        attachChosen(state, options[0], pp.qty, soloAmbiguo && !shouldMerge0, pp);
+        state.handoffCount = 0;
+        if (maybeAskRequiredMods(state, products, replies)) return;
+        advanceAndAsk(state, vendor, replies);
+        return;
+      }
+      state.pendingProduct = { label: pp.said, options, qty: Number(pp.qty) || 1, fromRedeclare: soloAmbiguo && !shouldMerge0 };
+      state.step = "flow";
+      state.pendingFields = missingFields(state, vendor);
+      const extra = state.pendingFields.length ? "\n\n" + pendingQuestions(state) : "";
+      replies.push(pendingProductAsk(state) + extra);
+      return;
+    }
     applyParsed(state, parsed, waId);
     // Opciones requeridas (gustos): preguntar antes de seguir con el resto.
     if (maybeAskRequiredMods(state, products, replies)) return;
@@ -242,7 +351,8 @@ async function handleIdle({ vendor, text, state, replies, waId }) {
   if (state.handoffCount >= MAX_PARSE_MISSES) {
     return handoffHuman(vendor, waId, text, state);
   }
-  replies.push(`No te entendí bien. Escribime el pedido directo, ej: *"2 empanadas de carne y una coca"*. O mirá el menú: ${shopUrl(vendor)}`);
+  const alts = alternativesText(text, products);
+  replies.push(`No te entendí bien. Escribime el pedido directo, ej: *"2 empanadas de carne y una coca"*. O mirá el menú: ${shopUrl(vendor)}` + (alts ? "\n\n" + alts : ""));
 }
 
 // ———————————————————————————————————————————————————————————————————————————
@@ -317,6 +427,60 @@ async function handleStep({ vendor, text, state, replies, waId }) {
   // ("envío a calle 5 123, Juan Pérez, transferencia"). Extraemos todo lo que falte.
   const products = await getMenu(vendor.id);
 
+  // Pendiente: producto genérico a desambiguar ("quiero empanadas" → ¿cuál y cuántas?).
+  if (state.pendingProduct) {
+    const pp = state.pendingProduct;
+    let chosen = null;
+    let chosenQty = 1;
+    let resolutionItem = null;
+    // Número solo: con 1 opción es la CANTIDAD; con varias, cuál (por índice).
+    const numOnly = /^(\d+)\s*$/.exec(t);
+    if (numOnly) {
+      const n = Number(numOnly[1]);
+      if (pp.options.length === 1) {
+        chosen = pp.options[0];
+        chosenQty = n;
+      } else if (n >= 1 && n <= pp.options.length) {
+        chosen = pp.options[n - 1];
+        // Sin qty propia del mensaje → la cantidad pendiente del pedido original
+        // ("solo 3 empanadas" → "1" → carne ×3).
+        chosenQty = Number(pp.qty) || 1;
+      }
+    }
+    // Nombre (+ qty): "3 de carne", "2 jamón", "carne".
+    if (!chosen) {
+      const found = extractFromText(t, pp.options);
+      if (found.length) {
+        chosen = pp.options.find((o) => o.id === found[0].offerId);
+        // La qty del mensaje gana; si no tenía, la pendiente ("carne" tras
+        // "solo 3 empanadas" → ×3).
+        chosenQty = found[0].qty > 1 ? found[0].qty : (Number(pp.qty) || 1);
+        resolutionItem = found[0];
+      } else {
+        const m = matchProduct(pp.options, t);
+        if (m) { chosen = m; chosenQty = Number(pp.qty) || 1; }
+      }
+    }
+    if (!chosen) {
+      state.handoffCount = (state.handoffCount || 0) + 1;
+      if (state.handoffCount >= MAX_PARSE_MISSES) {
+        state.pendingProduct = null;
+        return handoffHuman(vendor, waId, text, state);
+      }
+      replies.push(pendingProductAsk(state));
+      return;
+    }
+    // Attach: si el producto ya está en el carrito → SET (corrigió la cantidad);
+    // si es re-declaración ("solo") → reemplaza todo; si no → agrega.
+    // La variante del mensaje (si el cliente la aclaró acá) se resuelve igual.
+    attachChosen(state, chosen, chosenQty, !!pp.fromRedeclare, resolutionItem);
+    state.pendingProduct = null;
+    state.handoffCount = 0;
+    if (maybeAskRequiredMods(state, products, replies)) return;
+    advanceAndAsk(state, vendor, replies);
+    return;
+  }
+
   // Pendiente: opciones requeridas de un producto (ej. gustos del helado).
   // El mensaje entero son las opciones → matchear contra las del grupo y adjuntarlas.
   if (state.pendingMods) {
@@ -358,6 +522,15 @@ async function handleStep({ vendor, text, state, replies, waId }) {
     return;
   }
 
+  // Pregunta mid-flow ("tenés coca?") → responder con la lista; el flujo sigue
+  // intacto (el carrito y las preguntas pendientes quedan).
+  if (isQuestion(t)) {
+    const matches = matchesFromQuestion(t, products);
+    const answer = matches.length ? answerText(matches) : noMatchText(products, vendor);
+    replies.push(answer + "\n\n" + pendingQuestions(state));
+    return;
+  }
+
   const parsed = enrichParsed(
     products,
     (await parseWithLlm(t, products, llmCtx(state, vendor)).catch(() => null)) || parseByRules(t, products)
@@ -387,6 +560,36 @@ async function handleStep({ vendor, text, state, replies, waId }) {
       state.items.length > 0 &&
       state.items.every((i) => parsed.items.some((p) => (p.offerId || p.id) === i.offerId));
     const shouldMerge = isAddition && !fullCart;
+
+        // Desambiguación (patrón PRODUCTNO): mención genérica ("empanadas" ≠
+    // "Empanada de carne") → preguntar cuál/cuántas ANTES de agregar a ciegas.
+    // Con 1 SOLO candidato no hay ambigüedad de cuál → attach inmediato
+    // ("quiero 1 coca" → Coca-Cola ×1, sin pregunta innecesaria).
+    // Los items EXACTOS del mismo mensaje se agregan igual (no se pierden) y
+    // los campos (método/pago/dirección/nombre) también se aplican.
+    const amb = ambiguousItems(products, parsed.items);
+    if (amb.length) {
+      const pp = amb[0];
+      const exactItems = parsed.items.filter((p) => !amb.includes(p));
+      const soloAmbiguo = exactItems.length === 0;
+      if (exactItems.length) applyExactItems(state, exactItems, shouldMerge);
+      applyContactFields(state, parsed);
+      const options = matchAllProducts(products, bareName(pp.said) || pp.said);
+      if (options.length === 1) {
+        attachChosen(state, options[0], pp.qty, soloAmbiguo && !shouldMerge, pp);
+        state.handoffCount = 0;
+        if (maybeAskRequiredMods(state, products, replies)) return;
+        advanceAndAsk(state, vendor, replies);
+        return;
+      }
+      state.pendingProduct = { label: pp.said, options, qty: Number(pp.qty) || 1, fromRedeclare: soloAmbiguo && !shouldMerge };
+      state.step = "flow";
+      state.pendingFields = missingFields(state, vendor);
+      const extra = state.pendingFields.length ? "\n\n" + pendingQuestions(state) : "";
+      replies.push(pendingProductAsk(state) + extra);
+      return;
+    }
+
     if (shouldMerge) {
       mergeItems(state, parsed.items);
     } else {
@@ -460,7 +663,8 @@ async function handleStep({ vendor, text, state, replies, waId }) {
   if (state.handoffCount >= MAX_PARSE_MISSES) {
     return handoffHuman(vendor, waId, text, state);
   }
-  replies.push(pendingQuestions(state) + "\n\nNo entendí eso — respondé lo que te pregunto arriba. 🙏");
+  const alts = alternativesText(t, products);
+  replies.push(pendingQuestions(state) + "\n\nNo entendí eso — respondé lo que te pregunto arriba. 🙏" + (alts ? "\n\n" + alts : ""));
 }
 
 // ———————————————————————————————————————————————————————————————————————————
@@ -519,6 +723,60 @@ const normLabel = (s) =>
 
 const splitLabels = (t) =>
   String(t).split(/[,\n;]| e | y |\s*\+\s*/i).map((s) => s.trim()).filter(Boolean);
+
+/** Items del parseo que son GENÉRICOS/PARCIALES: lo que el cliente escribió
+ *  no coincide con el nombre completo del producto ("empanadas" ≠ "Empanada
+ *  de carne"). Antes se agregaba a ciegas el primer match. */
+function ambiguousItems(products, items) {
+  if (!Array.isArray(items)) return [];
+  return items.filter((p) => {
+    const prod = products.find((x) => String(x.id) === String(p.offerId || p.id));
+    if (!prod) return false;
+    const said = normalizeForMatch(p.said || "");
+    const fullName = normalizeForMatch(prod.name);
+    return !!said && said !== fullName;
+  });
+}
+
+// Attach del producto elegido: si ya está en el carrito → SET (corrigió la
+// cantidad); si es re-declaración ("solo") → reemplaza todo; si no → agrega.
+// La variante (color/talle) del mensaje se resuelve contra las variantes reales.
+function attachChosen(state, chosen, qty, fromRedeclare, origItem) {
+  const q = Math.max(1, Number(qty) || 1);
+  const variant = origItem ? matchVariant(chosen, origItem) : null;
+  const vid = variant?.id || null;
+  if (fromRedeclare) {
+    state.items = [{ offerId: chosen.id, variantId: vid, name: chosen.name, qty: q, modifiers: [] }];
+    return;
+  }
+  const inCart = state.items.find((i) => i.offerId === chosen.id && (i.variantId || null) === vid);
+  if (inCart) inCart.qty = q;
+  else mergeItems(state, [{ offerId: chosen.id, variantId: vid, name: chosen.name, qty: q, modifiers: [] }]);
+}
+
+// Items EXACTOS de un mensaje mixto (exacto + genérico): se agregan igual,
+// no se pierden por el attach inmediato del item ambiguo.
+function applyExactItems(state, items, shouldMerge) {
+  if (shouldMerge) mergeItems(state, items);
+  else state.items = items.map((p) => ({
+    offerId: p.offerId || p.id,
+    variantId: p.variantId,
+    name: p.name,
+    qty: Math.max(1, Number(p.qty) || 1),
+    modifiers: p.modifiers || [],
+  }));
+}
+
+function pendingProductAsk(state) {
+  const pp = state.pendingProduct;
+  const label = pp.label || "esto";
+  if (pp.options.length === 1) {
+    return `🥟 ${pp.options[0].name} — ¿cuánt${pp.qty > 1 ? "as" : "a"} querés? (ej: *"3"*)`;
+  }
+  const lines = pp.options.map((p, i) => `${i + 1}️⃣ ${p.name}`).join("\n");
+  const qtyPart = pp.qty > 1 ? `\n(Elegiste ${pp.qty} — decime de cuál)` : "";
+  return `🥟 ${label} — ¿cuántas querés y de cuál?\n${lines}${qtyPart}\n\nRespondé todo junto (ej: *"2 carne"* o *"3 de jamón y queso"*).`;
+}
 
 /** Si algún item del carrito tiene producto con grupo requerido y el cliente
  *  no dijo opciones para ese grupo → pregunta (numeradas) y devuelve true.
@@ -644,6 +902,11 @@ function applyParsed(state, parsed, waId) {
     qty: Math.max(1, Number(p.qty) || 1),
     modifiers: p.modifiers || [],
   }));
+  applyContactFields(state, parsed);
+}
+
+/** Los campos de contacto/método/pago del parseo (sin items). */
+function applyContactFields(state, parsed) {
   if (parsed.customerName) state.customerName = parsed.customerName;
   // El teléfono lo setea handleInbound (teléfono real del relay > lid:).
   if (parsed.note) state.note = parsed.note;

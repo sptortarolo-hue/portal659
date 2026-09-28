@@ -79,10 +79,31 @@ function normalizeForMatch(name) {
     .toLowerCase()
     .normalize("NFD")
     .replace(/\p{Diacritic}/gu, "")
-    // quitar plurales comunes del español para match aproximado (empanadas→empanada)
+    // quitar plurales regulares del español (vocal+s): empanadas→empanada,
+    // gustos→gusto, pizzas→pizza. El regex viejo ([sr])s\b solo matcheaba
+    // "ss"/"rs" — NUNCA strippeaba "as"/"os" y el caso exacto ("quiero 2
+    // empanadas de carne") quedaba marcado como ambiguo.
+    .replace(/([aeiou])s\b/g, "$1")
     .replace(/([sr])s\b/g, "$1")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+export { normalizeForMatch };
+
+/** TODOS los productos que matchean un nombre (para desambiguar: "empanadas"
+ *  → [carne, jamón y queso]). Máx 4 candidatos. */
+export function matchAllProducts(products, name) {
+  const n = normalizeForMatch(name);
+  if (!n) return [];
+  const exact = products.find((p) => normalizeForMatch(p.name) === n);
+  if (exact) return [exact];
+  const wanted = n.split(" ").filter(Boolean);
+  const inter = products.filter((p) => {
+    const toks = normalizeForMatch(p.name).split(" ");
+    return wanted.every((t) => toks.some((t2) => t2.startsWith(t) || t.startsWith(t2)));
+  });
+  return inter.slice(0, 4);
 }
 
 export function menuSummary(vendorName, products) {

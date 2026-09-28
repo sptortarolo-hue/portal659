@@ -1491,14 +1491,6 @@ function VendorDashboardInner() {
           </div>
         )}
 
-        {/* Estado de alertas push — tab Pedidos/Presupuestos: valida que el
-            aviso de pedido nuevo suene en este celu (incluso bloqueado). */}
-        {tab === "orders" && (
-          <div className="px-4 mt-4 mx-auto w-full max-w-7xl">
-            <PushAlertCard />
-          </div>
-        )}
-
         {/* Tab content */}
         <div className={`flex-1 px-4 mt-4 ${tab === "comanda" ? "w-full max-w-none" : `mx-auto w-full ${["orders", "history", "pos", "mesas", "caja", "clientes", "analytics", "recetas", "hoy", "menu"].includes(tab) ? "max-w-7xl" : "max-w-4xl"}`}`}>
           {isService ? (
@@ -1570,7 +1562,13 @@ function VendorDashboardInner() {
                       })}
                     </nav>
                   )}
-                  <div className="flex-1 min-w-0">{configContent}</div>
+                  <div className="flex-1 min-w-0 space-y-4">
+                    {/* Alertas push: vive en Configuración para no quitar
+                        pantalla a la parte operativa. Valida que el aviso de
+                        pedido nuevo suene en este celu (incluso bloqueado). */}
+                    <PushAlertCard />
+                    {configContent}
+                  </div>
                 </div>
               </div>
               <div className={tab === "menu" ? "" : "hidden"}>

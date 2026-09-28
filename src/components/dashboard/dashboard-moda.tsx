@@ -71,6 +71,7 @@ type VariantRow = {
   promo: string;
   stock: number;
   sku: string;
+  cost: string;
 };
 
 // Galería moda: 1 portada (image_url) + hasta 7 extras (product_images).
@@ -260,6 +261,7 @@ export default function DashboardModa({
         promo: v.promo != null ? String(v.promo) : "",
         stock: v.stock,
         sku: v.sku ?? "",
+        cost: (v as any).cost_last != null ? String((v as any).cost_last) : "",
       }))
     );
     setGalleryUrls(imgs.map((img) => ({ url: img.url, color: img.color ?? null })));
@@ -272,7 +274,7 @@ export default function DashboardModa({
     setVariantRows((prev) => {
       const colors = prev.length ? Array.from(new Set(prev.map((r) => r.color))) : [""];
       const talles = prev.length ? Array.from(new Set(prev.map((r) => r.talle))) : [""];
-      return [...prev, { color: colors[0] || "", talle: talles[0] || "", price: prev[prev.length - 1]?.price || offPrice, promo: "", stock: 0, sku: "" }];
+      return [...prev, { color: colors[0] || "", talle: talles[0] || "", price: prev[prev.length - 1]?.price || offPrice, promo: "", stock: 0, sku: "", cost: "" }];
     });
   }
 
@@ -372,7 +374,7 @@ export default function DashboardModa({
         const vr = await fetch("/api/vendor/variants", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ product_id: productId, variants: variantRows.map((r) => ({ color: r.color, talle: r.talle, price: r.price, promo: r.promo || null, stock: r.stock, sku: r.sku.trim() || null })) }),
+          body: JSON.stringify({ product_id: productId, variants: variantRows.map((r) => ({ color: r.color, talle: r.talle, price: r.price, promo: r.promo || null, stock: r.stock, sku: r.sku.trim() || null, cost_last: r.cost.trim() === "" ? null : Number(r.cost) })) }),
         });
         const vdata = await vr.json().catch(() => ({}));
         if (!vr.ok || vdata.error) {
@@ -468,11 +470,11 @@ export default function DashboardModa({
               <Label className="text-sm">Variantes (color × talle)</Label>
               <Button type="button" size="sm" variant="outline" onClick={addVariantRow}>+ Fila</Button>
             </div>
-            <div className="hidden sm:grid sm:grid-cols-7 gap-2 text-xs font-medium text-muted-foreground px-1">
-              <span>Color</span><span>Talle</span><span>Precio</span><span>Promo</span><span>Stock</span><span>SKU</span><span></span>
+            <div className="hidden sm:grid sm:grid-cols-8 gap-2 text-xs font-medium text-muted-foreground px-1">
+              <span>Color</span><span>Talle</span><span>Precio</span><span>Promo</span><span>Stock</span><span>SKU</span><span>Costo</span><span></span>
             </div>
             {variantRows.map((row, i) => (
-              <div key={i} className="grid grid-cols-2 sm:grid-cols-7 gap-2 items-center">
+              <div key={i} className="grid grid-cols-2 sm:grid-cols-8 gap-2 items-center">
                 <Input className="h-8" value={row.color} onChange={(e) => updateVariantRow(i, "color", e.target.value)} placeholder="Rojo" />
                 <Input className="h-8" value={row.talle} onChange={(e) => updateVariantRow(i, "talle", e.target.value)} placeholder="M" />
                 <Input className="h-8" type="number" value={row.price} onChange={(e) => updateVariantRow(i, "price", e.target.value)} />
@@ -484,6 +486,9 @@ export default function DashboardModa({
                 </div>
                 <div className="min-w-0">
                   <Input className="h-8" value={row.sku} onChange={(e) => updateVariantRow(i, "sku", e.target.value)} placeholder="Código" />
+                </div>
+                <div className="min-w-0">
+                  <Input className="h-8" type="number" min={0} step="any" value={row.cost} onChange={(e) => updateVariantRow(i, "cost", e.target.value)} placeholder="Costo" title="Costo de compra (para margen)" />
                 </div>
                 <Button type="button" variant="ghost" size="sm" className="text-red-600" onClick={() => setVariantRows((prev) => prev.filter((_, idx) => idx !== i))}>🗑️</Button>
               </div>

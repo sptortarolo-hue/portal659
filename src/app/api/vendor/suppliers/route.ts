@@ -1,16 +1,16 @@
-import { gateRequest, gateError } from "@/lib/subscription-gate";
+﻿import { gateRequest, gateError } from "@/lib/subscription-gate";
 import { queryMany, queryOne } from "@/lib/db";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
-const GATE_MSG = "Las recetas forman parte del plan Gestión integral";
+const GATE_MSG = "Compras e inventario forman parte del plan GestiÃ³n integral";
 
 /** Lista de proveedores del comercio. */
 export async function GET(request: Request) {
   const gate = await gateRequest(request);
   if (!gate.ok) return gateError(gate);
-  if (!gate.plan.can("recipes")) {
+  if (!gate.plan.can("recipes") && !gate.plan.can("inventory")) {
     return NextResponse.json({ error: GATE_MSG }, { status: 403 });
   }
 
@@ -29,13 +29,13 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const gate = await gateRequest(request);
   if (!gate.ok) return gateError(gate);
-  if (!gate.plan.can("recipes")) {
+  if (!gate.plan.can("recipes") && !gate.plan.can("inventory")) {
     return NextResponse.json({ error: GATE_MSG }, { status: 403 });
   }
 
   const body = await request.json();
   const name = String(body?.name || "").trim();
-  if (!name) return NextResponse.json({ error: "Indicá el nombre del proveedor" }, { status: 400 });
+  if (!name) return NextResponse.json({ error: "IndicÃ¡ el nombre del proveedor" }, { status: 400 });
 
   const phone =
     body?.phone != null && String(body.phone).trim() !== "" ? String(body.phone).trim() : null;

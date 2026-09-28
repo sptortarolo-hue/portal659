@@ -5,7 +5,8 @@ import { sendPushToUser } from "@/lib/push";
 import { getSiteUrl } from "@/lib/site-url";
 import { NextResponse } from "next/server";
 import { canTransition } from "@/lib/order-utils";
-import { adjustStockForItems, OutOfStockError } from "@/lib/stock";
+import { adjustStockForItems, OutOfStockError, type StockMove } from "@/lib/stock";
+import { logStockMovement } from "@/lib/stock-ledger";
 import { isRetailVendor } from "@/lib/plans";
 import { PricingError, resolveOrderPricing } from "@/lib/pricing";
 import { fetchVendorDelivery } from "@/lib/delivery-server";
@@ -386,8 +387,14 @@ export async function PATCH(
         // Re-stock del pedido viejo + reserva del nuevo (canales que reservan
         // stock al crear: app y mostrador; mesa nunca reserva).
         if (currentOrder.channel === "app" || currentOrder.channel === "mostrador") {
-          await adjustStockForItems(tx, currentOrder.items, "increment");
-          await adjustStockForItems(tx, pricing.items, "decrement");
+          const returnedStock: StockMove[] = await adjustStockForItems(tx, currentOrder.items, "increment");
+          const reservedStock: StockMove[] = await adjustStockForItems(tx, pricing.items, "decrement");
+          for (const m of returnedStock) {
+            await logStockMovement(tx, { vendorId: vendor.id, product_id: m.product_id, variant_id: m.variant_id, qty_delta: m.qty, reason: "devolucion", ref_order: params.id });
+          }
+          for (const m of reservedStock) {
+            await logStockMovement(tx, { vendorId: vendor.id, product_id: m.product_id, variant_id: m.variant_id, qty_delta: -m.qty, reason: "venta", ref_order: params.id });
+          }
         }
         // Ítems nuevos = producción nueva: se resetea el tildado de cocina.
         if (hasKitchenCol) {
@@ -453,7 +460,10 @@ export async function PATCH(
       // tampoco descontaron → no hay nada que reponer).
       if (status === "cancelled" && (currentOrder.channel === "app" || currentOrder.channel === "mostrador") && currentOrder.is_preview !== true) {
         const updatedItems = (orderRows[0].items as OrderItem[] | null) ?? currentOrder.items;
-        await adjustStockForItems(tx, updatedItems, "increment");
+        const returnedStock: StockMove[] = await adjustStockForItems(tx, updatedItems, "increment");
+        for (const m of returnedStock) {
+          await logStockMovement(tx, { vendorId: vendor.id, product_id: m.product_id, variant_id: m.variant_id, qty_delta: m.qty, reason: "devolucion", ref_order: params.id });
+        }
       }
 
       // CRM: la compra cancelada sale del libro (solo pedidos con cliente real:
@@ -611,7 +621,10 @@ export async function DELETE(
       order.items &&
       order.items.length > 0
     ) {
-      await adjustStockForItems(tx, order.items, "increment");
+      const returnedStock: StockMove[] = await adjustStockForItems(tx, order.items, "increment");
+      for (const m of returnedStock) {
+        await logStockMovement(tx, { vendorId: vendor.id, product_id: m.product_id, variant_id: m.variant_id, qty_delta: m.qty, reason: "devolucion", ref_order: params.id });
+      }
     }
     await tx.queryVoid(`DELETE FROM orders WHERE id = $1 AND vendor_id = $2`, [params.id, vendor.id]);
   });

@@ -91,11 +91,28 @@ export function QuoteManualModal({
   const [items, setItems] = useState<ManualItem[]>([{ kind: "material", description: "", qty: "1", unit_price: "" }]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  // Memoria de precios: últimos materiales usados (autocompleta precio).
+  const [matMemory, setMatMemory] = useState<{ description: string; unit_price: number }[]>([]);
+  useEffect(() => {
+    fetch("/api/vendor/quote-materials")
+      .then((r) => r.json())
+      .then((d) => { if (Array.isArray(d?.materials)) setMatMemory(d.materials); })
+      .catch(() => {});
+  }, []);
 
   const total = items.reduce((s, it) => s + (Number(it.qty) || 0) * (Number(it.unit_price) || 0), 0);
 
   function setItem(i: number, patch: Partial<ManualItem>) {
-    setItems((prev) => prev.map((it, idx) => (idx === i ? { ...it, ...patch } : it)));
+    setItems((prev) => {
+      const next = prev.map((it, idx) => (idx === i ? { ...it, ...patch } : it));
+      // Al elegir un material conocido sin precio, sugiere el último usado.
+      const row = next[i];
+      if (patch.description !== undefined && row && row.kind === "material" && row.unit_price === "") {
+        const hit = matMemory.find((m) => m.description.toLowerCase() === patch.description!.trim().toLowerCase());
+        if (hit) next[i] = { ...row, unit_price: String(hit.unit_price) };
+      }
+      return next;
+    });
   }
 
   async function submit() {
@@ -176,6 +193,13 @@ export function QuoteManualModal({
               </button>
             </div>
             <div className="space-y-1.5">
+              <datalist id="qm-materials">
+                {matMemory.map((m) => (
+                  <option key={m.description} value={m.description}>
+                    ${Number(m.unit_price).toLocaleString("es-AR")}
+                  </option>
+                ))}
+              </datalist>
               {items.map((it, i) => (
                 <div key={i} className="flex gap-1.5">
                   <select
@@ -192,6 +216,7 @@ export function QuoteManualModal({
                     onChange={(e) => setItem(i, { description: e.target.value })}
                     placeholder="Descripción"
                     className="h-9 text-xs flex-1 min-w-0"
+                    list="qm-materials"
                   />
                   <Input
                     type="number" min={0} value={it.qty} onChange={(e) => setItem(i, { qty: e.target.value })}

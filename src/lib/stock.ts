@@ -18,38 +18,51 @@ export class OutOfStockError extends Error {
  * Solo se tocan ítems con `variant_id` (variantes de moda) o `product_id`
  * de un producto con `stock_control` activo. El resto no lleva stock.
  * Pensado para correr DENTRO de la transacción del pedido.
+ *
+ * Devuelve los movimientos EFECTIVOS (para kardex): solo lo que realmente
+ * cambió stock (los no-op sin stock_control no se reportan).
  */
+export type StockMove = {
+  product_id?: string;
+  variant_id?: string;
+  qty: number;
+};
+
 export async function adjustStockForItems(
   tx: Tx,
   items: OrderItem[] | null | undefined,
   direction: "decrement" | "increment"
-): Promise<void> {
+): Promise<StockMove[]> {
+  const moved: StockMove[] = [];
   for (const item of items || []) {
     if (!item) continue;
     const qty = Math.max(1, Number(item.qty) || 1);
 
     if (item.variant_id) {
       if (direction === "increment") {
-        await tx.queryVoid(
-          `UPDATE product_variants SET stock = stock + $1 WHERE id = $2`,
+        const rows = await tx.query<{ id: string }>(
+          `UPDATE product_variants SET stock = stock + $1 WHERE id = $2 RETURNING id`,
           [qty, item.variant_id]
         );
+        if (rows.length > 0) moved.push({ variant_id: item.variant_id, qty });
       } else {
         const rows = await tx.query<{ id: string }>(
           `UPDATE product_variants SET stock = stock - $1 WHERE id = $2 AND stock >= $1 RETURNING id`,
           [qty, item.variant_id]
         );
         if (rows.length === 0) throw new OutOfStockError(item.name);
+        moved.push({ variant_id: item.variant_id, qty });
       }
       continue;
     }
 
     if (item.product_id) {
       if (direction === "increment") {
-        await tx.queryVoid(
-          `UPDATE products SET stock = stock + $1 WHERE id = $2 AND stock_control = true`,
+        const rows = await tx.query<{ id: string }>(
+          `UPDATE products SET stock = stock + $1 WHERE id = $2 AND stock_control = true RETURNING id`,
           [qty, item.product_id]
         );
+        if (rows.length > 0) moved.push({ product_id: item.product_id, qty });
       } else {
         const rows = await tx.query<{ id: string }>(
           `UPDATE products SET stock = stock - $1
@@ -64,8 +77,11 @@ export async function adjustStockForItems(
             [item.product_id]
           );
           if (p?.stock_control) throw new OutOfStockError(item.name);
+        } else {
+          moved.push({ product_id: item.product_id, qty });
         }
       }
     }
   }
+  return moved;
 }

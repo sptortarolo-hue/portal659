@@ -29,6 +29,7 @@ import {
   DollarSign,
   Users,
   Receipt,
+  Boxes,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 // Modal de recorte: solo se carga cuando se abre (fuera del bundle inicial).
@@ -70,6 +71,7 @@ import { Mostrador } from "@/components/vendor/mostrador";
 import { Mesas } from "@/components/vendor/mesas";
 import { CajaManager } from "@/components/dashboard/caja-manager";
 import { FiscalConfigSection } from "@/components/dashboard/fiscal-config-section";
+import { InventoryTab } from "@/components/dashboard/inventory-tab";
 import { CustomersManager } from "@/components/dashboard/customers-manager";
 import { OpenToggle } from "@/components/vendor/open-toggle";
 import { PrepTimeControl } from "@/components/vendor/prep-time-control";
@@ -141,7 +143,7 @@ type Offer = DBProduct;
 
 type MenuCategory = { id: string; name: string; position: number };
 
-type DashTab = "hoy" | "config" | "menu" | "orders" | "history" | "comanda" | "analytics" | "pos" | "mesas" | "caja" | "clientes" | "reviews" | "recetas" | "fiscal";
+type DashTab = "hoy" | "config" | "menu" | "orders" | "history" | "comanda" | "analytics" | "pos" | "mesas" | "caja" | "clientes" | "reviews" | "recetas" | "fiscal" | "inventario";
 
 // Tabs pesados con fetch propio: se memoizan para no re-renderizarlos en cada
 // tecla/búsqueda del dashboard (solo cambian cuando cambian sus props).
@@ -157,6 +159,7 @@ const MemoProductManager = memo(ProductManager);
 const MemoMenuStudio = memo(MenuStudio);
 const MemoRecipeManager = memo(RecipeManager);
 const MemoDashboardHome = memo(DashboardHome);
+const MemoInventoryTab = memo(InventoryTab);
 const MemoDeliveryBoard = memo(DeliveryBoard);
 
 const STATUS_LABELS: Record<Order["status"], string> = {
@@ -1293,6 +1296,7 @@ function VendorDashboardInner() {
     : tab === "history" ? "Histórico"
     : tab === "reviews" ? "Reseñas"
     : tab === "fiscal" ? "Facturación"
+    : tab === "inventario" ? "Inventario"
     : "Configuración";
 
   const todayLabel = new Date().toLocaleDateString("es-AR", {
@@ -1328,6 +1332,7 @@ function VendorDashboardInner() {
         planName={effectivePlan.plan?.name ?? null}
         planSlug={effectivePlan.plan?.slug ?? null}
         canFiscal={effectivePlan.can("fiscal")}
+        canInventory={effectivePlan.can("inventory")}
         configNavSections={isService ? null : sectionsForVertical(vendor?.vertical)}
         activeConfigSection={configSection}
         onConfigSection={handleConfigSection}
@@ -1492,7 +1497,7 @@ function VendorDashboardInner() {
         )}
 
         {/* Tab content */}
-        <div className={`flex-1 px-4 mt-4 ${tab === "comanda" ? "w-full max-w-none" : `mx-auto w-full ${["orders", "history", "pos", "mesas", "caja", "clientes", "analytics", "recetas", "hoy", "menu"].includes(tab) ? "max-w-7xl" : "max-w-4xl"}`}`}>
+        <div className={`flex-1 px-4 mt-4 ${tab === "comanda" ? "w-full max-w-none" : `mx-auto w-full ${["orders", "history", "pos", "mesas", "caja", "clientes", "analytics", "recetas", "inventario", "hoy", "menu"].includes(tab) ? "max-w-7xl" : "max-w-4xl"}`}`}>
           {isService ? (
             <div className="space-y-4">
               <DashboardServicio
@@ -1676,6 +1681,18 @@ function VendorDashboardInner() {
                   )}
                 </div>
               )}
+              {mountedTabs.has("inventario") && (
+                <div className={tab === "inventario" ? "" : "hidden"}>
+                  {effectivePlan.can("inventory") ? (
+                    <MemoInventoryTab />
+                  ) : (
+                    <PlanLock
+                      title="Inventario y compras"
+                      description="Proveedores, costos, conteos físicos, kardex y reposición sugerida. Parte del plan Gestión integral."
+                    />
+                  )}
+                </div>
+              )}
               {mountedTabs.has("recetas") && (
                 <div className={tab === "recetas" ? "" : "hidden"}>
                   {isGastro && effectivePlan.can("recipes") ? (
@@ -1780,7 +1797,7 @@ function VendorDashboardInner() {
             )}
               </>
             )}
-            <button onClick={() => setMoreOpen((v) => !v)} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors ${["config", "menu", "analytics", "history", "reviews", "recetas", "caja", "clientes"].includes(tab) ? "text-primary" : "text-muted-foreground"}`}>
+            <button onClick={() => setMoreOpen((v) => !v)} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors ${["config", "menu", "analytics", "history", "reviews", "recetas", "caja", "clientes", "inventario"].includes(tab) ? "text-primary" : "text-muted-foreground"}`}>
               <span className="text-lg">{moreOpen ? <X className="h-5 w-5" /> : <MoreHorizontal className="h-5 w-5" />}</span>Más
             </button>
           </div>
@@ -1829,6 +1846,11 @@ function VendorDashboardInner() {
               {(isGastro || isComercio || isModa) && (
                 <button onClick={() => { setTab("fiscal"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "fiscal" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
                   <Receipt className="h-5 w-5" />Facturación
+                </button>
+              )}
+              {(isGastro || isComercio || isModa) && (
+                <button onClick={() => { setTab("inventario"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "inventario" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
+                  <Boxes className="h-5 w-5" />Inventario
                 </button>
               )}
               <button onClick={() => { setTab("config"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "config" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>

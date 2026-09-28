@@ -3,7 +3,8 @@ import { queryMany, queryOne, withTransaction } from "@/lib/db";
 import { sendEmail, newOrderVendorEmail } from "@/lib/email";
 import { sendPushToUser } from "@/lib/push";
 import { resolveVendorPlan } from "@/lib/plans";
-import { adjustStockForItems, OutOfStockError } from "@/lib/stock";
+import { adjustStockForItems, OutOfStockError, type StockMove } from "@/lib/stock";
+import { logStockMovement } from "@/lib/stock-ledger";
 import { isStoreOpen } from "@/lib/open-hours";
 import { PricingError, resolveOrderPricing, IncomingOrderItem } from "@/lib/pricing";
 import { nextOrderNumber } from "@/lib/order-number";
@@ -280,8 +281,7 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
       resolvedZoneName = pricing.deliveryZoneName;
       resolvedOutOfArea = pricing.deliveryOutOfArea;
 
-      await adjustStockForItems(tx, resolvedItems, "decrement");
-
+      const movedStock: StockMove[] = await adjustStockForItems(tx, resolvedItems, "decrement");
       pickupNumber = await nextOrderNumber(tx, vendorId);
 
       // $16 = track_token; después van las columnas opcionales con
@@ -322,6 +322,20 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
         ]
       );
       orderId = rows[0]?.id;
+
+      // Kardex: lo reservado por la venta.
+      if (orderId) {
+        for (const m of movedStock) {
+          await logStockMovement(tx, {
+            vendorId,
+            product_id: m.product_id,
+            variant_id: m.variant_id,
+            qty_delta: -m.qty,
+            reason: "venta",
+            ref_order: orderId,
+          });
+        }
+      }
 
       if (customerPhoneE164 && !customerPhoneE164.startsWith("lid:")) {
         await upsertCustomerFromOrder(tx, vendorId, {

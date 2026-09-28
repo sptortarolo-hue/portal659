@@ -57,19 +57,31 @@ export async function PUT(request: Request) {
     promo: v.promo !== undefined && v.promo !== null && v.promo !== "" ? Number(v.promo) : null,
     stock: Number(v.stock || 0),
     sku: v.sku ? String(v.sku) : null,
+    cost_last: v.cost_last != null && v.cost_last !== "" && Number.isFinite(Number(v.cost_last)) && Number(v.cost_last) >= 0 ? Number(v.cost_last) : null,
     position: i,
   }));
 
-  // TransacciÃ³n atÃ³mica: si un INSERT falla en el medio, no quedan variantes
-  // parciales (antes iba DELETE + INSERT sueltos y un fallo corrompÃ­a el menÃº).
+  // Transacción atómica: si un INSERT falla en el medio, no quedan variantes
+  // parciales (antes iba DELETE + INSERT sueltos y un fallo corrompía el menú).
+  const hasCost = await queryOne<{ exists: boolean }>(
+    `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'product_variants' AND column_name = 'cost_last') AS exists`
+  ).catch(() => null);
   await withTransaction(async (tx) => {
     await tx.queryVoid(`DELETE FROM product_variants WHERE product_id = $1`, [product_id]);
     for (const row of rows) {
-      await tx.queryVoid(
-        `INSERT INTO product_variants (product_id, color, talle, price, promo, stock, sku, position)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-        [row.product_id, row.color, row.talle, row.price, row.promo, row.stock, row.sku, row.position]
-      );
+      if (hasCost?.exists === true) {
+        await tx.queryVoid(
+          `INSERT INTO product_variants (product_id, color, talle, price, promo, stock, sku, cost_last, position)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+          [row.product_id, row.color, row.talle, row.price, row.promo, row.stock, row.sku, row.cost_last, row.position]
+        );
+      } else {
+        await tx.queryVoid(
+          `INSERT INTO product_variants (product_id, color, talle, price, promo, stock, sku, position)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+          [row.product_id, row.color, row.talle, row.price, row.promo, row.stock, row.sku, row.position]
+        );
+      }
     }
   });
 

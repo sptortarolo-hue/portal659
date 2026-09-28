@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { X, Package, ChefHat, ShoppingBag, LayoutGrid, UtensilsCrossed, Settings, BarChart3, History, Star, ExternalLink, LogOut, Home, Sparkles, Calculator, Bot, DollarSign, Receipt, Users, MessageSquare, CalendarDays, ClipboardList } from "lucide-react";
+import { X, Package, ChefHat, ShoppingBag, LayoutGrid, UtensilsCrossed, Settings, BarChart3, History, Star, ExternalLink, LogOut, Home, Sparkles, Calculator, Bot, DollarSign, Receipt, Users, MessageSquare, CalendarDays, ClipboardList, Boxes } from "lucide-react";
 import type { ConfigSectionStatus } from "@/components/dashboard/config-nav";
 
-type Tab = "hoy" | "config" | "menu" | "orders" | "history" | "comanda" | "analytics" | "pos" | "mesas" | "caja" | "clientes" | "reviews" | "recetas" | "fiscal";
+type Tab = "hoy" | "config" | "menu" | "orders" | "history" | "comanda" | "analytics" | "pos" | "mesas" | "caja" | "clientes" | "reviews" | "recetas" | "fiscal" | "inventario";
 
 interface VendorSidebarProps {
   open: boolean;
@@ -31,6 +31,8 @@ interface VendorSidebarProps {
   planSlug: string | null;
   /** Plan Gestión con facturación (can("fiscal")): muestra la pestaña Facturación. */
   canFiscal?: boolean;
+  /** Plan Gestión con inventario (can("inventory")): muestra la pestaña Inventario. */
+  canInventory?: boolean;
   // Props heredadas de cuando la sidebar mutaba en Config (ya no se usan,
   // pero se conservan opcionales para no tocar a los llamadores).
   /** Secciones de Config (sidebar única): si viene y currentTab es config, la nav las muestra. */
@@ -137,6 +139,7 @@ export default function VendorSidebar({
   planName,
   planSlug,
   canFiscal = false,
+  canInventory = false,
 }: VendorSidebarProps) {
   function handleTab(tab: Tab) {
     onTabChange(tab);
@@ -256,6 +259,14 @@ export default function VendorSidebar({
                   onClick={() => handleTab("fiscal")}
                   icon={Receipt}
                   label="Facturación"
+                />
+              )}
+              {!isService && canInventory && (
+                <NavButton
+                  active={currentTab === "inventario"}
+                  onClick={() => handleTab("inventario")}
+                  icon={Boxes}
+                  label="Inventario"
                 />
               )}
             </div>

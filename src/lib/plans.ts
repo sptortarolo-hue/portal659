@@ -74,6 +74,7 @@ const GRATUITO_FEATURES: PlanFeatures = {
   quotes_respond: false,
   deposits: false,
   fiscal: false,
+  inventory: false,
 };
 
 // Features del plan Gratuito para gastronomía: carta completa + carrito +

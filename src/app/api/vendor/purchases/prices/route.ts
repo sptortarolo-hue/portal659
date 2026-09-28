@@ -1,17 +1,17 @@
-import { gateRequest, gateError } from "@/lib/subscription-gate";
+﻿import { gateRequest, gateError } from "@/lib/subscription-gate";
 import { queryMany, queryOne } from "@/lib/db";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
-const GATE_MSG = "Las recetas forman parte del plan Gestión integral";
+const GATE_MSG = "Compras e inventario forman parte del plan GestiÃ³n integral";
 
 /** Historial de precios de un insumo (?ingredientId=): serie para ver la
- *  variación del costo en el tiempo. */
+ *  variaciÃ³n del costo en el tiempo. */
 export async function GET(request: Request) {
   const gate = await gateRequest(request);
   if (!gate.ok) return gateError(gate);
-  if (!gate.plan.can("recipes")) {
+  if (!gate.plan.can("recipes") && !gate.plan.can("inventory")) {
     return NextResponse.json({ error: GATE_MSG }, { status: 403 });
   }
 

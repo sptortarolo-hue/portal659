@@ -42,6 +42,8 @@ export type PlanFeatures = {
   deposits: boolean;
   /** Facturación electrónica ARCA (Factura C, plan Gestión integral). */
   fiscal: boolean;
+  /** Inventario compartido: proveedores, listas de precios, costos, conteos y kardex. */
+  inventory: boolean;
 };
 
 export type Plan = {
@@ -227,6 +229,57 @@ export type PurchaseItem = {
   created_at: string;
 };
 
+/** Precio de un proveedor para un insumo, producto o variante. */
+export type SupplierPricelist = {
+  id: string;
+  supplier_id: string;
+  vendor_id: string;
+  ingredient_id: string | null;
+  product_id: string | null;
+  variant_id: string | null;
+  price: number;
+  unit: string | null;
+  updated_at: string;
+};
+
+/** Conteo físico de inventario (cabecera). */
+export type StockCount = {
+  id: string;
+  vendor_id: string;
+  status: string;
+  created_by: string | null;
+  created_at: string;
+  closed_at: string | null;
+};
+
+/** Línea de conteo: snapshot del sistema vs contado. */
+export type StockCountLine = {
+  id: string;
+  count_id: string;
+  product_id: string | null;
+  variant_id: string | null;
+  ingredient_id: string | null;
+  system_qty: number;
+  counted_qty: number | null;
+  note: string | null;
+};
+
+/** Movimiento de kardex (append-only). */
+export type StockMovement = {
+  id: string;
+  vendor_id: string;
+  product_id: string | null;
+  variant_id: string | null;
+  ingredient_id: string | null;
+  qty_delta: number;
+  reason: string;
+  ref_order: string | null;
+  ref_purchase: string | null;
+  ref_count: string | null;
+  created_by: string | null;
+  created_at: string;
+};
+
 /** Link de receta compartida: otro producto a la venta del mismo batch
  *  (ej. la porción y la torta entera). El costo se deriva con `servings`;
  *  el precio sigue siendo propio de cada producto. */
@@ -268,6 +321,10 @@ export type Product = {
   stock: number | null;
   stock_low_threshold: number | null;
   stock_control?: boolean;
+  /** Último costo de compra (mercadería). NULL = sin costo. */
+  cost_last?: number | null;
+  /** Costo promedio ponderado (mercadería). NULL = sin costo. */
+  cost_avg?: number | null;
   promo_price: number | null;
   available: boolean;
   featured_today: boolean;
@@ -291,6 +348,8 @@ export type ProductVariant = {
   promo: number | null;
   stock: number;
   sku: string | null;
+  /** Último costo de compra (mercadería moda). NULL = sin costo. */
+  cost_last?: number | null;
   position: number;
   created_at: string;
 };

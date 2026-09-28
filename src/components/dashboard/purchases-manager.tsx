@@ -21,17 +21,23 @@ import {
 // Compras: formulario de carga rápida (proveedor + líneas con costo neto).
 // Al guardar, cada insumo actualiza su costo al ÚLTIMO precio (la API).
 // ---------------------------------------------------------------------------
-type BuyLine = { key: number; ingredient_id: string; qty: string; unit: string; unit_cost: string; total_paid: string };
+type BuyLine = { key: number; kind: "ing" | "prod" | "var"; ingredient_id: string; product_id: string; variant_id: string; qty: string; unit: string; unit_cost: string; total_paid: string };
 
 function PurchaseForm({
   suppliers,
   ingredients,
+  products = [],
+  variants = [],
+  allowMerchandise = false,
   onSupplierCreated,
   onDone,
   onCancel,
 }: {
   suppliers: Supplier[];
   ingredients: Ingredient[];
+  products?: { id: string; name: string; cost_last?: number | null; stock?: number | null }[];
+  variants?: { id: string; product_id: string; color: string; talle: string; price: number; stock: number; cost_last?: number | null }[];
+  allowMerchandise?: boolean;
   onSupplierCreated: () => void;
   onDone: () => void;
   onCancel: () => void;
@@ -43,7 +49,7 @@ function PurchaseForm({
   const [receiptNumber, setReceiptNumber] = useState("");
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<BuyLine[]>([
-    { key: 0, ingredient_id: "", qty: "", unit: "g", unit_cost: "", total_paid: "" },
+    { key: 0, kind: "ing", ingredient_id: "", product_id: "", variant_id: "", qty: "", unit: "g", unit_cost: "", total_paid: "" },
   ]);
   const [keySeq, setKeySeq] = useState(1);
   const [saving, setSaving] = useState(false);
@@ -70,6 +76,15 @@ function PurchaseForm({
   }
 
   const preview = lines.map((l) => {
+    if (l.kind !== "ing") {
+      const qty = Math.floor(Number(l.qty)) || 0;
+      const unitCost = Number(l.unit_cost) || 0;
+      return {
+        ing: null, factor: 1, badUnit: false,
+        unitNet: unitCost,
+        lineTotal: qty * unitCost,
+      };
+    }
     const ing = ingMap.get(l.ingredient_id);
     const f = ing ? unitFactor(l.unit, ing.base_unit) : null;
     const qty = Number(l.qty) || 0;
@@ -100,8 +115,11 @@ function PurchaseForm({
       sid = data.supplier.id;
       onSupplierCreated();
     }
-    const clean = lines.filter(
-      (l) => l.ingredient_id && Number(l.qty) > 0 && l.unit_cost !== "" && Number(l.unit_cost) >= 0
+    const clean = lines.filter((l) =>
+      l.kind === "ing"
+        ? l.ingredient_id && Number(l.qty) > 0 && l.unit_cost !== "" && Number(l.unit_cost) >= 0
+        : (l.kind === "prod" ? !!l.product_id : !!l.variant_id) &&
+          Math.floor(Number(l.qty)) > 0 && l.unit_cost !== "" && Number(l.unit_cost) >= 0
     );
     if (clean.length === 0) return setError("Agregá al menos una línea con cantidad y costo");
     if (preview.some((p) => p.badUnit)) return setError("Hay líneas con unidad incompatible");
@@ -115,12 +133,18 @@ function PurchaseForm({
         receipt_type: receiptType,
         receipt_number: receiptNumber.trim() || null,
         notes: notes.trim() || null,
-        items: clean.map((l) => ({
-          ingredient_id: l.ingredient_id,
-          qty: Number(l.qty),
-          unit: l.unit,
-          unit_cost: Number(l.unit_cost),
-        })),
+        items: clean.map((l) =>
+          l.kind === "ing"
+            ? {
+                ingredient_id: l.ingredient_id,
+                qty: Number(l.qty),
+                unit: l.unit,
+                unit_cost: Number(l.unit_cost),
+              }
+            : l.kind === "prod"
+              ? { product_id: l.product_id, qty: Math.floor(Number(l.qty)), unit_cost: Number(l.unit_cost) }
+              : { variant_id: l.variant_id, qty: Math.floor(Number(l.qty)), unit_cost: Number(l.unit_cost) }
+        ),
       }),
     });
     setSaving(false);
@@ -194,18 +218,58 @@ function PurchaseForm({
             return (
               <div key={l.key} className="rounded-xl border border-border p-2 space-y-1.5">
                 <div className="flex gap-1.5">
-                  <select
-                    value={l.ingredient_id}
-                    onChange={(e) => pickIngredient(l.key, e.target.value)}
-                    className="flex-1 min-w-0 rounded-lg border border-input bg-background px-2 py-2 text-sm"
-                  >
-                    <option value="">Elegí insumo…</option>
-                    {ingredients.map((i) => (
-                      <option key={i.id} value={i.id}>
-                        {i.name} (actual ${Number(i.cost_per_unit).toLocaleString("es-AR")}/{i.base_unit})
-                      </option>
-                    ))}
-                  </select>
+                  {allowMerchandise && (
+                    <select
+                      value={l.kind}
+                      onChange={(e) => patchLine(l.key, { kind: e.target.value as BuyLine["kind"], ingredient_id: "", product_id: "", variant_id: "" })}
+                      className="rounded-lg border border-input bg-background px-2 py-2 text-sm"
+                      title="Tipo de línea"
+                    >
+                      <option value="ing">Insumo</option>
+                      <option value="prod">Producto</option>
+                      <option value="var">Variante</option>
+                    </select>
+                  )}
+                  {l.kind === "ing" ? (
+                    <select
+                      value={l.ingredient_id}
+                      onChange={(e) => pickIngredient(l.key, e.target.value)}
+                      className="flex-1 min-w-0 rounded-lg border border-input bg-background px-2 py-2 text-sm"
+                    >
+                      <option value="">Elegí insumo…</option>
+                      {ingredients.map((i) => (
+                        <option key={i.id} value={i.id}>
+                          {i.name} (actual ${Number(i.cost_per_unit).toLocaleString("es-AR")}/{i.base_unit})
+                        </option>
+                      ))}
+                    </select>
+                  ) : l.kind === "prod" ? (
+                    <select
+                      value={l.product_id}
+                      onChange={(e) => patchLine(l.key, { product_id: e.target.value })}
+                      className="flex-1 min-w-0 rounded-lg border border-input bg-background px-2 py-2 text-sm"
+                    >
+                      <option value="">Elegí producto…</option>
+                      {products.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}{p.cost_last != null ? ` (costo $${Number(p.cost_last).toLocaleString("es-AR")})` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <select
+                      value={l.variant_id}
+                      onChange={(e) => patchLine(l.key, { variant_id: e.target.value })}
+                      className="flex-1 min-w-0 rounded-lg border border-input bg-background px-2 py-2 text-sm"
+                    >
+                      <option value="">Elegí variante…</option>
+                      {variants.map((v) => (
+                        <option key={v.id} value={v.id}>
+                          {v.color} · {v.talle}{v.cost_last != null ? ` ($${Number(v.cost_last).toLocaleString("es-AR")})` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                   <Button
                     type="button"
                     variant="ghost"
@@ -223,15 +287,21 @@ function PurchaseForm({
                     value={l.qty} onChange={(e) => patchLine(l.key, { qty: e.target.value })}
                     className="flex-1"
                   />
-                  <select
-                    value={l.unit}
-                    onChange={(e) => patchLine(l.key, { unit: e.target.value })}
-                    className="w-20 rounded-lg border border-input bg-background px-1 py-2 text-sm"
-                  >
-                    {units.map((u) => (
-                      <option key={u} value={u}>{u}</option>
-                    ))}
-                  </select>
+                  {l.kind === "ing" ? (
+                    <select
+                      value={l.unit}
+                      onChange={(e) => patchLine(l.key, { unit: e.target.value })}
+                      className="w-20 rounded-lg border border-input bg-background px-1 py-2 text-sm"
+                    >
+                      {units.map((u) => (
+                        <option key={u} value={u}>{u}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <span className="w-20 flex items-center justify-center rounded-lg border border-border bg-muted/50 px-1 py-2 text-sm text-muted-foreground">
+                      u.
+                    </span>
+                  )}
                   <Input
                     type="number" min={0} step="any" placeholder={`Costo x ${l.unit}`}
                     value={l.unit_cost} onChange={(e) => patchLine(l.key, { unit_cost: e.target.value })}
@@ -258,6 +328,11 @@ function PurchaseForm({
                     → {formatMoney(pv.unitNet)}/{ing.base_unit} (pisa el actual {formatMoney(Number(ing.cost_per_unit))}/{ing.base_unit})
                   </p>
                 )}
+                {l.kind !== "ing" && l.unit_cost !== "" && (
+                  <p className="text-xs text-muted-foreground tabular-nums">
+                    → {formatMoney(pv.unitNet)} c/u (entra stock y pisa el costo)
+                  </p>
+                )}
               </div>
             );
           })}
@@ -266,7 +341,7 @@ function PurchaseForm({
             variant="outline"
             size="sm"
             onClick={() => {
-              setLines((prev) => [...prev, { key: keySeq, ingredient_id: "", qty: "", unit: "g", unit_cost: "", total_paid: "" }]);
+              setLines((prev) => [...prev, { key: keySeq, kind: "ing", ingredient_id: "", product_id: "", variant_id: "", qty: "", unit: "g", unit_cost: "", total_paid: "" }]);
               setKeySeq((k) => k + 1);
             }}
           >
@@ -279,7 +354,7 @@ function PurchaseForm({
           <span className="text-lg font-bold tabular-nums">{formatMoney(grand)}</span>
         </div>
         <p className="text-xs text-muted-foreground">
-          Al guardar, el costo de cada insumo se actualiza al último precio y los platos se recalculan solos.
+          Al guardar, el costo se actualiza al último precio{allowMerchandise ? " y la mercadería entra a stock" : " y los platos se recalculan solos"}.
         </p>
 
         {error && <p className="text-sm text-red-600">{error}</p>}
@@ -315,13 +390,18 @@ type PurchaseDetail = {
   purchase: PurchaseRow;
   items: {
     id: string;
-    ingredient_id: string;
+    ingredient_id: string | null;
+    product_id?: string | null;
+    variant_id?: string | null;
     qty: number;
     unit: string;
     unit_cost_net: number;
     line_total: number;
-    ingredient_name: string;
-    ingredient_unit: string;
+    ingredient_name: string | null;
+    ingredient_unit: string | null;
+    product_name?: string | null;
+    variant_color?: string | null;
+    variant_talle?: string | null;
   }[];
 };
 
@@ -391,10 +471,16 @@ export function PurchasesManager({
   ingredients,
   search,
   onChanged,
+  products = [],
+  variants = [],
+  allowMerchandise = false,
 }: {
   ingredients: Ingredient[];
   search: string;
   onChanged: () => void;
+  products?: { id: string; name: string; cost_last?: number | null; stock?: number | null }[];
+  variants?: { id: string; product_id: string; color: string; talle: string; price: number; stock: number; cost_last?: number | null }[];
+  allowMerchandise?: boolean;
 }) {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [purchases, setPurchases] = useState<PurchaseRow[]>([]);
@@ -497,6 +583,9 @@ export function PurchasesManager({
         <PurchaseForm
           suppliers={suppliers}
           ingredients={ingredients}
+          products={products}
+          variants={variants}
+          allowMerchandise={allowMerchandise}
           onSupplierCreated={loadAll}
           onDone={() => {
             setShowForm(false);
@@ -578,7 +667,9 @@ export function PurchasesManager({
                   {detail.items.map((it) => (
                     <div key={it.id} className="flex justify-between gap-2 text-xs tabular-nums">
                       <span className="text-muted-foreground truncate">
-                        {it.ingredient_name} · {Number(it.qty).toLocaleString("es-AR")} {it.unit} × {formatMoney(Number(it.unit_cost_net))}/{it.ingredient_unit}
+                        {it.ingredient_id
+                          ? `${it.ingredient_name} · ${Number(it.qty).toLocaleString("es-AR")} ${it.unit} × ${formatMoney(Number(it.unit_cost_net))}/${it.ingredient_unit}`
+                          : `${it.variant_id ? `${it.product_name || ""} (${it.variant_color || ""} · ${it.variant_talle || ""})` : it.product_name || "Ítem"} · ${Number(it.qty).toLocaleString("es-AR")} u. × ${formatMoney(Number(it.unit_cost_net))} c/u`}
                       </span>
                       <span className="font-medium flex-shrink-0">{formatMoney(Number(it.line_total))}</span>
                     </div>

@@ -4,7 +4,8 @@ import { fetchVendorDelivery } from "@/lib/delivery-server";
 import { resolveDeliveryFee, type DeliverySelection } from "@/lib/delivery";
 import { nextOrderNumber } from "@/lib/order-number";
 import { cashDiscountForItems } from "@/lib/cash-discount";
-import { adjustStockForItems, OutOfStockError } from "@/lib/stock";
+import { adjustStockForItems, OutOfStockError, type StockMove } from "@/lib/stock";
+import { logStockMovement } from "@/lib/stock-ledger";
 import { upsertCustomerFromOrder, isRealCustomerPhone } from "@/lib/customers";
 import { toE164 } from "@/lib/phone";
 import {
@@ -235,8 +236,9 @@ export async function POST(request: Request) {
     // cambio). Ítems por peso (kg) y líneas manuales no tocan stock.
     // Al cancelar el pedido se repone (orders/[id]).
     // Pedidos de prueba (preview) no tocan el stock real.
+    let movedStock: StockMove[] = [];
     if (!previewOrder) {
-      await adjustStockForItems(tx, normalizedItems.filter((i) => i.unit !== "kg"), "decrement");
+      movedStock = await adjustStockForItems(tx, normalizedItems.filter((i) => i.unit !== "kg"), "decrement");
     }
 
     const pickupNumber = await nextOrderNumber(tx, gate.vendor.id);
@@ -274,6 +276,20 @@ export async function POST(request: Request) {
       `INSERT INTO orders (${cols.join(", ")}) VALUES (${placeholders}) RETURNING *`,
       vals
     );
+
+    // Kardex: la venta de mostrador mueve stock (lo que adjust descontó).
+    if (!previewOrder && order?.id) {
+      for (const m of movedStock) {
+        await logStockMovement(tx, {
+          vendorId: gate.vendor.id,
+          product_id: m.product_id,
+          variant_id: m.variant_id,
+          qty_delta: -m.qty,
+          reason: "venta",
+          ref_order: order.id,
+        });
+      }
+    }
 
     // CRM: con teléfono real del cliente → ficha (delivery y retiro con
     // teléfono cargado; el pickup anónimo no genera ficha; tampoco si

@@ -2,7 +2,8 @@ import crypto from "crypto";
 import { gateRequest } from "@/lib/subscription-gate";
 import { queryOne, withTransaction } from "@/lib/db";
 import { sendPushToUser } from "@/lib/push";
-import { adjustStockForItems, OutOfStockError } from "@/lib/stock";
+import { adjustStockForItems, OutOfStockError, type StockMove } from "@/lib/stock";
+import { logStockMovement } from "@/lib/stock-ledger";
 import { PricingError, resolveOrderPricing } from "@/lib/pricing";
 import { nextOrderNumber } from "@/lib/order-number";
 import { toE164 } from "@/lib/phone";
@@ -141,7 +142,7 @@ export async function POST(request: Request) {
       });
       total = pricing.total;
 
-      await adjustStockForItems(tx, pricing.items, "decrement");
+      const movedStock: StockMove[] = await adjustStockForItems(tx, pricing.items, "decrement");
 
       pickupNumber = await nextOrderNumber(tx, gate.vendor.id);
 
@@ -171,6 +172,18 @@ export async function POST(request: Request) {
         ]
       );
       orderId = rows[0]?.id;
+      if (orderId) {
+        for (const m of movedStock) {
+          await logStockMovement(tx, {
+            vendorId: gate.vendor.id,
+            product_id: m.product_id,
+            variant_id: m.variant_id,
+            qty_delta: -m.qty,
+            reason: "apartado",
+            ref_order: orderId,
+          });
+        }
+      }
 
       await upsertCustomerFromOrder(tx, gate.vendor.id, {
         phone: phoneE164,

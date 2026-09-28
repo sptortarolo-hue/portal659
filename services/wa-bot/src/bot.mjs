@@ -142,19 +142,21 @@ export async function handleInbound({ vendor, waId, body, waPhone }) {
   try {
     if (!vendor.enabled) return { replies: [], handoff: true };
 
+    // Cancelación global (siempre disponible, incluso durante la pausa de
+    // handoff — antes el check de pausa la bloqueaba y el bot callaba hasta
+    // para cancelar).
+    if (RE_CANCEL.test(text)) {
+      state._cleared = true;
+      await clearState(vendor.id, waId);
+      return { replies: ["Ok, cancelé todo. Cuando quieras retomamos. 👍"] };
+    }
+
     // Pausa por handoff reciente: el dueño atiende, el bot calla.
     if (state.pausedUntil && state.pausedUntil > Date.now()) return { replies: [] };
 
     // Historial para el contexto del LLM (cap 8 mensajes).
     state.history.push({ role: "user", text: text.slice(0, 200) });
     if (state.history.length > 8) state.history = state.history.slice(-8);
-
-    // Cancelación global (siempre disponible).
-    if (RE_CANCEL.test(text)) {
-      state._cleared = true;
-      await clearState(vendor.id, waId);
-      return { replies: ["Ok, cancelé todo. Cuando quieras retomamos. 👍"] };
-    }
 
     // Handoff explícito.
     if (RE_HUMAN.test(text)) {

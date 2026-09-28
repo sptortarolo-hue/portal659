@@ -7,6 +7,7 @@ import { getState } from "./src/state.mjs";
 import { llmStats } from "./src/nlu.mjs";
 import { addClient, removeClient, getClient, getClientByVendor, sendText, sendTyping, sendPaused, clientCount, forEachClient } from "./src/relay.mjs";
 import { saveQrToken, clearQrToken, setBotStatus } from "./src/state.mjs";
+import { countOutbound, markNewChat } from "./src/limits.mjs";
 
 // Telemetría de salud (anti-ban): contadores de proceso para /health y logs.
 const stats = { messages: 0, replies: 0, errors: 0, loggedOut: 0, limitsHit: 0 };

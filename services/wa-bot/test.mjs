@@ -153,6 +153,26 @@ async function main() {
   r = await handleInbound({ vendor, waId: wa, body: "quiero una docena de empanadas de carne" });
   show("una docena", r);
   if (!(r.replies || []).join(" ").includes("×12")) { console.log("!!! docena no resolvió a ×12"); ok = false; }
+  // Docena/media docena AL FINAL (trailing): "empanadas docena" → pregunta cuál
+  // (2 tipos en el mock, con la cantidad pendiente recordada) → "carne" → ×12.
+  r = await handleInbound({ vendor, waId: wa, body: "cancelar" });
+  r = await handleInbound({ vendor, waId: wa, body: "empanadas docena" });
+  if (!(r.replies || []).join(" ").includes("cuál")) { console.log("!!! 'empanadas docena' no preguntó cuál (trailing)"); ok = false; }
+  r = await handleInbound({ vendor, waId: wa, body: "carne" });
+  if (!(r.replies || []).join(" ").includes("×12")) { console.log("!!! 'empanadas docena' + carne no resolvió a ×12"); ok = false; }
+  else { console.log(">>> OK: 'empanadas docena' → cuál → carne ×12 (trailing + qty pendiente)"); }
+  r = await handleInbound({ vendor, waId: wa, body: "cancelar" });
+  r = await handleInbound({ vendor, waId: wa, body: "empanadas media docena" });
+  if (!(r.replies || []).join(" ").includes("cuál")) { console.log("!!! 'empanadas media docena' no preguntó cuál"); ok = false; }
+  r = await handleInbound({ vendor, waId: wa, body: "carne" });
+  if (!(r.replies || []).join(" ").includes("×6")) { console.log("!!! 'empanadas media docena' + carne no resolvió a ×6"); ok = false; }
+  else { console.log(">>> OK: 'empanadas media docena' → cuál → carne ×6 (trailing)"); }
+  // "empanada de jamón y queso 12" → ×12 (el nombre con "y" NO se parte).
+  r = await handleInbound({ vendor, waId: wa, body: "cancelar" });
+  r = await handleInbound({ vendor, waId: wa, body: "empanada de jamón y queso 12" });
+  show("jamón y queso 12", r);
+  if (!(r.replies || []).join(" ").includes("×12")) { console.log("!!! 'jamón y queso 12' no resolvió a ×12 (el 'y' partió el nombre)"); ok = false; }
+  else { console.log(">>> OK: 'empanada de jamón y queso 12' → ×12 (el nombre no se partió)"); }
 
   // Re-declarar no duplica tras docena: "solo 3 empanadas" (2 tipos) → pregunta
   // cuál → "carne" resuelve con reemplazo (el docena ×12 se va).

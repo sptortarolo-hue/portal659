@@ -168,8 +168,16 @@ export async function handleInbound({ vendor, waId, body, waPhone }) {
       return { replies: ["Ok, cancelé todo. Cuando quieras retomamos. 👍"] };
     }
 
-    // Pausa por handoff reciente: el dueño atiende, el bot calla.
-    if (state.pausedUntil && state.pausedUntil > Date.now()) return { replies: [] };
+// Pausa por handoff reciente: el dueño atiende, el bot calla. Se avisa UNA
+// vez (antes el silencio total hacía que el cliente pensara que se colgó).
+if (state.pausedUntil && state.pausedUntil > Date.now()) {
+  if (!state.pauseNotified) {
+    state.pauseNotified = true;
+    await setState(vendor.id, waId, state).catch(() => {});
+    return { replies: ["El comercio te va a atender por acá en un rato 🙌"] };
+  }
+  return { replies: [] };
+}
 
     // Historial para el contexto del LLM (cap 8 mensajes).
     state.history.push({ role: "user", text: text.slice(0, 200) });

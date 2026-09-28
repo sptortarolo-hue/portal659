@@ -327,7 +327,7 @@ async function callOnce(message, products, model, ctx = null) {
           { role: "user", content: `Productos disponibles:\n${menu}\n\nMensaje del cliente: "${message}"${contextBlock}` },
         ],
       }),
-      signal: AbortSignal.timeout(isOpenRouter() ? 60_000 : 30_000),
+      signal: AbortSignal.timeout(isOpenRouter() ? 30_000 : 15_000),
     });
   } catch (e) {
     console.error(`[bot] LLM fetch error: ${e?.name || "Error"}: ${e?.message || e}`);
@@ -430,75 +430,108 @@ export function parseByRules(message, products) {
   }
   return null;
 }
-
-export function extractFromText(text, products) {  // Casos:
+export function extractFromText(text, products) {
+  // Casos:
   //  - "3 empanadas y una coca" → [empanadas×3, coca×1]
   //  - "dos pizzas"          → [pizza×2]
   //  - "quiero dos empanadas" → qty detectada aunque haya verbos al principio.
   //  - "una docena de empanadas" → ×12; "media docena de empanadas" → ×6.
+  //  - "empanada de jamón y queso 12" → ×12: el texto se prueba COMPLETO
+  //    primero (con qty AL FINAL); si matchea un producto NO se parte por
+  //    " y " — el split rompía nombres con "y" y la cantidad trailing se perdía.
+  //  - "Agregame las empanadas" → verbos de agregado al inicio.
+  const whole = parseChunk(String(text), products);
+  if (whole) return [whole];
+
   // Split sobre el texto ORIGINAL: las comas separan pedidos y normalizeEs
   // las destruiría (todo quedaría en un chunk sin separar).
   const out = [];
   const tokens = String(text).split(/[,\n;]| e | y |\s*\+\s*/i);
   for (const part of tokens) {
-    let chunk = part.trim();
-    if (!chunk) continue;
-    // Quitar verbos/intenciones al inicio (quiero/dame/traeme/etc.)
-    chunk = chunk.replace(/^(quiero|querria|quisiera|dame|démela|traeme|traigame|me das|me pones|me haces|me traes|me preparas|me cobras)\s+/i, "");
-    // Quitar negaciones/relleno de corrección al inicio ("no, mejor solo X" → "X").
-    for (let i = 0; i < 4; i++) {
-      const filler = /^(no\b[,.;:]?\s*(mejor\b\s*)?(solo\b\s*)?|mejor\b\s*(solo\b\s*)?|solo\b\s*|unicamente\b\s*|bueno\b\s*)/i.exec(chunk);
-      if (!filler || !chunk.slice(filler[0].length).trim()) break;
-      chunk = chunk.slice(filler[0].length).trim();
-    }
-    const norm = normalizeEs(chunk);
-    const m = /^(\d+|un(?:a|o)?|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce)\s+(?:de\s+)?(.*)$/.exec(norm);
-    let qty = 1, name = norm;
-    if (m) {
-      const rawQty = m[1];
-      if (/^\d+$/.test(rawQty)) qty = Number(rawQty);
-      else qty = NUM_WORDS[rawQty] ?? 1;
-      name = m[2].trim();
-    }
-    if (!name) continue;
-    // "docena de X" → ×12 · "media docena de X" → ×6 (el multiplicador va
-    // sobre la cantidad: "una docena" = 1 × 12).
-    const docena = /^media\s+docena\s+(?:de\s+)?(.+)$/.exec(name) || /^docena\s+(?:de\s+)?(.+)$/.exec(name);
-    if (docena) {
-      qty *= name.startsWith("media") ? 6 : 12;
-      name = docena[1].trim();
-    }
-    const p0 = matchProduct(products, name);
-    let p = p0;
-    if (!p) {
-      // Sin match: reintentar SIN colores/talles ("remera negra talle m" →
-      // "remera") — esas palabras rompen la intersección del match.
-      const stems = COLORS.map((c) => c.slice(0, Math.max(3, c.length - 1))).join("|");
-      const bare = name.replace(new RegExp(`\\btalle\\s+\\S+|\\b(?:${stems})\\S*`, "gi"), "").replace(/\s+/g, " ").trim();
-      if (bare && bare !== name) p = matchProduct(products, bare);
-    }
-    if (p) {
-      // Variantes (moda): "talle M" y color del chunk → el item lleva variant
-      // y matchVariant (bot) resuelve el variantId. Solo aplica si el producto
-      // tiene variantes; en gastro es inofensivo.
-      const variant = {};
-      const tm = /talle\s+([a-z0-9]{1,4})\b/i.exec(norm);
-      if (tm) variant.talle = tm[1].toUpperCase();
-      for (const c of COLORS) {
-        const stem = c.slice(0, Math.max(3, c.length - 1));
-        if (new RegExp(`\\b${stem}`, "i").test(norm)) { variant.color = c; break; }
-      }
-      out.push({
-        offerId: p.id,
-        name: p.name,
-        qty: Math.max(1, qty),
-        modifiers: [],
-        variant: Object.keys(variant).length ? variant : undefined,
-        said: name, // lo que el cliente literalmente escribió (para desambiguar)
-      });
-    }
+    const item = parseChunk(part, products);
+    if (item) out.push(item);
   }
   return out;
+}
+
+function parseChunk(chunk, products) {
+  let c = chunk.trim();
+  if (!c) return null;
+  // Quitar verbos/intenciones al inicio (quiero/dame/traeme/agregame/etc.)
+  c = c.replace(/^(quiero|querria|quisiera|dame|démela|traeme|traigame|agregame|agregá|agrega|sumame|sumá|suma|sumar|mandame|anotate|cargame|me das|me pones|me haces|me traes|me preparas|me cobras)\s+/i, "");
+  // Quitar negaciones/relleno de corrección al inicio ("no, mejor solo X" → "X").
+  for (let i = 0; i < 4; i++) {
+    const filler = /^(no\b[,.;:]?\s*(mejor\b\s*)?(solo\b\s*)?|mejor\b\s*(solo\b\s*)?|solo\b\s*|unicamente\b\s*|bueno\b\s*)/i.exec(c);
+    if (!filler || !c.slice(filler[0].length).trim()) break;
+    c = c.slice(filler[0].length).trim();
+  }
+  const norm = normalizeEs(c);
+  if (!norm) return null;
+  let qty = 1, name = norm;
+  // Qty AL PRINCIPIO: "3 empanadas" / "una docena de X".
+  const m = /^(\d+|un(?:a|o)?|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce)\s+(?:de\s+)?(.*)$/.exec(norm);
+  if (m) {
+    const rawQty = m[1];
+    if (/^\d+$/.test(rawQty)) qty = Number(rawQty);
+    else qty = NUM_WORDS[rawQty] ?? 1;
+    name = m[2].trim();
+  }
+  if (!name) return null;
+  // "docena de X" → ×12 · "media docena de X" → ×6 (el multiplicador va
+  // sobre la cantidad: "una docena" = 1 × 12).
+  const docena = /^media\s+docena\s+(?:de\s+)?(.+)$/.exec(name) || /^docena\s+(?:de\s+)?(.+)$/.exec(name);
+  if (docena) {
+    qty *= name.startsWith("media") ? 6 : 12;
+    name = docena[1].trim();
+  }
+  // Qty AL FINAL (solo si no había al principio): "empanadas 12" → ×12,
+  // "empanadas docena" → ×12, "empanadas media docena" → ×6.
+  if (!m) {
+    const tail = /\s+(\d{1,2}|docena|media\s+docena)$/.exec(norm);
+    if (tail) {
+      const tailQty = tail[1].toLowerCase().trim();
+      const q = /^\d+$/.test(tailQty) ? Number(tailQty) : (tailQty.startsWith("media") ? 6 : 12);
+      const nameTail = norm.slice(0, tail.index).trim();
+      const p2 = matchProduct(products, nameTail);
+      if (p2) {
+        qty = q;
+        name = nameTail;
+      }
+    }
+  }
+  const p = matchProduct(products, name);
+  if (!p) {
+    // Sin match: reintentar SIN colores/talles ("remera negra talle m" →
+    // "remera") — esas palabras rompen la intersección del match.
+    const bare = bareName(name) || name;
+    if (bare !== name) {
+      const p2 = matchProduct(products, bare);
+      if (!p2) return null;
+      return buildItem(p2, qty, norm, name);
+    }
+    return null;
+  }
+  return buildItem(p, qty, norm, name);
+}
+
+function buildItem(p, qty, norm, said) {
+  // Variantes (moda): "talle M" y color → el item lleva variant y matchVariant
+  // (bot) resuelve el variantId. Solo aplica si el producto tiene variantes.
+  const variant = {};
+  const tm = /talle\s+([a-z0-9]{1,4})\b/i.exec(norm);
+  if (tm) variant.talle = tm[1].toUpperCase();
+  for (const c of COLORS) {
+    const stem = c.slice(0, Math.max(3, c.length - 1));
+    if (new RegExp(`\\b${stem}`, "i").test(norm)) { variant.color = c; break; }
+  }
+  return {
+    offerId: p.id,
+    name: p.name,
+    qty: Math.max(1, qty),
+    modifiers: [],
+    variant: Object.keys(variant).length ? variant : undefined,
+    said: said || name, // lo que el cliente escribió para el producto (sin qty/verbos — si no, TODO quedaba ambiguo)
+  };
 }
 
 export function normalizeEs(s) {

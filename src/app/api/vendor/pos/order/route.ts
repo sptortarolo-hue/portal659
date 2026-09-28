@@ -77,7 +77,7 @@ export async function POST(request: Request) {
     ? (paymentMethod as PaymentMethod)
     : "efectivo";
 
-  const normalizedItems: { product_id?: any; variant_id?: any; name: any; price: number; qty: number; modifiers?: any; requires_prep: boolean; pack_size?: number }[] = items.map((i: any) => ({
+  const normalizedItems: { product_id?: any; variant_id?: any; name: any; price: number; qty: number; modifiers?: any; requires_prep: boolean; pack_size?: number; unit?: string; manual?: boolean }[] = items.map((i: any) => ({
     product_id: i.product_id || undefined,
     variant_id: i.variant_id || undefined,
     name: i.name,
@@ -85,6 +85,8 @@ export async function POST(request: Request) {
     qty: Number(i.qty) || 1,
     modifiers: Array.isArray(i.modifiers) && i.modifiers.length > 0 ? i.modifiers : undefined,
     requires_prep: i.requires_prep !== false,
+    unit: i.unit === "kg" ? "kg" : undefined,
+    manual: i.manual === true ? true : undefined,
   }));
 
   // Packs: validación de múltiplo. Después normalizo el ítem a formato
@@ -230,10 +232,11 @@ export async function POST(request: Request) {
     order = await withTransaction(async (tx) => {
     // Stock: la venta de mostrador descuenta igual que el canal app (la
     // función es no-op para productos sin stock_control — gastro no nota el
-    // cambio). Al cancelar el pedido se repone (orders/[id]).
+    // cambio). Ítems por peso (kg) y líneas manuales no tocan stock.
+    // Al cancelar el pedido se repone (orders/[id]).
     // Pedidos de prueba (preview) no tocan el stock real.
     if (!previewOrder) {
-      await adjustStockForItems(tx, normalizedItems, "decrement");
+      await adjustStockForItems(tx, normalizedItems.filter((i) => i.unit !== "kg"), "decrement");
     }
 
     const pickupNumber = await nextOrderNumber(tx, gate.vendor.id);
@@ -248,7 +251,7 @@ export async function POST(request: Request) {
     const vals: unknown[] = [
       gate.vendor.id,
       customerName?.trim() || "Mostrador",
-      isDelivery ? customerPhoneClean : "",
+      customerPhoneClean,
       isDelivery ? (customerAddress?.trim() || null) : null,
       isDelivery ? "delivery" : "pickup",
       payment,
@@ -272,9 +275,10 @@ export async function POST(request: Request) {
       vals
     );
 
-    // CRM: el delivery lleva teléfono del cliente → ficha (el pickup guarda
-    // el WA del comercio, no genera ficha; tampoco si pusieron su propio WA).
-    if (isDelivery && customerE164 && isRealCustomerPhone(customerPhoneClean, gate.vendor.whatsapp) && !previewOrder) {
+    // CRM: con teléfono real del cliente → ficha (delivery y retiro con
+    // teléfono cargado; el pickup anónimo no genera ficha; tampoco si
+    // pusieron el WA del comercio).
+    if (customerE164 && isRealCustomerPhone(customerPhoneClean, gate.vendor.whatsapp) && !previewOrder) {
       await upsertCustomerFromOrder(tx, gate.vendor.id, {
         phone: customerE164,
         name: customerName?.trim() || null,

@@ -60,7 +60,13 @@ export function cashDiscountForItems(
   let discount = 0;
   for (const it of items) {
     if (!it) continue;
-    const qty = Number.isFinite(Number(it.qty)) ? Math.min(99, Math.max(1, Math.floor(Number(it.qty)))) : 1;
+    const rawQty = Number(it.qty);
+    // Enteros: clamp 1..99 histórico. Decimales (kilos): se usan tal cual.
+    const qty = !Number.isFinite(rawQty) || rawQty <= 0
+      ? 1
+      : Number.isInteger(rawQty)
+        ? Math.min(99, Math.max(1, Math.floor(rawQty)))
+        : rawQty;
     const unit = round2(Number(it.unitPrice) || 0);
     subtotal += unit * qty;
     if (cashAppliesToItem({ hasPromo: it.hasPromo, excluded: it.excluded })) {

@@ -132,6 +132,8 @@ export async function GET(request: Request) {
   const productSales: Record<string, { name: string; count: number; revenue: number }> = {};
   for (const order of completedOrders) {
     for (const item of order.items || []) {
+      // Líneas manuales de mostrador ("Varios"): fuera de estadísticas.
+      if ((item as any)?.manual) continue;
       const key = item.name;
       if (!productSales[key]) productSales[key] = { name: key, count: 0, revenue: 0 };
       productSales[key].count += item.qty;

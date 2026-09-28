@@ -59,6 +59,20 @@ export async function PATCH(
       delete safeUpdate.size_guide;
     }
   }
+  // Unidad de venta (balanza): 'kg' o 'unidad'. Tolerante a migración sin aplicar.
+  if ("unit" in safeUpdate) {
+    const hasUnit = await queryOne<{ exists: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1 FROM information_schema.columns
+         WHERE table_name = 'products' AND column_name = 'unit'
+       ) AS exists`
+    );
+    if (hasUnit?.exists === true) {
+      safeUpdate.unit = safeUpdate.unit === "kg" ? "kg" : "unidad";
+    } else {
+      delete safeUpdate.unit;
+    }
+  }
   if ("cash_discount_excluded" in safeUpdate) {
     safeUpdate.cash_discount_excluded = safeUpdate.cash_discount_excluded === true;
   }

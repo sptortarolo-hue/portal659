@@ -51,6 +51,8 @@ type Product = {
   /** Moda: el producto se vende por variante (color × talle). */
   has_variants?: boolean;
   modifiers?: ProductModifier[];
+  /** Unidad de venta: "kg" = precio por kilo (balanza en mostrador). */
+  unit?: string | null;
 };
 
 /** Variante de producto (moda): precio y promo propios, stock por combinación. */
@@ -95,6 +97,10 @@ type LineItem = {
   cashExcluded: boolean;
   /** Pack (stepper de a N). */
   packSize?: number;
+  /** Unidad de venta ("kg" = fraccionado por peso, sin stock). */
+  unit?: string;
+  /** Línea manual de mostrador ("Varios"): sin producto ni stock. */
+  manual?: boolean;
 };
 
 /** Key de línea: producto + variante + modificadores (dos talles del mismo
@@ -406,6 +412,7 @@ export function Mostrador({ vendorId }: { vendorId?: string | null }) {
         hasPromo: v ? v.promo != null : p.promo_price != null,
         cashExcluded: p.cash_discount_excluded === true,
         packSize: packOf(p),
+        unit: (p as any).unit === "kg" ? "kg" : undefined,
       }];
     });
   }
@@ -426,6 +433,95 @@ export function Mostrador({ vendorId }: { vendorId?: string | null }) {
         .map((i) => (lineKey(i.product_id, i.variant_id, i.modifiers) === key ? { ...i, qty: i.qty + delta * (i.packSize || 1) } : i))
         .filter((i) => i.qty > 0)
     );
+  }
+
+  // Monto manual ("Varios"): línea sin producto ni stock, fuera de estadísticas.
+  const [manualName, setManualName] = useState("");
+  const [manualPrice, setManualPrice] = useState("");
+  function addManualLine() {
+    const name = manualName.trim() || "Varios";
+    const price = Math.round(Number(manualPrice) * 100) / 100;
+    if (!Number.isFinite(price) || price <= 0) {
+      setMsg("Ingresá un monto mayor a $0");
+      return;
+    }
+    const key = lineKey(`manual:${name}`, undefined, undefined);
+    setItems((prev) => {
+      const found = prev.find((i) => lineKey(i.product_id, i.variant_id, i.modifiers) === key);
+      if (found) return prev.map((i) => (i === found ? { ...i, qty: i.qty + 1 } : i));
+      return [...prev, {
+        product_id: `manual:${name}`, name, price, qty: 1,
+        requires_prep: false, modifiers: undefined,
+        hasPromo: false, cashExcluded: false, manual: true,
+      }];
+    });
+    setManualName("");
+    setManualPrice("");
+    setMsg("");
+  }
+
+  // Peso manual para productos por kilo (balanza o tipeo).
+  function setLineKg(key: string, kg: number) {
+    if (!Number.isFinite(kg) || kg <= 0 || kg > 1000) return;
+    const rounded = Math.round(kg * 1000) / 1000;
+    setItems((prev) =>
+      prev.map((i) => (lineKey(i.product_id, i.variant_id, i.modifiers) === key ? { ...i, qty: rounded } : i))
+    );
+  }
+
+  // Balanza física por Web Serial (Chrome/Edge en la PC del mostrador).
+  // Lee el stream ASCII de la balanza (~2s) y vuelca el último peso estable.
+  const [scaleReading, setScaleReading] = useState(false);
+  async function readScaleInto(key: string) {
+    const nav = navigator as any;
+    if (!nav?.serial) {
+      setMsg("Este navegador no soporta balanza directa (usá Chrome en PC o cargá el peso manual)");
+      return;
+    }
+    setScaleReading(true);
+    setMsg("");
+    try {
+      const port = await nav.serial.requestPort();
+      await port.open({ baudRate: 9600 });
+      const reader = port.readable.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+      let lastKg: number | null = null;
+      const deadline = Date.now() + 4000;
+      try {
+        while (Date.now() < deadline) {
+          const { value, done } = await Promise.race([
+            reader.read(),
+            new Promise<{ value?: undefined; done: true }>((res) => setTimeout(() => res({ done: true }), 500)),
+          ]);
+          if (done || !value) break;
+          buf += decoder.decode(value, { stream: true });
+          // Formatos típicos: "ST,GS,+  1.235kg", " 0.542 kg", "1240 g".
+          const m = buf.match(/([+-]?\s*\d+[.,]\d+)\s*(kg|KG|g\b|G\b)?/);
+          if (m) {
+            let v = Number(m[1].replace(/\s/g, "").replace(",", "."));
+            if (Number.isFinite(v)) {
+              if (m[2] && m[2].toLowerCase() === "g") v = v / 1000;
+              lastKg = Math.abs(v);
+            }
+          }
+          if (buf.length > 500) buf = buf.slice(-200);
+        }
+      } finally {
+        try { reader.releaseLock(); } catch { /* noop */ }
+        try { await port.close(); } catch { /* noop */ }
+      }
+      if (lastKg != null && lastKg > 0) {
+        setLineKg(key, lastKg);
+        setMsg("");
+      } else {
+        setMsg("No se pudo leer el peso: poné algo en la balanza e intentá de nuevo");
+      }
+    } catch (e: any) {
+      if (e?.name !== "NotFoundError") setMsg("No se pudo abrir la balanza (revisá el cable y el puerto)");
+    } finally {
+      setScaleReading(false);
+    }
   }
 
   async function charge(withReceipt: boolean) {
@@ -455,7 +551,7 @@ export function Mostrador({ vendorId }: { vendorId?: string | null }) {
       paymentMethod: payment,
       customerName: customerName || "Mostrador",
       method,
-      customerPhone: isDelivery ? deliveryPhoneE164 : undefined,
+      customerPhone: isDelivery ? deliveryPhoneE164 : (toE164(customerPhone) || undefined),
       customerAddress: isDelivery ? fullAddr : undefined,
       deliveryZoneId: isDelivery && posZonesMode && !posOutOfAreaFlag && posActiveZoneId ? posActiveZoneId : undefined,
       deliveryOutOfArea: isDelivery ? posOutOfAreaFlag : false,
@@ -474,6 +570,8 @@ export function Mostrador({ vendorId }: { vendorId?: string | null }) {
       setPosOutOfArea(false);
       setPosManualFee("");
       setNotes("");
+      setManualName("");
+      setManualPrice("");
       setSheetOpen(false);
       setSaving(false);
     };
@@ -944,20 +1042,75 @@ export function Mostrador({ vendorId }: { vendorId?: string | null }) {
           <div key={lineKey(i.product_id, i.variant_id, i.modifiers)} className="flex items-center gap-2 text-sm">
             <span className="flex-1 min-w-0 line-clamp-2 break-words">
               {i.name}
+              {i.unit === "kg" && (
+                <span className="ml-1 rounded bg-muted px-1 text-[10px] text-muted-foreground">$/kg</span>
+              )}
               {(i.modifiers || []).length > 0 && (
                 <span className="block text-[10px] text-muted-foreground truncate">
                   {(i.modifiers || []).map((m) => m.label).join(", ")}
                 </span>
               )}
             </span>
-            <div className="flex items-center gap-1">
-              <button onClick={() => changeQty(lineKey(i.product_id, i.variant_id, i.modifiers), -1)} className="h-6 w-6 rounded-md bg-muted hover:bg-accent">−</button>
-              <span className="w-5 text-center tabular-nums">{i.qty}</span>
-              <button onClick={() => changeQty(lineKey(i.product_id, i.variant_id, i.modifiers), 1)} className="h-6 w-6 rounded-md bg-muted hover:bg-accent">+</button>
-            </div>
+            {i.unit === "kg" ? (
+              <div className="flex items-center gap-1">
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  min="0"
+                  step="0.001"
+                  value={i.qty}
+                  onChange={(e) => setLineKg(lineKey(i.product_id, i.variant_id, i.modifiers), Number(e.target.value))}
+                  className="w-20 h-9 px-1 text-xs text-center tabular-nums rounded-md border border-input bg-background"
+                  aria-label={`Peso en kilos de ${i.name}`}
+                />
+                <span className="text-[10px] text-muted-foreground">kg</span>
+                <button
+                  type="button"
+                  onClick={() => readScaleInto(lineKey(i.product_id, i.variant_id, i.modifiers))}
+                  disabled={scaleReading}
+                  className="h-9 px-2 rounded-md bg-muted hover:bg-accent text-xs font-medium"
+                  title="Leer peso de la balanza"
+                >
+                  {scaleReading ? "…" : "⚖️"}
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1">
+                <button onClick={() => changeQty(lineKey(i.product_id, i.variant_id, i.modifiers), -1)} className="h-6 w-6 rounded-md bg-muted hover:bg-accent">−</button>
+                <span className="w-5 text-center tabular-nums">{i.qty}</span>
+                <button onClick={() => changeQty(lineKey(i.product_id, i.variant_id, i.modifiers), 1)} className="h-6 w-6 rounded-md bg-muted hover:bg-accent">+</button>
+              </div>
+            )}
             <span className="w-16 text-right tabular-nums">${(Math.round(i.price * i.qty * 100) / 100).toLocaleString("es-AR")}</span>
           </div>
         ))}
+      </div>
+
+      {/* Monto manual ("Varios"): sin producto ni stock */}
+      <div className="flex items-center gap-1.5">
+        <input
+          type="text"
+          value={manualName}
+          onChange={(e) => setManualName(e.target.value)}
+          placeholder="Monto manual (ej: Varios)"
+          className="flex-1 min-w-0 h-9 px-3 text-xs rounded-lg border border-input bg-background"
+        />
+        <input
+          type="number"
+          inputMode="decimal"
+          min="0"
+          value={manualPrice}
+          onChange={(e) => setManualPrice(e.target.value)}
+          placeholder="$"
+          className="w-24 h-9 px-2 text-xs rounded-lg border border-input bg-background"
+        />
+        <button
+          type="button"
+          onClick={addManualLine}
+          className="h-9 px-3 rounded-lg bg-muted hover:bg-accent text-xs font-medium"
+        >
+          ＋ Monto
+        </button>
       </div>
 
       <div className="mt-3 space-y-2 pt-3 border-t border-border">
@@ -988,6 +1141,15 @@ export function Mostrador({ vendorId }: { vendorId?: string | null }) {
           placeholder="Nombre del cliente (opcional)"
           className="w-full h-9 px-3 text-xs rounded-lg border border-input bg-background"
         />
+        {method === "pickup" && (
+          <input
+            type="tel"
+            value={customerPhone}
+            onChange={(e) => setCustomerPhone(e.target.value)}
+            placeholder="Teléfono del cliente (opcional, para ficha y aviso)"
+            className="w-full h-9 px-3 text-xs rounded-lg border border-input bg-background"
+          />
+        )}
 
         <input
           type="text"

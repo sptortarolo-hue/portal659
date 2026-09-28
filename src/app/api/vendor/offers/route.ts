@@ -83,6 +83,19 @@ export async function POST(request: Request) {
       ? Math.floor(Number(body.pack_size))
       : null;
 
+  // Unidad de venta (balanza): 'kg' = precio por kilo, fraccionado.
+  // Tolerante a migración sin aplicar: sin la columna, se ignora.
+  const hasUnit = await queryOne<{ exists: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1 FROM information_schema.columns
+       WHERE table_name = 'products' AND column_name = 'unit'
+     ) AS exists`
+  );
+  const unit =
+    hasUnit?.exists === true && (body.unit === "kg" || body.unit === "unidad")
+      ? body.unit
+      : null;
+
   // Guía de talles (moda): texto, una línea por talle. Tolerante a migración sin aplicar.
   const hasSizeGuide = await queryOne<{ exists: boolean }>(
     `SELECT EXISTS (
@@ -114,9 +127,15 @@ export async function POST(request: Request) {
     }
   }
 
+  const extraCols: string[] = [];
+  const extraVals: unknown[] = [];
+  if (packSize != null) { extraCols.push("pack_size"); extraVals.push(packSize); }
+  if (sizeGuide != null) { extraCols.push("size_guide"); extraVals.push(sizeGuide); }
+  if (unit != null) { extraCols.push("unit"); extraVals.push(unit); }
+  const extraPlaceholders = extraVals.map((_, i) => `$${15 + i}`).join(", ");
   const offer = await queryOne<Record<string, unknown>>(
-    `INSERT INTO products (vendor_id, name, description, price, currency, category, neighborhood, type, available, featured_today, image_url, stock, stock_low_threshold, stock_control, requires_prep, has_variants, cash_discount_excluded${packSize != null ? ", pack_size" : ""}${sizeGuide != null ? ", size_guide" : ""})
-     VALUES ($1, $2, $3, $4, 'ARS', $5, $6, 'food', true, $7, $8, $9, $10, $11, $12, $13, $14${packSize != null ? ", $15" : ""}${sizeGuide != null ? ", $16" : ""}) RETURNING *`,
+    `INSERT INTO products (vendor_id, name, description, price, currency, category, neighborhood, type, available, featured_today, image_url, stock, stock_low_threshold, stock_control, requires_prep, has_variants, cash_discount_excluded${extraCols.length ? ", " + extraCols.join(", ") : ""})
+     VALUES ($1, $2, $3, $4, 'ARS', $5, $6, 'food', true, $7, $8, $9, $10, $11, $12, $13, $14${extraPlaceholders ? ", " + extraPlaceholders : ""}) RETURNING *`,
     [
       vendor.id,
       name,
@@ -132,8 +151,7 @@ export async function POST(request: Request) {
       requires_prep,
       has_variants,
       cash_discount_excluded,
-      ...(packSize != null ? [packSize] : []),
-      ...(sizeGuide != null ? [sizeGuide] : []),
+      ...extraVals,
     ]
   );
 

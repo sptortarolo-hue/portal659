@@ -142,6 +142,8 @@ export function MenuStudio({
   const [offCashExcluded, setOffCashExcluded] = useState(false);
   // "Se vende de a N" (pack). Vacío = se vende por unidad.
   const [offPackSize, setOffPackSize] = useState("");
+  // Unidad de venta (balanza): "unidad" o "kg" (precio por kilo).
+  const [offUnit, setOffUnit] = useState("unidad");
 
   // Drawer (desktop).
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -232,6 +234,7 @@ export function MenuStudio({
     setOffRequiresPrep(!isComercio);
     setOffCashExcluded(false);
     setOffPackSize("");
+    setOffUnit("unidad");
   }
 
   function startEdit(offer: Offer) {
@@ -249,6 +252,7 @@ export function MenuStudio({
     setOffRequiresPrep(isComercio ? false : offer.requires_prep !== false);
     setOffCashExcluded(!!offer.cash_discount_excluded);
     setOffPackSize(offer.pack_size ? String(offer.pack_size) : "");
+    setOffUnit((offer as any).unit === "kg" ? "kg" : "unidad");
     setShowForm(true);
     setMsg("");
   }
@@ -305,6 +309,7 @@ export function MenuStudio({
       requires_prep: isComercio ? false : offRequiresPrep,
       cash_discount_excluded: offCashExcluded,
       pack_size: offPackSize ? Math.floor(Number(offPackSize)) : null,
+      unit: isComercio ? offUnit : undefined,
     };
 
     const res = editingId
@@ -544,6 +549,9 @@ export function MenuStudio({
       setOffCashExcluded={setOffCashExcluded}
       offPackSize={offPackSize}
       setOffPackSize={setOffPackSize}
+      showUnit={isComercio}
+      offUnit={offUnit}
+      setOffUnit={setOffUnit}
       onClose={closeEditor}
     />
   );

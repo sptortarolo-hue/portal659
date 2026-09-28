@@ -411,7 +411,11 @@ function padLeft(str: string, len: number): string {
 
 function formatItemLine(item: OrderItem, width: number): string[] {
   const lines: string[] = [];
-  const qtyStr = `${item.qty}x`;
+  // Por peso: "0,500kg Queso ..." (qty decimal, precio por kilo).
+  const qtyStr =
+    (item as any).unit === "kg"
+      ? `${Number(item.qty).toLocaleString("es-AR", { maximumFractionDigits: 3 })}kg`
+      : `${item.qty}x`;
   const nameStr = item.name;
   const priceStr = `$${orderLineTotal(item).toLocaleString("es-AR")}`;
 
@@ -871,7 +875,9 @@ async function composeReceipt(
   printer.println(`Pago: ${paymentStr} — ${paidStr}`);
   printer.bold(false);
 
-  if (order.customer_name && (extra?.retail || order.channel !== "app")) {
+  if (extra?.retail && (!order.customer_name || order.customer_name === "Mostrador")) {
+    printer.println("Consumidor final");
+  } else if (order.customer_name && (extra?.retail || order.channel !== "app")) {
     printer.println(`Cliente: ${order.customer_name}`);
   }
   if (extra?.retail && order.customer_phone) {

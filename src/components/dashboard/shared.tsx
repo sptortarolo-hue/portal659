@@ -111,6 +111,10 @@ type OfferFormProps = {
   /** "Se vende de a N" (pack): string con el N, "" = por unidad. Solo gastro. */
   offPackSize?: string;
   setOffPackSize?: (v: string) => void;
+  /** Unidad de venta (balanza): "unidad" o "kg" (precio por kilo). */
+  showUnit?: boolean;
+  offUnit?: string;
+  setOffUnit?: (v: string) => void;
   /** Sustantivo del ítem en el título del form (default "plato"). */
   noun?: string;
   onSubmit: () => void;
@@ -136,6 +140,8 @@ export function OfferForm({
   offRequiresPrep = true, setOffRequiresPrep,
   offCashExcluded = false, setOffCashExcluded,
   offPackSize = "", setOffPackSize,
+  showUnit = false,
+  offUnit = "unidad", setOffUnit,
   noun = "plato",
   onClose,
 }: OfferFormProps) {
@@ -196,6 +202,24 @@ export function OfferForm({
             <p className="text-xs text-muted-foreground mt-0.5">
               Cantidad mínima y múltiplo de venta (ej: sandwiches de miga de a 6). Con pack, el precio cargado es <strong>por paquete</strong> (6 unidades).
             </p>
+          </div>
+        )}
+        {showUnit && setOffUnit && (
+          <div>
+            <Label>Se vende por</Label>
+            <select
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              value={offUnit}
+              onChange={(e) => setOffUnit(e.target.value)}
+            >
+              <option value="unidad">Por unidad</option>
+              <option value="kg">Por peso (precio por kilo, balanza en mostrador)</option>
+            </select>
+            {offUnit === "kg" && (
+              <p className="text-xs text-muted-foreground mt-0.5">
+                El precio cargado es <strong>por kilo</strong>. En mostrador se pesa y no descuenta stock.
+              </p>
+            )}
           </div>
         )}
         {showPrep && setOffRequiresPrep && (

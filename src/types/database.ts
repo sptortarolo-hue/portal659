@@ -593,13 +593,18 @@ export type OrderItem = {
   /** Variante (moda: color+talle). Permite descontar/reponer stock. */
   variant_id?: string;
   name: string;
-  /** Precio de la UNIDAD (mods incluidos); con pack: precio del PAQUETE completo. */
+  /** Precio de la UNIDAD (mods incluidos); con pack: precio del PAQUETE completo; por peso: precio por kilo. */
   price: number;
+  /** Cantidad: entera por unidad/pack, decimal en kilos (ej: 0.542). */
   qty: number;
   /** Pack (ej: 6): qty es múltiplo y la línea = price × (qty/pack_size). */
   pack_size?: number;
   modifiers?: string[];
   requires_prep?: boolean;
+  /** Unidad de venta: "kg" = fraccionado por peso (sin control de stock). */
+  unit?: string;
+  /** Línea manual de mostrador ("Varios"): sin producto, sin stock, fuera de estadísticas. */
+  manual?: boolean;
   /** Tilde de cocina (KDS acumulativo). true = ítem ya elaborado. */
   done?: boolean;
 };

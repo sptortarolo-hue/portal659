@@ -52,11 +52,19 @@ export async function POST(request: Request) {
   const isNc = Number(bundle.invoice.cbte_tipo) === 13;
   const docLabel = isNc ? "Nota de Crédito C" : "Factura C";
   const docNumber = `${String(bundle.invoice.punto_venta).padStart(4, "0")}-${String(bundle.invoice.cbte_nro).padStart(8, "0")}`;
+  const invAny = bundle.invoice as any;
+  const rTipo = Number(invAny.receptor_doc_tipo) || 99;
+  const rNro = String(invAny.receptor_doc_nro ?? "0");
+  const receptorLabel =
+    rTipo !== 99 && rNro !== "0"
+      ? `${rTipo === 80 ? "CUIT" : rTipo === 86 ? "CUIL" : rTipo === 96 ? "DNI" : `Doc ${rTipo}`} ${rNro}${invAny.receptor_nombre ? ` — ${invAny.receptor_nombre}` : ""}`
+      : null;
   const { subject, html } = invoiceEmail({
     storeName: vendor.store_name || "tu comercio",
     docLabel,
     docNumber,
     total: Number(bundle.invoice.total),
+    receptorLabel,
   });
 
   const sent = await sendEmail({

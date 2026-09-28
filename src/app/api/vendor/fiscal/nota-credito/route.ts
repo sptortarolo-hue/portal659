@@ -93,18 +93,38 @@ export async function POST(request: Request) {
   const env = vendor.fiscal_env === "prod" ? "prod" : "homo";
   const total = Number(original.total);
   try {
+    // La NC hereda el receptor de la factura original.
+    const receptor = {
+      docTipo: Number((original as any).receptor_doc_tipo) || 99,
+      docNro: String((original as any).receptor_doc_nro ?? "0"),
+      condicionIva: Number((original as any).receptor_cond_iva) || 5,
+    };
+    const receptorNombre =
+      typeof (original as any).receptor_nombre === "string"
+        ? (original as any).receptor_nombre
+        : null;
     const r = await emitirNotaCreditoC(
       { env, cuit, certPem, keyPem },
       ptoVta,
       total,
-      { tipo: CBTE_FACTURA_C, ptoVta: Number(original.punto_venta), nro: Number(original.cbte_nro) }
+      { tipo: CBTE_FACTURA_C, ptoVta: Number(original.punto_venta), nro: Number(original.cbte_nro) },
+      undefined,
+      receptor
     );
+    const hasReceptorCols = await queryOne<{ exists: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1 FROM information_schema.columns
+         WHERE table_name = 'invoices' AND column_name = 'receptor_nombre'
+       ) AS exists`
+    );
+    const receptorCols = hasReceptorCols?.exists === true ? ", receptor_nombre, receptor_cond_iva" : "";
+    const receptorVals = hasReceptorCols?.exists === true ? [receptorNombre, receptor.condicionIva] : [];
     const saved = await queryOne<FiscalInvoice>(
-      `INSERT INTO invoices (vendor_id, order_id, cbte_tipo, punto_venta, cbte_nro, cae, cae_vto, total, receptor_doc_tipo, receptor_doc_nro, env, asoc_tipo, asoc_pto, asoc_nro)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 99, '0', $9, $10, $11, $12)
+      `INSERT INTO invoices (vendor_id, order_id, cbte_tipo, punto_venta, cbte_nro, cae, cae_vto, total, receptor_doc_tipo, receptor_doc_nro, env, asoc_tipo, asoc_pto, asoc_nro${receptorCols})
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14${receptorVals.map((_, i) => `, $${15 + i}`).join("")})
        RETURNING *`,
-      [vendor.id, orderId, r.cbteTipo, r.puntoVenta, r.cbteNro, r.cae, r.caeVto, total, env,
-        CBTE_FACTURA_C, Number(original.punto_venta), Number(original.cbte_nro)]
+      [vendor.id, orderId, r.cbteTipo, r.puntoVenta, r.cbteNro, r.cae, r.caeVto, total, receptor.docTipo, receptor.docNro, env,
+        CBTE_FACTURA_C, Number(original.punto_venta), Number(original.cbte_nro), ...receptorVals]
     );
     return NextResponse.json({ ok: true, invoice: saved, qr_url: r.qrUrl, recovered: r.recovered });
   } catch (e) {

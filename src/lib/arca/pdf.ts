@@ -19,7 +19,13 @@ export type InvoicePdfData = {
   invoice: Pick<
     FiscalInvoice,
     "cbte_tipo" | "punto_venta" | "cbte_nro" | "cae" | "cae_vto" | "total" | "created_at"
-  > & { asoc_pto?: number | null; asoc_nro?: number | null };
+  > & {
+    asoc_pto?: number | null;
+    asoc_nro?: number | null;
+    receptor_doc_tipo?: number | null;
+    receptor_doc_nro?: string | null;
+    receptor_nombre?: string | null;
+  };
   order: Pick<Order, "items" | "customer_name" | "payment_method" | "created_at"> | null;
   qrUrl: string;
 };
@@ -118,8 +124,25 @@ export async function buildInvoicePdf(data: InvoicePdfData): Promise<Buffer> {
   y -= 110;
 
   // Receptor + asociado (NC).
-  text("A consumidor final", M, y, 10, bold);
-  y -= 16;
+  const rTipo = Number((invoice as any).receptor_doc_tipo) || 99;
+  const rNro = String((invoice as any).receptor_doc_nro ?? "0");
+  const rNombre =
+    typeof (invoice as any).receptor_nombre === "string"
+      ? (invoice as any).receptor_nombre
+      : "";
+  if (rTipo !== 99 || rNro !== "0") {
+    const docName =
+      rTipo === 80 ? "CUIT" : rTipo === 86 ? "CUIL" : rTipo === 96 ? "DNI" : `Doc ${rTipo}`;
+    text(`${docName}: ${rNro}`, M, y, 10, bold);
+    y -= 16;
+    if (rNombre) {
+      text(rNombre.slice(0, 60), M, y, 10, font);
+      y -= 16;
+    }
+  } else {
+    text("A consumidor final", M, y, 10, bold);
+    y -= 16;
+  }
   if (isNc && invoice.asoc_nro != null) {
     const asoc = `${String(invoice.asoc_pto ?? invoice.punto_venta).padStart(4, "0")}-${String(invoice.asoc_nro).padStart(8, "0")}`;
     text(`Anula a Factura C ${asoc}`, M, y, 10, font);

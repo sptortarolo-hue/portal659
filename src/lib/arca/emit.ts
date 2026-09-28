@@ -15,6 +15,7 @@ import {
   solicitarCaeC,
   ultimoAutorizado,
   type CbteAsociado,
+  type ReceptorFiscal,
   type WsfeAuth,
 } from "./wsfe";
 import { buildQrUrl } from "./qr";
@@ -46,6 +47,10 @@ export type FiscalInvoice = {
   asoc_tipo?: number | null;
   asoc_pto?: number | null;
   asoc_nro?: number | null;
+  receptor_doc_tipo?: number | null;
+  receptor_doc_nro?: string | null;
+  receptor_nombre?: string | null;
+  receptor_cond_iva?: number | null;
 };
 
 export type EmitirComprobanteInput = {
@@ -54,6 +59,7 @@ export type EmitirComprobanteInput = {
   total: number;
   fecha?: Date;
   cbtesAsoc?: CbteAsociado[];
+  receptor?: ReceptorFiscal;
 };
 
 async function emitirComprobante(
@@ -83,6 +89,7 @@ async function emitirComprobante(
       fecha: when,
       cbteTipo: input.cbteTipo,
       cbtesAsoc: input.cbtesAsoc,
+      receptor: input.receptor,
     });
     return {
       cbteTipo: input.cbteTipo,
@@ -118,13 +125,15 @@ export async function emitirFacturaC(
   auth: WsfeAuth,
   puntoVenta: number,
   total: number,
-  fecha?: Date
+  fecha?: Date,
+  receptor?: ReceptorFiscal
 ): Promise<EmitirFacturaCResult> {
   return emitirComprobante(auth, {
     cbteTipo: CBTE_FACTURA_C,
     puntoVenta,
     total,
     fecha,
+    receptor,
   });
 }
 
@@ -134,7 +143,8 @@ export async function emitirNotaCreditoC(
   puntoVenta: number,
   total: number,
   asociada: CbteAsociado,
-  fecha?: Date
+  fecha?: Date,
+  receptor?: ReceptorFiscal
 ): Promise<EmitirFacturaCResult> {
   return emitirComprobante(auth, {
     cbteTipo: CBTE_NOTA_CREDITO_C,
@@ -142,5 +152,6 @@ export async function emitirNotaCreditoC(
     total,
     fecha,
     cbtesAsoc: [asociada],
+    receptor,
   });
 }

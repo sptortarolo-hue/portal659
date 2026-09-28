@@ -624,6 +624,10 @@ export type FiscalPrintInfo = {
   asocLabel?: string | null;
   /** URL de verificación ARCA (QR). Se genera al imprimir si no viene. */
   qrUrl?: string;
+  /** Receptor identificado (DNI/CUIT). Sin esto = consumidor final. */
+  receptorDocTipo?: number | null;
+  receptorDocNro?: string | null;
+  receptorNombre?: string | null;
 };
 
 /** Etiqueta visible de la condición IVA del emisor. */
@@ -692,6 +696,17 @@ async function composeFiscalHeader(
   }
   const cond = condIvaLabel(fiscal.condIva);
   if (cond) printer.println(cond);
+  // Receptor: identificado (DNI/CUIT + nombre) o consumidor final.
+  if (fiscal.receptorDocTipo && fiscal.receptorDocTipo !== 99 && fiscal.receptorDocNro && fiscal.receptorDocNro !== "0") {
+    const docName =
+      fiscal.receptorDocTipo === 80 ? "CUIT" :
+      fiscal.receptorDocTipo === 86 ? "CUIL" :
+      fiscal.receptorDocTipo === 96 ? "DNI" : `Doc ${fiscal.receptorDocTipo}`;
+    printer.println(`${docName}: ${fiscal.receptorDocNro}`);
+    if (fiscal.receptorNombre) printer.println(fiscal.receptorNombre.slice(0, width));
+  } else {
+    printer.println("A consumidor final");
+  }
 }
 
 const fiscalQrCache = new Map<string, Buffer>();

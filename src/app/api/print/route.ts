@@ -171,6 +171,9 @@ export async function POST(request: Request) {
         created_at: string;
         asoc_pto: number | null;
         asoc_nro: number | null;
+        receptor_doc_tipo: number | null;
+        receptor_doc_nro: string | null;
+        receptor_nombre: string | null;
       };
       const caeVtoSql = `CASE WHEN pg_typeof(cae_vto) = 'date'::regtype THEN to_char(cae_vto, 'YYYYMMDD') ELSE cae_vto::text END AS cae_vto`;
       const whereSql = invoiceId
@@ -178,12 +181,13 @@ export async function POST(request: Request) {
         : `WHERE vendor_id = $1 AND order_id = $2 ORDER BY created_at ASC LIMIT 1`;
       const whereVals = invoiceId ? [vendor.id, invoiceId] : [vendor.id, orderId];
       // Tolerante a migrate-fiscal-nc.sql sin aplicar (sin asoc_* igual
-      // imprime la factura).
+      // imprime la factura) y a migrate-fiscal-receptor.sql sin aplicar.
       let inv: InvRow | null = null;
       try {
         inv =
           (await queryOne<InvRow>(
-            `SELECT cbte_tipo, punto_venta, cbte_nro, cae, ${caeVtoSql}, total, created_at, asoc_pto, asoc_nro
+            `SELECT cbte_tipo, punto_venta, cbte_nro, cae, ${caeVtoSql}, total, created_at, asoc_pto, asoc_nro,
+                    receptor_doc_tipo, receptor_doc_nro, receptor_nombre
              FROM invoices ${whereSql}`,
             whereVals
           )) ?? null;
@@ -191,7 +195,9 @@ export async function POST(request: Request) {
         inv =
           (await queryOne<InvRow>(
             `SELECT cbte_tipo, punto_venta, cbte_nro, cae, ${caeVtoSql}, total, created_at,
-                    NULL::integer AS asoc_pto, NULL::bigint AS asoc_nro
+                    NULL::integer AS asoc_pto, NULL::bigint AS asoc_nro,
+                    NULL::integer AS receptor_doc_tipo, NULL::text AS receptor_doc_nro,
+                    NULL::text AS receptor_nombre
              FROM invoices ${whereSql}`,
             whereVals
           )) ?? null;
@@ -208,6 +214,9 @@ export async function POST(request: Request) {
           fechaEmision: inv.created_at ? new Date(inv.created_at).toISOString() : null,
           condIva: vendor.fiscal_cond_iva ?? null,
           docLabel: cbteTipo === 13 ? "NOTA DE CRÉDITO C" : "FACTURA C",
+          receptorDocTipo: inv.receptor_doc_tipo ?? null,
+          receptorDocNro: inv.receptor_doc_nro ?? null,
+          receptorNombre: inv.receptor_nombre ?? null,
           asocLabel:
             cbteTipo === 13 && inv.asoc_nro != null
               ? `${String(inv.asoc_pto ?? inv.punto_venta).padStart(4, "0")}-${String(inv.asoc_nro).padStart(8, "0")}`

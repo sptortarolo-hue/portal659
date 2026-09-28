@@ -5,7 +5,7 @@ import { decryptFiscalSecret, isValidCuit } from "@/lib/arca/crypto";
 import { ArcaError } from "@/lib/arca/wsaa";
 import { explainArcaFault } from "@/lib/arca/faults";
 import { emitirFacturaC, type FiscalInvoice } from "@/lib/arca/emit";
-import { parseArcaObs } from "@/lib/arca/wsfe";
+import { normalizeReceptorFiscal, parseArcaObs } from "@/lib/arca/wsfe";
 import type { Order, Plan, Vendor } from "@/types/database";
 import { NextResponse } from "next/server";
 
@@ -38,6 +38,27 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
   const orderId = String(body.orderId || "");
   if (!orderId) return NextResponse.json({ error: "orderId requerido" }, { status: 400 });
+
+  // Receptor: consumidor final por default; con documento (DNI/CUIT) la
+  // factura sale a nombre (RG 5700/2025: CF solo se identifica desde $10M).
+  let receptor;
+  try {
+    receptor = normalizeReceptorFiscal(
+      body.receptorDocTipo,
+      body.receptorDocNro,
+      body.receptorCondIva,
+      isValidCuit
+    );
+  } catch (e) {
+    return NextResponse.json(
+      { error: e instanceof Error ? e.message : "Receptor inválido" },
+      { status: 400 }
+    );
+  }
+  const receptorNombre =
+    typeof body.receptorNombre === "string" && body.receptorNombre.trim()
+      ? body.receptorNombre.trim().slice(0, 120)
+      : null;
 
   const order = await queryOne<Order>(
     `SELECT * FROM orders WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
@@ -96,15 +117,26 @@ export async function POST(request: Request) {
     const r = await emitirFacturaC(
       { env, cuit, certPem, keyPem },
       ptoVta,
-      total
+      total,
+      undefined,
+      receptor
     );
     flog("cae-ok", `cbte=${r.puntoVenta}-${r.cbteNro}${r.recovered ? " recovered" : ""}`);
+    // Columnas receptor_nombre/cond_iva: tolerante a migración sin aplicar.
+    const hasReceptorCols = await queryOne<{ exists: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1 FROM information_schema.columns
+         WHERE table_name = 'invoices' AND column_name = 'receptor_nombre'
+       ) AS exists`
+    );
+    const receptorCols = hasReceptorCols?.exists === true ? ", receptor_nombre, receptor_cond_iva" : "";
+    const receptorVals = hasReceptorCols?.exists === true ? [receptorNombre, receptor.condicionIva] : [];
     try {
       const saved = await queryOne<FiscalInvoice>(
-        `INSERT INTO invoices (vendor_id, order_id, cbte_tipo, punto_venta, cbte_nro, cae, cae_vto, total, receptor_doc_tipo, receptor_doc_nro, env)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 99, '0', $9)
+        `INSERT INTO invoices (vendor_id, order_id, cbte_tipo, punto_venta, cbte_nro, cae, cae_vto, total, receptor_doc_tipo, receptor_doc_nro, env${receptorCols})
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11${receptorVals.map((_, i) => `, $${12 + i}`).join("")})
          RETURNING *`,
-        [vendor.id, orderId, r.cbteTipo, r.puntoVenta, r.cbteNro, r.cae, r.caeVto, total, env]
+        [vendor.id, orderId, r.cbteTipo, r.puntoVenta, r.cbteNro, r.cae, r.caeVto, total, receptor.docTipo, receptor.docNro, env, ...receptorVals]
       );
       return NextResponse.json({ ok: true, invoice: saved, qr_url: r.qrUrl, recovered: r.recovered });
     } catch {

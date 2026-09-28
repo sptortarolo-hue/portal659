@@ -1,6 +1,8 @@
 /**
  * WSFEv1 — Solicitud de CAE para Factura C (cbte tipo 11, Concepto 1
- * productos, receptor consumidor final Doc 99/0).
+ * productos). Receptor default: consumidor final (Doc 99/0, cond. IVA 5);
+ * con receptor identificado (DNI/CUIT) se factura a nombre (RG 5700/2025:
+ * consumidor final solo se identifica desde $10.000.000).
  *
  * v1 del módulo: solo Factura C de monotributo. Los importes van con 2
  * decimales; en C el neto = total (sin IVA discriminado).
@@ -14,10 +16,70 @@ export const CBTE_NOTA_CREDITO_C = 13;
 /**
  * Condición frente al IVA del receptor (tabla FEParamGetCondicionIvaReceptor).
  * 5 = Consumidor Final. Obligatorio desde RG 5616 (Obs 10246 si falta).
- * v1 emite siempre a consumidor final (Doc 99/0): fijo en 5. Si a futuro
- * hay A/B con receptor identificado, derivarlo del tipo de documento.
+ * Default 99/0 → 5; con receptor identificado se informa la que corresponda.
  */
 export const CONDICION_IVA_CONSUMIDOR_FINAL = 5;
+/** Condiciones IVA de receptor aceptadas para Factura C con documento. */
+export const CONDICION_IVA_RECEPTOR_VALIDAS = [1, 4, 5, 6] as const;
+
+/** Tipos de documento del receptor (tabla FEParamGetTiposDoc). */
+export const DOC_TIPO_CONSUMIDOR_FINAL = 99;
+export const DOC_TIPO_CUIT = 80;
+export const DOC_TIPO_CUIL = 86;
+export const DOC_TIPO_DNI = 96;
+/** Tipos de documento aceptados como receptor identificado. */
+export const DOC_TIPOS_RECEPTOR = [DOC_TIPO_CUIT, DOC_TIPO_CUIL, DOC_TIPO_DNI] as const;
+
+export type ReceptorFiscal = {
+  docTipo: number;
+  docNro: string;
+  condicionIva: number;
+};
+
+/** Receptor consumidor final anónimo (default de todas las emisiones). */
+export const RECEPTOR_CONSUMIDOR_FINAL: ReceptorFiscal = {
+  docTipo: DOC_TIPO_CONSUMIDOR_FINAL,
+  docNro: "0",
+  condicionIva: CONDICION_IVA_CONSUMIDOR_FINAL,
+};
+
+/**
+ * Normaliza y valida el receptor fiscal. Acepta consumidor final (99/0) o
+ * documento identificado (CUIT/CUIL con dígito verificador, DNI 7-8 dígitos).
+ * Lanza Error con mensaje mostrable si es inválido.
+ */
+export function normalizeReceptorFiscal(
+  docTipo: unknown,
+  docNro: unknown,
+  condicionIva: unknown,
+  isValidCuitLocal?: (v: string) => boolean
+): ReceptorFiscal {
+  const tipo = Number(docTipo);
+  const nro = String(docNro ?? "").replace(/\D/g, "");
+  const cond = Number(condicionIva);
+  if (!tipo || tipo === DOC_TIPO_CONSUMIDOR_FINAL || !nro || nro === "0") {
+    return { ...RECEPTOR_CONSUMIDOR_FINAL };
+  }
+  if (!(DOC_TIPOS_RECEPTOR as readonly number[]).includes(tipo)) {
+    throw new Error("Tipo de documento no soportado (usá DNI, CUIL o CUIT)");
+  }
+  if (tipo === DOC_TIPO_DNI) {
+    if (!/^\d{7,8}$/.test(nro)) throw new Error("DNI inválido (7-8 dígitos)");
+  } else {
+    // CUIT/CUIL: 11 dígitos + verificador (misma cuenta).
+    const ok = isValidCuitLocal
+      ? isValidCuitLocal(nro)
+      : /^\d{11}$/.test(nro);
+    if (!ok) throw new Error("CUIT/CUIL inválido (revisá los 11 dígitos)");
+  }
+  return {
+    docTipo: tipo,
+    docNro: nro,
+    condicionIva: (CONDICION_IVA_RECEPTOR_VALIDAS as readonly number[]).includes(cond)
+      ? cond
+      : CONDICION_IVA_CONSUMIDOR_FINAL,
+  };
+}
 
 const WSFE_URL: Record<ArcaEnv, string> = {
   homo: "https://wswhomo.afip.gov.ar/wsfev1/service.asmx",
@@ -196,6 +258,8 @@ export type SolicitarCaeInput = {
   cbteTipo?: number;
   /** Comprobantes asociados (obligatorio en NC: la factura original). */
   cbtesAsoc?: CbteAsociado[];
+  /** Receptor (default: consumidor final 99/0). */
+  receptor?: ReceptorFiscal;
 };
 
 export type SolicitarCaeResult = {
@@ -228,13 +292,14 @@ export async function solicitarCaeC(
     .join("");
 
   return withTicket(auth, async (token, sign) => {
+    const rec = input.receptor ?? RECEPTOR_CONSUMIDOR_FINAL;
     const det =
-      `<FECAEDetRequest><Concepto>1</Concepto><DocTipo>99</DocTipo><DocNro>0</DocNro>` +
+      `<FECAEDetRequest><Concepto>1</Concepto><DocTipo>${rec.docTipo}</DocTipo><DocNro>${rec.docNro}</DocNro>` +
       `<CbteDesde>${input.cbteNro}</CbteDesde><CbteHasta>${input.cbteNro}</CbteHasta>` +
       `<CbteFch>${fch}</CbteFch><ImpTotal>${imp}</ImpTotal><ImpTotConc>0</ImpTotConc>` +
       `<ImpNeto>${imp}</ImpNeto><ImpOpEx>0</ImpOpEx><ImpTrib>0</ImpTrib><ImpIVA>0</ImpIVA>` +
       `<MonId>PES</MonId><MonCotiz>1</MonCotiz>` +
-      `<CondicionIVAReceptorId>${CONDICION_IVA_CONSUMIDOR_FINAL}</CondicionIVAReceptorId>` +
+      `<CondicionIVAReceptorId>${rec.condicionIva}</CondicionIVAReceptorId>` +
       (asoc ? `<CbtesAsoc>${asoc}</CbtesAsoc>` : "") +
       `</FECAEDetRequest>`;
     const body =

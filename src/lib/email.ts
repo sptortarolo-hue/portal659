@@ -52,11 +52,15 @@ export function invoiceEmail(params: {
   docLabel: string;
   docNumber: string;
   total: number;
+  receptorLabel?: string | null;
 }): { subject: string; html: string } {
   const total = `$${Number(params.total).toLocaleString("es-AR", { minimumFractionDigits: 2 })}`;
+  const receptor = params.receptorLabel
+    ? `<p>Receptor: <strong>${params.receptorLabel}</strong>.</p>`
+    : "";
   return {
     subject: `${params.docLabel} ${params.docNumber} de ${params.storeName} (${total})`,
-    html: `<p>Hola! Te enviamos tu ${params.docLabel.toLowerCase()} <strong>${params.docNumber}</strong> de <strong>${params.storeName}</strong> por un total de <strong>${total}</strong>.</p><p>Va adjunta en PDF. Gracias por tu compra!</p>`,
+    html: `<p>Hola! Te enviamos tu ${params.docLabel.toLowerCase()} <strong>${params.docNumber}</strong> de <strong>${params.storeName}</strong> por un total de <strong>${total}</strong>.</p>${receptor}<p>Va adjunta en PDF. Gracias por tu compra!</p>`,
   };
 }
 

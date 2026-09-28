@@ -32,6 +32,11 @@ export function FiscalBillButton({ orderId }: { orderId: string }) {
   const [emailTo, setEmailTo] = useState("");
   const [emailBusy, setEmailBusy] = useState(false);
   const [shareBusy, setShareBusy] = useState(false);
+  // Receptor: consumidor final por default; con documento sale a nombre.
+  const [receptorTipo, setReceptorTipo] = useState<"cf" | "dni" | "cuit">("cf");
+  const [receptorNro, setReceptorNro] = useState("");
+  const [receptorNombre, setReceptorNombre] = useState("");
+  const [receptorCond, setReceptorCond] = useState("6");
 
   async function refreshInvoices(): Promise<InvoiceRef[]> {
     const inv = await fetch("/api/vendor/fiscal/invoices").then((r) => r.json()).catch(() => null);
@@ -266,10 +271,19 @@ export function FiscalBillButton({ orderId }: { orderId: string }) {
     setMsg(null);
     setErr(null);
     try {
+      const receptor =
+        receptorTipo === "cf"
+          ? {}
+          : {
+              receptorDocTipo: receptorTipo === "cuit" ? 80 : 96,
+              receptorDocNro: receptorNro.replace(/\D/g, ""),
+              receptorNombre: receptorNombre.trim() || undefined,
+              receptorCondIva: receptorTipo === "cuit" ? Number(receptorCond) || 6 : 5,
+            };
       const res = await fetch("/api/vendor/fiscal/emitir", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderId }),
+        body: JSON.stringify({ orderId, ...receptor }),
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.invoice) {
@@ -288,6 +302,47 @@ export function FiscalBillButton({ orderId }: { orderId: string }) {
 
   return (
     <div className="space-y-1">
+      <div className="flex gap-1.5">
+        <select
+          value={receptorTipo}
+          onChange={(e) => setReceptorTipo(e.target.value as "cf" | "dni" | "cuit")}
+          className="h-9 rounded-lg border border-input bg-background px-2 text-xs"
+          aria-label="Receptor del comprobante"
+        >
+          <option value="cf">Consumidor final</option>
+          <option value="dni">DNI</option>
+          <option value="cuit">CUIT</option>
+        </select>
+        {receptorTipo !== "cf" && (
+          <input
+            value={receptorNro}
+            onChange={(e) => setReceptorNro(e.target.value)}
+            placeholder={receptorTipo === "cuit" ? "CUIT (11 dígitos)" : "DNI (7-8 dígitos)"}
+            inputMode="numeric"
+            className="h-9 min-w-0 flex-1 rounded-lg border border-input bg-background px-2 text-xs"
+          />
+        )}
+      </div>
+      {receptorTipo === "cuit" && (
+        <div className="flex gap-1.5">
+          <input
+            value={receptorNombre}
+            onChange={(e) => setReceptorNombre(e.target.value)}
+            placeholder="Razón social (opcional)"
+            className="h-9 min-w-0 flex-1 rounded-lg border border-input bg-background px-2 text-xs"
+          />
+          <select
+            value={receptorCond}
+            onChange={(e) => setReceptorCond(e.target.value)}
+            className="h-9 rounded-lg border border-input bg-background px-2 text-xs"
+            aria-label="Condición IVA del receptor"
+          >
+            <option value="6">Monotributo</option>
+            <option value="1">Resp. Inscripto</option>
+            <option value="4">Exento</option>
+          </select>
+        </div>
+      )}
       <Button variant="outline" className="w-full" disabled={busy} onClick={bill}>
         {busy ? "🧾 Facturando en ARCA…" : "🧾 Facturar (Factura C)"}
       </Button>

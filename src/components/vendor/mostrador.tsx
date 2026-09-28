@@ -184,7 +184,11 @@ export function Mostrador({ vendorId }: { vendorId?: string | null }) {
   // Fiscal ARCA (plan Gestión + config completa): toggle por venta.
   const [fiscalReady, setFiscalReady] = useState(false);
   const [withFiscal, setWithFiscal] = useState(false);
-  // Pedido con CAE listo para reimprimir con bloque fiscal (el ticket que
+// Receptor fiscal: consumidor final por default; con documento sale a nombre.
+const [fiscalReceptorTipo, setFiscalReceptorTipo] = useState<"cf" | "dni" | "cuit">("cf");
+const [fiscalReceptorNro, setFiscalReceptorNro] = useState("");
+const [fiscalReceptorNombre, setFiscalReceptorNombre] = useState("");
+const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido con CAE listo para reimprimir con bloque fiscal (el ticket que
   // salió al cobrar no lo trae porque el CAE llega después, en fondo).
   const [fiscalPrintId, setFiscalPrintId] = useState<string | null>(null);
   const [fiscalPrinting, setFiscalPrinting] = useState(false);
@@ -572,6 +576,10 @@ export function Mostrador({ vendorId }: { vendorId?: string | null }) {
       setNotes("");
       setManualName("");
       setManualPrice("");
+      setFiscalReceptorTipo("cf");
+      setFiscalReceptorNro("");
+      setFiscalReceptorNombre("");
+      setFiscalReceptorCond("6");
       setSheetOpen(false);
       setSaving(false);
     };
@@ -808,12 +816,22 @@ export function Mostrador({ vendorId }: { vendorId?: string | null }) {
       const fiscalOrderId = data.orderId as string;
       setMsg(`${baseMsg} · 🧾 Facturando en ARCA…`);
       try {
-        const fres = await fetch("/api/vendor/fiscal/emitir", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ orderId: fiscalOrderId }),
-          signal: AbortSignal.timeout(60000),
-        });
+      const fres = await fetch("/api/vendor/fiscal/emitir", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderId: fiscalOrderId,
+          ...(fiscalReceptorTipo === "cf"
+            ? {}
+            : {
+                receptorDocTipo: fiscalReceptorTipo === "cuit" ? 80 : 96,
+                receptorDocNro: fiscalReceptorNro.replace(/\D/g, ""),
+                receptorNombre: fiscalReceptorNombre.trim() || undefined,
+                receptorCondIva: fiscalReceptorTipo === "cuit" ? Number(fiscalReceptorCond) || 6 : 5,
+              }),
+        }),
+        signal: AbortSignal.timeout(60000),
+      });
         const fdata = await fres.json().catch(() => ({}));
         if (fres.ok && fdata.invoice) {
           const inv = fdata.invoice;
@@ -1308,6 +1326,56 @@ export function Mostrador({ vendorId }: { vendorId?: string | null }) {
             </span>
             🧾 Con comprobante fiscal (Factura C)
           </button>
+        )}
+        {fiscalReady && withFiscal && (
+          <div className="space-y-1.5 rounded-xl border border-border p-2.5">
+            <div className="flex gap-1.5">
+              <select
+                value={fiscalReceptorTipo}
+                onChange={(e) => setFiscalReceptorTipo(e.target.value as "cf" | "dni" | "cuit")}
+                className="h-9 rounded-lg border border-input bg-background px-2 text-xs"
+                aria-label="Receptor del comprobante"
+              >
+                <option value="cf">Consumidor final</option>
+                <option value="dni">DNI</option>
+                <option value="cuit">CUIT</option>
+              </select>
+              {fiscalReceptorTipo !== "cf" && (
+                <input
+                  value={fiscalReceptorNro}
+                  onChange={(e) => setFiscalReceptorNro(e.target.value)}
+                  placeholder={fiscalReceptorTipo === "cuit" ? "CUIT (11 dígitos)" : "DNI (7-8 dígitos)"}
+                  inputMode="numeric"
+                  className="h-9 min-w-0 flex-1 rounded-lg border border-input bg-background px-2 text-xs"
+                />
+              )}
+            </div>
+            {fiscalReceptorTipo === "cuit" && (
+              <div className="flex gap-1.5">
+                <input
+                  value={fiscalReceptorNombre}
+                  onChange={(e) => setFiscalReceptorNombre(e.target.value)}
+                  placeholder="Razón social (opcional)"
+                  className="h-9 min-w-0 flex-1 rounded-lg border border-input bg-background px-2 text-xs"
+                />
+                <select
+                  value={fiscalReceptorCond}
+                  onChange={(e) => setFiscalReceptorCond(e.target.value)}
+                  className="h-9 rounded-lg border border-input bg-background px-2 text-xs"
+                  aria-label="Condición IVA del receptor"
+                >
+                  <option value="6">Monotributo</option>
+                  <option value="1">Resp. Inscripto</option>
+                  <option value="4">Exento</option>
+                </select>
+              </div>
+            )}
+            {fiscalReceptorTipo === "cf" && payableTotal >= 10000000 && (
+              <p className="text-[11px] text-amber-700">
+                ⚠️ ARCA exige identificar al comprador desde $10.000.000: cargá DNI o CUIT.
+              </p>
+            )}
+          </div>
         )}
         <Button className="w-full" disabled={items.length === 0 || saving} onClick={() => charge(true)}>
           {saving ? "Cobrando..." : method === "pickup" ? (isRetail ? "Cobrar + comprobante" : "Cobrar + comprobante de retiro") : "Cobrar y despachar"}

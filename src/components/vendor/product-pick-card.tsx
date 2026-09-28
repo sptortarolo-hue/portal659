@@ -13,6 +13,8 @@ export type PickProduct = {
   vertical?: string | null;
   /** Venta en packs (ej: 6). El precio es del paquete. */
   pack_size?: number | null;
+  /** Unidad de venta: "kg" = precio por kilo (balanza). */
+  unit?: string | null;
 };
 
 /**
@@ -54,12 +56,17 @@ export function ProductPickCard({
             pack x{Math.floor(Number(p.pack_size))}
           </span>
         )}
+        {(p as any).unit === "kg" && (
+          <span className="absolute top-2 right-2 rounded-full bg-sky-600 text-white text-[9px] font-bold px-2 py-0.5">
+            $/kg
+          </span>
+        )}
       </div>
       <div className="p-2 min-w-0">
         <p className="text-xs font-medium line-clamp-2 break-words">{p.name}</p>
         <div className="flex items-baseline gap-1 mt-0.5 flex-wrap min-w-0">
           <span className="text-sm font-semibold text-primary tabular-nums">
-            ${Number(p.promo_price ?? p.price).toLocaleString("es-AR")}
+            ${Number(p.promo_price ?? p.price).toLocaleString("es-AR")}{(p as any).unit === "kg" ? "/kg" : ""}
           </span>
           {p.promo_price != null && (
             <span className="text-[10px] text-muted-foreground line-through">

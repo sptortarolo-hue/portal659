@@ -422,6 +422,8 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
         unit: (p as any).unit === "kg" ? "kg" : undefined,
       }];
     });
+    // Producto por peso: enfocar su input de kilos recién agregado.
+    if ((p as any).unit === "kg") setFocusKgKey(key);
   }
 
   function handleModConfirm(selected: CartModifier[], finalPrice: number) {
@@ -468,6 +470,8 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
   }
 
   // Peso manual para productos por kilo (balanza o tipeo).
+  // focusKgKey: al agregar un producto por peso se enfoca su input de kilos.
+  const [focusKgKey, setFocusKgKey] = useState<string | null>(null);
   function setLineKg(key: string, kg: number) {
     if (!Number.isFinite(kg) || kg <= 0 || kg > 1000) return;
     const rounded = Math.round(kg * 1000) / 1000;
@@ -533,6 +537,14 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
 
   async function charge(withReceipt: boolean) {
     if (items.length === 0) return;
+
+    // Ítems por peso sin peso cargado: no se puede cobrar.
+    const pendingKg = items.find((i) => i.unit === "kg" && !(Number(i.qty) > 0));
+    if (pendingKg) {
+      setMsg(`Ingresá el peso de "${pendingKg.name}" o tocá Pesar con la balanza`);
+      setFocusKgKey(lineKey(pendingKg.product_id, pendingKg.variant_id, pendingKg.modifiers));
+      return;
+    }
 
     const isDelivery = method === "delivery";
     // Misma validación que el checkout del cliente: celular real (WhatsApp).
@@ -1041,6 +1053,11 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
             ))}
           </div>
         )}
+        {products.length > 0 && !products.some((p) => (p as any).unit === "kg") && (
+          <p className="text-[11px] text-muted-foreground">
+            Tip: marcá productos “Por peso” en el Catálogo para pesar con balanza o cargar kilos acá.
+          </p>
+        )}
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-2">
         {filtered.map((p) => (
@@ -1082,6 +1099,14 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
                   step="0.001"
                   value={i.qty}
                   onChange={(e) => setLineKg(lineKey(i.product_id, i.variant_id, i.modifiers), Number(e.target.value))}
+                  ref={(el) => {
+                    const k = lineKey(i.product_id, i.variant_id, i.modifiers);
+                    if (focusKgKey === k && el) {
+                      el.focus();
+                      el.select();
+                      setFocusKgKey(null);
+                    }
+                  }}
                   className="w-20 h-9 px-1 text-xs text-center tabular-nums rounded-md border border-input bg-background"
                   aria-label={`Peso en kilos de ${i.name}`}
                 />
@@ -1090,10 +1115,10 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
                   type="button"
                   onClick={() => readScaleInto(lineKey(i.product_id, i.variant_id, i.modifiers))}
                   disabled={scaleReading}
-                  className="h-9 px-2 rounded-md bg-muted hover:bg-accent text-xs font-medium"
-                  title="Leer peso de la balanza"
+                  className="h-9 px-2 rounded-md bg-primary/10 text-primary hover:bg-primary/20 text-xs font-semibold whitespace-nowrap"
+                  title="Leer peso de la balanza (Chrome en PC)"
                 >
-                  {scaleReading ? "…" : "⚖️"}
+                  {scaleReading ? "Leyendo…" : "Pesar"}
                 </button>
               </div>
             ) : (

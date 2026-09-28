@@ -60,6 +60,11 @@ export const POST = withRateLimit(async (request: Request) => {
         title: "Nuevo turno reservado",
         body: `${customerName} · ${bookingDate} ${bookingTime}`,
         link: "/vendor/dashboard",
+        tag: booking?.id ? `new-booking-${booking.id}` : "new-booking",
+        renotify: true,
+        requireInteraction: true,
+        urgency: "high",
+        ttl: 86400,
       });
     } catch { /* best-effort */ }
   }

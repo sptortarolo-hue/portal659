@@ -14,7 +14,8 @@ import {
   kitchenProgress,
   CONDITION_META,
 } from "@/lib/order-utils";
-import { playNewOrderSound, playOrderReadySound, playUrgentSound, resumeAudioContext } from "@/lib/sounds";
+import { playNewOrderAlert, playOrderReadySound, playUrgentSound, resumeAudioContext, startTitleFlash, stopTitleFlash } from "@/lib/sounds";
+import { AlertTestButton } from "@/components/dashboard/push-alert-card";
 import type { Order, OrderStatus } from "@/types/database";
 import {
   enqueueOrderPatch,
@@ -585,6 +586,17 @@ export default function ComandaKDS({ vendorId, vendorName, accessToken, prepTime
 
   useEffect(() => { fetchOrders(); }, []);
 
+  // El título deja de parpadear en cuanto alguien interactúa con la Comanda.
+  useEffect(() => {
+    const stop = () => stopTitleFlash();
+    window.addEventListener("pointerdown", stop);
+    window.addEventListener("keydown", stop);
+    return () => {
+      window.removeEventListener("pointerdown", stop);
+      window.removeEventListener("keydown", stop);
+    };
+  }, []);
+
   // Ledger offline (F5): pedidos vendidos sin red, pendientes de sync. Se
   // mergean con los del servidor (el polling los preserva: nunca vienen con
   // id del servidor). Al sincronizar se dropean y los trae el fetch.
@@ -675,7 +687,8 @@ export default function ComandaKDS({ vendorId, vendorName, accessToken, prepTime
         // Pedidos nuevos
         const fresh = next.filter((o) => !prevMap.has(o.id));
         if (fresh.length > 0) {
-          if (soundEnabledRef.current) playNewOrderSound();
+          if (soundEnabledRef.current) playNewOrderAlert();
+          startTitleFlash();
           vibrate([100, 50, 100]);
           fresh.forEach((order) => {
             notifyRef.current("Nuevo pedido", `${order.customer_name} - $${Number(order.total).toLocaleString("es-AR")}`);
@@ -906,6 +919,7 @@ export default function ComandaKDS({ vendorId, vendorName, accessToken, prepTime
           >
             {soundEnabled ? "🔊" : "🔇"}
           </button>
+          <AlertTestButton />
           {/* On/off "Exigir tildado": con OFF se puede marcar Listo (acá y en
               Pedidos) sin tildar todo. Persiste por comercio. */}
           <button

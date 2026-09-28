@@ -124,6 +124,11 @@ export async function POST(request: Request) {
         title: "🧾 Comprobante recibido",
         body: `${order.customer_name} mandó el comprobante del pedido ${nro}. Miralo y confirmá el pago.`,
         link: "/vendor/dashboard",
+        tag: `receipt-${orderId}`,
+        renotify: true,
+        requireInteraction: true,
+        urgency: "high",
+        ttl: 86400,
       }).catch(() => {});
     }
   } catch (e) {

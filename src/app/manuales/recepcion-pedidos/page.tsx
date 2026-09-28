@@ -166,6 +166,18 @@ export default function RecepcionPedidosPage() {
           <p>Desde la Comanda (KDS) y el Mostrador (POS) también hay botones de impresión por ticket.</p>
         </div>
 
+        {/* 9 */}
+        <div>
+          <h2 className="font-display text-lg font-semibold mb-3">9. Alertas de pedido nuevo (que suene el celu)</h2>
+          <p className="mb-3">Cada pedido nuevo te llega como <span className="font-medium">notificación del sistema</span> (como la de WhatsApp): suena y vibra <span className="font-medium">incluso con el celu bloqueado</span>. Cada pedido es un aviso separado y queda fijo hasta que lo tocás. Además, con el panel abierto suena un beep y parpadea el título de la pestaña.</p>
+          <p className="mb-3">En la pestaña <span className="font-medium">Pedidos</span> tenés una tarjeta de estado con el botón <span className="font-medium">🔔 Probar alerta</span>: tocálo una vez en cada celu de la cocina/mostrador. Si la prueba suena, los pedidos van a sonar.</p>
+          <ul className="list-disc pl-5 space-y-1 mb-3">
+            <li><span className="font-medium">Android:</span> instalá la app (en Chrome: ⋮ → “Agregar a pantalla principal”, o la app de Play Store), permití notificaciones <span className="font-medium">con sonido</span> y sacá Chrome/Portal 659 del ahorro de batería (Ajustes → Batería → sin restricciones).</li>
+            <li><span className="font-medium">iPhone:</span> abrí el portal en Safari → Compartir → “Agregar a inicio”, entrá desde ese ícono y aceptá las notificaciones. El sonido es el default de iOS y los modos Enfoque pueden silenciarlo.</li>
+          </ul>
+          <p className="text-xs text-muted-foreground">El sonido del aviso es el de notificaciones del sistema: por web no se puede poner un sonido propio. Si un pedido queda sin aceptar varios minutos, el sistema te manda un re-aviso solo.</p>
+        </div>
+
         {/* Resumen estados */}
         <div className="bg-muted/50 rounded-xl p-5">
           <h2 className="font-display text-lg font-semibold mb-3">Resumen de estados</h2>

@@ -65,6 +65,11 @@ export const POST = withRateLimit(async (request: Request) => {
         title: "Nuevo presupuesto solicitado",
         body: `${customerName}: "${desc}"`,
         link: "/vendor/dashboard",
+        tag: quote?.id ? `new-quote-${quote.id}` : "new-quote",
+        renotify: true,
+        requireInteraction: true,
+        urgency: "high",
+        ttl: 86400,
       });
     } catch { /* best-effort */ }
   }

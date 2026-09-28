@@ -381,6 +381,14 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
       title: `🛎️ Pedido nuevo #${pickupNumber} · $${resolvedTotal.toLocaleString("es-AR")}`,
       body: `${customerName} · ${resolvedItemsCount} producto${resolvedItemsCount !== 1 ? "s" : ""} · ${paymentLabel}`,
       link: "/vendor/dashboard",
+      // Tag único por pedido: no colapsa con otros y renotify hace que
+      // cada pedido suene/vibre aunque haya notificaciones visibles.
+      // requireInteraction: queda fija hasta tocarla (celu bloqueado).
+      tag: `new-order-${orderId}`,
+      renotify: true,
+      requireInteraction: true,
+      urgency: "high",
+      ttl: 86400,
     }).catch(() => {});
 
     const userProfile = await queryOne<{ email: string }>(

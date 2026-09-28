@@ -61,7 +61,8 @@ import { RecipeManager } from "@/components/dashboard/recipe-manager";
 import { ProductManager } from "@/components/dashboard/product-manager";
 import { MenuStudio } from "@/components/dashboard/menu-studio";
 import ComandaKDS from "@/components/dashboard/comanda-kds";
-import { playNewOrderSound, resumeAudioContext } from "@/lib/sounds";
+import { playNewOrderAlert, resumeAudioContext, startTitleFlash, stopTitleFlash } from "@/lib/sounds";
+import { PushAlertCard } from "@/components/dashboard/push-alert-card";
 import { resolveVendorPlan, daysLeft, type FeatureKey } from "@/lib/plans";
 import { PlanBanner } from "@/components/vendor/plan-banner";
 import { PlanLock } from "@/components/vendor/plan-lock";
@@ -589,9 +590,9 @@ function VendorDashboardInner() {
   // Backstop: si el SSE muere en silencio, recargar al volver a la pestaña.
   useEffect(() => {
     const onVisible = () => {
-      if (document.visibilityState === "visible") loadOrdersOnly();
+      if (document.visibilityState === "visible") { stopTitleFlash(); loadOrdersOnly(); }
     };
-    const onFocus = () => loadOrdersOnly();
+    const onFocus = () => { stopTitleFlash(); loadOrdersOnly(); };
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("focus", onFocus);
     return () => {
@@ -622,7 +623,8 @@ function VendorDashboardInner() {
             );
             if (hasFreshNew) {
               resumeAudioContext();
-              playNewOrderSound();
+              playNewOrderAlert();
+              startTitleFlash();
             }
             setOrders((prev) => {
               const map = new Map(prev.map((o) => [o.id, o]));
@@ -1486,6 +1488,14 @@ function VendorDashboardInner() {
                 </button>
               ))}
             </div>
+          </div>
+        )}
+
+        {/* Estado de alertas push — tab Pedidos/Presupuestos: valida que el
+            aviso de pedido nuevo suene en este celu (incluso bloqueado). */}
+        {tab === "orders" && (
+          <div className="px-4 mt-4 mx-auto w-full max-w-7xl">
+            <PushAlertCard />
           </div>
         )}
 

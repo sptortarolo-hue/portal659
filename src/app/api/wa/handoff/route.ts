@@ -47,6 +47,11 @@ export async function POST(request: Request) {
       title: "ðŸ—£ï¸ Un cliente quiere hablar con vos",
       body: `En el WhatsApp del bot: ${contact}${lastMessage ? ` â€” "${lastMessage}"` : ""}. Contestale desde tu WhatsApp.`,
       link: "/vendor/dashboard",
+      tag: `wa-handoff-${vendorId}-${phoneDigits}-${Date.now()}`,
+      renotify: true,
+      requireInteraction: true,
+      urgency: "high",
+      ttl: 86400,
     });
   } catch {
     // push best-effort

@@ -1,4 +1,6 @@
-// v15: + doc-cache SOLO para navegaciones /vendor/* (network-first).
+// v16: push que despierta (pedido nuevo): renotify + requireInteraction +
+// vibrate + silent:false. Cada pedido trae tag único (`new-order-<id>`)
+// para no colapsar; el resto mantiene tag "portal659". Purga v15.
 // Motivo: recargar el panel sin red debe bootear (F6 bootstrap desde
 // snapshot); sin documento cacheado el reload cae a offline.html y el
 // modo offline exige pestaña ya abierta. Seguro contra HTML viejo:
@@ -7,9 +9,9 @@
 // - Si el HTML cacheado referencia chunks ausentes, la app muestra su
 //   ErrorBoundary (no pantalla muerta). Nunca se precachea ni se sirve
 //   teniendo red (lección v12/v13). Purga v14. Otros paths: sin cambios.
-const CACHE_NAME = "portal659-v15";
-const API_CACHE = "portal659-api-v15";
-const DOC_CACHE = "portal659-doc-v15";
+const CACHE_NAME = "portal659-v16";
+const API_CACHE = "portal659-api-v16";
+const DOC_CACHE = "portal659-doc-v16";
 const CURRENT_CACHES = new Set([CACHE_NAME, API_CACHE, DOC_CACHE]);
 const OFFLINE_URL = "/offline.html";
 
@@ -71,7 +73,13 @@ self.addEventListener("push", (event) => {
     self.registration.showNotification(data.title, {
       body: data.body,
       icon: data.icon,
-      tag: data.tag,
+      tag: data.tag || "portal659",
+      // Pedido nuevo: vuelve a sonar/vibrar aunque haya otra visible y
+      // queda fija hasta que la tocan (cocina con celu bloqueado).
+      renotify: data.renotify === true,
+      requireInteraction: data.requireInteraction === true,
+      vibrate: Array.isArray(data.vibrate) ? data.vibrate : [200, 100, 200],
+      silent: false,
       badge: "/icons/icon-192.png",
       data: { url: data.link || "/" },
     })

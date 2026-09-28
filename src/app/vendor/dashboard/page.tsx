@@ -1279,6 +1279,7 @@ function VendorDashboardInner() {
     : isService && tab === "caja" ? "Cobros"
     : isService && tab === "config" ? "Ficha"
     : isService && tab === "history" ? "Historial"
+    : isService && tab === "clientes" ? "Clientes"
     : tab === "menu" ? (isRetail ? "Catálogo" : "Menú")
     : tab === "hoy" ? "Hoy"
     : tab === "orders" ? "Pedidos"
@@ -1506,9 +1507,11 @@ function VendorDashboardInner() {
                   : tab === "config" ? "ficha"
                   : tab === "reviews" ? "reviews"
                   : tab === "history" ? "history"
+                  : tab === "clientes" ? "clientes"
                   : "hoy"
                 }
                 onNavigate={handleTabChange}
+                canCrm={effectivePlan.can("crm")}
               />
             </div>
           ) : (

@@ -10,7 +10,7 @@ export async function PATCH(
   if (!gate.ok) return gateError(gate);
   if (!gate.plan.can("crm")) {
     return NextResponse.json(
-      { error: "El libro de clientes forma parte del plan Gestión integral", code: "plan_limit" },
+      { error: "El libro de clientes forma parte de los planes pagos", code: "plan_limit" },
       { status: 403 }
     );
   }
@@ -48,7 +48,7 @@ export async function GET(
   if (!gate.ok) return gateError(gate);
   if (!gate.plan.can("crm")) {
     return NextResponse.json(
-      { error: "El libro de clientes forma parte del plan Gestión integral", code: "plan_limit" },
+      { error: "El libro de clientes forma parte de los planes pagos", code: "plan_limit" },
       { status: 403 }
     );
   }
@@ -60,6 +60,7 @@ export async function GET(
   );
   if (!customer) return NextResponse.json({ error: "Cliente no encontrado" }, { status: 404 });
 
+  const phoneVariants = buildPhoneVariants(customer.phone);
   const orders = await queryMany<Record<string, any>>(
     `SELECT id, items, total, status, method, payment_method, created_at
      FROM orders
@@ -71,11 +72,36 @@ export async function GET(
       gate.vendor.id,
       // Mismo matching tolerante a formato que el resto de la app: E.164,
       // nacional y variantes sin el 9 móvil.
-      buildPhoneVariants(customer.phone),
+      phoneVariants,
     ]
   );
 
-  return NextResponse.json({ customer, orders: orders || [] });
+  // Historial de servicios (presupuestos + turnos por teléfono). Sin columnas
+  // nuevas: si la migración no está, devuelve listas vacías.
+  let quotes: Record<string, any>[] = [];
+  let bookings: Record<string, any>[] = [];
+  if (phoneVariants.length > 0) {
+    try {
+      quotes = (await queryMany<Record<string, any>>(
+        `SELECT id, service_name, description, status, quoted_price, deposit_status, preferred_date, created_at
+         FROM quotes WHERE vendor_id = $1
+           AND (regexp_replace(customer_phone, '[^0-9]', '', 'g') = ANY($2))
+         ORDER BY created_at DESC LIMIT 30`,
+        [gate.vendor.id, phoneVariants]
+      )) || [];
+    } catch { /* sin tabla: vacío */ }
+    try {
+      bookings = (await queryMany<Record<string, any>>(
+        `SELECT id, product_name, booking_date, booking_time, status, notes, created_at
+         FROM bookings WHERE vendor_id = $1
+           AND (regexp_replace(customer_phone, '[^0-9]', '', 'g') = ANY($2))
+         ORDER BY booking_date DESC, booking_time DESC LIMIT 30`,
+        [gate.vendor.id, phoneVariants]
+      )) || [];
+    } catch { /* sin tabla: vacío */ }
+  }
+
+  return NextResponse.json({ customer, orders: orders || [], quotes, bookings });
 }
 
 /** Variantes en dígitos del teléfono (para matchear sin importar el formato guardado). */

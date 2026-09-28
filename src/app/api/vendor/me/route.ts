@@ -77,6 +77,10 @@ export async function POST(request: Request) {
     urgent_enabled,
     urgent_surcharge_pct,
     deposit_default_pct,
+    bookings_enabled,
+    quote_pref_enabled,
+    quote_days,
+    quote_slots,
     printer_ip,
     printer_port,
     paper_size,
@@ -147,6 +151,19 @@ export async function POST(request: Request) {
   if (service_area !== undefined) payload.service_area = service_area || null;
   if (free_estimate !== undefined) payload.free_estimate = free_estimate !== false;
   if (accepting_quotes !== undefined) payload.accepting_quotes = accepting_quotes !== false;
+  if (bookings_enabled !== undefined) payload.bookings_enabled = bookings_enabled !== false;
+  if (quote_pref_enabled !== undefined) payload.quote_pref_enabled = quote_pref_enabled !== false;
+  if (quote_days !== undefined) {
+    const valid = ["lun", "mar", "mie", "jue", "vie", "sab", "dom"];
+    const arr = Array.isArray(quote_days) ? quote_days.filter((d: unknown) => valid.includes(String(d))) : [];
+    payload.quote_days = JSON.stringify(arr);
+  }
+  if (quote_slots !== undefined) {
+    const arr = Array.isArray(quote_slots)
+      ? quote_slots.map((s: unknown) => String(s).trim().slice(0, 20)).filter(Boolean).slice(0, 5)
+      : [];
+    payload.quote_slots = JSON.stringify(arr);
+  }
   if (urgent_enabled !== undefined) payload.urgent_enabled = urgent_enabled === true;
   if (urgent_surcharge_pct !== undefined) {
     const pct = urgent_surcharge_pct == null || urgent_surcharge_pct === "" ? null : Number(urgent_surcharge_pct);
@@ -236,6 +253,10 @@ export async function POST(request: Request) {
         "urgent_enabled",
         "urgent_surcharge_pct",
         "deposit_default_pct",
+        "bookings_enabled",
+        "quote_pref_enabled",
+        "quote_days",
+        "quote_slots",
         "kitchen_strict_close",
         "delivery_mode",
         "delivery_area_text",

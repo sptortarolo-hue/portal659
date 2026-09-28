@@ -30,17 +30,25 @@ export async function getServiceQuota(vendorId: string): Promise<{
   if (limit == null) return { used: 0, limit: null, planSlug: plan.slug };
 
   const monthStart = `date_trunc('month', now())`;
-  const [q, b] = await Promise.all([
-    queryOne<{ c: number }>(
-      `SELECT COUNT(*)::int AS c FROM quotes WHERE vendor_id = $1 AND status <> 'cancelled' AND created_at >= ${monthStart}`,
-      [vendorId]
-    ).catch(() => ({ c: 0 })),
-    queryOne<{ c: number }>(
-      `SELECT COUNT(*)::int AS c FROM bookings WHERE vendor_id = $1 AND status <> 'cancelled' AND created_at >= ${monthStart}`,
-      [vendorId]
-    ).catch(() => ({ c: 0 })),
-  ]);
-  return { used: (q?.c ?? 0) + (b?.c ?? 0), limit, planSlug: plan.slug };
+  // Solo origin='portal' (online del cliente): los manuales del comercio no
+  // cuentan. Si la columna origin aún no existe, cae al conteo legacy.
+  const countWithOrigin = async (table: string): Promise<number> => {
+    try {
+      const row = await queryOne<{ c: number }>(
+        `SELECT COUNT(*)::int AS c FROM ${table} WHERE vendor_id = $1 AND status <> 'cancelled' AND origin = 'portal' AND created_at >= ${monthStart}`,
+        [vendorId]
+      );
+      return row?.c ?? 0;
+    } catch {
+      const row = await queryOne<{ c: number }>(
+        `SELECT COUNT(*)::int AS c FROM ${table} WHERE vendor_id = $1 AND status <> 'cancelled' AND created_at >= ${monthStart}`,
+        [vendorId]
+      ).catch(() => ({ c: 0 }));
+      return row?.c ?? 0;
+    }
+  };
+  const [qc, bc] = await Promise.all([countWithOrigin("quotes"), countWithOrigin("bookings")]);
+  return { used: qc + bc, limit, planSlug: plan.slug };
 }
 
 /** Error de negocio: tope mensual de solicitudes alcanzado. → 429 */

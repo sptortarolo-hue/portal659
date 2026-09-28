@@ -5,21 +5,34 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { TimeSelect24 } from "@/components/ui/time-select-24";
+
+const DAY_LABELS: Record<string, string> = {
+  lun: "Lun", mar: "Mar", mie: "Mié", jue: "Jue", vie: "Vie", sab: "Sáb", dom: "Dom",
+};
+const DEFAULT_DAYS = ["lun", "mar", "mie", "jue", "vie", "sab"];
+const DEFAULT_SLOTS = ["mañana", "tarde"];
 
 type Props = {
   vendorId: string;
   vendorName: string;
   servicesList?: string | null;
+  /** Bloque de preferencias visible (configurable por comercio). */
+  prefEnabled?: boolean;
+  /** Días ofrecidos (ids). Default Lun–Sáb. */
+  prefDays?: string[];
+  /** Franjas ofrecidas. Default mañana/tarde. */
+  prefSlots?: string[];
 };
 
-export function QuoteForm({ vendorId, vendorName, servicesList }: Props) {
+export function QuoteForm({ vendorId, vendorName, servicesList, prefEnabled = true, prefDays, prefSlots }: Props) {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [serviceName, setServiceName] = useState("");
   const [description, setDescription] = useState("");
-  const [preferredDate, setPreferredDate] = useState("");
-  const [preferredTime, setPreferredTime] = useState("");
+  const [prefDayList, setPrefDayList] = useState<string[]>([]);
+  const [prefSlot, setPrefSlot] = useState("");
+  const days = (prefDays && prefDays.length > 0 ? prefDays : DEFAULT_DAYS).filter((d) => DAY_LABELS[d]);
+  const slots = prefSlots && prefSlots.length > 0 ? prefSlots : DEFAULT_SLOTS;
   const [photos, setPhotos] = useState<File[]>([]);
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
@@ -72,8 +85,10 @@ export function QuoteForm({ vendorId, vendorName, servicesList }: Props) {
         customerPhone: phone,
         serviceName: serviceName || null,
         description,
-        preferredDate: preferredDate || null,
-        preferredTime: preferredTime || null,
+        preferredDate: prefDayList.length > 0
+          ? prefDayList.map((d) => DAY_LABELS[d] || d).join(", ")
+          : null,
+        preferredTime: prefSlot || null,
         photoUrls,
       }),
     });
@@ -122,16 +137,43 @@ export function QuoteForm({ vendorId, vendorName, servicesList }: Props) {
           <p className="text-xs text-muted-foreground mt-1">{photos.length} foto{photos.length > 1 ? "s" : ""} seleccionada{photos.length > 1 ? "s" : ""}</p>
         )}
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      {prefEnabled && days.length > 0 && (
         <div>
-          <Label htmlFor="q-date">Fecha preferida</Label>
-          <Input id="q-date" type="date" value={preferredDate} onChange={e => setPreferredDate(e.target.value)} />
+          <Label>Días preferidos</Label>
+          <div className="flex flex-wrap gap-1.5 mt-1.5">
+            {days.map((d) => {
+              const active = prefDayList.includes(d);
+              return (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => setPrefDayList((prev) => (prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d]))}
+                  className={`px-3 py-1.5 rounded-full border text-sm transition-colors ${active ? "border-primary bg-primary/10 text-primary font-medium" : "border-border text-muted-foreground"}`}
+                >
+                  {DAY_LABELS[d]}
+                </button>
+              );
+            })}
+          </div>
         </div>
+      )}
+      {prefEnabled && slots.length > 0 && (
         <div>
-          <Label htmlFor="q-time">Horario preferido</Label>
-          <TimeSelect24 value={preferredTime} onChange={setPreferredTime} aria-label="Horario preferido" />
+          <Label>Horario preferido</Label>
+          <div className="flex flex-wrap gap-1.5 mt-1.5">
+            {slots.map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setPrefSlot((prev) => (prev === s ? "" : s))}
+                className={`px-3 py-1.5 rounded-full border text-sm capitalize transition-colors ${prefSlot === s ? "border-primary bg-primary/10 text-primary font-medium" : "border-border text-muted-foreground"}`}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
       {error && <p className="text-sm text-red-600">{error}</p>}
       <Button type="submit" className="w-full" disabled={loading}>
         {loading ? "Enviando..." : "Solicitar presupuesto"}

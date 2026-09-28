@@ -35,7 +35,22 @@ export type PrintJobType =
   | "despacho"
   | "test"
   | "precuenta"
-  | "cash_close";
+  | "cash_close"
+  | "presupuesto";
+
+/** Datos del presupuesto de oficio para impresión térmica. */
+export type QuotePrintData = {
+  customer_name: string;
+  customer_phone: string | null;
+  service_name: string | null;
+  description: string;
+  items: { kind: string; description: string; qty: number; unit_price: number }[];
+  total: number;
+  deposit_pct: number | null;
+  deposit_amount: number | null;
+  validity?: string | null;
+  created_at: string;
+};
 
 export type CashClosingPrintData = {
   closed_at: string;
@@ -1312,6 +1327,101 @@ export async function buildPrecuentaBuffer(
   }
 }
 
+async function composePresupuesto(
+  printer: any,
+  vendor: PrinterVendor,
+  quote: QuotePrintData
+): Promise<void> {
+  const width = vendor.paper_size === "58mm" ? 32 : 48;
+  const separator = separatorFor(width);
+
+  printer.alignCenter();
+  await composeStoreHeader(printer, vendor, width);
+  printer.println("PRESUPUESTO");
+  printer.println("(no es comprobante fiscal)");
+  printer.println(separator);
+
+  printer.alignLeft();
+  const dateStr = formatArgDate(new Date(quote.created_at));
+  printer.println(`Fecha: ${dateStr}`);
+  printer.println(`Cliente: ${quote.customer_name}`);
+  if (quote.customer_phone) printer.println(`Tel: ${quote.customer_phone}`);
+  if (quote.service_name) printer.println(`Servicio: ${quote.service_name}`);
+  printer.println(separator);
+  printer.println(quote.description);
+  printer.println(separator);
+
+  for (const it of quote.items) {
+    const lineTotal = Math.round(Number(it.qty) * Number(it.unit_price) * 100) / 100;
+    const qtyStr = `${Number(it.qty)}x`;
+    const priceStr = `$${lineTotal.toLocaleString("es-AR")}`;
+    const nameStr = it.description;
+    const availableForName = width - qtyStr.length - 1 - priceStr.length;
+    if (nameStr.length <= availableForName) {
+      printer.println(`${qtyStr} ${padRight(nameStr, availableForName)}${priceStr}`);
+    } else {
+      printer.println(`${qtyStr} ${nameStr.slice(0, availableForName)}`);
+      printer.println(`  ${nameStr.slice(availableForName)}`);
+    }
+  }
+
+  printer.println(separator);
+  printer.alignRight();
+  printer.bold(true);
+  printer.setTextSize(1, 1);
+  printer.println(`TOTAL: $${Number(quote.total).toLocaleString("es-AR")}`);
+  printer.setTextSize(0, 0);
+  printer.bold(false);
+  printer.alignLeft();
+
+  if (quote.deposit_amount != null && Number(quote.deposit_amount) > 0) {
+    printer.println("");
+    printer.bold(true);
+    printer.println(`SENA (${quote.deposit_pct ?? ""}%): $${Number(quote.deposit_amount).toLocaleString("es-AR")}`);
+    printer.bold(false);
+  }
+  if (quote.validity) {
+    printer.println("");
+    printer.println(`Validez: ${quote.validity}`);
+  }
+  printer.println("");
+  printer.println("Gracias por confiar!");
+  printer.println("");
+  composeFooter(printer, width);
+  printer.cut();
+}
+
+export async function printPresupuesto(
+  vendor: PrinterVendor,
+  quote: QuotePrintData
+): Promise<{ success: boolean; error?: string }> {
+  const res = await createPrinter(vendor);
+  if (!res.ok) return { success: false, error: res.error };
+  if (!vendor.printer_ip) return { success: false, error: "IP de impresora no configurada" };
+  try {
+    await composePresupuesto(res.printer, vendor, quote);
+    await res.printer.execute();
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: errorMsg(e) };
+  }
+}
+
+export async function buildPresupuestoBuffer(
+  vendor: PrinterVendor,
+  quote: QuotePrintData
+): Promise<BufferResult> {
+  const res = await createPrinter(vendor);
+  if (!res.ok) return { success: false, error: res.error };
+  try {
+    await composePresupuesto(res.printer, vendor, quote);
+    const buffer = (await res.printer.getBuffer()) as Buffer;
+    return { success: true, buffer };
+  } catch (e) {
+    return { success: false, error: errorMsg(e) };
+  }
+}
+
 export async function printCashClose(
   vendor: PrinterVendor,
   closing: CashClosingPrintData
@@ -1411,6 +1521,8 @@ export async function dispatchPrint(params: {
     cashTotal?: number;
     /** Cierre de caja (Z) guardado, para imprimir tal cual. */
     closing?: CashClosingPrintData;
+    /** Presupuesto de oficio (servicios): cliente + partidas + total + seña. */
+    quote?: QuotePrintData;
     /** Factura electrónica ARCA (bloque fiscal con CAE + QR en ticket). */
     fiscal?: FiscalPrintInfo | null;
   };
@@ -1461,6 +1573,21 @@ export async function dispatchPrint(params: {
     }
     if (!vendor.printer_ip) return { ok: true, mode, skipped: true };
     const r = await printCashClose(vendor, closing);
+    return { ok: r.success, mode, error: r.error };
+  }
+
+  // Presupuesto de oficio: no es un pedido; imprime el cotizado guardado.
+  if (params.type === "presupuesto") {
+    const quote = params.extra?.quote;
+    if (!quote) return { ok: false, mode, error: "Presupuesto requerido" };
+    if (mode === "app") {
+      const built = await buildPresupuestoBuffer(vendor, quote);
+      if (!built.success) return { ok: false, mode, error: built.error };
+      const pushed = await pushToBridge(vendor.print_token, bridgeJob("presupuesto", built.buffer, vendor));
+      return { ok: pushed.ok, mode, offline: pushed.offline, error: pushed.error };
+    }
+    if (!vendor.printer_ip) return { ok: true, mode, skipped: true };
+    const r = await printPresupuesto(vendor, quote);
     return { ok: r.success, mode, error: r.error };
   }
 

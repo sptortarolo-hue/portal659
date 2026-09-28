@@ -345,6 +345,14 @@ export type Vendor = {
   urgent_surcharge_pct?: number | null;
   /** % de seña por defecto sobre el cotizado (servicios, Oficios). NULL = 30. */
   deposit_default_pct?: number | null;
+  /** Turnera pública visible en el micrositio (servicios). */
+  bookings_enabled?: boolean;
+  /** Bloque "días y horario preferidos" en el form de presupuesto (servicios). */
+  quote_pref_enabled?: boolean;
+  /** Días ofrecidos en preferencias (ej: ["lun",...,"sab"]). */
+  quote_days?: string[] | null;
+  /** Franjas ofrecidas (ej: ["mañana","tarde"]). */
+  quote_slots?: string[] | null;
   is_admin: boolean;
   printer_ip: string | null;
   printer_port: number | null;
@@ -419,7 +427,11 @@ export type Booking = {
   booking_date: string;
   booking_time: string;
   notes: string | null;
-  status: "pending" | "confirmed" | "cancelled";
+  status: "pending" | "confirmed" | "cancelled" | "noshow";
+  /** portal = online del cliente (cuenta al tope) · vendor = manual (no cuenta). */
+  origin?: QuoteOrigin;
+  duration_min?: number | null;
+  quote_id?: string | null;
   created_at: string;
 };
 
@@ -438,6 +450,8 @@ export type Customer = {
   updated_at: string;
 };
 
+export type QuoteOrigin = "portal" | "vendor";
+
 export type Quote = {
   id: string;
   vendor_id: string;
@@ -449,6 +463,26 @@ export type Quote = {
   preferred_time: string | null;
   status: "pending" | "responded" | "accepted" | "cancelled";
   vendor_notes: string | null;
+  quoted_price?: number | null;
+  deposit_amount?: number | null;
+  deposit_pct?: number | null;
+  deposit_status?: "none" | "pending" | "paid" | null;
+  mp_payment_id?: string | null;
+  accepted_at?: string | null;
+  photo_urls?: string[] | null;
+  /** portal = online del cliente (cuenta al tope) · vendor = manual (no cuenta). */
+  origin?: QuoteOrigin;
+  created_at: string;
+};
+
+export type QuoteItem = {
+  id: string;
+  quote_id: string;
+  kind: "material" | "labor";
+  description: string;
+  qty: number;
+  unit_price: number;
+  position: number;
   created_at: string;
 };
 

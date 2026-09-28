@@ -65,6 +65,63 @@ export async function POST(request: Request) {
     return printResponse(result);
   }
 
+  // Presupuesto de oficio (servicios): imprime el cotizado guardado. Gatea por
+  // quotes_respond (Oficios), no por impresora: el plomero imprime su
+  // presupuesto aunque no tenga cocina ni POS.
+  if (type === "presupuesto") {
+    if (!plan.can("quotes_respond")) {
+      return NextResponse.json(
+        { ok: false, error: "Imprimir presupuestos requiere el plan Oficios", code: "plan_limit" },
+        { status: 403 }
+      );
+    }
+    const quoteId = body.quoteId;
+    if (!quoteId) {
+      return NextResponse.json({ ok: false, error: "quoteId requerido" }, { status: 400 });
+    }
+    const quote = await queryOne<Record<string, unknown>>(
+      `SELECT customer_name, customer_phone, service_name, description, quoted_price,
+              deposit_pct, deposit_amount, preferred_date, created_at
+       FROM quotes WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
+      [quoteId, vendor.id]
+    );
+    if (!quote) {
+      return NextResponse.json({ ok: false, error: "Presupuesto no encontrado" }, { status: 404 });
+    }
+    const items = await queryMany<{ kind: string; description: string; qty: number; unit_price: number }>(
+      `SELECT kind, description, qty, unit_price FROM quote_items WHERE quote_id = $1 ORDER BY position ASC`,
+      [quoteId]
+    ).catch(() => []);
+    const total = items.length > 0
+      ? Math.round(items.reduce((s, it) => s + Number(it.qty) * Number(it.unit_price), 0) * 100) / 100
+      : Number(quote.quoted_price) || 0;
+    const result = await dispatchPrint({
+      vendor,
+      type: "presupuesto",
+      extra: {
+        quote: {
+          customer_name: String(quote.customer_name || ""),
+          customer_phone: (quote.customer_phone as string) || null,
+          service_name: (quote.service_name as string) || null,
+          description: String(quote.description || ""),
+          items: (items || []).map((it) => ({
+            kind: String(it.kind || "material"),
+            description: String(it.description || ""),
+            qty: Number(it.qty) || 0,
+            unit_price: Number(it.unit_price) || 0,
+          })),
+          total,
+          deposit_pct: quote.deposit_pct != null ? Number(quote.deposit_pct) : null,
+          deposit_amount: quote.deposit_amount != null ? Number(quote.deposit_amount) : null,
+          validity: quote.preferred_date ? `Fecha estimada: ${quote.preferred_date}` : null,
+          created_at: String(quote.created_at || new Date().toISOString()),
+        },
+      },
+    });
+    await recordLastPrint(vendor.id, result);
+    return printResponse(result);
+  }
+
   // Precuenta de mesa: no es un pedido; solo ítems + total + nombre de mesa.
   if (type === "precuenta") {
     if (!Array.isArray(items) || items.length === 0 || !total) {

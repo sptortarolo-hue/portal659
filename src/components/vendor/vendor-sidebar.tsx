@@ -266,12 +266,20 @@ export default function VendorSidebar({
             <p className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Gestión</p>
             <div className="space-y-0.5">
               {isService ? (
-                <NavButton
-                  active={currentTab === "config"}
-                  onClick={() => handleTab("config")}
-                  icon={ClipboardList}
-                  label="Ficha"
-                />
+                <>
+                  <NavButton
+                    active={currentTab === "config"}
+                    onClick={() => handleTab("config")}
+                    icon={ClipboardList}
+                    label="Ficha"
+                  />
+                  <NavButton
+                    active={currentTab === "clientes"}
+                    onClick={() => handleTab("clientes")}
+                    icon={Users}
+                    label="Clientes"
+                  />
+                </>
               ) : (
                 GESTION_ITEMS.filter((i) => i.show(isGastro, isModa, isComercio)).map((item) => {
                   const suffix = item.suffix ? item.suffix(menuCount) : null;

@@ -646,11 +646,18 @@ export default async function TiendaPage({
                 <h3 className="font-display text-lg font-semibold mb-4">
                   📋 Solicitar presupuesto
                 </h3>
-                <QuoteForm vendorId={v.id} vendorName={v.store_name} servicesList={v.services_list} />
+                <QuoteForm
+                  vendorId={v.id}
+                  vendorName={v.store_name}
+                  servicesList={v.services_list}
+                  prefEnabled={v.quote_pref_enabled !== false}
+                  prefDays={Array.isArray(v.quote_days) ? v.quote_days : undefined}
+                  prefSlots={Array.isArray(v.quote_slots) ? v.quote_slots : undefined}
+                />
               </div>
             )}
 
-            {!serviceQuotaFull && (
+            {!serviceQuotaFull && v.bookings_enabled !== false && (
             <div className="border border-border rounded-2xl p-6 bg-card mb-6">
               <h3 className="font-display text-lg font-semibold mb-4">
                 📅 Reservar turno

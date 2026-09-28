@@ -14,6 +14,10 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { MpConnectCard } from "@/components/dashboard/mp-connect-card";
 import { VendorReviews } from "@/components/vendor/vendor-reviews";
+import { CustomersManager } from "@/components/dashboard/customers-manager";
+import { PlanLock } from "@/components/vendor/plan-lock";
+import { QuoteManualModal } from "@/components/dashboard/quote-manual-modal";
+import { BookingManualModal } from "@/components/dashboard/booking-manual-modal";
 import type { Vendor, Product, ProductModifier, Booking, VendorGallery } from "@/types/database";
 
 type Props = {
@@ -30,7 +34,7 @@ type Props = {
   uploading: boolean;
   onCrop: (target: "cover" | "logo" | "offer") => void;
   /** Sub-vista a mostrar (el dashboard switchea por tab). Sin section = todo (legacy). */
-  section?: "hoy" | "presupuestos" | "turnos" | "cobros" | "ficha" | "reviews" | "history";
+  section?: "hoy" | "presupuestos" | "turnos" | "cobros" | "ficha" | "reviews" | "history" | "clientes";
   /** Navegación a otra sub-vista (botones del Hoy). */
   onNavigate?: (section: "orders" | "pos" | "caja" | "config") => void;
   /** Datos lifteados desde el dashboard (badges + refresco único). Si faltan, se fetchean acá. */
@@ -38,6 +42,8 @@ type Props = {
   quota?: { used: number; limit: number | null } | null;
   canQuotePrice?: boolean;
   canDeposits?: boolean;
+  /** El plan permite libro de clientes (Oficios). Sin esto, tab Clientes muestra PlanLock. */
+  canCrm?: boolean;
   onQuotesChanged?: () => void;
 };
 
@@ -45,12 +51,14 @@ const BOOKING_STATUS_COLORS: Record<string, string> = {
   pending: "bg-yellow-100 text-yellow-700",
   confirmed: "bg-green-100 text-green-700",
   cancelled: "bg-red-100 text-red-700",
+  noshow: "bg-orange-100 text-orange-700",
 };
 
 const BOOKING_STATUS_LABELS: Record<string, string> = {
   pending: "Pendiente",
   confirmed: "Confirmado",
   cancelled: "Cancelado",
+  noshow: "Ausente",
 };
 
 function waLinkFor(phone: unknown): string | null {
@@ -242,6 +250,7 @@ export default function DashboardServicio({
   quota: quotaProp,
   canQuotePrice: canQuotePriceProp,
   canDeposits: canDepositsProp,
+  canCrm = false,
   onQuotesChanged,
 }: Props) {
   // Sin section se muestra todo (legacy); con section, solo esa sub-vista.
@@ -268,6 +277,25 @@ export default function DashboardServicio({
     vendor?.deposit_default_pct != null ? String(vendor.deposit_default_pct) : ""
   );
   const [acceptingQuotes, setAcceptingQuotes] = useState(vendor?.accepting_quotes !== false);
+  // Solicitudes online configurables (micrositio).
+  const [bookingsEnabled, setBookingsEnabled] = useState(vendor?.bookings_enabled !== false);
+  const [quotePrefEnabled, setQuotePrefEnabled] = useState(vendor?.quote_pref_enabled !== false);
+  const [quoteDays, setQuoteDays] = useState<string[]>(
+    Array.isArray(vendor?.quote_days) && vendor.quote_days.length > 0
+      ? vendor.quote_days
+      : ["lun", "mar", "mie", "jue", "vie", "sab"]
+  );
+  const [quoteSlots, setQuoteSlots] = useState<string[]>(
+    Array.isArray(vendor?.quote_slots) && vendor.quote_slots.length > 0
+      ? vendor.quote_slots
+      : ["mañana", "tarde"]
+  );
+
+const PREF_DAY_LABELS: Record<string, string> = {
+  lun: "Lun", mar: "Mar", mie: "Mié", jue: "Jue", vie: "Vie", sab: "Sáb", dom: "Dom",
+};
+const PREF_DAY_IDS = ["lun", "mar", "mie", "jue", "vie", "sab", "dom"];
+const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
 
     // Bandeja de presupuestos (lifteada al dashboard para badges; fallback local).
   const [innerQuotes, setInnerQuotes] = useState<Record<string, unknown>[]>([]);
@@ -288,6 +316,43 @@ export default function DashboardServicio({
   const [depositPct, setDepositPct] = useState("");
   const [depositLink, setDepositLink] = useState<Record<string, string>>({});
   const [depositBusy, setDepositBusy] = useState<string | null>(null);
+  // Convertir presupuesto → turno.
+  const [convertingId, setConvertingId] = useState<string | null>(null);
+  const [convDate, setConvDate] = useState("");
+  const [convTime, setConvTime] = useState("");
+  const [convBusy, setConvBusy] = useState(false);
+  // Modales manuales.
+  const [quoteModalOpen, setQuoteModalOpen] = useState(false);
+  const [bookingModalOpen, setBookingModalOpen] = useState(false);
+
+  async function handleConvertQuote(id: string) {
+    if (!convDate || !convTime) {
+      setMsg("Elegí fecha y hora del turno");
+      return;
+    }
+    setConvBusy(true);
+    try {
+      const res = await fetch(`/api/vendor/quotes/${id}/convert`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ booking_date: convDate, booking_time: convTime }),
+      });
+      const data = await res.json();
+      if (data.error) {
+        setMsg(data.error);
+        return;
+      }
+      setConvertingId(null);
+      setConvDate("");
+      setConvTime("");
+      setMsg("Turno agendado desde el presupuesto");
+      reload();
+    } catch {
+      setMsg("Error de conexión");
+    } finally {
+      setConvBusy(false);
+    }
+  }
 
   const loadQuotes = async () => {
     if (onQuotesChanged) {
@@ -341,6 +406,18 @@ export default function DashboardServicio({
     setUrgentSurcharge(vendor.urgent_surcharge_pct != null ? String(vendor.urgent_surcharge_pct) : "");
     setDepositDefault(vendor.deposit_default_pct != null ? String(vendor.deposit_default_pct) : "");
     setAcceptingQuotes(vendor.accepting_quotes !== false);
+    setBookingsEnabled(vendor.bookings_enabled !== false);
+    setQuotePrefEnabled(vendor.quote_pref_enabled !== false);
+    setQuoteDays(
+      Array.isArray(vendor.quote_days) && vendor.quote_days.length > 0
+        ? vendor.quote_days
+        : ["lun", "mar", "mie", "jue", "vie", "sab"]
+    );
+    setQuoteSlots(
+      Array.isArray(vendor.quote_slots) && vendor.quote_slots.length > 0
+        ? vendor.quote_slots
+        : ["mañana", "tarde"]
+    );
     setStorePreview(vendor.image_url || null);
     setLogoPreview(vendor.logo_url || null);
   }, [vendor]);
@@ -350,7 +427,7 @@ export default function DashboardServicio({
 
   const [galleryUploading, setGalleryUploading] = useState(false);
   const [galleryCaptions, setGalleryCaptions] = useState<Record<string, string>>({});
-  const [bookingFilter, setBookingFilter] = useState<"all" | "pending" | "confirmed" | "cancelled">("all");
+  const [bookingFilter, setBookingFilter] = useState<"all" | "pending" | "confirmed" | "cancelled" | "noshow">("all");
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -391,6 +468,10 @@ export default function DashboardServicio({
       urgent_surcharge_pct: urgentSurcharge === "" ? null : Number(urgentSurcharge),
       deposit_default_pct: depositDefault === "" ? null : Number(depositDefault),
       accepting_quotes: acceptingQuotes,
+      bookings_enabled: bookingsEnabled,
+      quote_pref_enabled: quotePrefEnabled,
+      quote_days: quoteDays,
+      quote_slots: quoteSlots,
     });
   }
 
@@ -467,6 +548,42 @@ export default function DashboardServicio({
     }
   }
 
+  async function handlePrintQuote(id: string) {
+    setMsg("");
+    try {
+      const res = await fetch("/api/print", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "presupuesto", quoteId: id }),
+      });
+      const data = await res.json();
+      if (data.error || data.ok === false) {
+        setMsg(data.error || "No se pudo imprimir");
+        return;
+      }
+      setMsg(data.skipped ? "Sin impresora configurada (se omitió)" : "Presupuesto enviado a imprimir");
+    } catch {
+      setMsg("Error de conexión");
+    }
+  }
+
+  function quoteShareText(q: any): string {
+    const lines = [
+      `*PRESUPUESTO — ${vendor?.store_name || ""}*`,
+      `Para: ${q.customer_name || ""}${q.customer_phone ? ` (${q.customer_phone})` : ""}`,
+      q.service_name ? `Servicio: ${q.service_name}` : "",
+      "",
+      String(q.description || ""),
+      "",
+      q.quoted_price != null ? `*TOTAL: $${Number(q.quoted_price).toLocaleString("es-AR")}*` : "",
+      q.deposit_amount != null && Number(q.deposit_amount) > 0
+        ? `Seña (${q.deposit_pct ?? ""}%): $${Number(q.deposit_amount).toLocaleString("es-AR")}`
+        : "",
+      "Validez: 30 días. Sin compromiso.",
+    ];
+    return lines.filter((l) => l !== "").join("\n");
+  }
+
   async function handleRespondQuote(id: string, status: string) {
     try {
       const body: Record<string, unknown> = { status, vendor_notes: respondNotes || undefined };
@@ -538,7 +655,7 @@ export default function DashboardServicio({
           ) : (
             <p>
               Solicitudes online del mes: <strong className="text-foreground">{quota.used} de {quota.limit}</strong>
-              {" "}(presupuestos + turnos).
+              {" "}(presupuestos + turnos. Lo que cargás a mano no cuenta).
             </p>
           )}
         </div>
@@ -758,6 +875,72 @@ export default function DashboardServicio({
         </div>
       </CollapsibleSection>
 
+      <CollapsibleSection icon="📋" title="Solicitudes online">
+        <div className="space-y-3">
+          <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2">
+            <div>
+              <p className="text-sm font-medium">Turnera pública</p>
+              <p className="text-xs text-muted-foreground">
+                Si la apagás, el formulario de turnos desaparece del micrositio
+              </p>
+            </div>
+            <Switch checked={bookingsEnabled} onCheckedChange={setBookingsEnabled} />
+          </div>
+          <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2">
+            <div>
+              <p className="text-sm font-medium">Preferencias en presupuestos</p>
+              <p className="text-xs text-muted-foreground">
+                Bloque de días y horario preferidos en el formulario
+              </p>
+            </div>
+            <Switch checked={quotePrefEnabled} onCheckedChange={setQuotePrefEnabled} />
+          </div>
+          {quotePrefEnabled && (
+            <>
+              <div>
+                <Label>Días que ofrecés</Label>
+                <div className="flex flex-wrap gap-1.5 mt-1.5">
+                  {PREF_DAY_IDS.map((d) => {
+                    const active = quoteDays.includes(d);
+                    return (
+                      <button
+                        key={d}
+                        type="button"
+                        onClick={() => setQuoteDays((prev) => (prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d]))}
+                        className={`px-3 py-1.5 rounded-full border text-sm transition-colors ${active ? "border-primary bg-primary/10 text-primary font-medium" : "border-border text-muted-foreground"}`}
+                      >
+                        {PREF_DAY_LABELS[d]}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div>
+                <Label>Franjas horarias</Label>
+                <div className="flex flex-wrap gap-1.5 mt-1.5">
+                  {PREF_SLOT_OPTIONS.map((s) => {
+                    const active = quoteSlots.includes(s);
+                    return (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => setQuoteSlots((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]))}
+                        className={`px-3 py-1.5 rounded-full border text-sm capitalize transition-colors ${active ? "border-primary bg-primary/10 text-primary font-medium" : "border-border text-muted-foreground"}`}
+                      >
+                        {s}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </>
+          )}
+          <Button onClick={handleSaveAll} className="w-full" disabled={uploading}>
+            {uploading ? "Guardando..." : "Guardar solicitudes"}
+          </Button>
+        </div>
+      </CollapsibleSection>
+
       <CollapsibleSection icon="🚨" title="Urgencia 24hs">
         <div className="space-y-3">
           <div className="flex items-center justify-between">
@@ -870,8 +1053,11 @@ export default function DashboardServicio({
       <>
       <CollapsibleSection icon="📅" title={`Agenda de turnos (${bookings.length})`}>
         <div className="space-y-3">
+          <Button size="sm" className="w-full h-8 text-xs" onClick={() => setBookingModalOpen(true)}>
+            ＋ Nuevo turno
+          </Button>
           <div className="flex gap-1 flex-wrap">
-            {(["all", "pending", "confirmed", "cancelled"] as const).map((status) => (
+            {(["all", "pending", "confirmed", "cancelled", "noshow"] as const).map((status) => (
               <Button
                 key={status}
                 size="sm"
@@ -881,7 +1067,7 @@ export default function DashboardServicio({
               >
                 {status === "all"
                   ? `Todos (${bookings.length})`
-                  : `${BOOKING_STATUS_LABELS[status]} (${bookings.filter((b: any) => b.status === status).length})`}
+                  : `${status === "noshow" ? "Ausentes" : BOOKING_STATUS_LABELS[status]} (${bookings.filter((b: any) => b.status === status).length})`}
               </Button>
             ))}
           </div>
@@ -959,14 +1145,27 @@ export default function DashboardServicio({
                             </>
                           )}
                           {booking.status === "confirmed" && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-7 text-xs text-red-600"
-                              onClick={() => handleUpdateBookingStatus(booking.id, "cancelled")}
-                            >
-                              Cancelar
-                            </Button>
+                            <>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 text-xs text-red-600"
+                                onClick={() => handleUpdateBookingStatus(booking.id, "cancelled")}
+                              >
+                                Cancelar
+                              </Button>
+                              {booking.booking_date <= new Date().toISOString().slice(0, 10) && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 text-xs text-amber-600"
+                                  title="El cliente no vino (queda en su historial)"
+                                  onClick={() => handleUpdateBookingStatus(booking.id, "noshow")}
+                                >
+                                  No vino
+                                </Button>
+                              )}
+                            </>
                           )}
                         </div>
                       </Card>
@@ -985,6 +1184,9 @@ export default function DashboardServicio({
       <>
       <CollapsibleSection icon="💬" title={`Presupuestos (${quotes.length})`}>
         <div className="space-y-3">
+          <Button size="sm" className="w-full h-8 text-xs" onClick={() => setQuoteModalOpen(true)}>
+            ＋ Nuevo presupuesto
+          </Button>
           {!acceptingQuotes && (
             <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
               No estás recibiendo presupuestos (apagado en “Servicios que ofrecés”).
@@ -1158,6 +1360,61 @@ export default function DashboardServicio({
                           )}
                         </div>
                       )}
+                      {(q.status === "responded" || q.status === "accepted") && (
+                        <div className="w-full flex gap-2 flex-wrap mt-1">
+                          <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => handlePrintQuote(q.id)}>
+                            🖨️ Imprimir
+                          </Button>
+                          <a href={`/vendor/presupuesto/${q.id}`} target="_blank" rel="noopener noreferrer">
+                            <Button size="sm" variant="outline" className="h-7 text-xs">📄 A4 / PDF</Button>
+                          </a>
+                          <a
+                            href={`https://wa.me/?text=${encodeURIComponent(quoteShareText(q))}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center h-7 px-3 text-xs font-medium rounded-lg border border-border hover:bg-muted text-green-600"
+                          >
+                            📲 Enviar por WA
+                          </a>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-xs"
+                            onClick={() => {
+                              if (convertingId === q.id) return setConvertingId(null);
+                              setConvertingId(q.id);
+                              setConvDate(String(q.preferred_date || ""));
+                              setConvTime(String(q.preferred_time || "").slice(0, 5));
+                            }}
+                          >
+                            📅 Agendar turno
+                          </Button>
+                        </div>
+                      )}
+                      {convertingId === q.id && (
+                        <div className="w-full rounded-lg border border-border p-2 mt-1 space-y-2">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <Input
+                              type="date"
+                              value={convDate}
+                              onChange={(e) => setConvDate(e.target.value)}
+                              className="h-8 text-xs w-40"
+                            />
+                            <Input
+                              type="time"
+                              value={convTime}
+                              onChange={(e) => setConvTime(e.target.value)}
+                              className="h-8 text-xs w-28"
+                            />
+                            <Button size="sm" className="h-8 text-xs" disabled={convBusy} onClick={() => handleConvertQuote(q.id)}>
+                              {convBusy ? "Agendando..." : "Confirmar turno"}
+                            </Button>
+                          </div>
+                          <p className="text-[11px] text-muted-foreground">
+                            Marca el presupuesto como aceptado y crea el turno confirmado.
+                          </p>
+                        </div>
+                      )}
                     </div>
                   </Card>
                 );
@@ -1252,6 +1509,41 @@ export default function DashboardServicio({
         <ServicioHistorial
           quotes={quotes}
           bookings={bookings}
+        />
+      )}
+
+      {sec === "clientes" && (
+        canCrm ? (
+          <CustomersManager serviceMode />
+        ) : (
+          <PlanLock
+            title="Libro de clientes"
+            description="Tus clientes con su historial de trabajos y presupuestos, notas y contacto directo por WhatsApp. Parte del plan Oficios."
+          />
+        )
+      )}
+
+      {quoteModalOpen && (
+        <QuoteManualModal
+          onClose={() => setQuoteModalOpen(false)}
+          onCreated={() => {
+            setQuoteModalOpen(false);
+            setMsg("Presupuesto creado (no cuenta para el tope mensual)");
+            onQuotesChanged?.();
+            reload();
+          }}
+        />
+      )}
+
+      {bookingModalOpen && (
+        <BookingManualModal
+          onClose={() => setBookingModalOpen(false)}
+          onCreated={(warning) => {
+            setBookingModalOpen(false);
+            setMsg(warning || "Turno agendado (no cuenta para el tope mensual)");
+            onQuotesChanged?.();
+            reload();
+          }}
         />
       )}
     </div>

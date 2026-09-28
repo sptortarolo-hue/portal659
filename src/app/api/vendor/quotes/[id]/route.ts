@@ -1,6 +1,7 @@
 import { gateRequest } from "@/lib/subscription-gate";
 import { notifyServiceClient } from "@/lib/service-notify";
-import { query, queryOne } from "@/lib/db";
+import { addServiceJob } from "@/lib/customers";
+import { query, queryOne, withTransaction } from "@/lib/db";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -18,8 +19,8 @@ export async function PATCH(
   }
 
   const { id } = await params;
-  const existing = await queryOne<{ id: string; vendor_id: string }>(
-    `SELECT id, vendor_id FROM quotes WHERE id = $1 LIMIT 1`,
+  const existing = await queryOne<{ id: string; vendor_id: string; status: string; customer_name: string; customer_phone: string }>(
+    `SELECT id, vendor_id, status, customer_name, customer_phone FROM quotes WHERE id = $1 LIMIT 1`,
     [id]
   );
   if (!existing) return NextResponse.json({ error: "No encontrado" }, { status: 404 });
@@ -56,10 +57,24 @@ export async function PATCH(
   try {
     const cols = Object.keys(update);
     const set = cols.map((k, i) => `${k} = $${i + 1}`).join(", ");
-    await query(`UPDATE quotes SET ${set} WHERE id = $${cols.length + 1}`, [
-      ...cols.map((k) => update[k]),
-      id,
-    ]);
+    await withTransaction(async (tx) => {
+      await tx.queryVoid(`UPDATE quotes SET ${set} WHERE id = $${cols.length + 1}`, [
+        ...cols.map((k) => update[k]),
+        id,
+      ]);
+      // Aceptar suma el trabajo al libro del cliente (una sola vez).
+      if (update.status === "accepted" && existing.status !== "accepted") {
+        const row = await tx.query<{ quoted_price: number | null }>(
+          `SELECT quoted_price FROM quotes WHERE id = $1 LIMIT 1`,
+          [id]
+        );
+        await addServiceJob(tx, gate.vendor.id, {
+          phone: existing.customer_phone,
+          name: existing.customer_name,
+          total: Number(row[0]?.quoted_price) || 0,
+        });
+      }
+    });
   } catch (e) {
     // Columna quoted_price aún no migrada.
     if (!("quoted_price" in update)) throw e;

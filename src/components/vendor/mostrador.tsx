@@ -177,6 +177,9 @@ export function Mostrador({ vendorId }: { vendorId?: string | null }) {
   const [posManualFee, setPosManualFee] = useState("");
   const [posReferences, setPosReferences] = useState("");
   const [notes, setNotes] = useState("");
+  // Bloque cliente colapsado: default = consumidor final. Se despliega para
+  // cargar datos; al elegir delivery se abre solo (ahí el teléfono es requerido).
+  const [clientOpen, setClientOpen] = useState(false);
   // % descuento en efectivo del comercio (0 = sin descuento).
   const [cashPct, setCashPct] = useState(0);
   // Retail (comercio/moda): textos sin referencias a cocina/comida.
@@ -576,6 +579,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
       setNotes("");
       setManualName("");
       setManualPrice("");
+      setClientOpen(false);
       setFiscalReceptorTipo("cf");
       setFiscalReceptorNro("");
       setFiscalReceptorNombre("");
@@ -1132,7 +1136,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
       </div>
 
       <div className="mt-3 space-y-2 pt-3 border-t border-border">
-        {/* Método de entrega */}
+        {/* Método de entrega (default: retiro) */}
         <div className="grid grid-cols-2 gap-1.5">
           <button
             onClick={() => setMethod("pickup")}
@@ -1143,7 +1147,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
             🛍️ Para retirar
           </button>
           <button
-            onClick={() => setMethod("delivery")}
+            onClick={() => { setMethod("delivery"); setClientOpen(true); }}
             className={`rounded-lg py-1.5 text-xs font-medium border transition-colors ${
               method === "delivery" ? "border-primary bg-primary/5 text-primary" : "border-border text-muted-foreground"
             }`}
@@ -1152,102 +1156,111 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
           </button>
         </div>
 
-        <input
-          type="text"
-          value={customerName}
-          onChange={(e) => setCustomerName(e.target.value)}
-          placeholder="Nombre del cliente (opcional)"
-          className="w-full h-9 px-3 text-xs rounded-lg border border-input bg-background"
-        />
-        {method === "pickup" && (
-          <input
-            type="tel"
-            value={customerPhone}
-            onChange={(e) => setCustomerPhone(e.target.value)}
-            placeholder="Teléfono del cliente (opcional, para ficha y aviso)"
-            className="w-full h-9 px-3 text-xs rounded-lg border border-input bg-background"
-          />
-        )}
-
-        <input
-          type="text"
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          placeholder={isRetail ? "📝 Notas de la venta (ej: bolsa extra, envolver para regalo)" : "📝 Instrucciones especiales (ej: sin cebolla, extra picante, cortar al medio)"}
-          className="w-full h-9 px-3 text-xs rounded-lg border border-input bg-background"
-        />
-
-        {method === "delivery" && (
-          <>
-            <input
-              type="text"
-              value={customerPhone}
-              onChange={(e) => setCustomerPhone(e.target.value)}
-              placeholder="Teléfono del cliente *"
-              className="w-full h-9 px-3 text-xs rounded-lg border border-input bg-background"
-            />
-            {posZonesMode ? (
-              <select
-                value={posZoneOut ? "__OUT__" : posActiveZoneId}
-                onChange={(e) => setPosZoneId(e.target.value)}
-                className="w-full h-9 px-2 text-xs rounded-lg border border-input bg-background"
-              >
-                {deliveryZones.map((z) => (
-                  <option key={z.id} value={z.id}>
-                    {z.name} — ${Number(z.fee).toLocaleString("es-AR")}
-                  </option>
-                ))}
-                <option value="__OUT__">Otra zona (monto manual)</option>
-              </select>
-            ) : (
-              <div className="grid grid-cols-2 gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => setPosOutOfArea(false)}
-                  className={`rounded-lg py-1.5 text-[11px] font-medium border transition-colors ${
-                    !posOutOfArea ? "border-primary bg-primary/5 text-primary" : "border-border text-muted-foreground"
-                  }`}
-                >
-                  Dentro{deliveryAreaText ? ` (${deliveryAreaText.slice(0, 24)}${deliveryAreaText.length > 24 ? "…" : ""})` : ""}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPosOutOfArea(true)}
-                  className={`rounded-lg py-1.5 text-[11px] font-medium border transition-colors ${
-                    posOutOfArea ? "border-primary bg-primary/5 text-primary" : "border-border text-muted-foreground"
-                  }`}
-                >
-                  Fuera de zona
-                </button>
-              </div>
-            )}
-            {posOutOfAreaFlag && (
+        {/* Cliente colapsado: default = consumidor final */}
+        <div className="rounded-xl border border-border overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setClientOpen((v) => !v)}
+            className="flex w-full items-center justify-between gap-2 px-3 py-2 text-xs font-medium text-muted-foreground hover:bg-muted/50"
+            aria-expanded={clientOpen}
+          >
+            <span className="truncate">
+              👤 {customerName.trim() || customerPhone.trim()
+                ? `${customerName.trim() || "Cliente"}${customerPhone.trim() ? ` · ${customerPhone.trim()}` : ""}`
+                : "Cliente: Consumidor final"}
+            </span>
+            <span className="flex-shrink-0">{clientOpen ? "▾" : "▸"}</span>
+          </button>
+          {clientOpen && (
+            <div className="space-y-2 px-2 pb-2">
               <input
-                type="number"
-                inputMode="decimal"
-                min="0"
-                value={posManualFee}
-                onChange={(e) => setPosManualFee(e.target.value)}
-                placeholder={`Monto del envío $ (vacío = provisorio $${Number(deliveryBaseFee || 0).toLocaleString("es-AR")})`}
+                type="text"
+                value={customerName}
+                onChange={(e) => setCustomerName(e.target.value)}
+                placeholder="Nombre del cliente (opcional)"
                 className="w-full h-9 px-3 text-xs rounded-lg border border-input bg-background"
               />
-            )}
-            <input
-              type="text"
-              value={customerAddress}
-              onChange={(e) => setCustomerAddress(e.target.value)}
-              placeholder="Dirección de entrega"
-              className="w-full h-9 px-3 text-xs rounded-lg border border-input bg-background"
-            />
-            <input
-              type="text"
-              value={posReferences}
-              onChange={(e) => setPosReferences(e.target.value)}
-              placeholder="Referencias (opcional: casa verde, portón…)"
-              className="w-full h-9 px-3 text-xs rounded-lg border border-input bg-background"
-            />
-          </>
-        )}
+              <input
+                type="tel"
+                value={customerPhone}
+                onChange={(e) => setCustomerPhone(e.target.value)}
+                placeholder={method === "delivery" ? "Teléfono del cliente *" : "Teléfono del cliente (opcional, para ficha y aviso)"}
+                className="w-full h-9 px-3 text-xs rounded-lg border border-input bg-background"
+              />
+              <input
+                type="text"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder={isRetail ? "📝 Notas de la venta (ej: bolsa extra, envolver para regalo)" : "📝 Instrucciones especiales (ej: sin cebolla, extra picante, cortar al medio)"}
+                className="w-full h-9 px-3 text-xs rounded-lg border border-input bg-background"
+              />
+              {method === "delivery" && (
+                <>
+                  {posZonesMode ? (
+                    <select
+                      value={posZoneOut ? "__OUT__" : posActiveZoneId}
+                      onChange={(e) => setPosZoneId(e.target.value)}
+                      className="w-full h-9 px-2 text-xs rounded-lg border border-input bg-background"
+                    >
+                      {deliveryZones.map((z) => (
+                        <option key={z.id} value={z.id}>
+                          {z.name} — ${Number(z.fee).toLocaleString("es-AR")}
+                        </option>
+                      ))}
+                      <option value="__OUT__">Otra zona (monto manual)</option>
+                    </select>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setPosOutOfArea(false)}
+                        className={`rounded-lg py-1.5 text-[11px] font-medium border transition-colors ${
+                          !posOutOfArea ? "border-primary bg-primary/5 text-primary" : "border-border text-muted-foreground"
+                        }`}
+                      >
+                        Dentro{deliveryAreaText ? ` (${deliveryAreaText.slice(0, 24)}${deliveryAreaText.length > 24 ? "…" : ""})` : ""}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPosOutOfArea(true)}
+                        className={`rounded-lg py-1.5 text-[11px] font-medium border transition-colors ${
+                          posOutOfArea ? "border-primary bg-primary/5 text-primary" : "border-border text-muted-foreground"
+                        }`}
+                      >
+                        Fuera de zona
+                      </button>
+                    </div>
+                  )}
+                  {posOutOfAreaFlag && (
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      min="0"
+                      value={posManualFee}
+                      onChange={(e) => setPosManualFee(e.target.value)}
+                      placeholder={`Monto del envío $ (vacío = provisorio $${Number(deliveryBaseFee || 0).toLocaleString("es-AR")})`}
+                      className="w-full h-9 px-3 text-xs rounded-lg border border-input bg-background"
+                    />
+                  )}
+                  <input
+                    type="text"
+                    value={customerAddress}
+                    onChange={(e) => setCustomerAddress(e.target.value)}
+                    placeholder="Dirección de entrega"
+                    className="w-full h-9 px-3 text-xs rounded-lg border border-input bg-background"
+                  />
+                  <input
+                    type="text"
+                    value={posReferences}
+                    onChange={(e) => setPosReferences(e.target.value)}
+                    placeholder="Referencias (opcional: casa verde, portón…)"
+                    className="w-full h-9 px-3 text-xs rounded-lg border border-input bg-background"
+                  />
+                </>
+              )}
+            </div>
+          )}
+        </div>
 
         <div className="flex flex-wrap gap-1.5">
           {PAYMENT_OPTIONS.map((o) => (

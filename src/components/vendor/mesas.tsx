@@ -133,7 +133,50 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
   const [renaming, setRenaming] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [selected, setSelected] = useState<Table | null>(null);
-  const [cart, setCart] = useState<{ product_id: string; name: string; price: number; qty: number; requires_prep: boolean; modifiers?: CartModifier[]; packSize?: number }[]>([]);
+  const [cart, setCart] = useState<{ product_id: string; name: string; price: number; qty: number; requires_prep: boolean; modifiers?: CartModifier[]; packSize?: number; manual?: boolean }[]>([]);
+  // Cargo manual ("Varios"): línea sin producto (igual que en Mostrador).
+  const [manualName, setManualName] = useState("");
+  const [manualPrice, setManualPrice] = useState("");
+  function addManualLine() {
+    const name = manualName.trim() || "Varios";
+    const price = Math.round(Number(manualPrice) * 100) / 100;
+    if (!Number.isFinite(price) || price <= 0) {
+      setMsg("Ingresá un monto mayor a $0");
+      return;
+    }
+    const pid = `manual:${name}`;
+    setCart((prev) => {
+      const found = prev.find((i) => i.product_id === pid);
+      if (found) return prev.map((i) => (i === found ? { ...i, qty: i.qty + 1 } : i));
+      return [{ product_id: pid, name, price, qty: 1, requires_prep: false, manual: true }, ...prev];
+    });
+    setManualName("");
+    setManualPrice("");
+    setMsg("");
+  }
+  const manualChargeRow = (
+    <div className="flex items-center gap-1.5">
+      <input
+        type="text"
+        value={manualName}
+        onChange={(e) => setManualName(e.target.value)}
+        placeholder="Monto manual (ej: Varios)"
+        className="flex-1 min-w-0 h-9 px-3 text-xs rounded-lg border border-input bg-background"
+      />
+      <input
+        type="number"
+        inputMode="decimal"
+        min="0"
+        value={manualPrice}
+        onChange={(e) => setManualPrice(e.target.value)}
+        placeholder="$"
+        className="w-20 h-9 px-2 text-xs rounded-lg border border-input bg-background"
+      />
+      <Button type="button" size="sm" variant="outline" onClick={addManualLine}>
+        ＋ Monto
+      </Button>
+    </div>
+  );
   const [modifiersMap, setModifiersMap] = useState<Record<string, ProductModifier[]>>({});
   const [pickerProduct, setPickerProduct] = useState<Product | null>(null);
   const [payment, setPayment] = useState("efectivo");
@@ -1093,6 +1136,7 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
                       : `💵 Pagando en efectivo: $${(mesaTotalNotDiscounted - mesaCash.cashDiscount).toLocaleString("es-AR")} (−${mesaCash.cashPct}%)`}
                   </p>
                 )}
+                <div className="flex-shrink-0">{manualChargeRow}</div>
                 <Button size="sm" className="flex-shrink-0" disabled={cart.length === 0} onClick={addConsumicion}>Agregar consumición</Button>
                 <div className="grid grid-cols-2 gap-1.5 flex-shrink-0">
                   <Button
@@ -1234,6 +1278,7 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
                       <div className="space-y-1.5">{cart.map(cartLine)}</div>
                     </div>
                   )}
+                  {manualChargeRow}
 
                   {closedOrders.length > 0 && (
                     <CollapsibleSection icon="🧾" title={`Cuentas cerradas (${closedOrders.length})`} defaultOpen={false}>

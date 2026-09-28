@@ -1563,10 +1563,11 @@ function VendorDashboardInner() {
                     </nav>
                   )}
                   <div className="flex-1 min-w-0 space-y-4">
-                    {/* Alertas push: vive en Configuración para no quitar
-                        pantalla a la parte operativa. Valida que el aviso de
-                        pedido nuevo suene en este celu (incluso bloqueado). */}
-                    <PushAlertCard />
+                    {/* Alertas push: en gastro/comercio/moda vive como sección
+                        "Alertas" del menú de Configuración; servicios no tiene
+                        menú de secciones y la muestra fija acá (Ficha no es
+                        pantalla operativa). */}
+                    {isService && <PushAlertCard />}
                     {configContent}
                   </div>
                 </div>

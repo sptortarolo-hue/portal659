@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ConfigSaveBar, ConfigSection, ConfigSections } from "@/components/dashboard/config-sections";
+import { PushAlertCard } from "@/components/dashboard/push-alert-card";
 import { Switch } from "@/components/ui/switch";
 import { QuantityInput } from "@/components/ui/quantity-input";
 import { ChipToggle } from "@/components/ui/chip-toggle";
@@ -576,6 +577,10 @@ export default function DashboardComercio({
         setMsg={setMsg}
         autoPrintDesc="Imprime el ticket automáticamente cuando entra un pedido online pago"
       />
+      </ConfigSection>
+
+      <ConfigSection id="alertas" label="Alertas" icon="🔔">
+      <PushAlertCard />
       </ConfigSection>
 
       <ConfigSection id="fiscal" label="Facturación" icon="🧾" status={vendor?.fiscal_cert ? "ok" : vendor?.cuit ? "warn" : "off"}>

@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ConfigSaveBar, ConfigSection, ConfigSections } from "@/components/dashboard/config-sections";
+import { PushAlertCard } from "@/components/dashboard/push-alert-card";
 import { Switch } from "@/components/ui/switch";
 import { ChipToggle } from "@/components/ui/chip-toggle";
 import { RadioCards } from "@/components/ui/radio-cards";
@@ -523,6 +524,10 @@ export default function DashboardGastro({
 
       <ConfigSection id="impresora" label="Impresora" icon="🖨️" status={vendor?.printer_ip || vendor?.print_mode ? "ok" : "off"}>
       <PrinterConfigSection vendor={vendor} saveVendor={saveVendor} setMsg={setMsg} />
+      </ConfigSection>
+
+      <ConfigSection id="alertas" label="Alertas" icon="🔔">
+      <PushAlertCard />
       </ConfigSection>
 
       <ConfigSection id="fiscal" label="Facturación" icon="🧾" status={vendor?.fiscal_cert ? "ok" : vendor?.cuit ? "warn" : "off"}>

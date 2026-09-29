@@ -88,14 +88,14 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
         result.push({ ingredient_id: iid, cost_per_unit: null });
       }
     }
-    // Mercadería: resta el stock que entró, revierte cost_last a la compra
-    // anterior (o NULL) y deja rastro en kardex.
+    // Mercadería: resta el stock que entró, revierte cost_last/cost_avg a la
+    // compra anterior (o NULL) y deja rastro en kardex (razón compra negativa).
     for (const m of merchLines) {
       const mq = Math.floor(Number(m.qty)) || 0;
       if (m.variant_id) {
         if (mq > 0) {
           await tx.queryVoid(`UPDATE product_variants SET stock = GREATEST(0, stock - $1) WHERE id = $2`, [mq, m.variant_id]);
-          await logStockMovement(tx, { vendorId: gate.vendor.id, variant_id: String(m.variant_id), qty_delta: -mq, reason: "devolucion", ref_purchase: id });
+          await logStockMovement(tx, { vendorId: gate.vendor.id, variant_id: String(m.variant_id), qty_delta: -mq, reason: "compra", ref_purchase: id });
         }
         const prev = await tx.queryOne<{ unit_cost_net: number }>(
           `SELECT i.unit_cost_net FROM purchase_items i JOIN purchases p ON p.id = i.purchase_id
@@ -107,7 +107,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
       } else if (m.product_id) {
         if (mq > 0) {
           await tx.queryVoid(`UPDATE products SET stock = GREATEST(0, COALESCE(stock, 0) - $1) WHERE id = $2`, [mq, m.product_id]);
-          await logStockMovement(tx, { vendorId: gate.vendor.id, product_id: String(m.product_id), qty_delta: -mq, reason: "devolucion", ref_purchase: id });
+          await logStockMovement(tx, { vendorId: gate.vendor.id, product_id: String(m.product_id), qty_delta: -mq, reason: "compra", ref_purchase: id });
         }
         const prev = await tx.queryOne<{ unit_cost_net: number }>(
           `SELECT i.unit_cost_net FROM purchase_items i JOIN purchases p ON p.id = i.purchase_id
@@ -116,6 +116,22 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
           [m.product_id, gate.vendor.id]
         ).catch(() => null);
         await tx.queryVoid(`UPDATE products SET cost_last = $1 WHERE id = $2`, [prev ? prev.unit_cost_net : null, m.product_id]);
+        // Recalcula el promedio ponderado con el historial restante (o NULL).
+        try {
+          const avg = await tx.queryOne<{ avg: number | null; tot: number | null }>(
+            `SELECT ROUND(SUM(i.qty * i.unit_cost_net) / NULLIF(SUM(i.qty), 0), 2) AS avg,
+                    SUM(i.qty) AS tot
+             FROM purchase_items i JOIN purchases p ON p.id = i.purchase_id
+             WHERE i.product_id = $1 AND i.variant_id IS NULL AND p.vendor_id = $2`,
+            [m.product_id, gate.vendor.id]
+          );
+          await tx.queryVoid(`UPDATE products SET cost_avg = $1 WHERE id = $2`, [
+            avg && avg.tot != null && Number(avg.tot) > 0 ? avg.avg : null,
+            m.product_id,
+          ]);
+        } catch {
+          /* columna cost_avg sin migrar: se omite */
+        }
       }
     }
   });

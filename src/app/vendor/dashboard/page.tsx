@@ -1593,6 +1593,7 @@ function VendorDashboardInner() {
                     hasRecipes={false}
                     isComercio={isComercio}
                     enableHeladeriaKit={isGastro}
+                    canEditCost={effectivePlan.can("inventory") || (isGastro && effectivePlan.can("recipes"))}
                   />
                 ) : (
                   <MemoProductManager
@@ -1601,6 +1602,7 @@ function VendorDashboardInner() {
                     showStock
                     showPrep={!isModa && !isComercio}
                     showCosts={isGastro}
+                    canEditCost={effectivePlan.can("inventory") || (isGastro && effectivePlan.can("recipes"))}
                     variants={variants}
                     productImages={productImages}
                     onCrop={openCrop}

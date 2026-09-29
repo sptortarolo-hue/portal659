@@ -155,6 +155,18 @@ export async function POST(request: Request) {
   if (sizeGuide != null) { extraCols.push("size_guide"); extraVals.push(sizeGuide); }
   if (unit != null) { extraCols.push("unit"); extraVals.push(unit); }
   if (sku != null) { extraCols.push("sku"); extraVals.push(sku); }
+  // Costo de compra manual (inventario): tolerante a migración sin aplicar.
+  const hasCostLast = await queryOne<{ exists: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1 FROM information_schema.columns
+       WHERE table_name = 'products' AND column_name = 'cost_last'
+     ) AS exists`
+  );
+  const costLastNum = Number(body?.cost_last);
+  if (hasCostLast?.exists === true && Number.isFinite(costLastNum) && costLastNum >= 0) {
+    extraCols.push("cost_last");
+    extraVals.push(Math.round(costLastNum * 100) / 100);
+  }
   const extraPlaceholders = extraVals.map((_, i) => `$${15 + i}`).join(", ");
   // Foto remota sugerida por lookup (Open Food Facts): se descarga a uploads
   // para no hotlinkear. Si falla, se guarda la URL tal cual (no rompe el alta).

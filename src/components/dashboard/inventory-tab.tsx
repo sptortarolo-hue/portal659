@@ -51,7 +51,8 @@ type Suggestion = {
   avgDaily: number;
   coverDays: number | null;
   suggestedQty: number;
-  costLast: number | null;
+    costLast: number | null;
+    costAvg: number | null;
   bestPrice: number | null;
   bestSupplier: string | null;
 };
@@ -171,8 +172,8 @@ export function InventoryTab({ reloadKey = 0 }: { reloadKey?: number }) {
     if (newId) await openCountDetail(String(newId));
   }
 
-  async function saveCountLines() {
-    if (!openCount) return;
+  async function saveCountLines(): Promise<boolean> {
+    if (!openCount) return false;
     setCountSaving(true);
     const r = await apiJson(`/api/vendor/stock-counts/${openCount.id}`, {
       method: "PATCH",
@@ -182,12 +183,17 @@ export function InventoryTab({ reloadKey = 0 }: { reloadKey?: number }) {
       }),
     });
     setCountSaving(false);
-    setMsg(r.ok ? "Conteo guardado" : r.error || "No se pudo guardar");
+    if (!r.ok) setMsg(r.error || "No se pudo guardar");
+    return !!r.ok;
   }
 
   async function closeCount() {
     if (!openCount) return;
     if (!window.confirm("¿Cerrar el conteo y aplicar las diferencias al stock?")) return;
+    // Auto-guardar pendientes: sin esto el cierre aplicaría 0 diferencias.
+    const saved = await saveCountLines();
+    if (!saved) return;
+    const uncounted = openCount.lines.filter((l) => l.counted_qty == null).length;
     const r = await apiJson(`/api/vendor/stock-counts/${openCount.id}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -197,10 +203,17 @@ export function InventoryTab({ reloadKey = 0 }: { reloadKey?: number }) {
       setMsg(r.error || "No se pudo cerrar");
       return;
     }
-    setMsg(`Conteo cerrado: ${(r as any)?.applied ?? 0} diferencia(s) aplicada(s)`);
+    setMsg(
+      `Conteo cerrado: ${(r as any)?.applied ?? 0} diferencia(s) aplicada(s)` +
+      (uncounted > 0 ? ` · ${uncounted} línea(s) sin contar (sin cambios)` : "") +
+      ((r as any)?.activated > 0 ? ` · ${(r as any).activated} producto(s) con control de stock activado` : "")
+    );
     setOpenCount(null);
     await loadCounts();
     await loadMoves();
+    // Refrescar catálogo (stock visible) y reposición tras aplicar.
+    await loadCatalog();
+    await loadRepo();
   }
 
   function setLineCounted(id: string, value: string) {
@@ -442,7 +455,8 @@ export function InventoryTab({ reloadKey = 0 }: { reloadKey?: number }) {
                 <p className="text-xs text-muted-foreground tabular-nums mt-0.5">
                   stock {s.stock} · umbral {s.threshold}
                   {s.coverDays !== null ? ` · ~${s.coverDays} días` : " · sin ventas recientes"}
-                  {s.costLast != null ? ` · costo ${money(s.costLast)}` : ""}
+                    {s.costLast != null ? ` · costo ${money(s.costLast)}` : ""}
+                    {s.costAvg != null ? ` (prom ${money(s.costAvg)})` : ""}
                 </p>
                 {s.bestSupplier && (
                   <p className="text-xs text-muted-foreground mt-0.5">

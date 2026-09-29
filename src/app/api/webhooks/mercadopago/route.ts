@@ -460,7 +460,19 @@ export async function POST(request: Request) {
             const stockable = Array.isArray(stockItems)
               ? stockItems.filter((s: any) => s?.unit !== "kg")
               : stockItems;
-            await adjustStockForItems(tx, stockable, "decrement");
+            const moved = await adjustStockForItems(tx, stockable, "decrement");
+            // Kardex: la venta MP también deja rastro (antes era invisible).
+            const { logStockMovement } = await import("@/lib/stock-ledger");
+            for (const m of moved || []) {
+              await logStockMovement(tx, {
+                vendorId,
+                product_id: (m as any).product_id || null,
+                variant_id: (m as any).variant_id || null,
+                qty_delta: -Math.abs(Number((m as any).qty) || 0),
+                reason: "venta",
+                ref_order: order?.id || null,
+              });
+            }
           } catch (e) {
             // best-effort: ver nota arriba (se loguea para no perderlo en silencio)
             logApiError("mp-webhook/stock", e);

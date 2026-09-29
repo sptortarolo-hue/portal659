@@ -262,7 +262,8 @@ export async function POST(request: Request) {
     // Pedidos de prueba (preview) no tocan el stock real.
     let movedStock: StockMove[] = [];
     if (!previewOrder) {
-      movedStock = await adjustStockForItems(tx, normalizedItems.filter((i) => i.unit !== "kg"), "decrement");
+      // Por peso y líneas manuales ("Varios", sin product_id) no tocan stock.
+      movedStock = await adjustStockForItems(tx, normalizedItems.filter((i) => i.unit !== "kg" && !(i as any).manual && (i.product_id || (i as any).variant_id)), "decrement");
     }
 
     const pickupNumber = await nextOrderNumber(tx, gate.vendor.id);

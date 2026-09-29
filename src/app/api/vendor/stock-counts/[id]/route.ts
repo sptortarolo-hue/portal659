@@ -127,6 +127,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     [params.id]
   ).catch(() => []);
   let applied = 0;
+  let activated = 0;
   await withTransaction(async (tx) => {
     for (const l of lines || []) {
       const diff = Math.floor(Number(l.counted_qty)) - Math.floor(Number(l.system_qty) || 0);
@@ -146,10 +147,16 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         });
         applied++;
       } else if (l.product_id) {
+        // Solo prende control de stock si estaba apagado (avisado en la respuesta).
+        const was = await tx.queryOne<{ stock_control: boolean | null }>(
+          `SELECT stock_control FROM products WHERE id = $1`,
+          [l.product_id]
+        ).catch(() => null);
         await tx.queryVoid(
           `UPDATE products SET stock = $1, stock_control = true WHERE id = $2`,
           [Math.max(0, Math.floor(Number(l.counted_qty))), l.product_id]
         );
+        if (was && was.stock_control !== true) activated++;
         await logStockMovement(tx, {
           vendorId: gate.vendor.id,
           product_id: String(l.product_id),
@@ -166,5 +173,5 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       [params.id]
     );
   });
-  return NextResponse.json({ ok: true, applied });
+  return NextResponse.json({ ok: true, applied, activated });
 }

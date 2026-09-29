@@ -43,6 +43,8 @@ type Props = {
   showPrep?: boolean;
   /** Muestra el chip de food-cost por plato (requiere plan con recetas). */
   showCosts?: boolean;
+  /** Permite editar el costo de compra manual (plan Gestión: inventory o recipes). */
+  canEditCost?: boolean;
   /** Variantes de todos los productos (solo moda). */
   variants?: ProductVariant[];
   /** Galer├¡a de todos los productos (solo moda). */
@@ -66,7 +68,7 @@ type VariantRow = {
 const MAX_EXTRA_IMAGES = 7;
 
 /** Gesti├│n completa de platos/productos (listado + ficha inline + modificadores), sin ir a Configuraci├│n. */
-export function ProductManager({ isModa = false, isComercio = false, showStock = true, showPrep = false, showCosts = false, variants, productImages, onCrop, onChanged }: Props) {
+export function ProductManager({ isModa = false, isComercio = false, showStock = true, showPrep = false, showCosts = false, canEditCost = false, variants, productImages, onCrop, onChanged }: Props) {
   // Wording por vertical: gastro habla de "platos", retail de "productos".
   const noun = isModa || isComercio ? "Producto" : "Plato";
   const [offers, setOffers] = useState<OfferRow[]>([]);
@@ -88,6 +90,7 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
   const [offStockControl, setOffStockControl] = useState(false);
   const [offPromoPrice, setOffPromoPrice] = useState("");
   const [offStockLowThreshold, setOffStockLowThreshold] = useState(5);
+  const [offCost, setOffCost] = useState("");
   // Default de "Requiere elaboraci├│n": sigue a showPrep ÔÇö los verticales sin
   // cocina (retail, servicio) nunca preparan: sus productos quedan en false
   // aunque el switch no se muestre (as├¡ no entran al flow de cocina del POS).
@@ -154,6 +157,7 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
     setOffStock(0);
     setOffStockControl(false);
     setOffPromoPrice("");
+    setOffCost("");
     setOffStockLowThreshold(5);
     setOffRequiresPrep(showPrep);
     setOffCashExcluded(false);
@@ -176,6 +180,7 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
     setOffStock(offer.stock ?? 0);
     setOffStockControl(!!offer.stock_control);
     setOffPromoPrice(offer.promo_price ? String(offer.promo_price) : "");
+    setOffCost((offer as any).cost_last != null ? String((offer as any).cost_last) : "");
     setOffStockLowThreshold(offer.stock_low_threshold ?? 5);
     // Sin switch visible (retail): al guardar queda en false, nunca cocina.
     setOffRequiresPrep(showPrep ? offer.requires_prep !== false : false);
@@ -289,6 +294,7 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
           cash_discount_excluded: offCashExcluded,
           has_variants: offHasVariants,
           size_guide: offSizeGuide.trim() || null,
+          cost_last: canEditCost && offCost.trim() !== "" && Number.isFinite(Number(offCost)) ? Math.round(Number(offCost) * 100) / 100 : undefined,
         }
       : {
           name: offName.trim(),
@@ -302,6 +308,7 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
           stock_low_threshold: offStockControl ? offStockLowThreshold : null,
           requires_prep: offRequiresPrep,
           cash_discount_excluded: offCashExcluded,
+          cost_last: canEditCost && offCost.trim() !== "" && Number.isFinite(Number(offCost)) ? Math.round(Number(offCost) * 100) / 100 : undefined,
         };
 
     const res = editingId
@@ -521,6 +528,9 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
         showPrep={showPrep}
         offRequiresPrep={offRequiresPrep} setOffRequiresPrep={setOffRequiresPrep}
         offCashExcluded={offCashExcluded} setOffCashExcluded={setOffCashExcluded}
+        showCost={canEditCost}
+        offCost={offCost} setOffCost={setOffCost}
+        costLabel={showCosts ? "Costo compra ($)" : "Costo ($)"}
         noun={noun.toLowerCase()}
       />
       {editingId && <ProductModifiersBlock productId={editingId} productName={offName} />}

@@ -115,6 +115,11 @@ type OfferFormProps = {
   showUnit?: boolean;
   offUnit?: string;
   setOffUnit?: (v: string) => void;
+  /** Costo manual de compra (inventario): no pisa el costo de receta. */
+  showCost?: boolean;
+  offCost?: string;
+  setOffCost?: (v: string) => void;
+  costLabel?: string;
   /** Código de barras / SKU (búsqueda y etiquetas en mostrador). */
   showSku?: boolean;
   offSku?: string;
@@ -142,6 +147,7 @@ export function OfferForm({
   offStock = 0, setOffStock,
   offStockControl = false, setOffStockControl,
   offPromoPrice = "", setOffPromoPrice,
+  showCost = false, offCost = "", setOffCost, costLabel = "Costo compra ($)",
   offStockLowThreshold = 5, setOffStockLowThreshold,
   showPrep = false,
   offRequiresPrep = true, setOffRequiresPrep,
@@ -279,6 +285,15 @@ export function OfferForm({
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div><Label>Nombre</Label><Input value={offName} onChange={(e) => setOffName(e.target.value)} required onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }} /></div>
           <div><Label>Precio ($)</Label><Input type="number" step="0.01" value={offPrice} onChange={(e) => setOffPrice(e.target.value)} required onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }} /></div>
+        {showCost && setOffCost && (
+          <div>
+            <Label>{costLabel}</Label>
+            <Input type="number" step="0.01" min="0" value={offCost} onChange={(e) => setOffCost(e.target.value)} placeholder="Vacío = sin dato" />
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Costo de compra manual (no toca el costo de receta). La próxima compra lo actualiza.
+            </p>
+          </div>
+        )}
         </div>
         {showStock && setOffPromoPrice && (
           <div><Label>Precio promo ($)</Label><Input type="number" step="0.01" value={offPromoPrice} onChange={(e) => setOffPromoPrice(e.target.value)} placeholder="Precio de oferta" /></div>

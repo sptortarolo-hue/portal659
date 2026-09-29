@@ -1,5 +1,5 @@
 import { getVendorByRequest, resolveCategoryName } from "@/lib/vendor-utils";
-import { queryOne } from "@/lib/db";
+import { queryOne, withTransaction } from "@/lib/db";
 import { NextResponse } from "next/server";
 
 export async function PATCH(
@@ -99,6 +99,20 @@ export async function PATCH(
       return NextResponse.json({ error: `El código "${safeUpdate.sku}" ya está en otro producto` }, { status: 400 });
     }
   }
+  // Costo de compra manual (inventario): tolerante a migración sin aplicar.
+  // Solo números >= 0 (null/ausente = sin cambio).
+  if ("cost_last" in body) {
+    const hasCost = await queryOne<{ exists: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1 FROM information_schema.columns
+         WHERE table_name = 'products' AND column_name = 'cost_last'
+       ) AS exists`
+    );
+    const n = Number(body.cost_last);
+    if (hasCost?.exists === true && Number.isFinite(n) && n >= 0) {
+      safeUpdate.cost_last = Math.round(n * 100) / 100;
+    }
+  }
   if ("cash_discount_excluded" in safeUpdate) {
     safeUpdate.cash_discount_excluded = safeUpdate.cash_discount_excluded === true;
   }
@@ -133,10 +147,35 @@ export async function PATCH(
     idx++;
   }
 
+  // Ajuste manual de stock desde el menú: deja rastro en kardex (razón manual).
+  let manualDelta: number | null = null;
+  if ("stock" in safeUpdate) {
+    const prev = await queryOne<{ stock: number | null }>(
+      `SELECT stock FROM products WHERE id = $1 AND vendor_id = $2`,
+      [params.id, vendor.id]
+    ).catch(() => null);
+    const oldS = prev?.stock == null ? null : Number(prev.stock);
+    const newS = safeUpdate.stock == null ? null : Number(safeUpdate.stock);
+    if (oldS != null && Number.isFinite(newS as number) && (newS as number) !== oldS) {
+      manualDelta = (newS as number) - oldS;
+    }
+  }
+
   const offer = await queryOne<Record<string, unknown>>(
     `UPDATE products SET ${setClauses.join(", ")} WHERE id = $1 AND vendor_id = $2 RETURNING *`,
     values
   );
+  if (manualDelta != null && manualDelta !== 0) {
+    const { logStockMovement } = await import("@/lib/stock-ledger");
+    await withTransaction(async (tx) => {
+      await logStockMovement(tx, {
+        vendorId: vendor.id,
+        product_id: params.id,
+        qty_delta: manualDelta as number,
+        reason: "manual",
+      });
+    }).catch(() => {});
+  }
 
   return NextResponse.json({ offer });
 }

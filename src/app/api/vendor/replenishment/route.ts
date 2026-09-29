@@ -92,6 +92,7 @@ export async function GET(request: Request) {
     coverDays: number | null;
     suggestedQty: number;
     costLast: number | null;
+    costAvg: number | null;
     bestPrice: number | null;
     bestSupplier: string | null;
   };
@@ -103,7 +104,8 @@ export async function GET(request: Request) {
     name: string,
     stock: number,
     threshold: number,
-    costLast: number | null
+    costLast: number | null,
+    costAvg: number | null = null
   ) => {
     const avg = soldPerDay[`${kind === "variant" ? "v" : "p"}:${id}`] || 0;
     const cover = avg > 0 ? stock / avg : null;
@@ -117,7 +119,7 @@ export async function GET(request: Request) {
       kind, id, product_id: productId, name, stock,
       threshold, avgDaily: Math.round(avg * 100) / 100,
       coverDays: cover === null ? null : Math.round(cover * 10) / 10,
-      suggestedQty: qty, costLast,
+      suggestedQty: qty, costLast, costAvg,
       bestPrice: best?.price ?? null,
       bestSupplier: best?.supplier ?? null,
     });
@@ -125,7 +127,8 @@ export async function GET(request: Request) {
   for (const p of products || []) {
     push("product", String(p.id), String(p.id), String(p.name || ""), Number(p.stock) || 0,
       Number(p.stock_low_threshold ?? 5) || 0,
-      p.cost_last != null ? Number(p.cost_last) : null);
+      p.cost_last != null ? Number(p.cost_last) : null,
+      p.cost_avg != null ? Number(p.cost_avg) : null);
   }
   for (const v of variants || []) {
     push("variant", String(v.id), String(v.product_id),

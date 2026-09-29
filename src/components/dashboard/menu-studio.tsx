@@ -65,6 +65,8 @@ type Props = {
   isComercio?: boolean;
   /** Plan del comercio: si no tiene recetas, la solapa Receta muestra PlanLock. */
   hasRecipes?: boolean;
+  /** Permite editar el costo de compra manual (plan Gestión: inventory o recipes). */
+  canEditCost?: boolean;
   /** Muestra el Kit heladería en la solapa Opciones (solo gastronomía). */
   enableHeladeriaKit?: boolean;
 };
@@ -116,6 +118,7 @@ export function MenuStudio({
   hasRecipes = false,
   isComercio = false,
   enableHeladeriaKit = false,
+  canEditCost = false,
 }: Props) {
   const [view, setView] = useState<View>("productos");
   const [showImport, setShowImport] = useState(false);
@@ -150,6 +153,8 @@ export function MenuStudio({
   const [offPackSize, setOffPackSize] = useState("");
   // Unidad de venta (balanza): "unidad" o "kg" (precio por kilo).
   const [offUnit, setOffUnit] = useState("unidad");
+  // Costo de compra manual (inventario): convive con el food-cost de receta.
+  const [offCost, setOffCost] = useState("");
   // Código de barras / SKU (búsqueda y etiquetas en mostrador).
   const [offSku, setOffSku] = useState("");
   // Foto remota sugerida por lookup (se descarga al guardar).
@@ -247,6 +252,7 @@ export function MenuStudio({
     setOffUnit("unidad");
     setOffSku("");
     setOffRemotePhoto(null);
+    setOffCost("");
   }
 
   function startEdit(offer: Offer) {
@@ -266,6 +272,7 @@ export function MenuStudio({
     setOffPackSize(offer.pack_size ? String(offer.pack_size) : "");
     setOffUnit((offer as any).unit === "kg" ? "kg" : "unidad");
     setOffSku((offer as any).sku ? String((offer as any).sku) : "");
+    setOffCost((offer as any).cost_last != null ? String((offer as any).cost_last) : "");
     setOffRemotePhoto(null);
     setShowForm(true);
     setMsg("");
@@ -328,6 +335,7 @@ export function MenuStudio({
       pack_size: offPackSize ? Math.floor(Number(offPackSize)) : null,
       unit: isComercio ? offUnit : undefined,
       sku: isComercio && offSku.trim() ? offSku.trim() : null,
+      cost_last: canEditCost && offCost.trim() !== "" && Number.isFinite(Number(offCost)) ? Math.round(Number(offCost) * 100) / 100 : undefined,
     };
 
     const res = editingId
@@ -573,6 +581,10 @@ export function MenuStudio({
       showSku={isComercio}
       offSku={offSku}
       setOffSku={setOffSku}
+      showCost={canEditCost}
+      offCost={offCost}
+      setOffCost={setOffCost}
+      costLabel={showCosts ? "Costo compra ($)" : "Costo ($)"}
       remotePhoto={offRemotePhoto}
       onRemotePhoto={setOffRemotePhoto}
       onClose={closeEditor}

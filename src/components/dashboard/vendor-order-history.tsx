@@ -26,6 +26,7 @@ type HistoryOrder = {
   closed_at?: string | null;
   modification_notes?: string | null;
   is_preview?: boolean;
+  is_direct?: boolean;
 };
 
 const PAYMENT_LABELS: Record<string, string> = {
@@ -45,6 +46,7 @@ export function VendorOrderHistory({ isRetail = false, onOpenOrder }: { isRetail
 
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("");
+  const [kind, setKind] = useState("");
   const [method, setMethod] = useState("");
   const [payment, setPayment] = useState("");
   const [dateFrom, setDateFrom] = useState("");
@@ -58,6 +60,7 @@ export function VendorOrderHistory({ isRetail = false, onOpenOrder }: { isRetail
       params.set("page_size", String(pageSize));
       if (q) params.set("q", q);
       if (status) params.set("status", status);
+      if (kind) params.set("kind", kind);
       if (method) params.set("method", method);
       if (payment) params.set("payment_method", payment);
       if (dateFrom) params.set("date_from", dateFrom);
@@ -73,7 +76,7 @@ export function VendorOrderHistory({ isRetail = false, onOpenOrder }: { isRetail
     } finally {
       setLoading(false);
     }
-  }, [page, q, status, method, payment, dateFrom, dateTo, pageSize]);
+  }, [page, q, status, kind, method, payment, dateFrom, dateTo, pageSize]);
 
   useEffect(() => { fetchOrders(); }, [fetchOrders]);
 
@@ -123,8 +126,8 @@ export function VendorOrderHistory({ isRetail = false, onOpenOrder }: { isRetail
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="font-display text-xl font-semibold">Histórico de pedidos</h2>
-        <span className="text-xs text-muted-foreground">{total} pedido{total !== 1 ? "s" : ""}</span>
+        <h2 className="font-display text-xl font-semibold">Histórico de ventas</h2>
+        <span className="text-xs text-muted-foreground">{total} venta{total !== 1 ? "s" : ""}</span>
       </div>
 
       {/* Buscador + filtros */}
@@ -145,6 +148,11 @@ export function VendorOrderHistory({ isRetail = false, onOpenOrder }: { isRetail
           {Object.entries(ORDER_STATUS_LABELS).map(([k, v]) => (
             <option key={k} value={k}>{v}</option>
           ))}
+        </select>
+        <select value={kind} onChange={(e) => { setKind(e.target.value); setPage(1); }} className="h-9 rounded-md border border-input bg-background px-2 text-sm">
+          <option value="">Tipo: todo</option>
+          <option value="order">Pedidos</option>
+          <option value="direct">Ventas directas</option>
         </select>
         <select value={method} onChange={(e) => { setMethod(e.target.value); setPage(1); }} className="h-9 rounded-md border border-input bg-background px-2 text-sm">
           <option value="">Método</option>
@@ -174,7 +182,7 @@ export function VendorOrderHistory({ isRetail = false, onOpenOrder }: { isRetail
       ) : orders.length === 0 ? (
         <div className="text-center py-16">
           <div className="text-4xl mb-3">📜</div>
-          <p className="text-muted-foreground text-sm">No se encontraron pedidos</p>
+          <p className="text-muted-foreground text-sm">No se encontraron ventas</p>
         </div>
       ) : (
         <div className="space-y-2">
@@ -194,6 +202,11 @@ export function VendorOrderHistory({ isRetail = false, onOpenOrder }: { isRetail
                   <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${ORDER_STATUS_COLORS[o.status]}`}>
                     {statusLabel(o.status, isRetail)}
                   </span>
+                  {o.is_direct && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold bg-amber-100 text-amber-800">
+                      ⚡ Directa
+                    </span>
+                  )}
                   {o.is_preview && (
                     <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold bg-violet-100 text-violet-700">
                       🧪 PRUEBA
@@ -206,7 +219,7 @@ export function VendorOrderHistory({ isRetail = false, onOpenOrder }: { isRetail
                   {o.pickup_number != null ? ` · Nro. ${o.pickup_number}` : ""}
                 </p>
                 <p className="text-[11px] text-muted-foreground/70">
-                  {o.method === "delivery" ? "🛵 Delivery" : "🏠 Retiro"} · {PAYMENT_LABELS[o.payment_method || ""] || o.payment_method || "-"}
+                  {o.is_direct ? "⚡ Venta directa" : o.method === "delivery" ? "🛵 Delivery" : "🏠 Retiro"} · {PAYMENT_LABELS[o.payment_method || ""] || o.payment_method || "-"}
                 </p>
               </div>
               <div className="text-right shrink-0">
@@ -281,7 +294,7 @@ export function VendorOrderHistory({ isRetail = false, onOpenOrder }: { isRetail
       >
         {confirmStage === 1 ? (
           <p className="text-sm text-muted-foreground">
-            Vas a borrar el pedido de <b>{deleteTarget?.customer_name}</b> por{" "}
+            Vas a borrar {deleteTarget?.is_direct ? "la venta directa" : "el pedido"} de <b>{deleteTarget?.customer_name}</b> por{" "}
             <b>${Number(deleteTarget?.total || 0).toLocaleString("es-AR")}</b>.
             Esta acción no tiene vuelta atrás.
           </p>

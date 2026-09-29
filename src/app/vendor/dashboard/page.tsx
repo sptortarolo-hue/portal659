@@ -1866,7 +1866,7 @@ function VendorDashboardInner() {
                 <BarChart className="h-5 w-5" />Estadísticas
               </button>
               <button onClick={() => { setTab("history"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "history" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
-                <History className="h-5 w-5" />Histórico de pedidos
+                <History className="h-5 w-5" />Histórico de ventas
               </button>
               <button onClick={() => { setTab("reviews"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "reviews" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
                 <Star className="h-5 w-5" />Reseñas

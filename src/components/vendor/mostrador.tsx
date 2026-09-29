@@ -1541,18 +1541,16 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
       )}
 
       <div className="mt-3 space-y-2 pt-3 border-t border-border">
-        {/* Método de entrega (default: retiro) + venta directa (retail, sin pedido) */}
-        <div className={`grid gap-1.5 ${isRetail ? "grid-cols-3" : "grid-cols-2"}`}>
-          {isRetail && (
-            <button
-              onClick={() => setMethod("direct")}
-              className={`rounded-lg py-1.5 text-xs font-medium border transition-colors ${
-                method === "direct" ? "border-primary bg-primary/5 text-primary" : "border-border text-muted-foreground"
-              }`}
-            >
-              ⚡ Venta directa
-            </button>
-          )}
+        {/* Método de entrega (default: retiro; retail defaultea directa) + venta directa (sin pedido) */}
+        <div className="grid gap-1.5 grid-cols-3">
+          <button
+            onClick={() => setMethod("direct")}
+            className={`rounded-lg py-1.5 text-xs font-medium border transition-colors ${
+              method === "direct" ? "border-primary bg-primary/5 text-primary" : "border-border text-muted-foreground"
+            }`}
+          >
+            ⚡ Venta directa
+          </button>
           <button
             onClick={() => setMethod("pickup")}
             className={`rounded-lg py-1.5 text-xs font-medium border transition-colors ${

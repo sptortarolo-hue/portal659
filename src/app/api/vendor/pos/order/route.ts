@@ -4,7 +4,6 @@ import { fetchVendorDelivery } from "@/lib/delivery-server";
 import { resolveDeliveryFee, type DeliverySelection } from "@/lib/delivery";
 import { nextOrderNumber } from "@/lib/order-number";
 import { cashDiscountForItems } from "@/lib/cash-discount";
-import { isRetailVendor } from "@/lib/plans";
 import { adjustStockForItems, OutOfStockError, type StockMove } from "@/lib/stock";
 import { logStockMovement } from "@/lib/stock-ledger";
 import { upsertCustomerFromOrder, isRealCustomerPhone } from "@/lib/customers";
@@ -47,9 +46,9 @@ export async function POST(request: Request) {
     deliveryManualFee,
   } = body;
 
-  // Venta directa (retail pickup): el comercio de barrio vende en el acto,
-  // sin generar pedido (solo delivery genera pedido con flow). Solo retail.
-  const direct = body?.direct === true && isRetailVendor(gate.vendor);
+  // Venta directa (mostrador, todos los verticales): vende en el acto sin
+  // generar pedido (solo delivery/retiro generan pedido con flow).
+  const direct = body?.direct === true;
   const caps = await getOfflineSyncCaps();
   const clientKey = caps.ordersClientKey ? normalizeClientKey((body as any)?.client_key) : null;
   const occurredAt = caps.ordersOccurredAt
@@ -259,8 +258,10 @@ export async function POST(request: Request) {
       hasZoneCols = false;
     }
   }
-  // closed_at (venta directa nace cerrada): tolerante a migración sin aplicar.
+  // closed_at (venta directa nace cerrada) + is_direct: tolerantes a
+  // migración sin aplicar.
   let hasClosedAt = false;
+  let hasDirectCol = false;
   if (direct) {
     try {
       const cc = await queryOne<{ exists: boolean }>(
@@ -272,6 +273,17 @@ export async function POST(request: Request) {
       hasClosedAt = cc?.exists === true;
     } catch {
       hasClosedAt = false;
+    }
+    try {
+      const dc = await queryOne<{ exists: boolean }>(
+        `SELECT EXISTS (
+           SELECT 1 FROM information_schema.columns
+           WHERE table_name = 'orders' AND column_name = 'is_direct'
+         ) AS exists`
+      );
+      hasDirectCol = dc?.exists === true;
+    } catch {
+      hasDirectCol = false;
     }
   }
   let order: Record<string, any> | null = null;
@@ -305,6 +317,7 @@ export async function POST(request: Request) {
       "paid_at", "notes", "pickup_number", "is_preview", "cash_pct",
       "cash_discount",
       ...(direct && hasClosedAt ? ["closed_at"] : []),
+      ...(direct && hasDirectCol ? ["is_direct"] : []),
       ...(hasPayStatus ? ["payment_status"] : []),
       ...syncCols,
       ...(hasZoneCols ? ["delivery_zone_id", "delivery_zone_name", "delivery_out_of_area", "delivery_fee"] : []),
@@ -328,6 +341,7 @@ export async function POST(request: Request) {
       cashPct,
       cashDiscount,
       ...(direct && hasClosedAt ? [now] : []),
+      ...(direct && hasDirectCol ? [true] : []),
       ...(hasPayStatus ? [payment === "fiado" ? "pending" : "paid"] : []),
       ...(caps.ordersClientKey ? [clientKey] : []),
       ...(caps.ordersOccurredAt ? [occurredAt] : []),

@@ -15,6 +15,7 @@ export async function GET(request: Request) {
   const status = searchParams.get("status");
   const method = searchParams.get("method");
   const paymentMethod = searchParams.get("payment_method");
+  const kind = searchParams.get("kind"); // order | direct
   const dateFrom = searchParams.get("date_from");
   const dateTo = searchParams.get("date_to");
   const page = Math.max(1, Number(searchParams.get("page") || 1));
@@ -43,6 +44,21 @@ export async function GET(request: Request) {
     params.push(paymentMethod);
     conditions.push(`payment_method = $${idx}`);
     idx++;
+  }
+  // Tipo: pedidos vs ventas directas (tolerante a migración sin aplicar).
+  if (kind === "direct" || kind === "order") {
+    const hasDirect = await queryOne<{ exists: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1 FROM information_schema.columns
+         WHERE table_name = 'orders' AND column_name = 'is_direct'
+       ) AS exists`
+    ).catch(() => null);
+    if (hasDirect?.exists === true) {
+      conditions.push(kind === "direct" ? `is_direct = true` : `is_direct IS NOT TRUE`);
+    } else if (kind === "direct") {
+      // Sin columna no hay directas marcadas: lista vacía, no error.
+      return NextResponse.json({ orders: [], total: 0, page, pageSize });
+    }
   }
   if (dateFrom) {
     params.push(`${dateFrom}T00:00:00`);

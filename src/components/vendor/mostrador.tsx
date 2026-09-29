@@ -382,6 +382,100 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
       add(hit);
       setQuery("");
       setMsg("");
+    } else {
+      // Sin coincidencia: ofrecer crear el producto pre-llenado.
+      openQuickCreate(/^\d+$/.test(q) ? { sku: q } : { name: query.trim() });
+    }
+  }
+
+  // Alta rápida desde mostrador: crea el producto (otros) y lo suma a la venta.
+  // Si vino de una línea manual, la reemplaza por el producto real.
+  const [qcOpen, setQcOpen] = useState(false);
+  const [qcName, setQcName] = useState("");
+  const [qcPrice, setQcPrice] = useState("");
+  const [qcSku, setQcSku] = useState("");
+  const [qcUnit, setQcUnit] = useState<"unidad" | "kg">("unidad");
+  const [qcRemotePhoto, setQcRemotePhoto] = useState<string | null>(null);
+  const [qcLookupMsg, setQcLookupMsg] = useState("");
+  const [qcSaving, setQcSaving] = useState(false);
+  const [qcMsg, setQcMsg] = useState("");
+  const [qcReplaceKey, setQcReplaceKey] = useState<string | null>(null);
+  const [qcFromManual, setQcFromManual] = useState(false);
+  async function openQuickCreate(prefill: { name?: string; price?: string; sku?: string; replaceKey?: string; fromManual?: boolean }) {
+    setQcName(prefill.name || "");
+    setQcPrice(prefill.price || "");
+    setQcSku(prefill.sku || "");
+    setQcUnit("unidad");
+    setQcRemotePhoto(null);
+    setQcLookupMsg("");
+    setQcMsg("");
+    setQcReplaceKey(prefill.replaceKey || null);
+    setQcFromManual(!!prefill.fromManual);
+    setQcOpen(true);
+    // Sugerencia automática por lookup (no pisa nada cargado).
+    if (prefill.sku) {
+      try {
+        const res = await fetch(`/api/vendor/barcode-lookup?code=${encodeURIComponent(prefill.sku)}`);
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data?.name) {
+          if (!prefill.name) setQcName(String(data.name));
+          if (data.image_url) setQcRemotePhoto(String(data.image_url));
+          setQcLookupMsg(`Datos: ${data.source === "cache" ? "caché propia" : "Open Food Facts (ODbL)"}`);
+        }
+      } catch { /* sin red: alta manual igual */ }
+    }
+  }
+  async function saveQuickCreate() {
+    const name = qcName.trim();
+    const price = Number(qcPrice);
+    if (!name || !(price > 0)) {
+      setQcMsg("Completá nombre y precio");
+      return;
+    }
+    setQcSaving(true);
+    setQcMsg("");
+    try {
+      const res = await fetch("/api/vendor/offers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name, price, category: "otros",
+          sku: qcSku.trim() || undefined,
+          unit: qcUnit,
+          image_url: qcRemotePhoto || undefined,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.offer) {
+        setQcMsg(data?.error || "No se pudo crear");
+        return;
+      }
+      const created = { ...data.offer, modifiers: [] } as Product;
+      setProducts((prev) => [...prev, created]);
+      if (qcReplaceKey) {
+        setItems((prev) => prev.filter((l) => lineKey(l.product_id, l.variant_id, l.modifiers) !== qcReplaceKey));
+      }
+      if (qcFromManual) {
+        // La línea manual nunca se agregó: se limpia el borrador.
+        setManualName("");
+        setManualPrice("");
+      }
+      if (qcUnit === "kg") {
+        const key = lineKey(created.id, undefined, []);
+        addLine(created, null, 0, Number(created.price) || 0, []);
+        setQcOpen(false);
+        gotoKgLine(created.id, key);
+        setMsg(`Creado “${name}”: cargá los kilos`);
+      } else {
+        add(created);
+        setQcOpen(false);
+        setQuery("");
+        setMsg(`Creado y agregado: “${name}”`);
+      }
+    } catch {
+      setQcMsg("Sin conexión");
+    } finally {
+      setQcSaving(false);
     }
   }
 
@@ -1163,6 +1257,61 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
           </button>
         </div>
         {scanError && <p className="text-[11px] text-amber-700 pt-1">{scanError}</p>}
+        {qcOpen && (
+          <div className="mt-2 rounded-xl border border-primary/40 bg-card p-2.5 space-y-2">
+            <p className="text-xs font-semibold">＋ Crear producto y agregarlo a la venta</p>
+            <input
+              type="text"
+              value={qcName}
+              onChange={(e) => setQcName(e.target.value)}
+              placeholder="Nombre del producto"
+              className="w-full h-9 px-3 text-xs rounded-lg border border-input bg-background"
+            />
+            <div className="flex gap-1.5">
+              <input
+                type="number"
+                inputMode="decimal"
+                min="0"
+                value={qcPrice}
+                onChange={(e) => setQcPrice(e.target.value)}
+                placeholder={qcUnit === "kg" ? "$ por kilo" : "$ precio"}
+                className="flex-1 min-w-0 h-9 px-3 text-xs rounded-lg border border-input bg-background"
+              />
+              <select
+                value={qcUnit}
+                onChange={(e) => setQcUnit(e.target.value as "unidad" | "kg")}
+                className="h-9 px-2 text-xs rounded-lg border border-input bg-background"
+              >
+                <option value="unidad">Unidad</option>
+                <option value="kg">Por peso</option>
+              </select>
+            </div>
+            {qcSku && <p className="text-[11px] text-muted-foreground">Código: {qcSku}</p>}
+            {(qcLookupMsg || qcRemotePhoto) && (
+              <p className="text-[11px] text-muted-foreground">
+                {qcRemotePhoto ? "Foto sugerida: se descarga al guardar ✓ · " : ""}{qcLookupMsg}
+              </p>
+            )}
+            {qcMsg && <p className="text-[11px] text-amber-700">{qcMsg}</p>}
+            <div className="flex gap-1.5">
+              <button
+                type="button"
+                onClick={saveQuickCreate}
+                disabled={qcSaving}
+                className="flex-1 h-9 rounded-lg bg-primary text-primary-foreground text-xs font-semibold disabled:opacity-50"
+              >
+                {qcSaving ? "Guardando…" : "Guardar y agregar"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setQcOpen(false)}
+                className="h-9 px-3 rounded-lg bg-muted text-xs font-medium"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        )}
         {categories.length > 1 && (
           <div className="flex gap-1.5 overflow-x-auto pb-1 pt-2 scrollbar-hide">
             <button
@@ -1317,7 +1466,21 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
         >
           ＋ Monto
         </button>
+        <button
+          type="button"
+          title="Guardar esta línea como producto del catálogo (con código y stock de ahora en más)"
+          onClick={() => openQuickCreate({ name: manualName.trim(), price: manualPrice, fromManual: true })}
+          disabled={!manualName.trim() && !manualPrice}
+          className="h-9 px-2 rounded-lg bg-muted hover:bg-accent text-xs font-medium disabled:opacity-50"
+        >
+          💾
+        </button>
       </div>
+      {qcReplaceKey && (
+        <p className="text-[11px] text-muted-foreground pt-1">
+          Al guardar se reemplaza la línea manual “{manualName.trim() || "Varios"}” por el producto real.
+        </p>
+      )}
 
       <div className="mt-3 space-y-2 pt-3 border-t border-border">
         {/* Método de entrega (default: retiro) */}

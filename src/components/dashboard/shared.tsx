@@ -375,6 +375,9 @@ export function OfferForm({
                 <div className="min-w-0 flex-1">
                   <p className="text-xs font-medium truncate">{lookupHit.name}</p>
                   {lookupHit.brand && <p className="text-[11px] text-muted-foreground truncate">{lookupHit.brand}</p>}
+                  <p className="text-[10px] text-muted-foreground">
+                    Fuente: Open Food Facts (ODbL){lookupHit.source === "cache" ? " · caché propia" : ""}
+                  </p>
                 </div>
                 <div className="flex flex-col gap-1 flex-shrink-0">
                   <Button type="button" variant="outline" size="sm" className="h-7 text-xs" onClick={applyLookupData}>

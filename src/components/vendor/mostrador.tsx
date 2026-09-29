@@ -763,7 +763,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
   // Wrapper anti-silencio: cualquier excepción inesperada del cobro deja
   // mensaje visible y desbloquea el botón (antes quedaba en "Cobrando..."
   // para siempre y los toques siguientes no hacían nada).
-  async function charge(withReceipt: boolean, forceFiscal?: boolean) {
+  async function charge(withReceipt: boolean) {
     // Migaja de inicio (fire-and-forget): si el tap llega hasta acá, el
     // servidor lo ve en docker logs aunque todo lo demás falle.
     try {
@@ -777,7 +777,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
       }).catch(() => {});
     } catch { /* noop */ }
     try {
-      await chargeInner(withReceipt, forceFiscal);
+      await chargeInner(withReceipt);
     } catch (e) {
       console.error("[mostrador] charge", e);
       try {
@@ -796,13 +796,13 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
     }
   }
 
-  async function chargeInner(withReceipt: boolean, forceFiscal?: boolean) {
+  async function chargeInner(withReceipt: boolean) {
     if (items.length === 0) return;
 
     // Venta directa: retail sin pedido (nace cerrada). Retiro/delivery = pedido.
     const direct = method === "direct";
-    // Fiscal: botón explícito en venta directa; toggle en el resto.
-    const useFiscal = fiscalReady && (forceFiscal ?? withFiscal);
+    // Fiscal: check por venta (con fiscal = Factura ARCA, sin = ticket no fiscal).
+    const useFiscal = fiscalReady && withFiscal;
 
     // Ítems por peso sin peso cargado: no se puede cobrar.
     const pendingKg = items.find((i) => i.unit === "kg" && !(Number(i.qty) > 0));
@@ -1741,7 +1741,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
           )}
         </div>
 
-        {fiscalReady && method !== "direct" && (
+        {fiscalReady && (
           <button
             type="button"
             onClick={() => setWithFiscal((v) => !v)}
@@ -1763,7 +1763,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
             🧾 Con comprobante fiscal (Factura C)
           </button>
         )}
-        {fiscalReady && (withFiscal || method === "direct") && (
+        {fiscalReady && withFiscal && (
           <div className="space-y-1.5 rounded-xl border border-border p-2.5">
             <div className="flex gap-1.5">
               <select
@@ -1822,18 +1822,9 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
           </p>
         )}
         {method === "direct" ? (
-          <>
-            <Button className="w-full" disabled={items.length === 0 || saving} onClick={() => charge(true, false)}>
-              {saving ? "Cobrando..." : "🧾 Cobrar + comprobante"}
-              <span className="block text-[10px] font-normal opacity-80">ticket no fiscal</span>
-            </Button>
-            {fiscalReady && (
-              <Button className="w-full" variant="outline" disabled={items.length === 0 || saving} onClick={() => charge(true, true)}>
-                {saving ? "Cobrando..." : "Cobrar + fiscal"}
-                <span className="block text-[10px] font-normal opacity-80">factura ARCA</span>
-              </Button>
-            )}
-          </>
+          <Button className="w-full" disabled={items.length === 0 || saving} onClick={() => charge(true)}>
+            {saving ? "Cobrando..." : "Cobrar"}
+          </Button>
         ) : (
           <>
             <Button className="w-full" disabled={items.length === 0 || saving} onClick={() => charge(true)}>

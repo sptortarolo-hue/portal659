@@ -152,6 +152,8 @@ export function MenuStudio({
   const [offUnit, setOffUnit] = useState("unidad");
   // Código de barras / SKU (búsqueda y etiquetas en mostrador).
   const [offSku, setOffSku] = useState("");
+  // Foto remota sugerida por lookup (se descarga al guardar).
+  const [offRemotePhoto, setOffRemotePhoto] = useState<string | null>(null);
 
   // Drawer (desktop).
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -244,6 +246,7 @@ export function MenuStudio({
     setOffPackSize("");
     setOffUnit("unidad");
     setOffSku("");
+    setOffRemotePhoto(null);
   }
 
   function startEdit(offer: Offer) {
@@ -263,6 +266,7 @@ export function MenuStudio({
     setOffPackSize(offer.pack_size ? String(offer.pack_size) : "");
     setOffUnit((offer as any).unit === "kg" ? "kg" : "unidad");
     setOffSku((offer as any).sku ? String((offer as any).sku) : "");
+    setOffRemotePhoto(null);
     setShowForm(true);
     setMsg("");
   }
@@ -304,6 +308,9 @@ export function MenuStudio({
       const res = await fetch("/api/vendor/upload", { method: "POST", body: fd });
       const data = await res.json();
       if (data.url) imageUrl = data.url;
+    } else if (offRemotePhoto) {
+      // Foto sugerida por lookup: el servidor la descarga a uploads.
+      imageUrl = offRemotePhoto;
     }
 
     const payload = {
@@ -566,6 +573,8 @@ export function MenuStudio({
       showSku={isComercio}
       offSku={offSku}
       setOffSku={setOffSku}
+      remotePhoto={offRemotePhoto}
+      onRemotePhoto={setOffRemotePhoto}
       onClose={closeEditor}
     />
   );

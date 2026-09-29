@@ -460,6 +460,16 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
   useEffect(() => () => { scanStopRef.current = true; }, []);
 
   function add(p: Product) {
+    // Por peso: si ya está en la venta no se duplica — se lleva a la línea
+    // existente para repesar (patrón Loyverse/Odoo).
+    if ((p as any).unit === "kg") {
+      const key = lineKey(p.id, undefined, []);
+      const exists = items.some((i) => lineKey(i.product_id, i.variant_id, i.modifiers) === key);
+      if (exists) {
+        gotoKgLine(p.id, key);
+        return;
+      }
+    }
     // Moda: primero se elige color × talle (el precio y el stock son por combinación).
     const variants = variantsMap[p.id] || [];
     if (p.has_variants && variants.length > 0) {
@@ -493,17 +503,19 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
   function addLine(p: Product, v: ProductVariant | null, qty: number, unitPrice: number, modifiers?: CartModifier[]) {
     const name = v ? `${p.name} (${v.color} · ${v.talle})` : p.name;
     const key = lineKey(p.id, v?.id, modifiers);
+    // Por peso arranca en 0: el peso se carga con balanza o tipeo.
+    const startQty = (p as any).unit === "kg" ? 0 : qty;
     // Capado a stock de la variante en cliente (el servidor valida igual).
     const maxStock = v ? Math.max(0, Math.floor(Number(v.stock ?? 0))) : null;
     setItems((prev) => {
       const found = prev.find((i) => lineKey(i.product_id, i.variant_id, i.modifiers) === key);
       if (found) {
-        if (maxStock != null && found.qty + qty > maxStock) return prev;
-        return prev.map((i) => (i === found ? { ...i, qty: i.qty + qty } : i));
+        if (maxStock != null && found.qty + startQty > maxStock) return prev;
+        return prev.map((i) => (i === found ? { ...i, qty: i.qty + startQty } : i));
       }
-      if (maxStock != null && qty > maxStock) return prev;
+      if (maxStock != null && startQty > maxStock) return prev;
       return [...prev, {
-        product_id: p.id, variant_id: v?.id, name, price: unitPrice, qty,
+        product_id: p.id, variant_id: v?.id, name, price: unitPrice, qty: startQty,
         requires_prep: p.requires_prep !== false, modifiers,
         hasPromo: v ? v.promo != null : p.promo_price != null,
         cashExcluded: p.cash_discount_excluded === true,
@@ -566,6 +578,20 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
   // Peso manual para productos por kilo (balanza o tipeo).
   // focusKgKey: al agregar un producto por peso se enfoca su input de kilos.
   const [focusKgKey, setFocusKgKey] = useState<string | null>(null);
+  // flashKgKey: resalta la línea por peso existente al re-tocarla.
+  const [flashKgKey, setFlashKgKey] = useState<string | null>(null);
+  // Lleva a la línea por peso existente para repesar (scroll + foco + aviso).
+  function gotoKgLine(productId: string, key: string) {
+    setFocusKgKey(key);
+    setFlashKgKey(key);
+    window.setTimeout(() => {
+      setFlashKgKey((cur) => (cur === key ? null : cur));
+    }, 2000);
+    requestAnimationFrame(() => {
+      document.getElementById(`kgline-${productId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+    setMsg("Ya está agregado: actualizá el peso o tocá Pesar");
+  }
   function setLineKg(key: string, kg: number) {
     if (!Number.isFinite(kg) || kg <= 0 || kg > 1000) return;
     const rounded = Math.round(kg * 1000) / 1000;
@@ -1194,7 +1220,15 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
       <div className="flex-1 space-y-1.5 min-h-0 overflow-y-auto">
         {items.length === 0 && <p className="text-xs text-muted-foreground text-center py-6">Tocá productos para armar el pedido</p>}
         {items.map((i) => (
-          <div key={lineKey(i.product_id, i.variant_id, i.modifiers)} className="flex items-center gap-2 text-sm">
+          <div
+            key={lineKey(i.product_id, i.variant_id, i.modifiers)}
+            {...(i.unit === "kg" ? { id: `kgline-${i.product_id}` } : {})}
+            className={`flex items-center gap-2 text-sm rounded-lg transition-colors ${
+              i.unit === "kg" && flashKgKey === lineKey(i.product_id, i.variant_id, i.modifiers)
+                ? "bg-primary/10 outline outline-2 outline-primary/40"
+                : ""
+            }`}
+          >
             <span className="flex-1 min-w-0 line-clamp-2 break-words">
               {i.name}
               {i.unit === "kg" && (

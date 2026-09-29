@@ -119,6 +119,9 @@ type OfferFormProps = {
   showSku?: boolean;
   offSku?: string;
   setOffSku?: (v: string) => void;
+  /** Foto remota sugerida por lookup (se descarga al guardar). */
+  remotePhoto?: string | null;
+  onRemotePhoto?: (url: string | null) => void;
   /** Sustantivo del ítem en el título del form (default "plato"). */
   noun?: string;
   onSubmit: () => void;
@@ -148,9 +151,111 @@ export function OfferForm({
   offUnit = "unidad", setOffUnit,
   showSku = false,
   offSku = "", setOffSku,
+  remotePhoto = null, onRemotePhoto,
   noun = "plato",
   onClose,
 }: OfferFormProps) {
+  // Escáner de código de barras con la cámara (rellena el SKU).
+  const [scanningSku, setScanningSku] = useState(false);
+  const [scanSkuError, setScanSkuError] = useState("");
+  const scanSkuVideoRef = useRef<HTMLVideoElement | null>(null);
+  const scanSkuStopRef = useRef(false);
+  async function stopSkuScan() {
+    scanSkuStopRef.current = true;
+    setScanningSku(false);
+    try {
+      const v = scanSkuVideoRef.current;
+      const stream = (v as any)?.srcObject as MediaStream | undefined;
+      stream?.getTracks().forEach((t) => t.stop());
+      if (v) (v as any).srcObject = null;
+    } catch { /* noop */ }
+  }
+  async function startSkuScan() {
+    if (!setOffSku) return;
+    setScanSkuError("");
+    const BD = (window as any).BarcodeDetector;
+    if (!BD) {
+      setScanSkuError("Este navegador no soporta escaneo (usá Chrome o escribí el código)");
+      return;
+    }
+    scanSkuStopRef.current = false;
+    setScanningSku(true);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment" },
+        audio: false,
+      });
+      const video = scanSkuVideoRef.current;
+      if (!video) {
+        stream.getTracks().forEach((t) => t.stop());
+        await stopSkuScan();
+        return;
+      }
+      (video as any).srcObject = stream;
+      await video.play().catch(() => {});
+      const detector = new BD({ formats: ["ean_13", "ean_8", "upc_a", "upc_e", "code_128", "code_39", "itf"] });
+      const seen = new Set<string>();
+      while (!scanSkuStopRef.current) {
+        let codes: any[] = [];
+        try {
+          codes = await detector.detect(video);
+        } catch {
+          break;
+        }
+        const val = String(codes?.[0]?.rawValue || "").trim();
+        if (val && !seen.has(val)) {
+          seen.add(val);
+          setOffSku(val.slice(0, 64));
+          await stopSkuScan();
+          return;
+        }
+        await new Promise((r) => setTimeout(r, 250));
+      }
+    } catch {
+      if (!scanSkuStopRef.current) setScanSkuError("No se pudo abrir la cámara (revisá el permiso)");
+    }
+    await stopSkuScan();
+  }
+  useEffect(() => () => { scanSkuStopRef.current = true; }, []);
+
+  // Lookup de código de barras (Open Food Facts + caché propia): sugiere
+  // nombre/marca/foto sin pisar lo cargado.
+  type LookupHit = { code: string; name: string; brand: string | null; image_url: string | null; source: string };
+  const [lookupBusy, setLookupBusy] = useState(false);
+  const [lookupError, setLookupError] = useState("");
+  const [lookupHit, setLookupHit] = useState<LookupHit | null>(null);
+  async function lookupBarcode() {
+    const code = (offSku || "").trim();
+    if (!code) return;
+    setLookupBusy(true);
+    setLookupError("");
+    setLookupHit(null);
+    try {
+      const res = await fetch(`/api/vendor/barcode-lookup?code=${encodeURIComponent(code)}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.name) {
+        setLookupError(data?.error || "Código no encontrado (cargalo manual)");
+        return;
+      }
+      setLookupHit({ code, name: data.name, brand: data.brand || null, image_url: data.image_url || null, source: data.source || "off" });
+    } catch {
+      setLookupError("Sin conexión");
+    } finally {
+      setLookupBusy(false);
+    }
+  }
+  function applyLookupData() {
+    if (!lookupHit) return;
+    if (!offName.trim()) setOffName(lookupHit.name);
+    setLookupHit(null);
+  }
+  function applyLookupPhoto() {
+    if (!lookupHit?.image_url) return;
+    onRemotePhoto?.(lookupHit.image_url);
+    setOffPreview(lookupHit.image_url);
+    setLookupHit(null);
+  }
+
   // Al crear (no editando): si la categoría actual no existe entre las opciones
   // (ej. default "otras" sin fila), usar la primera. Así el desplegable nunca
   // muestra una cosa y guarda otra.
@@ -231,11 +336,66 @@ export function OfferForm({
         {showSku && setOffSku && (
           <div>
             <Label>Código de barras (SKU)</Label>
-            <Input
-              value={offSku}
-              onChange={(e) => setOffSku(e.target.value.trim())}
-              placeholder="Ej: 7791234567890 (vacío = sin código)"
-            />
+            <div className="flex gap-1.5">
+              <Input
+                value={offSku}
+                onChange={(e) => setOffSku(e.target.value.trim())}
+                placeholder="Ej: 7791234567890 (vacío = sin código)"
+                className="flex-1 min-w-0"
+              />
+              <button
+                type="button"
+                onClick={startSkuScan}
+                className="h-10 w-11 flex-shrink-0 rounded-md border border-input bg-background text-lg hover:border-primary"
+                title="Escanear código con la cámara"
+                aria-label="Escanear código de barras"
+              >
+                📷
+              </button>
+            </div>
+            {scanSkuError && <p className="text-[11px] text-amber-700 pt-1">{scanSkuError}</p>}
+            <div className="flex gap-1.5 pt-1">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={lookupBarcode}
+                disabled={lookupBusy || !offSku.trim()}
+              >
+                {lookupBusy ? "Buscando…" : "🔍 Buscar datos"}
+              </Button>
+            </div>
+            {lookupError && <p className="text-[11px] text-amber-700 pt-1">{lookupError}</p>}
+            {lookupHit && (
+              <div className="mt-2 flex items-center gap-2 rounded-xl border border-border bg-muted/40 p-2">
+                {lookupHit.image_url && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={lookupHit.image_url} alt="" className="h-12 w-12 rounded-lg object-cover flex-shrink-0" />
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-medium truncate">{lookupHit.name}</p>
+                  {lookupHit.brand && <p className="text-[11px] text-muted-foreground truncate">{lookupHit.brand}</p>}
+                </div>
+                <div className="flex flex-col gap-1 flex-shrink-0">
+                  <Button type="button" variant="outline" size="sm" className="h-7 text-xs" onClick={applyLookupData}>
+                    Usar datos
+                  </Button>
+                  {lookupHit.image_url && (
+                    <Button type="button" variant="outline" size="sm" className="h-7 text-xs" onClick={applyLookupPhoto}>
+                      Usar foto
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )}
+            {remotePhoto && (
+              <p className="text-[11px] text-muted-foreground pt-1">
+                Foto sugerida lista: se descarga al guardar ✓{" "}
+                <button type="button" onClick={() => onRemotePhoto?.(null)} className="underline">
+                  quitar
+                </button>
+              </p>
+            )}
             <p className="text-xs text-muted-foreground mt-0.5">
               Para buscar y escanear en mostrador e imprimir etiquetas.
             </p>
@@ -279,6 +439,15 @@ export function OfferForm({
         <div><Label>Descripción</Label><Textarea value={offDesc} onChange={(e) => setOffDesc(e.target.value)} /></div>
         <Button type="button" onClick={() => onSubmit()} disabled={saving} className="w-full">{saving ? "Guardando..." : editingId ? "Guardar" : "Agregar"}</Button>
       </div>
+      {scanningSku && (
+        <div className="fixed inset-0 z-[70] bg-black/80 flex flex-col items-center justify-center gap-3 p-4" onClick={stopSkuScan}>
+          <p className="text-white text-sm font-medium">Apuntá al código de barras del producto</p>
+          <video ref={scanSkuVideoRef} playsInline muted className="w-full max-w-sm rounded-xl bg-black aspect-[3/4] object-cover" />
+          <Button type="button" variant="outline" onClick={stopSkuScan}>
+            Cancelar
+          </Button>
+        </div>
+      )}
     </Card>
   );
 }

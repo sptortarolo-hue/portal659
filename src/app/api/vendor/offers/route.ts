@@ -1,5 +1,6 @@
 import { getVendorByRequest, resolveCategoryName } from "@/lib/vendor-utils";
 import { queryMany, queryOne } from "@/lib/db";
+import { getSiteUrl } from "@/lib/site-url";
 import { queryEffectiveModifiers } from "@/lib/modifier-rules";
 import { resolveVendorPlan } from "@/lib/plans";
 import { NextResponse } from "next/server";
@@ -59,8 +60,7 @@ export async function POST(request: Request) {
     [vendor.id]
   );
   const body = await request.json();
-  const { name, description, price, category, featured_today, image_url } = body;
-  const stock = body.stock ?? null;
+  const { name, description, price, category, featured_today, image_url } = body;  const stock = body.stock ?? null;
   const stock_low_threshold = body.stock_low_threshold ?? null;
   const stock_control = body.stock_control ?? false;
   const requires_prep = body.requires_prep !== false;
@@ -156,6 +156,20 @@ export async function POST(request: Request) {
   if (unit != null) { extraCols.push("unit"); extraVals.push(unit); }
   if (sku != null) { extraCols.push("sku"); extraVals.push(sku); }
   const extraPlaceholders = extraVals.map((_, i) => `$${15 + i}`).join(", ");
+  // Foto remota sugerida por lookup (Open Food Facts): se descarga a uploads
+  // para no hotlinkear. Si falla, se guarda la URL tal cual (no rompe el alta).
+  let finalImageUrl: string | null = (image_url as string) || null;
+  if (finalImageUrl && /^https?:\/\//.test(finalImageUrl)) {
+    try {
+      const site = getSiteUrl();
+      if (!finalImageUrl.startsWith(site)) {
+        const { downloadRemoteImage } = await import("@/lib/remote-image");
+        finalImageUrl = (await downloadRemoteImage(finalImageUrl, vendor.id, "offers")) || finalImageUrl;
+      }
+    } catch {
+      /* noop */
+    }
+  }
   const offer = await queryOne<Record<string, unknown>>(
     `INSERT INTO products (vendor_id, name, description, price, currency, category, neighborhood, type, available, featured_today, image_url, stock, stock_low_threshold, stock_control, requires_prep, has_variants, cash_discount_excluded${extraCols.length ? ", " + extraCols.join(", ") : ""})
      VALUES ($1, $2, $3, $4, 'ARS', $5, $6, 'food', true, $7, $8, $9, $10, $11, $12, $13, $14${extraPlaceholders ? ", " + extraPlaceholders : ""}) RETURNING *`,
@@ -167,7 +181,7 @@ export async function POST(request: Request) {
       await resolveCategoryName(vendor.id, category),
       fullVendor?.neighborhood || null,
       !!featured_today,
-      image_url || null,
+      finalImageUrl,
       stock,
       stock_low_threshold,
       stock_control,

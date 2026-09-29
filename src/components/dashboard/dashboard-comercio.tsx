@@ -554,6 +554,39 @@ export default function DashboardComercio({
           {deliveryOptions !== "retiro" && (
             <DeliveryFeeConfig vendor={vendor} saveVendor={saveVendor} />
           )}
+        </div>
+      </ConfigSection>
+
+      <ConfigSection id="impresora" label="Impresora" icon="🖨️" status={vendor?.printer_ip || vendor?.print_mode ? "ok" : "off"}>
+      <PrinterConfigSection
+        vendor={vendor}
+        saveVendor={saveVendor}
+        setMsg={setMsg}
+        autoPrintDesc="Imprime el ticket automáticamente cuando entra un pedido online pago"
+      />
+      </ConfigSection>
+
+      <ConfigSection id="alertas" label="Alertas" icon="🔔">
+      <PushAlertCard />
+      </ConfigSection>
+
+      <ConfigSection id="fiscal" label="Facturación" icon="🧾" status={vendor?.fiscal_cert ? "ok" : vendor?.cuit ? "warn" : "off"}>
+      <FiscalTabShortcut />
+      </ConfigSection>
+
+      <ConfigSection id="catalogo" label="Catálogo" icon="🛍️" badge={String(offers.length)}>
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Productos, precios, stock y fotos se gestionan con edición completa
+            desde la pestaña <strong>Catálogo</strong>, en un panel integrado.
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => window.dispatchEvent(new CustomEvent("portal:go-menu"))}
+          >
+            🛍️ Ir al Catálogo
+          </Button>
           <div className="flex items-center justify-between gap-3 rounded-xl border border-border px-3 py-2.5">
             <div>
               <Label className="text-sm">Aceptar pedidos online</Label>
@@ -602,39 +635,6 @@ export default function DashboardComercio({
                 que el catálogo sea simple (la vidriera no soporta esos casos).
               </p>
             )}
-        </div>
-      </ConfigSection>
-
-      <ConfigSection id="impresora" label="Impresora" icon="🖨️" status={vendor?.printer_ip || vendor?.print_mode ? "ok" : "off"}>
-      <PrinterConfigSection
-        vendor={vendor}
-        saveVendor={saveVendor}
-        setMsg={setMsg}
-        autoPrintDesc="Imprime el ticket automáticamente cuando entra un pedido online pago"
-      />
-      </ConfigSection>
-
-      <ConfigSection id="alertas" label="Alertas" icon="🔔">
-      <PushAlertCard />
-      </ConfigSection>
-
-      <ConfigSection id="fiscal" label="Facturación" icon="🧾" status={vendor?.fiscal_cert ? "ok" : vendor?.cuit ? "warn" : "off"}>
-      <FiscalTabShortcut />
-      </ConfigSection>
-
-      <ConfigSection id="catalogo" label="Catálogo" icon="🛍️" badge={String(offers.length)}>
-        <div className="space-y-4">
-          <p className="text-sm text-muted-foreground">
-            Productos, precios, stock y fotos se gestionan con edición completa
-            desde la pestaña <strong>Catálogo</strong>, en un panel integrado.
-          </p>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => window.dispatchEvent(new CustomEvent("portal:go-menu"))}
-          >
-            🛍️ Ir al Catálogo
-          </Button>
           <CategoryManager
             categories={categories}
             onAdd={async (name) => {

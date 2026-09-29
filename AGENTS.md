@@ -141,6 +141,8 @@ Portal 659: "El centro comercial de tu barrio". Hub multicommerce hiperlocal (Si
 - Aplicar `supabase/self-host/migrate-product-unit.sql` (unidad de venta por producto: `products.unit` 'unidad'|'kg' — precio por kilo y venta fraccionada con balanza en mostrador; sin esto los productos nacen 'unidad' y el selector de unidad igual guarda pero el servidor lo ignora).
 - Aplicar `supabase/self-host/migrate-fiscal-receptor.sql` (receptor identificado en facturas: `invoices.receptor_nombre/cond_iva` — DNI/CUIT a nombre; sin esto emitir con documento falla al guardar).
 - Aplicar `supabase/self-host/migrate-inventory.sql` (inventario compartido: `supplier_pricelists` + `products.cost_last/avg` + `product_variants.cost_last` + `stock_counts/lines` + kardex `stock_ledger` + flag `inventory:true` en planes gestion/oficios + `purchase_items` admite líneas de mercadería — sin esto Compras solo acepta insumos, conteos/kardex/reposición responden 503 y el tab Inventario muestra PlanLock).
+- Aplicar `supabase/self-host/migrate-fiado.sql` (cuenta corriente: ledger `account_moves` charge/payment por teléfono — sin esto las ventas fiadas fallan al guardar el cargo y los pagos no se registran).
+- Aplicar `supabase/self-host/migrate-barcodes.sql` (código por producto: `products.sku` + UNIQUE por comercio — sin esto el SKU se guarda pero se ignora y las etiquetas fallan).
 - Cargar secrets `VAPID_*`, `PRINT_BRIDGE_SECRET` y `RESEND_API_KEY`/`FROM_EMAIL` en GitHub para que el deploy las escriba al `.env`.
 - Compilar el APK de Portal Print (Android): ver `android/README.md` (requiere Android SDK/JDK 17).
 - Reboot test del VPS (verificar que la web vuelve sola).

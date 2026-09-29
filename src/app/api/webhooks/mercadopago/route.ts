@@ -219,8 +219,61 @@ export async function POST(request: Request) {
           return NextResponse.json({ ok: true });
         }
 
-        // Rama seña de apartado (moda): portal659_apartado_{orderId}_{ts}.
-        // Marca la seña como cobrada; el saldo se cobra aparte y el pedido
+        // Rama cobro de fiado: portal659_fiado_{vendorId}_{digits}_{ts}.
+        // Registra el pago en cuenta corriente e imputa a fiados pendientes
+        // (NO crea pedido). Idempotente por payment id de MP.
+        if (externalRef?.startsWith("portal659_fiado_")) {
+          const parts = externalRef.split("_");
+          const fVendorId = parts[2] || "";
+          const metadata = payment.metadata || {};
+          const debtPhone = toE164(typeof metadata.debt_phone === "string" ? metadata.debt_phone : "");
+          const paidAmount = Math.round(Number(payment.transaction_amount) * 100) / 100;
+          if (fVendorId && debtPhone && paidAmount > 0) {
+            const mpNote = `mp:${String(payment.id ?? "")}`;
+            try {
+              const { imputeFiadoPayment: imputeFn } = await import("@/lib/fiados");
+              const dup = await queryOne<{ id: string }>(
+                `SELECT id FROM account_moves WHERE vendor_id = $1 AND customer_phone = $2 AND kind = 'payment' AND note = $3 LIMIT 1`,
+                [fVendorId, debtPhone, mpNote]
+              ).catch(() => null);
+              if (!dup) {
+                const now = new Date().toISOString();
+                const covered = await withTransaction(async (tx) => {
+                  await tx.queryVoid(
+                    `INSERT INTO account_moves (vendor_id, customer_phone, kind, amount, note)
+                     VALUES ($1, $2, 'payment', $3, $4)`,
+                    [fVendorId, debtPhone, paidAmount, mpNote]
+                  );
+                  const { coveredIds } = await imputeFn(tx, fVendorId, debtPhone, paidAmount, now);
+                  return coveredIds;
+                }).catch(() => [] as string[]);
+                const vrow = await queryOne<{ user_id: string; store_name: string }>(
+                  `SELECT user_id, store_name FROM vendors WHERE id = $1 LIMIT 1`,
+                  [fVendorId]
+                );
+                if (vrow?.user_id) {
+                  const title = "¡Cobro de fiado por MP! 📓";
+                  const body = `Se acreditaron $${paidAmount.toLocaleString("es-AR")} de ${debtPhone}${covered.length > 0 ? ` (${covered.length} pedido(s) saldado(s))` : ""}.`;
+                  await query(
+                    `INSERT INTO notifications (user_id, title, body, type, link)
+                     VALUES ($1, $2, $3, 'payment', '/vendor/dashboard')`,
+                    [vrow.user_id, title, body]
+                  );
+                  try {
+                    const { sendPushToUser } = await import("@/lib/push");
+                    await sendPushToUser(vrow.user_id, { title, body, link: "/vendor/dashboard" });
+                  } catch { /* best-effort */ }
+                }
+                console.log(`[mp-webhook] fiado ok vendor=${fVendorId} amount=${paidAmount} covered=${covered.length}`);
+              }
+            } catch (e) {
+              logApiError("mp-webhook/fiado", e);
+            }
+          }
+          return NextResponse.json({ ok: true });
+        }
+
+        // Rama seña de apartado (moda): portal659_apartado_{orderId}_{ts}.        // Marca la seña como cobrada; el saldo se cobra aparte y el pedido
         // sigue en 'new' hasta que el comercio lo acepta por el flujo normal.
         if (externalRef?.startsWith("portal659_apartado_")) {
           const orderId = externalRef.split("_")[2];

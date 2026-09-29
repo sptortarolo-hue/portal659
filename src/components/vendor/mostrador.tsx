@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ModifierPicker } from "@/components/offers/modifier-picker";
@@ -53,6 +53,8 @@ type Product = {
   modifiers?: ProductModifier[];
   /** Unidad de venta: "kg" = precio por kilo (balanza en mostrador). */
   unit?: string | null;
+  /** Código de barras / SKU (búsqueda y escaneo). */
+  sku?: string | null;
 };
 
 /** Variante de producto (moda): precio y promo propios, stock por combinación. */
@@ -133,6 +135,7 @@ const PAYMENT_OPTIONS = [
   { key: "transferencia", label: "🏦 Transferencia" },
   { key: "tarjeta", label: "💳 Tarjeta" },
   { key: "mixto", label: "🪙 Mixto" },
+  { key: "fiado", label: "📓 Fiado" },
 ];
 
 export function Mostrador({ vendorId }: { vendorId?: string | null }) {
@@ -362,13 +365,99 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
   }, [vendorId]);
 
   const filtered = useMemo(() => {
-    const q = query.toLowerCase();
+    const q = query.trim().toLowerCase();
     return products.filter(
       (p) =>
-        (!q || p.name.toLowerCase().includes(q)) &&
+        (!q || p.name.toLowerCase().includes(q) || ((p as any).sku || "").toLowerCase() === q || ((p as any).sku || "").toLowerCase().includes(q)) &&
         (!activeCat || normCat(p.category) === activeCat)
     );
   }, [products, query, activeCat]);
+
+  // Enter con código exacto (SKU) agrega directo sin tocar la lista.
+  function submitCodeSearch() {
+    const q = query.trim().toLowerCase();
+    if (!q) return;
+    const hit = products.find((p) => ((p as any).sku || "").toLowerCase() === q && p.available !== false);
+    if (hit) {
+      add(hit);
+      setQuery("");
+      setMsg("");
+    }
+  }
+
+  // Escáner de código de barras con la cámara (BarcodeDetector, Chrome/Edge).
+  const [scanning, setScanning] = useState(false);
+  const [scanError, setScanError] = useState("");
+  const scanVideoRef = useRef<HTMLVideoElement | null>(null);
+  const scanStopRef = useRef(false);
+  async function stopScan() {
+    scanStopRef.current = true;
+    setScanning(false);
+    try {
+      const v = scanVideoRef.current;
+      const stream = (v as any)?.srcObject as MediaStream | undefined;
+      stream?.getTracks().forEach((t) => t.stop());
+      if (v) (v as any).srcObject = null;
+    } catch { /* noop */ }
+  }
+  async function startScan() {
+    setScanError("");
+    const BD = (window as any).BarcodeDetector;
+    if (!BD) {
+      setScanError("Este navegador no soporta escaneo (usá Chrome o escribí el código)");
+      return;
+    }
+    scanStopRef.current = false;
+    setScanning(true);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment" },
+        audio: false,
+      });
+      const video = scanVideoRef.current;
+      if (!video) {
+        stream.getTracks().forEach((t) => t.stop());
+        await stopScan();
+        return;
+      }
+      (video as any).srcObject = stream;
+      await video.play().catch(() => {});
+      const detector = new BD({ formats: ["ean_13", "ean_8", "upc_a", "upc_e", "code_128", "code_39", "itf"] });
+      const seen = new Set<string>();
+      while (!scanStopRef.current) {
+        let codes: any[] = [];
+        try {
+          codes = await detector.detect(video);
+        } catch {
+          break;
+        }
+        const val = String(codes?.[0]?.rawValue || "").trim();
+        if (val && !seen.has(val)) {
+          seen.add(val);
+          const hit = products.find(
+            (p) => ((p as any).sku || "").toLowerCase() === val.toLowerCase() && p.available !== false
+          );
+          if (hit) {
+            add(hit);
+            setQuery("");
+            setMsg(`Agregado por código: ${hit.name}`);
+            await stopScan();
+            return;
+          } else {
+            setQuery(val);
+            setMsg(`Código ${val}: no está en el catálogo`);
+            await stopScan();
+            return;
+          }
+        }
+        await new Promise((r) => setTimeout(r, 250));
+      }
+    } catch {
+      if (!scanStopRef.current) setScanError("No se pudo abrir la cámara (revisá el permiso)");
+    }
+    await stopScan();
+  }
+  useEffect(() => () => { scanStopRef.current = true; }, []);
 
   function add(p: Product) {
     // Moda: primero se elige color × talle (el precio y el stock son por combinación).
@@ -1028,13 +1117,26 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
     <div className="space-y-2">
       {/* Buscador + categorías fijas arriba en mobile (debajo del header del dashboard) */}
       <div className="sticky top-24 z-30 -mx-4 px-4 py-2 bg-background sm:static sm:mx-0 sm:px-0 sm:py-0">
-        <input
-          type="text"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Buscar producto..."
-          className="w-full h-10 px-3 text-sm rounded-xl border border-input bg-background"
-        />
+        <div className="flex gap-1.5">
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") submitCodeSearch(); }}
+            placeholder="Buscar producto o código…"
+            className="flex-1 min-w-0 h-10 px-3 text-sm rounded-xl border border-input bg-background"
+          />
+          <button
+            type="button"
+            onClick={startScan}
+            className="h-10 w-11 flex-shrink-0 rounded-xl border border-border bg-card text-lg hover:border-primary"
+            title="Escanear código de barras con la cámara"
+            aria-label="Escanear código de barras"
+          >
+            📷
+          </button>
+        </div>
+        {scanError && <p className="text-[11px] text-amber-700 pt-1">{scanError}</p>}
         {categories.length > 1 && (
           <div className="flex gap-1.5 overflow-x-auto pb-1 pt-2 scrollbar-hide">
             <button
@@ -1075,6 +1177,15 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
         ))}
         {filtered.length === 0 && <p className="text-xs text-muted-foreground col-span-full text-center py-6">Sin productos</p>}
       </div>
+      {scanning && (
+        <div className="fixed inset-0 z-[70] bg-black/80 flex flex-col items-center justify-center gap-3 p-4" onClick={stopScan}>
+          <p className="text-white text-sm font-medium">Apuntá al código de barras</p>
+          <video ref={scanVideoRef} playsInline muted className="w-full max-w-sm rounded-xl bg-black aspect-[3/4] object-cover" />
+          <Button type="button" variant="outline" onClick={stopScan}>
+            Cancelar
+          </Button>
+        </div>
+      )}
     </div>
   );
 
@@ -1305,7 +1416,10 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
           {PAYMENT_OPTIONS.map((o) => (
             <button
               key={o.key}
-              onClick={() => setPayment(o.key)}
+              onClick={() => {
+                setPayment(o.key);
+                if (o.key === "fiado") setClientOpen(true);
+              }}
               className={`rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors ${
                 payment === o.key ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
               }`}
@@ -1314,6 +1428,11 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
             </button>
           ))}
         </div>
+        {payment === "fiado" && (
+          <p className="text-[11px] text-amber-700">
+            📓 El fiado requiere nombre y celular del cliente (bloque Cliente).
+          </p>
+        )}
 
         <div className="space-y-1 pt-1">
           {activeCashDiscount > 0 && (

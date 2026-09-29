@@ -79,6 +79,178 @@ function money(n: number | null | undefined): string {
   return `$${Number(n || 0).toLocaleString("es-AR")}`;
 }
 
+/**
+ * Cuenta corriente del cliente: saldo + registrar pago + historial.
+ * Solo se muestra si hay movimientos (sin tabla/migración, no rompe nada).
+ */
+function FiadoBlock({ phone }: { phone: string }) {
+  const [data, setData] = useState<{
+    balance: number;
+    charges: number;
+    payments: number;
+    moves: { kind: string; amount: number; note: string | null; created_at: string }[];
+    pendingOrders: { id: string; total: number; created_at: string; pickup_number: number | null }[];
+  } | null>(null);
+  const [amount, setAmount] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [linkBusy, setLinkBusy] = useState(false);
+  const [vendorId, setVendorId] = useState<string | null>(null);
+  const [msg, setMsg] = useState("");
+
+  const load = useCallback(async () => {
+    try {
+      const r = await fetch(`/api/vendor/account-moves?phone=${encodeURIComponent(phone)}`);
+      const d = await r.json().catch(() => null);
+      if (r.ok && d && typeof d.balance === "number") setData(d);
+      else setData(null);
+    } catch {
+      setData(null);
+    }
+  }, [phone]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  useEffect(() => {
+    fetch("/api/vendor/me")
+      .then((r) => r.json())
+      .then((d) => {
+        const id = (d?.vendor?.id || d?.id) as string | undefined;
+        if (id) setVendorId(id);
+      })
+      .catch(() => {});
+  }, []);
+
+  if (!data) return null;
+  if (data.balance <= 0 && (data.moves || []).length === 0) return null;
+
+  async function registerPay() {
+    const v = Math.round(Number(amount) * 100) / 100;
+    if (!Number.isFinite(v) || v <= 0) {
+      setMsg("Ingresá un monto mayor a $0");
+      return;
+    }
+    setSaving(true);
+    setMsg("");
+    try {
+      const r = await fetch("/api/vendor/account-moves", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone, amount: v }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        setMsg(d?.error || "No se pudo registrar");
+      } else {
+        setMsg(
+          d.coveredIds?.length > 0
+            ? `Pago registrado ✓ (${d.coveredIds.length} pedido(s) saldado(s))`
+            : "Pago registrado ✓"
+        );
+        setAmount("");
+        await load();
+      }
+    } catch {
+      setMsg("Sin conexión");
+    }
+    setSaving(false);
+  }
+
+  const waText = `Hola! Te escribo por tu cuenta: tu saldo es ${money(data.balance)}. Podés pasar a pagar o te paso link de Mercado Pago. Gracias!`;
+  return (
+    <div className="rounded-xl border border-amber-200 bg-amber-50/50 dark:border-amber-900 dark:bg-amber-950/20 p-3 space-y-2">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-300">
+          📓 Cuenta corriente
+        </p>
+        <p className={`text-sm font-bold tabular-nums ${data.balance > 0 ? "text-amber-700 dark:text-amber-300" : "text-green-700"}`}>
+          {data.balance > 0 ? `Debe ${money(data.balance)}` : "Al día ✓"}
+        </p>
+      </div>
+      {data.balance > 0 && (
+        <>
+          <div className="flex gap-1.5">
+            <input
+              type="number"
+              inputMode="decimal"
+              min={0}
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              placeholder="Monto del pago $"
+              className="h-9 min-w-0 flex-1 rounded-lg border border-input bg-background px-2 text-sm"
+            />
+            <Button size="sm" onClick={registerPay} disabled={saving}>
+              {saving ? "…" : "Registrar pago"}
+            </Button>
+          </div>
+          {vendorId && (
+            <button
+              type="button"
+              disabled={linkBusy}
+              onClick={async () => {
+                const v = Math.round(Number(amount || data.balance) * 100) / 100;
+                if (!Number.isFinite(v) || v <= 0) {
+                  setMsg("Ingresá el monto para el link");
+                  return;
+                }
+                setLinkBusy(true);
+                setMsg("");
+                try {
+                  const r = await fetch("/api/payments", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ vendorId, debtPhone: phone, debtAmount: v }),
+                  });
+                  const d = await r.json().catch(() => ({}));
+                  if (!r.ok || !d?.initPoint) {
+                    setMsg(d?.error || "No se pudo crear el link");
+                  } else {
+                    window.open(d.initPoint, "_blank", "noopener,noreferrer");
+                    setMsg("Link de pago abierto: compartilo por WhatsApp al cliente");
+                  }
+                } catch {
+                  setMsg("Sin conexión");
+                }
+                setLinkBusy(false);
+              }}
+              className="block w-full text-center rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 text-xs font-medium py-2 transition-colors disabled:opacity-50"
+            >
+              {linkBusy ? "Generando…" : "🔗 Link de pago online (Mercado Pago)"}
+            </button>
+          )}
+          <a
+            href={`https://wa.me/${phone.replace(/\D/g, "")}?text=${encodeURIComponent(waText)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block text-center rounded-lg border border-green-200 bg-green-50 text-green-700 hover:bg-green-100 text-xs font-medium py-2 transition-colors"
+          >
+            💬 Cobrar por WhatsApp
+          </a>
+        </>
+      )}
+      {msg && <p className="text-xs font-medium text-muted-foreground">{msg}</p>}
+      {(data.moves || []).length > 0 && (
+        <div className="space-y-1 pt-1">
+          {data.moves.slice(0, 6).map((m, i) => (
+            <div key={i} className="flex justify-between gap-2 text-xs">
+              <span className="text-muted-foreground">
+                {new Date(m.created_at).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" })}
+                {" · "}
+                {m.kind === "charge" ? "Venta fiada" : "Pago"}
+                {m.note ? (m.note.startsWith("mp:") ? " · Pago online ✓" : ` · ${m.note}`) : ""}
+              </span>
+              <span className={`font-medium tabular-nums ${m.kind === "charge" ? "text-red-600" : "text-green-600"}`}>
+                {m.kind === "charge" ? "+" : "−"}{money(m.amount)}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function fmtDate(value: string | null | undefined): string {
   if (!value) return "—";
   return new Date(value).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "2-digit" });
@@ -423,6 +595,8 @@ export function CustomersManager({ serviceMode = false }: { serviceMode?: boolea
                       📲 WhatsApp
                     </a>
                   </div>
+
+                  <FiadoBlock phone={c.phone} />
 
                   <div>
                     <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Últimos pedidos</p>

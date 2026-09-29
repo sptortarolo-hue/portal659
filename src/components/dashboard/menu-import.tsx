@@ -9,6 +9,7 @@ type EditableItem = {
   price: string;
   category: string;
   description: string;
+  sku?: string;
   group?: string;
   modifiers?: { desc: string; price_mod: number }[];
 };
@@ -196,6 +197,7 @@ return (
                     <th className="p-2 font-medium">Nombre</th>
                     <th className="p-2 w-24 font-medium">Precio</th>
                     <th className="p-2 w-32 font-medium">Categoría</th>
+                    <th className="p-2 w-28 font-medium">Código</th>
                     <th className="p-2 font-medium">Opciones</th>
                     <th className="p-2 w-8"></th>
                   </tr>
@@ -223,6 +225,14 @@ return (
                           className="w-full rounded-md border border-input bg-transparent px-2 py-1 text-sm"
                           value={it.category}
                           onChange={(e) => updateItem(i, "category", e.target.value)}
+                        />
+                      </td>
+                      <td className="p-1">
+                        <input
+                          className="w-full rounded-md border border-input bg-transparent px-2 py-1 text-sm tabular-nums"
+                          value={it.sku || ""}
+                          onChange={(e) => updateItem(i, "sku", e.target.value)}
+                          placeholder="—"
                         />
                       </td>
                       <td className="p-1">

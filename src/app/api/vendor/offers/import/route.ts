@@ -21,15 +21,17 @@ type CleanedItem = {
   category?: string | null;
   description?: string | null;
   group?: string | null;
+  sku?: string | null;
   modifiers?: { desc: string; price_mod: number }[];
 };
 
 // Headers reconocidos por campo (para detectar la fila de encabezado y mapear)
-const HEADER_ALIASES: Record<"name" | "price" | "category" | "description", string[]> = {
+const HEADER_ALIASES: Record<"name" | "price" | "category" | "description" | "sku", string[]> = {
   name: ["nombre", "plato", "producto", "item", "articulo", "comida", "menu", "name", "descripcion del plato"],
   price: ["precio", "price", "valor", "p", "$", "precio$"],
   category: ["categoria", "categoría", "seccion", "sección", "rubro", "cat", "tipo", "category"],
   description: ["descripcion", "descripción", "desc", "detalle", "description"],
+  sku: ["sku", "codigo", "código", "codigobarras", "ean", "ean13", "barcode"],
 };
 
 function normKey(k: string): string {
@@ -45,7 +47,10 @@ function normKey(k: string): string {
 function fieldForHeader(raw: string): keyof typeof HEADER_ALIASES | null {
   const k = normKey(raw);
   if (!k) return null;
+  // SKU antes que genéricos ("codigo" no debe caer en otra cosa).
+  if (k === "sku" || k === "ean" || k === "ean13" || k === "barcode" || k === "codigo" || k === "codigodebarras" || k === "codigobarras") return "sku";
   for (const field of Object.keys(HEADER_ALIASES) as (keyof typeof HEADER_ALIASES)[]) {
+    if (field === "sku") continue;
     const aliases = HEADER_ALIASES[field].map(normKey);
     if (aliases.includes(k)) return field;
     if (field === "name" && (k.includes("nombre") || k.includes("plato") || k.includes("producto"))) return field;
@@ -122,7 +127,7 @@ async function parseWorkbook(buf: Buffer): Promise<Record<string, unknown>[]> {
       }
       const field = fieldForHeader(rows[i][c]);
       if (field) {
-        fields[c] = field === "name" ? 1 : field === "price" ? 2 : field === "category" ? 3 : 4;
+        fields[c] = field === "name" ? 1 : field === "price" ? 2 : field === "category" ? 3 : field === "description" ? 4 : 5;
         if (field === "name") hasName = true;
         if (field === "price") hasPrice = true;
       }
@@ -157,7 +162,7 @@ async function parseWorkbook(buf: Buffer): Promise<Record<string, unknown>[]> {
       const field = headerMap[c];
       let key: string;
       if (typeof field === "number") {
-        key = HEADER_ALIASES[(field === 1 ? "name" : field === 2 ? "price" : field === 3 ? "category" : "description") as keyof typeof HEADER_ALIASES][0];
+        key = HEADER_ALIASES[(field === 1 ? "name" : field === 2 ? "price" : field === 3 ? "category" : field === 5 ? "sku" : "description") as keyof typeof HEADER_ALIASES][0];
       } else if (field) {
         key = field; // "mod1_desc", "mod1_price", ...
       } else {
@@ -217,6 +222,12 @@ export async function POST(request: Request) {
       [vendor.id]
     );
     const existingSet = new Set(existingNames.map((p) => p.name.trim().toLowerCase()));
+    // Match por SKU cuando la fila lo trae (estable aunque cambie el nombre).
+    const existingSkus = await queryMany<{ sku: string }>(
+      `SELECT sku FROM products WHERE vendor_id = $1 AND sku IS NOT NULL AND sku <> ''`,
+      [vendor.id]
+    ).catch(() => []);
+    const skuSet = new Set((existingSkus || []).map((p) => String(p.sku).trim()));
 
     const valid: CleanedItem[] = [];
     const invalid: { row: string; reason: string }[] = [];
@@ -234,7 +245,12 @@ export async function POST(request: Request) {
       valid.push({ ...it, name, price });
     }
 
-    const toImport = valid.filter((it) => !existingSet.has(it.name.trim().toLowerCase())).length;
+    const isNewItem = (it: CleanedItem) => {
+      const sku = typeof it.sku === "string" ? it.sku.trim() : "";
+      if (sku && skuSet.has(sku)) return false;
+      return !existingSet.has(it.name.trim().toLowerCase());
+    };
+    const toImport = valid.filter((it) => isNewItem(it)).length;
     const willUpdate = valid.length - toImport;
 
     return NextResponse.json({
@@ -252,6 +268,7 @@ export async function POST(request: Request) {
         description: it.description || "",
         group: it.group || "",
         modifiers: it.modifiers || [],
+        sku: typeof it.sku === "string" ? it.sku.trim().slice(0, 64) : "",
       })),
     });
   }
@@ -283,9 +300,20 @@ export async function POST(request: Request) {
       [vendor.id]
     );
     const existingSet = new Set(existingNames.map((p) => p.name.trim().toLowerCase()));
+    const existingSkus = await queryMany<{ sku: string }>(
+      `SELECT sku FROM products WHERE vendor_id = $1 AND sku IS NOT NULL AND sku <> ''`,
+      [vendor.id]
+    ).catch(() => []);
+    const skuSet = new Set((existingSkus || []).map((p) => String(p.sku).trim()));
     const newNames = items
       .map((i) => (i.name || "").trim().toLowerCase())
-      .filter((n) => n && !existingSet.has(n));
+      .filter((n, idx) => {
+        if (!n || existingSet.has(n)) return false;
+        const sku = typeof (items[idx] as any)?.sku === "string" ? (items[idx] as any).sku.trim() : "";
+        // Coincide por SKU con un producto existente → actualiza, no suma.
+        if (sku && skuSet.has(sku)) return false;
+        return true;
+      });
     const totalAfter = existingNames.length + newNames.length;
     if (plan.maxProducts != null && totalAfter > plan.maxProducts) {
       return NextResponse.json(
@@ -335,10 +363,23 @@ export async function POST(request: Request) {
           continue;
         }
 
-        const existing = await tx.queryOne<{ id: string }>(
-          `SELECT id FROM products WHERE vendor_id = $1 AND lower(name) = lower($2) LIMIT 1`,
-          [vendor.id, name]
-        );
+        const sku =
+          typeof (it as any).sku === "string" && (it as any).sku.trim() !== ""
+            ? (it as any).sku.trim().slice(0, 64)
+            : null;
+        let existing: { id: string } | null | undefined = null;
+        if (sku) {
+          existing = await tx.queryOne<{ id: string }>(
+            `SELECT id FROM products WHERE vendor_id = $1 AND sku = $2 LIMIT 1`,
+            [vendor.id, sku]
+          ).catch(() => null);
+        }
+        if (!existing) {
+          existing = await tx.queryOne<{ id: string }>(
+            `SELECT id FROM products WHERE vendor_id = $1 AND lower(name) = lower($2) LIMIT 1`,
+            [vendor.id, name]
+          );
+        }
 
         let productId: string;
 
@@ -347,6 +388,12 @@ export async function POST(request: Request) {
             `UPDATE products SET price = $1, category = $2, description = $3, available = true WHERE id = $4`,
             [price, (it.category || "").trim() || "otras", it.description || null, existing.id]
           );
+          if (sku) {
+            await tx.queryVoid(
+              `UPDATE products SET sku = $1 WHERE id = $2`,
+              [sku, existing.id]
+            ).catch(() => null);
+          }
           productId = existing.id;
           updated++;
         } else {
@@ -364,6 +411,9 @@ export async function POST(request: Request) {
             ]
           );
           productId = rows[0]?.id ?? "";
+          if (sku && productId) {
+            await tx.queryVoid(`UPDATE products SET sku = $1 WHERE id = $2`, [sku, productId]).catch(() => null);
+          }
           imported++;
         }
 

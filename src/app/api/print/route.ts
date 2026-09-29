@@ -136,6 +136,48 @@ export async function POST(request: Request) {
     return printResponse(result);
   }
 
+  // Etiqueta de góndola: por productId (valida dueño + trae nombre/precio/SKU).
+  if (type === "label") {
+    const productId = typeof body.productId === "string" && body.productId ? body.productId : null;
+    if (!productId) {
+      return NextResponse.json({ ok: false, error: "productId requerido" }, { status: 400 });
+    }
+    let product: { name: string; price: number; promo_price: number | null; sku: string | null } | null | undefined = null;
+    try {
+      product = await queryOne<{ name: string; price: number; promo_price: number | null; sku: string | null }>(
+        `SELECT name, price, promo_price, sku FROM products WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
+        [productId, vendor.id]
+      );
+    } catch {
+      product = await queryOne<{ name: string; price: number; promo_price: number | null; sku: string | null }>(
+        `SELECT name, price, promo_price, NULL::text AS sku FROM products WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
+        [productId, vendor.id]
+      );
+    }
+    if (!product) {
+      return NextResponse.json({ ok: false, error: "Producto no encontrado" }, { status: 404 });
+    }
+    const code = String((product as any)?.sku || "").trim();
+    if (!code) {
+      return NextResponse.json({ ok: false, error: "El producto no tiene código cargado" }, { status: 400 });
+    }
+    const copies = Math.min(50, Math.max(1, Math.floor(Number(body.copies) || 1)));
+    const result = await dispatchPrint({
+      vendor,
+      type: "label",
+      extra: {
+        label: {
+          name: String(product.name || "Producto"),
+          price: Number(product.promo_price ?? product.price) || 0,
+          code,
+          copies,
+        },
+      },
+    });
+    await recordLastPrint(vendor.id, result);
+    return printResponse(result);
+  }
+
   if (!orderId) {
     return NextResponse.json({ ok: false, error: "orderId requerido" }, { status: 400 });
   }
@@ -146,7 +188,23 @@ export async function POST(request: Request) {
   );
 
   if (!order) {
-    return NextResponse.json({ ok: false, error: "Pedido no encontrado" }, { status: 404 });
+    return NextResponse.json({ error: "Pedido no encontrado" }, { status: 404 });
+  }
+
+  // Fiado impago: saldo de la cuenta para el ticket (tolerante).
+  async function fiadoBalanceExtra(vendorId: string, o: Order): Promise<{ fiadoBalance?: number }> {
+    try {
+      if ((o.payment_method as string) !== "fiado" || o.paid_at || !o.customer_phone) return {};
+      const r = await queryOne<{ balance: number }>(
+        `SELECT COALESCE(SUM(CASE WHEN kind = 'charge' THEN amount ELSE -amount END), 0) AS balance
+         FROM account_moves WHERE vendor_id = $1 AND customer_phone = $2`,
+        [vendorId, o.customer_phone]
+      );
+      const b = Math.round(Number(r?.balance) * 100) / 100;
+      return Number.isFinite(b) && b > 0 ? { fiadoBalance: b } : {};
+    } catch {
+      return {};
+    }
   }
 
   const resolvedType = type === "ticket" ? "ticket" : type === "retiro" ? "retiro" : type === "despacho" ? "despacho" : "comanda";
@@ -246,7 +304,7 @@ export async function POST(request: Request) {
       ...(resolvedType === "ticket" && isRetailVendor
         ? { docTitle: "COMPROBANTE", retail: true }
         : {}),
-      ...(fiscal ? { fiscal } : {}),
+      ...(await fiadoBalanceExtra(vendor.id, order)),
     },
   });
   await recordLastPrint(vendor.id, result);

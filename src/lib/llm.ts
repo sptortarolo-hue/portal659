@@ -10,6 +10,8 @@ export type CleanedMenuItem = {
   description?: string | null;
   price: number;
   category?: string | null;
+  /** Código de barras / SKU (columna "codigo"/"sku"/"ean"). */
+  sku?: string | null;
   /** Nombre del grupo de modificantes (columna "Grupo" del Excel). Default "Opciones". */
   group?: string | null;
   /** Opciones del modificante (columna "Modificante N descripción/precio" del Excel). */
@@ -58,6 +60,7 @@ function cleanMenuByRules(rows: Row[]): CleanedMenuItem[] {
     let price: number | null = null;
     let category: string | null = null;
     let description: string | null = null;
+    let sku: string | null = null;
 
     for (const [k, v] of Object.entries(row)) {
       const key = String(k).trim().toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
@@ -78,6 +81,9 @@ function cleanMenuByRules(rows: Row[]): CleanedMenuItem[] {
       } else if (/^(descripcion|descripción|desc|detalle|description)$/.test(key) || key.includes("descripc") || key.includes("detalle")) {
         const s = toString(v);
         if (s) description = s;
+      } else if (/^(sku|codigo|código|codigobarras|codigodebarras|ean|barcode)$/.test(key) || key.includes("codigobarra") || key === "ean13") {
+        const s = toString(v);
+        if (s) sku = s.slice(0, 64);
       }
     }
 
@@ -97,6 +103,7 @@ function cleanMenuByRules(rows: Row[]): CleanedMenuItem[] {
     const item: CleanedMenuItem = { name, price: price ?? 0 };
     if (category) item.category = category;
     if (description) item.description = description;
+    if (sku) item.sku = sku;
 
     // Grupo de los modificantes: columna "Grupo" (clave "grupo" que arma parseWorkbook).
     for (const [k, v] of Object.entries(row)) {
@@ -149,13 +156,14 @@ async function cleanMenuWithLlm(
 
   const system = `Sos un asistente que limpia y estructura el menú de un comercio gastronómico a partir de filas de una planilla de Excel. Devolvés SOLO un JSON válido (sin texto adicional) con forma:
 
-[{"name": string, "price": number, "category": string|null, "description": string|null, "group": string|null, "modifiers": [{"desc": string, "price_mod": number}]}, ...]
+[{"name": string, "price": number, "category": string|null, "description": string|null, "sku": string|null, "group": string|null, "modifiers": [{"desc": string, "price_mod": number}]}, ...]
 
 Reglas:
 - "name": nombre del plato (obligatorio). Si una fila no tiene nombre claro, omitila.
 - "price": número sin símbolos ni separadores. Si viene "1.500" interpretalo como 1500. Coma es decimal.
 - "category": categoría del menú. Usa una de las existentes si matchea (case-insensitive), si no una nueva breve (ej. "Pizzas", "Bebidas").
 - "description": descripción limpia, o null si no hay.
+- "sku": código de barras / SKU tal cual viene en la columna "codigo"/"sku"/"ean" (solo dígitos y letras, sin espacios), o null si no hay.
 - "group": nombre del grupo de modificantes, viene de la columna "grupo" de la fila (clave "grupo"). Si no hay, null.
 - "modifiers": opciones del modificante. Vienen de columnas "Modificante N descripcion" y "Modificante N precio" de la fila (claves mod1_desc/mod1_price, etc.). Armá un arreglo con la descripción y su precio (0 si no hay precio). Si no hay ninguna, dejá [].
 - Ignorá filas vacías, títulos de sección duplicados, o totales.
@@ -197,6 +205,8 @@ Reglas:
       const item: CleanedMenuItem = { name, price: price ?? 0 };
       const cat = toString(it?.category);
       if (cat) item.category = cat;
+      const sk = toString((it as any)?.sku);
+      if (sk) item.sku = sk.replace(/\s+/g, "").slice(0, 64);
       const desc = toString(it?.description);
       if (desc) item.description = desc;
       const grp = toString(it?.group);

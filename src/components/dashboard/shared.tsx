@@ -115,6 +115,10 @@ type OfferFormProps = {
   showUnit?: boolean;
   offUnit?: string;
   setOffUnit?: (v: string) => void;
+  /** Código de barras / SKU (búsqueda y etiquetas en mostrador). */
+  showSku?: boolean;
+  offSku?: string;
+  setOffSku?: (v: string) => void;
   /** Sustantivo del ítem en el título del form (default "plato"). */
   noun?: string;
   onSubmit: () => void;
@@ -142,6 +146,8 @@ export function OfferForm({
   offPackSize = "", setOffPackSize,
   showUnit = false,
   offUnit = "unidad", setOffUnit,
+  showSku = false,
+  offSku = "", setOffSku,
   noun = "plato",
   onClose,
 }: OfferFormProps) {
@@ -220,6 +226,19 @@ export function OfferForm({
                 El precio cargado es <strong>por kilo</strong>. En mostrador se pesa y no descuenta stock.
               </p>
             )}
+          </div>
+        )}
+        {showSku && setOffSku && (
+          <div>
+            <Label>Código de barras (SKU)</Label>
+            <Input
+              value={offSku}
+              onChange={(e) => setOffSku(e.target.value.trim())}
+              placeholder="Ej: 7791234567890 (vacío = sin código)"
+            />
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Para buscar y escanear en mostrador e imprimir etiquetas.
+            </p>
           </div>
         )}
         {showPrep && setOffRequiresPrep && (

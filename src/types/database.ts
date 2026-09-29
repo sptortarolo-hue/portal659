@@ -569,7 +569,7 @@ export type Order = {
   customer_phone: string;
   customer_address: string | null;
   method: "pickup" | "delivery";
-  payment_method: "whatsapp" | "efectivo" | "transferencia" | "mercadopago" | "tarjeta" | "mixto";
+  payment_method: "whatsapp" | "efectivo" | "transferencia" | "mercadopago" | "tarjeta" | "mixto" | "fiado";
   items: OrderItem[];
   total: number;
   status: OrderStatus;

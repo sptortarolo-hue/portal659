@@ -96,6 +96,18 @@ export async function POST(request: Request) {
       ? body.unit
       : null;
 
+  // SKU / código de barras: tolerante a migración sin aplicar.
+  const hasSku = await queryOne<{ exists: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1 FROM information_schema.columns
+       WHERE table_name = 'products' AND column_name = 'sku'
+     ) AS exists`
+  );
+  const sku =
+    hasSku?.exists === true && body.sku != null && String(body.sku).trim() !== ""
+      ? String(body.sku).trim().slice(0, 64)
+      : null;
+
   // Guía de talles (moda): texto, una línea por talle. Tolerante a migración sin aplicar.
   const hasSizeGuide = await queryOne<{ exists: boolean }>(
     `SELECT EXISTS (
@@ -127,11 +139,22 @@ export async function POST(request: Request) {
     }
   }
 
+  if (sku != null) {
+    const dup = await queryOne<{ id: string }>(
+      `SELECT id FROM products WHERE vendor_id = $1 AND sku = $2 LIMIT 1`,
+      [vendor.id, sku]
+    ).catch(() => null);
+    if (dup) {
+      return NextResponse.json({ error: `El código "${sku}" ya está en otro producto` }, { status: 400 });
+    }
+  }
+
   const extraCols: string[] = [];
   const extraVals: unknown[] = [];
   if (packSize != null) { extraCols.push("pack_size"); extraVals.push(packSize); }
   if (sizeGuide != null) { extraCols.push("size_guide"); extraVals.push(sizeGuide); }
   if (unit != null) { extraCols.push("unit"); extraVals.push(unit); }
+  if (sku != null) { extraCols.push("sku"); extraVals.push(sku); }
   const extraPlaceholders = extraVals.map((_, i) => `$${15 + i}`).join(", ");
   const offer = await queryOne<Record<string, unknown>>(
     `INSERT INTO products (vendor_id, name, description, price, currency, category, neighborhood, type, available, featured_today, image_url, stock, stock_low_threshold, stock_control, requires_prep, has_variants, cash_discount_excluded${extraCols.length ? ", " + extraCols.join(", ") : ""})

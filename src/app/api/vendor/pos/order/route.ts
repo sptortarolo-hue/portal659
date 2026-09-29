@@ -7,6 +7,7 @@ import { cashDiscountForItems } from "@/lib/cash-discount";
 import { adjustStockForItems, OutOfStockError, type StockMove } from "@/lib/stock";
 import { logStockMovement } from "@/lib/stock-ledger";
 import { upsertCustomerFromOrder, isRealCustomerPhone } from "@/lib/customers";
+import { validateFiadoPhone, fiadoTableReady } from "@/lib/fiados";
 import { toE164 } from "@/lib/phone";
 import {
   findOrderByClientKey,
@@ -16,7 +17,7 @@ import {
 } from "@/lib/sync-idempotency";
 import { NextResponse } from "next/server";
 
-const PAYMENT_METHODS = ["efectivo", "transferencia", "tarjeta", "mixto", "whatsapp"] as const;
+const PAYMENT_METHODS = ["efectivo", "transferencia", "tarjeta", "mixto", "whatsapp", "fiado"] as const;
 type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 
 export async function POST(request: Request) {
@@ -77,6 +78,29 @@ export async function POST(request: Request) {
   const payment = (PAYMENT_METHODS as readonly string[]).includes(paymentMethod)
     ? (paymentMethod as PaymentMethod)
     : "efectivo";
+
+  // Fiado: exige cliente identificado con teléfono real (cuaderno sin
+  // teléfono no existe). Sin descuento en efectivo (es crédito, no cash).
+  let fiadoPhone: string | null = null;
+  if (payment === "fiado") {
+    const fullVendor = await queryOne<{ whatsapp: string | null }>(
+      `SELECT whatsapp FROM vendors WHERE id = $1 LIMIT 1`,
+      [gate.vendor.id]
+    ).catch(() => null);
+    fiadoPhone = validateFiadoPhone(customerPhoneClean, (fullVendor as any)?.whatsapp || null);
+    if (!fiadoPhone) {
+      return NextResponse.json(
+        { error: "El fiado requiere nombre y celular real del cliente" },
+        { status: 400 }
+      );
+    }
+    if (!customerName?.trim()) {
+      return NextResponse.json(
+        { error: "El fiado requiere el nombre del cliente" },
+        { status: 400 }
+      );
+    }
+  }
 
   const normalizedItems: { product_id?: any; variant_id?: any; name: any; price: number; qty: number; modifiers?: any; requires_prep: boolean; pack_size?: number; unit?: string; manual?: boolean }[] = items.map((i: any) => ({
     product_id: i.product_id || undefined,
@@ -242,11 +266,22 @@ export async function POST(request: Request) {
     }
 
     const pickupNumber = await nextOrderNumber(tx, gate.vendor.id);
+    // payment_status: tolerante a migración sin aplicar.
+    let hasPayStatus = false;
+    try {
+      const pc = await tx.queryOne<{ exists: boolean }>(
+        `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'payment_status') AS exists`
+      );
+      hasPayStatus = pc?.exists === true;
+    } catch {
+      hasPayStatus = false;
+    }
     const cols = [
       "vendor_id", "customer_name", "customer_phone", "customer_address",
       "method", "payment_method", "items", "total", "status", "channel",
       "paid_at", "notes", "pickup_number", "is_preview", "cash_pct",
       "cash_discount",
+      ...(hasPayStatus ? ["payment_status"] : []),
       ...syncCols,
       ...(hasZoneCols ? ["delivery_zone_id", "delivery_zone_name", "delivery_out_of_area", "delivery_fee"] : []),
     ];
@@ -261,12 +296,14 @@ export async function POST(request: Request) {
       finalTotal,
       status,
       "mostrador",
-      now,
+      // Fiado: impago (no entra al Z hasta cubrirse).
+      payment === "fiado" ? null : now,
       notes || null,
       pickupNumber,
       previewOrder,
       cashPct,
       cashDiscount,
+      ...(hasPayStatus ? [payment === "fiado" ? "pending" : "paid"] : []),
       ...(caps.ordersClientKey ? [clientKey] : []),
       ...(caps.ordersOccurredAt ? [occurredAt] : []),
       ...(hasZoneCols ? [deliveryResolved.zoneId, deliveryResolved.zoneName, deliveryResolved.outOfArea, deliveryResolved.fee] : []),
@@ -302,6 +339,19 @@ export async function POST(request: Request) {
         total: finalTotal,
         at: now,
       });
+    }
+
+    // Fiado: cargo en cuenta corriente (tolerante a migración sin aplicar).
+    if (payment === "fiado" && order?.id && fiadoPhone && !previewOrder) {
+      try {
+        await tx.queryVoid(
+          `INSERT INTO account_moves (vendor_id, customer_phone, kind, amount, ref_order)
+           VALUES ($1, $2, 'charge', $3, $4)`,
+          [gate.vendor.id, fiadoPhone, finalTotal, order.id]
+        );
+      } catch {
+        /* sin tabla: la venta igual queda */
+      }
     }
 
     return order ?? null;

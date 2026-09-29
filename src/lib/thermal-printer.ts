@@ -36,7 +36,8 @@ export type PrintJobType =
   | "test"
   | "precuenta"
   | "cash_close"
-  | "presupuesto";
+  | "presupuesto"
+  | "label";
 
 /** Datos del presupuesto de oficio para impresión térmica. */
 export type QuotePrintData = {
@@ -602,6 +603,8 @@ export type ReceiptExtra = {
   docTitle?: string;
   /** Comprobante de venta retail: Nro. diario grande + datos del cliente. */
   retail?: boolean;
+  /** Saldo de cuenta corriente (fiado) para imprimir en el ticket. */
+  fiadoBalance?: number;
   /** Factura electrónica ARCA (se imprime bloque fiscal con CAE + QR). */
   fiscal?: FiscalPrintInfo | null;
 };
@@ -883,12 +886,17 @@ async function composeReceipt(
     order.payment_method === "efectivo" ? "Efectivo" :
     order.payment_method === "transferencia" ? "Transferencia" :
     order.payment_method === "whatsapp" ? "Coordinado" :
+    order.payment_method === "fiado" ? "Fiado" :
     "Tarjeta/Online";
   const paidStr = order.paid_at ? "PAGADO" : "PENDIENTE";
   printer.println("");
   printer.bold(!!order.paid_at);
   printer.println(`Pago: ${paymentStr} — ${paidStr}`);
   printer.bold(false);
+  // Fiado: saldo de la cuenta para que el cliente sepa cuánto debe.
+  if (order.payment_method === "fiado" && extra?.fiadoBalance != null && Number(extra.fiadoBalance) > 0) {
+    printer.println(`Saldo cta. cte.: $${Number(extra.fiadoBalance).toLocaleString("es-AR")}`);
+  }
 
   if (extra?.retail && (!order.customer_name || order.customer_name === "Mostrador")) {
     printer.println("Consumidor final");
@@ -1136,6 +1144,50 @@ async function composeCashClose(
   printer.cut();
 }
 
+export type LabelPrintData = {
+  name: string;
+  price: number;
+  /** Código a codificar (SKU/EAN). */
+  code: string;
+  /** Cantidad de etiquetas (1-50). */
+  copies?: number;
+};
+
+/**
+ * Etiqueta de góndola: nombre + precio grande + CODE128.
+ * Sin encabezado ni pie (no es un ticket). Papel de etiquetas ≠ rollo.
+ */
+async function composeLabel(
+  printer: any,
+  vendor: PrinterVendor,
+  label: LabelPrintData
+): Promise<void> {
+  const width = vendor.paper_size === "58mm" ? 32 : 48;
+  const copies = Math.min(50, Math.max(1, Math.floor(Number(label.copies) || 1)));
+  const code = String(label.code || "").trim().slice(0, 48);
+  const name = (String(label.name || "").trim() || "Producto").slice(0, width * 2);
+  for (let c = 0; c < copies; c++) {
+    printer.alignCenter();
+    printer.bold(true);
+    for (let i = 0; i < name.length; i += width) {
+      printer.println(name.slice(i, i + width));
+    }
+    printer.setTextSize(2, 2);
+    printer.println(`$${Number(label.price).toLocaleString("es-AR")}`);
+    printer.setTextSize(0, 0);
+    printer.bold(false);
+    if (code) {
+      try {
+        printer.code128(code, { width: "MEDIUM", height: 64, text: 2 });
+      } catch {
+        printer.println(code);
+      }
+      printer.println(code);
+    }
+    printer.cut();
+  }
+}
+
 async function composeTest(printer: any, vendor: PrinterVendor): Promise<void> {
   const width = vendor.paper_size === "58mm" ? 32 : 48;
 
@@ -1242,6 +1294,37 @@ export async function buildTestBuffer(vendor: PrinterVendor): Promise<BufferResu
   if (!res.ok) return { success: false, error: res.error };
   try {
     await composeTest(res.printer, vendor);
+    const buffer = (await res.printer.getBuffer()) as Buffer;
+    return { success: true, buffer };
+  } catch (e) {
+    return { success: false, error: errorMsg(e) };
+  }
+}
+
+export async function printLabel(
+  vendor: PrinterVendor,
+  label: LabelPrintData
+): Promise<{ success: boolean; error?: string }> {
+  const res = await createPrinter(vendor);
+  if (!res.ok) return { success: false, error: res.error };
+  if (!vendor.printer_ip) return { success: false, error: "IP de impresora no configurada" };
+  try {
+    await composeLabel(res.printer, vendor, label);
+    await res.printer.execute();
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: errorMsg(e) };
+  }
+}
+
+export async function buildLabelBuffer(
+  vendor: PrinterVendor,
+  label: LabelPrintData
+): Promise<BufferResult> {
+  const res = await createPrinter(vendor);
+  if (!res.ok) return { success: false, error: res.error };
+  try {
+    await composeLabel(res.printer, vendor, label);
     const buffer = (await res.printer.getBuffer()) as Buffer;
     return { success: true, buffer };
   } catch (e) {
@@ -1535,6 +1618,8 @@ export async function dispatchPrint(params: {
     docTitle?: string;
     /** Comprobante de venta retail: Nro. diario + datos del cliente. */
     retail?: boolean;
+    /** Saldo de cuenta corriente (fiado) para imprimir en el ticket. */
+    fiadoBalance?: number;
     items?: { name: string; price: number; qty: number; modifiers?: string[] }[];
     total?: number;
     /** Info de efectivo en precuenta: % y total a abonar en efectivo. */
@@ -1544,6 +1629,8 @@ export async function dispatchPrint(params: {
     closing?: CashClosingPrintData;
     /** Presupuesto de oficio (servicios): cliente + partidas + total + seña. */
     quote?: QuotePrintData;
+    /** Etiqueta de góndola (nombre + precio + CODE128). */
+    label?: LabelPrintData;
     /** Factura electrónica ARCA (bloque fiscal con CAE + QR en ticket). */
     fiscal?: FiscalPrintInfo | null;
   };
@@ -1597,9 +1684,23 @@ export async function dispatchPrint(params: {
     return { ok: r.success, mode, error: r.error };
   }
 
+  // Etiqueta de góndola: no es un pedido; nombre + precio + CODE128.
+  if (params.type === "label") {
+    const label = params.extra?.label;
+    if (!label || !label.code) return { ok: false, mode, error: "Etiqueta sin código" };
+    if (mode === "app") {
+      const built = await buildLabelBuffer(vendor, label);
+      if (!built.success) return { ok: false, mode, error: built.error };
+      const pushed = await pushToBridge(vendor.print_token, bridgeJob("label", built.buffer, vendor));
+      return { ok: pushed.ok, mode, offline: pushed.offline, error: pushed.error };
+    }
+    if (!vendor.printer_ip) return { ok: true, mode, skipped: true };
+    const r = await printLabel(vendor, label);
+    return { ok: r.success, mode, error: r.error };
+  }
+
   // Presupuesto de oficio: no es un pedido; imprime el cotizado guardado.
-  if (params.type === "presupuesto") {
-    const quote = params.extra?.quote;
+  if (params.type === "presupuesto") {    const quote = params.extra?.quote;
     if (!quote) return { ok: false, mode, error: "Presupuesto requerido" };
     if (mode === "app") {
       const built = await buildPresupuestoBuffer(vendor, quote);

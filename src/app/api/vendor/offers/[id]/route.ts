@@ -18,7 +18,7 @@ export async function PATCH(
     "available", "featured_today", "stock", "promo_price",
     "stock_low_threshold", "currency", "neighborhood", "type", "unit",
     "has_variants", "stock_control", "requires_prep", "cash_discount_excluded",
-    "pack_size", "size_guide", "promo_only",
+    "pack_size", "size_guide", "promo_only", "sku",
   ] as const;
 
   const safeUpdate: Record<string, unknown> = {};
@@ -71,6 +71,32 @@ export async function PATCH(
       safeUpdate.unit = safeUpdate.unit === "kg" ? "kg" : "unidad";
     } else {
       delete safeUpdate.unit;
+    }
+  }
+  // SKU: tolerante a migración sin aplicar; vacío limpia.
+  if ("sku" in safeUpdate) {
+    const hasSku = await queryOne<{ exists: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1 FROM information_schema.columns
+         WHERE table_name = 'products' AND column_name = 'sku'
+       ) AS exists`
+    );
+    if (hasSku?.exists === true) {
+      safeUpdate.sku =
+        safeUpdate.sku != null && String(safeUpdate.sku).trim() !== ""
+          ? String(safeUpdate.sku).trim().slice(0, 64)
+          : null;
+    } else {
+      delete safeUpdate.sku;
+    }
+  }
+  if ("sku" in safeUpdate && safeUpdate.sku != null) {
+    const dup = await queryOne<{ id: string }>(
+      `SELECT id FROM products WHERE vendor_id = $1 AND sku = $2 AND id <> $3 LIMIT 1`,
+      [vendor.id, safeUpdate.sku, params.id]
+    ).catch(() => null);
+    if (dup) {
+      return NextResponse.json({ error: `El código "${safeUpdate.sku}" ya está en otro producto` }, { status: 400 });
     }
   }
   if ("cash_discount_excluded" in safeUpdate) {

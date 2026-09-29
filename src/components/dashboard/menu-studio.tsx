@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Modal } from "@/components/ui/modal";
 import {
   OfferForm,
@@ -118,6 +119,11 @@ export function MenuStudio({
 }: Props) {
   const [view, setView] = useState<View>("productos");
   const [showImport, setShowImport] = useState(false);
+  // Etiquetas de góndola (requiere impresora + SKU en el producto).
+  const [showLabels, setShowLabels] = useState(false);
+  const [labelProductId, setLabelProductId] = useState("");
+  const [labelCopies, setLabelCopies] = useState("5");
+  const [labelBusy, setLabelBusy] = useState(false);
   const [saving, setSaving] = useState(false);
   const [costByProduct, setCostByProduct] = useState<Record<string, CostInfo>>({});
   const [costsNonce, setCostsNonce] = useState(0);
@@ -144,6 +150,8 @@ export function MenuStudio({
   const [offPackSize, setOffPackSize] = useState("");
   // Unidad de venta (balanza): "unidad" o "kg" (precio por kilo).
   const [offUnit, setOffUnit] = useState("unidad");
+  // Código de barras / SKU (búsqueda y etiquetas en mostrador).
+  const [offSku, setOffSku] = useState("");
 
   // Drawer (desktop).
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -235,6 +243,7 @@ export function MenuStudio({
     setOffCashExcluded(false);
     setOffPackSize("");
     setOffUnit("unidad");
+    setOffSku("");
   }
 
   function startEdit(offer: Offer) {
@@ -253,6 +262,7 @@ export function MenuStudio({
     setOffCashExcluded(!!offer.cash_discount_excluded);
     setOffPackSize(offer.pack_size ? String(offer.pack_size) : "");
     setOffUnit((offer as any).unit === "kg" ? "kg" : "unidad");
+    setOffSku((offer as any).sku ? String((offer as any).sku) : "");
     setShowForm(true);
     setMsg("");
   }
@@ -310,6 +320,7 @@ export function MenuStudio({
       cash_discount_excluded: offCashExcluded,
       pack_size: offPackSize ? Math.floor(Number(offPackSize)) : null,
       unit: isComercio ? offUnit : undefined,
+      sku: isComercio && offSku.trim() ? offSku.trim() : null,
     };
 
     const res = editingId
@@ -552,6 +563,9 @@ export function MenuStudio({
       showUnit={isComercio}
       offUnit={offUnit}
       setOffUnit={setOffUnit}
+      showSku={isComercio}
+      offSku={offSku}
+      setOffSku={setOffSku}
       onClose={closeEditor}
     />
   );
@@ -708,6 +722,19 @@ export function MenuStudio({
                 📥 Importar Excel
               </Button>
               <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  const first = offers.find((o) => (o as any).sku);
+                  setLabelProductId(first ? first.id : offers[0]?.id || "");
+                  setLabelCopies("5");
+                  setShowLabels(true);
+                }}
+              >
+                🏷️ Etiquetas
+              </Button>
+              <Button
                 size="sm"
                 onClick={() => {
                   if (editingId || showForm) closeEditor();
@@ -815,6 +842,83 @@ export function MenuStudio({
         }}
         isComercio={isComercio}
       />
+
+      {/* Etiquetas de góndola (requiere SKU + impresora con plan) */}
+      <Modal
+        open={showLabels}
+        onClose={() => setShowLabels(false)}
+        title="Imprimir etiquetas"
+        footer={
+          <>
+            <Button
+              type="button"
+              className="flex-1"
+              disabled={labelBusy || !labelProductId}
+              onClick={async () => {
+                setLabelBusy(true);
+                try {
+                  const res = await fetch("/api/print", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      type: "label",
+                      productId: labelProductId,
+                      copies: Math.min(50, Math.max(1, Math.floor(Number(labelCopies) || 1))),
+                    }),
+                  });
+                  const data = await res.json().catch(() => ({}));
+                  if (res.ok && data.ok) {
+                    setMsg("Etiquetas enviadas a la impresora ✓");
+                    setShowLabels(false);
+                  } else {
+                    setMsg(data.error || "No se pudieron imprimir");
+                  }
+                } catch {
+                  setMsg("Sin conexión con la impresora");
+                }
+                setLabelBusy(false);
+              }}
+            >
+              {labelBusy ? "Imprimiendo…" : "Imprimir"}
+            </Button>
+            <Button type="button" variant="outline" onClick={() => setShowLabels(false)}>
+              Cancelar
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <div>
+            <Label>Producto (con código)</Label>
+            <select
+              value={labelProductId}
+              onChange={(e) => setLabelProductId(e.target.value)}
+              className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+            >
+              <option value="">Elegí producto…</option>
+              {offers.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.name}{(o as any).sku ? ` · ${(o as any).sku}` : " · sin código"}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <Label>Copias (1-50)</Label>
+            <Input
+              type="number"
+              min={1}
+              max={50}
+              value={labelCopies}
+              onChange={(e) => setLabelCopies(e.target.value)}
+              className="mt-1"
+            />
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Nombre + precio + código de barras. Usá papel de etiquetas (no el rollo de tickets).
+          </p>
+        </div>
+      </Modal>
 
       {/* Precios masivos (desktop) */}
       <Modal

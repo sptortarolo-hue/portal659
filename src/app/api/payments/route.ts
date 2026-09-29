@@ -18,16 +18,23 @@ export async function POST(request: Request) {
   const body = await request.json();
   const { vendorId, items, total, customerName, customerPhone, customerAddress, method, isPreview, deliveryZoneId, deliveryOutOfArea } = body;
 
-  if (!vendorId || !items || !total) {
-    return NextResponse.json({ error: "Faltan datos" }, { status: 400 });
-  }
-
   // En modo prueba nunca se cobra online con dinero real.
   if (isPreview) {
     return NextResponse.json(
       { error: "Los pagos online están deshabilitados en modo prueba." },
       { status: 400 }
     );
+  }
+
+  // Link de cobro de fiado: { vendorId, debtPhone, debtAmount }.
+  // Preferencia de ítem único; el webhook registra el pago en cuenta
+  // corriente (NO crea pedido).
+  if (typeof body?.debtPhone === "string" && body?.debtAmount != null) {
+    return debtPreference(body, request);
+  }
+
+  if (!vendorId || !items || !total) {
+    return NextResponse.json({ error: "Faltan datos" }, { status: 400 });
   }
 
   const vendor = await queryOne<
@@ -155,9 +162,94 @@ export async function POST(request: Request) {
   }
 }
 
+/**
+ * Link de cobro de fiado: genera una preferencia de ítem único
+ * ("Saldo cuenta corriente") con metadata debt_phone. El webhook, al
+ * aprobarse, registra el pago en cuenta corriente (NO crea pedido).
+ * Requiere plan con pos/crm (mismo alcance que el fiado en mostrador).
+ */
+async function debtPreference(body: any, request: Request) {
+  const { toE164 } = await import("@/lib/phone");
+  const { getVendorByRequest } = await import("@/lib/vendor-utils");
+  const vendorId = String(body?.vendorId || "");
+  // Solo el dueño/admin del comercio genera links de cobro.
+  try {
+    const { vendor: caller } = await getVendorByRequest(request);
+    if (!caller || caller.id !== vendorId) {
+      return NextResponse.json({ error: "No autorizado" }, { status: 403 });
+    }
+  } catch {
+    return NextResponse.json({ error: "No autorizado" }, { status: 403 });
+  }
+  const phone = toE164(String(body?.debtPhone || ""));
+  const amount = Math.round(Number(body?.debtAmount) * 100) / 100;
+  if (!vendorId || !phone || !Number.isFinite(amount) || amount <= 0) {
+    return NextResponse.json({ error: "Faltan datos (comercio, teléfono y monto)" }, { status: 400 });
+  }
+  const vendor = await queryOne<
+    { store_name: string; slug: string } & VendorMpRow
+  >(
+    `SELECT id, store_name, slug, mp_user_id, mp_access_token, mp_refresh_token, mp_public_key, mp_expires_at, mp_connected_at
+     FROM vendors WHERE id = $1 LIMIT 1`,
+    [vendorId]
+  );
+  if (!vendor) {
+    return NextResponse.json({ error: "Comercio no encontrado" }, { status: 404 });
+  }
+  const mpToken = await getVendorMpToken(vendor);
+  if (!mpToken) {
+    return NextResponse.json(
+      { error: "El comercio todavía no conectó Mercado Pago", code: "vendor_not_connected" },
+      { status: 409 }
+    );
+  }
+  try {
+    const preference = {
+      items: [
+        {
+          title: `Saldo cuenta corriente — ${vendor.store_name}`,
+          unit_price: amount,
+          quantity: 1,
+          currency_id: "ARS",
+        },
+      ],
+      metadata: {
+        vendor_id: vendorId,
+        debt_phone: phone,
+        customer_phone: phone,
+      },
+      external_reference: `portal659_fiado_${vendorId}_${phone.replace(/\D/g, "")}_${Date.now()}`,
+      back_urls: {
+        success: `${getSiteUrl()}/tienda/${vendor.slug || vendorId}`,
+        failure: `${getSiteUrl()}/tienda/${vendor.slug || vendorId}`,
+        pending: `${getSiteUrl()}/tienda/${vendor.slug || vendorId}`,
+      },
+      auto_return: "approved",
+      notification_url: `${getSiteUrl()}/api/webhooks/mercadopago`,
+    };
+    const res = await fetch("https://api.mercadopago.com/checkout/preferences", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${mpToken}`,
+      },
+      body: JSON.stringify(preference),
+    });
+    const data = await res.json();
+    if (data.id) {
+      const isTest = mpToken.startsWith("TEST-");
+      const initPoint = isTest && data.sandbox_init_point ? data.sandbox_init_point : data.init_point;
+      return NextResponse.json({ preferenceId: data.id, initPoint, sandbox: isTest });
+    }
+    console.warn(`[MP preference] FAIL debt vendor=${vendorId} message=${data.message || data.error || "sin detalle"}`);
+    return NextResponse.json({ error: data.message || "Error al crear preferencia" }, { status: 500 });
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message || "Error de conexión con Mercado Pago" }, { status: 500 });
+  }
+}
+
 // El checkout le pregunta "¿puedo cobrar online?" por un comercio dado.
-export async function GET(request: Request) {
-  // Sin OK de MP el checkout nunca ofrece pago online.
+export async function GET(request: Request) {  // Sin OK de MP el checkout nunca ofrece pago online.
   if (!isMpEnabled()) {
     return NextResponse.json({ configured: false, reason: "mp_disabled" });
   }

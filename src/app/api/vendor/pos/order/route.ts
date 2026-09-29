@@ -259,6 +259,21 @@ export async function POST(request: Request) {
       hasZoneCols = false;
     }
   }
+  // closed_at (venta directa nace cerrada): tolerante a migración sin aplicar.
+  let hasClosedAt = false;
+  if (direct) {
+    try {
+      const cc = await queryOne<{ exists: boolean }>(
+        `SELECT EXISTS (
+           SELECT 1 FROM information_schema.columns
+           WHERE table_name = 'orders' AND column_name = 'closed_at'
+         ) AS exists`
+      );
+      hasClosedAt = cc?.exists === true;
+    } catch {
+      hasClosedAt = false;
+    }
+  }
   let order: Record<string, any> | null = null;
   try {
     order = await withTransaction(async (tx) => {
@@ -289,7 +304,7 @@ export async function POST(request: Request) {
       "method", "payment_method", "items", "total", "status", "channel",
       "paid_at", "notes", "pickup_number", "is_preview", "cash_pct",
       "cash_discount",
-      ...(direct ? ["closed_at"] : []),
+      ...(direct && hasClosedAt ? ["closed_at"] : []),
       ...(hasPayStatus ? ["payment_status"] : []),
       ...syncCols,
       ...(hasZoneCols ? ["delivery_zone_id", "delivery_zone_name", "delivery_out_of_area", "delivery_fee"] : []),
@@ -312,6 +327,7 @@ export async function POST(request: Request) {
       previewOrder,
       cashPct,
       cashDiscount,
+      ...(direct && hasClosedAt ? [now] : []),
       ...(hasPayStatus ? [payment === "fiado" ? "pending" : "paid"] : []),
       ...(caps.ordersClientKey ? [clientKey] : []),
       ...(caps.ordersOccurredAt ? [occurredAt] : []),
@@ -381,6 +397,8 @@ export async function POST(request: Request) {
         /* sigue al throw original */
       }
     }
+    const { logApiError } = await import("@/lib/api-error");
+    logApiError("pos/order", e);
     throw e;
   }
 

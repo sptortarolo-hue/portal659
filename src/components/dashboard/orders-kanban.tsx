@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { Order, OrderStatus } from "@/types/database";
 import {
   ORDER_STATUS_LABELS,
@@ -11,6 +11,7 @@ import {
   orderCondition,
   CONDITION_META,
   orderReadyLabel,
+  kitchenProgress,
 } from "@/lib/order-utils";
 import { AlertTriangle, ChevronRight, Banknote, MessageSquare, CheckCircle, Truck, Plus, ChefHat, Package } from "lucide-react";
 import { apartadoInfo } from "@/lib/apartado";
@@ -24,6 +25,8 @@ type OrdersKanbanProps = {
   isLoading?: boolean;
   /** Si hay filtro de estado, mostrar solo esa columna. */
   focusStatus?: string | null;
+  /** El padre muestra errores de avance (ej: 409 por tildado incompleto). */
+  onError?: (msg: string) => void;
 };
 
 const ACTIVE_STATUSES: OrderStatus[] = [
@@ -100,6 +103,14 @@ function OrderCard({
                 Nro. {order.pickup_number}
               </span>
             )}
+            {isRetail && order.status === "preparing" && (() => {
+              const prog = kitchenProgress(order);
+              return (
+                <span className="inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-amber-100 text-amber-800 border-amber-200">
+                  📦 {prog.done}/{prog.total}
+                </span>
+              );
+            })()}
             {order.payment_method === "transferencia" && order.channel === "app" && order.payment_status === "pending" && (
               <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-amber-100 text-amber-700 border-amber-200">
                 <AlertTriangle className="h-2.5 w-2.5" /> Pago pendiente
@@ -294,7 +305,37 @@ export function OrdersKanban({
   onRefresh,
   isLoading,
   focusStatus,
+  onError,
 }: OrdersKanbanProps) {
+  // "Exigir tildado" por comercio (mismo flag que la comanda gastro; en
+  // retail vale para el empaque). Solo retail lo ve acá.
+  const [strictPack, setStrictPack] = useState(false);
+  const [strictBusy, setStrictBusy] = useState(false);
+  useEffect(() => {
+    if (!isRetail) return;
+    fetch("/api/vendor/me")
+      .then((r) => r.json())
+      .then((d) => setStrictPack(d?.vendor?.kitchen_strict_close === true))
+      .catch(() => {});
+  }, [isRetail]);
+  async function toggleStrictPack() {
+    if (strictBusy) return;
+    setStrictBusy(true);
+    try {
+      const res = await fetch("/api/vendor/me", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kitchen_strict_close: !strictPack }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data?.error) throw new Error(data?.error || "No se pudo guardar");
+      setStrictPack(!strictPack);
+    } catch {
+      onError?.("No se pudo cambiar el modo de tildado");
+    } finally {
+      setStrictBusy(false);
+    }
+  }
   const steps = flowSteps(isRetail);
   const activeSteps = steps.filter((s) => ACTIVE_STATUSES.includes(s));
   // Con filtro de estado (ej. clic en "Enviados"), mostrar solo esa columna
@@ -364,7 +405,7 @@ export function OrdersKanban({
         });
         const data = await res.json();
         if (data.error) {
-          console.error("Error updating order:", data.error);
+          onError?.(String(data.error));
           return;
         }
         if (next === "preparing" && needsKitchen) {
@@ -376,10 +417,10 @@ export function OrdersKanban({
         }
         onRefresh?.();
       } catch {
-        console.error("Error al actualizar el pedido");
+        onError?.("No se pudo actualizar el pedido");
       }
     },
-    [isRetail, onRefresh]
+    [isRetail, onRefresh, onError]
   );
 
   // Filtro terminal (ej. "completed"): el Kanban solo muestra estados activos.
@@ -394,7 +435,21 @@ export function OrdersKanban({
   }
 
   return (
-    <div className="flex gap-3 overflow-x-auto pb-4 px-1">
+    <div className="space-y-2">
+      {isRetail && (
+        <div className="flex items-center justify-end px-1">
+          <button
+            type="button"
+            onClick={toggleStrictPack}
+            disabled={strictBusy}
+            title={strictPack ? "Listo exige tildar todo el empaque (tocá para permitir cierre sin tildar)" : "Cierre libre: Listo no exige tildar (tocá para exigir)"}
+            className="text-xs font-medium text-muted-foreground hover:text-foreground disabled:opacity-40"
+          >
+            {strictPack ? "☑️ Exigir tildado para Listo" : "⬜ Cierre libre (Listo sin tildar)"}
+          </button>
+        </div>
+      )}
+      <div className="flex gap-3 overflow-x-auto pb-4 px-1">
       {visibleSteps.map((status) => (
         <KanbanColumn
           key={status}
@@ -406,6 +461,7 @@ export function OrdersKanban({
           count={ordersByStatus[status]?.length || 0}
         />
       ))}
+      </div>
     </div>
   );
 }

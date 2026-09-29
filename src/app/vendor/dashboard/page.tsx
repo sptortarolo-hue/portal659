@@ -1105,14 +1105,15 @@ function VendorDashboardInner() {
       {/* Desktop: Kanban board */}
       <div className="hidden lg:block">
         <OrdersKanban
-          orders={filteredOrders}
-          isRetail={isRetail}
-          selectedOrder={selectedOrder}
-          onSelectOrder={setSelectedOrder}
-          onRefresh={loadOrdersOnly}
-          isLoading={ordersLoading}
-          focusStatus={orderStatusFilter}
-        />
+            orders={filteredOrders}
+            isRetail={isRetail}
+            selectedOrder={selectedOrder}
+            onSelectOrder={setSelectedOrder}
+            onRefresh={loadOrdersOnly}
+            isLoading={ordersLoading}
+            focusStatus={orderStatusFilter}
+            onError={(m) => setMsg(`Error: ${m}`)}
+          />
       </div>
 
       {/* Mobile: Grid list */}
@@ -1948,6 +1949,10 @@ function VendorDashboardInner() {
           blockUnpaid={!!vendor?.block_unpaid_orders}
           onMarkPaid={markOrderPaid}
           onApartadoChanged={(updated) => {
+            setOrders((prev) => prev.map((o) => (o.id === updated.id ? { ...o, ...updated } : o)));
+            setSelectedOrder((prev) => (prev && prev.id === updated.id ? { ...prev, ...updated } as Order : prev));
+          }}
+          onPacked={(updated) => {
             setOrders((prev) => prev.map((o) => (o.id === updated.id ? { ...o, ...updated } : o)));
             setSelectedOrder((prev) => (prev && prev.id === updated.id ? { ...prev, ...updated } as Order : prev));
           }}

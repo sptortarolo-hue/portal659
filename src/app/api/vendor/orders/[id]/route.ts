@@ -245,17 +245,18 @@ export async function PATCH(
     );
   }
 
-  // Cierre estricto de cocina (solo gastronomía con elaboración): para
-  // marcar "Listo" todos los ítems tienen que estar tildados en el KDS.
-  // Retail (moda/comercio) y pedidos sin cocina no pasan por este gate.
-  // El comercio puede apagarlo (on/off "Exigir tildado" en la Comanda).
+  // Cierre estricto con tildado (on/off "Exigir tildado" por comercio):
+  // - Gastronomía con elaboración: tildado de cocina en el KDS.
+  // - Retail (moda/comercio): tildado de empaque en el detalle (todos los
+  //   ítems, sin distinción de requires_prep). Pedidos sin cocina no pasan.
   if (status === "ready" && fullVendor?.kitchen_strict_close !== false) {
     const vertical = fullVendor?.vertical ?? null;
     const isGastro = vertical === null || vertical === "gastronomia";
+    const isRetail = vertical === "moda" || vertical === "comercio";
     const needsKitchen = (currentOrder.items || []).some(
       (i) => (i as OrderItem)?.requires_prep !== false
     );
-    if (isGastro && needsKitchen) {
+    if ((isGastro && needsKitchen) || isRetail) {
       const itemsLen = (currentOrder.items || []).length;
       const rawDone = Array.isArray(currentOrder.kitchen_done) ? currentOrder.kitchen_done : [];
       const pending = itemsLen - rawDone.filter(Boolean).length;
@@ -265,7 +266,7 @@ export async function PATCH(
       ).length;
       if (pending - legacyDone > 0) {
         return NextResponse.json(
-          { error: `Faltan ${pending - legacyDone} ítems por tildar en cocina`, code: "kitchen_incomplete" },
+          { error: isRetail ? `Faltan ${pending - legacyDone} productos por tildar en el empaque` : `Faltan ${pending - legacyDone} ítems por tildar en cocina`, code: "kitchen_incomplete" },
           { status: 409 }
         );
       }

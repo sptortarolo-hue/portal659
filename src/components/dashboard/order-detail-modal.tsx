@@ -62,9 +62,11 @@ type Props = {
   isRetail?: boolean;
   /** El padre refresca lista + orden seleccionada tras una acción de apartado. */
   onApartadoChanged?: (order: Order) => void;
+  /** El padre refresca lista + orden seleccionada tras tildar empaque. */
+  onPacked?: (order: Order) => void;
 };
 
-export default function OrderDetailModal({ order, vendorName, onClose, onAction, onModify, offers = [], canPrint = true, transfer, blockUnpaid = false, onMarkPaid, isRetail = false, onApartadoChanged }: Props) {
+export default function OrderDetailModal({ order, vendorName, onClose, onAction, onModify, offers = [], canPrint = true, transfer, blockUnpaid = false, onMarkPaid, isRetail = false, onApartadoChanged, onPacked }: Props) {
   const [editing, setEditing] = useState(false);
   const [editItems, setEditItems] = useState<OrderItem[]>([]);
   const [modNotes, setModNotes] = useState("");
@@ -79,6 +81,71 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
   const [mpBusy, setMpBusy] = useState(false);
   const [apBusy, setApBusy] = useState<"deposit" | "remainder" | null>(null);
   const [apError, setApError] = useState("");
+
+  // Tildado de empaque (retail, estado Empaquetando): mismo array kitchen_done
+  // que la comanda gastro. Solo lectura + tildado (la edición sigue en Nuevo).
+  const canPack = isRetail && order.status === "preparing" && !editing;
+  const [packDone, setPackDone] = useState<boolean[]>([]);
+  const [packBusy, setPackBusy] = useState(false);
+  const [strictPack, setStrictPack] = useState(false);
+  useEffect(() => {
+    const base = Array.isArray(order.kitchen_done) ? [...order.kitchen_done] : [];
+    while (base.length < (order.items || []).length) base.push(false);
+    setPackDone(base.slice(0, (order.items || []).length));
+  }, [order.id, order.kitchen_done, (order.items || []).length]);
+  useEffect(() => {
+    if (!isRetail) return;
+    fetch("/api/vendor/me")
+      .then((r) => r.json())
+      .then((d) => setStrictPack(d?.vendor?.kitchen_strict_close === true))
+      .catch(() => {});
+  }, [isRetail]);
+  const packTotal = (order.items || []).length;
+  const packCount = packDone.filter(Boolean).length;
+  const packAllDone = packTotal > 0 && packCount >= packTotal;
+  async function togglePack(index: number) {
+    if (!canPack || packBusy) return;
+    setPackBusy(true);
+    const prev = [...packDone];
+    const next = [...packDone];
+    next[index] = !next[index];
+    setPackDone(next);
+    try {
+      const res = await fetch(`/api/vendor/orders/${order.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ toggle_item: index }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data?.error) throw new Error(data?.error || "No se pudo tildar");
+      const server = Array.isArray(data?.order?.kitchen_done) ? [...data.order.kitchen_done] : next;
+      while (server.length < packTotal) server.push(false);
+      setPackDone(server.slice(0, packTotal));
+      if (data?.order) onPacked?.(data.order as Order);
+    } catch {
+      setPackDone(prev);
+    } finally {
+      setPackBusy(false);
+    }
+  }
+  async function markAllPack() {
+    if (!canPack || packBusy) return;
+    setPackBusy(true);
+    try {
+      const full = Array(packTotal).fill(true);
+      const res = await fetch(`/api/vendor/orders/${order.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kitchen_done: full }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data?.error) throw new Error(data?.error || "No se pudo tildar");
+      setPackDone(full);
+      if (data?.order) onPacked?.(data.order as Order);
+    } catch { /* conserva estado local */ } finally {
+      setPackBusy(false);
+    }
+  }
   useEffect(() => {
     setMpLink(null);
     setApError("");
@@ -494,14 +561,42 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
           {/* Items - View mode */}
           {!editing && (
             <div>
-              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Productos</h3>
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                  {canPack ? `Empaque ${packCount}/${packTotal}` : "Productos"}
+                </h3>
+                {canPack && !packAllDone && (
+                  <button
+                    type="button"
+                    onClick={markAllPack}
+                    disabled={packBusy}
+                    className="text-xs font-medium text-primary hover:underline disabled:opacity-40"
+                  >
+                    Tildar todos
+                  </button>
+                )}
+              </div>
               <div className="space-y-1.5">
                 {(order.items || []).map((item, i) => (
                   <div key={i} className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="text-sm break-words">
-                        <span className="font-bold">{(item as any).unit === "kg" ? `${Number(item.qty).toLocaleString("es-AR", { maximumFractionDigits: 3 })}kg` : `${item.qty}x`}</span> {item.name}
-                      </p>
+                    <div className="min-w-0 flex items-start gap-2">
+                      {canPack && (
+                        <button
+                          type="button"
+                          onClick={() => togglePack(i)}
+                          disabled={packBusy}
+                          aria-label={packDone[i] ? `Destildar ${item.name}` : `Tildar ${item.name} como empaquetado`}
+                          className={`mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md border-2 text-[12px] font-bold transition-colors disabled:opacity-40 ${
+                            packDone[i] ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/40 text-transparent"
+                          }`}
+                        >
+                          ✓
+                        </button>
+                      )}
+                      <div className="min-w-0">
+                        <p className={`text-sm break-words ${packDone[i] && canPack ? "line-through text-muted-foreground" : ""}`}>
+                          <span className="font-bold">{(item as any).unit === "kg" ? `${Number(item.qty).toLocaleString("es-AR", { maximumFractionDigits: 3 })}kg` : `${item.qty}x`}</span> {item.name}
+                        </p>
                       {item.modifiers && item.modifiers.length > 0 && (
                         <p className="text-[10px] text-muted-foreground/70 pl-5">
                           ({item.modifiers.join(", ")})
@@ -511,6 +606,7 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
                     <span className="text-sm font-medium whitespace-nowrap shrink-0">
                       ${orderLineTotal(item).toLocaleString("es-AR")}
                     </span>
+                  </div>
                   </div>
                 ))}
               </div>
@@ -772,6 +868,13 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
                     >
                       {printing ? "🖨️ Imprimiendo..." : "🖨️ Marcar como enviado + imprimir comprobante"}
                     </Button>
+                  </div>
+                ) : isRetail && strictPack && nextStatus === "ready" && !packAllDone ? (
+                  <div
+                    className="w-full h-10 rounded-xl font-bold text-sm border border-border text-muted-foreground bg-muted/50 flex items-center justify-center gap-2"
+                    title="Tildá todos los productos del empaque para marcar Listo"
+                  >
+                    ☐ Tildá todo ({packCount}/{packTotal})
                   </div>
                 ) : (
                   <Button

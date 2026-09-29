@@ -143,12 +143,19 @@ export function Mostrador({ vendorId }: { vendorId?: string | null }) {
   const [items, setItems] = useState<LineItem[]>([]);
   const [payment, setPayment] = useState("efectivo");
   const [customerName, setCustomerName] = useState("");
-  const [method, setMethod] = useState<"pickup" | "delivery">("pickup");
+  const [method, setMethod] = useState<"pickup" | "delivery" | "direct">("pickup");
   const [customerPhone, setCustomerPhone] = useState("");
   const [customerAddress, setCustomerAddress] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
+  // El mensaje vive dentro del sheet mobile: al cambiar, se scrollea a la
+  // vista (antes los errores quedaban tapados detrás y parecía que no pasaba nada).
+  const msgRef = useRef<HTMLParagraphElement | null>(null);
+  useEffect(() => {
+    if (msg) msgRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [msg]);
+  const msgIsErr = /^(No se pudo|Sin |Error|Hay |Ingresá|El envío|Completá)/.test(msg) || msg.includes("⚠️");
   const [recent, setRecent] = useState<MostradorOrder[]>([]);
   const [query, setQuery] = useState("");
   const [activeCat, setActiveCat] = useState<string | null>(null);
@@ -307,6 +314,10 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
         const vertical = (me?.vendor?.vertical as string | undefined) ?? null;
         setCashPct(pct);
         setIsRetail(vertical === "comercio" || vertical === "moda");
+        // Retail: la venta directa es el caso común (retiro con pedido queda opcional).
+        if (vertical === "comercio" || vertical === "moda") {
+          setMethod((m) => (m === "pickup" ? "direct" : m));
+        }
         // Config de envío por zona (espejo visual; el servidor resuelve).
         setDeliveryMode(normalizeDeliveryMode((me?.vendor as any)?.delivery_mode));
         setDeliveryBaseFee((me?.vendor as any)?.delivery_fee != null ? Number((me?.vendor as any).delivery_fee) : null);
@@ -752,16 +763,32 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
   // Wrapper anti-silencio: cualquier excepción inesperada del cobro deja
   // mensaje visible y desbloquea el botón (antes quedaba en "Cobrando..."
   // para siempre y los toques siguientes no hacían nada).
-  async function charge(withReceipt: boolean) {
+  async function charge(withReceipt: boolean, forceFiscal?: boolean) {
+    // Migaja de inicio (fire-and-forget): si el tap llega hasta acá, el
+    // servidor lo ve en docker logs aunque todo lo demás falle.
     try {
-      await chargeInner(withReceipt);
+      fetch("/api/client-error", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: `mostrador:charge:start withReceipt=${withReceipt} items=${items.length} payment=${payment} method=${method}`,
+          pathname: "/vendor (mostrador)",
+        }),
+      }).catch(() => {});
+    } catch { /* noop */ }
+    try {
+      await chargeInner(withReceipt, forceFiscal);
     } catch (e) {
       console.error("[mostrador] charge", e);
       try {
         fetch("/api/client-error", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ where: "mostrador:charge", error: String(e) }),
+          body: JSON.stringify({
+            message: `mostrador:charge:fail ${String((e as Error)?.message || e).slice(0, 200)}`,
+            stack: String((e as Error)?.stack || "").slice(0, 1000),
+            pathname: "/vendor (mostrador)",
+          }),
         }).catch(() => {});
       } catch { /* noop */ }
       setMsg("No se pudo registrar el pedido (error inesperado, reintentá)");
@@ -769,8 +796,13 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
     }
   }
 
-  async function chargeInner(withReceipt: boolean) {
+  async function chargeInner(withReceipt: boolean, forceFiscal?: boolean) {
     if (items.length === 0) return;
+
+    // Venta directa: retail sin pedido (nace cerrada). Retiro/delivery = pedido.
+    const direct = method === "direct";
+    // Fiscal: botón explícito en venta directa; toggle en el resto.
+    const useFiscal = fiscalReady && (forceFiscal ?? withFiscal);
 
     // Ítems por peso sin peso cargado: no se puede cobrar.
     const pendingKg = items.find((i) => i.unit === "kg" && !(Number(i.qty) > 0));
@@ -803,7 +835,9 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
       total,
       paymentMethod: payment,
       customerName: customerName || "Mostrador",
-      method,
+      // La DB solo admite pickup/delivery: la directa viaja como pickup + flag.
+      method: direct ? "pickup" : method,
+      direct,
       customerPhone: isDelivery ? deliveryPhoneE164 : (toE164(customerPhone) || undefined),
       customerAddress: isDelivery ? fullAddr : undefined,
       deliveryZoneId: isDelivery && posZonesMode && !posOutOfAreaFlag && posActiveZoneId ? posActiveZoneId : undefined,
@@ -866,7 +900,8 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
       // Documentos a imprimir (igual que online: comanda si hay cocina +
       // comprobante si lo pidió). Se encolan y se intentan en listener local.
       const printDocs: { doc: ContingencyKind; kind: "comanda" | "ticket" | "retiro"; payload: Record<string, any> }[] = [];
-      if (needsKitchen) {
+      // Venta directa: sin comanda (las líneas manuales marcan requires_prep).
+      if (needsKitchen && !direct) {
         printDocs.push({
           doc: "COMANDA",
           kind: "comanda",
@@ -954,7 +989,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
           ? " · 🖨️ impresa local"
           : ` · ⚠️ no salió en local: ${failedDocs.join(" + ")} (en cola para imprimir)`;
       }
-      if (withFiscal && fiscalReady) offMsg += " · 🧾 sin factura (requiere conexión)";
+      if (useFiscal) offMsg += " · 🧾 sin factura (requiere conexión)";
       setMsg(offMsg);
       clearSaleForm();
     };
@@ -992,7 +1027,9 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
     // El servidor recalcula el descuento en efectivo (pos/order): el total
     // cobrado real viene en data.order.total.
     const netTotal = Number(data.order?.total ?? total);
-    const baseMsg = isDelivery
+    const baseMsg = direct
+      ? `Venta registrada $${netTotal.toLocaleString("es-AR")}${withReceipt ? " · comprobante" : ""}`
+      : isDelivery
       ? "Pedido a domicilio registrado"
       : `Cobrado $${netTotal.toLocaleString("es-AR")}${withReceipt ? (isRetail ? " · comprobante" : " · comprobante de retiro") : ""}`;
 
@@ -1029,9 +1066,10 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
     // Comanda de cocina: sale al instante siempre (la cocina no espera al CAE).
     // El ticket al cliente sale después: junto al CAE si hay fiscal, o
     // encadenado a la comanda como antes si no hay.
-    const wantFiscalTicket = withFiscal && fiscalReady && data.orderId && withReceipt && !isDelivery;
+    const wantFiscalTicket = useFiscal && data.orderId && withReceipt && !isDelivery;
     let comandaError: string | null = null;
-    if (needsKitchen) {
+    // Venta directa: sin comanda (no hay pedido ni cocina que avisar).
+    if (needsKitchen && !direct) {
       const comandaP = checkPrintRes(
         fetch("/api/print", {
           method: "POST",
@@ -1061,7 +1099,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
 
     // Fiscal opt-in por venta: se espera el CAE (hasta 60s) y se imprime UN
     // solo ticket ya con Factura C + QR. La cocina ya recibió su comanda.
-    const wantFiscal = withFiscal && fiscalReady && data.orderId;
+    const wantFiscal = useFiscal && data.orderId;
     if (wantFiscal) {
       const fiscalOrderId = data.orderId as string;
       setMsg(`${baseMsg} · 🧾 Facturando en ARCA…`);
@@ -1139,7 +1177,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
       }).catch(() => {});
     }
     setRecent((prev) =>
-      [{ id: data.orderId, total: Number(data.order?.total ?? total), payment_method: data.order?.payment_method ?? payment, paid_at: data.order?.paid_at ?? new Date().toISOString(), status: data.order?.status ?? "preparing", created_at: data.order?.created_at ?? new Date().toISOString(), pickup_number: data.order?.pickup_number ?? null, method: data.order?.method ?? method }, ...prev].slice(0, 20)
+      [{ id: data.orderId, total: Number(data.order?.total ?? total), payment_method: data.order?.payment_method ?? payment, paid_at: data.order?.paid_at ?? new Date().toISOString(), status: data.order?.status ?? (direct ? "completed" : "preparing"), created_at: data.order?.created_at ?? new Date().toISOString(), pickup_number: data.order?.pickup_number ?? null, method: data.order?.method ?? (direct ? "pickup" : method) }, ...prev].slice(0, 20)
     );
   }
 
@@ -1503,8 +1541,18 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
       )}
 
       <div className="mt-3 space-y-2 pt-3 border-t border-border">
-        {/* Método de entrega (default: retiro) */}
-        <div className="grid grid-cols-2 gap-1.5">
+        {/* Método de entrega (default: retiro) + venta directa (retail, sin pedido) */}
+        <div className={`grid gap-1.5 ${isRetail ? "grid-cols-3" : "grid-cols-2"}`}>
+          {isRetail && (
+            <button
+              onClick={() => setMethod("direct")}
+              className={`rounded-lg py-1.5 text-xs font-medium border transition-colors ${
+                method === "direct" ? "border-primary bg-primary/5 text-primary" : "border-border text-muted-foreground"
+              }`}
+            >
+              ⚡ Venta directa
+            </button>
+          )}
           <button
             onClick={() => setMethod("pickup")}
             className={`rounded-lg py-1.5 text-xs font-medium border transition-colors ${
@@ -1693,7 +1741,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
           )}
         </div>
 
-        {fiscalReady && (
+        {fiscalReady && method !== "direct" && (
           <button
             type="button"
             onClick={() => setWithFiscal((v) => !v)}
@@ -1715,7 +1763,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
             🧾 Con comprobante fiscal (Factura C)
           </button>
         )}
-        {fiscalReady && withFiscal && (
+        {fiscalReady && (withFiscal || method === "direct") && (
           <div className="space-y-1.5 rounded-xl border border-border p-2.5">
             <div className="flex gap-1.5">
               <select
@@ -1765,19 +1813,43 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
             )}
           </div>
         )}
-        <Button className="w-full" disabled={items.length === 0 || saving} onClick={() => charge(true)}>
-          {saving ? "Cobrando..." : method === "pickup" ? (isRetail ? "Cobrar + comprobante" : "Cobrar + comprobante de retiro") : "Cobrar y despachar"}
-        </Button>
-        <Button className="w-full" variant="outline" disabled={items.length === 0 || saving} onClick={() => charge(false)}>
-          {method === "pickup" ? "Cobrar sin comprobante" : "Cobrar sin imprimir comprobante"}
-        </Button>
+        {msg && (
+          <p
+            ref={msgRef}
+            className={`text-sm rounded-lg px-3 py-2 ${msgIsErr ? "text-red-700 bg-red-50" : "text-green-600 bg-green-50"}`}
+          >
+            {msg}
+          </p>
+        )}
+        {method === "direct" ? (
+          <>
+            <Button className="w-full" disabled={items.length === 0 || saving} onClick={() => charge(true, false)}>
+              {saving ? "Cobrando..." : "🧾 Cobrar + comprobante"}
+              <span className="block text-[10px] font-normal opacity-80">ticket no fiscal</span>
+            </Button>
+            {fiscalReady && (
+              <Button className="w-full" variant="outline" disabled={items.length === 0 || saving} onClick={() => charge(true, true)}>
+                {saving ? "Cobrando..." : "Cobrar + fiscal"}
+                <span className="block text-[10px] font-normal opacity-80">factura ARCA</span>
+              </Button>
+            )}
+          </>
+        ) : (
+          <>
+            <Button className="w-full" disabled={items.length === 0 || saving} onClick={() => charge(true)}>
+              {saving ? "Cobrando..." : method === "pickup" ? (isRetail ? "Cobrar + comprobante" : "Cobrar + comprobante de retiro") : "Cobrar y despachar"}
+            </Button>
+            <Button className="w-full" variant="outline" disabled={items.length === 0 || saving} onClick={() => charge(false)}>
+              {method === "pickup" ? "Cobrar sin comprobante" : "Cobrar sin imprimir comprobante"}
+            </Button>
+          </>
+        )}
       </div>
     </>
   );
 
   return (
     <div className="space-y-4">
-      {msg && <p className="text-sm text-green-600 bg-green-50 rounded-lg px-3 py-2">{msg}</p>}
       {fiscalPrintId && (
         <Button
           variant="outline"

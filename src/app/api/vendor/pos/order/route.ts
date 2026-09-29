@@ -4,6 +4,7 @@ import { fetchVendorDelivery } from "@/lib/delivery-server";
 import { resolveDeliveryFee, type DeliverySelection } from "@/lib/delivery";
 import { nextOrderNumber } from "@/lib/order-number";
 import { cashDiscountForItems } from "@/lib/cash-discount";
+import { isRetailVendor } from "@/lib/plans";
 import { adjustStockForItems, OutOfStockError, type StockMove } from "@/lib/stock";
 import { logStockMovement } from "@/lib/stock-ledger";
 import { upsertCustomerFromOrder, isRealCustomerPhone } from "@/lib/customers";
@@ -46,8 +47,9 @@ export async function POST(request: Request) {
     deliveryManualFee,
   } = body;
 
-  // Idempotencia del sync offline (Fase 0): si esta acción ya se procesó
-  // (reintento tras timeout), se devuelve el pedido existente sin re-ejecutar.
+  // Venta directa (retail pickup): el comercio de barrio vende en el acto,
+  // sin generar pedido (solo delivery genera pedido con flow). Solo retail.
+  const direct = body?.direct === true && isRetailVendor(gate.vendor);
   const caps = await getOfflineSyncCaps();
   const clientKey = caps.ordersClientKey ? normalizeClientKey((body as any)?.client_key) : null;
   const occurredAt = caps.ordersOccurredAt
@@ -159,8 +161,9 @@ export async function POST(request: Request) {
   // normal de la comanda (hay que prepararlos/despacharlos). Pedidos de
   // mostrador/mesa SIN nada de cocina (solo bebidas/packs) no van a la
   // comanda y usan el flow corto de 2 pasos: new → ready ("Listo").
+  // Venta directa retail: nace cerrada (no genera pedido).
   const needsKitchen = normalizedItems.some((i) => i.requires_prep !== false);
-  const status = needsKitchen || isDelivery ? "preparing" : "new";
+  const status = direct ? "completed" : needsKitchen || isDelivery ? "preparing" : "new";
 
   const now = new Date().toISOString();
 
@@ -286,6 +289,7 @@ export async function POST(request: Request) {
       "method", "payment_method", "items", "total", "status", "channel",
       "paid_at", "notes", "pickup_number", "is_preview", "cash_pct",
       "cash_discount",
+      ...(direct ? ["closed_at"] : []),
       ...(hasPayStatus ? ["payment_status"] : []),
       ...syncCols,
       ...(hasZoneCols ? ["delivery_zone_id", "delivery_zone_name", "delivery_out_of_area", "delivery_fee"] : []),

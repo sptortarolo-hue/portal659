@@ -93,8 +93,11 @@ export async function POST(request: Request) {
 
     // Packs: validación de múltiplo + normalización a formato pack-native
     // (price = precio del paquete, pack_size presente — igual que canal app).
+    // Líneas manuales ("manual:...") no son uuid: se excluyen del lookup.
     {
-      const pids = Array.from(new Set(normalizedItems.map((i) => i.product_id).filter(Boolean))) as string[];
+      const isUuid = (s: unknown): s is string =>
+        typeof s === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
+      const pids = Array.from(new Set(normalizedItems.map((i) => i.product_id).filter(isUuid)));
       if (pids.length > 0) {
         try {
           const prows = await tx.query<{ id: string; name: string; pack_size: number | null }>(

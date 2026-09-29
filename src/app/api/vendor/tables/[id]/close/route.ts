@@ -105,10 +105,13 @@ export async function POST(
   const perOrder = new Map<string, { cashPct: number; cashDiscount: number; total: number }>();
 
   if (cashPct > 0 && list.length > 0) {
+    const isUuid = (s: unknown): s is string =>
+      typeof s === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
     const ids = new Set<string>();
     for (const o of list) {
       for (const i of (Array.isArray(o.items) ? o.items : [])) {
-        if (i?.product_id) ids.add(String(i.product_id));
+        // Líneas manuales ("manual:...") no son uuid: cash sin promo ni exclusión.
+        if (isUuid(i?.product_id)) ids.add(i.product_id);
       }
     }
     const prows = ids.size

@@ -117,8 +117,11 @@ export async function POST(request: Request) {
   // Packs: validación de múltiplo. Después normalizo el ítem a formato
   // pack-native: `price` = PRECIO DEL PAQUETE y `pack_size` presente (mismo
   // formato que el canal app — así cierre de mesa, tickets y cash lo entienden).
+  // Líneas manuales ("manual:...") no son uuid: se excluyen de los lookups.
+  const isUuid = (s: unknown): s is string =>
+    typeof s === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
   {
-    const pids = Array.from(new Set(normalizedItems.map((i) => i.product_id).filter(Boolean))) as string[];
+    const pids = Array.from(new Set(normalizedItems.map((i) => i.product_id).filter(isUuid)));
     if (pids.length > 0) {
       try {
         const prows = await queryMany<{ id: string; name: string; pack_size: number | null }>(
@@ -168,17 +171,18 @@ export async function POST(request: Request) {
   let cashDiscount = 0;
   let cashPct = 0;
   if (payment === "efectivo") {
-    const ids = Array.from(new Set(normalizedItems.map((i) => i.product_id).filter(Boolean))) as string[];
-    const vids = Array.from(new Set(normalizedItems.map((i) => i.variant_id).filter(Boolean))) as string[];
+    const ids = Array.from(new Set(normalizedItems.map((i) => i.product_id).filter(isUuid)));
+    const vids = Array.from(new Set(normalizedItems.map((i) => i.variant_id).filter(isUuid)));
     const prows = ids.length
       ? await queryMany<{ id: string; promo_price: number | null; cash_discount_excluded: boolean | null }>(
           `SELECT id, promo_price, cash_discount_excluded FROM products WHERE vendor_id = $1 AND id = ANY($2)`,
           [gate.vendor.id, ids]
         )
       : [];
+    // product_variants no tiene vendor_id: se filtra por el producto dueño.
     const vrows = vids.length
       ? await queryMany<{ id: string; product_id: string; promo: number | null }>(
-          `SELECT id, product_id, promo FROM product_variants WHERE vendor_id = $1 AND id = ANY($2)`,
+          `SELECT v.id, v.product_id, v.promo FROM product_variants v JOIN products p ON p.id = v.product_id WHERE p.vendor_id = $1 AND v.id = ANY($2)`,
           [gate.vendor.id, vids]
         )
       : [];

@@ -106,18 +106,22 @@ export async function POST(request: Request) {
      AND COALESCE(variant_id::text, '') = COALESCE($4::text, '') LIMIT 1`,
     [supplier_id, ingredient_id, product_id, variant_id]
   ).catch(() => null);
-  if (existing) {
-    await queryOne(
-      `UPDATE supplier_pricelists SET price = $1, unit = $2, updated_at = now() WHERE id = $3`,
-      [price, unit, existing.id]
+  try {
+    if (existing) {
+      await queryOne(
+        `UPDATE supplier_pricelists SET price = $1, unit = $2, updated_at = now() WHERE id = $3`,
+        [price, unit, existing.id]
+      );
+      return NextResponse.json({ ok: true, id: existing.id });
+    }
+    const row = await queryOne<{ id: string }>(
+      `INSERT INTO supplier_pricelists (supplier_id, vendor_id, ingredient_id, product_id, variant_id, price, unit)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+      [supplier_id, gate.vendor.id, ingredient_id, product_id, variant_id, price, unit]
     );
-    return NextResponse.json({ ok: true, id: existing.id });
+    if (!row) return NextResponse.json({ error: "No se pudo guardar (¿migración pendiente?)" }, { status: 503 });
+    return NextResponse.json({ ok: true, id: row.id });
+  } catch {
+    return NextResponse.json({ error: "Falta aplicar la migración de inventario en la base de datos" }, { status: 503 });
   }
-  const row = await queryOne<{ id: string }>(
-    `INSERT INTO supplier_pricelists (supplier_id, vendor_id, ingredient_id, product_id, variant_id, price, unit)
-     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-    [supplier_id, gate.vendor.id, ingredient_id, product_id, variant_id, price, unit]
-  );
-  if (!row) return NextResponse.json({ error: "No se pudo guardar (¿migración pendiente?)" }, { status: 503 });
-  return NextResponse.json({ ok: true, id: row.id });
 }

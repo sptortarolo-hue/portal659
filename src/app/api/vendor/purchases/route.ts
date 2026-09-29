@@ -223,7 +223,9 @@ export async function POST(request: Request) {
 
   const total = round2(items.reduce((s, i) => s + i.line_total, 0));
 
-  const purchaseId = await withTransaction(async (tx) => {
+  let purchaseId: string;
+  try {
+    purchaseId = await withTransaction(async (tx) => {
     const p = await tx.queryOne<{ id: string }>(
       `INSERT INTO purchases (vendor_id, supplier_id, purchased_at, receipt_type, receipt_number, notes, total)
        VALUES ($1, $2, COALESCE($3::date, CURRENT_DATE), $4, $5, $6, $7) RETURNING id`,
@@ -321,7 +323,18 @@ export async function POST(request: Request) {
       }
     }
     return p.id as string;
-  });
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "";
+    // Tablas/columnas de inventario sin migrar → mensaje accionable (no 500 mudo).
+    if (/relation .* does not exist|column .* does not exist/i.test(msg)) {
+      return NextResponse.json(
+        { error: "Falta aplicar la migración de inventario en la base de datos", code: "migration_pending" },
+        { status: 503 }
+      );
+    }
+    throw e;
+  }
 
   return NextResponse.json({ purchase_id: purchaseId, total });
 }

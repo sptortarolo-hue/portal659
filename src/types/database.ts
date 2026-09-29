@@ -449,6 +449,8 @@ export type Vendor = {
   cash_discount_pct?: number | null;
   /** Cierre estricto de cocina: true = Listo exige tildar todo (default). */
   kitchen_strict_close?: boolean | null;
+  /** Vista del catálogo online (comercio): lista o vidriera (grilla visual). */
+  storefront_layout?: string | null;
   plan_id: string | null;
   plan_status: PlanStatus;
   plan_expires_at: string | null;

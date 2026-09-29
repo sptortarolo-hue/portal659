@@ -129,6 +129,9 @@ export default function DashboardComercio({
   );
   const [deliveryOptions, setDeliveryOptions] = useState(vendor?.delivery_options || "ambos");
   const [onlineOrders, setOnlineOrders] = useState(vendor?.accepts_online_orders !== false);
+  const [storefrontLayout, setStorefrontLayout] = useState(
+    vendor?.storefront_layout === "vidriera" ? "vidriera" : "lista"
+  );
   const [cashDiscount, setCashDiscount] = useState(
     vendor?.cash_discount_pct != null ? String(vendor.cash_discount_pct) : ""
   );
@@ -155,7 +158,8 @@ export default function DashboardComercio({
         : []
     );
     setDeliveryOptions(vendor.delivery_options || "ambos");
-    setOnlineOrders(vendor.accepts_online_orders !== false);
+      setOnlineOrders(vendor.accepts_online_orders !== false);
+      setStorefrontLayout(vendor.storefront_layout === "vidriera" ? "vidriera" : "lista");
     setCashDiscount(vendor.cash_discount_pct != null ? String(vendor.cash_discount_pct) : "");
   }, [vendor]);
 
@@ -567,6 +571,37 @@ export default function DashboardComercio({
               }}
             />
           </div>
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-border px-3 py-2.5">
+            <div>
+              <Label className="text-sm">Vista del catálogo online</Label>
+              <p className="text-xs text-muted-foreground">
+                {storefrontLayout === "vidriera"
+                  ? "Vidriera: grilla visual con fotos grandes (ideal regalería/juguetería)."
+                  : "Lista: una fila por producto con detalle."}
+                {" "}La vidriera solo aplica a catálogos simples (sin packs ni venta por peso).
+              </p>
+            </div>
+            <select
+              value={storefrontLayout}
+              onChange={async (e) => {
+                const next = e.target.value === "vidriera" ? "vidriera" : "lista";
+                setStorefrontLayout(next);
+                await saveVendor({ storefront_layout: next });
+              }}
+              className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+              aria-label="Vista del catálogo online"
+            >
+              <option value="lista">Lista</option>
+              <option value="vidriera">Vidriera</option>
+            </select>
+          </div>
+          {storefrontLayout === "vidriera" &&
+            offers.some((o) => Number((o as any).pack_size) >= 2 || (o as any).unit === "kg") && (
+              <p className="text-xs text-amber-700 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2">
+                ⚠️ Tenés productos con pack o venta por peso: el micrositio muestra lista hasta
+                que el catálogo sea simple (la vidriera no soporta esos casos).
+              </p>
+            )}
         </div>
       </ConfigSection>
 

@@ -367,6 +367,19 @@ export default async function TiendaPage({
   // carrito — cada producto muestra "Consultar por WhatsApp". La tarjeta de
   // solo-contacto aparece únicamente cuando todavía no hay carta cargada.
   const noCart = !acceptsCart && (isGastro || isCatalog);
+  // Vidriera (comercio): grilla visual estilo moda. Solo si el catálogo es
+  // simple (sin packs, sin peso y sin variantes con modificadores — la
+  // tarjeta no entiende esos casos); si no, se fuerza lista.
+  const wantVidriera = isComercio && (v as any).storefront_layout === "vidriera";
+  const hasComplexCatalog = (offers || []).some(
+    (o: any) =>
+      Number(o.pack_size) >= 2 ||
+      o.unit === "kg" ||
+      ((o.has_variants === true) &&
+        (variantsByProduct[o.id]?.length || 0) > 0 &&
+        (modifiersByProduct[o.id]?.length || 0) > 0)
+  );
+  const useCards = isModa || (wantVidriera && !hasComplexCatalog);
   const vendorBrief = {
     id: v.id,
     slug: v.slug,
@@ -744,9 +757,9 @@ export default async function TiendaPage({
                     <h3 className="font-display text-xl font-semibold mb-4 border-b border-border pb-2">
                       {s.name}
                     </h3>
-                    <div className={isModa ? "grid grid-cols-2 sm:grid-cols-3 gap-3" : "space-y-3"}>
+                    <div className={useCards ? "grid grid-cols-2 sm:grid-cols-3 gap-3" : "space-y-3"}>
                       {s.items.map((o: any) => {
-                        if (isModa) {
+                        if (useCards) {
                           return (
                             <div key={o.id} id={`product-${o.id}`} data-pname={String(o.name).toLowerCase()} className="scroll-mt-16 sm:scroll-mt-24">
                               <ProductCard

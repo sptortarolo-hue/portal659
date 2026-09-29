@@ -103,6 +103,7 @@ export async function POST(request: Request) {
     accepts_online_orders,
     cash_discount_pct,
     kitchen_strict_close,
+    storefront_layout,
   } = body;
 
   const VALID_VERTICALS = ["gastronomia", "comercio", "servicio", "moda", "salud", "otro"];
@@ -215,6 +216,8 @@ export async function POST(request: Request) {
   }
   if (accepts_online_orders !== undefined) payload.accepts_online_orders = accepts_online_orders === true;
   if (kitchen_strict_close !== undefined) payload.kitchen_strict_close = kitchen_strict_close !== false;
+  // Vista del catálogo online (comercio): lista o vidriera (grilla visual).
+  if (storefront_layout !== undefined) payload.storefront_layout = storefront_layout === "vidriera" ? "vidriera" : "lista";
   if (cash_discount_pct !== undefined) {
     if (cash_discount_pct === null || cash_discount_pct === "") {
       payload.cash_discount_pct = null;
@@ -260,6 +263,7 @@ export async function POST(request: Request) {
         "kitchen_strict_close",
         "delivery_mode",
         "delivery_area_text",
+        "storefront_layout",
       ].filter((k) => k in payload && msg.includes(k));
       if (droppable.length > 0) {
         for (const k of droppable) delete payload[k];

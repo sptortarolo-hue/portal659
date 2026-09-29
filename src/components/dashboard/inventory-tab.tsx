@@ -279,6 +279,8 @@ export function InventoryTab({ reloadKey = 0 }: { reloadKey?: number }) {
           onChanged={() => {
             loadMoves();
             loadRepo();
+            // Refresca la referencia de costo/stock del picker tras comprar.
+            loadCatalog();
           }}
           products={products}
           variants={variants}

@@ -563,6 +563,7 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
           editForm={editingId ? offerFormNode : undefined}
           onEditModifiers={(offer) => startEdit(offer)}
           costByProduct={showCosts ? costByProduct : undefined}
+          showBuyCost={canEditCost}
           emptyText={`Todav├¡a no cargaste ${isModa || isComercio ? "productos" : "platos"}.`}
         />
       )}

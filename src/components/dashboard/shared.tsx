@@ -48,6 +48,8 @@ type Offer = {
   stock: number | null;
   stock_low_threshold: number | null;
   stock_control?: boolean;
+  /** Costo de compra (inventario): distinto del food-cost de receta. */
+  cost_last?: number | null;
   promo_price: number | null;
   requires_prep?: boolean;
   /** Solo sale en la sección Promo (no figura en el menú). */
@@ -470,7 +472,7 @@ export function OfferForm({
   );
 }
 
-export function OfferList({ offers, onEdit, onToggleFeatured, onToggleAvailable, onDelete, editingId, editForm, onEditModifiers, costByProduct, emptyText = "Todavía no cargaste platos.", onTogglePromoOnly }: {
+export function OfferList({ offers, onEdit, onToggleFeatured, onToggleAvailable, onDelete, editingId, editForm, onEditModifiers, costByProduct, showBuyCost = false, emptyText = "Todavía no cargaste platos.", onTogglePromoOnly }: {
   offers: Offer[];
   onEdit: (o: Offer) => void;
   onToggleFeatured: (o: Offer) => void;
@@ -481,6 +483,8 @@ export function OfferList({ offers, onEdit, onToggleFeatured, onToggleAvailable,
   onEditModifiers?: (o: Offer) => void;
   /** Costo por plato (módulo Recetas): { [productId]: { cost, pct, status } }. */
   costByProduct?: Record<string, { cost: number | null; pct: number | null; status: "ok" | "warn" | "bad" | "none" }>;
+  /** Muestra el costo de compra en la fila (inventario, distinto del food-cost). */
+  showBuyCost?: boolean;
   /** Texto del estado vacío de la lista. */
   emptyText?: string;
   /** Solo-promo (no figura en el menú). Opcional: solo gastro lo pasa. */
@@ -537,6 +541,11 @@ export function OfferList({ offers, onEdit, onToggleFeatured, onToggleAvailable,
                     {offer.stock !== null && offer.stock <= (offer.stock_low_threshold || 5) && (
                       <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
                         {offer.stock === 0 ? "Sin stock" : `Stock: ${offer.stock}`}
+                      </Badge>
+                    )}
+                    {showBuyCost && offer.cost_last != null && (
+                      <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                        Costo: ${Number(offer.cost_last).toLocaleString("es-AR")}
                       </Badge>
                     )}
                   </div>

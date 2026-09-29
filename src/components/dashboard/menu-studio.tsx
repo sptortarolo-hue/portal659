@@ -783,6 +783,7 @@ export function MenuStudio({
               editForm={editingId ? offerFormInline : undefined}
               onEditModifiers={(offer) => startEdit(offer)}
               costByProduct={showCosts ? costByProduct : undefined}
+              showBuyCost={canEditCost}
               emptyText={isComercio ? "Todavía no cargaste productos." : undefined}
               onTogglePromoOnly={togglePromoOnly}
             />
@@ -798,6 +799,7 @@ export function MenuStudio({
               <ProductsTable
                 offers={filteredOffers}
                 costByProduct={showCosts ? costByProduct : undefined}
+                showBuyCost={canEditCost}
                 selected={selected}
                 onToggleSelect={toggleSelect}
                 onToggleAll={toggleSelectAll}

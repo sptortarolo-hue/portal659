@@ -17,6 +17,8 @@ type Offer = {
   stock: number | null;
   stock_low_threshold: number | null;
   stock_control?: boolean;
+  /** Costo de compra (inventario): distinto del food-cost de receta. */
+  cost_last?: number | null;
   promo_price: number | null;
   requires_prep?: boolean;
   cash_discount_excluded?: boolean;
@@ -33,6 +35,7 @@ type CostInfo = { cost: number | null; pct: number | null; status: "ok" | "warn"
 export function ProductsTable({
   offers,
   costByProduct,
+  showBuyCost = false,
   selected,
   onToggleSelect,
   onToggleAll,
@@ -44,6 +47,8 @@ export function ProductsTable({
 }: {
   offers: Offer[];
   costByProduct?: Record<string, CostInfo>;
+  /** Muestra el costo de compra cuando no hay food-cost de receta. */
+  showBuyCost?: boolean;
   selected: Set<string>;
   onToggleSelect: (id: string) => void;
   onToggleAll: (ids: string[]) => void;
@@ -173,6 +178,13 @@ export function ProductsTable({
                         ? `${Number(cost.pct).toLocaleString("es-AR")}%`
                         : "Costo"}
                     </Badge>
+                  ) : showBuyCost && offer.cost_last != null ? (
+                    <span
+                      className="tabular-nums"
+                      title="Costo de compra (último)"
+                    >
+                      ${Number(offer.cost_last).toLocaleString("es-AR")}
+                    </span>
                   ) : (
                     <span className="text-muted-foreground">—</span>
                   )}

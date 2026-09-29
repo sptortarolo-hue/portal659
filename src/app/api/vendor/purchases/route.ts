@@ -245,17 +245,19 @@ export async function POST(request: Request) {
         );
         if (it.kind === "product") {
           // Entra stock + actualiza último/promedio en la misma sentencia.
+          // Casts ::numeric explícitos: sin ellos Postgres no unifica el tipo
+          // de los parámetros ($3 en contexto entero y numérico → 42P08).
           await tx.queryVoid(
             `UPDATE products SET stock = COALESCE(stock, 0) + $2, stock_control = true,
-              cost_last = $3,
+              cost_last = $3::numeric,
               cost_avg = CASE WHEN COALESCE(stock, 0) > 0 AND cost_avg IS NOT NULL
-                THEN ROUND((cost_avg * stock + $3 * $2) / (stock + $2), 2) ELSE $3 END
+                THEN ROUND((cost_avg * stock + $3::numeric * $2) / (stock + $2), 2) ELSE $3::numeric END
              WHERE id = $1`,
             [pid, it.qty, it.unit_cost]
           );
         } else {
           await tx.queryVoid(
-            `UPDATE product_variants SET stock = COALESCE(stock, 0) + $2, cost_last = $3 WHERE id = $1`,
+            `UPDATE product_variants SET stock = COALESCE(stock, 0) + $2, cost_last = $3::numeric WHERE id = $1`,
             [vid, it.qty, it.unit_cost]
           );
         }
@@ -333,6 +335,9 @@ export async function POST(request: Request) {
         { status: 503 }
       );
     }
+    // Cualquier otro 500 queda en docker logs con contexto (no mudo).
+    const { logApiError } = await import("@/lib/api-error");
+    logApiError("purchases/post", e);
     throw e;
   }
 

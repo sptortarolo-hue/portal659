@@ -20,6 +20,12 @@ export default function ErrorPage({
         body: JSON.stringify({
           message: String(error?.message || error),
           stack: typeof error?.stack === "string" ? error.stack : null,
+          // React minifica: el componentStack NO. Con él se identifica el
+          // componente del crash (ej: loop de efectos) sin el bundle dev.
+          componentStack:
+            typeof (error as any)?.cause?.componentStack === "string"
+              ? (error as any).cause.componentStack
+              : null,
           digest: error?.digest || null,
           pathname: typeof window !== "undefined" ? window.location.pathname : null,
         }),

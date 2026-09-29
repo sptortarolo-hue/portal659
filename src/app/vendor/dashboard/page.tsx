@@ -362,18 +362,22 @@ function VendorDashboardInner() {
   const [bootstrappedAt, setBootstrappedAt] = useState<number | null>(null);
 
   const loadData = useCallback(async () => {
+    // Timeout global: un endpoint colgado no puede dejar el dashboard en
+    // "Cargando..." para siempre (antes Promise.all esperaba a todos).
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 25000);
     try {      const [meRes, offersRes, ordersRes, catsRes, modsRes, galRes, bkRes, variantsRes, imagesRes, plansRes, subsMeRes] = await Promise.all([
-        fetch("/api/vendor/me").catch(() => null),
-        fetch("/api/vendor/offers").catch(() => null),
-        fetch("/api/vendor/orders").catch(() => null),
-        fetch("/api/vendor/categories").catch(() => null),
-        fetch("/api/vendor/modifiers").catch(() => null),
-        fetch("/api/vendor/gallery").catch(() => null),
-        fetch("/api/vendor/bookings").catch(() => null),
-        fetch("/api/vendor/variants").catch(() => null),
-        fetch("/api/vendor/product-images").catch(() => null),
-        fetch("/api/subscriptions/plans").catch(() => null),
-        fetch("/api/subscriptions/me").catch(() => null),
+        fetch("/api/vendor/me", { signal: ctrl.signal }).catch(() => null),
+        fetch("/api/vendor/offers", { signal: ctrl.signal }).catch(() => null),
+        fetch("/api/vendor/orders", { signal: ctrl.signal }).catch(() => null),
+        fetch("/api/vendor/categories", { signal: ctrl.signal }).catch(() => null),
+        fetch("/api/vendor/modifiers", { signal: ctrl.signal }).catch(() => null),
+        fetch("/api/vendor/gallery", { signal: ctrl.signal }).catch(() => null),
+        fetch("/api/vendor/bookings", { signal: ctrl.signal }).catch(() => null),
+        fetch("/api/vendor/variants", { signal: ctrl.signal }).catch(() => null),
+        fetch("/api/vendor/product-images", { signal: ctrl.signal }).catch(() => null),
+        fetch("/api/subscriptions/plans", { signal: ctrl.signal }).catch(() => null),
+        fetch("/api/subscriptions/me", { signal: ctrl.signal }).catch(() => null),
       ]);
 
       const me = meRes?.ok ? await meRes.json().catch(() => ({})) : (meRes?.status === 401 ? { error: "No autenticado" } : {});
@@ -448,6 +452,7 @@ function VendorDashboardInner() {
     } catch (err) {
       console.error("[dashboard] loadData error:", err);
     } finally {
+      clearTimeout(timer);
       setLoading(false);
     }
   }, [router, loadServiceData]);

@@ -123,10 +123,18 @@ export async function resolveCategoryName(
  */
 export async function seedDefaultCategories(vendorId: string, vertical: string): Promise<void> {
   if (vertical !== "comercio") return;
-  for (let i = 0; i < COMERCIO_CATEGORIES.length; i++) {
-    await query(
-      `INSERT INTO vendor_categories (vendor_id, name, position) VALUES ($1, $2, $3) ON CONFLICT (vendor_id, name) DO NOTHING`,
-      [vendorId, COMERCIO_CATEGORIES[i], i]
-    );
+  // El índice único real es (vendor_id, lower(name)): el ON CONFLICT por
+  // columnas fallaba con 42P10 y tumbaba el alta. Con ON CONSTRAINT + catch,
+  // el seed nunca rompe la creación del comercio.
+  try {
+    for (let i = 0; i < COMERCIO_CATEGORIES.length; i++) {
+      await query(
+        `INSERT INTO vendor_categories (vendor_id, name, position) VALUES ($1, $2, $3) ON CONFLICT ON CONSTRAINT vendor_categories_vendor_name_key DO NOTHING`,
+        [vendorId, COMERCIO_CATEGORIES[i], i]
+      );
+    }
+  } catch (e) {
+    const { logApiError } = await import("@/lib/api-error");
+    logApiError("seedDefaultCategories", e);
   }
 }

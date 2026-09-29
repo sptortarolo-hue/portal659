@@ -387,9 +387,12 @@ export async function PATCH(
 
         // Re-stock del pedido viejo + reserva del nuevo (canales que reservan
         // stock al crear: app y mostrador; mesa nunca reserva).
+        // Por peso (kg) nunca toca stock (evita 22P02 con decimales).
         if (currentOrder.channel === "app" || currentOrder.channel === "mostrador") {
-          const returnedStock: StockMove[] = await adjustStockForItems(tx, currentOrder.items, "increment");
-          const reservedStock: StockMove[] = await adjustStockForItems(tx, pricing.items, "decrement");
+          const noKg = (items: OrderItem[] | null | undefined) =>
+            (items || []).filter((i) => (i as OrderItem)?.unit !== "kg");
+          const returnedStock: StockMove[] = await adjustStockForItems(tx, noKg(currentOrder.items as OrderItem[]), "increment");
+          const reservedStock: StockMove[] = await adjustStockForItems(tx, noKg(pricing.items as OrderItem[]), "decrement");
           for (const m of returnedStock) {
             await logStockMovement(tx, { vendorId: vendor.id, product_id: m.product_id, variant_id: m.variant_id, qty_delta: m.qty, reason: "devolucion", ref_order: params.id });
           }
@@ -460,8 +463,9 @@ export async function PATCH(
       // (app y mostrador reservan; mesa nunca reservó; los pedidos de prueba
       // tampoco descontaron → no hay nada que reponer).
       if (status === "cancelled" && (currentOrder.channel === "app" || currentOrder.channel === "mostrador") && currentOrder.is_preview !== true) {
-        const updatedItems = (orderRows[0].items as OrderItem[] | null) ?? currentOrder.items;
-        const returnedStock: StockMove[] = await adjustStockForItems(tx, updatedItems, "increment");
+        const updatedItems = ((orderRows[0].items as OrderItem[] | null) ?? currentOrder.items) || [];
+        // Por peso (kg) nunca tocó stock → no se repone (evita 22P02).
+        const returnedStock: StockMove[] = await adjustStockForItems(tx, updatedItems.filter((i) => (i as OrderItem)?.unit !== "kg"), "increment");
         for (const m of returnedStock) {
           await logStockMovement(tx, { vendorId: vendor.id, product_id: m.product_id, variant_id: m.variant_id, qty_delta: m.qty, reason: "devolucion", ref_order: params.id });
         }
@@ -622,7 +626,8 @@ export async function DELETE(
       order.items &&
       order.items.length > 0
     ) {
-      const returnedStock: StockMove[] = await adjustStockForItems(tx, order.items, "increment");
+      // Por peso (kg) nunca tocó stock → no se repone (evita 22P02).
+      const returnedStock: StockMove[] = await adjustStockForItems(tx, (order.items || []).filter((i) => (i as OrderItem)?.unit !== "kg"), "increment");
       for (const m of returnedStock) {
         await logStockMovement(tx, { vendorId: vendor.id, product_id: m.product_id, variant_id: m.variant_id, qty_delta: m.qty, reason: "devolucion", ref_order: params.id });
       }

@@ -227,7 +227,7 @@ export function VendorAnalytics() {
                 {activeOrders.map((o) => (
                   <div key={o.id} className="border border-border rounded-lg p-3 bg-card text-sm">
                     <div className="flex justify-between">
-                      <span>{(o.items || []).map((i: any) => `${i.qty}x ${i.name}`).join(", ")}</span>
+                      <span>{(o.items || []).map((i: any) => i.unit === "kg" ? `${Number(i.qty).toLocaleString("es-AR", { maximumFractionDigits: 3 })}kg ${i.name}` : `${i.qty}x ${i.name}`).join(", ")}</span>
                       <span className="font-medium">${Number(o.total).toLocaleString("es-AR")}</span>
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">

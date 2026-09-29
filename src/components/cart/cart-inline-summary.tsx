@@ -22,7 +22,9 @@ export function CartInlineSummary() {
             <li key={`${item.offerId}-${idx}`} className="py-3 text-sm">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">
-                  {item.qty}x {item.name}
+                  {(item as any).unit === "kg"
+                    ? `${Number(item.qty).toLocaleString("es-AR", { maximumFractionDigits: 3 })}kg ${item.name}`
+                    : `${item.qty}x ${item.name}`}
                 </span>
                 <span className="font-medium">
                   ${lineTotal.toLocaleString("es-AR")}

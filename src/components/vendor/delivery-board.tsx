@@ -205,7 +205,7 @@ function DeliveryCard({
       </div>
 
       <p className="text-xs text-muted-foreground mb-1">
-        {(o.items || []).map((i) => `${i.qty}x ${i.name}`).join(", ")}
+        {(o.items || []).map((i) => (i as any).unit === "kg" ? `${Number(i.qty).toLocaleString("es-AR", { maximumFractionDigits: 3 })}kg ${i.name}` : `${i.qty}x ${i.name}`).join(", ")}
       </p>
 
       {o.customer_address && <p className="text-xs mb-2">📍 {o.customer_address}</p>}

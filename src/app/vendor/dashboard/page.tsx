@@ -1023,7 +1023,9 @@ function VendorDashboardInner() {
                 <div className="space-y-0.5 mb-2">
                   {(order.items || []).slice(0, 2).map((item, i) => (
                     <p key={i} className="text-xs text-muted-foreground truncate">
-                      {item.qty}x {item.name}
+                      {(item as any).unit === "kg"
+                        ? `${Number(item.qty).toLocaleString("es-AR", { maximumFractionDigits: 3 })}kg ${item.name}`
+                        : `${item.qty}x ${item.name}`}
                       {item.modifiers && item.modifiers.length > 0 && (
                         <span className="text-red-500 font-medium"> ({item.modifiers.join(", ")})</span>
                       )}
@@ -1219,7 +1221,9 @@ function VendorDashboardInner() {
                   <div className="space-y-0.5 mb-2">
                     {(order.items || []).slice(0, 2).map((item, i) => (
                       <p key={i} className="text-xs text-muted-foreground truncate">
-                        {item.qty}x {item.name}
+                        {(item as any).unit === "kg"
+                          ? `${Number(item.qty).toLocaleString("es-AR", { maximumFractionDigits: 3 })}kg ${item.name}`
+                          : `${item.qty}x ${item.name}`}
                         {item.modifiers && item.modifiers.length > 0 && (
                           <span className="text-red-500 font-medium"> ({item.modifiers.join(", ")})</span>
                         )}

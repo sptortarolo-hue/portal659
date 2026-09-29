@@ -163,7 +163,10 @@ export function buildContingencyBytes(doc: ContingencyDoc): Uint8Array {
 
   for (const item of doc.items || []) {
     const qty = Number(item.qty) || 1;
-    for (const line of wrap(`${qty}x ${item.name}`, width)) p.text(line);
+    const qtyLabel = (item as any).unit === "kg"
+      ? `${qty.toLocaleString("es-AR", { maximumFractionDigits: 3 })}kg`
+      : `${qty}x`;
+    for (const line of wrap(`${qtyLabel} ${item.name}`, width)) p.text(line);
     const mods = Array.isArray(item.modifiers)
       ? item.modifiers.filter(Boolean).join(", ")
       : item.modifiers || "";

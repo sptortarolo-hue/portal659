@@ -151,7 +151,9 @@ export default function SeguimientoPedidoPage() {
           {order.items.map((item, i) => (
             <div key={i} className="flex justify-between text-xs">
               <span className="text-muted-foreground">
-                {item.qty}x {item.name}
+                {(item as any).unit === "kg"
+                  ? `${Number(item.qty).toLocaleString("es-AR", { maximumFractionDigits: 3 })}kg ${item.name}`
+                  : `${item.qty}x ${item.name}`}
                 {item.modifiers && item.modifiers.length > 0 && (
                   <span className="text-muted-foreground/50"> ({item.modifiers.join(", ")})</span>
                 )}

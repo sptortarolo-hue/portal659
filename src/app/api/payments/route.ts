@@ -99,6 +99,7 @@ export async function POST(request: Request) {
             product_id: typeof i.offerId === "string" ? i.offerId : null,
             qty: Number(i.qty) || 1,
             name: i.name,
+            unit: i.unit === "kg" ? "kg" : undefined,
           }))
         ),
       },

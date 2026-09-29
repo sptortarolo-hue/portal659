@@ -470,7 +470,7 @@ export function CustomersManager({ serviceMode = false }: { serviceMode?: boolea
                                   {orders.map((o) => (
                                     <div key={o.id} className="flex justify-between gap-2 text-xs py-1 border-b border-border last:border-0">
                                       <span className="min-w-0 truncate">
-                                        {fmtDate(o.created_at)} · {(o.items || []).map((i) => `${i.qty}x ${i.name}`).join(", ")}
+                                        {fmtDate(o.created_at)} · {(o.items || []).map((i) => (i as any).unit === "kg" ? `${Number(i.qty).toLocaleString("es-AR", { maximumFractionDigits: 3 })}kg ${i.name}` : `${i.qty}x ${i.name}`).join(", ")}
                                       </span>
                                       <span className="font-medium tabular-nums flex-shrink-0">${Number(o.total).toLocaleString("es-AR")}</span>
                                     </div>

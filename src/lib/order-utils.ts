@@ -352,7 +352,7 @@ export function buildClientWhatsAppUrl(
 
 export function buildOrderWhatsAppMessage(params: {
   vendorName: string;
-  items: { name: string; price: number; qty: number; modifiers?: string[] }[];
+  items: { name: string; price: number; qty: number; modifiers?: string[]; unit?: string }[];
   total: number;
   customerName: string;
   customerPhone: string;
@@ -364,7 +364,7 @@ export function buildOrderWhatsAppMessage(params: {
     const modStr = i.modifiers && i.modifiers.length > 0
       ? ` (${i.modifiers.join(", ")})`
       : "";
-    return `- ${i.qty}x ${i.name}${modStr} ($${(i.price * i.qty).toLocaleString("es-AR")})`;
+    return `- ${(i as any).unit === "kg" ? `${Number(i.qty).toLocaleString("es-AR", { maximumFractionDigits: 3 })}kg` : `${i.qty}x`} ${i.name}${modStr} ($${(i.price * i.qty).toLocaleString("es-AR")})`;
   });
 
   const paymentLine = params.paymentMethod === "transferencia"

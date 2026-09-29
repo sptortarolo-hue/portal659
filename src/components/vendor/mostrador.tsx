@@ -444,6 +444,11 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
     );
   }
 
+  // Quitar una línea (las de peso no tienen stepper −).
+  function removeLine(key: string) {
+    setItems((prev) => prev.filter((i) => lineKey(i.product_id, i.variant_id, i.modifiers) !== key));
+  }
+
   // Monto manual ("Varios"): línea sin producto ni stock, fuera de estadísticas.
   const [manualName, setManualName] = useState("");
   const [manualPrice, setManualPrice] = useState("");
@@ -1119,6 +1124,15 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
                   title="Leer peso de la balanza (Chrome en PC)"
                 >
                   {scaleReading ? "Leyendo…" : "Pesar"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => removeLine(lineKey(i.product_id, i.variant_id, i.modifiers))}
+                  className="h-9 w-7 rounded-md text-muted-foreground hover:text-red-600 hover:bg-red-50 text-sm"
+                  title={`Quitar ${i.name}`}
+                  aria-label={`Quitar ${i.name}`}
+                >
+                  ×
                 </button>
               </div>
             ) : (

@@ -93,6 +93,9 @@ export function CartDrawer() {
                         {item.packSize ? (
                           <span className="ml-1.5 rounded-full bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 whitespace-nowrap">pack x{item.packSize}</span>
                         ) : null}
+                        {(item as any).unit === "kg" ? (
+                          <span className="ml-1.5 rounded-full bg-sky-50 border border-sky-200 px-1.5 py-0.5 text-[10px] font-semibold text-sky-700 whitespace-nowrap">$/kg</span>
+                        ) : null}
                       </p>
                       {item.modifiers && item.modifiers.length > 0 && (
                         <div className="mt-1 flex flex-wrap gap-1">
@@ -121,7 +124,22 @@ export function CartDrawer() {
                   </div>
 
                   <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center border border-border rounded-lg flex-shrink-0">
+                    {(item as any).unit === "kg" ? (
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        <input
+                          type="number"
+                          inputMode="decimal"
+                          min={0}
+                          step="0.001"
+                          value={item.qty}
+                          onChange={(e) => setQty(item.offerId, Number(e.target.value), item.modifiers)}
+                          className="w-20 h-8 px-1 text-sm text-center tabular-nums rounded-lg border border-input bg-background"
+                          aria-label={`Peso en kilos de ${item.name}`}
+                        />
+                        <span className="text-[11px] text-muted-foreground">kg</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center border border-border rounded-lg flex-shrink-0">
                       <button
                         onClick={() =>
                           setQty(
@@ -149,7 +167,8 @@ export function CartDrawer() {
                       >
                         +
                       </button>
-                    </div>
+                      </div>
+                    )}
                     <span className="text-sm font-bold tabular-nums">
                       ${lineTotal.toLocaleString("es-AR")}
                     </span>

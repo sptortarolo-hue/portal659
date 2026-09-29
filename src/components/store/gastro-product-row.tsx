@@ -114,6 +114,9 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
   const basePrice = product.promo_price != null ? Number(product.promo_price) : Number(product.price);
   const hasPromo = product.promo_price != null;
   const cashExcluded = hasPromo && !!product.cash_discount_excluded;
+  // Por peso: precio por kilo, cantidad decimal que indica el cliente.
+  const isKg = (product as any).unit === "kg";
+  const [kg, setKg] = useState("");
   // Pack: el precio del catálogo es por PAQUETE (pack_size unidades); la unidad
   // derivada se usa para totales, móds y el carrito.
   const pack =
@@ -128,7 +131,8 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
     normalizeCashPct(vendor.cashDiscountPct) > 0 &&
     cashAppliesToItem({ hasPromo, excluded: product.cash_discount_excluded });
   const stockControl = product.stock_control !== false;
-  const outStock = stockControl && (product.stock ?? 0) <= 0;
+  // Por peso no hay stock que descontar: siempre disponible.
+  const outStock = !isKg && stockControl && (product.stock ?? 0) <= 0;
   const volBadge = volumeBadgeText(
     (vendor.volumeGroups || []).map((g) => ({
       id: g.id,
@@ -155,7 +159,10 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
     .flat()
     .reduce((s, o) => s + Number(o.price_mod || 0), 0);
   const unitTotal = baseUnit + modTotal;
-  const grandTotal = unitTotal * qty;
+  // Por peso: el cliente indica los kilos (acepta coma decimal).
+  const kgNum = isKg ? Number(String(kg).replace(",", ".")) : NaN;
+  const kgOk = isKg ? Number.isFinite(kgNum) && kgNum > 0 && kgNum <= 99 : true;
+  const grandTotal = isKg ? unitTotal * (kgOk ? kgNum : 0) : unitTotal * qty;
 
   const allRequiredMet = modifiers
     .filter((m) => m.required)
@@ -185,6 +192,7 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
     // Reset del estado al abrir (no arrastrar lo de la vez anterior).
     setSelected({});
     setQty(pack);
+    setKg("");
     setQueries({});
     setCats({});
     setHints({});
@@ -192,6 +200,7 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
   }
 
   function handleAdd() {
+    if (isKg && !kgOk) return;
     const flat: CartModifier[] = [];
     for (const [group, opts] of Object.entries(selected)) {
       for (const o of opts) flat.push({ group, label: o.label, price_mod: o.price_mod });
@@ -200,7 +209,7 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
       offerId: product.id,
       name: product.name,
       price: baseUnit,
-      qty,
+      qty: isKg ? kgNum : qty,
       modifiers: flat.length > 0 ? flat : undefined,
       cashExcluded,
       // Con pack: origPrice = precio de LISTA del paquete (full precision para
@@ -210,11 +219,14 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
       packSize: pack > 1 ? pack : undefined,
       // La fuente del dinero (pack-native): nunca se deriva del precio/unidad.
       packPrice: pack > 1 ? basePrice : undefined,
+      unit: isKg ? "kg" : undefined,
     });
     addToast(
       switched
         ? "Se limpió el carrito anterior (solo podés pedir de un local a la vez)"
-        : `${product.name}${pack > 1 ? ` (pack x${pack})` : ""} agregado al carrito`
+        : isKg
+          ? `${product.name} (${kgNum.toLocaleString("es-AR", { maximumFractionDigits: 3 })}kg) agregado al carrito`
+          : `${product.name}${pack > 1 ? ` (pack x${pack})` : ""} agregado al carrito`
     );
     // Pack combinable: si el pack no estaba completo, se abre el sheet.
     if (volGroup && (volGroup.productIds || []).length > 1) {
@@ -280,11 +292,37 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
             <span className="block text-xs text-muted-foreground line-through">${Number(product.price).toLocaleString("es-AR")}</span>
           </div>
         ) : (
-          <span className="font-bold">${Number(product.price).toLocaleString("es-AR")}</span>
+          <span className="font-bold">
+            ${Number(product.price).toLocaleString("es-AR")}
+            {isKg && <span className="text-xs font-medium text-muted-foreground">/kg</span>}
+          </span>
         )}
         {!outStock &&
           (acceptsCart ? (
-            <AddToCartButton offerId={product.id} name={product.name} price={baseUnit} vendor={vendor} modifiers={modifiers} cashExcluded={cashExcluded} origPrice={pack > 1 ? Number(product.price) : listBaseUnit} hasPromo={hasPromo} packSize={pack > 1 ? pack : undefined} packPrice={pack > 1 ? basePrice : undefined} />
+            isKg ? (
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={kg}
+                  onChange={(e) => setKg(e.target.value)}
+                  placeholder="0,5"
+                  className="w-20 h-9 px-2 text-sm text-center tabular-nums rounded-md border border-input bg-background"
+                  aria-label={`Peso en kilos de ${product.name}`}
+                />
+                <span className="text-xs text-muted-foreground">kg</span>
+                <button
+                  type="button"
+                  onClick={() => { if (kgOk) handleAdd(); }}
+                  disabled={!kgOk}
+                  className="rounded-md px-3 py-1.5 text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                >
+                  Agregar · ${grandTotal.toLocaleString("es-AR")}
+                </button>
+              </div>
+            ) : (
+              <AddToCartButton offerId={product.id} name={product.name} price={baseUnit} vendor={vendor} modifiers={modifiers} cashExcluded={cashExcluded} origPrice={pack > 1 ? Number(product.price) : listBaseUnit} hasPromo={hasPromo} packSize={pack > 1 ? pack : undefined} packPrice={pack > 1 ? basePrice : undefined} />
+            )
           ) : (
             <a href={consultHref} target="_blank" rel="noopener noreferrer" className="rounded-md px-3 py-1.5 text-sm font-medium text-center bg-primary text-primary-foreground hover:bg-primary/90">Consultar</a>
           ))}
@@ -338,6 +376,7 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
             <span className="font-bold">${Number(product.price).toLocaleString("es-AR")}</span>
           )}
           {outStock && <Badge variant="secondary" className="bg-red-100 text-red-700 text-[10px]">Sin stock</Badge>}
+          {isKg && <Badge className="bg-sky-50 text-sky-700 border border-sky-200 text-[10px] whitespace-nowrap">$/kg</Badge>}
           {volBadge && acceptsCart && !outStock && (
             <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-1.5 py-0.5 whitespace-nowrap">{volBadge}</span>
           )}
@@ -408,6 +447,11 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
                     <div>
                       <span className="font-display text-2xl font-bold">${basePrice.toLocaleString("es-AR")}</span>
                       <p className="text-xs text-muted-foreground mt-0.5">Paquete de {pack} · c/u ${baseUnit.toLocaleString("es-AR")}</p>
+                    </div>
+                  ) : isKg ? (
+                    <div>
+                      <span className="font-display text-2xl font-bold">${Number(product.price).toLocaleString("es-AR")}</span>
+                      <span className="text-sm text-muted-foreground">/kg</span>
                     </div>
                   ) : showCash ? (
                     <CashPrice price={basePrice} hasPromo={hasPromo} excluded={product.cash_discount_excluded} cashPct={vendor.cashDiscountPct} size="lg" plainClassName="font-display text-2xl font-bold" />
@@ -567,38 +611,53 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
             {!outStock &&
               (acceptsCart ? (
                 <>
-                  {/* Cantidad */}
+                  {/* Cantidad / peso */}
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium">
-                      Cantidad
-                      {pack > 1 && <span className="ml-1.5 text-xs text-muted-foreground">(de a {pack})</span>}
+                      {isKg ? "Peso" : "Cantidad"}
+                      {pack > 1 && !isKg && <span className="ml-1.5 text-xs text-muted-foreground">(de a {pack})</span>}
                     </span>
-                    <div className="flex items-center border border-border rounded-lg">
-                      <button
-                        type="button"
-                        onClick={() => setQty((q) => Math.max(pack, q - pack))}
-                        className="h-9 w-9 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted rounded-l-lg transition-colors"
-                        aria-label="Menos"
-                      >
-                        −
-                      </button>
-                      <span className="w-10 text-center text-sm font-medium tabular-nums">{qty}</span>
-                      <button
-                        type="button"
-                        onClick={() => setQty((q) => q + pack)}
-                        className="h-9 w-9 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted rounded-r-lg transition-colors"
-                        aria-label="Más"
-                      >
-                        +
-                      </button>
-                    </div>
+                    {isKg ? (
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={kg}
+                          onChange={(e) => setKg(e.target.value)}
+                          placeholder="0,5"
+                          className="w-24 h-9 px-2 text-sm text-center tabular-nums rounded-lg border border-input bg-background"
+                          aria-label={`Peso en kilos de ${product.name}`}
+                        />
+                        <span className="text-xs text-muted-foreground">kg</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center border border-border rounded-lg">
+                        <button
+                          type="button"
+                          onClick={() => setQty((q) => Math.max(pack, q - pack))}
+                          className="h-9 w-9 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted rounded-l-lg transition-colors"
+                          aria-label="Menos"
+                        >
+                          −
+                        </button>
+                        <span className="w-10 text-center text-sm font-medium tabular-nums">{qty}</span>
+                        <button
+                          type="button"
+                          onClick={() => setQty((q) => q + pack)}
+                          className="h-9 w-9 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted rounded-r-lg transition-colors"
+                          aria-label="Más"
+                        >
+                          +
+                        </button>
+                      </div>
+                    )}
                   </div>
 
                   {/* Total + Agregar */}
                   <button
                     type="button"
                     onClick={handleAdd}
-                    disabled={!allRequiredMet}
+                    disabled={!allRequiredMet || (isKg && !kgOk)}
                     className="w-full rounded-xl bg-primary text-primary-foreground text-sm font-semibold py-3 hover:bg-primary/90 transition-colors active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Agregar al pedido · ${grandTotal.toLocaleString("es-AR")}

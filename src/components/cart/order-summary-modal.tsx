@@ -7,8 +7,10 @@ type SummaryItem = {
   price: number;
   qty: number;
   modifiers?: string[];
-  /** Total de la línea ya calculado (pack-aware). Si falta, price×qty. */
+  /** Total de línea ya calculado (pack-aware). Si falta, price×qty. */
   lineTotal?: number;
+  /** Unidad de venta: "kg" = fraccionado por peso. */
+  unit?: string;
 };
 
 type OrderSummaryModalProps = {
@@ -88,10 +90,14 @@ export function OrderSummaryModal({
                 ? ` (${item.modifiers.join(", ")})`
                 : "";
             const itemTotal = item.lineTotal ?? (item.price * item.qty);
+            const isKg = (item as any).unit === "kg";
+            const qtyLabel = isKg
+              ? `${Number(item.qty).toLocaleString("es-AR", { maximumFractionDigits: 3 })}kg`
+              : `${item.qty}x`;
             return (
               <div key={idx} className="flex items-center justify-between text-sm">
                 <span className="text-muted-foreground">
-                  {item.qty}x {item.name}
+                  {qtyLabel} {item.name}
                   {modStr}
                 </span>
                 <span className="font-medium tabular-nums">

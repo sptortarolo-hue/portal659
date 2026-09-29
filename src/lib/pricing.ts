@@ -43,6 +43,8 @@ type ProductRow = {
   cash_discount_excluded: boolean | null;
   /** Si se vende en packs (ej: 6), el precio es del paquete. NULL = por unidad. */
   pack_size: number | null;
+  /** Unidad de venta: "kg" = precio por kilo, cantidad decimal. */
+  unit?: string | null;
 };
 
 type VariantRow = {
@@ -143,7 +145,7 @@ export async function resolveOrderPricing(opts: {
 
   const products: ProductRow[] = productIds.size
     ? await tx.query<ProductRow>(
-        `SELECT id, name, price, promo_price, available, cash_discount_excluded, pack_size FROM products
+        `SELECT id, name, price, promo_price, available, cash_discount_excluded, pack_size, unit FROM products
          WHERE vendor_id = $1 AND id = ANY($2)`,
         [vendorId, [...productIds]]
       )
@@ -241,7 +243,13 @@ export async function resolveOrderPricing(opts: {
     if (!it) continue;
 
     const qty = Number(it.qty);
-    const qtySafe = Number.isFinite(qty) ? Math.min(99, Math.max(1, Math.floor(qty))) : 1;
+    // Por peso: kilos decimales (0 < kg <= 99), sin piso entero ni pack.
+    const isKg = !it.variantId && (productById.get(String(it.offerId)) as any)?.unit === "kg";
+    const qtySafe = isKg
+      ? Number.isFinite(qty) && qty > 0 && qty <= 99
+        ? Math.round(qty * 1000) / 1000
+        : (() => { throw new PricingError(`Indicá el peso en kilos de "${(productById.get(String(it.offerId)) as any)?.name || "el producto"}".`); })()
+      : Number.isFinite(qty) ? Math.min(99, Math.max(1, Math.floor(qty))) : 1;
 
     let product: ProductRow | undefined;
     let variant: VariantRow | undefined;
@@ -280,9 +288,9 @@ export async function resolveOrderPricing(opts: {
     // cantidad de packs), NUNCA sumando unidades redondeadas (11500/6 =
     // 1916,67 → 6×1916,67 = 11500,02 ≠ 11500).
     const pack =
-      !variant && Number.isInteger(Number(product.pack_size)) && Number(product.pack_size) >= 2
-        ? Math.floor(Number(product.pack_size))
-        : 1;
+      isKg || variant || !Number.isInteger(Number(product.pack_size)) || Number(product.pack_size) < 2
+        ? 1
+        : Math.floor(Number(product.pack_size));
     if (pack > 1 && qtySafe % pack !== 0) {
       throw new PricingError(
         `"${product.name}" se vende de a ${pack} unidades. Elegí una cantidad múltiplo de ${pack}.`
@@ -388,6 +396,7 @@ export async function resolveOrderPricing(opts: {
       qty: qtySafe,
       modifiers: labels.length ? labels : undefined,
       pack_size: pack > 1 ? pack : undefined,
+      unit: isKg ? "kg" : undefined,
     });
   }
 

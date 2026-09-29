@@ -486,12 +486,15 @@ export default function CheckoutPage() {
       const unit = vline
         ? Math.round((lineNet / Math.max(1, i.qty)) * 100) / 100
         : i.price + modTotal;
+      // Por peso: MP exige quantity entero → 1 × total de la línea.
+      const isKg = (i as any).unit === "kg";
       return {
         offerId: i.offerId,
         variantId: i.variantId,
-        name: i.name,
-        price: unit,
-        qty: i.qty,
+        name: isKg ? `${i.name} (${Number(i.qty).toLocaleString("es-AR", { maximumFractionDigits: 3 })}kg)` : i.name,
+        price: isKg ? Math.round(lineNet * 100) / 100 : unit,
+        qty: isKg ? 1 : i.qty,
+        unit: isKg ? "kg" : undefined,
       };
     });
     const mpTotal = mpItems.reduce((s, it) => s + it.price * it.qty, 0) + deliveryFee;
@@ -578,6 +581,7 @@ export default function CheckoutPage() {
             price: i.price + (i.modifiers || []).reduce((s, m) => s + m.price_mod, 0),
             qty: i.qty,
             modifiers: (i.modifiers || []).map((m) => m.label),
+            unit: (i as any).unit,
           })),
           total: displayTotal,
           notes: notes.trim() || null,
@@ -617,6 +621,7 @@ export default function CheckoutPage() {
           qty: i.qty,
           modifiers: (i.modifiers || []).map((m) => m.label),
           lineTotal: cartLineTotal(i),
+          unit: (i as any).unit,
         })),
         total: waTotal,
         customerName: name,
@@ -696,7 +701,9 @@ export default function CheckoutPage() {
             {header}
             <div className="flex items-center gap-3">
               <div className="h-10 w-10 rounded-lg bg-muted flex items-center justify-center flex-shrink-0 text-sm font-bold text-muted-foreground">
-                {i.qty}x
+                {(i as any).unit === "kg"
+                  ? `${Number(i.qty).toLocaleString("es-AR", { maximumFractionDigits: 2 })}k`
+                  : `${i.qty}x`}
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium truncate">
@@ -1026,6 +1033,7 @@ export default function CheckoutPage() {
           qty: i.qty,
           modifiers: (i.modifiers || []).map((m) => m.label),
           lineTotal: cartLineTotal(i),
+          unit: (i as any).unit,
         }))}
         total={displayTotal}
         cashDiscount={cashActive ? cashDiscount : 0}

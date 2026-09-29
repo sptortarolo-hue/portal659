@@ -35,6 +35,8 @@ export type CartItem = {
   hasPromo?: boolean;
   /** Pack (ej: 6): qty es siempre múltiplo de esto y el stepper va de a N. */
   packSize?: number;
+  /** Unidad de venta: "kg" = fraccionado por peso (qty decimal). */
+  unit?: string;
   /**
    * Precio del PAQUETE completo (sin mods). Con pack, es la fuente del dinero:
    * línea = packPrice × (qty/packSize) + mods×qty. Nunca sumar unidades

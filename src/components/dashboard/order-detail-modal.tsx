@@ -500,7 +500,7 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
                   <div key={i} className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <p className="text-sm break-words">
-                        <span className="font-bold">{item.qty}x</span> {item.name}
+                        <span className="font-bold">{(item as any).unit === "kg" ? `${Number(item.qty).toLocaleString("es-AR", { maximumFractionDigits: 3 })}kg` : `${item.qty}x`}</span> {item.name}
                       </p>
                       {item.modifiers && item.modifiers.length > 0 && (
                         <p className="text-[10px] text-muted-foreground/70 pl-5">

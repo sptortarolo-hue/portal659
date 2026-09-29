@@ -104,7 +104,9 @@ function OrderCard({ order, onReorder }: { order: Order & { track_token?: string
         {order.items.map((item, i) => (
           <div key={i} className="flex justify-between text-xs">
             <span className="text-muted-foreground">
-              {item.qty}x {item.name}
+              {(item as any).unit === "kg"
+                ? `${Number(item.qty).toLocaleString("es-AR", { maximumFractionDigits: 3 })}kg ${item.name}`
+                : `${item.qty}x ${item.name}`}
               {item.modifiers && item.modifiers.length > 0 && (
                 <span className="text-muted-foreground/50"> ({item.modifiers.join(", ")})</span>
               )}
@@ -281,6 +283,7 @@ export default function MisPedidosPage() {
         price: match ? (match.promo_price ?? match.price) : item.price,
         qty: item.qty,
         modifiers: (item.modifiers || []).map((m) => ({ group: "", label: m, price_mod: 0 })),
+        unit: (item as any).unit,
       };
     });
 
@@ -402,7 +405,9 @@ export default function MisPedidosPage() {
               {reorderConfirm.order.items.map((item, i) => (
                 <div key={i} className="flex justify-between text-sm">
                   <span className="text-muted-foreground">
-                    {item.qty}x {item.name}
+                    {(item as any).unit === "kg"
+                      ? `${Number(item.qty).toLocaleString("es-AR", { maximumFractionDigits: 3 })}kg ${item.name}`
+                      : `${item.qty}x ${item.name}`}
                   </span>
                   <span className="font-medium tabular-nums">
                     ${orderLineTotal(item).toLocaleString("es-AR")}

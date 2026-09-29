@@ -281,7 +281,7 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
       resolvedZoneName = pricing.deliveryZoneName;
       resolvedOutOfArea = pricing.deliveryOutOfArea;
 
-      const movedStock: StockMove[] = await adjustStockForItems(tx, resolvedItems, "decrement");
+      const movedStock: StockMove[] = await adjustStockForItems(tx, resolvedItems.filter((i) => (i as any).unit !== "kg"), "decrement");
       pickupNumber = await nextOrderNumber(tx, vendorId);
 
       // $16 = track_token; después van las columnas opcionales con

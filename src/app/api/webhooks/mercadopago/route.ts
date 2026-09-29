@@ -403,7 +403,11 @@ export async function POST(request: Request) {
           try {
             const raw = (metadata as Record<string, unknown>).stock_items;
             const stockItems = typeof raw === "string" ? JSON.parse(raw) : [];
-            await adjustStockForItems(tx, stockItems, "decrement");
+            // Por peso no descuenta stock (igual que app/mostrador).
+            const stockable = Array.isArray(stockItems)
+              ? stockItems.filter((s: any) => s?.unit !== "kg")
+              : stockItems;
+            await adjustStockForItems(tx, stockable, "decrement");
           } catch (e) {
             // best-effort: ver nota arriba (se loguea para no perderlo en silencio)
             logApiError("mp-webhook/stock", e);

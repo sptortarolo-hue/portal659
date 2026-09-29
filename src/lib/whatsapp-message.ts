@@ -5,10 +5,19 @@ type WaItem = {
   modifiers?: string[];
   /** Total de línea pack-aware (si falta, price×qty). */
   lineTotal?: number;
+  /** Unidad de venta: "kg" = fraccionado por peso. */
+  unit?: string;
 };
 
 function itemTotal(i: WaItem): number {
   return i.lineTotal ?? i.price * i.qty;
+}
+
+/** "2x" o "0,500kg" según unidad. */
+function qtyLabel(i: WaItem): string {
+  return (i as any).unit === "kg"
+    ? `${Number(i.qty).toLocaleString("es-AR", { maximumFractionDigits: 3 })}kg`
+    : `${i.qty}x`;
 }
 
 export function buildOrderMessage(params: {
@@ -32,7 +41,7 @@ export function buildOrderMessage(params: {
     const modStr = i.modifiers && i.modifiers.length > 0
       ? ` (${i.modifiers.join(", ")})`
       : "";
-    return `- ${i.qty}x ${i.name}${modStr} ($${itemTotal(i).toLocaleString("es-AR")})`;
+    return `- ${qtyLabel(i)} ${i.name}${modStr} ($${itemTotal(i).toLocaleString("es-AR")})`;
   });
 
   const paymentLine = params.paymentMethod === "transferencia"
@@ -106,7 +115,7 @@ export function buildComandaWhatsApp(params: {
     const modStr = i.modifiers && i.modifiers.length > 0
       ? `\n  (${i.modifiers.join(", ")})`
       : "";
-    itemLines.push(`${i.qty}x ${i.name}${modStr}  $${itemTotal(i).toLocaleString("es-AR")}`);
+    itemLines.push(`${qtyLabel(i)} ${i.name}${modStr}  $${itemTotal(i).toLocaleString("es-AR")}`);
   }
 
   const notesLine = params.notes ? `\nNotas: ${params.notes}` : "";
@@ -163,7 +172,7 @@ export function buildModifiedOrderMessage(params: {
     const modStr = i.modifiers && i.modifiers.length > 0
       ? ` (${i.modifiers.join(", ")})`
       : "";
-    return `${i.qty}x ${i.name}${modStr}  $${itemTotal(i).toLocaleString("es-AR")}`;
+    return `${qtyLabel(i)} ${i.name}${modStr}  $${itemTotal(i).toLocaleString("es-AR")}`;
   });
 
   const modLine = params.modificationNotes

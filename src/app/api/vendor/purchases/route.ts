@@ -255,8 +255,8 @@ export async function POST(request: Request) {
           );
         } else {
           await tx.queryVoid(
-            `UPDATE product_variants SET stock = COALESCE(stock, 0) + $2, cost_last = $3 WHERE id = $4`,
-            [it.qty, it.unit_cost, vid]
+            `UPDATE product_variants SET stock = COALESCE(stock, 0) + $2, cost_last = $3 WHERE id = $1`,
+            [vid, it.qty, it.unit_cost]
           );
         }
         await logStockMovement(tx, {

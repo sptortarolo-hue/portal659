@@ -749,7 +749,27 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
     }
   }
 
+  // Wrapper anti-silencio: cualquier excepción inesperada del cobro deja
+  // mensaje visible y desbloquea el botón (antes quedaba en "Cobrando..."
+  // para siempre y los toques siguientes no hacían nada).
   async function charge(withReceipt: boolean) {
+    try {
+      await chargeInner(withReceipt);
+    } catch (e) {
+      console.error("[mostrador] charge", e);
+      try {
+        fetch("/api/client-error", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ where: "mostrador:charge", error: String(e) }),
+        }).catch(() => {});
+      } catch { /* noop */ }
+      setMsg("No se pudo registrar el pedido (error inesperado, reintentá)");
+      setSaving(false);
+    }
+  }
+
+  async function chargeInner(withReceipt: boolean) {
     if (items.length === 0) return;
 
     // Ítems por peso sin peso cargado: no se puede cobrar.

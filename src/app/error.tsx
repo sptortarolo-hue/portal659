@@ -9,9 +9,13 @@ export default function ErrorPage({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  // Chunk de deploy viejo (HTML cacheado que referencia chunks ya borrados
+  // del servidor): reset() no alcanza porque el chunk da 404. La salida es
+  // recargar para obtener HTML + chunks frescos.
+  const text = `${String(error?.message || error)} ${typeof error?.stack === "string" ? error.stack : ""}`;
+  const isChunkError = /Loading chunk|ChunkLoadError|dynamically imported|failed to fetch dynamically|Element type is invalid/i.test(text);
   useEffect(() => {
     console.error("Route error:", error);
-    // Telemetría al servidor (fire-and-forget): cae en docker logs como
     // [API:client-error] para diagnosticar "Algo salió mal" reales.
     try {
       fetch("/api/client-error", {
@@ -42,7 +46,9 @@ export default function ErrorPage({
         Algo salió mal
       </h1>
       <p className="text-muted-foreground mb-2">
-        Hubo un problema al cargar esta página.
+        {isChunkError
+          ? "Hay una versión nueva de la app: recargá para actualizar."
+          : "Hubo un problema al cargar esta página."}
       </p>
       {error.digest && (
         <p className="text-xs text-muted-foreground/60 mb-6 font-mono">
@@ -50,12 +56,21 @@ export default function ErrorPage({
         </p>
       )}
       <div className="flex gap-3 justify-center">
-        <button
-          onClick={reset}
-          className="inline-flex items-center gap-2 rounded-full bg-primary text-primary-foreground px-6 py-3 text-sm font-semibold hover:bg-primary/90 transition-all active:scale-95"
-        >
-          Intentar de nuevo
-        </button>
+        {isChunkError ? (
+          <button
+            onClick={() => window.location.reload()}
+            className="inline-flex items-center gap-2 rounded-full bg-primary text-primary-foreground px-6 py-3 text-sm font-semibold hover:bg-primary/90 transition-all active:scale-95"
+          >
+            Recargar página
+          </button>
+        ) : (
+          <button
+            onClick={reset}
+            className="inline-flex items-center gap-2 rounded-full bg-primary text-primary-foreground px-6 py-3 text-sm font-semibold hover:bg-primary/90 transition-all active:scale-95"
+          >
+            Intentar de nuevo
+          </button>
+        )}
         <a
           href="/"
           className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-6 py-3 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"

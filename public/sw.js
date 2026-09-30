@@ -1,6 +1,6 @@
-// v16: push que despierta (pedido nuevo): renotify + requireInteraction +
-// vibrate + silent:false. Cada pedido trae tag único (`new-order-<id>`)
-// para no colapsar; el resto mantiene tag "portal659". Purga v15.
+// v17: docFallback reintenta una vez si hay "red" (al volver a la app la
+// radio suele estar dormida y el primer fetch tira aunque vuelva al
+// segundo). Solo entonces sirve el HTML cacheado. Purga v16.
 // Motivo: recargar el panel sin red debe bootear (F6 bootstrap desde
 // snapshot); sin documento cacheado el reload cae a offline.html y el
 // modo offline exige pestaña ya abierta. Seguro contra HTML viejo:
@@ -9,9 +9,9 @@
 // - Si el HTML cacheado referencia chunks ausentes, la app muestra su
 //   ErrorBoundary (no pantalla muerta). Nunca se precachea ni se sirve
 //   teniendo red (lección v12/v13). Purga v14. Otros paths: sin cambios.
-const CACHE_NAME = "portal659-v16";
-const API_CACHE = "portal659-api-v16";
-const DOC_CACHE = "portal659-doc-v16";
+const CACHE_NAME = "portal659-v17";
+const API_CACHE = "portal659-api-v17";
+const DOC_CACHE = "portal659-doc-v17";
 const CURRENT_CACHES = new Set([CACHE_NAME, API_CACHE, DOC_CACHE]);
 const OFFLINE_URL = "/offline.html";
 
@@ -175,7 +175,21 @@ self.addEventListener("fetch", (event) => {
             cache.put(request, networkResponse.clone()).catch(() => {});
           }
           return networkResponse;
-        } catch {
+        } catch (firstErr) {
+          // Al volver a la app la radio puede estar dormida: si el navegador
+          // cree que hay red, se reintenta una vez antes de caer al caché.
+          try {
+            if (self.navigator && self.navigator.onLine) {
+              await new Promise((r) => setTimeout(r, 1500));
+              const retry = await fetch(request);
+              const ct = retry.headers.get("content-type") || "";
+              if (retry.status === 200 && ct.includes("text/html")) {
+                const cache = await caches.open(DOC_CACHE);
+                cache.put(request, retry.clone()).catch(() => {});
+              }
+              return retry;
+            }
+          } catch {}
           const cachedResponse = await caches.match(request);
           if (cachedResponse) return cachedResponse;
           const offlineResponse = await caches.match(OFFLINE_URL);

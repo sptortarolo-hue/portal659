@@ -16,8 +16,15 @@ export type StoreGalleryItem = {
  */
 export function StoreGallery({ items, title }: { items: StoreGalleryItem[]; title: string }) {
   const [openIdx, setOpenIdx] = useState<number | null>(null);
+  const isOpen = openIdx !== null;
 
-  const close = useCallback(() => setOpenIdx(null), []);
+  // Cerrar volviendo en el historial: el popstate cierra la vista y no queda
+  // entrada fantasma (un solo "atrás" vuelve a la vidriera como estaba).
+  const close = useCallback(() => {
+    const st = window.history.state as { portal659Gallery?: boolean } | null;
+    if (st?.portal659Gallery) history.back();
+    else setOpenIdx(null);
+  }, []);
 
   // Escape cierra.
   useEffect(() => {
@@ -31,17 +38,16 @@ export function StoreGallery({ items, title }: { items: StoreGalleryItem[]; titl
     return () => window.removeEventListener("keydown", onKey);
   }, [openIdx, items.length, close]);
 
-  // Botón atrás del celu cierra el lightbox en vez de salir de la página.
+  // Botón atrás del celu cierra la vista y vuelve a la página como estaba
+  // antes de clickear (el pushState hace que "atrás" sea "cerrar").
+  // Sin replaceState en cleanup: cerrar es history.back() y el popstate cierra.
   useEffect(() => {
-    if (openIdx === null) return;
+    if (!isOpen) return;
     const onPop = () => setOpenIdx(null);
     window.addEventListener("popstate", onPop);
     history.pushState({ portal659Gallery: true }, "", window.location.href);
-    return () => {
-      window.removeEventListener("popstate", onPop);
-      history.replaceState({}, "", window.location.href);
-    };
-  }, [openIdx === null]);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [isOpen]);
 
   if (!items || items.length === 0) return null;
   const open = openIdx !== null ? items[openIdx] : null;
@@ -55,10 +61,10 @@ export function StoreGallery({ items, title }: { items: StoreGalleryItem[]; titl
             key={g.id}
             type="button"
             onClick={() => setOpenIdx(i)}
-            className="flex-shrink-0 w-[72vw] sm:w-60 snap-start text-left active:scale-[0.99] transition-transform"
+            className="flex-shrink-0 h-56 sm:h-64 aspect-[9/16] snap-start text-left active:scale-[0.99] transition-transform"
             aria-label={`Ampliar foto${g.caption ? `: ${g.caption}` : ""}`}
           >
-            <div className="relative aspect-[4/3] rounded-xl overflow-hidden bg-accent">
+            <div className="relative h-full w-full rounded-xl overflow-hidden bg-accent">
               <ProductImage
                 src={g.image_url}
                 name={g.caption || "Foto"}
@@ -100,37 +106,38 @@ export function StoreGallery({ items, title }: { items: StoreGalleryItem[]; titl
             </button>
           </div>
           <div
-            className="flex-1 min-h-0 flex items-center justify-center px-2 gap-2"
+            className="flex-1 min-h-0 min-w-0 flex items-center justify-center"
             onClick={(e) => e.stopPropagation()}
           >
-            {items.length > 1 && (
-              <button
-                type="button"
-                aria-label="Anterior"
-                onClick={() => setOpenIdx((i) => (i === null ? i : (i - 1 + items.length) % items.length))}
-                className="h-11 w-11 flex-shrink-0 rounded-full bg-white/10 text-white text-2xl flex items-center justify-center"
-              >
-                ‹
-              </button>
-            )}
-            <div className="min-w-0 max-h-full">
+            {/* Marco 9:16 responsive: alto manda (70vh), ancho = 9/16, con tope */}
+            <div className="relative h-[70vh] aspect-[9/16] max-w-full rounded-lg overflow-hidden bg-black">
               <ProductImage
                 src={open.image_url}
                 name={open.caption || "Foto"}
                 alt={open.caption || "Foto de la vidriera"}
-                className="max-h-[70vh] w-auto max-w-full object-contain rounded-lg"
+                className="w-full h-full object-cover"
               />
+              {items.length > 1 && (
+                <>
+                  <button
+                    type="button"
+                    aria-label="Anterior"
+                    onClick={() => setOpenIdx((i) => (i === null ? i : (i - 1 + items.length) % items.length))}
+                    className="absolute left-1 sm:left-2 top-1/2 -translate-y-1/2 h-11 w-11 rounded-full bg-black/60 text-white text-2xl flex items-center justify-center"
+                  >
+                    ‹
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Siguiente"
+                    onClick={() => setOpenIdx((i) => (i === null ? i : (i + 1) % items.length))}
+                    className="absolute right-1 sm:right-2 top-1/2 -translate-y-1/2 h-11 w-11 rounded-full bg-black/60 text-white text-2xl flex items-center justify-center"
+                  >
+                    ›
+                  </button>
+                </>
+              )}
             </div>
-            {items.length > 1 && (
-              <button
-                type="button"
-                aria-label="Siguiente"
-                onClick={() => setOpenIdx((i) => (i === null ? i : (i + 1) % items.length))}
-                className="h-11 w-11 flex-shrink-0 rounded-full bg-white/10 text-white text-2xl flex items-center justify-center"
-              >
-                ›
-              </button>
-            )}
           </div>
           {open.caption && (
             <p className="text-center text-white text-sm px-6 pb-[calc(env(safe-area-inset-bottom,0px)+1.5rem)]">

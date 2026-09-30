@@ -652,7 +652,7 @@ type VolumeSaveData = {
 
 type GroupFormSubmit = (data: VolumeSaveData) => Promise<void>;
 
-/** Precios por volumen: grupos mixtos + tramos (solo gastronomía). */
+/** Precios por volumen: grupos mixtos + tramos (gastronomía y comercios de barrio). */
 export function VolumeEditor({ products, categories }: { products: Product[]; categories: Category[] }) {
   const [groups, setGroups] = useState<GroupRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -769,7 +769,7 @@ export function VolumeEditor({ products, categories }: { products: Product[]; ca
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2">
         <p className="text-sm text-muted-foreground">
-          Ej: 12 empanadas surtidas a precio de docena. El volumen suma entre gustos.
+          Ej: 12 empanadas surtidas a precio de docena o 3 yerbas a precio pack. El volumen suma entre productos.
         </p>
         <div className="flex gap-1 flex-shrink-0">
           <Button

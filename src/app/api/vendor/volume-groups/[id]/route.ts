@@ -14,8 +14,8 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     `SELECT vertical FROM vendors WHERE id = $1 LIMIT 1`,
     [vendor.id]
   );
-  if (vrow?.vertical && vrow.vertical !== "gastronomia") {
-    return NextResponse.json({ error: "Los precios por volumen están disponibles para gastronomía" }, { status: 403 });
+  if (vrow?.vertical && vrow.vertical !== "gastronomia" && vrow.vertical !== "comercio") {
+    return NextResponse.json({ error: "Los precios por volumen están disponibles para gastronomía y comercios de barrio" }, { status: 403 });
   }
 
   const body = await request.json().catch(() => ({}));

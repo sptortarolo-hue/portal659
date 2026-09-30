@@ -51,8 +51,8 @@ export async function POST(request: Request) {
     `SELECT vertical FROM vendors WHERE id = $1 LIMIT 1`,
     [vendor.id]
   );
-  if (vrow?.vertical && vrow.vertical !== "gastronomia") {
-    return NextResponse.json({ error: "Los precios por volumen estÃ¡n disponibles para gastronomÃ­a" }, { status: 403 });
+  if (vrow?.vertical && vrow.vertical !== "gastronomia" && vrow.vertical !== "comercio") {
+    return NextResponse.json({ error: "Los precios por volumen están disponibles para gastronomía y comercios de barrio" }, { status: 403 });
   }
   if (!(await tablesReady())) {
     return NextResponse.json({ error: "Falta aplicar la migraciÃ³n de precios por volumen" }, { status: 503 });

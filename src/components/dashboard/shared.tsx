@@ -174,7 +174,7 @@ type OfferFormProps = {
   setOffRequiresPrep?: (v: boolean) => void;
   offCashExcluded?: boolean;
   setOffCashExcluded?: (v: boolean) => void;
-  /** "Se vende de a N" (pack): string con el N, "" = por unidad. Solo gastro. */
+  /** "Se vende de a N" (pack): string con el N, "" = por unidad. Visible donde el editor lo pasa (gastro y comercio). */
   offPackSize?: string;
   setOffPackSize?: (v: string) => void;
   /** Unidad de venta (balanza): "unidad" o "kg" (precio por kilo). */

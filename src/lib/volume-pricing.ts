@@ -1,5 +1,5 @@
 /**
- * Precios por volumen (gastro): grupos mixtos de productos + tramos por cantidad.
+ * Precios por volumen (gastro y comercios de barrio): grupos mixtos de productos + tramos por cantidad.
  *
  * Módulo PURO (sin imports server/client): lo usan tanto `resolveOrderPricing`
  * (fuente de verdad server-side) como el micrositio/checkout (espejo visual).

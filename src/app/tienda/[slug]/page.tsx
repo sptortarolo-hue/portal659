@@ -237,6 +237,10 @@ export default async function TiendaPage({
   const isComercio = v.vertical === "comercio";
   // Retail (moda/comercio): se habla de "catálogo" y productos, no de carta/menú.
   const isCatalog = isModa || isComercio;
+  // Precios por volumen (packs combinables): gastronomía y comercios de
+  // barrio. El servidor los calcula sin gate vertical; acá se decide si el
+  // micrositio los muestra (badges, PackCards, PackSheet).
+  const showVolume = isGastro || isComercio;
 
   const norm = (s: string | null) => (s || "").toLowerCase().trim();
   type Section = { name: string; items: any[] };
@@ -270,7 +274,7 @@ export default async function TiendaPage({
     sections.push({ name: isCatalog ? "Catálogo" : "Menú", items: menuOffers });
   }
 
-  // Precios por volumen (solo gastro): grupos + tramos para badges y espejo.
+  // Precios por volumen (gastro + comercio): grupos + tramos para badges y espejo.
   // Tolerante a tabla sin migrar.
   let volumeGroups: any[] = [];
   // Nombres de productos para comunicar "se combina con" (Fase combinables).
@@ -282,7 +286,7 @@ export default async function TiendaPage({
       { id: String(o.id), name: String(o.name), image: o.image_url || null, price: Number(o.price) || 0 },
     ])
   );
-  if (isGastro) {
+  if (showVolume) {
     try {
       const gRows: any[] = await queryMany<any>(
         `SELECT id, name, product_ids, combine_promo, combine_cash, extras_mode
@@ -709,7 +713,7 @@ export default async function TiendaPage({
           <>
             {/* Menu sections */}
             <h2 id="menu" className="font-display text-2xl font-semibold mt-6 mb-4 scroll-mt-[152px] sm:scroll-mt-16">{isCatalog ? "Catálogo" : "Menú"}</h2>
-            {isGastro && acceptsCart && packGroups.length > 0 && (
+            {showVolume && acceptsCart && packGroups.length > 0 && (
               <a
                 href="#packs"
                 className="flex items-center justify-between gap-3 rounded-2xl bg-emerald-50 border border-emerald-200 px-4 py-3 mb-4 hover:shadow-md active:scale-[0.99] transition-all"
@@ -859,7 +863,7 @@ export default async function TiendaPage({
         )}
 
         {/* Packs para armar: un punto de entrada por pack (multi-producto) */}
-        {isGastro && acceptsCart && packGroups.length > 0 && (
+        {showVolume && acceptsCart && packGroups.length > 0 && (
           <section id="packs" className="mt-6 mb-10 scroll-mt-[184px] sm:scroll-mt-24">
             <h3 className="font-display text-xl font-semibold mb-3">🧊 Armá tu pack</h3>
             <div className="space-y-2">
@@ -869,7 +873,7 @@ export default async function TiendaPage({
             </div>
           </section>
         )}
-        {isGastro && acceptsCart && volumeGroups.length > 0 && <PackSheetHost groups={volumeGroups} vendor={vendorBrief} />}
+        {showVolume && acceptsCart && volumeGroups.length > 0 && <PackSheetHost groups={volumeGroups} vendor={vendorBrief} />}
 
         {/* Reviews */}
         <ReviewList vendorId={v.id} />

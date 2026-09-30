@@ -142,7 +142,8 @@ export async function POST(request: Request) {
       });
       total = pricing.total;
 
-      const movedStock: StockMove[] = await adjustStockForItems(tx, pricing.items, "decrement");
+      // Por peso (kg) nunca toca stock (evita 22P02 con decimales).
+      const movedStock: StockMove[] = await adjustStockForItems(tx, pricing.items.filter((i) => (i as any)?.unit !== "kg"), "decrement");
 
       pickupNumber = await nextOrderNumber(tx, gate.vendor.id);
 

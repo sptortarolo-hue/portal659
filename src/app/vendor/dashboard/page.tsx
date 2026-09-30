@@ -2,6 +2,8 @@
 
 import { Suspense, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useRenderGuard } from "@/hooks/use-render-guard";
+import { TabErrorBoundary } from "@/components/dashboard/tab-error-boundary";
 import dynamic from "next/dynamic";
 import {
   Menu,
@@ -179,6 +181,7 @@ export default function VendorDashboard() {
 }
 
 function VendorDashboardInner() {
+  useRenderGuard("VendorDashboardInner");
   const router = useRouter();
   const searchParams = useSearchParams();
   const impersonatingId = searchParams.get("as");
@@ -1508,6 +1511,7 @@ function VendorDashboardInner() {
 
         {/* Tab content */}
         <div className={`flex-1 px-4 mt-4 ${tab === "comanda" ? "w-full max-w-none" : `mx-auto w-full ${["orders", "history", "pos", "mesas", "caja", "clientes", "analytics", "recetas", "inventario", "hoy", "menu"].includes(tab) ? "max-w-7xl" : "max-w-4xl"}`}`}>
+          <TabErrorBoundary tab={tab || "dashboard"}>
           {isService ? (
             <div className="space-y-4">
               <DashboardServicio
@@ -1761,6 +1765,7 @@ function VendorDashboardInner() {
               )}
             </>
           )}
+          </TabErrorBoundary>
         </div>
 
         {/* Mobile bottom nav — SIN backdrop-blur (fondo sólido): sticky/fixed +

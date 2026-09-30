@@ -1111,6 +1111,7 @@ function VendorDashboardInner() {
 
   const ordersContent = (
     <div className="space-y-3">
+      <TabErrorBoundary tab="orders-header">
       {/* Nuevo apartado / seña (moda) */}
       {isModa && (
         <div className="flex justify-end">
@@ -1159,13 +1160,15 @@ function VendorDashboardInner() {
           </button>
         </div>
       )}
+      </TabErrorBoundary>
 
       {orderStatusFilter === "completed" ? (
-        deliveredTodaySection
+        <TabErrorBoundary tab="orders-delivered">{deliveredTodaySection}</TabErrorBoundary>
       ) : (
         <>
       {/* Desktop: Kanban board */}
       <div className="hidden lg:block">
+        <TabErrorBoundary tab="orders-kanban">
         <OrdersKanban
             orders={filteredOrders}
             isRetail={isRetail}
@@ -1176,10 +1179,12 @@ function VendorDashboardInner() {
             focusStatus={orderStatusFilter}
             onError={(m) => setMsg(`Error: ${m}`)}
           />
+        </TabErrorBoundary>
       </div>
 
       {/* Mobile: Grid list */}
       <div className="lg:hidden">
+        <TabErrorBoundary tab="orders-mobile">
         {ordersLoading ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
             {[1, 2, 3, 4, 5, 6].map((i) => (
@@ -1330,6 +1335,7 @@ function VendorDashboardInner() {
             })}
           </div>
         )}
+        </TabErrorBoundary>
       </div>
       {deliveredTodaySection}
         </>

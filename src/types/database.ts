@@ -559,6 +559,12 @@ export type Review = {
   reply_by: string | null;
   replied_at: string | null;
   created_at: string;
+  reported: boolean;
+  reported_at: string | null;
+  report_reason: string | null;
+  moderated: boolean;
+  moderated_at: string | null;
+  moderated_by: string | null;
 };
 
 export type OrderStatus = "new" | "confirmed" | "preparing" | "ready" | "sent" | "completed" | "cancelled";

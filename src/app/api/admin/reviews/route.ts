@@ -11,6 +11,7 @@ export async function GET(request: Request) {
   const rating = url.searchParams.get("rating");
   const vendorId = url.searchParams.get("vendor_id");
   const search = url.searchParams.get("search");
+  const status = url.searchParams.get("status");
 
   const conditions: string[] = [];
   const params: unknown[] = [];
@@ -26,6 +27,11 @@ export async function GET(request: Request) {
   if (search) {
     params.push(`%${search}%`);
     conditions.push(`(r.customer_name ILIKE $${params.length} OR r.comment ILIKE $${params.length})`);
+  }
+  if (status === "reported") {
+    conditions.push(`r.reported = TRUE`);
+  } else if (status === "moderated") {
+    conditions.push(`r.moderated = TRUE`);
   }
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";

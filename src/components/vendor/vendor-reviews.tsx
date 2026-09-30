@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Flag } from "lucide-react";
 import type { Review } from "@/types/database";
 
 export function VendorReviews() {
@@ -11,6 +12,9 @@ export function VendorReviews() {
   const [replying, setReplying] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
+  const [reporting, setReporting] = useState<string | null>(null);
+  const [reportReason, setReportReason] = useState("");
+  const [reportSaving, setReportSaving] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -59,6 +63,31 @@ export function VendorReviews() {
     }
   }
 
+  async function submitReport(reviewId: string) {
+    const reason = reportReason.trim();
+    if (!reason) return;
+    setReportSaving(true);
+    try {
+      const res = await fetch(`/api/vendor/reviews/${reviewId}/report`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "No se pudo reportar la reseña");
+        return;
+      }
+      setReporting(null);
+      setReportReason("");
+      load();
+    } catch {
+      setError("No se pudo reportar la reseña");
+    } finally {
+      setReportSaving(false);
+    }
+  }
+
   if (loading) {
     return <div className="bg-skeleton h-40 rounded-2xl" />;
   }
@@ -97,6 +126,12 @@ export function VendorReviews() {
                 ))}
               </span>
               <span className="text-sm font-medium">{r.customer_name}</span>
+              {r.reported && (
+                <span className="inline-flex items-center gap-1 text-xs font-medium text-orange-600">
+                  <Flag className="h-3 w-3" />
+                  Reportada
+                </span>
+              )}
               <span className="text-xs text-muted-foreground ml-auto">
                 {new Date(r.created_at).toLocaleDateString("es-AR", { day: "numeric", month: "short", year: "numeric" })}
               </span>
@@ -131,9 +166,49 @@ export function VendorReviews() {
                 </div>
               </div>
             ) : (
-              <Button variant="outline" size="sm" className="mt-3" onClick={() => setReplying(r.id)}>
-                Responder
-              </Button>
+              <div className="flex gap-2 mt-3">
+                <Button variant="outline" size="sm" onClick={() => setReplying(r.id)}>
+                  Responder
+                </Button>
+                {!r.reported && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => { setReporting(r.id); setReportReason(""); }}
+                    className="text-orange-600 hover:text-orange-700 hover:bg-orange-50"
+                  >
+                    <Flag className="h-3.5 w-3.5 mr-1" />
+                    Reportar
+                  </Button>
+                )}
+              </div>
+            )}
+
+            {reporting === r.id && (
+              <div className="mt-3 rounded-xl border border-orange-200 bg-orange-50 p-3">
+                <p className="text-xs font-medium text-orange-800 mb-2">¿Por qué reportás esta reseña?</p>
+                <textarea
+                  value={reportReason}
+                  onChange={(e) => setReportReason(e.target.value)}
+                  placeholder="Ej: contenido ofensivo, spam, reseña falsa…"
+                  rows={2}
+                  maxLength={500}
+                  className="w-full rounded-lg border border-orange-200 bg-white p-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300"
+                />
+                <div className="flex gap-2 mt-2">
+                  <Button
+                    size="sm"
+                    onClick={() => submitReport(r.id)}
+                    disabled={reportSaving || !reportReason.trim()}
+                    className="bg-orange-600 hover:bg-orange-700"
+                  >
+                    {reportSaving ? "Enviando…" : "Enviar reporte"}
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => { setReporting(null); setReportReason(""); }}>
+                    Cancelar
+                  </Button>
+                </div>
+              </div>
             )}
           </div>
         ))}

@@ -253,7 +253,13 @@ CREATE TABLE IF NOT EXISTS reviews (
   customer_name TEXT NOT NULL,
   rating INT NOT NULL CHECK (rating >= 1 AND rating <= 5),
   comment TEXT,
-  created_at TIMESTAMPTZ DEFAULT now()
+  created_at TIMESTAMPTZ DEFAULT now(),
+  reported BOOLEAN DEFAULT FALSE,
+  reported_at TIMESTAMPTZ,
+  report_reason TEXT,
+  moderated BOOLEAN DEFAULT FALSE,
+  moderated_at TIMESTAMPTZ,
+  moderated_by TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_reviews_vendor ON reviews(vendor_id);
 CREATE INDEX IF NOT EXISTS idx_reviews_product ON reviews(product_id);

@@ -25,6 +25,7 @@ import { VolumeProgress } from "@/components/store/volume-progress";
 import { PackCard } from "@/components/store/pack-card";
 import { PromoSection } from "@/components/store/promo-section";
 import { PackSheetHost } from "@/components/store/pack-sheet";
+import { StoreGallery } from "@/components/store/store-gallery";
 import { WeeklyHours } from "@/components/store/weekly-hours";
 import { StickyStoreBar } from "@/components/store/sticky-store-bar";
 import { VendorShareButton } from "@/components/store/vendor-share-button";
@@ -601,23 +602,7 @@ export default async function TiendaPage({
 
         {/* Gallery */}
         {gallery && gallery.length > 0 && (
-          <div className="border border-border rounded-2xl p-6 bg-card mt-6">
-            <h2 className="font-display text-xl font-semibold mb-4">
-              {isService ? "Trabajos realizados" : "Galería"}
-            </h2>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              {gallery.map((g: any) => (
-                <div key={g.id} className="relative aspect-square rounded-xl overflow-hidden group cursor-pointer">
-                  <ProductImage src={g.image_url} name={g.caption || v.store_name} vertical={v.vertical} alt={g.caption || ""} className="w-full h-full" imgClassName="transition-transform group-hover:scale-105" />
-                  {g.caption && (
-                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent text-white text-xs px-3 py-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                      {g.caption}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
+          <StoreGallery items={gallery} title={isService ? "Trabajos realizados" : "Galería"} />
         )}
 
         {/* Service sections */}

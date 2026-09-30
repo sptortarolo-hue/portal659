@@ -18,8 +18,37 @@
   <div class="card">
     <div class="emoji">📡</div>
     <h1>Sin conexión a internet</h1>
-    <p>Revisá tu conexión y volvé a intentar. Portal 659 espera ahí cuando vuelvas.</p>
-    <a href="/" onclick="window.location.reload(); return false;">Reintentar</a>
+    <p id="msg">Revisá tu conexión y volvé a intentar. Portal 659 espera ahí cuando vuelvas.</p>
+    <a href="/" id="retry" onclick="window.location.reload(); return false;">Reintentar</a>
   </div>
+  <script>
+    // Auto-reintento al volver la red (típico: salir a WhatsApp y regresar con
+    // la radio dormida). Tope de intentos para no loopear si el servidor cayó.
+    (function () {
+      var tries = 0, max = 10, timer = null;
+      var msg = document.getElementById("msg");
+      var btn = document.getElementById("retry");
+      function attempt() {
+        tries++;
+        if (!navigator.onLine) return schedule();
+        fetch(window.location.href, { method: "HEAD", cache: "no-store" })
+          .then(function () { window.location.reload(); })
+          .catch(schedule);
+      }
+      function schedule() {
+        if (tries >= max) {
+          if (msg) msg.textContent = "Seguimos sin conexión. Revisá tu red y tocá Reintentar.";
+          return;
+        }
+        if (msg) msg.textContent = "Reconectando… (" + tries + "/" + max + ")";
+        timer = setTimeout(attempt, 2000);
+      }
+      window.addEventListener("online", function () { window.location.reload(); });
+      document.addEventListener("visibilitychange", function () {
+        if (document.visibilityState === "visible" && navigator.onLine) window.location.reload();
+      });
+      schedule();
+    })();
+  </script>
 </body>
 </html>

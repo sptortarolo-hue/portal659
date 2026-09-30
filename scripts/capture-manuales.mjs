@@ -4,9 +4,6 @@
 //   npm run dev                    (en otra terminal)
 //   node scripts/seed.mjs          (si la DB está vacía)
 //   node scripts/capture-manuales.mjs
-//
-// Captura pantallas en 2 viewports (móvil + desktop), optimiza con sharp
-// y guarda en public/manuales/capturas/.
 
 import { chromium } from "@playwright/test";
 import sharp from "sharp";
@@ -27,33 +24,30 @@ const VIEWPORTS = [
   { name: "desktop", width: 1280, height: 800 },
 ];
 
-// [slug, path, description]
-const SCREENSHOTS = [
-  // Alta del comercio
+// [slug, buttonText, description]
+const DASHBOARD_TABS = [
+  ["alta-dashboard", null, "Dashboard - pestaña Pedidos"],
+  ["recepcion-pedidos", null, "Panel de pedidos"],
+  ["recepcion-comanda", "Comanda", "Comanda KDS"],
+  ["mostrador-grid", "Mostrador", "Mostrador - grilla de productos"],
+  ["mesas-grid", "Mesas", "Mesas - grilla"],
+];
+
+// [slug, buttonText, description]
+const CONFIG_SECTIONS = [
+  ["alta-config-perfil", "Perfil", "Configuración - Perfil"],
+  ["alta-config-ubicacion", "Ubicación y horarios", "Configuración - Ubicación"],
+  ["alta-config-pagos", "Pagos y entrega", "Configuración - Pagos"],
+  ["impresora-config", "Impresora", "Configuración de impresora"],
+  ["alertas-config", "Alertas", "Configuración de alertas"],
+];
+
+// [slug, url, description]
+const DIRECT_URLS = [
   ["alta-home", "/", "Home de Portal 659"],
   ["alta-login", "/login", "Página de login"],
   ["alta-register", "/register", "Página de registro"],
-  ["alta-dashboard", "/vendor/dashboard", "Dashboard - pestaña Pedidos"],
-  ["alta-config-perfil", "/vendor/dashboard?seccion=perfil", "Configuración - Perfil"],
-  ["alta-config-ubicacion", "/vendor/dashboard?seccion=ubicacion", "Configuración - Ubicación"],
-  ["alta-config-pagos", "/vendor/dashboard?seccion=pagos", "Configuración - Pagos"],
   ["alta-micrositio", "/tienda/las-empanadas-de-maria", "Micrositio del comercio"],
-
-  // Recepción de pedidos
-  ["recepcion-pedidos", "/vendor/dashboard", "Panel de pedidos"],
-  ["recepcion-comanda", "/vendor/dashboard", "Comanda KDS"],
-
-  // Mostrador
-  ["mostrador-grid", "/vendor/dashboard", "Mostrador - grilla de productos"],
-
-  // Mesas
-  ["mesas-grid", "/vendor/dashboard", "Mesas - grilla"],
-
-  // Impresora
-  ["impresora-config", "/vendor/dashboard?seccion=impresora", "Configuración de impresora"],
-
-  // Alertas
-  ["alertas-config", "/vendor/dashboard?seccion=alertas", "Configuración de alertas"],
 ];
 
 async function ensureDir(dir) {
@@ -71,72 +65,159 @@ async function optimizeImage(tempPath, finalPath) {
   fs.unlinkSync(tempPath);
 }
 
+async function capturePage(page, slug, viewport, description) {
+  const tempPath = path.join(OUT_DIR, `${slug}-${viewport.name}.tmp.jpg`);
+  const finalPath = path.join(OUT_DIR, `${slug}-${viewport.name}.jpg`);
+
+  await page.screenshot({ path: tempPath, fullPage: false });
+  await optimizeImage(tempPath, finalPath);
+  const size = fs.statSync(finalPath).size;
+  console.log(`OK ${slug}-${viewport.name}.jpg (${size} bytes) - ${description}`);
+}
+
+async function clickAndVerify(page, text, previousSize) {
+  if (!text) return true;
+
+  try {
+    const element = page.getByText(text, { exact: false }).first();
+    if (await element.isVisible({ timeout: 2000 })) {
+      // Usar evaluate para hacer click directo con JavaScript
+      await page.evaluate((text) => {
+        const elements = Array.from(document.querySelectorAll("button, a, [role='button']"));
+        const el = elements.find((e) => e.textContent.includes(text));
+        if (el) el.click();
+      }, text);
+      await page.waitForTimeout(2000);
+
+      // Verificar que la pantalla cambió
+      const tempPath = path.join(OUT_DIR, "temp-verify.jpg");
+      await page.screenshot({ path: tempPath });
+      const newSize = fs.statSync(tempPath).size;
+      fs.unlinkSync(tempPath);
+
+      if (newSize !== previousSize) {
+        console.log(`  Click "${text}" OK (tamaño: ${previousSize} -> ${newSize})`);
+        return true;
+      } else {
+        console.warn(`  Click "${text}" no cambió la pantalla (mismo tamaño: ${newSize})`);
+        return false;
+      }
+    }
+  } catch (e) {
+    console.warn(`  No se pudo clickear "${text}": ${e.message}`);
+  }
+  return false;
+}
+
 async function main() {
   ensureDir(OUT_DIR);
 
   console.log("Iniciando capturas de manuales...\n");
-  console.log(`Output: ${OUT_DIR}`);
-  console.log(`Base: ${BASE}`);
-  console.log(`Viewports: ${VIEWPORTS.map((v) => v.name).join(", ")}`);
-  console.log(`Pantallas: ${SCREENSHOTS.length}\n`);
 
   const browser = await chromium.launch({ headless: true });
+  const context = await browser.newContext({
+    viewport: { width: 1280, height: 800 },
+  });
+  const page = await context.newPage();
 
-  // Login una sola vez
+  // Login
   console.log("Haciendo login...");
-  const loginContext = await browser.newContext({ viewport: { width: 1280, height: 800 } });
-  const loginPage = await loginContext.newPage();
-  await loginPage.goto(`${BASE}/login`, { waitUntil: "networkidle", timeout: 30000 });
+  await page.goto(`${BASE}/login`, { waitUntil: "networkidle", timeout: 30000 });
 
-  // Cerrar onboarding si existe (aparece antes del login)
+  // Cerrar onboarding
   try {
-    const saltarBtn = loginPage.locator('button:has-text("Saltar")');
+    const saltarBtn = page.locator('button:has-text("Saltar")');
     if (await saltarBtn.isVisible({ timeout: 3000 })) {
       await saltarBtn.click();
-      await loginPage.waitForTimeout(500);
+      await page.waitForTimeout(500);
     }
-  } catch {
-    /* no hay onboarding */
-  }
+  } catch {}
 
-  await loginPage.fill("#email", EMAIL);
-  await loginPage.fill("#password", PASSWORD);
-  await loginPage.click('button[type="submit"]');
-  await loginPage.waitForURL("**/vendor/dashboard**", { timeout: 15000 });
-  await loginPage.waitForTimeout(2000);
+  await page.fill("#email", EMAIL);
+  await page.fill("#password", PASSWORD);
+  await page.click('button[type="submit"]');
+  await page.waitForURL("**/vendor/dashboard**", { timeout: 15000 });
+  await page.waitForTimeout(2000);
   console.log("Login OK\n");
 
-  // Capturar cada pantalla
-  for (const [slug, urlPath, description] of SCREENSHOTS) {
+  // Capturar URLs directas
+  for (const [slug, urlPath, description] of DIRECT_URLS) {
     for (const viewport of VIEWPORTS) {
-      const context = await browser.newContext({
-        viewport: { width: viewport.width, height: viewport.height },
-      });
-      const page = await context.newPage();
-
+      await page.setViewportSize({ width: viewport.width, height: viewport.height });
       try {
         await page.goto(`${BASE}${urlPath}`, { waitUntil: "networkidle", timeout: 30000 });
         await page.waitForTimeout(1500);
-
-        const tempPath = path.join(OUT_DIR, `${slug}-${viewport.name}.tmp.jpg`);
-        const finalPath = path.join(OUT_DIR, `${slug}-${viewport.name}.jpg`);
-
-        await page.screenshot({ path: tempPath, fullPage: false });
-        await optimizeImage(tempPath, finalPath);
-
-        console.log(`OK ${slug}-${viewport.name}.jpg (${description})`);
+        await capturePage(page, slug, viewport, description);
       } catch (e) {
         console.error(`ERROR ${slug} (${viewport.name}): ${e.message}`);
-      } finally {
-        await context.close();
       }
     }
   }
 
-  await loginContext.close();
+  // Capturar tabs del dashboard
+  for (const [slug, tabText, description] of DASHBOARD_TABS) {
+    for (const viewport of VIEWPORTS) {
+      await page.setViewportSize({ width: viewport.width, height: viewport.height });
+      try {
+        await page.goto(`${BASE}/vendor/dashboard`, { waitUntil: "networkidle", timeout: 30000 });
+        await page.waitForTimeout(1500);
+
+        // Tamaño actual para comparar
+        const tempPath = path.join(OUT_DIR, "temp-verify.jpg");
+        await page.screenshot({ path: tempPath });
+        const previousSize = fs.statSync(tempPath).size;
+        fs.unlinkSync(tempPath);
+
+        await clickAndVerify(page, tabText, previousSize);
+
+        await capturePage(page, slug, viewport, description);
+      } catch (e) {
+        console.error(`ERROR ${slug} (${viewport.name}): ${e.message}`);
+      }
+    }
+  }
+
+  // Capturar secciones de Configuración
+  for (const [slug, seccion, description] of CONFIG_SECTIONS) {
+    for (const viewport of VIEWPORTS) {
+      await page.setViewportSize({ width: viewport.width, height: viewport.height });
+      try {
+        await page.goto(`${BASE}/vendor/dashboard`, { waitUntil: "networkidle", timeout: 30000 });
+        await page.waitForTimeout(1500);
+
+        const isMobile = viewport.name === "mobile";
+        if (isMobile) {
+          const tempPath = path.join(OUT_DIR, "temp-verify.jpg");
+          await page.screenshot({ path: tempPath });
+          const prevSize = fs.statSync(tempPath).size;
+          fs.unlinkSync(tempPath);
+          await clickAndVerify(page, "Más", prevSize);
+        }
+
+        // Click Configuración
+        let tempPath = path.join(OUT_DIR, "temp-verify.jpg");
+        await page.screenshot({ path: tempPath });
+        let prevSize = fs.statSync(tempPath).size;
+        fs.unlinkSync(tempPath);
+        await clickAndVerify(page, "Configuración", prevSize);
+
+        // Click sección
+        tempPath = path.join(OUT_DIR, "temp-verify.jpg");
+        await page.screenshot({ path: tempPath });
+        prevSize = fs.statSync(tempPath).size;
+        fs.unlinkSync(tempPath);
+        await clickAndVerify(page, seccion, prevSize);
+
+        await capturePage(page, slug, viewport, description);
+      } catch (e) {
+        console.error(`ERROR ${slug} (${viewport.name}): ${e.message}`);
+      }
+    }
+  }
+
+  await context.close();
   await browser.close();
   console.log("\nCapturas completadas!");
-  console.log(`Total: ${SCREENSHOTS.length * VIEWPORTS.length} imagenes`);
 }
 
 main().catch(console.error);

@@ -81,19 +81,19 @@ export default function AltaComercioPage() {
           <p className="mb-3">
             En la sección <span className="font-medium">&quot;Tu comercio&quot;</span> cargá el nombre, categoría, barrio y teléfono de contacto.
           </p>
-          <img src="/manuales/capturas/alta-config-perfil-mobile.jpg" alt="Configuración datos del comercio" className="rounded-xl border border-border shadow-sm w-full max-w-sm mb-4" />
+          <img src="/manuales/capturas/alta-config-mobile.jpg" alt="Configuración datos del comercio" className="rounded-xl border border-border shadow-sm w-full max-w-sm mb-4" />
 
           <h3 className="font-semibold mb-2">5.2 Ubicación y horarios</h3>
           <p className="mb-3">
             Expandí <span className="font-medium">&quot;Ubicación y horarios&quot;</span> para cargar tu dirección y horarios de atención.
           </p>
-          <img src="/manuales/capturas/alta-config-ubicacion-mobile.jpg" alt="Ubicación y horarios" className="rounded-xl border border-border shadow-sm w-full max-w-sm mb-4" />
+          <img src="/manuales/capturas/alta-config-mobile.jpg" alt="Ubicación y horarios" className="rounded-xl border border-border shadow-sm w-full max-w-sm mb-4" />
 
           <h3 className="font-semibold mb-2">5.3 Formas de pago y entrega</h3>
           <p className="mb-3">
             En <span className="font-medium">&quot;Pago y entrega&quot;</span> configurá métodos de pago, opciones de entrega, costo de envío y datos de transferencia.
           </p>
-          <img src="/manuales/capturas/alta-config-pagos-mobile.jpg" alt="Pago y entrega" className="rounded-xl border border-border shadow-sm w-full max-w-sm" />
+          <img src="/manuales/capturas/alta-config-mobile.jpg" alt="Pago y entrega" className="rounded-xl border border-border shadow-sm w-full max-w-sm" />
         </div>
 
         {/* 6 */}

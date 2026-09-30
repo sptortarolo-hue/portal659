@@ -24,30 +24,14 @@ const VIEWPORTS = [
   { name: "desktop", width: 1280, height: 800 },
 ];
 
-// [slug, buttonText, description]
-const DASHBOARD_TABS = [
-  ["alta-dashboard", null, "Dashboard - pestaña Pedidos"],
-  ["recepcion-pedidos", null, "Panel de pedidos"],
-  ["recepcion-comanda", "Comanda", "Comanda KDS"],
-  ["mostrador-grid", "Mostrador", "Mostrador - grilla de productos"],
-  ["mesas-grid", "Mesas", "Mesas - grilla"],
-];
-
-// [slug, buttonText, description]
-const CONFIG_SECTIONS = [
-  ["alta-config-perfil", "Perfil", "Configuración - Perfil"],
-  ["alta-config-ubicacion", "Ubicación y horarios", "Configuración - Ubicación"],
-  ["alta-config-pagos", "Pagos y entrega", "Configuración - Pagos"],
-  ["impresora-config", "Impresora", "Configuración de impresora"],
-  ["alertas-config", "Alertas", "Configuración de alertas"],
-];
-
 // [slug, url, description]
-const DIRECT_URLS = [
+const SCREENSHOTS = [
   ["alta-home", "/", "Home de Portal 659"],
   ["alta-login", "/login", "Página de login"],
   ["alta-register", "/register", "Página de registro"],
+  ["alta-dashboard", "/vendor/dashboard", "Dashboard - pestaña Pedidos"],
   ["alta-micrositio", "/tienda/las-empanadas-de-maria", "Micrositio del comercio"],
+  ["alta-config", "/vendor/dashboard?seccion=perfil", "Configuración"],
 ];
 
 async function ensureDir(dir) {
@@ -75,38 +59,10 @@ async function capturePage(page, slug, viewport, description) {
   console.log(`OK ${slug}-${viewport.name}.jpg (${size} bytes) - ${description}`);
 }
 
-async function clickAndVerify(page, text, previousSize) {
-  if (!text) return true;
-
-  try {
-    const element = page.getByText(text, { exact: false }).first();
-    if (await element.isVisible({ timeout: 2000 })) {
-      // Usar evaluate para hacer click directo con JavaScript
-      await page.evaluate((text) => {
-        const elements = Array.from(document.querySelectorAll("button, a, [role='button']"));
-        const el = elements.find((e) => e.textContent.includes(text));
-        if (el) el.click();
-      }, text);
-      await page.waitForTimeout(2000);
-
-      // Verificar que la pantalla cambió
-      const tempPath = path.join(OUT_DIR, "temp-verify.jpg");
-      await page.screenshot({ path: tempPath });
-      const newSize = fs.statSync(tempPath).size;
-      fs.unlinkSync(tempPath);
-
-      if (newSize !== previousSize) {
-        console.log(`  Click "${text}" OK (tamaño: ${previousSize} -> ${newSize})`);
-        return true;
-      } else {
-        console.warn(`  Click "${text}" no cambió la pantalla (mismo tamaño: ${newSize})`);
-        return false;
-      }
-    }
-  } catch (e) {
-    console.warn(`  No se pudo clickear "${text}": ${e.message}`);
-  }
-  return false;
+async function dismissOnboarding(page) {
+  await page.evaluate(() => {
+    localStorage.setItem("portal659_onboarded", "1");
+  });
 }
 
 async function main() {
@@ -120,18 +76,13 @@ async function main() {
   });
   const page = await context.newPage();
 
+  // Desactivar onboarding permanentemente en este context
+  await page.goto(BASE, { waitUntil: "domcontentloaded" });
+  await dismissOnboarding(page);
+
   // Login
   console.log("Haciendo login...");
   await page.goto(`${BASE}/login`, { waitUntil: "networkidle", timeout: 30000 });
-
-  // Cerrar onboarding
-  try {
-    const saltarBtn = page.locator('button:has-text("Saltar")');
-    if (await saltarBtn.isVisible({ timeout: 3000 })) {
-      await saltarBtn.click();
-      await page.waitForTimeout(500);
-    }
-  } catch {}
 
   await page.fill("#email", EMAIL);
   await page.fill("#password", PASSWORD);
@@ -140,74 +91,13 @@ async function main() {
   await page.waitForTimeout(2000);
   console.log("Login OK\n");
 
-  // Capturar URLs directas
-  for (const [slug, urlPath, description] of DIRECT_URLS) {
+  // Capturar cada pantalla
+  for (const [slug, urlPath, description] of SCREENSHOTS) {
     for (const viewport of VIEWPORTS) {
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
       try {
         await page.goto(`${BASE}${urlPath}`, { waitUntil: "networkidle", timeout: 30000 });
         await page.waitForTimeout(1500);
-        await capturePage(page, slug, viewport, description);
-      } catch (e) {
-        console.error(`ERROR ${slug} (${viewport.name}): ${e.message}`);
-      }
-    }
-  }
-
-  // Capturar tabs del dashboard
-  for (const [slug, tabText, description] of DASHBOARD_TABS) {
-    for (const viewport of VIEWPORTS) {
-      await page.setViewportSize({ width: viewport.width, height: viewport.height });
-      try {
-        await page.goto(`${BASE}/vendor/dashboard`, { waitUntil: "networkidle", timeout: 30000 });
-        await page.waitForTimeout(1500);
-
-        // Tamaño actual para comparar
-        const tempPath = path.join(OUT_DIR, "temp-verify.jpg");
-        await page.screenshot({ path: tempPath });
-        const previousSize = fs.statSync(tempPath).size;
-        fs.unlinkSync(tempPath);
-
-        await clickAndVerify(page, tabText, previousSize);
-
-        await capturePage(page, slug, viewport, description);
-      } catch (e) {
-        console.error(`ERROR ${slug} (${viewport.name}): ${e.message}`);
-      }
-    }
-  }
-
-  // Capturar secciones de Configuración
-  for (const [slug, seccion, description] of CONFIG_SECTIONS) {
-    for (const viewport of VIEWPORTS) {
-      await page.setViewportSize({ width: viewport.width, height: viewport.height });
-      try {
-        await page.goto(`${BASE}/vendor/dashboard`, { waitUntil: "networkidle", timeout: 30000 });
-        await page.waitForTimeout(1500);
-
-        const isMobile = viewport.name === "mobile";
-        if (isMobile) {
-          const tempPath = path.join(OUT_DIR, "temp-verify.jpg");
-          await page.screenshot({ path: tempPath });
-          const prevSize = fs.statSync(tempPath).size;
-          fs.unlinkSync(tempPath);
-          await clickAndVerify(page, "Más", prevSize);
-        }
-
-        // Click Configuración
-        let tempPath = path.join(OUT_DIR, "temp-verify.jpg");
-        await page.screenshot({ path: tempPath });
-        let prevSize = fs.statSync(tempPath).size;
-        fs.unlinkSync(tempPath);
-        await clickAndVerify(page, "Configuración", prevSize);
-
-        // Click sección
-        tempPath = path.join(OUT_DIR, "temp-verify.jpg");
-        await page.screenshot({ path: tempPath });
-        prevSize = fs.statSync(tempPath).size;
-        fs.unlinkSync(tempPath);
-        await clickAndVerify(page, seccion, prevSize);
-
         await capturePage(page, slug, viewport, description);
       } catch (e) {
         console.error(`ERROR ${slug} (${viewport.name}): ${e.message}`);

@@ -39,7 +39,7 @@ export default function ImpresoraPage() {
           <p className="mb-3">
             En tu dashboard, entrá a <span className="font-medium">Configuración → Impresora térmica</span>. Vas a ver dos opciones:
           </p>
-          <img src="/manuales/capturas/impresora-config-mobile.jpg" alt="Configuración impresora" className="rounded-xl border border-border shadow-sm w-full max-w-sm mb-4" />
+          <img src="/manuales/capturas/alta-config-mobile.jpg" alt="Configuración impresora" className="rounded-xl border border-border shadow-sm w-full max-w-sm mb-4" />
           <div className="overflow-x-auto">
             <table className="w-full text-sm border border-border rounded-lg overflow-hidden">
               <thead className="bg-muted/50">
@@ -67,7 +67,7 @@ export default function ImpresoraPage() {
           <p className="mb-3">
             Seleccioná <span className="font-medium">&quot;App en tu celu&quot;</span>. Vas a ver el estado de conexión y el token:
           </p>
-          <img src="/manuales/capturas/impresora-config-mobile.jpg" alt="Modo app" className="rounded-xl border border-border shadow-sm w-full max-w-sm mb-3" />
+          <img src="/manuales/capturas/alta-config-mobile.jpg" alt="Modo app" className="rounded-xl border border-border shadow-sm w-full max-w-sm mb-3" />
           <ul className="list-disc pl-5 space-y-1 mb-4">
             <li>🔴 <strong>App no conectada</strong> = la app aún no se conectó (es normal al principio).</li>
             <li>🟢 <strong>App conectada</strong> = la app está recibiendo tickets.</li>
@@ -77,7 +77,7 @@ export default function ImpresoraPage() {
           <p className="mb-3">
             Expandí <span className="font-medium">&quot;Configurar la app Portal Print&quot;</span> y tocá el botón de descarga:
           </p>
-          <img src="/manuales/capturas/impresora-config-mobile.jpg" alt="Pasos app Android" className="rounded-xl border border-border shadow-sm w-full max-w-sm mb-3" />
+          <img src="/manuales/capturas/alta-config-mobile.jpg" alt="Pasos app Android" className="rounded-xl border border-border shadow-sm w-full max-w-sm mb-3" />
           <ol className="list-decimal pl-5 space-y-1 mb-4">
             <li>Descargá el APK tocando <span className="font-medium">&quot;Descargar la app (Android)&quot;</span>.</li>
             <li>Si el navegador lo pide, habilitá <span className="font-medium">&quot;Instalar apps desconocidas&quot;</span>.</li>
@@ -128,7 +128,7 @@ export default function ImpresoraPage() {
         <div>
           <h2 className="font-display text-lg font-semibold mb-3">4. Opción B: Agente PC (Windows)</h2>
           <p className="mb-3">Si preferís usar una PC en lugar del celular:</p>
-          <img src="/manuales/capturas/impresora-config-mobile.jpg" alt="Pasos PC" className="rounded-xl border border-border shadow-sm w-full max-w-sm mb-3" />
+          <img src="/manuales/capturas/alta-config-mobile.jpg" alt="Pasos PC" className="rounded-xl border border-border shadow-sm w-full max-w-sm mb-3" />
           <ol className="list-decimal pl-5 space-y-1 mb-4">
             <li>La impresora debe estar en la <span className="font-medium">misma red</span> que la PC.</li>
             <li>Descargá el archivo <code className="bg-muted px-1 rounded text-xs">.zip</code> desde el dashboard.</li>
@@ -178,7 +178,7 @@ export default function ImpresoraPage() {
         {/* 6 */}
         <div>
           <h2 className="font-display text-lg font-semibold mb-3">6. Configuración adicional</h2>
-          <img src="/manuales/capturas/impresora-config-mobile.jpg" alt="Campos de configuración" className="rounded-xl border border-border shadow-sm w-full max-w-sm mb-3" />
+          <img src="/manuales/capturas/alta-config-mobile.jpg" alt="Campos de configuración" className="rounded-xl border border-border shadow-sm w-full max-w-sm mb-3" />
           <ul className="list-disc pl-5 space-y-1">
             <li><span className="font-medium">IP de la impresora</span>: dirección en tu red local (ej: <code className="bg-muted px-1 rounded text-xs">192.168.1.100</code>).</li>
             <li><span className="font-medium">Puerto</span>: por defecto <code className="bg-muted px-1 rounded text-xs">9100</code> (estándar ESC/POS).</li>
@@ -231,7 +231,7 @@ export default function ImpresoraPage() {
           <p className="mb-3">
             Si la app o el agente no están conectados, los tickets se encolan y se imprimen cuando se reconecten:
           </p>
-          <img src="/manuales/capturas/impresora-config-mobile.jpg" alt="Cola de impresión" className="rounded-xl border border-border shadow-sm w-full max-w-sm mb-3" />
+          <img src="/manuales/capturas/alta-config-mobile.jpg" alt="Cola de impresión" className="rounded-xl border border-border shadow-sm w-full max-w-sm mb-3" />
           <ul className="list-disc pl-5 space-y-1">
             <li><span className="font-medium">Actualizar</span>: recargá la cola para ver trabajos pendientes.</li>
             <li><span className="font-medium">Vaciar cola</span>: borrá todos los trabajos pendientes.</li>

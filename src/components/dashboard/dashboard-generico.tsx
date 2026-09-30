@@ -45,7 +45,7 @@ type Props = {
   reload: () => void;
   saveVendor: (data: Record<string, unknown>) => Promise<void>;
   uploading: boolean;
-  onCrop: (target: "cover" | "logo" | "offer") => void;
+  onCrop: (target: "cover" | "logo" | "offer", src?: string) => void;
   isRetail?: boolean;
 };
 
@@ -218,8 +218,8 @@ export default function DashboardGenerico({
 
       <CollapsibleSection icon="📸" title="Fotos">
         <div className="space-y-3">
-          <div><Label>Foto del comercio</Label><Input type="file" accept="image/*" onChange={(e) => { const f = e.target.files?.[0] || null; if (f) { setStoreFile(f); setStorePreview(URL.createObjectURL(f)); } }} />{storePreview && <img src={storePreview} alt="Vista previa" className="mt-2 h-24 w-full object-cover rounded-lg" />}</div>
-          <div><Label>Logo</Label><Input type="file" accept="image/*" onChange={(e) => { const f = e.target.files?.[0] || null; if (f) { setLogoFile(f); setLogoPreview(URL.createObjectURL(f)); } }} />{logoPreview && <img src={logoPreview} alt="Logo" className="mt-2 h-16 w-16 object-cover rounded-full border" />}</div>
+          <div><Label>Foto del comercio</Label><Input type="file" accept="image/*" onChange={(e) => { const f = e.target.files?.[0] || null; if (f) { const src = URL.createObjectURL(f); setStoreFile(f); setStorePreview(src); onCrop("cover", src); } }} />{storePreview && <img src={storePreview} alt="Vista previa" className="mt-2 h-24 w-full object-cover rounded-lg" />}</div>
+          <div><Label>Logo</Label><Input type="file" accept="image/*" onChange={(e) => { const f = e.target.files?.[0] || null; if (f) { const src = URL.createObjectURL(f); setLogoFile(f); setLogoPreview(src); onCrop("logo", src); } }} />{logoPreview && <img src={logoPreview} alt="Logo" className="mt-2 h-16 w-16 object-cover rounded-full border" />}</div>
         </div>
       </CollapsibleSection>
 

@@ -56,7 +56,7 @@ type Props = {
   reload: () => void;
   saveVendor: (data: Record<string, unknown>) => Promise<void>;
   uploading: boolean;
-  onCrop: (target: "cover" | "logo" | "offer") => void;
+  onCrop: (target: "cover" | "logo" | "offer", src?: string) => void;
   variants: ProductVariant[];
   productImages: ProductImage[];
   /** Sección de Config controlada por la página (sidebar única). */
@@ -424,9 +424,10 @@ export default function DashboardModa({
 
   function handleOfferFileSelect(file: File | null) {
     if (file) {
-      onCrop("offer");
+      const src = URL.createObjectURL(file);
+      onCrop("offer", src);
       setOffFile(file);
-      setOffPreview(URL.createObjectURL(file));
+      setOffPreview(src);
     }
   }
 

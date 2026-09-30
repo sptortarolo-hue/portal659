@@ -95,7 +95,7 @@ type OfferFormProps = {
   offPreview: string | null;
   setOffPreview: (v: string | null) => void;
   saving: boolean;
-  onCrop?: (target: "offer") => void;
+  onCrop?: (target: "offer", src?: string) => void;
   showStock?: boolean;
   offStock?: number;
   setOffStock?: (v: number) => void;
@@ -455,7 +455,7 @@ export function OfferForm({
             <div><Label>Umbral bajo stock</Label><Input type="number" min={0} value={offStockLowThreshold} onChange={(e) => { const v = parseInt(e.target.value, 10); if (!isNaN(v) && v >= 0) setOffStockLowThreshold(v); }} /></div>
           </div>
         )}
-        <div><Label>Foto</Label><Input type="file" accept="image/*" onChange={(e) => { const f = e.target.files?.[0] || null; if (f && onCrop) { const src = URL.createObjectURL(f); setOffFile(f); setOffPreview(src); } else if (f) { setOffFile(f); setOffPreview(URL.createObjectURL(f)); } }} />{offPreview && <img src={offPreview} alt="Preview" className="mt-2 h-20 w-full object-cover rounded-lg" />}</div>
+        <div><Label>Foto</Label><Input type="file" accept="image/*" onChange={(e) => { const f = e.target.files?.[0] || null; if (f) { const src = URL.createObjectURL(f); setOffFile(f); setOffPreview(src); if (onCrop) onCrop("offer", src); } }} />{offPreview && <img src={offPreview} alt="Preview" className="mt-2 h-20 w-full object-cover rounded-lg" />}</div>
         <div><Label>Descripción</Label><Textarea value={offDesc} onChange={(e) => setOffDesc(e.target.value)} /></div>
         <Button type="button" onClick={() => onSubmit()} disabled={saving} className="w-full">{saving ? "Guardando..." : editingId ? "Guardar" : "Agregar"}</Button>
       </div>

@@ -54,7 +54,7 @@ type Props = {
   reload: () => void;
   saveVendor: (data: Record<string, unknown>) => Promise<void>;
   uploading: boolean;
-  onCrop: (target: "cover" | "logo" | "offer") => void;
+  onCrop: (target: "cover" | "logo" | "offer", src?: string) => void;
   /** Sección de Config controlada por la página (sidebar única). */
   configSectionId?: string;
   onConfigSectionId?: (id: string) => void;
@@ -275,18 +275,20 @@ export default function DashboardComercio({
   function handleCoverFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0] || null;
     if (f) {
+      const src = URL.createObjectURL(f);
       setStoreFile(f);
-      onCrop("cover");
-      setStorePreview(URL.createObjectURL(f));
+      onCrop("cover", src);
+      setStorePreview(src);
     }
   }
 
   function handleLogoFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0] || null;
     if (f) {
+      const src = URL.createObjectURL(f);
       setLogoFile(f);
-      onCrop("logo");
-      setLogoPreview(URL.createObjectURL(f));
+      onCrop("logo", src);
+      setLogoPreview(src);
     }
   }
 

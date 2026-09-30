@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -49,7 +49,7 @@ type Props = {
   variants?: ProductVariant[];
   /** Galer├¡a de todos los productos (solo moda). */
   productImages?: ProductImage[];
-  onCrop?: (target: "offer") => void;
+  onCrop?: (target: "offer", src?: string) => void;
   onChanged?: () => void;
 };
 
@@ -497,7 +497,7 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-          <div><Label>Foto principal (portada)</Label><Input type="file" accept="image/*" onChange={(e) => { const f = e.target.files?.[0] || null; if (f) { onCrop?.("offer"); setOffFile(f); setOffPreview(URL.createObjectURL(f)); } }} />{offPreview && <img src={offPreview} alt="Portada" className="mt-2 h-16 w-full object-cover rounded-lg" />}</div>
+          <div><Label>Foto principal (portada)</Label><Input type="file" accept="image/*" onChange={(e) => { const f = e.target.files?.[0] || null; if (f) { const src = URL.createObjectURL(f); onCrop?.("offer", src); setOffFile(f); setOffPreview(src); } }} />{offPreview && <img src={offPreview} alt="Portada" className="mt-2 h-16 w-full object-cover rounded-lg" />}</div>
         </div>
 
         <div><Label>Descripci├│n</Label><Textarea value={offDesc} onChange={(e) => setOffDesc(e.target.value)} /></div>

@@ -599,11 +599,21 @@ function VendorDashboardInner() {
   }, [orders]);
 
   // Backstop: si el SSE muere en silencio, recargar al volver a la pestaña.
+  // Debounce: visibility+focus disparan en el mismo tick al volver; un solo
+  // refetch por retorno (evita doble setOrders simultáneo con el SSE).
+  const lastVisibleFetchRef = useRef(0);
   useEffect(() => {
-    const onVisible = () => {
-      if (document.visibilityState === "visible") { stopTitleFlash(); loadOrdersOnly(); }
+    const maybeReload = () => {
+      const now = Date.now();
+      if (now - lastVisibleFetchRef.current < 3000) return;
+      lastVisibleFetchRef.current = now;
+      stopTitleFlash();
+      loadOrdersOnly();
     };
-    const onFocus = () => { stopTitleFlash(); loadOrdersOnly(); };
+    const onVisible = () => {
+      if (document.visibilityState === "visible") maybeReload();
+    };
+    const onFocus = () => maybeReload();
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("focus", onFocus);
     return () => {
@@ -613,6 +623,9 @@ function VendorDashboardInner() {
   }, []);
 
   // SSE: pedidos en tiempo real
+  // Firma del último lote aplicado: si el servidor re-emite lo mismo (típico
+  // al reconectar), se omite el setOrders para no re-renderizar todo igual.
+  const lastSseSigRef = useRef<string | null>(null);
   useEffect(() => {
     if (!vendor?.id) return;
     let closed = false;
@@ -629,6 +642,12 @@ function VendorDashboardInner() {
           const data = JSON.parse(event.data);
           if (data.type === "orders_update" && Array.isArray(data.orders)) {
             const incoming = data.orders as Order[];
+            const sig = incoming
+              .map((o) => `${o.id}:${o.status}:${(o as any).total}:${(o as any).updated_at || (o as any).closed_at || ""}`)
+              .sort()
+              .join("|");
+            if (sig === lastSseSigRef.current) return;
+            lastSseSigRef.current = sig;
             const hasFreshNew = incoming.some(
               (o) => o.status === "new" && !seenOrderIds.current.has(o.id)
             );
@@ -831,11 +850,12 @@ function VendorDashboardInner() {
     } catch { /* noop */ }
   }, [vendor?.slug]);
 
-  const openCrop = useCallback((target: "cover" | "logo" | "offer") => {
+  const openCrop = useCallback((target: "cover" | "logo" | "offer", src?: string) => {
     setCropTarget(target);
     if (target === "cover") { setCropAspect(3 / 1); setCropTitle("Ajustá la foto del comercio"); }
     else if (target === "logo") { setCropAspect(1); setCropTitle("Ajustá el logo"); }
     else { setCropAspect(16 / 9); setCropTitle(vendor?.vertical === "moda" || vendor?.vertical === "comercio" ? "Ajustá la foto del producto" : "Ajustá la foto del plato"); }
+    if (src) setCropImageSrc(src);
     setCropOpen(true);
   }, [vendor?.vertical]);
 
@@ -1587,12 +1607,13 @@ function VendorDashboardInner() {
                         menú de secciones y la muestra fija acá (Ficha no es
                         pantalla operativa). */}
                     {isService && <PushAlertCard />}
-                    {configContent}
+                    <TabErrorBoundary tab="config">{configContent}</TabErrorBoundary>
                   </div>
                 </div>
               </div>
               <div className={tab === "menu" ? "" : "hidden"}>
                 {isGastro || isComercio ? (
+                  <TabErrorBoundary tab="menu">
                   <MemoMenuStudio
                     offers={offers}
                     categories={categories}
@@ -1605,7 +1626,9 @@ function VendorDashboardInner() {
                     enableHeladeriaKit={isGastro}
                     canEditCost={effectivePlan.can("inventory") || (isGastro && effectivePlan.can("recipes"))}
                   />
+                  </TabErrorBoundary>
                 ) : (
+                  <TabErrorBoundary tab="menu">
                   <MemoProductManager
                     isModa={isModa}
                     isComercio={isComercio}
@@ -1618,9 +1641,10 @@ function VendorDashboardInner() {
                     onCrop={openCrop}
                     onChanged={() => loadData()}
                   />
+                  </TabErrorBoundary>
                 )}
               </div>
-              <div className={tab === "orders" ? "" : "hidden"}>{ordersContent}</div>
+              <div className={tab === "orders" ? "" : "hidden"}><TabErrorBoundary tab="orders">{ordersContent}</TabErrorBoundary></div>
               {mountedTabs.has("comanda") && (
                 <div className={tab === "comanda" ? "" : "hidden"}>
                   {effectivePlan.can("kds") ? (
@@ -1640,7 +1664,7 @@ function VendorDashboardInner() {
               {mountedTabs.has("pos") && (
                 <div className={tab === "pos" ? "" : "hidden"}>
                   {effectivePlan.can("pos") ? (
-                    <MemoMostrador vendorId={vendor.id} />
+                    <TabErrorBoundary tab="pos"><MemoMostrador vendorId={vendor.id} /></TabErrorBoundary>
                   ) : (
                     <PlanLock
                       title="Mostrador"
@@ -1745,6 +1769,7 @@ function VendorDashboardInner() {
               )}
               {mountedTabs.has("hoy") && (
                 <div className={tab === "hoy" ? "" : "hidden"}>
+                  <TabErrorBoundary tab="hoy">
                   <MemoDashboardHome
                     vendor={vendor as unknown as VendorDB}
                     isGastro={isGastro}
@@ -1761,6 +1786,7 @@ function VendorDashboardInner() {
                     onChanged={loadData}
                     isPreview={previewSession}
                   />
+                  </TabErrorBoundary>
                 </div>
               )}
             </>

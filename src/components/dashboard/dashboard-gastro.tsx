@@ -29,7 +29,7 @@ type Props = {
   reload: () => void;
   saveVendor: (data: Record<string, unknown>) => Promise<void>;
   uploading: boolean;
-  onCrop: (target: "cover" | "logo" | "offer") => void;
+  onCrop: (target: "cover" | "logo" | "offer", src?: string) => void;
   /** Sección de Config controlada por la página (sidebar única). */
   configSectionId?: string;
   onConfigSectionId?: (id: string) => void;
@@ -324,9 +324,10 @@ export default function DashboardGastro({
               onChange={(e) => {
                 const f = e.target.files?.[0] || null;
                 if (f) {
+                  const src = URL.createObjectURL(f);
                   setStoreFile(f);
-                  setStorePreview(URL.createObjectURL(f));
-                  onCrop("cover");
+                  setStorePreview(src);
+                  onCrop("cover", src);
                 }
               }}
             />
@@ -346,9 +347,10 @@ export default function DashboardGastro({
               onChange={(e) => {
                 const f = e.target.files?.[0] || null;
                 if (f) {
+                  const src = URL.createObjectURL(f);
                   setLogoFile(f);
-                  setLogoPreview(URL.createObjectURL(f));
-                  onCrop("logo");
+                  setLogoPreview(src);
+                  onCrop("logo", src);
                 }
               }}
             />

@@ -32,7 +32,7 @@ type Props = {
   reload: () => void;
   saveVendor: (data: Record<string, unknown>) => Promise<void>;
   uploading: boolean;
-  onCrop: (target: "cover" | "logo" | "offer") => void;
+  onCrop: (target: "cover" | "logo" | "offer", src?: string) => void;
   /** Sub-vista a mostrar (el dashboard switchea por tab). Sin section = todo (legacy). */
   section?: "hoy" | "presupuestos" | "turnos" | "cobros" | "ficha" | "reviews" | "history" | "clientes";
   /** Navegación a otra sub-vista (botones del Hoy). */
@@ -755,7 +755,7 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
                 if (f) {
                   const src = URL.createObjectURL(f);
                   setStorePreview(src);
-                  onCrop("cover");
+                  onCrop("cover", src);
                 }
               }}
             />
@@ -773,7 +773,7 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
                 if (f) {
                   const src = URL.createObjectURL(f);
                   setLogoPreview(src);
-                  onCrop("logo");
+                  onCrop("logo", src);
                 }
               }}
             />

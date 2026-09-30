@@ -358,28 +358,8 @@ export function OrdersKanban({
     if (legacy.length) ordersByStatus.preparing = [...(ordersByStatus.preparing || []), ...legacy];
   }
 
-  if (isLoading) {
-    return (
-      <div className="flex gap-3 overflow-x-auto pb-4 px-1">
-        {activeSteps.map((status) => (
-          <div key={status} className="flex-1 min-w-[280px] max-w-[320px] flex flex-col">
-            <div className="px-3 py-2.5 flex items-center justify-between border-b border-border bg-muted/50 rounded-t-xl">
-              <h3 className="font-semibold text-sm flex items-center gap-2">
-                <span className="h-4 w-4 bg-skeleton rounded-full" />
-                <span className="h-4 w-16 bg-skeleton rounded" />
-              </h3>
-            </div>
-            <div className="flex-1 overflow-y-auto p-2 space-y-2 min-h-[400px]">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="p-3 rounded-xl border border-skeleton bg-skeleton animate-pulse" />
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-    );
-  }
-
+  // Todos los hooks ANTES de cualquier early return (si no, al alternar
+  // isLoading se viola la regla de hooks y React tira #300).
   const handleNextStatus = useCallback(
     async (order: Order) => {
       const needsKitchen = (order.items || []).some((i) => i?.requires_prep !== false);
@@ -422,6 +402,28 @@ export function OrdersKanban({
     },
     [isRetail, onRefresh, onError]
   );
+
+  if (isLoading) {
+    return (
+      <div className="flex gap-3 overflow-x-auto pb-4 px-1">
+        {activeSteps.map((status) => (
+          <div key={status} className="flex-1 min-w-[280px] max-w-[320px] flex flex-col">
+            <div className="px-3 py-2.5 flex items-center justify-between border-b border-border bg-muted/50 rounded-t-xl">
+              <h3 className="font-semibold text-sm flex items-center gap-2">
+                <span className="h-4 w-4 bg-skeleton rounded-full" />
+                <span className="h-4 w-16 bg-skeleton rounded" />
+              </h3>
+            </div>
+            <div className="flex-1 overflow-y-auto p-2 space-y-2 min-h-[400px]">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="p-3 rounded-xl border border-skeleton bg-skeleton animate-pulse" />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
 
   // Filtro terminal (ej. "completed"): el Kanban solo muestra estados activos.
   // Los entregados de la jornada se ven en la sección "Entregados de hoy"

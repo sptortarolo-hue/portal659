@@ -40,7 +40,7 @@ export default function MostradorPage() {
           <p className="mb-3">
             Entrá a tu dashboard y tocá la pestaña <span className="font-medium">🖥️ Mostrador</span> en la barra inferior.
           </p>
-          <img src="/manuales/capturas/40-mostrador-grid.png" alt="Mostrador grid" className="rounded-xl border border-border shadow-sm w-full max-w-sm" />
+          <img src="/manuales/capturas/mostrador-grid-mobile.jpg" alt="Mostrador grid" className="rounded-xl border border-border shadow-sm w-full max-w-sm" />
         </div>
 
         {/* 3 */}
@@ -49,7 +49,7 @@ export default function MostradorPage() {
           <p className="mb-3">
             En la parte superior tenés un <span className="font-medium">buscador</span> y <span className="font-medium">chips de categoría</span> para filtrar:
           </p>
-          <img src="/manuales/capturas/41-mostrador-productos.png" alt="Productos con precios" className="rounded-xl border border-border shadow-sm w-full max-w-sm mb-3" />
+          <img src="/manuales/capturas/mostrador-grid-mobile.jpg" alt="Productos con precios" className="rounded-xl border border-border shadow-sm w-full max-w-sm mb-3" />
           <ul className="list-disc pl-5 space-y-1">
             <li><span className="font-medium">Buscador:</span> escribí el nombre del producto.</li>
             <li><span className="font-medium">Chips:</span> tocá una categoría para filtrar.</li>
@@ -138,7 +138,7 @@ export default function MostradorPage() {
         <div>
           <h2 className="font-display text-lg font-semibold mb-3">9. Cobrar</h2>
           <p className="mb-3">Tenés dos opciones:</p>
-          <img src="/manuales/capturas/45-mostrador-cobrar.png" alt="Cobrar" className="rounded-xl border border-border shadow-sm w-full max-w-sm mb-3" />
+          <img src="/manuales/capturas/mostrador-grid-mobile.jpg" alt="Cobrar" className="rounded-xl border border-border shadow-sm w-full max-w-sm mb-3" />
           <ul className="list-disc pl-5 space-y-1">
             <li><span className="font-medium">&quot;Cobrar + comprobante de retiro&quot;</span> (retiro) / <span className="font-medium">&quot;Cobrar y despachar&quot;</span> (envío): cobra e imprime un comprobante.</li>
             <li><span className="font-medium">&quot;Cobrar sin comprobante&quot;</span>: cobra sin imprimir nada.</li>
@@ -155,7 +155,7 @@ export default function MostradorPage() {
             <li>Se imprime el <span className="font-medium">comprobante de retiro</span> (si elegiste esa opción).</li>
             <li>El carrito se vacía y aparece un mensaje de éxito.</li>
           </ol>
-          <img src="/manuales/capturas/46-mostrador-exito.png" alt="Éxito" className="rounded-xl border border-border shadow-sm w-full max-w-sm" />
+          <img src="/manuales/capturas/mostrador-grid-mobile.jpg" alt="Éxito" className="rounded-xl border border-border shadow-sm w-full max-w-sm" />
         </div>
 
         {/* 11 */}
@@ -164,7 +164,7 @@ export default function MostradorPage() {
           <p className="mb-3">
             Debajo del carrito, la sección <span className="font-medium">&quot;Ventas de hoy en mostrador&quot;</span> muestra todos los pedidos del día.
           </p>
-          <img src="/manuales/capturas/47-mostrador-domicilio.png" alt="Ventas de hoy" className="rounded-xl border border-border shadow-sm w-full max-w-sm mb-3" />
+          <img src="/manuales/capturas/mostrador-grid-mobile.jpg" alt="Ventas de hoy" className="rounded-xl border border-border shadow-sm w-full max-w-sm mb-3" />
 
           <h3 className="font-semibold mb-2">Convertir a domicilio</h3>
           <p className="mb-3">

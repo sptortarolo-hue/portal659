@@ -34,7 +34,7 @@ export default function RecepcionPedidosPage() {
             <li><span className="font-medium">Buscador</span>: buscá por nombre, teléfono o <span className="font-medium">#ID</span> del pedido.</li>
             <li><span className="font-medium">Chips de estado</span>: filtran por estado (solo aparecen los que tienen pedidos, con su contador). El chip <span className="font-medium">Todos</span> siempre está activo.</li>
           </ul>
-          <img src="/manuales/capturas/05-pedidos-todos.png" alt="Panel de pedidos" className="rounded-xl border border-border shadow-sm w-full max-w-sm mb-4" />
+          <img src="/manuales/capturas/recepcion-pedidos-mobile.jpg" alt="Panel de pedidos" className="rounded-xl border border-border shadow-sm w-full max-w-sm mb-4" />
           <p className="mb-2">Cada tarjeta de pedido muestra:</p>
           <ul className="list-disc pl-5 space-y-1">
             <li><span className="font-medium">Canal + número</span> (ej: Mostrador Nro. 3, Mesa 1 · Nro. 5).</li>
@@ -92,7 +92,7 @@ export default function RecepcionPedidosPage() {
         <div>
           <h2 className="font-display text-lg font-semibold mb-3">4. Abrir un pedido (ficha)</h2>
           <p className="mb-3">Tocá <span className="font-medium">Ver detalle</span> en cualquier tarjeta. La ficha muestra:</p>
-          <img src="/manuales/capturas/22-pedido-accion.png" alt="Ficha del pedido" className="rounded-xl border border-border shadow-sm w-full max-w-sm mb-4" />
+          <img src="/manuales/capturas/recepcion-pedidos-mobile.jpg" alt="Ficha del pedido" className="rounded-xl border border-border shadow-sm w-full max-w-sm mb-4" />
           <ul className="list-disc pl-5 space-y-1">
             <li><span className="font-medium">Stepper de estados</span>: el progreso visual del pedido (Nuevo → En preparación → Listo → Enviado → Entregado).</li>
             <li><span className="font-medium">Productos</span>: cantidad, nombre (con modificadores) y precio.</li>
@@ -142,7 +142,7 @@ export default function RecepcionPedidosPage() {
             <strong>Mostrador/mesa sin cocina:</strong> el pedido pasa directo de <span className="font-medium">Nuevo</span> a <span className="font-medium">Listo</span> (saltándose En preparación) y se completa al instante. Es el flujo rápido de bares y rotiserías.
           </div>
           <p className="text-xs text-muted-foreground">Si tomás un plato que SÍ necesita cocina en Mostrador, el pedido queda <span className="font-medium">En preparación</span> (no se completa al instante).</p>
-          <img src="/manuales/capturas/25-comanda-kds.png" alt="Comanda KDS" className="rounded-xl border border-border shadow-sm w-full max-w-sm mt-3" />
+          <img src="/manuales/capturas/recepcion-comanda-mobile.jpg" alt="Comanda KDS" className="rounded-xl border border-border shadow-sm w-full max-w-sm mt-3" />
         </div>
 
         {/* 7 */}

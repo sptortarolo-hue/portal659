@@ -46,7 +46,7 @@ export default function MesasPage() {
           <p className="mb-3">
             Entrá a tu dashboard y tocá la pestaña <span className="font-medium">🪑 Mesas</span> en la barra inferior:
           </p>
-          <img src="/manuales/capturas/48-mesas-grid.png" alt="Grilla de mesas" className="rounded-xl border border-border shadow-sm w-full max-w-sm" />
+          <img src="/manuales/capturas/mesas-grid-mobile.jpg" alt="Grilla de mesas" className="rounded-xl border border-border shadow-sm w-full max-w-sm" />
         </div>
 
         {/* 3 */}
@@ -87,13 +87,13 @@ export default function MesasPage() {
           <p className="mb-3">
             Tocá cualquier mesa libre. Se abre el <span className="font-medium">catálogo de productos</span>:
           </p>
-          <img src="/manuales/capturas/49-mesas-abierta.png" alt="Catálogo de productos" className="rounded-xl border border-border shadow-sm w-full max-w-sm mb-4" />
+          <img src="/manuales/capturas/mesas-grid-mobile.jpg" alt="Catálogo de productos" className="rounded-xl border border-border shadow-sm w-full max-w-sm mb-4" />
 
           <h3 className="font-medium mb-2">4.2 Buscá y agregá productos</h3>
           <p className="mb-3">
             En la parte superior tenés un <span className="font-medium">buscador</span> y <span className="font-medium">chips de categoría</span> para filtrar:
           </p>
-          <img src="/manuales/capturas/50-mesas-catalogo.png" alt="Productos con precios" className="rounded-xl border border-border shadow-sm w-full max-w-sm mb-3" />
+          <img src="/manuales/capturas/mesas-grid-mobile.jpg" alt="Productos con precios" className="rounded-xl border border-border shadow-sm w-full max-w-sm mb-3" />
           <ul className="list-disc list-inside space-y-1 text-muted-foreground">
             <li><span className="font-medium">Buscador:</span> escribí el nombre del producto.</li>
             <li><span className="font-medium">Chips:</span> tocá una categoría para filtrar.</li>
@@ -105,7 +105,7 @@ export default function MesasPage() {
           <p className="mb-3">
             En la parte inferior aparece una <span className="font-medium">barra resumen</span> con el total de ítems y el monto:
           </p>
-          <img src="/manuales/capturas/51-mesas-carrito.png" alt="Barra de carrito" className="rounded-xl border border-border shadow-sm w-full max-w-sm mb-3" />
+          <img src="/manuales/capturas/mesas-grid-mobile.jpg" alt="Barra de carrito" className="rounded-xl border border-border shadow-sm w-full max-w-sm mb-3" />
           <p>Tocá la barra para ir a la <span className="font-medium">vista de cuenta</span> y revisar todo lo cargado.</p>
         </div>
 
@@ -113,7 +113,7 @@ export default function MesasPage() {
         <div>
           <h2 className="font-display text-lg font-semibold mb-3">5. Vista de cuenta (Detalle de la mesa)</h2>
           <p className="mb-3">La cuenta muestra dos secciones:</p>
-          <img src="/manuales/capturas/52-mesas-cuenta.png" alt="Vista de cuenta" className="rounded-xl border border-border shadow-sm w-full max-w-sm mb-3" />
+          <img src="/manuales/capturas/mesas-grid-mobile.jpg" alt="Vista de cuenta" className="rounded-xl border border-border shadow-sm w-full max-w-sm mb-3" />
           <div className="overflow-x-auto">
             <table className="w-full text-sm border border-border rounded-lg overflow-hidden">
               <thead className="bg-muted/50">
@@ -146,7 +146,7 @@ export default function MesasPage() {
           <p className="mb-3">
             Cuando tengas ítems en "Por cargar", tocá el botón <span className="font-medium">"➕ Cargar a la mesa (N ítems)"</span>:
           </p>
-          <img src="/manuales/capturas/52-mesas-cuenta.png" alt="Botón cargar" className="rounded-xl border border-border shadow-sm w-full max-w-sm mb-3" />
+
           <p>
             Los ítems pasan de "Por cargar" a "Consumiciones de la mesa". Esto los guarda en la base de datos
             y los envía a la cocina si tenés impresora configurada.
@@ -159,7 +159,7 @@ export default function MesasPage() {
           <p className="mb-3">
             Para mostrarle al cliente cuánto debe, tocá <span className="font-medium">"🖨️ Precuenta"</span>:
           </p>
-          <img src="/manuales/capturas/53-mesas-precuenta.png" alt="Precuenta" className="rounded-xl border border-border shadow-sm w-full max-w-sm mb-3" />
+          <img src="/manuales/capturas/mesas-grid-mobile.jpg" alt="Precuenta" className="rounded-xl border border-border shadow-sm w-full max-w-sm mb-3" />
           <p className="mb-2">La precuenta muestra:</p>
           <ul className="list-disc list-inside space-y-1 text-muted-foreground">
             <li>Todos los ítems consumidos con sus precios</li>
@@ -208,7 +208,7 @@ export default function MesasPage() {
           <p className="mb-3">
             Tocá <span className="font-medium">"Cobrado y cerrar"</span>. La mesa se libera automáticamente y vuelve a estado <span className="font-medium">Libre</span>:
           </p>
-          <img src="/manuales/capturas/55-mesas-cerrada.png" alt="Mesa cerrada" className="rounded-xl border border-border shadow-sm w-full max-w-sm" />
+          <img src="/manuales/capturas/mesas-grid-mobile.jpg" alt="Mesa cerrada" className="rounded-xl border border-border shadow-sm w-full max-w-sm" />
         </div>
 
         {/* 9 */}

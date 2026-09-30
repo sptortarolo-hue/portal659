@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { LivePreview } from "@/components/dashboard/shared";
 import { HoursEditor } from "@/components/dashboard/hours-editor";
+import { GalleryManager } from "@/components/dashboard/gallery-manager";
 import { LocationPicker } from "./location-picker";
 import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import { Switch } from "@/components/ui/switch";
@@ -425,11 +426,8 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
   const [storePreview, setStorePreview] = useState<string | null>(vendor?.image_url || null);
   const [logoPreview, setLogoPreview] = useState<string | null>(vendor?.logo_url || null);
 
-  const [galleryUploading, setGalleryUploading] = useState(false);
-  const [galleryCaptions, setGalleryCaptions] = useState<Record<string, string>>({});
   const [bookingFilter, setBookingFilter] = useState<"all" | "pending" | "confirmed" | "cancelled" | "noshow">("all");
-
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [galleryCount, setGalleryCount] = useState(gallery.length);
 
   const storePreviewUrl = storePreview || vendor?.image_url || null;
   const logoPreviewUrl = logoPreview || vendor?.logo_url || null;
@@ -473,61 +471,6 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
       quote_days: quoteDays,
       quote_slots: quoteSlots,
     });
-  }
-
-  async function handleGalleryUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setGalleryUploading(true);
-    setMsg("");
-
-    try {
-      const fd = new FormData();
-      fd.append("file", file);
-      fd.append("folder", "gallery");
-
-      const uploadRes = await fetch("/api/vendor/upload", { method: "POST", body: fd });
-      const uploadData = await uploadRes.json();
-
-      if (!uploadData.url) {
-        setMsg(uploadData.error || "Error al subir imagen");
-        return;
-      }
-
-      const galleryRes = await fetch("/api/vendor/gallery", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image_url: uploadData.url }),
-      });
-      const galleryData = await galleryRes.json();
-
-      if (galleryData.error) {
-        setMsg(galleryData.error);
-        return;
-      }
-
-      reload();
-    } catch {
-      setMsg("Error de conexión");
-    } finally {
-      setGalleryUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-    }
-  }
-
-  async function handleDeleteGalleryImage(id: string) {
-    try {
-      const res = await fetch(`/api/vendor/gallery/${id}`, { method: "DELETE" });
-      const data = await res.json();
-      if (data.error) {
-        setMsg(data.error);
-        return;
-      }
-      reload();
-    } catch {
-      setMsg("Error de conexión");
-    }
   }
 
   async function handleUpdateBookingStatus(id: string, status: string) {
@@ -983,68 +926,14 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
         </div>
       </CollapsibleSection>
 
-      <CollapsibleSection icon="🖼️" title={`Galería de trabajos (${gallery.length})`}>
-        <div className="space-y-3">
-          <div>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              onChange={handleGalleryUpload}
-              className="hidden"
-              id="gallery-upload"
-            />
-            <Button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={galleryUploading}
-              className="w-full"
-              variant="outline"
-            >
-              {galleryUploading ? "Subiendo..." : "Agregar foto"}
-            </Button>
-          </div>
-
-          {gallery.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-4">
-              Todavía no subiste fotos de trabajos.
-            </p>
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              {gallery.map((item: any) => (
-                <div key={item.id} className="border border-border rounded-lg overflow-hidden bg-background">
-                  <div className="aspect-square relative">
-                    <img
-                      src={item.image_url}
-                      alt={item.caption || "Trabajo"}
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                  <div className="p-2 space-y-1">
-                    <Input
-                      value={galleryCaptions[item.id] ?? item.caption ?? ""}
-                      onChange={(e) =>
-                        setGalleryCaptions((prev) => ({
-                          ...prev,
-                          [item.id]: e.target.value,
-                        }))
-                      }
-                      placeholder="Descripción..."
-                      className="h-7 text-xs"
-                    />
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="w-full h-7 text-xs text-red-600"
-                      onClick={() => handleDeleteGalleryImage(item.id)}
-                    >
-                      Eliminar
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+      <CollapsibleSection icon="🖼️" title={`Galería de trabajos (${galleryCount})`}>
+        <GalleryManager
+          title="Fotos de trabajos realizados"
+          emptyText="Todavía no subiste fotos de trabajos."
+          captionPlaceholder="Ej: instalación, antes/después..."
+          onCount={setGalleryCount}
+          onChanged={reload}
+        />
       </CollapsibleSection>
       </>
       )}

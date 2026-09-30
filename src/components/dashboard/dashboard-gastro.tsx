@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,6 +17,7 @@ import { MpConnectCard } from "@/components/dashboard/mp-connect-card";
 import { PrinterConfigSection } from "@/components/dashboard/printer-config-section";
 import { FiscalTabShortcut } from "@/components/dashboard/fiscal-config-section";
 import { HoursEditor } from "@/components/dashboard/hours-editor";
+import { GalleryManager } from "@/components/dashboard/gallery-manager";
 import { LocationPicker } from "./location-picker";
 import { StaffManager } from "@/components/vendor/staff-manager";
 import type { Vendor, VendorGallery } from "@/types/database";
@@ -116,8 +117,7 @@ export default function DashboardGastro({
 
   const [saving, setSaving] = useState(false);
 
-  const [galleryUploading, setGalleryUploading] = useState(false);
-  const galleryFileRef = useRef<HTMLInputElement>(null);
+  const [galleryCount, setGalleryCount] = useState(gallery.length);
 
   // La sección de impresora vive en PrinterConfigSection (compartida con el
   // dashboard de comercio): tiene su propio estado cola/token/modo y escucha
@@ -224,38 +224,7 @@ export default function DashboardGastro({
     storeFile, logoFile, saveVendor, setMsg,
   ]);
 
-  async function handleGalleryUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setGalleryUploading(true);
-    setMsg("");
-    try {
-      const fd = new FormData();
-      fd.append("file", file);
-      fd.append("folder", "gallery");
-      const uploadRes = await fetch("/api/vendor/upload", { method: "POST", body: fd });
-      const uploadData = await uploadRes.json();
-      if (!uploadData.url) { setMsg(uploadData.error || "Error al subir imagen"); return; }
-      const galleryRes = await fetch("/api/vendor/gallery", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image_url: uploadData.url }),
-      });
-      const galleryData = await galleryRes.json();
-      if (galleryData.error) { setMsg(galleryData.error); return; }
-      reload();
-    } catch { setMsg("Error de conexión"); }
-    finally { setGalleryUploading(false); if (galleryFileRef.current) galleryFileRef.current.value = ""; }
-  }
-
-  async function handleDeleteGalleryImage(id: string) {
-    try {
-      const res = await fetch(`/api/vendor/gallery/${id}`, { method: "DELETE" });
-      const data = await res.json();
-      if (data.error) { setMsg(data.error); return; }
-      reload();
-    } catch { setMsg("Error de conexión"); }
-  }
+  // Galería: la gestiona GalleryManager (subida + epígrafes + borrado).
 
   return (
     <form onSubmit={handleSave} className="space-y-4">
@@ -552,29 +521,13 @@ export default function DashboardGastro({
         </div>
       </ConfigSection>
 
-      <ConfigSection id="perfil" label="Perfil" icon="🏪" badge={gallery.length > 0 ? String(gallery.length) : undefined}>
-        <div className="space-y-3">
-          <input ref={galleryFileRef} type="file" accept="image/*" onChange={handleGalleryUpload} className="hidden" />
-          <Button type="button" onClick={() => galleryFileRef.current?.click()} disabled={galleryUploading} className="w-full" variant="outline">
-            {galleryUploading ? "Subiendo..." : "Agregar foto"}
-          </Button>
-          {gallery.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-4">Todavía no subiste fotos.</p>
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              {gallery.map((item: any) => (
-                <div key={item.id} className="border border-border rounded-lg overflow-hidden bg-background">
-                  <div className="aspect-square relative">
-                    <img src={item.image_url} alt={item.caption || "Foto"} className="w-full h-full object-cover" />
-                  </div>
-                  <Button type="button" size="sm" variant="ghost" className="w-full h-7 text-xs text-red-600" onClick={() => handleDeleteGalleryImage(item.id)}>
-                    Eliminar
-                  </Button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+      <ConfigSection id="perfil" label="Perfil" icon="🏪" badge={galleryCount > 0 ? String(galleryCount) : undefined}>
+        <GalleryManager
+          title="Galería de fotos de tu vidriera"
+          emptyText="Todavía no subiste fotos."
+          onCount={setGalleryCount}
+          onChanged={reload}
+        />
       </ConfigSection>
       </ConfigSections>
 

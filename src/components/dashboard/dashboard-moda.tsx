@@ -16,6 +16,7 @@ import { RadioCards } from "@/components/ui/radio-cards";
 import { LivePreview, CategoryManager, apiJson, TransferConfig, DeliveryFeeConfig } from "@/components/dashboard/shared";
 import { MpConnectCard } from "@/components/dashboard/mp-connect-card";
 import { HoursEditor } from "@/components/dashboard/hours-editor";
+import { GalleryManager } from "@/components/dashboard/gallery-manager";
 import { SIZE_GUIDE_TEMPLATES, templateToText } from "@/lib/size-guides";
 import { LocationPicker } from "./location-picker";
 import { PrinterConfigSection } from "@/components/dashboard/printer-config-section";
@@ -589,6 +590,11 @@ export default function DashboardModa({
         <div className="space-y-3">
           <div><Label>Foto del comercio</Label><Input type="file" accept="image/*" onChange={(e) => { const f = e.target.files?.[0] || null; if (f) { setStoreFile(f); setStorePreview(URL.createObjectURL(f)); } }} />{storePreview && <img src={storePreview} alt="" className="mt-2 h-24 w-full object-cover rounded-lg" />}</div>
           <div><Label>Logo</Label><Input type="file" accept="image/*" onChange={(e) => { const f = e.target.files?.[0] || null; if (f) { setLogoFile(f); setLogoPreview(URL.createObjectURL(f)); } }} />{logoPreview && <img src={logoPreview} alt="" className="mt-2 h-16 w-16 object-cover rounded-full border" />}</div>
+          <GalleryManager
+            title="Galería de fotos de tu vidriera"
+            emptyText="Todavía no subiste fotos de tu local."
+            captionPlaceholder="Ej: vidriera, nueva colección..."
+          />
         </div>
       </ConfigSection>
 

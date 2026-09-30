@@ -9,7 +9,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { QuantityInput } from "@/components/ui/quantity-input";
 import { Badge } from "@/components/ui/badge";
-import { OfferForm, OfferList } from "@/components/dashboard/shared";
+import { OfferForm, OfferList, useFormDraft } from "@/components/dashboard/shared";
+import { clearDraft } from "@/lib/draft";
 import { ProductModifiersBlock } from "@/components/dashboard/modifier-editor";
 import { SIZE_GUIDE_TEMPLATES, templateToText } from "@/lib/size-guides";
 import type { ProductVariant, ProductImage } from "@/types/database";
@@ -45,6 +46,8 @@ type Props = {
   showCosts?: boolean;
   /** Permite editar el costo de compra manual (plan Gestión: inventory o recipes). */
   canEditCost?: boolean;
+  /** Para el borrador del formulario (24h). */
+  vendorId?: string | null;
   /** Variantes de todos los productos (solo moda). */
   variants?: ProductVariant[];
   /** Galer├¡a de todos los productos (solo moda). */
@@ -68,7 +71,7 @@ type VariantRow = {
 const MAX_EXTRA_IMAGES = 7;
 
 /** Gesti├│n completa de platos/productos (listado + ficha inline + modificadores), sin ir a Configuraci├│n. */
-export function ProductManager({ isModa = false, isComercio = false, showStock = true, showPrep = false, showCosts = false, canEditCost = false, variants, productImages, onCrop, onChanged }: Props) {
+export function ProductManager({ isModa = false, isComercio = false, showStock = true, showPrep = false, showCosts = false, canEditCost = false, vendorId = null, variants, productImages, onCrop, onChanged }: Props) {
   // Wording por vertical: gastro habla de "platos", retail de "productos".
   const noun = isModa || isComercio ? "Producto" : "Plato";
   const [offers, setOffers] = useState<OfferRow[]>([]);
@@ -146,6 +149,8 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
   }, [productImages]);
 
   function resetForm() {
+    clearDraft(vendorId, "product-manager");
+    setPhotoNotice(false);
     setEditingId(null);
     setShowForm(false);
     setOffName("");
@@ -199,8 +204,55 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
     setGalleryUrls(imgs.map((img) => ({ url: img.url, color: img.color ?? null })));
     setOffSizeGuide((offer as { size_guide?: string | null }).size_guide ?? "");
     setShowForm(true);
-    setMsg("");
   }
+
+  // Borrador del formulario (24h). La foto/galería (File) no se persiste.
+  type ProductDraft = {
+    editingId: string | null; offName: string; offDesc: string; offPrice: string;
+    offCategory: string; offPreview: string | null; offStock: number;
+    offStockControl: boolean; offPromoPrice: string; offCost: string;
+    offStockLowThreshold: number; offRequiresPrep: boolean; offCashExcluded: boolean;
+    offHasVariants: boolean; offSizeGuide: string; variantRows: VariantRow[];
+    hadFile: boolean;
+  };
+  const [photoNotice, setPhotoNotice] = useState(false);
+  const productDraft = useFormDraft<ProductDraft>({
+    vendorId,
+    key: "product-manager",
+    watch: [showForm, editingId, offName, offDesc, offPrice, offCategory, offPreview, offStock, offStockControl, offPromoPrice, offCost, offStockLowThreshold, offRequiresPrep, offCashExcluded, offHasVariants, offSizeGuide, variantRows],
+    snapshot: () => {
+      if (!showForm) return null;
+      if (!editingId && !offName.trim() && !offPrice && !offDesc.trim()) return null;
+      return {
+        editingId, offName, offDesc, offPrice, offCategory, offPreview, offStock,
+        offStockControl, offPromoPrice, offCost, offStockLowThreshold, offRequiresPrep,
+        offCashExcluded, offHasVariants, offSizeGuide, variantRows,
+        hadFile: offFile != null,
+      };
+    },
+    restore: (d) => {
+      const stillThere = d.editingId && offers.some((o) => o.id === d.editingId);
+      setEditingId(stillThere ? d.editingId : null);
+      setOffName(d.offName || "");
+      setOffDesc(d.offDesc || "");
+      setOffPrice(d.offPrice || "");
+      setOffCategory(d.offCategory || "otras");
+      setOffFile(null);
+      setOffPreview(d.offPreview || null);
+      setOffStock(typeof d.offStock === "number" ? d.offStock : 0);
+      setOffStockControl(d.offStockControl === true);
+      setOffPromoPrice(d.offPromoPrice || "");
+      setOffCost(d.offCost || "");
+      setOffStockLowThreshold(typeof d.offStockLowThreshold === "number" ? d.offStockLowThreshold : 5);
+      setOffRequiresPrep(showPrep ? d.offRequiresPrep !== false : false);
+      setOffCashExcluded(d.offCashExcluded === true);
+      setOffHasVariants(d.offHasVariants === true);
+      setOffSizeGuide(d.offSizeGuide || "");
+      if (Array.isArray(d.variantRows)) setVariantRows(d.variantRows);
+      setPhotoNotice(d.hadFile === true);
+    },
+    onRestored: () => setShowForm(true),
+  });
 
   function addVariantRow() {
     setVariantRows((prev) => {
@@ -391,6 +443,18 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
         <h3 className="font-semibold">{editingId ? "Editar producto" : "Nuevo producto"}</h3>
         <Button type="button" variant="ghost" size="sm" onClick={resetForm}>Ô£ò</Button>
       </div>
+      {productDraft.restored && (
+        <div className="flex items-center justify-between gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 mb-3">
+          <p className="text-xs font-medium text-primary">Recuperamos tu carga en curso{photoNotice ? " (volvé a elegir la foto)" : ""}</p>
+          <button
+            type="button"
+            onClick={() => { productDraft.discard(); resetForm(); }}
+            className="text-xs font-medium text-muted-foreground hover:text-foreground underline flex-shrink-0"
+          >
+            Descartar
+          </button>
+        </div>
+      )}
       <div className="space-y-3">
         <div className="grid grid-cols-2 gap-3">
           <div><Label>Nombre</Label><Input value={offName} onChange={(e) => setOffName(e.target.value)} required /></div>
@@ -508,6 +572,18 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
 
   const offerFormNode = isModa ? modaFormNode : (
     <div className="space-y-3">
+      {productDraft.restored && (
+        <div className="flex items-center justify-between gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2">
+          <p className="text-xs font-medium text-primary">Recuperamos tu carga en curso{photoNotice ? " (volvé a elegir la foto)" : ""}</p>
+          <button
+            type="button"
+            onClick={() => { productDraft.discard(); resetForm(); }}
+            className="text-xs font-medium text-muted-foreground hover:text-foreground underline flex-shrink-0"
+          >
+            Descartar
+          </button>
+        </div>
+      )}
       <OfferForm
         categories={categories}
         editingId={editingId}

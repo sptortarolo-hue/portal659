@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { saveDraft, loadDraft } from "@/lib/draft";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { ORDER_STATUS_LABELS, ORDER_STATUS_COLORS, statusLabel } from "@/lib/order-utils";
@@ -36,7 +37,7 @@ const PAYMENT_LABELS: Record<string, string> = {
   mercadopago: "Mercado Pago",
 };
 
-export function VendorOrderHistory({ isRetail = false, onOpenOrder }: { isRetail?: boolean; onOpenOrder?: (order: Order) => void }) {
+export function VendorOrderHistory({ isRetail = false, vendorId = null, onOpenOrder }: { isRetail?: boolean; vendorId?: string | null; onOpenOrder?: (order: Order) => void }) {
   const [orders, setOrders] = useState<HistoryOrder[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -51,6 +52,31 @@ export function VendorOrderHistory({ isRetail = false, onOpenOrder }: { isRetail
   const [payment, setPayment] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  // Filtros con vencimiento (24h): volver no pierde la búsqueda.
+  const histReady = useRef(false);
+  useEffect(() => {
+    if (histReady.current || !vendorId) return;
+    histReady.current = true;
+    try {
+      const d = loadDraft<{ q?: string; status?: string; kind?: string; method?: string; payment?: string; dateFrom?: string; dateTo?: string }>(vendorId, "history");
+      if (!d) return;
+      if (typeof d.q === "string") setQ(d.q);
+      if (typeof d.status === "string") setStatus(d.status);
+      if (typeof d.kind === "string") setKind(d.kind);
+      if (typeof d.method === "string") setMethod(d.method);
+      if (typeof d.payment === "string") setPayment(d.payment);
+      if (typeof d.dateFrom === "string") setDateFrom(d.dateFrom);
+      if (typeof d.dateTo === "string") setDateTo(d.dateTo);
+      if (d.q || d.status || d.kind || d.method || d.payment || d.dateFrom || d.dateTo) setPage(1);
+    } catch { /* borrador corrupto: se ignora */ }
+  }, [vendorId]);
+  useEffect(() => {
+    if (!histReady.current || !vendorId) return;
+    const t = setTimeout(() => {
+      saveDraft(vendorId, "history", { q, status, kind, method, payment, dateFrom, dateTo });
+    }, 400);
+    return () => clearTimeout(t);
+  }, [q, status, kind, method, payment, dateFrom, dateTo, vendorId]);
 
   const fetchOrders = useCallback(async () => {
     setLoading(true);

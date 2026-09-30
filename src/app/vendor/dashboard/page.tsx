@@ -4,6 +4,7 @@ import { Suspense, memo, useCallback, useEffect, useMemo, useRef, useState } fro
 import { useRouter, useSearchParams } from "next/navigation";
 import { useRenderGuard } from "@/hooks/use-render-guard";
 import { TabErrorBoundary } from "@/components/dashboard/tab-error-boundary";
+import { saveDraft, loadDraft, clearDraft } from "@/lib/draft";
 import dynamic from "next/dynamic";
 import {
   Menu,
@@ -294,6 +295,39 @@ function VendorDashboardInner() {
   const [orderSearch, setOrderSearch] = useState("");
   const [orderStatusFilter, setOrderStatusFilter] = useState<string>("all");
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  // Borrador de UI (24h): pestaña, filtros y pedido abierto sobreviven a recargas.
+  const dashDraftReady = useRef(false);
+  const pendingOrderId = useRef<string | null>(null);
+  const VALID_TABS: DashTab[] = ["hoy", "config", "menu", "orders", "history", "comanda", "analytics", "pos", "mesas", "caja", "clientes", "reviews", "recetas", "fiscal", "inventario"];
+  useEffect(() => {
+    if (dashDraftReady.current || !vendor?.id) return;
+    dashDraftReady.current = true;
+    try {
+      const d = loadDraft<{ tab?: string; orderSearch?: string; orderStatusFilter?: string; selectedOrderId?: string | null }>(vendor.id, "dashboard");
+      if (!d) return;
+      if (d.tab && (VALID_TABS as string[]).includes(d.tab)) setTab(d.tab as DashTab);
+      if (typeof d.orderSearch === "string") setOrderSearch(d.orderSearch);
+      if (typeof d.orderStatusFilter === "string") setOrderStatusFilter(d.orderStatusFilter);
+      if (d.selectedOrderId) pendingOrderId.current = d.selectedOrderId;
+    } catch { /* borrador corrupto: se ignora */ }
+  }, [vendor?.id]);
+  useEffect(() => {
+    if (!dashDraftReady.current || !vendor?.id) return;
+    const t = setTimeout(() => {
+      saveDraft(vendor.id, "dashboard", {
+        tab, orderSearch, orderStatusFilter,
+        selectedOrderId: selectedOrder?.id || null,
+      });
+    }, 400);
+    return () => clearTimeout(t);
+  }, [tab, orderSearch, orderStatusFilter, selectedOrder, vendor?.id]);
+  // Reabrir el pedido si sigue en lista (los tildes ya están en el servidor).
+  useEffect(() => {
+    if (!pendingOrderId.current || selectedOrder || orders.length === 0) return;
+    const match = orders.find((o) => o.id === pendingOrderId.current);
+    pendingOrderId.current = null;
+    if (match) setSelectedOrder(match);
+  }, [orders, selectedOrder]);
   const [apartadoOpen, setApartadoOpen] = useState(false);
   const [cropTitle, setCropTitle] = useState("Ajustá tu foto");
   const [cropTarget, setCropTarget] = useState<"cover" | "logo" | "offer">("cover");
@@ -1625,6 +1659,7 @@ function VendorDashboardInner() {
                     isComercio={isComercio}
                     enableHeladeriaKit={isGastro}
                     canEditCost={effectivePlan.can("inventory") || (isGastro && effectivePlan.can("recipes"))}
+                    vendorId={vendor?.id}
                   />
                   </TabErrorBoundary>
                 ) : (
@@ -1640,6 +1675,7 @@ function VendorDashboardInner() {
                     productImages={productImages}
                     onCrop={openCrop}
                     onChanged={() => loadData()}
+                    vendorId={vendor?.id}
                   />
                   </TabErrorBoundary>
                 )}
@@ -1764,7 +1800,7 @@ function VendorDashboardInner() {
               )}
               {mountedTabs.has("history") && (
                 <div className={tab === "history" ? "" : "hidden"}>
-                  <MemoVendorOrderHistory isRetail={isRetail} onOpenOrder={setSelectedOrder} />
+                  <MemoVendorOrderHistory isRetail={isRetail} vendorId={vendor?.id} onOpenOrder={setSelectedOrder} />
                 </div>
               )}
               {mountedTabs.has("hoy") && (

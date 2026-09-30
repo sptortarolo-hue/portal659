@@ -13,6 +13,7 @@ import { enqueueOfflineAction, isNetworkError, newClientKey, nextProvisionalNumb
 import { checkOfflineAllowed, offlineDeniedMsg } from "@/lib/offline-plan";
 import { dispatchOfflinePrint, markPrintsDone } from "@/lib/local-print";
 import { printsAdd } from "@/lib/offline-db";
+import { saveDraft, loadDraft, clearDraft } from "@/lib/draft";
 import type { ContingencyKind } from "@/lib/offline-print";
 
 const OFFLINE_PAYMENT_LABELS: Record<string, string> = {
@@ -658,6 +659,74 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
   // Monto manual ("Varios"): línea sin producto ni stock, fuera de estadísticas.
   const [manualName, setManualName] = useState("");
   const [manualPrice, setManualPrice] = useState("");
+  // Borrador de venta (24h): sobrevive a recargas del SO/crash/deploy.
+  const [restored, setRestored] = useState(false);
+  const draftReady = useRef(false);
+  type SaleDraft = {
+    items: LineItem[]; customerName: string; customerPhone: string;
+    customerAddress: string; posReferences: string; payment: string;
+    method: "pickup" | "delivery" | "direct"; notes: string;
+    withFiscal: boolean; fiscalReceptorTipo: "cf" | "dni" | "cuit";
+    fiscalReceptorNro: string; fiscalReceptorNombre: string;
+    fiscalReceptorCond: string; posManualFee: string; sheetOpen: boolean;
+  };
+  // Restaurar una sola vez al montar (si hay borrador con ítems).
+  useEffect(() => {
+    if (draftReady.current || !vendorId) return;
+    draftReady.current = true;
+    try {
+      const d = loadDraft<SaleDraft>(vendorId, "mostrador");
+      if (d && Array.isArray(d.items) && d.items.length > 0) {
+        setItems(d.items);
+        setCustomerName(d.customerName || "");
+        setCustomerPhone(d.customerPhone || "");
+        setCustomerAddress(d.customerAddress || "");
+        setPosReferences(d.posReferences || "");
+        if (d.payment) setPayment(d.payment);
+        if (d.method === "pickup" || d.method === "delivery" || d.method === "direct") setMethod(d.method);
+        setNotes(d.notes || "");
+        setWithFiscal(d.withFiscal === true);
+        if (d.fiscalReceptorTipo === "cf" || d.fiscalReceptorTipo === "dni" || d.fiscalReceptorTipo === "cuit") {
+          setFiscalReceptorTipo(d.fiscalReceptorTipo);
+        }
+        setFiscalReceptorNro(d.fiscalReceptorNro || "");
+        setFiscalReceptorNombre(d.fiscalReceptorNombre || "");
+        setFiscalReceptorCond(d.fiscalReceptorCond || "6");
+        setPosManualFee(d.posManualFee || "");
+        if (d.sheetOpen === true) setSheetOpen(true);
+        setRestored(true);
+      }
+    } catch { /* borrador corrupto: se ignora */ }
+  }, [vendorId]);
+  // Guardar con debounce mientras se arma la venta; limpiar si queda vacía.
+  useEffect(() => {
+    if (!draftReady.current || !vendorId) return;
+    const t = setTimeout(() => {
+      if (items.length === 0 && !customerName && !customerPhone && !notes) {
+        clearDraft(vendorId, "mostrador");
+        return;
+      }
+      saveDraft(vendorId, "mostrador", {
+        items, customerName, customerPhone, customerAddress, posReferences,
+        payment, method, notes, withFiscal, fiscalReceptorTipo,
+        fiscalReceptorNro, fiscalReceptorNombre, fiscalReceptorCond, posManualFee,
+        sheetOpen,
+      } satisfies SaleDraft);
+    }, 400);
+    return () => clearTimeout(t);
+  }, [items, customerName, customerPhone, customerAddress, posReferences, payment, method, notes, withFiscal, fiscalReceptorTipo, fiscalReceptorNro, fiscalReceptorNombre, fiscalReceptorCond, posManualFee, sheetOpen, vendorId]);
+  function discardDraft() {
+    clearDraft(vendorId, "mostrador");
+    setItems([]);
+    setCustomerName("");
+    setCustomerPhone("");
+    setCustomerAddress("");
+    setPosReferences("");
+    setNotes("");
+    setPosManualFee("");
+    setWithFiscal(false);
+    setRestored(false);
+  }
   function addManualLine() {
     const name = manualName.trim() || "Varios";
     const price = Math.round(Number(manualPrice) * 100) / 100;
@@ -849,6 +918,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
     };
 
     const clearSaleForm = () => {
+      clearDraft(vendorId, "mostrador");
       setItems([]);
       setCustomerName("");
       setCustomerPhone("");
@@ -1809,6 +1879,18 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
                 ⚠️ ARCA exige identificar al comprador desde $10.000.000: cargá DNI o CUIT.
               </p>
             )}
+          </div>
+        )}
+        {restored && (
+          <div className="flex items-center justify-between gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2">
+            <p className="text-xs font-medium text-primary">Recuperamos tu venta en curso</p>
+            <button
+              type="button"
+              onClick={discardDraft}
+              className="text-xs font-medium text-muted-foreground hover:text-foreground underline flex-shrink-0"
+            >
+              Descartar
+            </button>
           </div>
         )}
         {msg && (

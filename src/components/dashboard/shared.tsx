@@ -11,6 +11,70 @@ import { Badge } from "@/components/ui/badge";
 import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import { DropdownMenu } from "@/components/ui/dropdown-menu";
 import { Switch } from "@/components/ui/switch";
+import { saveDraft, loadDraft, clearDraft } from "@/lib/draft";
+
+/**
+ * Borrador de formulario con vencimiento (24h). Persiste campos serializables
+ * mientras se edita; los File (fotos) no se pueden persistir y se avisan.
+ * - snapshot(): estado actual o null si no hay nada que guardar.
+ * - restore(d): aplica campos (sin files).
+ * - onRestored(): p. ej. abrir el editor.
+ */
+export function useFormDraft<T extends Record<string, unknown>>(opts: {
+  vendorId: string | null | undefined;
+  key: string;
+  watch: unknown[];
+  snapshot: () => T | null;
+  restore: (d: T) => void;
+  onRestored: () => void;
+}): { restored: boolean; discard: () => void; clear: () => void } {
+  const [restored, setRestored] = useState(false);
+  const ready = useRef(false);
+  const keyRef = useRef(opts.key);
+  keyRef.current = opts.key;
+  const snapRef = useRef(opts.snapshot);
+  snapRef.current = opts.snapshot;
+  const restoreRef = useRef(opts.restore);
+  restoreRef.current = opts.restore;
+  const restoredRef = useRef(opts.onRestored);
+  restoredRef.current = opts.onRestored;
+
+  useEffect(() => {
+    if (ready.current || !opts.vendorId) return;
+    ready.current = true;
+    try {
+      const d = loadDraft<T>(opts.vendorId, opts.key);
+      if (d && typeof d === "object") {
+        restoreRef.current(d);
+        restoredRef.current();
+        setRestored(true);
+      }
+    } catch { /* borrador corrupto: se ignora */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [opts.vendorId]);
+
+  useEffect(() => {
+    if (!ready.current || !opts.vendorId) return;
+    const t = setTimeout(() => {
+      try {
+        const snap = snapRef.current();
+        if (!snap) clearDraft(opts.vendorId, keyRef.current);
+        else saveDraft(opts.vendorId, keyRef.current, snap);
+      } catch { /* noop */ }
+    }, 400);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, opts.watch);
+
+  return {
+    restored,
+    discard: () => {
+      clearDraft(opts.vendorId, opts.key);
+      setRestored(false);
+    },
+    clear: () => clearDraft(opts.vendorId, opts.key),
+  };
+}
 
 /** Hace un fetch a una API y devuelve ok + mensaje de error (si lo hay). */
 export async function apiJson(url: string, init?: RequestInit): Promise<{ ok: boolean; error?: string }> {

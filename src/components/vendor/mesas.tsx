@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { saveDraft, loadDraft, clearDraft } from "@/lib/draft";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { CollapsibleSection } from "@/components/ui/collapsible-section";
@@ -183,6 +184,45 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
   // Mobile: la mesa se divide en 2 pantallas — "catalog" (sticky buscador +
   // pastillas + grilla) y "detail" (cuenta: consumiciones, precuenta, cobro).
   const [mobileView, setMobileView] = useState<"catalog" | "detail">("catalog");
+  // Borrador de mesa (24h): mesa + carrito no enviado + pago.
+  const [mesaRestored, setMesaRestored] = useState(false);
+  const mesaDraftReady = useRef(false);
+  type MesaDraft = {
+    selectedId: string | null;
+    cart: { product_id: string; name: string; price: number; qty: number; requires_prep: boolean; modifiers?: CartModifier[]; packSize?: number; manual?: boolean }[];
+    payment: string;
+    mobileView: "catalog" | "detail";
+  };
+  useEffect(() => {
+    if (mesaDraftReady.current || !vendorId || tables.length === 0) return;
+    mesaDraftReady.current = true;
+    try {
+      const d = loadDraft<MesaDraft>(vendorId, "mesa");
+      if (!d) return;
+      if (d.payment) setPayment(d.payment);
+      if (d.mobileView === "catalog" || d.mobileView === "detail") setMobileView(d.mobileView);
+      if (Array.isArray(d.cart) && d.cart.length > 0) setCart(d.cart);
+      if (d.selectedId) {
+        const match = tables.find((t) => t.id === d.selectedId);
+        if (match) setSelected(match);
+      }
+      if ((d.cart || []).length > 0 || d.selectedId) setMesaRestored(true);
+    } catch { /* borrador corrupto: se ignora */ }
+  }, [vendorId, tables]);
+  useEffect(() => {
+    if (!mesaDraftReady.current || !vendorId) return;
+    const t = setTimeout(() => {
+      if (cart.length === 0 && !selected) {
+        clearDraft(vendorId, "mesa");
+        return;
+      }
+      saveDraft(vendorId, "mesa", {
+        selectedId: selected?.id || null,
+        cart, payment, mobileView,
+      } satisfies MesaDraft);
+    }, 400);
+    return () => clearTimeout(t);
+  }, [cart, selected, payment, mobileView, vendorId]);
   const [printingTicket, setPrintingTicket] = useState(false);
   // % descuento en efectivo del comercio (0 = sin descuento).
   const [cashPct, setCashPct] = useState(0);
@@ -1002,6 +1042,23 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
 
   return (
     <div className="space-y-4">
+      {mesaRestored && (
+        <div className="flex items-center justify-between gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2">
+          <p className="text-xs font-medium text-primary">Recuperamos la mesa en curso</p>
+          <button
+            type="button"
+            onClick={() => {
+              clearDraft(vendorId, "mesa");
+              setCart([]);
+              setSelected(null);
+              setMesaRestored(false);
+            }}
+            className="text-xs font-medium text-muted-foreground hover:text-foreground underline flex-shrink-0"
+          >
+            Descartar
+          </button>
+        </div>
+      )}
       {msg && <p className="text-sm text-green-600 bg-green-50 rounded-lg px-3 py-2">{msg}</p>}
 
       <div className="flex items-center gap-2">

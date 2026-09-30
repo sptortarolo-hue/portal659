@@ -11,7 +11,9 @@ import {
   CategoryManager,
   apiJson,
   getJson,
+  useFormDraft,
 } from "@/components/dashboard/shared";
+import { clearDraft } from "@/lib/draft";
 import { ModifierLibrary, ProductModifiersBlock } from "@/components/dashboard/modifier-editor";
 import { VolumeEditor } from "@/components/dashboard/volume-editor";
 import { MenuImportModal } from "@/components/dashboard/menu-import";
@@ -67,6 +69,8 @@ type Props = {
   hasRecipes?: boolean;
   /** Permite editar el costo de compra manual (plan Gestión: inventory o recipes). */
   canEditCost?: boolean;
+  /** Para el borrador del formulario (24h). */
+  vendorId?: string | null;
   /** Muestra el Kit heladería en la solapa Opciones (solo gastronomía). */
   enableHeladeriaKit?: boolean;
 };
@@ -119,6 +123,7 @@ export function MenuStudio({
   isComercio = false,
   enableHeladeriaKit = false,
   canEditCost = false,
+  vendorId = null,
 }: Props) {
   const [view, setView] = useState<View>("productos");
   const [showImport, setShowImport] = useState(false);
@@ -234,6 +239,8 @@ export function MenuStudio({
     typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches;
 
   function resetForm() {
+    clearDraft(vendorId, "menu-studio");
+    setPhotoNotice(false);
     setEditingId(null);
     setShowForm(false);
     setOffName("");
@@ -277,6 +284,56 @@ export function MenuStudio({
     setShowForm(true);
     setMsg("");
   }
+
+  // Borrador del formulario (24h): sobrevive a recargas. La foto (File) no
+  // se puede persistir: se avisa para re-elegirla.
+  type MenuDraft = {
+    editingId: string | null; offName: string; offDesc: string; offPrice: string;
+    offCategory: string; offPreview: string | null; offStock: number;
+    offStockControl: boolean; offPromoPrice: string; offStockLowThreshold: number;
+    offRequiresPrep: boolean; offCashExcluded: boolean; offPackSize: string;
+    offUnit: string; offSku: string; offCost: string;
+    offRemotePhoto: string | null; hadFile: boolean;
+  };
+  const [photoNotice, setPhotoNotice] = useState(false);
+  const menuDraft = useFormDraft<MenuDraft>({
+    vendorId,
+    key: "menu-studio",
+    watch: [showForm, editingId, offName, offDesc, offPrice, offCategory, offPreview, offStock, offStockControl, offPromoPrice, offStockLowThreshold, offRequiresPrep, offCashExcluded, offPackSize, offUnit, offSku, offCost, offRemotePhoto],
+    snapshot: () => {
+      if (!showForm) return null;
+      if (!editingId && !offName.trim() && !offPrice && !offDesc.trim()) return null;
+      return {
+        editingId, offName, offDesc, offPrice, offCategory, offPreview, offStock,
+        offStockControl, offPromoPrice, offStockLowThreshold, offRequiresPrep,
+        offCashExcluded, offPackSize, offUnit, offSku, offCost, offRemotePhoto,
+        hadFile: offFile != null,
+      };
+    },
+    restore: (d) => {
+      const stillThere = d.editingId && offers.some((o) => o.id === d.editingId);
+      setEditingId(stillThere ? d.editingId : null);
+      setOffName(d.offName || "");
+      setOffDesc(d.offDesc || "");
+      setOffPrice(d.offPrice || "");
+      setOffCategory(d.offCategory || (isComercio ? "otros" : "otras"));
+      setOffFile(null);
+      setOffPreview(d.offPreview || null);
+      setOffStock(typeof d.offStock === "number" ? d.offStock : 0);
+      setOffStockControl(d.offStockControl === true);
+      setOffPromoPrice(d.offPromoPrice || "");
+      setOffStockLowThreshold(typeof d.offStockLowThreshold === "number" ? d.offStockLowThreshold : 5);
+      setOffRequiresPrep(isComercio ? false : d.offRequiresPrep !== false);
+      setOffCashExcluded(d.offCashExcluded === true);
+      setOffPackSize(d.offPackSize || "");
+      setOffUnit(d.offUnit === "kg" ? "kg" : "unidad");
+      setOffSku(d.offSku || "");
+      setOffCost(d.offCost || "");
+      setOffRemotePhoto(d.offRemotePhoto || null);
+      setPhotoNotice(d.hadFile === true);
+    },
+    onRestored: () => setShowForm(true),
+  });
 
   /** Edición desde la tabla desktop: abre el drawer lateral. */
   function openEdit(offer: Offer) {
@@ -355,6 +412,7 @@ export function MenuStudio({
       setMsg(data.error);
     } else {
       setMsg(editingId ? `${itemLabel} actualizado` : `${itemLabel} agregado`);
+      menuDraft.clear();
       if (!editingId && drawerOpen && data.offer?.id) {
         // Alta desde el drawer desktop: queda abierto en modo edición para
         // cargar opciones/receta sin reabrir.
@@ -594,6 +652,18 @@ export function MenuStudio({
   // Mobile (inline): form + modificadores debajo, como venía funcionando.
   const offerFormInline = (
     <div className="space-y-3">
+      {menuDraft.restored && (
+        <div className="flex items-center justify-between gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2">
+          <p className="text-xs font-medium text-primary">Recuperamos tu carga en curso{photoNotice ? " (volvé a elegir la foto)" : ""}</p>
+          <button
+            type="button"
+            onClick={() => { menuDraft.discard(); resetForm(); }}
+            className="text-xs font-medium text-muted-foreground hover:text-foreground underline flex-shrink-0"
+          >
+            Descartar
+          </button>
+        </div>
+      )}
       {offerForm}
       {editingId && <ProductModifiersBlock productId={editingId} productName={offName} />}
     </div>
@@ -1019,7 +1089,18 @@ export function MenuStudio({
         }
         isNew={!editingId}
         hasRecipes={hasRecipes}
-        datosNode={<div className="space-y-3">{offerForm}</div>}
+        datosNode={<div className="space-y-3">{menuDraft.restored && (
+          <div className="flex items-center justify-between gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2">
+            <p className="text-xs font-medium text-primary">Recuperamos tu carga en curso{photoNotice ? " (volvé a elegir la foto)" : ""}</p>
+            <button
+              type="button"
+              onClick={() => { menuDraft.discard(); resetForm(); }}
+              className="text-xs font-medium text-muted-foreground hover:text-foreground underline flex-shrink-0"
+            >
+              Descartar
+            </button>
+          </div>
+        )}{offerForm}</div>}
         opcionesNode={
           editingId ? <ProductModifiersBlock productId={editingId} productName={offName} /> : null
         }

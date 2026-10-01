@@ -1,10 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useCart, type CartVendor, type CartVolumeGroup } from "@/lib/cart";
+import { createPortal } from "react-dom";
+import { useCart, type CartVendor, type CartVolumeGroup, type CartModifier } from "@/lib/cart";
 import { mirrorVolume } from "@/lib/volume-mirror";
 import { volumeGroupColor } from "@/lib/volume-pricing";
 import { ProductImage } from "@/components/product-image";
+import { ModifierPicker } from "@/components/offers/modifier-picker";
+import type { ProductModifier } from "@/types/database";
 
 export type PackMember = {
   id: string;
@@ -36,13 +39,18 @@ export function PackSheet({
   vendor,
   mode,
   onClose,
+  modifiersByProduct,
 }: {
   group: PackGroup;
   vendor: CartVendor;
   mode: "armado" | "festejo";
   onClose: () => void;
+  /** Grupos de opciones por producto (ej: Molienda is_variant). Si un miembro
+   *  tiene grupos, cada unidad del pack elige su variante con ModifierPicker. */
+  modifiersByProduct?: Record<string, ProductModifier[]>;
 }) {
   const { items, addItem, setQty, setOpen } = useCart();
+  const [pickerFor, setPickerFor] = useState<PackMember | null>(null);
   const c = volumeGroupColor(group.id);
   const ids = new Set((group.productIds || []).map(String));
   const qty = items.reduce((s, i) => (ids.has(String(i.offerId)) ? s + i.qty : s), 0);
@@ -76,7 +84,10 @@ export function PackSheet({
   );
   const missing = Math.max(0, next.minQty - qty);
 
+  const pickerMods = pickerFor ? modifiersByProduct?.[String(pickerFor.id)] || [] : [];
+
   return (
+    <>
     <div className="fixed inset-0 z-[70] bg-black/40 animate-fade-in-up" onClick={onClose}>
       <div
         className="absolute bottom-0 left-0 right-0 sm:left-1/2 sm:right-auto sm:bottom-auto sm:top-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 sm:w-full sm:max-w-md bg-card rounded-t-2xl sm:rounded-2xl shadow-xl max-h-[85vh] flex flex-col"
@@ -123,6 +134,88 @@ export function PackSheet({
         <div className="overflow-y-auto px-4 py-3 space-y-2">
           {members.length > 0 ? (
             members.map((m) => {
+              const groups = modifiersByProduct?.[String(m.id)] || [];
+              // Miembro con variantes (grupos de opciones): cada unidad elige
+              // la suya. Se listan las líneas ya armadas (Molido ×2, etc.) y
+              // el + abre el picker para sumar una unidad con su variante.
+              if (groups.length > 0) {
+                const lines = items.filter((i) => String(i.offerId) === String(m.id));
+                const memberQty = lines.reduce((s, i) => s + i.qty, 0);
+                const marked = memberQty > 0;
+                return (
+                  <div
+                    key={m.id}
+                    className={`rounded-xl border p-2 bg-card transition-colors ${
+                      marked ? `${c.border} ring-1 ${c.ring}` : c.border
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="h-12 w-12 rounded-lg overflow-hidden bg-accent flex-shrink-0 relative">
+                        <ProductImage
+                          src={m.image || null}
+                          name={m.name}
+                          alt={m.name}
+                          className="w-full h-full object-cover"
+                        />
+                        {marked && (
+                          <span className={`absolute top-0.5 right-0.5 h-4 w-4 rounded-full ${c.solid} text-white text-[10px] font-bold flex items-center justify-center`}>
+                            ✓
+                          </span>
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold leading-tight truncate">{m.name}</p>
+                        <p className="text-xs text-muted-foreground tabular-nums">
+                          ${Number(m.price).toLocaleString("es-AR")}
+                          {marked ? ` · en tu pack: ${memberQty}` : " · elegí la variante"}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        aria-label={`Elegir variante de ${m.name}`}
+                        onClick={() => setPickerFor(m)}
+                        className="h-8 px-3 rounded-full bg-primary text-primary-foreground text-sm font-bold leading-none hover:bg-primary/90 active:scale-95 transition-transform flex-shrink-0"
+                      >
+                        + Elegir
+                      </button>
+                    </div>
+                    {lines.length > 0 && (
+                      <div className="mt-1.5 space-y-1 pl-[60px]">
+                        {lines.map((line, li) => {
+                          const summary = (line.modifiers || []).map((x) => x.label).join(" + ") || "Estándar";
+                          const key = `${line.offerId}|${JSON.stringify(line.modifiers || [])}|${li}`;
+                          return (
+                            <div key={key} className="flex items-center gap-2">
+                              <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+                                {summary} · ${Number(line.price).toLocaleString("es-AR")}
+                              </p>
+                              <div className="flex items-center gap-1 flex-shrink-0">
+                                <button
+                                  type="button"
+                                  aria-label={`Quitar uno (${summary})`}
+                                  onClick={() => setQty(String(m.id), line.qty - 1, line.modifiers)}
+                                  className="h-7 w-7 rounded-full border border-border text-sm font-bold leading-none hover:bg-muted active:scale-95 transition-transform"
+                                >
+                                  −
+                                </button>
+                                <span className="text-xs font-bold tabular-nums w-5 text-center">{line.qty}</span>
+                                <button
+                                  type="button"
+                                  aria-label={`Agregar uno más (${summary})`}
+                                  onClick={() => setQty(String(m.id), line.qty + 1, line.modifiers)}
+                                  className="h-7 w-7 rounded-full border border-border text-sm font-bold leading-none hover:bg-muted active:scale-95 transition-transform"
+                                >
+                                  +
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              }
               const plainQty = items
                 .filter((i) => String(i.offerId) === String(m.id) && !(i.modifiers?.length))
                 .reduce((s, i) => s + i.qty, 0);
@@ -219,6 +312,27 @@ export function PackSheet({
         </div>
       </div>
     </div>
+    {pickerFor &&
+      createPortal(
+        <ModifierPicker
+          modifiers={pickerMods}
+          productName={pickerFor.name}
+          basePrice={Number(pickerFor.price) || 0}
+          onConfirm={(selected: CartModifier[], finalPrice: number) => {
+            addItem(vendor, {
+              offerId: String(pickerFor.id),
+              name: pickerFor.name,
+              price: finalPrice,
+              qty: 1,
+              modifiers: selected.length > 0 ? selected : undefined,
+            });
+            setPickerFor(null);
+          }}
+          onCancel={() => setPickerFor(null)}
+        />,
+        document.body
+      )}
+    </>
   );
 }
 
@@ -226,7 +340,15 @@ export function PackSheet({
  * Host montado en el micrositio: escucha `portal659:open-pack` ({groupId}) y
  * abre el sheet en modo armado o festejo según el carrito actual.
  */
-export function PackSheetHost({ groups, vendor }: { groups: PackGroup[]; vendor: CartVendor }) {
+export function PackSheetHost({
+  groups,
+  vendor,
+  modifiersByProduct,
+}: {
+  groups: PackGroup[];
+  vendor: CartVendor;
+  modifiersByProduct?: Record<string, ProductModifier[]>;
+}) {
   const { items } = useCart();
   const [openId, setOpenId] = useState<string | null>(null);
 
@@ -248,7 +370,15 @@ export function PackSheetHost({ groups, vendor }: { groups: PackGroup[]; vendor:
   const top = tiers[tiers.length - 1];
   const mode = top && qty >= top.minQty ? "festejo" : "armado";
 
-  return <PackSheet group={group} vendor={vendor} mode={mode} onClose={() => setOpenId(null)} />;
+  return (
+    <PackSheet
+      group={group}
+      vendor={vendor}
+      mode={mode}
+      onClose={() => setOpenId(null)}
+      modifiersByProduct={modifiersByProduct}
+    />
+  );
 }
 
 export { openPack };

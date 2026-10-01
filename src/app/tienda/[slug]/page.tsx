@@ -873,7 +873,7 @@ export default async function TiendaPage({
             </div>
           </section>
         )}
-        {showVolume && acceptsCart && volumeGroups.length > 0 && <PackSheetHost groups={volumeGroups} vendor={vendorBrief} />}
+        {showVolume && acceptsCart && volumeGroups.length > 0 && <PackSheetHost groups={volumeGroups} vendor={vendorBrief} modifiersByProduct={modifiersByProduct} />}
 
         {/* Reviews */}
         <ReviewList vendorId={v.id} />

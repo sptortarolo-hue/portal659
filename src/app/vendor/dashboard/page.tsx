@@ -691,7 +691,7 @@ function VendorDashboardInner() {
           if (data.type === "orders_update" && Array.isArray(data.orders)) {
             const incoming = data.orders as Order[];
             const sig = incoming
-              .map((o) => `${o.id}:${o.status}:${(o as any).total}:${(o as any).updated_at || (o as any).closed_at || ""}`)
+              .map((o) => `${o.id}:${o.status}:${(o as any).total}:${(o as any).updated_at || (o as any).closed_at || ""}:${JSON.stringify((o as any).kitchen_done || [])}`)
               .sort()
               .join("|");
             if (sig === lastSseSigRef.current) return;

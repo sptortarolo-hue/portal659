@@ -30,7 +30,11 @@ export async function GET(request: Request) {
             `SELECT id, status, pickup_number, customer_name, total, channel,
                     method, payment_method, payment_status, estimated_minutes,
                     created_at, closed_at, updated_at, items, modification_notes,
-                    customer_phone, customer_address, is_preview
+                    customer_phone, customer_address, is_preview,
+                    -- Tildado de empaque/cocina: sin esto el SSE reemplaza el
+                    -- objeto y los ticks tildados en otro dispositivo se pierden.
+                    CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'kitchen_done')
+                      THEN kitchen_done ELSE '[]'::jsonb END AS kitchen_done
              FROM orders
              WHERE vendor_id = $1 AND updated_at > $2
              ORDER BY updated_at ASC

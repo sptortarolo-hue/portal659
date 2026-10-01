@@ -1,22 +1,25 @@
 "use client";
 
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { isStoreOpen } from "@/lib/open-hours";
 import type { Vendor } from "@/types/database";
 
 /**
  * Toggle de apertura del comercio (header del dashboard).
- * BINARIO + estado "según horarios":
- *  - open_override === null  → sigue los horarios; se muestra el estado resuelto
- *    como subtexto y el botón permite forzar abierto/cerrado.
- *  - open_override === true  → "🟢 Abierto" (forzado)
- *  - open_override === false → "🔴 Cerrado" (forzado)
- * Tocar alterna forzado; un botón chico permite volver a "según horarios".
+ * Patrón modal (como CashShiftPill): botón compacto con el estado actual
+ * que abre un modal centrado con las opciones de gestión.
+ *
+ * Estados:
+ *  - open_override === null  → sigue los horarios
+ *  - open_override === true  → forzado abierto
+ *  - open_override === false → forzado cerrado
  */
 export function OpenToggle({ vendor, onSaved }: { vendor: Vendor; onSaved: (v: Vendor) => void }) {
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
 
   const override = vendor.open_override ?? null; // null | true | false
   const resolved = isStoreOpen({ hours: vendor.hours, open_override: override });
@@ -36,6 +39,7 @@ export function OpenToggle({ vendor, onSaved }: { vendor: Vendor; onSaved: (v: V
       const data = await res.json().catch(() => null);
       if (data?.vendor) {
         onSaved(data.vendor);
+        setModalOpen(false);
       } else {
         setErr(true);
       }
@@ -46,15 +50,14 @@ export function OpenToggle({ vendor, onSaved }: { vendor: Vendor; onSaved: (v: V
     }
   }
 
-  // Tocar el botón principal: si está "según horarios", fuerza lo contrario al
-  // estado resuelto; si ya está forzado, invierte (abierto↔cerrado).
-  function toggleForced() {
-    const want = !isOpenResolved;
-    save(want);
-  }
+  const stateLabel = isManual
+    ? override === true
+      ? "Abierto"
+      : "Cerrado"
+    : isOpenResolved
+      ? "Abierto"
+      : "Cerrado";
 
-  const baseClass =
-    "flex-shrink-0 gap-1.5 ";
   const stateClass = isManual
     ? override === true
       ? "border-green-500 text-green-700 dark:text-green-400"
@@ -62,58 +65,102 @@ export function OpenToggle({ vendor, onSaved }: { vendor: Vendor; onSaved: (v: V
     : "border-border text-muted-foreground";
 
   return (
-    <div className="flex flex-col items-end gap-0.5">
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={toggleForced}
+    <>
+      <button
+        type="button"
+        onClick={() => { setErr(false); setModalOpen(true); }}
         disabled={saving}
-        className={`${baseClass}${stateClass}`}
-        title={
-          isManual
-            ? override === true
-              ? "Forzado abierto. Tocá para cerrar."
-              : "Forzado cerrado. Tocá para abrir."
-            : "Según horarios. Tocá para forzar."
-        }
+        className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors flex-shrink-0 ${stateClass}`}
+        title={isManual ? `Forzado ${stateLabel.toLowerCase()}. Tocá para gestionar.` : "Según horarios. Tocá para forzar."}
       >
         <span
           className={`inline-block h-2 w-2 rounded-full ${
             isOpenResolved ? "bg-green-500" : "bg-red-500"
           }`}
         />
-        {saving
-          ? "Guardando..."
-          : isManual
-            ? override === true
-              ? "Abierto"
-              : "Cerrado"
-            : isOpenResolved
-              ? "Abierto" // resolvió abierto según horarios
-              : "Cerrado"}
-      </Button>
-      {/* El subtexto solo en desktop: en mobile el header no tiene lugar y
-          quedaba en 2 líneas (nav alargado). */}
-      <div className="hidden sm:block">
-        {isManual ? (
-          <button
-            type="button"
-            className="text-[10px] text-muted-foreground hover:text-foreground underline"
-            onClick={() => save(null)}
+        {saving ? "Guardando..." : stateLabel}
+      </button>
+
+      {modalOpen && createPortal(
+        <div
+          className="fixed inset-0 z-[70] bg-black/50 flex items-center justify-center p-4"
+          onClick={() => !saving && setModalOpen(false)}
+        >
+          <div
+            className="bg-card rounded-2xl p-5 w-full max-w-xs space-y-3"
+            onClick={(e) => e.stopPropagation()}
           >
-            Seguir horarios
-          </button>
-        ) : (
-          <span className="text-[10px] text-muted-foreground">
-            Según horarios — tocá para forzar
-          </span>
-        )}
-        {err && (
-          <span className="text-[10px] text-red-500">
-            No se pudo guardar. ¿Aplicaste la migración open_override en la base?
-          </span>
-        )}
-      </div>
-    </div>
+            <h3 className="font-display text-base font-semibold">Estado del comercio</h3>
+
+            <div className="text-sm text-muted-foreground">
+              {isManual ? (
+                override === true ? (
+                  <p>Forzado <span className="font-semibold text-green-700 dark:text-green-400">Abierto</span></p>
+                ) : (
+                  <p>Forzado <span className="font-semibold text-red-700 dark:text-red-400">Cerrado</span></p>
+                )
+              ) : (
+                <p>
+                  Según horarios — ahora{" "}
+                  <span className={`font-semibold ${isOpenResolved ? "text-green-700 dark:text-green-400" : "text-red-700 dark:text-red-400"}`}>
+                    {stateLabel}
+                  </span>
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full justify-start"
+                onClick={() => save(false)}
+                disabled={saving}
+              >
+                🔴 Forzar cerrado
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full justify-start"
+                onClick={() => save(true)}
+                disabled={saving}
+              >
+                🟢 Forzar abierto
+              </Button>
+              {isManual && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full justify-start"
+                  onClick={() => save(null)}
+                  disabled={saving}
+                >
+                  ↩️ Volver a según horarios
+                </Button>
+              )}
+            </div>
+
+            {err && (
+              <p className="text-xs text-red-500">
+                No se pudo guardar. ¿Aplicaste la migración open_override en la base?
+              </p>
+            )}
+
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="w-full"
+              onClick={() => setModalOpen(false)}
+              disabled={saving}
+            >
+              Cerrar
+            </Button>
+          </div>
+        </div>,
+        document.body
+      )}
+    </>
   );
 }

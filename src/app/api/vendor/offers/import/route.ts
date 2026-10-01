@@ -2,16 +2,33 @@ import { getVendorByRequest } from "@/lib/vendor-utils";
 import { queryMany, queryOne, withTransaction } from "@/lib/db";
 import { resolveVendorPlan } from "@/lib/plans";
 import { cleanMenu } from "@/lib/llm";
+import { getSiteUrl } from "@/lib/site-url";
 import { NextResponse } from "next/server";
 import ExcelJS from "exceljs";
+import { mkdir, writeFile } from "fs/promises";
+import path from "path";
+import crypto from "crypto";
 import type { Plan, Vendor } from "@/types/database";
 
 const MAX_SIZE = 5 * 1024 * 1024; // 5 MB
+const MAX_WA_SIZE = 30 * 1024 * 1024; // 30 MB (el CSV WA trae fotos en base64)
 const ALLOWED_TYPES = [
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   "application/vnd.ms-excel",
   "application/octet-stream",
 ];
+const WA_MIME = [
+  "text/csv",
+  "application/csv",
+  "text/plain",
+  "application/vnd.ms-excel",
+  "application/octet-stream",
+];
+
+/** Extensión "WhatsApp Catalogue Exporter":
+ * https://chromewebstore.google.com/detail/beambfgmpbbncelafdodhppkjgnnabgf */
+export const WA_EXTENSION_URL =
+  "https://chromewebstore.google.com/detail/beambfgmpbbncelafdodhppkjgnnabgf";
 
 export const runtime = "nodejs"; // exceljs no corre en edge
 
@@ -173,6 +190,100 @@ async function parseWorkbook(buf: Buffer): Promise<Record<string, unknown>[]> {
     if (nonEmpty) out.push(obj);
   }
   return out;
+}
+
+// ============ CSV de WhatsApp Catalogue Exporter ============
+// Columnas: index,name,price,price_value,currency,description,product_link,image_url,image_data,raw_text
+// La foto real viene en `image_data` (data URI base64); `image_url` suele ser
+// `blob:https://web.whatsapp.com/...` (efímero, no descargable) y se ignora.
+
+type WaRow = {
+  index: string;
+  name: string;
+  price: number | null;
+  description: string;
+  imageData: string; // data URI o ""
+};
+
+function parseWaCsvLine(line: string): string[] {
+  const out: string[] = [];
+  let cur = "", q = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (q) {
+      if (c === '"') {
+        if (line[i + 1] === '"') { cur += '"'; i++; }
+        else { q = false; }
+      } else { cur += c; }
+    } else if (c === '"') { q = true; }
+    else if (c === ",") { out.push(cur); cur = ""; }
+    else { cur += c; }
+  }
+  out.push(cur);
+  return out;
+}
+
+function parseWaCsv(text: string): Record<string, string>[] {
+  const lines = text.replace(/^\uFEFF/, "").split(/\r?\n/).filter((l) => l.trim() !== "");
+  if (lines.length < 2) return [];
+  const header = parseWaCsvLine(lines[0]);
+  return lines.slice(1).map((l) => {
+    const cells = parseWaCsvLine(l);
+    const o: Record<string, string> = {};
+    header.forEach((h, j) => { o[h] = cells[j] ?? ""; });
+    return o;
+  });
+}
+
+function waPriceOf(r: Record<string, string>): number | null {
+  const pv = Number(String(r.price_value || "").replace(/[^\d.-]/g, ""));
+  if (Number.isFinite(pv) && pv > 0) return Math.round(pv);
+  const s = String(r.price || "").replace(/[^\d.,]/g, "").trim();
+  if (!s) return null;
+  let norm = s;
+  if (/,/.test(s)) norm = s.replace(/,/g, "");
+  else if (/^\d{1,3}(\.\d{3})+$/.test(s)) norm = s.replace(/\./g, "");
+  const n = Number(norm);
+  return Number.isFinite(n) && n > 0 ? Math.round(n) : null;
+}
+
+function waRowsOf(text: string): WaRow[] {
+  return parseWaCsv(text).map((r) => ({
+    index: (r.index || "").trim(),
+    name: (r.name || "").replace(/\s+/g, " ").trim(),
+    price: waPriceOf(r),
+    description: (r.description || "").replace(/\s+/g, " ").trim(),
+    imageData: r.image_data || "",
+  }));
+}
+
+function waImageBuffer(dataUri: string): Buffer | null {
+  const m = (dataUri || "").match(/^data:(image\/(jpeg|jpg|png|webp));base64,([\s\S]+)$/);
+  if (!m) return null;
+  try {
+    const buf = Buffer.from(m[3].replace(/\s+/g, ""), "base64");
+    if (buf.length < 500) return null;
+    const isJpg = buf[0] === 0xff && buf[1] === 0xd8;
+    const isPng = buf[0] === 0x89 && buf[1] === 0x50;
+    const isWebp = buf.toString("ascii", 0, 4) === "RIFF";
+    if (!isJpg && !isPng && !isWebp) return null;
+    return buf;
+  } catch { return null; }
+}
+
+async function waProcessImage(buf: Buffer): Promise<{ buf: Buffer; ext: string }> {
+  try {
+    const sharp = (await import("sharp")).default;
+    const meta = await sharp(buf).metadata();
+    const fmt = meta.format as string | undefined;
+    if (fmt === "png" || fmt === "webp") {
+      return { buf: await sharp(buf).rotate().resize({ width: 1200, withoutEnlargement: true }).toFormat(fmt, { quality: 80 }).toBuffer(), ext: fmt };
+    }
+    if (fmt === "avif" || fmt === "gif") return { buf, ext: "jpg" };
+    return { buf: await sharp(buf).rotate().resize({ width: 1200, withoutEnlargement: true }).jpeg({ quality: 80, mozjpeg: true }).toBuffer(), ext: "jpg" };
+  } catch {
+    return { buf, ext: "jpg" };
+  }
 }
 
 export async function POST(request: Request) {
@@ -460,6 +571,209 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       action: "import",
+      imported: result.imported,
+      updated: result.updated,
+      createdCategories,
+      errors,
+    });
+  }
+
+  // ============ FASE ANALYZE_WA (CSV de WhatsApp Catalogue Exporter) ============
+  // El cliente manda el .csv; se devuelve preview editable SIN los bytes de foto
+  // (el import re-recibe el archivo y procesa las imágenes).
+  if (action === "analyze_wa") {
+    const file = form.get("file");
+    if (!file || !(file instanceof File)) {
+      return NextResponse.json({ error: "Subí el archivo .csv exportado de WhatsApp" }, { status: 400 });
+    }
+    if (file.size > MAX_WA_SIZE) {
+      return NextResponse.json({ error: "El CSV supera los 30 MB (muchas fotos en alta; probá el script scripts/import-wa-csv.mjs)" }, { status: 400 });
+    }
+    if (!WA_MIME.includes(file.type) && !file.name.toLowerCase().endsWith(".csv")) {
+      return NextResponse.json({ error: "Solo se admite el .csv de WhatsApp Catalogue Exporter" }, { status: 400 });
+    }
+    const defaultCategory = String(form.get("category") || "otras").trim() || "otras";
+    let waRows: WaRow[];
+    try {
+      waRows = waRowsOf(await file.text());
+    } catch {
+      return NextResponse.json({ error: "No se pudo leer el CSV. Verificá que sea el exportado por la extensión." }, { status: 400 });
+    }
+    if (waRows.length === 0) {
+      return NextResponse.json({ error: "El CSV está vacío o no tiene filas con datos" }, { status: 400 });
+    }
+
+    const existingNames = await queryMany<{ name: string }>(
+      `SELECT name FROM products WHERE vendor_id = $1`,
+      [vendor.id]
+    );
+    const existingSet = new Set(existingNames.map((p) => p.name.trim().toLowerCase()));
+
+    const valid: { index: string; name: string; price: number; category: string; description: string; hasImage: boolean }[] = [];
+    const invalid: { row: string; reason: string }[] = [];
+    for (const r of waRows) {
+      if (!r.name) {
+        if (r.imageData) invalid.push({ row: r.index ? `#${r.index}` : "(sin nombre)", reason: "Sin nombre (foto suelta del catálogo)" });
+        else invalid.push({ row: r.index ? `#${r.index}` : "(vacía)", reason: "Fila vacía" });
+        continue;
+      }
+      if (r.price == null) {
+        invalid.push({ row: r.name, reason: "Sin precio válido" });
+        continue;
+      }
+      valid.push({
+        index: r.index,
+        name: r.name,
+        price: r.price,
+        category: defaultCategory,
+        description: r.description,
+        hasImage: Boolean(waImageBuffer(r.imageData)),
+      });
+    }
+
+    const toImport = valid.filter((it) => !existingSet.has(it.name.trim().toLowerCase())).length;
+    return NextResponse.json({
+      action: "analyze_wa",
+      usedLlm: false,
+      read: waRows.length,
+      valid: valid.length,
+      toImport,
+      willUpdate: valid.length - toImport,
+      invalid,
+      items: valid,
+      extensionUrl: WA_EXTENSION_URL,
+    });
+  }
+
+  // ============ FASE IMPORT_WA ============
+  // Recibe el .csv de nuevo + `items` editados en el preview. Hace match por
+  // `index` (estable en el export) con fallback a nombre, procesa la foto y
+  // crea/actualiza el producto con su image_url.
+  if (action === "import_wa") {
+    const file = form.get("file");
+    if (!file || !(file instanceof File)) {
+      return NextResponse.json({ error: "Falta el .csv original para procesar las fotos" }, { status: 400 });
+    }
+    if (file.size > MAX_WA_SIZE) {
+      return NextResponse.json({ error: "El CSV supera los 30 MB" }, { status: 400 });
+    }
+    let items: { index?: string; name: string; price: number | string; category?: string; description?: string }[];
+    try {
+      items = JSON.parse((form.get("items") as string) || "[]");
+    } catch {
+      return NextResponse.json({ error: "Datos inválidos para importar" }, { status: 400 });
+    }
+    if (!Array.isArray(items) || items.length === 0) {
+      return NextResponse.json({ error: "No hay productos para importar" }, { status: 400 });
+    }
+    const waRows = waRowsOf(await file.text());
+    const byIndex = new Map(waRows.map((r) => [r.index, r]));
+    const byName = new Map(waRows.filter((r) => r.name).map((r) => [r.name.toLowerCase(), r]));
+
+    const fullVendor = await queryOne<Vendor>(`SELECT * FROM vendors WHERE id = $1 LIMIT 1`, [vendor.id]);
+    const plans = await queryMany<Plan>(`SELECT * FROM plans`);
+    const plan = resolveVendorPlan(fullVendor as Vendor, plans || []);
+
+    const existingNames = await queryMany<{ name: string }>(
+      `SELECT name FROM products WHERE vendor_id = $1`,
+      [vendor.id]
+    );
+    const existingSet = new Set(existingNames.map((p) => p.name.trim().toLowerCase()));
+    const newNames = items
+      .map((i) => (i.name || "").trim().toLowerCase())
+      .filter((n) => n && !existingSet.has(n));
+    if (plan.maxProducts != null && existingNames.length + newNames.length > plan.maxProducts) {
+      return NextResponse.json(
+        {
+          error: `Tu plan permite hasta ${plan.maxProducts} productos. Actualizá a Gestión integral para productos ilimitados.`,
+          code: "plan_limit",
+        },
+        { status: 403 }
+      );
+    }
+
+    const createdCategories: string[] = [];
+    const errors: { name: string; error: string }[] = [];
+    const result = await withTransaction(async (tx) => {
+      let imported = 0;
+      let updated = 0;
+      for (const it of items) {
+        const name = (it.name || "").trim();
+        if (!name) {
+          errors.push({ name: "(sin nombre)", error: "Falta el nombre" });
+          continue;
+        }
+        const price = Number(it.price);
+        if (!Number.isFinite(price) || price <= 0) {
+          errors.push({ name, error: "Precio inválido" });
+          continue;
+        }
+        const category = (it.category || "").trim() || "otras";
+        const description = (it.description || "").trim() || null;
+
+        const src: WaRow | undefined =
+          (it.index ? byIndex.get(String(it.index)) : undefined) || byName.get(name.toLowerCase());
+        let imageUrl: string | null = null;
+        const rawBuf = src ? waImageBuffer(src.imageData) : null;
+        if (rawBuf) {
+          const hash = crypto.createHash("sha256").update(rawBuf).digest("hex").slice(0, 12);
+          const { buf, ext } = await waProcessImage(rawBuf);
+          const filename = `wa-${hash}.${ext}`;
+          const uploadRoot = process.env.UPLOAD_DIR || path.join(process.cwd(), "uploads");
+          const dir = path.join(uploadRoot, "offers", vendor.id);
+          await mkdir(dir, { recursive: true });
+          await writeFile(path.join(dir, filename), buf);
+          imageUrl = `${getSiteUrl()}/uploads/offers/${vendor.id}/${filename}`;
+        }
+
+        const existingProd = await tx.queryOne<{ id: string; image_url: string | null }>(
+          `SELECT id, image_url FROM products WHERE vendor_id = $1 AND lower(name) = lower($2) LIMIT 1`,
+          [vendor.id, name]
+        );
+        if (existingProd) {
+          if (imageUrl) {
+            await tx.queryVoid(
+              `UPDATE products SET price = $1, category = $2, description = $3, available = true, image_url = $4 WHERE id = $5`,
+              [price, category, description, imageUrl, existingProd.id]
+            );
+          } else {
+            await tx.queryVoid(
+              `UPDATE products SET price = $1, category = $2, description = $3, available = true WHERE id = $4`,
+              [price, category, description, existingProd.id]
+            );
+          }
+          updated++;
+        } else {
+          const prodType = (fullVendor as Vendor | null)?.vertical === "gastronomia" ? "food" : "product";
+          const rows = await tx.query<{ id: string }>(
+            `INSERT INTO products (vendor_id, name, description, price, currency, category, neighborhood, type, available, image_url)
+             VALUES ($1, $2, $3, $4, 'ARS', $5, $6, $7, true, $8)
+             RETURNING id`,
+            [vendor.id, name, description, price, category, (fullVendor as Vendor | null)?.neighborhood || null, prodType, imageUrl]
+          );
+          if (rows[0]?.id) imported++;
+          const catExists = await tx.queryOne<{ n: number }>(
+            `SELECT count(*)::int AS n FROM vendor_categories WHERE vendor_id = $1 AND lower(name) = lower($2)`,
+            [vendor.id, category]
+          );
+          if (!catExists || catExists.n === 0) {
+            const pos = await tx.queryOne<{ m: number }>(
+              `SELECT count(*)::int AS m FROM vendor_categories WHERE vendor_id = $1`,
+              [vendor.id]
+            );
+            await tx.queryVoid(
+              `INSERT INTO vendor_categories (vendor_id, name, position) VALUES ($1, $2, $3)`,
+              [vendor.id, category, pos?.m ?? 0]
+            );
+            createdCategories.push(category);
+          }
+        }
+      }
+      return { imported, updated };
+    });
+
+    return NextResponse.json({
+      action: "import_wa",
       imported: result.imported,
       updated: result.updated,
       createdCategories,

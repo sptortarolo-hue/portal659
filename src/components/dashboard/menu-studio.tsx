@@ -17,6 +17,7 @@ import { clearDraft } from "@/lib/draft";
 import { ModifierLibrary, ProductModifiersBlock } from "@/components/dashboard/modifier-editor";
 import { VolumeEditor } from "@/components/dashboard/volume-editor";
 import { MenuImportModal } from "@/components/dashboard/menu-import";
+import { MenuImportWaModal } from "@/components/dashboard/menu-import-wa";
 import { ProductsTable } from "@/components/dashboard/products-table";
 import { ProductDrawer } from "@/components/dashboard/product-drawer";
 import { RecipeEditor, type RecipeLinkInfo } from "@/components/dashboard/recipe-editor";
@@ -127,6 +128,7 @@ export function MenuStudio({
 }: Props) {
   const [view, setView] = useState<View>("productos");
   const [showImport, setShowImport] = useState(false);
+  const [showImportWa, setShowImportWa] = useState(false);
   // Etiquetas de góndola (requiere impresora + SKU en el producto).
   const [showLabels, setShowLabels] = useState(false);
   const [labelProductId, setLabelProductId] = useState("");
@@ -812,6 +814,9 @@ export function MenuStudio({
               <Button type="button" size="sm" variant="outline" onClick={() => setShowImport(true)}>
                 📥 Importar Excel
               </Button>
+              <Button type="button" size="sm" variant="outline" onClick={() => setShowImportWa(true)}>
+                💬 Importar WhatsApp
+              </Button>
               <Button
                 type="button"
                 size="sm"
@@ -931,6 +936,19 @@ export function MenuStudio({
           reload();
           setMsg(
             `${isComercio ? "Catálogo" : "Menú"} importado: ${sum.imported} ${itemLabelPlural} nuevos, ${sum.updated} actualizados, ${sum.createdCategories.length} categorías creadas.`
+          );
+        }}
+        isComercio={isComercio}
+      />
+
+      <MenuImportWaModal
+        open={showImportWa}
+        onClose={() => setShowImportWa(false)}
+        onImported={(sum) => {
+          setView("productos");
+          reload();
+          setMsg(
+            `${isComercio ? "Catálogo" : "Menú"} importado desde WhatsApp: ${sum.imported} ${itemLabelPlural} nuevos, ${sum.updated} actualizados.`
           );
         }}
         isComercio={isComercio}

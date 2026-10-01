@@ -1,7 +1,7 @@
--- RPC: get most ordered products in last N days
 CREATE OR REPLACE FUNCTION get_most_ordered_products(
   p_days int DEFAULT 7,
-  p_limit int DEFAULT 5
+  p_limit int DEFAULT 5,
+  p_zone text[] DEFAULT NULL
 )
 RETURNS TABLE(
   product_id text,
@@ -27,6 +27,7 @@ AS $$
     AND o.status NOT IN ('cancelled')
     AND (item->>'product_id') IS NOT NULL
     AND (item->>'product_id') != ''
+    AND (p_zone IS NULL OR v.neighborhood = ANY(p_zone))
   GROUP BY item->>'product_id', item->>'name', v.store_name, v.slug, v.vertical
   ORDER BY total_qty DESC
   LIMIT p_limit;

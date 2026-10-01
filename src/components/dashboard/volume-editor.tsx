@@ -769,7 +769,7 @@ export function VolumeEditor({ products, categories }: { products: Product[]; ca
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2">
         <p className="text-sm text-muted-foreground">
-          Ej: 12 empanadas surtidas a precio de docena o 3 yerbas a precio pack. El volumen suma entre productos.
+          Ej: 12 empanadas surtidas a precio de docena o 3 yerbas a precio conveniente. El volumen suma entre productos.
         </p>
         <div className="flex gap-1 flex-shrink-0">
           <Button

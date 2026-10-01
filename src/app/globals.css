@@ -101,6 +101,8 @@ html.dark {
   --color-secondary-foreground: #a5b4fc;
   --color-muted: #1e2028;
   --color-muted-foreground: #9ca3af;
+  --color-primary: #818cf8;
+  --color-primary-foreground: #0f1117;
   --color-accent: #1a2e0a;
   --color-accent-foreground: #a3e635;
   --color-border: #2a2d3a;

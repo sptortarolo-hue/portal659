@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+import { ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { DropdownMenu } from "@/components/ui/dropdown-menu";
@@ -59,8 +61,44 @@ export function ProductsTable({
   /** Solo-promo (no figura en el menú). Opcional: solo gastro lo pasa. */
   onTogglePromoOnly?: (offer: Offer) => void;
 }) {
-  const allIds = offers.map((o) => o.id);
+  const [sortCol, setSortCol] = useState<"name" | "category" | "stock" | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+
+  const toggleSort = (col: "name" | "category" | "stock") => {
+    if (sortCol === col) {
+      setSortDir(sortDir === "asc" ? "desc" : "asc");
+    } else {
+      setSortCol(col);
+      setSortDir("asc");
+    }
+  };
+
+  const sortedOffers = [...offers].sort((a, b) => {
+    if (!sortCol) return 0;
+    let cmp = 0;
+    if (sortCol === "name") {
+      cmp = a.name.localeCompare(b.name, "es");
+    } else if (sortCol === "category") {
+      cmp = (a.category || "").localeCompare(b.category || "", "es");
+    } else if (sortCol === "stock") {
+      const aStock = a.stock ?? -1;
+      const bStock = b.stock ?? -1;
+      cmp = aStock - bStock;
+    }
+    return sortDir === "asc" ? cmp : -cmp;
+  });
+
+  const allIds = sortedOffers.map((o) => o.id);
   const allSelected = allIds.length > 0 && allIds.every((id) => selected.has(id));
+
+  const SortIcon = ({ col }: { col: "name" | "category" | "stock" }) =>
+    sortCol !== col ? (
+      <ArrowUpDown className="inline h-3 w-3 ml-1 opacity-40" />
+    ) : sortDir === "asc" ? (
+      <ArrowUp className="inline h-3 w-3 ml-1" />
+    ) : (
+      <ArrowDown className="inline h-3 w-3 ml-1" />
+    );
 
   return (
     <div className="hidden lg:block overflow-hidden rounded-xl border border-border bg-card">
@@ -76,17 +114,32 @@ export function ProductsTable({
                 aria-label="Seleccionar todos"
               />
             </th>
-            <th className="px-3 py-2.5 font-medium">Producto</th>
-            <th className="w-36 px-3 py-2.5 font-medium">Categoría</th>
+            <th
+              className="px-3 py-2.5 font-medium cursor-pointer select-none hover:text-foreground transition-colors"
+              onClick={() => toggleSort("name")}
+            >
+              Producto <SortIcon col="name" />
+            </th>
+            <th
+              className="w-36 px-3 py-2.5 font-medium cursor-pointer select-none hover:text-foreground transition-colors"
+              onClick={() => toggleSort("category")}
+            >
+              Categoría <SortIcon col="category" />
+            </th>
             <th className="w-32 px-3 py-2.5 font-medium">Precio</th>
-            <th className="w-28 px-3 py-2.5 font-medium">Stock</th>
+            <th
+              className="w-28 px-3 py-2.5 font-medium cursor-pointer select-none hover:text-foreground transition-colors"
+              onClick={() => toggleSort("stock")}
+            >
+              Stock <SortIcon col="stock" />
+            </th>
             <th className="w-24 px-3 py-2.5 font-medium">Costo</th>
             <th className="w-20 px-3 py-2.5 font-medium">Activo</th>
             <th className="w-12 px-3 py-2.5"></th>
           </tr>
         </thead>
         <tbody>
-          {offers.map((offer) => {
+          {sortedOffers.map((offer) => {
             const cost = costByProduct?.[offer.id];
             const lowStock =
               offer.stock_control && offer.stock !== null && offer.stock <= (offer.stock_low_threshold ?? 5);

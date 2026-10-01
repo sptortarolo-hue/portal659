@@ -87,6 +87,8 @@ export function InventoryTab({ reloadKey = 0 }: { reloadKey?: number }) {
   const [moves, setMoves] = useState<Movement[]>([]);
   const [moveFilter, setMoveFilter] = useState("");
   const [moveReason, setMoveReason] = useState("all");
+  const [moveDateFrom, setMoveDateFrom] = useState("");
+  const [moveDateTo, setMoveDateTo] = useState("");
   // Reposición.
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
 
@@ -235,13 +237,18 @@ export function InventoryTab({ reloadKey = 0 }: { reloadKey?: number }) {
 
   const movesFiltered = useMemo(() => {
     const q = moveFilter.trim().toLowerCase();
+    const from = moveDateFrom ? new Date(moveDateFrom + "T00:00:00") : null;
+    const to = moveDateTo ? new Date(moveDateTo + "T23:59:59") : null;
     return moves.filter((m) => {
       if (moveReason !== "all" && m.reason !== moveReason) return false;
+      const d = new Date(m.created_at);
+      if (from && d < from) return false;
+      if (to && d > to) return false;
       if (!q) return true;
       const name = `${m.product_name || ""} ${m.variant_color || ""} ${m.variant_talle || ""}`.toLowerCase();
       return name.includes(q);
     });
-  }, [moves, moveFilter, moveReason]);
+  }, [moves, moveFilter, moveReason, moveDateFrom, moveDateTo]);
 
   const money = (n: number | null | undefined) =>
     n == null ? "—" : `$${Number(n).toLocaleString("es-AR")}`;
@@ -407,6 +414,31 @@ export function InventoryTab({ reloadKey = 0 }: { reloadKey?: number }) {
               ))}
             </select>
           </div>
+          <div className="flex gap-2 items-center">
+            <label className="text-xs text-muted-foreground flex-shrink-0">Desde</label>
+            <Input
+              type="date"
+              value={moveDateFrom}
+              onChange={(e) => setMoveDateFrom(e.target.value)}
+              className="w-auto h-9 text-sm"
+            />
+            <label className="text-xs text-muted-foreground flex-shrink-0">Hasta</label>
+            <Input
+              type="date"
+              value={moveDateTo}
+              onChange={(e) => setMoveDateTo(e.target.value)}
+              className="w-auto h-9 text-sm"
+            />
+            {(moveDateFrom || moveDateTo) && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => { setMoveDateFrom(""); setMoveDateTo(""); }}
+              >
+                Limpiar
+              </Button>
+            )}
+          </div>
           {movesFiltered.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-8">
               Sin movimientos todavía. Las ventas, compras y conteos quedan registrados acá.
@@ -446,28 +478,43 @@ export function InventoryTab({ reloadKey = 0 }: { reloadKey?: number }) {
               Nada por reponer: todo el stock cubre el umbral y la venta promedio. 🎉
             </p>
           ) : (
-            suggestions.map((s) => (
-              <div key={`${s.kind}:${s.id}`} className="rounded-xl border border-border bg-card px-3 py-2.5">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-sm font-medium truncate flex-1 min-w-0">{s.name}</p>
-                  <span className="text-sm font-bold tabular-nums flex-shrink-0 text-primary">
-                    comprar {s.suggestedQty}
-                  </span>
-                </div>
-                <p className="text-xs text-muted-foreground tabular-nums mt-0.5">
-                  stock {s.stock} · umbral {s.threshold}
-                  {s.coverDays !== null ? ` · ~${s.coverDays} días` : " · sin ventas recientes"}
-                    {s.costLast != null ? ` · costo ${money(s.costLast)}` : ""}
-                    {s.costAvg != null ? ` (prom ${money(s.costAvg)})` : ""}
-                </p>
-                {s.bestSupplier && (
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    💡 {s.bestSupplier}
-                    {s.bestPrice != null ? ` · ${money(s.bestPrice)}` : ""}
-                  </p>
-                )}
+            <>
+              <div className="flex justify-end print:hidden">
+                <Button size="sm" variant="outline" onClick={() => window.print()}>
+                  🖨️ Imprimir
+                </Button>
               </div>
-            ))
+              <div className="print:block">
+                <div className="hidden print:block mb-4">
+                  <h2 className="text-lg font-bold">Reposición sugerida</h2>
+                  <p className="text-sm text-muted-foreground">
+                    {new Date().toLocaleDateString("es-AR", { day: "2-digit", month: "long", year: "numeric" })}
+                  </p>
+                </div>
+                {suggestions.map((s) => (
+                  <div key={`${s.kind}:${s.id}`} className="rounded-xl border border-border bg-card px-3 py-2.5 mb-2 print:mb-1 print:rounded-none print:border-0 print:border-b">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-medium truncate flex-1 min-w-0">{s.name}</p>
+                      <span className="text-sm font-bold tabular-nums flex-shrink-0 text-primary print:text-foreground">
+                        comprar {s.suggestedQty}
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground tabular-nums mt-0.5">
+                      stock {s.stock} · umbral {s.threshold}
+                      {s.coverDays !== null ? ` · ~${s.coverDays} días` : " · sin ventas recientes"}
+                      {s.costLast != null ? ` · costo ${money(s.costLast)}` : ""}
+                      {s.costAvg != null ? ` (prom ${money(s.costAvg)})` : ""}
+                    </p>
+                    {s.bestSupplier && (
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        💡 {s.bestSupplier}
+                        {s.bestPrice != null ? ` · ${money(s.bestPrice)}` : ""}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </>
           )}
         </div>
       )}

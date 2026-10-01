@@ -67,7 +67,7 @@ AS $$
   SELECT
     item->>'product_id' AS product_id,
     item->>'name' AS product_name,
-    SUM((item->>'qty')::int) AS total_qty,
+    SUM((item->>'qty')::numeric)::bigint AS total_qty,
     v.store_name,
     v.slug AS store_slug,
     v.vertical AS store_vertical

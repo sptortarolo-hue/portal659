@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { useCashShift } from "@/lib/use-cash-shift";
 
@@ -85,7 +86,7 @@ export function CashShiftPill({
         >
           🔓 Abrir caja
         </button>
-        {openOpen && (
+        {openOpen && createPortal(
           <div className="fixed inset-0 z-[70] bg-black/50 flex items-center justify-center p-4" onClick={() => !opening && setOpenOpen(false)}>
             <div className="bg-card rounded-2xl p-5 w-full max-w-xs space-y-3" onClick={(e) => e.stopPropagation()}>
               <h3 className="font-display text-base font-semibold">Abrir caja</h3>
@@ -113,14 +114,15 @@ export function CashShiftPill({
                 </Button>
               </div>
             </div>
-          </div>
+          </div>,
+          document.body
         )}
       </>
     );
   }
 
   return (
-    <div className="relative flex-shrink-0">
+    <div className="flex-shrink-0">
       <button
         type="button"
         onClick={() => setMenuOpen((v) => !v)}
@@ -130,16 +132,17 @@ export function CashShiftPill({
         <span className="inline-block w-1.5 h-1.5 rounded-full bg-current" />
         <span className="tabular-nums">{money(disponible)}</span>
       </button>
-      {menuOpen && (
-        <>
-          <div className="fixed inset-0 z-[60]" onClick={() => setMenuOpen(false)} />
-          <div className="absolute right-0 top-full mt-1 z-[61] w-60 rounded-xl border border-border bg-card p-3 shadow-xl space-y-2">
-            <p className="text-xs font-semibold">Turno abierto</p>
-            <p className="text-[11px] text-muted-foreground">
+      {/* Mini-modal centrado vía portal (no popover absolute: la fila mobile
+          del header tiene overflow-x-auto y lo recortaba). */}
+      {menuOpen && createPortal(
+        <div className="fixed inset-0 z-[70] bg-black/50 flex items-center justify-center p-4" onClick={() => setMenuOpen(false)}>
+          <div className="bg-card rounded-2xl p-5 w-full max-w-xs space-y-3" onClick={(e) => e.stopPropagation()}>
+            <p className="text-sm font-semibold">Turno abierto</p>
+            <p className="text-xs text-muted-foreground">
               Desde {fmtTime(shift.opened_at)}
               {shift.opened_by_name ? ` · ${shift.opened_by_name}` : ""} · fondo {money(shift.opening_amount)}
             </p>
-            <p className="text-sm">Disponible: <span className="font-bold tabular-nums">{money(disponible)}</span></p>
+            <p className="font-display text-2xl font-bold tabular-nums">{money(disponible)}</p>
             <div className="grid grid-cols-2 gap-2">
               <Button type="button" variant="outline" size="sm" onClick={() => { setMenuOpen(false); onNavigate("caja"); }}>
                 Ir a caja
@@ -149,7 +152,8 @@ export function CashShiftPill({
               </Button>
             </div>
           </div>
-        </>
+        </div>,
+        document.body
       )}
     </div>
   );

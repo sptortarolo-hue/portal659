@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { CASH_METHOD_LABELS } from "@/lib/cash-methods";
 
 type MethodTotals = { count: number; total: number };
@@ -79,7 +80,7 @@ function sortedMethods(byMethod: Record<string, MethodTotals>): [string, MethodT
   );
 }
 
-export function CajaManager() {
+export function CajaManager({ closeRequest = 0 }: { closeRequest?: number }) {
   const [summary, setSummary] = useState<ClosingSummary | null>(null);
   const [shift, setShift] = useState<CashShift | null>(null);
   const [movements, setMovements] = useState<CashMovement[]>([]);
@@ -101,8 +102,29 @@ export function CajaManager() {
   const [movAmount, setMovAmount] = useState("");
   const [movReason, setMovReason] = useState("");
   const [movSaving, setMovSaving] = useState(false);
-  // Pre-cierre (modal)
+  // Pre-cierre (modal en 2 pasos: 1 Revisar, 2 Confirmar)
   const [showPreClose, setShowPreClose] = useState(false);
+  const [preStep, setPreStep] = useState<1 | 2>(1);
+
+  // Abrir el pre-cierre con números frescos (pueden haber entrado ventas).
+  async function openPreClose() {
+    setPreStep(1);
+    setShowPreClose(true);
+    await load();
+  }
+
+  // Pedido de cierre desde la pill del header: auto-abre el pre-cierre
+  // (llega como prop porque el tab monta lazy).
+  const closeReqSeen = useRef(0);
+  useEffect(() => {
+    if (closeRequest > 0 && closeRequest !== closeReqSeen.current) {
+      closeReqSeen.current = closeRequest;
+      openPreClose();
+    }
+  }, [closeRequest]);
+  // Switch "exigir caja abierta para cobrar en Mostrador/Mesas".
+  const [requireShift, setRequireShift] = useState(false);
+  const [requireSaving, setRequireSaving] = useState(false);
   // Reporte consolidado por rango (estilo ZZ)
   const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const todayStr = new Date().toISOString().slice(0, 10);
@@ -138,6 +160,7 @@ export function CajaManager() {
             shift: CashShift | null;
             movements: CashMovement[];
             disponible: number | null;
+            requireOpenShift?: boolean;
           };
           throw new Error("sin datos");
         }),
@@ -150,6 +173,7 @@ export function CajaManager() {
       setShift(live.shift || null);
       setMovements(live.movements || []);
       setDisponible(live.disponible);
+      setRequireShift(live.requireOpenShift === true);
       setClosings(hist.closings || []);
       setError(false);
     } catch {
@@ -220,8 +244,45 @@ export function CajaManager() {
     }
   }
 
-  async function handleMovement() {
-    if (!movKind) return;
+  // Switch "exigir caja abierta": persiste en vendors.require_open_shift.
+  // Se lee el valor devuelto por el servidor (si falta la migración, el
+  // guardado la saltea y el switch queda apagado).
+  async function handleRequireToggle(next: boolean) {
+    setRequireSaving(true);
+    setMsg("");
+    try {
+      const res = await fetch("/api/vendor/me", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ require_open_shift: next }),
+      });
+      const d = await res.json().catch(() => null);
+      const saved = d?.vendor?.require_open_shift === true;
+      setRequireShift(saved);
+      setMsg(
+        saved
+          ? "Con caja cerrada ya no se puede cobrar en Mostrador ni Mesas."
+          : next
+            ? "No se pudo activar (¿falta la migración de turnos en la base?)."
+            : "Cobro liberado: ya no se exige caja abierta."
+      );
+    } catch {
+      setMsg("No se pudo guardar. Revisá tu conexión.");
+    } finally {
+      setRequireSaving(false);
+    }
+  }
+
+  // Fondo al cierre → próxima apertura: prellena el monto inicial con lo
+  // último contado (editable; no pisa lo que ya estés escribiendo).
+  useEffect(() => {
+    if (shift || openingAmount !== "" || closings.length === 0) return;
+    const last = closings[0];
+    const v = last.cash_declared ?? last.expected_cash;
+    if (v != null && Number(v) >= 0) setOpeningAmount(String(v));
+  }, [shift, openingAmount, closings]);
+
+  async function handleMovement() {    if (!movKind) return;
     const amount = Number(movAmount);
     if (!Number.isFinite(amount) || amount <= 0) {
       setMsg("Indicá un monto mayor a 0.");
@@ -261,6 +322,12 @@ export function CajaManager() {
   }
 
   async function handleClose() {
+    // El conteo físico es obligatorio para cerrar (paso 1 del pre-cierre
+    // y arqueo legacy lo exigen en UI; el servidor también lo valida).
+    if (declared == null || !(declared >= 0)) {
+      setMsg("Contá el efectivo del cajón antes de cerrar la caja.");
+      return;
+    }
     setClosing(true);
     setMsg("");
     try {
@@ -272,9 +339,12 @@ export function CajaManager() {
       const d = await res.json().catch(() => null);
       if (res.ok && d?.ok) {
         setMsg("Caja cerrada. Los próximos cobros arrancan desde ahora.");
+        // El contado de este cierre prellena la próxima apertura.
+        if (cashDeclared !== "") setOpeningAmount(cashDeclared);
         setCashDeclared("");
         setNotes("");
         setShowPreClose(false);
+        setPreStep(1);
         setShowHistory(true);
         await load();
         if (d.closing?.id) await handlePrint(d.closing.id);
@@ -353,7 +423,7 @@ export function CajaManager() {
             <Button type="button" variant="outline" onClick={() => { setMovKind("retiro"); setMovAmount(""); setMovReason(""); }}>
               − Retirar
             </Button>
-            <Button type="button" onClick={() => setShowPreClose(true)}>
+            <Button type="button" onClick={openPreClose}>
               🔒 Cerrar caja
             </Button>
           </div>
@@ -388,6 +458,21 @@ export function CajaManager() {
           </p>
         </div>
       )}
+
+      <div className="border border-border rounded-xl p-4 bg-card flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="font-medium text-sm">Exigir caja abierta para cobrar</h3>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Prendido: el Mostrador y el cierre de mesa rechazan cobrar sin turno abierto.
+          </p>
+        </div>
+        <Switch
+          checked={requireShift}
+          onCheckedChange={handleRequireToggle}
+          disabled={requireSaving}
+          aria-label="Exigir caja abierta para cobrar"
+        />
+      </div>
 
       <div className="border border-border rounded-xl p-4 bg-card">
         <div className="flex items-center justify-between mb-3">
@@ -464,9 +549,9 @@ export function CajaManager() {
 
       {!shift && (
         <div className="border border-border rounded-xl p-4 bg-card">
-          <h3 className="font-medium text-sm mb-1">Arqueo (opcional)</h3>
+          <h3 className="font-medium text-sm mb-1">Arqueo</h3>
           <p className="text-xs text-muted-foreground mb-3">
-            Contá el efectivo de la caja: el sistema espera {money(summary.cashTotal)}.
+            Contá el efectivo de la caja (obligatorio para cerrar): el sistema espera {money(summary.cashTotal)}.
           </p>
           <div className="flex items-center gap-2 mb-2">
             <span className="text-sm text-muted-foreground">$</span>
@@ -500,9 +585,9 @@ export function CajaManager() {
           <Button
             className="w-full"
             onClick={handleClose}
-            disabled={saving || (declared != null && declared < 0)}
+            disabled={saving || declared == null || declared < 0}
           >
-            {saving ? "Cerrando..." : "🔒 Cerrar caja (Z)"}
+            {saving ? "Cerrando..." : declared == null ? "🔒 Contá el efectivo para cerrar" : "🔒 Cerrar caja (Z)"}
           </Button>
           <p className="text-[10px] text-muted-foreground mt-2 text-center">
             Congela los cobros de este período y arranca uno nuevo desde ahora.
@@ -535,7 +620,7 @@ export function CajaManager() {
             />
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-3 gap-2">
           <Button type="button" variant="outline" onClick={loadReport} disabled={repLoading}>
             {repLoading ? "Cargando..." : "Ver resumen"}
           </Button>
@@ -546,6 +631,18 @@ export function CajaManager() {
           >
             <Button type="button" variant="outline" className="w-full">📄 A4</Button>
           </a>
+          <div className="grid grid-cols-2 gap-2">
+            <a
+              href={`/api/vendor/cash-closing/report?from=${encodeURIComponent(repFrom)}&to=${encodeURIComponent(repTo)}&format=xlsx`}
+            >
+              <Button type="button" variant="outline" size="sm" className="w-full">XLSX</Button>
+            </a>
+            <a
+              href={`/api/vendor/cash-closing/report?from=${encodeURIComponent(repFrom)}&to=${encodeURIComponent(repTo)}&format=csv`}
+            >
+              <Button type="button" variant="outline" size="sm" className="w-full">CSV</Button>
+            </a>
+          </div>
         </div>
         {report && (
           <div className="mt-3 rounded-lg bg-muted/50 px-3 py-2 text-sm space-y-0.5">
@@ -630,7 +727,7 @@ export function CajaManager() {
       </div>
 
       {movKind && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center justify-center p-4" onClick={() => !movSaving && setMovKind(null)}>
+        <div className="fixed inset-0 z-[70] bg-black/50 flex items-end sm:items-center justify-center p-4" onClick={() => !movSaving && setMovKind(null)}>
           <div className="bg-card rounded-2xl p-5 w-full max-w-sm space-y-3" onClick={(e) => e.stopPropagation()}>
             <h3 className="font-display text-lg font-semibold">
               {movKind === "ingreso" ? "+ Ingresar efectivo" : "− Retirar efectivo"}
@@ -674,107 +771,155 @@ export function CajaManager() {
       )}
 
       {showPreClose && shift && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center justify-center sm:p-4" onClick={() => !saving && setShowPreClose(false)}>
+        <div className="fixed inset-0 z-[70] bg-black/50 flex items-end sm:items-center justify-center sm:p-4" onClick={() => !saving && setShowPreClose(false)}>
           <div className="bg-card rounded-t-2xl sm:rounded-2xl p-5 w-full max-w-lg space-y-4 max-h-[92vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <div>
-              <h3 className="font-display text-lg font-semibold">Cerrar caja</h3>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Período: {fmtDateTime(shift.opened_at)} → ahora
-                {shift.opened_by_name ? ` · abierta por ${shift.opened_by_name}` : ""}
-              </p>
-            </div>
-
-            <div className="rounded-xl border border-border p-3 space-y-1.5 text-sm">
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Resumen</p>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Ingresos por ventas ({summary.ordersCount})</span>
-                <span className="tabular-nums font-medium">{money(summary.netTotal)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Monto inicial</span>
-                <span className="tabular-nums">{money(shift.opening_amount)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Efectivo de ventas</span>
-                <span className="tabular-nums">{money(summary.cashTotal)}</span>
-              </div>
-              {(summary.senasCount || 0) > 0 && (
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Señas en efectivo</span>
-                  <span className="tabular-nums">{money(summary.senasTotal)}</span>
-                </div>
-              )}
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Ingresos manuales</span>
-                <span className="tabular-nums text-green-600">+{money(ingresosTotal)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Retiros manuales</span>
-                <span className="tabular-nums text-red-600">−{money(retirosTotal)}</span>
-              </div>
-              <div className="border-t border-border pt-1.5 flex justify-between font-bold">
-                <span>Efectivo esperado</span>
-                <span className="tabular-nums">{money(disponible)}</span>
-              </div>
-            </div>
-
-            <div className="rounded-xl border border-border p-3 space-y-1.5 text-sm">
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Por método de pago</p>
-              {methods.length === 0 ? (
-                <p className="text-muted-foreground">Sin cobros en el turno.</p>
-              ) : (
-                methods.map(([m, d]) => (
-                  <div key={m} className="flex justify-between">
-                    <span className="text-muted-foreground">
-                      {CASH_METHOD_LABELS[m] || m} <span className="text-xs">({d.count})</span>
-                    </span>
-                    <span className="tabular-nums">{money(d.total)}</span>
-                  </div>
-                ))
-              )}
-            </div>
-
-            <div>
-              <h4 className="font-medium text-sm mb-1">Conteo físico</h4>
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-sm text-muted-foreground">$</span>
-                <input
-                  type="number"
-                  inputMode="decimal"
-                  min="0"
-                  step="0.01"
-                  value={cashDeclared}
-                  onChange={(e) => setCashDeclared(e.target.value)}
-                  placeholder="Efectivo contado en el cajón"
-                  aria-label="Conteo físico de efectivo"
-                  className="flex-1 min-w-0 h-10 rounded-md border border-input bg-background px-3 text-sm"
-                />
-              </div>
-              {difference != null && (
-                <p className={`text-sm font-semibold ${difference === 0 ? "text-green-600" : "text-red-600"}`}>
-                  {difference === 0
-                    ? "✓ Cuadra con el sistema"
-                    : `${difference > 0 ? "Sobra" : "Falta"} ${money(Math.abs(difference))}`}
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <h3 className="font-display text-lg font-semibold">Cerrar caja</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Período: {fmtDateTime(shift.opened_at)} → ahora
+                  {shift.opened_by_name ? ` · abierta por ${shift.opened_by_name}` : ""}
                 </p>
-              )}
-              <textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="Notas del cierre (opcional)"
-                aria-label="Notas del cierre"
-                rows={2}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm mt-3 resize-none"
-              />
+              </div>
+              <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-muted text-muted-foreground flex-shrink-0">
+                Paso {preStep} de 2
+              </span>
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
-              <Button type="button" variant="outline" onClick={() => setShowPreClose(false)} disabled={saving}>
-                Cancelar
-              </Button>
-              <Button type="button" onClick={handleClose} disabled={saving || (declared != null && declared < 0)}>
-                {saving ? "Cerrando..." : "🔒 Cerrar caja"}
-              </Button>
-            </div>
+            {preStep === 1 ? (
+              <>
+                <div className="rounded-xl border border-border p-3 space-y-1.5 text-sm">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Resumen</p>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Ingresos por ventas ({summary.ordersCount})</span>
+                    <span className="tabular-nums font-medium">{money(summary.netTotal)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Monto inicial</span>
+                    <span className="tabular-nums">{money(shift.opening_amount)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Efectivo de ventas</span>
+                    <span className="tabular-nums">{money(summary.cashTotal)}</span>
+                  </div>
+                  {(summary.senasCount || 0) > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Señas en efectivo</span>
+                      <span className="tabular-nums">{money(summary.senasTotal)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Ingresos manuales</span>
+                    <span className="tabular-nums text-green-600">+{money(ingresosTotal)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Retiros manuales</span>
+                    <span className="tabular-nums text-red-600">−{money(retirosTotal)}</span>
+                  </div>
+                  <div className="border-t border-border pt-1.5 flex justify-between font-bold">
+                    <span>Efectivo esperado</span>
+                    <span className="tabular-nums">{money(disponible)}</span>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-border p-3 space-y-1.5 text-sm">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Por método de pago</p>
+                  {methods.length === 0 ? (
+                    <p className="text-muted-foreground">Sin cobros en el turno.</p>
+                  ) : (
+                    methods.map(([m, d]) => (
+                      <div key={m} className="flex justify-between">
+                        <span className="text-muted-foreground">
+                          {CASH_METHOD_LABELS[m] || m} <span className="text-xs">({d.count})</span>
+                        </span>
+                        <span className="tabular-nums">{money(d.total)}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                <div>
+                  <h4 className="font-medium text-sm mb-1">Conteo físico (obligatorio)</h4>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-sm text-muted-foreground">$</span>
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      min="0"
+                      step="0.01"
+                      value={cashDeclared}
+                      onChange={(e) => setCashDeclared(e.target.value)}
+                      placeholder="Efectivo contado en el cajón"
+                      aria-label="Conteo físico de efectivo"
+                      className="flex-1 min-w-0 h-10 rounded-md border border-input bg-background px-3 text-sm"
+                    />
+                  </div>
+                  {difference != null && (
+                    <p className={`text-sm font-semibold ${difference === 0 ? "text-green-600" : "text-red-600"}`}>
+                      {difference === 0
+                        ? "✓ Cuadra con el sistema"
+                        : `${difference > 0 ? "Sobra" : "Falta"} ${money(Math.abs(difference))}`}
+                    </p>
+                  )}
+                  <textarea
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    placeholder="Notas del cierre (opcional)"
+                    aria-label="Notas del cierre"
+                    rows={2}
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm mt-3 resize-none"
+                  />
+                </div>
+
+                <p className="text-xs text-muted-foreground">
+                  Revisá los números: si falta cargar algo (una venta, un movimiento), cancelá y hacelo antes de cerrar.
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button type="button" variant="outline" onClick={() => setShowPreClose(false)} disabled={saving}>
+                    Cancelar
+                  </Button>
+                  <Button type="button" onClick={() => setPreStep(2)} disabled={declared == null || declared < 0}>
+                    {declared == null ? "Contá para seguir" : "Revisar cierre →"}
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="rounded-xl border border-primary/30 bg-primary/5 p-4 text-center space-y-1">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wide">Resultado del cierre</p>
+                  <p className={`font-display text-2xl font-bold tabular-nums ${difference === 0 ? "text-green-600" : "text-red-600"}`}>
+                    {difference == null || difference === 0
+                      ? "Cuadra ✓"
+                      : `${difference > 0 ? "Sobra" : "Falta"} ${money(Math.abs(difference))}`}
+                  </p>
+                  <div className="grid grid-cols-3 gap-2 pt-2 text-sm">
+                    <div>
+                      <p className="text-[10px] text-muted-foreground">Esperado</p>
+                      <p className="font-bold tabular-nums">{money(disponible)}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-muted-foreground">Contado</p>
+                      <p className="font-bold tabular-nums">{money(declared)}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-muted-foreground">Ventas</p>
+                      <p className="font-bold tabular-nums">{money(summary.netTotal)}</p>
+                    </div>
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground text-center">
+                  Al confirmar se congela el turno y se genera el Z. No se puede rectificar después.
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button type="button" variant="outline" onClick={() => setPreStep(1)} disabled={saving}>
+                    ← Volver
+                  </Button>
+                  <Button type="button" onClick={handleClose} disabled={saving}>
+                    {saving ? "Cerrando..." : "🔒 Confirmar cierre"}
+                  </Button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

@@ -24,13 +24,19 @@ export async function GET(request: Request) {
   // Aditivo: sin turno (o sin migración aplicada) va null/[] y la caja
   // funciona en modo legacy como antes.
   const shift = await getOpenShift(gate.vendor.id);
-  if (!shift) return NextResponse.json({ summary, shift: null, movements: [], disponible: null });
+  // Switch "exigir caja abierta para cobrar" (tolerante a migración sin
+  // aplicar: la columna puede no existir y resuelve false).
+  const requireOpenShift =
+    (gate.vendor as Record<string, unknown>)?.require_open_shift === true;
+  if (!shift)
+    return NextResponse.json({ summary, shift: null, movements: [], disponible: null, requireOpenShift });
   const shiftSummary = await computeShiftSummary(gate.vendor.id, shift);
   return NextResponse.json({
     summary,
     shift,
     movements: shiftSummary.movements,
     disponible: shiftSummary.expectedCash,
+    requireOpenShift,
   });
 }
 
@@ -45,6 +51,15 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json().catch(() => ({}));
+  const cashDeclaredRaw = body?.cashDeclared;
+  // El conteo físico es obligatorio para cerrar (el cierre congela el
+  // período y no se puede rectificar después: el pre-cierre existe para eso).
+  if (cashDeclaredRaw == null || !(Number(cashDeclaredRaw) >= 0)) {
+    return NextResponse.json(
+      { error: "Contá el efectivo del cajón antes de cerrar la caja", code: "count_required" },
+      { status: 400 }
+    );
+  }
   const since = await lastClosingSince(gate.vendor.id);
   const summary = await computeCashClosing(gate.vendor.id, since);
   // Si hay turno abierto, el cierre lo liquida: el esperado incluye fondo
@@ -53,11 +68,9 @@ export async function POST(request: Request) {
   const shiftSummary = shift ? await computeShiftSummary(gate.vendor.id, shift) : null;
   const expectedCash = shiftSummary ? shiftSummary.expectedCash : null;
 
-  const cashDeclared =
-    body?.cashDeclared != null && Number(body.cashDeclared) >= 0 ? Number(body.cashDeclared) : null;
+  const cashDeclared = Math.round(Number(cashDeclaredRaw) * 100) / 100;
   const cashDiffBase = expectedCash ?? summary.cashTotal;
-  const cashDifference =
-    cashDeclared != null ? Math.round((cashDeclared - cashDiffBase) * 100) / 100 : null;
+  const cashDifference = Math.round((cashDeclared - cashDiffBase) * 100) / 100;
   const notes =
     typeof body?.notes === "string" && body.notes.trim() ? body.notes.trim().slice(0, 500) : null;
   // Sesión de prueba: no tiene perfil en la tabla (user.id es "preview:..."),

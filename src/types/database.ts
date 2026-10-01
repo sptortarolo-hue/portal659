@@ -446,6 +446,8 @@ export type Vendor = {
   food_cost_bad?: number | null;
   /** Opt-out de venta online: false = solo contacto aunque el plan traiga carrito. */
   accepts_online_orders?: boolean | null;
+  /** Exigir turno de caja abierto para cobrar en Mostrador/Mesas. */
+  require_open_shift?: boolean | null;
   /** % de descuento en efectivo (NULL/0 = sin descuento). Requiere Efectivo en payment_methods. */
   cash_discount_pct?: number | null;
   /** Cierre estricto de cocina: true = Listo exige tildar todo (default). */

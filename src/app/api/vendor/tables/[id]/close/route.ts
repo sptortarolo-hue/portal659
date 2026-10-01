@@ -1,6 +1,7 @@
 import { gateRequest, gateError } from "@/lib/subscription-gate";
 import { queryOne, queryMany, withTransaction } from "@/lib/db";
 import { cashDiscountForItems, normalizeCashPct } from "@/lib/cash-discount";
+import { getOpenShift } from "@/lib/cash-closing";
 import {
   claimSyncKey,
   findMissingSyncKeys,
@@ -19,6 +20,18 @@ export async function POST(
   if (!gate.ok) return gateError(gate);
   if (!gate.plan.can("mesas")) {
     return NextResponse.json({ error: "Las mesas forman parte del plan Gestión integral" }, { status: 403 });
+  }
+
+  // Switch "exigir caja abierta": sin turno abierto no se cobra la mesa
+  // (cargar consumiciones sigue permitido; solo el cobro exige turno).
+  if (gate.vendor.require_open_shift === true) {
+    const shift = await getOpenShift(gate.vendor.id);
+    if (!shift) {
+      return NextResponse.json(
+        { error: "Abrí la caja para cobrar la mesa", code: "shift_required" },
+        { status: 409 }
+      );
+    }
   }
 
   const { id } = await params;

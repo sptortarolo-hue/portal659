@@ -79,6 +79,7 @@ import { CustomersManager } from "@/components/dashboard/customers-manager";
 import { OpenToggle } from "@/components/vendor/open-toggle";
 import { PrepTimeControl } from "@/components/vendor/prep-time-control";
 import { PrinterStatus } from "@/components/vendor/printer-status";
+import { CashShiftPill } from "@/components/vendor/cash-shift-pill";
 import { OfflineBanner } from "@/components/vendor/offline-banner";
 import { OfflineConflicts } from "@/components/vendor/offline-conflicts";
 import { usePendingSyncCount } from "@/hooks/use-online-status";
@@ -336,6 +337,19 @@ function VendorDashboardInner() {
   const { addToast } = useToast();
   const handleTabChange = useCallback((t: DashTab) => setTab(t), []);
   const openOrderDetail = useCallback((o: Order) => setSelectedOrder(o), []);
+  // Atajo Mostrador/Mesas → pestaña Caja (banner "abrí la caja").
+  useEffect(() => {
+    const handler = () => handleTabChange("caja");
+    window.addEventListener("portal:go-caja", handler);
+    return () => window.removeEventListener("portal:go-caja", handler);
+  }, [handleTabChange]);
+  // Pedido de cierre desde la pill del header: va a Caja y auto-abre el
+  // pre-cierre (el tab monta lazy: el contador llega como prop).
+  const [cashCloseReq, setCashCloseReq] = useState(0);
+  const requestCashClose = useCallback(() => {
+    handleTabChange("caja");
+    setCashCloseReq((n) => n + 1);
+  }, [handleTabChange]);
 
   // Keyboard shortcuts: Ctrl+1-9 para tabs, Escape para cerrar modales
   useKeyboardShortcuts({
@@ -1481,6 +1495,13 @@ function VendorDashboardInner() {
                     }, 120);
                   }} />
                 )}
+                {effectivePlan.can("pos") && (
+                  <CashShiftPill
+                    visible
+                    onNavigate={handleTabChange}
+                    onRequestClose={requestCashClose}
+                  />
+                )}
               </div>
               {vendor.slug && (
                 <a
@@ -1513,6 +1534,13 @@ function VendorDashboardInner() {
                     document.getElementById("printer-config")?.scrollIntoView({ behavior: "smooth", block: "start" });
                   }, 120);
                 }} />
+              )}
+              {effectivePlan.can("pos") && (
+                <CashShiftPill
+                  visible
+                  onNavigate={handleTabChange}
+                  onRequestClose={requestCashClose}
+                />
               )}
             </div>
           </div>
@@ -1580,7 +1608,7 @@ function VendorDashboardInner() {
         )}
 
         {/* Tab content */}
-        <div className={`flex-1 px-4 mt-4 ${tab === "comanda" ? "w-full max-w-none" : `mx-auto w-full ${["orders", "history", "pos", "mesas", "caja", "clientes", "analytics", "recetas", "inventario", "hoy", "menu"].includes(tab) ? "max-w-7xl" : "max-w-4xl"}`}`}>
+        <div className={`flex-1 px-4 mt-4 pb-28 lg:pb-10 ${tab === "comanda" ? "w-full max-w-none" : `mx-auto w-full ${["orders", "history", "pos", "mesas", "caja", "clientes", "analytics", "recetas", "inventario", "hoy", "menu"].includes(tab) ? "max-w-7xl" : "max-w-4xl"}`}`}>
           <TabErrorBoundary tab={tab || "dashboard"}>
           {isService ? (
             <div className="space-y-4">
@@ -1742,7 +1770,7 @@ function VendorDashboardInner() {
               {mountedTabs.has("caja") && (
                 <div className={tab === "caja" ? "" : "hidden"}>
                   {effectivePlan.can("pos") ? (
-                    <MemoCajaManager />
+                    <MemoCajaManager closeRequest={cashCloseReq} />
                   ) : (
                     <PlanLock
                       title="Cierre de caja"

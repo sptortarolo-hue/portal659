@@ -12,8 +12,9 @@ import { getCatalogSnapshot, getTablesSnapshot, saveCatalogSnapshot, saveTablesS
 import { enqueueOfflineAction, isNetworkError, newClientKey, nextProvisionalNumber } from "@/lib/offline-actions";
 import { checkOfflineAllowed, offlineDeniedMsg } from "@/lib/offline-plan";
 import { dispatchOfflinePrint, markPrintsDone } from "@/lib/local-print";
-import { SYNC_COMPLETED_EVENT } from "@/lib/sync-engine";
 
+import { SYNC_COMPLETED_EVENT } from "@/lib/sync-engine";
+import { useCashShift } from "@/lib/use-cash-shift";
 type Table = {
   id: string;
   name: string;
@@ -134,6 +135,10 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
   const [renaming, setRenaming] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [selected, setSelected] = useState<Table | null>(null);
+  // Switch "exigir caja abierta": sin turno no se cobra la mesa (cargar
+  // consumiciones sigue permitido; el servidor lo valida igual: 409).
+  const { shift: cashShift, requireOpenShift, loading: cashShiftLoading } = useCashShift(true);
+  const shiftBlocked = requireOpenShift && !cashShiftLoading && !cashShift;
   const [cart, setCart] = useState<{ product_id: string; name: string; price: number; qty: number; requires_prep: boolean; modifiers?: CartModifier[]; packSize?: number; manual?: boolean }[]>([]);
   // Cargo manual ("Varios"): línea sin producto (igual que en Mostrador).
   const [manualName, setManualName] = useState("");
@@ -1195,6 +1200,14 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
                 )}
                 <div className="flex-shrink-0">{manualChargeRow}</div>
                 <Button size="sm" className="flex-shrink-0" disabled={cart.length === 0} onClick={addConsumicion}>Agregar consumición</Button>
+                {shiftBlocked && (
+                  <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5 flex-shrink-0">
+                    🔒 Abrí la caja para cobrar.{" "}
+                    <button type="button" className="underline font-semibold" onClick={() => window.dispatchEvent(new Event("portal:go-caja"))}>
+                      Ir a la caja →
+                    </button>
+                  </p>
+                )}
                 <div className="grid grid-cols-2 gap-1.5 flex-shrink-0">
                   <Button
                     size="sm"
@@ -1204,7 +1217,7 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
                   >
                     {printingTicket ? "Imprimiendo..." : "🖨️ Precuenta"}
                   </Button>
-                  <Button size="sm" variant="default" disabled={!hasAccount} onClick={closeTable}>
+                  <Button size="sm" variant="default" disabled={!hasAccount || shiftBlocked} onClick={closeTable}>
                     Cobrar y cerrar
                   </Button>
                 </div>
@@ -1393,12 +1406,20 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
                       </Button>
                       <Button
                         size="sm"
-                        disabled={!hasAccount}
+                        disabled={!hasAccount || shiftBlocked}
                         onClick={closeTable}
                       >
                         Cobrado y cerrar
                       </Button>
                     </div>
+                    {shiftBlocked && (
+                      <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5 mt-1.5">
+                        🔒 Abrí la caja para cobrar.{" "}
+                        <button type="button" className="underline font-semibold" onClick={() => window.dispatchEvent(new Event("portal:go-caja"))}>
+                          Ir a la caja →
+                        </button>
+                      </p>
+                    )}
                   </div>
                 </footer>
               </>

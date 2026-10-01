@@ -104,6 +104,7 @@ export async function POST(request: Request) {
     cash_discount_pct,
     kitchen_strict_close,
     storefront_layout,
+    require_open_shift,
   } = body;
 
   const VALID_VERTICALS = ["gastronomia", "comercio", "servicio", "moda", "salud", "otro"];
@@ -189,6 +190,8 @@ export async function POST(request: Request) {
   if (transfer_cbu !== undefined) payload.transfer_cbu = transfer_cbu || null;
   if (transfer_holder !== undefined) payload.transfer_holder = transfer_holder || null;
   if (block_unpaid_orders !== undefined) payload.block_unpaid_orders = block_unpaid_orders === true;
+  // Exigir turno de caja abierto para cobrar en Mostrador/Mesas.
+  if (require_open_shift !== undefined) payload.require_open_shift = require_open_shift === true;
   // Sobrescritura manual de apertura: true=abierto, false=cerrado, null=seguir horarios.
   if (open_override !== undefined) payload.open_override = open_override === null ? null : open_override === true;
   // Control de demora (estimado de preparación). Default 30 min: nunca queda null.
@@ -264,6 +267,7 @@ export async function POST(request: Request) {
         "delivery_mode",
         "delivery_area_text",
         "storefront_layout",
+        "require_open_shift",
       ].filter((k) => k in payload && msg.includes(k));
       if (droppable.length > 0) {
         for (const k of droppable) delete payload[k];

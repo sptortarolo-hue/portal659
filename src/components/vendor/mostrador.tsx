@@ -15,6 +15,7 @@ import { dispatchOfflinePrint, markPrintsDone } from "@/lib/local-print";
 import { printsAdd } from "@/lib/offline-db";
 import { saveDraft, loadDraft, clearDraft } from "@/lib/draft";
 import type { ContingencyKind } from "@/lib/offline-print";
+import { useCashShift } from "@/lib/use-cash-shift";
 
 const OFFLINE_PAYMENT_LABELS: Record<string, string> = {
   efectivo: "Efectivo",
@@ -149,6 +150,10 @@ export function Mostrador({ vendorId }: { vendorId?: string | null }) {
   const [customerAddress, setCustomerAddress] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  // Switch "exigir caja abierta": sin turno no se cobra (el servidor lo
+  // valida igual: 409). Banner + botones deshabilitados.
+  const { shift: cashShift, requireOpenShift, loading: cashShiftLoading } = useCashShift(true);
+  const shiftBlocked = requireOpenShift && !cashShiftLoading && !cashShift;
   const [msg, setMsg] = useState("");
   // El mensaje vive dentro del sheet mobile: al cambiar, se scrollea a la
   // vista (antes los errores quedaban tapados detrás y parecía que no pasaba nada).
@@ -875,8 +880,8 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
     } catch { /* noop */ }
   }, []);
   // Refs para leer estado fresco desde el listener sin re-suscribirlo.
-  const chargeStateRef = useRef({ method, hasItems: false, saving });
-  chargeStateRef.current = { method, hasItems: items.length > 0, saving };
+  const chargeStateRef = useRef({ method, hasItems: false, saving, blocked: false });
+  chargeStateRef.current = { method, hasItems: items.length > 0, saving, blocked: shiftBlocked };
   const chargeFnRef = useRef(charge);
   chargeFnRef.current = charge;
   const lastEnterRef = useRef(0);
@@ -890,7 +895,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
       if (e.repeat || e.isComposing) return;
       if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
       const st = chargeStateRef.current;
-      if (st.method !== "direct" || !st.hasItems || st.saving) { lastEnterRef.current = 0; return; }
+      if (st.method !== "direct" || !st.hasItems || st.saving || st.blocked) { lastEnterRef.current = 0; return; }
       const t = e.target as HTMLElement | null;
       const tag = t?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || t?.isContentEditable) return;
@@ -1943,10 +1948,18 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
             {msg}
           </p>
         )}
+        {shiftBlocked && (
+          <div className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            🔒 Abrí la caja para cobrar.{" "}
+            <button type="button" className="underline font-semibold" onClick={() => window.dispatchEvent(new Event("portal:go-caja"))}>
+              Ir a la caja →
+            </button>
+          </div>
+        )}
         {method === "direct" ? (
           <Button
             className="w-full"
-            disabled={items.length === 0 || saving}
+            disabled={items.length === 0 || saving || shiftBlocked}
             onClick={() => charge(true)}
             title={finePointer ? "Atajo: apretá Enter dos veces para cobrar" : undefined}
           >
@@ -1954,10 +1967,10 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
           </Button>
         ) : (
           <>
-            <Button className="w-full" disabled={items.length === 0 || saving} onClick={() => charge(true)}>
+            <Button className="w-full" disabled={items.length === 0 || saving || shiftBlocked} onClick={() => charge(true)}>
               {saving ? "Cobrando..." : method === "pickup" ? (isRetail ? "Cobrar + comprobante" : "Cobrar + comprobante de retiro") : "Cobrar y despachar"}
             </Button>
-            <Button className="w-full" variant="outline" disabled={items.length === 0 || saving} onClick={() => charge(false)}>
+            <Button className="w-full" variant="outline" disabled={items.length === 0 || saving || shiftBlocked} onClick={() => charge(false)}>
               {method === "pickup" ? "Cobrar sin comprobante" : "Cobrar sin imprimir comprobante"}
             </Button>
           </>

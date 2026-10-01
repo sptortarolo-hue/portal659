@@ -7,6 +7,7 @@ import { cashDiscountForItems } from "@/lib/cash-discount";
 import { adjustStockForItems, OutOfStockError, type StockMove } from "@/lib/stock";
 import { logStockMovement } from "@/lib/stock-ledger";
 import { upsertCustomerFromOrder, isRealCustomerPhone } from "@/lib/customers";
+import { getOpenShift } from "@/lib/cash-closing";
 import { validateFiadoPhone, fiadoTableReady } from "@/lib/fiados";
 import { toE164 } from "@/lib/phone";
 import {
@@ -29,6 +30,18 @@ export async function POST(request: Request) {
       { error: "El mostrador forma parte del plan Gestión integral" },
       { status: 403 }
     );
+  }
+
+  // Switch "exigir caja abierta": sin turno abierto no se cobra en el
+  // mostrador (tolerante a migración sin aplicar: el flag resuelve false).
+  if (gate.vendor.require_open_shift === true) {
+    const shift = await getOpenShift(gate.vendor.id);
+    if (!shift) {
+      return NextResponse.json(
+        { error: "Abrí la caja para cobrar en el mostrador", code: "shift_required" },
+        { status: 409 }
+      );
+    }
   }
 
   const body = await request.json();

@@ -64,6 +64,12 @@ export type CashClosingPrintData = {
   cash_declared: number | null;
   cash_difference: number | null;
   notes: string | null;
+  /** Turno de caja (nulo en cierres legacy sin apertura). */
+  opened_at?: string | null;
+  opening_amount?: number | null;
+  opened_by_name?: string | null;
+  movements?: { ingresos: number; retiros: number } | null;
+  expected_cash?: number | null;
 };
 
 export type DispatchResult = {
@@ -1086,6 +1092,22 @@ async function composeCashClose(
   printer.println(`Desde: ${formatArgDate(new Date(closing.since))} ${formatArgTime(new Date(closing.since))}`);
   printer.println(`Hasta: ${formatArgDate(new Date(closing.closed_at))} ${formatArgTime(new Date(closing.closed_at))}`);
   printer.bold(false);
+  // Turno de caja: apertura + responsable + movimientos (solo cierres con turno).
+  if (closing.opened_at != null) {
+    const opener = String(closing.opened_by_name || "").trim();
+    printer.println(`Apertura: ${formatArgDate(new Date(closing.opened_at))} ${formatArgTime(new Date(closing.opened_at))}${opener ? ` por ${opener}` : ""}`);
+    if (closing.opening_amount != null) {
+      printer.println(`Fondo inicial: $${Number(closing.opening_amount).toLocaleString("es-AR")}`);
+    }
+    const mov = closing.movements || null;
+    const ing = mov ? Number(mov.ingresos) || 0 : 0;
+    const ret = mov ? Number(mov.retiros) || 0 : 0;
+    if (ing > 0) printer.println(`Ingresos manuales: $${ing.toLocaleString("es-AR")}`);
+    if (ret > 0) printer.println(`Retiros manuales: $${ret.toLocaleString("es-AR")}`);
+    if (closing.expected_cash != null) {
+      printer.println(`Esperado: $${Number(closing.expected_cash).toLocaleString("es-AR")}`);
+    }
+  }
   printer.println(separator);
 
   const ORDER = ["efectivo", "transferencia", "tarjeta", "mixto", "whatsapp", "mercadopago"];

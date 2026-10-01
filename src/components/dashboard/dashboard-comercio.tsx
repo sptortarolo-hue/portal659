@@ -22,6 +22,7 @@ import {
 } from "@/components/dashboard/shared";
 import { MpConnectCard } from "@/components/dashboard/mp-connect-card";
 import { PrinterConfigSection } from "@/components/dashboard/printer-config-section";
+import { StaffManager } from "@/components/vendor/staff-manager";
 import { FiscalTabShortcut } from "@/components/dashboard/fiscal-config-section";
 import { HoursEditor } from "@/components/dashboard/hours-editor";
 import { GalleryManager } from "@/components/dashboard/gallery-manager";
@@ -563,6 +564,10 @@ export default function DashboardComercio({
             <DeliveryFeeConfig vendor={vendor} saveVendor={saveVendor} />
           )}
         </div>
+      </ConfigSection>
+
+      <ConfigSection id="equipo" label="Repartidores" icon="🛵">
+        <StaffManager storeName={vendor?.store_name} />
       </ConfigSection>
 
       <ConfigSection id="impresora" label="Impresora" icon="🖨️" status={vendor?.printer_ip || vendor?.print_mode ? "ok" : "off"}>

@@ -20,6 +20,7 @@ import { GalleryManager } from "@/components/dashboard/gallery-manager";
 import { SIZE_GUIDE_TEMPLATES, templateToText } from "@/lib/size-guides";
 import { LocationPicker } from "./location-picker";
 import { PrinterConfigSection } from "@/components/dashboard/printer-config-section";
+import { StaffManager } from "@/components/vendor/staff-manager";
 import { ConfigSaveBar, ConfigSection, ConfigSections } from "@/components/dashboard/config-sections";
 import { PushAlertCard } from "@/components/dashboard/push-alert-card";
 import { FiscalTabShortcut } from "@/components/dashboard/fiscal-config-section";
@@ -666,6 +667,10 @@ export default function DashboardModa({
             />
           </div>
         </div>
+      </ConfigSection>
+
+      <ConfigSection id="equipo" label="Repartidores" icon="🛵">
+        <StaffManager storeName={vendor?.store_name} />
       </ConfigSection>
 
       <ConfigSection id="impresora" label="Impresora" icon="🖨️" status={vendor?.printer_ip || vendor?.print_mode ? "ok" : "off"}>

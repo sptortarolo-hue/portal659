@@ -865,6 +865,48 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
     }
   }
 
+  // Atajo desktop: Enter ×2 cobra la venta directa (mismo charge(true) del
+  // botón). Solo puntero fino, solo modo directa, nunca desde formularios
+  // (el buscador usa Enter para SKU, inputs de peso/precio, etc.).
+  const [finePointer, setFinePointer] = useState(false);
+  useEffect(() => {
+    try {
+      setFinePointer(window.matchMedia?.("(pointer: fine)").matches ?? false);
+    } catch { /* noop */ }
+  }, []);
+  // Refs para leer estado fresco desde el listener sin re-suscribirlo.
+  const chargeStateRef = useRef({ method, hasItems: false, saving });
+  chargeStateRef.current = { method, hasItems: items.length > 0, saving };
+  const chargeFnRef = useRef(charge);
+  chargeFnRef.current = charge;
+  const lastEnterRef = useRef(0);
+  useEffect(() => {
+    if (!finePointer) return;
+    const DOUBLE_MS = 500;
+    function onKeyDown(e: KeyboardEvent) {
+      // Cualquier otra tecla rompe la secuencia (también evita que un
+      // escáner de código de barras —que "tipea" + Enter— dispare el cobro).
+      if (e.key !== "Enter") { lastEnterRef.current = 0; return; }
+      if (e.repeat || e.isComposing) return;
+      if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+      const st = chargeStateRef.current;
+      if (st.method !== "direct" || !st.hasItems || st.saving) { lastEnterRef.current = 0; return; }
+      const t = e.target as HTMLElement | null;
+      const tag = t?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || t?.isContentEditable) return;
+      const now = Date.now();
+      if (now - lastEnterRef.current <= DOUBLE_MS) {
+        lastEnterRef.current = 0;
+        e.preventDefault();
+        chargeFnRef.current(true);
+      } else {
+        lastEnterRef.current = now;
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [finePointer]);
+
   async function chargeInner(withReceipt: boolean) {
     if (items.length === 0) return;
 
@@ -1902,8 +1944,13 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
           </p>
         )}
         {method === "direct" ? (
-          <Button className="w-full" disabled={items.length === 0 || saving} onClick={() => charge(true)}>
-            {saving ? "Cobrando..." : "Cobrar"}
+          <Button
+            className="w-full"
+            disabled={items.length === 0 || saving}
+            onClick={() => charge(true)}
+            title={finePointer ? "Atajo: apretá Enter dos veces para cobrar" : undefined}
+          >
+            {saving ? "Cobrando..." : <>Cobrar{finePointer && <span className="opacity-70 font-normal"> ⏎⏎</span>}</>}
           </Button>
         ) : (
           <>

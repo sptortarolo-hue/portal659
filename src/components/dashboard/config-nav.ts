@@ -82,9 +82,9 @@ export function sectionsForVertical(vertical: string | null | undefined): string
     case "gastronomia":
       return ["perfil", "ubicacion", "contacto", "pagos", "preparacion", "equipo", "impresora", "alertas", "fiscal", "menu"];
     case "comercio":
-      return ["perfil", "ubicacion", "contacto", "pagos", "impresora", "alertas", "fiscal", "catalogo"];
+      return ["perfil", "ubicacion", "contacto", "pagos", "equipo", "impresora", "alertas", "fiscal", "catalogo"];
     case "moda":
-      return ["perfil", "ubicacion", "contacto", "pagos", "impresora", "alertas", "fiscal"];
+      return ["perfil", "ubicacion", "contacto", "pagos", "equipo", "impresora", "alertas", "fiscal"];
     default:
       return ["perfil", "ubicacion", "contacto", "pagos"];
   }

@@ -34,16 +34,146 @@ function startOfTodayAr(): string {
 }
 
 /**
- * Momento desde el que se computan los cobros: el último Z guardado del
- * comercio, o el arranque del día civil actual si todavía no hubo ninguno.
+ * Momento desde el que se computan los cobros: si hay turno abierto, la
+ * apertura; si no, el último Z guardado (o el arranque del día civil).
+ * Así el resumen "en vivo" de la Caja se ancla al turno cuando lo hay.
  */
 export async function lastClosingSince(vendorId: string): Promise<string> {
+  const shift = await getOpenShift(vendorId);
+  if (shift?.opened_at) return new Date(shift.opened_at).toISOString();
   const last = await queryOne<{ closed_at: string }>(
     `SELECT closed_at FROM cash_closings WHERE vendor_id = $1 ORDER BY closed_at DESC LIMIT 1`,
     [vendorId]
   );
   if (last?.closed_at) return new Date(last.closed_at).toISOString();
   return startOfTodayAr();
+}
+
+/** Turno de caja abierto (uno por comercio como máximo). */
+export type CashShift = {
+  id: string;
+  opened_at: string;
+  opening_amount: number;
+  opened_by: string | null;
+  opened_by_name: string | null;
+  status: "open" | "closed";
+};
+
+/** Movimiento manual de efectivo dentro del turno. */
+export type CashMovement = {
+  id: string;
+  kind: "ingreso" | "retiro";
+  amount: number;
+  reason: string;
+  created_by: string | null;
+  created_by_name: string | null;
+  created_at: string;
+};
+
+/**
+ * Turno abierto del comercio (con nombre de quien lo abrió).
+ * Tolerante a migración sin aplicar: devuelve null y la caja sigue en
+ * modo legacy (período desde último Z).
+ */
+export async function getOpenShift(vendorId: string): Promise<CashShift | null> {
+  try {
+    const row = await queryOne<{
+      id: string;
+      opened_at: string;
+      opening_amount: number;
+      opened_by: string | null;
+      opened_by_name: string | null;
+      status: string;
+    }>(
+      `SELECT s.id, s.opened_at, s.opening_amount, s.opened_by, s.status,
+              p.full_name AS opened_by_name
+       FROM cash_shifts s LEFT JOIN profiles p ON p.id = s.opened_by
+       WHERE s.vendor_id = $1 AND s.status = 'open' LIMIT 1`,
+      [vendorId]
+    );
+    if (!row) return null;
+    return {
+      id: row.id,
+      opened_at: new Date(row.opened_at).toISOString(),
+      opening_amount: Number(row.opening_amount) || 0,
+      opened_by: row.opened_by,
+      opened_by_name: row.opened_by_name,
+      status: "open",
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Movimientos del turno, ordenados por creación. */
+export async function listShiftMovements(shiftId: string): Promise<CashMovement[]> {
+  try {
+    const rows = await queryMany<{
+      id: string;
+      kind: string;
+      amount: number;
+      reason: string;
+      created_by: string | null;
+      created_by_name: string | null;
+      created_at: string;
+    }>(
+      `SELECT m.id, m.kind, m.amount, m.reason, m.created_by, m.created_at,
+              p.full_name AS created_by_name
+       FROM cash_movements m LEFT JOIN profiles p ON p.id = m.created_by
+       WHERE m.shift_id = $1 ORDER BY m.created_at ASC`,
+      [shiftId]
+    );
+    return (rows || []).map((r) => ({
+      id: r.id,
+      kind: r.kind === "retiro" ? "retiro" : "ingreso",
+      amount: Number(r.amount) || 0,
+      reason: r.reason || "",
+      created_by: r.created_by,
+      created_by_name: r.created_by_name,
+      created_at: new Date(r.created_at).toISOString(),
+    }));
+  } catch {
+    return [];
+  }
+}
+
+export type ShiftSummary = {
+  shift: CashShift;
+  movements: CashMovement[];
+  ingresosTotal: number;
+  retirosTotal: number;
+  /**
+   * Efectivo esperado/disponible ahora (estilo Lightspeed):
+   * apertura + ventas en efectivo del turno (+ señas en efectivo con
+   * saldo pendiente: plata física en el cajón) + ingresos − retiros.
+   */
+  expectedCash: number;
+};
+
+/** Resumen del turno: ventas del período + movimientos + esperado. */
+export async function computeShiftSummary(
+  vendorId: string,
+  shift: CashShift
+): Promise<ShiftSummary> {
+  const sales = await computeCashClosing(vendorId, shift.opened_at);
+  const movements = await listShiftMovements(shift.id);
+  let ingresosTotal = 0;
+  let retirosTotal = 0;
+  for (const m of movements) {
+    if (m.kind === "retiro") retirosTotal += m.amount;
+    else ingresosTotal += m.amount;
+  }
+  const senasCash = sales.senasByMethod?.["efectivo"]?.total ?? 0;
+  const expectedCash = round2(
+    shift.opening_amount + sales.cashTotal + senasCash + ingresosTotal - retirosTotal
+  );
+  return {
+    shift,
+    movements,
+    ingresosTotal: round2(ingresosTotal),
+    retirosTotal: round2(retirosTotal),
+    expectedCash,
+  };
 }
 
 /**

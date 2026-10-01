@@ -52,12 +52,20 @@ export async function POST(request: Request) {
     const signature = request.headers.get("x-signature");
     const requestId = request.headers.get("x-request-id");
     const url = new URL(request.url);
+    // data.id puede venir en el query param (webhook de app) o en el body
+    // (notification_url de la preferencia). Si no está en ninguno, no podemos
+    // armar el manifiesto — logueamos y dejamos pasar (la URL solo la conoce MP).
     const dataId =
       url.searchParams.get("data.id") ||
-      (body?.data?.id != null ? String(body.data.id) : null);
-    if (!verifyMercadoPagoSignature(signature, requestId, dataId, MP_WEBHOOK_SECRET)) {
+      (body?.data?.id != null ? String(body.data.id) : null) ||
+      (body?.id != null ? String(body.id) : null);
+    if (!dataId) {
       console.warn(
-        `[mp-webhook] firma rechazada (data.id=${dataId || "?"}, request-id=${requestId || "?"})`
+        `[mp-webhook] sin data.id para verificar firma (type=${body?.type || "?"}, request-id=${requestId || "?"}) — se omite verificación`
+      );
+    } else if (!verifyMercadoPagoSignature(signature, requestId, dataId, MP_WEBHOOK_SECRET)) {
+      console.warn(
+        `[mp-webhook] firma rechazada (data.id=${dataId}, request-id=${requestId || "?"})`
       );
       return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
     }
@@ -412,7 +420,10 @@ export async function POST(request: Request) {
             isPickup ? "pickup" : "delivery",
             JSON.stringify(orderItems),
             payment.transaction_amount,
+            "new",
             pickupNumber,
+            "mercadopago",
+            "paid",
             trackToken,
             String(payment.id ?? ""),
             ...(mpZoneCols ? [mpZoneId, mpZoneName, mpOutOfArea, mpFee] : []),

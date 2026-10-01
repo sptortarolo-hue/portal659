@@ -19,8 +19,9 @@ export const GET = withRateLimit(async (request: Request) => {
   const variants = phoneVariantsAR(rawPhone);
 
   const last = await queryOne<{ customer_name: string | null; neighborhood: string | null }>(
-    `SELECT customer_name, neighborhood
+    `SELECT o.customer_name, v.neighborhood
      FROM orders o
+     LEFT JOIN vendors v ON v.id = o.vendor_id
      WHERE regexp_replace(o.customer_phone, '[^0-9]', '', 'g') = ANY($1::text[])
        AND o.created_at >= now() - interval '90 days'
      ORDER BY o.created_at DESC

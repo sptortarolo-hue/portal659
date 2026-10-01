@@ -65,7 +65,7 @@ import { RecipeManager } from "@/components/dashboard/recipe-manager";
 import { ProductManager } from "@/components/dashboard/product-manager";
 import { MenuStudio } from "@/components/dashboard/menu-studio";
 import ComandaKDS from "@/components/dashboard/comanda-kds";
-import { playNewOrderAlert, resumeAudioContext, startTitleFlash, stopTitleFlash } from "@/lib/sounds";
+import { playNewOrderAlert, resumeAudioContext, startTitleFlash, stopTitleFlash, startRepeatAlert, stopRepeatAlert } from "@/lib/sounds";
 import { PushAlertCard } from "@/components/dashboard/push-alert-card";
 import { resolveVendorPlan, daysLeft, type FeatureKey } from "@/lib/plans";
 import { PlanBanner } from "@/components/vendor/plan-banner";
@@ -720,6 +720,16 @@ function VendorDashboardInner() {
       clearTimeout(reconnectTimeout);
     };
   }, [vendor?.id]);
+
+  // Repetición de alerta: mientras haya pedidos "new" sin aceptar, el beep
+  // suena cada 30s (además del aviso inicial + flash). Se detiene al aceptar
+  // o cuando no quedan pendientes.
+  const hasNewOrders = orders.some((o) => o.status === "new");
+  useEffect(() => {
+    if (hasNewOrders) startRepeatAlert(30000);
+    else stopRepeatAlert();
+    return () => stopRepeatAlert();
+  }, [hasNewOrders]);
 
   const saveVendor = useCallback(async (data: Record<string, unknown>) => {
     setMsg("");

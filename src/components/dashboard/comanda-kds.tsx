@@ -14,7 +14,7 @@ import {
   kitchenProgress,
   CONDITION_META,
 } from "@/lib/order-utils";
-import { playNewOrderAlert, playOrderReadySound, playUrgentSound, resumeAudioContext, startTitleFlash, stopTitleFlash } from "@/lib/sounds";
+import { playNewOrderAlert, playOrderReadySound, playUrgentSound, resumeAudioContext, startTitleFlash, stopTitleFlash, startRepeatAlert, stopRepeatAlert } from "@/lib/sounds";
 import { AlertTestButton } from "@/components/dashboard/push-alert-card";
 import type { Order, OrderStatus } from "@/types/database";
 import {
@@ -596,6 +596,15 @@ export default function ComandaKDS({ vendorId, vendorName, accessToken, prepTime
       window.removeEventListener("keydown", stop);
     };
   }, []);
+
+  // Repetición de alerta: mientras haya pedidos "new" sin aceptar, el beep
+  // suena cada 30s. Se detiene al aceptar o cuando no quedan pendientes.
+  const hasNewOrders = orders.some((o) => o.status === "new");
+  useEffect(() => {
+    if (hasNewOrders) startRepeatAlert(30000);
+    else stopRepeatAlert();
+    return () => stopRepeatAlert();
+  }, [hasNewOrders]);
 
   // Ledger offline (F5): pedidos vendidos sin red, pendientes de sync. Se
   // mergean con los del servidor (el polling los preserva: nunca vienen con

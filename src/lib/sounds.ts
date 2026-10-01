@@ -104,3 +104,26 @@ export function resumeAudioContext() {
     if (audioCtx.state === "suspended") audioCtx.resume();
   } catch {}
 }
+
+let repeatAlertTimer: ReturnType<typeof setInterval> | null = null;
+
+/**
+ * Repite el beep de pedido nuevo cada `intervalMs` (default 30s) mientras
+ * haya pedidos sin aceptar. Llamar de nuevo reinicia el intervalo.
+ * Usar stopRepeatAlert() para detener (pedido aceptado / sin pendientes).
+ */
+export function startRepeatAlert(intervalMs = 30000) {
+  try {
+    if (repeatAlertTimer) return;
+    repeatAlertTimer = setInterval(() => playNewOrderSound(), intervalMs);
+  } catch {}
+}
+
+export function stopRepeatAlert() {
+  try {
+    if (repeatAlertTimer) {
+      clearInterval(repeatAlertTimer);
+      repeatAlertTimer = null;
+    }
+  } catch {}
+}

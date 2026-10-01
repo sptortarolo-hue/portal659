@@ -212,6 +212,7 @@ export type Purchase = {
   receipt_number: string | null;
   notes: string | null;
   total: number;
+  attachment_urls?: string[] | null;
   created_at: string;
   updated_at: string;
 };

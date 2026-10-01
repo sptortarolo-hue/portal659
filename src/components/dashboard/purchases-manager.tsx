@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { apiJson, getJson } from "@/components/dashboard/shared";
+import { ProductImage } from "@/components/product-image";
 import type { Ingredient, Supplier } from "@/types/database";
 import {
   LINE_UNITS,
@@ -54,6 +55,8 @@ function PurchaseForm({
   const [keySeq, setKeySeq] = useState(1);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [attachments, setAttachments] = useState<string[]>([]);
+  const [uploading, setUploading] = useState(false);
 
   const ingMap = useMemo(() => new Map(ingredients.map((i) => [i.id, i])), [ingredients]);
 
@@ -133,6 +136,7 @@ function PurchaseForm({
         receipt_type: receiptType,
         receipt_number: receiptNumber.trim() || null,
         notes: notes.trim() || null,
+        attachment_urls: attachments.length > 0 ? attachments : undefined,
         items: clean.map((l) =>
           l.kind === "ing"
             ? {
@@ -204,6 +208,73 @@ function PurchaseForm({
           <div>
             <Label className="text-xs">Notas (opcional)</Label>
             <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="…" />
+          </div>
+          <div className="col-span-2">
+            <Label className="text-xs">Comprobante (foto o PDF, opcional)</Label>
+            <input
+              type="file"
+              accept="image/*,application/pdf"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                setUploading(true);
+                setError("");
+                const formData = new FormData();
+                formData.append("file", file);
+                formData.append("folder", "purchases");
+                try {
+                  const res = await fetch("/api/vendor/upload", { method: "POST", body: formData });
+                  const data = await res.json().catch(() => ({}));
+                  if (!res.ok) {
+                    setError(data?.error || "No se pudo subir el archivo");
+                  } else if (data.url) {
+                    setAttachments((prev) => [...prev, data.url]);
+                  }
+                } catch {
+                  setError("No se pudo subir el archivo");
+                }
+                setUploading(false);
+                e.target.value = "";
+              }}
+              className="w-full text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-primary file:text-primary-foreground file:px-3 file:py-2 file:text-sm file:font-medium hover:file:bg-primary/90"
+              disabled={uploading}
+            />
+            {uploading && <p className="text-xs text-muted-foreground mt-1">Subiendo…</p>}
+            {attachments.length > 0 && (
+              <div className="flex flex-wrap gap-2 mt-2">
+                {attachments.map((url, i) => (
+                  <div key={i} className="relative group">
+                    {url.toLowerCase().endsWith(".pdf") ? (
+                      <a
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1 rounded-lg border border-border bg-muted px-2 py-1 text-xs text-primary hover:underline"
+                      >
+                        📄 PDF {i + 1}
+                      </a>
+                    ) : (
+                      <a href={url} target="_blank" rel="noopener noreferrer" className="block">
+                        <ProductImage
+                          src={url}
+                          name={`Comprobante ${i + 1}`}
+                          alt={`Comprobante ${i + 1}`}
+                          className="h-12 w-12 rounded-lg border border-border object-cover"
+                        />
+                      </a>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setAttachments((prev) => prev.filter((_, idx) => idx !== i))}
+                      className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-red-500 text-white text-xs font-bold leading-none opacity-0 group-hover:opacity-100 transition-opacity"
+                      title="Quitar"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
@@ -384,6 +455,7 @@ type PurchaseRow = {
   supplier_id: string | null;
   supplier_name: string | null;
   items_count: number;
+  attachment_urls?: string[] | null;
 };
 
 type PurchaseDetail = {
@@ -675,6 +747,36 @@ export function PurchasesManager({
                     </div>
                   ))}
                   {p.notes && <p className="text-xs text-muted-foreground italic">{p.notes}</p>}
+                  {p.attachment_urls && p.attachment_urls.length > 0 && (
+                    <div className="pt-2">
+                      <p className="text-xs font-semibold text-muted-foreground mb-1">Comprobantes adjuntos:</p>
+                      <div className="flex flex-wrap gap-2">
+                        {p.attachment_urls.map((url, i) => (
+                          <div key={i}>
+                            {url.toLowerCase().endsWith(".pdf") ? (
+                              <a
+                                href={url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center gap-1 rounded-lg border border-border bg-muted px-2 py-1 text-xs text-primary hover:underline"
+                              >
+                                📄 Ver PDF {i + 1}
+                              </a>
+                            ) : (
+                              <a href={url} target="_blank" rel="noopener noreferrer" className="block">
+                                <ProductImage
+                                  src={url}
+                                  name={`Comprobante ${i + 1}`}
+                                  alt={`Comprobante ${i + 1}`}
+                                  className="h-16 w-16 rounded-lg border border-border object-cover"
+                                />
+                              </a>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   <div className="pt-1">
                     <Button size="sm" variant="ghost" className="text-red-600 h-7 text-xs" onClick={() => deletePurchase(p.id)}>
                       Borrar compra (revierte costos)

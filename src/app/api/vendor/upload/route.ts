@@ -26,8 +26,9 @@ export async function POST(request: Request) {
   if (!file || !file.size) {
     return NextResponse.json({ error: "Archivo requerido" }, { status: 400 });
   }
-  if (!file.type.startsWith("image/")) {
-    return NextResponse.json({ error: "El archivo debe ser una imagen" }, { status: 400 });
+  const isPdf = file.type === "application/pdf" || (file.name || "").toLowerCase().endsWith(".pdf");
+  if (!file.type.startsWith("image/") && !isPdf) {
+    return NextResponse.json({ error: "El archivo debe ser una imagen o PDF" }, { status: 400 });
   }
   // NO permitimos SVG: se sirven con el mismo origen y un SVG con <script>
   // sería un XSS si alguien abre la URL directamente.
@@ -54,8 +55,17 @@ export async function POST(request: Request) {
   // Achicar fotos de cámara a un tamaño web (máx 1200px, calidad 80) para que
   // las fichas de Mostrador/Mesa y el micrositio carguen al instante.
   // PNG/WebP con transparencia se conservan en su formato para no romper recortes.
+  // PDF: no se procesa, se guarda tal cual.
   let outBuffer = buffer;
   let outExt = ext;
+  if (isPdf) {
+    const uploadRoot = process.env.UPLOAD_DIR || path.join(process.cwd(), "uploads");
+    const dir = path.join(uploadRoot, folder, vendor.id);
+    await mkdir(dir, { recursive: true });
+    await writeFile(path.join(dir, filename), buffer);
+    const url = `${getSiteUrl()}/uploads/${folder}/${vendor.id}/${filename}`;
+    return NextResponse.json({ url });
+  }
   try {
     const sharp = (await import("sharp")).default;
     const pipeline = sharp(buffer).rotate().resize({

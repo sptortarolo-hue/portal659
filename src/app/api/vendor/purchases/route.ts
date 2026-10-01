@@ -68,6 +68,9 @@ export async function POST(request: Request) {
       : null;
   const notes =
     body?.notes != null && String(body.notes).trim() !== "" ? String(body.notes).trim() : null;
+  const attachment_urls: string[] = Array.isArray(body?.attachment_urls)
+    ? body.attachment_urls.filter((u: unknown) => typeof u === "string" && u.trim() !== "").map((u: string) => u.trim())
+    : [];
   const rawItems: unknown = body?.items;
 
   if (supplier_id) {
@@ -227,9 +230,9 @@ export async function POST(request: Request) {
   try {
     purchaseId = await withTransaction(async (tx) => {
     const p = await tx.queryOne<{ id: string }>(
-      `INSERT INTO purchases (vendor_id, supplier_id, purchased_at, receipt_type, receipt_number, notes, total)
-       VALUES ($1, $2, COALESCE($3::date, CURRENT_DATE), $4, $5, $6, $7) RETURNING id`,
-      [gate.vendor.id, supplier_id, purchased_at, receipt_type, receipt_number, notes, total]
+      `INSERT INTO purchases (vendor_id, supplier_id, purchased_at, receipt_type, receipt_number, notes, total, attachment_urls)
+       VALUES ($1, $2, COALESCE($3::date, CURRENT_DATE), $4, $5, $6, $7, $8) RETURNING id`,
+      [gate.vendor.id, supplier_id, purchased_at, receipt_type, receipt_number, notes, total, attachment_urls]
     );
     if (!p) throw new Error("No se pudo crear la compra");
     const { logStockMovement } = await import("@/lib/stock-ledger");

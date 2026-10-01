@@ -68,6 +68,8 @@ export type CashClosingPrintData = {
   opened_at?: string | null;
   opening_amount?: number | null;
   opened_by_name?: string | null;
+  /** Quien confirmó el cierre (created_by). */
+  closed_by_name?: string | null;
   movements?: { ingresos: number; retiros: number } | null;
   expected_cash?: number | null;
 };
@@ -1092,6 +1094,10 @@ async function composeCashClose(
   printer.println(`Desde: ${formatArgDate(new Date(closing.since))} ${formatArgTime(new Date(closing.since))}`);
   printer.println(`Hasta: ${formatArgDate(new Date(closing.closed_at))} ${formatArgTime(new Date(closing.closed_at))}`);
   printer.bold(false);
+  {
+    const closer = String(closing.closed_by_name || "").trim();
+    if (closer) printer.println(`Cerrada por: ${closer}`);
+  }
   // Turno de caja: apertura + responsable + movimientos (solo cierres con turno).
   if (closing.opened_at != null) {
     const opener = String(closing.opened_by_name || "").trim();
@@ -1162,6 +1168,10 @@ async function composeCashClose(
 
   printer.alignLeft();
   printer.println("");
+  {
+    const now = new Date();
+    printer.println(`Impreso el: ${formatArgDate(now)} ${formatArgTime(now)}`);
+  }
   composeFooter(printer, width);
   printer.cut();
 }

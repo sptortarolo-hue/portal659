@@ -103,6 +103,30 @@ export function CajaManager() {
   const [movSaving, setMovSaving] = useState(false);
   // Pre-cierre (modal)
   const [showPreClose, setShowPreClose] = useState(false);
+  // Reporte consolidado por rango (estilo ZZ)
+  const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const [repFrom, setRepFrom] = useState(weekAgo);
+  const [repTo, setRepTo] = useState(todayStr);
+  const [report, setReport] = useState<any>(null);
+  const [repLoading, setRepLoading] = useState(false);
+
+  async function loadReport() {
+    setRepLoading(true);
+    try {
+      const q = new URLSearchParams();
+      if (repFrom) q.set("from", repFrom);
+      if (repTo) q.set("to", repTo);
+      const res = await fetch(`/api/vendor/cash-closing/report?${q.toString()}`);
+      const d = await res.json().catch(() => null);
+      if (res.ok && d) setReport(d);
+      else setMsg(d?.error || "No se pudo cargar el reporte.");
+    } catch {
+      setMsg("No se pudo cargar el reporte. Revisá tu conexión.");
+    } finally {
+      setRepLoading(false);
+    }
+  }
 
   const load = useCallback(async () => {
     try {
@@ -486,6 +510,60 @@ export function CajaManager() {
         </div>
       )}
 
+      <div className="border border-border rounded-xl p-4 bg-card">
+        <h3 className="font-medium text-sm mb-1">Reporte por rango</h3>
+        <p className="text-xs text-muted-foreground mb-3">
+          Consolidado de cierres (estilo ZZ) para archivar o llevar al contador.
+        </p>
+        <div className="grid grid-cols-2 gap-2 mb-2">
+          <div className="min-w-0">
+            <label className="text-xs text-muted-foreground">Desde</label>
+            <input
+              type="date"
+              value={repFrom}
+              onChange={(e) => setRepFrom(e.target.value)}
+              className="mt-1 w-full h-10 rounded-md border border-input bg-background px-2 text-sm min-w-0"
+            />
+          </div>
+          <div className="min-w-0">
+            <label className="text-xs text-muted-foreground">Hasta</label>
+            <input
+              type="date"
+              value={repTo}
+              onChange={(e) => setRepTo(e.target.value)}
+              className="mt-1 w-full h-10 rounded-md border border-input bg-background px-2 text-sm min-w-0"
+            />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <Button type="button" variant="outline" onClick={loadReport} disabled={repLoading}>
+            {repLoading ? "Cargando..." : "Ver resumen"}
+          </Button>
+          <a
+            href={`/vendor/cierres/reporte?from=${encodeURIComponent(repFrom)}&to=${encodeURIComponent(repTo)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <Button type="button" variant="outline" className="w-full">📄 A4</Button>
+          </a>
+        </div>
+        {report && (
+          <div className="mt-3 rounded-lg bg-muted/50 px-3 py-2 text-sm space-y-0.5">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">{report.count} cierres · {report.orders} pedidos</span>
+              <span className="font-bold tabular-nums">{money(report.net)}</span>
+            </div>
+            {(Number(report.sobra) > 0 || Number(report.falta) > 0) && (
+              <p className="text-xs text-muted-foreground">
+                {Number(report.sobra) > 0 && `Sobra ${money(report.sobra)}`}
+                {Number(report.sobra) > 0 && Number(report.falta) > 0 && " · "}
+                {Number(report.falta) > 0 && `Falta ${money(report.falta)}`}
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+
       <div className="border border-border rounded-xl bg-card overflow-hidden">
         <button
           onClick={() => setShowHistory((v) => !v)}
@@ -528,7 +606,7 @@ export function CajaManager() {
                     {c.notes && (
                       <p className="text-xs text-muted-foreground mt-1.5 break-words">"{c.notes}"</p>
                     )}
-                    <div className="mt-2">
+                    <div className="mt-2 flex gap-2">
                       <Button
                         variant="outline"
                         size="sm"
@@ -537,6 +615,11 @@ export function CajaManager() {
                       >
                         🖨️ {printingId === c.id ? "Enviando..." : "Imprimir"}
                       </Button>
+                      <a href={`/vendor/cierre/${c.id}`} target="_blank" rel="noopener noreferrer">
+                        <Button variant="outline" size="sm">
+                          📄 A4
+                        </Button>
+                      </a>
                     </div>
                   </div>
                 );

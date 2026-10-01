@@ -96,6 +96,13 @@ function toSlices(
     .sort((a, b) => b.revenue - a.revenue);
 }
 
+const REPORTES = [
+  { tipo: "ventas", label: "Ventas del período", desc: "Totales, evolución, canales y cobros" },
+  { tipo: "productos", label: "Productos", desc: "Ranking, categorías y sin ventas" },
+  { tipo: "cobros", label: "Medios de cobro", desc: "Efectivo, transferencia, MP y descuentos" },
+  { tipo: "clientes", label: "Clientes", desc: "Recurrentes, historial y facturación" },
+];
+
 function TodayPanel({ today }: { today: AnalyticsData["today"] }) {
   return (
     <div>
@@ -469,6 +476,43 @@ export function VendorAnalytics() {
               </div>
             </div>
           )}
+
+          <div className="border border-border rounded-xl p-4 bg-card">
+            <h3 className="font-medium text-sm mb-1">Reportes imprimibles</h3>
+            <p className="text-xs text-muted-foreground mb-3">
+              Abrí, imprimí en A4 o descargá en Excel/CSV con el rango actual ({periodLabel}).
+            </p>
+            <div className="grid sm:grid-cols-2 gap-2">
+              {REPORTES.map((r) => (
+                <div key={r.tipo} className="flex items-center gap-2 rounded-lg border border-border px-3 py-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium">{r.label}</p>
+                    <p className="text-[11px] text-muted-foreground truncate">{r.desc}</p>
+                  </div>
+                  <a
+                    href={`/vendor/reportes/${r.tipo}?range=${activeRange}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs font-medium rounded-md border border-input px-2 py-1 hover:bg-muted flex-shrink-0"
+                  >
+                    🖨️ Ver
+                  </a>
+                  <a
+                    href={`/api/vendor/analytics/report?tipo=${r.tipo}&range=${activeRange}&format=xlsx`}
+                    className="text-xs font-medium rounded-md border border-input px-2 py-1 hover:bg-muted flex-shrink-0"
+                  >
+                    ⬇️ Excel
+                  </a>
+                  <a
+                    href={`/api/vendor/analytics/report?tipo=${r.tipo}&range=${activeRange}&format=csv`}
+                    className="text-xs font-medium rounded-md border border-input px-2 py-1 hover:bg-muted flex-shrink-0"
+                  >
+                    CSV
+                  </a>
+                </div>
+              ))}
+            </div>
+          </div>
         </>
       )}
     </div>

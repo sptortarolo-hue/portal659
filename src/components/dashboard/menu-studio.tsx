@@ -800,7 +800,7 @@ export function MenuStudio({
                 <option value="nostock">Sin stock</option>
               </select>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Button
                 type="button"
                 size="sm"
@@ -812,10 +812,10 @@ export function MenuStudio({
                 💲 Modificar precios{selected.size > 0 ? ` (${selected.size})` : ""}
               </Button>
               <Button type="button" size="sm" variant="outline" onClick={() => setShowImport(true)}>
-                📥 Importar Excel
+                📥 <span className="hidden sm:inline">Importar </span>Excel
               </Button>
               <Button type="button" size="sm" variant="outline" onClick={() => setShowImportWa(true)}>
-                💬 Importar WhatsApp
+                💬 <span className="hidden sm:inline">Importar </span>WhatsApp
               </Button>
               <Button
                 type="button"

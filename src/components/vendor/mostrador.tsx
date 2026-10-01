@@ -1288,7 +1288,10 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
         }
         setFiscalPrintId(fiscalOrderId);
       }
-    } else if (!needsKitchen) {
+    } else if (!needsKitchen || direct) {
+      // Sin cocina: directo. Venta directa con cocina: tampoco hay comanda
+      // (no hay pedido en cocina que avisar), el comprobante sale directo.
+      // No-directa con cocina ya salió encadenada arriba: no llega acá.
       printSaleDoc().then((serr) => {
         if (serr) setMsg(`${baseMsg} · ⚠️ ${serr}`);
       }).catch(() => {});
@@ -1957,6 +1960,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
           </div>
         )}
         {method === "direct" ? (
+          <>
           <Button
             className="w-full"
             disabled={items.length === 0 || saving || shiftBlocked}
@@ -1965,6 +1969,15 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
           >
             {saving ? "Cobrando..." : <>Cobrar{finePointer && <span className="opacity-70 font-normal"> ⏎⏎</span>}</>}
           </Button>
+          <Button
+            className="w-full"
+            variant="outline"
+            disabled={items.length === 0 || saving || shiftBlocked}
+            onClick={() => charge(false)}
+          >
+            Cobrar sin comprobante
+          </Button>
+          </>
         ) : (
           <>
             <Button className="w-full" disabled={items.length === 0 || saving || shiftBlocked} onClick={() => charge(true)}>

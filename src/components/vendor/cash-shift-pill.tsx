@@ -28,12 +28,50 @@ export function CashShiftPill({
   onNavigate: (tab: "caja") => void;
   onRequestClose: () => void;
 }) {
-  const { shift, disponible, loading, refresh } = useCashShift(visible);
+  const { shift, disponible, loading, refresh, recordMovement } = useCashShift(visible);
   const [openOpen, setOpenOpen] = useState(false);
   const [openingAmount, setOpeningAmount] = useState("");
   const [opening, setOpening] = useState(false);
   const [openError, setOpenError] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
+  // Sub-vista de movimiento dentro del modal (null = menú del turno).
+  const [movKind, setMovKind] = useState<"ingreso" | "retiro" | null>(null);
+  const [movAmount, setMovAmount] = useState("");
+  const [movReason, setMovReason] = useState("");
+  const [movSaving, setMovSaving] = useState(false);
+  const [movError, setMovError] = useState("");
+
+  function openMenu() {
+    setMovKind(null);
+    setMovAmount("");
+    setMovReason("");
+    setMovError("");
+    setMenuOpen(true);
+  }
+
+  async function handleMovement() {
+    if (!movKind) return;
+    const amount = Number(movAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setMovError("Indicá un monto mayor a 0.");
+      return;
+    }
+    if (!movReason.trim()) {
+      setMovError("Indicá el motivo del movimiento.");
+      return;
+    }
+    setMovSaving(true);
+    setMovError("");
+    const r = await recordMovement(movKind, amount, movReason.trim());
+    setMovSaving(false);
+    if (r.ok) {
+      setMovKind(null);
+      setMovAmount("");
+      setMovReason("");
+    } else {
+      setMovError(r.error || "No se pudo registrar el movimiento.");
+    }
+  }
 
   if (!visible) return null;
 
@@ -125,7 +163,7 @@ export function CashShiftPill({
     <div className="flex-shrink-0">
       <button
         type="button"
-        onClick={() => setMenuOpen((v) => !v)}
+        onClick={openMenu}
         title={`Turno abierto desde ${fmtTime(shift.opened_at)} — tocá para gestionar`}
         className="inline-flex items-center gap-1.5 rounded-lg border border-green-300 bg-green-50 px-2.5 py-1.5 text-xs font-bold text-green-700 hover:bg-green-100 transition-colors"
       >
@@ -135,22 +173,73 @@ export function CashShiftPill({
       {/* Mini-modal centrado vía portal (no popover absolute: la fila mobile
           del header tiene overflow-x-auto y lo recortaba). */}
       {menuOpen && createPortal(
-        <div className="fixed inset-0 z-[70] bg-black/50 flex items-center justify-center p-4" onClick={() => setMenuOpen(false)}>
+        <div className="fixed inset-0 z-[70] bg-black/50 flex items-center justify-center p-4" onClick={() => !movSaving && setMenuOpen(false)}>
           <div className="bg-card rounded-2xl p-5 w-full max-w-xs space-y-3" onClick={(e) => e.stopPropagation()}>
-            <p className="text-sm font-semibold">Turno abierto</p>
-            <p className="text-xs text-muted-foreground">
-              Desde {fmtTime(shift.opened_at)}
-              {shift.opened_by_name ? ` · ${shift.opened_by_name}` : ""} · fondo {money(shift.opening_amount)}
-            </p>
-            <p className="font-display text-2xl font-bold tabular-nums">{money(disponible)}</p>
-            <div className="grid grid-cols-2 gap-2">
-              <Button type="button" variant="outline" size="sm" onClick={() => { setMenuOpen(false); onNavigate("caja"); }}>
-                Ir a caja
-              </Button>
-              <Button type="button" size="sm" onClick={() => { setMenuOpen(false); onRequestClose(); }}>
-                🔒 Cerrar
-              </Button>
-            </div>
+            {movKind ? (
+              <>
+                <p className="text-sm font-semibold">
+                  {movKind === "ingreso" ? "+ Ingresar efectivo" : "− Retirar efectivo"}
+                </p>
+                {movKind === "retiro" && (
+                  <p className="text-xs text-muted-foreground">Disponible: {money(disponible)}</p>
+                )}
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground">$</span>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    min="0"
+                    step="0.01"
+                    value={movAmount}
+                    onChange={(e) => setMovAmount(e.target.value)}
+                    placeholder="Monto"
+                    aria-label="Monto del movimiento"
+                    className="flex-1 min-w-0 h-10 rounded-md border border-input bg-background px-3 text-sm"
+                  />
+                </div>
+                <input
+                  type="text"
+                  value={movReason}
+                  onChange={(e) => setMovReason(e.target.value)}
+                  placeholder={movKind === "ingreso" ? "Motivo (ej: cambio)" : "Motivo (ej: pago proveedor)"}
+                  aria-label="Motivo del movimiento"
+                  maxLength={140}
+                  className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
+                />
+                {movError && <p className="text-xs text-red-600">{movError}</p>}
+                <div className="grid grid-cols-2 gap-2">
+                  <Button type="button" variant="outline" size="sm" onClick={() => setMovKind(null)} disabled={movSaving}>
+                    Volver
+                  </Button>
+                  <Button type="button" size="sm" onClick={handleMovement} disabled={movSaving}>
+                    {movSaving ? "Guardando..." : "Confirmar"}
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-sm font-semibold">Turno abierto</p>
+                <p className="text-xs text-muted-foreground">
+                  Desde {fmtTime(shift.opened_at)}
+                  {shift.opened_by_name ? ` · ${shift.opened_by_name}` : ""} · fondo {money(shift.opening_amount)}
+                </p>
+                <p className="font-display text-2xl font-bold tabular-nums">{money(disponible)}</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button type="button" variant="outline" size="sm" onClick={() => setMovKind("ingreso")}>
+                    + Ingresar
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" onClick={() => setMovKind("retiro")}>
+                    − Retirar
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" onClick={() => { setMenuOpen(false); onNavigate("caja"); }}>
+                    Ir a caja
+                  </Button>
+                  <Button type="button" size="sm" onClick={() => { setMenuOpen(false); onRequestClose(); }}>
+                    🔒 Cerrar
+                  </Button>
+                </div>
+              </>
+            )}
           </div>
         </div>,
         document.body

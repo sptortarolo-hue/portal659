@@ -48,6 +48,30 @@ export function useCashShift(enabled = true, pollMs = 30000) {
     }
   }, []);
 
+  // Movimiento manual de efectivo (ingreso/retiro con motivo). Refresca el
+  // turno para que el disponible quede actualizado. Mismas validaciones
+  // que el tab Caja (el servidor bloquea el retiro sin disponible).
+  const recordMovement = useCallback(
+    async (kind: "ingreso" | "retiro", amount: number, reason: string): Promise<{ ok: boolean; error?: string }> => {
+      try {
+        const res = await fetch("/api/vendor/cash-closing/movement", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ kind, amount, reason }),
+        });
+        const d = await res.json().catch(() => null);
+        if (res.ok && d?.ok) {
+          await refresh();
+          return { ok: true };
+        }
+        return { ok: false, error: d?.error || "No se pudo registrar el movimiento." };
+      } catch {
+        return { ok: false, error: "No se pudo registrar el movimiento. Revisá tu conexión." };
+      }
+    },
+    [refresh]
+  );
+
   useEffect(() => {
     if (!enabled) {
       setLoading(false);
@@ -67,5 +91,5 @@ export function useCashShift(enabled = true, pollMs = 30000) {
     };
   }, [enabled, pollMs, refresh]);
 
-  return { shift, movements, disponible, requireOpenShift, loading, refresh };
+  return { shift, movements, disponible, requireOpenShift, loading, refresh, recordMovement };
 }

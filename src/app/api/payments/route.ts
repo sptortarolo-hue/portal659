@@ -138,9 +138,16 @@ export async function POST(request: Request) {
       // vez de al checkout (el "te lleva a MP pero no al lugar para pagar").
       const isTest = mpToken.startsWith("TEST-");
       const initPoint = isTest && data.sandbox_init_point ? data.sandbox_init_point : data.init_point;
+      const initKind = isTest
+        ? data.sandbox_init_point
+          ? "sandbox"
+          : "prod-fallback"
+        : data.init_point
+          ? "prod"
+          : "MISSING";
       const itemsSum = items.reduce((s: number, i: any) => s + Number(i.price) * Number(i.qty), 0);
       console.log(
-        `[MP preference] ok id=${data.id} vendor=${vendorId} sandbox=${isTest} items=${items.length} itemsSum=${Math.round(itemsSum)} total=${total} method=${method || "?"}` +
+        `[MP preference] ok id=${data.id} vendor=${vendorId} sandbox=${isTest} init=${initKind} items=${items.length} itemsSum=${Math.round(itemsSum)} total=${total} method=${method || "?"}` +
           ` prices=[${items.map((i: any) => Number(i.price)).join(",")}]`
       );
       return NextResponse.json({

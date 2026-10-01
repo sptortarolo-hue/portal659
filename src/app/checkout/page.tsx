@@ -540,6 +540,9 @@ export default function CheckoutPage() {
       } catch { /* noop */ }
       clear();
       window.location.href = data.initPoint;
+    } else {
+      setError("No se pudo iniciar el pago con Mercado Pago. Probá de nuevo.");
+      setLoading(false);
     }
   }
 

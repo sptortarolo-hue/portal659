@@ -250,10 +250,10 @@ async function renderStoreHeader(
       lines = lines.slice(0, 2);
       ctx.font = `${size}px ${FONT_NAME}`;
       let last = lines[1];
-      while (last.length > 1 && ctx.measureText(last + "â€¦").width > textArea) {
+      while (last.length > 1 && ctx.measureText(last + "...").width > textArea) {
         last = last.slice(0, -1);
       }
-      lines[1] = last + "â€¦";
+      lines[1] = last + "...";
     }
 
     const lineHeight = Math.round(size * 1.2);
@@ -1183,11 +1183,88 @@ export type LabelPrintData = {
   code: string;
   /** Cantidad de etiquetas (1-50). */
   copies?: number;
+  /** 'kg' → el precio es por kilo (se muestra $X /kg). */
+  unit?: string | null;
+  /** Precio de lista si hay promo (muestra ANTES + AHORRÁS). */
+  oldPrice?: number | null;
 };
 
 /**
- * Etiqueta de góndola: nombre + precio grande + CODE128.
- * Sin encabezado ni pie (no es un ticket). Papel de etiquetas ≠ rollo.
+ * Bitmap de la etiqueta de góndola: nombre del producto (bold, hasta 2 líneas)
+ * a la IZQUIERDA + logo circular del comercio justificado a la DERECHA (~30%).
+ * Espejo del encabezado de tickets (misma maquinaria sharp+pureimage).
+ * Devuelve PNG blanco/negro listo para printImageBuffer, o null si falla.
+ */
+async function renderLabelHeader(
+  vendor: PrinterVendor,
+  widthPx: number,
+  circularPng: Buffer,
+  productName: string
+): Promise<Buffer | null> {
+  try {
+    const PI = await loadPureImage();
+    const sharp = await loadSharp();
+    const name = String(productName || "").trim() || "Producto";
+    const logoD = Math.round(widthPx * 0.3);
+    const pad = 12;
+    const logo = await decodePng(PI, circularPng);
+
+    const realH = logoD + pad * 2;
+    const canvas = PI.make(widthPx, realH);
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "white";
+    ctx.fillRect(0, 0, widthPx, realH);
+    ctx.textAlign = "left";
+    ctx.textBaseline = "alphabetic";
+
+    const textArea = widthPx - pad * 2 - logoD - 16;
+
+    let size = 44;
+    let lines: string[] = [];
+    while (size >= 22) {
+      ctx.font = `${size}px ${FONT_NAME}`;
+      lines = wrapNameLines(ctx, name, textArea);
+      if (lines.length >= 1 && lines.length <= 2) break;
+      size -= 4;
+    }
+    if (lines.length > 2) {
+      lines = lines.slice(0, 2);
+      ctx.font = `${size}px ${FONT_NAME}`;
+      let last = lines[1];
+      while (last.length > 1 && ctx.measureText(last + "...").width > textArea) {
+        last = last.slice(0, -1);
+      }
+      lines[1] = last + "...";
+    }
+
+    const lineHeight = Math.round(size * 1.2);
+    const blockH = lines.length * lineHeight;
+    const textTop = Math.round((realH - blockH) / 2);
+    const logoY = Math.round((realH - logoD) / 2);
+
+    ctx.drawImage(logo, widthPx - pad - logoD, logoY, logoD, logoD);
+    ctx.fillStyle = "black";
+    ctx.font = `${size}px ${FONT_NAME}`;
+    lines.forEach((ln, i) => ctx.fillText(ln, pad, textTop + (i + 1) * lineHeight));
+
+    const raw = await encodePng(PI, canvas);
+    return await sharp(raw)
+      .grayscale()
+      .normalise()
+      .threshold(150)
+      .png()
+      .toBuffer();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Etiqueta de góndola estilo supermercado:
+ *  - Encabezado: nombre (2 líneas) a la izquierda + logo a la derecha (bitmap).
+ *  - Precio grande ($X /kg si unit='kg'); promo: ANTES + precio promo + AHORRÁS.
+ *  - CODE128 + código.
+ * Sin pie (no es un ticket). Papel de etiquetas ≠ rollo.
  */
 async function composeLabel(
   printer: any,
@@ -1197,27 +1274,76 @@ async function composeLabel(
   const width = vendor.paper_size === "58mm" ? 32 : 48;
   const copies = Math.min(50, Math.max(1, Math.floor(Number(label.copies) || 1)));
   const code = String(label.code || "").trim().slice(0, 48);
-  const name = (String(label.name || "").trim() || "Producto").slice(0, width * 2);
-  for (let c = 0; c < copies; c++) {
+  const price = Number(label.price) || 0;
+  const oldPrice = Number(label.oldPrice ?? NaN);
+  const hasPromo =
+    Number.isFinite(oldPrice) && oldPrice > 0 && Math.round(oldPrice * 100) !== Math.round(price * 100);
+  const isKg = String(label.unit || "").trim().toLowerCase() === "kg";
+  const priceLabel = isKg
+    ? `$${price.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/kg`
+    : `$${price.toLocaleString("es-AR")}`;
+
+  // Encabezado bitmap: nombre izquierda + logo derecha. Fallback: texto.
+  let printedHeader = false;
+  if (vendor.print_logo !== false && vendor.logo_url) {
+    const circular = await makeCircularLogo(vendor.logo_url);
+    if (circular) {
+      const widthPx = width >= 48 ? 576 : 384;
+      const key = `label|${vendor.id}|${vendor.logo_url}|${widthPx}|${label.name}`;
+      let img = headerImageCache.get(key) || null;
+      if (!img) {
+        img = await renderLabelHeader(vendor, widthPx, circular, label.name);
+        if (img) {
+          if (headerImageCache.size >= 200) headerImageCache.clear();
+          headerImageCache.set(key, img);
+        }
+      }
+      if (img) {
+        printer.alignCenter();
+        await printer.printImageBuffer(img);
+        printer.newLine();
+        printedHeader = true;
+      }
+    }
+  }
+  if (!printedHeader) {
+    const name = (String(label.name || "").trim() || "Producto").slice(0, width * 2);
     printer.alignCenter();
     printer.bold(true);
     for (let i = 0; i < name.length; i += width) {
       printer.println(name.slice(i, i + width));
     }
+    printer.bold(false);
+  }
+
+  // Bloque de precios (estilo supermercado).
+  printer.alignCenter();
+  if (hasPromo) {
+    printer.println(`ANTES: $${oldPrice.toLocaleString("es-AR")}`);
     printer.setTextSize(2, 2);
-    printer.println(`$${Number(label.price).toLocaleString("es-AR")}`);
+    printer.bold(true);
+    printer.println(priceLabel);
     printer.setTextSize(0, 0);
     printer.bold(false);
-    if (code) {
-      try {
-        printer.code128(code, { width: "MEDIUM", height: 64, text: 2 });
-      } catch {
-        printer.println(code);
-      }
+    const saving = Math.round((oldPrice - price) * 100) / 100;
+    if (saving > 0) printer.println(`AHORRAS $${saving.toLocaleString("es-AR")}`);
+  } else {
+    printer.setTextSize(2, 2);
+    printer.bold(true);
+    printer.println(priceLabel);
+    printer.setTextSize(0, 0);
+    printer.bold(false);
+  }
+
+  if (code) {
+    try {
+      printer.code128(code, { width: "MEDIUM", height: 64, text: 2 });
+    } catch {
       printer.println(code);
     }
-    printer.cut();
+    printer.println(code);
   }
+  printer.cut();
 }
 
 async function composeTest(printer: any, vendor: PrinterVendor): Promise<void> {

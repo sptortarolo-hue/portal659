@@ -151,46 +151,73 @@ export async function POST(request: Request) {
     return printResponse(result);
   }
 
-  // Etiqueta de góndola: por productId (valida dueño + trae nombre/precio/SKU).
+  // Etiqueta de góndola: por productId único o productIds[] (lote, máx 50).
+  // Valida dueño + trae nombre/precio/promo/SKU/unit de cada producto.
   if (type === "label") {
-    const productId = typeof body.productId === "string" && body.productId ? body.productId : null;
-    if (!productId) {
+    const singleId = typeof body.productId === "string" && body.productId ? body.productId : null;
+    const idsList = Array.isArray(body.productIds)
+      ? body.productIds
+          .filter((v: unknown): v is string => typeof v === "string" && !!v)
+          .slice(0, 50)
+      : [];
+    const ids = singleId ? [singleId] : idsList;
+    if (ids.length === 0) {
       return NextResponse.json({ ok: false, error: "productId requerido" }, { status: 400 });
     }
-    let product: { name: string; price: number; promo_price: number | null; sku: string | null } | null | undefined = null;
+    const selectSql = (skuExpr: string) =>
+      `SELECT id, name, price, promo_price, unit, ${skuExpr} FROM products WHERE vendor_id = $1 AND id = ANY($2::uuid[]) ORDER BY name`;
+    let products: Array<{
+      id: string;
+      name: string;
+      price: number;
+      promo_price: number | null;
+      unit: string | null;
+      sku: string | null;
+    }> = [];
     try {
-      product = await queryOne<{ name: string; price: number; promo_price: number | null; sku: string | null }>(
-        `SELECT name, price, promo_price, sku FROM products WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
-        [productId, vendor.id]
-      );
+      products = await queryMany(selectSql("sku"), [vendor.id, ids]);
     } catch {
-      product = await queryOne<{ name: string; price: number; promo_price: number | null; sku: string | null }>(
-        `SELECT name, price, promo_price, NULL::text AS sku FROM products WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
-        [productId, vendor.id]
-      );
+      products = await queryMany(selectSql("NULL::text AS sku"), [vendor.id, ids]);
     }
-    if (!product) {
+    if (products.length === 0) {
       return NextResponse.json({ ok: false, error: "Producto no encontrado" }, { status: 404 });
     }
-    const code = String((product as any)?.sku || "").trim();
-    if (!code) {
-      return NextResponse.json({ ok: false, error: "El producto no tiene código cargado" }, { status: 400 });
+    const withCode = products.filter((p) => String((p as any).sku || "").trim());
+    const sinCodigo = products
+      .filter((p) => !String((p as any).sku || "").trim())
+      .map((p) => String(p.name));
+    if (withCode.length === 0) {
+      return NextResponse.json({ ok: false, error: "Los productos no tienen código cargado" }, { status: 400 });
     }
     const copies = Math.min(50, Math.max(1, Math.floor(Number(body.copies) || 1)));
-    const result = await dispatchPrint({
-      vendor,
-      type: "label",
-      extra: {
-        label: {
-          name: String(product.name || "Producto"),
-          price: Number(product.promo_price ?? product.price) || 0,
-          code,
-          copies,
+    let printed = 0;
+    let lastResult: { ok: boolean; error?: string } = { ok: false };
+    for (const p of withCode) {
+      const result = await dispatchPrint({
+        vendor,
+        type: "label",
+        extra: {
+          label: {
+            name: String(p.name || "Producto"),
+            price: Number(p.promo_price ?? p.price) || 0,
+            oldPrice: p.promo_price != null ? Number(p.price) : null,
+            unit: p.unit ?? null,
+            code: String((p as any).sku).trim(),
+            copies,
+          },
         },
-      },
+      });
+      await recordLastPrint(vendor.id, result);
+      lastResult = result;
+      if (result.ok) printed++;
+    }
+    return NextResponse.json({
+      ok: lastResult.ok,
+      printed,
+      total: withCode.length,
+      sinCodigo,
+      ...(lastResult.ok ? {} : { error: lastResult.error || "No se pudo imprimir" }),
     });
-    await recordLastPrint(vendor.id, result);
-    return printResponse(result);
   }
 
   if (!orderId) {

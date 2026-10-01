@@ -19,6 +19,7 @@ import { VolumeEditor } from "@/components/dashboard/volume-editor";
 import { MenuImportModal } from "@/components/dashboard/menu-import";
 import { MenuImportWaModal } from "@/components/dashboard/menu-import-wa";
 import { ProductsTable } from "@/components/dashboard/products-table";
+import { ProductImage } from "@/components/product-image";
 import { ProductDrawer } from "@/components/dashboard/product-drawer";
 import { RecipeEditor, type RecipeLinkInfo } from "@/components/dashboard/recipe-editor";
 import { PlanLock } from "@/components/vendor/plan-lock";
@@ -45,6 +46,10 @@ type Offer = {
   pack_size?: number | null;
   /** Solo sale en la sección Promo (no figura en el menú). */
   promo_only?: boolean;
+  /** Unidad de venta: 'unidad' o 'kg' (precio por kilo). */
+  unit?: string | null;
+  /** Código de barras / SKU (etiquetas de góndola). */
+  sku?: string | null;
 };
 
 type CostInfo = { cost: number | null; pct: number | null; status: "ok" | "warn" | "bad" | "none" };
@@ -74,9 +79,95 @@ type Props = {
   vendorId?: string | null;
   /** Muestra el Kit heladería en la solapa Opciones (solo gastronomía). */
   enableHeladeriaKit?: boolean;
+  /** Logo del comercio (vista previa de etiquetas de góndola). */
+  vendorLogo?: string | null;
+  /** Nombre del comercio (fallback del preview de etiquetas). */
+  vendorName?: string | null;
 };
 
 type View = "productos" | "categorias" | "opciones" | "volumen";
+
+/**
+ * Vista previa de la etiqueta de góndola (estilo supermercado): nombre
+ * (hasta 2 líneas) a la izquierda + logo del comercio justificado a la
+ * derecha; debajo precio grande (/kg si es por peso), bloque promo y
+ * código de barras visual (barras derivadas del SKU — no escaneable).
+ */
+function LabelPreview({
+  offer,
+  logoUrl,
+  storeName,
+}: {
+  offer: Offer | null;
+  logoUrl: string | null;
+  storeName: string | null;
+}) {
+  if (!offer) {
+    return (
+      <div className="rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+        Elegí productos para ver la vista previa de la etiqueta.
+      </div>
+    );
+  }
+  const sku = (offer.sku || "").trim();
+  const isKg = String(offer.unit || "").trim().toLowerCase() === "kg";
+  const price = Number(offer.promo_price ?? offer.price) || 0;
+  const oldPrice = offer.promo_price != null ? Number(offer.price) : null;
+  const hasPromo = oldPrice != null && Math.round(oldPrice * 100) !== Math.round(price * 100);
+  const saving = hasPromo ? Math.round((oldPrice - price) * 100) / 100 : 0;
+  const fmt = (n: number) =>
+    n.toLocaleString("es-AR", {
+      minimumFractionDigits: isKg ? 2 : 0,
+      maximumFractionDigits: 2,
+    });
+
+  const seed = sku || "000000000000";
+  const bars: number[] = [];
+  for (let i = 0; i < 40; i++) {
+    const c = seed.charCodeAt(i % seed.length) + i * 7;
+    bars.push(1 + (c % 3));
+  }
+
+  return (
+    <div className="rounded-xl border border-border bg-card p-3 shadow-sm">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <p className="font-semibold text-sm leading-tight break-words line-clamp-2">{offer.name}</p>
+        </div>
+        {logoUrl && (
+          <ProductImage
+            src={logoUrl}
+            name={storeName || "?"}
+            alt={storeName || "Logo"}
+            className="h-10 w-10 rounded-full flex-shrink-0"
+          />
+        )}
+      </div>
+      <div className="text-center mt-2">
+        {hasPromo && <p className="text-xs text-muted-foreground">ANTES: ${fmt(oldPrice)}</p>}
+        <p className="text-2xl font-bold tabular-nums leading-tight">
+          ${fmt(price)}
+          {isKg && <span className="text-sm font-semibold">/kg</span>}
+        </p>
+        {hasPromo && saving > 0 && (
+          <p className="inline-block bg-yellow-200 text-yellow-900 rounded px-1.5 py-0.5 text-[11px] font-medium mt-0.5">
+            AHORRÁS ${fmt(saving)}
+          </p>
+        )}
+      </div>
+      {sku && (
+        <div className="mt-2">
+          <div className="flex items-stretch justify-center gap-px h-9">
+            {bars.map((w, i) => (
+              <span key={i} className="bg-black" style={{ width: w }} />
+            ))}
+          </div>
+          <p className="text-center text-[10px] tracking-widest text-muted-foreground mt-1">{sku}</p>
+        </div>
+      )}
+    </div>
+  );
+}
 
 const VIEWS: { id: View; icon: string; label: string }[] = [
   { id: "productos", icon: "🍽️", label: "Productos" },
@@ -125,6 +216,8 @@ export function MenuStudio({
   enableHeladeriaKit = false,
   canEditCost = false,
   vendorId = null,
+  vendorLogo = null,
+  vendorName = null,
 }: Props) {
   const [view, setView] = useState<View>("productos");
   const [showImport, setShowImport] = useState(false);
@@ -132,6 +225,8 @@ export function MenuStudio({
   // Etiquetas de góndola (requiere impresora + SKU en el producto).
   const [showLabels, setShowLabels] = useState(false);
   const [labelProductId, setLabelProductId] = useState("");
+  const [labelChecked, setLabelChecked] = useState<Set<string>>(new Set());
+  const [labelSearch, setLabelSearch] = useState("");
   const [labelCopies, setLabelCopies] = useState("5");
   const [labelBusy, setLabelBusy] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -562,6 +657,23 @@ export function MenuStudio({
     });
   }
 
+  // Etiquetas: toggle del lote + el preview sigue al último tildado.
+  function toggleLabelCheck(id: string) {
+    setLabelChecked((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+    setLabelProductId(id);
+  }
+
+  const labelSearchOffers = useMemo(() => {
+    const q = labelSearch.trim().toLowerCase();
+    if (!q) return offers;
+    return offers.filter((o) => o.name.toLowerCase().includes(q) || (o.sku || "").toLowerCase().includes(q));
+  }, [offers, labelSearch]);
+
   // --- Precios masivos -----------------------------------------------------
   const bulkTargets = useMemo(() => {
     const scoped = selected.size > 0 ? offers.filter((o) => selected.has(o.id)) : filteredOffers;
@@ -822,8 +934,10 @@ export function MenuStudio({
                 size="sm"
                 variant="outline"
                 onClick={() => {
-                  const first = offers.find((o) => (o as any).sku);
+                  const first = offers.find((o) => o.sku);
                   setLabelProductId(first ? first.id : offers[0]?.id || "");
+                  setLabelChecked(new Set(first ? [first.id] : []));
+                  setLabelSearch("");
                   setLabelCopies("5");
                   setShowLabels(true);
                 }}
@@ -954,7 +1068,7 @@ export function MenuStudio({
         isComercio={isComercio}
       />
 
-      {/* Etiquetas de góndola (requiere SKU + impresora con plan) */}
+      {/* Etiquetas de góndola estilo supermercado (requiere SKU + impresora con plan) */}
       <Modal
         open={showLabels}
         onClose={() => setShowLabels(false)}
@@ -964,7 +1078,7 @@ export function MenuStudio({
             <Button
               type="button"
               className="flex-1"
-              disabled={labelBusy || !labelProductId}
+              disabled={labelBusy || labelChecked.size === 0}
               onClick={async () => {
                 setLabelBusy(true);
                 try {
@@ -973,13 +1087,17 @@ export function MenuStudio({
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
                       type: "label",
-                      productId: labelProductId,
+                      productIds: Array.from(labelChecked),
                       copies: Math.min(50, Math.max(1, Math.floor(Number(labelCopies) || 1))),
                     }),
                   });
                   const data = await res.json().catch(() => ({}));
                   if (res.ok && data.ok) {
-                    setMsg("Etiquetas enviadas a la impresora ✓");
+                    const sin =
+                      Array.isArray(data.sinCodigo) && data.sinCodigo.length > 0
+                        ? ` · Sin código: ${data.sinCodigo.join(", ")}`
+                        : "";
+                    setMsg(`Etiquetas enviadas a la impresora ✓ (${data.printed ?? 0}/${data.total ?? 0})${sin}`);
                     setShowLabels(false);
                   } else {
                     setMsg(data.error || "No se pudieron imprimir");
@@ -990,7 +1108,9 @@ export function MenuStudio({
                 setLabelBusy(false);
               }}
             >
-              {labelBusy ? "Imprimiendo…" : "Imprimir"}
+              {labelBusy
+                ? "Imprimiendo…"
+                : `Imprimir ${labelChecked.size * Math.max(1, Math.floor(Number(labelCopies) || 1))} etiquetas`}
             </Button>
             <Button type="button" variant="outline" onClick={() => setShowLabels(false)}>
               Cancelar
@@ -999,23 +1119,57 @@ export function MenuStudio({
         }
       >
         <div className="space-y-3">
+          <LabelPreview
+            offer={offers.find((o) => o.id === labelProductId) || null}
+            logoUrl={vendorLogo}
+            storeName={vendorName}
+          />
           <div>
-            <Label>Producto (con código)</Label>
-            <select
-              value={labelProductId}
-              onChange={(e) => setLabelProductId(e.target.value)}
-              className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-            >
-              <option value="">Elegí producto…</option>
-              {offers.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.name}{(o as any).sku ? ` · ${(o as any).sku}` : " · sin código"}
-                </option>
-              ))}
-            </select>
+            <div className="flex items-center justify-between gap-2">
+              <Label>Productos (con código)</Label>
+              <span className="text-xs text-muted-foreground tabular-nums">
+                {labelChecked.size} seleccionado{labelChecked.size === 1 ? "" : "s"}
+              </span>
+            </div>
+            <Input
+              value={labelSearch}
+              onChange={(e) => setLabelSearch(e.target.value)}
+              placeholder="🔍 Buscar…"
+              className="mt-1 h-9"
+            />
+            <div className="mt-2 rounded-md border border-input max-h-56 overflow-y-auto divide-y divide-border">
+              {labelSearchOffers.length === 0 && (
+                <p className="p-3 text-sm text-muted-foreground text-center">
+                  {offers.length === 0 ? "Sin productos." : "Nada coincide con la búsqueda."}
+                </p>
+              )}
+              {labelSearchOffers.map((o) => {
+                const sku = o.sku || "";
+                const checked = labelChecked.has(o.id);
+                return (
+                  <label
+                    key={o.id}
+                    className={`flex items-center gap-2 px-3 py-2 text-sm ${sku ? "cursor-pointer hover:bg-muted/50" : "opacity-50"}`}
+                  >
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 accent-primary flex-shrink-0"
+                      checked={checked}
+                      disabled={!sku}
+                      onChange={() => toggleLabelCheck(o.id)}
+                      aria-label={`Seleccionar ${o.name}`}
+                    />
+                    <span className="min-w-0 flex-1 truncate">{o.name}</span>
+                    <span className="text-xs text-muted-foreground tabular-nums flex-shrink-0">
+                      {sku ? sku : "sin código"}
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
           </div>
           <div>
-            <Label>Copias (1-50)</Label>
+            <Label>Copias por producto (1-50)</Label>
             <Input
               type="number"
               min={1}
@@ -1026,7 +1180,7 @@ export function MenuStudio({
             />
           </div>
           <p className="text-xs text-muted-foreground">
-            Nombre + precio + código de barras. Usá papel de etiquetas (no el rollo de tickets).
+            Logo + nombre + precio (con promo) + código de barras. Usá papel de etiquetas (no el rollo de tickets).
           </p>
         </div>
       </Modal>

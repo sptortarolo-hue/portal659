@@ -1676,6 +1676,8 @@ function VendorDashboardInner() {
                     enableHeladeriaKit={isGastro}
                     canEditCost={effectivePlan.can("inventory") || (isGastro && effectivePlan.can("recipes"))}
                     vendorId={vendor?.id}
+                    vendorLogo={vendor?.logo_url || null}
+                    vendorName={vendor?.store_name || null}
                   />
                   </TabErrorBoundary>
                 ) : (

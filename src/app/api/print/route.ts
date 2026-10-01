@@ -250,9 +250,12 @@ export async function POST(request: Request) {
   }
 
   const resolvedType = type === "ticket" ? "ticket" : type === "retiro" ? "retiro" : type === "despacho" ? "despacho" : "comanda";
+  // Venta directa: ticket completo en todas las verticales, sin cartel
+  // grande ni talones: "Mostrador · Nro. X" en tamaño normal.
+  const isDirectOrder = (order as any)?.is_direct === true;
   // Retail (moda/comercio): el ticket sale como COMPROBANTE con Nro. diario
-  // y datos del cliente; gastronomía mantiene TICKET.
-  const isRetailVendor = vendor.vertical === "moda" || vendor.vertical === "comercio";
+  // y datos del cliente; gastronomía mantiene TICKET. La directa no usa retail.
+  const isRetailVendor = !isDirectOrder && (vendor.vertical === "moda" || vendor.vertical === "comercio");
   // Bloque fiscal: si el pedido tiene comprobante ARCA, el ticket lo imprime
   // con CAE + QR (tolerante a migración fiscal sin aplicar).
   let fiscal: FiscalPrintInfo | null = null;
@@ -343,9 +346,11 @@ export async function POST(request: Request) {
     extra: {
       tableName,
       subLabel,
-      ...(resolvedType === "ticket" && isRetailVendor
-        ? { docTitle: "COMPROBANTE", retail: true }
-        : {}),
+      ...(resolvedType === "ticket" && isDirectOrder
+        ? { docTitle: "TICKET", direct: true }
+        : resolvedType === "ticket" && isRetailVendor
+          ? { docTitle: "COMPROBANTE", retail: true }
+          : {}),
       ...(await fiadoBalanceExtra(vendor.id, order)),
     },
   });

@@ -1026,9 +1026,11 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
         });
       }
       if (withReceipt && !isDelivery) {
-        const kind = (isRetail ? "ticket" : "retiro") as "ticket" | "retiro";
+        // Venta directa: TICKET completo en todas las verticales.
+        const directKind = direct || isRetail;
+        const kind = (directKind ? "ticket" : "retiro") as "ticket" | "retiro";
         printDocs.push({
-          doc: isRetail ? "TICKET" : "RETIRO",
+          doc: directKind ? "TICKET" : "RETIRO",
           kind,
           payload: {
             items: payload.items,
@@ -1163,17 +1165,18 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
         return `${docName} no salió: sin conexión con la impresora`;
       }
     };
-    // Retail: comprobante de venta (ticket con ítems y total). Gastro: comanda
-    // si requiere cocina y recién al terminar el stub de retiro (evita dos
-    // trabajos concurrentes a la impresora).
-    const saleDocName = isRetail ? "El comprobante" : "El comprobante de retiro";
+    // Venta directa: ticket completo en todas las verticales (sin cartel
+    // grande ni talones). No-directa: retail = ticket COMPROBANTE, gastro =
+    // comanda si requiere cocina y recién al terminar el stub de retiro
+    // (evita dos trabajos concurrentes a la impresora).
+    const saleDocName = direct || isRetail ? "El comprobante" : "El comprobante de retiro";
     const printSaleDoc = async (): Promise<string | null> => {
       if (withReceipt && !isDelivery) {
         return checkPrintRes(
           fetch("/api/print", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ orderId: data.orderId, type: isRetail ? "ticket" : "retiro" }),
+            body: JSON.stringify({ orderId: data.orderId, type: direct || isRetail ? "ticket" : "retiro" }),
           }),
           saleDocName
         );

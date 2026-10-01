@@ -611,6 +611,8 @@ export type ReceiptExtra = {
   docTitle?: string;
   /** Comprobante de venta retail: Nro. diario grande + datos del cliente. */
   retail?: boolean;
+  /** Venta directa: ticket completo con "Mostrador · Nro. X" en tamaño normal. */
+  direct?: boolean;
   /** Saldo de cuenta corriente (fiado) para imprimir en el ticket. */
   fiadoBalance?: number;
   /** Factura electrónica ARCA (se imprime bloque fiscal con CAE + QR). */
@@ -842,8 +844,13 @@ async function composeReceipt(
   if (extra?.subLabel) printer.println(extra.subLabel);
   printer.println(separator);
 
-  // Retail: número diario grande (el que canta caja/mostrador).
-  if (extra?.retail && order.pickup_number != null) {
+  // Venta directa: mismo cuerpo que retiro/envío pero sin cartel grande
+  // y sin talones: solo "Mostrador · Nro. X" en tamaño normal.
+  if (extra?.direct && order.pickup_number != null) {
+    printer.println(`Mostrador · Nro. ${order.pickup_number}`);
+    printer.println(separator);
+  } else if (extra?.retail && order.pickup_number != null) {
+    // Retail: número diario grande (el que canta caja/mostrador).
     printer.bold(true);
     printer.setTextSize(2, 2);
     const m = order.method === "delivery" ? "ENVÍO" : "RETIRO";
@@ -906,15 +913,16 @@ async function composeReceipt(
     printer.println(`Saldo cta. cte.: $${Number(extra.fiadoBalance).toLocaleString("es-AR")}`);
   }
 
-  if (extra?.retail && (!order.customer_name || order.customer_name === "Mostrador")) {
+  const showCustomerDetail = extra?.retail || extra?.direct;
+  if (showCustomerDetail && (!order.customer_name || order.customer_name === "Mostrador")) {
     printer.println("Consumidor final");
-  } else if (order.customer_name && (extra?.retail || order.channel !== "app")) {
+  } else if (order.customer_name && (showCustomerDetail || order.channel !== "app")) {
     printer.println(`Cliente: ${order.customer_name}`);
   }
-  if (extra?.retail && order.customer_phone) {
+  if (showCustomerDetail && order.customer_phone) {
     printer.println(`Tel: ${order.customer_phone}`);
   }
-  if (extra?.retail && order.method === "delivery" && order.customer_address) {
+  if (showCustomerDetail && order.method === "delivery" && order.customer_address) {
     printer.println(`Dir: ${order.customer_address}`);
   }
   if (order.method === "delivery" && deliveryPrintInfo(order).outOfArea) {
@@ -1776,6 +1784,8 @@ export async function dispatchPrint(params: {
     docTitle?: string;
     /** Comprobante de venta retail: Nro. diario + datos del cliente. */
     retail?: boolean;
+    /** Venta directa: ticket completo con "Mostrador · Nro. X" normal. */
+    direct?: boolean;
     /** Saldo de cuenta corriente (fiado) para imprimir en el ticket. */
     fiadoBalance?: number;
     items?: { name: string; price: number; qty: number; modifiers?: string[] }[];

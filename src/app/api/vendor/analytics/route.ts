@@ -56,9 +56,20 @@ export async function GET(request: Request) {
     : Math.min(Math.max(analyticsDays, 30), 366); // 7-366 días
   const since = new Date(Date.now() - lookback * 24 * 60 * 60 * 1000).toISOString();
 
+  // Columnas de cobro/descuentos (tolerante a migraciones sin aplicar: sin
+  // ellas, byPay/discounts quedan vacíos en vez de romper el reporte).
+  const payCols = await queryMany<{ column_name: string }>(
+    `SELECT column_name FROM information_schema.columns WHERE table_name = 'orders' AND column_name IN ('payment_method', 'cash_discount', 'volume_discount')`
+  );
+  const havePayCol = new Set((payCols || []).map((r) => r.column_name));
+  const extraOrderCols = ["payment_method", "cash_discount", "volume_discount"]
+    .filter((c) => havePayCol.has(c))
+    .map((c) => `, ${c}`)
+    .join("");
+
   const [orders, products, reviews] = await Promise.all([
     queryMany<Record<string, any>>(
-      `SELECT id, items, total, status, method, channel, customer_id, created_at, estimated_minutes FROM orders WHERE vendor_id = $1 AND is_preview = false AND created_at >= $2 ORDER BY created_at DESC`,
+      `SELECT id, items, total, status, method, channel, customer_id, created_at, estimated_minutes${extraOrderCols} FROM orders WHERE vendor_id = $1 AND is_preview = false AND created_at >= $2 ORDER BY created_at DESC`,
       [vendorId, since]
     ),
     queryMany<Record<string, any>>(
@@ -204,6 +215,20 @@ export async function GET(request: Request) {
     byMethod[m].revenue += Number(o.total);
   }
 
+  // Ventas por medio de cobro (solo completados: es lo que efectivamente se
+  // cobró) + descuentos otorgados en el período (efectivo y volumen).
+  const byPay: Record<string, { count: number; revenue: number }> = {};
+  let cashDiscountTotal = 0;
+  let volumeDiscountTotal = 0;
+  for (const o of completedOrders) {
+    const m = (o as any).payment_method || "whatsapp";
+    if (!byPay[m]) byPay[m] = { count: 0, revenue: 0 };
+    byPay[m].count++;
+    byPay[m].revenue += Number(o.total);
+    cashDiscountTotal += Number((o as any).cash_discount) || 0;
+    volumeDiscountTotal += Number((o as any).volume_discount) || 0;
+  }
+
   const topProducts = Object.values(productSales)
     .sort((a, b) => b.revenue - a.revenue)
     .slice(0, 10);
@@ -318,6 +343,8 @@ export async function GET(request: Request) {
     })),
     byChannel,
     byMethod,
+    byPay,
+    discounts: { cash: Math.round(cashDiscountTotal), volume: Math.round(volumeDiscountTotal) },
     insights,
     ...advanced,
   });

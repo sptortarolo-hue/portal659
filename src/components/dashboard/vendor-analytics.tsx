@@ -1,8 +1,23 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import type { Product, Review } from "@/types/database";
+import { CASH_METHOD_LABELS } from "@/lib/cash-methods";
+
+const SalesEvolution = dynamic(() => import("./analytics-charts").then((m) => ({ default: m.SalesEvolution })), {
+  ssr: false,
+  loading: () => <div className="h-64 rounded-xl border border-border bg-muted/40 animate-pulse" />,
+});
+const HourlyChart = dynamic(() => import("./analytics-charts").then((m) => ({ default: m.HourlyChart })), {
+  ssr: false,
+  loading: () => <div className="h-56 rounded-xl border border-border bg-muted/40 animate-pulse" />,
+});
+const ShareDonut = dynamic(() => import("./analytics-charts").then((m) => ({ default: m.ShareDonut })), {
+  ssr: false,
+  loading: () => <div className="h-72 rounded-xl border border-border bg-muted/40 animate-pulse" />,
+});
 
 type OrderItem = { name: string; price: number; qty: number };
 
@@ -40,6 +55,8 @@ type AnalyticsData = {
   activeOrders?: (Record<string, any> & { items: OrderItem[] })[];
   byChannel?: Record<string, { count: number; revenue: number }>;
   byMethod?: Record<string, { count: number; revenue: number }>;
+  byPay?: Record<string, { count: number; revenue: number }>;
+  discounts?: { cash: number; volume: number };
   hourly?: { hour: string; count: number; revenue: number }[];
   topHours?: { hour: string; count: number; revenue: number }[];
   byDayOfWeek?: { day: string; count: number; revenue: number }[];
@@ -68,6 +85,15 @@ function DeltaBadge({ value, prefix, vs = "semana anterior" }: { value: number |
       {up ? "▲" : "▼"} {prefix} {Math.abs(value)}% {up ? "vs" : "vs"} {vs}
     </span>
   );
+}
+
+function toSlices(
+  rec: Record<string, { count: number; revenue: number }> | undefined,
+  labels?: Record<string, string>
+) {
+  return Object.entries(rec || {})
+    .map(([k, d]) => ({ label: labels?.[k] || k, count: d.count, revenue: Math.round(d.revenue) }))
+    .sort((a, b) => b.revenue - a.revenue);
 }
 
 function TodayPanel({ today }: { today: AnalyticsData["today"] }) {
@@ -125,6 +151,11 @@ export function VendorAnalytics() {
   const periodLabel = isGest ? `últimos ${activeRange} días` : `últimos ${analyticsDays} días`;
 
   const { summary = {} as AnalyticsSummary, topProducts = [], ordersByDay = [], recentReviews = [], lowStock = [], activeOrders = [] } = data;
+  const showDiscounts = (data.discounts?.cash || 0) > 0 || (data.discounts?.volume || 0) > 0;
+  const discountTotal = (data.discounts?.cash || 0) + (data.discounts?.volume || 0);
+  const topRevenueTotal = topProducts.reduce((s, p) => s + p.revenue, 0);
+  const catRevenueTotal = (data.byCategory || []).reduce((s, c) => s + c.revenue, 0);
+  const dowRevenueTotal = (data.byDayOfWeek || []).reduce((s, d) => s + d.revenue, 0);
 
   return (
     <div className="space-y-6">
@@ -239,31 +270,16 @@ export function VendorAnalytics() {
             </div>
           )}
 
-          {/* Canal, método y conversión */}
+          {/* Canal, método y medio de cobro: donas con % de participación */}
+          <div className="grid sm:grid-cols-3 gap-4">
+            <ShareDonut title="Pedidos por canal" sub="App / mostrador / mesas" entries={toSlices(data.byChannel, CHANNEL_LABEL)} />
+            <ShareDonut title="Retiro vs domicilio" entries={toSlices(data.byMethod, METHOD_LABEL)} />
+            <ShareDonut title="Medios de cobro" sub="Solo cobrados" entries={toSlices(data.byPay, CASH_METHOD_LABELS)} />
+          </div>
+
+          {/* Conversión + descuentos */}
           {data.byChannel && (
-            <div className="grid sm:grid-cols-3 gap-4">
-              <div className="border border-border rounded-xl p-4 bg-card">
-                <h3 className="font-medium text-sm mb-3">Pedidos por canal</h3>
-                <div className="space-y-2">
-                  {Object.entries(data.byChannel).map(([c, d]) => (
-                    <div key={c} className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">{CHANNEL_LABEL[c] || c}</span>
-                      <span className="font-medium">{d.count} · ${Math.round(d.revenue).toLocaleString("es-AR")}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div className="border border-border rounded-xl p-4 bg-card">
-                <h3 className="font-medium text-sm mb-3">Retiro vs domicilio</h3>
-                <div className="space-y-2">
-                  {Object.entries(data.byMethod || {}).map(([m, d]) => (
-                    <div key={m} className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">{METHOD_LABEL[m] || m}</span>
-                      <span className="font-medium">{d.count} · ${Math.round(d.revenue).toLocaleString("es-AR")}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
+            <div className={`grid gap-4 ${showDiscounts ? "sm:grid-cols-2" : ""}`}>
               <div className="border border-border rounded-xl p-4 bg-card">
                 <h3 className="font-medium text-sm mb-3">Conversión del período</h3>
                 <div className="space-y-2">
@@ -285,6 +301,25 @@ export function VendorAnalytics() {
                   </div>
                 </div>
               </div>
+              {showDiscounts && (
+                <div className="border border-border rounded-xl p-4 bg-card">
+                  <h3 className="font-medium text-sm mb-3">Descuentos otorgados</h3>
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">En efectivo</span>
+                      <span className="font-medium">-${(data.discounts?.cash || 0).toLocaleString("es-AR")}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Por volumen</span>
+                      <span className="font-medium">-${(data.discounts?.volume || 0).toLocaleString("es-AR")}</span>
+                    </div>
+                    <div className="flex justify-between text-sm border-t border-border pt-2">
+                      <span className="text-muted-foreground">Total</span>
+                      <span className="font-bold">-${discountTotal.toLocaleString("es-AR")}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -292,63 +327,29 @@ export function VendorAnalytics() {
             <div>
               <h3 className="font-medium text-sm mb-2">Top productos por facturación</h3>
               <div className="space-y-1">
-                {topProducts.map((p, i) => (
-                  <div key={i} className="flex justify-between text-sm py-1.5 border-b border-border last:border-0">
-                    <span className="text-muted-foreground">{p.name}</span>
-                    <span className="font-medium">{p.count} vendidos · ${p.revenue.toLocaleString("es-AR")}</span>
-                  </div>
-                ))}
+                {topProducts.map((p, i) => {
+                  const pct = topRevenueTotal > 0 ? Math.round((p.revenue / topRevenueTotal) * 100) : 0;
+                  return (
+                    <div key={i} className="flex items-center gap-2 text-sm py-1.5 border-b border-border last:border-0">
+                      <span className="text-muted-foreground min-w-0 flex-1 truncate">{p.name}</span>
+                      <div className="hidden sm:block w-24 h-2 bg-muted rounded-full overflow-hidden flex-shrink-0">
+                        <div className="h-full bg-primary/70 rounded-full" style={{ width: `${pct}%` }} />
+                      </div>
+                      <span className="text-xs font-semibold tabular-nums w-10 text-right flex-shrink-0">{pct}%</span>
+                      <span className="font-medium text-xs tabular-nums w-40 text-right flex-shrink-0">{p.count} un. · ${p.revenue.toLocaleString("es-AR")}</span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
 
-          {ordersByDay.some((d) => d.count > 0) && (
-            <div>
-              <h3 className="font-medium text-sm mb-2">Pedidos {periodLabel}</h3>
-              <div className="overflow-x-auto -mx-4 px-4">
-                <div className="flex items-end gap-px h-20" style={{ minWidth: `${ordersByDay.length * 8}px` }}>
-                  {ordersByDay.map((d) => {
-                    const maxCount = Math.max(...ordersByDay.map((x) => x.count), 1);
-                    const height = d.count > 0 ? Math.max((d.count / maxCount) * 100, 8) : 2;
-                    return (
-                      <div
-                        key={d.date}
-                        className="bg-primary/80 rounded-t"
-                        style={{ height: `${height}%`, width: "7px", flexShrink: 0 }}
-                        title={`${d.date}: ${d.count} pedidos ($${d.revenue.toLocaleString("es-AR")})`}
-                      />
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          )}
+          <SalesEvolution data={ordersByDay} range={activeRange} periodLabel={periodLabel} />
 
           {/* Avanzado - Gestión */}
           {isGest && (
             <>
-              {data.hourly && data.hourly.some((h) => h.count > 0) && (
-                <div>
-                  <h3 className="font-medium text-sm mb-2">Ventas por hora</h3>
-                  <div className="flex items-end gap-px h-20">
-                    {data.hourly.map((h) => {
-                      const maxCount = Math.max(...data.hourly!.map((x) => x.count), 1);
-                      const height = h.count > 0 ? Math.max((h.count / maxCount) * 100, 8) : 2;
-                      return (
-                        <div
-                          key={h.hour}
-                          className="bg-primary/80 rounded-t flex-1"
-                          style={{ height: `${height}%`, minWidth: "4px" }}
-                          title={`${h.hour}:00 — ${h.count} pedidos ($${h.revenue.toLocaleString("es-AR")})`}
-                        />
-                      );
-                    })}
-                  </div>
-                  <div className="flex justify-between text-[9px] text-muted-foreground mt-1">
-                    <span>00</span><span>06</span><span>12</span><span>18</span><span>23</span>
-                  </div>
-                </div>
-              )}
+              <HourlyChart hourly={data.hourly || []} />
 
               {data.topHours && data.topHours.length > 0 && (
                 <div>
@@ -372,6 +373,7 @@ export function VendorAnalytics() {
                   <div className="space-y-1">
                     {data.byDayOfWeek.map((d) => {
                       const maxRev = Math.max(...data.byDayOfWeek!.map((x) => x.revenue), 1);
+                      const pct = dowRevenueTotal > 0 ? Math.round((d.revenue / dowRevenueTotal) * 100) : 0;
                       return (
                         <div key={d.day} className="flex items-center gap-2 text-sm py-0.5">
                           <span className="w-24 flex-shrink-0 text-muted-foreground">{d.day}</span>
@@ -381,8 +383,8 @@ export function VendorAnalytics() {
                               style={{ width: `${(d.revenue / maxRev) * 100}%` }}
                             />
                           </div>
-                          <span className="w-28 text-right text-xs tabular-nums flex-shrink-0">
-                            {d.count} ped. · ${d.revenue.toLocaleString("es-AR")}
+                          <span className="w-40 text-right text-xs tabular-nums flex-shrink-0">
+                            {pct}% · {d.count} ped. · ${d.revenue.toLocaleString("es-AR")}
                           </span>
                         </div>
                       );
@@ -420,12 +422,19 @@ export function VendorAnalytics() {
                 <div>
                   <h3 className="font-medium text-sm mb-2">Ventas por categoría</h3>
                   <div className="space-y-1">
-                    {data.byCategory.map((c) => (
-                      <div key={c.category} className="flex justify-between text-sm py-1.5 border-b border-border last:border-0">
-                        <span className="text-muted-foreground">{c.category}</span>
-                        <span className="font-medium">{c.count} un. · ${c.revenue.toLocaleString("es-AR")}</span>
+                {data.byCategory.map((c) => {
+                  const pct = catRevenueTotal > 0 ? Math.round((c.revenue / catRevenueTotal) * 100) : 0;
+                  return (
+                    <div key={c.category} className="flex items-center gap-2 text-sm py-1.5 border-b border-border last:border-0">
+                      <span className="text-muted-foreground min-w-0 flex-1 truncate">{c.category}</span>
+                      <div className="hidden sm:block w-24 h-2 bg-muted rounded-full overflow-hidden flex-shrink-0">
+                        <div className="h-full bg-primary/70 rounded-full" style={{ width: `${pct}%` }} />
                       </div>
-                    ))}
+                      <span className="text-xs font-semibold tabular-nums w-10 text-right flex-shrink-0">{pct}%</span>
+                      <span className="font-medium text-xs tabular-nums w-40 text-right flex-shrink-0">{c.count} un. · ${c.revenue.toLocaleString("es-AR")}</span>
+                    </div>
+                  );
+                })}
                   </div>
                 </div>
               )}

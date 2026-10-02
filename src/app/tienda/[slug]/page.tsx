@@ -3,7 +3,7 @@ import { queryEffectiveModifiers } from "@/lib/modifier-rules";
 import { getServiceQuota } from "@/lib/service-quota";
 import { resolveVendorPlan, vendorSellsOnline } from "@/lib/plans";
 import { isStoreOpen } from "@/lib/open-hours";
-import { DELIVERY_TZ, isDeliveryOpen, nextDeliverySlots } from "@/lib/delivery-schedule";
+import { DELIVERY_TZ, deliveryPauseClientMessage, isDeliveryOpen, isDeliveryPaused, nextDeliverySlots } from "@/lib/delivery-schedule";
 import { notFound } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { ProductImage } from "@/components/product-image";
@@ -242,15 +242,23 @@ export default async function TiendaPage({
   // Tolerante a migración sin aplicar (delivery_hours llega undefined).
   let retailSlots: { id: string; label: string; range: string; isToday: boolean; isTomorrow: boolean }[] = [];
   let retailDeliveryOpen: boolean | null = null;
+  let retailDeliveryPaused = false;
+  let retailPauseMsg: string | null = null;
   if (isCatalog) {
     try {
       const sched = {
         hours: (v.hours as string | null) ?? null,
         delivery_hours: (v.delivery_hours as string | null) ?? null,
         open_override: (v.open_override as boolean | null) ?? null,
+        delivery_override: (v.delivery_override as boolean | null) ?? null,
+        delivery_paused_until: (v.delivery_paused_until as string | null) ?? null,
+        delivery_pause_reason: (v.delivery_pause_reason as string | null) ?? null,
+        delivery_extra_days: (v.delivery_extra_days as Record<string, { open?: string | null; close?: string | null }>) ?? null,
       };
       retailSlots = nextDeliverySlots(sched, { timeZone: DELIVERY_TZ, count: 3 });
       retailDeliveryOpen = isDeliveryOpen(sched, { timeZone: DELIVERY_TZ });
+      retailDeliveryPaused = isDeliveryPaused(sched);
+      retailPauseMsg = retailDeliveryPaused ? deliveryPauseClientMessage(sched.delivery_pause_reason) : null;
     } catch {
       retailSlots = [];
       retailDeliveryOpen = null;
@@ -592,9 +600,11 @@ export default async function TiendaPage({
                   ? "bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
                   : "bg-primary/10 text-primary"
               }`}>
-                {retailDeliveryOpen === false
-                  ? `😴 Reparto cerrado · próximo turno ${retailSlots[0].label}`
-                  : `🛵 Te lo llevamos ${retailSlots[0].label}`}
+                {retailDeliveryPaused
+                  ? `⏸️ Reparto en pausa${retailPauseMsg ? ` · ${retailPauseMsg}` : ""} · tu pedido sale ${retailSlots[0].label}`
+                  : retailDeliveryOpen === false
+                    ? `😴 Reparto cerrado · próximo turno ${retailSlots[0].label}`
+                    : `🛵 Te lo llevamos ${retailSlots[0].label}`}
               </span>
             )}
             {v.neighborhood && (

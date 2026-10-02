@@ -15,6 +15,7 @@ import { saveDraft, loadDraft, clearDraft } from "@/lib/draft";
 import { HoursEditor } from "@/components/dashboard/hours-editor";
 import {
   isDeliveryOpen,
+  isDeliveryPaused,
   nextDeliverySlots,
   usesStoreHours as usesStoreHoursOf,
 } from "@/lib/delivery-schedule";
@@ -1166,6 +1167,10 @@ export function DeliveryScheduleConfig({
     hours: vendor?.hours ?? null,
     delivery_hours: useStoreHours ? null : hours || null,
     open_override: vendor?.open_override ?? null,
+    delivery_override: vendor?.delivery_override ?? null,
+    delivery_paused_until: vendor?.delivery_paused_until ?? null,
+    delivery_pause_reason: vendor?.delivery_pause_reason ?? null,
+    delivery_extra_days: vendor?.delivery_extra_days ?? null,
   };
   let previewOpen: boolean | null = null;
   let previewSlots: { id: string; label: string }[] = [];
@@ -1274,7 +1279,14 @@ export function DeliveryScheduleConfig({
       </div>
 
       <div className="rounded-lg bg-muted/50 px-3 py-2">
-        {previewSlots.length > 0 ? (
+        {isDeliveryPaused(sched) ? (
+          <p className="text-xs text-muted-foreground">
+            ⏸️ Reparto en pausa — los pedidos siguen entrando para el próximo turno.
+            {previewSlots.length > 0 && (
+              <> Próximos: <span className="font-medium text-foreground">{previewSlots.map((s) => s.label).join(" · ")}</span></>
+            )}
+          </p>
+        ) : previewSlots.length > 0 ? (
           <p className="text-xs text-muted-foreground">
             {previewOpen === false ? "😴 Reparto cerrado ahora · " : "🛵 "}
             Próximos turnos: <span className="font-medium text-foreground">{previewSlots.map((s) => s.label).join(" · ")}</span>

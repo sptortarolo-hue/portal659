@@ -253,6 +253,10 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
             hours: (vendorRow as any).hours ?? null,
             delivery_hours: deliveryCfg.deliveryHours,
             open_override: (vendorRow as any).open_override ?? null,
+            delivery_override: deliveryCfg.deliveryOverride,
+            delivery_paused_until: deliveryCfg.deliveryPausedUntil,
+            delivery_pause_reason: deliveryCfg.deliveryPauseReason,
+            delivery_extra_days: deliveryCfg.deliveryExtraDays,
           },
           { timeZone: "America/Argentina/Buenos_Aires", count: 3 }
         );

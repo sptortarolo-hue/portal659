@@ -39,6 +39,8 @@ export default function CheckoutPage() {
   // Turnos de reparto retail (moda/comercio): próximos 3 slots del comercio.
   const [deliverySlots, setDeliverySlots] = useState<{ id: string; label: string; range: string; isToday: boolean; isTomorrow: boolean }[]>([]);
   const [deliveryOpen, setDeliveryOpen] = useState<boolean | null>(null);
+  const [deliveryPaused, setDeliveryPaused] = useState(false);
+  const [pauseClientMsg, setPauseClientMsg] = useState<string | null>(null);
   const [slotId, setSlotId] = useState("");
   const [doneTrackToken, setDoneTrackToken] = useState<string | null>(null);
   // Snapshot del nombre del comercio al confirmar: confirmSend limpia el
@@ -261,6 +263,8 @@ export default function CheckoutPage() {
       .then((d) => {
         if (Array.isArray(d.slots)) setDeliverySlots(d.slots.slice(0, 3));
         setDeliveryOpen(typeof d.deliveryOpen === "boolean" ? d.deliveryOpen : null);
+        setDeliveryPaused(d.deliveryPaused === true);
+        setPauseClientMsg(typeof d.pauseClientMsg === "string" && d.pauseClientMsg ? d.pauseClientMsg : null);
       })
       .catch(() => {});
     fetch("/api/auth/me")
@@ -949,7 +953,12 @@ export default function CheckoutPage() {
             </div>
             {showSlots && (
               <div className="rounded-xl border border-border bg-muted/30 p-3 space-y-2">
-                {deliveryOpen === false && (
+                {deliveryPaused ? (
+                  <p className="text-xs leading-relaxed rounded-lg bg-amber-50 border border-amber-200 text-amber-800 px-2.5 py-2">
+                    ⏸️ Reparto en pausa{pauseClientMsg ? `: ${pauseClientMsg}` : ""}. Tu pedido sale en el próximo turno que elijas 👇
+                    {allowPickup ? " Si no podés esperar, podés retirarlo en el local 🏠" : ""}
+                  </p>
+                ) : deliveryOpen === false && (
                   <p className="text-xs leading-relaxed rounded-lg bg-amber-50 border border-amber-200 text-amber-800 px-2.5 py-2">
                     😴 Ya cerramos el reparto por hoy: tu pedido sale en el próximo turno.
                     {allowPickup ? " Si no podés esperar, podés retirarlo en el local 🏠" : ""}

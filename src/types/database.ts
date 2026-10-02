@@ -385,6 +385,17 @@ export type Vendor = {
   delivery_mode?: "flat" | "zones" | null;
   /** Área de reparto habitual en lenguaje barrial (ej: "Sicardi y Garibaldi, hasta la 22"). */
   delivery_area_text?: string | null;
+  /** Franjas de reparto propias (NULL = mismo horario del local). */
+  delivery_hours?: string | null;
+  /** Base empaquetado+reparto retail en minutos. */
+  delivery_prep_min?: number | null;
+  /** Override de reparto: null=horario, true=forzar abierto, false=pausado. */
+  delivery_override?: boolean | null;
+  /** Auto-resume de la pausa (NULL = manual). */
+  delivery_paused_until?: string | null;
+  delivery_pause_reason?: string | null;
+  /** Días especiales {"YYYY-MM-DD": {open?, close?}}. */
+  delivery_extra_days?: Record<string, { open?: string | null; close?: string | null }> | null;
   services_list: string | null;
   service_area: string | null;
   free_estimate: boolean | null;

@@ -11,11 +11,20 @@
  * Formato de horarios: el mismo del `HoursEditor`
  * ("lun: 09:00-13:00 y 17:00-22:00, mar: 09:00-18:00, ...").
  * `delivery_hours = null` = "mismo horario del local" (`hours`).
+ *
+ * Override + días especiales (migración migrate-delivery-schedule-override):
+ * `delivery_override` (forzar abierto / pausa blanda con `paused_until` +
+ * motivo opcional) y `delivery_extra_days` (extender o agregar franjas por
+ * fecha: Hoy/Mañana/+7). La pausa es blanda: el pedido sigue entrando con
+ * el próximo turno.
  */
 
 export const DELIVERY_TZ = "America/Argentina/Buenos_Aires";
 export const DELIVERY_DEFAULT_PREP_MIN = 60;
 export const DELIVERY_SLOTS_OFFERED = 3;
+/** Tope de días especiales hacia adelante (Hoy/Mañana/+7). */
+export const DELIVERY_EXTRA_MAX_DAYS = 8;
+export const DELIVERY_EXTRA_MAX_ENTRIES = 7;
 
 export type DayShift = { open: number; close: number }; // minutos desde 00:00
 
@@ -32,10 +41,28 @@ export type DeliverySlot = {
   isTomorrow: boolean;
 };
 
+/** Día especial: {open,close} reemplaza la franja; solo {close} la extiende. */
+export type DeliveryExtraDay = { open?: string | null; close?: string | null };
+
+/** Motivos de pausa (código corto en DB → label panel + mensaje cliente). */
+export const DELIVERY_PAUSE_REASONS: Record<string, { label: string; clientMsg: string | null }> = {
+  saturado: { label: "Con muchos pedidos", clientMsg: "Estamos con muchos pedidos 🙏" },
+  sin_repartidor: { label: "Sin repartidor", clientMsg: "Nos quedamos sin repartidor por ahora 🛵" },
+  cierra_temprano: { label: "Cierra temprano hoy", clientMsg: "Hoy cerramos el reparto más temprano 😴" },
+  otro: { label: "Otro motivo", clientMsg: null },
+};
+
 type VendorSchedule = {
   hours?: string | null;
   delivery_hours?: string | null;
   open_override?: boolean | null;
+  /** null=según horario, true=forzar abierto, false=pausado (blando). */
+  delivery_override?: boolean | null;
+  /** Auto-resume (ISO). NULL = hasta reanudar a mano. Vencido = se ignora. */
+  delivery_paused_until?: string | null;
+  delivery_pause_reason?: string | null;
+  /** Días especiales {"YYYY-MM-DD": {open?, close?}}. */
+  delivery_extra_days?: Record<string, DeliveryExtraDay> | null;
 };
 
 const DAY_TOKEN: Record<string, number> = {
@@ -198,27 +225,162 @@ function shiftOpenNow(shifts: DayShift[], minutes: number): boolean {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Días especiales (extender hoy / agregar o extender mañana/+7)
+// ---------------------------------------------------------------------------
+
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const HHMM_RE = /^(\d{1,2}):(\d{2})$/;
+
+function hhmmToMinutes(v: unknown): number | null {
+  if (typeof v !== "string") return null;
+  const m = v.trim().match(HHMM_RE);
+  if (!m) return null;
+  const h = parseInt(m[1], 10);
+  const mm = parseInt(m[2], 10);
+  if (h < 0 || h > 24 || mm < 0 || mm > 59) return null;
+  if (h === 24 && mm !== 0) return null;
+  return h * 60 + mm;
+}
+
+function weekdayOfISO(iso: string): number | null {
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  const dt = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  if (Number.isNaN(dt.getTime())) return null;
+  return dt.getDay();
+}
+
 /**
- * Abierto/cerrado del REPARTO (no del local). `open_override` gana como en
- * `isStoreOpen`. `null` = sin horario interpretable (el caller oculta el badge
- * y no ofrece turnos).
+ * Normaliza `delivery_extra_days` (jsonb crudo de la DB): solo entradas
+ * bien formadas, sin overnight (close > open), fechas no pasadas.
+ * open/close en minutos (null = no especificado).
+ */
+export function parseExtraDays(
+  raw: unknown,
+  opts?: { at?: Date; timeZone?: string }
+): Map<string, { open: number | null; close: number | null }> {
+  const out = new Map<string, { open: number | null; close: number | null }>();
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return out;
+  const tz = opts?.timeZone || DELIVERY_TZ;
+  const at = opts?.at || new Date();
+  const now = tzParts(tz, at);
+  const todayISO = `${now.y}-${pad(now.m)}-${pad(now.d)}`;
+  for (const [iso, val] of Object.entries(raw as Record<string, unknown>)) {
+    if (!ISO_DATE_RE.test(iso) || iso < todayISO) continue;
+    if (!val || typeof val !== "object" || Array.isArray(val)) continue;
+    const rec = val as Record<string, unknown>;
+    const open = hhmmToMinutes(rec.open);
+    const close = hhmmToMinutes(rec.close);
+    if (open === null && close === null) continue;
+    if (open !== null && close !== null && close <= open) continue;
+    out.set(iso, { open, close });
+    if (out.size >= DELIVERY_EXTRA_MAX_ENTRIES) break;
+  }
+  return out;
+}
+
+/**
+ * Franjas efectivas de un día (ISO): el extra manda sobre el horario
+ * semanal. {open,close} reemplaza la franja; solo {close} extiende la
+ * última (si el día tiene horario); {open} solo se ignora.
+ * Fusión por fecha exacta: un extra de hoy+7 no filtra al día de hoy.
+ */
+function shiftsForISO(
+  iso: string,
+  weekday: number,
+  weekly: Map<number, DayShift[]>,
+  extras: Map<string, { open: number | null; close: number | null }>
+): DayShift[] {
+  const base = weekly.get(weekday) || [];
+  const ex = extras.get(iso);
+  if (!ex) return base;
+  if (ex.open !== null && ex.close !== null) return [{ open: ex.open, close: ex.close }];
+  if (ex.close !== null && base.length > 0) {
+    return [...base.slice(0, -1), { ...base[base.length - 1], close: ex.close }];
+  }
+  return base;
+}
+
+/** ¿La pausa está vigente? (vencida = se ignora, evaluación lazy sin cron). */
+export function isDeliveryPaused(
+  v: Pick<VendorSchedule, "delivery_override" | "delivery_paused_until">,
+  opts?: { at?: Date }
+): boolean {
+  if (v.delivery_override !== false) return false;
+  const until = (v.delivery_paused_until || "").trim();
+  if (!until) return true; // hasta reanudar a mano
+  const end = new Date(until).getTime();
+  if (Number.isNaN(end)) return true;
+  const now = (opts?.at || new Date()).getTime();
+  return end > now;
+}
+
+/** Mensaje amable del motivo para el cliente, o null (sin mensaje). */
+export function deliveryPauseClientMessage(reason: string | null | undefined): string | null {
+  if (!reason) return null;
+  return DELIVERY_PAUSE_REASONS[reason]?.clientMsg ?? null;
+}
+
+/**
+ * Abierto/cerrado del REPARTO (no del local). Precedencia:
+ * pausa vigente → false · forzar abierto → true · `open_override` → como
+ * `isStoreOpen` · si no, horario (+ días especiales). `null` = sin horario
+ * interpretable (el caller oculta el badge y no ofrece turnos).
  */
 export function isDeliveryOpen(
   v: VendorSchedule,
   opts?: { at?: Date; timeZone?: string }
 ): boolean | null {
+  if (isDeliveryPaused(v, opts)) return false;
+  if (v.delivery_override === true) return true;
   if (v.open_override === true) return true;
   if (v.open_override === false) return false;
   const hours = effectiveDeliveryHours(v);
   if (!hours) return null;
-  const shifts = parseDeliveryShifts(hours);
-  if (shifts.size === 0) return null;
+  const weekly = parseDeliveryShifts(hours);
+  if (weekly.size === 0) return null;
   const tz = opts?.timeZone || DELIVERY_TZ;
   const at = opts?.at || new Date();
-  const { weekday, minutes } = tzParts(tz, at);
-  const today = shifts.get(weekday);
-  if (!today || today.length === 0) return false;
-  return shiftOpenNow(today, minutes);
+  const now = tzParts(tz, at);
+  const iso = `${now.y}-${pad(now.m)}-${pad(now.d)}`;
+  const extras = parseExtraDays(v.delivery_extra_days ?? null, opts);
+  const today = shiftsForISO(iso, now.weekday, weekly, extras);
+  if (today.length === 0) return false;
+  return shiftOpenNow(today, now.minutes);
+}
+
+/** Extras vigentes con label ("hoy"/"mañana"/"lun 5/10") para la UI del panel. */export function listActiveExtras(
+  v: Pick<VendorSchedule, "delivery_extra_days">,
+  opts?: { at?: Date; timeZone?: string }
+): { iso: string; open: string | null; close: string | null; label: string; isToday: boolean; isTomorrow: boolean }[] {
+  const tz = opts?.timeZone || DELIVERY_TZ;
+  const at = opts?.at || new Date();
+  const now = tzParts(tz, at);
+  const todayISO = `${now.y}-${pad(now.m)}-${pad(now.d)}`;
+  const tom = addDaysISO(now.y, now.m, now.d, 1);
+  const extras = parseExtraDays(v.delivery_extra_days ?? null, opts);
+  const out: { iso: string; open: string | null; close: string | null; label: string; isToday: boolean; isTomorrow: boolean }[] = [];
+  for (const [iso, ex] of extras) {
+    const wd = weekdayOfISO(iso);
+    const isToday = iso === todayISO;
+    const isTomorrow = iso === tom.iso;
+    const dayTxt = isToday ? "hoy" : isTomorrow ? "mañana" : wd === null ? iso.slice(5) : `${WEEKDAY_SHORT[wd]} ${iso.slice(8)}/${iso.slice(5, 7)}`;
+    const range = ex.open !== null && ex.close !== null
+      ? `${fmt(ex.open)}–${fmt(ex.close)}`
+      : ex.close !== null
+        ? `hasta las ${fmt(ex.close)}`
+        : `desde las ${fmt(ex.open ?? 0)}`;
+    out.push({
+      iso,
+      open: ex.open !== null ? fmt(ex.open) : null,
+      close: ex.close !== null ? fmt(ex.close) : null,
+      label: `${dayTxt} ${range}`,
+      isToday,
+      isTomorrow,
+    });
+  }
+  return out.sort((a, b) => (a.iso < b.iso ? -1 : 1));
 }
 
 /**
@@ -232,16 +394,17 @@ export function nextDeliverySlots(
 ): DeliverySlot[] {
   const hours = effectiveDeliveryHours(v);
   if (!hours) return [];
-  const shifts = parseDeliveryShifts(hours);
-  if (shifts.size === 0) return [];
+  const weekly = parseDeliveryShifts(hours);
+  if (weekly.size === 0) return [];
   const count = Math.min(6, Math.max(1, opts?.count ?? DELIVERY_SLOTS_OFFERED));
   const tz = opts?.timeZone || DELIVERY_TZ;
   const at = opts?.at || new Date();
   const now = tzParts(tz, at);
+  const extras = parseExtraDays(v.delivery_extra_days ?? null, opts);
   const out: DeliverySlot[] = [];
   for (let add = 0; add < 8 && out.length < count; add++) {
     const day = addDaysISO(now.y, now.m, now.d, add);
-    const dayShifts = shifts.get(day.weekday) || [];
+    const dayShifts = shiftsForISO(day.iso, day.weekday, weekly, extras);
     for (const s of dayShifts) {
       if (out.length >= count) break;
       // Hoy: solo franjas que aún no terminaron (con 5 min de changüí para
@@ -296,4 +459,58 @@ export function formatDeliveryWindow(windowId: string | null | undefined): strin
         ? "mañana"
         : dt.toLocaleDateString("es-AR", { weekday: "short", day: "numeric", month: "numeric" });
   return `${day} ${m[4]}–${m[5]}`;
+}
+
+/**
+ * Horario semanal de una fecha ("09:00–18:00 · 17:00–22:00") o null si el
+ * día está cerrado. Sin extras: para pre-llenar el editor de día especial.
+ */
+export function scheduleTextForISO(
+  v: Pick<VendorSchedule, "hours" | "delivery_hours">,
+  iso: string
+): string | null {
+  const wd = weekdayOfISO(iso);
+  if (wd === null) return null;
+  const hours = effectiveDeliveryHours(v);
+  if (!hours) return null;
+  const shifts = parseDeliveryShifts(hours).get(wd) || [];
+  if (shifts.length === 0) return null;
+  return shifts.map((s) => `${fmt(s.open)}–${fmt(s.close)}`).join(" · ");
+}
+
+/** Minutos de una franja "HH:MM" del editor (para pre-llenar inputs). */
+export function shiftMinutesForISO(
+  v: Pick<VendorSchedule, "hours" | "delivery_hours">,
+  iso: string
+): { open: string; close: string } | null {
+  const wd = weekdayOfISO(iso);
+  if (wd === null) return null;
+  const hours = effectiveDeliveryHours(v);
+  if (!hours) return null;
+  const shifts = parseDeliveryShifts(hours).get(wd) || [];
+  if (shifts.length === 0) return null;
+  const last = shifts[shifts.length - 1];
+  return { open: fmt(shifts[0].open), close: fmt(last.close) };
+}
+
+/** Extra que cubre este momento (para la pill del header), o null. */
+export function extraCoveringNow(
+  v: Pick<VendorSchedule, "hours" | "delivery_hours" | "delivery_extra_days">,
+  opts?: { at?: Date; timeZone?: string }
+): { iso: string; close: string } | null {
+  const tz = opts?.timeZone || DELIVERY_TZ;
+  const at = opts?.at || new Date();
+  const now = tzParts(tz, at);
+  const iso = `${now.y}-${pad(now.m)}-${pad(now.d)}`;
+  const hours = effectiveDeliveryHours(v);
+  if (!hours) return null;
+  const weekly = parseDeliveryShifts(hours);
+  const extras = parseExtraDays(v.delivery_extra_days ?? null, opts);
+  const ex = extras.get(iso);
+  if (!ex || ex.open === null || ex.close === null) return null;
+  if (now.minutes < ex.open || now.minutes >= ex.close) return null;
+  const base = weekly.get(now.weekday) || [];
+  const sameAsSchedule = base.length === 1 && base[0].open === ex.open && base[0].close === ex.close;
+  if (sameAsSchedule) return null; // no es "extra", es el horario normal
+  return { iso, close: fmt(ex.close) };
 }

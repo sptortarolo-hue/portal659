@@ -148,7 +148,7 @@ function ShiftField({ label, shift, onOpen, onClose, onRemove }: ShiftFieldProps
         <button
           type="button"
           onClick={onRemove}
-          className="h-7 w-7 rounded-md text-muted-foreground hover:text-red-600 hover:bg-red-50 flex items-center justify-center flex-shrink-0"
+          className="h-9 w-9 rounded-md text-lg text-muted-foreground hover:text-red-600 hover:bg-red-50 flex items-center justify-center flex-shrink-0"
           aria-label="Quitar franja"
         >
           ×

@@ -3,7 +3,9 @@ import { queryOne } from "@/lib/db";
 import { fetchVendorDelivery } from "@/lib/delivery-server";
 import {
   DELIVERY_TZ,
+  deliveryPauseClientMessage,
   isDeliveryOpen,
+  isDeliveryPaused,
   nextDeliverySlots,
   normalizePrepMin,
   usesStoreHours,
@@ -27,9 +29,14 @@ export async function GET(request: Request) {
       hours: cfg.hours,
       delivery_hours: cfg.deliveryHours,
       open_override: cfg.openOverride,
+      delivery_override: cfg.deliveryOverride,
+      delivery_paused_until: cfg.deliveryPausedUntil,
+      delivery_pause_reason: cfg.deliveryPauseReason,
+      delivery_extra_days: cfg.deliveryExtraDays,
     };
     const slots = nextDeliverySlots(sched, { timeZone: DELIVERY_TZ, count: DELIVERY_SLOTS_OFFERED });
     const open = isDeliveryOpen(sched, { timeZone: DELIVERY_TZ });
+    const paused = isDeliveryPaused(sched);
     // Vertical (el caller filtra retail, pero se devuelve para ahorrar un fetch).
     let vertical: string | null = null;
     try {
@@ -48,6 +55,11 @@ export async function GET(request: Request) {
       slots,
       prepMin: normalizePrepMin(cfg.deliveryPrepMin),
       usesStoreHours: usesStoreHours(sched),
+      deliveryPaused: paused,
+      deliveryPausedUntil: cfg.deliveryPausedUntil,
+      deliveryPauseReason: cfg.deliveryPauseReason,
+      pauseClientMsg: paused ? deliveryPauseClientMessage(cfg.deliveryPauseReason) : null,
+      deliveryForced: cfg.deliveryOverride === true,
     });
   } catch {
     return NextResponse.json({ error: "No se pudo cargar la disponibilidad" }, { status: 500 });

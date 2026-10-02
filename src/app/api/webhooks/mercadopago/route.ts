@@ -418,6 +418,10 @@ export async function POST(request: Request) {
                   hours: wcfg.hours,
                   delivery_hours: wcfg.deliveryHours,
                   open_override: wcfg.openOverride,
+                  delivery_override: wcfg.deliveryOverride,
+                  delivery_paused_until: wcfg.deliveryPausedUntil,
+                  delivery_pause_reason: wcfg.deliveryPauseReason,
+                  delivery_extra_days: wcfg.deliveryExtraDays,
                 },
                 { timeZone: "America/Argentina/Buenos_Aires", count: 3 }
               );

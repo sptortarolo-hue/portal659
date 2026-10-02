@@ -72,6 +72,10 @@ export async function POST(request: Request) {
     delivery_area_text,
     delivery_hours,
     delivery_prep_min,
+    delivery_override,
+    delivery_paused_until,
+    delivery_pause_reason,
+    delivery_extra_days,
     services_list,
     service_area,
     free_estimate,
@@ -111,6 +115,52 @@ export async function POST(request: Request) {
     reservation_tolerance_min,
     floor_bg_url,
   } = body;
+
+  // Limpia y valida delivery_extra_days. Devuelve el objeto podado o false
+  // si la forma es inválida (un día mal formado no rompe todo: se ignora;
+  // false solo si ni siquiera es un objeto).
+  function cleanDeliveryExtraDays(raw: unknown): Record<string, { open?: string; close?: string }> | false {
+    if (raw === null) return {};
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return false;
+    // Límites en TZ del barrio (el VPS corre en UTC: con Date local el "hoy"
+    // cerca de la medianoche podía podar el extra de hoy por error).
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/Argentina/Buenos_Aires",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(new Date());
+    const get = (t: string) => parts.find((p) => p.type === t)?.value || "";
+    const isoToday = `${get("year")}-${get("month")}-${get("day")}`;
+    const base = new Date(Number(get("year")), Number(get("month")) - 1, Number(get("day")));
+    const maxDate = new Date(base.getTime() + 8 * 86400000);
+    const isoMax = `${maxDate.getFullYear()}-${String(maxDate.getMonth() + 1).padStart(2, "0")}-${String(maxDate.getDate()).padStart(2, "0")}`;
+    const hhmm = (x: unknown): string | null => {
+      if (typeof x !== "string") return null;
+      const m = x.trim().match(/^(\d{1,2}):(\d{2})$/);
+      if (!m) return null;
+      const h = parseInt(m[1], 10);
+      const mm = parseInt(m[2], 10);
+      if (h < 0 || h > 24 || mm < 0 || mm > 59 || (h === 24 && mm !== 0)) return null;
+      return `${String(h).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+    };
+    const out: Record<string, { open?: string; close?: string }> = {};
+    for (const [iso, val] of Object.entries(raw as Record<string, unknown>)) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(iso) || iso < isoToday || iso > isoMax) continue;
+      if (!val || typeof val !== "object" || Array.isArray(val)) continue;
+      const rec = val as Record<string, unknown>;
+      const open = hhmm(rec.open);
+      const close = hhmm(rec.close);
+      if (open === null && close === null) continue;
+      if (open !== null && close !== null && close <= open) continue;
+      const entry: { open?: string; close?: string } = {};
+      if (open !== null) entry.open = open;
+      if (close !== null) entry.close = close;
+      out[iso] = entry;
+      if (Object.keys(out).length >= 7) break;
+    }
+    return out;
+  }
 
   const VALID_VERTICALS = ["gastronomia", "comercio", "servicio", "moda", "salud", "otro"];
   const resolvedVertical = VALID_VERTICALS.includes(vertical)
@@ -166,6 +216,37 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "El tiempo de reparto debe estar entre 0 y 240" }, { status: 400 });
     }
     payload.delivery_prep_min = Math.round(n);
+  }
+  // Override de reparto: null=según horario, true=forzar abierto, false=pausado.
+  if (delivery_override !== undefined) {
+    payload.delivery_override = delivery_override === null ? null : delivery_override === true;
+  }
+  // Auto-resume de la pausa (ISO o null). Se valida que sea fecha válida.
+  if (delivery_paused_until !== undefined) {
+    if (delivery_paused_until === null || delivery_paused_until === "") {
+      payload.delivery_paused_until = null;
+    } else {
+      const t = new Date(String(delivery_paused_until)).getTime();
+      if (Number.isNaN(t)) {
+        return NextResponse.json({ error: "Fecha de reanudación inválida" }, { status: 400 });
+      }
+      payload.delivery_paused_until = new Date(t).toISOString();
+    }
+  }
+  // Motivo de la pausa (código corto o null).
+  if (delivery_pause_reason !== undefined) {
+    const valid = ["saturado", "sin_repartidor", "cierra_temprano", "otro"];
+    const r = typeof delivery_pause_reason === "string" ? delivery_pause_reason.trim() : "";
+    payload.delivery_pause_reason = valid.includes(r) ? r : null;
+  }
+  // Días especiales {"YYYY-MM-DD": {open?, close?}}: fechas válidas (hoy..+8),
+  // HH:MM válidas, close > open, máx 7 entradas. Fechas pasadas se podan.
+  if (delivery_extra_days !== undefined) {
+    const cleaned = cleanDeliveryExtraDays(delivery_extra_days);
+    if (cleaned === false) {
+      return NextResponse.json({ error: "Días especiales inválidos" }, { status: 400 });
+    }
+    payload.delivery_extra_days = JSON.stringify(cleaned);
   }
   if (services_list !== undefined) payload.services_list = services_list || null;
   if (service_area !== undefined) payload.service_area = service_area || null;
@@ -302,6 +383,10 @@ export async function POST(request: Request) {
         "delivery_area_text",
         "delivery_hours",
         "delivery_prep_min",
+        "delivery_override",
+        "delivery_paused_until",
+        "delivery_pause_reason",
+        "delivery_extra_days",
         "storefront_layout",
         "require_open_shift",
         "reservation_lead_min",

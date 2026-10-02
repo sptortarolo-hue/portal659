@@ -18,12 +18,12 @@ const MINUTES = Array.from({ length: 12 }, (_, i) => String(i * 5).padStart(2, "
 export function TimeSelect24({ value, onChange, "aria-label": ariaLabel }: TimeSelect24Props) {
   const [h = "09", m = "00"] = (value || "09:00").split(":");
   return (
-    <div className="flex items-center gap-1 flex-1 min-w-0">
+    <div className="flex items-center gap-1.5 flex-1 min-w-0">
       <select
         value={h}
         onChange={(e) => onChange(`${e.target.value}:${m}`)}
         aria-label={ariaLabel ? `${ariaLabel} (hora)` : "Hora"}
-        className="h-9 flex-1 min-w-0 rounded-md border border-input bg-background px-1.5 text-xs sm:text-sm tabular-nums"
+        className="h-10 flex-1 min-w-[68px] rounded-md border border-input bg-background px-2 text-sm tabular-nums"
       >
         {HOURS.map((hh) => (
           <option key={hh} value={hh}>{hh}</option>
@@ -34,7 +34,7 @@ export function TimeSelect24({ value, onChange, "aria-label": ariaLabel }: TimeS
         value={m}
         onChange={(e) => onChange(`${h}:${e.target.value}`)}
         aria-label={ariaLabel ? `${ariaLabel} (minutos)` : "Minutos"}
-        className="h-9 flex-1 min-w-0 rounded-md border border-input bg-background px-1.5 text-xs sm:text-sm tabular-nums"
+        className="h-10 flex-1 min-w-[68px] rounded-md border border-input bg-background px-2 text-sm tabular-nums"
       >
         {MINUTES.map((mm) => (
           <option key={mm} value={mm}>{mm}</option>

@@ -77,6 +77,7 @@ import { FiscalConfigSection } from "@/components/dashboard/fiscal-config-sectio
 import { InventoryTab } from "@/components/dashboard/inventory-tab";
 import { CustomersManager } from "@/components/dashboard/customers-manager";
 import { OpenToggle } from "@/components/vendor/open-toggle";
+import { DeliveryToggle } from "@/components/vendor/delivery-toggle";
 import { PrepTimeControl } from "@/components/vendor/prep-time-control";
 import { PrinterStatus } from "@/components/vendor/printer-status";
 import { CashShiftPill } from "@/components/vendor/cash-shift-pill";
@@ -1483,6 +1484,9 @@ function VendorDashboardInner() {
               {/* Controles operativos en desktop (fila 1) */}
               <div className="hidden sm:flex items-center gap-3">
                 <OpenToggle vendor={vendor} onSaved={(v) => setVendor(v)} />
+                {(isComercio || isModa) && (vendor.delivery_options || "ambos") !== "retiro" && (
+                  <DeliveryToggle vendor={vendor} onSaved={(v) => setVendor(v)} />
+                )}
                 {isGastro && (
                   <PrepTimeControl vendor={vendor} onSaved={(v) => setVendor(v)} />
                 )}
@@ -1523,6 +1527,9 @@ function VendorDashboardInner() {
             {/* Fila 2: controles operativos — solo mobile */}
             <div className="flex sm:hidden items-center gap-2 overflow-x-auto pt-2">
               <OpenToggle vendor={vendor} onSaved={(v) => setVendor(v)} />
+              {(isComercio || isModa) && (vendor.delivery_options || "ambos") !== "retiro" && (
+                <DeliveryToggle vendor={vendor} onSaved={(v) => setVendor(v)} />
+              )}
               {isGastro && (
                 <PrepTimeControl vendor={vendor} onSaved={(v) => setVendor(v)} />
               )}

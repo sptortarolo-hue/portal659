@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 
 export type FloorTable = {
@@ -101,6 +101,11 @@ export function FloorPlan({
   const canvasRef = useRef<HTMLDivElement>(null);
   const [editing, setEditing] = useState(false);
   const [tool, setTool] = useState<FloorTool>("move");
+  // Ajustar el plano al ancho (mobile muestra lo mismo que escritorio).
+  // En 1:1 el canvas scrollea para edición precisa.
+  const [fit, setFit] = useState(true);
+  const [canvasW, setCanvasW] = useState(0);
+  const scaleRef = useRef(1);
   const [dragging, setDragging] = useState<string | null>(null);
   // Selección interna del editor: elige la mesa a configurar SIN navegar al
   // detalle (en modo edición el click no debe abrir la mesa).
@@ -124,7 +129,8 @@ export function FloorPlan({
     const canvas = canvasRef.current;
     if (!canvas) return null;
     const rect = canvas.getBoundingClientRect();
-    return { x: snap(clientX - rect.left), y: snap(clientY - rect.top), rect };
+    const s = scaleRef.current;
+    return { x: snap((clientX - rect.left) / s), y: snap((clientY - rect.top) / s), rect };
   }, [snap]);
 
   // Mesas nunca ubicadas (todos los valores por defecto de la migración) se
@@ -162,10 +168,11 @@ export function FloorPlan({
       const canvas = canvasRef.current;
       if (!canvas) return;
       const rect = canvas.getBoundingClientRect();
+      const s = scaleRef.current;
       const p = disp(t);
       dragOffset.current = {
-        dx: e.clientX - rect.left - p.x,
-        dy: e.clientY - rect.top - p.y,
+        dx: (e.clientX - rect.left) / s - p.x,
+        dy: (e.clientY - rect.top) / s - p.y,
       };
       downPos.current = { x: e.clientX, y: e.clientY };
       draggedRef.current = false;
@@ -181,6 +188,7 @@ export function FloorPlan({
     (e: React.PointerEvent) => {
       const canvas = canvasRef.current;
       if (!canvas) return;
+      const s = scaleRef.current;
       // Resize por arrastre desde el handle de la esquina (mesa).
       if (resizingRef.current) {
         const r = resizingRef.current;
@@ -188,8 +196,8 @@ export function FloorPlan({
         if (!t) return;
         const rect = canvas.getBoundingClientRect();
         const p = disp(t);
-        const w = Math.max(MIN_SIZE, Math.min(MAX_SIZE, snap(e.clientX - rect.left - p.x)));
-        const h = Math.max(MIN_SIZE, Math.min(MAX_SIZE, snap(e.clientY - rect.top - p.y)));
+        const w = Math.max(MIN_SIZE, Math.min(MAX_SIZE, snap((e.clientX - rect.left) / s - p.x)));
+        const h = Math.max(MIN_SIZE, Math.min(MAX_SIZE, snap((e.clientY - rect.top) / s - p.y)));
         draggedRef.current = true;
         onResize(t.id, w, h);
         return;
@@ -199,8 +207,8 @@ export function FloorPlan({
         const d = (decor || []).find((x) => x.id === decorResizeRef.current!.id);
         if (!d) return;
         const rect = canvas.getBoundingClientRect();
-        const w = Math.max(20, Math.min(800, snap(e.clientX - rect.left - (d.x ?? 0))));
-        const h = Math.max(20, Math.min(800, snap(e.clientY - rect.top - (d.y ?? 0))));
+        const w = Math.max(20, Math.min(800, snap((e.clientX - rect.left) / s - (d.x ?? 0))));
+        const h = Math.max(20, Math.min(800, snap((e.clientY - rect.top) / s - (d.y ?? 0))));
         draggedRef.current = true;
         onDecorResize(d.id, w, h);
         return;
@@ -214,8 +222,8 @@ export function FloorPlan({
         const rect = canvas.getBoundingClientRect();
         onDecorMove(
           dd.id,
-          Math.max(0, snap(e.clientX - rect.left - dd.dx)),
-          Math.max(0, snap(e.clientY - rect.top - dd.dy))
+          Math.max(0, snap((e.clientX - rect.left) / s - dd.dx)),
+          Math.max(0, snap((e.clientY - rect.top) / s - dd.dy))
         );
         return;
       }
@@ -237,8 +245,8 @@ export function FloorPlan({
       if (!t) return;
       const tw = t.width ?? 60;
       const th = t.height ?? 60;
-      const x = Math.max(0, Math.min(rect.width - tw, snap(e.clientX - rect.left - dragOffset.current.dx)));
-      const y = Math.max(0, Math.min(rect.height - th, snap(e.clientY - rect.top - dragOffset.current.dy)));
+      const x = Math.max(0, Math.min(rect.width / s - tw, snap((e.clientX - rect.left) / s - dragOffset.current.dx)));
+      const y = Math.max(0, Math.min(rect.height / s - th, snap((e.clientY - rect.top) / s - dragOffset.current.dy)));
       onMove(t.id, x, y);
     },
     [dragging, onMove, onResize, onDecorMove, onDecorResize, snap, disp, decor, canvasPos]
@@ -325,12 +333,13 @@ export function FloorPlan({
       const canvas = canvasRef.current;
       if (!canvas) return;
       const rect = canvas.getBoundingClientRect();
+      const s = scaleRef.current;
       downPos.current = { x: e.clientX, y: e.clientY };
       draggedRef.current = false;
       dragDecorRef.current = {
         id: d.id,
-        dx: e.clientX - rect.left - (d.x ?? 0),
-        dy: e.clientY - rect.top - (d.y ?? 0),
+        dx: (e.clientX - rect.left) / s - (d.x ?? 0),
+        dy: (e.clientY - rect.top) / s - (d.y ?? 0),
       };
       setEditDecorId(d.id);
       setEditSelectedId(null);
@@ -404,6 +413,44 @@ export function FloorPlan({
     };
   };
 
+  // Bounds del contenido (mesas + decor): el canvas se ajusta a esto.
+  const bounds = useMemo(() => {
+    let w = 320;
+    let h = 260;
+    for (const t of tables) {
+      const p = disp(t);
+      w = Math.max(w, p.x + (t.width ?? 60) + 16);
+      h = Math.max(h, p.y + (t.height ?? 60) + 16);
+    }
+    for (const d of decor || []) {
+      if (d.kind === "wall") {
+        const l = wallLine(d);
+        w = Math.max(w, Math.max(l.x1, l.x2) + 16);
+        h = Math.max(h, Math.max(l.y1, l.y2) + 16);
+      } else {
+        w = Math.max(w, (d.x ?? 0) + (d.w ?? 60) + 16);
+        h = Math.max(h, (d.y ?? 0) + (d.h ?? 60) + 16);
+      }
+    }
+    return { w: Math.ceil(w), h: Math.ceil(h) };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tables, decor, disp]);
+
+  useEffect(() => {
+    const el = canvasRef.current;
+    if (!el) return;
+    const update = () => setCanvasW(el.clientWidth);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // Solo se reduce (mobile), nunca se amplía: desktop queda igual que hoy.
+  const scale = fit && canvasW > 0 ? Math.min(1, canvasW / bounds.w) : 1;
+  scaleRef.current = scale;
+  const canvasH = Math.max(260, Math.round(bounds.h * scale));
+
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -413,6 +460,14 @@ export function FloorPlan({
           <span className="inline-block h-3 w-3 rounded-sm bg-amber-400 ml-2" /> Reservada
         </div>
         <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => setFit(!fit)}
+            title={fit ? "Ver tamaño real (1:1)" : "Ajustar a la pantalla"}
+            className="flex-shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition-colors bg-muted text-muted-foreground"
+          >
+            {fit ? "↔️ 1:1" : "🔍 Ajustar"}
+          </button>
           {onReserve && !editing && (
             <Button type="button" size="sm" variant="outline" onClick={onReserve}>
               📅 Reservar
@@ -455,10 +510,9 @@ export function FloorPlan({
 
       <div
         ref={canvasRef}
-        className="relative w-full overflow-hidden rounded-2xl border-2 border-dashed border-border bg-muted/30 select-none"
+        className={`relative w-full ${fit ? "overflow-hidden" : "overflow-auto"} rounded-2xl border-2 border-dashed border-border bg-muted/30 select-none`}
         style={{
-          height: "calc(100vh - 280px)",
-          minHeight: 400,
+          height: canvasH,
           touchAction: editing ? "none" : "auto",
           backgroundImage: bgUrl ? `url(${bgUrl})` : undefined,
           backgroundSize: "cover",
@@ -474,6 +528,10 @@ export function FloorPlan({
             Agregá mesas para armar el plano del salón
           </div>
         )}
+        <div
+          className="relative origin-top-left"
+          style={{ width: bounds.w, height: bounds.h, transform: `scale(${scale})` }}
+        >
         {/* Paredes (capa SVG bajo las mesas). */}
         <svg className="absolute inset-0 h-full w-full z-0">
           {(decor || [])
@@ -593,6 +651,7 @@ export function FloorPlan({
             </div>
           );
         })}
+        </div>
       </div>
 
       {editing && editTable && (

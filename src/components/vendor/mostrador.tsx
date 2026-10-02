@@ -197,6 +197,29 @@ export function Mostrador({ vendorId }: { vendorId?: string | null }) {
   // Bloque cliente colapsado: default = consumidor final. Se despliega para
   // cargar datos; al elegir delivery se abre solo (ahí el teléfono es requerido).
   const [clientOpen, setClientOpen] = useState(false);
+  // Modal de modalidad (solo desktop): al elegir retiro/delivery abre el
+  // modal con todos los datos que requiere la modalidad; en mobile los
+  // campos siguen inline. La directa no abre nada (no hay nada que cargar).
+  const [methodModal, setMethodModal] = useState<null | "pickup" | "delivery">(null);
+  const [methodMsg, setMethodMsg] = useState("");
+  /** Elegir modalidad: en desktop abre el modal de datos (retiro/delivery). */
+  function selectMethod(m: "pickup" | "delivery" | "direct") {
+    setMethod(m);
+    if (m === "delivery") setClientOpen(true);
+    setMethodMsg("");
+    if (finePointer && m !== "direct") setMethodModal(m);
+    else setMethodModal(null);
+  }
+  /** Confirmar el modal: delivery exige teléfono (el cobro lo valida igual). */
+  function confirmMethodModal() {
+    if (methodModal === "delivery" && !customerPhone.trim()) {
+      setMethodMsg("Falta el teléfono del cliente para el envío");
+      return;
+    }
+    setMethodMsg("");
+    setMethodModal(null);
+    if (finePointer) searchRef.current?.focus();
+  }
   // Campo buscar cliente directo (vacío = consumidor final). Al elegir trae
   // nombre + dirección; si se tipea un teléfono a mano se usa directo.
   const [customerQuery, setCustomerQuery] = useState("");
@@ -439,7 +462,8 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
     if (c.address) setCustomerAddress(c.address);
     setMsg("");
     setClientOpen(false);
-    focusAfterCustomer();
+    // Con el modal de modalidad abierto no se mueve el foco (se sigue ahí).
+    if (!methodModal) focusAfterCustomer();
   }
 
   /** Enter con tipeo directo (sin elegir): teléfono → cliente nuevo;
@@ -448,7 +472,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
     const v = customerQuery.trim();
     if (!v) {
       setClientOpen(false);
-      focusAfterCustomer();
+      if (!methodModal) focusAfterCustomer();
       return;
     }
     const digits = v.replace(/[^\d]/g, "");
@@ -460,7 +484,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
     }
     setMsg("");
     setClientOpen(false);
-    focusAfterCustomer();
+    if (!methodModal) focusAfterCustomer();
   }
 
   /** Lo tipeado en el buscador: si es un teléfono, vale como teléfono
@@ -1637,6 +1661,133 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
 
   // Cuerpo del pedido (scrolleable): líneas + avanzado + modalidad +
   // cliente + pago. El pie (totales + Cobrar) va fijo abajo.
+  // Campos de cliente + entrega (fragmento compartido: inline en mobile,
+  // modal de modalidad en desktop). Usa los mismos estados en ambos lados.
+  const saleDetailsFields = (
+    <>
+        {/* Cliente: buscador directo (vacío = consumidor final) + detalles plegables */}
+        <div className="rounded-xl border border-border">
+          <button
+            type="button"
+            onClick={() => setClientOpen((v) => !v)}
+            className="flex w-full items-center justify-between gap-2 px-3 py-2 text-xs font-medium text-muted-foreground hover:bg-muted/50 rounded-t-xl"
+            aria-expanded={clientOpen}
+          >
+            <span className="truncate">
+              👤 {customerName.trim() || customerPhone.trim()
+                ? `${customerName.trim() || "Cliente"}${customerPhone.trim() ? ` · ${customerPhone.trim()}` : ""}`
+                : "Cliente: Consumidor final"}
+            </span>
+            <span className="flex-shrink-0">{clientOpen ? "▾" : "▸"}</span>
+          </button>
+          <div className="px-2 pt-2">
+            <CustomerPicker
+              query={customerQuery}
+              onQueryChange={onCustomerQueryChange}
+              onSelect={chooseLookupCustomer}
+              onEnterKey={commitDirectCustomer}
+              placeholder={method === "delivery" ? "🔍 Teléfono o nombre del cliente *" : "🔍 Consumidor final — buscar cliente…"}
+            />
+          </div>
+          {clientOpen && (
+            <div className="space-y-2 px-2 pb-2 pt-2">
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="text"
+                  value={customerName}
+                  onChange={(e) => setCustomerName(e.target.value)}
+                  placeholder="Nombre del cliente (opcional)"
+                  className="flex-1 min-w-0 h-9 px-3 text-xs rounded-lg border border-input bg-background"
+                />
+                {(customerName.trim() || customerPhone.trim()) && (
+                  <button
+                    type="button"
+                    onClick={clearCustomer}
+                    title="Volver a consumidor final"
+                    className="h-9 px-2.5 rounded-lg bg-muted hover:bg-accent text-xs font-medium text-muted-foreground flex-shrink-0"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+              <input
+                type="text"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder={isRetail ? "📝 Notas de la venta (ej: bolsa extra, envolver para regalo)" : "📝 Instrucciones especiales (ej: sin cebolla, extra picante, cortar al medio)"}
+                className="w-full h-9 px-3 text-xs rounded-lg border border-input bg-background"
+              />
+              {method === "delivery" && (
+                <>
+                  {posZonesMode ? (
+                    <select
+                      value={posZoneOut ? "__OUT__" : posActiveZoneId}
+                      onChange={(e) => setPosZoneId(e.target.value)}
+                      className="w-full h-9 px-2 text-xs rounded-lg border border-input bg-background"
+                    >
+                      {deliveryZones.map((z) => (
+                        <option key={z.id} value={z.id}>
+                          {z.name} — ${Number(z.fee).toLocaleString("es-AR")}
+                        </option>
+                      ))}
+                      <option value="__OUT__">Otra zona (monto manual)</option>
+                    </select>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setPosOutOfArea(false)}
+                        className={`rounded-lg py-1.5 text-[11px] font-medium border transition-colors ${
+                          !posOutOfArea ? "border-primary bg-primary/5 text-primary" : "border-border text-muted-foreground"
+                        }`}
+                      >
+                        Dentro{deliveryAreaText ? ` (${deliveryAreaText.slice(0, 24)}${deliveryAreaText.length > 24 ? "…" : ""})` : ""}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPosOutOfArea(true)}
+                        className={`rounded-lg py-1.5 text-[11px] font-medium border transition-colors ${
+                          posOutOfArea ? "border-primary bg-primary/5 text-primary" : "border-border text-muted-foreground"
+                        }`}
+                      >
+                        Fuera de zona
+                      </button>
+                    </div>
+                  )}
+                  {posOutOfAreaFlag && (
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      min="0"
+                      value={posManualFee}
+                      onChange={(e) => setPosManualFee(e.target.value)}
+                      placeholder={`Monto del envío $ (vacío = provisorio $${Number(deliveryBaseFee || 0).toLocaleString("es-AR")})`}
+                      className="w-full h-9 px-3 text-xs rounded-lg border border-input bg-background"
+                    />
+                  )}
+                  <input
+                    ref={addrRef}
+                    type="text"
+                    value={customerAddress}
+                    onChange={(e) => setCustomerAddress(e.target.value)}
+                    placeholder="Dirección de entrega"
+                    className="w-full h-9 px-3 text-xs rounded-lg border border-input bg-background"
+                  />
+                  <input
+                    type="text"
+                    value={posReferences}
+                    onChange={(e) => setPosReferences(e.target.value)}
+                    placeholder="Referencias (opcional: casa verde, portón…)"
+                    className="w-full h-9 px-3 text-xs rounded-lg border border-input bg-background"
+                  />
+                </>
+              )}
+            </div>
+          )}
+        </div>
+    </>
+  );
+
   const orderBody = (
     <>
       <div className="space-y-1.5">
@@ -1844,7 +1995,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
         {/* Método de entrega (default: retiro; retail defaultea directa) + venta directa (sin pedido) */}
         <div className="grid gap-1.5 grid-cols-3">
           <button
-            onClick={() => setMethod("direct")}
+            onClick={() => selectMethod("direct")}
             className={`rounded-lg py-1.5 text-xs font-medium border transition-colors ${
               method === "direct" ? "border-primary bg-primary/5 text-primary" : "border-border text-muted-foreground"
             }`}
@@ -1852,7 +2003,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
             ⚡ Venta directa
           </button>
           <button
-            onClick={() => setMethod("pickup")}
+            onClick={() => selectMethod("pickup")}
             className={`rounded-lg py-1.5 text-xs font-medium border transition-colors ${
               method === "pickup" ? "border-primary bg-primary/5 text-primary" : "border-border text-muted-foreground"
             }`}
@@ -1860,7 +2011,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
             🛍️ Para retirar
           </button>
           <button
-            onClick={() => { setMethod("delivery"); setClientOpen(true); }}
+            onClick={() => selectMethod("delivery")}
             className={`rounded-lg py-1.5 text-xs font-medium border transition-colors ${
               method === "delivery" ? "border-primary bg-primary/5 text-primary" : "border-border text-muted-foreground"
             }`}
@@ -1869,124 +2020,26 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
           </button>
         </div>
 
-        {/* Cliente colapsado: default = consumidor final */}
-        <div className="rounded-xl border border-border">
+        {/* Desktop: resumen de los datos + editar (los campos viven en el modal) */}
+        {(method === "pickup" || method === "delivery") && (
           <button
             type="button"
-            onClick={() => setClientOpen((v) => !v)}
-            className="flex w-full items-center justify-between gap-2 px-3 py-2 text-xs font-medium text-muted-foreground hover:bg-muted/50 rounded-t-xl"
-            aria-expanded={clientOpen}
+            onClick={() => setMethodModal(method)}
+            className="hidden sm:flex w-full items-center justify-between gap-2 rounded-xl border border-border px-3 py-2 text-xs text-muted-foreground hover:border-primary"
           >
             <span className="truncate">
-              👤 {customerName.trim() || customerPhone.trim()
+              {method === "delivery" ? "🛵" : "🛍️"}{" "}
+              {customerName.trim() || customerPhone.trim()
                 ? `${customerName.trim() || "Cliente"}${customerPhone.trim() ? ` · ${customerPhone.trim()}` : ""}`
-                : "Cliente: Consumidor final"}
+                : "Sin datos del cliente"}
+              {method === "delivery" && customerAddress.trim() ? ` · ${customerAddress.trim()}` : ""}
             </span>
-            <span className="flex-shrink-0">{clientOpen ? "▾" : "▸"}</span>
+            <span className="flex-shrink-0">✎</span>
           </button>
-          {clientOpen && (
-            <div className="space-y-2 px-2 pb-2">
-              <CustomerPicker
-                query={customerQuery}
-                onQueryChange={onCustomerQueryChange}
-                onSelect={chooseLookupCustomer}
-                onEnterKey={commitDirectCustomer}
-                placeholder={method === "delivery" ? "🔍 Teléfono o nombre del cliente *" : "🔍 Consumidor final — buscar cliente…"}
-              />
-              <div className="flex items-center gap-1.5">
-                <input
-                  type="text"
-                  value={customerName}
-                  onChange={(e) => setCustomerName(e.target.value)}
-                  placeholder="Nombre del cliente (opcional)"
-                  className="flex-1 min-w-0 h-9 px-3 text-xs rounded-lg border border-input bg-background"
-                />
-                {(customerName.trim() || customerPhone.trim()) && (
-                  <button
-                    type="button"
-                    onClick={clearCustomer}
-                    title="Volver a consumidor final"
-                    className="h-9 px-2.5 rounded-lg bg-muted hover:bg-accent text-xs font-medium text-muted-foreground flex-shrink-0"
-                  >
-                    ✕
-                  </button>
-                )}
-              </div>
-              <input
-                type="text"
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder={isRetail ? "📝 Notas de la venta (ej: bolsa extra, envolver para regalo)" : "📝 Instrucciones especiales (ej: sin cebolla, extra picante, cortar al medio)"}
-                className="w-full h-9 px-3 text-xs rounded-lg border border-input bg-background"
-              />
-              {method === "delivery" && (
-                <>
-                  {posZonesMode ? (
-                    <select
-                      value={posZoneOut ? "__OUT__" : posActiveZoneId}
-                      onChange={(e) => setPosZoneId(e.target.value)}
-                      className="w-full h-9 px-2 text-xs rounded-lg border border-input bg-background"
-                    >
-                      {deliveryZones.map((z) => (
-                        <option key={z.id} value={z.id}>
-                          {z.name} — ${Number(z.fee).toLocaleString("es-AR")}
-                        </option>
-                      ))}
-                      <option value="__OUT__">Otra zona (monto manual)</option>
-                    </select>
-                  ) : (
-                    <div className="grid grid-cols-2 gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => setPosOutOfArea(false)}
-                        className={`rounded-lg py-1.5 text-[11px] font-medium border transition-colors ${
-                          !posOutOfArea ? "border-primary bg-primary/5 text-primary" : "border-border text-muted-foreground"
-                        }`}
-                      >
-                        Dentro{deliveryAreaText ? ` (${deliveryAreaText.slice(0, 24)}${deliveryAreaText.length > 24 ? "…" : ""})` : ""}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setPosOutOfArea(true)}
-                        className={`rounded-lg py-1.5 text-[11px] font-medium border transition-colors ${
-                          posOutOfArea ? "border-primary bg-primary/5 text-primary" : "border-border text-muted-foreground"
-                        }`}
-                      >
-                        Fuera de zona
-                      </button>
-                    </div>
-                  )}
-                  {posOutOfAreaFlag && (
-                    <input
-                      type="number"
-                      inputMode="decimal"
-                      min="0"
-                      value={posManualFee}
-                      onChange={(e) => setPosManualFee(e.target.value)}
-                      placeholder={`Monto del envío $ (vacío = provisorio $${Number(deliveryBaseFee || 0).toLocaleString("es-AR")})`}
-                      className="w-full h-9 px-3 text-xs rounded-lg border border-input bg-background"
-                    />
-                  )}
-                  <input
-                    ref={addrRef}
-                    type="text"
-                    value={customerAddress}
-                    onChange={(e) => setCustomerAddress(e.target.value)}
-                    placeholder="Dirección de entrega"
-                    className="w-full h-9 px-3 text-xs rounded-lg border border-input bg-background"
-                  />
-                  <input
-                    type="text"
-                    value={posReferences}
-                    onChange={(e) => setPosReferences(e.target.value)}
-                    placeholder="Referencias (opcional: casa verde, portón…)"
-                    className="w-full h-9 px-3 text-xs rounded-lg border border-input bg-background"
-                  />
-                </>
-              )}
-            </div>
-          )}
-        </div>
+        )}
+
+        {/* Mobile: campos inline. En desktop van en el modal de modalidad. */}
+        <div className="sm:hidden">{saleDetailsFields}</div>
 
         <div className="flex flex-wrap gap-1.5">
           {PAYMENT_OPTIONS.map((o) => (
@@ -1994,7 +2047,10 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
               key={o.key}
               onClick={() => {
                 setPayment(o.key);
-                if (o.key === "fiado") setClientOpen(true);
+                if (o.key === "fiado") {
+                  setClientOpen(true);
+                  if (finePointer && method !== "direct") setMethodModal(method as "pickup" | "delivery");
+                }
               }}
               className={`rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors ${
                 payment === o.key ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
@@ -2157,7 +2213,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
         <div className="min-w-0">{productsGrid}</div>
 
         {/* Desktop sidebar: cuerpo con scroll + pie fijo con totales y Cobrar */}
-        <div className="hidden sm:flex rounded-2xl border border-border bg-card p-4 flex-col max-h-[70vh] lg:sticky lg:top-24 lg:h-[calc(100vh-12rem)] lg:max-h-none">
+        <div className="hidden sm:flex rounded-2xl border border-border bg-card p-4 flex-col max-h-[70vh] lg:sticky lg:top-24 lg:h-[calc(100vh-7rem)] lg:max-h-none">
           <h3 className="font-display font-semibold text-sm mb-2 flex-shrink-0">Pedido actual</h3>
           <div className="flex-1 min-h-0 overflow-y-auto">{orderBody}</div>
           <div className="flex-shrink-0 border-t border-border mt-2 pt-2">{orderFooter}</div>
@@ -2387,6 +2443,39 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
                   </button>
                 );
               })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de modalidad (solo desktop): datos que requiere retiro/delivery */}
+      {methodModal && (
+        <div className="hidden sm:flex fixed inset-0 z-[70] items-center justify-center bg-black/50 p-4" onClick={() => { setMethodModal(null); setMethodMsg(""); }}>
+          <div className="w-full max-w-md rounded-2xl bg-card border border-border shadow-xl flex flex-col max-h-[85vh]" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 pt-4 pb-1">
+              <div>
+                <h3 className="font-display text-base font-semibold">
+                  {methodModal === "delivery" ? "🛵 Datos del envío" : "🛍️ Datos del retiro"}
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  {methodModal === "delivery"
+                    ? "El teléfono es obligatorio para el envío."
+                    : "Opcional: asociá el cliente para la ficha y avisos."}
+                </p>
+              </div>
+              <button onClick={() => { setMethodModal(null); setMethodMsg(""); }} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground" aria-label="Cerrar">✕</button>
+            </div>
+            <div className="px-4 py-2 overflow-y-auto">{saleDetailsFields}</div>
+            {methodMsg && (
+              <p className="mx-4 mb-1 text-xs rounded-lg px-3 py-2 text-red-700 bg-red-50">{methodMsg}</p>
+            )}
+            <div className="flex gap-2 px-4 pb-4 pt-1">
+              <Button className="flex-1" onClick={confirmMethodModal}>
+                Listo
+              </Button>
+              <Button variant="outline" onClick={clearCustomer}>
+                Limpiar
+              </Button>
             </div>
           </div>
         </div>

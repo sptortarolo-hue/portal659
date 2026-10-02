@@ -13,3 +13,4 @@ coverage
 tests
 jest.config.*
 eslint.config.mjs
+reparto

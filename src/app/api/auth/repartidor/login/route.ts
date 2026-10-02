@@ -59,6 +59,11 @@ export const POST = withRateLimit(async (request: Request) => {
 
   const response = NextResponse.json({
     ok: true,
+    // La app nativa de Reparto se autentica con Bearer (sin cookies): expone
+    // el token igual que el login normal (session.access_token). `profile.id`
+    // le permite matchear assigned_to para "Mis entregas".
+    session: { access_token: accessToken, refresh_token: accessToken },
+    profile: { id: staff.profile_id },
     vendor: { id: vendor?.id, store_name: vendor?.store_name },
   });
   const isLocal = process.env.NODE_ENV === "development";

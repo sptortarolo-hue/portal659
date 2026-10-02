@@ -83,7 +83,12 @@ export async function POST(request: Request) {
     tokenVersion: result.tokenVersion,
   });
 
-  const response = NextResponse.json({ ok: true, vendor: { id: vendor?.id, store_name: vendor?.store_name } });
+  const response = NextResponse.json({
+    ok: true,
+    // Igual que login repartidor: la app nativa usa session.access_token (Bearer).
+    session: { access_token: accessToken, refresh_token: accessToken },
+    vendor: { id: vendor?.id, store_name: vendor?.store_name },
+  });
   const isLocal = process.env.NODE_ENV === "development";
   const cookieOpts = {
     httpOnly: true,

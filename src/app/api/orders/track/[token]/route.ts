@@ -25,13 +25,22 @@ export const GET = withRateLimit(
               o.pickup_number,
               o.estimated_minutes,
               o.created_at,
+              -- Punto vivo del repartidor (tolerante a migración sin aplicar).
+              CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'courier_lat')
+                THEN o.courier_lat ELSE NULL END AS courier_lat,
+              CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'courier_lng')
+                THEN o.courier_lng ELSE NULL END AS courier_lng,
+              CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'courier_updated_at')
+                THEN o.courier_updated_at ELSE NULL END AS courier_updated_at,
               jsonb_build_object(
                 'store_name', v.store_name,
                 'slug', v.slug,
                 'whatsapp', v.whatsapp,
                 'phone', v.phone,
                 'vertical', v.vertical,
-                'prep_time_min', v.prep_time_min
+                'prep_time_min', v.prep_time_min,
+                'lat', v.lat,
+                'lng', v.lng
               ) AS vendors
        FROM orders o
        LEFT JOIN vendors v ON v.id = o.vendor_id
@@ -48,6 +57,14 @@ export const GET = withRateLimit(
       `SELECT status, created_at FROM order_status_log WHERE order_id = $1 ORDER BY created_at ASC`,
       [order.id as string]
     );
+
+    // Privacidad: el punto vivo solo se expone mientras el envío va En camino.
+    // En cualquier otro estado se manda null aunque la DB aún lo tenga.
+    if (order.status !== "sent" || order.method !== "delivery") {
+      order.courier_lat = null;
+      order.courier_lng = null;
+      order.courier_updated_at = null;
+    }
 
     return NextResponse.json({ order: { ...order, timeline: timeline || [] } });
   },

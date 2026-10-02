@@ -295,6 +295,25 @@ export async function PATCH(
       }
       if (status) updateData.status = status;
       if (status === "completed" || status === "cancelled") updateData.closed_at = new Date().toISOString();
+      // Corte de privacidad del punto vivo: al entregar/cancelar se borra la
+      // última posición (tolerante a migración sin aplicar).
+      if (status === "completed" || status === "cancelled") {
+        try {
+          const cc = await tx.query<{ exists: boolean }>(
+            `SELECT EXISTS (
+               SELECT 1 FROM information_schema.columns
+               WHERE table_name = 'orders' AND column_name = 'courier_lat'
+             ) AS exists`
+          );
+          if (cc[0]?.exists === true) {
+            updateData.courier_lat = null;
+            updateData.courier_lng = null;
+            updateData.courier_updated_at = null;
+          }
+        } catch {
+          /* sin columnas: nada que borrar */
+        }
+      }
       if (estimated_minutes !== undefined) updateData.estimated_minutes = estimated_minutes;
       if (modification_notes !== undefined) updateData.modification_notes = modification_notes;
       if (isConvertDelivery) {

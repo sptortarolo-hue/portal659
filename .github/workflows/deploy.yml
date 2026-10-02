@@ -137,6 +137,7 @@ jobs:
             printf '%s\n' \
               "*/15 * * * * root curl -fsS \"https://www.portal659.com.ar/api/cron/booking-reminders?secret=$CRON_SECRET_VAL\" >> /var/log/portal659-cron.log 2>&1" \
               "*/5 * * * * root curl -fsS \"https://www.portal659.com.ar/api/cron/order-nudge?secret=$CRON_SECRET_VAL\" >> /var/log/portal659-cron.log 2>&1" \
+              "*/5 * * * * root curl -fsS \"https://www.portal659.com.ar/api/cron/delivery-stale?secret=$CRON_SECRET_VAL\" >> /var/log/portal659-cron.log 2>&1" \
               > /etc/cron.d/portal659-reminders
             chmod 644 /etc/cron.d/portal659-reminders
             systemctl enable --now cron >/dev/null 2>&1 || service cron start >/dev/null 2>&1 || true

@@ -1,0 +1,25 @@
+{
+  "name": "reparto-location",
+  "version": "0.0.1",
+  "description": "Ubicación en vivo en segundo plano (foreground service) para la app Portal Reparto",
+  "private": true,
+  "type": "module",
+  "main": "dist/esm/index.js",
+  "types": "dist/esm/index.d.ts",
+  "files": ["dist/esm", "android"],
+  "capacitor": {
+    "android": {
+      "src": "android"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "peerDependencies": {
+    "@capacitor/core": "^6.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/core": "^6.1.0",
+    "typescript": "^5.5.0"
+  }
+}

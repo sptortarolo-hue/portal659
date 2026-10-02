@@ -1,0 +1,8 @@
+node_modules/
+reparto-location/node_modules/
+reparto-location/dist/
+/android/
+www/main.js
+# Plataforma generada + secretos locales (keystore, sdk path): no versionar.
+/android/keystore.properties
+/android/local.properties

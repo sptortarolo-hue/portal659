@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { OrderTimeline } from "@/components/orders/order-timeline";
+import { DeliveryLiveMap } from "@/components/orders/delivery-live-map";
 import { Button } from "@/components/ui/button";
 import {
   statusLabel,
@@ -28,6 +29,9 @@ type TrackOrder = {
   estimated_minutes: number | null;
   created_at: string;
   timeline: { status: string; created_at: string }[];
+  courier_lat: number | null;
+  courier_lng: number | null;
+  courier_updated_at: string | null;
   vendors: {
     store_name: string;
     slug: string;
@@ -35,6 +39,8 @@ type TrackOrder = {
     phone: string;
     vertical: string;
     prep_time_min: number | null;
+    lat: number | null;
+    lng: number | null;
   } | null;
 };
 
@@ -134,6 +140,25 @@ export default function SeguimientoPedidoPage() {
       <p className="text-xs text-muted-foreground mb-4">
         {order.pickup_number != null ? `Pedido Nro. ${order.pickup_number}` : `#${order.id.slice(0, 8)}`} · {timeAgo(order.created_at)}
       </p>
+
+      {order.method === "delivery" && order.status === "sent" &&
+        (order.courier_lat != null && order.courier_lng != null ? (
+          <DeliveryLiveMap
+            storeName={vendor?.store_name || "El local"}
+            vendorLat={vendor?.lat ?? null}
+            vendorLng={vendor?.lng ?? null}
+            courierLat={order.courier_lat}
+            courierLng={order.courier_lng}
+            courierUpdatedAt={order.courier_updated_at}
+          />
+        ) : (
+          <div className="rounded-2xl border border-border bg-card p-4 mb-4 text-center">
+            <p className="text-sm">🛵 <span className="font-medium">Tu pedido va en camino</span></p>
+            <p className="text-xs text-muted-foreground mt-1">
+              El repartidor aún no comparte su ubicación en vivo — se muestra acá en cuanto la active.
+            </p>
+          </div>
+        ))}
 
       <div className="rounded-2xl border border-border bg-card p-4 mb-4">
         <div className="flex items-center justify-between mb-2">

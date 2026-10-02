@@ -635,13 +635,27 @@ ALTER TABLE public.orders
   ADD COLUMN IF NOT EXISTS delivery_out_of_area boolean NOT NULL DEFAULT false,
   ADD COLUMN IF NOT EXISTS delivery_zone_id uuid,
   ADD COLUMN IF NOT EXISTS delivery_zone_name text,
-  ADD COLUMN IF NOT EXISTS delivery_fee numeric(10, 2) NOT NULL DEFAULT 0;
+  ADD COLUMN IF NOT EXISTS delivery_fee numeric(10, 2) NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS delivery_window text;
+COMMENT ON COLUMN public.orders.delivery_window IS
+  'Turno de entrega prometido retail ("mañana 09:00–13:00"). Denormalizado para ticket/WhatsApp/seguimiento.';
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_orders_delivery_zone') THEN
     ALTER TABLE public.orders ADD CONSTRAINT fk_orders_delivery_zone
       FOREIGN KEY (delivery_zone_id) REFERENCES public.delivery_zones(id) ON DELETE SET NULL;
   END IF;
 END $$;
+
+-- ============================================================
+-- 030_delivery_schedule.sql (franjas de reparto retail)
+-- ============================================================
+ALTER TABLE public.vendors
+  ADD COLUMN IF NOT EXISTS delivery_hours text,
+  ADD COLUMN IF NOT EXISTS delivery_prep_min integer NOT NULL DEFAULT 60;
+COMMENT ON COLUMN public.vendors.delivery_hours IS
+  'Franjas de reparto retail (formato HoursEditor). NULL = mismo horario del local.';
+COMMENT ON COLUMN public.vendors.delivery_prep_min IS
+  'Base empaquetado+reparto retail en minutos (default 60). Separado de prep_time_min gastro.';
 
 -- ============================================================
 -- Trigger updated_at para profiles

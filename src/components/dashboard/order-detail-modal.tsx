@@ -18,6 +18,7 @@ import {
   CONDITION_META,
 } from "@/lib/order-utils";
 import { buildModifiedOrderMessage, buildTransferInstructionsMessage } from "@/lib/whatsapp-message";
+import { formatDeliveryWindow } from "@/lib/delivery-schedule";
 import { FiscalBillButton } from "@/components/dashboard/fiscal-bill-button";
 import { orderLineTotal, derivedUnitPrice } from "@/lib/order-line";
 import type { Order, OrderStatus, OrderItem, Product as DBProduct } from "@/types/database";
@@ -429,6 +430,11 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
                     )}
                   </span>
                 )}
+              </p>
+            )}
+            {order.method === "delivery" && (order as any).delivery_window && (
+              <p className="text-xs font-semibold text-violet-700">
+                📦 Turno de entrega: {formatDeliveryWindow((order as any).delivery_window)}
               </p>
             )}
           </div>

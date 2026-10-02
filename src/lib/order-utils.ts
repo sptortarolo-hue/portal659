@@ -1,4 +1,5 @@
 import type { Order, OrderStatus } from "@/types/database";
+import { formatDeliveryWindow } from "@/lib/delivery-schedule";
 
 /**
  * True si el pedido tiene al menos un ítem que requiere elaboración de cocina.
@@ -437,8 +438,14 @@ export function buildContextualWhatsApp(
   }
 
   if (["new", "confirmed", "preparing"].includes(order.status)) {
+    // Turno de entrega prometido (retail delivery): el cliente ya lo eligió
+    // en el checkout; se lo repetimos para que sepa cuándo le llega.
+    const winLabel = isRetail && order.method === "delivery"
+      ? formatDeliveryWindow((order as any).delivery_window)
+      : null;
+    const winSuffix = winLabel ? ` Te lo llevamos ${winLabel} 📦` : "";
     const confirmMsg = isRetail
-      ? `Hola ${order.customer_name}! Tu pedido #${order.id.slice(0, 8)} de ${vendorName} fue confirmado y ya lo estamos empaquetando. Te avisamos cuando esté. 📦`
+      ? `Hola ${order.customer_name}! Tu pedido #${order.id.slice(0, 8)} de ${vendorName} fue confirmado y ya lo estamos empaquetando.${winSuffix || " Te avisamos cuando esté. 📦"}`
       : `Hola ${order.customer_name}! Tu pedido #${order.id.slice(0, 8)} de ${vendorName} fue confirmado y ya está en preparación. Te avisamos cuando esté. 🍳`;
     const stageLabel =
       order.status === "new"

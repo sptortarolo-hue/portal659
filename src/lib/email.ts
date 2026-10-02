@@ -108,8 +108,10 @@ export function newOrderVendorEmail(params: {
   total: number;
   method: string | null;
   address?: string | null;
+  /** Turno de entrega prometido ("mañana 09:00–13:00"), retail delivery. */
+  deliveryWindow?: string | null;
 }): { subject: string; html: string } {
-  const { storeName, orderNumber, customerName, customerPhone, paymentLabel, items, total, method, address } = params;
+  const { storeName, orderNumber, customerName, customerPhone, paymentLabel, items, total, method, address, deliveryWindow } = params;
   const numTxt = orderNumber ? `#${orderNumber}` : "nuevo";
   const itemRows = items
     .map((i) => {
@@ -133,7 +135,7 @@ export function newOrderVendorEmail(params: {
         </table>
         <p style="font-size:14px">
           Cliente: <strong>${customerName}</strong> (${customerPhone})<br>
-          Entrega: ${method === "pickup" ? "Retiro en el local" : `Envío${address ? ` — ${address}` : ""}`}<br>
+          Entrega: ${method === "pickup" ? "Retiro en el local" : `Envío${address ? ` — ${address}` : ""}`}${method !== "pickup" && deliveryWindow ? ` · Turno: ${deliveryWindow}` : ""}<br>
           Pago: ${paymentLabel}
         </p>
         <p style="margin-top:16px">

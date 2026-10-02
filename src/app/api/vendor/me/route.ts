@@ -70,6 +70,8 @@ export async function POST(request: Request) {
     free_delivery_min,
     delivery_mode,
     delivery_area_text,
+    delivery_hours,
+    delivery_prep_min,
     services_list,
     service_area,
     free_estimate,
@@ -151,6 +153,19 @@ export async function POST(request: Request) {
   if (delivery_area_text !== undefined) {
     const t = typeof delivery_area_text === "string" ? delivery_area_text.trim().slice(0, 120) : "";
     payload.delivery_area_text = t || null;
+  }
+  // Franjas de reparto retail (formato HoursEditor; null/vacío = mismo
+  // horario del local). Tolerante a migración sin aplicar (ver droppable).
+  if (delivery_hours !== undefined) {
+    const t = typeof delivery_hours === "string" ? delivery_hours.trim().slice(0, 500) : "";
+    payload.delivery_hours = t || null;
+  }
+  if (delivery_prep_min !== undefined) {
+    const n = delivery_prep_min == null || delivery_prep_min === "" ? 60 : Number(delivery_prep_min);
+    if (!Number.isFinite(n) || n < 0 || n > 240) {
+      return NextResponse.json({ error: "El tiempo de reparto debe estar entre 0 y 240" }, { status: 400 });
+    }
+    payload.delivery_prep_min = Math.round(n);
   }
   if (services_list !== undefined) payload.services_list = services_list || null;
   if (service_area !== undefined) payload.service_area = service_area || null;
@@ -285,6 +300,8 @@ export async function POST(request: Request) {
         "kitchen_strict_close",
         "delivery_mode",
         "delivery_area_text",
+        "delivery_hours",
+        "delivery_prep_min",
         "storefront_layout",
         "require_open_shift",
         "reservation_lead_min",

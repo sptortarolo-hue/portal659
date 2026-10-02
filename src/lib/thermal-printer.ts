@@ -4,6 +4,7 @@ import { Readable, Writable } from "stream";
 import type { Order, OrderItem } from "@/types/database";
 import { orderLineTotal } from "@/lib/order-line";
 import { CASH_METHOD_LABELS } from "@/lib/cash-methods";
+import { formatDeliveryWindow } from "@/lib/delivery-schedule";
 
 let ThermalPrinter: any = null;
 let PrinterTypes: any = null;
@@ -584,6 +585,10 @@ async function composeComanda(printer: any, vendor: PrinterVendor, order: Order)
   printer.println(`Tel: ${order.customer_phone}`);
   if (order.method === "delivery" && order.customer_address) {
     printer.println(`Dir: ${order.customer_address}`);
+  }
+  const ticketWindow = order.method === "delivery" ? formatDeliveryWindow((order as any)?.delivery_window) : null;
+  if (ticketWindow) {
+    printer.println(`Entrega: ${ticketWindow}`);
   }
   if (order.method === "delivery" && deliveryPrintInfo(order).outOfArea) {
     printer.bold(true);

@@ -23,6 +23,8 @@ type OrderSummaryModalProps = {
   deliveryFee?: number;
   method: "delivery" | "pickup";
   address?: string;
+  /** "mañana 09:00–13:00": turno de entrega retail elegido. */
+  deliveryWindowLabel?: string;
   paymentMethod?: string;
   loading?: boolean;
   cashDiscount?: number;
@@ -41,6 +43,7 @@ export function OrderSummaryModal({
   deliveryFee = 0,
   method,
   address,
+  deliveryWindowLabel,
   paymentMethod,
   loading,
   cashDiscount = 0,
@@ -136,6 +139,9 @@ export function OrderSummaryModal({
             {method === "delivery" ? "🛵 Delivery" : "🏠 Retiro en local"}
             {address && method === "delivery" ? ` — ${address}` : ""}
           </p>
+          {deliveryWindowLabel && method === "delivery" && (
+            <p>📦 Te lo llevamos {deliveryWindowLabel}</p>
+          )}
           <p>💳 {paymentLabel}</p>
         </div>
       </div>

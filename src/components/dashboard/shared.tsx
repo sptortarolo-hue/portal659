@@ -12,6 +12,12 @@ import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import { DropdownMenu } from "@/components/ui/dropdown-menu";
 import { Switch } from "@/components/ui/switch";
 import { saveDraft, loadDraft, clearDraft } from "@/lib/draft";
+import { HoursEditor } from "@/components/dashboard/hours-editor";
+import {
+  isDeliveryOpen,
+  nextDeliverySlots,
+  usesStoreHours as usesStoreHoursOf,
+} from "@/lib/delivery-schedule";
 
 /**
  * Borrador de formulario con vencimiento (24h). Persiste campos serializables
@@ -1115,6 +1121,170 @@ export function DeliveryFeeConfig({
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Horarios de reparto retail (moda + comercio). El cliente ve en el
+ * micrositio cuándo le llega el pedido y elige entre los próximos 3 turnos.
+ * - Switch "mismo horario del local" (default): delivery_hours = NULL.
+ * - Horario propio: HoursEditor reutilizado + botón Guardar explícito (el
+ *   editor emite onChange por cada clic: no se autosalva para no spamear PATCH).
+ * - Tiempo de preparación y reparto (min, default 60): chips + input con
+ *   guardado al salir (mismo patrón que DeliveryFeeConfig).
+ * Fuera de horario no se bloquea: el pedido entra con el próximo turno
+ * (el checkout lo avisa con cartel amable + alternativa de retiro).
+ */
+export function DeliveryScheduleConfig({
+  vendor,
+  saveVendor,
+}: {
+  vendor: any;
+  saveVendor: (data: Record<string, unknown>) => Promise<void>;
+}) {
+  const [useStoreHours, setUseStoreHours] = useState<boolean>(
+    usesStoreHoursOf({ delivery_hours: vendor?.delivery_hours ?? null })
+  );
+  const [hours, setHours] = useState<string>(
+    vendor?.delivery_hours || vendor?.hours || ""
+  );
+  const [prep, setPrep] = useState<string>(
+    vendor?.delivery_prep_min != null ? String(vendor.delivery_prep_min) : "60"
+  );
+  const [savingHours, setSavingHours] = useState(false);
+  const [hoursMsg, setHoursMsg] = useState("");
+
+  // El guardado upstream reemplaza `vendor`: sincronizar estado local.
+  useEffect(() => {
+    setUseStoreHours(usesStoreHoursOf({ delivery_hours: vendor?.delivery_hours ?? null }));
+    setHours(vendor?.delivery_hours || vendor?.hours || "");
+    setPrep(vendor?.delivery_prep_min != null ? String(vendor.delivery_prep_min) : "60");
+  }, [vendor?.delivery_hours, vendor?.hours, vendor?.delivery_prep_min]);
+
+  const sched = {
+    hours: vendor?.hours ?? null,
+    delivery_hours: useStoreHours ? null : hours || null,
+    open_override: vendor?.open_override ?? null,
+  };
+  let previewOpen: boolean | null = null;
+  let previewSlots: { id: string; label: string }[] = [];
+  try {
+    previewOpen = isDeliveryOpen(sched);
+    previewSlots = nextDeliverySlots(sched, { count: 3 });
+  } catch {
+    previewOpen = null;
+    previewSlots = [];
+  }
+
+  async function toggleStoreHours(v: boolean) {
+    setUseStoreHours(v);
+    setHoursMsg("");
+    if (v) {
+      setHours(vendor?.hours || "");
+      await saveVendor({ delivery_hours: null });
+    } else {
+      setHours(vendor?.delivery_hours || vendor?.hours || "");
+    }
+  }
+
+  async function saveHours() {
+    setSavingHours(true);
+    setHoursMsg("");
+    try {
+      const t = hours.trim();
+      await saveVendor({ delivery_hours: t || null });
+      if (!t) setUseStoreHours(true);
+      setHoursMsg("Horario de reparto guardado");
+    } catch {
+      setHoursMsg("No se pudo guardar");
+    } finally {
+      setSavingHours(false);
+    }
+  }
+
+  function savePrep() {
+    const n = prep === "" ? 60 : Number(prep);
+    if (!Number.isFinite(n) || n < 0 || n > 240) return;
+    saveVendor({ delivery_prep_min: Math.round(n) });
+  }
+
+  return (
+    <div className="space-y-3 rounded-xl border border-border p-3">
+      <div>
+        <Label>🛵 Horarios de reparto</Label>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          El cliente ve cuándo le llega el pedido y elige entre los próximos 3 turnos.
+          Fuera de horario el pedido entra igual, para el próximo turno.
+        </p>
+      </div>
+
+      <div className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2.5">
+        <div>
+          <Label className="text-sm">Mismo horario del local</Label>
+          <p className="text-xs text-muted-foreground">
+            {useStoreHours ? "El reparto sigue tu horario de atención." : "El reparto tiene horario propio."}
+          </p>
+        </div>
+        <Switch checked={useStoreHours} onCheckedChange={toggleStoreHours} />
+      </div>
+
+      {!useStoreHours && (
+        <div className="space-y-2">
+          <HoursEditor value={hours} onChange={setHours} />
+          <Button type="button" size="sm" className="w-full" disabled={savingHours} onClick={saveHours}>
+            {savingHours ? "Guardando…" : "Guardar horario de reparto"}
+          </Button>
+          {hoursMsg && <p className="text-xs text-muted-foreground">{hoursMsg}</p>}
+        </div>
+      )}
+
+      <div>
+        <Label>Tiempo de preparación y reparto (min)</Label>
+        <div className="flex flex-wrap gap-1.5 mt-1">
+          {[30, 60, 90, 120].map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => {
+                setPrep(String(m));
+                saveVendor({ delivery_prep_min: m });
+              }}
+              className={`rounded-lg py-1.5 px-2.5 text-xs font-medium border transition-colors ${
+                Number(prep) === m
+                  ? "border-primary bg-primary/5 text-primary"
+                  : "border-border text-muted-foreground"
+              }`}
+            >
+              {m} min
+            </button>
+          ))}
+          <Input
+            className="h-8 w-20 text-xs"
+            type="number"
+            inputMode="numeric"
+            min="0"
+            max="240"
+            value={prep}
+            onChange={(e) => setPrep(e.target.value)}
+            onBlur={savePrep}
+            aria-label="Minutos de preparación y reparto"
+          />
+        </div>
+      </div>
+
+      <div className="rounded-lg bg-muted/50 px-3 py-2">
+        {previewSlots.length > 0 ? (
+          <p className="text-xs text-muted-foreground">
+            {previewOpen === false ? "😴 Reparto cerrado ahora · " : "🛵 "}
+            Próximos turnos: <span className="font-medium text-foreground">{previewSlots.map((s) => s.label).join(" · ")}</span>
+          </p>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            Sin turnos configurados: cargá tu horario de atención o uno propio para mostrar cuándo llega cada pedido.
+          </p>
+        )}
+      </div>
     </div>
   );
 }

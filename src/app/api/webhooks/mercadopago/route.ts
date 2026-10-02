@@ -3,6 +3,7 @@ import { logApiError } from "@/lib/api-error";
 import { adjustStockForItems } from "@/lib/stock";
 import { sendPushToUser } from "@/lib/push";
 import { sendEmail, newOrderVendorEmail } from "@/lib/email";
+import { formatDeliveryWindow } from "@/lib/delivery-schedule";
 import { getVendorMpToken } from "@/lib/mp-oauth";
 import { dispatchPrint, type PrinterVendor } from "@/lib/thermal-printer";
 import { upsertCustomerFromOrder } from "@/lib/customers";
@@ -396,6 +397,52 @@ export async function POST(request: Request) {
         // raras: el espejo del checkout ya sumó el envío al total).
         const mpItemsSum = orderItems.reduce((s: number, i: any) => s + (Number(i.price) || 0) * (Number(i.qty) || 0), 0);
         const mpFee = !isPickup ? Math.max(0, Math.round(((Number(payment.transaction_amount) || 0) - mpItemsSum) * 100) / 100) : 0;
+        // Turno de entrega retail (metadata del checkout): se valida contra
+        // los próximos slots; si viene vacío/trucho se auto-asigna el próximo.
+        let mpWindow: string | null = null;
+        if (!isPickup) {
+          try {
+            const { nextDeliverySlots, isValidDeliveryWindow } = await import(
+              "@/lib/delivery-schedule"
+            );
+            const { fetchVendorDelivery } = await import("@/lib/delivery-server");
+            const wcfg = await fetchVendorDelivery(vendorId);
+            const wrow = await queryOne<{ vertical: string }>(
+              `SELECT vertical FROM vendors WHERE id = $1 LIMIT 1`,
+              [vendorId]
+            );
+            const wvertical = String(wrow?.vertical || "");
+            if (wvertical === "moda" || wvertical === "comercio") {
+              const wslots = nextDeliverySlots(
+                {
+                  hours: wcfg.hours,
+                  delivery_hours: wcfg.deliveryHours,
+                  open_override: wcfg.openOverride,
+                },
+                { timeZone: "America/Argentina/Buenos_Aires", count: 3 }
+              );
+              if (wslots.length > 0) {
+                const raw = typeof metadata.delivery_window === "string" ? metadata.delivery_window : "";
+                mpWindow = raw && isValidDeliveryWindow(raw, wslots) ? raw : wslots[0].id;
+              }
+            }
+          } catch {
+            mpWindow = null;
+          }
+        }
+        // Columna del turno (tolerante a migración sin aplicar).
+        let mpWindowCol = false;
+        try {
+          const wc = await queryOne<{ exists: boolean }>(
+            `SELECT EXISTS (
+               SELECT 1 FROM information_schema.columns
+               WHERE table_name = 'orders' AND column_name = 'delivery_window'
+             ) AS exists`
+          );
+          mpWindowCol = wc?.exists === true;
+        } catch {
+          mpWindowCol = false;
+        }
         // Columnas de zona (tolerante a migración sin aplicar).
         let mpZoneCols = false;
         try {
@@ -411,7 +458,7 @@ export async function POST(request: Request) {
         }
         let order: any = null;
         await withTransaction(async (tx) => {
-          const cols = `vendor_id, customer_name, customer_phone, customer_address, method, items, total, status, pickup_number, payment_method, payment_status, track_token, mp_payment_id${mpZoneCols ? ", delivery_zone_id, delivery_zone_name, delivery_out_of_area, delivery_fee" : ""}`;
+          const cols = `vendor_id, customer_name, customer_phone, customer_address, method, items, total, status, pickup_number, payment_method, payment_status, track_token, mp_payment_id${mpZoneCols ? ", delivery_zone_id, delivery_zone_name, delivery_out_of_area, delivery_fee" : ""}${mpWindowCol ? ", delivery_window" : ""}`;
           const vals: unknown[] = [
             vendorId,
             customerName,
@@ -427,6 +474,7 @@ export async function POST(request: Request) {
             trackToken,
             String(payment.id ?? ""),
             ...(mpZoneCols ? [mpZoneId, mpZoneName, mpOutOfArea, mpFee] : []),
+            ...(mpWindowCol ? [mpWindow] : []),
           ];
           const placeholders = vals.map((_, i) => `$${i + 1}`).join(", ");
           const inserted = await tx.query<{ id: string }>(
@@ -522,6 +570,7 @@ export async function POST(request: Request) {
                 total: payment.transaction_amount,
                 method: isPickup ? "pickup" : "delivery",
                 address: customerAddress,
+                deliveryWindow: mpWindow ? formatDeliveryWindow(mpWindow) : null,
               });
               await sendEmail({ to: profile.email, ...emailContent });
             }

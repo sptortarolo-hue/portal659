@@ -15,6 +15,7 @@ import {
 } from "@/lib/order-utils";
 import { AlertTriangle, ChevronRight, Banknote, MessageSquare, CheckCircle, Truck, Plus, ChefHat, Package } from "lucide-react";
 import { apartadoInfo } from "@/lib/apartado";
+import { formatDeliveryWindow } from "@/lib/delivery-schedule";
 
 type OrdersKanbanProps = {
   orders: Order[];
@@ -92,6 +93,11 @@ function OrderCard({
                   🗺️ {(order as any).delivery_zone_name}
                 </span>
               )
+            )}
+            {order.method === "delivery" && (order as any).delivery_window && (
+              <span className="inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-violet-100 text-violet-700 border-violet-200">
+                📦 {formatDeliveryWindow((order as any).delivery_window)}
+              </span>
             )}
             {order.is_preview && (
               <span className="inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full border bg-violet-100 text-violet-700 border-violet-200">

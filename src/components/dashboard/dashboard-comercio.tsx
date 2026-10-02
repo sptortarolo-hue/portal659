@@ -19,6 +19,7 @@ import {
   apiJson,
   TransferConfig,
   DeliveryFeeConfig,
+  DeliveryScheduleConfig,
 } from "@/components/dashboard/shared";
 import { MpConnectCard } from "@/components/dashboard/mp-connect-card";
 import { PrinterConfigSection } from "@/components/dashboard/printer-config-section";
@@ -562,6 +563,9 @@ export default function DashboardComercio({
           </div>
           {deliveryOptions !== "retiro" && (
             <DeliveryFeeConfig vendor={vendor} saveVendor={saveVendor} />
+          )}
+          {deliveryOptions !== "retiro" && (
+            <DeliveryScheduleConfig vendor={vendor} saveVendor={saveVendor} />
           )}
         </div>
       </ConfigSection>

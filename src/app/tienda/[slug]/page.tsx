@@ -3,6 +3,7 @@ import { queryEffectiveModifiers } from "@/lib/modifier-rules";
 import { getServiceQuota } from "@/lib/service-quota";
 import { resolveVendorPlan, vendorSellsOnline } from "@/lib/plans";
 import { isStoreOpen } from "@/lib/open-hours";
+import { DELIVERY_TZ, isDeliveryOpen, nextDeliverySlots } from "@/lib/delivery-schedule";
 import { notFound } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { ProductImage } from "@/components/product-image";
@@ -237,6 +238,24 @@ export default async function TiendaPage({
   const isComercio = v.vertical === "comercio";
   // Retail (moda/comercio): se habla de "catálogo" y productos, no de carta/menú.
   const isCatalog = isModa || isComercio;
+  // Franjas de reparto (retail): el cliente ve cuándo le llega el pedido.
+  // Tolerante a migración sin aplicar (delivery_hours llega undefined).
+  let retailSlots: { id: string; label: string; range: string; isToday: boolean; isTomorrow: boolean }[] = [];
+  let retailDeliveryOpen: boolean | null = null;
+  if (isCatalog) {
+    try {
+      const sched = {
+        hours: (v.hours as string | null) ?? null,
+        delivery_hours: (v.delivery_hours as string | null) ?? null,
+        open_override: (v.open_override as boolean | null) ?? null,
+      };
+      retailSlots = nextDeliverySlots(sched, { timeZone: DELIVERY_TZ, count: 3 });
+      retailDeliveryOpen = isDeliveryOpen(sched, { timeZone: DELIVERY_TZ });
+    } catch {
+      retailSlots = [];
+      retailDeliveryOpen = null;
+    }
+  }
   // Precios por volumen (packs combinables): gastronomía y comercios de
   // barrio. El servidor los calcula sin gate vertical; acá se decide si el
   // micrositio los muestra (badges, PackCards, PackSheet).
@@ -565,6 +584,17 @@ export default async function TiendaPage({
             {v.delivery_options && v.delivery_options !== "ambos" && (
               <span className="rounded-full bg-accent px-3 py-1 text-sm text-accent-foreground">
                 {v.delivery_options === "retiro" ? "🏠 Solo retiro" : "🛵 Solo delivery"}
+              </span>
+            )}
+            {isCatalog && retailSlots.length > 0 && v.delivery_options !== "retiro" && (
+              <span className={`rounded-full px-3 py-1 text-sm font-medium ${
+                retailDeliveryOpen === false
+                  ? "bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
+                  : "bg-primary/10 text-primary"
+              }`}>
+                {retailDeliveryOpen === false
+                  ? `😴 Reparto cerrado · próximo turno ${retailSlots[0].label}`
+                  : `🛵 Te lo llevamos ${retailSlots[0].label}`}
               </span>
             )}
             {v.neighborhood && (

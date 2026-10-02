@@ -14,6 +14,7 @@ import {
   timeAgo,
 } from "@/lib/order-utils";
 import { orderLineTotal } from "@/lib/order-line";
+import { formatDeliveryWindow } from "@/lib/delivery-schedule";
 import type { OrderStatus } from "@/types/database";
 
 type TrackOrder = {
@@ -27,6 +28,7 @@ type TrackOrder = {
   payment_status: string | null;
   pickup_number: number | null;
   estimated_minutes: number | null;
+  delivery_window: string | null;
   created_at: string;
   timeline: { status: string; created_at: string }[];
   courier_lat: number | null;
@@ -169,6 +171,12 @@ export default function SeguimientoPedidoPage() {
             <span className="text-xs font-medium text-primary">~{countdown} min</span>
           )}
         </div>
+
+        {isRetail && order.method === "delivery" && order.delivery_window && !isDone && (
+          <p className="rounded-xl bg-primary/5 border border-primary/15 px-3 py-2 text-xs font-medium text-primary mb-2">
+            📦 Te lo llevamos {formatDeliveryWindow(order.delivery_window)}
+          </p>
+        )}
 
         <OrderTimeline status={order.status} method={order.method} isRetail={isRetail} />
 

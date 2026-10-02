@@ -16,7 +16,7 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json();
-  const { vendorId, items, total, customerName, customerPhone, customerAddress, method, isPreview, deliveryZoneId, deliveryOutOfArea } = body;
+  const { vendorId, items, total, customerName, customerPhone, customerAddress, method, isPreview, deliveryZoneId, deliveryOutOfArea, deliveryWindow } = body;
 
   // En modo prueba nunca se cobra online con dinero real.
   if (isPreview) {
@@ -99,6 +99,8 @@ export async function POST(request: Request) {
         // Zona de envío (el webhook la valida contra el comercio y la persiste).
         delivery_zone_id: typeof deliveryZoneId === "string" ? deliveryZoneId : "",
         delivery_out_of_area: deliveryOutOfArea === true ? "1" : "",
+        // Turno de entrega retail (el webhook lo valida y persiste).
+        delivery_window: typeof deliveryWindow === "string" ? deliveryWindow.slice(0, 60) : "",
         // JSON string: referencias para descontar stock al aprobarse el pago.
         stock_items: JSON.stringify(
           items.map((i: any) => ({

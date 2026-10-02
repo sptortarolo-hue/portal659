@@ -34,9 +34,12 @@ export default function CheckoutPage() {
   const [error, setError] = useState("");
   const [mpConfigured, setMpConfigured] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
-  const [showSummary, setShowSummary] = useState(false);
-  const [pendingOrder, setPendingOrder] = useState<{ orderId: string; message: string; waNumber: string; trackToken?: string } | null>(null);
+  const [showSummary, setShowSummary] = useState(false);  const [pendingOrder, setPendingOrder] = useState<{ orderId: string; message: string; waNumber: string; trackToken?: string } | null>(null);
   const [prefillInfo, setPrefillInfo] = useState<{ found: boolean; name?: string | null } | null>(null);
+  // Turnos de reparto retail (moda/comercio): próximos 3 slots del comercio.
+  const [deliverySlots, setDeliverySlots] = useState<{ id: string; label: string; range: string; isToday: boolean; isTomorrow: boolean }[]>([]);
+  const [deliveryOpen, setDeliveryOpen] = useState<boolean | null>(null);
+  const [slotId, setSlotId] = useState("");
   const [doneTrackToken, setDoneTrackToken] = useState<string | null>(null);
   // Snapshot del nombre del comercio al confirmar: confirmSend limpia el
   // carrito (vendor=null) y la página de éxito debe seguir mostrándolo.
@@ -129,6 +132,13 @@ export default function CheckoutPage() {
   const deliveryFreeShip = method === "delivery" && resolvedDelivery.freeShipping;
   const deliveryZoneName = resolvedDelivery.zoneName;
   const grandTotal = total + deliveryFee;
+  // Turno de entrega retail (solo moda/comercio a domicilio): el cliente
+  // elige entre los próximos 3; default el primero (el server lo valida y,
+  // si viene vacío/trucho, auto-asigna el próximo).
+  const isRetailVendor = vendor?.vertical === "moda" || vendor?.vertical === "comercio";
+  const showSlots = isRetailVendor && method === "delivery" && deliverySlots.length > 0;
+  const activeSlotId = slotId || deliverySlots[0]?.id || "";
+  const activeSlotLabel = deliverySlots.find((s) => s.id === activeSlotId)?.label || "";
 
   // Dirección + referencias en una línea (así viaja a customer_address,
   // WhatsApp, ticket e historial sin cambios de esquema).
@@ -245,6 +255,14 @@ export default function CheckoutPage() {
       .then(r => r.json())
       .then(d => setMpConfigured(d.configured))
       .catch(() => setMpConfigured(false));
+    // Turnos de reparto (retail): el server calcula hoy+próximos en TZ AR.
+    fetch(`/api/delivery-availability?vendorId=${encodeURIComponent(vendor.id)}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (Array.isArray(d.slots)) setDeliverySlots(d.slots.slice(0, 3));
+        setDeliveryOpen(typeof d.deliveryOpen === "boolean" ? d.deliveryOpen : null);
+      })
+      .catch(() => {});
     fetch("/api/auth/me")
       .then((r) => r.json())
       .then((d) => {
@@ -512,6 +530,7 @@ export default function CheckoutPage() {
         method,
         deliveryZoneId: method === "delivery" && zonesMode && !deliveryOutOfArea ? activeZoneId || null : null,
         deliveryOutOfArea: method === "delivery" && deliveryOutOfArea,
+        deliveryWindow: method === "delivery" && showSlots && activeSlotId ? activeSlotId : null,
       }),
     });
 
@@ -577,6 +596,7 @@ export default function CheckoutPage() {
           previewToken: previewCtx?.token ?? null,
           deliveryZoneId: method === "delivery" && zonesMode && !deliveryOutOfArea ? activeZoneId || null : null,
           deliveryOutOfArea: method === "delivery" && deliveryOutOfArea,
+          deliveryWindow: method === "delivery" && showSlots && activeSlotId ? activeSlotId : null,
           items: items.map((i) => ({
             offerId: i.offerId,
             variantId: i.variantId,
@@ -603,8 +623,11 @@ export default function CheckoutPage() {
       const waFee = typeof data.deliveryFee === "number" ? data.deliveryFee : deliveryFee;
       const waZone = typeof data.deliveryZoneName === "string" && data.deliveryZoneName ? data.deliveryZoneName : deliveryZoneName;
       const waOutOfArea = data.deliveryOutOfArea === true || deliveryOutOfArea;
+      // Turno prometido: el que resolvió el server gana (pudo auto-asignar).
+      const waWindowId = typeof data.deliveryWindow === "string" && data.deliveryWindow ? data.deliveryWindow : activeSlotId;
+      const waWindowLabel = deliverySlots.find((s) => s.id === waWindowId)?.label || "";
       const waDeliveryLine = method === "delivery"
-        ? `Envío: ${deliveryLabel({ fee: waFee, zoneName: waZone, outOfArea: waOutOfArea, freeShipping: !waOutOfArea && deliveryFreeShip })}${waOutOfArea ? " ⚠️" : ""}`
+        ? `Envío: ${deliveryLabel({ fee: waFee, zoneName: waZone, outOfArea: waOutOfArea, freeShipping: !waOutOfArea && deliveryFreeShip })}${waOutOfArea ? " ⚠️" : ""}${waWindowLabel ? ` · Te lo llevamos ${waWindowLabel} 📦` : ""}`
         : undefined;
       const waCashDiscount = typeof data.cashDiscount === "number" ? data.cashDiscount : 0;
       const waCashPct = typeof data.cashPct === "number" ? data.cashPct : 0;
@@ -924,6 +947,34 @@ export default function CheckoutPage() {
                 Si tu calle no tiene número, contanos cómo ubicarte.
               </p>
             </div>
+            {showSlots && (
+              <div className="rounded-xl border border-border bg-muted/30 p-3 space-y-2">
+                {deliveryOpen === false && (
+                  <p className="text-xs leading-relaxed rounded-lg bg-amber-50 border border-amber-200 text-amber-800 px-2.5 py-2">
+                    😴 Ya cerramos el reparto por hoy: tu pedido sale en el próximo turno.
+                    {allowPickup ? " Si no podés esperar, podés retirarlo en el local 🏠" : ""}
+                  </p>
+                )}
+                <Label>¿Cuándo te lo llevamos? 🛵</Label>
+                <div className="grid gap-1.5">
+                  {deliverySlots.map((s) => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => setSlotId(s.id)}
+                      className={`rounded-xl border-2 py-2 px-3 text-xs sm:text-sm font-medium text-left transition-all ${
+                        activeSlotId === s.id
+                          ? "border-primary bg-primary/5 text-primary"
+                          : "border-border text-muted-foreground hover:border-primary/30"
+                      }`}
+                    >
+                      📦 {s.label}
+                      {s.isToday && s.id === deliverySlots[0]?.id && deliveryOpen !== false ? " · lo antes posible" : ""}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -934,7 +985,7 @@ export default function CheckoutPage() {
             id="notes"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            placeholder={esRetail ? "Ej: preferencia de color, horario de entrega..." : "Sin cebolla, extra picante, acceso por el costado..."}
+            placeholder={esRetail ? "Ej: preferencia de color, timbre roto, alergias..." : "Sin cebolla, extra picante, acceso por el costado..."}
             className="h-16 text-sm resize-none"
             maxLength={200}
           />
@@ -1046,6 +1097,7 @@ export default function CheckoutPage() {
         deliveryFee={deliveryFee}
         method={method}
         address={method === "delivery" ? fullAddress || undefined : undefined}
+        deliveryWindowLabel={method === "delivery" && activeSlotLabel ? activeSlotLabel : undefined}
         paymentMethod={paymentMethod}
         loading={loading}
       />

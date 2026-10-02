@@ -12,6 +12,7 @@ import { fetchVendorDelivery } from "@/lib/delivery-server";
 import type { DeliverySelection } from "@/lib/delivery";
 import { toE164 } from "@/lib/phone";
 import { upsertCustomerFromOrder } from "@/lib/customers";
+import { formatDeliveryWindow } from "@/lib/delivery-schedule";
 import type { OrderItem } from "@/types/database";
 
 /**
@@ -43,6 +44,8 @@ export type CreateOrderInput = {
   deliveryZoneId?: string | null;
   /** true = fuera del área habitual: entra a convenir (canal web). */
   deliveryOutOfArea?: boolean | null;
+  /** Turno de entrega elegido (id de slot "YYYY-MM-DD|HH:MM-HH:MM", retail). */
+  deliveryWindow?: string | null;
 };
 
 export type CreateOrderResult = {
@@ -60,6 +63,8 @@ export type CreateOrderResult = {
   deliveryFee: number;
   deliveryZoneName: string | null;
   deliveryOutOfArea: boolean;
+  /** Turno de entrega prometido (id de slot, retail delivery). */
+  deliveryWindow: string | null;
 };
 
 /** Negocio: el comercio no acepta pedidos online (plan sin carrito). → 403 */
@@ -119,6 +124,7 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
     source,
     deliveryZoneId,
     deliveryOutOfArea,
+    deliveryWindow,
   } = input;
 
   if (!vendorId || !customerName || !customerPhone || !items) {
@@ -229,6 +235,39 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
         ? { kind: "zone", zoneId: String(deliveryZoneId) }
         : { kind: "in_area" };
 
+  // Turno de entrega (retail delivery): el cliente elige entre los próximos
+  // slots; si manda uno inválido/vacío (o viene de un canal sin UI, ej. bot),
+  // se auto-asigna el próximo. Fuera de horario NO se bloquea: el pedido
+  // entra con el próximo turno (el checkout ya lo avisó con cartel amable).
+  let resolvedWindow: string | null = null;
+  {
+    const vertical = String((vendorRow as any)?.vertical || "");
+    const isRetail = vertical === "moda" || vertical === "comercio";
+    if (vendorRow && isRetail && !isPickupOrder) {
+      try {
+        const { nextDeliverySlots, isValidDeliveryWindow } = await import(
+          "@/lib/delivery-schedule"
+        );
+        const slots = nextDeliverySlots(
+          {
+            hours: (vendorRow as any).hours ?? null,
+            delivery_hours: deliveryCfg.deliveryHours,
+            open_override: (vendorRow as any).open_override ?? null,
+          },
+          { timeZone: "America/Argentina/Buenos_Aires", count: 3 }
+        );
+        if (slots.length > 0) {
+          resolvedWindow =
+            typeof deliveryWindow === "string" && isValidDeliveryWindow(deliveryWindow, slots)
+              ? deliveryWindow
+              : slots[0].id;
+        }
+      } catch {
+        resolvedWindow = null;
+      }
+    }
+  }
+
   // Tolerante a migración de volumen sin aplicar: si la columna no existe,
   // el pedido se guarda igual (sin columna de descuento por volumen).
   const volumeCol = await queryOne<{ exists: boolean }>(
@@ -248,6 +287,16 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
      ) AS exists`
   );
   const hasZoneCols = zoneCol?.exists === true;
+
+  // Tolerante a migración de franjas sin aplicar: si la columna no existe,
+  // el pedido se guarda igual (sin turno prometido).
+  const windowCol = await queryOne<{ exists: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1 FROM information_schema.columns
+       WHERE table_name = 'orders' AND column_name = 'delivery_window'
+     ) AS exists`
+  );
+  const hasWindowCol = windowCol?.exists === true;
 
   try {
     await withTransaction(async (tx) => {
@@ -296,9 +345,13 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
       const zoneParams: unknown[] = hasZoneCols
         ? [pricing.deliveryZoneId, pricing.deliveryZoneName, pricing.deliveryOutOfArea, pricing.deliveryFee]
         : [];
+      // Turno de entrega prometido (migración de franjas).
+      const windowCols = hasWindowCol ? ", delivery_window" : "";
+      const windowVals = hasWindowCol ? `, $${nextParam++}` : "";
+      const windowParams: unknown[] = hasWindowCol ? [resolvedWindow] : [];
       const rows = await tx.query<{ id: string }>(
-        `INSERT INTO orders (vendor_id, customer_id, customer_name, customer_phone, customer_address, method, payment_method, items, total, status, notes, device_id, payment_status, pickup_number, cash_pct, cash_discount, track_token${volumeCols}${zoneCols})
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'new', $10, $11, $12, $13, $14, $15, $16${volumeVals}${zoneVals})
+        `INSERT INTO orders (vendor_id, customer_id, customer_name, customer_phone, customer_address, method, payment_method, items, total, status, notes, device_id, payment_status, pickup_number, cash_pct, cash_discount, track_token${volumeCols}${zoneCols}${windowCols})
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'new', $10, $11, $12, $13, $14, $15, $16${volumeVals}${zoneVals}${windowVals})
          RETURNING id`,
         [
           vendorId,
@@ -319,6 +372,7 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
           trackToken,
           ...volumeParams,
           ...zoneParams,
+          ...windowParams,
         ]
       );
       orderId = rows[0]?.id;
@@ -420,6 +474,7 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
         total: resolvedTotal,
         method: method || null,
         address: customerAddress,
+        deliveryWindow: resolvedWindow ? formatDeliveryWindow(resolvedWindow) : null,
       });
       Promise.resolve()
         .then(() => sendEmail({ to: userProfile.email, ...emailContent }))
@@ -427,5 +482,5 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
     }
   }
 
-  return { orderId, total: resolvedTotal, items: resolvedItems, pickupNumber, cashDiscount: resolvedCashDiscount, cashPct: resolvedCashPct, volumeDiscount: resolvedVolumeDiscount, volumeApplied: resolvedVolumeApplied, trackToken, deliveryFee: resolvedDeliveryFee, deliveryZoneName: resolvedZoneName, deliveryOutOfArea: resolvedOutOfArea };
+  return { orderId, total: resolvedTotal, items: resolvedItems, pickupNumber, cashDiscount: resolvedCashDiscount, cashPct: resolvedCashPct, volumeDiscount: resolvedVolumeDiscount, volumeApplied: resolvedVolumeApplied, trackToken, deliveryFee: resolvedDeliveryFee, deliveryZoneName: resolvedZoneName, deliveryOutOfArea: resolvedOutOfArea, deliveryWindow: resolvedWindow };
 }

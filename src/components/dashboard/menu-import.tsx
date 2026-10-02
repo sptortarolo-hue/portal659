@@ -12,16 +12,36 @@ type EditableItem = {
   sku?: string;
   group?: string;
   modifiers?: { desc: string; price_mod: number }[];
+  available?: boolean;
+  featured?: boolean;
+  cost?: number | null;
+  stock?: number | null;
+  stockMin?: number | null;
+  stockControl?: boolean;
+};
+
+type FudoSummary = {
+  ingredients: { name: string; category: string; unit: string; cost: number | null; wastePct: number }[];
+  ingredientCount: number;
+  groups: { name: string; pricing: string; min: number; max: number; options: { group: string; label: string; price: number }[]; linkedProducts: string[] }[];
+  groupCount: number;
+  associations: { group: string; product: string }[];
+  recipeLines: { dish: string; ingredient: string; qty: number; unit: string; yield: number; instructions: string }[];
+  recipeDishCount: number;
+  recipeLineCount: number;
 };
 
 type AnalyzeResult = {
   usedLlm: boolean;
+  source?: string;
+  sheets?: string[];
   read: number;
   valid: number;
   toImport: number;
   willUpdate: number;
   invalid: { row: string; reason: string }[];
   items: EditableItem[];
+  fudo?: FudoSummary;
 };
 
 type ImportResult = {
@@ -29,6 +49,7 @@ type ImportResult = {
   updated: number;
   createdCategories: string[];
   errors: { name: string; error: string }[];
+  fudo?: { groupsLinked: number; ingredients: number; recipes: number; recipeLines: number; recipesSkipped: number };
 };
 
 type Props = {
@@ -49,6 +70,9 @@ export function MenuImportModal({ open, onClose, onImported, isComercio = false,
   const [step, setStep] = useState<"upload" | "preview" | "done">("upload");
   const [analyze, setAnalyze] = useState<AnalyzeResult | null>(null);
   const [items, setItems] = useState<EditableItem[]>([]);
+  // Payload FUDO extra (ingredientes/recetas/grupos) para mandar en el import.
+  const [fudoPayload, setFudoPayload] = useState<FudoSummary | null>(null);
+  const [overwriteRecipes, setOverwriteRecipes] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -68,6 +92,8 @@ export function MenuImportModal({ open, onClose, onImported, isComercio = false,
       }
       setAnalyze(data);
       setItems((data.items || []).map((it: EditableItem) => ({ ...it, price: String(it.price) })));
+      setFudoPayload(data.fudo || null);
+      setOverwriteRecipes(false);
       setStep("preview");
     } catch {
       setError("Hubo un error al procesar el archivo");
@@ -83,6 +109,16 @@ export function MenuImportModal({ open, onClose, onImported, isComercio = false,
       const fd = new FormData();
       fd.append("action", "import");
       fd.append("items", JSON.stringify(items));
+      if (fudoPayload) {
+        fd.append("ingredients", JSON.stringify(fudoPayload.ingredients || []));
+        fd.append("recipeLines", JSON.stringify(fudoPayload.recipeLines || []));
+        fd.append("fudoGroups", JSON.stringify({
+          groups: (fudoPayload.groups || []).map((g) => ({ name: g.name, publicName: "", pricing: g.pricing, min: g.min, max: g.max })),
+          groupOptions: (fudoPayload.groups || []).flatMap((g) => g.options || []),
+          associations: fudoPayload.associations || [],
+        }));
+        if (overwriteRecipes) fd.append("overwriteRecipes", "1");
+      }
       const res = await fetch("/api/vendor/offers/import", { method: "POST", body: fd });
       const data = await res.json();
       if (!res.ok) {
@@ -112,6 +148,8 @@ export function MenuImportModal({ open, onClose, onImported, isComercio = false,
     setStep("upload");
     setAnalyze(null);
     setItems([]);
+    setFudoPayload(null);
+    setOverwriteRecipes(false);
     setResult(null);
     setError("");
   }
@@ -155,6 +193,12 @@ return (
             <strong>"Modificante 2 descripción"</strong> + <strong>"Modificante 2 precio"</strong>, etc. — se cargan
             como grupo de opciones del producto. Primero se analiza y te mostramos un preview editable antes de importar.
           </p>
+          <p className="text-sm text-muted-foreground">
+            ¿Venís de <strong>FUDO</strong>? Subí el <strong>Importar-productos.xlsx</strong> tal cual lo descargás:
+            detectamos las hojas de productos, ingredientes y grupos modificadores, más una hoja opcional{" "}
+            <strong>Recetas</strong> con formato Portal (<em>Plato | Ingrediente | Cantidad | Unidad | Rinde</em>) —
+            FUDO no exporta el escandallo, así que esa hoja la completás vos una vez.
+          </p>
           <label className="block">
             <span className="text-sm font-medium">Archivo Excel</span>
             <input
@@ -180,13 +224,35 @@ return (
         <div className="space-y-4">
           <div className="rounded-xl border border-fresh bg-fresh/20 p-4">
             <p className="font-semibold text-fresh-foreground">
-              {analyze.usedLlm ? "✨ Analizado con IA" : "Analizado (modo básico)"}
+              {analyze.source === "fudo" ? "📦 Excel de FUDO detectado" : analyze.usedLlm ? "✨ Analizado con IA" : "Analizado (modo básico)"}
             </p>
             <p className="mt-1 text-sm text-muted-foreground">
               Leídos: <strong>{analyze.read}</strong> filas · Válidos: <strong>{analyze.valid}</strong> · A
               importar: <strong>{analyze.toImport}</strong> · Se actualizarán: <strong>{analyze.willUpdate}</strong>{" "}
               {analyze.invalid.length > 0 && <>· Descartados: <strong className="text-amber-600">{analyze.invalid.length}</strong></>}
             </p>
+            {analyze.source === "fudo" && analyze.fudo && (
+              <div className="mt-2 space-y-1 text-sm text-muted-foreground">
+                {analyze.sheets && analyze.sheets.length > 0 && (
+                  <p>Hojas: <strong>{analyze.sheets.join(", ")}</strong></p>
+                )}
+                <p>
+                  🧂 Ingredientes: <strong>{analyze.fudo.ingredientCount}</strong>
+                  {" · "}🧩 Grupos modificadores: <strong>{analyze.fudo.groupCount}</strong>
+                  {" · "}📖 Recetas: <strong>{analyze.fudo.recipeDishCount}</strong> platos / <strong>{analyze.fudo.recipeLineCount}</strong> líneas
+                </p>
+                {analyze.fudo.recipeDishCount > 0 && (
+                  <label className="mt-1 flex items-center gap-2 text-xs">
+                    <input
+                      type="checkbox"
+                      checked={overwriteRecipes}
+                      onChange={(e) => setOverwriteRecipes(e.target.checked)}
+                    />
+                    Sobrescribir recetas existentes (por defecto se conservan las que ya tienen escandallo)
+                  </label>
+                )}
+              </div>
+            )}
           </div>
 
           {items.length > 0 && (
@@ -296,6 +362,13 @@ return (
               <li>${itemLabelPlural.charAt(0).toUpperCase() + itemLabelPlural.slice(1)} importados: <strong>{result.imported}</strong></li>
               <li>${itemLabelPlural.charAt(0).toUpperCase() + itemLabelPlural.slice(1)} actualizados: <strong>{result.updated}</strong></li>
               <li>Categorías creadas: <strong>{result.createdCategories.length}</strong></li>
+              {result.fudo && ((result.fudo.ingredients ?? 0) + (result.fudo.recipes ?? 0) + (result.fudo.groupsLinked ?? 0) > 0) && (
+                <>
+                  <li>🧂 Ingredientes: <strong>{result.fudo.ingredients}</strong></li>
+                  <li>🧩 Links de grupos FUDO: <strong>{result.fudo.groupsLinked}</strong></li>
+                  <li>📖 Recetas creadas: <strong>{result.fudo.recipes}</strong> ({result.fudo.recipeLines} líneas{result.fudo.recipesSkipped > 0 && <>, {result.fudo.recipesSkipped} conservadas</>})</li>
+                </>
+              )}
             </ul>
           </div>
 
@@ -321,6 +394,8 @@ return (
               setStep("upload");
               setAnalyze(null);
               setItems([]);
+              setFudoPayload(null);
+              setOverwriteRecipes(false);
               setResult(null);
               setError("");
             }}

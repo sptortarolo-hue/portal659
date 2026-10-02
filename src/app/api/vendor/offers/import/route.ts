@@ -1,7 +1,18 @@
 import { getVendorByRequest } from "@/lib/vendor-utils";
-import { queryMany, queryOne, withTransaction } from "@/lib/db";
+import { queryMany, queryOne, withTransaction, type Tx } from "@/lib/db";
 import { resolveVendorPlan } from "@/lib/plans";
 import { cleanMenu } from "@/lib/llm";
+import {
+  parseFudoSheets,
+  normalizeUnit,
+  inferBaseUnit,
+  normName,
+  type FudoIngredient,
+  type FudoRecipeLine,
+  type FudoGroupDef,
+  type FudoGroupOption,
+  type FudoAssociation,
+} from "@/lib/fudo-import";
 import { getSiteUrl } from "@/lib/site-url";
 import { NextResponse } from "next/server";
 import ExcelJS from "exceljs";
@@ -10,7 +21,7 @@ import path from "path";
 import crypto from "crypto";
 import type { Plan, Vendor } from "@/types/database";
 
-const MAX_SIZE = 5 * 1024 * 1024; // 5 MB
+const MAX_SIZE = 10 * 1024 * 1024; // 10 MB (el xlsx de FUDO con recetas puede ser pesado)
 const MAX_WA_SIZE = 30 * 1024 * 1024; // 30 MB (el CSV WA trae fotos en base64)
 const ALLOWED_TYPES = [
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -40,6 +51,13 @@ type CleanedItem = {
   group?: string | null;
   sku?: string | null;
   modifiers?: { desc: string; price_mod: number }[];
+  // Extras FUDO (opcionales, con defaults sanos si no vienen).
+  available?: boolean;
+  featured?: boolean;
+  cost?: number | null;
+  stock?: number | null;
+  stockMin?: number | null;
+  stockControl?: boolean;
 };
 
 // Headers reconocidos por campo (para detectar la fila de encabezado y mapear)
@@ -192,6 +210,20 @@ async function parseWorkbook(buf: Buffer): Promise<Record<string, unknown>[]> {
   return out;
 }
 
+// ============ FUDO: lectura multi-hoja ============
+// Lee TODAS las hojas como grillas de strings para el parser FUDO.
+async function readAllSheets(buf: Buffer): Promise<{ name: string; rows: string[][] }[]> {
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(buf as unknown as Parameters<typeof wb.xlsx.load>[0]);
+  return wb.worksheets.map((sheet) => {
+    const rows: string[][] = [];
+    sheet.eachRow((row) => {
+      rows.push((row.values as unknown[]).slice(1).map((v) => (v == null ? "" : String(v))));
+    });
+    return { name: sheet.name || "hoja", rows };
+  });
+}
+
 // ============ CSV de WhatsApp Catalogue Exporter ============
 // Columnas: index,name,price,price_value,currency,description,product_link,image_url,image_data,raw_text
 // La foto real viene en `image_data` (data URI base64); `image_url` suele ser
@@ -286,6 +318,160 @@ async function waProcessImage(buf: Buffer): Promise<{ buf: Buffer; ext: string }
   }
 }
 
+// ============ FUDO: analyze ============
+// Devuelve preview de productos + ingredientes + grupos + recetas en una sola respuesta.
+async function analyzeFudo(
+  vendorId: string,
+  fudo: ReturnType<typeof parseFudoSheets>
+) {
+  const existingNames = await queryMany<{ name: string }>(
+    `SELECT name FROM products WHERE vendor_id = $1`,
+    [vendorId]
+  );
+  const existingSet = new Set(existingNames.map((p) => normName(p.name)));
+  const existingSkus = await queryMany<{ sku: string }>(
+    `SELECT sku FROM products WHERE vendor_id = $1 AND sku IS NOT NULL AND sku <> ''`,
+    [vendorId]
+  ).catch(() => []);
+  const skuSet = new Set((existingSkus || []).map((p) => String(p.sku).trim()));
+
+  const valid: CleanedItem[] = [];
+  const invalid: { row: string; reason: string }[] = [...fudo.warnings];
+  for (const p of fudo.products) {
+    valid.push({
+      name: p.name,
+      price: p.price,
+      category: p.category,
+      description: p.description,
+      group: p.group || "",
+      sku: p.sku,
+      modifiers: p.modifiers,
+      available: p.available,
+      featured: p.featured,
+      cost: p.cost,
+      stock: p.stock,
+      stockMin: p.stockMin,
+      stockControl: p.stockControl,
+    });
+  }
+
+  // Ingredientes: validación liviana (nombre obligatorio).
+  const ingredients: FudoIngredient[] = [];
+  for (const ing of fudo.ingredients) {
+    if (!ing.name.trim()) {
+      invalid.push({ row: "(ingrediente sin nombre)", reason: "Falta el nombre" });
+      continue;
+    }
+    ingredients.push({
+      ...ing,
+      name: ing.name.trim(),
+      category: ing.category?.trim() || "general",
+      unit: normalizeUnit(ing.unit),
+    });
+  }
+
+  // Recetas: agrupar por plato para el resumen.
+  const recipeDishes = new Set(fudo.recipeLines.map((l) => normName(l.dish)));
+  // Grupos FUDO armados (asociación grupo→producto + composición).
+  const optionsByGroup = new Map<string, FudoGroupOption[]>();
+  for (const o of fudo.groupOptions) {
+    const k = normName(o.group);
+    if (!optionsByGroup.has(k)) optionsByGroup.set(k, []);
+    optionsByGroup.get(k)!.push(o);
+  }
+
+  const isNewItem = (it: CleanedItem) => {
+    const sku = typeof it.sku === "string" ? it.sku.trim() : "";
+    if (sku && skuSet.has(sku)) return false;
+    return !existingSet.has(normName(it.name));
+  };
+  const toImport = valid.filter((it) => isNewItem(it)).length;
+
+  return NextResponse.json({
+    action: "analyze",
+    usedLlm: false,
+    source: "fudo",
+    sheets: fudo.sheetsFound,
+    read: fudo.products.length,
+    valid: valid.length,
+    toImport,
+    willUpdate: valid.length - toImport,
+    invalid,
+    items: valid.map((it) => ({
+      name: it.name,
+      price: it.price,
+      category: it.category || "",
+      description: it.description || "",
+      group: it.group || "",
+      modifiers: it.modifiers || [],
+      sku: typeof it.sku === "string" ? it.sku.trim().slice(0, 64) : "",
+      available: it.available !== false,
+      featured: it.featured === true,
+      cost: it.cost ?? null,
+      stock: it.stock ?? null,
+      stockMin: it.stockMin ?? null,
+      stockControl: it.stockControl === true,
+    })),
+    fudo: {
+      ingredients,
+      ingredientCount: ingredients.length,
+      groups: fudo.groups.map((g) => ({
+        ...g,
+        options: optionsByGroup.get(normName(g.name)) ?? [],
+        linkedProducts: fudo.associations
+          .filter((a) => normName(a.group) === normName(g.name))
+          .map((a) => a.product),
+      })),
+      groupCount: fudo.groups.length,
+      associations: fudo.associations,
+      recipeLines: fudo.recipeLines as FudoRecipeLine[],
+      recipeDishCount: recipeDishes.size,
+      recipeLineCount: fudo.recipeLines.length,
+    },
+  });
+}
+
+// upsert tolerante de un insumo por nombre normalizado.
+// Crea con base_unit inferida de la unidad FUDO; si ya existe, actualiza
+// costo/merma (no pisa la base si ya tiene recetas que la usan).
+async function upsertIngredientTx(
+  tx: Tx,
+  vendorId: string,
+  ing: { name: string; category: string; unit: string; cost: number | null; wastePct: number }
+): Promise<string | null> {
+  const base = inferBaseUnit(ing.unit);
+  const existing = await tx.queryOne<{ id: string; base_unit: string }>(
+    `SELECT id, base_unit FROM ingredients WHERE vendor_id = $1 AND lower(name) = lower($2) LIMIT 1`,
+    [vendorId, ing.name]
+  ).catch(() => null);
+  if (existing) {
+    // Actualizar costo/merma/notas sin tocar base_unit (409 si está en uso).
+    await tx.queryVoid(
+      `UPDATE ingredients SET cost_per_unit = COALESCE($1, cost_per_unit), waste_pct = $2, notes = COALESCE(NULLIF(notes,''), $3) WHERE id = $4`,
+      [ing.cost, ing.wastePct, `Importado de FUDO${ing.category ? ` · ${ing.category}` : ""}`, existing.id]
+    ).catch(() => null);
+    // Intentar guardar categoría si la columna existe (migración nueva).
+    await tx.queryVoid(`UPDATE ingredients SET category = $1 WHERE id = $2`, [ing.category, existing.id]).catch(() => null);
+    return existing.id;
+  }
+  try {
+    const rows = await tx.query<{ id: string }>(
+      `INSERT INTO ingredients (vendor_id, name, base_unit, cost_per_unit, waste_pct, notes, category)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+      [vendorId, ing.name, base, ing.cost ?? 0, ing.wastePct, `Importado de FUDO${ing.category ? ` · ${ing.category}` : ""}`, ing.category]
+    );
+    if (rows[0]?.id) return rows[0].id;
+  } catch {
+    // Sin columna category (migración pendiente): reintentar sin ella.
+  }
+  const rows = await tx.query<{ id: string }>(
+    `INSERT INTO ingredients (vendor_id, name, base_unit, cost_per_unit, waste_pct, notes)
+     VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+    [vendorId, ing.name, base, ing.cost ?? 0, ing.wastePct, `Importado de FUDO${ing.category ? ` · ${ing.category}` : ""}`]
+  ).catch(() => []);
+  return rows[0]?.id ?? null;
+}
+
 export async function POST(request: Request) {
   const { vendor } = await getVendorByRequest(request);
   if (!vendor) {
@@ -302,13 +488,25 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Subí un archivo .xlsx" }, { status: 400 });
     }
     if (file.size > MAX_SIZE) {
-      return NextResponse.json({ error: "El archivo supera los 5 MB" }, { status: 400 });
+      return NextResponse.json({ error: "El archivo supera los 10 MB" }, { status: 400 });
     }
     if (!ALLOWED_TYPES.includes(file.type) && !file.name.toLowerCase().endsWith(".xlsx")) {
       return NextResponse.json({ error: "Solo se admiten archivos .xlsx" }, { status: 400 });
     }
 
     const buf = Buffer.from(await file.arrayBuffer());
+
+    // ---- Camino FUDO: multi-hoja (productos + ingredientes + grupos + recetas) ----
+    try {
+      const sheets = await readAllSheets(buf);
+      const fudo = parseFudoSheets(sheets);
+      if (fudo.isFudo) {
+        return await analyzeFudo(vendor.id, fudo);
+      }
+    } catch {
+      // Si falla la lectura multi-hoja, se sigue con el parser clásico abajo.
+    }
+
     let rows: Record<string, unknown>[];
     try {
       rows = await parseWorkbook(buf);
@@ -394,6 +592,27 @@ export async function POST(request: Request) {
     }
     if (!Array.isArray(items) || items.length === 0) {
       return NextResponse.json({ error: "No hay platos para importar" }, { status: 400 });
+    }
+    // Extras FUDO (pueden venir del preview FUDO; vacíos = flujo clásico).
+    let fudoIngredients: FudoIngredient[] = [];
+    let fudoRecipeLines: FudoRecipeLine[] = [];
+    let fudoGroups: FudoGroupDef[] = [];
+    let fudoGroupOptions: FudoGroupOption[] = [];
+    let fudoAssociations: FudoAssociation[] = [];
+    let overwriteRecipes = false;
+    try {
+      const raw = (k: string) => form.get(k) as string | null;
+      if (raw("ingredients")) fudoIngredients = JSON.parse(raw("ingredients") || "[]");
+      if (raw("recipeLines")) fudoRecipeLines = JSON.parse(raw("recipeLines") || "[]");
+      if (raw("fudoGroups")) {
+        const g = JSON.parse(raw("fudoGroups") || "{}");
+        fudoGroups = g.groups || [];
+        fudoGroupOptions = g.groupOptions || [];
+        fudoAssociations = g.associations || [];
+      }
+      overwriteRecipes = raw("overwriteRecipes") === "1";
+    } catch {
+      // extras opcionales: si fallan, se sigue solo con productos.
     }
 
     const existingCats = await queryMany<{ name: string }>(
@@ -494,10 +713,21 @@ export async function POST(request: Request) {
 
         let productId: string;
 
+        // Extras FUDO por fila (defaults = comportamiento clásico).
+        const rowAvailable = (it as CleanedItem).available !== false;
+        const rowFeatured = (it as CleanedItem).featured === true;
+        const rowCost = Number((it as CleanedItem).cost);
+        const rowCostNum = Number.isFinite(rowCost) && rowCost >= 0 ? rowCost : null;
+        const rowStock = Number((it as CleanedItem).stock);
+        const rowStockNum = Number.isFinite(rowStock) && rowStock >= 0 ? Math.floor(rowStock) : null;
+        const rowStockMin = Number((it as CleanedItem).stockMin);
+        const rowStockMinNum = Number.isFinite(rowStockMin) && rowStockMin >= 0 ? Math.floor(rowStockMin) : null;
+        const rowStockControl = (it as CleanedItem).stockControl === true || rowStockNum != null;
+
         if (existing) {
           await tx.queryVoid(
-            `UPDATE products SET price = $1, category = $2, description = $3, available = true WHERE id = $4`,
-            [price, (it.category || "").trim() || "otras", it.description || null, existing.id]
+            `UPDATE products SET price = $1, category = $2, description = $3, available = $4, featured_today = $5 WHERE id = $6`,
+            [price, (it.category || "").trim() || "otras", it.description || null, rowAvailable, rowFeatured, existing.id]
           );
           if (sku) {
             await tx.queryVoid(
@@ -505,12 +735,25 @@ export async function POST(request: Request) {
               [sku, existing.id]
             ).catch(() => null);
           }
+          // Costo/stock FUDO (tolerante a columnas inexistentes).
+          if (rowCostNum != null) {
+            await tx.queryVoid(`UPDATE products SET cost_last = $1 WHERE id = $2`, [rowCostNum, existing.id]).catch(() => null);
+          }
+          if (rowStockNum != null || rowStockControl) {
+            await tx.queryVoid(
+              `UPDATE products SET stock = COALESCE($1, stock), stock_control = $2 WHERE id = $3`,
+              [rowStockNum, rowStockControl, existing.id]
+            ).catch(() => null);
+          }
+          if (rowStockMinNum != null) {
+            await tx.queryVoid(`UPDATE products SET stock_low_threshold = $1 WHERE id = $2`, [rowStockMinNum, existing.id]).catch(() => null);
+          }
           productId = existing.id;
           updated++;
         } else {
           const rows = await tx.query<{ id: string }>(
             `INSERT INTO products (vendor_id, name, description, price, currency, category, neighborhood, type, available, featured_today)
-             VALUES ($1, $2, $3, $4, 'ARS', $5, $6, 'food', true, false)
+             VALUES ($1, $2, $3, $4, 'ARS', $5, $6, 'food', $7, $8)
              RETURNING id`,
             [
               vendor.id,
@@ -519,11 +762,25 @@ export async function POST(request: Request) {
               price,
               (it.category || "").trim() || "otras",
               fullVendor?.neighborhood || null,
+              rowAvailable,
+              rowFeatured,
             ]
           );
           productId = rows[0]?.id ?? "";
           if (sku && productId) {
             await tx.queryVoid(`UPDATE products SET sku = $1 WHERE id = $2`, [sku, productId]).catch(() => null);
+          }
+          if (productId && rowCostNum != null) {
+            await tx.queryVoid(`UPDATE products SET cost_last = $1 WHERE id = $2`, [rowCostNum, productId]).catch(() => null);
+          }
+          if (productId && (rowStockNum != null || rowStockControl)) {
+            await tx.queryVoid(
+              `UPDATE products SET stock = COALESCE($1, stock), stock_control = $2 WHERE id = $3`,
+              [rowStockNum, rowStockControl, productId]
+            ).catch(() => null);
+          }
+          if (productId && rowStockMinNum != null) {
+            await tx.queryVoid(`UPDATE products SET stock_low_threshold = $1 WHERE id = $2`, [rowStockMinNum, productId]).catch(() => null);
           }
           imported++;
         }
@@ -566,7 +823,190 @@ export async function POST(request: Request) {
           }
         }
       }
-      return { imported, updated };
+      // ---- Grupos FUDO multi-grupo (hojas 4/5/6): N grupos por producto ----
+      let fudoGroupsLinked = 0;
+      if (fudoGroups.length > 0 || fudoAssociations.length > 0 || fudoGroupOptions.length > 0) {
+        const defByName = new Map<string, FudoGroupDef>();
+        for (const g of fudoGroups) defByName.set(normName(g.name), g);
+        const optsByGroup = new Map<string, FudoGroupOption[]>();
+        for (const o of fudoGroupOptions) {
+          const k = normName(o.group);
+          if (!optsByGroup.has(k)) optsByGroup.set(k, []);
+          optsByGroup.get(k)!.push(o);
+        }
+        const allProds = await tx.query<{ id: string; name: string }>(
+          `SELECT id, name FROM products WHERE vendor_id = $1`,
+          [vendor.id]
+        ).catch(() => []);
+        const prodByName = new Map(allProds.map((p) => [normName(p.name), p.id] as const));
+        for (const a of fudoAssociations) {
+          const pid = prodByName.get(normName(a.product));
+          const opts = (optsByGroup.get(normName(a.group)) ?? [])
+            .map((o) => ({ label: String(o.label).trim(), price_mod: Number(o.price) || 0 }))
+            .filter((o) => o.label !== "");
+          if (!pid || opts.length === 0) {
+            if (!pid) errors.push({ name: a.product, error: `Grupo "${a.group}" sin plato coincidente (se omite el link)` });
+            continue;
+          }
+          const def = defByName.get(normName(a.group));
+          const gname = def?.name?.trim() || a.group.trim();
+          const required = (def?.min ?? 0) > 0;
+          const maxSel = Math.max(1, def?.max ?? opts.length ?? 1);
+          let group = await tx.queryOne<{ id: string }>(
+            `SELECT id FROM modifier_groups WHERE vendor_id = $1 AND group_name = $2 AND options = $3::jsonb LIMIT 1`,
+            [vendor.id, gname, JSON.stringify(opts)]
+          ).catch(() => null);
+          if (!group) {
+            group = await tx.queryOne<{ id: string }>(
+              `INSERT INTO modifier_groups (vendor_id, group_name, options, required, max_selections, is_variant)
+               VALUES ($1, $2, $3, $4, $5, false) RETURNING id`,
+              [vendor.id, gname, JSON.stringify(opts), required, maxSel]
+            ).catch(() => null);
+          }
+          if (group?.id) {
+            await tx.queryVoid(
+              `INSERT INTO product_modifier_links (group_id, product_id, position) VALUES ($1, $2, 0) ON CONFLICT DO NOTHING`,
+              [group.id, pid]
+            ).catch(() => null);
+            fudoGroupsLinked++;
+          }
+        }
+      }
+
+      // ---- Ingredientes FUDO (hoja 3) ----
+      let ingredientsUpserted = 0;
+      const ingredientIdByName = new Map<string, string>();
+      const existingIngs = await tx.query<{ id: string; name: string }>(
+        `SELECT id, name FROM ingredients WHERE vendor_id = $1`,
+        [vendor.id]
+      ).catch(() => []);
+      for (const r of existingIngs) ingredientIdByName.set(normName(r.name), r.id);
+      for (const ing of fudoIngredients) {
+        const name = String(ing.name || "").trim();
+        if (!name) continue;
+        const id = await upsertIngredientTx(tx, vendor.id, {
+          name,
+          category: String(ing.category || "general").trim() || "general",
+          unit: normalizeUnit(String(ing.unit || "u")),
+          cost: typeof ing.cost === "number" && Number.isFinite(ing.cost) && ing.cost >= 0 ? ing.cost : null,
+          wastePct: Math.min(Math.max(Number((ing as { wastePct?: unknown }).wastePct) || 0, 0), 99.99),
+        }).catch(() => null);
+        if (id) {
+          ingredientIdByName.set(normName(name), id);
+          ingredientsUpserted++;
+        } else {
+          errors.push({ name, error: "No se pudo guardar el ingrediente (¿falta migrate-recipes.sql?)" });
+        }
+      }
+
+      // ---- Recetas formato Portal (hoja Recetas) ----
+      let recipesCreated = 0;
+      let recipeLinesCreated = 0;
+      let recipesSkipped = 0;
+      if (fudoRecipeLines.length > 0) {
+        const { unitFactor } = await import("@/lib/costing");
+        const byDish = new Map<string, { dish: string; lines: FudoRecipeLine[]; yield: number; instructions: string }>();
+        for (const l of fudoRecipeLines) {
+          const k = normName(l.dish);
+          if (!byDish.has(k)) byDish.set(k, { dish: l.dish.trim(), lines: [], yield: l.yield || 1, instructions: l.instructions || "" });
+          const g = byDish.get(k)!;
+          g.lines.push(l);
+          if ((l.yield || 0) > 0) g.yield = l.yield;
+          if (l.instructions && !g.instructions) g.instructions = l.instructions;
+        }
+        const prodRows = await tx.query<{ id: string; name: string }>(
+          `SELECT id, name FROM products WHERE vendor_id = $1`,
+          [vendor.id]
+        ).catch(() => []);
+        const prodByName = new Map(prodRows.map((p) => [normName(p.name), p.id] as const));
+        for (const [, g] of byDish) {
+          const pid = prodByName.get(normName(g.dish));
+          if (!pid) {
+            errors.push({ name: g.dish, error: "Plato de la receta sin coincidencia en la carta (se omite la receta)" });
+            continue;
+          }
+          const cleanLines = g.lines.filter((l) => {
+            if (normName(l.ingredient) === normName(g.dish)) {
+              errors.push({ name: `${g.dish} / ${l.ingredient}`, error: "Auto-referencia (se omite la línea)" });
+              return false;
+            }
+            return true;
+          });
+          if (cleanLines.length === 0) continue;
+          const hasRecipe = await tx.queryOne<{ id: string }>(
+            `SELECT id FROM recipes WHERE product_id = $1 LIMIT 1`,
+            [pid]
+          ).catch(() => null);
+          if (hasRecipe && !overwriteRecipes) {
+            recipesSkipped++;
+            continue;
+          }
+          const items: { ingredient_id: string; qty_net: number; unit: string }[] = [];
+          for (const l of cleanLines) {
+            const iname = l.ingredient.trim();
+            let iid: string | null | undefined = ingredientIdByName.get(normName(iname));
+            if (!iid) {
+              iid = await upsertIngredientTx(tx, vendor.id, {
+                name: iname,
+                category: "general",
+                unit: normalizeUnit(l.unit),
+                cost: null,
+                wastePct: 0,
+              }).catch(() => null);
+              if (iid) ingredientIdByName.set(normName(iname), iid);
+            }
+            if (!iid) {
+              errors.push({ name: `${g.dish} / ${iname}`, error: "Insumo no resoluble (se omite la línea)" });
+              continue;
+            }
+            const baseRow = await tx.queryOne<{ base_unit: string }>(
+              `SELECT base_unit FROM ingredients WHERE id = $1 LIMIT 1`,
+              [iid]
+            ).catch(() => null);
+            const unit = normalizeUnit(l.unit);
+            if (baseRow && unitFactor(unit, baseRow.base_unit) == null) {
+              errors.push({ name: `${g.dish} / ${iname}`, error: `Unidad "${l.unit}" incompatible con base "${baseRow.base_unit}" (se omite la línea)` });
+              continue;
+            }
+            items.push({ ingredient_id: iid, qty_net: l.qty, unit });
+          }
+          if (items.length === 0) {
+            errors.push({ name: g.dish, error: "Receta sin líneas válidas (se omite)" });
+            continue;
+          }
+          try {
+            if (hasRecipe) {
+              await tx.queryVoid(`DELETE FROM recipe_items WHERE recipe_id = $1`, [hasRecipe.id]);
+              await tx.queryVoid(`UPDATE recipes SET portions = $1, instructions = $2 WHERE id = $3`, [g.yield > 0 ? g.yield : 1, g.instructions || null, hasRecipe.id]);
+              for (let i = 0; i < items.length; i++) {
+                await tx.queryVoid(
+                  `INSERT INTO recipe_items (recipe_id, ingredient_id, qty_net, unit, position) VALUES ($1, $2, $3, $4, $5)`,
+                  [hasRecipe.id, items[i].ingredient_id, items[i].qty_net, items[i].unit, i]
+                );
+              }
+            } else {
+              const rr = await tx.query<{ id: string }>(
+                `INSERT INTO recipes (vendor_id, product_id, portions, instructions) VALUES ($1, $2, $3, $4) RETURNING id`,
+                [vendor.id, pid, g.yield > 0 ? g.yield : 1, g.instructions || null]
+              );
+              const rid = rr[0]?.id;
+              if (!rid) throw new Error("no recipe id");
+              for (let i = 0; i < items.length; i++) {
+                await tx.queryVoid(
+                  `INSERT INTO recipe_items (recipe_id, ingredient_id, qty_net, unit, position) VALUES ($1, $2, $3, $4, $5)`,
+                  [rid, items[i].ingredient_id, items[i].qty_net, items[i].unit, i]
+                );
+              }
+            }
+            recipesCreated++;
+            recipeLinesCreated += items.length;
+          } catch {
+            errors.push({ name: g.dish, error: "No se pudo guardar la receta (¿falta migrate-recipes.sql?)" });
+          }
+        }
+      }
+
+      return { imported, updated, fudoGroupsLinked, ingredientsUpserted, recipesCreated, recipeLinesCreated, recipesSkipped };
     });
 
     return NextResponse.json({
@@ -575,6 +1015,13 @@ export async function POST(request: Request) {
       updated: result.updated,
       createdCategories,
       errors,
+      fudo: {
+        groupsLinked: result.fudoGroupsLinked,
+        ingredients: result.ingredientsUpserted,
+        recipes: result.recipesCreated,
+        recipeLines: result.recipeLinesCreated,
+        recipesSkipped: result.recipesSkipped,
+      },
     });
   }
 

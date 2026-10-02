@@ -142,6 +142,105 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
   const [renaming, setRenaming] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [selected, setSelected] = useState<Table | null>(null);
+  // Reservas (estilo Fudo): modal por mesa con datos del cliente + fecha/hora.
+  // La mesa reservada queda bloqueada hasta sentar o cancelar.
+  type Reservation = {
+    id: string;
+    table_id: string | null;
+    customer_name: string;
+    customer_phone: string;
+    customer_email?: string | null;
+    party_size: number;
+    reserved_at: string;
+    status: string;
+    notes?: string | null;
+    table_name?: string | null;
+  };
+  const [reservations, setReservations] = useState<Reservation[]>([]);
+  const [resModal, setResModal] = useState<{
+    name: string; phone: string; email: string; party: string; datetime: string; notes: string;
+  } | null>(null);
+  const [resSaving, setResSaving] = useState(false);
+  const [resActing, setResActing] = useState(false);
+  const selectedReservation = selected
+    ? reservations.find((r) => r.table_id === selected.id) ?? null
+    : null;
+  const isReserved = selected?.status === "reservada";
+  function defaultResDatetime(): string {
+    const d = new Date();
+    d.setHours(21, 0, 0, 0);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+  function openResModal() {
+    if (!selected) return;
+    setResModal({
+      name: "",
+      phone: "",
+      email: "",
+      party: String(selected.capacity || 2),
+      datetime: defaultResDatetime(),
+      notes: "",
+    });
+  }
+  async function createReservation() {
+    if (!selected || !resModal || resSaving) return;
+    setResSaving(true);
+    try {
+      const res = await fetch("/api/vendor/reservations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tableId: selected.id,
+          customer_name: resModal.name,
+          customer_phone: resModal.phone,
+          customer_email: resModal.email || undefined,
+          party_size: Number(resModal.party) || 2,
+          reserved_at: new Date(resModal.datetime).toISOString(),
+          notes: resModal.notes || undefined,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (data.reservation) {
+        setReservations((prev) => [...prev, data.reservation]);
+        setTables((prev) => prev.map((x) => (x.id === selected.id ? { ...x, status: "reservada" } : x)));
+        setSelected({ ...selected, status: "reservada" });
+        setResModal(null);
+        setMsg(`📅 ${selected.name} reservada para ${data.reservation.customer_name}`);
+      } else {
+        setMsg(data.code === "migration_pending"
+          ? "Falta aplicar la migración de reservas en el servidor"
+          : data.error || "No se pudo crear la reserva");
+      }
+    } catch {
+      setMsg("No se pudo crear la reserva");
+    } finally {
+      setResSaving(false);
+      setTimeout(() => setMsg(""), 3000);
+    }
+  }
+  async function reservationAction(id: string, action: "seat" | "cancel") {
+    if (resActing) return;
+    if (action === "cancel" && !confirm("¿Cancelar esta reserva? La mesa vuelve a libre.")) return;
+    setResActing(true);
+    try {
+      const res = await fetch(`/api/vendor/reservations/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (data.reservation) {
+        await load();
+        setMsg(action === "seat" ? "🪑 Comensales sentados: la mesa está ocupada" : "Reserva cancelada: la mesa está libre");
+      } else setMsg(data.error || "No se pudo actualizar la reserva");
+    } catch {
+      setMsg("No se pudo actualizar la reserva");
+    } finally {
+      setResActing(false);
+      setTimeout(() => setMsg(""), 3000);
+    }
+  }
   // Switch "exigir caja abierta": sin turno no se cobra la mesa (cargar
   // consumiciones sigue permitido; el servidor lo valida igual: 409).
   const { shift: cashShift, requireOpenShift, loading: cashShiftLoading } = useCashShift(true);
@@ -260,7 +359,7 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
             .map((x: any) => ({ ...x })));
         }
         if (tab) {
-          if (Array.isArray(tab.tables)) setTables(tab.tables as any);
+          if (Array.isArray(tab.tables)) setTables(applyLayoutFallback(tab.tables as any, vendorId));
           if (Array.isArray(tab.orders)) setOrders(tab.orders as any);
           if (typeof tab.cashPct === "number") setCashPct(tab.cashPct);
         }
@@ -271,19 +370,22 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
     const ac = new AbortController();
     const timeout = setTimeout(() => ac.abort(), 8000);
     try {
-      const [tRes, oRes, pRes, mRes] = await Promise.all([
+      const [tRes, oRes, pRes, mRes, rRes] = await Promise.all([
         fetch("/api/vendor/tables", { signal: ac.signal }),
         fetch("/api/vendor/orders", { signal: ac.signal }),
         fetch("/api/vendor/offers", { signal: ac.signal }),
         fetch("/api/vendor/me", { signal: ac.signal }),
+        fetch("/api/vendor/reservations?status=pendiente", { signal: ac.signal }).catch(() => null),
       ]);
       const t = await tRes.json();
       const o = await oRes.json();
       const p = await pRes.json();
       const me = await mRes.json().catch(() => null);
+      const r = rRes ? await rRes.json().catch(() => null) : null;
+      if (r && Array.isArray(r.reservations)) setReservations(r.reservations);
       const pct = normalizeCashPct(me?.vendor?.cash_discount_pct);
       if (me?.vendor) setCashPct(pct);
-      if (t.tables) setTables(t.tables);
+      if (t.tables) setTables(applyLayoutFallback(t.tables, (me?.vendor?.id as string | undefined) ?? vendorId));
       if (o.orders) setOrders(o.orders);
       let modsMap: Record<string, ProductModifier[]> = {};
       let mapped: Product[] = [];
@@ -326,11 +428,13 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && selected) setSelected(null);
+      if (e.key !== "Escape" || resSaving) return;
+      if (resModal) setResModal(null);
+      else if (selected) setSelected(null);
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [selected]);
+  }, [selected, resModal, resSaving]);
 
   // Al sincronizar (F3): se descartan las consumiciones/cierres ya enviados
   // y se refresca la cuenta real del servidor (con Nros. y totales finales).
@@ -537,12 +641,33 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
     } catch { /* localStorage no disponible */ }
   }
 
-  function loadLayoutFallback(): Record<string, { x?: number; y?: number; width?: number; height?: number; shape?: string }> {
+  function loadLayoutFallback(vid?: string | null): Record<string, { x?: number; y?: number; width?: number; height?: number; shape?: string; capacity?: number }> {
     try {
-      const key = `portal659-floorplan-${vendorId}`;
+      const key = `portal659-floorplan-${vid || vendorId}`;
       const raw = localStorage.getItem(key);
       return raw ? JSON.parse(raw) : {};
     } catch { return {}; }
+  }
+
+  // Si la migración del plano aún no está aplicada, el servidor devuelve las
+  // mesas sin x/y/width/height/shape: se completa con el fallback local para
+  // no perder la disposición editada.
+  function applyLayoutFallback(list: Table[], vid?: string | null): Table[] {
+    const fb = loadLayoutFallback(vid);
+    if (Object.keys(fb).length === 0) return list;
+    return list.map((t) => {
+      const f = fb[t.id];
+      if (!f) return t;
+      return {
+        ...t,
+        x: (t as any).x ?? f.x ?? 0,
+        y: (t as any).y ?? f.y ?? 0,
+        width: (t as any).width ?? f.width ?? 60,
+        height: (t as any).height ?? f.height ?? 60,
+        shape: (t as any).shape ?? (f.shape as any) ?? "square",
+        capacity: f.capacity ?? t.capacity,
+      };
+    });
   }
 
   async function moveTable(id: string, x: number, y: number) {
@@ -573,6 +698,17 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
       body: JSON.stringify({ shape }),
     }).catch(() => null);
     if (!res || !res.ok) saveLayoutFallback(id, { shape });
+  }
+
+  async function changeTableCapacity(id: string, capacity: number) {
+    const cap = Math.max(1, Math.min(30, Math.round(capacity) || 4));
+    setTables((prev) => prev.map((t) => (t.id === id ? { ...t, capacity: cap } : t)));
+    const res = await fetch(`/api/vendor/tables/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ capacity: cap }),
+    }).catch(() => null);
+    if (!res || !res.ok) saveLayoutFallback(id, { capacity: cap });
   }
 
   // Guardia anti tap-through (mobile): al abrir la mesa con un tap, el
@@ -1153,10 +1289,11 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
             tables={tables as FloorTable[]}
             selectedId={null}
             onSelect={(t) => { selectedAtRef.current = Date.now(); setSelected(t as Table); setMobileView("catalog"); }}
-            onMove={moveTable}
-            onResize={resizeTable}
-            onShapeChange={changeTableShape}
-          />
+        onMove={moveTable}
+        onResize={resizeTable}
+        onShapeChange={changeTableShape}
+        onCapacityChange={changeTableCapacity}
+      />
         </>
       ) : (
         <>
@@ -1190,8 +1327,37 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
                 {selected.status === "libre" && (
                   <Button variant="ghost" size="sm" onClick={() => deleteTable(selected)}>Eliminar</Button>
                 )}
+                {selected.status === "libre" && (
+                  <Button variant="outline" size="sm" onClick={openResModal}>📅 Reservar</Button>
+                )}
               </div>
             </div>
+
+            {isReserved && (
+              <div className="rounded-xl border border-amber-300 bg-amber-50/70 dark:bg-amber-950/20 px-3 py-2.5 flex flex-wrap items-center gap-x-3 gap-y-2">
+                <div className="text-xs min-w-0">
+                  <p className="font-semibold">📅 Reservada{selectedReservation ? ` · ${selectedReservation.customer_name}` : ""}</p>
+                  {selectedReservation && (
+                    <p className="text-muted-foreground">
+                      {new Date(selectedReservation.reserved_at).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                      {" · "}{selectedReservation.party_size} pers.
+                      {" · 📞 "}{selectedReservation.customer_phone}
+                      {selectedReservation.notes ? ` · ${selectedReservation.notes}` : ""}
+                    </p>
+                  )}
+                </div>
+                {selectedReservation && (
+                  <div className="flex items-center gap-1.5 ml-auto">
+                    <Button size="sm" disabled={resActing} onClick={() => reservationAction(selectedReservation.id, "seat")}>
+                      🪑 Sentar
+                    </Button>
+                    <Button size="sm" variant="outline" disabled={resActing} onClick={() => reservationAction(selectedReservation.id, "cancel")}>
+                      Cancelar
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_360px] gap-4 items-start">
               <div className="min-w-0">
@@ -1248,7 +1414,12 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
                   </p>
                 )}
                 <div className="flex-shrink-0">{manualChargeRow}</div>
-                <Button size="sm" className="flex-shrink-0" disabled={cart.length === 0} onClick={addConsumicion}>Agregar consumición</Button>
+                <Button size="sm" className="flex-shrink-0" disabled={cart.length === 0 || isReserved} onClick={addConsumicion}>Agregar consumición</Button>
+                {isReserved && (
+                  <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5 flex-shrink-0">
+                    🔒 Mesa reservada: sentá o cancelá la reserva para operar.
+                  </p>
+                )}
                 {shiftBlocked && (
                   <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5 flex-shrink-0">
                     🔒 Abrí la caja para cobrar.{" "}
@@ -1266,7 +1437,7 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
                   >
                     {printingTicket ? "Imprimiendo..." : "🖨️ Precuenta"}
                   </Button>
-                  <Button size="sm" variant="default" disabled={!hasAccount || shiftBlocked} onClick={closeTable}>
+                  <Button size="sm" variant="default" disabled={!hasAccount || shiftBlocked || isReserved} onClick={closeTable}>
                     Cobrar y cerrar
                   </Button>
                 </div>
@@ -1291,9 +1462,12 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
                   {mobileView === "catalog" ? selected.name : `Cuenta · ${selected.name}`}
                 </h3>
                 <p className="text-[11px] text-muted-foreground">
-                  {selected.status === "ocupada" ? "Ocupada" : "Libre"} · ${mesaTotalNotDiscounted.toLocaleString("es-AR")}
+                  {selected.status === "ocupada" ? "Ocupada" : selected.status === "reservada" ? "Reservada" : "Libre"} · ${mesaTotalNotDiscounted.toLocaleString("es-AR")}
                 </p>
               </div>
+              {selected.status === "libre" && (
+                <Button variant="outline" size="sm" className="h-8 text-xs shrink-0" onClick={openResModal}>📅 Reservar</Button>
+              )}
               {selected.status === "libre" && !hasAccount && (
                 <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => deleteTable(selected)}>Eliminar</Button>
               )}
@@ -1380,6 +1554,27 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
               <>
                 {/* Vista B — cuenta: consumiciones abiertas + pedido nuevo + cobro */}
                 <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
+                  {isReserved && (
+                    <div className="rounded-xl border border-amber-300 bg-amber-50/70 dark:bg-amber-950/20 px-3 py-2.5 space-y-2">
+                      <p className="text-xs font-semibold">📅 Reservada{selectedReservation ? ` · ${selectedReservation.customer_name}` : ""}</p>
+                      {selectedReservation && (
+                        <>
+                          <p className="text-[11px] text-muted-foreground">
+                            {new Date(selectedReservation.reserved_at).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                            {" · "}{selectedReservation.party_size} pers.{" · 📞 "}{selectedReservation.customer_phone}
+                          </p>
+                          <div className="grid grid-cols-2 gap-1.5">
+                            <Button size="sm" disabled={resActing} onClick={() => reservationAction(selectedReservation.id, "seat")}>
+                              🪑 Sentar
+                            </Button>
+                            <Button size="sm" variant="outline" disabled={resActing} onClick={() => reservationAction(selectedReservation.id, "cancel")}>
+                              Cancelar
+                            </Button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
                   <div>
                     <p className="text-[10px] uppercase tracking-wide font-semibold text-muted-foreground mb-1.5">
                       Consumiciones de la mesa ({openOrders.length})
@@ -1439,8 +1634,13 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
                     </p>
                   )}
                   <div className="grid grid-cols-1 gap-1.5">
+                    {isReserved && (
+                      <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5">
+                        🔒 Mesa reservada: sentá o cancelá la reserva para operar.
+                      </p>
+                    )}
                     {cart.length > 0 && (
-                      <Button size="sm" variant="secondary" onClick={addConsumicion}>
+                      <Button size="sm" variant="secondary" disabled={isReserved} onClick={addConsumicion}>
                         ➕ Cargar a la mesa ({cartCount} ítem{cartCount === 1 ? "" : "s"})
                       </Button>
                     )}
@@ -1455,7 +1655,7 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
                       </Button>
                       <Button
                         size="sm"
-                        disabled={!hasAccount || shiftBlocked}
+                        disabled={!hasAccount || shiftBlocked || isReserved}
                         onClick={closeTable}
                       >
                         Cobrado y cerrar
@@ -1475,6 +1675,104 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
             )}
           </div>
         </>
+      )}
+
+      {resModal && selected && (
+        <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4" onClick={() => !resSaving && setResModal(null)}>
+          <div
+            className="w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl border border-border bg-background p-4 space-y-3 max-h-[92vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="font-display font-semibold">📅 Reservar {selected.name}</h3>
+              <button
+                type="button"
+                onClick={() => !resSaving && setResModal(null)}
+                className="h-8 w-8 rounded-full hover:bg-muted flex items-center justify-center text-muted-foreground"
+                aria-label="Cerrar"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="space-y-2.5">
+              <div>
+                <label className="text-xs font-medium">Nombre del cliente *</label>
+                <input
+                  type="text"
+                  value={resModal.name}
+                  onChange={(e) => setResModal({ ...resModal, name: e.target.value })}
+                  placeholder="Ej: Juan Pérez"
+                  className="mt-1 w-full h-10 px-3 text-sm rounded-xl border border-input bg-background"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium">Teléfono / WhatsApp *</label>
+                <input
+                  type="tel"
+                  inputMode="tel"
+                  value={resModal.phone}
+                  onChange={(e) => setResModal({ ...resModal, phone: e.target.value })}
+                  placeholder="Ej: 221 555-1234"
+                  className="mt-1 w-full h-10 px-3 text-sm rounded-xl border border-input bg-background"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2.5">
+                <div>
+                  <label className="text-xs font-medium">Comensales</label>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min={1}
+                    max={30}
+                    value={resModal.party}
+                    onChange={(e) => setResModal({ ...resModal, party: e.target.value })}
+                    className="mt-1 w-full h-10 px-3 text-sm rounded-xl border border-input bg-background"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium">Fecha y hora *</label>
+                  <input
+                    type="datetime-local"
+                    value={resModal.datetime}
+                    onChange={(e) => setResModal({ ...resModal, datetime: e.target.value })}
+                    className="mt-1 w-full h-10 px-3 text-sm rounded-xl border border-input bg-background"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium">Email (opcional)</label>
+                <input
+                  type="email"
+                  value={resModal.email}
+                  onChange={(e) => setResModal({ ...resModal, email: e.target.value })}
+                  placeholder="cliente@mail.com"
+                  className="mt-1 w-full h-10 px-3 text-sm rounded-xl border border-input bg-background"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium">Nota (opcional)</label>
+                <input
+                  type="text"
+                  value={resModal.notes}
+                  onChange={(e) => setResModal({ ...resModal, notes: e.target.value })}
+                  placeholder="Ej: cumpleaños, mesa del jardín…"
+                  className="mt-1 w-full h-10 px-3 text-sm rounded-xl border border-input bg-background"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <Button variant="outline" disabled={resSaving} onClick={() => setResModal(null)}>
+                Cancelar
+              </Button>
+              <Button
+                disabled={resSaving || !resModal.name.trim() || !resModal.phone.trim() || !resModal.datetime}
+                onClick={createReservation}
+              >
+                {resSaving ? "Guardando…" : "Guardar reserva"}
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
 
       {pickerProduct && (

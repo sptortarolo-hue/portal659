@@ -73,6 +73,11 @@ export async function POST(request: Request) {
     );
     if (!table) return fail(404, "Mesa no encontrada");
 
+    // Mesa reservada: bloqueada hasta sentar o cancelar la reserva.
+    if (table.status === "reservada") {
+      return fail(409, "Mesa reservada: sentá o cancelá la reserva antes de cargar");
+    }
+
     // Si la mesa está libre, se abre automáticamente al cargar la primera consumición
     if (table.status !== "ocupada") {
       await tx.queryVoid(`UPDATE tables SET status = 'ocupada' WHERE id = $1`, [table.id]);

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ModifierPicker } from "@/components/offers/modifier-picker";
 import { ProductPickCard } from "@/components/vendor/product-pick-card";
+import { CustomerPicker, type LookupCustomer } from "@/components/vendor/customer-picker";
 import { cashDiscountForItems, normalizeCashPct } from "@/lib/cash-discount";
 import { normalizeDeliveryMode, resolveDeliveryFee, type DeliverySelection } from "@/lib/delivery";
 import { toE164 } from "@/lib/phone";
@@ -196,6 +197,14 @@ export function Mostrador({ vendorId }: { vendorId?: string | null }) {
   // Bloque cliente colapsado: default = consumidor final. Se despliega para
   // cargar datos; al elegir delivery se abre solo (ahí el teléfono es requerido).
   const [clientOpen, setClientOpen] = useState(false);
+  // Buscador único de cliente (teléfono o nombre): al elegir trae nombre +
+  // dirección; si se tipea un teléfono a mano se usa directo (cliente nuevo).
+  const [customerQuery, setCustomerQuery] = useState("");
+  // "Avanzado" plegado: monto manual + fiscal (lo diario queda siempre visible).
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  // Ref del buscador de productos: tras agregar con Enter el foco vuelve acá
+  // (flujo escáner, solo puntero fino para no levantar el teclado en mobile).
+  const searchRef = useRef<HTMLInputElement | null>(null);
   // % descuento en efectivo del comercio (0 = sin descuento).
   const [cashPct, setCashPct] = useState(0);
   // Retail (comercio/moda): textos sin referencias a cocina/comida.
@@ -390,7 +399,8 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
     );
   }, [products, query, activeCat]);
 
-  // Enter con código exacto (SKU) agrega directo sin tocar la lista.
+  // Enter en el buscador: SKU exacto agrega directo; si el filtro por
+  // nombre deja un único producto, también se agrega (carga rápida).
   function submitCodeSearch() {
     const q = query.trim().toLowerCase();
     if (!q) return;
@@ -399,10 +409,48 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
       add(hit);
       setQuery("");
       setMsg("");
-    } else {
-      // Sin coincidencia: ofrecer crear el producto pre-llenado.
-      openQuickCreate(/^\d+$/.test(q) ? { sku: q } : { name: query.trim() });
+      searchRef.current?.focus();
+      return;
     }
+    const named = products.filter(
+      (p) => p.available !== false && p.name.toLowerCase().includes(q)
+    );
+    if (named.length === 1) {
+      add(named[0]);
+      setQuery("");
+      setMsg("");
+      searchRef.current?.focus();
+      return;
+    }
+    // Sin coincidencia única: ofrecer crear el producto pre-llenado.
+    openQuickCreate(/^\d+$/.test(q) ? { sku: q } : { name: query.trim() });
+  }
+
+  /** Elegir un cliente del picker: trae nombre + dirección con el teléfono. */
+  function chooseLookupCustomer(c: LookupCustomer) {
+    if (c.name) setCustomerName(c.name);
+    if (c.phone) {
+      setCustomerPhone(c.phone);
+      setCustomerQuery(c.phone);
+    }
+    if (c.address) setCustomerAddress(c.address);
+    setMsg("");
+  }
+
+  /** Lo tipeado en el picker: si es un teléfono, vale como teléfono
+    (cliente nuevo sin ficha); si es un nombre, no pisa el teléfono. */
+  function onCustomerQueryChange(v: string) {
+    setCustomerQuery(v);
+    const digits = v.replace(/[^\d]/g, "");
+    if (digits.length >= 7) setCustomerPhone(v);
+  }
+
+  /** Limpiar cliente: vuelve a consumidor final. */
+  function clearCustomer() {
+    setCustomerQuery("");
+    setCustomerName("");
+    setCustomerPhone("");
+    setCustomerAddress("");
   }
 
   // Alta rápida desde mostrador: crea el producto (otros) y lo suma a la venta.
@@ -723,6 +771,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
   function discardDraft() {
     clearDraft(vendorId, "mostrador");
     setItems([]);
+    setCustomerQuery("");
     setCustomerName("");
     setCustomerPhone("");
     setCustomerAddress("");
@@ -967,6 +1016,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
     const clearSaleForm = () => {
       clearDraft(vendorId, "mostrador");
       setItems([]);
+      setCustomerQuery("");
       setCustomerName("");
       setCustomerPhone("");
       setCustomerAddress("");
@@ -1420,6 +1470,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
       <div className="sticky top-24 z-30 -mx-4 px-4 py-2 bg-background sm:static sm:mx-0 sm:px-0 sm:py-0">
         <div className="flex gap-1.5">
           <input
+            ref={searchRef}
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -1545,9 +1596,11 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
     </div>
   );
 
-  const orderSummary = (
+  // Cuerpo del pedido (scrolleable): líneas + avanzado + modalidad +
+  // cliente + pago. El pie (totales + Cobrar) va fijo abajo.
+  const orderBody = (
     <>
-      <div className="flex-1 space-y-1.5 min-h-0 overflow-y-auto">
+      <div className="space-y-1.5">
         {items.length === 0 && <p className="text-xs text-muted-foreground text-center py-6">Tocá productos para armar el pedido</p>}
         {items.map((i) => (
           <div
@@ -1622,45 +1675,130 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
         ))}
       </div>
 
-      {/* Monto manual ("Varios"): sin producto ni stock */}
-      <div className="flex items-center gap-1.5">
-        <input
-          type="text"
-          value={manualName}
-          onChange={(e) => setManualName(e.target.value)}
-          placeholder="Monto manual (ej: Varios)"
-          className="flex-1 min-w-0 h-9 px-3 text-xs rounded-lg border border-input bg-background"
-        />
-        <input
-          type="number"
-          inputMode="decimal"
-          min="0"
-          value={manualPrice}
-          onChange={(e) => setManualPrice(e.target.value)}
-          placeholder="$"
-          className="w-24 h-9 px-2 text-xs rounded-lg border border-input bg-background"
-        />
-        <button
-          type="button"
-          onClick={addManualLine}
-          className="h-9 px-3 rounded-lg bg-muted hover:bg-accent text-xs font-medium"
-        >
-          ＋ Monto
-        </button>
-        <button
-          type="button"
-          title="Guardar esta línea como producto del catálogo (con código y stock de ahora en más)"
-          onClick={() => openQuickCreate({ name: manualName.trim(), price: manualPrice, fromManual: true })}
-          disabled={!manualName.trim() && !manualPrice}
-          className="h-9 px-2 rounded-lg bg-muted hover:bg-accent text-xs font-medium disabled:opacity-50"
-        >
-          💾
-        </button>
-      </div>
-      {qcReplaceKey && (
-        <p className="text-[11px] text-muted-foreground pt-1">
-          Al guardar se reemplaza la línea manual “{manualName.trim() || "Varios"}” por el producto real.
-        </p>
+      {/* Avanzado plegado: monto manual + fiscal (lo diario queda visible) */}
+      <button
+        type="button"
+        onClick={() => setShowAdvanced((v) => !v)}
+        className="w-full flex items-center justify-between px-1 py-1 text-xs font-medium text-muted-foreground hover:text-foreground"
+        aria-expanded={showAdvanced}
+      >
+        <span>⚙️ Más opciones (monto manual{fiscalReady ? ", fiscal" : ""})</span>
+        <span className="flex-shrink-0">{showAdvanced ? "▾" : "▸"}</span>
+      </button>
+      {showAdvanced && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-1.5">
+            <input
+              type="text"
+              value={manualName}
+              onChange={(e) => setManualName(e.target.value)}
+              placeholder="Monto manual (ej: Varios)"
+              className="flex-1 min-w-0 h-9 px-3 text-xs rounded-lg border border-input bg-background"
+            />
+            <input
+              type="number"
+              inputMode="decimal"
+              min="0"
+              value={manualPrice}
+              onChange={(e) => setManualPrice(e.target.value)}
+              placeholder="$"
+              className="w-24 h-9 px-2 text-xs rounded-lg border border-input bg-background"
+            />
+            <button
+              type="button"
+              onClick={addManualLine}
+              className="h-9 px-3 rounded-lg bg-muted hover:bg-accent text-xs font-medium"
+            >
+              ＋ Monto
+            </button>
+            <button
+              type="button"
+              title="Guardar esta línea como producto del catálogo (con código y stock de ahora en más)"
+              onClick={() => openQuickCreate({ name: manualName.trim(), price: manualPrice, fromManual: true })}
+              disabled={!manualName.trim() && !manualPrice}
+              className="h-9 px-2 rounded-lg bg-muted hover:bg-accent text-xs font-medium disabled:opacity-50"
+            >
+              💾
+            </button>
+          </div>
+          {qcReplaceKey && (
+            <p className="text-[11px] text-muted-foreground pt-1">
+              Al guardar se reemplaza la línea manual “{manualName.trim() || "Varios"}” por el producto real.
+            </p>
+          )}
+          {fiscalReady && (
+            <button
+              type="button"
+              onClick={() => setWithFiscal((v) => !v)}
+              className={`flex w-full items-center gap-2 rounded-xl border px-3 py-2 text-left text-xs font-medium transition-colors ${
+                withFiscal
+                  ? "border-primary bg-primary/5 text-primary"
+                  : "border-border text-muted-foreground"
+              }`}
+              aria-pressed={withFiscal}
+            >
+              <span
+                className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md border-2 text-[12px] font-bold ${
+                  withFiscal ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/40 text-transparent"
+                }`}
+                aria-hidden
+              >
+                ✓
+              </span>
+              🧾 Con comprobante fiscal (Factura C)
+            </button>
+          )}
+          {fiscalReady && withFiscal && (
+            <div className="space-y-1.5 rounded-xl border border-border p-2.5">
+              <div className="flex gap-1.5">
+                <select
+                  value={fiscalReceptorTipo}
+                  onChange={(e) => setFiscalReceptorTipo(e.target.value as "cf" | "dni" | "cuit")}
+                  className="h-9 rounded-lg border border-input bg-background px-2 text-xs"
+                  aria-label="Receptor del comprobante"
+                >
+                  <option value="cf">Consumidor final</option>
+                  <option value="dni">DNI</option>
+                  <option value="cuit">CUIT</option>
+                </select>
+                {fiscalReceptorTipo !== "cf" && (
+                  <input
+                    value={fiscalReceptorNro}
+                    onChange={(e) => setFiscalReceptorNro(e.target.value)}
+                    placeholder={fiscalReceptorTipo === "cuit" ? "CUIT (11 dígitos)" : "DNI (7-8 dígitos)"}
+                    inputMode="numeric"
+                    className="h-9 min-w-0 flex-1 rounded-lg border border-input bg-background px-2 text-xs"
+                  />
+                )}
+              </div>
+              {fiscalReceptorTipo === "cuit" && (
+                <div className="flex gap-1.5">
+                  <input
+                    value={fiscalReceptorNombre}
+                    onChange={(e) => setFiscalReceptorNombre(e.target.value)}
+                    placeholder="Razón social (opcional)"
+                    className="h-9 min-w-0 flex-1 rounded-lg border border-input bg-background px-2 text-xs"
+                  />
+                  <select
+                    value={fiscalReceptorCond}
+                    onChange={(e) => setFiscalReceptorCond(e.target.value)}
+                    className="h-9 rounded-lg border border-input bg-background px-2 text-xs"
+                    aria-label="Condición IVA del receptor"
+                  >
+                    <option value="6">Monotributo</option>
+                    <option value="1">Resp. Inscripto</option>
+                    <option value="4">Exento</option>
+                  </select>
+                </div>
+              )}
+              {fiscalReceptorTipo === "cf" && payableTotal >= 10000000 && (
+                <p className="text-[11px] text-amber-700">
+                  ⚠️ ARCA exige identificar al comprador desde $10.000.000: cargá DNI o CUIT.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
       )}
 
       <div className="mt-3 space-y-2 pt-3 border-t border-border">
@@ -1709,20 +1847,31 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
           </button>
           {clientOpen && (
             <div className="space-y-2 px-2 pb-2">
-              <input
-                type="text"
-                value={customerName}
-                onChange={(e) => setCustomerName(e.target.value)}
-                placeholder="Nombre del cliente (opcional)"
-                className="w-full h-9 px-3 text-xs rounded-lg border border-input bg-background"
+              <CustomerPicker
+                query={customerQuery}
+                onQueryChange={onCustomerQueryChange}
+                onSelect={chooseLookupCustomer}
+                placeholder={method === "delivery" ? "Teléfono o nombre del cliente *" : "Teléfono o nombre del cliente (trae sus datos)"}
               />
-              <input
-                type="tel"
-                value={customerPhone}
-                onChange={(e) => setCustomerPhone(e.target.value)}
-                placeholder={method === "delivery" ? "Teléfono del cliente *" : "Teléfono del cliente (opcional, para ficha y aviso)"}
-                className="w-full h-9 px-3 text-xs rounded-lg border border-input bg-background"
-              />
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="text"
+                  value={customerName}
+                  onChange={(e) => setCustomerName(e.target.value)}
+                  placeholder="Nombre del cliente (opcional)"
+                  className="flex-1 min-w-0 h-9 px-3 text-xs rounded-lg border border-input bg-background"
+                />
+                {(customerName.trim() || customerPhone.trim()) && (
+                  <button
+                    type="button"
+                    onClick={clearCustomer}
+                    title="Volver a consumidor final"
+                    className="h-9 px-2.5 rounded-lg bg-muted hover:bg-accent text-xs font-medium text-muted-foreground flex-shrink-0"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
               <input
                 type="text"
                 value={notes}
@@ -1820,6 +1969,14 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
           </p>
         )}
 
+        {/* Fin del cuerpo: el pie (totales + Cobrar) va fijo abajo. */}
+        </div>
+      </>
+    );
+
+    // Pie fijo: totales + Cobrar siempre visibles (desktop y sheet mobile).
+    const orderFooter = (
+      <>
         <div className="space-y-1 pt-1">
           {activeCashDiscount > 0 && (
             <>
@@ -1862,78 +2019,6 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
           )}
         </div>
 
-        {fiscalReady && (
-          <button
-            type="button"
-            onClick={() => setWithFiscal((v) => !v)}
-            className={`flex w-full items-center gap-2 rounded-xl border px-3 py-2 text-left text-xs font-medium transition-colors ${
-              withFiscal
-                ? "border-primary bg-primary/5 text-primary"
-                : "border-border text-muted-foreground"
-            }`}
-            aria-pressed={withFiscal}
-          >
-            <span
-              className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md border-2 text-[12px] font-bold ${
-                withFiscal ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/40 text-transparent"
-              }`}
-              aria-hidden
-            >
-              ✓
-            </span>
-            🧾 Con comprobante fiscal (Factura C)
-          </button>
-        )}
-        {fiscalReady && withFiscal && (
-          <div className="space-y-1.5 rounded-xl border border-border p-2.5">
-            <div className="flex gap-1.5">
-              <select
-                value={fiscalReceptorTipo}
-                onChange={(e) => setFiscalReceptorTipo(e.target.value as "cf" | "dni" | "cuit")}
-                className="h-9 rounded-lg border border-input bg-background px-2 text-xs"
-                aria-label="Receptor del comprobante"
-              >
-                <option value="cf">Consumidor final</option>
-                <option value="dni">DNI</option>
-                <option value="cuit">CUIT</option>
-              </select>
-              {fiscalReceptorTipo !== "cf" && (
-                <input
-                  value={fiscalReceptorNro}
-                  onChange={(e) => setFiscalReceptorNro(e.target.value)}
-                  placeholder={fiscalReceptorTipo === "cuit" ? "CUIT (11 dígitos)" : "DNI (7-8 dígitos)"}
-                  inputMode="numeric"
-                  className="h-9 min-w-0 flex-1 rounded-lg border border-input bg-background px-2 text-xs"
-                />
-              )}
-            </div>
-            {fiscalReceptorTipo === "cuit" && (
-              <div className="flex gap-1.5">
-                <input
-                  value={fiscalReceptorNombre}
-                  onChange={(e) => setFiscalReceptorNombre(e.target.value)}
-                  placeholder="Razón social (opcional)"
-                  className="h-9 min-w-0 flex-1 rounded-lg border border-input bg-background px-2 text-xs"
-                />
-                <select
-                  value={fiscalReceptorCond}
-                  onChange={(e) => setFiscalReceptorCond(e.target.value)}
-                  className="h-9 rounded-lg border border-input bg-background px-2 text-xs"
-                  aria-label="Condición IVA del receptor"
-                >
-                  <option value="6">Monotributo</option>
-                  <option value="1">Resp. Inscripto</option>
-                  <option value="4">Exento</option>
-                </select>
-              </div>
-            )}
-            {fiscalReceptorTipo === "cf" && payableTotal >= 10000000 && (
-              <p className="text-[11px] text-amber-700">
-                ⚠️ ARCA exige identificar al comprador desde $10.000.000: cargá DNI o CUIT.
-              </p>
-            )}
-          </div>
-        )}
         {restored && (
           <div className="flex items-center justify-between gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2">
             <p className="text-xs font-medium text-primary">Recuperamos tu venta en curso</p>
@@ -1991,9 +2076,8 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
             </Button>
           </>
         )}
-      </div>
-    </>
-  );
+      </>
+    );
 
   return (
     <div className="space-y-4">
@@ -2031,10 +2115,11 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
       <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_360px] gap-4 items-start">
         <div className="min-w-0">{productsGrid}</div>
 
-        {/* Desktop sidebar: fija a altura de pantalla con scroll interno */}
+        {/* Desktop sidebar: cuerpo con scroll + pie fijo con totales y Cobrar */}
         <div className="hidden sm:flex rounded-2xl border border-border bg-card p-4 flex-col max-h-[70vh] lg:sticky lg:top-24 lg:h-[calc(100vh-12rem)] lg:max-h-none">
           <h3 className="font-display font-semibold text-sm mb-2 flex-shrink-0">Pedido actual</h3>
-          {orderSummary}
+          <div className="flex-1 min-h-0 overflow-y-auto">{orderBody}</div>
+          <div className="flex-shrink-0 border-t border-border mt-2 pt-2">{orderFooter}</div>
         </div>
       </div>
 
@@ -2067,7 +2152,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
             </button>
             <div className="flex-1 min-w-0 text-center">
               <h3 className="font-display font-semibold leading-tight">Pedido actual</h3>
-              <p className="text-[11px] text-muted-foreground">{items.length} {items.length === 1 ? "producto" : "productos"} · ${total.toLocaleString("es-AR")}</p>
+              <p className="text-[11px] text-muted-foreground">{items.length} {items.length === 1 ? "producto" : "productos"} · ${payableTotal.toLocaleString("es-AR")}</p>
             </div>
             <button
               onClick={() => setItems([])}
@@ -2077,8 +2162,11 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
               Limpiar
             </button>
           </header>
-          <div className="flex-1 overflow-y-auto p-4 flex flex-col pb-[calc(env(safe-area-inset-bottom,0px)+1rem)]">
-            {orderSummary}
+          <div className="flex-1 min-h-0 overflow-y-auto p-4">
+            {orderBody}
+          </div>
+          <div className="flex-shrink-0 border-t border-border bg-background px-4 pt-3 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)]">
+            {orderFooter}
           </div>
         </div>
       )}

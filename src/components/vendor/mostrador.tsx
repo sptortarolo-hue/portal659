@@ -205,6 +205,8 @@ export function Mostrador({ vendorId }: { vendorId?: string | null }) {
   // Ref del buscador de productos: tras agregar con Enter el foco vuelve acá
   // (flujo escáner, solo puntero fino para no levantar el teclado en mobile).
   const searchRef = useRef<HTMLInputElement | null>(null);
+  // Dirección de entrega: foco tras definir cliente en un envío.
+  const addrRef = useRef<HTMLInputElement | null>(null);
   // % descuento en efectivo del comercio (0 = sin descuento).
   const [cashPct, setCashPct] = useState(0);
   // Retail (comercio/moda): textos sin referencias a cocina/comida.
@@ -426,7 +428,8 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
     openQuickCreate(/^\d+$/.test(q) ? { sku: q } : { name: query.trim() });
   }
 
-  /** Elegir un cliente del picker: trae nombre + dirección con el teléfono. */
+  /** Elegir un cliente del picker: trae nombre + dirección con el teléfono,
+    colapsa el bloque y sigue la venta (foco en lo siguiente útil). */
   function chooseLookupCustomer(c: LookupCustomer) {
     if (c.name) setCustomerName(c.name);
     if (c.phone) {
@@ -435,6 +438,42 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
     }
     if (c.address) setCustomerAddress(c.address);
     setMsg("");
+    setClientOpen(false);
+    focusAfterCustomer();
+  }
+
+  /** Enter con tipeo directo (sin elegir): teléfono → cliente nuevo;
+    nombre → completa el nombre. Colapsa y sigue la venta. */
+  function commitDirectCustomer() {
+    const v = customerQuery.trim();
+    if (!v) {
+      setClientOpen(false);
+      focusAfterCustomer();
+      return;
+    }
+    const digits = v.replace(/[^\d]/g, "");
+    if (digits.length >= 7) {
+      setCustomerPhone(v);
+    } else {
+      setCustomerName(v);
+      setCustomerQuery("");
+    }
+    setMsg("");
+    setClientOpen(false);
+    focusAfterCustomer();
+  }
+
+  /** Tras definir cliente: delivery → dirección; resto → buscador de
+    productos (solo puntero fino, para no levantar el teclado en mobile). */
+  function focusAfterCustomer() {
+    window.setTimeout(() => {
+      if (method === "delivery") {
+        addrRef.current?.focus();
+        addrRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      } else if (finePointer) {
+        searchRef.current?.focus();
+      }
+    }, 60);
   }
 
   /** Lo tipeado en el picker: si es un teléfono, vale como teléfono
@@ -1831,11 +1870,11 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
         </div>
 
         {/* Cliente colapsado: default = consumidor final */}
-        <div className="rounded-xl border border-border overflow-hidden">
+        <div className="rounded-xl border border-border">
           <button
             type="button"
             onClick={() => setClientOpen((v) => !v)}
-            className="flex w-full items-center justify-between gap-2 px-3 py-2 text-xs font-medium text-muted-foreground hover:bg-muted/50"
+            className="flex w-full items-center justify-between gap-2 px-3 py-2 text-xs font-medium text-muted-foreground hover:bg-muted/50 rounded-t-xl"
             aria-expanded={clientOpen}
           >
             <span className="truncate">
@@ -1851,6 +1890,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
                 query={customerQuery}
                 onQueryChange={onCustomerQueryChange}
                 onSelect={chooseLookupCustomer}
+                onEnterKey={commitDirectCustomer}
                 placeholder={method === "delivery" ? "Teléfono o nombre del cliente *" : "Teléfono o nombre del cliente (trae sus datos)"}
               />
               <div className="flex items-center gap-1.5">
@@ -1928,6 +1968,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
                     />
                   )}
                   <input
+                    ref={addrRef}
                     type="text"
                     value={customerAddress}
                     onChange={(e) => setCustomerAddress(e.target.value)}

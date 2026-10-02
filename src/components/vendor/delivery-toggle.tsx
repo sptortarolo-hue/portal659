@@ -3,14 +3,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { TimeSelect24 } from "@/components/ui/time-select-24";
 import {
   DELIVERY_PAUSE_REASONS,
   extraCoveringNow,
   isDeliveryOpen,
   isDeliveryPaused,
   listActiveExtras,
+  nextDeliverySlots,
   scheduleTextForISO,
   shiftMinutesForISO,
 } from "@/lib/delivery-schedule";
@@ -147,23 +148,52 @@ export function DeliveryToggle({ vendor, onSaved }: { vendor: Vendor; onSaved: (
     await post({ delivery_extra_days: cur });
   }
 
-  // ---- Pill ----
+  // ---- Pill: compacta en mobile, descriptiva en desktop ----
+  // En mobile la fila del header no da para 4 pills anchas: la caja quedaba
+  // fuera de pantalla. El estado completo vive en el modal (title + header).
   let pillClass = "border-border text-muted-foreground";
-  let pillLabel = `🛵 Reparto ${resolvedOpen === true ? "abierto" : resolvedOpen === false ? "cerrado" : "—"}`;
+  let pillShort: React.ReactNode = (
+    <>
+      🛵{" "}
+      <span
+        className={`inline-block h-2 w-2 rounded-full ${
+          resolvedOpen === true ? "bg-green-500" : resolvedOpen === false ? "bg-red-500" : "bg-muted-foreground"
+        }`}
+      />
+    </>
+  );
+  let pillFull = `🛵 Reparto ${resolvedOpen === true ? "abierto" : resolvedOpen === false ? "cerrado" : "—"}`;
   if (paused) {
     pillClass = "border-amber-300 text-amber-700 dark:text-amber-400";
     const until = ((vendor as any).delivery_paused_until || "").trim();
-    pillLabel = until ? `⏸️ Pausado · ${remainingLabel(until, now)}` : "⏸️ Pausado";
+    const rem = until ? remainingLabel(until, now) : "";
+    const short = until ? shortRemaining(until, now) : "";
+    pillShort = short ? `⏸️ ${short}` : "⏸️ Pausa";
+    pillFull = rem ? `⏸️ Pausado · ${rem}` : "⏸️ Pausado";
   } else if (forced) {
     pillClass = "border-primary text-primary";
-    pillLabel = "🛵 Forzado abierto";
+    pillShort = "🛵 Abierto";
+    pillFull = "🛵 Forzado abierto";
   } else if (covering) {
     pillClass = "border-violet-300 text-violet-700 dark:text-violet-400";
-    pillLabel = `🛵 Hoy hasta ${covering.close}`;
+    pillShort = `🛵 ${covering.close}`;
+    pillFull = `🛵 Hoy hasta ${covering.close}`;
   } else if (extras.length > 0) {
     pillClass = "border-violet-300 text-violet-700 dark:text-violet-400";
-    pillLabel = `🛵 +${extras.length} día${extras.length > 1 ? "s" : ""} especial`;
+    pillShort = `🛵 +${extras.length}`;
+    pillFull = `🛵 +${extras.length} día${extras.length > 1 ? "s" : ""} especial`;
   }
+
+  // Próximo turno (línea descriptiva del modal).
+  let nextSlotLabel: string | null = null;
+  try {
+    nextSlotLabel = nextDeliverySlots(sched, { count: 1 })[0]?.label ?? null;
+  } catch {
+    nextSlotLabel = null;
+  }
+  const pauseReasonLabel = paused && sched.delivery_pause_reason
+    ? DELIVERY_PAUSE_REASONS[sched.delivery_pause_reason]?.label ?? null
+    : null;
 
   const selectedSchedule = scheduleTextForISO(sched, extraDate);
   const selectedExtra = ((vendor as any).delivery_extra_days || {})[extraDate];
@@ -174,10 +204,15 @@ export function DeliveryToggle({ vendor, onSaved }: { vendor: Vendor; onSaved: (
         type="button"
         onClick={() => { setErr(""); setExtraDate(todayISOAR()); setModalOpen(true); }}
         disabled={saving}
-        className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors flex-shrink-0 ${pillClass}`}
-        title={paused ? "Reparto en pausa. Tocá para gestionar." : "Reparto según horario. Tocá para pausar o agregar horario."}
+        className={`inline-flex items-center gap-1.5 rounded-lg border px-2 sm:px-2.5 py-1.5 text-xs font-medium transition-colors flex-shrink-0 ${pillClass}`}
+        title={typeof pillFull === "string" ? `${pillFull}. Tocá para gestionar.` : "Reparto. Tocá para gestionar."}
       >
-        {saving ? "Guardando..." : pillLabel}
+        {saving ? "Guardando..." : (
+          <>
+            <span className="sm:hidden">{pillShort}</span>
+            <span className="hidden sm:inline">{pillFull}</span>
+          </>
+        )}
       </button>
 
       {modalOpen && createPortal(
@@ -190,17 +225,48 @@ export function DeliveryToggle({ vendor, onSaved }: { vendor: Vendor; onSaved: (
             onClick={(e) => e.stopPropagation()}
           >
             <h3 className="font-display text-base font-semibold">🛵 Reparto a domicilio</h3>
-            {paused ? (
-              <p className="text-sm text-muted-foreground">
-                En pausa{(() => { const u = ((vendor as any).delivery_paused_until || "").trim(); return u ? ` · vuelve ${remainingLabel(u, now)}` : " · hasta reanudar"; })()}.
-                Los pedidos siguen entrando para el próximo turno.
-              </p>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                {resolvedOpen === true ? "Abierto ahora según horario." : resolvedOpen === false ? "Cerrado ahora según horario." : "Sin horario de reparto."}{" "}
-                La pausa es blanda: el pedido entra igual para el próximo turno.
-              </p>
-            )}
+            {/* Estado descriptivo completo: en mobile la pill es compacta y
+                acá se entiende qué modalidad está vigente. */}
+            <div className="rounded-xl bg-muted/50 px-3 py-2.5 text-sm space-y-0.5">
+              {paused ? (
+                <>
+                  <p className="font-semibold text-amber-700 dark:text-amber-400">
+                    ⏸️ Reparto en pausa{(() => { const u = ((vendor as any).delivery_paused_until || "").trim(); return u ? ` · vuelve ${remainingLabel(u, now)}` : " · hasta reanudar"; })()}
+                  </p>
+                  {pauseReasonLabel && (
+                    <p className="text-xs text-muted-foreground">Motivo: {pauseReasonLabel}</p>
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    Los pedidos siguen entrando para el próximo turno{nextSlotLabel ? `: ${nextSlotLabel}` : ""}.
+                  </p>
+                </>
+              ) : forced ? (
+                <>
+                  <p className="font-semibold text-primary">🛵 Reparto forzado abierto</p>
+                  <p className="text-xs text-muted-foreground">
+                    Ignora el horario{nextSlotLabel ? ` · próximo turno: ${nextSlotLabel}` : ""}. Volvé a según horario cuando termines.
+                  </p>
+                </>
+              ) : covering ? (
+                <>
+                  <p className="font-semibold text-violet-700 dark:text-violet-400">🛵 Hoy con horario especial hasta las {covering.close}</p>
+                  <p className="text-xs text-muted-foreground">Los clientes ven el turno extendido en el micrositio y el checkout.</p>
+                </>
+              ) : (
+                <>
+                  <p className="font-medium">
+                    {resolvedOpen === true ? "🟢 Abierto ahora según horario." : resolvedOpen === false ? "🔴 Cerrado ahora según horario." : "Sin horario de reparto."}
+                  </p>
+                  {nextSlotLabel && (
+                    <p className="text-xs text-muted-foreground">Próximo turno: {nextSlotLabel}.</p>
+                  )}
+                  <p className="text-xs text-muted-foreground">La pausa es blanda: el pedido entra igual para el próximo turno.</p>
+                </>
+              )}
+              {extras.length > 0 && !covering && (
+                <p className="text-xs text-muted-foreground">📅 {extras.length} día{extras.length > 1 ? "s" : ""} especial{extras.length > 1 ? "es" : ""}: {extras.map((x) => x.label).join(" · ")}</p>
+              )}
+            </div>
 
             {/* Pausar */}
             <div className="space-y-2 rounded-xl border border-border p-3">
@@ -268,13 +334,19 @@ export function DeliveryToggle({ vendor, onSaved }: { vendor: Vendor; onSaved: (
                 {selectedExtra ? "(ya tiene día especial: se reemplaza)" : ""}
               </p>
               <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <Label className="text-xs" htmlFor="extra-open">Desde</Label>
-                  <Input id="extra-open" type="time" value={extraOpen} onChange={(e) => setExtraOpen(e.target.value)} className="mt-1 h-10 text-sm" />
+                <div className="min-w-0">
+                  <Label className="text-xs">Desde</Label>
+                  {/* TimeSelect24: siempre 24hs (el input time nativo muestra
+                      AM/PM según el locale del celular). */}
+                  <div className="mt-1">
+                    <TimeSelect24 value={extraOpen} onChange={setExtraOpen} aria-label="Desde" />
+                  </div>
                 </div>
-                <div>
-                  <Label className="text-xs" htmlFor="extra-close">Hasta</Label>
-                  <Input id="extra-close" type="time" value={extraClose} onChange={(e) => setExtraClose(e.target.value)} className="mt-1 h-10 text-sm" />
+                <div className="min-w-0">
+                  <Label className="text-xs">Hasta</Label>
+                  <div className="mt-1">
+                    <TimeSelect24 value={extraClose} onChange={setExtraClose} aria-label="Hasta" />
+                  </div>
                 </div>
               </div>
               <Button type="button" size="sm" variant="outline" className="w-full" disabled={saving} onClick={saveExtra}>
@@ -360,4 +432,26 @@ function remainingLabel(untilISO: string, nowMs: number): string {
     return `hasta las ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
   }
   return m === 0 ? `${h} h` : `${h} h ${m}`;
+}
+
+/** Versión corta para la pill mobile ("45m" / "1h" / "hoy"). Nunca larga. */
+function shortRemaining(untilISO: string, nowMs: number): string {
+  const end = new Date(untilISO).getTime();
+  if (Number.isNaN(end)) return "";
+  const mins = Math.round(Math.max(0, end - nowMs) / 60000);
+  if (mins <= 0) return "ya";
+  if (mins < 60) return `${mins}m`;
+  const h = Math.floor(mins / 60);
+  const endD = new Date(end);
+  const nowD = new Date(nowMs);
+  const sameDay =
+    endD.getFullYear() === nowD.getFullYear() &&
+    endD.getMonth() === nowD.getMonth() &&
+    endD.getDate() === nowD.getDate();
+  if (!sameDay) return `${h}h`;
+  // "Hoy (23:59)": la pausa cubre el resto del día.
+  const endOfDay = new Date(nowD);
+  endOfDay.setHours(23, 59, 0, 0);
+  if (Math.abs(end - endOfDay.getTime()) < 15 * 60000) return "hoy";
+  return `${h}h`;
 }

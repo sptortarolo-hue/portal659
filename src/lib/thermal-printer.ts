@@ -1214,7 +1214,7 @@ async function renderLabelHeader(
     const sharp = await loadSharp();
     const name = String(productName || "").trim() || "Producto";
     const logoD = Math.round(widthPx * 0.3);
-    const pad = 12;
+    const pad = 16;
     const logo = await decodePng(PI, circularPng);
 
     const realH = logoD + pad * 2;
@@ -1225,7 +1225,7 @@ async function renderLabelHeader(
     ctx.textAlign = "left";
     ctx.textBaseline = "alphabetic";
 
-    const textArea = widthPx - pad * 2 - logoD - 16;
+    const textArea = widthPx - (pad + LOGO_D + 20) - pad;
 
     let size = 44;
     let lines: string[] = [];
@@ -1250,10 +1250,10 @@ async function renderLabelHeader(
     const textTop = Math.round((realH - blockH) / 2);
     const logoY = Math.round((realH - logoD) / 2);
 
-    ctx.drawImage(logo, widthPx - pad - logoD, logoY, logoD, logoD);
+    ctx.drawImage(logo, pad, logoY, logoD, logoD);
     ctx.fillStyle = "black";
     ctx.font = `${size}px ${FONT_NAME}`;
-    lines.forEach((ln, i) => ctx.fillText(ln, pad, textTop + (i + 1) * lineHeight));
+    lines.forEach((ln, i) => ctx.fillText(ln, pad + LOGO_D + 20, textTop + (i + 1) * lineHeight));
 
     const raw = await encodePng(PI, canvas);
     return await sharp(raw)

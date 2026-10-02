@@ -1149,19 +1149,18 @@ export function MenuStudio({
                 return (
                   <label
                     key={o.id}
-                    className={`flex items-center gap-2 px-3 py-2 text-sm ${sku ? "cursor-pointer hover:bg-muted/50" : "opacity-50"}`}
+                    className="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer hover:bg-muted/50"
                   >
                     <input
                       type="checkbox"
                       className="h-4 w-4 accent-primary flex-shrink-0"
                       checked={checked}
-                      disabled={!sku}
                       onChange={() => toggleLabelCheck(o.id)}
                       aria-label={`Seleccionar ${o.name}`}
                     />
                     <span className="min-w-0 flex-1 truncate">{o.name}</span>
                     <span className="text-xs text-muted-foreground tabular-nums flex-shrink-0">
-                      {sku ? sku : "sin código"}
+                      {sku ? sku : "sin código — se generará"}
                     </span>
                   </label>
                 );

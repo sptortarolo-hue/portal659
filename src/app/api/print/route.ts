@@ -182,17 +182,20 @@ export async function POST(request: Request) {
     if (products.length === 0) {
       return NextResponse.json({ ok: false, error: "Producto no encontrado" }, { status: 404 });
     }
-    const withCode = products.filter((p) => String((p as any).sku || "").trim());
-    const sinCodigo = products
-      .filter((p) => !String((p as any).sku || "").trim())
-      .map((p) => String(p.name));
-    if (withCode.length === 0) {
-      return NextResponse.json({ ok: false, error: "Los productos no tienen código cargado" }, { status: 400 });
+    const sinCodigo: string[] = [];
+    const toPrint = products.map((p) => {
+      const sku = String((p as any).sku || "").trim();
+      if (sku) return { ...p, _code: sku };
+      sinCodigo.push(String(p.name));
+      return { ...p, _code: `P-${String(p.id).replace(/-/g, "").slice(0, 10).toUpperCase()}` };
+    });
+    if (toPrint.length === 0) {
+      return NextResponse.json({ ok: false, error: "No hay productos para imprimir" }, { status: 400 });
     }
     const copies = Math.min(50, Math.max(1, Math.floor(Number(body.copies) || 1)));
     let printed = 0;
     let lastResult: { ok: boolean; error?: string } = { ok: false };
-    for (const p of withCode) {
+    for (const p of toPrint) {
       const result = await dispatchPrint({
         vendor,
         type: "label",
@@ -202,7 +205,7 @@ export async function POST(request: Request) {
             price: Number(p.promo_price ?? p.price) || 0,
             oldPrice: p.promo_price != null ? Number(p.price) : null,
             unit: p.unit ?? null,
-            code: String((p as any).sku).trim(),
+            code: p._code,
             copies,
           },
         },
@@ -214,7 +217,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       ok: lastResult.ok,
       printed,
-      total: withCode.length,
+      total: toPrint.length,
       sinCodigo,
       ...(lastResult.ok ? {} : { error: lastResult.error || "No se pudo imprimir" }),
     });

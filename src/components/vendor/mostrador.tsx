@@ -1635,8 +1635,9 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
     </div>
   );
 
-  // Líneas del pedido (zona con scroll propio en desktop).
-  const orderLines = (
+  // Cuerpo del pedido (scrolleable): líneas + avanzado + modalidad +
+  // cliente + pago. El pie (totales + Cobrar) va fijo abajo.
+  const orderBody = (
     <>
       <div className="space-y-1.5">
         {items.length === 0 && <p className="text-xs text-muted-foreground text-center py-6">Tocá productos para armar el pedido</p>}
@@ -1712,12 +1713,8 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
           </div>
         ))}
       </div>
-    </>
-  );
 
-  // Avanzado plegado: monto manual + fiscal (lo diario queda visible).
-  const orderAdvanced = (
-    <>
+      {/* Avanzado plegado: monto manual + fiscal (lo diario queda visible) */}
       <button
         type="button"
         onClick={() => setShowAdvanced((v) => !v)}
@@ -1843,19 +1840,12 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
         </div>
       )}
 
-    </>
-  );
-
-  // Método: horizontal compacto en mobile, vertical full-height en desktop
-  // (la zona del sidebar se estira y los 3 botones crecen con ella).
-  const orderMethod = (
-    <>
-      <div className="mt-3 pt-3 border-t border-border sm:mt-2 sm:pt-2 sm:h-full">
+      <div className="mt-3 space-y-2 pt-3 border-t border-border">
         {/* Método de entrega (default: retiro; retail defaultea directa) + venta directa (sin pedido) */}
-        <div className="grid gap-1.5 grid-cols-3 sm:grid-cols-1 sm:grid-rows-3 sm:gap-2 sm:h-full">
+        <div className="grid gap-1.5 grid-cols-3">
           <button
             onClick={() => setMethod("direct")}
-            className={`rounded-lg py-1.5 sm:py-3 text-xs sm:text-sm font-medium border transition-colors ${
+            className={`rounded-lg py-1.5 text-xs font-medium border transition-colors ${
               method === "direct" ? "border-primary bg-primary/5 text-primary" : "border-border text-muted-foreground"
             }`}
           >
@@ -1863,7 +1853,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
           </button>
           <button
             onClick={() => setMethod("pickup")}
-            className={`rounded-lg py-1.5 sm:py-3 text-xs sm:text-sm font-medium border transition-colors ${
+            className={`rounded-lg py-1.5 text-xs font-medium border transition-colors ${
               method === "pickup" ? "border-primary bg-primary/5 text-primary" : "border-border text-muted-foreground"
             }`}
           >
@@ -1871,23 +1861,16 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
           </button>
           <button
             onClick={() => { setMethod("delivery"); setClientOpen(true); }}
-            className={`rounded-lg py-1.5 sm:py-3 text-xs sm:text-sm font-medium border transition-colors ${
+            className={`rounded-lg py-1.5 text-xs font-medium border transition-colors ${
               method === "delivery" ? "border-primary bg-primary/5 text-primary" : "border-border text-muted-foreground"
             }`}
           >
             🛵 Envío a domicilio
           </button>
         </div>
-      </div>
-    </>
-  );
 
-  // Cliente + pago (el buscador de cliente siempre visible: se escribe
-  // directo sin abrir; los detalles siguen plegables).
-  const orderClientPay = (
-    <>
-      {/* Cliente: buscador directo (vacío = consumidor final) + detalles plegables */}
-      <div className="rounded-xl border border-border">
+        {/* Cliente colapsado: default = consumidor final */}
+        <div className="rounded-xl border border-border">
           <button
             type="button"
             onClick={() => setClientOpen((v) => !v)}
@@ -1901,17 +1884,15 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
             </span>
             <span className="flex-shrink-0">{clientOpen ? "▾" : "▸"}</span>
           </button>
-          <div className="px-2 pt-2">
-            <CustomerPicker
-              query={customerQuery}
-              onQueryChange={onCustomerQueryChange}
-              onSelect={chooseLookupCustomer}
-              onEnterKey={commitDirectCustomer}
-              placeholder={method === "delivery" ? "🔍 Teléfono o nombre del cliente *" : "🔍 Consumidor final — buscar cliente…"}
-            />
-          </div>
           {clientOpen && (
-            <div className="space-y-2 px-2 pb-2 pt-2">
+            <div className="space-y-2 px-2 pb-2">
+              <CustomerPicker
+                query={customerQuery}
+                onQueryChange={onCustomerQueryChange}
+                onSelect={chooseLookupCustomer}
+                onEnterKey={commitDirectCustomer}
+                placeholder={method === "delivery" ? "🔍 Teléfono o nombre del cliente *" : "🔍 Consumidor final — buscar cliente…"}
+              />
               <div className="flex items-center gap-1.5">
                 <input
                   type="text"
@@ -2028,6 +2009,9 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
             📓 El fiado requiere nombre y celular del cliente (bloque Cliente).
           </p>
         )}
+
+        {/* Fin del cuerpo: el pie (totales + Cobrar) va fijo abajo. */}
+        </div>
       </>
     );
 
@@ -2172,12 +2156,10 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
       <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_360px] gap-4 items-start">
         <div className="min-w-0">{productsGrid}</div>
 
-        {/* Desktop: 3 zonas que llenan el alto (líneas / método vertical / form) + pie fijo */}
+        {/* Desktop sidebar: cuerpo con scroll + pie fijo con totales y Cobrar */}
         <div className="hidden sm:flex rounded-2xl border border-border bg-card p-4 flex-col max-h-[70vh] lg:sticky lg:top-24 lg:h-[calc(100vh-12rem)] lg:max-h-none">
           <h3 className="font-display font-semibold text-sm mb-2 flex-shrink-0">Pedido actual</h3>
-          <div className="flex-1 min-h-[80px] overflow-y-auto">{orderLines}</div>
-          <div className="flex-1 min-h-[138px]">{orderMethod}</div>
-          <div className="flex-1 min-h-[80px] overflow-y-auto">{orderAdvanced}{orderClientPay}</div>
+          <div className="flex-1 min-h-0 overflow-y-auto">{orderBody}</div>
           <div className="flex-shrink-0 border-t border-border mt-2 pt-2">{orderFooter}</div>
         </div>
       </div>
@@ -2222,10 +2204,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
             </button>
           </header>
           <div className="flex-1 min-h-0 overflow-y-auto p-4">
-            {orderLines}
-            {orderAdvanced}
-            {orderMethod}
-            {orderClientPay}
+            {orderBody}
           </div>
           <div className="flex-shrink-0 border-t border-border bg-background px-4 pt-3 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)]">
             {orderFooter}

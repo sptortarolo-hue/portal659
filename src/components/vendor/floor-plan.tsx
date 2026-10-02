@@ -47,6 +47,10 @@ type Props = {
   onDecorResize?: (id: string, w: number, h: number) => void;
   onDecorText?: (id: string, text: string) => void;
   onDecorDelete?: (id: string) => void;
+  /** Abre el modal de reserva (botón junto a Editar plano). */
+  onReserve?: () => void;
+  /** Elimina una mesa desde el editor del plano. */
+  onDeleteTable?: (id: string) => void;
 };
 
 const SNAP = 10;
@@ -91,6 +95,8 @@ export function FloorPlan({
   onDecorResize,
   onDecorText,
   onDecorDelete,
+  onReserve,
+  onDeleteTable,
 }: Props) {
   const canvasRef = useRef<HTMLDivElement>(null);
   const [editing, setEditing] = useState(false);
@@ -406,21 +412,28 @@ export function FloorPlan({
           <span className="inline-block h-3 w-3 rounded-sm bg-red-400 ml-2" /> Ocupada
           <span className="inline-block h-3 w-3 rounded-sm bg-amber-400 ml-2" /> Reservada
         </div>
-        <Button
-          type="button"
-          size="sm"
-          variant={editing ? "default" : "outline"}
-          onClick={() => {
-            if (editing) {
-              setEditSelectedId(null);
-              setEditDecorId(null);
-              setTool("move");
-            }
-            setEditing(!editing);
-          }}
-        >
-          {editing ? "✓ Listo" : "✏️ Editar plano"}
-        </Button>
+        <div className="flex items-center gap-1.5">
+          {onReserve && !editing && (
+            <Button type="button" size="sm" variant="outline" onClick={onReserve}>
+              📅 Reservar
+            </Button>
+          )}
+          <Button
+            type="button"
+            size="sm"
+            variant={editing ? "default" : "outline"}
+            onClick={() => {
+              if (editing) {
+                setEditSelectedId(null);
+                setEditDecorId(null);
+                setTool("move");
+              }
+              setEditing(!editing);
+            }}
+          >
+            {editing ? "✓ Listo" : "✏️ Editar plano"}
+          </Button>
+        </div>
       </div>
 
       {editing && (
@@ -620,6 +633,18 @@ export function FloorPlan({
           <span className="text-[11px] text-muted-foreground tabular-nums">
             {editTable.width ?? 60}×{editTable.height ?? 60}
           </span>
+          {onDeleteTable && (
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              disabled={editTable.status === "ocupada"}
+              title={editTable.status === "ocupada" ? "Cerrá la mesa antes de eliminarla" : "Eliminar mesa"}
+              onClick={() => onDeleteTable(editTable.id)}
+            >
+              Eliminar
+            </Button>
+          )}
         </div>
       )}
 

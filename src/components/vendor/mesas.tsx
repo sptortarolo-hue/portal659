@@ -197,6 +197,7 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
   }
   const [resModal, setResModal] = useState<{
     name: string; phone: string; email: string; party: string; datetime: string; duration: string; notes: string;
+    tableId: string | null; lockTable: boolean;
   } | null>(null);
   const [resSaving, setResSaving] = useState(false);
   const [resActing, setResActing] = useState(false);
@@ -257,27 +258,42 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
     const pad = (n: number) => String(n).padStart(2, "0");
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
   }
-  function openResModal() {
-    if (!selected) return;
+  function openResModal(tableId?: string | null, lockTable = true) {
+    const fallback = tables.find((t) => t.status === "libre") ?? tables[0];
+    const id = tableId ?? selected?.id ?? fallback?.id ?? null;
+    if (!id) {
+      setMsg("Creá primero una mesa en el plano");
+      setTimeout(() => setMsg(""), 2500);
+      return;
+    }
+    const t = tables.find((x) => x.id === id);
     setResModal({
       name: "",
       phone: "",
       email: "",
-      party: String(selected.capacity || 2),
+      party: String(t?.capacity || 2),
       datetime: defaultResDatetime(),
       duration: String(DEFAULT_DURATION_MIN),
       notes: "",
+      tableId: id,
+      lockTable,
     });
   }
   async function createReservation() {
-    if (!selected || !resModal || resSaving) return;
+    if (!resModal || resSaving) return;
+    const table = tables.find((t) => t.id === resModal.tableId);
+    if (!table) {
+      setMsg("Elegí una mesa válida");
+      setTimeout(() => setMsg(""), 2500);
+      return;
+    }
     setResSaving(true);
     try {
       const res = await fetch("/api/vendor/reservations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          tableId: selected.id,
+          tableId: table.id,
           customer_name: resModal.name,
           customer_phone: resModal.phone,
           customer_email: resModal.email || undefined,
@@ -294,7 +310,7 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
         const when = new Date(data.reservation.reserved_at).toLocaleString("es-AR", {
           day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
         });
-        setMsg(`📅 ${selected.name} reservada para ${data.reservation.customer_name} (${when})`);
+        setMsg(`📅 ${table.name} reservada para ${data.reservation.customer_name} (${when})`);
       } else {
         setMsg(data.code === "migration_pending"
           ? "Falta aplicar la migración de reservas en el servidor"
@@ -307,7 +323,17 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
       setTimeout(() => setMsg(""), 3000);
     }
   }
-  async function reservationAction(id: string, action: "seat" | "cancel" | "absent") {
+  // La mesa abierta sigue a la lista fresca (evita estado rancio tras
+  // sentar/cancelar/recargar).
+  useEffect(() => {
+    setSelected((prev) => {
+      if (!prev) return prev;
+      const fresh = tables.find((t) => t.id === prev.id);
+      return fresh ? { ...fresh } : null;
+    });
+  }, [tables]);
+
+  async function reservationAction(id: string, action: "seat" | "cancel" | "absent", tableId?: string | null) {
     if (resActing) return;
     if (action === "cancel" && !confirm("¿Cancelar esta reserva?")) return;
     if (action === "absent" && !confirm("¿Marcar como ausente (no vino)? Se libera la mesa.")) return;
@@ -320,6 +346,16 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
       });
       const data = await res.json().catch(() => ({}));
       if (data.reservation) {
+        // Al sentar se abre la mesa en el detalle (el sync con la lista
+        // fresca la deja con el estado correcto).
+        if (action === "seat" && tableId) {
+          const t = tables.find((x) => x.id === tableId);
+          if (t) {
+            selectedAtRef.current = Date.now();
+            setSelected(t);
+            setMobileView("catalog");
+          }
+        }
         await load();
         setMsg(
           action === "seat"
@@ -1515,7 +1551,74 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
         onDecorResize={decorResize}
         onDecorText={decorText}
         onDecorDelete={decorDelete}
+        onReserve={() => openResModal(null, false)}
+        onDeleteTable={(id) => {
+          const t = tables.find((x) => x.id === id);
+          if (t) deleteTable(t);
+        }}
       />
+
+          <div className="rounded-2xl border border-border bg-card p-3 space-y-2">
+            <h3 className="font-display font-semibold text-sm">
+              📅 Reservas {reservations.length > 0 && <span className="text-muted-foreground">({reservations.length})</span>}
+            </h3>
+            {reservations.length === 0 ? (
+              <p className="text-xs text-muted-foreground">Sin reservas pendientes.</p>
+            ) : (
+              <div className="space-y-1.5">
+                {[...reservations]
+                  .sort((a, b) => new Date(a.reserved_at).getTime() - new Date(b.reserved_at).getTime())
+                  .map((r) => {
+                    const st = reservationTimeState(r, resConfig);
+                    const t = r.table_id ? tables.find((x) => x.id === r.table_id) : undefined;
+                    return (
+                      <div
+                        key={r.id}
+                        onClick={() => {
+                          if (!t) return;
+                          selectedAtRef.current = Date.now();
+                          setSelected(t);
+                          setMobileView("catalog");
+                        }}
+                        className={`flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-xl border border-border bg-background px-3 py-2 ${t ? "cursor-pointer" : ""}`}
+                      >
+                        <span className={`text-[10px] font-semibold rounded-full px-2 py-0.5 ${
+                          st === "blocked"
+                            ? "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200"
+                            : st === "upcoming"
+                              ? "bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-200"
+                              : "bg-muted text-muted-foreground"
+                        }`}>
+                          {st === "blocked" ? "En turno" : st === "upcoming" ? "Próxima" : "Vencida"}
+                        </span>
+                        <div className="text-xs min-w-0 flex-1">
+                          <p className="font-semibold truncate">
+                            {new Date(r.reserved_at).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                            {" · "}{r.table_name || t?.name || "mesa eliminada"}
+                          </p>
+                          <p className="text-muted-foreground truncate">
+                            {r.customer_name} · {r.party_size} pers. · 📞 {r.customer_phone}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                          {t && (
+                            <Button size="sm" variant="outline" disabled={resActing} onClick={() => reservationAction(r.id, "seat", r.table_id)}>
+                              🪑
+                            </Button>
+                          )}
+                          <Button size="sm" variant="outline" disabled={resActing} onClick={() => reservationAction(r.id, "absent", r.table_id)}>
+                            No vino
+                          </Button>
+                          <Button size="sm" variant="ghost" disabled={resActing} onClick={() => reservationAction(r.id, "cancel", r.table_id)}>
+                            ✕
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            )}
+          </div>
 
           <CollapsibleSection icon="🖼️" title="Fondo del plano" defaultOpen={false}>
             <div className="flex flex-wrap items-center gap-2">
@@ -1613,10 +1716,7 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
                   </Button>
                 )}
                 {selected.status === "libre" && (
-                  <Button variant="ghost" size="sm" onClick={() => deleteTable(selected)}>Eliminar</Button>
-                )}
-                {selected.status === "libre" && (
-                  <Button variant="outline" size="sm" onClick={openResModal}>📅 Reservar</Button>
+                  <Button variant="outline" size="sm" onClick={() => openResModal(selected.id)}>📅 Reservar</Button>
                 )}
               </div>
             </div>
@@ -1633,13 +1733,13 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
                   </p>
                 </div>
                 <div className="flex items-center gap-1.5 ml-auto">
-                  <Button size="sm" disabled={resActing} onClick={() => reservationAction(selectedReservation.id, "seat")}>
+                  <Button size="sm" disabled={resActing} onClick={() => reservationAction(selectedReservation.id, "seat", selectedReservation.table_id)}>
                     🪑 Sentar
                   </Button>
-                  <Button size="sm" variant="outline" disabled={resActing} onClick={() => reservationAction(selectedReservation.id, "absent")}>
+                  <Button size="sm" variant="outline" disabled={resActing} onClick={() => reservationAction(selectedReservation.id, "absent", selectedReservation.table_id)}>
                     No vino
                   </Button>
-                  <Button size="sm" variant="outline" disabled={resActing} onClick={() => reservationAction(selectedReservation.id, "cancel")}>
+                  <Button size="sm" variant="outline" disabled={resActing} onClick={() => reservationAction(selectedReservation.id, "cancel", selectedReservation.table_id)}>
                     Cancelar
                   </Button>
                 </div>
@@ -1753,10 +1853,7 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
                 </p>
               </div>
               {selected.status === "libre" && (
-                <Button variant="outline" size="sm" className="h-8 text-xs shrink-0" onClick={openResModal}>📅 Reservar</Button>
-              )}
-              {selected.status === "libre" && !hasAccount && (
-                <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => deleteTable(selected)}>Eliminar</Button>
+                <Button variant="outline" size="sm" className="h-8 text-xs shrink-0" onClick={() => openResModal(selected.id)}>📅 Reservar</Button>
               )}
             </header>
 
@@ -1849,13 +1946,13 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
                         {" · "}{selectedReservation.party_size} pers.{" · 📞 "}{selectedReservation.customer_phone}
                       </p>
                       <div className="grid grid-cols-3 gap-1.5">
-                        <Button size="sm" disabled={resActing} onClick={() => reservationAction(selectedReservation.id, "seat")}>
+                        <Button size="sm" disabled={resActing} onClick={() => reservationAction(selectedReservation.id, "seat", selectedReservation.table_id)}>
                           🪑 Sentar
                         </Button>
-                        <Button size="sm" variant="outline" disabled={resActing} onClick={() => reservationAction(selectedReservation.id, "absent")}>
+                        <Button size="sm" variant="outline" disabled={resActing} onClick={() => reservationAction(selectedReservation.id, "absent", selectedReservation.table_id)}>
                           No vino
                         </Button>
-                        <Button size="sm" variant="outline" disabled={resActing} onClick={() => reservationAction(selectedReservation.id, "cancel")}>
+                        <Button size="sm" variant="outline" disabled={resActing} onClick={() => reservationAction(selectedReservation.id, "cancel", selectedReservation.table_id)}>
                           Cancelar
                         </Button>
                       </div>
@@ -1963,14 +2060,16 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
         </>
       )}
 
-      {resModal && selected && (
+      {resModal && (
         <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4" onClick={() => !resSaving && setResModal(null)}>
           <div
             className="w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl border border-border bg-background p-4 space-y-3 max-h-[92vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between">
-              <h3 className="font-display font-semibold">📅 Reservar {selected.name}</h3>
+              <h3 className="font-display font-semibold">
+                📅 Reservar {tables.find((t) => t.id === resModal.tableId)?.name ?? "mesa"}
+              </h3>
               <button
                 type="button"
                 onClick={() => !resSaving && setResModal(null)}
@@ -1981,6 +2080,26 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
               </button>
             </div>
             <div className="space-y-2.5">
+              {!resModal.lockTable && (
+                <div>
+                  <label className="text-xs font-medium">Mesa *</label>
+                  <select
+                    value={resModal.tableId ?? ""}
+                    onChange={(e) => {
+                      const t = tables.find((x) => x.id === e.target.value);
+                      setResModal({ ...resModal, tableId: e.target.value, party: String(t?.capacity || 2) });
+                    }}
+                    className="mt-1 w-full h-10 px-3 text-sm rounded-xl border border-input bg-background"
+                  >
+                    <option value="" disabled>Elegí una mesa…</option>
+                    {tables.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name} ({t.status === "ocupada" ? "ocupada" : t.status === "reservada" ? "reservada" : `libre · ${t.capacity} pers.`})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div>
                 <label className="text-xs font-medium">Nombre del cliente *</label>
                 <input
@@ -2067,7 +2186,7 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
                 Cancelar
               </Button>
               <Button
-                disabled={resSaving || !resModal.name.trim() || !resModal.phone.trim() || !resModal.datetime}
+                disabled={resSaving || !resModal.tableId || !resModal.name.trim() || !resModal.phone.trim() || !resModal.datetime}
                 onClick={createReservation}
               >
                 {resSaving ? "Guardando…" : "Guardar reserva"}

@@ -2,7 +2,6 @@
 
 import { useCallback, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 
 export type FloorTable = {
   id: string;
@@ -47,6 +46,8 @@ export function FloorPlan({ tables, selectedId, onSelect, onMove, onResize, onSh
   const [editing, setEditing] = useState(false);
   const [dragging, setDragging] = useState<string | null>(null);
   const dragOffset = useRef({ dx: 0, dy: 0 });
+  const tablesRef = useRef(tables);
+  tablesRef.current = tables;
 
   const snap = useCallback((v: number) => Math.round(v / SNAP) * SNAP, []);
 
@@ -62,11 +63,11 @@ export function FloorPlan({ tables, selectedId, onSelect, onMove, onResize, onSh
       if (!canvas) return;
       const rect = canvas.getBoundingClientRect();
       dragOffset.current = {
-        dx: e.clientX - rect.left - t.x,
-        dy: e.clientY - rect.top - t.y,
+        dx: e.clientX - rect.left - (t.x ?? 0),
+        dy: e.clientY - rect.top - (t.y ?? 0),
       };
       setDragging(t.id);
-      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      canvas.setPointerCapture(e.pointerId);
     },
     [editing, onSelect]
   );
@@ -77,13 +78,15 @@ export function FloorPlan({ tables, selectedId, onSelect, onMove, onResize, onSh
       const canvas = canvasRef.current;
       if (!canvas) return;
       const rect = canvas.getBoundingClientRect();
-      const t = tables.find((x) => x.id === dragging);
+      const t = tablesRef.current.find((x) => x.id === dragging);
       if (!t) return;
-      const x = Math.max(0, Math.min(rect.width - t.width, snap(e.clientX - rect.left - dragOffset.current.dx)));
-      const y = Math.max(0, Math.min(rect.height - t.height, snap(e.clientY - rect.top - dragOffset.current.dy)));
+      const tw = t.width ?? 60;
+      const th = t.height ?? 60;
+      const x = Math.max(0, Math.min(rect.width - tw, snap(e.clientX - rect.left - dragOffset.current.dx)));
+      const y = Math.max(0, Math.min(rect.height - th, snap(e.clientY - rect.top - dragOffset.current.dy)));
       onMove(t.id, x, y);
     },
-    [dragging, tables, onMove, snap]
+    [dragging, onMove, snap]
   );
 
   const handlePointerUp = useCallback(() => {
@@ -96,9 +99,10 @@ export function FloorPlan({ tables, selectedId, onSelect, onMove, onResize, onSh
       e.stopPropagation();
       const canvas = canvasRef.current;
       if (!canvas) return;
+      canvas.setPointerCapture(e.pointerId);
       const rect = canvas.getBoundingClientRect();
-      const w = Math.max(MIN_SIZE, Math.min(MAX_SIZE, snap(e.clientX - rect.left - t.x)));
-      const h = Math.max(MIN_SIZE, Math.min(MAX_SIZE, snap(e.clientY - rect.top - t.y)));
+      const w = Math.max(MIN_SIZE, Math.min(MAX_SIZE, snap(e.clientX - rect.left - (t.x ?? 0))));
+      const h = Math.max(MIN_SIZE, Math.min(MAX_SIZE, snap(e.clientY - rect.top - (t.y ?? 0))));
       onResize(t.id, w, h);
     },
     [onResize, snap]
@@ -125,7 +129,7 @@ export function FloorPlan({ tables, selectedId, onSelect, onMove, onResize, onSh
       <div
         ref={canvasRef}
         className="relative w-full overflow-hidden rounded-2xl border-2 border-dashed border-border bg-muted/30 select-none"
-        style={{ height: 400, touchAction: editing ? "none" : "auto" }}
+        style={{ height: "calc(100vh - 280px)", minHeight: 400, touchAction: editing ? "none" : "auto" }}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerLeave={handlePointerUp}
@@ -138,6 +142,10 @@ export function FloorPlan({ tables, selectedId, onSelect, onMove, onResize, onSh
         {tables.map((t) => {
           const st = STATUS_STYLES[t.status] || STATUS_STYLES.libre;
           const isSelected = selectedId === t.id;
+          const tx = t.x ?? 0;
+          const ty = t.y ?? 0;
+          const tw = t.width ?? 60;
+          const th = t.height ?? 60;
           return (
             <div
               key={t.id}
@@ -146,10 +154,10 @@ export function FloorPlan({ tables, selectedId, onSelect, onMove, onResize, onSh
                 editing ? "cursor-move" : "cursor-pointer"
               } ${isSelected ? "ring-2 ring-primary ring-offset-1" : ""} ${dragging === t.id ? "opacity-80 shadow-lg z-10" : ""}`}
               style={{
-                left: t.x,
-                top: t.y,
-                width: t.width,
-                height: t.height,
+                left: tx,
+                top: ty,
+                width: tw,
+                height: th,
                 transform: t.rotation ? `rotate(${t.rotation}deg)` : undefined,
               }}
             >

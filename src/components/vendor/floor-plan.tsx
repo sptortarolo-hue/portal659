@@ -101,11 +101,18 @@ export function FloorPlan({
   const canvasRef = useRef<HTMLDivElement>(null);
   const [editing, setEditing] = useState(false);
   const [tool, setTool] = useState<FloorTool>("move");
-  // Ajustar el plano al ancho (mobile muestra lo mismo que escritorio).
-  // En 1:1 el canvas scrollea para edición precisa.
-  const [fit, setFit] = useState(true);
+  // Modos de vista: fit (encuadra todo) | one (tamaño real) | free (pinch).
+  const [mode, setMode] = useState<"fit" | "one" | "free">("fit");
+  const [cam, setCam] = useState({ s: 1, x: 0, y: 0 });
   const [canvasW, setCanvasW] = useState(0);
-  const scaleRef = useRef(1);
+  const viewRef = useRef({ s: 1, x: 0, y: 0 });
+  const fitScaleRef = useRef(1);
+  const boundsRef = useRef({ w: 320, h: 260 });
+  // Multitouch: mapa de punteros activos + gesto de 2 dedos en curso.
+  const ptsRef = useRef(new Map<number, { x: number; y: number }>());
+  const gestRef = useRef<{
+    d0: number; mx0: number; my0: number; view0: { s: number; x: number; y: number };
+  } | null>(null);
   const [dragging, setDragging] = useState<string | null>(null);
   // Selección interna del editor: elige la mesa a configurar SIN navegar al
   // detalle (en modo edición el click no debe abrir la mesa).
@@ -129,9 +136,76 @@ export function FloorPlan({
     const canvas = canvasRef.current;
     if (!canvas) return null;
     const rect = canvas.getBoundingClientRect();
-    const s = scaleRef.current;
-    return { x: snap((clientX - rect.left) / s), y: snap((clientY - rect.top) / s), rect };
+    const v = viewRef.current;
+    return { x: snap((clientX - rect.left - v.x) / v.s), y: snap((clientY - rect.top - v.y) / v.s), rect };
   }, [snap]);
+
+  // Segundo dedo: cancela trazo/arrastre y pasa a navegar (zoom + pan).
+  const trackDown = useCallback((e: React.PointerEvent) => {
+    ptsRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (ptsRef.current.size === 2) {
+      drawingRef.current = null;
+      setWallPreview(null);
+      setDragging(null);
+      resizingRef.current = null;
+      dragDecorRef.current = null;
+      decorResizeRef.current = null;
+      draggedRef.current = true;
+      const [a, b] = [...ptsRef.current.values()];
+      gestRef.current = {
+        d0: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)),
+        mx0: (a.x + b.x) / 2,
+        my0: (a.y + b.y) / 2,
+        view0: { ...viewRef.current },
+      };
+      setMode("free");
+      setCam({ ...viewRef.current });
+      const canvas = canvasRef.current;
+      if (canvas) {
+        try { canvas.setPointerCapture(e.pointerId); } catch { /* noop */ }
+      }
+      return true;
+    }
+    return false;
+  }, []);
+
+  const trackMove = useCallback((e: React.PointerEvent) => {
+    const p = ptsRef.current.get(e.pointerId);
+    if (p) {
+      p.x = e.clientX;
+      p.y = e.clientY;
+    }
+    const g = gestRef.current;
+    if (!g || ptsRef.current.size < 2) return false;
+    const canvas = canvasRef.current;
+    if (!canvas) return true;
+    const rect = canvas.getBoundingClientRect();
+    const [a, b] = [...ptsRef.current.values()];
+    const d = Math.max(1, Math.hypot(a.x - b.x, a.y - b.y));
+    const mx = (a.x + b.x) / 2 - rect.left;
+    const my = (a.y + b.y) / 2 - rect.top;
+    const minS = fitScaleRef.current;
+    const s = Math.min(minS * 4, Math.max(minS, g.view0.s * (d / g.d0)));
+    // El punto de diseño bajo el punto medio inicial queda fijo ahí.
+    const dx = (g.mx0 - rect.left - g.view0.x) / g.view0.s;
+    const dy = (g.my0 - rect.top - g.view0.y) / g.view0.s;
+    draggedRef.current = true;
+    const vw = canvas.clientWidth;
+    const vh = canvas.clientHeight;
+    const bd = boundsRef.current;
+    const m = 40;
+    const cw = bd.w * s;
+    const ch = bd.h * s;
+    const x = cw <= vw ? (vw - cw) / 2 : Math.min(m, Math.max(vw - cw - m, mx - dx * s));
+    const y = ch <= vh ? (vh - ch) / 2 : Math.min(m, Math.max(vh - ch - m, my - dy * s));
+    setCam({ s, x, y });
+    return true;
+  }, []);
+
+  const trackUp = useCallback((e: React.PointerEvent) => {
+    ptsRef.current.delete(e.pointerId);
+    if (ptsRef.current.size < 2) gestRef.current = null;
+  }, []);
 
   // Mesas nunca ubicadas (todos los valores por defecto de la migración) se
   // muestran en cascada para no quedar apiladas en el 0,0. Al arrastrarlas se
@@ -161,6 +235,7 @@ export function FloorPlan({
 
   const handlePointerDown = useCallback(
     (e: React.PointerEvent, t: FloorTable) => {
+      if (trackDown(e)) return;
       // Solo la herramienta Mover arrastra mesas; las demás operan sobre el canvas.
       if (!editing || tool !== "move") return;
       e.preventDefault();
@@ -168,11 +243,11 @@ export function FloorPlan({
       const canvas = canvasRef.current;
       if (!canvas) return;
       const rect = canvas.getBoundingClientRect();
-      const s = scaleRef.current;
+      const v = viewRef.current;
       const p = disp(t);
       dragOffset.current = {
-        dx: (e.clientX - rect.left) / s - p.x,
-        dy: (e.clientY - rect.top) / s - p.y,
+        dx: (e.clientX - rect.left - v.x) / v.s - p.x,
+        dy: (e.clientY - rect.top - v.y) / v.s - p.y,
       };
       downPos.current = { x: e.clientX, y: e.clientY };
       draggedRef.current = false;
@@ -186,9 +261,12 @@ export function FloorPlan({
 
   const handlePointerMove = useCallback(
     (e: React.PointerEvent) => {
+      if (trackMove(e)) return;
       const canvas = canvasRef.current;
       if (!canvas) return;
-      const s = scaleRef.current;
+      const v = viewRef.current;
+      const b = boundsRef.current;
+      const px = (c: number, r: number, o: number) => (c - r - o) / v.s;
       // Resize por arrastre desde el handle de la esquina (mesa).
       if (resizingRef.current) {
         const r = resizingRef.current;
@@ -196,8 +274,8 @@ export function FloorPlan({
         if (!t) return;
         const rect = canvas.getBoundingClientRect();
         const p = disp(t);
-        const w = Math.max(MIN_SIZE, Math.min(MAX_SIZE, snap((e.clientX - rect.left) / s - p.x)));
-        const h = Math.max(MIN_SIZE, Math.min(MAX_SIZE, snap((e.clientY - rect.top) / s - p.y)));
+        const w = Math.max(MIN_SIZE, Math.min(MAX_SIZE, snap(px(e.clientX, rect.left, v.x) - p.x)));
+        const h = Math.max(MIN_SIZE, Math.min(MAX_SIZE, snap(px(e.clientY, rect.top, v.y) - p.y)));
         draggedRef.current = true;
         onResize(t.id, w, h);
         return;
@@ -207,8 +285,8 @@ export function FloorPlan({
         const d = (decor || []).find((x) => x.id === decorResizeRef.current!.id);
         if (!d) return;
         const rect = canvas.getBoundingClientRect();
-        const w = Math.max(20, Math.min(800, snap((e.clientX - rect.left) / s - (d.x ?? 0))));
-        const h = Math.max(20, Math.min(800, snap((e.clientY - rect.top) / s - (d.y ?? 0))));
+        const w = Math.max(20, Math.min(800, snap(px(e.clientX, rect.left, v.x) - (d.x ?? 0))));
+        const h = Math.max(20, Math.min(800, snap(px(e.clientY, rect.top, v.y) - (d.y ?? 0))));
         draggedRef.current = true;
         onDecorResize(d.id, w, h);
         return;
@@ -222,8 +300,8 @@ export function FloorPlan({
         const rect = canvas.getBoundingClientRect();
         onDecorMove(
           dd.id,
-          Math.max(0, snap((e.clientX - rect.left) / s - dd.dx)),
-          Math.max(0, snap((e.clientY - rect.top) / s - dd.dy))
+          Math.max(0, Math.min(b.w, snap(px(e.clientX, rect.left, v.x) - dd.dx))),
+          Math.max(0, Math.min(b.h, snap(px(e.clientY, rect.top, v.y) - dd.dy)))
         );
         return;
       }
@@ -245,18 +323,18 @@ export function FloorPlan({
       if (!t) return;
       const tw = t.width ?? 60;
       const th = t.height ?? 60;
-      const x = Math.max(0, Math.min(rect.width / s - tw, snap((e.clientX - rect.left) / s - dragOffset.current.dx)));
-      const y = Math.max(0, Math.min(rect.height / s - th, snap((e.clientY - rect.top) / s - dragOffset.current.dy)));
+      const x = Math.max(0, Math.min(b.w - tw, snap(px(e.clientX, rect.left, v.x) - dragOffset.current.dx)));
+      const y = Math.max(0, Math.min(b.h - th, snap(px(e.clientY, rect.top, v.y) - dragOffset.current.dy)));
       onMove(t.id, x, y);
     },
-    [dragging, onMove, onResize, onDecorMove, onDecorResize, snap, disp, decor, canvasPos]
+    [dragging, onMove, onResize, onDecorMove, onDecorResize, snap, disp, decor, canvasPos, trackMove]
   );
 
   const wallPreviewRef = useRef<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
   wallPreviewRef.current = wallPreview;
 
-  const handlePointerUp = useCallback(() => {
-    // Cierre de pared A → B.
+  const handlePointerUp = useCallback((e?: React.PointerEvent) => {
+    if (e) trackUp(e);
     if (drawingRef.current && onDecorAdd) {
       const d = drawingRef.current;
       const pv = wallPreviewRef.current;
@@ -278,11 +356,13 @@ export function FloorPlan({
     resizingRef.current = null;
     dragDecorRef.current = null;
     decorResizeRef.current = null;
-  }, [onDecorAdd]);
+  }, [onDecorAdd, trackUp]);
 
   // Acciones sobre el canvas según la herramienta (solo en edición).
   const handleCanvasPointerDown = useCallback(
     (e: React.PointerEvent) => {
+      if (ptsRef.current.has(e.pointerId)) return;
+      if (trackDown(e)) return;
       if (!editing || tool === "move" || tool === "erase") return;
       const pos = canvasPos(e.clientX, e.clientY);
       if (!pos) return;
@@ -303,11 +383,12 @@ export function FloorPlan({
         onDecorAdd("circle", { x: Math.max(0, pos.x - 50), y: Math.max(0, pos.y - 50), w: 100, h: 100, text: "Zona" });
       }
     },
-    [editing, tool, onDecorAdd, canvasPos]
+    [editing, tool, onDecorAdd, canvasPos, trackDown]
   );
 
   const handleResizeDown = useCallback(
     (e: React.PointerEvent, t: FloorTable) => {
+      if (trackDown(e)) return;
       e.preventDefault();
       e.stopPropagation();
       const canvas = canvasRef.current;
@@ -322,33 +403,35 @@ export function FloorPlan({
       };
       setEditSelectedId(t.id);
     },
-    []
+    [trackDown]
   );
 
   const handleDecorPointerDown = useCallback(
     (e: React.PointerEvent, d: FloorDecor) => {
+      if (trackDown(e)) return;
       if (!editing || tool !== "move") return;
       e.preventDefault();
       e.stopPropagation();
       const canvas = canvasRef.current;
       if (!canvas) return;
       const rect = canvas.getBoundingClientRect();
-      const s = scaleRef.current;
+      const v = viewRef.current;
       downPos.current = { x: e.clientX, y: e.clientY };
       draggedRef.current = false;
       dragDecorRef.current = {
         id: d.id,
-        dx: (e.clientX - rect.left) / s - (d.x ?? 0),
-        dy: (e.clientY - rect.top) / s - (d.y ?? 0),
+        dx: (e.clientX - rect.left - v.x) / v.s - (d.x ?? 0),
+        dy: (e.clientY - rect.top - v.y) / v.s - (d.y ?? 0),
       };
       setEditDecorId(d.id);
       setEditSelectedId(null);
       canvas.setPointerCapture(e.pointerId);
     },
-    [editing, tool]
+    [editing, tool, trackDown]
   );
 
   const handleDecorResizeDown = useCallback((e: React.PointerEvent, d: FloorDecor) => {
+    if (trackDown(e)) return;
     e.preventDefault();
     e.stopPropagation();
     const canvas = canvasRef.current;
@@ -356,7 +439,7 @@ export function FloorPlan({
     canvas.setPointerCapture(e.pointerId);
     decorResizeRef.current = { id: d.id };
     setEditDecorId(d.id);
-  }, []);
+  }, [trackDown]);
 
   const handleDecorClick = useCallback(
     (e: React.MouseEvent, d: FloorDecor) => {
@@ -446,10 +529,20 @@ export function FloorPlan({
     return () => ro.disconnect();
   }, []);
 
-  // Solo se reduce (mobile), nunca se amplía: desktop queda igual que hoy.
-  const scale = fit && canvasW > 0 ? Math.min(1, canvasW / bounds.w) : 1;
-  scaleRef.current = scale;
-  const canvasH = Math.max(260, Math.round(bounds.h * scale));
+  boundsRef.current = bounds;
+
+  // Viewport 16:9 (con mínimo de alto en mobile) + vista efectiva.
+  const vw = canvasW;
+  const vh = Math.max(vw > 0 ? (vw * 9) / 16 : 0, 300);
+  const fitS = vw > 0 ? Math.min(1, vw / bounds.w, vh / bounds.h) : 1;
+  fitScaleRef.current = fitS;
+  const fitView = {
+    s: fitS,
+    x: (vw - bounds.w * fitS) / 2,
+    y: (vh - bounds.h * fitS) / 2,
+  };
+  const view = mode === "fit" ? fitView : mode === "one" ? { s: 1, x: 0, y: 0 } : cam;
+  viewRef.current = view;
 
   return (
     <div className="space-y-3">
@@ -462,11 +555,23 @@ export function FloorPlan({
         <div className="flex items-center gap-1.5">
           <button
             type="button"
-            onClick={() => setFit(!fit)}
-            title={fit ? "Ver tamaño real (1:1)" : "Ajustar a la pantalla"}
-            className="flex-shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition-colors bg-muted text-muted-foreground"
+            onClick={() => setMode("fit")}
+            title="Ajustar a la pantalla"
+            className={`flex-shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+              mode !== "one" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+            }`}
           >
-            {fit ? "↔️ 1:1" : "🔍 Ajustar"}
+            🔍 Ajustar
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode("one")}
+            title="Ver tamaño real (1:1)"
+            className={`flex-shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+              mode === "one" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+            }`}
+          >
+            ↔️ 1:1
           </button>
           {onReserve && !editing && (
             <Button type="button" size="sm" variant="outline" onClick={onReserve}>
@@ -510,10 +615,13 @@ export function FloorPlan({
 
       <div
         ref={canvasRef}
-        className={`relative w-full ${fit ? "overflow-hidden" : "overflow-auto"} rounded-2xl border-2 border-dashed border-border bg-muted/30 select-none`}
+        className={`relative w-full ${mode === "one" ? "overflow-auto" : "overflow-hidden"} rounded-2xl border-2 border-dashed border-border bg-muted/30 select-none`}
         style={{
-          height: canvasH,
-          touchAction: editing ? "none" : "auto",
+          aspectRatio: "16 / 9",
+          minHeight: 300,
+          // none siempre: el pinch propio necesita los pointer events sin que
+          // el navegador secuestre el gesto (zoom de página/scroll).
+          touchAction: "none",
           backgroundImage: bgUrl ? `url(${bgUrl})` : undefined,
           backgroundSize: "cover",
           backgroundPosition: "center",
@@ -521,6 +629,7 @@ export function FloorPlan({
         onPointerDown={handleCanvasPointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
         onPointerLeave={handlePointerUp}
       >
         {tables.length === 0 && (decor || []).length === 0 && (
@@ -530,7 +639,11 @@ export function FloorPlan({
         )}
         <div
           className="relative origin-top-left"
-          style={{ width: bounds.w, height: bounds.h, transform: `scale(${scale})` }}
+          style={{
+            width: bounds.w,
+            height: bounds.h,
+            transform: `translate(${view.x}px, ${view.y}px) scale(${view.s})`,
+          }}
         >
         {/* Paredes (capa SVG bajo las mesas). */}
         <svg className="absolute inset-0 h-full w-full z-0">

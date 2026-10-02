@@ -24,6 +24,9 @@ type Props = {
   onResize: (id: string, w: number, h: number) => void;
   onShapeChange: (id: string, shape: FloorTable["shape"]) => void;
   onCapacityChange: (id: string, capacity: number) => void;
+  /** Mesas bloqueadas ahora por ventana de reserva + con reserva futura. */
+  blockedIds?: string[];
+  upcomingIds?: string[];
 };
 
 const SNAP = 10;
@@ -42,7 +45,7 @@ const SHAPE_RADIUS: Record<string, string> = {
   rectangle: "rounded-lg",
 };
 
-export function FloorPlan({ tables, selectedId, onSelect, onMove, onResize, onShapeChange, onCapacityChange }: Props) {
+export function FloorPlan({ tables, selectedId, onSelect, onMove, onResize, onShapeChange, onCapacityChange, blockedIds, upcomingIds }: Props) {
   const canvasRef = useRef<HTMLDivElement>(null);
   const [editing, setEditing] = useState(false);
   const [dragging, setDragging] = useState<string | null>(null);
@@ -220,7 +223,9 @@ export function FloorPlan({ tables, selectedId, onSelect, onMove, onResize, onSh
           </div>
         )}
         {tables.map((t) => {
-          const st = STATUS_STYLES[t.status] || STATUS_STYLES.libre;
+          const isBlocked = (blockedIds || []).includes(t.id);
+          const isUpcoming = !isBlocked && (upcomingIds || []).includes(t.id);
+          const st = isBlocked ? STATUS_STYLES.reservada : (STATUS_STYLES[t.status] || STATUS_STYLES.libre);
           const isSelected = selectedId === t.id || editSelectedId === t.id;
           const p = disp(t);
           const tw = t.width ?? 60;
@@ -245,7 +250,7 @@ export function FloorPlan({ tables, selectedId, onSelect, onMove, onResize, onSh
                 {t.name}
               </span>
               <span className={`text-[8px] ${st.text} opacity-70`}>
-                {t.status === "ocupada" ? "Ocupada" : t.status === "reservada" ? "Reservada" : `${t.capacity} pers.`}
+                {t.status === "ocupada" ? "Ocupada" : isBlocked ? "Reservada" : `${t.capacity} pers.${isUpcoming ? " 🕒" : ""}`}
               </span>
               {editing && (
                 <div

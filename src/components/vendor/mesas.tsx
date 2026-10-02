@@ -16,6 +16,11 @@ import { dispatchOfflinePrint, markPrintsDone } from "@/lib/local-print";
 import { SYNC_COMPLETED_EVENT } from "@/lib/sync-engine";
 import { useCashShift } from "@/lib/use-cash-shift";
 import { FloorPlan, type FloorTable } from "@/components/vendor/floor-plan";
+import {
+  DEFAULT_DURATION_MIN,
+  reservationTimeState,
+  type ReservationConfig,
+} from "@/lib/reservations";
 type Table = {
   id: string;
   name: string;
@@ -152,20 +157,99 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
     customer_email?: string | null;
     party_size: number;
     reserved_at: string;
+    duration_min?: number | null;
     status: string;
     notes?: string | null;
     table_name?: string | null;
   };
   const [reservations, setReservations] = useState<Reservation[]>([]);
+  const [resConfig, setResConfig] = useState<ReservationConfig>({});
+  const [resLeadInput, setResLeadInput] = useState("15");
+  const [resTolInput, setResTolInput] = useState("15");
+  const [resCfgSaving, setResCfgSaving] = useState(false);
+  async function saveResConfig() {
+    if (resCfgSaving) return;
+    setResCfgSaving(true);
+    try {
+      const res = await fetch("/api/vendor/me", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          reservation_lead_min: Number(resLeadInput),
+          reservation_tolerance_min: Number(resTolInput),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (data.vendor) {
+        setResConfig({
+          lead_min: (data.vendor as any).reservation_lead_min ?? 15,
+          tolerance_min: (data.vendor as any).reservation_tolerance_min ?? 15,
+        });
+        setMsg("⚙️ Ventana de reservas guardada");
+      } else setMsg(data.error || "No se pudo guardar");
+    } catch {
+      setMsg("No se pudo guardar");
+    } finally {
+      setResCfgSaving(false);
+      setTimeout(() => setMsg(""), 2500);
+    }
+  }
   const [resModal, setResModal] = useState<{
-    name: string; phone: string; email: string; party: string; datetime: string; notes: string;
+    name: string; phone: string; email: string; party: string; datetime: string; duration: string; notes: string;
   } | null>(null);
   const [resSaving, setResSaving] = useState(false);
   const [resActing, setResActing] = useState(false);
-  const selectedReservation = selected
-    ? reservations.find((r) => r.table_id === selected.id) ?? null
+  // Overlay de reservas por ventana (estilo Fudo): bloqueada solo dentro de
+  // [reserved_at - lead, reserved_at + tolerancia]; futura fuera de eso.
+  const resOverlays = useMemo(() => {
+    const now = Date.now();
+    const blocked: string[] = [];
+    const upcoming: string[] = [];
+    for (const r of reservations) {
+      if (!r.table_id || r.status !== "pendiente") continue;
+      const st = reservationTimeState(r, resConfig, now);
+      if (st === "blocked") blocked.push(r.table_id);
+      else if (st === "upcoming" && !blocked.includes(r.table_id)) upcoming.push(r.table_id);
+    }
+    return { blocked, upcoming };
+  }, [reservations, resConfig]);
+  // Reserva a mostrar en el detalle: la bloqueada primero, si no la próxima,
+  // si no la última vencida.
+  const selectedReservation = useMemo(() => {
+    if (!selected) return null;
+    const mine = reservations.filter((r) => r.table_id === selected.id && r.status === "pendiente");
+    if (mine.length === 0) return null;
+    const now = Date.now();
+    const rank = (r: Reservation) => {
+      const st = reservationTimeState(r, resConfig, now);
+      return st === "blocked" ? 0 : st === "upcoming" ? 1 : 2;
+    };
+    return [...mine].sort((a, b) => {
+      const ra = rank(a);
+      const rb = rank(b);
+      if (ra !== rb) return ra - rb;
+      return new Date(a.reserved_at).getTime() - new Date(b.reserved_at).getTime();
+    })[0] ?? null;
+  }, [reservations, selected, resConfig]);
+  const selectedResState = selectedReservation
+    ? reservationTimeState(selectedReservation, resConfig)
     : null;
-  const isReserved = selected?.status === "reservada";
+  const resBanner = selectedReservation
+    ? {
+        title:
+          selectedResState === "blocked"
+            ? `📅 Reservada · ${selectedReservation.customer_name}`
+            : selectedResState === "upcoming"
+              ? `🕒 Próxima reserva · ${selectedReservation.customer_name}`
+              : `⏰ Reserva vencida · ${selectedReservation.customer_name}`,
+        cls:
+          selectedResState === "upcoming"
+            ? "border-sky-300 bg-sky-50/70 dark:bg-sky-950/20"
+            : "border-amber-300 bg-amber-50/70 dark:bg-amber-950/20",
+      }
+    : null;
+  // Bloqueo operativo real: solo dentro de la ventana (no por estado guardado).
+  const resBlocked = selected ? resOverlays.blocked.includes(selected.id) : false;
   function defaultResDatetime(): string {
     const d = new Date();
     d.setHours(21, 0, 0, 0);
@@ -180,6 +264,7 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
       email: "",
       party: String(selected.capacity || 2),
       datetime: defaultResDatetime(),
+      duration: String(DEFAULT_DURATION_MIN),
       notes: "",
     });
   }
@@ -197,16 +282,18 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
           customer_email: resModal.email || undefined,
           party_size: Number(resModal.party) || 2,
           reserved_at: new Date(resModal.datetime).toISOString(),
+          duration_min: Math.max(15, Math.min(720, Math.round(Number(resModal.duration) || DEFAULT_DURATION_MIN))),
           notes: resModal.notes || undefined,
         }),
       });
       const data = await res.json().catch(() => ({}));
       if (data.reservation) {
         setReservations((prev) => [...prev, data.reservation]);
-        setTables((prev) => prev.map((x) => (x.id === selected.id ? { ...x, status: "reservada" } : x)));
-        setSelected({ ...selected, status: "reservada" });
         setResModal(null);
-        setMsg(`📅 ${selected.name} reservada para ${data.reservation.customer_name}`);
+        const when = new Date(data.reservation.reserved_at).toLocaleString("es-AR", {
+          day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
+        });
+        setMsg(`📅 ${selected.name} reservada para ${data.reservation.customer_name} (${when})`);
       } else {
         setMsg(data.code === "migration_pending"
           ? "Falta aplicar la migración de reservas en el servidor"
@@ -219,9 +306,10 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
       setTimeout(() => setMsg(""), 3000);
     }
   }
-  async function reservationAction(id: string, action: "seat" | "cancel") {
+  async function reservationAction(id: string, action: "seat" | "cancel" | "absent") {
     if (resActing) return;
-    if (action === "cancel" && !confirm("¿Cancelar esta reserva? La mesa vuelve a libre.")) return;
+    if (action === "cancel" && !confirm("¿Cancelar esta reserva?")) return;
+    if (action === "absent" && !confirm("¿Marcar como ausente (no vino)? Se libera la mesa.")) return;
     setResActing(true);
     try {
       const res = await fetch(`/api/vendor/reservations/${id}`, {
@@ -232,7 +320,13 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
       const data = await res.json().catch(() => ({}));
       if (data.reservation) {
         await load();
-        setMsg(action === "seat" ? "🪑 Comensales sentados: la mesa está ocupada" : "Reserva cancelada: la mesa está libre");
+        setMsg(
+          action === "seat"
+            ? "🪑 Comensales sentados: la mesa está ocupada"
+            : action === "absent"
+              ? "Reserva marcada como ausente"
+              : "Reserva cancelada"
+        );
       } else setMsg(data.error || "No se pudo actualizar la reserva");
     } catch {
       setMsg("No se pudo actualizar la reserva");
@@ -383,6 +477,11 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
       const me = await mRes.json().catch(() => null);
       const r = rRes ? await rRes.json().catch(() => null) : null;
       if (r && Array.isArray(r.reservations)) setReservations(r.reservations);
+      if (r && r.config) {
+        setResConfig(r.config);
+        if (r.config.lead_min != null) setResLeadInput(String(r.config.lead_min));
+        if (r.config.tolerance_min != null) setResTolInput(String(r.config.tolerance_min));
+      }
       const pct = normalizeCashPct(me?.vendor?.cash_discount_pct);
       if (me?.vendor) setCashPct(pct);
       if (t.tables) setTables(applyLayoutFallback(t.tables, (me?.vendor?.id as string | undefined) ?? vendorId));
@@ -1293,7 +1392,44 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
         onResize={resizeTable}
         onShapeChange={changeTableShape}
         onCapacityChange={changeTableCapacity}
+        blockedIds={resOverlays.blocked}
+        upcomingIds={resOverlays.upcoming}
       />
+
+          <CollapsibleSection icon="⚙️" title="Ventana de bloqueo de reservas" defaultOpen={false}>
+            <div className="flex flex-wrap items-end gap-2.5">
+              <div>
+                <label className="text-xs font-medium">Bloquear desde (min antes)</label>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  max={180}
+                  value={resLeadInput}
+                  onChange={(e) => setResLeadInput(e.target.value)}
+                  className="mt-1 w-24 h-9 px-3 text-sm rounded-xl border border-input bg-background"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium">Tolerancia llegada (min)</label>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  max={180}
+                  value={resTolInput}
+                  onChange={(e) => setResTolInput(e.target.value)}
+                  className="mt-1 w-24 h-9 px-3 text-sm rounded-xl border border-input bg-background"
+                />
+              </div>
+              <Button size="sm" disabled={resCfgSaving} onClick={saveResConfig}>
+                {resCfgSaving ? "Guardando…" : "Guardar"}
+              </Button>
+              <p className="w-full text-[11px] text-muted-foreground">
+                La mesa se bloquea desde esos minutos antes del turno hasta que pasa la tolerancia. Fuera de ese turno opera normal.
+              </p>
+            </div>
+          </CollapsibleSection>
         </>
       ) : (
         <>
@@ -1333,29 +1469,28 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
               </div>
             </div>
 
-            {isReserved && (
-              <div className="rounded-xl border border-amber-300 bg-amber-50/70 dark:bg-amber-950/20 px-3 py-2.5 flex flex-wrap items-center gap-x-3 gap-y-2">
+            {resBanner && selectedReservation && (
+              <div className={`rounded-xl border ${resBanner.cls} px-3 py-2.5 flex flex-wrap items-center gap-x-3 gap-y-2`}>
                 <div className="text-xs min-w-0">
-                  <p className="font-semibold">📅 Reservada{selectedReservation ? ` · ${selectedReservation.customer_name}` : ""}</p>
-                  {selectedReservation && (
-                    <p className="text-muted-foreground">
-                      {new Date(selectedReservation.reserved_at).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
-                      {" · "}{selectedReservation.party_size} pers.
-                      {" · 📞 "}{selectedReservation.customer_phone}
-                      {selectedReservation.notes ? ` · ${selectedReservation.notes}` : ""}
-                    </p>
-                  )}
+                  <p className="font-semibold">{resBanner.title}</p>
+                  <p className="text-muted-foreground">
+                    {new Date(selectedReservation.reserved_at).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                    {" · "}{selectedReservation.party_size} pers.
+                    {" · 📞 "}{selectedReservation.customer_phone}
+                    {selectedReservation.notes ? ` · ${selectedReservation.notes}` : ""}
+                  </p>
                 </div>
-                {selectedReservation && (
-                  <div className="flex items-center gap-1.5 ml-auto">
-                    <Button size="sm" disabled={resActing} onClick={() => reservationAction(selectedReservation.id, "seat")}>
-                      🪑 Sentar
-                    </Button>
-                    <Button size="sm" variant="outline" disabled={resActing} onClick={() => reservationAction(selectedReservation.id, "cancel")}>
-                      Cancelar
-                    </Button>
-                  </div>
-                )}
+                <div className="flex items-center gap-1.5 ml-auto">
+                  <Button size="sm" disabled={resActing} onClick={() => reservationAction(selectedReservation.id, "seat")}>
+                    🪑 Sentar
+                  </Button>
+                  <Button size="sm" variant="outline" disabled={resActing} onClick={() => reservationAction(selectedReservation.id, "absent")}>
+                    No vino
+                  </Button>
+                  <Button size="sm" variant="outline" disabled={resActing} onClick={() => reservationAction(selectedReservation.id, "cancel")}>
+                    Cancelar
+                  </Button>
+                </div>
               </div>
             )}
 
@@ -1414,10 +1549,10 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
                   </p>
                 )}
                 <div className="flex-shrink-0">{manualChargeRow}</div>
-                <Button size="sm" className="flex-shrink-0" disabled={cart.length === 0 || isReserved} onClick={addConsumicion}>Agregar consumición</Button>
-                {isReserved && (
+                <Button size="sm" className="flex-shrink-0" disabled={cart.length === 0 || resBlocked} onClick={addConsumicion}>Agregar consumición</Button>
+                {resBlocked && (
                   <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5 flex-shrink-0">
-                    🔒 Mesa reservada: sentá o cancelá la reserva para operar.
+                    🔒 Mesa reservada en este turno: sentá o cancelá la reserva para operar.
                   </p>
                 )}
                 {shiftBlocked && (
@@ -1437,7 +1572,7 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
                   >
                     {printingTicket ? "Imprimiendo..." : "🖨️ Precuenta"}
                   </Button>
-                  <Button size="sm" variant="default" disabled={!hasAccount || shiftBlocked || isReserved} onClick={closeTable}>
+                  <Button size="sm" variant="default" disabled={!hasAccount || shiftBlocked || resBlocked} onClick={closeTable}>
                     Cobrar y cerrar
                   </Button>
                 </div>
@@ -1554,25 +1689,24 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
               <>
                 {/* Vista B — cuenta: consumiciones abiertas + pedido nuevo + cobro */}
                 <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
-                  {isReserved && (
-                    <div className="rounded-xl border border-amber-300 bg-amber-50/70 dark:bg-amber-950/20 px-3 py-2.5 space-y-2">
-                      <p className="text-xs font-semibold">📅 Reservada{selectedReservation ? ` · ${selectedReservation.customer_name}` : ""}</p>
-                      {selectedReservation && (
-                        <>
-                          <p className="text-[11px] text-muted-foreground">
-                            {new Date(selectedReservation.reserved_at).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
-                            {" · "}{selectedReservation.party_size} pers.{" · 📞 "}{selectedReservation.customer_phone}
-                          </p>
-                          <div className="grid grid-cols-2 gap-1.5">
-                            <Button size="sm" disabled={resActing} onClick={() => reservationAction(selectedReservation.id, "seat")}>
-                              🪑 Sentar
-                            </Button>
-                            <Button size="sm" variant="outline" disabled={resActing} onClick={() => reservationAction(selectedReservation.id, "cancel")}>
-                              Cancelar
-                            </Button>
-                          </div>
-                        </>
-                      )}
+                  {resBanner && selectedReservation && (
+                    <div className={`rounded-xl border ${resBanner.cls} px-3 py-2.5 space-y-2`}>
+                      <p className="text-xs font-semibold">{resBanner.title}</p>
+                      <p className="text-[11px] text-muted-foreground">
+                        {new Date(selectedReservation.reserved_at).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                        {" · "}{selectedReservation.party_size} pers.{" · 📞 "}{selectedReservation.customer_phone}
+                      </p>
+                      <div className="grid grid-cols-3 gap-1.5">
+                        <Button size="sm" disabled={resActing} onClick={() => reservationAction(selectedReservation.id, "seat")}>
+                          🪑 Sentar
+                        </Button>
+                        <Button size="sm" variant="outline" disabled={resActing} onClick={() => reservationAction(selectedReservation.id, "absent")}>
+                          No vino
+                        </Button>
+                        <Button size="sm" variant="outline" disabled={resActing} onClick={() => reservationAction(selectedReservation.id, "cancel")}>
+                          Cancelar
+                        </Button>
+                      </div>
                     </div>
                   )}
                   <div>
@@ -1634,13 +1768,13 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
                     </p>
                   )}
                   <div className="grid grid-cols-1 gap-1.5">
-                    {isReserved && (
+                    {resBlocked && (
                       <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5">
-                        🔒 Mesa reservada: sentá o cancelá la reserva para operar.
+                        🔒 Mesa reservada en este turno: sentá o cancelá la reserva para operar.
                       </p>
                     )}
                     {cart.length > 0 && (
-                      <Button size="sm" variant="secondary" disabled={isReserved} onClick={addConsumicion}>
+                      <Button size="sm" variant="secondary" disabled={resBlocked} onClick={addConsumicion}>
                         ➕ Cargar a la mesa ({cartCount} ítem{cartCount === 1 ? "" : "s"})
                       </Button>
                     )}
@@ -1655,7 +1789,7 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
                       </Button>
                       <Button
                         size="sm"
-                        disabled={!hasAccount || shiftBlocked || isReserved}
+                        disabled={!hasAccount || shiftBlocked || resBlocked}
                         onClick={closeTable}
                       >
                         Cobrado y cerrar
@@ -1730,14 +1864,30 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-medium">Fecha y hora *</label>
+                  <label className="text-xs font-medium">Duración (min)</label>
                   <input
-                    type="datetime-local"
-                    value={resModal.datetime}
-                    onChange={(e) => setResModal({ ...resModal, datetime: e.target.value })}
+                    type="number"
+                    inputMode="numeric"
+                    min={15}
+                    max={720}
+                    step={15}
+                    value={resModal.duration}
+                    onChange={(e) => setResModal({ ...resModal, duration: e.target.value })}
                     className="mt-1 w-full h-10 px-3 text-sm rounded-xl border border-input bg-background"
                   />
                 </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium">Fecha y hora *</label>
+                <input
+                  type="datetime-local"
+                  value={resModal.datetime}
+                  onChange={(e) => setResModal({ ...resModal, datetime: e.target.value })}
+                  className="mt-1 w-full h-10 px-3 text-sm rounded-xl border border-input bg-background"
+                />
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  La mesa se bloquea desde {resConfig.lead_min ?? 15} min antes hasta {resConfig.tolerance_min ?? 15} min después. Fuera de ese turno opera normal.
+                </p>
               </div>
               <div>
                 <label className="text-xs font-medium">Email (opcional)</label>

@@ -73,9 +73,32 @@ export async function POST(request: Request) {
     );
     if (!table) return fail(404, "Mesa no encontrada");
 
-    // Mesa reservada: bloqueada hasta sentar o cancelar la reserva.
-    if (table.status === "reservada") {
-      return fail(409, "Mesa reservada: sentá o cancelá la reserva antes de cargar");
+    // Bloqueo por ventana de turno (estilo Fudo): la mesa solo se bloquea
+    // dentro de [reserved_at - lead, reserved_at + tolerancia]. Fuera de la
+    // ventana opera normal aunque tenga reservas futuras.
+    let blockedByReservation = table.status === "reservada";
+    try {
+      const cfg = await tx.queryOne<{ lead: number | null; tolerance: number | null }>(
+        `SELECT reservation_lead_min AS lead, reservation_tolerance_min AS tolerance
+         FROM vendors WHERE id = $1 LIMIT 1`,
+        [gate.vendor.id]
+      );
+      const lead = Math.max(0, Math.min(180, Math.round(Number(cfg?.lead) || 15)));
+      const tol = Math.max(0, Math.min(180, Math.round(Number(cfg?.tolerance) || 15)));
+      const hit = await tx.queryOne<{ id: string }>(
+        `SELECT id FROM reservations
+         WHERE vendor_id = $1 AND table_id = $2 AND status = 'pendiente'
+           AND reserved_at <= NOW() + ($3 || ' minutes')::interval
+           AND reserved_at >= NOW() - ($4 || ' minutes')::interval
+         LIMIT 1`,
+        [gate.vendor.id, table.id, String(lead), String(tol)]
+      );
+      blockedByReservation = !!hit;
+    } catch {
+      // Migración de reservas pendiente: se conserva el bloqueo por estado.
+    }
+    if (blockedByReservation) {
+      return fail(409, "Mesa reservada en este turno: sentá o cancelá la reserva antes de cargar");
     }
 
     // Si la mesa está libre, se abre automáticamente al cargar la primera consumición

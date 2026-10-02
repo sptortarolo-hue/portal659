@@ -1,10 +1,11 @@
 import { gateRequest, gateError } from "@/lib/subscription-gate";
-import { queryMany, withTransaction } from "@/lib/db";
+import { queryMany, queryOne, withTransaction } from "@/lib/db";
+import { DEFAULT_DURATION_MIN, occupancyEnd, windowsOverlap } from "@/lib/reservations";
 import { NextResponse } from "next/server";
 
 function migrationPending(e: unknown) {
   const msg = e instanceof Error ? e.message : String(e);
-  return /relation "?reservations"? does not exist|42P01/i.test(msg);
+  return /relation "?reservations"? does not exist|42P01|does not exist/i.test(msg);
 }
 
 export async function GET(request: Request) {
@@ -33,7 +34,22 @@ export async function GET(request: Request) {
        ORDER BY r.reserved_at ASC LIMIT 100`,
       [gate.vendor.id, status]
     );
-    return NextResponse.json({ reservations: reservations || [] });
+    // Ventana configurable del comercio (defaults si falta la migración).
+    let config = { lead_min: 15, tolerance_min: 15 };
+    try {
+      const v = await queryOne<{ lead_min: number | null; tolerance_min: number | null }>(
+        `SELECT reservation_lead_min AS lead_min, reservation_tolerance_min AS tolerance_min
+         FROM vendors WHERE id = $1 LIMIT 1`,
+        [gate.vendor.id]
+      );
+      if (v) {
+        config = {
+          lead_min: v.lead_min ?? 15,
+          tolerance_min: v.tolerance_min ?? 15,
+        };
+      }
+    } catch { /* columnas sin migrar: defaults */ }
+    return NextResponse.json({ reservations: reservations || [], config });
   } catch (e) {
     if (migrationPending(e)) {
       return NextResponse.json(
@@ -56,7 +72,7 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json();
-  const { tableId, customer_name, customer_phone, customer_email, party_size, reserved_at, notes } = body;
+  const { tableId, customer_name, customer_phone, customer_email, party_size, reserved_at, duration_min, notes } = body;
 
   if (!tableId) return NextResponse.json({ error: "Falta la mesa" }, { status: 400 });
   const name = String(customer_name || "").trim();
@@ -68,20 +84,38 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Fecha y hora inválidas" }, { status: 400 });
   }
   const party = Math.max(1, Math.min(30, Math.round(Number(party_size) || 2)));
+  const duration = Math.max(15, Math.min(720, Math.round(Number(duration_min) || DEFAULT_DURATION_MIN)));
+  const newStart = when.getTime();
+  const newEnd = occupancyEnd(newStart, duration);
 
   try {
     const out = await withTransaction(async (tx) => {
-      const table = await tx.queryOne<{ id: string; status: string }>(
-        `SELECT id, status FROM tables WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
+      const table = await tx.queryOne<{ id: string }>(
+        `SELECT id FROM tables WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
         [tableId, gate.vendor.id]
       );
       if (!table) return { ok: false as const, status: 404, error: "Mesa no encontrada" };
-      if (table.status !== "libre") {
-        return { ok: false as const, status: 409, error: "La mesa ya no está libre" };
+      // La reserva ya no exige mesa libre ni la bloquea al crear: el bloqueo
+      // es por ventana de turno. Solo se rechazan solapes con otras pendientes.
+      const pending = await tx.query<{ reserved_at: string; duration_min: number | null; customer_name: string }>(
+        `SELECT reserved_at, duration_min, customer_name FROM reservations
+         WHERE vendor_id = $1 AND table_id = $2 AND status = 'pendiente'`,
+        [gate.vendor.id, table.id]
+      );
+      for (const r of pending || []) {
+        const s = new Date(r.reserved_at).getTime();
+        if (Number.isNaN(s)) continue;
+        if (windowsOverlap(s, occupancyEnd(s, r.duration_min), newStart, newEnd)) {
+          return {
+            ok: false as const,
+            status: 409,
+            error: `Se solapa con la reserva de ${r.customer_name} en esa mesa`,
+          };
+        }
       }
       const reservation = await tx.queryOne<Record<string, unknown>>(
-        `INSERT INTO reservations (vendor_id, table_id, customer_name, customer_phone, customer_email, party_size, reserved_at, status, notes)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, 'pendiente', $8) RETURNING *`,
+        `INSERT INTO reservations (vendor_id, table_id, customer_name, customer_phone, customer_email, party_size, reserved_at, duration_min, status, notes)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pendiente', $9) RETURNING *`,
         [
           gate.vendor.id,
           table.id,
@@ -90,10 +124,10 @@ export async function POST(request: Request) {
           String(customer_email || "").trim() || null,
           party,
           when.toISOString(),
+          duration,
           String(notes || "").trim() || null,
         ]
       );
-      await tx.queryVoid(`UPDATE tables SET status = 'reservada' WHERE id = $1`, [table.id]);
       return { ok: true as const, reservation };
     });
 

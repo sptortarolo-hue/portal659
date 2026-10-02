@@ -23,8 +23,8 @@ export async function PATCH(
   const { id } = await params;
   const body = await request.json().catch(() => ({}));
   const action = String(body?.action || "");
-  if (!["seat", "cancel"].includes(action)) {
-    return NextResponse.json({ error: "Acción inválida (seat | cancel)" }, { status: 400 });
+  if (!["seat", "cancel", "absent"].includes(action)) {
+    return NextResponse.json({ error: "Acción inválida (seat | cancel | absent)" }, { status: 400 });
   }
 
   try {
@@ -38,7 +38,19 @@ export async function PATCH(
         return { ok: false as const, status: 409, error: "La reserva ya fue gestionada" };
       }
 
+      // El bloqueo es por ventana de turno (derivado), no por estado guardado:
+      // sentar/cancelar/ausente no tocan tables salvo seat → ocupada.
       if (action === "seat") {
+        // Como Fudo: si la mesa está ocupada con otra venta, no se pisa.
+        if (reservation.table_id) {
+          const table = await tx.queryOne<{ status: string }>(
+            `SELECT status FROM tables WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
+            [reservation.table_id, gate.vendor.id]
+          );
+          if (table?.status === "ocupada") {
+            return { ok: false as const, status: 409, error: "La mesa está ocupada con otra venta" };
+          }
+        }
         await tx.queryVoid(`UPDATE reservations SET status = 'sentada' WHERE id = $1`, [id]);
         if (reservation.table_id) {
           await tx.queryVoid(
@@ -46,23 +58,10 @@ export async function PATCH(
             [reservation.table_id, gate.vendor.id]
           );
         }
-      } else {
+      } else if (action === "cancel") {
         await tx.queryVoid(`UPDATE reservations SET status = 'cancelada' WHERE id = $1`, [id]);
-        // La mesa vuelve a libre solo si no tiene otra reserva pendiente y
-        // sigue marcada como reservada (si ya se operó, no se toca).
-        if (reservation.table_id) {
-          const other = await tx.queryOne<{ id: string }>(
-            `SELECT id FROM reservations
-             WHERE vendor_id = $1 AND table_id = $2 AND status = 'pendiente' AND id <> $3 LIMIT 1`,
-            [gate.vendor.id, reservation.table_id, id]
-          );
-          if (!other) {
-            await tx.queryVoid(
-              `UPDATE tables SET status = 'libre' WHERE id = $1 AND vendor_id = $2 AND status = 'reservada'`,
-              [reservation.table_id, gate.vendor.id]
-            );
-          }
-        }
+      } else {
+        await tx.queryVoid(`UPDATE reservations SET status = 'ausente' WHERE id = $1`, [id]);
       }
 
       const updated = await tx.queryOne<Record<string, unknown>>(

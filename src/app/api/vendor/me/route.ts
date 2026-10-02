@@ -105,6 +105,8 @@ export async function POST(request: Request) {
     kitchen_strict_close,
     storefront_layout,
     require_open_shift,
+    reservation_lead_min,
+    reservation_tolerance_min,
   } = body;
 
   const VALID_VERTICALS = ["gastronomia", "comercio", "servicio", "moda", "salud", "otro"];
@@ -192,6 +194,17 @@ export async function POST(request: Request) {
   if (block_unpaid_orders !== undefined) payload.block_unpaid_orders = block_unpaid_orders === true;
   // Exigir turno de caja abierto para cobrar en Mostrador/Mesas.
   if (require_open_shift !== undefined) payload.require_open_shift = require_open_shift === true;
+  // Ventana de bloqueo de reservas (minutos, 0-180; NULL/omitido = default 15).
+  for (const key of ["reservation_lead_min", "reservation_tolerance_min"] as const) {
+    const raw = key === "reservation_lead_min" ? reservation_lead_min : reservation_tolerance_min;
+    if (raw !== undefined) {
+      const v = raw === null || raw === "" ? 15 : Number(raw);
+      if (!Number.isFinite(v) || v < 0 || v > 180) {
+        return NextResponse.json({ error: "Los minutos de reserva deben estar entre 0 y 180" }, { status: 400 });
+      }
+      payload[key] = Math.round(v);
+    }
+  }
   // Sobrescritura manual de apertura: true=abierto, false=cerrado, null=seguir horarios.
   if (open_override !== undefined) payload.open_override = open_override === null ? null : open_override === true;
   // Control de demora (estimado de preparación). Default 30 min: nunca queda null.
@@ -268,6 +281,8 @@ export async function POST(request: Request) {
         "delivery_area_text",
         "storefront_layout",
         "require_open_shift",
+        "reservation_lead_min",
+        "reservation_tolerance_min",
       ].filter((k) => k in payload && msg.includes(k));
       if (droppable.length > 0) {
         for (const k of droppable) delete payload[k];

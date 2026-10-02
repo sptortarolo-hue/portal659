@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ModifierPicker } from "@/components/offers/modifier-picker";
 import { ProductPickCard } from "@/components/vendor/product-pick-card";
-import { CustomerPicker, type LookupCustomer } from "@/components/vendor/customer-picker";
+import { CustomerModal, type LookupCustomer } from "@/components/vendor/customer-picker";
 import { cashDiscountForItems, normalizeCashPct } from "@/lib/cash-discount";
 import { normalizeDeliveryMode, resolveDeliveryFee, type DeliverySelection } from "@/lib/delivery";
 import { toE164 } from "@/lib/phone";
@@ -197,9 +197,8 @@ export function Mostrador({ vendorId }: { vendorId?: string | null }) {
   // Bloque cliente colapsado: default = consumidor final. Se despliega para
   // cargar datos; al elegir delivery se abre solo (ahí el teléfono es requerido).
   const [clientOpen, setClientOpen] = useState(false);
-  // Buscador único de cliente (teléfono o nombre): al elegir trae nombre +
-  // dirección; si se tipea un teléfono a mano se usa directo (cliente nuevo).
-  const [customerQuery, setCustomerQuery] = useState("");
+  // Modal dedicado de cliente (botón + popup, nada flotante sobre el ticket).
+  const [customerModalOpen, setCustomerModalOpen] = useState(false);
   // "Avanzado" plegado: monto manual + fiscal (lo diario queda siempre visible).
   const [showAdvanced, setShowAdvanced] = useState(false);
   // Ref del buscador de productos: tras agregar con Enter el foco vuelve acá
@@ -428,37 +427,14 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
     openQuickCreate(/^\d+$/.test(q) ? { sku: q } : { name: query.trim() });
   }
 
-  /** Elegir un cliente del picker: trae nombre + dirección con el teléfono,
+  /** Elegir un cliente del modal: trae nombre + dirección con el teléfono,
     colapsa el bloque y sigue la venta (foco en lo siguiente útil). */
   function chooseLookupCustomer(c: LookupCustomer) {
     if (c.name) setCustomerName(c.name);
-    if (c.phone) {
-      setCustomerPhone(c.phone);
-      setCustomerQuery(c.phone);
-    }
+    if (c.phone) setCustomerPhone(c.phone);
     if (c.address) setCustomerAddress(c.address);
     setMsg("");
-    setClientOpen(false);
-    focusAfterCustomer();
-  }
-
-  /** Enter con tipeo directo (sin elegir): teléfono → cliente nuevo;
-    nombre → completa el nombre. Colapsa y sigue la venta. */
-  function commitDirectCustomer() {
-    const v = customerQuery.trim();
-    if (!v) {
-      setClientOpen(false);
-      focusAfterCustomer();
-      return;
-    }
-    const digits = v.replace(/[^\d]/g, "");
-    if (digits.length >= 7) {
-      setCustomerPhone(v);
-    } else {
-      setCustomerName(v);
-      setCustomerQuery("");
-    }
-    setMsg("");
+    setCustomerModalOpen(false);
     setClientOpen(false);
     focusAfterCustomer();
   }
@@ -476,17 +452,8 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
     }, 60);
   }
 
-  /** Lo tipeado en el picker: si es un teléfono, vale como teléfono
-    (cliente nuevo sin ficha); si es un nombre, no pisa el teléfono. */
-  function onCustomerQueryChange(v: string) {
-    setCustomerQuery(v);
-    const digits = v.replace(/[^\d]/g, "");
-    if (digits.length >= 7) setCustomerPhone(v);
-  }
-
   /** Limpiar cliente: vuelve a consumidor final. */
   function clearCustomer() {
-    setCustomerQuery("");
     setCustomerName("");
     setCustomerPhone("");
     setCustomerAddress("");
@@ -810,7 +777,6 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
   function discardDraft() {
     clearDraft(vendorId, "mostrador");
     setItems([]);
-    setCustomerQuery("");
     setCustomerName("");
     setCustomerPhone("");
     setCustomerAddress("");
@@ -1055,7 +1021,6 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
     const clearSaleForm = () => {
       clearDraft(vendorId, "mostrador");
       setItems([]);
-      setCustomerQuery("");
       setCustomerName("");
       setCustomerPhone("");
       setCustomerAddress("");
@@ -1886,13 +1851,13 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
           </button>
           {clientOpen && (
             <div className="space-y-2 px-2 pb-2">
-              <CustomerPicker
-                query={customerQuery}
-                onQueryChange={onCustomerQueryChange}
-                onSelect={chooseLookupCustomer}
-                onEnterKey={commitDirectCustomer}
-                placeholder={method === "delivery" ? "Teléfono o nombre del cliente *" : "Teléfono o nombre del cliente (trae sus datos)"}
-              />
+              <button
+                type="button"
+                onClick={() => setCustomerModalOpen(true)}
+                className="w-full h-9 px-3 text-xs rounded-lg border border-input bg-background text-left text-muted-foreground hover:border-primary"
+              >
+                🔍 Buscar cliente… (trae sus datos)
+              </button>
               <div className="flex items-center gap-1.5">
                 <input
                   type="text"
@@ -2350,6 +2315,13 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
           onCancel={() => { setPickerProduct(null); setPendingVariant(null); }}
         />
       )}
+
+      <CustomerModal
+        open={customerModalOpen}
+        onClose={() => setCustomerModalOpen(false)}
+        onSelect={chooseLookupCustomer}
+        placeholder={method === "delivery" ? "Teléfono o nombre del cliente *" : "Teléfono o nombre…"}
+      />
 
       {variantPicker && (
         <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center bg-black/50 p-4" onClick={() => setVariantPicker(null)}>

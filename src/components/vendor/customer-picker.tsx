@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 
 export type LookupCustomer = {
   phone: string;
@@ -11,187 +10,144 @@ export type LookupCustomer = {
 };
 
 type Props = {
-  /** Texto actual del campo (teléfono o nombre). */
-  query: string;
-  onQueryChange: (v: string) => void;
-  /** Al elegir un cliente: el padre rellena nombre/teléfono/dirección. */
+  open: boolean;
+  onClose: () => void;
+  /** Al elegir o crear: el padre rellena nombre/teléfono/dirección. */
   onSelect: (c: LookupCustomer) => void;
-  /** Enter sin elección (tipeo directo): el padre lo toma y colapsa. */
-  onEnterKey?: () => void;
-  /** Placeholder según modalidad (delivery exige teléfono). */
   placeholder?: string;
-  /** Ref para enfocar desde atajos. */
-  inputRef?: React.RefObject<HTMLInputElement | null>;
 };
 
-type Coords = { top: number; left: number; width: number; maxH: number };
-
 /**
- * Buscador único de clientes para el mostrador: se escribe el teléfono o
- * las primeras letras del nombre y trae nombre + dirección. Sin elección
- * sigue "Consumidor final" (no bloquea la venta).
- *
- * La lista va en portal (fixed sobre el body): ningún `overflow-hidden` o
- * scroll del panel/sheet la puede tapar.
+ * Modal dedicado para elegir cliente en el mostrador (patrón Odoo/popup):
+ * un botón compacto abre esta búsqueda y al elegir se cierra y sigue la
+ * venta. Nada flotante tapa los botones del ticket.
  */
-export function CustomerPicker({ query, onQueryChange, onSelect, onEnterKey, placeholder, inputRef }: Props) {
-  const [open, setOpen] = useState(false);
+export function CustomerModal({ open, onClose, onSelect, placeholder }: Props) {
+  const [q, setQ] = useState("");
   const [results, setResults] = useState<LookupCustomer[]>([]);
-  const [loading, setLoading] = useState(false);
   const [highlight, setHighlight] = useState(0);
-  const [coords, setCoords] = useState<Coords | null>(null);
-  const boxRef = useRef<HTMLDivElement | null>(null);
-  const dropRef = useRef<HTMLDivElement | null>(null);
-  const innerInputRef = useRef<HTMLInputElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
   const reqId = useRef(0);
-  const inputEl = inputRef ?? innerInputRef;
 
-  function setInputRef(el: HTMLInputElement | null) {
-    (innerInputRef as React.MutableRefObject<HTMLInputElement | null>).current = el;
-    if (inputRef) (inputRef as React.MutableRefObject<HTMLInputElement | null>).current = el;
-  }
-
-  // Posición fixed desde el input: abajo, o arriba si no entra.
-  function position() {
-    const el = inputEl.current;
-    if (!el) return;
-    const r = el.getBoundingClientRect();
-    const maxH = Math.min(window.innerHeight * 0.4, 320);
-    const openUp = window.innerHeight - r.bottom < 160 && r.top > maxH;
-    setCoords({
-      top: openUp ? Math.max(8, r.top - maxH - 4) : r.bottom + 4,
-      left: Math.max(8, Math.min(r.left, window.innerWidth - r.width - 8)),
-      width: Math.min(r.width, window.innerWidth - 16),
-      maxH,
-    });
-  }
-
-  // Cerrar al tocar fuera (input + lista del portal).
+  // Al abrir: limpiar, enfocar y traer frecuentes.
   useEffect(() => {
-    if (!open) return;
-    function onDoc(e: MouseEvent) {
-      const t = e.target as Node;
-      if (boxRef.current?.contains(t)) return;
-      if (dropRef.current?.contains(t)) return;
-      setOpen(false);
+    if (open) {
+      setQ("");
+      setResults([]);
+      setHighlight(0);
+      window.setTimeout(() => inputRef.current?.focus(), 60);
     }
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
   }, [open ]);
-
-  // Re-posicionar al scrollear (sheet/panel) o rotar/resize.
-  useEffect(() => {
-    if (!open) return;
-    position();
-    window.addEventListener("resize", position);
-    document.addEventListener("scroll", position, true);
-    return () => {
-      window.removeEventListener("resize", position);
-      document.removeEventListener("scroll", position, true);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, results.length]);
 
   // Lookup con debounce (250ms). Sin query: frecuentes (top recientes).
   useEffect(() => {
-    const q = query.trim();
-    if (q.length > 0 && q.length < 2) {
+    if (!open) return;
+    const query = q.trim();
+    if (query.length > 0 && query.length < 2) {
       setResults([]);
-      setOpen(false);
       return;
     }
     const t = setTimeout(async () => {
       const id = ++reqId.current;
-      setLoading(true);
       try {
-        const url = q ? `/api/vendor/customers/lookup?q=${encodeURIComponent(q)}` : "/api/vendor/customers/lookup";
+        const url = query
+          ? `/api/vendor/customers/lookup?q=${encodeURIComponent(query)}`
+          : "/api/vendor/customers/lookup";
         const res = await fetch(url);
         const d = await res.json().catch(() => ({}));
         if (reqId.current !== id) return;
         const list = Array.isArray(d?.customers) ? (d.customers as LookupCustomer[]) : [];
         setResults(list);
         setHighlight(0);
-        setOpen(list.length > 0);
       } catch {
-        if (reqId.current === id) {
-          setResults([]);
-          setOpen(false);
-        }
-      } finally {
-        if (reqId.current === id) setLoading(false);
+        if (reqId.current === id) setResults([]);
       }
     }, 250);
     return () => clearTimeout(t);
-  }, [query]);
+  }, [q, open ]);
+
+  if (!open) return null;
+
+  const query = q.trim();
+  const digits = query.replace(/[^\d]/g, "");
+  const isPhoneLike = digits.length >= 7;
+  const isNameLike = !isPhoneLike && query.length >= 2;
+  const exactPhoneHit = isPhoneLike && results.some((c) => c.phone.replace(/[^\d]/g, "") === digits);
 
   function choose(c: LookupCustomer) {
-    setOpen(false);
     onSelect(c);
   }
 
+  /** Fila manual: usar lo tipeado como cliente nuevo (teléfono o nombre). */
+  function useManual() {
+    if (isPhoneLike) {
+      choose({ phone: query, name: null, address: null, total_orders: 0 });
+    } else if (isNameLike) {
+      choose({ phone: "", name: query, address: null, total_orders: 0 });
+    }
+  }
+
   return (
-    <div ref={boxRef}>
-      <input
-        ref={setInputRef}
-        type="text"
-        value={query}
-        autoComplete="off"
-        onChange={(e) => onQueryChange(e.target.value)}
-        onFocus={(e) => {
-          if (results.length > 0) setOpen(true);
-          // En el sheet mobile el teclado tapa el campo: traerlo a la vista.
-          window.setTimeout(() => {
-            e.currentTarget.scrollIntoView({ block: "nearest", behavior: "smooth" });
-          }, 300);
-        }}
-        onKeyDown={(e) => {
-          if (open && results.length > 0) {
-            if (e.key === "ArrowDown") {
-              e.preventDefault();
-              setHighlight((h) => (h + 1) % results.length);
-            } else if (e.key === "ArrowUp") {
-              e.preventDefault();
-              setHighlight((h) => (h - 1 + results.length) % results.length);
-            } else if (e.key === "Enter") {
-              e.preventDefault();
-              choose(results[highlight] || results[0]);
-            } else if (e.key === "Escape") {
-              setOpen(false);
-            }
-            return;
-          }
-          if (e.key === "Enter") {
-            e.preventDefault();
-            onEnterKey?.();
-          } else if (e.key === "Escape") {
-            setOpen(false);
-          }
-        }}
-        placeholder={placeholder || "Buscar cliente… (teléfono o nombre)"}
-        className="w-full h-11 px-3 text-base sm:h-9 sm:text-xs rounded-lg border border-input bg-background"
-      />
-      {open && results.length > 0 && coords && typeof document !== "undefined" &&
-        createPortal(
-          <div
-            ref={dropRef}
-            className="fixed z-[90] overflow-y-auto rounded-xl border border-border bg-card shadow-xl"
-            style={{ top: coords.top, left: coords.left, width: coords.width, maxHeight: coords.maxH }}
-            role="listbox"
+    <div
+      className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center bg-black/50 p-4"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Elegir cliente"
+    >
+      <div
+        className="w-full max-w-sm rounded-2xl bg-card border border-border shadow-xl flex flex-col max-h-[85vh]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-4 pt-4 pb-2">
+          <h3 className="font-display text-base font-semibold">Elegir cliente</h3>
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground"
+            aria-label="Cerrar"
           >
-            {query.trim() === "" && (
-              <p className="px-3 pt-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Frecuentes
-              </p>
-            )}
+            ✕
+          </button>
+        </div>
+        <div className="px-4 pb-2">
+          <input
+            ref={inputRef}
+            type="text"
+            value={q}
+            autoComplete="off"
+            onChange={(e) => setQ(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                if (results.length > 0) choose(results[highlight] || results[0]);
+                else useManual();
+              } else if (e.key === "ArrowDown" && results.length > 0) {
+                e.preventDefault();
+                setHighlight((h) => (h + 1) % results.length);
+              } else if (e.key === "ArrowUp" && results.length > 0) {
+                e.preventDefault();
+                setHighlight((h) => (h - 1 + results.length) % results.length);
+              }
+            }}
+            placeholder={placeholder || "Teléfono o nombre…"}
+            className="w-full h-11 px-3 text-base sm:text-sm rounded-xl border border-input bg-background"
+          />
+        </div>
+        <div className="px-4 pb-4 overflow-y-auto">
+          {query === "" && results.length > 0 && (
+            <p className="py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Frecuentes
+            </p>
+          )}
+          <div className="space-y-1">
             {results.map((c, i) => (
               <button
                 key={c.phone}
                 type="button"
-                onMouseDown={(e) => e.preventDefault()}
                 onClick={() => choose(c)}
                 onMouseEnter={() => setHighlight(i)}
-                className={`w-full flex items-center gap-2 px-3 py-2.5 text-left text-sm sm:text-xs ${
-                  i === highlight ? "bg-primary/10" : ""
+                className={`w-full flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-left text-sm ${
+                  i === highlight ? "border-primary bg-primary/5" : ""
                 }`}
               >
                 <span className="flex-1 min-w-0">
@@ -208,9 +164,31 @@ export function CustomerPicker({ query, onQueryChange, onSelect, onEnterKey, pla
                 )}
               </button>
             ))}
-          </div>,
-          document.body
-        )}
+          </div>
+          {/* Alta al vuelo con lo tipeado */}
+          {isPhoneLike && !exactPhoneHit && (
+            <button
+              type="button"
+              onClick={useManual}
+              className="mt-1.5 w-full rounded-xl border border-dashed border-primary/50 px-3 py-2.5 text-left text-sm text-primary"
+            >
+              ＋ Usar <strong>{query}</strong> como cliente nuevo
+            </button>
+          )}
+          {isNameLike && results.length === 0 && (
+            <button
+              type="button"
+              onClick={useManual}
+              className="mt-1.5 w-full rounded-xl border border-dashed border-primary/50 px-3 py-2.5 text-left text-sm text-primary"
+            >
+              ＋ Crear <strong>«{query}»</strong> como cliente nuevo
+            </button>
+          )}
+          {query !== "" && results.length === 0 && !isPhoneLike && !isNameLike && (
+            <p className="py-4 text-center text-xs text-muted-foreground">Seguí escribiendo…</p>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

@@ -22,6 +22,14 @@ export async function PATCH(
     payload.status = body.status;
   }
   if (body.position !== undefined) payload.position = Number(body.position);
+  if (body.x !== undefined) payload.x = Math.max(0, Math.round(Number(body.x) || 0));
+  if (body.y !== undefined) payload.y = Math.max(0, Math.round(Number(body.y) || 0));
+  if (body.width !== undefined) payload.width = Math.min(400, Math.max(20, Math.round(Number(body.width) || 60)));
+  if (body.height !== undefined) payload.height = Math.min(400, Math.max(20, Math.round(Number(body.height) || 60)));
+  if (body.shape !== undefined && ["square", "round", "rectangle"].includes(body.shape)) {
+    payload.shape = body.shape;
+  }
+  if (body.rotation !== undefined) payload.rotation = Math.round(Number(body.rotation) || 0) % 360;
 
   if (Object.keys(payload).length === 0) {
     return NextResponse.json({ error: "No hay campos para actualizar" }, { status: 400 });

@@ -15,11 +15,18 @@ import { dispatchOfflinePrint, markPrintsDone } from "@/lib/local-print";
 
 import { SYNC_COMPLETED_EVENT } from "@/lib/sync-engine";
 import { useCashShift } from "@/lib/use-cash-shift";
+import { FloorPlan, type FloorTable } from "@/components/vendor/floor-plan";
 type Table = {
   id: string;
   name: string;
   capacity: number;
   status: "libre" | "ocupada" | "reservada";
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  shape: "square" | "round" | "rectangle";
+  rotation: number;
 };
 
 type ModifierOption = { label: string; price_mod: number };
@@ -510,6 +517,33 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
       setMsg(`Mesa ${t.name} eliminada`);
     } else setMsg(data.error || "No se pudo eliminar");
     setTimeout(() => setMsg(""), 2500);
+  }
+
+  async function moveTable(id: string, x: number, y: number) {
+    setTables((prev) => prev.map((t) => (t.id === id ? { ...t, x, y } : t)));
+    await fetch(`/api/vendor/tables/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ x, y }),
+    }).catch(() => {});
+  }
+
+  async function resizeTable(id: string, width: number, height: number) {
+    setTables((prev) => prev.map((t) => (t.id === id ? { ...t, width, height } : t)));
+    await fetch(`/api/vendor/tables/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ width, height }),
+    }).catch(() => {});
+  }
+
+  async function changeTableShape(id: string, shape: "square" | "round" | "rectangle") {
+    setTables((prev) => prev.map((t) => (t.id === id ? { ...t, shape } : t)));
+    await fetch(`/api/vendor/tables/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ shape }),
+    }).catch(() => {});
   }
 
   function addProduct(p: Product) {
@@ -1078,39 +1112,14 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
         <Button onClick={addTable}>Agregar</Button>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5">
-        {tables.map((t) => {
-          const occupied = t.status === "ocupada";
-          const tableOrders = orders.filter((o) => o.table_id === t.id && o.status !== "cancelled" && o.status !== "completed");
-          const subtotal = tableOrders.reduce((s, o) => s + Number(o.total), 0);
-          return (
-            <div
-              key={t.id}
-                onClick={() => { setSelected(t); setMobileView("catalog"); }}
-              className={`rounded-2xl border-2 p-3 cursor-pointer transition-all active:scale-[0.98] ${
-                occupied ? "border-primary bg-primary/5" : "border-border bg-card"
-              } ${selected?.id === t.id ? "ring-2 ring-primary" : ""}`}
-            >
-              <div className="flex items-center justify-between mb-1">
-                <p className="font-display font-semibold text-sm truncate">{t.name}</p>
-                <Badge className={`text-[9px] ${occupied ? "bg-status-new/15 text-status-new" : "bg-muted text-muted-foreground"}`}>
-                  {occupied ? "Ocupada" : "Libre"}
-                </Badge>
-              </div>
-              {occupied ? (
-                <p className="text-xs font-semibold tabular-nums">${subtotal.toLocaleString("es-AR")}</p>
-              ) : (
-                <p className="text-[11px] text-muted-foreground">hasta {t.capacity} personas</p>
-              )}
-            </div>
-          );
-        })}
-        {tables.length === 0 && (
-          <p className="text-xs text-muted-foreground col-span-full text-center py-6">
-            Todavía no creaste mesas. Agregá la primera arriba.
-          </p>
-        )}
-      </div>
+      <FloorPlan
+        tables={tables as FloorTable[]}
+        selectedId={selected?.id || null}
+        onSelect={(t) => { setSelected(t as Table); setMobileView("catalog"); }}
+        onMove={moveTable}
+        onResize={resizeTable}
+        onShapeChange={changeTableShape}
+      />
 
       {selected && (
         <>

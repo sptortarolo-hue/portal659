@@ -528,11 +528,14 @@ func messageType(msg *waProto.Message) string {
 
 func (r *relay) outboundLoop(ctx context.Context) {
 	backoff := time.Second
+	// Dial con handshake timeout: un dial colgado (red móvil) falla en 10s y
+	// se reintenta — antes podía quedar colgado indefinidamente.
+	dialer := &websocket.Dialer{HandshakeTimeout: 10 * time.Second}
 	for {
 		if ctx.Err() != nil {
 			return
 		}
-		conn, _, err := websocket.DefaultDialer.Dial(r.wsURL(), nil)
+		conn, _, err := dialer.Dial(r.wsURL(), nil)
 		if err != nil {
 			log.Printf("ws dial: %v (reintento en %s)", err, backoff)
 			select {
@@ -546,9 +549,19 @@ func (r *relay) outboundLoop(ctx context.Context) {
 		backoff = time.Second
 		log.Println("conectado al cerebro")
 
+		// Read deadline 120s + pong: si el cerebro deja de pings (reinicio por
+		// deploy) o la red queda medio muerta, el relay lo detecta y re-diala
+		// solo — sin que el usuario tenga que apretar "iniciar".
+		conn.SetReadDeadline(time.Now().Add(120 * time.Second))
+		conn.SetPongHandler(func(string) error {
+			conn.SetReadDeadline(time.Now().Add(120 * time.Second))
+			return nil
+		})
+
 		go r.readLoop(ctx, conn)
 		r.writeLoop(ctx, conn)
 		_ = conn.Close()
+		log.Printf("ws cerrada — reconectando en %s", backoff)
 	}
 }
 
@@ -577,12 +590,21 @@ type wsIn struct {
 }
 
 func (r *relay) writeLoop(ctx context.Context, conn *websocket.Conn) {
+	// Helper: write con deadline. Un write a una conexión muerta (red móvil) sin
+	// deadline podía quedarse colgado para siempre, dejando al relay con un WS
+	// muerto sin posibilidad de reconectar (era el "pasado un tiempo no responde,
+	// apretá iniciar y sí"). Con deadline, el write muerto falla en 10s y el
+	// outboundLoop reconecta automáticamente.
+	write := func(v interface{}) error {
+		conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+		return conn.WriteJSON(v)
+	}
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case m := <-r.inbound:
-			if err := conn.WriteJSON(wsOut{Type: "message", WaID: m.waID, WaPhone: m.waPhone, Body: m.body}); err != nil {
+			if err := write(wsOut{Type: "message", WaID: m.waID, WaPhone: m.waPhone, Body: m.body}); err != nil {
 				return
 			}
 		case mm := <-r.media:
@@ -591,7 +613,7 @@ func (r *relay) writeLoop(ctx context.Context, conn *websocket.Conn) {
 			if mm.mime == "application/pdf" {
 				kind = "file"
 			}
-			if err := conn.WriteJSON(wsOut{
+			if err := write(wsOut{
 				Type:    kind,
 				WaID:    mm.waID,
 				WaPhone: mm.waPhone,
@@ -602,11 +624,11 @@ func (r *relay) writeLoop(ctx context.Context, conn *websocket.Conn) {
 				return
 			}
 		case qr := <-r.qrOut:
-			if err := conn.WriteJSON(qrMsg{Type: "qr", Data: qr}); err != nil {
+			if err := write(qrMsg{Type: "qr", Data: qr}); err != nil {
 				return
 			}
 		case state := <-r.stateCh:
-			if err := conn.WriteJSON(wsOut{Type: state}); err != nil {
+			if err := write(wsOut{Type: state}); err != nil {
 				return
 			}
 		}
@@ -617,6 +639,11 @@ func (r *relay) readLoop(ctx context.Context, conn *websocket.Conn) {
 	for {
 		var in wsIn
 		if err := conn.ReadJSON(&in); err != nil {
+			// LA FIX: la conexión murió (red) o el cerebro la cerró (heartbeat sin
+			// pong). Cerrarla desbloquea el writeLoop (que quedaba pegado en el
+			// select del canal para siempre) → el outboundLoop re-diala solo.
+			// Antes el relay quedaba con un WS muerto hasta reiniciar la app.
+			_ = conn.Close()
 			return
 		}
 		switch in.Type {

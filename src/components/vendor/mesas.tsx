@@ -324,6 +324,14 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
 
   useEffect(() => { load(); }, [load]);
 
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && selected) setSelected(null);
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [selected]);
+
   // Al sincronizar (F3): se descartan las consumiciones/cierres ya enviados
   // y se refresca la cuenta real del servidor (con Nros. y totales finales).
   useEffect(() => {
@@ -1123,119 +1131,8 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
 
       {selected && (
         <>
-          {/* ============ Desktop (sm+): catálogo en flujo + cuenta sticky (igual que Mostrador) ============ */}
-          <div className="hidden sm:block">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="font-display font-semibold">{selected.name}</h3>
-              <div className="flex items-center gap-2">
-                {renaming === selected.id ? (
-                  <input
-                    autoFocus
-                    value={renameValue}
-                    onChange={(e) => setRenameValue(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && renameTable(selected)}
-                    onBlur={() => setRenaming(null)}
-                    className="h-8 px-2 text-xs rounded-lg border border-input bg-background w-32"
-                  />
-                ) : (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => { setRenaming(selected.id); setRenameValue(selected.name); }}
-                  >
-                    Renombrar
-                  </Button>
-                )}
-                {selected.status === "libre" && (
-                  <Button variant="ghost" size="sm" onClick={() => deleteTable(selected)}>Eliminar</Button>
-                )}
-                <Button variant="outline" size="sm" onClick={() => setSelected(null)}>Cerrar</Button>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_360px] gap-4 items-start">
-              <div className="min-w-0">
-                {catalogBlock("xl:grid-cols-4")}
-              </div>
-              {/* Cuenta sticky con scroll interno */}
-              <div className="flex rounded-2xl border border-border bg-card p-4 flex-col gap-2 max-h-[70vh] lg:sticky lg:top-24 lg:h-[calc(100vh-12rem)] lg:max-h-none">
-                <h3 className="font-display font-semibold text-sm mb-2 flex-shrink-0">Cuenta · {selected.name}</h3>
-                <div className="flex-1 space-y-3 min-h-0 overflow-y-auto">
-                  {consumicionesBlock(false)}
-                  {cart.length > 0 && (
-                    <div className="space-y-1">
-                      {cart.map(cartLine)}
-                    </div>
-                  )}
-
-                  {closedOrders.length > 0 && (
-                    <div>
-                      <CollapsibleSection icon="🧾" title={`Cuentas cerradas (${closedOrders.length})`} defaultOpen={false}>
-                        <div className="space-y-1.5 opacity-70">
-                          {closedOrders.map((o) => (
-                            <div key={o.id} className="flex items-center justify-between text-xs">
-                              <span className="text-muted-foreground">
-                                {o.paid_at ? new Date(o.paid_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }) : new Date(o.created_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })} · {o.pickup_number != null ? `Nro. ${o.pickup_number}` : `#${o.id.slice(0, 6)}`}
-                              </span>
-                              <span className="font-semibold tabular-nums">${Number(o.total).toLocaleString("es-AR")}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </CollapsibleSection>
-                    </div>
-                  )}
-                </div>
-                <div className="flex flex-wrap gap-1 pt-2 flex-shrink-0">
-                  {PAYMENT_OPTIONS.map((o) => (
-                    <button
-                      key={o.key}
-                      onClick={() => setPayment(o.key)}
-                      className={`rounded-full px-2 py-1 text-[10px] font-medium ${payment === o.key ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}
-                    >
-                      {o.label}
-                    </button>
-                  ))}
-                </div>
-                <div className="flex items-center justify-between text-sm flex-shrink-0">
-                  <span>Total mesa</span>
-                  <b className="tabular-nums">${mesaPayTotal.toLocaleString("es-AR")}</b>
-                </div>
-                {mesaCash.cashDiscount > 0 && (
-                  <p className="text-[11px] leading-snug text-green-600 dark:text-green-400 flex-shrink-0">
-                    {payment === "efectivo"
-                      ? `💵 Desc. efectivo (${mesaCash.cashPct}%) aplicado: −$${mesaCash.cashDiscount.toLocaleString("es-AR")}`
-                      : `💵 Pagando en efectivo: $${(mesaTotalNotDiscounted - mesaCash.cashDiscount).toLocaleString("es-AR")} (−${mesaCash.cashPct}%)`}
-                  </p>
-                )}
-                <div className="flex-shrink-0">{manualChargeRow}</div>
-                <Button size="sm" className="flex-shrink-0" disabled={cart.length === 0} onClick={addConsumicion}>Agregar consumición</Button>
-                {shiftBlocked && (
-                  <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5 flex-shrink-0">
-                    🔒 Abrí la caja para cobrar.{" "}
-                    <button type="button" className="underline font-semibold" onClick={() => window.dispatchEvent(new Event("portal:go-caja"))}>
-                      Ir a la caja →
-                    </button>
-                  </p>
-                )}
-                <div className="grid grid-cols-2 gap-1.5 flex-shrink-0">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={printingTicket || !hasAccount}
-                    onClick={printPrecuenta}
-                  >
-                    {printingTicket ? "Imprimiendo..." : "🖨️ Precuenta"}
-                  </Button>
-                  <Button size="sm" variant="default" disabled={!hasAccount || shiftBlocked} onClick={closeTable}>
-                    Cobrar y cerrar
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* ============ Mobile: modal pantalla completa, 2 vistas ============ */}
-          <div className="sm:hidden fixed inset-0 z-[60] bg-background flex flex-col">
+          {/* ============ Modal pantalla completa (todas las pantallas) ============ */}
+          <div className="fixed inset-0 z-[60] bg-background flex flex-col">
             <header className="flex items-center gap-2 border-b border-border px-3 py-3">
               <button
                 onClick={() => (mobileView === "detail" ? setMobileView("catalog") : setSelected(null))}

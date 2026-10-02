@@ -527,34 +527,60 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
     setTimeout(() => setMsg(""), 2500);
   }
 
+  function saveLayoutFallback(id: string, patch: Record<string, number | string>) {
+    try {
+      const key = `portal659-floorplan-${vendorId}`;
+      const raw = localStorage.getItem(key);
+      const all = raw ? JSON.parse(raw) : {};
+      all[id] = { ...all[id], ...patch };
+      localStorage.setItem(key, JSON.stringify(all));
+    } catch { /* localStorage no disponible */ }
+  }
+
+  function loadLayoutFallback(): Record<string, { x?: number; y?: number; width?: number; height?: number; shape?: string }> {
+    try {
+      const key = `portal659-floorplan-${vendorId}`;
+      const raw = localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : {};
+    } catch { return {}; }
+  }
+
   async function moveTable(id: string, x: number, y: number) {
     setTables((prev) => prev.map((t) => (t.id === id ? { ...t, x, y } : t)));
-    await fetch(`/api/vendor/tables/${id}`, {
+    const res = await fetch(`/api/vendor/tables/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ x, y }),
-    }).catch(() => {});
+    }).catch(() => null);
+    if (!res || !res.ok) saveLayoutFallback(id, { x, y });
   }
 
   async function resizeTable(id: string, width: number, height: number) {
     setTables((prev) => prev.map((t) => (t.id === id ? { ...t, width, height } : t)));
-    await fetch(`/api/vendor/tables/${id}`, {
+    const res = await fetch(`/api/vendor/tables/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ width, height }),
-    }).catch(() => {});
+    }).catch(() => null);
+    if (!res || !res.ok) saveLayoutFallback(id, { width, height });
   }
 
   async function changeTableShape(id: string, shape: "square" | "round" | "rectangle") {
     setTables((prev) => prev.map((t) => (t.id === id ? { ...t, shape } : t)));
-    await fetch(`/api/vendor/tables/${id}`, {
+    const res = await fetch(`/api/vendor/tables/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ shape }),
-    }).catch(() => {});
+    }).catch(() => null);
+    if (!res || !res.ok) saveLayoutFallback(id, { shape });
   }
 
+  // Guardia anti tap-through (mobile): al abrir la mesa con un tap, el
+  // click sintético al soltar el dedo puede caer sobre un producto del modal
+  // recién abierto. Se ignoran agregados en los primeros 400ms tras abrir.
+  const selectedAtRef = useRef(0);
   function addProduct(p: Product) {
+    if (Date.now() - selectedAtRef.current < 400) return;
     const mods = modifiersMap[p.id] || [];
     if (mods.length > 0) {
       setPickerProduct(p);
@@ -1123,7 +1149,7 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
       <FloorPlan
         tables={tables as FloorTable[]}
         selectedId={selected?.id || null}
-        onSelect={(t) => { setSelected(t as Table); setMobileView("catalog"); }}
+        onSelect={(t) => { selectedAtRef.current = Date.now(); setSelected(t as Table); setMobileView("catalog"); }}
         onMove={moveTable}
         onResize={resizeTable}
         onShapeChange={changeTableShape}

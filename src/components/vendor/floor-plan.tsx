@@ -53,10 +53,10 @@ export function FloorPlan({ tables, selectedId, onSelect, onMove, onResize, onSh
 
   const handlePointerDown = useCallback(
     (e: React.PointerEvent, t: FloorTable) => {
-      if (!editing) {
-        onSelect(t);
-        return;
-      }
+      // En modo normal la apertura va por onClick (después de levantar el
+      // dedo). Abrir en pointerdown causaba tap-through en mobile: el click
+      // sintético al soltar caía sobre el producto del modal recién abierto.
+      if (!editing) return;
       e.preventDefault();
       e.stopPropagation();
       const canvas = canvasRef.current;
@@ -149,7 +149,11 @@ export function FloorPlan({ tables, selectedId, onSelect, onMove, onResize, onSh
           return (
             <div
               key={t.id}
-              onPointerDown={(e) => handlePointerDown(e, t)}
+              onPointerDown={editing ? (e) => handlePointerDown(e, t) : undefined}
+              onClick={(e) => {
+                e.stopPropagation();
+                onSelect(t);
+              }}
               className={`absolute flex flex-col items-center justify-center border-2 transition-shadow ${st.bg} ${st.border} ${SHAPE_RADIUS[t.shape]} ${
                 editing ? "cursor-move" : "cursor-pointer"
               } ${isSelected ? "ring-2 ring-primary ring-offset-1" : ""} ${dragging === t.id ? "opacity-80 shadow-lg z-10" : ""}`}

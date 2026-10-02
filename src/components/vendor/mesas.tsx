@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import { ModifierPicker } from "@/components/offers/modifier-picker";
+import { ProductImage } from "@/components/product-image";
 import { ProductPickCard } from "@/components/vendor/product-pick-card";
 import { cashDiscountForItems, normalizeCashPct } from "@/lib/cash-discount";
 import { getCatalogSnapshot, getTablesSnapshot, saveCatalogSnapshot, saveTablesSnapshot, outboxList } from "@/lib/offline-db";
@@ -15,7 +16,7 @@ import { dispatchOfflinePrint, markPrintsDone } from "@/lib/local-print";
 
 import { SYNC_COMPLETED_EVENT } from "@/lib/sync-engine";
 import { useCashShift } from "@/lib/use-cash-shift";
-import { FloorPlan, type FloorTable } from "@/components/vendor/floor-plan";
+import { FloorPlan, type FloorDecor, type FloorTable } from "@/components/vendor/floor-plan";
 import {
   DEFAULT_DURATION_MIN,
   reservationTimeState,
@@ -464,19 +465,25 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
     const ac = new AbortController();
     const timeout = setTimeout(() => ac.abort(), 8000);
     try {
-      const [tRes, oRes, pRes, mRes, rRes] = await Promise.all([
+      const [tRes, oRes, pRes, mRes, rRes, dRes] = await Promise.all([
         fetch("/api/vendor/tables", { signal: ac.signal }),
         fetch("/api/vendor/orders", { signal: ac.signal }),
         fetch("/api/vendor/offers", { signal: ac.signal }),
         fetch("/api/vendor/me", { signal: ac.signal }),
         fetch("/api/vendor/reservations?status=pendiente", { signal: ac.signal }).catch(() => null),
+        fetch("/api/vendor/floor-decor", { signal: ac.signal }).catch(() => null),
       ]);
       const t = await tRes.json();
       const o = await oRes.json();
       const p = await pRes.json();
       const me = await mRes.json().catch(() => null);
       const r = rRes ? await rRes.json().catch(() => null) : null;
+      const d = dRes ? await dRes.json().catch(() => null) : null;
       if (r && Array.isArray(r.reservations)) setReservations(r.reservations);
+      if (d && Array.isArray(d.decor)) setDecor(d.decor);
+      if (me?.vendor && typeof (me.vendor as any).floor_bg_url !== "undefined") {
+        setFloorBg((me.vendor as any).floor_bg_url ?? null);
+      }
       if (r && r.config) {
         setResConfig(r.config);
         if (r.config.lead_min != null) setResLeadInput(String(r.config.lead_min));
@@ -797,6 +804,113 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
       body: JSON.stringify({ shape }),
     }).catch(() => null);
     if (!res || !res.ok) saveLayoutFallback(id, { shape });
+  }
+
+  // Decoración del salón (paredes, etiquetas, zonas): dibujan el local
+  // debajo de las mesas. El fondo es una foto/croquis opcional.
+  const [decor, setDecor] = useState<FloorDecor[]>([]);
+  const [floorBg, setFloorBg] = useState<string | null>(null);
+  const [bgUploading, setBgUploading] = useState(false);
+  async function decorAdd(kind: FloorDecor["kind"], partial: Partial<FloorDecor>) {
+    const tempId = `tmp-${Date.now()}`;
+    const optimistic: FloorDecor = {
+      id: tempId,
+      kind,
+      x: partial.x ?? 0,
+      y: partial.y ?? 0,
+      w: partial.w ?? 60,
+      h: partial.h ?? 60,
+      rotation: partial.rotation ?? 0,
+      text: partial.text ?? null,
+    };
+    setDecor((prev) => [...prev, optimistic]);
+    try {
+      const res = await fetch("/api/vendor/floor-decor", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind, ...partial }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (data.decor?.id) {
+        setDecor((prev) => prev.map((d) => (d.id === tempId ? data.decor : d)));
+      } else {
+        setDecor((prev) => prev.filter((d) => d.id !== tempId));
+        setMsg(data.code === "migration_pending"
+          ? "Falta aplicar la migración de decoración en el servidor"
+          : data.error || "No se pudo agregar");
+        setTimeout(() => setMsg(""), 2500);
+      }
+    } catch {
+      setDecor((prev) => prev.filter((d) => d.id !== tempId));
+    }
+  }
+  async function decorPatch(id: string, patch: Record<string, number | string | null>) {
+    setDecor((prev) => prev.map((d) => (d.id === id ? { ...d, ...patch } as FloorDecor : d)));
+    try {
+      await fetch(`/api/vendor/floor-decor/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      }).catch(() => null);
+    } catch { /* best-effort: el estado local ya se movió */ }
+  }
+  const decorMove = (id: string, x: number, y: number) => decorPatch(id, { x, y });
+  const decorResize = (id: string, w: number, h: number) => decorPatch(id, { w, h });
+  const decorText = (id: string, text: string) => decorPatch(id, { text });
+  async function decorDelete(id: string) {
+    if (!id.startsWith("tmp-") && !confirm("¿Eliminar este elemento del plano?")) return;
+    setDecor((prev) => prev.filter((d) => d.id !== id));
+    try {
+      await fetch(`/api/vendor/floor-decor/${id}`, { method: "DELETE" }).catch(() => null);
+    } catch { /* best-effort */ }
+  }
+  async function uploadFloorBg(file: File) {
+    if (bgUploading) return;
+    setBgUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("folder", "floor");
+      const up = await fetch("/api/vendor/upload", { method: "POST", body: fd });
+      const upData = await up.json().catch(() => ({}));
+      if (!upData.url) {
+        setMsg(upData.error || "No se pudo subir la imagen");
+        return;
+      }
+      const res = await fetch("/api/vendor/me", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ floor_bg_url: upData.url }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (data.vendor) {
+        setFloorBg((data.vendor as any).floor_bg_url ?? null);
+        setMsg("🖼 Fondo del plano guardado");
+      } else setMsg(data.error || "No se pudo guardar el fondo");
+    } catch {
+      setMsg("No se pudo subir la imagen");
+    } finally {
+      setBgUploading(false);
+      setTimeout(() => setMsg(""), 2500);
+    }
+  }
+  async function clearFloorBg() {
+    try {
+      const res = await fetch("/api/vendor/me", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ floor_bg_url: null }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (data.vendor) {
+        setFloorBg(null);
+        setMsg("Fondo del plano quitado");
+      } else setMsg(data.error || "No se pudo quitar el fondo");
+    } catch {
+      setMsg("No se pudo quitar el fondo");
+    } finally {
+      setTimeout(() => setMsg(""), 2500);
+    }
   }
 
   async function changeTableCapacity(id: string, capacity: number) {
@@ -1394,7 +1508,45 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
         onCapacityChange={changeTableCapacity}
         blockedIds={resOverlays.blocked}
         upcomingIds={resOverlays.upcoming}
+        decor={decor}
+        bgUrl={floorBg}
+        onDecorAdd={decorAdd}
+        onDecorMove={decorMove}
+        onDecorResize={decorResize}
+        onDecorText={decorText}
+        onDecorDelete={decorDelete}
       />
+
+          <CollapsibleSection icon="🖼️" title="Fondo del plano" defaultOpen={false}>
+            <div className="flex flex-wrap items-center gap-2">
+              {floorBg ? (
+                <>
+                  <ProductImage src={floorBg} name="fondo" alt="Fondo del salón" className="h-16 w-24 rounded-lg border border-border" />
+                  <Button size="sm" variant="outline" onClick={clearFloorBg}>Quitar fondo</Button>
+                </>
+              ) : (
+                <label className="text-xs">
+                  <span className="inline-block rounded-lg border border-input bg-background px-3 py-2 cursor-pointer hover:bg-accent">
+                    {bgUploading ? "Subiendo…" : "📤 Subir foto/croquis del salón"}
+                  </span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    disabled={bgUploading}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) uploadFloorBg(f);
+                      e.target.value = "";
+                    }}
+                  />
+                </label>
+              )}
+              <p className="w-full text-[11px] text-muted-foreground">
+                Opcional, estilo Lightspeed: la foto queda de fondo y las mesas se ubican encima.
+              </p>
+            </div>
+          </CollapsibleSection>
 
           <CollapsibleSection icon="⚙️" title="Ventana de bloqueo de reservas" defaultOpen={false}>
             <div className="flex flex-wrap items-end gap-2.5">

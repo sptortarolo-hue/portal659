@@ -107,6 +107,7 @@ export async function POST(request: Request) {
     require_open_shift,
     reservation_lead_min,
     reservation_tolerance_min,
+    floor_bg_url,
   } = body;
 
   const VALID_VERTICALS = ["gastronomia", "comercio", "servicio", "moda", "salud", "otro"];
@@ -194,6 +195,11 @@ export async function POST(request: Request) {
   if (block_unpaid_orders !== undefined) payload.block_unpaid_orders = block_unpaid_orders === true;
   // Exigir turno de caja abierto para cobrar en Mostrador/Mesas.
   if (require_open_shift !== undefined) payload.require_open_shift = require_open_shift === true;
+  // Foto de fondo del plano del salón (URL de /api/vendor/upload, o null).
+  if (floor_bg_url !== undefined) {
+    payload.floor_bg_url =
+      typeof floor_bg_url === "string" && floor_bg_url.trim() ? floor_bg_url.trim().slice(0, 500) : null;
+  }
   // Ventana de bloqueo de reservas (minutos, 0-180; NULL/omitido = default 15).
   for (const key of ["reservation_lead_min", "reservation_tolerance_min"] as const) {
     const raw = key === "reservation_lead_min" ? reservation_lead_min : reservation_tolerance_min;
@@ -283,6 +289,7 @@ export async function POST(request: Request) {
         "require_open_shift",
         "reservation_lead_min",
         "reservation_tolerance_min",
+        "floor_bg_url",
       ].filter((k) => k in payload && msg.includes(k));
       if (droppable.length > 0) {
         for (const k of droppable) delete payload[k];

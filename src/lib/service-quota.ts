@@ -20,9 +20,11 @@ export async function getServiceQuota(vendorId: string): Promise<{
   );
   const planRows = await queryMany<Record<string, unknown>>(`SELECT * FROM plans`);
   const plan = resolveVendorPlan(vendorRow as unknown as Vendor, planRows as unknown as Plan[]);
-  // El tope de solicitudes solo rige para servicios (otros verticales no usan
-  // quotes/bookings como canal de venta).
-  if ((vendorRow?.vertical as string) !== "servicio") {
+  // El tope de solicitudes rige para servicios y estética (otros verticales
+  // no usan quotes/bookings como canal de venta). El límite sale del plan
+  // efectivo: servicio lee max_quotes_month de la fila; estética gratis usa
+  // su tope propio (ESTETICA_FREE_QUOTES_MONTH en plans.ts).
+  if ((vendorRow?.vertical as string) !== "servicio" && (vendorRow?.vertical as string) !== "estetica") {
     return { used: 0, limit: null, planSlug: plan.slug };
   }
   const limit = plan.maxQuotesMonth;

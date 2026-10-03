@@ -247,12 +247,12 @@ export async function PATCH(
 
   // Cierre estricto con tildado (on/off "Exigir tildado" por comercio):
   // - Gastronomía con elaboración: tildado de cocina en el KDS.
-  // - Retail (moda/comercio): tildado de empaque en el detalle (todos los
-  //   ítems, sin distinción de requires_prep). Pedidos sin cocina no pasan.
+  // - Retail (moda/comercio/estética): tildado de empaque en el detalle (todos
+  //   los ítems, sin distinción de requires_prep). Pedidos sin cocina no pasan.
   if (status === "ready" && fullVendor?.kitchen_strict_close !== false) {
     const vertical = fullVendor?.vertical ?? null;
     const isGastro = vertical === null || vertical === "gastronomia";
-    const isRetail = vertical === "moda" || vertical === "comercio";
+    const isRetail = vertical === "moda" || vertical === "comercio" || vertical === "estetica";
     const needsKitchen = (currentOrder.items || []).some(
       (i) => (i as OrderItem)?.requires_prep !== false
     );
@@ -529,7 +529,7 @@ export async function PATCH(
 
   const pushText = customerNotificationText(
     status,
-    isRetailVendor({ vertical: fullVendor?.vertical ?? null }),
+    isRetailVendor({ vertical: fullVendor?.vertical ?? null }) || fullVendor?.vertical === "estetica",
     fullVendor?.store_name,
     Number(order.total),
     order.pickup_number as number | null

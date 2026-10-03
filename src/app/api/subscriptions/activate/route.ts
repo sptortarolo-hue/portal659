@@ -33,16 +33,17 @@ export async function POST(request: Request) {
     );
   }
 
-  if (vendor.vertical !== "gastronomia" && vendor.vertical !== "comercio" && vendor.vertical !== "moda" && vendor.vertical !== "servicio") {
+  if (vendor.vertical !== "gastronomia" && vendor.vertical !== "comercio" && vendor.vertical !== "moda" && vendor.vertical !== "servicio" && vendor.vertical !== "estetica") {
     return NextResponse.json(
-      { error: "Los planes pagos están disponibles para gastronomía, comercios de barrio, moda y servicios" },
+      { error: "Los planes pagos están disponibles para gastronomía, comercios de barrio, moda, estética y servicios" },
       { status: 400 }
     );
   }
 
-  // Cada vertical compra su plan: servicios solo Oficios.
+  // Cada vertical compra su plan: servicios solo Oficios; estética es híbrida
+  // (Oficios para turnera, Pedidos/Gestión para venta de productos).
   const allowedSlugs =
-    vendor.vertical === "servicio" ? ["oficios"] : ["pedidos", "gestion"];
+    vendor.vertical === "servicio" ? ["oficios"] : vendor.vertical === "estetica" ? ["oficios", "pedidos", "gestion"] : ["pedidos", "gestion"];
   if (!allowedSlugs.includes(planSlug)) {
     return NextResponse.json({ error: "Plan inválido para tu rubro" }, { status: 400 });
   }

@@ -380,7 +380,47 @@ export default async function TiendaPage({
     }
   }
 
-  const isService = v.vertical === "servicio";
+  const isService = v.vertical === "servicio" || v.vertical === "estetica";
+  const isEstetica = v.vertical === "estetica";
+  // Catálogo de servicios + profesionales (estética): turnera por servicio
+  // con duración y agenda por profesional. Tolerante a migración sin aplicar.
+  let esteticaServices: { id: string; name: string; deposit_amount: number | null; duration_min: number | null; price: number | null }[] = [];
+  let esteticaStaff: { id: string; name: string }[] = [];
+  let esteticaLocations: { id: string; name: string; address: string | null }[] = [];
+  if (isEstetica) {
+    try {
+      const srows = await queryMany<any>(
+        `SELECT id, name, deposit_amount, duration_min, price FROM services WHERE vendor_id = $1 AND active = true ORDER BY position ASC, name ASC`,
+        [v.id]
+      ).catch(() =>
+        queryMany<any>(
+          `SELECT id, name, deposit_amount, duration_min FROM services WHERE vendor_id = $1 AND active = true ORDER BY position ASC, name ASC`,
+          [v.id]
+        )
+      );
+      esteticaServices = (srows || []).map((s: any) => ({
+        id: String(s.id),
+        name: String(s.name ?? ""),
+        deposit_amount: s.deposit_amount != null ? Number(s.deposit_amount) : null,
+        duration_min: s.duration_min != null ? Number(s.duration_min) : null,
+        price: s.price != null ? Number(s.price) : null,
+      }));
+    } catch { esteticaServices = []; }
+    try {
+      const trows = await queryMany<any>(
+        `SELECT id, name FROM estetica_staff WHERE vendor_id = $1 AND active = true ORDER BY position ASC, name ASC`,
+        [v.id]
+      );
+      esteticaStaff = (trows || []).map((t: any) => ({ id: String(t.id), name: String(t.name ?? "") }));
+    } catch { esteticaStaff = []; }
+    try {
+      const lrows = await queryMany<any>(
+        `SELECT id, name, address FROM estetica_locations WHERE vendor_id = $1 AND active = true ORDER BY position ASC, name ASC`,
+        [v.id]
+      );
+      esteticaLocations = (lrows || []).map((l: any) => ({ id: String(l.id), name: String(l.name ?? ""), address: l.address != null ? String(l.address) : null }));
+    } catch { esteticaLocations = []; }
+  }
   // Tope de solicitudes alcanzado: no se muestran los formularios (el POST
   // devuelve 429 igual). Solo aplica si la migración de tope está aplicada.
   let serviceQuotaFull = false;
@@ -654,7 +694,7 @@ export default async function TiendaPage({
           <>
             <div className="border border-border rounded-2xl p-8 text-center bg-card mb-6">
               <h2 className="font-display text-2xl font-semibold mb-2">
-                Servicio del barrio
+                {isEstetica ? "Estética del barrio" : "Servicio del barrio"}
               </h2>
               {v.services_list && (
                 <p className="text-muted-foreground max-w-md mx-auto mb-2">
@@ -665,6 +705,15 @@ export default async function TiendaPage({
                 <p className="text-sm text-muted-foreground max-w-md mx-auto mb-1">
                   Zona: {v.service_area}
                 </p>
+              )}
+              {isEstetica && esteticaLocations.length > 0 && (
+                <div className="flex flex-wrap justify-center gap-1.5 max-w-md mx-auto mb-2">
+                  {esteticaLocations.map((l) => (
+                    <span key={l.id} className="rounded-full bg-muted px-3 py-1 text-xs text-muted-foreground">
+                      📍 {l.name}{l.address ? ` · ${l.address}` : ""}
+                    </span>
+                  ))}
+                </div>
               )}
               {v.free_estimate && (
                 <p className="text-sm text-primary font-medium max-w-md mx-auto mb-4">
@@ -704,7 +753,15 @@ export default async function TiendaPage({
               <h3 className="font-display text-lg font-semibold mb-4">
                 📅 Reservar turno
               </h3>
-              <BookingForm vendorId={v.id} vendorName={v.store_name} services={offers?.map((o: any) => ({ id: o.id, name: o.name }))} />
+              <BookingForm
+                vendorId={v.id}
+                vendorName={v.store_name}
+                services={isEstetica && esteticaServices.length > 0 ? undefined : offers?.map((o: any) => ({ id: o.id, name: o.name }))}
+                serviceOptions={isEstetica && esteticaServices.length > 0 ? esteticaServices : undefined}
+                staffOptions={isEstetica && esteticaStaff.length > 0 ? esteticaStaff : undefined}
+                locationOptions={isEstetica && esteticaLocations.length > 0 ? esteticaLocations : undefined}
+                cancelPolicy={isEstetica && typeof v.cancel_policy_text === "string" && v.cancel_policy_text.trim() ? v.cancel_policy_text.trim() : null}
+              />
             </div>
             )}
 
@@ -713,6 +770,33 @@ export default async function TiendaPage({
                 <p className="text-sm font-medium">Este profesional completó sus solicitudes online del mes.</p>
                 <p className="text-sm text-muted-foreground mt-1">Escribile directo por WhatsApp 👇</p>
               </div>
+            )}
+
+            {/* Productos del centro (estética): cosmética y accesorios con carrito */}
+            {isEstetica && acceptsCart && sections.length > 0 && (
+              <>
+                <h2 className="font-display text-2xl font-semibold mt-6 mb-4">🛍️ Productos</h2>
+                {sections.map((s, i) => (
+                  <section key={s.name} id={`seccion-${i}`} className="mb-10">
+                    <h3 className="font-display text-xl font-semibold mb-4 border-b border-border pb-2">
+                      {s.name}
+                    </h3>
+                    <div className="space-y-3">
+                      {s.items.map((o: any) => (
+                        <div key={o.id} data-pname={String(o.name).toLowerCase()}>
+                          <GastroProductRow
+                            product={o}
+                            vendor={vendorBrief}
+                            modifiers={modifiersByProduct[o.id] || []}
+                            acceptsCart={acceptsCart}
+                            consultHref={waUrl}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                ))}
+              </>
             )}
           </>
         ) : noCart && sections.length === 0 ? (

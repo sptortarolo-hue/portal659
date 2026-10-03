@@ -598,10 +598,10 @@ export async function POST(request: Request) {
             if (printerVendor?.auto_print) {
               const planRows = await queryMany<any>(`SELECT * FROM plans`);
               if (resolveVendorPlan(printerVendor as any, planRows || []).can("printer")) {
-                // Sin ítems de cocina: retail (comercio/moda) imprime el
+                // Sin ítems de cocina: retail (comercio/moda/estética) imprime el
                 // comprobante de venta; el resto, el stub de retiro.
                 const isRetailVendor =
-                  printerVendor?.vertical === "moda" || printerVendor?.vertical === "comercio";
+                  printerVendor?.vertical === "moda" || printerVendor?.vertical === "comercio" || printerVendor?.vertical === "estetica";
                 const printType = orderNeedsKitchen(order) ? "comanda" : isRetailVendor ? "ticket" : "retiro";
                 const printed = await dispatchPrint({
                   vendor: printerVendor,

@@ -148,7 +148,7 @@ type Offer = DBProduct;
 
 type MenuCategory = { id: string; name: string; position: number };
 
-type DashTab = "hoy" | "config" | "menu" | "orders" | "history" | "comanda" | "analytics" | "pos" | "mesas" | "caja" | "clientes" | "reviews" | "recetas" | "fiscal" | "inventario";
+  type DashTab = "hoy" | "config" | "menu" | "orders" | "pedidos" | "history" | "comanda" | "analytics" | "pos" | "mesas" | "caja" | "clientes" | "reviews" | "recetas" | "fiscal" | "inventario";
 
 // Tabs pesados con fetch propio: se memoizan para no re-renderizarlos en cada
 // tecla/búsqueda del dashboard (solo cambian cuando cambian sus props).
@@ -300,7 +300,7 @@ function VendorDashboardInner() {
   // Borrador de UI (24h): pestaña, filtros y pedido abierto sobreviven a recargas.
   const dashDraftReady = useRef(false);
   const pendingOrderId = useRef<string | null>(null);
-  const VALID_TABS: DashTab[] = ["hoy", "config", "menu", "orders", "history", "comanda", "analytics", "pos", "mesas", "caja", "clientes", "reviews", "recetas", "fiscal", "inventario"];
+  const VALID_TABS: DashTab[] = ["hoy", "config", "menu", "orders", "pedidos", "history", "comanda", "analytics", "pos", "mesas", "caja", "clientes", "reviews", "recetas", "fiscal", "inventario"];
   useEffect(() => {
     if (dashDraftReady.current || !vendor?.id) return;
     dashDraftReady.current = true;
@@ -499,8 +499,8 @@ function VendorDashboardInner() {
           maxOrdersMonth: subsMeData.usage.maxOrdersMonth ?? null,
         });
       }
-      // Solicitudes solo para servicios.
-      if (me.vendor?.vertical === "servicio") await loadServiceData();
+      // Solicitudes solo para servicios y estética.
+      if (me.vendor?.vertical === "servicio" || me.vendor?.vertical === "estetica") await loadServiceData();
     } catch (err) {
       console.error("[dashboard] loadData error:", err);
     } finally {
@@ -780,8 +780,8 @@ function VendorDashboardInner() {
     try {
       const payload: Record<string, unknown> = { status };
       // Gastronomía estima minutos de cocina desde la demora configurada (sin hardcodeo);
-      // retail (moda/comercio) no maneja tiempos en minutos.
-      if (status === "preparing" && !isRetail) {
+      // retail (moda/comercio/estética) no maneja tiempos en minutos.
+      if (status === "preparing" && !orderFlowRetail) {
         payload.estimated_minutes = (vendor?.prep_time_min ?? 30) || 30;
       }
       const res = await fetch(`/api/vendor/orders/${order.id}`, {
@@ -939,12 +939,18 @@ function VendorDashboardInner() {
   );
 
   // Verticales: declarados ANTES del useMemo de dashboardProps para que estén disponibles.
-  const isService = vendor?.vertical === "servicio";
+  // Estética opera sobre el circuito de servicios (turnera + presupuestos):
+  // comparte bandeja, agenda, cobros y ficha con servicios.
+  const isEstetica = vendor?.vertical === "estetica";
+  const isService = vendor?.vertical === "servicio" || isEstetica;
   const isGastro = vendor?.vertical === "gastronomia";
   const isComercio = vendor?.vertical === "comercio";
   const isModa = vendor?.vertical === "moda";
   // Retail (moda y comercio): flow de pedido con aceptación explícita y sin cocina.
   const isRetail = isModa || isComercio;
+  // Estética vende productos sin cocina: sus pedidos usan el flow retail
+  // ("Empaquetando", etc.) aunque no sea vertical retail.
+  const orderFlowRetail = isRetail || isEstetica;
 
   const dashboardProps = useMemo(() => ({
     vendor, offers, categories, modifiers, gallery, bookings, msg,
@@ -991,8 +997,8 @@ function VendorDashboardInner() {
   // Las constantes isService/isGastro/isComercio/isModa/isRetail ya declaradas arriba.
 
   // Retail: labels y pasos del flow con aceptación explícita ("Empaquetando", etc.).
-  const statusLabels: Record<Order["status"], string> = isRetail ? RETAIL_STATUS_LABELS : STATUS_LABELS;
-  const stepOrder = flowSteps(isRetail);
+  const statusLabels: Record<Order["status"], string> = orderFlowRetail ? RETAIL_STATUS_LABELS : STATUS_LABELS;
+  const stepOrder = flowSteps(orderFlowRetail);
 
   const effectivePlan = resolveVendorPlan(vendor, plans);
   const overLimit =
@@ -1196,7 +1202,7 @@ function VendorDashboardInner() {
         <TabErrorBoundary tab="orders-kanban">
         <OrdersKanban
             orders={filteredOrders}
-            isRetail={isRetail}
+            isRetail={orderFlowRetail}
             selectedOrder={selectedOrder}
             onSelectOrder={setSelectedOrder}
             onRefresh={loadOrdersOnly}
@@ -1383,6 +1389,8 @@ function VendorDashboardInner() {
     : isService && tab === "config" ? "Ficha"
     : isService && tab === "history" ? "Historial"
     : isService && tab === "clientes" ? "Clientes"
+    : isEstetica && tab === "pedidos" ? "Pedidos"
+    : isEstetica && tab === "menu" ? "Catálogo"
     : tab === "menu" ? (isRetail ? "Catálogo" : "Menú")
     : tab === "hoy" ? "Hoy"
     : tab === "orders" ? "Pedidos"
@@ -1423,6 +1431,7 @@ function VendorDashboardInner() {
         isModa={isModa}
         isComercio={isComercio}
         isService={isService}
+        isEstetica={isEstetica}
         pendingQuotesCount={pendingQuotesCount}
         pendingBookingsCount={pendingBookingsCount}
         pendingPosCount={pendingPosCount}
@@ -1615,10 +1624,29 @@ function VendorDashboardInner() {
         )}
 
         {/* Tab content */}
-        <div className={`flex-1 px-4 mt-4 pb-28 lg:pb-10 ${tab === "comanda" ? "w-full max-w-none" : `mx-auto w-full ${["orders", "history", "pos", "mesas", "caja", "clientes", "analytics", "recetas", "inventario", "hoy", "menu"].includes(tab) ? "max-w-7xl" : "max-w-4xl"}`}`}>
+        <div className={`flex-1 px-4 mt-4 pb-28 lg:pb-10 ${tab === "comanda" ? "w-full max-w-none" : `mx-auto w-full ${["orders", "pedidos", "history", "pos", "mesas", "caja", "clientes", "analytics", "recetas", "inventario", "hoy", "menu"].includes(tab) ? "max-w-7xl" : "max-w-4xl"}`}`}>
           <TabErrorBoundary tab={tab || "dashboard"}>
           {isService ? (
             <div className="space-y-4">
+              {isEstetica && tab === "pedidos" ? (
+                <TabErrorBoundary tab="orders">{ordersContent}</TabErrorBoundary>
+              ) : isEstetica && tab === "menu" ? (
+                <TabErrorBoundary tab="menu">
+                <MemoProductManager
+                  isModa={false}
+                  isComercio
+                  showStock
+                  showPrep={false}
+                  showCosts={false}
+                  canEditCost={effectivePlan.can("inventory")}
+                  variants={variants}
+                  productImages={productImages}
+                  onCrop={openCrop}
+                  onChanged={() => loadData()}
+                  vendorId={vendor?.id}
+                />
+                </TabErrorBoundary>
+              ) : (
               <DashboardServicio
                 {...dashboardProps}
                 quotes={quotes}
@@ -1639,6 +1667,7 @@ function VendorDashboardInner() {
                 onNavigate={handleTabChange}
                 canCrm={effectivePlan.can("crm")}
               />
+              )}
             </div>
           ) : (
             <>
@@ -1929,7 +1958,7 @@ function VendorDashboardInner() {
             )}
               </>
             )}
-            <button onClick={() => setMoreOpen((v) => !v)} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors ${["config", "menu", "analytics", "history", "reviews", "recetas", "caja", "clientes", "inventario"].includes(tab) ? "text-primary" : "text-muted-foreground"}`}>
+            <button onClick={() => setMoreOpen((v) => !v)} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors ${["config", "menu", "analytics", "history", "reviews", "recetas", "caja", "clientes", "inventario", "pedidos"].includes(tab) ? "text-primary" : "text-muted-foreground"}`}>
               <span className="text-lg">{moreOpen ? <X className="h-5 w-5" /> : <MoreHorizontal className="h-5 w-5" />}</span>Más
             </button>
           </div>
@@ -1947,6 +1976,16 @@ function VendorDashboardInner() {
                   <button onClick={() => { setTab("config"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "config" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
                     <Wrench className="h-5 w-5" />Ficha
                   </button>
+                  {isEstetica && (
+                    <>
+                      <button onClick={() => { setTab("pedidos"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "pedidos" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
+                        <Package className="h-5 w-5" />Pedidos
+                      </button>
+                      <button onClick={() => { setTab("menu"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "menu" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
+                        <ShoppingBag className="h-5 w-5" />Catálogo ({menuCount})
+                      </button>
+                    </>
+                  )}
                   <button onClick={() => { setTab("reviews"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "reviews" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
                     <Star className="h-5 w-5" />Reseñas
                   </button>
@@ -2060,7 +2099,7 @@ function VendorDashboardInner() {
         <OrderDetailModal
           order={selectedOrder}
           vendorName={vendor?.store_name || ""}
-          isRetail={isRetail}
+          isRetail={orderFlowRetail}
           onClose={() => setSelectedOrder(null)}
           onAction={(order, status) => updateOrderStatus(order, status)}
           onModify={modifyOrder}

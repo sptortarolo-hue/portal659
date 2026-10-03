@@ -11,6 +11,7 @@ export type Vertical =
   | "servicio"
   | "moda"
   | "salud"
+  | "estetica"
   | "otro";
 
 export type PlanSlug = "gratuito" | "pedidos" | "gestion" | "oficios";
@@ -424,12 +425,19 @@ export type Vendor = {
   quote_days?: string[] | null;
   /** Franjas ofrecidas (ej: ["mañana","tarde"]). */
   quote_slots?: string[] | null;
+  /** Política de cancelación de turnos (estética; texto libre visible en el micrositio). */
+  cancel_policy_text?: string | null;
+  /** Anticipación mínima para cancelar (horas; default 24). */
+  cancel_hours?: number | null;
   is_admin: boolean;
   printer_ip: string | null;
   printer_port: number | null;
   paper_size: string | null;
   auto_print: boolean;
   print_mode?: "server" | "app" | null;
+  /** Stripe Connect (cobros a la cuenta del comercio). § stripe-connect.ts */
+  stripe_account_id?: string | null;
+  stripe_connected_at?: string | null;
   /** Mercado Pago multi-market (OAuth por comercio). §5 docs/mp-multimarket-plan.md */
   mp_user_id?: number | null;
   mp_access_token?: string | null;

@@ -19,14 +19,40 @@ export async function GET(request: Request) {
   const q = (url.searchParams.get("q") || "").trim();
   const format = url.searchParams.get("format") || "json";
 
-  const rows = await queryMany<Record<string, any>>(
-    `SELECT id, phone, name, address, notes, last_order_at, total_orders, total_spent, created_at
-     FROM customers
-     WHERE vendor_id = $1
-     ORDER BY last_order_at DESC NULLS LAST, total_spent DESC
-     LIMIT 1000`,
-    [gate.vendor.id]
-  );
+  // Ficha extendida (estética): allergies/skin_notes/consent_at viven en
+  // migrate-estetica.sql; birthdate en migrate-estetica-birthday.sql.
+  // Tolerante a migración sin aplicar.
+  let rows;
+  try {
+    rows = await queryMany<Record<string, any>>(
+      `SELECT id, phone, name, address, notes, allergies, skin_notes, consent_at, birthdate::text AS birthdate, last_order_at, total_orders, total_spent, created_at
+       FROM customers
+       WHERE vendor_id = $1
+       ORDER BY last_order_at DESC NULLS LAST, total_spent DESC
+       LIMIT 1000`,
+      [gate.vendor.id]
+    );
+  } catch {
+    try {
+      rows = await queryMany<Record<string, any>>(
+        `SELECT id, phone, name, address, notes, allergies, skin_notes, consent_at, last_order_at, total_orders, total_spent, created_at
+         FROM customers
+         WHERE vendor_id = $1
+         ORDER BY last_order_at DESC NULLS LAST, total_spent DESC
+         LIMIT 1000`,
+        [gate.vendor.id]
+      );
+    } catch {
+      rows = await queryMany<Record<string, any>>(
+        `SELECT id, phone, name, address, notes, last_order_at, total_orders, total_spent, created_at
+         FROM customers
+         WHERE vendor_id = $1
+         ORDER BY last_order_at DESC NULLS LAST, total_spent DESC
+         LIMIT 1000`,
+        [gate.vendor.id]
+      );
+    }
+  }
 
   const inactiveCutoff = Date.now() - INACTIVE_DAYS * 24 * 60 * 60 * 1000;
   const withSegments: (Record<string, any> & { segment: "frecuente" | "nuevo" | "inactivo" | "ocasional" })[] = (rows || []).map((c) => {
@@ -96,22 +122,49 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Faltan nombre y un celular válido" }, { status: 400 });
   }
 
-  const customer = await queryOne<Record<string, unknown>>(
-    `INSERT INTO customers (vendor_id, phone, name, address, notes, last_order_at, total_orders, total_spent)
-     VALUES ($1, $2, $3, $4, $5, NULL, 0, 0)
-     ON CONFLICT (vendor_id, phone) DO UPDATE SET
-       name = COALESCE(NULLIF(EXCLUDED.name, ''), customers.name),
-       address = COALESCE(NULLIF(EXCLUDED.address, ''), customers.address),
-       notes = COALESCE(NULLIF(EXCLUDED.notes, ''), customers.notes)
-     RETURNING *`,
-    [
-      gate.vendor.id,
-      phone,
-      name,
-      String(body.address || "").trim().slice(0, 300) || null,
-      String(body.notes || "").trim().slice(0, 500) || null,
-    ]
-  ).catch(() => undefined);
+  const allergies = String(body.allergies || "").trim().slice(0, 500) || null;
+  const skinNotes = String(body.skin_notes || "").trim().slice(0, 500) || null;
+
+  let customer;
+  try {
+    customer = await queryOne<Record<string, unknown>>(
+      `INSERT INTO customers (vendor_id, phone, name, address, notes, allergies, skin_notes, last_order_at, total_orders, total_spent)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NULL, 0, 0)
+       ON CONFLICT (vendor_id, phone) DO UPDATE SET
+         name = COALESCE(NULLIF(EXCLUDED.name, ''), customers.name),
+         address = COALESCE(NULLIF(EXCLUDED.address, ''), customers.address),
+         notes = COALESCE(NULLIF(EXCLUDED.notes, ''), customers.notes),
+         allergies = COALESCE(NULLIF(EXCLUDED.allergies, ''), customers.allergies),
+         skin_notes = COALESCE(NULLIF(EXCLUDED.skin_notes, ''), customers.skin_notes)
+       RETURNING *`,
+      [
+        gate.vendor.id,
+        phone,
+        name,
+        String(body.address || "").trim().slice(0, 300) || null,
+        String(body.notes || "").trim().slice(0, 500) || null,
+        allergies,
+        skinNotes,
+      ]
+    );
+  } catch {
+    customer = await queryOne<Record<string, unknown>>(
+      `INSERT INTO customers (vendor_id, phone, name, address, notes, last_order_at, total_orders, total_spent)
+       VALUES ($1, $2, $3, $4, $5, NULL, 0, 0)
+       ON CONFLICT (vendor_id, phone) DO UPDATE SET
+         name = COALESCE(NULLIF(EXCLUDED.name, ''), customers.name),
+         address = COALESCE(NULLIF(EXCLUDED.address, ''), customers.address),
+         notes = COALESCE(NULLIF(EXCLUDED.notes, ''), customers.notes)
+       RETURNING *`,
+      [
+        gate.vendor.id,
+        phone,
+        name,
+        String(body.address || "").trim().slice(0, 300) || null,
+        String(body.notes || "").trim().slice(0, 500) || null,
+      ]
+    ).catch(() => undefined);
+  }
 
   if (!customer) {
     return NextResponse.json({ error: "No se pudo guardar (¿falta la migración migrate-crm.sql?)" }, { status: 400 });

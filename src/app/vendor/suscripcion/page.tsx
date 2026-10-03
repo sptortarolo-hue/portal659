@@ -297,7 +297,7 @@ export default function VendorSuscripcionPage() {
           <>
           {!eff.eligibleForPaid && (
             <div className="rounded-2xl border border-border bg-card p-5 text-sm text-muted-foreground">
-              Los planes de pago están disponibles para <b>gastronomía</b>, <b>comercios de barrio</b>, <b>moda</b> y <b>servicios</b> (plan Oficios).
+              Los planes de pago están disponibles para <b>gastronomía</b>, <b>comercios de barrio</b>, <b>moda</b>, <b>estética</b> y <b>servicios</b> (plan Oficios).
               Para tu rubro, el plan <b>Gratuito</b> incluye tu ficha y vidriera completa.
             </div>
           )}
@@ -305,7 +305,7 @@ export default function VendorSuscripcionPage() {
             <div className="grid sm:grid-cols-2 gap-3">
               {me.plans
                 .filter((p) => p.slug !== "gratuito")
-                .filter((p) => (me.vertical === "servicio" ? p.slug === "oficios" : p.slug !== "oficios"))
+                .filter((p) => (me.vertical === "servicio" ? p.slug === "oficios" : me.vertical === "estetica" ? true : p.slug !== "oficios"))
                 .map((plan) => {
                   const current = eff.slug === plan.slug && (eff.status === "trial" || eff.status === "active");
                   const active = eff.status === "trial" || eff.status === "active";

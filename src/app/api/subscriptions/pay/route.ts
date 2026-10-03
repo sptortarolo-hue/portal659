@@ -14,7 +14,7 @@ export async function POST(request: Request) {
   if (!userId) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
 
   const body = await request.json();
-  const planSlug = body?.planSlug === "pedidos" || body?.planSlug === "gestion"
+  const planSlug = body?.planSlug === "pedidos" || body?.planSlug === "gestion" || body?.planSlug === "oficios"
     ? body.planSlug
     : null;
 
@@ -45,15 +45,18 @@ export async function POST(request: Request) {
   }
   // Servicios solo puede comprar Oficios (ni Pedidos ni Gestión: son de cocina/mostrador).
   // Gastro, comercio y moda compran Pedidos/Gestión.
+  // Estética es híbrida: Oficios (turnera) o Pedidos/Gestión (venta de productos).
   const allowedSlugs =
     vendor.vertical === "servicio"
       ? ["oficios"]
+      : vendor.vertical === "estetica"
+        ? ["oficios", "pedidos", "gestion"]
       : vendor.vertical === "gastronomia" || vendor.vertical === "comercio" || vendor.vertical === "moda"
         ? ["pedidos", "gestion"]
         : [];
   if (allowedSlugs.length === 0) {
     return NextResponse.json(
-      { error: "Los planes pagos están disponibles para gastronomía, comercios de barrio, moda y servicios" },
+      { error: "Los planes pagos están disponibles para gastronomía, comercios de barrio, moda, estética y servicios" },
       { status: 400 }
     );
   }

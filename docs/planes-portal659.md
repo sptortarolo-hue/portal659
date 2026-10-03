@@ -12,12 +12,16 @@ se paga cuando el negocio pide más.
 | **Pedidos** | $4.990 | ilimitado | ilimitado | — | + analytics 7 días + gestión de reseñas |
 | **Gestión integral** | $12.990 | ilimitado | ilimitado | — | + POS (Mostrador) + Mesas + Comanda (KDS) + impresión + cobro online + **Recetas/escandallo** |
 | **Oficios** | $2.990 | — | — | ilimitado | cotización con precio + seña MP + urgencia con recargo + reseñas + destacado + analytics 30 días |
+| **Estética gratis** | $0 | vidriera + online | **5 pedidos** | **10 solicitudes** | turnera por servicio + profesional con control de solape + packs de sesiones + ficha con alergias + checkout de productos |
+| **Estética fase 3** | — | — | — | — | comisiones por profesional (reporte) + giftcards + rebooking + cumpleaños + multi-sede light + Stripe Connect (señas con tarjeta a la cuenta del comercio) |
 
 Reglas:
 
-- **Gastronomía y comercio** compran Pedidos/Gestión; **servicios** solo Oficios
+- **Gastronomía y comercio** compran Pedidos/Gestión; **servicios** solo Oficios;
+  **estética** es híbrida: Oficios (turnera) o Pedidos/Gestión (venta de productos,
+  fase 3)
   (`eligibleForPaid` en `src/lib/plans.ts`; `pay`/`activate` lo enforcean por vertical).
-- No-gastro sin plan (salud/moda/otros) queda en `Gratuito` como ficha de **contacto**.
+- No-gastro sin plan (salud/otros) queda en `Gratuito` como ficha de **contacto**.
 - **Moda**: `MODA_FEATURES` en `src/lib/plans.ts` habilita `cart`+`emits_orders` gratis.
   Los planes pagos para moda (pos/límites/precios) siguen pendientes.
 - Un plan pago **vencido** cae a su fallback gratuito (gastro: carrito + tope de
@@ -35,7 +39,9 @@ Reglas:
 - `max_quotes_month`: tope combinado presupuestos + turnos no cancelados del mes (solo
   rige para servicios). El `gratuito` trae `5`; Oficios trae `NULL`.
 - Fallbacks en `src/lib/plans.ts`: `GRATUITO_FEATURES` (contacto, no-gastro),
-  `FREE_GASTRO_FEATURES` (gastro gratuito/vencido), `MODA_FEATURES`.
+  `FREE_GASTRO_FEATURES` (gastro gratuito/vencido), `MODA_FEATURES`,
+  `ESTETICA_FREE_FEATURES` (turnera con tope propio de 10 + venta online con
+  tope propio de 5 pedidos/mes).
 - Resolución: `resolveVendorPlan()` → `EffectivePlan` con `can(feature)`,
   `analyticsDays`, `maxProducts` y `maxOrdersMonth`. Para límites, si el vendor es gastro
   sin plan vigente, lee del plan `gratuito` (así el admin configura el tope sin tocar código).

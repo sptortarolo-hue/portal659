@@ -22,6 +22,16 @@ export async function PATCH(
   if (body?.name !== undefined) payload.name = body.name ? String(body.name).trim().slice(0, 120) : null;
   if (body?.address !== undefined) payload.address = body.address ? String(body.address).trim().slice(0, 300) : null;
   if (body?.notes !== undefined) payload.notes = body.notes ? String(body.notes).trim().slice(0, 500) : null;
+  // Ficha de estética: alergias, piel y consentimiento (migrate-estetica.sql).
+  if (body?.allergies !== undefined) payload.allergies = body.allergies ? String(body.allergies).trim().slice(0, 500) : null;
+  if (body?.skin_notes !== undefined) payload.skin_notes = body.skin_notes ? String(body.skin_notes).trim().slice(0, 500) : null;
+  if (body?.consent === true) payload.consent_at = new Date().toISOString();
+  if (body?.consent === false) payload.consent_at = null;
+  // Cumpleaños (migrate-estetica-birthday.sql).
+  if (body?.birthdate !== undefined) {
+    const raw = String(body.birthdate || "").trim();
+    payload.birthdate = /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : null;
+  }
 
   if (Object.keys(payload).length === 0) {
     return NextResponse.json({ error: "No hay campos para actualizar" }, { status: 400 });
@@ -30,10 +40,27 @@ export async function PATCH(
   const setClauses = Object.keys(payload).map((k, i) => `${k} = $${i + 3}`);
   const values = [id, gate.vendor.id, ...Object.values(payload)];
 
-  const customer = await queryOne<Record<string, any>>(
-    `UPDATE customers SET ${setClauses.join(", ")} WHERE id = $1 AND vendor_id = $2 RETURNING *`,
-    values
-  );
+  let customer;
+  try {
+    customer = await queryOne<Record<string, any>>(
+      `UPDATE customers SET ${setClauses.join(", ")} WHERE id = $1 AND vendor_id = $2 RETURNING *`,
+      values
+    );
+  } catch (e) {
+    // Sin migración de estética: reintentar sin los campos nuevos.
+    const legacy: Record<string, unknown> = {};
+    for (const k of ["name", "address", "notes"]) {
+      if (k in payload) legacy[k] = payload[k];
+    }
+    if (Object.keys(legacy).length === 0) {
+      return NextResponse.json({ error: "Falta aplicar la migración migrate-estetica.sql en la base" }, { status: 400 });
+    }
+    const legacyClauses = Object.keys(legacy).map((k, i) => `${k} = $${i + 3}`);
+    customer = await queryOne<Record<string, any>>(
+      `UPDATE customers SET ${legacyClauses.join(", ")} WHERE id = $1 AND vendor_id = $2 RETURNING *`,
+      [id, gate.vendor.id, ...Object.values(legacy)]
+    );
+  }
 
   if (!customer) return NextResponse.json({ error: "Cliente no encontrado" }, { status: 404 });
 
@@ -91,13 +118,27 @@ export async function GET(
       )) || [];
     } catch { /* sin tabla: vacío */ }
     try {
-      bookings = (await queryMany<Record<string, any>>(
-        `SELECT id, product_name, booking_date, booking_time, status, notes, created_at
-         FROM bookings WHERE vendor_id = $1
-           AND (regexp_replace(customer_phone, '[^0-9]', '', 'g') = ANY($2))
-         ORDER BY booking_date DESC, booking_time DESC LIMIT 30`,
-        [gate.vendor.id, phoneVariants]
-      )) || [];
+      try {
+        bookings = (await queryMany<Record<string, any>>(
+          `SELECT b.id, b.product_name, s.name AS service_label, st.name AS staff_label,
+                  b.booking_date, b.booking_time, b.status, b.notes, b.created_at
+           FROM bookings b
+           LEFT JOIN services s ON s.id = b.service_id
+           LEFT JOIN estetica_staff st ON st.id = b.staff_id
+           WHERE b.vendor_id = $1
+             AND (regexp_replace(b.customer_phone, '[^0-9]', '', 'g') = ANY($2))
+           ORDER BY b.booking_date DESC, b.booking_time DESC LIMIT 30`,
+          [gate.vendor.id, phoneVariants]
+        )) || [];
+      } catch {
+        bookings = (await queryMany<Record<string, any>>(
+          `SELECT id, product_name, booking_date, booking_time, status, notes, created_at
+           FROM bookings WHERE vendor_id = $1
+             AND (regexp_replace(customer_phone, '[^0-9]', '', 'g') = ANY($2))
+           ORDER BY booking_date DESC, booking_time DESC LIMIT 30`,
+          [gate.vendor.id, phoneVariants]
+        )) || [];
+      }
     } catch { /* sin tabla: vacío */ }
   }
 

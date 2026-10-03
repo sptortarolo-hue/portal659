@@ -78,8 +78,8 @@ export async function POST(request: Request) {
   if (!gate.ok) {
     return NextResponse.json({ error: gate.error }, { status: gate.status });
   }
-  if (gate.vendor.vertical !== "servicio") {
-    return NextResponse.json({ error: "Solo disponible para servicios" }, { status: 403 });
+  if (gate.vendor.vertical !== "servicio" && gate.vendor.vertical !== "estetica") {
+    return NextResponse.json({ error: "Solo disponible para servicios y estética" }, { status: 403 });
   }
 
   const body = await request.json().catch(() => ({}));

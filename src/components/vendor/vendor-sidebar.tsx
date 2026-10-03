@@ -4,7 +4,7 @@ import Link from "next/link";
 import { X, Package, ChefHat, ShoppingBag, LayoutGrid, UtensilsCrossed, Settings, BarChart3, History, Star, ExternalLink, LogOut, Home, Sparkles, Calculator, Bot, DollarSign, Receipt, Users, MessageSquare, CalendarDays, ClipboardList, Boxes } from "lucide-react";
 import type { ConfigSectionStatus } from "@/components/dashboard/config-nav";
 
-type Tab = "hoy" | "config" | "menu" | "orders" | "history" | "comanda" | "analytics" | "pos" | "mesas" | "caja" | "clientes" | "reviews" | "recetas" | "fiscal" | "inventario";
+type Tab = "hoy" | "config" | "menu" | "orders" | "pedidos" | "history" | "comanda" | "analytics" | "pos" | "mesas" | "caja" | "clientes" | "reviews" | "recetas" | "fiscal" | "inventario";
 
 interface VendorSidebarProps {
   open: boolean;
@@ -22,6 +22,8 @@ interface VendorSidebarProps {
   isComercio?: boolean;
   /** Vertical servicios: menú propio (Presupuestos/Turnos/Cobros/Ficha). */
   isService?: boolean;
+  /** Vertical estética: suma Pedidos + Catálogo al menú de servicios. */
+  isEstetica?: boolean;
   pendingQuotesCount?: number;
   pendingBookingsCount?: number;
   /** Pendientes offline por pestaña (outbox IndexedDB, Track Ventas F1). */
@@ -132,6 +134,7 @@ export default function VendorSidebar({
   isModa,
   isComercio = false,
   isService = false,
+  isEstetica = false,
   pendingQuotesCount = 0,
   pendingBookingsCount = 0,
   pendingPosCount = 0,
@@ -232,6 +235,15 @@ export default function VendorSidebar({
                     icon={DollarSign}
                     label="Cobros"
                   />
+                  {isEstetica && (
+                    <NavButton
+                      active={currentTab === "pedidos"}
+                      onClick={() => handleTab("pedidos")}
+                      icon={Package}
+                      label="Pedidos"
+                      badge={orderCount}
+                    />
+                  )}
                 </>
               ) : (
                 OPERACION_ITEMS.filter((i) => i.show(isGastro, isModa, isComercio)).map((item) => {
@@ -290,6 +302,15 @@ export default function VendorSidebar({
                     icon={Users}
                     label="Clientes"
                   />
+                  {isEstetica && (
+                    <NavButton
+                      active={currentTab === "menu"}
+                      onClick={() => handleTab("menu")}
+                      icon={ShoppingBag}
+                      label="Catálogo"
+                      suffix={`${menuCount}`}
+                    />
+                  )}
                 </>
               ) : (
                 GESTION_ITEMS.filter((i) => i.show(isGastro, isModa, isComercio)).map((item) => {

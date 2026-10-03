@@ -16,13 +16,14 @@ export const PLAN_IDS: Record<PlanSlug, string> = {
 export const PLAN_SLUGS: PlanSlug[] = ["gratuito", "pedidos", "gestion", "oficios"];
 
 // Los planes pagos están disponibles para gastronomía, comercio de barrio,
-// moda y servicios.
+// moda, servicios y estética.
 export const PAID_PLAN_SLUGS: PlanSlug[] = ["pedidos", "gestion", "oficios"];
 
 export const GASTRO_VERTICAL = "gastronomia";
 export const MODA_VERTICAL = "moda";
 export const COMERCIO_VERTICAL = "comercio";
 export const SERVICIO_VERTICAL = "servicio";
+export const ESTETICA_VERTICAL = "estetica";
 
 export function isGastroVendor(vendor: { vertical?: string | null }): boolean {
   return vendor.vertical === GASTRO_VERTICAL;
@@ -38,6 +39,10 @@ export function isComercioVendor(vendor: { vertical?: string | null }): boolean 
 
 export function isServicioVendor(vendor: { vertical?: string | null }): boolean {
   return vendor.vertical === SERVICIO_VERTICAL;
+}
+
+export function isEsteticaVendor(vendor: { vertical?: string | null }): boolean {
+  return vendor.vertical === ESTETICA_VERTICAL;
 }
 
 /**
@@ -111,12 +116,39 @@ const COMERCIO_FREE_FEATURES: PlanFeatures = {
   emits_orders: true,
 };
 
+// Estética (peluquería, uñas, pestañas, cejas, masajes...): híbrido turnera +
+// productos. Gratis: turnera con tope propio (ESTETICA_FREE_QUOTES_MONTH, NO
+// los 5 de servicio) + venta online con tope propio
+// (ESTETICA_FREE_ORDERS_MONTH). Con plan pago vigente (Oficios para turnera;
+// Pedidos/Gestión para productos) suma lo del plan con mask de vertical
+// (sin kds/mesas/recipes: un centro de estética no tiene cocina ni salón).
+const ESTETICA_FREE_FEATURES: PlanFeatures = {
+  ...GRATUITO_FEATURES,
+  cart: true,
+  emits_orders: true,
+};
+
+/** Tope mensual de solicitudes (turnos + presupuestos) gratis de estética. */
+export const ESTETICA_FREE_QUOTES_MONTH = 10;
+
+/** Tope mensual de pedidos online gratis de estética (venta de productos). */
+export const ESTETICA_FREE_ORDERS_MONTH = 5;
+
 // Servicios (plomero, electricista...): vidriera + contacto + solicitudes
 // (presupuestos/turnos) con tope mensual. El plan Oficios suma gestión.
 // Recibir solicitudes no es feature gateada (es el gratuito mismo); el tope
 // vive en plans.max_quotes_month.
 const SERVICIO_FREE_FEATURES: PlanFeatures = {
   ...GRATUITO_FEATURES,
+};
+
+// Features del plan que no aplican al vertical estética (forzadas a false).
+// pos/printer/caja/crm/analytics/reviews/mp/cart SÍ aplican con o sin plan
+// pago (el centro vende productos con el mismo circuito retail que moda).
+const ESTETICA_FEATURE_MASK: Partial<Record<FeatureKey, false>> = {
+  kds: false,
+  mesas: false,
+  recipes: false,
 };
 
 // Features que no aplican al vertical servicios (forzadas a false aunque el
@@ -203,7 +235,7 @@ export function resolveVendorPlan(
       trialActive: false,
       active: false,
       expired: false,
-      eligibleForPaid: isGastroVendor(vendor) || isComercioVendor(vendor) || isServicioVendor(vendor) || isModaVendor(vendor),
+      eligibleForPaid: isGastroVendor(vendor) || isComercioVendor(vendor) || isServicioVendor(vendor) || isModaVendor(vendor) || isEsteticaVendor(vendor),
       can: () => true,
       analyticsDays: 99999,
       maxProducts: null,
@@ -242,9 +274,9 @@ export function resolveVendorPlan(
   else if (active) status = "active";
   else status = expired ? "expired" : "gratuito";
 
-  // Gastro, comercio, moda y servicios pueden tener planes pagos; el resto de
-  // los verticales resuelven siempre como gratuito.
-  const eligibleForPaid = isGastroVendor(vendor) || isComercioVendor(vendor) || isServicioVendor(vendor) || isModaVendor(vendor);
+  // Gastro, comercio, moda, servicios y estética pueden tener planes pagos;
+  // el resto de los verticales resuelven siempre como gratuito.
+  const eligibleForPaid = isGastroVendor(vendor) || isComercioVendor(vendor) || isServicioVendor(vendor) || isModaVendor(vendor) || isEsteticaVendor(vendor);
 
   const can = (feature: FeatureKey): boolean => {
     if (isModaVendor(vendor)) {
@@ -267,6 +299,13 @@ export function resolveVendorPlan(
       if (trialActive || active) return featureOf(plan, feature);
       return SERVICIO_FREE_FEATURES[feature] === true;
     }
+    if (isEsteticaVendor(vendor)) {
+      // Mask del vertical: gestión trae kds/mesas/recipes en su JSONB, pero
+      // un centro de estética nunca los usa.
+      if (ESTETICA_FEATURE_MASK[feature] === false) return false;
+      if (trialActive || active) return featureOf(plan, feature);
+      return ESTETICA_FREE_FEATURES[feature] === true;
+    }
     if (!eligibleForPaid) return GRATUITO_FEATURES[feature] === true;
     if (trialActive || active) return featureOf(plan, feature);
     return FREE_GASTRO_FEATURES[feature] === true;
@@ -275,13 +314,21 @@ export function resolveVendorPlan(
   // Límites (productos y pedidos/mes): para el plan pago vigente se leen del
   // plan; en cualquier otro caso (gratuito o pago vencido) se leen del plan
   // "gratuito" para que el admin pueda configurar el tope sin tocar código.
-  // Excepción: moda gratis/vencido usa su tope propio (5, no los 20 de gastro).
+  // Excepciones con tope propio: moda gratis/vencido usa el suyo (5 pedidos,
+  // no los 20 de gastro); estética gratis/vencido usa los suyos (10
+  // solicitudes + 5 pedidos).
   const freePlanRow = plans.find((p) => p.slug === "gratuito") ?? null;
   const limitRow = trialActive || active ? plan : freePlanRow;
   const maxOrdersMonth =
     isModaVendor(vendor) && !(trialActive || active)
       ? MODA_FREE_ORDERS_MONTH
-      : (limitRow?.max_orders_month ?? null);
+      : isEsteticaVendor(vendor) && !(trialActive || active)
+        ? ESTETICA_FREE_ORDERS_MONTH
+        : (limitRow?.max_orders_month ?? null);
+  const maxQuotesMonth =
+    isEsteticaVendor(vendor) && !(trialActive || active)
+      ? ESTETICA_FREE_QUOTES_MONTH
+      : (limitRow?.max_quotes_month ?? null);
 
   return {
     plan,
@@ -295,7 +342,7 @@ export function resolveVendorPlan(
     analyticsDays: trialActive || active ? (plan?.features.analytics_days ?? 0) : 0,
     maxProducts: limitRow?.max_products ?? null,
     maxOrdersMonth,
-    maxQuotesMonth: limitRow?.max_quotes_month ?? null,
+    maxQuotesMonth,
     hasTrial: trialEndsAt !== null && now < trialEndsAt,
     trialEndsAt: vendor.trial_ends_at,
   };

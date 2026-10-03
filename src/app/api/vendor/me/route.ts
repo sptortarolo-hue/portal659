@@ -87,6 +87,8 @@ export async function POST(request: Request) {
     quote_pref_enabled,
     quote_days,
     quote_slots,
+    cancel_policy_text,
+    cancel_hours,
     printer_ip,
     printer_port,
     paper_size,
@@ -162,7 +164,7 @@ export async function POST(request: Request) {
     return out;
   }
 
-  const VALID_VERTICALS = ["gastronomia", "comercio", "servicio", "moda", "salud", "otro"];
+  const VALID_VERTICALS = ["gastronomia", "comercio", "servicio", "moda", "salud", "estetica", "otro"];
   const resolvedVertical = VALID_VERTICALS.includes(vertical)
     ? vertical
     : "gastronomia";
@@ -265,8 +267,20 @@ export async function POST(request: Request) {
       : [];
     payload.quote_slots = JSON.stringify(arr);
   }
-  if (urgent_enabled !== undefined) payload.urgent_enabled = urgent_enabled === true;
-  if (urgent_surcharge_pct !== undefined) {
+  // Política de cancelación de turnos (estética; texto libre + horas límite).
+  // Tolerante a migración sin aplicar (ver droppable más abajo).
+  if (cancel_policy_text !== undefined) {
+    const t = typeof cancel_policy_text === "string" ? cancel_policy_text.trim().slice(0, 500) : "";
+    payload.cancel_policy_text = t || null;
+  }
+  if (cancel_hours !== undefined) {
+    const n = cancel_hours == null || cancel_hours === "" ? 24 : Number(cancel_hours);
+    if (!Number.isFinite(n) || n < 0 || n > 168) {
+      return NextResponse.json({ error: "Las horas de cancelación deben estar entre 0 y 168" }, { status: 400 });
+    }
+    payload.cancel_hours = Math.round(n);
+  }
+  if (urgent_enabled !== undefined) payload.urgent_enabled = urgent_enabled === true;  if (urgent_surcharge_pct !== undefined) {
     const pct = urgent_surcharge_pct == null || urgent_surcharge_pct === "" ? null : Number(urgent_surcharge_pct);
     if (pct !== null && (!Number.isFinite(pct) || pct < 0 || pct >= 100)) {
       return NextResponse.json({ error: "El recargo debe estar entre 0 y 99" }, { status: 400 });
@@ -392,6 +406,8 @@ export async function POST(request: Request) {
         "reservation_lead_min",
         "reservation_tolerance_min",
         "floor_bg_url",
+        "cancel_policy_text",
+        "cancel_hours",
       ].filter((k) => k in payload && msg.includes(k));
       if (droppable.length > 0) {
         for (const k of droppable) delete payload[k];

@@ -16,6 +16,7 @@ const TIPO_OPTIONS = [
   { value: "servicio", label: "Servicio u oficio (electricista, plomero, jardinería)" },
   { value: "moda", label: "Ropa y accesorios (indumentaria, calzado, bijouterie)" },
   { value: "salud", label: "Salud y bienestar (farmacia, peluquería, estética)" },
+  { value: "estetica", label: "Estética y belleza (uñas, pestañas, cejas, masajes)" },
   { value: "otro", label: "Otro" },
 ] as const;
 

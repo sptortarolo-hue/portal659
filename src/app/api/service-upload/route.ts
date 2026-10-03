@@ -22,7 +22,7 @@ export const POST = withRateLimit(async (request: Request) => {
     return NextResponse.json({ error: "vendorId inválido" }, { status: 400 });
   }
   const vendor = await queryOne<{ id: string }>(
-    `SELECT id FROM vendors WHERE id = $1 AND vertical = 'servicio' LIMIT 1`,
+    `SELECT id FROM vendors WHERE id = $1 AND vertical IN ('servicio', 'estetica') LIMIT 1`,
     [vendorId]
   );
   if (!vendor) {

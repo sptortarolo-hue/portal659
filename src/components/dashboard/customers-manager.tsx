@@ -11,6 +11,10 @@ type Customer = {
   name: string | null;
   address: string | null;
   notes: string | null;
+  allergies?: string | null;
+  skin_notes?: string | null;
+  consent_at?: string | null;
+  birthdate?: string | null;
   last_order_at: string | null;
   total_orders: number;
   total_spent: number;
@@ -69,6 +73,8 @@ type CustomerQuote = {
 type CustomerBooking = {
   id: string;
   product_name: string | null;
+  service_label?: string | null;
+  staff_label?: string | null;
   booking_date: string;
   booking_time: string;
   status: string;
@@ -276,6 +282,11 @@ export function CustomersManager({ serviceMode = false }: { serviceMode?: boolea
   const [editName, setName] = useState("");
   const [editAddress, setAddress] = useState("");
   const [editNotes, setNotes] = useState("");
+  // Ficha de estética (alergias/piel + consentimiento). Solo se muestra en serviceMode.
+  const [editAllergies, setAllergies] = useState("");
+  const [editSkinNotes, setSkinNotes] = useState("");
+  const [editConsent, setConsent] = useState(false);
+  const [editBirthdate, setBirthdate] = useState("");
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
   // Alta manual (modo servicio).
@@ -319,6 +330,10 @@ export function CustomersManager({ serviceMode = false }: { serviceMode?: boolea
     setName(c.name || "");
     setAddress(c.address || "");
     setNotes(c.notes || "");
+    setAllergies(c.allergies || "");
+    setSkinNotes(c.skin_notes || "");
+    setConsent(!!c.consent_at);
+    setBirthdate((c.birthdate || "").slice(0, 10));
     try {
       const res = await fetch(`/api/vendor/customers/${c.id}`);
       const d = await res.json().catch(() => null);
@@ -340,7 +355,14 @@ export function CustomersManager({ serviceMode = false }: { serviceMode?: boolea
       const res = await fetch(`/api/vendor/customers/${c.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: editName, address: editAddress, notes: editNotes }),
+        body: JSON.stringify({
+          name: editName,
+          address: editAddress,
+          notes: editNotes,
+          ...(serviceMode
+            ? { allergies: editAllergies, skin_notes: editSkinNotes, consent: editConsent, birthdate: editBirthdate || null }
+            : {}),
+        }),
       });
       const d = await res.json().catch(() => null);
       if (res.ok && d?.ok) {
@@ -388,8 +410,7 @@ export function CustomersManager({ serviceMode = false }: { serviceMode?: boolea
   }
 
   const q = query.trim().toLowerCase();
-  const filtered = customers.filter((c) => {
-    if (segment !== "all" && c.segment !== segment) return false;
+  const filtered = customers.filter((c) => {    if (segment !== "all" && c.segment !== segment) return false;
     if (!q) return true;
     return (
       (c.name || "").toLowerCase().includes(q) ||
@@ -469,6 +490,46 @@ export function CustomersManager({ serviceMode = false }: { serviceMode?: boolea
       )}
 
       {msg && <p className="text-sm text-green-600 bg-green-50 rounded-lg px-3 py-2">{msg}</p>}
+
+      {serviceMode && (() => {
+        // Próximos cumpleaños (30 días): día+mes de birthdate, año corrido.
+        const today = new Date();
+        const upcoming = customers
+          .filter((c) => /^\d{4}-\d{2}-\d{2}/.test(c.birthdate || ""))
+          .map((c) => {
+            const [, m, d] = (c.birthdate || "").split("-").map(Number);
+            let next = new Date(today.getFullYear(), m - 1, d);
+            if (next.getTime() < new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime()) {
+              next = new Date(today.getFullYear() + 1, m - 1, d);
+            }
+            const days = Math.round((next.getTime() - new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime()) / 86400000);
+            return { c, days, label: next.toLocaleDateString("es-AR", { day: "numeric", month: "short" }) };
+          })
+          .filter((x) => x.days <= 30)
+          .sort((a, b) => a.days - b.days)
+          .slice(0, 5);
+        if (upcoming.length === 0) return null;
+        return (
+          <div className="rounded-xl border border-pink-200 bg-pink-50 px-3 py-2.5 space-y-1.5">
+            <p className="text-xs font-bold text-pink-800">🎂 Cumpleaños cerca</p>
+            {upcoming.map(({ c, days, label }) => (
+              <div key={c.id} className="flex items-center gap-2 text-xs text-pink-900">
+                <span className="flex-1 min-w-0 truncate">
+                  <strong>{c.name || c.phone}</strong> · {days === 0 ? "¡hoy!" : days === 1 ? "mañana" : `en ${days} días (${label})`}
+                </span>
+                <a
+                  href={`https://wa.me/${c.phone.replace(/[^\d]/g, "")}?text=${encodeURIComponent(`¡Feliz cumpleaños${c.name ? ` ${c.name.split(" ")[0]}` : ""}! 🎂 Te regalamos un mimo: contanos cuándo venís y te lo preparamos.`)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-shrink-0 rounded-md bg-green-500 text-white font-medium px-2 py-1 hover:bg-green-600"
+                >
+                  Saludar 📲
+                </a>
+              </div>
+            ))}
+          </div>
+        );
+      })()}
 
       {stats && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -582,6 +643,50 @@ export function CustomersManager({ serviceMode = false }: { serviceMode?: boolea
                       className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none"
                     />
                   </div>
+                  {serviceMode && (
+                    <>
+                      <div className="grid sm:grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">⚠️ Alergias</label>
+                          <textarea
+                            value={editAllergies}
+                            onChange={(e) => setAllergies(e.target.value)}
+                            rows={2}
+                            placeholder="Ej: alergia al látex, níquel..."
+                            className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">🧴 Piel / observaciones</label>
+                          <textarea
+                            value={editSkinNotes}
+                            onChange={(e) => setSkinNotes(e.target.value)}
+                            rows={2}
+                            placeholder="Ej: piel sensible, rosácea, productos usados..."
+                            className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none"
+                          />
+                        </div>
+                      </div>
+                      <label className="flex items-center gap-2 cursor-pointer text-xs text-muted-foreground">
+                        <input
+                          type="checkbox"
+                          checked={editConsent}
+                          onChange={(e) => setConsent(e.target.checked)}
+                          className="h-4 w-4 rounded border-border"
+                        />
+                        <span>✅ Consentimiento informado registrado{(c.consent_at || editConsent) ? ` (${fmtDate(c.consent_at)})` : ""}</span>
+                      </label>
+                      <div>
+                        <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">🎂 Cumpleaños</label>
+                        <input
+                          type="date"
+                          value={editBirthdate}
+                          onChange={(e) => setBirthdate(e.target.value)}
+                          className="mt-1 w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
+                        />
+                      </div>
+                    </>
+                  )}
                   <div className="flex flex-wrap gap-2">
                     <Button size="sm" onClick={() => saveCustomer(c)} disabled={saving}>
                       {saving ? "Guardando..." : "Guardar"}
@@ -630,7 +735,7 @@ export function CustomersManager({ serviceMode = false }: { serviceMode?: boolea
                                   {bookings.map((b) => (
                                     <div key={b.id} className="flex justify-between gap-2 text-xs py-1 border-b border-border last:border-0">
                                       <span className="min-w-0 truncate">
-                                        {b.booking_date} {String(b.booking_time || "").slice(0, 5)}{b.product_name ? ` · ${b.product_name}` : ""} — {b.status}
+                                        {b.booking_date} {String(b.booking_time || "").slice(0, 5)}{(b.service_label || b.product_name) ? ` · ${b.service_label || b.product_name}` : ""}{b.staff_label ? ` (${b.staff_label})` : ""} — {b.status}
                                       </span>
                                     </div>
                                   ))}

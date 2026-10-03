@@ -81,4 +81,12 @@ export const VERTICALS = [
     color: "vert-salud",
     hex: "#ec4899",
   },
+  {
+    slug: "estetica",
+    name: "Estética y Belleza",
+    description: "Uñas, pestañas, cejas, masajes y cuidado personal",
+    emoji: "💅",
+    color: "vert-estetica",
+    hex: "#f472b6",
+  },
 ] as const;

@@ -11,18 +11,41 @@ export function BookingManualModal({
   initialDate,
   onClose,
   onCreated,
+  serviceOptions,
+  staffOptions,
+  locationOptions,
+  initialCustomerName,
+  initialCustomerPhone,
+  initialServiceId,
+  initialStaffId,
+  initialDurationMin,
+  initialNotes,
+  initialLocationId,
 }: {
   initialDate?: string;
   onClose: () => void;
   onCreated: (warning?: string | null) => void;
+  serviceOptions?: { id: string; name: string }[];
+  staffOptions?: { id: string; name: string }[];
+  locationOptions?: { id: string; name: string }[];
+  initialCustomerName?: string;
+  initialCustomerPhone?: string;
+  initialServiceId?: string;
+  initialStaffId?: string;
+  initialDurationMin?: number;
+  initialNotes?: string;
+  initialLocationId?: string;
 }) {
-  const [customerName, setCustomerName] = useState("");
-  const [customerPhone, setCustomerPhone] = useState("");
+  const [customerName, setCustomerName] = useState(initialCustomerName || "");
+  const [customerPhone, setCustomerPhone] = useState(initialCustomerPhone || "");
   const [serviceName, setServiceName] = useState("");
+  const [serviceId, setServiceId] = useState(initialServiceId || "");
+  const [staffId, setStaffId] = useState(initialStaffId || "");
+  const [locationId, setLocationId] = useState(initialLocationId || "");
   const [bookingDate, setBookingDate] = useState(initialDate || new Date().toISOString().slice(0, 10));
   const [bookingTime, setBookingTime] = useState("");
-  const [duration, setDuration] = useState("60");
-  const [notes, setNotes] = useState("");
+  const [duration, setDuration] = useState(String(initialDurationMin || 60));
+  const [notes, setNotes] = useState(initialNotes || "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -40,7 +63,10 @@ export function BookingManualModal({
         body: JSON.stringify({
           customer_name: customerName.trim(),
           customer_phone: customerPhone.trim(),
-          product_name: serviceName.trim() || null,
+          product_name: serviceId ? null : serviceName.trim() || null,
+          service_id: serviceId || null,
+          staff_id: staffId || null,
+          location_id: locationId || null,
           booking_date: bookingDate,
           booking_time: bookingTime,
           duration_min: Number(duration) || 60,
@@ -65,7 +91,9 @@ export function BookingManualModal({
       >
         <div className="p-5 pb-3 shrink-0">
           <h3 className="font-display text-lg font-semibold">＋ Nuevo turno</h3>
-          <p className="text-xs text-muted-foreground">Nace confirmado (entra a recordatorios). No cuenta para el tope.</p>
+          <p className="text-xs text-muted-foreground">
+            {initialCustomerName ? `Repitiendo el turno de ${initialCustomerName}. Elegí la nueva fecha.` : "Nace confirmado (entra a recordatorios). No cuenta para el tope."}
+          </p>
         </div>
         <div className="overflow-y-auto px-5 pb-3 space-y-3 flex-1 min-h-0">
           <CustomerPicker name={customerName} phone={customerPhone} onPick={(n, p) => { setCustomerName(n); setCustomerPhone(p); }} />
@@ -79,10 +107,56 @@ export function BookingManualModal({
               <Input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="221 555 0000" className="mt-1 h-9 text-sm" />
             </div>
           </div>
-          <div>
-            <Label className="text-xs">Servicio</Label>
-            <Input value={serviceName} onChange={(e) => setServiceName(e.target.value)} placeholder="Ej: arreglo, instalación..." className="mt-1 h-9 text-sm" />
-          </div>
+          {serviceOptions && serviceOptions.length > 0 ? (
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <Label className="text-xs">Servicio</Label>
+                <select
+                  value={serviceId}
+                  onChange={(e) => setServiceId(e.target.value)}
+                  className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
+                >
+                  <option value="">Sin servicio / otro</option>
+                  {serviceOptions.map((s) => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <Label className="text-xs">Profesional</Label>
+                <select
+                  value={staffId}
+                  onChange={(e) => setStaffId(e.target.value)}
+                  className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
+                >
+                  <option value="">Sin asignar</option>
+                  {(staffOptions || []).map((s) => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          ) : (
+            <div>
+              <Label className="text-xs">Servicio</Label>
+              <Input value={serviceName} onChange={(e) => setServiceName(e.target.value)} placeholder="Ej: arreglo, instalación..." className="mt-1 h-9 text-sm" />
+            </div>
+          )}
+          {locationOptions && locationOptions.length > 0 && (
+            <div>
+              <Label className="text-xs">Sede</Label>
+              <select
+                value={locationId}
+                onChange={(e) => setLocationId(e.target.value)}
+                className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
+              >
+                <option value="">Sin sede</option>
+                {locationOptions.map((s) => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
           <div className="grid grid-cols-3 gap-2">
             <div>
               <Label className="text-xs">Fecha *</Label>

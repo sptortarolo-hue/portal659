@@ -256,9 +256,9 @@ export async function POST(request: Request) {
   // Venta directa: ticket completo en todas las verticales, sin cartel
   // grande ni talones: "Mostrador · Nro. X" en tamaño normal.
   const isDirectOrder = (order as any)?.is_direct === true;
-  // Retail (moda/comercio): el ticket sale como COMPROBANTE con Nro. diario
+  // Retail (moda/comercio/estética): el ticket sale como COMPROBANTE con Nro. diario
   // y datos del cliente; gastronomía mantiene TICKET. La directa no usa retail.
-  const isRetailVendor = !isDirectOrder && (vendor.vertical === "moda" || vendor.vertical === "comercio");
+  const isRetailVendor = !isDirectOrder && (vendor.vertical === "moda" || vendor.vertical === "comercio" || vendor.vertical === "estetica");
   // Bloque fiscal: si el pedido tiene comprobante ARCA, el ticket lo imprime
   // con CAE + QR (tolerante a migración fiscal sin aplicar).
   let fiscal: FiscalPrintInfo | null = null;

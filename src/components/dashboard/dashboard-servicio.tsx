@@ -14,11 +14,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { MpConnectCard } from "@/components/dashboard/mp-connect-card";
+import { StripeConnectCard } from "@/components/dashboard/stripe-connect-card";
 import { VendorReviews } from "@/components/vendor/vendor-reviews";
 import { CustomersManager } from "@/components/dashboard/customers-manager";
 import { PlanLock } from "@/components/vendor/plan-lock";
 import { QuoteManualModal } from "@/components/dashboard/quote-manual-modal";
 import { BookingManualModal } from "@/components/dashboard/booking-manual-modal";
+import { EsteticaServicesManager, EsteticaStaffManager, EsteticaCancelPolicy, EsteticaPacksManager, EsteticaCommissionsReport, EsteticaGiftcardsManager, EsteticaLocationsManager } from "@/components/dashboard/estetica-managers";
 import type { Vendor, Product, ProductModifier, Booking, VendorGallery } from "@/types/database";
 
 type Props = {
@@ -221,6 +223,11 @@ function ServicioHistorial({
               {(b.product_label || b.product_name) && (
                 <p className="text-xs text-muted-foreground truncate">{b.product_label || b.product_name}</p>
               )}
+              {(b.service_label || b.staff_label || b.location_label) && (
+                <p className="text-xs text-muted-foreground truncate">
+                  {[b.service_label, b.staff_label, b.location_label].filter(Boolean).join(" · ")}
+                </p>
+              )}
             </div>
             <Badge className={`flex-shrink-0 ${b.status === "confirmed" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-600"}`}>
               {b.status === "confirmed" ? "Realizado" : "Cancelado"}
@@ -256,6 +263,9 @@ export default function DashboardServicio({
 }: Props) {
   // Sin section se muestra todo (legacy); con section, solo esa sub-vista.
   const sec = section ?? "all";
+  // Estética opera sobre este mismo panel (turnera + presupuestos) y suma
+  // catálogo de servicios, profesionales y política de cancelación.
+  const isEstetica = vendor?.vertical === "estetica";
   const [storeName, setStoreName] = useState(vendor?.store_name || "");
   const [storeCategory, setStoreCategory] = useState(vendor?.category || "");
   const [address, setAddress] = useState(vendor?.address || "");
@@ -291,6 +301,17 @@ export default function DashboardServicio({
       ? vendor.quote_slots
       : ["mañana", "tarde"]
   );
+  // Política de cancelación (estética; texto + horas límite).
+  const [cancelPolicy, setCancelPolicy] = useState(
+    typeof vendor?.cancel_policy_text === "string" ? vendor.cancel_policy_text : ""
+  );
+  const [cancelHours, setCancelHours] = useState(
+    (vendor as any)?.cancel_hours != null ? String((vendor as any).cancel_hours) : "24"
+  );
+  // Catálogo para el modal de turno manual (estética): servicios + staff.
+  const [catalogServices, setCatalogServices] = useState<{ id: string; name: string }[]>([]);
+  const [catalogStaff, setCatalogStaff] = useState<{ id: string; name: string }[]>([]);
+  const [catalogLocations, setCatalogLocations] = useState<{ id: string; name: string }[]>([]);
 
 const PREF_DAY_LABELS: Record<string, string> = {
   lun: "Lun", mar: "Mar", mie: "Mié", jue: "Jue", vie: "Vie", sab: "Sáb", dom: "Dom",
@@ -325,6 +346,14 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
   // Modales manuales.
   const [quoteModalOpen, setQuoteModalOpen] = useState(false);
   const [bookingModalOpen, setBookingModalOpen] = useState(false);
+  // Rebooking: prefill del turno manual con los datos de un turno anterior.
+  const [rebook, setRebook] = useState<{
+    customerName: string;
+    customerPhone: string;
+    serviceId: string;
+    staffId: string;
+    durationMin: number;
+  } | null>(null);
 
   async function handleConvertQuote(id: string) {
     if (!convDate || !convTime) {
@@ -419,6 +448,8 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
         ? vendor.quote_slots
         : ["mañana", "tarde"]
     );
+    setCancelPolicy(typeof vendor.cancel_policy_text === "string" ? vendor.cancel_policy_text : "");
+    setCancelHours((vendor as any)?.cancel_hours != null ? String((vendor as any).cancel_hours) : "24");
     setStorePreview(vendor.image_url || null);
     setLogoPreview(vendor.logo_url || null);
   }, [vendor]);
@@ -470,8 +501,36 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
       quote_pref_enabled: quotePrefEnabled,
       quote_days: quoteDays,
       quote_slots: quoteSlots,
+      cancel_policy_text: cancelPolicy.trim() || null,
+      cancel_hours: cancelHours === "" ? 24 : Math.max(0, Number(cancelHours) || 0),
     });
   }
+
+  // Catálogo de servicios + profesionales (estética) para el turno manual.
+  useEffect(() => {
+    if (!isEstetica) return;
+    (async () => {
+      try {
+        const [sRes, tRes, lRes] = await Promise.all([
+          fetch("/api/vendor/services").catch(() => null),
+          fetch("/api/vendor/estetica-staff").catch(() => null),
+          fetch("/api/vendor/estetica-locations").catch(() => null),
+        ]);
+        if (sRes?.ok) {
+          const data = await sRes.json().catch(() => ({}));
+          setCatalogServices((data.services || []).map((s: any) => ({ id: String(s.id), name: String(s.name ?? "") })));
+        }
+        if (tRes?.ok) {
+          const data = await tRes.json().catch(() => ({}));
+          setCatalogStaff((data.staff || []).map((s: any) => ({ id: String(s.id), name: String(s.name ?? "") })));
+        }
+        if (lRes?.ok) {
+          const data = await lRes.json().catch(() => ({}));
+          setCatalogLocations((data.locations || []).filter((l: any) => l.active !== false).map((l: any) => ({ id: String(l.id), name: String(l.name ?? "") })));
+        }
+      } catch { /* sin migración: listas vacías */ }
+    })();
+  }, [isEstetica]);
 
   async function handleUpdateBookingStatus(id: string, status: string) {
     try {
@@ -573,6 +632,53 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
       setMsg("Error de conexión");
     } finally {
       setDepositBusy(null);
+    }
+  }
+
+  // Link de seña por Stripe (misma seña, otro riel). Guarda en el mismo box.
+  async function handleStripeDepositLink(id: string) {
+    setDepositBusy(id);
+    try {
+      const res = await fetch(`/api/vendor/quotes/${id}/stripe-deposit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deposit_pct: depositPct === "" ? undefined : Number(depositPct) }),
+      });
+      const data = await res.json();
+      if (data.error) {
+        setMsg(data.error);
+        return;
+      }
+      setDepositLink((prev) => ({ ...prev, [id]: data.initPoint }));
+      setMsg(`Link de seña (Stripe) generado: $${Number(data.amount).toLocaleString("es-AR")} (${data.pct}%). Pasáselo al cliente por WhatsApp.`);
+      loadQuotes();
+    } catch {
+      setMsg("Error de conexión");
+    } finally {
+      setDepositBusy(null);
+    }
+  }
+
+  // Link de seña por Stripe para un TURNO (usa la seña del servicio).
+  const [stripeBookingLink, setStripeBookingLink] = useState<Record<string, string>>({});
+  const [stripeBookingBusy, setStripeBookingBusy] = useState<string | null>(null);
+
+  async function handleBookingStripeDepositLink(id: string) {
+    setStripeBookingBusy(id);
+    try {
+      const res = await fetch(`/api/vendor/bookings/${id}/stripe-deposit`, { method: "POST" });
+      const data = await res.json();
+      if (data.error) {
+        setMsg(data.error);
+        return;
+      }
+      setStripeBookingLink((prev) => ({ ...prev, [id]: data.initPoint }));
+      setMsg(`Link de seña del turno (Stripe): $${Number(data.amount).toLocaleString("es-AR")}. Pasáselo al cliente por WhatsApp.`);
+      reload();
+    } catch {
+      setMsg("Error de conexión");
+    } finally {
+      setStripeBookingBusy(null);
     }
   }
 
@@ -884,6 +990,35 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
         </div>
       </CollapsibleSection>
 
+      {isEstetica && (
+      <CollapsibleSection icon="💅" title="Servicios y profesionales">
+        <div className="space-y-3">
+          <EsteticaServicesManager />
+          <EsteticaStaffManager />
+          <EsteticaPacksManager />
+          <EsteticaCommissionsReport />
+          <EsteticaGiftcardsManager />
+          <EsteticaLocationsManager />
+        </div>
+      </CollapsibleSection>
+      )}
+
+      {isEstetica && (
+      <CollapsibleSection icon="📝" title="Política de cancelación">
+        <div className="space-y-3">
+          <EsteticaCancelPolicy
+            policy={cancelPolicy}
+            hours={cancelHours}
+            onPolicy={setCancelPolicy}
+            onHours={setCancelHours}
+          />
+          <Button onClick={handleSaveAll} className="w-full" disabled={uploading}>
+            {uploading ? "Guardando..." : "Guardar política"}
+          </Button>
+        </div>
+      </CollapsibleSection>
+      )}
+
       <CollapsibleSection icon="🚨" title="Urgencia 24hs">
         <div className="space-y-3">
           <div className="flex items-center justify-between">
@@ -992,6 +1127,9 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
                             <p className="text-xs text-muted-foreground">
                               {booking.booking_time || "Sin horario"}
                               {(booking.product_label || booking.product_name) && ` · ${booking.product_label || booking.product_name}`}
+                              {(booking.service_label || booking.staff_label) && ` · ${[booking.service_label, booking.staff_label].filter(Boolean).join(" · ")}`}
+                              {booking.location_label && ` · 📍 ${booking.location_label}`}
+                              {(booking as any).deposit_status === "paid" ? " · seña pagada ✅" : ""}
                             </p>
                             {booking.customer_phone && (
                               <a
@@ -1054,7 +1192,52 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
                                   No vino
                                 </Button>
                               )}
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 text-xs"
+                                title="Agendar el próximo turno con los mismos datos"
+                                onClick={() => {
+                                  setRebook({
+                                    customerName: String(booking.customer_name || ""),
+                                    customerPhone: String(booking.customer_phone || ""),
+                                    serviceId: typeof booking.service_id === "string" ? booking.service_id : "",
+                                    staffId: typeof booking.staff_id === "string" ? booking.staff_id : "",
+                                    durationMin: Number(booking.duration_min) || 60,
+                                  });
+                                  setBookingModalOpen(true);
+                                }}
+                              >
+                                🔁 Repetir
+                              </Button>
                             </>
+                          )}
+                          {canDeposits && vendor?.stripe_account_id && Number((booking as any).deposit_amount) > 0 && (booking as any).deposit_status !== "paid" && (booking.status === "pending" || booking.status === "confirmed") && (
+                            <div className="w-full">
+                              {(booking as any).deposit_status === "paid" ? null : stripeBookingLink[booking.id] ? (
+                                <div className="flex items-center gap-2">
+                                  <Input value={stripeBookingLink[booking.id]} readOnly className="h-7 text-[11px] flex-1" onFocus={(e) => e.target.select()} />
+                                  <a
+                                    href={`https://wa.me/?text=${encodeURIComponent(`Hola, te paso el link para la seña del turno ($${Number((booking as any).deposit_amount).toLocaleString("es-AR")}): ${stripeBookingLink[booking.id]}`)}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-xs font-medium text-green-600 hover:underline whitespace-nowrap"
+                                  >
+                                    📲 Enviar
+                                  </a>
+                                </div>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 text-xs"
+                                  disabled={stripeBookingBusy === booking.id}
+                                  onClick={() => handleBookingStripeDepositLink(booking.id)}
+                                >
+                                  {stripeBookingBusy === booking.id ? "Generando..." : `💳 Link seña $${Number((booking as any).deposit_amount).toLocaleString("es-AR")}`}
+                                </Button>
+                              )}
+                            </div>
                           )}
                         </div>
                       </Card>
@@ -1187,7 +1370,7 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
                                   La cotización con precio formal es del plan Oficios.
                                 </p>
                               )}
-                              <div className="flex gap-2">
+                        <div className="flex gap-2 flex-wrap">
                                 <Button size="sm" className="h-7 text-xs" onClick={() => handleRespondQuote(q.id, "responded")}>
                                   Enviar respuesta
                                 </Button>
@@ -1233,6 +1416,17 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
                             >
                               {depositBusy === q.id ? "Generando..." : "Generar link de cobro"}
                             </Button>
+                            {vendor?.stripe_account_id && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-8 text-xs"
+                                disabled={depositBusy === q.id}
+                                onClick={() => handleStripeDepositLink(q.id)}
+                              >
+                                {depositBusy === q.id ? "Generando..." : "💳 Link Stripe"}
+                              </Button>
+                            )}
                           </div>
                           {depositLink[q.id] && (
                             <div className="flex items-center gap-2">
@@ -1322,6 +1516,10 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
           <MpConnectCard
             mpUserId={vendor?.mp_user_id ?? null}
             mpConnectedAt={vendor?.mp_connected_at ?? null}
+          />
+          <StripeConnectCard
+            stripeAccountId={vendor?.stripe_account_id ?? null}
+            stripeConnectedAt={vendor?.stripe_connected_at ?? null}
           />
           <div>
             <Label className="text-xs text-muted-foreground">Seña por defecto (%)</Label>
@@ -1426,9 +1624,19 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
 
       {bookingModalOpen && (
         <BookingManualModal
-          onClose={() => setBookingModalOpen(false)}
+          key={rebook ? `rebook-${rebook.customerPhone}-${rebook.serviceId}-${rebook.staffId}` : "new"}
+          onClose={() => { setBookingModalOpen(false); setRebook(null); }}
+          serviceOptions={isEstetica ? catalogServices : undefined}
+          staffOptions={isEstetica ? catalogStaff : undefined}
+          locationOptions={isEstetica ? catalogLocations : undefined}
+          initialCustomerName={rebook?.customerName}
+          initialCustomerPhone={rebook?.customerPhone}
+          initialServiceId={rebook?.serviceId}
+          initialStaffId={rebook?.staffId}
+          initialDurationMin={rebook?.durationMin}
           onCreated={(warning) => {
             setBookingModalOpen(false);
+            setRebook(null);
             setMsg(warning || "Turno agendado (no cuenta para el tope mensual)");
             onQuotesChanged?.();
             reload();

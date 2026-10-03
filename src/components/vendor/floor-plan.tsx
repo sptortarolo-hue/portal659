@@ -333,14 +333,22 @@ export function FloorPlan({
         onResize(t.id, w, h);
         return;
       }
-      // Resize de zona (rect/círculo) por arrastre de esquina.
+      // Resize de zona (rect/círculo) por arrastre de esquina, o largo de
+      // pared arrastrando su extremo (conserva el ángulo).
       if (decorResizeRef.current && onDecorResize) {
         const d = (decor || []).find((x) => x.id === decorResizeRef.current!.id);
         if (!d) return;
         const rect = canvas.getBoundingClientRect();
+        draggedRef.current = true;
+        if (d.kind === "wall") {
+          const qx = px(e.clientX, rect.left, v.x) - (d.x ?? 0);
+          const qy = px(e.clientY, rect.top, v.y) - (d.y ?? 0);
+          const len = Math.max(20, Math.min(800, snap(Math.round(Math.hypot(qx, qy)))));
+          onDecorResize(d.id, len, d.h ?? 8);
+          return;
+        }
         const w = Math.max(20, Math.min(800, snap(px(e.clientX, rect.left, v.x) - (d.x ?? 0))));
         const h = Math.max(20, Math.min(800, snap(px(e.clientY, rect.top, v.y) - (d.y ?? 0))));
-        draggedRef.current = true;
         onDecorResize(d.id, w, h);
         return;
       }
@@ -733,18 +741,43 @@ export function FloorPlan({
             .filter((d) => d.kind === "wall")
             .map((d) => {
               const l = wallLine(d);
+              const isSel = editDecorId === d.id;
               return (
-                <line
+                <g
                   key={d.id}
-                  x1={l.x1}
-                  y1={l.y1}
-                  x2={l.x2}
-                  y2={l.y2}
-                  stroke="#64748b"
-                  strokeWidth={6}
-                  strokeLinecap="round"
-                  opacity={0.85}
-                />
+                  onPointerDown={editing ? (e) => handleDecorPointerDown(e, d) : undefined}
+                  onClick={(e) => handleDecorClick(e, d)}
+                >
+                  {/* Línea de toque ancha (los 6px visibles son imposibles de tocar). */}
+                  <line
+                    x1={l.x1}
+                    y1={l.y1}
+                    x2={l.x2}
+                    y2={l.y2}
+                    stroke="transparent"
+                    strokeWidth={24}
+                    strokeLinecap="round"
+                  />
+                  <line
+                    x1={l.x1}
+                    y1={l.y1}
+                    x2={l.x2}
+                    y2={l.y2}
+                    stroke="#64748b"
+                    strokeWidth={6}
+                    strokeLinecap="round"
+                    opacity={0.85}
+                  />
+                  {editing && tool === "move" && isSel && (
+                    <circle
+                      cx={l.x2}
+                      cy={l.y2}
+                      r={10}
+                      fill="var(--primary)"
+                      onPointerDown={(e) => handleDecorResizeDown(e, d)}
+                    />
+                  )}
+                </g>
               );
             })}
           {wallPreview && (

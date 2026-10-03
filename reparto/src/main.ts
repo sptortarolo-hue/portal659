@@ -131,15 +131,16 @@ async function enterMain() {
   try { await RepartoLocation.requestNotifPermission(); } catch {}
   await refreshStatus();
   await loadOrders();
+  await reconcileSharing();
 }
 
-async function loadOrders() {
+async function loadOrders(silent?: boolean) {
   if (!session) return;
   try {
     const res = await api("/api/vendor/orders");
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      log(data.error || "No se pudieron cargar los pedidos", "error");
+      if (!silent) log(data.error || "No se pudieron cargar los pedidos", "error");
       if (res.status === 401 || res.status === 403) doLogout();
       return;
     }
@@ -148,7 +149,7 @@ async function loadOrders() {
       .sort((a, b) => +new Date(a.created_at) - +new Date(b.created_at));
     render();
   } catch {
-    log("Sin conexión al cargar pedidos", "error");
+    if (!silent) log("Sin conexión al cargar pedidos", "error");
   }
 }
 
@@ -176,6 +177,7 @@ async function markDelivered(id: string) {
     const data = await res.json().catch(() => ({}));
     log(data.error ? data.error : "Entregado ✅", data.error ? "error" : "ok");
     await loadOrders();
+    await reconcileSharing();
   } catch {
     log("Sin conexión", "error");
   }
@@ -206,9 +208,45 @@ async function startNative(o: BoardOrder) {
 async function stopNative() {
   try {
     await RepartoLocation.stopSharing();
-    log("Ubicación pausada");
     await refreshStatus();
   } catch {}
+}
+
+/**
+ * Reconciliación automática (sin botón manual): mientras haya pedidos míos
+ * en `sent`, el servicio tiene que estar compartiendo uno válido. El plugin
+ * comparte de a un pedido: se elige el más antiguo. Si no hay destinos, se
+ * apaga. Sin permiso de ubicación no se intenta (la línea de estado guía a
+ * otorgarlo).
+ */
+async function reconcileSharing() {
+  if (!session) return;
+  let st: { sharing: boolean; orderId: string; locationGranted: boolean } | null = null;
+  try {
+    const s = await RepartoLocation.status();
+    st = { sharing: !!s.sharing, orderId: s.orderId || "", locationGranted: !!s.locationGranted };
+  } catch {
+    return;
+  }
+  sharingOrderId = st.sharing ? st.orderId : "";
+  const targets = orders
+    .filter((o) => o.assigned_to === session?.profileId && o.status === "sent")
+    .sort((a, b) => +new Date(a.created_at) - +new Date(b.created_at));
+  if (targets.length === 0) {
+    if (sharingOrderId) await stopNative();
+    else await refreshStatus();
+    return;
+  }
+  if (targets.some((t) => t.id === sharingOrderId)) {
+    await refreshStatus();
+    return;
+  }
+  if (sharingOrderId) await stopNative();
+  if (!st.locationGranted) {
+    await refreshStatus();
+    return;
+  }
+  await startNative(targets[0]);
 }
 
 async function refreshStatus() {
@@ -270,13 +308,7 @@ function card(o: BoardOrder, kind: "free" | "mine"): HTMLElement {
     b.onclick = () => claim(o.id);
     btns.appendChild(b);
   } else {
-    if (o.status === "sent") {
-      const b = document.createElement("button");
-      b.textContent = sharing ? "⏸️ Pausar ubicación" : "🛰️ Compartir ubicación";
-      b.className = sharing ? "danger" : "ok";
-      b.onclick = () => (sharing ? stopNative() : startNative(o));
-      btns.appendChild(b);
-    }
+    // Sin botón manual: la ubicación se comparte sola (ver reconcileSharing).
     const d = document.createElement("button");
     d.textContent = "✅ Entregado";
     d.onclick = () => markDelivered(o.id);
@@ -347,4 +379,12 @@ window.addEventListener("load", () => {
 });
 
 init();
-setInterval(() => { if (session) { refreshStatus().catch(() => {}); } }, 10000);
+// Poll liviano: pedidos + reconciliación del sharing automático (sin botón).
+// loadOrders en silencio para no spamear "sin conexión" cuando no hay red.
+setInterval(() => {
+  if (session) {
+    loadOrders(true)
+      .then(() => reconcileSharing())
+      .catch(() => {});
+  }
+}, 10000);

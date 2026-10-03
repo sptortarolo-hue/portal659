@@ -30,37 +30,36 @@ export function DeliveryBoard({ vendorId, userId }: { vendorId: string; userId: 
   const [orders, setOrders] = useState<DeliveryOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState("");
-  // Punto vivo: solo un pedido compartiendo a la vez (el que se va a entregar).
-  const [sharingId, setSharingId] = useState<string | null>(null);
+  // Punto vivo AUTOMÁTICO: mientras haya pedidos asignados a este repartidor
+  // en `sent`, se comparte a todos (sin botón manual). Un solo watch (las
+  // coordenadas son las mismas) + un POST por pedido destino.
+  const [sharing, setSharing] = useState(false);
+  const [shareCount, setShareCount] = useState(0);
   const [shareError, setShareError] = useState("");
+  const [shareBlocked, setShareBlocked] = useState(false);
+  // Pulso manual (botón Reintentar): re-evalúa el auto-arranque.
+  const [tick, setTick] = useState(0);
   const watchIdRef = useRef<number | null>(null);
   const wakeLockRef = useRef<{ release: () => Promise<void> } | null>(null);
   const lastSentRef = useRef<{ lat: number; lng: number; at: number } | null>(null);
-  const activeShareRef = useRef<string | null>(null);
-  const resumeTriedRef = useRef(false);
+  const targetsRef = useRef<string[]>([]);
 
-  const SHARE_KEY = "portal659-sharing-order";
-
-  function stopSharing() {
+  function stopWatch() {
     if (watchIdRef.current !== null && typeof navigator !== "undefined" && navigator.geolocation) {
       navigator.geolocation.clearWatch(watchIdRef.current);
     }
     watchIdRef.current = null;
     lastSentRef.current = null;
+    targetsRef.current = [];
     if (wakeLockRef.current) {
       wakeLockRef.current.release().catch(() => {});
       wakeLockRef.current = null;
     }
-    try {
-      localStorage.removeItem(SHARE_KEY);
-    } catch {
-      /* storage no disponible: nada que limpiar */
-    }
-    activeShareRef.current = null;
-    setSharingId(null);
+    setSharing(false);
+    setShareCount(0);
   }
 
-  // Corta el watch al desmontar (si cambia de pestaña sin pausar).
+  // Corta el watch al desmontar (si cambia de pestaña).
   useEffect(() => {
     return () => {
       if (watchIdRef.current !== null && typeof navigator !== "undefined" && navigator.geolocation) {
@@ -80,58 +79,61 @@ export function DeliveryBoard({ vendorId, userId }: { vendorId: string; userId: 
     return 2 * R * Math.asin(Math.sqrt(s));
   }
 
-  async function sendPosition(orderId: string, lat: number, lng: number) {
-    try {
-      const res = await fetch(`/api/vendor/orders/${orderId}/position`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lat, lng }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        // El server solo acepta en `sent`: si el local aún no lo despachó
-        // (o ya se entregó), se corta solo mostrando el motivo.
-        stopSharing();
-        setShareError(data.error || "No se pudo compartir la ubicación.");
-        return false;
+  // Postea a todos los destinos (best-effort por pedido: si uno ya se
+  // entregó/canceló, el server lo rechaza y el poll de pedidos lo saca de
+  // la lista; los demás siguen). 401/403 = sesión vencida: se corta con
+  // aviso (no se reintenta solo).
+  async function sendPosition(lat: number, lng: number): Promise<boolean> {
+    const targets = targetsRef.current;
+    if (targets.length === 0 || watchIdRef.current === null) return false;
+    let okAny = false;
+    let authFailed = false;
+    for (const orderId of targets) {
+      try {
+        const res = await fetch(`/api/vendor/orders/${orderId}/position`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ lat, lng }),
+        });
+        if (res.status === 401 || res.status === 403) authFailed = true;
+        else if (res.ok) okAny = true;
+      } catch {
+        /* sin red: se reintenta en el próximo fix */
       }
-      return true;
-    } catch {
-      return false; // sin red: se reintenta en el próximo fix (best-effort)
     }
+    if (authFailed) {
+      stopWatch();
+      setShareBlocked(true);
+      setShareError("Sesión vencida: recargá la página para seguir compartiendo.");
+      return false;
+    }
+    return okAny;
   }
 
-  async function startSharing(orderId: string) {
-    setShareError("");
+  function startWatch() {
+    if (watchIdRef.current !== null) return;
     if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setShareBlocked(true);
       setShareError("Tu celu/navegador no soporta geolocalización.");
       return;
     }
     // Best-effort: evita que se apague la pantalla mientras reparte.
-    try {
-      const wl = await (navigator as Navigator & { wakeLock?: { request: (t: string) => Promise<{ release: () => Promise<void> }> } }).wakeLock?.request("screen");
-      if (wl) wakeLockRef.current = wl;
-    } catch {
-      /* sin WakeLock: igual se comparte con la pantalla prendida */
-    }
-    if (watchIdRef.current !== null) {
-      navigator.geolocation.clearWatch(watchIdRef.current);
-      watchIdRef.current = null;
-    }
+    (navigator as Navigator & { wakeLock?: { request: (t: string) => Promise<{ release: () => Promise<void> }> } }).wakeLock?.request("screen").then(
+      (wl) => {
+        if (wl) wakeLockRef.current = wl;
+      },
+      () => {
+        /* sin WakeLock: igual se comparte con la pantalla prendida */
+      }
+    );
     lastSentRef.current = null;
-    try {
-      localStorage.setItem(SHARE_KEY, orderId);
-    } catch {
-      /* sin storage: el sharing vive igual hasta recargar */
-    }
 
     // Fix inmediato: no espera al primer movimiento (clave al retomar con
-    // la pantalla recién prendida o al abrir desde el push-nudge).
-    activeShareRef.current = orderId;
+    // la pantalla recién prendida).
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
-        if (activeShareRef.current !== orderId) return;
-        const ok = await sendPosition(orderId, pos.coords.latitude, pos.coords.longitude);
+        if (watchIdRef.current === null) return;
+        const ok = await sendPosition(pos.coords.latitude, pos.coords.longitude);
         if (ok) lastSentRef.current = { lat: pos.coords.latitude, lng: pos.coords.longitude, at: Date.now() };
       },
       () => {},
@@ -144,20 +146,36 @@ export function DeliveryBoard({ vendorId, userId }: { vendorId: string; userId: 
         const last = lastSentRef.current;
         const now = Date.now();
         if (last && now - last.at < 15_000 && distM(last.lat, last.lng, lat, lng) < 20) return;
-        const ok = await sendPosition(orderId, lat, lng);
-        if (ok !== false) lastSentRef.current = { lat, lng, at: Date.now() };
+        const ok = await sendPosition(lat, lng);
+        if (ok) lastSentRef.current = { lat, lng, at: Date.now() };
       },
       (err) => {
-        stopSharing();
-        setShareError(
-          err.code === err.PERMISSION_DENIED
-            ? "Permiso de ubicación denegado: activalo para compartir el recorrido."
-            : "No se pudo obtener tu ubicación (GPS apagado o sin señal)."
-        );
+        // DENEGADO = no reintentar solo (el poll de pedidos lo reintentaría
+        // cada 15s): aviso persistente + botón Reintentar.
+        if (err.code === err.PERMISSION_DENIED) {
+          stopWatch();
+          setShareBlocked(true);
+          setShareError("Permiso de ubicación denegado: permitilo para compartir el recorrido.");
+        }
+        // Error transitorio (GPS apagado/sin señal): el watch sigue vivo y
+        // retoma solo; solo se avisa.
+        else {
+          setShareError("Sin señal GPS por ahora: se sigue intentando solo.");
+        }
       },
       { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }
     );
-    setSharingId(orderId);
+    setShareBlocked(false);
+    setShareError("");
+    setSharing(true);
+  }
+
+  function retrySharing() {
+    setShareBlocked(false);
+    setShareError("");
+    lastSentRef.current = null;
+    // El efecto de abajo arranca el watch si hay destinos.
+    setTick((t) => t + 1);
   }
 
   async function load() {
@@ -185,33 +203,23 @@ export function DeliveryBoard({ vendorId, userId }: { vendorId: string; userId: 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vendorId]);
 
-  // Auto-resume: si se recargó la página (o se reabrió desde el push-nudge)
-  // con un sharing pendiente y el pedido sigue En camino + asignado,
-  // se retoma solo. Si ya no aplica, se limpia el pendiente.
+  // Reconciliación automática: con pedidos asignados a mí en `sent` el
+  // watch tiene que estar prendido; sin ellos, apagado. Corre en cada
+  // carga de pedidos (poll 15s) + reintento manual. Sin botón: el usuario
+  // no prende/apaga nada.
   useEffect(() => {
-    if (loading || resumeTriedRef.current || activeShareRef.current) return;
-    let pending: string | null = null;
-    try {
-      pending = localStorage.getItem(SHARE_KEY);
-    } catch {
+    const targets = orders
+      .filter((o) => o.method === "delivery" && o.status === "sent" && o.assigned_to === userId)
+      .map((o) => o.id);
+    targetsRef.current = targets;
+    setShareCount(targets.length);
+    if (targets.length === 0) {
+      if (watchIdRef.current !== null) stopWatch();
       return;
     }
-    if (!pending) return;
-    resumeTriedRef.current = true;
-    const o = orders.find((x) => x.id === pending);
-    if (o && o.status === "sent" && o.method === "delivery" && o.assigned_to === userId) {
-      setMsg("📡 Retomando ubicación en vivo…");
-      setTimeout(() => setMsg(""), 3000);
-      startSharing(pending);
-    } else {
-      try {
-        localStorage.removeItem(SHARE_KEY);
-      } catch {
-        /* noop */
-      }
-    }
+    if (watchIdRef.current === null && !shareBlocked) startWatch();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, orders, userId]);
+  }, [orders, userId, shareBlocked, tick]);
 
   async function claim(orderId: string) {
     setMsg("");
@@ -228,7 +236,6 @@ export function DeliveryBoard({ vendorId, userId }: { vendorId: string; userId: 
   }
 
   async function release(orderId: string) {
-    if (sharingId === orderId) stopSharing();
     await fetch(`/api/vendor/orders/${orderId}/assign`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -247,7 +254,6 @@ export function DeliveryBoard({ vendorId, userId }: { vendorId: string; userId: 
     const data = await res.json().catch(() => ({}));
     if (data.error) setMsg(`❌ ${data.error}`);
     else {
-      if (sharingId === orderId) stopSharing();
       setMsg("✅ Pedido entregado");
       setOrders((prev) => prev.filter((o) => o.id !== orderId));
     }
@@ -265,11 +271,21 @@ export function DeliveryBoard({ vendorId, userId }: { vendorId: string; userId: 
   // Disponibles = sin asignar (los tomó nadie). Míos = asignados a este repartidor.
   const disponibles = orders.filter((o) => !o.assigned_to);
   const mios = orders.filter((o) => o.assigned_to === userId);
+  const miosEnCamino = mios.filter((o) => o.status === "sent").length;
 
   return (
     <div className="space-y-4">
       {msg && <p className="text-sm text-green-600 bg-green-50 rounded-lg px-3 py-2">{msg}</p>}
-      {shareError && <p className="text-sm text-amber-700 bg-amber-50 rounded-lg px-3 py-2">📡 {shareError}</p>}
+      {shareError && (
+        <p className="text-sm text-amber-700 bg-amber-50 rounded-lg px-3 py-2">
+          📡 {shareError}{" "}
+          {shareBlocked && (
+            <button type="button" onClick={retrySharing} className="underline font-semibold">
+              Reintentar
+            </button>
+          )}
+        </p>
+      )}
 
       <RepartoAppCard />
 
@@ -311,6 +327,19 @@ export function DeliveryBoard({ vendorId, userId }: { vendorId: string; userId: 
         </div>
       )}
 
+      {/* Estado del punto vivo: automático, sin botón. */}
+      {sharing ? (
+        <p className="text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 animate-pulse">
+          🛰️ Compartiendo ubicación en vivo{shareCount > 1 ? ` (${shareCount} pedidos)` : ""} · se apaga sola al entregar
+        </p>
+      ) : (
+        mios.length > 0 && (
+          <p className="text-xs text-muted-foreground bg-muted/50 border border-border rounded-lg px-3 py-2">
+            🛰️ La ubicación se comparte sola cuando el local despacha (En camino).
+          </p>
+        )
+      )}
+
       {/* Mis entregas */}
       {mios.length > 0 && (
         <div>
@@ -323,8 +352,7 @@ export function DeliveryBoard({ vendorId, userId }: { vendorId: string; userId: 
                 key={o.id}
                 o={o}
                 mapsUrl={mapsUrl(o)}
-                sharing={sharingId === o.id}
-                onToggleShare={() => (sharingId === o.id ? stopSharing() : startSharing(o.id))}
+                live={sharing && o.status === "sent"}
                 action={
                   <div className="flex flex-1 gap-2">
                     <Button size="sm" className="flex-1" onClick={() => markDelivered(o.id)}>
@@ -348,18 +376,16 @@ function DeliveryCard({
   o,
   mapsUrl,
   action,
-  sharing,
-  onToggleShare,
+  live,
 }: {
   o: DeliveryOrder;
   mapsUrl: string | null;
   action: React.ReactNode;
-  sharing?: boolean;
-  onToggleShare?: () => void;
+  /** La ubicación de este pedido se está compartiendo ahora. */
+  live?: boolean;
 }) {
-  // El punto vivo solo existe en `sent` (el server lo exige): antes de que el
-  // local despache, el botón explica que se activa solo.
-  const canShare = o.status === "sent";
+  // El punto vivo solo existe en `sent` (el server lo exige): es automático,
+  // sin botón. La tarjeta solo indica si este pedido se está compartiendo.
   return (
     <div className="border border-border rounded-xl p-3 bg-card">
       <div className="flex items-center justify-between mb-2">
@@ -413,26 +439,10 @@ function DeliveryCard({
         )}
         {action}
       </div>
-      {onToggleShare && (
-        <button
-          type="button"
-          onClick={onToggleShare}
-          disabled={!canShare && !sharing}
-          title={
-            sharing
-              ? "Dejar de compartir tu ubicación"
-              : canShare
-                ? "Compartir tu ubicación en vivo con el local y el cliente"
-                : "Se activa cuando el local despacha el pedido (En camino)"
-          }
-          className={`mt-2 w-full rounded-lg border px-2 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 ${
-            sharing
-              ? "border-emerald-300 bg-emerald-50 text-emerald-700 animate-pulse"
-              : "border-violet-200 bg-violet-50 text-violet-700"
-          }`}
-        >
-          {sharing ? "🛰️ Compartiendo ubicación… (tocá para pausar)" : canShare ? "🛰️ Compartir mi ubicación" : "🛰️ Ubicación en vivo (se activa al despachar)"}
-        </button>
+      {live && (
+        <p className="mt-2 text-[11px] font-semibold text-emerald-700">
+          🛰️ <span className="animate-pulse">Compartiendo ubicación en vivo</span>
+        </p>
       )}
     </div>
   );
@@ -490,8 +500,8 @@ function RepartoAppCard() {
         <div>
           <p className="text-sm font-semibold">📲 App Portal Reparto</p>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Comparte tu ubicación con la pantalla apagada. Instalala una vez y
-            usá “Compartir ubicación” desde la app en cada entrega.
+            Comparte tu ubicación con la pantalla apagada. Instalala una vez:
+            la ubicación se comparte sola en cada entrega.
           </p>
         </div>
         <button

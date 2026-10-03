@@ -78,8 +78,39 @@ export function toE164Plus(raw: string | null | undefined): string | null {
 }
 
 /**
- * Devuelve todas las variantes en dígitos de un teléfono argentino para
- * matchear contra la DB sin importar el formato guardado:
+ * Todas las formas plausibles en que un teléfono puede estar guardado en la
+ * DB, para matchear sin importar el formato de alta:
+ *   - dígitos crudos tal cual se escribieron
+ *   - variantes E.164/nacional (phoneVariantsAR)
+ *   - formatos legacy con 0 y/o 15 ("0221155551234", "02215551234")
+ * Se usa con `WHERE phone = ANY($1)`: cubre filas viejas y nuevas sin
+ * migrar datos.
+ */
+export function phoneMatchCandidates(raw: string | null | undefined): string[] {
+  const out = new Set<string>();
+  const d = digits(raw || "");
+  if (d) out.add(d);
+  const e = toE164(raw || "");
+  if (e && e.length === 13) {
+    for (const v of phoneVariantsAR(e)) out.add(v);
+    const core = e.slice(3); // 10 dígitos: área + local
+    out.add("0" + core);
+    // El 15 va después del área (2 a 4 dígitos según la zona): se prueban
+    // todos los cortes; los que no correspondan simplemente no matchean.
+    for (const areaLen of [2, 3, 4]) {
+      if (core.length > areaLen) {
+        out.add(`0${core.slice(0, areaLen)}15${core.slice(areaLen)}`);
+      }
+    }
+  } else if (d) {
+    for (const v of phoneVariantsAR(d)) out.add(v);
+  }
+  return Array.from(out);
+}
+
+/**
+ * Variantes en dígitos de un teléfono argentino para matchear E.164 contra
+ * la DB sin importar el formato guardado:
  *   - "549" + 10 dígitos  (E.164 móvil, formato WhatsApp)
  *   - 10 dígitos          (nacional)
  *   - "54" + 10 dígitos   (E.164 sin el 9 móvil, formato viejo)

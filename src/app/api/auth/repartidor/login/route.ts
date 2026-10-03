@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { queryOne } from "@/lib/db";
 import { verifyPassword, signAccessToken } from "@/lib/auth";
 import { withRateLimit } from "@/lib/api-wrapper";
-import { toE164, phoneVariantsAR } from "@/lib/phone";
+import { toE164, phoneMatchCandidates } from "@/lib/phone";
 
 // Login del repartidor: teléfono + contraseña.
 // Solo entra si su vínculo está activo (status='active').
@@ -32,7 +32,7 @@ export const POST = withRateLimit(async (request: Request) => {
      WHERE vs.phone = ANY($1) AND vs.status != 'revoked'
      ORDER BY vs.created_at ASC
      LIMIT 1`,
-    [phoneVariantsAR(phone)]
+    [phoneMatchCandidates(phone)]
   );
 
   if (!staff || staff.status !== "active" || !staff.password_hash) {

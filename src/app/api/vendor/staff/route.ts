@@ -3,7 +3,7 @@ import { query, queryMany, queryOne } from "@/lib/db";
 import { getAuthUser } from "@/lib/auth";
 import { getVendorByRequest } from "@/lib/vendor-utils";
 import { generateLinkCode } from "@/lib/link-code";
-import { toE164, phoneVariantsAR } from "@/lib/phone";
+import { toE164, phoneMatchCandidates } from "@/lib/phone";
 
 type StaffRow = {
   id: string;
@@ -64,7 +64,7 @@ export async function POST(request: Request) {
     const dup = await queryOne<{ id: string }>(
       `SELECT id FROM vendor_staff
        WHERE vendor_id = $1 AND phone = ANY($2) AND status <> 'revoked' LIMIT 1`,
-      [vendor.id, phoneVariantsAR(phone)]
+      [vendor.id, phoneMatchCandidates(phone)]
     );
     if (dup) {
       return NextResponse.json({ error: "Ese teléfono ya tiene un repartidor activo/pendiente" }, { status: 409 });

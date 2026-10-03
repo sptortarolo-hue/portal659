@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { queryOne } from "@/lib/db";
+import { queryMany, queryOne } from "@/lib/db";
 import { verifyPassword, signAccessToken } from "@/lib/auth";
 import { withRateLimit } from "@/lib/api-wrapper";
 import { toE164, phoneMatchCandidates } from "@/lib/phone";
@@ -17,7 +17,12 @@ export const POST = withRateLimit(async (request: Request) => {
     return NextResponse.json({ error: "Teléfono y contraseña son requeridos" }, { status: 400 });
   }
 
-  const staff = await queryOne<{
+  // Un mismo teléfono puede estar vinculado a varios comercios (una fila
+  // vendor_staff por comercio, cada una con su profile). Se prueban todas
+  // las filas activas hasta que una verifique la contraseña: con LIMIT 1 se
+  // podía verificar contra el vínculo equivocado y dar "incorrectos" con
+  // datos correctos.
+  const rows = await queryMany<{
     id: string;
     profile_id: string;
     vendor_id: string;
@@ -30,18 +35,36 @@ export const POST = withRateLimit(async (request: Request) => {
      FROM vendor_staff vs
      JOIN profiles p ON p.id = vs.profile_id
      WHERE vs.phone = ANY($1) AND vs.status != 'revoked'
-     ORDER BY vs.created_at ASC
-     LIMIT 1`,
+     ORDER BY vs.created_at ASC`,
     [phoneMatchCandidates(phone)]
   );
 
-  if (!staff || staff.status !== "active" || !staff.password_hash) {
-    return NextResponse.json({ error: "No sos repartidor de este comercio o te desvincularon" }, { status: 401 });
+  let staff: {
+    id: string;
+    profile_id: string;
+    vendor_id: string;
+    password_hash: string | null;
+    email: string | null;
+    status: string;
+    token_version: number;
+  } | null = null;
+  if (rows && rows.length > 0) {
+    for (const r of rows) {
+      if (r.status !== "active" || !r.password_hash) continue;
+      if (await verifyPassword(r.password_hash, password)) {
+        staff = r;
+        break;
+      }
+    }
+    // Hubo filas pero ninguna verificó: credenciales mal (mensaje genérico
+    // a propósito, igual que el login normal).
+    if (!staff) {
+      return NextResponse.json({ error: "Teléfono o contraseña incorrectos" }, { status: 401 });
+    }
   }
 
-  const ok = await verifyPassword(staff.password_hash, password);
-  if (!ok) {
-    return NextResponse.json({ error: "Teléfono o contraseña incorrectos" }, { status: 401 });
+  if (!staff) {
+    return NextResponse.json({ error: "No sos repartidor de este comercio o te desvincularon" }, { status: 401 });
   }
 
   const vendor = await queryOne<{ id: string; store_name: string }>(

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { CustomerFormTimeline } from "@/components/dashboard/customer-form-timeline";
 
 type Segment = "frecuente" | "nuevo" | "inactivo" | "ocasional";
 
@@ -268,7 +269,7 @@ function waLink(phone: string): string {
   return `https://wa.me/${d}`;
 }
 
-export function CustomersManager({ serviceMode = false }: { serviceMode?: boolean } = {}) {
+export function CustomersManager({ serviceMode = false, vendorId = null }: { serviceMode?: boolean; vendorId?: string | null } = {}) {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -703,6 +704,10 @@ export function CustomersManager({ serviceMode = false }: { serviceMode?: boolea
                   </div>
 
                   <FiadoBlock phone={c.phone} />
+
+                  {serviceMode && (
+                    <CustomerFormTimeline vendorId={vendorId} phone={c.phone} />
+                  )}
 
                   <div>
                     <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Últimos pedidos</p>

@@ -1,6 +1,8 @@
 import { queryOne } from "@/lib/db";
 import { notFound } from "next/navigation";
 import { TurnoConfirmButtons } from "./confirm-buttons";
+import { TurnoFichaBanner } from "./ficha-banner";
+import { templatesForBooking } from "@/lib/customer-forms";
 
 export const dynamic = "force-dynamic";
 
@@ -79,6 +81,7 @@ export default async function TurnoPage({ params }: { params: Promise<{ token: s
 
   const waNumber = (booking.whatsapp || "").replace(/[^0-9]/g, "");
   const terminal = booking.status === "cancelled" || booking.status === "noshow";
+  const fichaTemplates = terminal ? [] : await templatesForBooking(token);
 
   return (
     <main className="min-h-screen bg-background">
@@ -101,12 +104,17 @@ export default async function TurnoPage({ params }: { params: Promise<{ token: s
               {booking.status === "cancelled" ? "Este turno está cancelado." : "Este turno ya pasó."}
             </p>
           ) : (
-            <TurnoConfirmButtons
-              token={token}
-              initialStatus={booking.status}
-              cancelHours={booking.cancel_hours ?? 24}
-              cancelPolicy={booking.cancel_policy_text}
-            />
+            <>
+              {fichaTemplates.length > 0 && (
+                <TurnoFichaBanner bookingToken={token} templates={fichaTemplates} />
+              )}
+              <TurnoConfirmButtons
+                token={token}
+                initialStatus={booking.status}
+                cancelHours={booking.cancel_hours ?? 24}
+                cancelPolicy={booking.cancel_policy_text}
+              />
+            </>
           )}
           {booking.cancel_policy_text && !terminal && (
             <p className="text-xs text-muted-foreground">📝 {booking.cancel_policy_text}</p>

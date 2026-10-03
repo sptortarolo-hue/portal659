@@ -21,6 +21,7 @@ import { PlanLock } from "@/components/vendor/plan-lock";
 import { QuoteManualModal } from "@/components/dashboard/quote-manual-modal";
 import { BookingManualModal } from "@/components/dashboard/booking-manual-modal";
 import { EsteticaServicesManager, EsteticaStaffManager, EsteticaCancelPolicy, EsteticaPacksManager, EsteticaCommissionsReport, EsteticaGiftcardsManager, EsteticaLocationsManager } from "@/components/dashboard/estetica-managers";
+import { FormTemplateManager } from "@/components/dashboard/form-template-manager";
 import type { Vendor, Product, ProductModifier, Booking, VendorGallery } from "@/types/database";
 
 type Props = {
@@ -39,7 +40,7 @@ type Props = {
   /** Sub-vista a mostrar (el dashboard switchea por tab). Sin section = todo (legacy). */
   section?: "hoy" | "presupuestos" | "turnos" | "cobros" | "ficha" | "reviews" | "history" | "clientes";
   /** Navegación a otra sub-vista (botones del Hoy). */
-  onNavigate?: (section: "orders" | "pos" | "caja" | "config" | "pedidos") => void;
+  onNavigate?: (section: "orders" | "pos" | "caja" | "config" | "pedidos" | "clientes") => void;
   /** Pedidos de productos (solo estética los muestra en el Hoy). */
   orders?: Record<string, unknown>[];
   /** Vertical estética: el Hoy suma pedidos de productos. */
@@ -347,6 +348,19 @@ export default function DashboardServicio({
   const [cancelHours, setCancelHours] = useState(
     (vendor as any)?.cancel_hours != null ? String((vendor as any).cancel_hours) : "24"
   );
+  // Alertas de fichas por clienta (🚨 en agenda). Mapa teléfono → avisos.
+  const [formAlerts, setFormAlerts] = useState<Record<string, { template: string; session_no: number; labels: string[] }[]>>({});
+
+  useEffect(() => {
+    if (!isEstetica || bookings.length === 0) return;
+    (async () => {
+      try {
+        const res = await fetch("/api/vendor/form-entries/alerts");
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data.alerts) setFormAlerts(data.alerts);
+      } catch { /* sin migración: sin alertas */ }
+    })();
+  }, [isEstetica, bookings.length]);
   // Catálogo para el modal de turno manual (estética): servicios + staff.
   const [catalogServices, setCatalogServices] = useState<{ id: string; name: string }[]>([]);
   const [catalogStaff, setCatalogStaff] = useState<{ id: string; name: string }[]>([]);
@@ -1125,6 +1139,12 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
       )}
 
       {isEstetica && (
+      <CollapsibleSection icon="📋" title="Modelos de ficha">
+        <FormTemplateManager />
+      </CollapsibleSection>
+      )}
+
+      {isEstetica && (
       <CollapsibleSection icon="📝" title="Política de cancelación">
         <div className="space-y-3">
           <EsteticaCancelPolicy
@@ -1272,6 +1292,21 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
                             &quot;{booking.notes}&quot;
                           </p>
                         )}
+                        {(() => {
+                          const alerts = (booking.customer_phone && formAlerts[String(booking.customer_phone)]) || [];
+                          if (alerts.length === 0) return null;
+                          const labels = [...new Set(alerts.flatMap((a: { labels: string[] }) => a.labels))];
+                          return (
+                            <button
+                              type="button"
+                              onClick={() => onNavigate?.("clientes")}
+                              title="Ver ficha de la clienta"
+                              className="block w-full text-left text-xs mb-2 rounded-lg bg-red-50 border border-red-200 px-2.5 py-1.5 text-red-800 hover:bg-red-100"
+                            >
+                              🚨 {labels.join(" · ")} — ver ficha →
+                            </button>
+                          );
+                        })()}
                         {(booking as any).products_used && editingProductsId !== booking.id && (
                           <p className="text-xs text-muted-foreground mb-2">
                             🧴 <span className="italic">{String((booking as any).products_used)}</span>
@@ -1367,6 +1402,17 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
                                 🔁 Repetir
                               </Button>
                             </>
+                          )}
+                          {(booking.status === "pending" || booking.status === "confirmed") && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs"
+                              title="Abrir la ficha de la clienta"
+                              onClick={() => onNavigate?.("clientes")}
+                            >
+                              📋 Ficha
+                            </Button>
                           )}
                           {(booking.status === "pending" || booking.status === "confirmed") && (
                             <>
@@ -1809,7 +1855,7 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
 
       {sec === "clientes" && (
         canCrm ? (
-          <CustomersManager serviceMode />
+          <CustomersManager serviceMode vendorId={vendor?.id || null} />
         ) : (
           <PlanLock
             title="Libro de clientes"

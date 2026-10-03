@@ -18,12 +18,6 @@ export const POST = withRateLimit(async (request: Request) => {
     return NextResponse.json({ error: "Teléfono y contraseña son requeridos" }, { status: 400 });
   }
 
-  // DIAG temporal (sacar cuando se resuelva el caso 2214815846): loguea la
-  // etapa del fallo SIN secretos (nunca password ni hash). Ver con:
-  // docker logs portal659-app 2>&1 | grep repartidor-login
-  const diag = (stage: string, extra?: Record<string, unknown>) =>
-    console.log(`[repartidor-login] ${stage}`, JSON.stringify({ phone, ...extra }));
-
   // Un mismo teléfono puede estar vinculado a varios comercios (una fila
   // vendor_staff por comercio, cada una con su profile). Se prueban todas
   // las filas activas hasta que una verifique la contraseña: con LIMIT 1 se
@@ -46,16 +40,6 @@ export const POST = withRateLimit(async (request: Request) => {
     [phoneMatchCandidates(phone)]
   );
 
-  diag("rows", {
-    count: rows?.length ?? 0,
-    rows: (rows || []).map((r) => ({
-      id: r.id.slice(0, 8),
-      status: r.status,
-      hasHash: !!r.password_hash,
-      hashAlg: r.password_hash ? r.password_hash.slice(0, 11) : null,
-    })),
-  });
-
   let staff: {
     id: string;
     profile_id: string;
@@ -68,9 +52,9 @@ export const POST = withRateLimit(async (request: Request) => {
   if (rows && rows.length > 0) {
     for (const r of rows) {
       if (r.status !== "active" || !r.password_hash) continue;
-      const verified = await verifyPassword(r.password_hash, password);
-      diag("verify", { row: r.id.slice(0, 8), verified });
-      if (verified) {
+      // Orden: (plaintext, hash) — igual que el login normal. Invertido,
+      // argon2 tira excepción y verify siempre da false.
+      if (await verifyPassword(password, r.password_hash)) {
         staff = r;
         break;
       }
@@ -78,16 +62,13 @@ export const POST = withRateLimit(async (request: Request) => {
     // Hubo filas pero ninguna verificó: credenciales mal (mensaje genérico
     // a propósito, igual que el login normal).
     if (!staff) {
-      diag("fail-credentials");
       return NextResponse.json({ error: "Teléfono o contraseña incorrectos" }, { status: 401 });
     }
   }
 
   if (!staff) {
-    diag("fail-no-rows");
     return NextResponse.json({ error: "No sos repartidor de este comercio o te desvincularon" }, { status: 401 });
   }
-  diag("ok", { row: staff.id.slice(0, 8) });
 
   const vendor = await queryOne<{ id: string; store_name: string }>(
     `SELECT id, store_name FROM vendors WHERE id = $1 LIMIT 1`,

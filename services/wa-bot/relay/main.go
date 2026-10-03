@@ -219,6 +219,12 @@ type relay struct {
 	repairMu      sync.Mutex
 	repairFails   int
 	repairBackoff time.Duration
+
+	// Cola de mensajes que no pudieron enviarse por un WS muerto (reconexión).
+	// Re-enviar tras reconectar en vez de perder el primer mensaje tras una
+	// caída de red ("el log lo mostró pero el bot no respondió").
+	pendingMu sync.Mutex
+	pending   []wsOut
 }
 
 // login espera el código de pareo/QR y lo imprime a stdout (el wrapper Kotlin lo
@@ -549,14 +555,24 @@ func (r *relay) outboundLoop(ctx context.Context) {
 		backoff = time.Second
 		log.Println("conectado al cerebro")
 
-		// Read deadline 120s + pong: si el cerebro deja de pings (reinicio por
-		// deploy) o la red queda medio muerta, el relay lo detecta y re-diala
-		// solo — sin que el usuario tenga que apretar "iniciar".
+		// Read deadline 120s: se renueva con cada PING del cerebro (el cerebro
+		// pingea cada 20s) y con cada PONG. Antes el deadline quedaba fijo al
+		// conectar y el relay se reconectaba en loop cada 120s exactos (perdiendo
+		// mensajes en la ventana de flap).
 		conn.SetReadDeadline(time.Now().Add(120 * time.Second))
+		conn.SetPingHandler(func(appData string) error {
+			// Cada ping entrante confirma que el cerebro está vivo: resetear el deadline.
+			conn.SetReadDeadline(time.Now().Add(120 * time.Second))
+			// Responder pong explícito (respeta el deadline del write del pong).
+			return conn.WriteControl(websocket.PongMessage, []byte(appData), time.Now().Add(5*time.Second))
+		})
 		conn.SetPongHandler(func(string) error {
 			conn.SetReadDeadline(time.Now().Add(120 * time.Second))
 			return nil
 		})
+
+		// Reenviar los mensajes que quedaron en cola por el WS previo muerto.
+		r.flushPending(conn)
 
 		go r.readLoop(ctx, conn)
 		r.writeLoop(ctx, conn)
@@ -589,22 +605,55 @@ type wsIn struct {
 	Error string `json:"message,omitempty"`
 }
 
-func (r *relay) writeLoop(ctx context.Context, conn *websocket.Conn) {
-	// Helper: write con deadline. Un write a una conexión muerta (red móvil) sin
-	// deadline podía quedarse colgado para siempre, dejando al relay con un WS
-	// muerto sin posibilidad de reconectar (era el "pasado un tiempo no responde,
-	// apretá iniciar y sí"). Con deadline, el write muerto falla en 10s y el
-	// outboundLoop reconecta automáticamente.
-	write := func(v interface{}) error {
-		conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
-		return conn.WriteJSON(v)
+func (r *relay) writeMsg(conn *websocket.Conn, v interface{}) error {
+	conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+	return conn.WriteJSON(v)
+}
+
+// enqueuePending: el mensaje falló por WS muerto → no tirarlo, re-encolarlo
+// para reenviarlo tras reconectar (era el síntoma "el mensaje aparece en el
+// log del APK pero el bot no responde"). Cap 20 para no inflar memoria con
+// media base64.
+func (r *relay) enqueuePending(v wsOut) {
+	r.pendingMu.Lock()
+	defer r.pendingMu.Unlock()
+	if len(r.pending) >= 20 {
+		r.pending = r.pending[1:] // tirar el más viejo (dedup de defensa)
 	}
+	r.pending = append(r.pending, v)
+	log.Printf("re-encolado para reenviar tras reconectar: type=%s wa=%s", v.Type, v.WaID)
+}
+
+// flushPending: tras una conexión nueva, reenvía los pendientes (en orden,
+// con el mismo deadline de escritura que el writeLoop). Un fallo deja el
+// resto pendiente para la próxima reconexión.
+func (r *relay) flushPending(conn *websocket.Conn) {
+	for {
+		r.pendingMu.Lock()
+		if len(r.pending) == 0 {
+			r.pendingMu.Unlock()
+			return
+		}
+		m := r.pending[0]
+		r.pendingMu.Unlock()
+		if err := r.writeMsg(conn, m); err != nil {
+			return
+		}
+		r.pendingMu.Lock()
+		r.pending = r.pending[1:]
+		r.pendingMu.Unlock()
+	}
+}
+
+func (r *relay) writeLoop(ctx context.Context, conn *websocket.Conn) {
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case m := <-r.inbound:
-			if err := write(wsOut{Type: "message", WaID: m.waID, WaPhone: m.waPhone, Body: m.body}); err != nil {
+			out := wsOut{Type: "message", WaID: m.waID, WaPhone: m.waPhone, Body: m.body}
+			if err := r.writeMsg(conn, out); err != nil {
+				r.enqueuePending(out)
 				return
 			}
 		case mm := <-r.media:
@@ -613,22 +662,28 @@ func (r *relay) writeLoop(ctx context.Context, conn *websocket.Conn) {
 			if mm.mime == "application/pdf" {
 				kind = "file"
 			}
-			if err := write(wsOut{
+			out := wsOut{
 				Type:    kind,
 				WaID:    mm.waID,
 				WaPhone: mm.waPhone,
 				Mime:    mm.mime,
 				Name:    mm.name,
 				Data:    base64.StdEncoding.EncodeToString(mm.data),
-			}); err != nil {
+			}
+			if err := r.writeMsg(conn, out); err != nil {
+				r.enqueuePending(out)
 				return
 			}
 		case qr := <-r.qrOut:
-			if err := write(qrMsg{Type: "qr", Data: qr}); err != nil {
+			out := qrMsg{Type: "qr", Data: qr}
+			if err := r.writeMsg(conn, out); err != nil {
+				r.enqueuePending(wsOut{Type: "qr", Data: qr})
 				return
 			}
 		case state := <-r.stateCh:
-			if err := write(wsOut{Type: state}); err != nil {
+			out := wsOut{Type: state}
+			if err := r.writeMsg(conn, out); err != nil {
+				r.enqueuePending(out)
 				return
 			}
 		}

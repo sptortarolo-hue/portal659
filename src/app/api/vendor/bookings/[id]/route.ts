@@ -45,7 +45,15 @@ export async function PATCH(
   }
 
   const status = String(body.status || "");
-  if (!VALID_STATUS.includes(status)) {
+  const hasStatus = VALID_STATUS.includes(status);
+  // Productos utilizados (estética): texto libre con los insumos aplicados.
+  // Puede guardarse solo (sin cambiar estado) o junto al cambio de estado.
+  const wantProducts = body?.products_used !== undefined;
+  const productsUsed =
+    body?.products_used != null && String(body.products_used).trim() !== ""
+      ? String(body.products_used).trim().slice(0, 500)
+      : null;
+  if (!hasStatus && !wantProducts) {
     return NextResponse.json({ error: "Estado inválido" }, { status: 400 });
   }
   // Ausente solo si la fecha ya pasó (regla Fresha).
@@ -61,7 +69,16 @@ export async function PATCH(
 
   try {
     await withTransaction(async (tx) => {
-      await tx.queryVoid(`UPDATE bookings SET status = $1 WHERE id = $2`, [status, id]);
+      if (hasStatus) {
+        await tx.queryVoid(`UPDATE bookings SET status = $1 WHERE id = $2`, [status, id]);
+      }
+      if (wantProducts) {
+        try {
+          await tx.queryVoid(`UPDATE bookings SET products_used = $1 WHERE id = $2`, [productsUsed, id]);
+        } catch {
+          throw new Error("Falta aplicar la migración migrate-estetica-products-used.sql en la base");
+        }
+      }
       if (willCount && !wasCounted) {
         await addServiceJob(tx, vendor.id, {
           phone: existing.customer_phone || "",
@@ -74,12 +91,16 @@ export async function PATCH(
       }
     });
   } catch (e) {
+    const emsg = (e as Error)?.message || "";
     // Columna status sin 'noshow' (migración pendiente).
-    if (status === "noshow" && /check|constraint|noshow|status/i.test((e as Error)?.message || "")) {
+    if (status === "noshow" && /check|constraint|noshow|status/i.test(emsg)) {
       return NextResponse.json(
         { error: "Falta aplicar la migración migrate-service-manual.sql en la base" },
         { status: 400 }
       );
+    }
+    if (emsg.startsWith("Falta aplicar")) {
+      return NextResponse.json({ error: emsg }, { status: 400 });
     }
     throw e;
   }

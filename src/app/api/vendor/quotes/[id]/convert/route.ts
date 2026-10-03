@@ -2,6 +2,7 @@ import { gateRequest } from "@/lib/subscription-gate";
 import { queryOne, withTransaction } from "@/lib/db";
 import { addServiceJob } from "@/lib/customers";
 import { NextResponse } from "next/server";
+import crypto from "crypto";
 
 export const dynamic = "force-dynamic";
 
@@ -62,21 +63,42 @@ export async function POST(
           total: Number(quote.quoted_price) || 0,
         });
       }
-      const b = await tx.query<{ id: string }>(
-        `INSERT INTO bookings (vendor_id, product_id, customer_id, product_name, customer_name, customer_phone, booking_date, booking_time, duration_min, notes, status, origin, quote_id)
-         VALUES ($1, NULL, NULL, $2, $3, $4, $5, $6, $7, $8, 'confirmed', 'vendor', $9) RETURNING id`,
-        [
-          gate.vendor.id,
-          quote.service_name,
-          quote.customer_name,
-          quote.customer_phone,
-          bookingDate,
-          bookingTime,
-          durationMin,
-          String(body.notes || "").trim().slice(0, 2000) || null,
-          id,
-        ]
-      );
+      const confirmVal = crypto.randomBytes(16).toString("hex");
+      let b;
+      try {
+        b = await tx.query<{ id: string }>(
+          `INSERT INTO bookings (vendor_id, product_id, customer_id, product_name, customer_name, customer_phone, booking_date, booking_time, duration_min, confirm_token, notes, status, origin, quote_id)
+           VALUES ($1, NULL, NULL, $2, $3, $4, $5, $6, $7, $8, $9, 'confirmed', 'vendor', $10) RETURNING id`,
+          [
+            gate.vendor.id,
+            quote.service_name,
+            quote.customer_name,
+            quote.customer_phone,
+            bookingDate,
+            bookingTime,
+            durationMin,
+            confirmVal,
+            String(body.notes || "").trim().slice(0, 2000) || null,
+            id,
+          ]
+        );
+      } catch {
+        b = await tx.query<{ id: string }>(
+          `INSERT INTO bookings (vendor_id, product_id, customer_id, product_name, customer_name, customer_phone, booking_date, booking_time, duration_min, notes, status, origin, quote_id)
+           VALUES ($1, NULL, NULL, $2, $3, $4, $5, $6, $7, $8, 'confirmed', 'vendor', $9) RETURNING id`,
+          [
+            gate.vendor.id,
+            quote.service_name,
+            quote.customer_name,
+            quote.customer_phone,
+            bookingDate,
+            bookingTime,
+            durationMin,
+            String(body.notes || "").trim().slice(0, 2000) || null,
+            id,
+          ]
+        );
+      }
       const bid = b[0]?.id;
       if (!bid) throw new Error("No se pudo crear el turno");
       return bid;

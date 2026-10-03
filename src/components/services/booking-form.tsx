@@ -28,6 +28,11 @@ export function BookingForm({ vendorId, vendorName, services, serviceOptions, st
   const [serviceId, setServiceId] = useState("");
   const [staffId, setStaffId] = useState("");
   const [locationId, setLocationId] = useState("");
+  // Sesiones de pack (estética): saldo por teléfono.
+  const [credits, setCredits] = useState<{ pack_id: string; pack_name: string; remaining: number }[]>([]);
+  const [creditsLoading, setCreditsLoading] = useState(false);
+  const [usePackId, setUsePackId] = useState("");
+  const [packMsg, setPackMsg] = useState("");
   const [bookingDate, setBookingDate] = useState("");
   const [bookingTime, setBookingTime] = useState("");
   const [notes, setNotes] = useState("");
@@ -46,8 +51,32 @@ export function BookingForm({ vendorId, vendorName, services, serviceOptions, st
         <p className="text-sm text-muted-foreground mt-1">
           {bookingDate} a las {bookingTime}. {vendorName} te va a confirmar.
         </p>
+        {packMsg && (
+          <p className="text-sm mt-2 rounded-lg bg-green-50 border border-green-200 text-green-800 px-3 py-2">{packMsg}</p>
+        )}
       </div>
     );
+  }
+
+  async function lookupCredits(phone: string) {
+    const digits = phone.replace(/\D/g, "");
+    if (digits.length < 10) {
+      setCredits([]);
+      setUsePackId("");
+      return;
+    }
+    setCreditsLoading(true);
+    try {
+      const res = await fetch(`/api/pack-credits?vendorId=${vendorId}&phone=${encodeURIComponent(phone)}`);
+      const data = await res.json().catch(() => ({}));
+      const list = Array.isArray(data.credits) ? data.credits : [];
+      setCredits(list);
+      setUsePackId(list.length > 0 ? list[0].pack_id : "");
+    } catch {
+      setCredits([]);
+    } finally {
+      setCreditsLoading(false);
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -67,6 +96,7 @@ export function BookingForm({ vendorId, vendorName, services, serviceOptions, st
         serviceId: useCatalog ? serviceId || null : null,
         staffId: staffId || null,
         locationId: locationId || null,
+        usePackCredit: usePackId || null,
         bookingDate,
         bookingTime,
         notes: notes || null,
@@ -80,6 +110,11 @@ export function BookingForm({ vendorId, vendorName, services, serviceOptions, st
       return;
     }
 
+    if (data.packUsed) {
+      setPackMsg(`✅ Se usó 1 sesión de ${data.packUsed.pack_name} (quedan ${data.packUsed.remaining}).`);
+    } else if (data.packWarning) {
+      setPackMsg(`⚠️ ${data.packWarning}`);
+    }
     setDone(true);
     setLoading(false);
   }
@@ -92,8 +127,26 @@ export function BookingForm({ vendorId, vendorName, services, serviceOptions, st
       </div>
       <div>
         <Label htmlFor="b-phone">Tu WhatsApp</Label>
-        <Input id="b-phone" value={phone} onChange={e => setPhone(e.target.value)} placeholder="221 555 0000" required />
+        <Input id="b-phone" value={phone} onChange={e => setPhone(e.target.value)} onBlur={e => { if (useCatalog) lookupCredits(e.target.value); }} placeholder="221 555 0000" required />
       </div>
+      {useCatalog && (creditsLoading ? (
+        <p className="text-xs text-muted-foreground">Buscando tus sesiones...</p>
+      ) : credits.length > 0 ? (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 space-y-2">
+          <Label htmlFor="b-pack">🎟️ Tenés sesiones disponibles</Label>
+          <select
+            id="b-pack"
+            value={usePackId}
+            onChange={e => setUsePackId(e.target.value)}
+            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+          >
+            <option value="">Pagar normal (no usar sesión)</option>
+            {credits.map(c => (
+              <option key={c.pack_id} value={c.pack_id}>Usar 1 de {c.pack_name} ({c.remaining} restantes)</option>
+            ))}
+          </select>
+        </div>
+      ) : null)}
       {useCatalog ? (
         <div>
           <Label htmlFor="b-service">Servicio *</Label>

@@ -1,4 +1,4 @@
-import { query, queryMany } from "@/lib/db";
+import { query, queryMany, queryOne } from "@/lib/db";
 import { notifyServiceClient } from "@/lib/service-notify";
 import { sendPushToUser } from "@/lib/push";
 import { NextResponse } from "next/server";
@@ -46,6 +46,7 @@ type DueBooking = {
   booking_time: string;
   store_name: string;
   user_id: string | null;
+  confirm_token?: string | null;
 };
 
 /**
@@ -70,11 +71,22 @@ export async function GET(request: Request) {
 
   const sent = { t24: 0, t2: 0 };
 
+  // Token de confirmación (migrate-estetica-confirm-token.sql): el recordatorio
+  // lleva el link /turno/[token] para confirmar sin cuenta. Tolerante a
+  // migración sin aplicar (sin link, como antes).
+  let tokenSel = "";
+  try {
+    const col = await queryOne<{ exists: boolean }>(
+      `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'bookings' AND column_name = 'confirm_token') AS exists`
+    );
+    if (col?.exists === true) tokenSel = ", b.confirm_token";
+  } catch { /* sin link */ }
+
   // --- T-24h: mañana, comercio + cliente ---
   const due24 = await queryMany<DueBooking>(
     `SELECT b.id, b.vendor_id, b.customer_name, b.customer_phone, b.product_name,
             b.booking_date::text AS booking_date, b.booking_time::text AS booking_time,
-            v.store_name, v.user_id
+            v.store_name, v.user_id${tokenSel}
      FROM bookings b JOIN vendors v ON v.id = b.vendor_id
      WHERE b.status = 'confirmed' AND b.booking_date = $1
        AND NOT EXISTS (SELECT 1 FROM service_reminder_log l WHERE l.booking_id = b.id AND l.kind = 't24')`,
@@ -95,7 +107,11 @@ export async function GET(request: Request) {
           await sendPushToUser(b.user_id, { title, body: bodyVendor, link: "/vendor/dashboard" });
         } catch { /* best-effort */ }
       }
-      await notifyServiceClient(b.customer_phone, { title, body: bodyClient });
+      await notifyServiceClient(b.customer_phone, {
+        title,
+        body: `${bodyClient}${b.confirm_token ? " Confirmá o cancelá acá: /turno/" + b.confirm_token : ""}`,
+        ...(b.confirm_token ? { link: `/turno/${b.confirm_token}` } : {}),
+      });
       await query(`INSERT INTO service_reminder_log (booking_id, kind) VALUES ($1, 't24') ON CONFLICT DO NOTHING`, [b.id]);
       sent.t24++;
     } catch { /* sigue con el próximo */ }
@@ -106,7 +122,7 @@ export async function GET(request: Request) {
     const due2 = await queryMany<DueBooking>(
       `SELECT b.id, b.vendor_id, b.customer_name, b.customer_phone, b.product_name,
               b.booking_date::text AS booking_date, b.booking_time::text AS booking_time,
-              v.store_name, v.user_id
+              v.store_name, v.user_id${tokenSel}
        FROM bookings b JOIN vendors v ON v.id = b.vendor_id
        WHERE b.status = 'confirmed' AND b.booking_date = $1
          AND b.booking_time >= $2 AND b.booking_time <= $3
@@ -118,7 +134,8 @@ export async function GET(request: Request) {
       try {
         await notifyServiceClient(b.customer_phone, {
           title: "⏰ Tu turno es hoy",
-          body: `Te esperamos hoy ${when} en ${b.store_name}${b.product_name ? ` · ${b.product_name}` : ""}.`,
+          body: `Te esperamos hoy ${when} en ${b.store_name}${b.product_name ? ` · ${b.product_name}` : ""}.${b.confirm_token ? " Si surge algo, avisá acá: /turno/" + b.confirm_token : ""}`,
+          ...(b.confirm_token ? { link: `/turno/${b.confirm_token}` } : {}),
         });
         await query(`INSERT INTO service_reminder_log (booking_id, kind) VALUES ($1, 't2') ON CONFLICT DO NOTHING`, [b.id]);
         sent.t2++;

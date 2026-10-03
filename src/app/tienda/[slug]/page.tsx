@@ -13,6 +13,7 @@ import { ReviewList } from "@/components/reviews/review-list";
 import { FavoriteButton } from "@/components/favorites/favorite-button";
 import { QuoteForm } from "@/components/services/quote-form";
 import { BookingForm } from "@/components/services/booking-form";
+import { PackBuyCard, GiftcardBuyCard } from "@/components/services/estetica-shop";
 import { StickyWhatsApp } from "@/components/store/sticky-whatsapp";
 import { VariantSelector } from "@/components/store/variant-selector";
 import { ProductCard } from "@/components/store/product-card";
@@ -388,6 +389,8 @@ export default async function TiendaPage({
   let esteticaServices: { id: string; name: string; deposit_amount: number | null; duration_min: number | null; price: number | null }[] = [];
   let esteticaStaff: { id: string; name: string }[] = [];
   let esteticaLocations: { id: string; name: string; address: string | null }[] = [];
+  let esteticaPacks: { id: string; name: string; sessions_total: number | null; price: number | null }[] = [];
+  let esteticaMpConnected = false;
   if (isEstetica) {
     try {
       const srows = await queryMany<any>(
@@ -421,6 +424,22 @@ export default async function TiendaPage({
       );
       esteticaLocations = (lrows || []).map((l: any) => ({ id: String(l.id), name: String(l.name ?? ""), address: l.address != null ? String(l.address) : null }));
     } catch { esteticaLocations = []; }
+    try {
+      const prows = await queryMany<any>(
+        `SELECT id, name, sessions_total, price FROM service_packs WHERE vendor_id = $1 AND active = true ORDER BY name ASC`,
+        [v.id]
+      );
+      esteticaPacks = (prows || []).map((p: any) => ({
+        id: String(p.id),
+        name: String(p.name ?? ""),
+        sessions_total: p.sessions_total != null ? Number(p.sessions_total) : null,
+        price: p.price != null ? Number(p.price) : null,
+      }));
+    } catch { esteticaPacks = []; }
+    try {
+      const { isMpEnabled } = await import("@/lib/mp-oauth");
+      esteticaMpConnected = isMpEnabled() && (v as any).mp_user_id != null;
+    } catch { esteticaMpConnected = false; }
   }
   // Tope de solicitudes alcanzado: no se muestran los formularios (el POST
   // devuelve 429 igual). Solo aplica si la migración de tope está aplicada.
@@ -799,6 +818,35 @@ export default async function TiendaPage({
                   </section>
                 ))}
               </>
+            )}
+
+            {/* Packs de sesiones y giftcards (estética): compra online con MP */}
+            {isEstetica && (
+              <div className="mt-6 mb-6 space-y-4">
+                {esteticaPacks.length > 0 && (
+                  <>
+                    <h2 className="font-display text-2xl font-semibold">🎟️ Packs de sesiones</h2>
+                    <p className="text-sm text-muted-foreground -mt-2">
+                      Los pagás online y las sesiones quedan a tu nombre para usar en tus turnos.
+                    </p>
+                    <div className="grid sm:grid-cols-2 gap-3">
+                      {esteticaPacks.map((p) => (
+                        <PackBuyCard
+                          key={p.id}
+                          vendorId={v.id}
+                          pack={p}
+                          mpConnected={esteticaMpConnected}
+                          waUrl={`https://wa.me/${waNumber}?text=${encodeURIComponent(`Hola ${v.store_name}! Quiero el pack ${p.name}. Vengo de Portal 659.`)}`}
+                        />
+                      ))}
+                    </div>
+                  </>
+                )}
+                <h2 className="font-display text-2xl font-semibold">🎁 Giftcards</h2>
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <GiftcardBuyCard vendorId={v.id} mpConnected={esteticaMpConnected} waUrl={waUrl} />
+                </div>
+              </div>
             )}
           </>
         ) : noCart && sections.length === 0 ? (

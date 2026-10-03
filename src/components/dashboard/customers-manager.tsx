@@ -75,6 +75,7 @@ type CustomerBooking = {
   product_name: string | null;
   service_label?: string | null;
   staff_label?: string | null;
+  products_used?: string | null;
   booking_date: string;
   booking_time: string;
   status: string;
@@ -734,8 +735,13 @@ export function CustomersManager({ serviceMode = false }: { serviceMode?: boolea
                                 <div className="space-y-1">
                                   {bookings.map((b) => (
                                     <div key={b.id} className="flex justify-between gap-2 text-xs py-1 border-b border-border last:border-0">
-                                      <span className="min-w-0 truncate">
-                                        {b.booking_date} {String(b.booking_time || "").slice(0, 5)}{(b.service_label || b.product_name) ? ` · ${b.service_label || b.product_name}` : ""}{b.staff_label ? ` (${b.staff_label})` : ""} — {b.status}
+                                      <span className="min-w-0">
+                                        <span className="block truncate">
+                                          {b.booking_date} {String(b.booking_time || "").slice(0, 5)}{(b.service_label || b.product_name) ? ` · ${b.service_label || b.product_name}` : ""}{b.staff_label ? ` (${b.staff_label})` : ""} — {b.status}
+                                        </span>
+                                        {b.products_used && (
+                                          <span className="block truncate text-muted-foreground">🧴 {b.products_used}</span>
+                                        )}
                                       </span>
                                     </div>
                                   ))}

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { X, Package, ChefHat, ShoppingBag, LayoutGrid, UtensilsCrossed, Settings, BarChart3, History, Star, ExternalLink, LogOut, Home, Sparkles, Calculator, Bot, DollarSign, Receipt, Users, MessageSquare, CalendarDays, ClipboardList, Boxes } from "lucide-react";
 import type { ConfigSectionStatus } from "@/components/dashboard/config-nav";
 
-type Tab = "hoy" | "config" | "menu" | "orders" | "pedidos" | "history" | "comanda" | "analytics" | "pos" | "mesas" | "caja" | "clientes" | "reviews" | "recetas" | "fiscal" | "inventario";
+type Tab = "hoy" | "config" | "menu" | "orders" | "pedidos" | "mostrador" | "history" | "comanda" | "analytics" | "pos" | "mesas" | "caja" | "clientes" | "reviews" | "recetas" | "fiscal" | "inventario";
 
 interface VendorSidebarProps {
   open: boolean;
@@ -236,13 +236,21 @@ export default function VendorSidebar({
                     label="Cobros"
                   />
                   {isEstetica && (
-                    <NavButton
-                      active={currentTab === "pedidos"}
-                      onClick={() => handleTab("pedidos")}
-                      icon={Package}
-                      label="Pedidos"
-                      badge={orderCount}
-                    />
+                    <>
+                      <NavButton
+                        active={currentTab === "pedidos"}
+                        onClick={() => handleTab("pedidos")}
+                        icon={Package}
+                        label="Pedidos"
+                        badge={orderCount}
+                      />
+                      <NavButton
+                        active={currentTab === "mostrador"}
+                        onClick={() => handleTab("mostrador")}
+                        icon={ShoppingBag}
+                        label="Mostrador"
+                      />
+                    </>
                   )}
                 </>
               ) : (
@@ -335,7 +343,7 @@ export default function VendorSidebar({
           <div>
             <p className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Análisis</p>
             <div className="space-y-0.5">
-              {(isService ? ANALISIS_ITEMS.filter((i) => i.tab !== "analytics") : ANALISIS_ITEMS).map((item) => (
+              {((isService && !isEstetica) ? ANALISIS_ITEMS.filter((i) => i.tab !== "analytics") : ANALISIS_ITEMS).map((item) => (
                 <NavButton
                   key={item.tab}
                   active={currentTab === item.tab}

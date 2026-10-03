@@ -39,8 +39,11 @@ type Props = {
   /** Sub-vista a mostrar (el dashboard switchea por tab). Sin section = todo (legacy). */
   section?: "hoy" | "presupuestos" | "turnos" | "cobros" | "ficha" | "reviews" | "history" | "clientes";
   /** Navegación a otra sub-vista (botones del Hoy). */
-  onNavigate?: (section: "orders" | "pos" | "caja" | "config") => void;
-  /** Datos lifteados desde el dashboard (badges + refresco único). Si faltan, se fetchean acá. */
+  onNavigate?: (section: "orders" | "pos" | "caja" | "config" | "pedidos") => void;
+  /** Pedidos de productos (solo estética los muestra en el Hoy). */
+  orders?: Record<string, unknown>[];
+  /** Vertical estética: el Hoy suma pedidos de productos. */
+  isEstetica?: boolean;  /** Datos lifteados desde el dashboard (badges + refresco único). Si faltan, se fetchean acá. */
   quotes?: Record<string, unknown>[];
   quota?: { used: number; limit: number | null } | null;
   canQuotePrice?: boolean;
@@ -73,28 +76,38 @@ function waLinkFor(phone: unknown): string | null {
 function ServicioHoy({
   quotes,
   bookings,
+  orders,
   onNavigate,
 }: {
   quotes: Record<string, unknown>[];
   bookings: Booking[];
-  onNavigate?: (section: "orders" | "pos" | "caja" | "config") => void;
+  /** Pedidos de productos (estética): se muestran como pendientes. */
+  orders?: Record<string, unknown>[];
+  onNavigate?: (section: "orders" | "pos" | "caja" | "config" | "pedidos") => void;
 }) {
   const pendingQuotes = (quotes || []).filter((q) => q.status === "pending" || q.status === "responded");
   const pendingBookings = (bookings || []).filter((b: any) => b.status === "pending");
+  const newOrders = (orders || []).filter((o: any) =>
+    ["new", "preparing", "ready", "sent"].includes(String(o.status)) && String(o.channel || "app") === "app" && !o.is_preview
+  );
   const upcoming = (bookings || [])
     .filter((b: any) => b.status === "confirmed" && b.booking_date)
     .sort((a: any, b: any) => String(a.booking_date).localeCompare(String(b.booking_date)) || String(a.booking_time || "").localeCompare(String(b.booking_time || "")))
     .slice(0, 3);
   const paidThisMonth = (quotes || [])
     .filter((q) => q.deposit_status === "paid" && q.deposit_amount != null)
-    .reduce((s, q) => s + Number(q.deposit_amount), 0);
+    .reduce((s, q) => s + Number(q.deposit_amount), 0)
+    // Señas de turnos pagadas (MP o Stripe).
+    + (bookings || [])
+      .filter((b: any) => b.deposit_status === "paid" && b.deposit_amount != null)
+      .reduce((s, b: any) => s + Number(b.deposit_amount), 0);
 
-  if (pendingQuotes.length === 0 && pendingBookings.length === 0 && upcoming.length === 0) {
+  if (pendingQuotes.length === 0 && pendingBookings.length === 0 && upcoming.length === 0 && newOrders.length === 0) {
     return (
       <Card className="p-6 text-center">
         <p className="text-3xl mb-2">☀️</p>
         <p className="font-medium text-sm">Sin pendientes. Buen momento para compartir tu vidriera.</p>
-        <p className="text-xs text-muted-foreground mt-1">Los presupuestos y turnos nuevos aparecen acá con aviso.</p>
+        <p className="text-xs text-muted-foreground mt-1">Los presupuestos, turnos y pedidos nuevos aparecen acá con aviso.</p>
       </Card>
     );
   }
@@ -105,6 +118,31 @@ function ServicioHoy({
         <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
           💰 Señas cobradas: <strong>${paidThisMonth.toLocaleString("es-AR")}</strong>
         </div>
+      )}
+      {newOrders.length > 0 && (
+        <Card className="p-3">
+          <div className="flex items-center justify-between mb-2">
+            <p className="font-medium text-sm">🛍️ Pedidos de productos ({newOrders.length})</p>
+            {onNavigate && (
+              <button type="button" onClick={() => onNavigate("pedidos")} className="text-xs text-primary font-medium hover:underline">
+                Ver todos →
+              </button>
+            )}
+          </div>
+          <div className="space-y-1.5">
+            {newOrders.slice(0, 3).map((o: any) => (
+              <div key={o.id} className="flex items-center gap-2 text-xs rounded-lg bg-muted px-2.5 py-2">
+                <span className="flex-1 min-w-0 truncate">
+                  <strong>{o.customer_name}</strong>
+                  {` · $${Number(o.total || 0).toLocaleString("es-AR")}`}
+                </span>
+                {onNavigate && (
+                  <button type="button" onClick={() => onNavigate("pedidos")} className="text-primary font-medium flex-shrink-0">Ver →</button>
+                )}
+              </div>
+            ))}
+          </div>
+        </Card>
       )}
       {pendingQuotes.length > 0 && (
         <Card className="p-3">
@@ -260,6 +298,7 @@ export default function DashboardServicio({
   canDeposits: canDepositsProp,
   canCrm = false,
   onQuotesChanged,
+  orders: ordersProp = [],
 }: Props) {
   // Sin section se muestra todo (legacy); con section, solo esa sub-vista.
   const sec = section ?? "all";
@@ -659,9 +698,72 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
     }
   }
 
-  // Link de seña por Stripe para un TURNO (usa la seña del servicio).
+  // Link público de confirmación (/turno/[token]) por turno.
+  const [confirmLinkBusy, setConfirmLinkBusy] = useState<string | null>(null);
+  // Productos utilizados por turno (ficha de la clienta).
+  const [editingProductsId, setEditingProductsId] = useState<string | null>(null);
+  const [productsText, setProductsText] = useState("");
+  const [productsBusy, setProductsBusy] = useState(false);
+
+  async function handleSaveProducts(id: string) {
+    setProductsBusy(true);
+    try {
+      const res = await fetch(`/api/vendor/bookings/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ products_used: productsText.trim() || null }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.error) {
+        setMsg(data.error || "No se pudo guardar");
+        return;
+      }
+      setEditingProductsId(null);
+      setMsg("Productos guardados en la ficha de la clienta");
+      reload();
+    } catch {
+      setMsg("Error de conexión");
+    } finally {
+      setProductsBusy(false);
+    }
+  }
+
+  async function handleConfirmLink(id: string, existingToken?: string | null) {
+    if (existingToken) {
+      try {
+        await navigator.clipboard.writeText(`${window.location.origin}/turno/${existingToken}`);
+        setMsg("Link de confirmación copiado. Pasáselo a la clienta por WhatsApp.");
+      } catch {
+        setMsg(`Link: ${window.location.origin}/turno/${existingToken}`);
+      }
+      return;
+    }
+    setConfirmLinkBusy(id);
+    try {
+      const res = await fetch(`/api/vendor/bookings/${id}/token`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (data.error || !data.url) {
+        setMsg(data.error || "No se pudo generar el link");
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(`${window.location.origin}${data.url}`);
+        setMsg("Link de confirmación copiado. Pasáselo a la clienta por WhatsApp.");
+      } catch {
+        setMsg(`Link: ${data.url}`);
+      }
+      reload();
+    } catch {
+      setMsg("Error de conexión");
+    } finally {
+      setConfirmLinkBusy(null);
+    }
+  }
   const [stripeBookingLink, setStripeBookingLink] = useState<Record<string, string>>({});
   const [stripeBookingBusy, setStripeBookingBusy] = useState<string | null>(null);
+  // Link de seña por MP para un TURNO (misma seña, otro riel).
+  const [mpBookingLink, setMpBookingLink] = useState<Record<string, string>>({});
+  const [mpBookingBusy, setMpBookingBusy] = useState<string | null>(null);
 
   async function handleBookingStripeDepositLink(id: string) {
     setStripeBookingBusy(id);
@@ -679,6 +781,25 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
       setMsg("Error de conexión");
     } finally {
       setStripeBookingBusy(null);
+    }
+  }
+
+  async function handleBookingMpDepositLink(id: string) {
+    setMpBookingBusy(id);
+    try {
+      const res = await fetch(`/api/vendor/bookings/${id}/deposit`, { method: "POST" });
+      const data = await res.json();
+      if (data.error) {
+        setMsg(data.error);
+        return;
+      }
+      setMpBookingLink((prev) => ({ ...prev, [id]: data.initPoint }));
+      setMsg(`Link de seña del turno (MP): $${Number(data.amount).toLocaleString("es-AR")}. Pasáselo al cliente por WhatsApp.`);
+      reload();
+    } catch {
+      setMsg("Error de conexión");
+    } finally {
+      setMpBookingBusy(null);
     }
   }
 
@@ -1151,6 +1272,41 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
                             &quot;{booking.notes}&quot;
                           </p>
                         )}
+                        {(booking as any).products_used && editingProductsId !== booking.id && (
+                          <p className="text-xs text-muted-foreground mb-2">
+                            🧴 <span className="italic">{String((booking as any).products_used)}</span>
+                          </p>
+                        )}
+                        {editingProductsId === booking.id ? (
+                          <div className="mb-2 space-y-1.5">
+                            <Label className="text-[11px] text-muted-foreground">🧴 Productos utilizados (quedan en la ficha)</Label>
+                            <Textarea
+                              value={productsText}
+                              onChange={(e) => setProductsText(e.target.value)}
+                              placeholder="Ej: Tinte Koleston 7/0 + oxidante 20v"
+                              rows={2}
+                              className="text-xs"
+                            />
+                            <div className="flex gap-2">
+                              <Button size="sm" className="h-7 text-xs" disabled={productsBusy} onClick={() => handleSaveProducts(booking.id)}>
+                                {productsBusy ? "Guardando..." : "Guardar"}
+                              </Button>
+                              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setEditingProductsId(null)}>
+                                Cerrar
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          booking.status === "confirmed" && (
+                            <button
+                              type="button"
+                              onClick={() => { setEditingProductsId(booking.id); setProductsText(String((booking as any).products_used || "")); }}
+                              className="text-[11px] text-muted-foreground hover:text-foreground hover:underline mb-2"
+                            >
+                              {(booking as any).products_used ? "✏️ Editar productos" : "＋ Anotar productos usados"}
+                            </button>
+                          )
+                        )}
                         <div className="flex gap-2">
                           {booking.status === "pending" && (
                             <>
@@ -1212,6 +1368,30 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
                               </Button>
                             </>
                           )}
+                          {(booking.status === "pending" || booking.status === "confirmed") && (
+                            <>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 text-xs"
+                                title="Link para que la clienta confirme o cancele sola"
+                                disabled={confirmLinkBusy === booking.id}
+                                onClick={() => handleConfirmLink(booking.id, typeof (booking as any).confirm_token === "string" ? (booking as any).confirm_token : null)}
+                              >
+                                {confirmLinkBusy === booking.id ? "Generando..." : "🔗 Link"}
+                              </Button>
+                              {typeof (booking as any).confirm_token === "string" && (booking as any).confirm_token && booking.customer_phone && (
+                                <a
+                                  href={`https://wa.me/${String(booking.customer_phone).replace(/[^0-9]/g, "")}?text=${encodeURIComponent(`Hola! Te paso el link de tu turno del ${booking.booking_date} ${String(booking.booking_time).slice(0, 5)}: ${typeof window !== "undefined" ? window.location.origin : ""}/turno/${(booking as any).confirm_token} — confirmalo cuando puedas 👆`)}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center h-7 px-2 rounded-md border border-input text-xs font-medium text-green-600 hover:bg-muted"
+                                >
+                                  📲 Enviar
+                                </a>
+                              )}
+                            </>
+                          )}
                           {canDeposits && vendor?.stripe_account_id && Number((booking as any).deposit_amount) > 0 && (booking as any).deposit_status !== "paid" && (booking.status === "pending" || booking.status === "confirmed") && (
                             <div className="w-full">
                               {(booking as any).deposit_status === "paid" ? null : stripeBookingLink[booking.id] ? (
@@ -1235,6 +1415,33 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
                                   onClick={() => handleBookingStripeDepositLink(booking.id)}
                                 >
                                   {stripeBookingBusy === booking.id ? "Generando..." : `💳 Link seña $${Number((booking as any).deposit_amount).toLocaleString("es-AR")}`}
+                                </Button>
+                              )}
+                            </div>
+                          )}
+                          {canDeposits && vendor?.mp_user_id && Number((booking as any).deposit_amount) > 0 && (booking as any).deposit_status !== "paid" && (booking.status === "pending" || booking.status === "confirmed") && (
+                            <div className="w-full">
+                              {mpBookingLink[booking.id] ? (
+                                <div className="flex items-center gap-2">
+                                  <Input value={mpBookingLink[booking.id]} readOnly className="h-7 text-[11px] flex-1" onFocus={(e) => e.target.select()} />
+                                  <a
+                                    href={`https://wa.me/?text=${encodeURIComponent(`Hola, te paso el link para la seña del turno ($${Number((booking as any).deposit_amount).toLocaleString("es-AR")}): ${mpBookingLink[booking.id]}`)}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-xs font-medium text-green-600 hover:underline whitespace-nowrap"
+                                  >
+                                    📲 Enviar
+                                  </a>
+                                </div>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 text-xs"
+                                  disabled={mpBookingBusy === booking.id}
+                                  onClick={() => handleBookingMpDepositLink(booking.id)}
+                                >
+                                  {mpBookingBusy === booking.id ? "Generando..." : `🔗 Link MP $${Number((booking as any).deposit_amount).toLocaleString("es-AR")}`}
                                 </Button>
                               )}
                             </div>
@@ -1588,6 +1795,7 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
         <ServicioHoy
           quotes={quotes}
           bookings={bookings}
+          orders={isEstetica ? ordersProp : undefined}
           onNavigate={onNavigate}
         />
       )}

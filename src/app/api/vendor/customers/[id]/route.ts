@@ -121,7 +121,7 @@ export async function GET(
       try {
         bookings = (await queryMany<Record<string, any>>(
           `SELECT b.id, b.product_name, s.name AS service_label, st.name AS staff_label,
-                  b.booking_date, b.booking_time, b.status, b.notes, b.created_at
+                  b.products_used, b.booking_date, b.booking_time, b.status, b.notes, b.created_at
            FROM bookings b
            LEFT JOIN services s ON s.id = b.service_id
            LEFT JOIN estetica_staff st ON st.id = b.staff_id
@@ -131,13 +131,27 @@ export async function GET(
           [gate.vendor.id, phoneVariants]
         )) || [];
       } catch {
-        bookings = (await queryMany<Record<string, any>>(
-          `SELECT id, product_name, booking_date, booking_time, status, notes, created_at
-           FROM bookings WHERE vendor_id = $1
-             AND (regexp_replace(customer_phone, '[^0-9]', '', 'g') = ANY($2))
-           ORDER BY booking_date DESC, booking_time DESC LIMIT 30`,
-          [gate.vendor.id, phoneVariants]
-        )) || [];
+        try {
+          bookings = (await queryMany<Record<string, any>>(
+            `SELECT b.id, b.product_name, s.name AS service_label, st.name AS staff_label,
+                    b.booking_date, b.booking_time, b.status, b.notes, b.created_at
+             FROM bookings b
+             LEFT JOIN services s ON s.id = b.service_id
+             LEFT JOIN estetica_staff st ON st.id = b.staff_id
+             WHERE b.vendor_id = $1
+               AND (regexp_replace(b.customer_phone, '[^0-9]', '', 'g') = ANY($2))
+             ORDER BY b.booking_date DESC, b.booking_time DESC LIMIT 30`,
+            [gate.vendor.id, phoneVariants]
+          )) || [];
+        } catch {
+          bookings = (await queryMany<Record<string, any>>(
+            `SELECT id, product_name, booking_date, booking_time, status, notes, created_at
+             FROM bookings WHERE vendor_id = $1
+               AND (regexp_replace(customer_phone, '[^0-9]', '', 'g') = ANY($2))
+             ORDER BY booking_date DESC, booking_time DESC LIMIT 30`,
+            [gate.vendor.id, phoneVariants]
+          )) || [];
+        }
       }
     } catch { /* sin tabla: vacío */ }
   }

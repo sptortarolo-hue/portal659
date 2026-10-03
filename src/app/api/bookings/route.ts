@@ -1,8 +1,10 @@
 import { query, queryMany, queryOne } from "@/lib/db";
 import { sendPushToUser } from "@/lib/push";
 import { getServiceQuota, ServiceQuotaError } from "@/lib/service-quota";
+import { toE164 } from "@/lib/phone";
 import { NextResponse } from "next/server";
 import { withRateLimit } from "@/lib/api-wrapper";
+import crypto from "crypto";
 
 const toMinutes = (t: string): number | null => {
   const m = /^(\d{1,2}):(\d{2})/.exec(String(t || "").trim());
@@ -167,15 +169,20 @@ export const POST = withRateLimit(async (request: Request) => {
     ? null
     : `${bookingDate}T${String(Math.floor(endMin / 60)).padStart(2, "0")}:${String(endMin % 60).padStart(2, "0")}:00`;
 
+  // Token público de confirmación (/turno/[token]): la clienta confirma o
+  // cancela sin cuenta. Solo tier 1 (migrate-estetica-confirm-token.sql);
+  // los demás tiers lo omiten (queda NULL y el panel puede generarlo).
+  const confirmToken = crypto.randomBytes(16).toString("hex");
+
   // customer_name/phone viven en migrate-service-requests.sql; staff/service/
   // starts/ends/deposit en migrate-estetica.sql; service_price/commission_pct
   // en migrate-estetica-commissions.sql. Fallbacks en cascada.
   let booking: { id: string } | undefined;
   try {
     booking = await queryOne<{ id: string }>(
-      `INSERT INTO bookings (vendor_id, product_id, customer_id, product_name, customer_name, customer_phone, booking_date, booking_time, duration_min, staff_id, service_id, starts_at, ends_at, deposit_amount, service_price, commission_pct, location_id, notes, status)
-       VALUES ($1, NULL, NULL, $2, $3, $4, $5, $6, $7, $8, $9, $10::timestamptz, $11::timestamptz, $12, $13, $14, $15, $16, 'pending') RETURNING id`,
-      [vendorId, serviceName || productName || null, customerName, customerPhone, bookingDate, String(bookingTime).slice(0, 5), durationMin, staffId, serviceId, startsAt, endsAt, depositAmount, servicePrice, snapshotCommission, locationId, notes || null]
+      `INSERT INTO bookings (vendor_id, product_id, customer_id, product_name, customer_name, customer_phone, booking_date, booking_time, duration_min, staff_id, service_id, starts_at, ends_at, deposit_amount, service_price, commission_pct, location_id, confirm_token, notes, status)
+       VALUES ($1, NULL, NULL, $2, $3, $4, $5, $6, $7, $8, $9, $10::timestamptz, $11::timestamptz, $12, $13, $14, $15, $16, $17, 'pending') RETURNING id`,
+      [vendorId, serviceName || productName || null, customerName, customerPhone, bookingDate, String(bookingTime).slice(0, 5), durationMin, staffId, serviceId, startsAt, endsAt, depositAmount, servicePrice, snapshotCommission, locationId, confirmToken, notes || null]
     );
   } catch {
     try {
@@ -214,6 +221,49 @@ export const POST = withRateLimit(async (request: Request) => {
     [vendorId]
   );
 
+  // Usar 1 sesión de pack (estética): la clienta paga el turno con su saldo.
+  // Se descuenta DESPUÉS de crear el turno; si no hay saldo, el turno queda
+  // igual y se avisa (se cobra normal).
+  let packWarning: string | null = null;
+  let packUsed: { pack_name: string; remaining: number } | null = null;
+  const usePack = body.usePackCredit;
+  if (usePack && booking?.id) {
+    try {
+      const phoneE164 = toE164(String(customerPhone));
+      const wantPack = typeof usePack === "string" && usePack ? usePack : null;
+      if (phoneE164) {
+        const params: unknown[] = [vendorId, phoneE164];
+        let extra = "";
+        if (wantPack) {
+          params.push(wantPack);
+          extra = "AND c.pack_id = $3";
+        }
+        const credit = await queryOne<{ id: string }>(
+          `SELECT c.id FROM service_pack_credits c
+           WHERE c.vendor_id = $1 AND c.customer_phone = $2 AND c.remaining > 0 ${extra}
+           ORDER BY c.created_at ASC LIMIT 1`,
+          params
+        ).catch(() => undefined);
+        if (credit) {
+          const updated = await queryOne<{ remaining: number; pack_name: string }>(
+            `UPDATE service_pack_credits SET remaining = remaining - 1 WHERE id = $1 AND remaining > 0
+             RETURNING remaining, (SELECT name FROM service_packs WHERE id = service_pack_credits.pack_id) AS pack_name`,
+            [credit.id]
+          ).catch(() => undefined);
+          if (updated) {
+            packUsed = { pack_name: String(updated.pack_name || "pack"), remaining: Number(updated.remaining) || 0 };
+          } else {
+            packWarning = "No se pudo usar tu sesión (se terminó justo ahora): el turno quedó reservado igual.";
+          }
+        } else {
+          packWarning = "No encontramos sesiones disponibles en tu teléfono: el turno quedó reservado igual.";
+        }
+      }
+    } catch {
+      packWarning = "No se pudo usar tu sesión: el turno quedó reservado igual.";
+    }
+  }
+
   if (vendor?.user_id) {
     const label = serviceName || productName;
     await query(
@@ -239,5 +289,5 @@ export const POST = withRateLimit(async (request: Request) => {
     } catch { /* best-effort */ }
   }
 
-  return NextResponse.json({ ok: true, bookingId: booking?.id });
+  return NextResponse.json({ ok: true, bookingId: booking?.id, packUsed, packWarning });
 }, { maxRequests: 10 });

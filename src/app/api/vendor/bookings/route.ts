@@ -4,6 +4,7 @@ import { queryMany, queryOne, withTransaction } from "@/lib/db";
 import { ensureServiceCustomer } from "@/lib/customers";
 import { toE164 } from "@/lib/phone";
 import { NextResponse } from "next/server";
+import crypto from "crypto";
 
 export async function GET(request: Request) {
   const { vendor } = await getVendorByRequest(request);
@@ -192,11 +193,12 @@ export async function POST(request: Request) {
       const notesVal = String(body.notes || "").trim().slice(0, 2000) || null;
       const pnameVal = serviceName || String(body.product_name || "").trim() || null;
       const quoteVal = typeof body.quote_id === "string" && body.quote_id ? body.quote_id : null;
+      const confirmVal = crypto.randomBytes(16).toString("hex");
       try {
         b = await tx.query<{ id: string }>(
-          `INSERT INTO bookings (vendor_id, product_id, customer_id, product_name, customer_name, customer_phone, booking_date, booking_time, duration_min, staff_id, service_id, starts_at, ends_at, service_price, commission_pct, location_id, notes, status, origin, quote_id)
-           VALUES ($1, NULL, NULL, $2, $3, $4, $5, $6, $7, $8, $9, $10::timestamptz, $11::timestamptz, $12, $13, $14, $15, 'confirmed', 'vendor', $16) RETURNING id`,
-          [gate.vendor.id, pnameVal, customerName, customerPhone, bookingDate, bookingTime, durationMin, staffId, serviceId, startsAt, endsAt, servicePrice, snapshotCommission, locationId, notesVal, quoteVal]
+          `INSERT INTO bookings (vendor_id, product_id, customer_id, product_name, customer_name, customer_phone, booking_date, booking_time, duration_min, staff_id, service_id, starts_at, ends_at, service_price, commission_pct, location_id, confirm_token, notes, status, origin, quote_id)
+           VALUES ($1, NULL, NULL, $2, $3, $4, $5, $6, $7, $8, $9, $10::timestamptz, $11::timestamptz, $12, $13, $14, $15, $16, 'confirmed', 'vendor', $17) RETURNING id`,
+          [gate.vendor.id, pnameVal, customerName, customerPhone, bookingDate, bookingTime, durationMin, staffId, serviceId, startsAt, endsAt, servicePrice, snapshotCommission, locationId, confirmVal, notesVal, quoteVal]
         );
       } catch {
         try {

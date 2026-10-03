@@ -107,8 +107,8 @@ export async function POST(request: Request) {
     }
 
     if (!accessToken) {
-      return NextResponse.json({ ok: true });
-    }
+          return NextResponse.json({ ok: true });
+        }
 
     try {
       const res = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
@@ -169,6 +169,65 @@ export async function POST(request: Request) {
           return NextResponse.json({ ok: true });
         }
 
+        // Rama seña de TURNO: portal659_sena_turno_{bookingId}_{ts}. Marca la
+        // seña del turno como pagada (plan Oficios; estética y servicios).
+        // Va ANTES de la rama de presupuestos: el ref también empieza con
+        // "portal659_sena_" pero el segmento [2] es "turno", no un quoteId.
+        if (externalRef?.startsWith("portal659_sena_turno_")) {
+          const bookingId = externalRef.split("_")[3];
+          if (bookingId) {
+            const booking = await queryOne<{
+              id: string;
+              vendor_id: string;
+              customer_name: string | null;
+              customer_phone: string | null;
+              deposit_amount: number | null;
+              deposit_status: string | null;
+            }>(
+              `SELECT id, vendor_id, customer_name, customer_phone, deposit_amount, deposit_status
+               FROM bookings WHERE id = $1 LIMIT 1`,
+              [bookingId]
+            ).catch(() => undefined);
+            if (booking && booking.deposit_status !== "paid") {
+              const paidAmount = Number(payment.transaction_amount) || 0;
+              const expected = Number(booking.deposit_amount) || 0;
+              const mismatch = expected > 0 && Math.abs(paidAmount - expected) > 1;
+              await query(
+                `UPDATE bookings SET deposit_status = 'paid', mp_payment_id = $1 WHERE id = $2`,
+                [String(payment.id || ""), bookingId]
+              ).catch(() => undefined);
+              const vrow = await queryOne<{ user_id: string; store_name: string }>(
+                `SELECT user_id, store_name FROM vendors WHERE id = $1 LIMIT 1`,
+                [booking.vendor_id]
+              ).catch(() => undefined);
+              if (vrow?.user_id) {
+                const title = "¡Seña de turno pagada!";
+                const body = `${booking.customer_name || "La clienta"} pagó $${paidAmount.toLocaleString("es-AR")} de seña${mismatch ? ` (difiere de $${expected.toLocaleString("es-AR")}, revisar)` : ""}.`;
+                await query(
+                  `INSERT INTO notifications (user_id, title, body, type, link)
+                   VALUES ($1, $2, $3, 'payment', '/vendor/dashboard')`,
+                  [vrow.user_id, title, body]
+                ).catch(() => undefined);
+                try {
+                  const { sendPushToUser } = await import("@/lib/push");
+                  await sendPushToUser(vrow.user_id, { title, body, link: "/vendor/dashboard" });
+                } catch { /* best-effort */ }
+              }
+              if (booking.customer_phone) {
+                try {
+                  const { notifyServiceClient } = await import("@/lib/service-notify");
+                  await notifyServiceClient(booking.customer_phone, {
+                    title: `Seña recibida — ${(booking.customer_name || "").split(" ")[0] || "gracias"}`,
+                    body: "Tu seña fue acreditada. Te esperamos en tu turno.",
+                  });
+                } catch { /* best-effort */ }
+              }
+              console.log(`[mp-webhook] seña turno ok booking=${bookingId} amount=${paidAmount} mismatch=${mismatch}`);
+            }
+          }
+          return NextResponse.json({ ok: true });
+        }
+
         // Rama seña de servicio: portal659_sena_{quoteId}_{ts}. Marca la seña
         // como pagada y acepta el presupuesto (plan Oficios).
         if (externalRef?.startsWith("portal659_sena_")) {
@@ -223,6 +282,103 @@ export async function POST(request: Request) {
                 });
               } catch { /* best-effort */ }
               console.log(`[mp-webhook] seña ok quote=${quoteId} amount=${paidAmount} mismatch=${mismatch}`);
+            }
+          }
+          return NextResponse.json({ ok: true });
+        }
+
+        // Rama compra de PACK online: portal659_pack_{vendorId}_{packId}_{ts}.
+        // Acredita las sesiones al teléfono de la compradora (plan Oficios).
+        if (externalRef?.startsWith("portal659_pack_")) {
+          const metadata = payment.metadata || {};
+          const pVendorId = String(metadata.vendor_id || externalRef.split("_")[2] || "");
+          const packId = String(metadata.pack_id || externalRef.split("_")[3] || "");
+          const phone = String(metadata.customer_phone || "");
+          if (pVendorId && packId && phone) {
+            try {
+              const pack = await queryOne<{ sessions_total: number; name: string }>(
+                `SELECT sessions_total, name FROM service_packs WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
+                [packId, pVendorId]
+              ).catch(() => undefined);
+              if (pack && Number(pack.sessions_total) > 0) {
+                await query(
+                  `INSERT INTO service_pack_credits (pack_id, vendor_id, customer_phone, remaining)
+                   VALUES ($1, $2, $3, $4)
+                   ON CONFLICT (pack_id, customer_phone) DO UPDATE SET remaining = service_pack_credits.remaining + EXCLUDED.remaining`,
+                  [packId, pVendorId, phone, Math.max(1, Number(pack.sessions_total) || 1)]
+                ).catch(() => undefined);
+                const vrow = await queryOne<{ user_id: string }>(
+                  `SELECT user_id FROM vendors WHERE id = $1 LIMIT 1`,
+                  [pVendorId]
+                ).catch(() => undefined);
+                if (vrow?.user_id) {
+                  const title = "¡Pack vendido online!";
+                  const body = `${String(metadata.customer_name || phone).slice(0, 60)} compró el pack ${pack.name} (${pack.sessions_total} sesiones). Ya acreditadas a ${phone}.`;
+                  await query(
+                    `INSERT INTO notifications (user_id, title, body, type, link)
+                     VALUES ($1, $2, $3, 'payment', '/vendor/dashboard')`,
+                    [vrow.user_id, title, body]
+                  ).catch(() => undefined);
+                  try {
+                    const { sendPushToUser } = await import("@/lib/push");
+                    await sendPushToUser(vrow.user_id, { title, body, link: "/vendor/dashboard" });
+                  } catch { /* best-effort */ }
+                }
+                console.log(`[mp-webhook] pack ok vendor=${pVendorId} pack=${packId} phone=${phone}`);
+              }
+            } catch (e) {
+              logApiError("mp-webhook/pack", e);
+            }
+          }
+          return NextResponse.json({ ok: true });
+        }
+
+        // Rama compra de GIFTCARD online: portal659_giftcard_{vendorId}_{monto}_{ts}.
+        // Emite el código con saldo y se lo avisa al comercio (lo reenvía por WA).
+        if (externalRef?.startsWith("portal659_giftcard_")) {
+          const metadata = payment.metadata || {};
+          const gVendorId = String(metadata.vendor_id || externalRef.split("_")[2] || "");
+          const gAmount = Math.round(Number(metadata.giftcard_amount || externalRef.split("_")[3] || 0));
+          const gPhone = String(metadata.customer_phone || "");
+          const gName = String(metadata.customer_name || "").slice(0, 120);
+          if (gVendorId && gAmount > 0 && gPhone) {
+            try {
+              const { randomBytes } = await import("crypto");
+              let card: { code: string } | undefined;
+              for (let i = 0; i < 5 && !card; i++) {
+                try {
+                  const code = `EST-${randomBytes(3).toString("hex").toUpperCase()}`;
+                  card = (await queryOne<{ code: string }>(
+                    `INSERT INTO giftcards (vendor_id, code, amount, balance, customer_name, customer_phone)
+                     VALUES ($1, $2, $3, $3, $4, $5) RETURNING code`,
+                    [gVendorId, code, gAmount, gName || null, gPhone]
+                  )) || undefined;
+                } catch (e) {
+                  if (!/duplicate|unique/i.test((e as Error)?.message || "")) throw e;
+                }
+              }
+              if (card) {
+                const vrow = await queryOne<{ user_id: string }>(
+                  `SELECT user_id FROM vendors WHERE id = $1 LIMIT 1`,
+                  [gVendorId]
+                ).catch(() => undefined);
+                if (vrow?.user_id) {
+                  const title = "¡Giftcard vendida online!";
+                  const body = `${gName || gPhone} compró una giftcard de $${gAmount.toLocaleString("es-AR")}. Código ${card.code} — pasáselo por WhatsApp al ${gPhone}.`;
+                  await query(
+                    `INSERT INTO notifications (user_id, title, body, type, link)
+                     VALUES ($1, $2, $3, 'payment', '/vendor/dashboard')`,
+                    [vrow.user_id, title, body]
+                  ).catch(() => undefined);
+                  try {
+                    const { sendPushToUser } = await import("@/lib/push");
+                    await sendPushToUser(vrow.user_id, { title, body, link: "/vendor/dashboard" });
+                  } catch { /* best-effort */ }
+                }
+                console.log(`[mp-webhook] giftcard ok vendor=${gVendorId} code=${card.code} amount=${gAmount}`);
+              }
+            } catch (e) {
+              logApiError("mp-webhook/giftcard", e);
             }
           }
           return NextResponse.json({ ok: true });

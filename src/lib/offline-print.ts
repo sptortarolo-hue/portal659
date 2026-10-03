@@ -35,6 +35,8 @@ export type ContingencyDoc = {
   /** Info de efectivo para precuenta/ticket: % y total a abonar. */
   cashPct?: number | null;
   cashTotal?: number | null;
+  /** Descuento por pack aplicado (precuenta de mesa). */
+  volumeDiscount?: number | null;
   createdAt?: number;
   /** 48 = 80mm, 32 = 58mm. */
   width?: 48 | 32;
@@ -177,6 +179,9 @@ export function buildContingencyBytes(doc: ContingencyDoc): Uint8Array {
   p.rule(width);
 
   p.bold(true).doubleSize(width > 32);
+  if ((doc.volumeDiscount ?? 0) > 0) {
+    p.text(`Desc. volumen: -${money(doc.volumeDiscount as number)}`);
+  }
   p.text(`TOTAL: ${money(doc.total)}`);
   p.doubleSize(false).bold(false);
   if (doc.paymentLabel) p.text(`Pago: ${doc.paymentLabel}`);

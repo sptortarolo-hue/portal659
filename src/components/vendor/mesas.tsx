@@ -8,7 +8,11 @@ import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import { ModifierPicker } from "@/components/offers/modifier-picker";
 import { ProductImage } from "@/components/product-image";
 import { ProductPickCard } from "@/components/vendor/product-pick-card";
-import { cashDiscountForItems, normalizeCashPct } from "@/lib/cash-discount";
+import { cashAppliesToItem, normalizeCashPct } from "@/lib/cash-discount";
+import { mirrorVolume } from "@/lib/volume-mirror";
+import { cartLineTotal } from "@/lib/order-line";
+import type { CartItem, CartVolumeGroup } from "@/lib/cart";
+import type { VolumeResult } from "@/lib/volume-pricing";
 import { getCatalogSnapshot, getTablesSnapshot, saveCatalogSnapshot, saveTablesSnapshot, outboxList } from "@/lib/offline-db";
 import { enqueueOfflineAction, isNetworkError, newClientKey, nextProvisionalNumber } from "@/lib/offline-actions";
 import { checkOfflineAllowed, offlineDeniedMsg } from "@/lib/offline-plan";
@@ -533,6 +537,30 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
         fetch("/api/vendor/reservations?status=pendiente", { signal: ac.signal }).catch(() => null),
         fetch("/api/vendor/floor-decor", { signal: ac.signal }).catch(() => null),
       ]);
+      // Grupos de volumen (espejo visual del descuento por pack; tolerante,
+      // fuera del Promise.all para no frenar la carga si falla).
+      fetch("/api/vendor/volume-groups")
+        .then((r) => r.json().catch(() => ({})))
+        .then((gdata: any) => {
+          if (!Array.isArray(gdata?.groups)) return;
+          setVolumeGroups(
+            (gdata.groups as any[])
+              .filter((g) => g && g.active !== false)
+              .map((g) => ({
+                id: String(g.id),
+                name: String(g.name ?? ""),
+                productIds: Array.isArray(g.product_ids) ? g.product_ids.map(String) : [],
+                combinePromo: g.combine_promo === true,
+                combineCash: g.combine_cash === true,
+                extrasIncluded: g.extras_mode === "included",
+                tiers: (Array.isArray(g.tiers) ? g.tiers : [])
+                  .filter((t: any) => t && (t.kind === "fixed_total" || t.kind === "percent_off"))
+                  .map((t: any) => ({ minQty: Number(t.min_qty), kind: t.kind, value: Number(t.value) })),
+              }))
+              .filter((g) => g.productIds.length > 0 && g.tiers.length > 0)
+          );
+        })
+        .catch(() => {});
       const t = await tRes.json();
       const o = await oRes.json();
       const p = await pRes.json();
@@ -676,7 +704,6 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
         : [],
     [orders, selected]
   );
-  const selectedTotal = openOrders.reduce((s, o) => s + Number(o.total), 0);
 
   // Ledger offline de la mesa seleccionada (F2).
   const tableAdds = useMemo(
@@ -687,49 +714,103 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
     () => (selected ? localCloses.filter((c) => c.tableId === selected.id) : []),
     [localCloses, selected]
   );
-  const localAddsTotal = tableAdds.reduce((s, a) => s + Number(a.total), 0);
   /** La mesa tiene cuenta (servidor o pendiente offline). */
   const hasAccount = openOrders.length > 0 || cart.length > 0 || tableAdds.length > 0;
 
-  // Descuento en efectivo de la mesa (misma fórmula que el servidor):
-  // ítems de las consumiciones abiertas + lo pendiente de cargar.
-  const productCashFlags = useMemo(
-    () =>
-      new Map(
-        products.map((p) => [
-          p.id,
-          { hasPromo: p.promo_price != null, excluded: p.cash_discount_excluded === true },
-        ])
-      ),
-    [products]
-  );
-  const mesaCash = useMemo(() => {
-    const lines = [
-      ...openOrders.flatMap((o) => o.items || []),
-      ...cart,
-      // Consumiciones offline pendientes: entran al estimado de efectivo.
-      ...tableAdds.flatMap((a) => a.items || []),
-    ];
-    return cashDiscountForItems(
-      lines.map((i: any) => {
-        const info = i.product_id ? productCashFlags.get(i.product_id) : undefined;
-        // Pack-aware: carrito (packSize, price por unidad full-precision) y
-        // órdenes persistidas (pack_size, price = precio del paquete).
-        const pack = Math.floor(Number(i.pack_size ?? i.packSize ?? 0));
-        if (pack >= 2) {
-          const isDbItem = i.pack_size != null;
-          return {
-            unitPrice: isDbItem ? Number(i.price) : Number(i.price) * pack,
-            qty: Number(i.qty) / pack,
-            hasPromo: info?.hasPromo ?? false,
-            excluded: info?.excluded ?? null,
-          };
+  // Grupos de volumen del comercio (espejo visual; el servidor recalcula y
+  // manda al cargar consumición y al cerrar). Sin grupos no hay nada que espejar.
+  const [volumeGroups, setVolumeGroups] = useState<CartVolumeGroup[]>([]);
+
+  // Todas las líneas de la cuenta en formato carrito para el espejo de
+  // volumen: consumiciones abiertas (precio pack-level de DB) + carrito +
+  // pendientes offline. price EXCLUYE mods (van en `modifiers`) para que
+  // cartLineTotal no los duplique; los labels de DB recuperan su price_mod
+  // desde el catálogo.
+  const mesaCartItems: CartItem[] = useMemo(() => {
+    const modsUnitFor = (productId: string | undefined, labels: string[]): number => {
+      if (!productId || labels.length === 0) return 0;
+      let sum = 0;
+      for (const g of modifiersMap[productId] || []) {
+        for (const o of g.options || []) {
+          if (labels.includes(String(o.label))) sum += Number(o.price_mod) || 0;
         }
-        return { unitPrice: Number(i.price), qty: Number(i.qty), hasPromo: info?.hasPromo ?? false, excluded: info?.excluded ?? null };
-      }),
-      cashPct
-    );
-  }, [openOrders, cart, tableAdds, cashPct, productCashFlags]);
+      }
+      return sum;
+    };
+    const mapLine = (i: any, fromDb: boolean): CartItem => {
+      const labels: string[] = Array.isArray(i?.modifiers)
+        ? i.modifiers.map((m: any) => (typeof m === "string" ? m : String(m?.label || ""))).filter(Boolean)
+        : [];
+      const p = products.find((pp) => pp.id === i?.product_id);
+      const pkRaw = Math.floor(Number(fromDb ? (i?.pack_size ?? p?.pack_size) : (i?.packSize ?? p?.pack_size)) || 0);
+      const pk = pkRaw >= 2 ? pkRaw : 1;
+      const modsWithPrice = labels.map((label) => {
+        let price_mod = 0;
+        if (!fromDb && Array.isArray(i?.modifiers)) {
+          const hit = (i.modifiers as any[]).find((m: any) => typeof m !== "string" && String(m?.label || "") === label);
+          if (hit) price_mod = Number(hit.price_mod) || 0;
+        }
+        if (!price_mod) {
+          for (const g of modifiersMap[i?.product_id] || []) {
+            const o = (g.options || []).find((oo) => String(oo.label) === label);
+            if (o) { price_mod = Number(o.price_mod) || 0; break; }
+          }
+        }
+        return { group: "", label, price_mod };
+      });
+      const modsUnit = modsWithPrice.reduce((s, m) => s + (Number(m.price_mod) || 0), 0);
+      // DB con pack: price = precio del paquete (mods baked) → unidad.
+      // Carrito/offline: price ya es por unidad.
+      const unitIncl = fromDb && pk > 1 ? Number(i?.price) / pk : Number(i?.price);
+      // El espejo espera precios PACK-level cuando hay pack (igual que el
+      // micro: origPrice = lista del paquete, packPrice = promo o lista).
+      let listPack = unitIncl - modsUnit;
+      let promoPack: number | null = null;
+      if (p) {
+        listPack = Number(p.price);
+        promoPack = p.promo_price != null ? Number(p.promo_price) : null;
+      }
+      const hasPromo = p ? p.promo_price != null : false;
+      return {
+        offerId: String(i?.product_id || ""),
+        name: String(i?.name || ""),
+        price: unitIncl - modsUnit,
+        qty: Number(i?.qty) || 0,
+        modifiers: modsWithPrice,
+        cashExcluded: p ? p.cash_discount_excluded === true : undefined,
+        origPrice: listPack,
+        hasPromo,
+        packSize: pk > 1 ? pk : undefined,
+        packPrice: pk > 1 ? (promoPack != null ? promoPack : listPack) : undefined,
+      };
+    };
+    return [
+      ...openOrders.flatMap((o) => o.items || []).map((i: any) => mapLine(i, true)),
+      ...cart.map((i: any) => mapLine(i, false)),
+      ...tableAdds.flatMap((a) => a.items || []).map((i: any) => mapLine(i, false)),
+    ];
+  }, [openOrders, cart, tableAdds, products, modifiersMap]);
+  const mesaVol: VolumeResult = useMemo(() => mirrorVolume(mesaCartItems, volumeGroups), [mesaCartItems, volumeGroups]);
+  const mesaVolumeDiscount = Math.round(mesaVol.volumeDiscount * 100) / 100;
+  const mesaVolumeLabel =
+    mesaVol.applied.length > 0 ? mesaVol.applied.map((a) => `${a.groupName} (${a.label})`).join(" · ") : "";
+  // Bruto reconstruido desde las líneas (base del espejo; matchea al server).
+  const mesaGross = Math.round(mesaCartItems.reduce((s, ci) => s + cartLineTotal(ci), 0) * 100) / 100;
+
+  // Descuento en efectivo de la mesa (misma fórmula que el servidor): % sobre
+  // la NETA DE LA LÍNEA. Con volumen sin combine, la línea no recibe cash.
+  const mesaCash = useMemo(() => {
+    if (!(payment === "efectivo" && cashPct > 0)) return { cashDiscount: 0, cashPct };
+    let cashDiscount = 0;
+    mesaCartItems.forEach((ci, idx) => {
+      const vline = mesaVol.lines[idx];
+      if (vline && !vline.cashEligible) return;
+      if (!cashAppliesToItem({ hasPromo: vline?.hasPromo ?? !!ci.hasPromo, excluded: ci.cashExcluded })) return;
+      const lineNet = vline ? vline.netTotal : cartLineTotal(ci);
+      cashDiscount += lineNet - Math.round(lineNet * (1 - cashPct / 100) * 100) / 100;
+    });
+    return { cashDiscount: Math.round(cashDiscount * 100) / 100, cashPct };
+  }, [mesaCartItems, mesaVol, payment, cashPct]);
 
   // Chips de categoría agrupados por clave normalizada (trim+lowercase):
   // "Pizzas", "pizzas" o " Pizzas" forman un solo chip (igual que el micrositio).
@@ -1204,7 +1285,7 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
       (payload as any).__provisional = prov;
       (payload as any).__closeTotal = Math.max(
         0,
-        Math.round((selectedTotal + cartTotal + localAddsTotal - (payment === "efectivo" ? mesaCash.cashDiscount : 0)) * 100) / 100
+        Math.round((mesaNet - (payment === "efectivo" ? mesaCash.cashDiscount : 0)) * 100) / 100
       );
       if (cartPayload) {
         const cartProv = nextProvisionalNumber(vendorId);
@@ -1295,6 +1376,9 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
       await load();
       setMsg(
         `Mesa cobrada: $${Number(data.total).toLocaleString("es-AR")}` +
+        (Number(data.volumeDiscount) > 0
+          ? ` (desc. pack −$${Number(data.volumeDiscount).toLocaleString("es-AR")})`
+          : "") +
         (Number(data.cashDiscount) > 0
           ? ` (desc. efectivo −$${Number(data.cashDiscount).toLocaleString("es-AR")})`
           : "")
@@ -1304,11 +1388,10 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
   }
 
   const cartCount = cart.reduce((s, i) => s + i.qty, 0);
-  const cartTotal = cart.reduce((s, i) => s + i.price * i.qty, 0);
-  // El total en vivo incluye consumiciones offline pendientes (estimado).
-  const mesaTotalNotDiscounted = selectedTotal + cartTotal + localAddsTotal;
-  // Con efectivo se cobra el total con descuento; con otros medios, el pleno.
-  const mesaPayTotal = Math.max(0, Math.round((mesaTotalNotDiscounted - (payment === "efectivo" ? mesaCash.cashDiscount : 0)) * 100) / 100);
+  // Neto con volumen (el espejo matchea lo que el servidor cobra al cerrar).
+  const mesaNet = Math.max(0, Math.round((mesaGross - mesaVolumeDiscount) * 100) / 100);
+  // Con efectivo se cobra el neto con descuento; con otros medios, el neto.
+  const mesaPayTotal = Math.max(0, Math.round((mesaNet - (payment === "efectivo" ? mesaCash.cashDiscount : 0)) * 100) / 100);
 
   // Precuenta de la mesa (ticket térmico, sin cerrar): incluye lo ya cargado
   // más el carrito pendiente. No cierra ni cobra.
@@ -1333,11 +1416,12 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
           kind: "PRECUENTA",
           tableName,
           items: contItems,
-          total: mesaTotalNotDiscounted,
+          total: mesaNet,
           paymentLabel: PAYMENT_LABELS[payment] ?? payment,
           cashPct: mesaCash.cashDiscount > 0 ? mesaCash.cashPct : 0,
           cashTotal:
-            mesaCash.cashDiscount > 0 ? Math.max(0, mesaTotalNotDiscounted - mesaCash.cashDiscount) : 0,
+            mesaCash.cashDiscount > 0 ? mesaPayTotal : 0,
+          volumeDiscount: mesaVolumeDiscount,
           createdAt: Date.now(),
         });
         setMsg(
@@ -1383,10 +1467,11 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
           type: "precuenta",
           tableName: selected.name,
           items,
-          total: mesaTotalNotDiscounted,
+          total: mesaNet,
           // Info de efectivo para el ticket: "Efectivo (-X%): $Y".
           cashPct: mesaCash.cashDiscount > 0 ? mesaCash.cashPct : 0,
-          cashTotal: mesaCash.cashDiscount > 0 ? Math.max(0, mesaTotalNotDiscounted - mesaCash.cashDiscount) : 0,
+          cashTotal: mesaCash.cashDiscount > 0 ? mesaPayTotal : 0,
+          volumeDiscount: mesaVolumeDiscount,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -1873,6 +1958,11 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
                     </button>
                   ))}
                 </div>
+                {mesaVolumeDiscount > 0 && (
+                  <p className="text-[11px] font-medium text-violet-700 dark:text-violet-400 flex-shrink-0">
+                    🎁 Desc. pack{mesaVolumeLabel ? ` · ${mesaVolumeLabel}` : ""}: −${mesaVolumeDiscount.toLocaleString("es-AR")}
+                  </p>
+                )}
                 <div className="flex items-center justify-between text-sm flex-shrink-0">
                   <span>Total mesa</span>
                   <b className="tabular-nums">${mesaPayTotal.toLocaleString("es-AR")}</b>
@@ -1881,7 +1971,7 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
                   <p className="text-[11px] leading-snug text-green-600 dark:text-green-400 flex-shrink-0">
                     {payment === "efectivo"
                       ? `💵 Desc. efectivo (${mesaCash.cashPct}%) aplicado: −$${mesaCash.cashDiscount.toLocaleString("es-AR")}`
-                      : `💵 Pagando en efectivo: $${(mesaTotalNotDiscounted - mesaCash.cashDiscount).toLocaleString("es-AR")} (−${mesaCash.cashPct}%)`}
+                      : `💵 Pagando en efectivo: $${(mesaNet - mesaCash.cashDiscount).toLocaleString("es-AR")} (−${mesaCash.cashPct}%)`}
                   </p>
                 )}
                 <div className="flex-shrink-0">{manualChargeRow}</div>
@@ -1933,7 +2023,7 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
                   {mobileView === "catalog" ? selected.name : `Cuenta · ${selected.name}`}
                 </h3>
                 <p className="text-[11px] text-muted-foreground">
-                  {selected.status === "ocupada" ? "Ocupada" : selected.status === "reservada" ? "Reservada" : "Libre"} · ${mesaTotalNotDiscounted.toLocaleString("es-AR")}
+                  {selected.status === "ocupada" ? "Ocupada" : selected.status === "reservada" ? "Reservada" : "Libre"} · ${mesaNet.toLocaleString("es-AR")}
                 </p>
               </div>
               {selected.status === "libre" && (
@@ -2013,7 +2103,7 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
                       )}
                     </span>
                     <span className="text-base font-bold tabular-nums">
-                      ${mesaTotalNotDiscounted.toLocaleString("es-AR")}
+                      ${mesaNet.toLocaleString("es-AR")}
                     </span>
                   </button>
                 </footer>
@@ -2089,6 +2179,11 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
                       </button>
                     ))}
                   </div>
+                  {mesaVolumeDiscount > 0 && (
+                    <p className="text-[11px] font-medium text-violet-700 dark:text-violet-400">
+                      🎁 Desc. pack{mesaVolumeLabel ? ` · ${mesaVolumeLabel}` : ""}: −${mesaVolumeDiscount.toLocaleString("es-AR")}
+                    </p>
+                  )}
                   <div className="flex items-center justify-between text-sm">
                     <span>Total a cobrar</span>
                     <b className="tabular-nums">${mesaPayTotal.toLocaleString("es-AR")}</b>
@@ -2097,7 +2192,7 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
                     <p className="text-[11px] leading-snug text-green-600 dark:text-green-400">
                       {payment === "efectivo"
                         ? `💵 Desc. efectivo (${mesaCash.cashPct}%) aplicado: −$${mesaCash.cashDiscount.toLocaleString("es-AR")}`
-                        : `💵 Pagando en efectivo: $${(mesaTotalNotDiscounted - mesaCash.cashDiscount).toLocaleString("es-AR")} (−${mesaCash.cashPct}%)`}
+                        : `💵 Pagando en efectivo: $${(mesaNet - mesaCash.cashDiscount).toLocaleString("es-AR")} (−${mesaCash.cashPct}%)`}
                     </p>
                   )}
                   <div className="grid grid-cols-1 gap-1.5">

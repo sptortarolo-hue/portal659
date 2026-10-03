@@ -3,7 +3,14 @@ import { queryMany, queryOne, withTransaction } from "@/lib/db";
 import { fetchVendorDelivery } from "@/lib/delivery-server";
 import { resolveDeliveryFee, type DeliverySelection } from "@/lib/delivery";
 import { nextOrderNumber } from "@/lib/order-number";
-import { cashDiscountForItems } from "@/lib/cash-discount";
+import { cashDiscountForItems, normalizeCashPct } from "@/lib/cash-discount";
+import {
+  resolveOrderPricing,
+  PricingError,
+  type IncomingOrderItem,
+  type ResolvedPricing,
+} from "@/lib/pricing";
+import type { OrderItem } from "@/types/database";
 import { adjustStockForItems, OutOfStockError, type StockMove } from "@/lib/stock";
 import { logStockMovement } from "@/lib/stock-ledger";
 import { upsertCustomerFromOrder, isRealCustomerPhone } from "@/lib/customers";
@@ -128,122 +135,58 @@ export async function POST(request: Request) {
     manual: i.manual === true ? true : undefined,
   }));
 
-  // Packs: validación de múltiplo. Después normalizo el ítem a formato
-  // pack-native: `price` = PRECIO DEL PAQUETE y `pack_size` presente (mismo
-  // formato que el canal app — así cierre de mesa, tickets y cash lo entienden).
-  // Líneas manuales ("manual:...") no son uuid: se excluyen de los lookups.
+  // Packs y precios por volumen: se resuelven server-side con la misma
+  // regla que el canal app (resolveOrderPricing: precios de DB, múltiplo de
+  // pack, modificadores vigentes, volumen, cash sobre neto, envío sobre
+  // neto). Nunca se confía en el `price`/`total` del cliente.
+  // Líneas manuales ("manual:...") o sin uuid no van a pricing: se cobran
+  // al precio declarado (tolerancia para catálogos viejos en el snapshot).
   const isUuid = (s: unknown): s is string =>
     typeof s === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
-  {
-    const pids = Array.from(new Set(normalizedItems.map((i) => i.product_id).filter(isUuid)));
-    if (pids.length > 0) {
-      try {
-        const prows = await queryMany<{ id: string; name: string; pack_size: number | null }>(
-          `SELECT id, name, pack_size FROM products WHERE vendor_id = $1 AND id = ANY($2)`,
-          [gate.vendor.id, pids]
-        );
-        const ppack = new Map((prows || []).map((p) => [p.id, p]));
-        for (let idx = 0; idx < normalizedItems.length; idx++) {
-          const i = normalizedItems[idx];
-          const pack = i.product_id ? Math.floor(Number(ppack.get(i.product_id)?.pack_size || 0)) : 0;
-          if (pack >= 2) {
-            if (i.qty % pack !== 0) {
-              return NextResponse.json(
-                { error: `"${i.name}" se vende de a ${pack} unidades` },
-                { status: 400 }
-              );
-            }
-            // Normalizado pack-native: price = precio del PAQUETE (el cliente
-            // mandó la unidad full-precision). qty sigue en unidades; la línea
-            // se computa como price × (qty/pack) via orderLineTotal.
-            normalizedItems[idx] = {
-              ...i,
-              price: Math.round(i.price * pack * 100) / 100,
-              pack_size: pack,
-            };
-          }
-        }
-      } catch {
-        // columna sin migrar: se omite la validación
-      }
+  const pricedInput: IncomingOrderItem[] = [];
+  const pricedPrep: boolean[] = [];
+  const passthrough: typeof normalizedItems = [];
+  for (const i of normalizedItems) {
+    if (i.manual === true || (!isUuid(i.product_id) && !isUuid(i.variant_id))) {
+      passthrough.push(i);
+      continue;
     }
+    pricedInput.push({
+      offerId: (i.product_id as string) || undefined,
+      variantId: (i.variant_id as string) || undefined,
+      qty: i.qty,
+      modifiers: i.modifiers,
+    });
+    pricedPrep.push(i.requires_prep !== false);
   }
+  const manualTotal = Math.round(passthrough.reduce((s, i) => s + i.price * i.qty, 0) * 100) / 100;
 
-  // Pedidos CON cocina o delivery nacen en "preparing" y entran al flow
-  // normal de la comanda (hay que prepararlos/despacharlos). Pedidos de
-  // mostrador/mesa SIN nada de cocina (solo bebidas/packs) no van a la
-  // comanda y usan el flow corto de 2 pasos: new → ready ("Listo").
-  // Venta directa retail: nace cerrada (no genera pedido).
-  const needsKitchen = normalizedItems.some((i) => i.requires_prep !== false);
-  const status = direct ? "completed" : needsKitchen || isDelivery ? "preparing" : "new";
-
-  const now = new Date().toISOString();
-
-  // Descuento en efectivo: se recalcula server-side (nunca se confía en el
-  // total del cliente). Misma fórmula que el micrositio: % sobre la unidad
-  // (con modificadores), promos excluidas por el comercio no reciben descuento.
-  const pctSource = gate.vendor.cash_discount_pct;
-  let cashDiscount = 0;
-  let cashPct = 0;
-  if (payment === "efectivo") {
-    const ids = Array.from(new Set(normalizedItems.map((i) => i.product_id).filter(isUuid)));
-    const vids = Array.from(new Set(normalizedItems.map((i) => i.variant_id).filter(isUuid)));
-    const prows = ids.length
-      ? await queryMany<{ id: string; promo_price: number | null; cash_discount_excluded: boolean | null }>(
-          `SELECT id, promo_price, cash_discount_excluded FROM products WHERE vendor_id = $1 AND id = ANY($2)`,
-          [gate.vendor.id, ids]
-        )
-      : [];
-    // product_variants no tiene vendor_id: se filtra por el producto dueño.
-    const vrows = vids.length
-      ? await queryMany<{ id: string; product_id: string; promo: number | null }>(
-          `SELECT v.id, v.product_id, v.promo FROM product_variants v JOIN products p ON p.id = v.product_id WHERE p.vendor_id = $1 AND v.id = ANY($2)`,
-          [gate.vendor.id, vids]
-        )
-      : [];
-    const pmap = new Map((prows || []).map((p) => [p.id, p]));
-    const vmap = new Map((vrows || []).map((v) => [v.id, v]));
-    const res = cashDiscountForItems(
-      normalizedItems.map((i) => {
-        const p = i.product_id ? pmap.get(i.product_id) : undefined;
-        const v = i.variant_id ? vmap.get(i.variant_id) : undefined;
-        // Con pack ya normalizado: price = precio del paquete; el cash corre
-        // por paquetes (qty/pack) → sin drift de decimales.
-        const pack = ((i as any).pack_size as number) >= 2 ? ((i as any).pack_size as number) : 0;
-        return {
-          unitPrice: i.price,
-          qty: pack ? i.qty / pack : i.qty,
-          hasPromo: v ? v.promo != null : (p ? p.promo_price != null : false),
-          excluded: p?.cash_discount_excluded ?? null,
-        };
-      }),
-      pctSource
-    );
-    cashDiscount = res.cashDiscount;
-    cashPct = res.cashPct;
-  }
-  // Envío por zona (el comerciante es autoridad: admite monto manual fuera
-  // de zona). El fee se suma al total; el espejo del mostrador ya lo mostró.
+  // Config de envío (el comerciante es autoridad: admite monto manual fuera
+  // de zona). La resuelve pricing sobre el neto con volumen.
   const deliveryCfg = isDelivery ? await fetchVendorDelivery(gate.vendor.id) : null;
-  const subtotalNum = Number(total) || 0;
-  let deliveryResolved = { fee: 0, zoneId: null as string | null, zoneName: null as string | null, outOfArea: false, freeShipping: false };
-  if (isDelivery && deliveryCfg) {
-    const sel: DeliverySelection = deliveryOutOfArea === true
+  const deliverySel: DeliverySelection = !isDelivery
+    ? { kind: "pickup" }
+    : deliveryOutOfArea === true
       ? { kind: "out_of_area", manualFee: Number(deliveryManualFee) || null }
-      : deliveryCfg.mode === "zones" && typeof deliveryZoneId === "string" && deliveryZoneId
+      : deliveryCfg && deliveryCfg.mode === "zones" && typeof deliveryZoneId === "string" && deliveryZoneId
         ? { kind: "zone", zoneId: deliveryZoneId }
         : { kind: "in_area" };
-    deliveryResolved = resolveDeliveryFee({
-      mode: deliveryCfg.mode,
-      baseFee: deliveryCfg.baseFee,
-      freeMin: deliveryCfg.freeMin,
-      zones: deliveryCfg.zones,
-      selection: sel,
-      netSubtotal: subtotalNum,
-      allowManual: true,
-    });
+
+  // Columna de volumen (tolerante a migración sin aplicar).
+  let hasVolumeCol = false;
+  try {
+    const vc = await queryOne<{ exists: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1 FROM information_schema.columns
+         WHERE table_name = 'orders' AND column_name = 'volume_discount'
+       ) AS exists`
+    );
+    hasVolumeCol = vc?.exists === true;
+  } catch {
+    hasVolumeCol = false;
   }
-  const finalTotal = Math.max(0, Math.round((subtotalNum - cashDiscount + deliveryResolved.fee) * 100) / 100);
+
+  const now = new Date().toISOString();
 
   // Número de pedido diario universal (mostrador/delivery): además de
   // referenciarlo a la caja, el pedido queda con su número de oraculo en tickets.
@@ -300,6 +243,7 @@ export async function POST(request: Request) {
     }
   }
   let order: Record<string, any> | null = null;
+  let resolvedVolumeApplied: ResolvedPricing["volumeApplied"] = [];
   try {
     order = await withTransaction(async (tx) => {
     // Stock: la venta de mostrador descuenta igual que el canal app (la
@@ -307,10 +251,96 @@ export async function POST(request: Request) {
     // cambio). Ítems por peso (kg) y líneas manuales no tocan stock.
     // Al cancelar el pedido se repone (orders/[id]).
     // Pedidos de prueba (preview) no tocan el stock real.
+    // Precios (fuente de verdad): primero pricing sobre los ítems con
+    // producto, después se suman las líneas manuales al precio declarado.
+    // El cash de las manuales corre igual que antes (sin promo ni exclusión).
+    const round2 = (n: number) => Math.round(n * 100) / 100;
+    let finalItems: OrderItem[] = [];
+    let finalTotal = 0;
+    let cashDiscount = 0;
+    let cashPct = 0;
+    let volumeDiscount = 0;
+    let volumeApplied: ResolvedPricing["volumeApplied"] = [];
+    let deliveryResolved = { fee: 0, zoneId: null as string | null, zoneName: null as string | null, outOfArea: false, freeShipping: false };
+    if (pricedInput.length > 0) {
+      const pricing = await resolveOrderPricing({
+        tx,
+        vendorId: gate.vendor.id,
+        items: pricedInput,
+        method: isDelivery ? "delivery" : "pickup",
+        deliveryFee: deliveryCfg?.baseFee ?? null,
+        freeDeliveryMin: deliveryCfg?.freeMin ?? null,
+        deliveryMode: deliveryCfg?.mode ?? "flat",
+        deliveryZones: deliveryCfg?.zones ?? [],
+        deliverySelection: deliverySel,
+        deliveryAllowManual: true,
+        paymentMethod: payment,
+        cashDiscountPct: (gate.vendor as any)?.cash_discount_pct,
+      });
+      pricing.items.forEach((it, idx) => {
+        (it as any).requires_prep = pricedPrep[idx] !== false;
+      });
+      const cashManual =
+        payment === "efectivo"
+          ? cashDiscountForItems(
+              passthrough.map((i) => ({ unitPrice: i.price, qty: i.qty, hasPromo: false, excluded: null })),
+              (gate.vendor as any)?.cash_discount_pct
+            ).cashDiscount
+          : 0;
+      finalItems = [...pricing.items, ...(passthrough as unknown as OrderItem[])];
+      finalTotal = Math.max(0, round2(pricing.total + manualTotal - cashManual));
+      cashDiscount = round2(pricing.cashDiscount + cashManual);
+      cashPct = pricing.cashPct;
+      volumeDiscount = pricing.volumeDiscount;
+      volumeApplied = pricing.volumeApplied;
+      deliveryResolved = {
+        fee: pricing.deliveryFee,
+        zoneId: pricing.deliveryZoneId,
+        zoneName: pricing.deliveryZoneName,
+        outOfArea: pricing.deliveryOutOfArea,
+        freeShipping: pricing.deliveryFreeShipping,
+      };
+    } else {
+      // Solo líneas manuales: delivery sobre el total manual (comportamiento previo).
+      if (isDelivery && deliveryCfg) {
+        deliveryResolved = resolveDeliveryFee({
+          mode: deliveryCfg.mode,
+          baseFee: deliveryCfg.baseFee,
+          freeMin: deliveryCfg.freeMin,
+          zones: deliveryCfg.zones,
+          selection: deliverySel,
+          netSubtotal: manualTotal,
+          allowManual: true,
+        });
+      }
+      cashDiscount =
+        payment === "efectivo"
+          ? cashDiscountForItems(
+              passthrough.map((i) => ({ unitPrice: i.price, qty: i.qty, hasPromo: false, excluded: null })),
+              (gate.vendor as any)?.cash_discount_pct
+            ).cashDiscount
+          : 0;
+      cashPct = payment === "efectivo" ? normalizeCashPct((gate.vendor as any)?.cash_discount_pct) : 0;
+      finalItems = [...passthrough];
+      finalTotal = Math.max(0, round2(manualTotal - cashDiscount + deliveryResolved.fee));
+    }
+
+    // Pedidos CON cocina o delivery nacen en "preparing" y entran al flow
+    // normal de la comanda (hay que prepararlos/despacharlos). Pedidos de
+    // mostrador/mesa SIN nada de cocina (solo bebidas/packs) no van a la
+    // comanda y usan el flow corto de 2 pasos: new → ready ("Listo").
+    // Venta directa retail: nace cerrada (no genera pedido).
+    const needsKitchen = finalItems.some((i) => i.requires_prep !== false);
+    const status = direct ? "completed" : needsKitchen || isDelivery ? "preparing" : "new";
+
+    // Stock: la venta de mostrador descuenta igual que el canal app (la
+    // función es no-op para productos sin stock_control — gastro no nota el
+    // cambio). Ítems por peso (kg) y líneas manuales no tocan stock.
+    // Al cancelar el pedido se repone (orders/[id]).
+    // Pedidos de prueba (preview) no tocan el stock real.
     let movedStock: StockMove[] = [];
     if (!previewOrder) {
-      // Por peso y líneas manuales ("Varios", sin product_id) no tocan stock.
-      movedStock = await adjustStockForItems(tx, normalizedItems.filter((i) => i.unit !== "kg" && !(i as any).manual && (i.product_id || (i as any).variant_id)), "decrement");
+      movedStock = await adjustStockForItems(tx, finalItems.filter((i) => i.unit !== "kg" && !i.manual && (i.product_id || i.variant_id)), "decrement");
     }
 
     const pickupNumber = await nextOrderNumber(tx, gate.vendor.id);
@@ -329,6 +359,7 @@ export async function POST(request: Request) {
       "method", "payment_method", "items", "total", "status", "channel",
       "paid_at", "notes", "pickup_number", "is_preview", "cash_pct",
       "cash_discount",
+      ...(hasVolumeCol ? ["volume_discount"] : []),
       ...(direct && hasClosedAt ? ["closed_at"] : []),
       ...(direct && hasDirectCol ? ["is_direct"] : []),
       ...(hasPayStatus ? ["payment_status"] : []),
@@ -342,7 +373,7 @@ export async function POST(request: Request) {
       isDelivery ? (customerAddress?.trim() || null) : null,
       isDelivery ? "delivery" : "pickup",
       payment,
-      JSON.stringify(normalizedItems),
+      JSON.stringify(finalItems),
       finalTotal,
       status,
       "mostrador",
@@ -353,6 +384,7 @@ export async function POST(request: Request) {
       previewOrder,
       cashPct,
       cashDiscount,
+      ...(hasVolumeCol ? [volumeDiscount] : []),
       ...(direct && hasClosedAt ? [now] : []),
       ...(direct && hasDirectCol ? [true] : []),
       ...(hasPayStatus ? [payment === "fiado" ? "pending" : "paid"] : []),
@@ -405,12 +437,16 @@ export async function POST(request: Request) {
         /* sin tabla: la venta igual queda */
       }
     }
+    resolvedVolumeApplied = volumeApplied;
 
     return order ?? null;
   });
   } catch (e) {
     if (e instanceof OutOfStockError) {
       return NextResponse.json({ error: e.message }, { status: 409 });
+    }
+    if (e instanceof PricingError) {
+      return NextResponse.json({ error: e.message }, { status: 400 });
     }
     // Carrera de reintentos con la misma client_key (el pre-chequeo pasó en
     // paralelo): el índice único frenó el duplicado → devolver el existente.
@@ -429,5 +465,5 @@ export async function POST(request: Request) {
     throw e;
   }
 
-  return NextResponse.json({ ok: true, orderId: order?.id, order });
+  return NextResponse.json({ ok: true, orderId: order?.id, order, volumeDiscount: (order as any)?.volume_discount ?? 0, volumeApplied: resolvedVolumeApplied });
 }

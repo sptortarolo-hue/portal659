@@ -1,6 +1,7 @@
 import { gateRequest, gateError } from "@/lib/subscription-gate";
 import { queryOne, queryMany, withTransaction } from "@/lib/db";
 import { cashDiscountForItems, normalizeCashPct } from "@/lib/cash-discount";
+import { resolveOrderPricing, PricingError, type IncomingOrderItem } from "@/lib/pricing";
 import { getOpenShift } from "@/lib/cash-closing";
 import {
   claimSyncKey,
@@ -21,6 +22,8 @@ export async function POST(
   if (!gate.plan.can("mesas")) {
     return NextResponse.json({ error: "Las mesas forman parte del plan Gestión integral" }, { status: 403 });
   }
+  // vendorId capturado: el narrowing del gate no entra a funciones anidadas.
+  const vendorId = gate.vendor.id;
 
   // Switch "exigir caja abierta": sin turno abierto no se cobra la mesa
   // (cargar consumiciones sigue permitido; solo el cobro exige turno).
@@ -111,65 +114,144 @@ export async function POST(
 
   const list = orders || [];
 
-  // Descuento en efectivo al cerrar: la precuenta lo anuncia y acá se aplica
-  // de verdad, con la misma fórmula (ítems con promo excluida no reciben).
+  // Al cerrar se re-resuelve cada cuenta con la misma regla que el canal
+  // app (precios de DB + volumen + cash sobre neto con combine_cash). Si una
+  // cuenta no resuelve (ej: producto dado de baja a mitad del servicio), esa
+  // cuenta cae al cálculo legacy (cash sobre lo guardado) sin frenar el cierre.
   const cashPct = paymentMethod === "efectivo" ? normalizeCashPct((gate.vendor as any).cash_discount_pct) : 0;
   let cashDiscountTotal = 0;
-  const perOrder = new Map<string, { cashPct: number; cashDiscount: number; total: number }>();
+  let volumeDiscountTotal = 0;
+  const perOrder = new Map<string, { cashPct: number; cashDiscount: number; total: number; items: unknown[]; volumeDiscount: number }>();
 
-  if (cashPct > 0 && list.length > 0) {
-    const isUuid = (s: unknown): s is string =>
-      typeof s === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
+  let hasVolumeCol = false;
+  try {
+    const vc = await queryOne<{ exists: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1 FROM information_schema.columns
+         WHERE table_name = 'orders' AND column_name = 'volume_discount'
+       ) AS exists`
+    );
+    hasVolumeCol = vc?.exists === true;
+  } catch {
+    hasVolumeCol = false;
+  }
+
+  const isUuid = (s: unknown): s is string =>
+    typeof s === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
+  const round2 = (n: number) => Math.round(n * 100) / 100;
+  // pricing solo lee: basta un querier sobre el pool.
+  const poolTx = {
+    query: async <T extends Record<string, any>>(sql: string, params: unknown[] = []): Promise<T[]> =>
+      queryMany<T>(sql, params),
+  };
+
+  // Legacy (cash sobre lo guardado) para la cuenta que no re-resuelva.
+  async function legacyCash(orderId: string, stored: any[], storedTotal: number): Promise<void> {
+    if (cashPct <= 0) {
+      perOrder.set(orderId, { cashPct: 0, cashDiscount: 0, total: storedTotal, items: stored, volumeDiscount: 0 });
+      return;
+    }
     const ids = new Set<string>();
-    for (const o of list) {
-      for (const i of (Array.isArray(o.items) ? o.items : [])) {
-        // Líneas manuales ("manual:...") no son uuid: cash sin promo ni exclusión.
-        if (isUuid(i?.product_id)) ids.add(i.product_id);
-      }
+    for (const i of stored) {
+      if (isUuid(i?.product_id)) ids.add(i.product_id);
     }
     const prows = ids.size
       ? await queryMany<{ id: string; promo_price: number | null; cash_discount_excluded: boolean | null }>(
           `SELECT id, promo_price, cash_discount_excluded FROM products WHERE vendor_id = $1 AND id = ANY($2)`,
-          [gate.vendor.id, [...ids]]
+          [vendorId, [...ids]]
         )
       : [];
     const pmap = new Map((prows || []).map((p) => [p.id, p]));
-    for (const o of list) {
-      const items = Array.isArray(o.items) ? o.items : [];
-      const { cashDiscount } = cashDiscountForItems(
-        items.map((i: any) => {
-          const p = i?.product_id ? pmap.get(String(i.product_id)) : undefined;
-          // Pack-aware: con pack, price = precio del paquete y quantity =
-          // unidades → el cash corre sobre packPrice × N° de packs.
-          const pack = Math.floor(Number(i?.pack_size || 0));
-          return {
-            unitPrice: Number(i?.price) || 0,
-            qty: pack >= 2 ? Number(i.qty) / pack : Number(i?.qty) || 1,
-            hasPromo: p ? p.promo_price != null : false,
-            excluded: p?.cash_discount_excluded ?? null,
-          };
-        }),
-        cashPct
-      );
-      if (cashDiscount > 0) {
-        const newTotal = Math.max(0, Math.round((Number(o.total) - cashDiscount) * 100) / 100);
-        perOrder.set(o.id, { cashPct, cashDiscount, total: newTotal });
-        cashDiscountTotal += cashDiscount;
+    const { cashDiscount } = cashDiscountForItems(
+      stored.map((i: any) => {
+        const p = i?.product_id ? pmap.get(String(i.product_id)) : undefined;
+        const pack = Math.floor(Number(i?.pack_size || 0));
+        return {
+          unitPrice: Number(i?.price) || 0,
+          qty: pack >= 2 ? Number(i.qty) / pack : Number(i?.qty) || 1,
+          hasPromo: p ? p.promo_price != null : false,
+          excluded: p?.cash_discount_excluded ?? null,
+        };
+      }),
+      cashPct
+    );
+    const newTotal = Math.max(0, Math.round((storedTotal - cashDiscount) * 100) / 100);
+    perOrder.set(orderId, { cashPct, cashDiscount, total: newTotal, items: stored, volumeDiscount: 0 });
+    cashDiscountTotal += cashDiscount;
+  }
+
+  for (const o of list) {
+    const stored: any[] = Array.isArray(o.items) ? o.items : [];
+    const storedTotal = Number(o.total) || 0;
+    try {
+      const priced: IncomingOrderItem[] = [];
+      const pricedPrep: boolean[] = [];
+      const passthrough: any[] = [];
+      for (const i of stored) {
+        if (isUuid(i?.product_id)) {
+          priced.push({ offerId: String(i.product_id), variantId: isUuid(i?.variant_id) ? String(i.variant_id) : undefined, qty: Number(i?.qty) || 1, modifiers: i?.modifiers });
+          pricedPrep.push((i as any)?.requires_prep !== false);
+        } else {
+          passthrough.push(i);
+        }
       }
+      if (priced.length === 0) {
+        await legacyCash(o.id, stored, storedTotal);
+        continue;
+      }
+      const pricing = await resolveOrderPricing({
+        tx: poolTx,
+        vendorId,
+        items: priced,
+        method: "pickup",
+        paymentMethod,
+        cashDiscountPct: (gate.vendor as any)?.cash_discount_pct,
+      });
+      pricing.items.forEach((it, idx) => {
+        (it as any).requires_prep = pricedPrep[idx] !== false;
+      });
+      const manualTotal = round2(
+        passthrough.reduce((s, i) => s + (Number(i?.price) || 0) * (Number(i?.qty) || 1), 0)
+      );
+      const cashManual =
+        paymentMethod === "efectivo"
+          ? cashDiscountForItems(
+              passthrough.map((i: any) => ({ unitPrice: Number(i?.price) || 0, qty: Number(i?.qty) || 1, hasPromo: false, excluded: null })),
+              (gate.vendor as any)?.cash_discount_pct
+            ).cashDiscount
+          : 0;
+      const items = [...(pricing.items as unknown as Record<string, any>[]), ...passthrough];
+      const total = Math.max(0, round2(pricing.total + manualTotal - cashManual));
+      const cashDiscount = round2(pricing.cashDiscount + cashManual);
+      perOrder.set(o.id, { cashPct: pricing.cashPct, cashDiscount, total, items, volumeDiscount: pricing.volumeDiscount });
+      cashDiscountTotal += cashDiscount;
+      volumeDiscountTotal += pricing.volumeDiscount;
+    } catch (e) {
+      if (!(e instanceof PricingError)) throw e;
+      await legacyCash(o.id, stored, storedTotal);
     }
   }
 
-  const total = list.reduce((s: number, o: any) => s + Number(o.total), 0) - cashDiscountTotal;
+  // Total a cobrar: suma de las cuentas re-resueltas.
+  const total = [...perOrder.values()].reduce((s, d) => s + d.total, 0);
   const now = new Date().toISOString();
 
   await withTransaction(async (tx) => {
-    // Descuento por orden primero (cash_pct/cash_discount/total real cobrado),
-    // después el cierre: todo en la misma transacción.
+    // Descuento por orden primero (items re-resueltos + cash_pct/cash_discount/
+    // volume_discount + total real cobrado), después el cierre: todo en la
+    // misma transacción.
     for (const [orderId, d] of perOrder) {
-      await tx.query(
-        `UPDATE orders SET cash_pct = $1, cash_discount = $2, total = $3 WHERE id = $4`,
-        [d.cashPct, d.cashDiscount, d.total, orderId]
-      );
+      if (hasVolumeCol) {
+        await tx.query(
+          `UPDATE orders SET cash_pct = $1, cash_discount = $2, total = $3, items = $4, volume_discount = $5 WHERE id = $6`,
+          [d.cashPct, d.cashDiscount, d.total, JSON.stringify(d.items), d.volumeDiscount, orderId]
+        );
+      } else {
+        await tx.query(
+          `UPDATE orders SET cash_pct = $1, cash_discount = $2, total = $3, items = $4 WHERE id = $5`,
+          [d.cashPct, d.cashDiscount, d.total, JSON.stringify(d.items), orderId]
+        );
+      }
     }
 
     const toUpdate = list.filter((o) => o.status !== "completed");
@@ -195,6 +277,7 @@ export async function POST(
     total: Math.round(total * 100) / 100,
     cashDiscount: cashDiscountTotal > 0 ? Math.round(cashDiscountTotal * 100) / 100 : 0,
     cashPct: cashPct || 0,
+    volumeDiscount: volumeDiscountTotal > 0 ? Math.round(volumeDiscountTotal * 100) / 100 : 0,
     ordersClosed: list.length,
     paymentMethod,
   };

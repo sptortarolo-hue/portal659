@@ -6,7 +6,10 @@ import { Badge } from "@/components/ui/badge";
 import { ModifierPicker } from "@/components/offers/modifier-picker";
 import { ProductPickCard } from "@/components/vendor/product-pick-card";
 import { CustomerPicker, type LookupCustomer } from "@/components/vendor/customer-picker";
-import { cashDiscountForItems, normalizeCashPct } from "@/lib/cash-discount";
+import { cashAppliesToItem, normalizeCashPct } from "@/lib/cash-discount";
+import { mirrorVolume } from "@/lib/volume-mirror";
+import type { CartItem, CartVolumeGroup } from "@/lib/cart";
+import type { VolumeResult } from "@/lib/volume-pricing";
 import { normalizeDeliveryMode, resolveDeliveryFee, type DeliverySelection } from "@/lib/delivery";
 import { toE164 } from "@/lib/phone";
 import { getCatalogSnapshot, saveCatalogSnapshot } from "@/lib/offline-db";
@@ -255,26 +258,78 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
 
   const total = useMemo(() => items.reduce((s, i) => s + i.price * i.qty, 0), [items]);
 
-  // Descuento en efectivo EN VIVO (misma fórmula que el servidor y el
-  // micrositio): cambia al tocar medio de pago o al armar el pedido.
-  // Con pack, la base es pack-price × N° de packs (sin drift de decimales).
-  const cashResult = useMemo(
+  // Grupos de volumen del comercio (espejo visual; el servidor recalcula y
+  // manda al cobrar). Sin grupos no hay nada que espejar.
+  const [volumeGroups, setVolumeGroups] = useState<CartVolumeGroup[]>([]);
+
+  // Líneas en formato carrito para el espejo de volumen (listUnit/promoUnit
+  // pack-level como en el micrositio, para matchear al servidor).
+  const cartItems: CartItem[] = useMemo(
     () =>
-      cashDiscountForItems(
-        items.map((i) => {
-          const pk = i.packSize && i.packSize >= 2 ? i.packSize : 1;
-          return {
-            unitPrice: pk > 1 ? i.price * pk : i.price,
-            qty: pk > 1 ? i.qty / pk : i.qty,
-            hasPromo: i.hasPromo,
-            excluded: i.cashExcluded,
-          };
-        }),
-        cashPct
-      ),
-    [items, cashPct]
+      items.map((i) => {
+        const pk = i.packSize && i.packSize >= 2 && !i.variant_id ? i.packSize : 1;
+        // Mods por unidad (el price de la línea ya los trae incluidos).
+        const mods = (i.modifiers || []).map((m) => ({ group: m.group, label: m.label, price_mod: m.price_mod }));
+        const modsUnit = mods.reduce((s, m) => s + (Number(m.price_mod) || 0), 0);
+        let listUnit = i.price - modsUnit;
+        let promoUnit: number | null = null;
+        if (i.variant_id) {
+          const v = (variantsMap[i.product_id] || []).find((vv) => vv.id === i.variant_id);
+          if (v) {
+            listUnit = Number(v.price);
+            promoUnit = v.promo != null ? Number(v.promo) : null;
+          }
+        } else {
+          const p = products.find((pp) => pp.id === i.product_id);
+          if (p) {
+            // product.price es pack-level si hay pack (igual que el micro).
+            listUnit = Number(p.price);
+            promoUnit = p.promo_price != null ? Number(p.promo_price) : null;
+          }
+        }
+        return {
+          offerId: i.product_id,
+          variantId: i.variant_id,
+          name: i.name,
+          // price EXCLUYE mods (ya vienen en `modifiers`): cartLineTotal los
+          // suma (price+mods)×qty y matchea i.price×qty sin duplicar.
+          price: i.price - modsUnit,
+          qty: i.qty,
+          modifiers: mods,
+          cashExcluded: i.cashExcluded,
+          origPrice: listUnit,
+          hasPromo: i.hasPromo,
+          packSize: pk > 1 ? pk : undefined,
+          packPrice: pk > 1 ? (promoUnit != null ? promoUnit : listUnit) : undefined,
+          unit: i.unit,
+        };
+      }),
+    [items, products, variantsMap]
   );
-  const activeCashDiscount = payment === "efectivo" ? cashResult.cashDiscount : 0;
+  const vol: VolumeResult = useMemo(() => mirrorVolume(cartItems, volumeGroups), [cartItems, volumeGroups]);
+  const volumeDiscount = Math.round(vol.volumeDiscount * 100) / 100;
+  const volumeLabel =
+    vol.applied.length > 0 ? vol.applied.map((a) => `${a.groupName} (${a.label})`).join(" · ") : "";
+  const netSubtotal = total - volumeDiscount;
+
+  // Descuento en efectivo EN VIVO (misma fórmula que el servidor y el
+  // micrositio): % sobre la NETA DE LA LÍNEA. Con volumen sin combine, la
+  // línea no recibe cash; con combine, corre sobre el neto del grupo.
+  // Con pack, la base es pack-price × N° de packs (sin drift de decimales).
+  const cashResult = useMemo(() => {
+    if (!(payment === "efectivo" && cashPct > 0)) return { cashDiscount: 0, cashPct };
+    let cashDiscount = 0;
+    cartItems.forEach((ci, idx) => {
+      const vline = vol.lines[idx];
+      if (vline && !vline.cashEligible) return;
+      const it = items[idx];
+      if (!cashAppliesToItem({ hasPromo: vline?.hasPromo ?? !!it.hasPromo, excluded: it.cashExcluded })) return;
+      const lineNet = vline ? vline.netTotal : ci.price * ci.qty;
+      cashDiscount += lineNet - Math.round(lineNet * (1 - cashPct / 100) * 100) / 100;
+    });
+    return { cashDiscount: Math.round(cashDiscount * 100) / 100, cashPct };
+  }, [cartItems, items, vol, payment, cashPct]);
+  const activeCashDiscount = cashResult.cashDiscount;
   // Envío por zona EN VIVO (espejo visual; el servidor recalcula al cobrar).
   // En mostrador el comerciante es autoridad: fuera de zona admite monto manual.
   const posZonesMode = deliveryMode === "zones" && deliveryZones.length > 0;
@@ -296,12 +351,12 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
     freeMin: deliveryFreeMin,
     zones: deliveryZones,
     selection: posSelection,
-    netSubtotal: total,
+    netSubtotal,
     allowManual: true,
   });
   const posDeliveryFee = method === "delivery" ? posResolvedDelivery.fee : 0;
   const posOutOfAreaFlag = method === "delivery" && posResolvedDelivery.outOfArea;
-  const payableTotal = Math.max(0, Math.round((total - activeCashDiscount + posDeliveryFee) * 100) / 100);
+  const payableTotal = Math.max(0, Math.round((netSubtotal - activeCashDiscount + posDeliveryFee) * 100) / 100);
 
   // Chips de categoría agrupados por clave normalizada (trim+lowercase):
   // "Pizzas", "pizzas" o " Pizzas" forman un solo chip (igual que el micrositio).
@@ -374,6 +429,30 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
             );
           }
         } catch { /* sin zonas: modo flat */ }
+        // Grupos de volumen (espejo visual del descuento por pack; el
+        // servidor recalcula y manda al cobrar). Tolerante a todo.
+        try {
+          const gres = await fetch("/api/vendor/volume-groups");
+          const gdata = await gres.json().catch(() => ({}));
+          if (gres.ok && Array.isArray(gdata?.groups)) {
+            setVolumeGroups(
+              (gdata.groups as any[])
+                .filter((g) => g && g.active !== false)
+                .map((g) => ({
+                  id: String(g.id),
+                  name: String(g.name ?? ""),
+                  productIds: Array.isArray(g.product_ids) ? g.product_ids.map(String) : [],
+                  combinePromo: g.combine_promo === true,
+                  combineCash: g.combine_cash === true,
+                  extrasIncluded: g.extras_mode === "included",
+                  tiers: (Array.isArray(g.tiers) ? g.tiers : [])
+                    .filter((t: any) => t && (t.kind === "fixed_total" || t.kind === "percent_off"))
+                    .map((t: any) => ({ minQty: Number(t.min_qty), kind: t.kind, value: Number(t.value) })),
+                }))
+                .filter((g) => g.productIds.length > 0 && g.tiers.length > 0)
+            );
+          }
+        } catch { /* sin volumen: totales sin espejo */ }
         const vmap: Record<string, ProductVariant[]> = {};
         for (const v of (vdata?.variants || []) as ProductVariant[]) {
           if (!v || !v.product_id) continue;
@@ -2075,17 +2154,25 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
     const orderFooter = (
       <>
         <div className="space-y-1 pt-1">
-          {activeCashDiscount > 0 && (
+          {(activeCashDiscount > 0 || volumeDiscount > 0) && (
             <>
               <div className="flex items-center justify-between text-xs text-muted-foreground">
                 <span>Subtotal</span>
                 <span className="tabular-nums">${total.toLocaleString("es-AR")}</span>
               </div>
+              {activeCashDiscount > 0 && (
               <div className="flex items-center justify-between text-xs font-medium text-green-600 dark:text-green-400">
                 <span>💵 Desc. efectivo ({cashResult.cashPct}%)</span>
                 <span className="tabular-nums">−${activeCashDiscount.toLocaleString("es-AR")}</span>
               </div>
+              )}
             </>
+          )}
+          {volumeDiscount > 0 && (
+            <div className="flex items-center justify-between text-xs font-medium text-violet-700 dark:text-violet-400">
+              <span className="truncate">🎁 Desc. pack{volumeLabel ? ` · ${volumeLabel}` : ""}</span>
+              <span className="tabular-nums flex-shrink-0">−${volumeDiscount.toLocaleString("es-AR")}</span>
+            </div>
           )}
           {method === "delivery" && (
             <>
@@ -2111,7 +2198,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
           </div>
           {cashResult.cashPct > 0 && payment !== "efectivo" && cashResult.cashDiscount > 0 && (
             <p className="text-[11px] leading-snug text-green-700 dark:text-green-400">
-              💵 Pagando en efectivo: ${(total - cashResult.cashDiscount).toLocaleString("es-AR")}
+              💵 Pagando en efectivo: ${(netSubtotal - cashResult.cashDiscount).toLocaleString("es-AR")}
             </p>
           )}
         </div>

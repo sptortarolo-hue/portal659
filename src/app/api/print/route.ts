@@ -146,7 +146,7 @@ export async function POST(request: Request) {
     const result = await dispatchPrint({
       vendor,
       type: "precuenta",
-      extra: { tableName, items, total: Number(total), cashPct, cashTotal },
+      extra: { tableName, items, total: Number(total), cashPct, cashTotal, volumeDiscount: Number(body.volumeDiscount) || 0 },
     });
     await recordLastPrint(vendor.id, result);
     return printResponse(result);

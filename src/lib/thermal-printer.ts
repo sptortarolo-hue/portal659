@@ -1030,7 +1030,8 @@ async function composePrecuenta(
   tableName: string,
   items: { name: string; price: number; qty: number; modifiers?: string[] }[],
   total: number,
-  cash?: { pct: number; total: number } | null
+  cash?: { pct: number; total: number } | null,
+  volume?: { amount: number } | null
 ): Promise<void> {
   const width = vendor.paper_size === "58mm" ? 32 : 48;
   const separator = separatorFor(width);
@@ -1062,6 +1063,9 @@ async function composePrecuenta(
   printer.println(separator);
 
   printer.alignRight();
+  if (volume && volume.amount > 0) {
+    printer.println(`Desc. volumen: -$${volume.amount.toLocaleString("es-AR")}`);
+  }
   printer.bold(true);
   printer.setTextSize(1, 1);
   printer.println(`TOTAL: $${Number(total).toLocaleString("es-AR")}`);
@@ -1572,13 +1576,14 @@ export async function printPrecuenta(
   tableName: string,
   items: { name: string; price: number; qty: number; modifiers?: string[] }[],
   total: number,
-  cash?: { pct: number; total: number } | null
+  cash?: { pct: number; total: number } | null,
+  volume?: { amount: number } | null
 ): Promise<{ success: boolean; error?: string }> {
   const res = await createPrinter(vendor);
   if (!res.ok) return { success: false, error: res.error };
   if (!vendor.printer_ip) return { success: false, error: "IP de impresora no configurada" };
   try {
-    await composePrecuenta(res.printer, vendor, tableName, items, total, cash);
+    await composePrecuenta(res.printer, vendor, tableName, items, total, cash, volume);
     await res.printer.execute();
     return { success: true };
   } catch (e) {
@@ -1591,12 +1596,13 @@ export async function buildPrecuentaBuffer(
   tableName: string,
   items: { name: string; price: number; qty: number; modifiers?: string[] }[],
   total: number,
-  cash?: { pct: number; total: number } | null
+  cash?: { pct: number; total: number } | null,
+  volume?: { amount: number } | null
 ): Promise<BufferResult> {
   const res = await createPrinter(vendor);
   if (!res.ok) return { success: false, error: res.error };
   try {
-    await composePrecuenta(res.printer, vendor, tableName, items, total, cash);
+    await composePrecuenta(res.printer, vendor, tableName, items, total, cash, volume);
     const buffer = (await res.printer.getBuffer()) as Buffer;
     return { success: true, buffer };
   } catch (e) {
@@ -1800,6 +1806,8 @@ export async function dispatchPrint(params: {
     /** Info de efectivo en precuenta: % y total a abonar en efectivo. */
     cashPct?: number;
     cashTotal?: number;
+    /** Descuento por pack en precuenta (se imprime como línea propia). */
+    volumeDiscount?: number;
     /** Cierre de caja (Z) guardado, para imprimir tal cual. */
     closing?: CashClosingPrintData;
     /** Presupuesto de oficio (servicios): cliente + partidas + total + seña. */
@@ -1833,14 +1841,16 @@ export async function dispatchPrint(params: {
     const cashPct = Number(params.extra?.cashPct) || 0;
     const cashTotal = Number(params.extra?.cashTotal) || 0;
     const cash = cashPct > 0 && cashTotal > 0 && cashTotal < total ? { pct: cashPct, total: cashTotal } : null;
+    const volumeAmount = Number(params.extra?.volumeDiscount) || 0;
+    const volume = volumeAmount > 0 ? { amount: volumeAmount } : null;
     if (mode === "app") {
-      const built = await buildPrecuentaBuffer(vendor, tableName, items, total, cash);
+      const built = await buildPrecuentaBuffer(vendor, tableName, items, total, cash, volume);
       if (!built.success) return { ok: false, mode, error: built.error };
       const pushed = await pushToBridge(vendor.print_token, bridgeJob("precuenta", built.buffer, vendor));
       return { ok: pushed.ok, mode, offline: pushed.offline, error: pushed.error };
     }
     if (!vendor.printer_ip) return { ok: true, mode, skipped: true };
-    const r = await printPrecuenta(vendor, tableName, items, total, cash);
+    const r = await printPrecuenta(vendor, tableName, items, total, cash, volume);
     return { ok: r.success, mode, error: r.error };
   }
 

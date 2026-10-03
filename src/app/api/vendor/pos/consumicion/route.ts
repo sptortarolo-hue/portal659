@@ -2,6 +2,11 @@ import { gateRequest, gateError } from "@/lib/subscription-gate";
 import { queryOne, withTransaction } from "@/lib/db";
 import { nextOrderNumber } from "@/lib/order-number";
 import {
+  resolveOrderPricing,
+  PricingError,
+  type IncomingOrderItem,
+} from "@/lib/pricing";
+import {
   claimSyncKey,
   getOfflineSyncCaps,
   normalizeClientKey,
@@ -36,6 +41,8 @@ export async function POST(request: Request) {
       { status: 403 }
     );
   }
+  // vendorId capturado: el narrowing del gate no entra a funciones anidadas.
+  const vendorId = gate.vendor.id;
 
   const body = await request.json();
   const { tableId, items, total, paymentMethod, notes } = body;
@@ -110,47 +117,75 @@ export async function POST(request: Request) {
       ? (paymentMethod as PaymentMethod)
       : "efectivo";
 
-    const normalizedItems: { product_id?: any; name: any; price: number; qty: number; modifiers?: any; requires_prep: boolean; pack_size?: number }[] = items.map((i: any) => ({
+    const normalizedItems: { product_id?: any; name: any; price: number; qty: number; modifiers?: any; requires_prep: boolean; manual?: boolean }[] = items.map((i: any) => ({
       product_id: i.product_id || undefined,
       name: i.name,
       price: Number(i.price),
       qty: Number(i.qty) || 1,
       modifiers: Array.isArray(i.modifiers) && i.modifiers.length > 0 ? i.modifiers : undefined,
       requires_prep: i.requires_prep !== false,
+      manual: i.manual === true ? true : undefined,
     }));
 
-    // Packs: validación de múltiplo + normalización a formato pack-native
-    // (price = precio del paquete, pack_size presente — igual que canal app).
-    // Líneas manuales ("manual:...") no son uuid: se excluyen del lookup.
-    {
-      const isUuid = (s: unknown): s is string =>
-        typeof s === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
-      const pids = Array.from(new Set(normalizedItems.map((i) => i.product_id).filter(isUuid)));
-      if (pids.length > 0) {
-        try {
-          const prows = await tx.query<{ id: string; name: string; pack_size: number | null }>(
-            `SELECT id, name, pack_size FROM products WHERE vendor_id = $1 AND id = ANY($2)`,
-            [gate.vendor.id, pids]
-          );
-          const ppack = new Map((prows || []).map((p) => [p.id, p]));
-          for (let idx = 0; idx < normalizedItems.length; idx++) {
-            const i = normalizedItems[idx];
-            const pack = i.product_id ? Math.floor(Number(ppack.get(i.product_id)?.pack_size || 0)) : 0;
-            if (pack >= 2) {
-              if (i.qty % pack !== 0) {
-                return fail(400, `"${i.name}" se vende de a ${pack} unidades`);
-              }
-              normalizedItems[idx] = {
-                ...i,
-                price: Math.round(i.price * pack * 100) / 100,
-                pack_size: pack,
-              };
-            }
-          }
-        } catch {
-          // columna sin migrar: se omite la validación
+    // Precios (fuente de verdad): la cuenta de la mesa se resuelve con la
+    // misma regla que el canal app (precios de DB + volumen). Así los
+    // combinados por pack aplican también en mesa, incluso sumando varias
+    // consumiciones. Líneas manuales o sin uuid van al precio declarado.
+    const isUuid = (s: unknown): s is string =>
+      typeof s === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
+    const round2 = (n: number) => Math.round(n * 100) / 100;
+    async function resolveTableItems(raw: typeof normalizedItems): Promise<{ items: Record<string, any>[]; total: number; volumeDiscount: number }> {
+      const priced: IncomingOrderItem[] = [];
+      const pricedPrep: boolean[] = [];
+      const passthrough: typeof normalizedItems = [];
+      for (const i of raw) {
+        if (i.manual === true || !isUuid(i.product_id)) {
+          passthrough.push(i);
+          continue;
         }
+        priced.push({ offerId: i.product_id as string, qty: i.qty, modifiers: i.modifiers });
+        pricedPrep.push(i.requires_prep !== false);
       }
+      const manualTotal = round2(passthrough.reduce((s, i) => s + (Number(i.price) || 0) * (Number(i.qty) || 1), 0));
+      if (priced.length === 0) {
+        return { items: passthrough as unknown as Record<string, any>[], total: manualTotal, volumeDiscount: 0 };
+      }
+      let pricing;
+      try {
+        pricing = await resolveOrderPricing({
+          tx,
+          vendorId,
+          items: priced,
+          method: "pickup",
+          paymentMethod: null,
+          cashDiscountPct: null,
+        });
+      } catch (e) {
+        if (e instanceof PricingError) return fail(400, e.message) as never;
+        throw e;
+      }
+      pricing.items.forEach((it, idx) => {
+        (it as any).requires_prep = pricedPrep[idx] !== false;
+      });
+      return {
+        items: [...(pricing.items as unknown as Record<string, any>[]), ...passthrough] as Record<string, any>[],
+        total: round2(pricing.total + manualTotal),
+        volumeDiscount: pricing.volumeDiscount,
+      };
+    }
+
+    // Columna de volumen (tolerante a migración sin aplicar).
+    let hasVolumeCol = false;
+    try {
+      const vc = await tx.queryOne<{ exists: boolean }>(
+        `SELECT EXISTS (
+           SELECT 1 FROM information_schema.columns
+           WHERE table_name = 'orders' AND column_name = 'volume_discount'
+         ) AS exists`
+      );
+      hasVolumeCol = vc?.exists === true;
+    } catch {
+      hasVolumeCol = false;
     }
 
     // Acumular en la cuenta abierta de la mesa: si ya existe una orden "new"
@@ -165,11 +200,15 @@ export async function POST(request: Request) {
 
     if (openOrder) {
       const existing = Array.isArray(openOrder.items) ? (openOrder.items as any[]) : [];
-      const mergedItems = [...existing, ...normalizedItems];
-      const newTotal = Number(openOrder.total) + Number(total);
+      const mergedRaw = [...existing, ...normalizedItems] as typeof normalizedItems;
+      const resolved = await resolveTableItems(mergedRaw);
       const order = await tx.queryOne<Record<string, any>>(
-        `UPDATE orders SET items = $1, total = $2 WHERE id = $3 RETURNING *`,
-        [JSON.stringify(mergedItems), newTotal, openOrder.id]
+        hasVolumeCol
+          ? `UPDATE orders SET items = $1, total = $2, volume_discount = $3 WHERE id = $4 RETURNING *`
+          : `UPDATE orders SET items = $1, total = $2 WHERE id = $3 RETURNING *`,
+        hasVolumeCol
+          ? [JSON.stringify(resolved.items), resolved.total, resolved.volumeDiscount, openOrder.id]
+          : [JSON.stringify(resolved.items), resolved.total, openOrder.id]
       );
       // La cuenta abierta conserva su occurred_at original (momento en que
       // se abrió la mesa); la consumición queda registrada en el sync log.
@@ -185,6 +224,7 @@ export async function POST(request: Request) {
 
     // En sesión de prueba todo nace marcado como prueba.
     const previewOrder = gate.previewSession === true;
+    const resolved = await resolveTableItems(normalizedItems);
     const syncCols = [
       ...(caps.ordersClientKey ? ["client_key"] : []),
       ...(caps.ordersOccurredAt ? ["occurred_at"] : []),
@@ -193,6 +233,7 @@ export async function POST(request: Request) {
       "vendor_id", "customer_name", "customer_phone", "customer_address",
       "method", "payment_method", "items", "total", "status", "channel",
       "table_id", "notes", "pickup_number", "is_preview",
+      ...(hasVolumeCol ? ["volume_discount"] : []),
       ...syncCols,
     ];
     const vals: unknown[] = [
@@ -202,8 +243,8 @@ export async function POST(request: Request) {
       null,
       "pickup",
       payment,
-      JSON.stringify(normalizedItems),
-      Number(total),
+      JSON.stringify(resolved.items),
+      resolved.total,
       "new",
       "mesa",
       table.id,
@@ -211,6 +252,7 @@ export async function POST(request: Request) {
       // Número universal de pedido diario (mesas también lo producen).
       await nextOrderNumber(tx, gate.vendor.id),
       previewOrder,
+      ...(hasVolumeCol ? [resolved.volumeDiscount] : []),
       ...(caps.ordersClientKey ? [clientKey] : []),
       ...(caps.ordersOccurredAt ? [occurredAt] : []),
     ];

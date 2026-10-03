@@ -357,6 +357,19 @@ export function OrdersKanban({
       setStrictBusy(false);
     }
   }
+  // Nombres de repartidores para la pill 🛵 (solo si hay deliveries).
+  // OJO: este hook va acá arriba con los demás — después de los `return`
+  // tempranos (isLoading/focusStatus) rompería las reglas de hooks y la
+  // pestaña caería en el error boundary.
+  // Se resuelve por profile_id: es lo que guarda `assigned_to` (claim y
+  // assign del dueño usan el mismo formato).
+  const hasDelivery = orders.some((o) => o.method === "delivery");
+  const { byProfile } = useDeliveryStaff(hasDelivery);
+  const courierNameOf = (o: Order): string | null => {
+    const a = (o as any).assigned_to;
+    if (o.method !== "delivery" || !a) return null;
+    return byProfile[String(a)] || null;
+  };
   const steps = flowSteps(isRetail);
   const activeSteps = steps.filter((s) => ACTIVE_STATUSES.includes(s));
   // Con filtro de estado (ej. clic en "Enviados"), mostrar solo esa columna
@@ -456,17 +469,6 @@ export function OrdersKanban({
       </div>
     );
   }
-
-  // Nombres de repartidores para la pill 🛵 (solo si hay deliveries).
-  // Se resuelve por profile_id: es lo que guarda `assigned_to` (claim y
-  // assign del dueño usan el mismo formato).
-  const hasDelivery = orders.some((o) => o.method === "delivery");
-  const { byProfile } = useDeliveryStaff(hasDelivery);
-  const courierNameOf = (o: Order): string | null => {
-    const a = (o as any).assigned_to;
-    if (o.method !== "delivery" || !a) return null;
-    return byProfile[String(a)] || null;
-  };
 
   return (
     <div className="space-y-2">

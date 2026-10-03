@@ -30,7 +30,7 @@ export const POST = withRateLimit(async (request: Request) => {
     `SELECT vs.id, vs.profile_id, vs.vendor_id, p.password_hash, p.email, p.token_version, vs.status
      FROM vendor_staff vs
      JOIN profiles p ON p.id = vs.profile_id
-     WHERE vs.phone = $1
+     WHERE vs.phone = $1 AND vs.status != 'revoked'
      ORDER BY vs.created_at ASC
      LIMIT 1`,
     [phone]

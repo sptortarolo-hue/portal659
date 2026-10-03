@@ -97,13 +97,15 @@ export function QuoteManualModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   // Memoria de precios: últimos materiales usados (autocompleta precio).
+  // Solo oficios: en estética no hay partidas.
   const [matMemory, setMatMemory] = useState<{ description: string; unit_price: number }[]>([]);
   useEffect(() => {
+    if (estetica) return;
     fetch("/api/vendor/quote-materials")
       .then((r) => r.json())
       .then((d) => { if (Array.isArray(d?.materials)) setMatMemory(d.materials); })
       .catch(() => {});
-  }, []);
+  }, [estetica]);
 
   const total = items.reduce((s, it) => s + (Number(it.qty) || 0) * (Number(it.unit_price) || 0), 0);
 

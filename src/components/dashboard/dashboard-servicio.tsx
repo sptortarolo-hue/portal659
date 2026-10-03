@@ -20,8 +20,6 @@ import { CustomersManager } from "@/components/dashboard/customers-manager";
 import { PlanLock } from "@/components/vendor/plan-lock";
 import { QuoteManualModal } from "@/components/dashboard/quote-manual-modal";
 import { BookingManualModal } from "@/components/dashboard/booking-manual-modal";
-import { EsteticaServicesManager, EsteticaStaffManager, EsteticaCancelPolicy, EsteticaPacksManager, EsteticaCommissionsReport, EsteticaGiftcardsManager, EsteticaLocationsManager } from "@/components/dashboard/estetica-managers";
-import { FormTemplateManager } from "@/components/dashboard/form-template-manager";
 import type { Vendor, Product, ProductModifier, Booking, VendorGallery } from "@/types/database";
 
 type Props = {
@@ -1148,41 +1146,6 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
           </Button>
         </div>
       </CollapsibleSection>
-
-      {isEstetica && (
-      <CollapsibleSection icon="💅" title="Servicios y profesionales">
-        <div className="space-y-3">
-          <EsteticaServicesManager />
-          <EsteticaStaffManager />
-          <EsteticaPacksManager />
-          <EsteticaCommissionsReport />
-          <EsteticaGiftcardsManager />
-          <EsteticaLocationsManager />
-        </div>
-      </CollapsibleSection>
-      )}
-
-      {isEstetica && (
-      <CollapsibleSection icon="📋" title="Modelos de ficha">
-        <FormTemplateManager />
-      </CollapsibleSection>
-      )}
-
-      {isEstetica && (
-      <CollapsibleSection icon="📝" title="Política de cancelación">
-        <div className="space-y-3">
-          <EsteticaCancelPolicy
-            policy={cancelPolicy}
-            hours={cancelHours}
-            onPolicy={setCancelPolicy}
-            onHours={setCancelHours}
-          />
-          <Button onClick={handleSaveAll} className="w-full" disabled={uploading}>
-            {uploading ? "Guardando..." : "Guardar política"}
-          </Button>
-        </div>
-      </CollapsibleSection>
-      )}
 
       <CollapsibleSection icon="🚨" title="Urgencia 24hs">
         <div className="space-y-3">

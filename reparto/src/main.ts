@@ -30,10 +30,14 @@ type BoardOrder = {
 
 const LS = "portalReparto.session.v1";
 
+/** Servidor fijo (no editable): evita URLs viejas/mal escritas que dejaban
+ * la app en "Sin conexión al servidor". Sesiones guardadas con otra URL se
+ * migran solas al restaurar. */
+const SERVER_URL = "https://www.portal659.com.ar";
+
 const els = {
   loginCard: document.getElementById("loginCard") as HTMLElement,
   mainCard: document.getElementById("mainCard") as HTMLElement,
-  serverUrl: document.getElementById("serverUrl") as HTMLInputElement,
   phone: document.getElementById("phone") as HTMLInputElement,
   password: document.getElementById("password") as HTMLInputElement,
   btnLogin: document.getElementById("btnLogin") as HTMLButtonElement,
@@ -80,7 +84,7 @@ function api(path: string, init?: RequestInit): Promise<Response> {
   const headers = new Headers(init?.headers);
   headers.set("Authorization", `Bearer ${session.token}`);
   if (init?.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
-  return fetch(`${session.serverUrl.replace(/\/+$/, "")}${path}`, { ...init, headers });
+  return fetch(`${SERVER_URL}${path}`, { ...init, headers });
 }
 
 function orderLabel(o: BoardOrder): string {
@@ -89,7 +93,6 @@ function orderLabel(o: BoardOrder): string {
 }
 
 async function doLogin() {
-  const serverUrl = els.serverUrl.value.trim() || "https://www.portal659.com.ar";
   const phone = els.phone.value.replace(/\D/g, "");
   const password = els.password.value;
   if (!phone || !password) {
@@ -97,7 +100,7 @@ async function doLogin() {
     return;
   }
   try {
-    const res = await fetch(`${serverUrl.replace(/\/+$/, "")}/api/auth/repartidor/login`, {
+    const res = await fetch(`${SERVER_URL}/api/auth/repartidor/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ phone, password }),
@@ -108,7 +111,7 @@ async function doLogin() {
       return;
     }
     saveSession({
-      serverUrl,
+      serverUrl: SERVER_URL,
       token: data.session.access_token,
       profileId: data.profile?.id || "",
       storeName: data.vendor?.store_name || "Tu comercio",
@@ -358,8 +361,8 @@ async function init() {
     if (raw) {
       const s = JSON.parse(raw) as Session;
       if (s.token) {
-        saveSession(s);
-        els.serverUrl.value = s.serverUrl;
+        // Migra sesiones viejas con otra URL (ej: IP del VPS anterior).
+        saveSession({ ...s, serverUrl: SERVER_URL });
         await enterMain();
         return;
       }

@@ -514,7 +514,7 @@ function RepartoAppCard() {
         </button>
       </div>
       <a
-        href="/downloads/portal-reparto.apk?v=2"
+        href="/downloads/portal-reparto.apk?v=3"
         className="mt-2 block text-center rounded-lg bg-violet-600 text-white px-2 py-2 text-sm font-semibold"
       >
         ⬇️ Descargar para Android

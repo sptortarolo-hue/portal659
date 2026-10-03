@@ -14,6 +14,8 @@ type StaffRow = {
   phone: string | null;
   invite_code: string | null;
   created_at: string;
+  /** Perfil vinculado (null = aún no aceptó la invitación). */
+  profile_id: string | null;
 };
 
 // Lista los repartidores del comercio con su estado.
@@ -24,7 +26,8 @@ export async function GET(request: Request) {
   if (!vendor) return NextResponse.json({ error: "No autorizado" }, { status: 403 });
 
   const staff = await queryMany<StaffRow>(
-    `SELECT vs.id, p.full_name, p.email, vs.role, vs.status, vs.phone, vs.invite_code, vs.created_at
+    `SELECT vs.id, p.full_name, p.email, vs.role, vs.status, vs.phone, vs.invite_code, vs.created_at,
+            vs.profile_id
      FROM vendor_staff vs
      LEFT JOIN profiles p ON p.id = vs.profile_id
      WHERE vs.vendor_id = $1

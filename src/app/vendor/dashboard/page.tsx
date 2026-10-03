@@ -2155,6 +2155,10 @@ function VendorDashboardInner() {
             setOrders((prev) => prev.map((o) => (o.id === updated.id ? { ...o, ...updated } : o)));
             setSelectedOrder((prev) => (prev && prev.id === updated.id ? { ...prev, ...updated } as Order : prev));
           }}
+          onAssigned={(updated) => {
+            setOrders((prev) => prev.map((o) => (o.id === updated.id ? { ...o, ...updated } : o)));
+            setSelectedOrder((prev) => (prev && prev.id === updated.id ? { ...prev, ...updated } as Order : prev));
+          }}
         />
       )}
       <ApartadoModal

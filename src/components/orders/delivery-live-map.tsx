@@ -9,6 +9,8 @@ type Props = {
   courierLat: number;
   courierLng: number;
   courierUpdatedAt: string | null;
+  /** Título (default: voz del cliente en /seguimiento; el panel pasa el suyo). */
+  title?: string;
 };
 
 function ageText(iso: string | null): string {
@@ -48,6 +50,7 @@ export function DeliveryLiveMap({
   courierLat,
   courierLng,
   courierUpdatedAt,
+  title = "🛵 Tu pedido va en camino",
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
@@ -150,7 +153,7 @@ export function DeliveryLiveMap({
   return (
     <div className="rounded-2xl border border-violet-200 bg-violet-50/50 overflow-hidden mb-4">
       <div className="flex items-center justify-between px-4 pt-3 pb-2">
-        <p className="text-sm font-semibold">🛵 Tu pedido va en camino</p>
+        <p className="text-sm font-semibold">{title}</p>
         <span className={`text-[11px] font-medium ${stale ? "text-amber-600" : "text-emerald-600"}`}>
           {stale ? `⚠️ ubicación de ${ageText(courierUpdatedAt)}` : `● en vivo · ${ageText(courierUpdatedAt)}`}
         </span>

@@ -16,6 +16,7 @@ import {
 import { AlertTriangle, ChevronRight, Banknote, MessageSquare, CheckCircle, Truck, Plus, ChefHat, Package } from "lucide-react";
 import { apartadoInfo } from "@/lib/apartado";
 import { formatDeliveryWindow } from "@/lib/delivery-schedule";
+import { useDeliveryStaff } from "@/components/vendor/use-delivery-staff";
 
 type OrdersKanbanProps = {
   orders: Order[];
@@ -44,12 +45,15 @@ function OrderCard({
   onClick,
   onNextStatus,
   style,
+  courierName,
 }: {
   order: Order;
   isRetail: boolean;
   onClick: () => void;
   onNextStatus: () => void;
   style?: React.CSSProperties;
+  /** Nombre del repartidor asignado (si lo hay). */
+  courierName?: string | null;
 }) {
   const statusLabels = isRetail ? RETAIL_STATUS_LABELS : ORDER_STATUS_LABELS;
   const endMs = ["completed", "cancelled"].includes(order.status) && order.closed_at
@@ -97,6 +101,14 @@ function OrderCard({
             {order.method === "delivery" && (order as any).delivery_window && (
               <span className="inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-violet-100 text-violet-700 border-violet-200">
                 📦 {formatDeliveryWindow((order as any).delivery_window)}
+              </span>
+            )}
+            {order.method === "delivery" && (order as any).assigned_to && (
+              <span
+                className="inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-emerald-100 text-emerald-700 border-emerald-200 max-w-full"
+                title={courierName ? `Repartidor: ${courierName}` : "Repartidor asignado"}
+              >
+                <span className="truncate">🛵 {courierName || "Asignado"}</span>
               </span>
             )}
             {order.is_preview && (
@@ -208,6 +220,7 @@ function KanbanColumn({
   onSelectOrder,
   onNextStatus,
   count,
+  courierNameOf,
 }: {
   status: OrderStatus;
   orders: Order[];
@@ -215,6 +228,7 @@ function KanbanColumn({
   onSelectOrder: (order: Order) => void;
   onNextStatus: (order: Order) => void;
   count: number;
+  courierNameOf: (order: Order) => string | null;
 }) {
   const statusLabels = isRetail ? RETAIL_STATUS_LABELS : ORDER_STATUS_LABELS;
 
@@ -295,6 +309,7 @@ function KanbanColumn({
               onClick={() => onSelectOrder(order)}
               onNextStatus={() => onNextStatus(order)}
               style={{ animationDelay: `${index * 50}ms` }}
+              courierName={courierNameOf(order)}
             />
           ))
         )}
@@ -442,6 +457,17 @@ export function OrdersKanban({
     );
   }
 
+  // Nombres de repartidores para la pill 🛵 (solo si hay deliveries).
+  // Se resuelve por profile_id: es lo que guarda `assigned_to` (claim y
+  // assign del dueño usan el mismo formato).
+  const hasDelivery = orders.some((o) => o.method === "delivery");
+  const { byProfile } = useDeliveryStaff(hasDelivery);
+  const courierNameOf = (o: Order): string | null => {
+    const a = (o as any).assigned_to;
+    if (o.method !== "delivery" || !a) return null;
+    return byProfile[String(a)] || null;
+  };
+
   return (
     <div className="space-y-2">
       {isRetail && (
@@ -467,6 +493,7 @@ export function OrdersKanban({
           onSelectOrder={onSelectOrder}
           onNextStatus={handleNextStatus}
           count={ordersByStatus[status]?.length || 0}
+          courierNameOf={courierNameOf}
         />
       ))}
       </div>

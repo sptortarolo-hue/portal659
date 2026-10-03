@@ -19,6 +19,7 @@ import {
 } from "@/lib/order-utils";
 import { buildModifiedOrderMessage, buildTransferInstructionsMessage } from "@/lib/whatsapp-message";
 import { formatDeliveryWindow } from "@/lib/delivery-schedule";
+import { CourierAssignBox } from "@/components/dashboard/courier-assign-box";
 import { FiscalBillButton } from "@/components/dashboard/fiscal-bill-button";
 import { orderLineTotal, derivedUnitPrice } from "@/lib/order-line";
 import type { Order, OrderStatus, OrderItem, Product as DBProduct } from "@/types/database";
@@ -65,9 +66,11 @@ type Props = {
   onApartadoChanged?: (order: Order) => void;
   /** El padre refresca lista + orden seleccionada tras tildar empaque. */
   onPacked?: (order: Order) => void;
+  /** El padre refresca lista + orden seleccionada tras asignar/soltar repartidor. */
+  onAssigned?: (order: Order) => void;
 };
 
-export default function OrderDetailModal({ order, vendorName, onClose, onAction, onModify, offers = [], canPrint = true, transfer, blockUnpaid = false, onMarkPaid, isRetail = false, onApartadoChanged, onPacked }: Props) {
+export default function OrderDetailModal({ order, vendorName, onClose, onAction, onModify, offers = [], canPrint = true, transfer, blockUnpaid = false, onMarkPaid, isRetail = false, onApartadoChanged, onPacked, onAssigned }: Props) {
   const [editing, setEditing] = useState(false);
   const [editItems, setEditItems] = useState<OrderItem[]>([]);
   const [modNotes, setModNotes] = useState("");
@@ -437,6 +440,7 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
                 📦 Turno de entrega: {formatDeliveryWindow((order as any).delivery_window)}
               </p>
             )}
+            {order.method === "delivery" && <CourierAssignBox order={order} vendorName={vendorName} onAssigned={onAssigned} />}
           </div>
 
           {/* Apartado / seña */}

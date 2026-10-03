@@ -50,7 +50,10 @@ export async function POST(
     return NextResponse.json({ error: "No autorizado" }, { status: 403 });
   }
   if (quote.status === "cancelled") {
-    return NextResponse.json({ error: "El presupuesto está descartado" }, { status: 400 });
+    return NextResponse.json(
+      { error: gate.vendor.vertical === "estetica" ? "La consulta está descartada" : "El presupuesto está descartado" },
+      { status: 400 }
+    );
   }
 
   try {

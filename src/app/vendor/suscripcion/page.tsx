@@ -52,6 +52,10 @@ const PLAN_COPY: Record<string, { title: string; desc: string }> = {
     title: "Oficios",
     desc: "Solicitudes ilimitadas, cotización con precio, seña por Mercado Pago, urgencia con recargo y reseñas.",
   },
+  oficios_estetica: {
+    title: "Oficios",
+    desc: "Solicitudes ilimitadas, cotización con precio, seña online y reseñas.",
+  },
 };
 
 export default function VendorSuscripcionPage() {
@@ -255,10 +259,10 @@ export default function VendorSuscripcionPage() {
             )}
           </div>
 
-          {me.vertical === "servicio" && (
+          {(me.vertical === "servicio" || me.vertical === "estetica") && (
           <div className="mt-4">
             <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
-              <span>Solicitudes este mes (presupuestos + turnos)</span>
+              <span>Solicitudes este mes ({me.vertical === "estetica" ? "consultas + turnos" : "presupuestos + turnos"})</span>
               <span>
                 {me.usage.quotesThisMonth}
                 {me.usage.maxQuotesMonth != null ? ` de ${me.usage.maxQuotesMonth}` : " ilimitadas"}
@@ -317,7 +321,7 @@ export default function VendorSuscripcionPage() {
                         <h4 className="font-display font-semibold">{plan.name}</h4>
                         {plan.popular && <Badge variant="secondary" className="text-[10px]">Popular</Badge>}
                       </div>
-                      <p className="text-xs text-muted-foreground mt-1 mb-3">{PLAN_COPY[plan.slug]?.desc ?? plan.description}</p>
+                      <p className="text-xs text-muted-foreground mt-1 mb-3">{(me.vertical === "estetica" && PLAN_COPY[`${plan.slug}_estetica`] ? PLAN_COPY[`${plan.slug}_estetica`] : PLAN_COPY[plan.slug])?.desc ?? plan.description}</p>
                       <div className="mb-3">
                         {promo ? (
                           <div className="flex items-center gap-2 flex-wrap">

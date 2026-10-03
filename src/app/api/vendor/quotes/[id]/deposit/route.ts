@@ -49,7 +49,7 @@ export async function POST(
   }
   if (quote.quoted_price == null || !(Number(quote.quoted_price) > 0)) {
     return NextResponse.json(
-      { error: "Primero cotizá el presupuesto con un precio." },
+      { error: gate.vendor.vertical === "estetica" ? "Primero cotizá la consulta con un precio." : "Primero cotizá el presupuesto con un precio." },
       { status: 400 }
     );
   }

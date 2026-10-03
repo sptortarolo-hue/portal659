@@ -16,7 +16,7 @@ export async function GET(
   }
   if (!gate.plan.can("quotes_respond")) {
     return NextResponse.json(
-      { error: "El documento del presupuesto requiere el plan Oficios." },
+      { error: gate.vendor.vertical === "estetica" ? "El documento de la consulta requiere el plan Oficios." : "El documento del presupuesto requiere el plan Oficios." },
       { status: 403 }
     );
   }
@@ -41,6 +41,7 @@ export async function GET(
   );
 
   const pdf = await buildQuotePdf({
+    docTitle: gate.vendor.vertical === "estetica" ? "CONSULTA" : undefined,
     vendor: {
       store_name: String(vendor?.store_name || ""),
       address: (vendor?.address as string) || null,
@@ -69,10 +70,11 @@ export async function GET(
 
   // Buffer → Uint8Array para NextResponse (sin copiar de más).
   const body = new Uint8Array(pdf);
+  const fname = gate.vendor.vertical === "estetica" ? "consulta" : "presupuesto";
   return new NextResponse(body, {
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": `attachment; filename="presupuesto-${id.slice(0, 8)}.pdf"`,
+      "Content-Disposition": `attachment; filename="${fname}-${id.slice(0, 8)}.pdf"`,
     },
   });
 }

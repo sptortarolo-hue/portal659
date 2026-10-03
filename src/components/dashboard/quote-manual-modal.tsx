@@ -91,6 +91,8 @@ export function QuoteManualModal({
   const [customerPhone, setCustomerPhone] = useState("");
   const [serviceName, setServiceName] = useState("");
   const [description, setDescription] = useState("");
+  // Estética: precio directo de la consulta (sin partidas de materiales/mano de obra).
+  const [directPrice, setDirectPrice] = useState("");
   const [items, setItems] = useState<ManualItem[]>([{ kind: "material", description: "", qty: "1", unit_price: "" }]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -124,25 +126,37 @@ export function QuoteManualModal({
       setError("Faltan cliente, teléfono o descripción");
       return;
     }
+    if (estetica && !(Number(directPrice) > 0)) {
+      setError("Poné el precio de la consulta");
+      return;
+    }
     setSaving(true);
     try {
       const res = await fetch("/api/vendor/quotes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          customer_name: customerName.trim(),
-          customer_phone: customerPhone.trim(),
-          service_name: serviceName.trim() || null,
-          description: description.trim(),
-          items: items
-            .filter((it) => it.description.trim() !== "")
-            .map((it) => ({
-              kind: it.kind,
-              description: it.description.trim(),
-              qty: Number(it.qty) || 0,
-              unit_price: Number(it.unit_price) || 0,
-            })),
-        }),
+        body: estetica
+          ? JSON.stringify({
+              customer_name: customerName.trim(),
+              customer_phone: customerPhone.trim(),
+              service_name: serviceName.trim() || null,
+              description: description.trim(),
+              quoted_price: Number(directPrice),
+            })
+          : JSON.stringify({
+              customer_name: customerName.trim(),
+              customer_phone: customerPhone.trim(),
+              service_name: serviceName.trim() || null,
+              description: description.trim(),
+              items: items
+                .filter((it) => it.description.trim() !== "")
+                .map((it) => ({
+                  kind: it.kind,
+                  description: it.description.trim(),
+                  qty: Number(it.qty) || 0,
+                  unit_price: Number(it.unit_price) || 0,
+                })),
+            }),
       });
       const data = await res.json();
       if (!res.ok || data.error) throw new Error(data.error || "No se pudo crear");
@@ -178,12 +192,21 @@ export function QuoteManualModal({
           </div>
           <div>
             <Label className="text-xs">Servicio</Label>
-            <Input value={serviceName} onChange={(e) => setServiceName(e.target.value)} placeholder="Ej: instalación, reparación..." className="mt-1 h-9 text-sm" />
+            <Input value={serviceName} onChange={(e) => setServiceName(e.target.value)} placeholder={estetica ? "Ej: lifting, microblading..." : "Ej: instalación, reparación..."} className="mt-1 h-9 text-sm" />
           </div>
           <div>
             <Label className="text-xs">Descripción *</Label>
             <Textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Detalle del trabajo" rows={2} className="mt-1 text-sm" />
           </div>
+          {estetica ? (
+            <div>
+              <Label className="text-xs">Precio de la consulta *</Label>
+              <Input
+                type="number" min={0} value={directPrice} onChange={(e) => setDirectPrice(e.target.value)}
+                placeholder="$" className="mt-1 h-9 text-sm"
+              />
+            </div>
+          ) : (
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <Label className="text-xs">Partidas (materiales y mano de obra)</Label>
@@ -241,6 +264,7 @@ export function QuoteManualModal({
               Total: <strong className="text-foreground">${total.toLocaleString("es-AR")}</strong>
             </p>
           </div>
+          )}
           {error && <p className="text-sm text-red-600">{error}</p>}
         </div>
         <div className="border-t border-border px-5 py-3 shrink-0 bg-card flex gap-2">

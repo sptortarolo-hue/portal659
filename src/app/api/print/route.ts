@@ -101,7 +101,7 @@ export async function POST(request: Request) {
       [quoteId, vendor.id]
     );
     if (!quote) {
-      return NextResponse.json({ ok: false, error: "Presupuesto no encontrado" }, { status: 404 });
+      return NextResponse.json({ ok: false, error: vendor.vertical === "estetica" ? "Consulta no encontrada" : "Presupuesto no encontrado" }, { status: 404 });
     }
     const items = await queryMany<{ kind: string; description: string; qty: number; unit_price: number }>(
       `SELECT kind, description, qty, unit_price FROM quote_items WHERE quote_id = $1 ORDER BY position ASC`,
@@ -115,6 +115,7 @@ export async function POST(request: Request) {
       type: "presupuesto",
       extra: {
         quote: {
+          docTitle: vendor.vertical === "estetica" ? "CONSULTA" : undefined,
           customer_name: String(quote.customer_name || ""),
           customer_phone: (quote.customer_phone as string) || null,
           service_name: (quote.service_name as string) || null,

@@ -1,5 +1,5 @@
 /**
- * PDF A4 del presupuesto de oficio (servicios).
+ * PDF A4 del presupuesto de oficio (servicios) o consulta (estética).
  * Logo + datos del comercio, cliente, tabla de partidas (material/mano de
  * obra), TOTAL, seña y condiciones. pdf-lib puro (sin binarios): seguro en
  * docker slim. Patrón espejo de src/lib/arca/pdf.ts.
@@ -11,6 +11,8 @@ import type { Quote, QuoteItem, Vendor } from "@/types/database";
 
 export type QuotePdfData = {
   vendor: Pick<Vendor, "store_name" | "address" | "phone" | "whatsapp" | "logo_url">;
+  /** Título del documento ("PRESUPUESTO" por defecto, "CONSULTA" en estética). */
+  docTitle?: string;
   quote: Pick<
     Quote,
     | "customer_name"
@@ -47,6 +49,7 @@ function logoDiskPath(logoUrl: string | null | undefined): string | null {
 
 export async function buildQuotePdf(data: QuotePdfData): Promise<Buffer> {
   const { vendor, quote, items } = data;
+  const docTitle = data.docTitle || "PRESUPUESTO";
   const doc = await PDFDocument.create();
   const page = doc.addPage([595.28, 841.89]); // A4
   const { width } = page.getSize();
@@ -82,7 +85,7 @@ export async function buildQuotePdf(data: QuotePdfData): Promise<Buffer> {
   }
   const rightX = width - M - 230;
   text(vendor.store_name || "", M + 170, y - 6, 15, bold, black, 250);
-  text("PRESUPUESTO", rightX, y - 6, 15, bold);
+  text(docTitle, rightX, y - 6, 15, bold);
   text(`Fecha: ${fdate(quote.created_at)}`, rightX, y - 26, 9, font, gray);
   if (vendor.address) text(vendor.address, M + 170, y - 26, 9, font, gray, 250);
   const contact = [vendor.phone, vendor.whatsapp].filter(Boolean).join(" · ");
@@ -169,7 +172,7 @@ export async function buildQuotePdf(data: QuotePdfData): Promise<Buffer> {
     text(sena, M, y, 10, bold);
     y -= 16;
   }
-  text("Presupuesto sin compromiso. Validez: 30 días salvo indicación contraria.", M, y, 8, font, gray);
+  text("Sin compromiso. Validez: 30 días salvo indicación contraria.", M, y, 8, font, gray);
   y -= 14;
   text("Este documento no es comprobante fiscal.", M, y, 8, font, gray);
 

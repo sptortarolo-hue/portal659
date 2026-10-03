@@ -52,6 +52,8 @@ export type QuotePrintData = {
   deposit_amount: number | null;
   validity?: string | null;
   created_at: string;
+  /** Título del documento ("PRESUPUESTO" por defecto, "CONSULTA" en estética). */
+  docTitle?: string;
 };
 
 export type CashClosingPrintData = {
@@ -1612,7 +1614,7 @@ async function composePresupuesto(
 
   printer.alignCenter();
   await composeStoreHeader(printer, vendor, width);
-  printer.println("PRESUPUESTO");
+  printer.println(quote.docTitle || "PRESUPUESTO");
   printer.println("(no es comprobante fiscal)");
   printer.println(separator);
 

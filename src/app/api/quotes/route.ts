@@ -48,21 +48,22 @@ export const POST = withRateLimit(async (request: Request) => {
     );
   }
 
-  const vendor = await queryOne<{ user_id: string }>(
-    `SELECT user_id, store_name FROM vendors WHERE id = $1 LIMIT 1`,
+  const vendor = await queryOne<{ user_id: string; vertical: string | null }>(
+    `SELECT user_id, store_name, vertical FROM vendors WHERE id = $1 LIMIT 1`,
     [vendorId]
   );
 
   if (vendor?.user_id) {
     const desc = `${description.slice(0, 80)}${description.length > 80 ? "..." : ""}`;
+    const isEstetica = vendor.vertical === "estetica";
     await query(
       `INSERT INTO notifications (user_id, title, body, type, link)
        VALUES ($1, $2, $3, 'quote', '/vendor/dashboard')`,
-      [vendor.user_id, "Nuevo presupuesto solicitado", `${customerName} solicitó presupuesto: "${desc}"`]
+      [vendor.user_id, isEstetica ? "Nueva consulta recibida" : "Nuevo presupuesto solicitado", `${customerName} ${isEstetica ? "pidió una consulta" : "solicitó presupuesto"}: "${desc}"`]
     );
     try {
       await sendPushToUser(vendor.user_id, {
-        title: "Nuevo presupuesto solicitado",
+        title: isEstetica ? "Nueva consulta recibida" : "Nuevo presupuesto solicitado",
         body: `${customerName}: "${desc}"`,
         link: "/vendor/dashboard",
         tag: quote?.id ? `new-quote-${quote.id}` : "new-quote",

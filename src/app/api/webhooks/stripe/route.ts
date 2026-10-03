@@ -77,13 +77,13 @@ async function markQuoteDepositPaid(quoteId: string, sessionId: string, paidAmou
      WHERE id = $2`,
     [`stripe:${sessionId}`, quoteId]
   );
-  const vrow = await queryOne<{ user_id: string; store_name: string }>(
-    `SELECT user_id, store_name FROM vendors WHERE id = $1 LIMIT 1`,
+  const vrow = await queryOne<{ user_id: string; store_name: string; vertical: string | null }>(
+    `SELECT user_id, store_name, vertical FROM vendors WHERE id = $1 LIMIT 1`,
     [quote.vendor_id]
   ).catch(() => undefined);
   if (vrow?.user_id) {
     const title = "¡Seña pagada! (Stripe)";
-    const body = `${quote.customer_name} pagó $${paidAmount.toLocaleString("es-AR")} de seña${mismatch ? ` (difiere de $${expected.toLocaleString("es-AR")}, revisar)` : ""}. Presupuesto aceptado.`;
+    const body = `${quote.customer_name} pagó $${paidAmount.toLocaleString("es-AR")} de seña${mismatch ? ` (difiere de $${expected.toLocaleString("es-AR")}, revisar)` : ""}. ${vrow.vertical === "estetica" ? "Consulta aceptada." : "Presupuesto aceptado."}`;
     await query(
       `INSERT INTO notifications (user_id, title, body, type, link)
        VALUES ($1, $2, $3, 'payment', '/vendor/dashboard')`,

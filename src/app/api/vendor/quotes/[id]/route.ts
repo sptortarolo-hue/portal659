@@ -99,14 +99,21 @@ export async function PATCH(
   if (quote && (update.status === "responded" || update.status === "accepted")) {
     const phone = quote.customer_phone as string | undefined;
     const price = update.quoted_price != null ? Number(update.quoted_price) : Number(quote.quoted_price) || null;
+    const isEstetica = gate.vendor.vertical === "estetica";
     await notifyServiceClient(phone, {
-      title: update.status === "accepted" ? "Presupuesto aceptado ✅" : "Respondieron tu presupuesto 💬",
+      title: update.status === "accepted"
+        ? isEstetica ? "Consulta aceptada ✅" : "Presupuesto aceptado ✅"
+        : isEstetica ? "Te respondieron la consulta 💬" : "Respondieron tu presupuesto 💬",
       body:
         update.status === "accepted"
-          ? "El profesional aceptó el trabajo. Coordinan por WhatsApp."
+          ? isEstetica
+            ? "La profesional aceptó tu consulta. Coordinan por WhatsApp."
+            : "El profesional aceptó el trabajo. Coordinan por WhatsApp."
           : price != null
             ? `Te cotizaron $${price.toLocaleString("es-AR")}. Respondé por WhatsApp para confirmar.`
-            : "Te respondieron el presupuesto. Revisalo por WhatsApp.",
+            : isEstetica
+              ? "Te respondieron la consulta. Revisala por WhatsApp."
+              : "Te respondieron el presupuesto. Revisalo por WhatsApp.",
     });
   }
 

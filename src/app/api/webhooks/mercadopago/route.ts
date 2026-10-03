@@ -257,13 +257,13 @@ export async function POST(request: Request) {
                  WHERE id = $2`,
                 [String(payment.id || ""), quoteId]
               );
-              const vrow = await queryOne<{ user_id: string; store_name: string }>(
-                `SELECT user_id, store_name FROM vendors WHERE id = $1 LIMIT 1`,
+              const vrow = await queryOne<{ user_id: string; store_name: string; vertical: string | null }>(
+                `SELECT user_id, store_name, vertical FROM vendors WHERE id = $1 LIMIT 1`,
                 [quote.vendor_id]
               );
               if (vrow?.user_id) {
                 const title = "¡Seña pagada!";
-                const body = `${quote.customer_name} pagó $${paidAmount.toLocaleString("es-AR")} de seña${mismatch ? ` (difiere de $${expected.toLocaleString("es-AR")}, revisar)` : ""}. Presupuesto aceptado.`;
+                const body = `${quote.customer_name} pagó $${paidAmount.toLocaleString("es-AR")} de seña${mismatch ? ` (difiere de $${expected.toLocaleString("es-AR")}, revisar)` : ""}. ${vrow.vertical === "estetica" ? "Consulta aceptada." : "Presupuesto aceptado."}`;
                 await query(
                   `INSERT INTO notifications (user_id, title, body, type, link)
                    VALUES ($1, $2, $3, 'payment', '/vendor/dashboard')`,

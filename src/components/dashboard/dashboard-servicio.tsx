@@ -637,7 +637,7 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
 
   function quoteShareText(q: any): string {
     const lines = [
-      `*PRESUPUESTO — ${vendor?.store_name || ""}*`,
+      `*${isEstetica ? "CONSULTA" : "PRESUPUESTO"} — ${vendor?.store_name || ""}*`,
       `Para: ${q.customer_name || ""}${q.customer_phone ? ` (${q.customer_phone})` : ""}`,
       q.service_name ? `Servicio: ${q.service_name}` : "",
       "",

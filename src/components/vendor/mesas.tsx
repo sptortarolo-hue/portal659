@@ -145,6 +145,30 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
   const [query, setQuery] = useState("");
   const [activeCat, setActiveCat] = useState<string | null>(null);
   const [newTable, setNewTable] = useState("");
+  // Vista de la pantalla de mesas: plano visual o grilla clásica.
+  const [planView, setPlanView] = useState<"plano" | "grilla">("plano");
+  useEffect(() => {
+    if (!vendorId) return;
+    try {
+      const v = localStorage.getItem(`portal659-mesas-view-${vendorId}`);
+      if (v === "plano" || v === "grilla") setPlanView(v);
+    } catch { /* sin localStorage */ }
+  }, [vendorId]);
+  function changePlanView(v: "plano" | "grilla") {
+    setPlanView(v);
+    try {
+      if (vendorId) localStorage.setItem(`portal659-mesas-view-${vendorId}`, v);
+    } catch { /* sin localStorage */ }
+  }
+  function selectTable(t: Table) {
+    selectedAtRef.current = Date.now();
+    setSelected(t);
+    setMobileView("catalog");
+  }
+  const tableSubtotal = (id: string) =>
+    orders
+      .filter((o) => o.table_id === id && o.status !== "cancelled" && o.status !== "completed")
+      .reduce((s, o) => s + Number(o.total), 0);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [selected, setSelected] = useState<Table | null>(null);
@@ -1521,7 +1545,7 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
 
       {!selected ? (
         <>
-          {/* ============ Pantalla plano ============ */}
+          {/* ============ Pantalla plano / grilla ============ */}
           <div className="flex items-center gap-2">
             <input
               type="text"
@@ -1534,6 +1558,29 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
             <Button onClick={addTable}>Agregar</Button>
           </div>
 
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex rounded-full bg-muted p-0.5 text-xs font-medium">
+              {(["plano", "grilla"] as const).map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => changePlanView(v)}
+                  className={`rounded-full px-3 py-1.5 transition-colors ${
+                    planView === v ? "bg-primary text-primary-foreground" : "text-muted-foreground"
+                  }`}
+                >
+                  {v === "plano" ? "🗺️ Plano" : "🔲 Grilla"}
+                </button>
+              ))}
+            </div>
+            {planView === "grilla" && (
+              <Button size="sm" variant="outline" onClick={() => openResModal(null, false)}>
+                📅 Reservar
+              </Button>
+            )}
+          </div>
+
+          {planView === "plano" ? (
           <FloorPlan
             tables={tables as FloorTable[]}
             selectedId={null}
@@ -1557,6 +1604,43 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
           if (t) deleteTable(t);
         }}
       />
+          ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5">
+            {tables.map((t) => {
+              const blocked = resOverlays.blocked.includes(t.id);
+              const upcoming = !blocked && resOverlays.upcoming.includes(t.id);
+              const occupied = t.status === "ocupada";
+              return (
+                <div
+                  key={t.id}
+                  onClick={() => selectTable(t)}
+                  className={`rounded-2xl border-2 p-3 cursor-pointer transition-all active:scale-[0.98] ${
+                    occupied || blocked ? "border-primary bg-primary/5" : "border-border bg-card"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-1 mb-1">
+                    <p className="font-display font-semibold text-sm truncate">{t.name}</p>
+                    <Badge className={`text-[9px] shrink-0 ${occupied || blocked ? "bg-status-new/15 text-status-new" : "bg-muted text-muted-foreground"}`}>
+                      {blocked ? "Reservada" : occupied ? "Ocupada" : "Libre"}{upcoming ? " 🕒" : ""}
+                    </Badge>
+                  </div>
+                  {occupied ? (
+                    <p className="text-xs font-semibold tabular-nums">${tableSubtotal(t.id).toLocaleString("es-AR")}</p>
+                  ) : blocked ? (
+                    <p className="text-[11px] text-muted-foreground">Reservada en este turno</p>
+                  ) : (
+                    <p className="text-[11px] text-muted-foreground">hasta {t.capacity} personas{upcoming ? " · 🕒" : ""}</p>
+                  )}
+                </div>
+              );
+            })}
+            {tables.length === 0 && (
+              <p className="text-xs text-muted-foreground col-span-full text-center py-6">
+                Todavía no creaste mesas. Agregá la primera arriba.
+              </p>
+            )}
+          </div>
+          )}
 
           <div className="rounded-2xl border border-border bg-card p-3 space-y-2">
             <h3 className="font-display font-semibold text-sm">

@@ -56,6 +56,7 @@ import { apartadoInfo } from "@/lib/apartado";
 import DashboardGastro from "@/components/dashboard/dashboard-gastro";
 import DashboardComercio from "@/components/dashboard/dashboard-comercio";
 import DashboardServicio from "@/components/dashboard/dashboard-servicio";
+import DashboardEstetica from "@/components/dashboard/dashboard-estetica";
 import DashboardGenerico from "@/components/dashboard/dashboard-generico";
 import DashboardModa from "@/components/dashboard/dashboard-moda";
 import { VendorAnalytics } from "@/components/dashboard/vendor-analytics";
@@ -1018,7 +1019,9 @@ function VendorDashboardInner() {
       orderUsage.maxOrdersMonth != null && orderUsage.ordersThisMonth >= orderUsage.maxOrdersMonth,
   } as const;
 
-  const configContent = isGastro ? (
+  const configContent = isEstetica ? (
+    <DashboardEstetica {...dashboardProps} configSectionId={configSection} onConfigSectionId={handleConfigSection} />
+  ) : isGastro ? (
     <DashboardGastro {...dashboardProps} configSectionId={configSection} onConfigSectionId={handleConfigSection} />
   ) : isComercio ? (
     <DashboardComercio {...dashboardProps} configSectionId={configSection} onConfigSectionId={handleConfigSection} />
@@ -1383,10 +1386,10 @@ function VendorDashboardInner() {
   const pendingDepositsCount = quotes.filter((q) => q.deposit_status === "pending").length;
 
   const tabTitle =
-    isService && tab === "orders" ? "Presupuestos"
+    isService && tab === "orders" ? (isEstetica ? "Consultas" : "Presupuestos")
     : isService && tab === "pos" ? "Turnos"
     : isService && tab === "caja" ? "Cobros"
-    : isService && tab === "config" ? "Ficha"
+    : isService && tab === "config" ? (isEstetica ? "Configuración" : "Ficha")
     : isService && tab === "history" ? "Historial"
     : isService && tab === "clientes" ? "Clientes"
     : isEstetica && tab === "pedidos" ? "Pedidos"
@@ -1441,7 +1444,7 @@ function VendorDashboardInner() {
         planSlug={effectivePlan.plan?.slug ?? null}
         canFiscal={effectivePlan.can("fiscal")}
         canInventory={effectivePlan.can("inventory")}
-        configNavSections={isService ? null : sectionsForVertical(vendor?.vertical)}
+        configNavSections={(isService && !isEstetica) ? null : sectionsForVertical(vendor?.vertical)}
         activeConfigSection={configSection}
         onConfigSection={handleConfigSection}
         configSectionStatus={(id) => getConfigSectionStatus(id, vendor)}
@@ -1596,7 +1599,7 @@ function VendorDashboardInner() {
         {/* Banner de suscripción — solo en Hoy */}
         {tab === "hoy" && <PlanBanner plan={planBannerData as any} />}
 
-        {/* Stats bar — solo en tab de pedidos (no aplica a servicios: su tab "orders" es Presupuestos) */}
+          {/* Stats bar — solo en tab de pedidos (no aplica a servicios: su tab "orders" es Presupuestos/Consultas) */}
         {!isService && tab === "orders" && orders.length > 0 && (
           <div className="px-4 mt-4">
             <div className="grid grid-cols-5 gap-1.5 mb-4">
@@ -1698,9 +1701,9 @@ function VendorDashboardInner() {
               <div className={tab === "config" ? "" : "hidden"}>
                 <div className="flex gap-4 items-start">
                   {/* Segunda columna de secciones (estilo Fudo): solo desktop y
-                      no-servicio. El menú principal queda intacto en la sidebar.
+                      no-servicio (estética sí tiene menú de secciones). El menú principal queda intacto en la sidebar.
                       En mobile mandan el drawer + el drill-down de Config. */}
-                  {!isService && (
+                  {(!isService || isEstetica) && (
                     <nav className="hidden md:block w-56 flex-shrink-0 md:sticky md:top-24 self-start rounded-xl border border-border bg-card p-3 space-y-4">
                       {CONFIG_SECTION_GROUPS.map((g) => {
                         const items = (sectionsForVertical(vendor?.vertical) ?? []).filter((id) =>
@@ -1740,11 +1743,11 @@ function VendorDashboardInner() {
                     </nav>
                   )}
                   <div className="flex-1 min-w-0 space-y-4">
-                    {/* Alertas push: en gastro/comercio/moda vive como sección
-                        "Alertas" del menú de Configuración; servicios no tiene
+                    {/* Alertas push: en gastro/comercio/moda/estética vive como sección
+                        "Alertas" del menú de Configuración; servicio puro no tiene
                         menú de secciones y la muestra fija acá (Ficha no es
                         pantalla operativa). */}
-                    {isService && <PushAlertCard />}
+                    {isService && !isEstetica && <PushAlertCard />}
                     <TabErrorBoundary tab="config">{configContent}</TabErrorBoundary>
                   </div>
                 </div>
@@ -1948,7 +1951,7 @@ function VendorDashboardInner() {
             {isService ? (
               <>
                 <button onClick={() => setTab("orders")} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors relative ${tab === "orders" ? "text-primary" : "text-muted-foreground"}`}>
-                  <MessageSquare className="h-5 w-5" />Presupuestos
+                  <MessageSquare className="h-5 w-5" />{isEstetica ? "Consultas" : "Presupuestos"}
                   {pendingQuotesCount > 0 && <span className="absolute top-1 right-1/3 -translate-x-4 bg-red-500 text-white text-[9px] rounded-full h-4 w-4 flex items-center justify-center">{pendingQuotesCount}</span>}
                 </button>
                 <button onClick={() => setTab("pos")} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors relative ${tab === "pos" ? "text-primary" : "text-muted-foreground"}`}>
@@ -1998,7 +2001,7 @@ function VendorDashboardInner() {
               {isService ? (
                 <>
                   <button onClick={() => { setTab("config"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "config" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
-                    <Wrench className="h-5 w-5" />Ficha
+                    <Wrench className="h-5 w-5" />{isEstetica ? "Configuración" : "Ficha"}
                   </button>
                   {isEstetica && (
                     <>

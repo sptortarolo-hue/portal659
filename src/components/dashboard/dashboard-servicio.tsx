@@ -78,14 +78,18 @@ function ServicioHoy({
   quotes,
   bookings,
   orders,
+  isEstetica = false,
   onNavigate,
 }: {
   quotes: Record<string, unknown>[];
   bookings: Booking[];
   /** Pedidos de productos (estética): se muestran como pendientes. */
   orders?: Record<string, unknown>[];
+  isEstetica?: boolean;
   onNavigate?: (section: "orders" | "pos" | "caja" | "config" | "pedidos") => void;
 }) {
+  const presupuestosLow = isEstetica ? "consultas" : "presupuestos";
+  const presupuestosLabel = isEstetica ? "Consultas" : "Presupuestos";
   const pendingQuotes = (quotes || []).filter((q) => q.status === "pending" || q.status === "responded");
   const pendingBookings = (bookings || []).filter((b: any) => b.status === "pending");
   const newOrders = (orders || []).filter((o: any) =>
@@ -108,7 +112,7 @@ function ServicioHoy({
       <Card className="p-6 text-center">
         <p className="text-3xl mb-2">☀️</p>
         <p className="font-medium text-sm">Sin pendientes. Buen momento para compartir tu vidriera.</p>
-        <p className="text-xs text-muted-foreground mt-1">Los presupuestos, turnos y pedidos nuevos aparecen acá con aviso.</p>
+        <p className="text-xs text-muted-foreground mt-1">Los {presupuestosLow}, turnos y pedidos nuevos aparecen acá con aviso.</p>
       </Card>
     );
   }
@@ -148,7 +152,7 @@ function ServicioHoy({
       {pendingQuotes.length > 0 && (
         <Card className="p-3">
           <div className="flex items-center justify-between mb-2">
-            <p className="font-medium text-sm">💬 Presupuestos por responder ({pendingQuotes.length})</p>
+            <p className="font-medium text-sm">💬 {presupuestosLabel} por responder ({pendingQuotes.length})</p>
             {onNavigate && (
               <button type="button" onClick={() => onNavigate("orders")} className="text-xs text-primary font-medium hover:underline">
                 Ver todos →
@@ -219,9 +223,11 @@ function ServicioHoy({
 function ServicioHistorial({
   quotes,
   bookings,
+  isEstetica = false,
 }: {
   quotes: Record<string, unknown>[];
   bookings: Booking[];
+  isEstetica?: boolean;
 }) {
   const doneQuotes = (quotes || []).filter((q) => q.status === "accepted" || q.status === "cancelled");
   const doneBookings = (bookings || []).filter((b: any) => {
@@ -232,7 +238,7 @@ function ServicioHistorial({
   if (doneQuotes.length === 0 && doneBookings.length === 0) {
     return (
       <Card className="p-6 text-center">
-        <p className="text-sm text-muted-foreground">Todavía no hay trabajos terminados. Aparecen acá cuando aceptás un presupuesto o pasa un turno confirmado.</p>
+        <p className="text-sm text-muted-foreground">Todavía no hay trabajos terminados. Aparecen acá cuando aceptás {isEstetica ? "una consulta" : "un presupuesto"} o pasa un turno confirmado.</p>
       </Card>
     );
   }
@@ -303,9 +309,13 @@ export default function DashboardServicio({
 }: Props) {
   // Sin section se muestra todo (legacy); con section, solo esa sub-vista.
   const sec = section ?? "all";
-  // Estética opera sobre este mismo panel (turnera + presupuestos) y suma
+  // Estética opera sobre este mismo panel (turnera + consultas) y suma
   // catálogo de servicios, profesionales y política de cancelación.
   const isEstetica = vendor?.vertical === "estetica";
+  // Copy: en estética los "presupuestos" son consultas/evaluaciones.
+  const presupuestosLabel = isEstetica ? "Consultas" : "Presupuestos";
+  const presupuestosLow = isEstetica ? "consultas" : "presupuestos";
+  const presupuestoOne = isEstetica ? "consulta" : "presupuesto";
   const [storeName, setStoreName] = useState(vendor?.store_name || "");
   const [storeCategory, setStoreCategory] = useState(vendor?.category || "");
   const [address, setAddress] = useState(vendor?.address || "");
@@ -428,7 +438,7 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
       setConvertingId(null);
       setConvDate("");
       setConvTime("");
-      setMsg("Turno agendado desde el presupuesto");
+      setMsg(`Turno agendado desde la ${presupuestoOne}`);
       reload();
     } catch {
       setMsg("Error de conexión");
@@ -616,7 +626,7 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
         setMsg(data.error || "No se pudo imprimir");
         return;
       }
-      setMsg(data.skipped ? "Sin impresora configurada (se omitió)" : "Presupuesto enviado a imprimir");
+      setMsg(data.skipped ? "Sin impresora configurada (se omitió)" : `${isEstetica ? "Consulta enviada" : "Presupuesto enviado"} a imprimir`);
     } catch {
       setMsg("Error de conexión");
     }
@@ -658,7 +668,7 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
       setRespondingId(null);
       setRespondNotes("");
       setRespondPrice("");
-      setMsg(status === "cancelled" ? "Presupuesto descartado" : "Respuesta enviada");
+      setMsg(status === "cancelled" ? `${isEstetica ? "Consulta descartada" : "Presupuesto descartado"}` : "Respuesta enviada");
       loadQuotes();
     } catch {
       setMsg("Error de conexión");
@@ -839,7 +849,7 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
           ) : (
             <p>
               Solicitudes online del mes: <strong className="text-foreground">{quota.used} de {quota.limit}</strong>
-              {" "}(presupuestos + turnos. Lo que cargás a mano no cuenta).
+              {" "}({presupuestosLow} + turnos. Lo que cargás a mano no cuenta).
             </p>
           )}
         </div>
@@ -1507,14 +1517,14 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
 
       {(sec === "all" || sec === "presupuestos") && (
       <>
-      <CollapsibleSection icon="💬" title={`Presupuestos (${quotes.length})`}>
+      <CollapsibleSection icon="💬" title={`${presupuestosLabel} (${quotes.length})`}>
         <div className="space-y-3">
           <Button size="sm" className="w-full h-8 text-xs" onClick={() => setQuoteModalOpen(true)}>
-            ＋ Nuevo presupuesto
+            {isEstetica ? "＋ Nueva consulta" : "＋ Nuevo presupuesto"}
           </Button>
           {!acceptingQuotes && (
             <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-              No estás recibiendo presupuestos (apagado en “Servicios que ofrecés”).
+              No estás recibiendo {presupuestosLow} (apagado en Configuración → Turnera).
             </p>
           )}
           <div className="flex gap-1 flex-wrap">
@@ -1537,7 +1547,7 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
             <div className="h-10 rounded-lg bg-muted animate-pulse" />
           ) : filteredQuotes.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-4">
-              Todavía no recibiste presupuestos.
+              Todavía no recibiste {presupuestosLow}.
             </p>
           ) : (
             <div className="space-y-2">
@@ -1747,7 +1757,7 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
                             </Button>
                           </div>
                           <p className="text-[11px] text-muted-foreground">
-                            Marca el presupuesto como aceptado y crea el turno confirmado.
+                            Marca la {presupuestoOne} como aceptada y crea el turno confirmado.
                           </p>
                         </div>
                       )}
@@ -1842,6 +1852,7 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
           quotes={quotes}
           bookings={bookings}
           orders={isEstetica ? ordersProp : undefined}
+          isEstetica={isEstetica}
           onNavigate={onNavigate}
         />
       )}
@@ -1850,6 +1861,7 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
         <ServicioHistorial
           quotes={quotes}
           bookings={bookings}
+          isEstetica={isEstetica}
         />
       )}
 
@@ -1859,17 +1871,18 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
         ) : (
           <PlanLock
             title="Libro de clientes"
-            description="Tus clientes con su historial de trabajos y presupuestos, notas y contacto directo por WhatsApp. Parte del plan Oficios."
+            description={`Tus clientes con su historial de trabajos y ${presupuestosLow}, notas y contacto directo por WhatsApp. Parte del plan Oficios.`}
           />
         )
       )}
 
       {quoteModalOpen && (
         <QuoteManualModal
+          estetica={isEstetica}
           onClose={() => setQuoteModalOpen(false)}
           onCreated={() => {
             setQuoteModalOpen(false);
-            setMsg("Presupuesto creado (no cuenta para el tope mensual)");
+            setMsg(isEstetica ? "Consulta creada (no cuenta para el tope mensual)" : "Presupuesto creado (no cuenta para el tope mensual)");
             onQuotesChanged?.();
             reload();
           }}

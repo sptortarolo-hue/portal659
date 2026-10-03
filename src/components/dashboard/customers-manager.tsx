@@ -438,7 +438,7 @@ export function CustomersManager({ serviceMode = false, vendorId = null }: { ser
           <h2 className="font-display text-xl font-semibold">Clientes</h2>
           <p className="text-xs text-muted-foreground mt-0.5">
             {serviceMode
-              ? "Tu libro de clientes: se llena solo con cada presupuesto o turno, o agregalos a mano."
+              ? "Tu libro de clientes: se llena solo con cada solicitud o turno, o agregalos a mano."
               : "Tu libro de clientes: se llena solo con los pedidos que traen teléfono."}
           </p>
         </div>
@@ -721,12 +721,12 @@ export function CustomersManager({ serviceMode = false, vendorId = null }: { ser
                           <>
                             {quotes.length > 0 && (
                               <div className="mb-2">
-                                <p className="text-[11px] font-semibold text-muted-foreground mb-1">Presupuestos</p>
+                                <p className="text-[11px] font-semibold text-muted-foreground mb-1">Consultas y presupuestos</p>
                                 <div className="space-y-1">
                                   {quotes.map((qt) => (
                                     <div key={qt.id} className="flex justify-between gap-2 text-xs py-1 border-b border-border last:border-0">
                                       <span className="min-w-0 truncate">
-                                        {fmtDate(qt.created_at)} · {qt.service_name || "Presupuesto"} — {qt.status}
+                                        {fmtDate(qt.created_at)} · {qt.service_name || "Solicitud"} — {qt.status}
                                       </span>
                                       <span className="font-medium tabular-nums flex-shrink-0">{qt.quoted_price != null ? `$${Number(qt.quoted_price).toLocaleString("es-AR")}` : "—"}</span>
                                     </div>

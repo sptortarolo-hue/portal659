@@ -219,7 +219,7 @@ export default function VendorSidebar({
                     active={currentTab === "orders"}
                     onClick={() => handleTab("orders")}
                     icon={MessageSquare}
-                    label="Presupuestos"
+                    label={isEstetica ? "Consultas" : "Presupuestos"}
                     badge={pendingQuotesCount}
                   />
                   <NavButton
@@ -302,7 +302,7 @@ export default function VendorSidebar({
                     active={currentTab === "config"}
                     onClick={() => handleTab("config")}
                     icon={ClipboardList}
-                    label="Ficha"
+                    label={isEstetica ? "Configuración" : "Ficha"}
                   />
                   <NavButton
                     active={currentTab === "clientes"}

@@ -145,10 +145,12 @@ const SERVICIO_FREE_FEATURES: PlanFeatures = {
 // Features del plan que no aplican al vertical estética (forzadas a false).
 // pos/printer/caja/crm/analytics/reviews/mp/cart SÍ aplican con o sin plan
 // pago (el centro vende productos con el mismo circuito retail que moda).
+// urgent tampoco: la urgencia 24h es concepto de oficios, no de turnera.
 const ESTETICA_FEATURE_MASK: Partial<Record<FeatureKey, false>> = {
   kds: false,
   mesas: false,
   recipes: false,
+  urgent: false,
 };
 
 // Features que no aplican al vertical servicios (forzadas a false aunque el

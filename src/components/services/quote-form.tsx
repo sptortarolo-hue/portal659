@@ -22,9 +22,11 @@ type Props = {
   prefDays?: string[];
   /** Franjas ofrecidas. Default mañana/tarde. */
   prefSlots?: string[];
+  /** Copy de estética ("consulta" en vez de "presupuesto"). */
+  estetica?: boolean;
 };
 
-export function QuoteForm({ vendorId, vendorName, servicesList, prefEnabled = true, prefDays, prefSlots }: Props) {
+export function QuoteForm({ vendorId, vendorName, servicesList, prefEnabled = true, prefDays, prefSlots, estetica = false }: Props) {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [serviceName, setServiceName] = useState("");
@@ -42,7 +44,7 @@ export function QuoteForm({ vendorId, vendorName, servicesList, prefEnabled = tr
     return (
       <div className="text-center py-6">
         <p className="text-2xl mb-2">✅</p>
-        <p className="font-medium">Presupuesto enviado</p>
+        <p className="font-medium">{estetica ? "Consulta enviada" : "Presupuesto enviado"}</p>
         <p className="text-sm text-muted-foreground mt-1">
           {vendorName} te va a responder pronto.
         </p>
@@ -176,7 +178,7 @@ export function QuoteForm({ vendorId, vendorName, servicesList, prefEnabled = tr
       )}
       {error && <p className="text-sm text-red-600">{error}</p>}
       <Button type="submit" className="w-full" disabled={loading}>
-        {loading ? "Enviando..." : "Solicitar presupuesto"}
+        {loading ? "Enviando..." : estetica ? "Enviar consulta" : "Solicitar presupuesto"}
       </Button>
       <p className="text-xs text-muted-foreground text-center">
         Sin compromiso. {vendorName} te responde por WhatsApp.

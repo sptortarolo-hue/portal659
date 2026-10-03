@@ -1,7 +1,10 @@
 import {
   Bell,
   BookOpen,
+  CalendarDays,
+  ClipboardList,
   CreditCard,
+  Gift,
   MapPin,
   Phone,
   Printer,
@@ -34,6 +37,9 @@ export const CONFIG_SECTION_ICONS: Record<string, LucideIcon> = {
   fiscal: Receipt,
   menu: BookOpen,
   catalogo: ShoppingBag,
+  turnera: CalendarDays,
+  fichas: ClipboardList,
+  packs: Gift,
 };
 
 export const CONFIG_SECTION_DESCS: Record<string, string> = {
@@ -48,6 +54,9 @@ export const CONFIG_SECTION_DESCS: Record<string, string> = {
   fiscal: "Abrir la pestaña Facturación: comprobantes, NC y reportes.",
   menu: "Acceso rápido a tu carta.",
   catalogo: "Categorías y modificadores.",
+  turnera: "Servicios, profesionales, sedes y turnera online.",
+  fichas: "Modelos de ficha por servicio.",
+  packs: "Packs de sesiones, giftcards y comisiones.",
 };
 
 export const CONFIG_SECTION_GROUPS: Array<{
@@ -57,6 +66,7 @@ export const CONFIG_SECTION_GROUPS: Array<{
 }> = [
   { id: "negocio", label: "Local", sections: ["perfil", "ubicacion", "contacto"] },
   { id: "ventas", label: "Ventas", sections: ["pagos", "menu", "catalogo"] },
+  { id: "turnera", label: "Turnera", sections: ["turnera", "fichas", "packs"] },
   { id: "operacion", label: "Operación", sections: ["preparacion", "equipo", "impresora", "alertas", "fiscal"] },
 ];
 
@@ -74,6 +84,9 @@ export const CONFIG_SECTION_LABELS: Record<string, string> = {
   fiscal: "Facturación",
   menu: "Menú",
   catalogo: "Catálogo",
+  turnera: "Turnera",
+  fichas: "Fichas",
+  packs: "Packs y regalos",
 };
 
 /** Secciones disponibles por vertical (orden de la nav). */
@@ -85,6 +98,8 @@ export function sectionsForVertical(vertical: string | null | undefined): string
       return ["perfil", "ubicacion", "contacto", "pagos", "equipo", "impresora", "alertas", "fiscal", "catalogo"];
     case "moda":
       return ["perfil", "ubicacion", "contacto", "pagos", "equipo", "impresora", "alertas", "fiscal"];
+    case "estetica":
+      return ["perfil", "ubicacion", "contacto", "pagos", "turnera", "fichas", "packs", "impresora", "alertas"];
     default:
       return ["perfil", "ubicacion", "contacto", "pagos"];
   }

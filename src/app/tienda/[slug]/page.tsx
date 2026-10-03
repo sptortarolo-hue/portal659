@@ -736,17 +736,17 @@ export default async function TiendaPage({
                   ))}
                 </div>
               )}
-              {v.free_estimate && (
+              {!isEstetica && v.free_estimate && (
                 <p className="text-sm text-primary font-medium max-w-md mx-auto mb-4">
                   Presupuesto sin compromiso
                 </p>
               )}
-              {v.urgent_enabled && (
+              {!isEstetica && v.urgent_enabled && (
                 <p className="text-sm max-w-md mx-auto mb-4 rounded-full bg-red-50 border border-red-200 text-red-700 font-medium px-3 py-1.5 inline-block">
                   🚨 Urgencias 24 h{urgentSurcharge != null ? ` (+${urgentSurcharge} %)` : ""}
                 </p>
               )}
-              {!v.services_list && (
+              {!isEstetica && !v.services_list && (
                 <p className="text-muted-foreground max-w-md mx-auto">
                   Este comercio ofrece un servicio en el barrio. Completá el formulario o escribile por WhatsApp.
                 </p>
@@ -756,12 +756,13 @@ export default async function TiendaPage({
             {v.accepting_quotes && !serviceQuotaFull && (
               <div className="border border-border rounded-2xl p-6 bg-card mb-6">
                 <h3 className="font-display text-lg font-semibold mb-4">
-                  📋 Solicitar presupuesto
+                  {isEstetica ? "💬 Pedir una consulta" : "📋 Solicitar presupuesto"}
                 </h3>
                 <QuoteForm
                   vendorId={v.id}
                   vendorName={v.store_name}
                   servicesList={v.services_list}
+                  estetica={isEstetica}
                   prefEnabled={v.quote_pref_enabled !== false}
                   prefDays={Array.isArray(v.quote_days) ? v.quote_days : undefined}
                   prefSlots={Array.isArray(v.quote_slots) ? v.quote_slots : undefined}
@@ -1062,7 +1063,7 @@ export default async function TiendaPage({
           url={`https://wa.me/${waNumber}?text=${encodeURIComponent(waText)}`}
           isService={isService}
           isRetail={isCatalog}
-          isUrgent={isService && v.urgent_enabled}
+          isUrgent={!isEstetica && isService && v.urgent_enabled}
           urgentUrl={`https://wa.me/${waNumber}?text=${encodeURIComponent(`🚨 URGENTE - Necesito ${v.store_name} lo antes posible.`)}`}
           urgentLabel={urgentSurcharge != null ? `🚨 Urgente +${urgentSurcharge}%` : undefined}
         />

@@ -80,9 +80,12 @@ type ManualItem = { kind: "material" | "labor"; description: string; qty: string
 export function QuoteManualModal({
   onClose,
   onCreated,
+  estetica = false,
 }: {
   onClose: () => void;
   onCreated: () => void;
+  /** Copy de estética ("consulta" en vez de "presupuesto"). */
+  estetica?: boolean;
 }) {
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
@@ -158,7 +161,7 @@ export function QuoteManualModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="p-5 pb-3 shrink-0">
-          <h3 className="font-display text-lg font-semibold">＋ Nuevo presupuesto</h3>
+          <h3 className="font-display text-lg font-semibold">{estetica ? "＋ Nueva consulta" : "＋ Nuevo presupuesto"}</h3>
           <p className="text-xs text-muted-foreground">No cuenta para el tope mensual (es trabajo propio).</p>
         </div>
         <div className="overflow-y-auto px-5 pb-3 space-y-3 flex-1 min-h-0">
@@ -243,7 +246,7 @@ export function QuoteManualModal({
         <div className="border-t border-border px-5 py-3 shrink-0 bg-card flex gap-2">
           <Button variant="outline" className="flex-1" onClick={onClose}>Cancelar</Button>
           <Button className="flex-1" disabled={saving} onClick={submit}>
-            {saving ? "Guardando..." : "Crear presupuesto"}
+            {saving ? "Guardando..." : estetica ? "Crear consulta" : "Crear presupuesto"}
           </Button>
         </div>
       </div>

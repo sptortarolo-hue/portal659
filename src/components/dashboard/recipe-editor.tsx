@@ -414,9 +414,21 @@ export function RecipeEditor({
           {saving ? "Guardando…" : existing ? "Guardar cambios" : "Crear receta"}
         </Button>
         {existing && (
-          <Button variant="outline" onClick={handleDelete} disabled={saving} className="text-red-600">
-            Borrar
-          </Button>
+          <>
+            <Button
+              variant="outline"
+              onClick={() => {
+                const url = `/api/vendor/recipes/${existing.recipe.id}/pdf`;
+                window.open(url, "_blank");
+              }}
+              title="Descargar ficha de receta en PDF"
+            >
+              📄 PDF
+            </Button>
+            <Button variant="outline" onClick={handleDelete} disabled={saving} className="text-red-600">
+              Borrar
+            </Button>
+          </>
         )}
       </div>
     </Card>

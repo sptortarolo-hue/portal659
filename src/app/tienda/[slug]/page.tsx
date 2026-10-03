@@ -31,6 +31,7 @@ import { WeeklyHours } from "@/components/store/weekly-hours";
 import { StickyStoreBar } from "@/components/store/sticky-store-bar";
 import { VendorShareButton } from "@/components/store/vendor-share-button";
 import { PreviewBanner } from "@/components/store/preview-banner";
+import { VisitBeacon } from "@/components/store/visit-beacon";
 import { PreviewSessionSync } from "@/components/store/preview-session-sync";
 import { canPreviewVendor, getPreviewActor, isServingPreview } from "@/lib/preview";
 import type { Metadata } from "next";
@@ -504,6 +505,7 @@ export default async function TiendaPage({
   return (
     <main className="pb-28 overflow-x-clip">
       {preview && <PreviewBanner />}
+      {!preview && <VisitBeacon vendorId={vendor.id} />}
       {preview && <PreviewSessionSync vendorId={vendor.id} token={previewToken} />}
       <ScrollToMenu />
       <ScrollToProduct />

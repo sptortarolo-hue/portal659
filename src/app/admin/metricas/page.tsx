@@ -15,8 +15,12 @@ type Metrics = {
     paidPct: number;
     whatsappPct: number;
     activeVendors30d: number;
+    visits30d: number;
+    visitors30d: number;
+    orderRate: number;
+    funnelRate: number;
   };
-  perVendor: Array<{ store_name: string; vertical: string; neighborhood: string; orders_30d: number; orders_total: number; completed_total: number; revenue_total: number; quotes_total: number }>;
+  perVendor: Array<{ store_name: string; vertical: string; neighborhood: string; orders_30d: number; orders_total: number; completed_total: number; completed_30d: number; revenue_total: number; quotes_total: number; visits_30d: number; visitors_30d: number; conv_rate: number }>;
   perVertical: Array<{ vertical: string; vendors: number; orders_total: number; completed_total: number; revenue_total: number }>;
   byPayment: Array<{ payment_method: string; n: number }>;
   byChannel: Array<{ channel: string; n: number }>;
@@ -87,7 +91,7 @@ export default function MetricasPage() {
     <div className="space-y-6">
       <div>
         <h1 className="font-display text-2xl font-semibold">Métricas de lanzamiento</h1>
-        <p className="text-sm text-muted-foreground">Primeras 4 semanas: actividad, conversión y planes.</p>
+        <p className="text-sm text-muted-foreground">Solo comercios visibles en el portal (sin pruebas). Visitas desde la activación del tracking.</p>
       </div>
 
       {/* Summary cards */}
@@ -101,6 +105,9 @@ export default function MetricasPage() {
           { label: "Vía WhatsApp", value: `${s.whatsappPct}%` },
           { label: "Free → plan pago", value: `${s.paidPct}%` },
           { label: "Comercios en plan pago", value: `${s.paidVendors}/${s.totalVendors}` },
+          { label: "Visitas únicas (30d)", value: fmt(s.visitors30d) },
+          { label: "Piden tras visitar", value: `${s.orderRate}%` },
+          { label: "Completan compra", value: `${s.funnelRate}%` },
         ].map((c) => (
           <div key={c.label} className="bg-card border border-border rounded-2xl p-4">
             <div className="text-xl font-bold tabular-nums">{c.value}</div>
@@ -177,9 +184,11 @@ export default function MetricasPage() {
               <tr className="text-left text-muted-foreground text-xs uppercase">
                 <th className="py-2">Comercio</th>
                 <th className="py-2">Vertical</th>
+                <th className="py-2 text-right">Únicos (30d)</th>
                 <th className="py-2 text-right">Pedidos (30d)</th>
                 <th className="py-2 text-right">Total</th>
                 <th className="py-2 text-right">Entregados</th>
+                <th className="py-2 text-right">Conv. %</th>
                 <th className="py-2 text-right">Ingresos</th>
                 <th className="py-2 text-right">Consultas</th>
               </tr>
@@ -189,9 +198,11 @@ export default function MetricasPage() {
                 <tr key={v.store_name} className="border-t border-border">
                   <td className="py-2 font-medium">{v.store_name}</td>
                   <td className="py-2 capitalize">{v.vertical}</td>
+                  <td className="py-2 text-right tabular-nums">{fmt(v.visitors_30d)}</td>
                   <td className="py-2 text-right tabular-nums">{fmt(v.orders_30d)}</td>
                   <td className="py-2 text-right tabular-nums">{fmt(v.orders_total)}</td>
                   <td className="py-2 text-right tabular-nums">{fmt(v.completed_total)}</td>
+                  <td className="py-2 text-right tabular-nums">{Number(v.conv_rate ?? 0)}%</td>
                   <td className="py-2 text-right tabular-nums">{money(v.revenue_total)}</td>
                   <td className="py-2 text-right tabular-nums">{fmt(v.quotes_total)}</td>
                 </tr>

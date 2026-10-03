@@ -317,6 +317,7 @@ export default function DashboardServicio({
   const presupuestosLow = isEstetica ? "consultas" : "presupuestos";
   const presupuestoOne = isEstetica ? "consulta" : "presupuesto";
   const [storeName, setStoreName] = useState(vendor?.store_name || "");
+  const [storeVertical, setStoreVertical] = useState<string>(vendor?.vertical || "servicio");
   const [storeCategory, setStoreCategory] = useState(vendor?.category || "");
   const [address, setAddress] = useState(vendor?.address || "");
   const [lat, setLat] = useState<number | null>(vendor?.lat ?? null);
@@ -482,6 +483,7 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
   useEffect(() => {
     if (!vendor) return;
     setStoreName(vendor.store_name || "");
+    setStoreVertical(vendor.vertical || "servicio");
     setStoreCategory(vendor.category || "");
     setAddress(vendor.address || "");
     setLat(vendor.lat ?? null);
@@ -543,6 +545,7 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
   async function handleSaveAll() {
     await saveVendor({
       store_name: storeName,
+      vertical: storeVertical,
       category: storeCategory,
       address,
       lat,
@@ -875,11 +878,22 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
             <Label>Tu vertical</Label>
             <select
               className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              value={vendor?.vertical || "servicio"}
-              disabled
+              value={storeVertical}
+              onChange={(e) => setStoreVertical(e.target.value)}
             >
               <option value="servicio">Servicio u oficio</option>
+              <option value="estetica">Estética y belleza</option>
+              <option value="gastronomia">Gastronomía</option>
+              <option value="comercio">Comercio del barrio</option>
+              <option value="moda">Ropa y accesorios</option>
+              <option value="salud">Salud y bienestar</option>
+              <option value="otro">Otro</option>
             </select>
+            {storeVertical !== (vendor?.vertical || "servicio") && (
+              <p className="text-xs text-amber-700 mt-1">
+                Al guardar, el panel cambia al formato de ese rubro.
+              </p>
+            )}
           </div>
           <div>
             <Label>Nombre del comercio</Label>

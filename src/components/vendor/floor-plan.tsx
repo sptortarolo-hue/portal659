@@ -110,6 +110,16 @@ export function FloorPlan({
   const boundsRef = useRef({ w: 320, h: 260 });
   // Multitouch: mapa de punteros activos + gesto de 2 dedos en curso.
   const ptsRef = useRef(new Map<number, { x: number; y: number }>());
+  // Supresión del click de cierre de un gesto (pinch/pan a 2 dedos): el tap
+  // posterior arranca limpio en vez de quedar tragado o abrir una mesa.
+  const gestSeenRef = useRef(false);
+  const gestEndRef = useRef(0);
+  // Pan con un dedo estilo mapa (tap = abrir/seleccionar, arrastre = mover).
+  const panRef = useRef<{
+    id: number; x0: number; y0: number; lx: number; ly: number;
+    moved: boolean; cx: number; cy: number;
+  } | null>(null);
+  const modeRef = useRef<"fit" | "one" | "free">("fit");
   const gestRef = useRef<{
     d0: number; mx0: number; my0: number; view0: { s: number; x: number; y: number };
   } | null>(null);
@@ -207,6 +217,18 @@ export function FloorPlan({
     if (ptsRef.current.size < 2) gestRef.current = null;
   }, []);
 
+  // Clamp de paneo compartido (pinch y pan de un dedo).
+  const clampXY = useCallback((s: number, x: number, y: number, vw: number, vh: number) => {
+    const b = boundsRef.current;
+    const m = 40;
+    const cw = b.w * s;
+    const ch = b.h * s;
+    return {
+      x: cw <= vw ? (vw - cw) / 2 : Math.min(m, Math.max(vw - cw - m, x)),
+      y: ch <= vh ? (vh - ch) / 2 : Math.min(m, Math.max(vh - ch - m, y)),
+    };
+  }, []);
+
   // Mesas nunca ubicadas (todos los valores por defecto de la migración) se
   // muestran en cascada para no quedar apiladas en el 0,0. Al arrastrarlas se
   // persiste la posición real.
@@ -262,6 +284,37 @@ export function FloorPlan({
   const handlePointerMove = useCallback(
     (e: React.PointerEvent) => {
       if (trackMove(e)) return;
+      // Pan con un dedo estilo mapa (vale en modo normal y en fondo vacío de
+      // Mover; las herramientas de dibujo/borrado no panean con un dedo).
+      const pan = panRef.current;
+      if (pan && e.pointerId === pan.id && (tool === "move" || !editing)) {
+        const dx = e.clientX - pan.lx;
+        const dy = e.clientY - pan.ly;
+        pan.lx = e.clientX;
+        pan.ly = e.clientY;
+        if (!pan.moved && Math.abs(e.clientX - pan.x0) + Math.abs(e.clientY - pan.y0) > 6) {
+          pan.moved = true;
+          draggedRef.current = true;
+          const cur = viewRef.current;
+          pan.cx = cur.x;
+          pan.cy = cur.y;
+          if (modeRef.current !== "free") {
+            setMode("free");
+            setCam({ s: cur.s, x: cur.x, y: cur.y });
+          }
+        }
+        if (pan.moved) {
+          const canvas = canvasRef.current;
+          if (canvas) {
+            const v = viewRef.current;
+            const c = clampXY(v.s, pan.cx + dx, pan.cy + dy, canvas.clientWidth, canvas.clientHeight);
+            pan.cx = c.x;
+            pan.cy = c.y;
+            setCam((prev) => (prev.s === v.s && prev.x === c.x && prev.y === c.y ? prev : { s: v.s, x: c.x, y: c.y }));
+          }
+          return;
+        }
+      }
       const canvas = canvasRef.current;
       if (!canvas) return;
       const v = viewRef.current;
@@ -327,14 +380,32 @@ export function FloorPlan({
       const y = Math.max(0, Math.min(b.h - th, snap(px(e.clientY, rect.top, v.y) - dragOffset.current.dy)));
       onMove(t.id, x, y);
     },
-    [dragging, onMove, onResize, onDecorMove, onDecorResize, snap, disp, decor, canvasPos, trackMove]
+    [dragging, onMove, onResize, onDecorMove, onDecorResize, snap, disp, decor, canvasPos, trackMove, clampXY, tool, editing]
   );
 
   const wallPreviewRef = useRef<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
   wallPreviewRef.current = wallPreview;
 
   const handlePointerUp = useCallback((e?: React.PointerEvent) => {
-    if (e) trackUp(e);
+    if (e) {
+      // Al soltar un dedo del pinch, el que queda sigue paneando con un dedo.
+      const wasGest = gestRef.current !== null && ptsRef.current.size >= 2;
+      if (wasGest) gestSeenRef.current = true;
+      trackUp(e);
+      if (wasGest) {
+        const remaining = [...ptsRef.current.entries()][0];
+        panRef.current = remaining
+          ? { id: remaining[0], x0: remaining[1].x, y0: remaining[1].y, lx: remaining[1].x, ly: remaining[1].y, moved: false, cx: 0, cy: 0 }
+          : null;
+      } else if (panRef.current?.id === e.pointerId) {
+        panRef.current = null;
+      }
+      if (gestSeenRef.current && ptsRef.current.size === 0) {
+        gestSeenRef.current = false;
+        draggedRef.current = false;
+        gestEndRef.current = Date.now();
+      }
+    }
     if (drawingRef.current && onDecorAdd) {
       const d = drawingRef.current;
       const pv = wallPreviewRef.current;
@@ -363,6 +434,13 @@ export function FloorPlan({
     (e: React.PointerEvent) => {
       if (ptsRef.current.has(e.pointerId)) return;
       if (trackDown(e)) return;
+      // Candidato a pan con un dedo (mesa o fondo; en dibujo/borrado no).
+      if (tool === "move" || !editing) {
+        panRef.current = {
+          id: e.pointerId, x0: e.clientX, y0: e.clientY,
+          lx: e.clientX, ly: e.clientY, moved: false, cx: 0, cy: 0,
+        };
+      }
       if (!editing || tool === "move" || tool === "erase") return;
       const pos = canvasPos(e.clientX, e.clientY);
       if (!pos) return;
@@ -444,6 +522,7 @@ export function FloorPlan({
   const handleDecorClick = useCallback(
     (e: React.MouseEvent, d: FloorDecor) => {
       e.stopPropagation();
+      if (Date.now() - gestEndRef.current < 400) return;
       if (draggedRef.current) {
         draggedRef.current = false;
         return;
@@ -461,6 +540,8 @@ export function FloorPlan({
   const handleTableClick = useCallback(
     (e: React.MouseEvent, t: FloorTable) => {
       e.stopPropagation();
+      // Ignorar clicks dentro de los 400ms tras un gesto (cierre de pinch).
+      if (Date.now() - gestEndRef.current < 400) return;
       // Ignorar el click que cierra un arrastre (move o resize).
       if (draggedRef.current) {
         draggedRef.current = false;
@@ -543,6 +624,7 @@ export function FloorPlan({
   };
   const view = mode === "fit" ? fitView : mode === "one" ? { s: 1, x: 0, y: 0 } : cam;
   viewRef.current = view;
+  modeRef.current = mode;
 
   return (
     <div className="space-y-3">

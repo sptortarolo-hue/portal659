@@ -15,7 +15,9 @@ export async function POST(request: Request) {
   // E.164 (sin 0 ni 15), igual que el alta del comercio: el teléfono se
   // guarda normalizado y la identidad (email sintético) queda estable.
   const phone = toE164(String(body.phone ?? ""));
-  const password = String(body.password ?? "");
+  // Trim: los teclados móviles suelen agregar un espacio al final y el hash
+  // quedaría con un password distinto al que el usuario cree ("123456 ").
+  const password = String(body.password ?? "").trim();
 
   if (!code) return NextResponse.json({ error: "Falta el código" }, { status: 400 });
   if (!phone) {

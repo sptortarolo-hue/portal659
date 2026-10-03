@@ -11,7 +11,8 @@ export const POST = withRateLimit(async (request: Request) => {
   // E.164 (sin 0 ni 15), igual que el alta y el claim. El match usa todas
   // las variantes para seguir aceptando filas legacy en dígitos.
   const phone = toE164(String(body.phone ?? ""));
-  const password = String(body.password ?? "");
+  // Trim simétrico con el claim (espacio fantasma del teclado móvil).
+  const password = String(body.password ?? "").trim();
 
   if (!phone || !password) {
     return NextResponse.json({ error: "Teléfono y contraseña son requeridos" }, { status: 400 });

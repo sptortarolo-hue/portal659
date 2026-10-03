@@ -17,6 +17,7 @@ function VincularInner() {
   const [storeName, setStoreName] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
+  const [showPw, setShowPw] = useState(false);
   const [msg, setMsg] = useState("");
   const [msgOk, setMsgOk] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -55,12 +56,13 @@ function VincularInner() {
     setMsgOk(false);
 
     if (isClaim) {
-      if (password.length < 6) {
+      // Trim simétrico con el server (espacio fantasma del teclado móvil).
+      if (password.trim().length < 6) {
         setMsg("La contraseña debe tener al menos 6 caracteres");
         setLoading(false);
         return;
       }
-      if (password !== confirm) {
+      if (password.trim() !== confirm.trim()) {
         setMsg("Las contraseñas no coinciden");
         setLoading(false);
         return;
@@ -147,20 +149,32 @@ function VincularInner() {
 
           <div>
             <Label>{isClaim ? "Elegí una contraseña" : "Contraseña"}</Label>
-            <Input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••"
-              onKeyDown={(e) => e.key === "Enter" && submit()}
-            />
+            <div className="relative">
+              <Input
+                type={showPw ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••"
+                onKeyDown={(e) => e.key === "Enter" && submit()}
+                className="pr-11"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPw((v) => !v)}
+                className="absolute right-1 top-1/2 -translate-y-1/2 h-9 w-9 flex items-center justify-center text-muted-foreground hover:text-foreground"
+                aria-label={showPw ? "Ocultar contraseña" : "Mostrar contraseña"}
+                title={showPw ? "Ocultar contraseña" : "Mostrar contraseña"}
+              >
+                {showPw ? "🙈" : "👁️"}
+              </button>
+            </div>
           </div>
 
           {isClaim && (
             <div>
               <Label>Repetí la contraseña</Label>
               <Input
-                type="password"
+                type={showPw ? "text" : "password"}
                 value={confirm}
                 onChange={(e) => setConfirm(e.target.value)}
                 placeholder="••••••"

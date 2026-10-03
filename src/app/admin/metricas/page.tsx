@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 
 type Metrics = {
@@ -37,17 +37,41 @@ export default function MetricasPage() {
   const [data, setData] = useState<Metrics | null>(null);
   const [error, setError] = useState("");
 
-  useEffect(() => {
+  const load = useCallback(() => {
+    setError("");
     fetch("/api/admin/metrics")
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.error) setError(d.error);
-        else setData(d);
+      .then(async (r) => {
+        const d = await r.json().catch(() => null);
+        if (!r.ok) throw new Error(d?.error || `Error ${r.status}`);
+        if (!d || d.error) throw new Error(d?.error || "Respuesta inválida");
+        setData({
+          summary: d.summary,
+          perVendor: Array.isArray(d.perVendor) ? d.perVendor : [],
+          perVertical: Array.isArray(d.perVertical) ? d.perVertical : [],
+          byPayment: Array.isArray(d.byPayment) ? d.byPayment : [],
+          byChannel: Array.isArray(d.byChannel) ? d.byChannel : [],
+          plans: Array.isArray(d.plans) ? d.plans : [],
+        });
       })
       .catch(() => setError("No se pudieron cargar las métricas"));
   }, []);
 
-  if (error) return <p className="text-red-600">{error}</p>;
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  if (error)
+    return (
+      <div className="border border-red-200 bg-red-50 text-red-700 rounded-2xl px-4 py-3 text-sm flex items-center justify-between gap-3">
+        <span>{error}</span>
+        <button
+          onClick={load}
+          className="shrink-0 rounded-full border border-red-300 bg-white px-4 py-1.5 text-xs font-semibold hover:bg-red-100 transition-colors"
+        >
+          Reintentar
+        </button>
+      </div>
+    );
   if (!data) return <div className="bg-skeleton h-64 rounded-2xl" />;
 
   const s = data.summary;
@@ -56,8 +80,8 @@ export default function MetricasPage() {
     pedidos: v.orders_total,
   }));
 
-  const fmt = (n: number) => n.toLocaleString("es-AR");
-  const money = (n: number) => `$${Math.round(n).toLocaleString("es-AR")}`;
+  const fmt = (n: number | string) => Number(n ?? 0).toLocaleString("es-AR");
+  const money = (n: number | string) => `$${Math.round(Number(n ?? 0)).toLocaleString("es-AR")}`;
 
   return (
     <div className="space-y-6">

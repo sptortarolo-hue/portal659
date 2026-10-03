@@ -3,28 +3,39 @@
 import { useEffect, useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Plus, Trash2, Save, Pencil, Check, X } from "lucide-react";
+import { Plus, Trash2, Pencil, Check, X } from "lucide-react";
 
 type Neighborhood = { id: string; name: string; slug: string; lat: number | null; lng: number | null };
 type Category = { id: string; name: string; slug: string; vertical: string | null };
+
+async function api(path: string, init?: RequestInit) {
+  const res = await fetch(path, init);
+  const data = await res.json().catch(() => null);
+  if (!res.ok) {
+    throw new Error(
+      (data && typeof data.error === "string" && data.error) || `Error ${res.status}`
+    );
+  }
+  return data;
+}
 
 export default function AdminConfigPage() {
   const [neighborhoods, setNeighborhoods] = useState<Neighborhood[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [newNeighborhood, setNewNeighborhood] = useState({ name: "", slug: "" });
   const [newCategory, setNewCategory] = useState({ name: "", slug: "", vertical: "" });
   const [editingNeighborhood, setEditingNeighborhood] = useState<Neighborhood | null>(null);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
 
   async function patchConfig(type: "neighborhood" | "category", id: string, data: Record<string, unknown>) {
-    await fetch("/api/admin/config", {
+    await api("/api/admin/config", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ type, id, data }),
     });
-    fetchData();
+    await fetchData();
   }
 
   function slugify(name: string) {
@@ -33,31 +44,39 @@ export default function AdminConfigPage() {
 
   async function saveNeighborhoodEdit() {
     if (!editingNeighborhood) return;
-    await patchConfig("neighborhood", editingNeighborhood.id, {
-      name: editingNeighborhood.name,
-      slug: editingNeighborhood.slug || slugify(editingNeighborhood.name),
-    });
-    setEditingNeighborhood(null);
+    try {
+      await patchConfig("neighborhood", editingNeighborhood.id, {
+        name: editingNeighborhood.name,
+        slug: editingNeighborhood.slug || slugify(editingNeighborhood.name),
+      });
+      setEditingNeighborhood(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo guardar el barrio");
+    }
   }
 
   async function saveCategoryEdit() {
     if (!editingCategory) return;
-    await patchConfig("category", editingCategory.id, {
-      name: editingCategory.name,
-      slug: editingCategory.slug || slugify(editingCategory.name),
-    });
-    setEditingCategory(null);
+    try {
+      await patchConfig("category", editingCategory.id, {
+        name: editingCategory.name,
+        slug: editingCategory.slug || slugify(editingCategory.name),
+      });
+      setEditingCategory(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo guardar la categoría");
+    }
   }
 
   const fetchData = useCallback(async () => {
     setLoading(true);
+    setError("");
     try {
-      const res = await fetch("/api/admin/config");
-      const data = await res.json();
-      if (!data.error) {
-        setNeighborhoods(data.neighborhoods);
-        setCategories(data.categories);
-      }
+      const data = await api("/api/admin/config");
+      setNeighborhoods(Array.isArray(data?.neighborhoods) ? data.neighborhoods : []);
+      setCategories(Array.isArray(data?.categories) ? data.categories : []);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo cargar la configuración");
     } finally {
       setLoading(false);
     }
@@ -67,49 +86,74 @@ export default function AdminConfigPage() {
 
   async function addNeighborhood() {
     if (!newNeighborhood.name) return;
-    await fetch("/api/admin/config/neighborhoods", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(newNeighborhood),
-    });
-    setNewNeighborhood({ name: "", slug: "" });
-    fetchData();
+    try {
+      await api("/api/admin/config/neighborhoods", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newNeighborhood),
+      });
+      setNewNeighborhood({ name: "", slug: "" });
+      await fetchData();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo agregar el barrio");
+    }
   }
 
   async function deleteNeighborhood(id: string) {
     if (!confirm("¿Eliminar este barrio?")) return;
-    await fetch("/api/admin/config/neighborhoods", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id }),
-    });
-    fetchData();
+    try {
+      await api("/api/admin/config/neighborhoods", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      await fetchData();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo eliminar el barrio");
+    }
   }
 
   async function addCategory() {
     if (!newCategory.name) return;
-    await fetch("/api/admin/config/categories", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(newCategory),
-    });
-    setNewCategory({ name: "", slug: "", vertical: "" });
-    fetchData();
+    try {
+      await api("/api/admin/config/categories", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newCategory),
+      });
+      setNewCategory({ name: "", slug: "", vertical: "" });
+      await fetchData();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo agregar la categoría");
+    }
   }
 
   async function deleteCategory(id: string) {
     if (!confirm("¿Eliminar esta categoría?")) return;
-    await fetch("/api/admin/config/categories", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id }),
-    });
-    fetchData();
+    try {
+      await api("/api/admin/config/categories", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      await fetchData();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo eliminar la categoría");
+    }
   }
 
   return (
     <div className="space-y-6">
       <h1 className="font-display text-2xl font-semibold">Configuración</h1>
+
+      {error && (
+        <div className="border border-red-200 bg-red-50 text-red-700 rounded-xl px-4 py-3 text-sm flex items-center justify-between gap-3">
+          <span>{error}</span>
+          <Button variant="outline" size="sm" onClick={fetchData}>
+            Reintentar
+          </Button>
+        </div>
+      )}
 
       <div className="border border-border rounded-xl p-5 bg-card">
         <h2 className="font-medium text-lg mb-4">Barrios</h2>
@@ -121,7 +165,7 @@ export default function AdminConfigPage() {
           <>
             <div className="space-y-2 mb-4">
               {neighborhoods.map((n) => (
-                <div key={n.id} className="flex items-center justify-between gap-2 py-2 px-3 rounded-lg bg-muted/50">
+                <div key={n.id || n.slug} className="flex items-center justify-between gap-2 py-2 px-3 rounded-lg bg-muted/50">
                   {editingNeighborhood?.id === n.id ? (
                     <div className="flex items-center gap-2 flex-1">
                       <Input
@@ -180,7 +224,7 @@ export default function AdminConfigPage() {
           <>
             <div className="space-y-2 mb-4">
               {categories.map((c) => (
-                <div key={c.id} className="flex items-center justify-between gap-2 py-2 px-3 rounded-lg bg-muted/50">
+                <div key={c.id || c.slug} className="flex items-center justify-between gap-2 py-2 px-3 rounded-lg bg-muted/50">
                   {editingCategory?.id === c.id ? (
                     <div className="flex items-center gap-2 flex-1">
                       <Input

@@ -2,16 +2,15 @@ import { NextResponse } from "next/server";
 import { queryOne } from "@/lib/db";
 import { verifyPassword, signAccessToken } from "@/lib/auth";
 import { withRateLimit } from "@/lib/api-wrapper";
-
-function normalizePhone(input: string): string {
-  return (input || "").replace(/\D/g, "").trim();
-}
+import { toE164, phoneVariantsAR } from "@/lib/phone";
 
 // Login del repartidor: teléfono + contraseña.
 // Solo entra si su vínculo está activo (status='active').
 export const POST = withRateLimit(async (request: Request) => {
   const body = await request.json().catch(() => ({}));
-  const phone = normalizePhone(String(body.phone ?? ""));
+  // E.164 (sin 0 ni 15), igual que el alta y el claim. El match usa todas
+  // las variantes para seguir aceptando filas legacy en dígitos.
+  const phone = toE164(String(body.phone ?? ""));
   const password = String(body.password ?? "");
 
   if (!phone || !password) {
@@ -30,10 +29,10 @@ export const POST = withRateLimit(async (request: Request) => {
     `SELECT vs.id, vs.profile_id, vs.vendor_id, p.password_hash, p.email, p.token_version, vs.status
      FROM vendor_staff vs
      JOIN profiles p ON p.id = vs.profile_id
-     WHERE vs.phone = $1 AND vs.status != 'revoked'
+     WHERE vs.phone = ANY($1) AND vs.status != 'revoked'
      ORDER BY vs.created_at ASC
      LIMIT 1`,
-    [phone]
+    [phoneVariantsAR(phone)]
   );
 
   if (!staff || staff.status !== "active" || !staff.password_hash) {

@@ -120,7 +120,7 @@ export function StaffManager({ storeName }: { storeName?: string }) {
           <Input
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
-            placeholder="Teléfono (con 0 y 15)"
+            placeholder="Ej: 221 555 1234 (sin 0 ni 15)"
             inputMode="tel"
           />
         </div>

@@ -1,10 +1,7 @@
 import { NextResponse } from "next/server";
 import { query, queryOne, withTransaction } from "@/lib/db";
 import { hashPassword, signAccessToken } from "@/lib/auth";
-
-function normalizePhone(input: string): string {
-  return (input || "").replace(/\D/g, "").trim();
-}
+import { toE164 } from "@/lib/phone";
 
 /**
  * Claim del repartidor: teléfono + código (token) + contraseña elegida.
@@ -15,11 +12,18 @@ function normalizePhone(input: string): string {
 export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
   const code = String(body.code ?? "").trim().toUpperCase();
-  const phone = normalizePhone(String(body.phone ?? ""));
+  // E.164 (sin 0 ni 15), igual que el alta del comercio: el teléfono se
+  // guarda normalizado y la identidad (email sintético) queda estable.
+  const phone = toE164(String(body.phone ?? ""));
   const password = String(body.password ?? "");
 
   if (!code) return NextResponse.json({ error: "Falta el código" }, { status: 400 });
-  if (!phone || phone.length < 8) return NextResponse.json({ error: "Teléfono inválido" }, { status: 400 });
+  if (!phone) {
+    return NextResponse.json(
+      { error: "Ingresá un celular válido sin 0 ni 15 (ej: 221 555 1234)" },
+      { status: 400 }
+    );
+  }
   if (password.length < 6) return NextResponse.json({ error: "La contraseña debe tener al menos 6 caracteres" }, { status: 400 });
 
   const invite = await queryOne<{

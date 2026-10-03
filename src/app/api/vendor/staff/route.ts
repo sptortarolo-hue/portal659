@@ -3,6 +3,7 @@ import { query, queryMany, queryOne } from "@/lib/db";
 import { getAuthUser } from "@/lib/auth";
 import { getVendorByRequest } from "@/lib/vendor-utils";
 import { generateLinkCode } from "@/lib/link-code";
+import { toE164, phoneVariantsAR } from "@/lib/phone";
 
 type StaffRow = {
   id: string;
@@ -14,10 +15,6 @@ type StaffRow = {
   invite_code: string | null;
   created_at: string;
 };
-
-function normalizePhone(input: string): string {
-  return (input || "").replace(/\D/g, "").trim();
-}
 
 // Lista los repartidores del comercio con su estado.
 export async function GET(request: Request) {
@@ -50,16 +47,24 @@ export async function POST(request: Request) {
   const action = body.action ?? "add";
 
   if (action === "add") {
-    const phone = normalizePhone(String(body.phone ?? ""));
+    // E.164 (sin 0 ni 15): es lo que necesita el link wa.me de invitación y
+    // lo que espera /vincular. toE164 también acepta el formato viejo con
+    // 0/15 y lo convierte, así que nada se rompe si lo escriben así.
+    const phone = toE164(String(body.phone ?? ""));
     const name = String(body.name ?? "").trim();
-    if (!phone) return NextResponse.json({ error: "El teléfono es obligatorio" }, { status: 400 });
-    if (phone.length < 8) return NextResponse.json({ error: "Teléfono inválido" }, { status: 400 });
+    if (!phone) {
+      return NextResponse.json(
+        { error: "Ingresá un celular válido sin 0 ni 15 (ej: 221 555 1234)" },
+        { status: 400 }
+      );
+    }
 
-    // Evitar duplicar repartidores activos/pendientes con el mismo teléfono.
+    // Evitar duplicar repartidores activos/pendientes con el mismo teléfono
+    // (matchea cualquier formato guardado: E.164 nuevo o dígitos legacy).
     const dup = await queryOne<{ id: string }>(
       `SELECT id FROM vendor_staff
-       WHERE vendor_id = $1 AND phone = $2 AND status <> 'revoked' LIMIT 1`,
-      [vendor.id, phone]
+       WHERE vendor_id = $1 AND phone = ANY($2) AND status <> 'revoked' LIMIT 1`,
+      [vendor.id, phoneVariantsAR(phone)]
     );
     if (dup) {
       return NextResponse.json({ error: "Ese teléfono ya tiene un repartidor activo/pendiente" }, { status: 409 });

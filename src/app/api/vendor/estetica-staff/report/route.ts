@@ -1,12 +1,13 @@
 import { gateRequest, gateError } from "@/lib/subscription-gate";
 import { queryMany } from "@/lib/db";
 import { NextResponse } from "next/server";
+import ExcelJS from "exceljs";
 
 /**
  * Reporte de comisiones por profesional (v1: solo reporte, sin split
  * automático de dinero). Suma turnos CONFIRMADOS en el rango (default: mes
  * en curso) con precio y % snapshot del momento de la reserva.
- * - GET /api/vendor/estetica-staff/report?from=YYYY-MM-DD&to=YYYY-MM-DD
+ * - GET /api/vendor/estetica-staff/report?from=YYYY-MM-DD&to=YYYY-MM-DD&format=json|xlsx|csv
  */
 export async function GET(request: Request) {
   const gate = await gateRequest(request);
@@ -21,6 +22,7 @@ export async function GET(request: Request) {
   const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
   const from = iso(searchParams.get("from")) || monthStart;
   const to = iso(searchParams.get("to")) || "2999-12-31";
+  const format = searchParams.get("format") === "xlsx" ? "xlsx" : searchParams.get("format") === "csv" ? "csv" : "json";
 
   try {
     let rows;
@@ -80,7 +82,67 @@ export async function GET(request: Request) {
       total: list.reduce((s, r) => s + r.total, 0),
       comision: list.reduce((s, r) => s + r.comision, 0),
     };
-    return NextResponse.json({ from, to, rows: list, totals });
+    if (format === "json") return NextResponse.json({ from, to, rows: list, totals });
+
+    const store = String((gate.vendor as any)?.store_name || "Mi comercio");
+    const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+    const filename = `portal659-comisiones-${stamp}`;
+
+    if (format === "xlsx") {
+      const wb = new ExcelJS.Workbook();
+      wb.creator = "Portal 659";
+      const moneyFmt = '"$"#,##0';
+      const metaWs = wb.addWorksheet("Resumen");
+      metaWs.columns = [
+        { header: "Campo", key: "k", width: 22 },
+        { header: "Valor", key: "v", width: 42 },
+      ];
+      metaWs.addRow({ k: "Comercio", v: store });
+      metaWs.addRow({ k: "Reporte", v: "Comisiones por profesional" });
+      metaWs.addRow({ k: "Período", v: `${from} al ${to}` });
+      metaWs.addRow({ k: "Emitido", v: new Date().toLocaleString("es-AR") });
+      const ws = wb.addWorksheet("Comisiones");
+      ws.columns = [
+        { header: "Profesional", key: "staffName", width: 30 },
+        { header: "Turnos", key: "turnos", width: 12 },
+        { header: "Facturación", key: "total", width: 16 },
+        { header: "Comisión", key: "comision", width: 16 },
+      ];
+      ws.getRow(1).font = { bold: true };
+      for (const r of list) ws.addRow(r);
+      ws.addRow({ staffName: "TOTAL", turnos: totals.turnos, total: totals.total, comision: totals.comision });
+      ws.getColumn(3).numFmt = moneyFmt;
+      ws.getColumn(4).numFmt = moneyFmt;
+      const buf = await wb.xlsx.writeBuffer();
+      return new NextResponse(buf as unknown as BodyInit, {
+        headers: {
+          "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          "Content-Disposition": `attachment; filename="${filename}.xlsx"`,
+        },
+      });
+    }
+
+    // CSV (separador ; + BOM para Excel en español).
+    const cell = (v: unknown) => {
+      const s = v == null ? "" : String(v);
+      return /[";\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const lines: string[] = [
+      ["Comercio", store].map(cell).join(";"),
+      ["Reporte", "Comisiones por profesional"].map(cell).join(";"),
+      ["Período", `${from} al ${to}`].map(cell).join(";"),
+      ["Emitido", new Date().toLocaleString("es-AR")].map(cell).join(";"),
+      "",
+      ["Profesional", "Turnos", "Facturación", "Comisión"].map(cell).join(";"),
+      ...list.map((r) => [r.staffName, r.turnos, r.total, r.comision].map(cell).join(";")),
+      ["TOTAL", totals.turnos, totals.total, totals.comision].map(cell).join(";"),
+    ];
+    return new NextResponse("\uFEFF" + lines.join("\r\n"), {
+      headers: {
+        "Content-Type": "text/csv; charset=utf-8",
+        "Content-Disposition": `attachment; filename="${filename}.csv"`,
+      },
+    });
   } catch {
     return NextResponse.json(
       { error: "Falta aplicar la migración migrate-estetica.sql en la base" },

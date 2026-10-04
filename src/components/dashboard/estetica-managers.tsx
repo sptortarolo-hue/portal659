@@ -995,6 +995,128 @@ export function EsteticaPacksManager({ onChanged }: { onChanged?: () => void }) 
   );
 }
 
+/** Días bloqueados de la agenda (feriados, vacaciones): sin turnos online ni aviso en manual. */
+export function EsteticaBlocksManager() {
+  const [blocks, setBlocks] = useState<{ id: string; date: string; staff_id: string | null; staff_name: string | null; reason: string | null }[]>([]);
+  const [staff, setStaff] = useState<{ id: string; name: string }[]>([]);
+  const [missing, setMissing] = useState(false);
+  const [date, setDate] = useState("");
+  const [staffId, setStaffId] = useState("");
+  const [reason, setReason] = useState("");
+  const [msg, setMsg] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function load() {
+    try {
+      const [bRes, sRes] = await Promise.all([
+        fetch("/api/vendor/estetica-blocks"),
+        fetch("/api/vendor/estetica-staff"),
+      ]);
+      if (bRes.status === 503) {
+        setMissing(true);
+        return;
+      }
+      const bData = await bRes.json().catch(() => ({}));
+      setBlocks(bData.blocks || []);
+      const sData = await sRes.json().catch(() => ({}));
+      setStaff((sData.staff || []).filter((s: any) => s.active !== false));
+    } catch {
+      setMsg("Error de conexión");
+    }
+  }
+
+  useEffect(() => { load(); }, []);
+
+  if (missing) return null;
+
+  async function add() {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      setMsg("Elegí una fecha válida");
+      return;
+    }
+    setSaving(true);
+    setMsg("");
+    try {
+      const res = await fetch("/api/vendor/estetica-blocks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date, staff_id: staffId || null, reason: reason.trim() || null }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.error) throw new Error(data.error || "No se pudo guardar");
+      setDate("");
+      setReason("");
+      setStaffId("");
+      load();
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "No se pudo guardar");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function remove(id: string) {
+    try {
+      await fetch(`/api/vendor/estetica-blocks?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+      load();
+    } catch {
+      setMsg("No se pudo eliminar");
+    }
+  }
+
+  const fmtDate = (iso: string) => {
+    const [y, m, d] = iso.split("-");
+    return `${d}/${m}/${y}`;
+  };
+
+  return (
+    <Card className="p-4 space-y-3">
+      <div>
+        <p className="font-medium text-sm">🚫 Días bloqueados</p>
+        <p className="text-xs text-muted-foreground">
+          Feriados o vacaciones: ese día no se ofrecen turnos online
+        </p>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <div className="col-span-2 sm:col-span-1">
+          <Label className="text-xs">Fecha</Label>
+          <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="mt-1 h-9 text-sm" />
+        </div>
+        <div className="col-span-2 sm:col-span-1">
+          <Label className="text-xs">Quién</Label>
+          <select value={staffId} onChange={(e) => setStaffId(e.target.value)} className="mt-1 h-9 w-full rounded-md border border-input bg-background px-2 text-sm">
+            <option value="">Todo el centro</option>
+            {staff.map((s) => (
+              <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+      <div>
+        <Label className="text-xs">Motivo (opcional)</Label>
+        <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Ej: Feriado, vacaciones" maxLength={120} className="mt-1 h-9 text-sm" />
+      </div>
+      <Button size="sm" className="w-full" onClick={add} disabled={saving}>
+        {saving ? "Guardando..." : "Bloquear día"}
+      </Button>
+      {msg && <p className="text-xs text-red-600">{msg}</p>}
+      {blocks.length > 0 && (
+        <div className="space-y-1.5">
+          {blocks.map((b) => (
+            <div key={b.id} className="flex items-center gap-2 rounded-lg bg-muted px-2.5 py-2 text-xs">
+              <span className="flex-1 min-w-0">
+                <span className="block font-medium">{fmtDate(b.date)} · {b.staff_name || "Todo el centro"}</span>
+                {b.reason && <span className="block text-muted-foreground truncate">{b.reason}</span>}
+              </span>
+              <button type="button" onClick={() => remove(b.id)} className="flex-shrink-0 text-muted-foreground hover:text-red-600" title="Desbloquear">×</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 /** Reporte de comisiones por profesional (turnos confirmados del rango). */
 export function EsteticaCommissionsReport() {
   const now = new Date();
@@ -1031,6 +1153,13 @@ export function EsteticaCommissionsReport() {
 
   useEffect(() => { load(); }, []);
 
+  const downloadQs = () => {
+    const p = new URLSearchParams();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(from)) p.set("from", from);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(to)) p.set("to", to);
+    return p.toString();
+  };
+
   return (
     <Card className="p-4 space-y-3">
       <div>
@@ -1052,6 +1181,16 @@ export function EsteticaCommissionsReport() {
       <Button size="sm" className="w-full" onClick={load} disabled={loading}>
         {loading ? "Cargando..." : "Ver comisiones"}
       </Button>
+      {rows.length > 0 && (
+        <div className="flex gap-2">
+          <a href={`/api/vendor/estetica-staff/report?${downloadQs()}&format=xlsx`} className="flex-1 rounded-md border border-input px-2 py-1.5 text-center text-xs font-medium hover:bg-muted">
+            📊 Excel
+          </a>
+          <a href={`/api/vendor/estetica-staff/report?${downloadQs()}&format=csv`} className="flex-1 rounded-md border border-input px-2 py-1.5 text-center text-xs font-medium hover:bg-muted">
+            📄 CSV
+          </a>
+        </div>
+      )}
       {msg && <p className="text-xs text-red-600">{msg}</p>}
       {!loading && !msg && rows.length === 0 && (
         <p className="text-xs text-muted-foreground">Sin turnos confirmados en el rango.</p>

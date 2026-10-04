@@ -31,6 +31,7 @@ import {
   EsteticaCommissionsReport,
   EsteticaGiftcardsManager,
   EsteticaLocationsManager,
+  EsteticaBlocksManager,
 } from "@/components/dashboard/estetica-managers";
 import { FormTemplateManager } from "@/components/dashboard/form-template-manager";
 import type { Vendor, Product, ProductModifier } from "@/types/database";
@@ -154,6 +155,9 @@ export default function DashboardEstetica({
   const [cancelHours, setCancelHours] = useState(
     (vendor as any)?.cancel_hours != null ? String((vendor as any).cancel_hours) : "24"
   );
+  const [noshowPolicy, setNoshowPolicy] = useState(
+    (vendor as any)?.noshow_policy === "forfeit" ? "forfeit" : "none"
+  );
   const [googleReviewUrl, setGoogleReviewUrl] = useState(
     typeof vendor?.google_review_url === "string" ? vendor.google_review_url : ""
   );
@@ -204,6 +208,7 @@ export default function DashboardEstetica({
     );
     setCancelPolicy(typeof vendor.cancel_policy_text === "string" ? vendor.cancel_policy_text : "");
     setCancelHours((vendor as any)?.cancel_hours != null ? String((vendor as any).cancel_hours) : "24");
+    setNoshowPolicy((vendor as any)?.noshow_policy === "forfeit" ? "forfeit" : "none");
     setGoogleReviewUrl(typeof vendor.google_review_url === "string" ? vendor.google_review_url : "");
     setLoyaltyEvery((vendor as any)?.loyalty_every != null ? String((vendor as any).loyalty_every) : "");
     setLoyaltyPct((vendor as any)?.loyalty_pct != null ? String((vendor as any).loyalty_pct) : "");
@@ -304,6 +309,7 @@ export default function DashboardEstetica({
         quote_slots: quoteSlots,
         cancel_policy_text: cancelPolicy.trim() || null,
         cancel_hours: cancelHours === "" ? 24 : Math.max(0, Number(cancelHours) || 0),
+        noshow_policy: noshowPolicy === "forfeit" ? "forfeit" : "none",
       });
       setMsg("Turnera guardada");
     } catch {
@@ -553,6 +559,7 @@ export default function DashboardEstetica({
             <EsteticaServicesManager />
             <EsteticaStaffManager />
             <EsteticaLocationsManager />
+            <EsteticaBlocksManager />
             <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2">
               <div>
                 <p className="text-sm font-medium">Turnera pública</p>
@@ -626,6 +633,20 @@ export default function DashboardEstetica({
               onPolicy={setCancelPolicy}
               onHours={setCancelHours}
             />
+            <div>
+              <Label>Si el cliente no viene</Label>
+              <select
+                value={noshowPolicy}
+                onChange={(e) => setNoshowPolicy(e.target.value)}
+                className="mt-1 h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+              >
+                <option value="none">Solo marcar ausente</option>
+                <option value="forfeit">Retener la seña pagada</option>
+              </select>
+              <p className="text-xs text-muted-foreground mt-1">
+                Con retención, al marcar "No vino" la seña pagada queda a tu favor y no suma comisión
+              </p>
+            </div>
             <Button onClick={saveTurnera} className="w-full" disabled={uploading}>
               {uploading ? "Guardando..." : "Guardar turnera"}
             </Button>

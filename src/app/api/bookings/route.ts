@@ -66,6 +66,19 @@ export const POST = withRateLimit(async (request: Request) => {
     // Sin tabla/columna (migración pendiente): seguir sin tope.
   }
 
+  // Día bloqueado (feriado/vacaciones): 409 como el solape. Sin tabla se ignora.
+  try {
+    const blocks = await queryMany<{ staff_id: string | null }>(
+      `SELECT staff_id::text AS staff_id FROM estetica_blocks
+       WHERE vendor_id = $1 AND block_date = $2::date LIMIT 20`,
+      [vendorId, bookingDate]
+    ).catch(() => []);
+    const hit = (blocks || []).find((b) => !b.staff_id || (staffId && b.staff_id === staffId));
+    if (hit) {
+      return NextResponse.json({ error: "Ese día el centro está cerrado" }, { status: 409 });
+    }
+  } catch { /* sin tabla: sin bloqueo */ }
+
   // Servicio/profesional (estética): resuelve duración + buffer + seña.
   // Todo tolerante a migración sin aplicar (las tablas pueden no existir).
   let durationMin = 60;

@@ -66,6 +66,20 @@ export const GET = withRateLimit(async (request: Request) => {
     return NextResponse.json({ slots: [], estimated: false, closed: true });
   }
 
+  // Días bloqueados (feriados/vacaciones): staff NULL = todo el centro.
+  // Sin tabla (migración pendiente): se ignora.
+  try {
+    const blocks = await queryMany<{ staff_id: string | null; reason: string | null }>(
+      `SELECT staff_id::text AS staff_id, reason FROM estetica_blocks
+       WHERE vendor_id = $1 AND block_date = $2::date LIMIT 20`,
+      [vendorId, date]
+    ).catch(() => []);
+    const hit = (blocks || []).find((b) => !b.staff_id || (staffId && b.staff_id === staffId));
+    if (hit) {
+      return NextResponse.json({ slots: [], estimated: false, closed: true, blocked: true });
+    }
+  } catch { /* sin tabla: sin bloqueo */ }
+
   let durationMin = 60;
   let bufferMin = 0;
   if (serviceId) {

@@ -28,18 +28,41 @@ export async function PATCH(
     return NextResponse.json({ error: "Solicitud inválida" }, { status: 400 });
   }
 
-  const existing = await queryOne<{
-    id: string;
-    vendor_id: string;
-    status: string;
-    booking_date: string;
-    customer_name: string | null;
-    customer_phone: string | null;
-  }>(
-    `SELECT id, vendor_id, status, booking_date::text AS booking_date, customer_name, customer_phone
-     FROM bookings WHERE id = $1 LIMIT 1`,
-    [id]
-  );
+  let existing;
+  try {
+    existing = await queryOne<{
+      id: string;
+      vendor_id: string;
+      status: string;
+      booking_date: string;
+      customer_name: string | null;
+      customer_phone: string | null;
+      deposit_amount: number | null;
+      deposit_status: string | null;
+    }>(
+      `SELECT id, vendor_id, status, booking_date::text AS booking_date, customer_name, customer_phone,
+              deposit_amount, deposit_status
+       FROM bookings WHERE id = $1 LIMIT 1`,
+      [id]
+    );
+  } catch {
+    // Sin columnas de seña (migración de estética pendiente): select legacy.
+    existing = await queryOne<{
+      id: string;
+      vendor_id: string;
+      status: string;
+      booking_date: string;
+      customer_name: string | null;
+      customer_phone: string | null;
+      deposit_amount: number | null;
+      deposit_status: string | null;
+    }>(
+      `SELECT id, vendor_id, status, booking_date::text AS booking_date, customer_name, customer_phone,
+              NULL::numeric AS deposit_amount, NULL::text AS deposit_status
+       FROM bookings WHERE id = $1 LIMIT 1`,
+      [id]
+    );
+  }
 
   if (!existing) return NextResponse.json({ error: "No encontrado" }, { status: 404 });
 
@@ -64,16 +87,41 @@ export async function PATCH(
     return NextResponse.json({ error: "Solo se puede marcar ausente un turno pasado" }, { status: 400 });
   }
 
+  // Política de ausente del comercio ('none' o 'forfeit'). Sin columna
+  // (migración pendiente): se marca sin consecuencia.
+  let noshowPolicy = "none";
+  try {
+    const v = await queryOne<{ noshow_policy: string | null }>(
+      `SELECT noshow_policy FROM vendors WHERE id = $1 LIMIT 1`,
+      [vendor.id]
+    ).catch(() => null);
+    if (v?.noshow_policy === "forfeit") noshowPolicy = "forfeit";
+  } catch { /* sin columna: none */ }
+
   // Libro del cliente: confirmar un turno ya pasado suma el trabajo; cancelar
   // o marcar ausente un turno contado lo resta. Futuros no cuentan todavía.
   const wasCounted =
     existing.status === "confirmed" && existing.booking_date <= todayAR();
   const willCount = status === "confirmed" && existing.booking_date <= todayAR();
+  // Seña a retener: solo si la política es forfeit y la seña está pagada.
+  const forfeitDeposit =
+    status === "noshow" && noshowPolicy === "forfeit" && existing.deposit_status === "paid";
+  let consequence: string | null = null;
 
   try {
     await withTransaction(async (tx) => {
       if (hasStatus) {
         await tx.queryVoid(`UPDATE bookings SET status = $1 WHERE id = $2`, [status, id]);
+      }
+      if (forfeitDeposit) {
+        try {
+          await tx.queryVoid(`UPDATE bookings SET deposit_status = 'forfeited' WHERE id = $1`, [id]);
+          consequence = `Seña retenida ($${Number(existing.deposit_amount || 0).toLocaleString("es-AR")})`;
+        } catch {
+          // Sin 'forfeited' en el CHECK (migración pendiente): la seña queda
+          // pagada igual (el comercio ya la tiene), solo se informa.
+          consequence = "Seña pagada: queda en tu cuenta (falta migración para marcarla retenida)";
+        }
       }
       if (wantProducts) {
         try {
@@ -140,5 +188,5 @@ export async function PATCH(
     });
   }
 
-  return NextResponse.json({ booking, waitlistCount });
+  return NextResponse.json({ booking, waitlistCount, consequence });
 }

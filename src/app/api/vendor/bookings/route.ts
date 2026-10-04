@@ -182,6 +182,20 @@ export async function POST(request: Request) {
     }
   } catch { /* sin tabla: sin chequeo */ }
 
+  // Día bloqueado (feriado/vacaciones): avisa sin bloquear (el comercio decide).
+  let blockWarning: string | null = null;
+  try {
+    const blocks = await queryMany<{ staff_id: string | null; reason: string | null }>(
+      `SELECT staff_id::text AS staff_id, reason FROM estetica_blocks
+       WHERE vendor_id = $1 AND block_date = $2::date LIMIT 20`,
+      [gate.vendor.id, bookingDate]
+    ).catch(() => []);
+    const hit = (blocks || []).find((b) => !b.staff_id || (staffId && b.staff_id === staffId));
+    if (hit) {
+      blockWarning = `Ese día está bloqueado${hit.reason ? `: ${hit.reason}` : ""}`;
+    }
+  } catch { /* sin tabla: sin aviso */ }
+
   const startsAt = `${bookingDate}T${String(bookingTime).slice(0, 5)}:00`;
   const endMin = toMinutes(bookingTime)! + durationMin + bufferMin;
   const endsAt = `${bookingDate}T${String(Math.floor(endMin / 60)).padStart(2, "0")}:${String(endMin % 60).padStart(2, "0")}:00`;
@@ -242,5 +256,5 @@ export async function POST(request: Request) {
     `SELECT * FROM bookings WHERE id = $1 LIMIT 1`,
     [bookingId]
   ).catch(() => undefined);
-  return NextResponse.json({ booking: booking || { id: bookingId }, warning: overlapWarning });
+  return NextResponse.json({ booking: booking || { id: bookingId }, warning: overlapWarning, blockWarning });
 }

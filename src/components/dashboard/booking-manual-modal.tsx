@@ -75,8 +75,8 @@ export function BookingManualModal({
       });
       const data = await res.json();
       if (!res.ok || data.error) throw new Error(data.error || "No se pudo crear");
-      onCreated(data.warning || null);
-    } catch (e) {
+      const warns = [data.warning, data.blockWarning].filter(Boolean);
+      onCreated(warns.length > 0 ? warns.join(" · ") : null);    } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo crear");
     } finally {
       setSaving(false);

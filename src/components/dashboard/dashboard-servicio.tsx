@@ -627,6 +627,12 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
   }, [isEstetica]);
 
   async function handleUpdateBookingStatus(id: string, status: string) {
+    // Con retención de seña, confirmar antes de marcar ausente.
+    if (status === "noshow" && (vendor as any)?.noshow_policy === "forfeit") {
+      if (!window.confirm("El cliente no vino. Con tu política actual la seña pagada queda retenida. ¿Confirmar?")) {
+        return;
+      }
+    }
     try {
       const res = await fetch(`/api/vendor/bookings/${id}`, {
         method: "PATCH",
@@ -640,6 +646,8 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
       }
       if (Number(data.waitlistCount) > 0) {
         setMsg(`Turno cancelado. 🔔 Hay ${data.waitlistCount} en lista de espera para ese día: contactalas desde Turnos.`);
+      } else if (data.consequence) {
+        setMsg(`Ausente registrado. ${data.consequence}`);
       }
       reload();
     } catch {

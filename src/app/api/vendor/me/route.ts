@@ -88,6 +88,7 @@ export async function POST(request: Request) {
     quote_slots,
     cancel_policy_text,
     cancel_hours,
+    noshow_policy,
     google_review_url,
     loyalty_every,
     loyalty_pct,
@@ -282,6 +283,11 @@ export async function POST(request: Request) {
     }
     payload.cancel_hours = Math.round(n);
   }
+  // Política ante ausente (estética): 'none' o 'forfeit' (retiene seña).
+  // Tolerante a migración sin aplicar (ver droppable más abajo).
+  if (noshow_policy !== undefined) {
+    payload.noshow_policy = noshow_policy === "forfeit" ? "forfeit" : "none";
+  }
   if (urgent_enabled !== undefined) payload.urgent_enabled = urgent_enabled === true;  if (urgent_surcharge_pct !== undefined) {
     const pct = urgent_surcharge_pct == null || urgent_surcharge_pct === "" ? null : Number(urgent_surcharge_pct);
     if (pct !== null && (!Number.isFinite(pct) || pct < 0 || pct >= 100)) {
@@ -429,6 +435,7 @@ export async function POST(request: Request) {
         "floor_bg_url",
         "cancel_policy_text",
         "cancel_hours",
+        "noshow_policy",
         "google_review_url",
         "loyalty_every",
         "loyalty_pct",

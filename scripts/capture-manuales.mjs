@@ -18,8 +18,9 @@ const ROOT = path.join(__dirname, "..");
 const OUT_DIR = path.join(ROOT, "public", "manuales", "capturas");
 
 const BASE = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
-const EMAIL = "vendedor1@test.com";
-const PASSWORD = "test123456";
+const EMAIL = process.env.MANUAL_EMAIL || "vendedor1@test.com";
+const PASSWORD = process.env.MANUAL_PASSWORD || "test123456";
+const PREFIX = process.env.MANUAL_PREFIX || "";
 
 const VIEWPORTS = [
   { name: "mobile", width: 390, height: 844 },
@@ -27,21 +28,37 @@ const VIEWPORTS = [
 ];
 
 // [slug, url, description]
-const DIRECT_URLS = [
-  ["alta-home", "/", "Home de Portal 659"],
-  ["alta-login", "/login", "Página de login"],
-  ["alta-register", "/register", "Página de registro"],
-  ["alta-micrositio", "/tienda/las-empanadas-de-maria", "Micrositio del comercio"],
-];
+const DIRECT_URLS =
+  process.env.MANUAL_SET === "comercio"
+    ? [
+        // En comercio solo el micrositio es propio; home/login/registro los aporta el set base.
+        // El prefijo MANUAL_PREFIX ("comercio-") se antepone solo.
+        ["alta-micrositio", `/tienda/${process.env.MANUAL_MICROSLUG || "verduleria-la-huerta"}`, "Micrositio del comercio"],
+      ]
+    : [
+        ["alta-home", "/", "Home de Portal 659"],
+        ["alta-login", "/login", "Página de login"],
+        ["alta-register", "/register", "Página de registro"],
+        ["alta-micrositio", `/tienda/${process.env.MANUAL_MICROSLUG || "pastas-rossi"}`, "Micrositio del comercio"],
+      ];
 
 // [slug, tabText, description]
-const DASHBOARD_TABS = [
-  ["alta-dashboard", null, "Dashboard - pestaña Pedidos"],
-  ["recepcion-pedidos", null, "Panel de pedidos"],
-  ["recepcion-comanda", "Comanda", "Comanda KDS"],
-  ["mostrador-grid", "Mostrador", "Mostrador - grilla de productos"],
-  ["mesas-grid", "Mesas", "Mesas - grilla"],
-];
+const DASHBOARD_TABS =
+  process.env.MANUAL_SET === "comercio"
+    ? [
+        ["alta-dashboard", null, "Dashboard - pestaña Pedidos"],
+        ["recepcion-pedidos", null, "Panel de pedidos"],
+        ["mostrador-grid", "Mostrador", "Mostrador - grilla de productos"],
+        ["catalogo", "Catálogo", "Catálogo del comercio"],
+        ["caja", "Caja", "Caja - cierre y turnos"],
+      ]
+    : [
+        ["alta-dashboard", null, "Dashboard - pestaña Pedidos"],
+        ["recepcion-pedidos", null, "Panel de pedidos"],
+        ["recepcion-comanda", "Comanda", "Comanda KDS"],
+        ["mostrador-grid", "Mostrador", "Mostrador - grilla de productos"],
+        ["mesas-grid", "Mesas", "Mesas - grilla"],
+      ];
 
 // [slug, seccion, description]
 const CONFIG_SECTIONS = [
@@ -68,13 +85,24 @@ async function optimizeImage(tempPath, finalPath) {
 }
 
 async function capturePage(page, slug, viewport, description) {
-  const tempPath = path.join(OUT_DIR, `${slug}-${viewport.name}.tmp.jpg`);
-  const finalPath = path.join(OUT_DIR, `${slug}-${viewport.name}.jpg`);
+  const slugPrefixed = `${PREFIX}${slug}`;
+  const tempPath = path.join(OUT_DIR, `${slugPrefixed}-${viewport.name}.tmp.jpg`);
+  const finalPath = path.join(OUT_DIR, `${slugPrefixed}-${viewport.name}.jpg`);
 
   await page.screenshot({ path: tempPath, fullPage: false });
   await optimizeImage(tempPath, finalPath);
   const size = fs.statSync(finalPath).size;
-  console.log(`OK ${slug}-${viewport.name}.jpg (${size} bytes) - ${description}`);
+  console.log(`OK ${slugPrefixed}-${viewport.name}.jpg (${size} bytes) - ${description}`);
+}
+
+async function closeMoreSheet(page) {
+  try {
+    await page.evaluate(() => {
+      const b = document.querySelector('button[aria-label="Cerrar"]');
+      if (b) b.click();
+    });
+    await page.waitForTimeout(500);
+  } catch {}
 }
 
 async function clickAndVerify(page, text, previousSize) {
@@ -94,6 +122,7 @@ async function clickAndVerify(page, text, previousSize) {
       }
       return false;
     }, text);
+    if (!clicked) console.log(`  Click "${text}" no encontrado (sin botón visible)`);
 
     if (clicked) {
       await page.waitForTimeout(2000);
@@ -173,7 +202,20 @@ async function main() {
         const previousSize = fs.statSync(tempPath).size;
         fs.unlinkSync(tempPath);
 
-        await clickAndVerify(page, tabText, previousSize);
+        // Items que viven en el sheet "Más" (móvil): abrirlo primero y clickear dentro
+        const inMoreSheet = ["Catálogo", "Caja", "Clientes"].includes(tabText);
+        if (inMoreSheet && viewport.name === "mobile") {
+          const moreBtn = page.locator("nav").locator("button", { hasText: "Más" }).last();
+          if ((await moreBtn.count()) > 0) await moreBtn.click({ timeout: 5000 });
+          await page.waitForTimeout(800);
+          const sheet = page.locator('div[class*="rounded-t-2xl"]');
+          const itemInSheet = sheet.locator("button", { hasText: tabText });
+          if ((await itemInSheet.count()) > 0) await itemInSheet.first().click({ timeout: 5000 });
+          else await clickAndVerify(page, tabText, previousSize);
+        } else {
+          await clickAndVerify(page, tabText, previousSize);
+        }
+        if (viewport.name === "mobile") await closeMoreSheet(page);
 
         await capturePage(page, slug, viewport, description);
       } catch (e) {
@@ -182,36 +224,92 @@ async function main() {
     }
   }
 
-  // Capturar secciones de Configuración
+  // Capturar secciones de Configuración (clicks reales de Playwright: los
+  // sintéticos vía evaluate no siempre disparan el drill-down mobile).
+  // OJO: goto a la misma URL no recarga (SPA) y el drill-down queda abierto;
+  // se fuerza reload para arrancar siempre desde el menú de secciones.
   for (const [slug, seccion, description] of CONFIG_SECTIONS) {
     for (const viewport of VIEWPORTS) {
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
       try {
+        // Pasar por la home desmonta el dashboard y resetea su estado
+        // (goto a la misma URL no recarga en la SPA y el drill-down queda abierto)
+        await page.goto(`${BASE}/`, { waitUntil: "domcontentloaded", timeout: 30000 });
         await page.goto(`${BASE}/vendor/dashboard`, { waitUntil: "networkidle", timeout: 30000 });
         await page.waitForTimeout(1500);
 
         const isMobile = viewport.name === "mobile";
         if (isMobile) {
-          const tempPath = path.join(OUT_DIR, "temp-verify.jpg");
-          await page.screenshot({ path: tempPath });
-          const prevSize = fs.statSync(tempPath).size;
-          fs.unlinkSync(tempPath);
-          await clickAndVerify(page, "Más", prevSize);
+          // Abrir sheet "Más" (botón del bottom nav, no el drawer)
+          const moreBtn = page.locator("nav").locator("button", { hasText: "Más" }).last();
+          if ((await moreBtn.count()) > 0) await moreBtn.click({ timeout: 5000 });
+          await page.waitForTimeout(800);
+          // Click "Configuración" dentro del sheet
+          const sheet = page.locator('div[class*="rounded-t-2xl"]');
+          const cfgInSheet = sheet.locator("button", { hasText: "Configuración" });
+          if ((await cfgInSheet.count()) > 0) await cfgInSheet.first().click({ timeout: 5000 });
+          else await page.getByRole("button", { name: "Configuración" }).last().click({ timeout: 5000 });
+          await page.waitForTimeout(1200);
+          await closeMoreSheet(page);
+        } else {
+          await page.getByRole("button", { name: "Configuración" }).first().click({ timeout: 8000 });
+          await page.waitForTimeout(1200);
         }
 
-        // Click Configuración
-        let tempPath = path.join(OUT_DIR, "temp-verify.jpg");
-        await page.screenshot({ path: tempPath });
-        let prevSize = fs.statSync(tempPath).size;
-        fs.unlinkSync(tempPath);
-        await clickAndVerify(page, "Configuración", prevSize);
+        // Click en la sección (item del menú con su descripción).
+        // OJO: .first() a secas toma el botón del drawer oculto de desktop;
+        // hay que filtrar solo visibles.
+        const visibleBtn = (name) =>
+          page.getByRole("button", { name }).filter({ visible: true }).first();
+        // Si el drill-down quedó en un detalle (deep-link ?seccion= o sección
+        // persistida), volver al menú con "‹ Configuración" antes de buscar el item.
+        // OJO: el "‹" es aria-hidden, no va en el accessible name: buscar por texto.
+        const backBtn = page.locator("button", { hasText: /^‹/ }).filter({ visible: true }).first();
+        if ((await backBtn.count()) > 0) {
+          await backBtn.click({ timeout: 5000 });
+          await page.waitForTimeout(800);
+        }
+        try {
+          await visibleBtn(new RegExp(seccion)).click({ timeout: 8000 });
+        } catch (e) {
+          const dbg = await page.evaluate(() => {
+            const btns = Array.from(document.querySelectorAll("button")).filter((x) => x.offsetParent !== null);
+            return {
+              total: btns.length,
+              muestra: btns.slice(0, 30).map((x) => (x.textContent || "").trim().slice(0, 30)),
+              cfg: localStorage.getItem("portal659-config-comercio") || localStorage.getItem("portal659-config-gastro"),
+              url: window.location.href,
+              w: window.innerWidth,
+            };
+          });
+          console.log(`  DBG ${slug} (${viewport.name}):`, JSON.stringify(dbg).slice(0, 600));
+          throw e;
+        }
+        await page.waitForTimeout(1200);
 
-        // Click sección
-        tempPath = path.join(OUT_DIR, "temp-verify.jpg");
-        await page.screenshot({ path: tempPath });
-        prevSize = fs.statSync(tempPath).size;
-        fs.unlinkSync(tempPath);
-        await clickAndVerify(page, seccion, prevSize);
+        // Scrollear al título de la sección abierta (si no, la captura queda arriba)
+        await page.evaluate((label) => {
+          const h = Array.from(document.querySelectorAll("h3")).find(
+            (x) => (x.textContent || "").trim().startsWith(label) && x.offsetParent !== null
+          );
+          if (h) {
+            h.scrollIntoView({ block: "start" });
+            window.scrollBy(0, -80);
+          }
+        }, seccion === "Impresora" ? "Impresora" : seccion);
+        await page.waitForTimeout(500);
+        // La sección Impresora tiene un acordeón interno ("Impresora térmica")
+        // que nace colapsado: hay que expandirlo con un segundo click.
+        if (seccion === "Impresora") {
+          const inner = visibleBtn(/Impresora térmica/);
+          if ((await inner.count()) > 0) await inner.click({ timeout: 5000 });
+          await page.waitForTimeout(1000);
+          // Scrollear al contenido expandido
+          const prueba = visibleBtn(/Imprimir prueba/);
+          if ((await prueba.count()) > 0) await prueba.scrollIntoViewIfNeeded();
+          await page.waitForTimeout(500);
+        }
+        if (viewport.name === "mobile") await closeMoreSheet(page);
 
         await capturePage(page, slug, viewport, description);
       } catch (e) {

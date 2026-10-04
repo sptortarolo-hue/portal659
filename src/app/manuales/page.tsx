@@ -3,8 +3,48 @@ import { Logo } from "@/components/brand/logo";
 
 export const metadata = {
   title: "Manuales | Portal 659",
-  description: "Guías paso a paso para comercios gastronómicos de Portal 659.",
+  description:
+    "Guías paso a paso para usar Portal 659: manual básico transversal a todas las verticales y manuales específicos de gastronomía y comercio de barrio.",
 };
+
+function Card({
+  href,
+  emoji,
+  title,
+  desc,
+  disabled,
+}: {
+  href: string;
+  emoji: string;
+  title: string;
+  desc: string;
+  disabled?: boolean;
+}) {
+  const inner = (
+    <div className="flex items-start gap-4">
+      <span className="text-3xl">{emoji}</span>
+      <div>
+        <h2 className="font-semibold text-lg mb-1">{title}</h2>
+        <p className="text-sm text-muted-foreground">{desc}</p>
+        <span className="text-primary text-sm font-medium mt-2 inline-block">
+          {disabled ? "Próximamente" : "Ver manual →"}
+        </span>
+      </div>
+    </div>
+  );
+  const cls =
+    "block p-6 rounded-2xl border border-border bg-card transition-all " +
+    (disabled
+      ? "opacity-60 cursor-not-allowed"
+      : "hover:border-primary/40 hover:shadow-sm");
+  return disabled ? (
+    <div className={cls}>{inner}</div>
+  ) : (
+    <Link href={href} className={cls}>
+      {inner}
+    </Link>
+  );
+}
 
 export default function ManualesPage() {
   return (
@@ -13,103 +53,57 @@ export default function ManualesPage() {
         <Logo markClassName="h-9 w-9 text-primary" />
         <h1 className="font-display text-2xl font-semibold">Manuales del comercio</h1>
       </div>
-      <p className="text-muted-foreground mb-4">
-        Guías completas para darte de alta y gestionar tus pedidos en Portal 659.
+      <p className="text-muted-foreground mb-8">
+        Empezá por el <strong>manual básico</strong>, que sirve para todas las
+        verticales. Después consultá el manual específico de tu rubro para los
+        detalles propios de tu forma de vender.
       </p>
-      <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-xl px-4 py-3 text-sm mb-8">
-        <strong>Solo gastronomía</strong> — Estos manuales están pensados para comercios de comida. Próximamente sumamos guías para otras verticales.
+
+      <h2 className="font-display text-lg font-semibold mb-3">Para todos</h2>
+      <div className="space-y-4 mb-10">
+        <Card
+          href="/manuales/basico"
+          emoji="📘"
+          title="Uso básico (todas las verticales)"
+          desc="Cuenta, panel, configuración, micrositio y QR, recibir pedidos y cobrar. Lo común a gastronomía, comercio, servicios, moda y estética."
+        />
       </div>
 
+      <h2 className="font-display text-lg font-semibold mb-3">Por vertical</h2>
       <div className="space-y-4">
-        <Link
-          href="/manuales/alta-comercio"
-          className="block p-6 rounded-2xl border border-border bg-card hover:border-primary/40 hover:shadow-sm transition-all"
-        >
-          <div className="flex items-start gap-4">
-            <span className="text-3xl">🏪</span>
-            <div>
-              <h2 className="font-semibold text-lg mb-1">Alta del comercio</h2>
-              <p className="text-sm text-muted-foreground">
-                Registro, configuración, menú, compartir tu QR y micrositio.
-              </p>
-              <span className="text-primary text-sm font-medium mt-2 inline-block">
-                Ver manual →
-              </span>
-            </div>
-          </div>
-        </Link>
-
-        <Link
-          href="/manuales/recepcion-pedidos"
-          className="block p-6 rounded-2xl border border-border bg-card hover:border-primary/40 hover:shadow-sm transition-all"
-        >
-          <div className="flex items-start gap-4">
-            <span className="text-3xl">📦</span>
-            <div>
-              <h2 className="font-semibold text-lg mb-1">Recepción de pedidos y delivery</h2>
-              <p className="text-sm text-muted-foreground">
-                Flujo completo: pedidos, preparación, envío, mostrador, mesas y comanda.
-              </p>
-              <span className="text-primary text-sm font-medium mt-2 inline-block">
-                Ver manual →
-              </span>
-            </div>
-          </div>
-        </Link>
-
-        <Link
-          href="/manuales/impresora"
-          className="block p-6 rounded-2xl border border-border bg-card hover:border-primary/40 hover:shadow-sm transition-all"
-        >
-          <div className="flex items-start gap-4">
-            <span className="text-3xl">🖨️</span>
-            <div>
-              <h2 className="font-semibold text-lg mb-1">Impresora térmica</h2>
-              <p className="text-sm text-muted-foreground">
-                Configuración e instalación de impresora: app Android, agente PC y servidor TCP.
-              </p>
-              <span className="text-primary text-sm font-medium mt-2 inline-block">
-                Ver manual →
-              </span>
-            </div>
-          </div>
-        </Link>
-
-        <Link
-          href="/manuales/mostrador"
-          className="block p-6 rounded-2xl border border-border bg-card hover:border-primary/40 hover:shadow-sm transition-all"
-        >
-          <div className="flex items-start gap-4">
-            <span className="text-3xl">🛒</span>
-            <div>
-              <h2 className="font-semibold text-lg mb-1">Pedidos por mostrador</h2>
-              <p className="text-sm text-muted-foreground">
-                Punto de venta presencial: carrito, cobro, comanda, comprobante y conversiones.
-              </p>
-              <span className="text-primary text-sm font-medium mt-2 inline-block">
-                Ver manual →
-              </span>
-            </div>
-          </div>
-        </Link>
-
-        <Link
-          href="/manuales/mesas"
-          className="block p-6 rounded-2xl border border-border bg-card hover:border-primary/40 hover:shadow-sm transition-all"
-        >
-          <div className="flex items-start gap-4">
-            <span className="text-3xl">🪑</span>
-            <div>
-              <h2 className="font-semibold text-lg mb-1">Mesas</h2>
-              <p className="text-sm text-muted-foreground">
-                Gestión de mesas, consumiciones, precuentas y cobro.
-              </p>
-              <span className="text-primary text-sm font-medium mt-2 inline-block">
-                Ver manual →
-              </span>
-            </div>
-          </div>
-        </Link>
+        <Card
+          href="/manuales/gastronomia"
+          emoji="🍽️"
+          title="Gastronomía (detallado)"
+          desc="Pedidos online y delivery, comanda de cocina, mesas, mostrador, menú y reparto."
+        />
+        <Card
+          href="/manuales/comercio"
+          emoji="🏪"
+          title="Comercio de barrio (detallado)"
+          desc="Catálogo y vidriera, pedidos con empaque, mostrador con balanza, caja y reparto por franjas."
+        />
+        <Card
+          href="/manuales/servicio"
+          emoji="🔧"
+          title="Servicios y oficios"
+          desc="Presupuestos, turnos, seña y cobros."
+          disabled
+        />
+        <Card
+          href="/manuales/moda"
+          emoji="👗"
+          title="Ropa y accesorios"
+          desc="Catálogo por talles y colores, apartado con seña y envíos."
+          disabled
+        />
+        <Card
+          href="/manuales/estetica"
+          emoji="💅"
+          title="Estética y belleza"
+          desc="Turnera por profesional, servicios, packs de sesiones y fichas."
+          disabled
+        />
       </div>
     </main>
   );

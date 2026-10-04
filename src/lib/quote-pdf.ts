@@ -83,13 +83,18 @@ export async function buildQuotePdf(data: QuotePdfData): Promise<Buffer> {
       /* sin logo: solo texto */
     }
   }
-  const rightX = width - M - 230;
-  text(vendor.store_name || "", M + 170, y - 6, 15, bold, black, 250);
+  // El título se mide y se alinea a derecha; el bloque izquierdo (nombre,
+  // dirección, contacto) se limita al espacio restante para que nunca se
+  // solapen, sea cual sea el largo del nombre del local.
+  const titleW = bold.widthOfTextAtSize(docTitle, 15);
+  const rightX = width - M - titleW;
+  const nameMaxW = Math.max(80, rightX - (M + 170) - 12);
+  text(vendor.store_name || "", M + 170, y - 6, 15, bold, black, nameMaxW);
   text(docTitle, rightX, y - 6, 15, bold);
   text(`Fecha: ${fdate(quote.created_at)}`, rightX, y - 26, 9, font, gray);
-  if (vendor.address) text(vendor.address, M + 170, y - 26, 9, font, gray, 250);
+  if (vendor.address) text(vendor.address, M + 170, y - 26, 9, font, gray, nameMaxW);
   const contact = [vendor.phone, vendor.whatsapp].filter(Boolean).join(" · ");
-  if (contact) text(contact, M + 170, y - 40, 9, font, gray, 250);
+  if (contact) text(contact, M + 170, y - 40, 9, font, gray, nameMaxW);
   y -= 110;
 
   text("Cliente", M, y, 10, bold);

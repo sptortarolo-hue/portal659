@@ -1203,7 +1203,7 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
 
       {(sec === "all" || sec === "turnos") && (
       <>
-      <CollapsibleSection icon="📅" title={`Agenda de turnos (${bookings.length})`}>
+      <CollapsibleSection icon="📅" title={`Agenda de turnos (${bookings.length})`} defaultOpen>
         <div className="space-y-3">
           <Button size="sm" className="w-full h-8 text-xs" onClick={() => setBookingModalOpen(true)}>
             ＋ Nuevo turno
@@ -1494,7 +1494,7 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
 
       {(sec === "all" || sec === "presupuestos") && (
       <>
-      <CollapsibleSection icon="💬" title={`${presupuestosLabel} (${quotes.length})`}>
+      <CollapsibleSection icon="💬" title={`${presupuestosLabel} (${quotes.length})`} defaultOpen>
         <div className="space-y-3">
           <Button size="sm" className="w-full h-8 text-xs" onClick={() => setQuoteModalOpen(true)}>
             {isEstetica ? "＋ Nueva consulta" : "＋ Nuevo presupuesto"}
@@ -1751,7 +1751,7 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
 
       {(sec === "all" || sec === "cobros") && (
       <>
-      <CollapsibleSection icon="💰" title="Cobros y seña">
+      <CollapsibleSection icon="💰" title="Cobros y seña" defaultOpen>
         <div className="space-y-3">
           <MpConnectCard
             mpUserId={vendor?.mp_user_id ?? null}

@@ -50,11 +50,22 @@ export async function generateMetadata({
   const title = `🔥 Promos en ${vendor.store_name} — Portal 659`;
   const description = vendor.description || `Promos exclusivas en ${vendor.store_name}. Pedí por WhatsApp o delivery.`;
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://www.portal659.com.ar";
+  let versionParam = "";
+  try {
+    const row = await queryOne<{ updated_at: string }>(
+      `SELECT updated_at FROM vendor_promo_images WHERE vendor_id = $1 LIMIT 1`,
+      [vendor.id]
+    );
+    if (row?.updated_at) versionParam = `v=${encodeURIComponent(row.updated_at)}`;
+  } catch {
+    versionParam = "";
+  }
   const previewTokenParam =
     preview && typeof sp?.preview === "string" && sp.preview !== "1"
-      ? `?preview=${encodeURIComponent(sp.preview)}`
+      ? `preview=${encodeURIComponent(sp.preview)}`
       : "";
-  const shareImage = `${siteUrl}/og/promo/${slug}.jpg${previewTokenParam}`;
+  const qs = [versionParam, previewTokenParam].filter(Boolean).join("&");
+  const shareImage = `${siteUrl}/og/promo/${slug}.jpg${qs ? `?${qs}` : ""}`;
 
   return {
     title,

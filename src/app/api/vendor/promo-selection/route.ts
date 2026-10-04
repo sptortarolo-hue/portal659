@@ -1,0 +1,96 @@
+import { getVendorByRequest } from "@/lib/vendor-utils";
+import { query, queryMany, queryOne } from "@/lib/db";
+import { NextResponse } from "next/server";
+
+type SelectionRow = {
+  product_ids: unknown;
+  updated_at: string;
+};
+
+function normalizeIds(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const ids: string[] = [];
+  for (const v of value) {
+    if (typeof v === "string" && v.length > 0 && !ids.includes(v)) ids.push(v);
+    if (ids.length >= 3) break;
+  }
+  return ids;
+}
+
+export async function GET(request: Request) {
+  const { vendor } = await getVendorByRequest(request);
+  if (!vendor) {
+    return NextResponse.json({ error: "No autorizado" }, { status: 403 });
+  }
+  try {
+    const row = await queryOne<SelectionRow>(
+      `SELECT product_ids, updated_at FROM vendor_promo_images WHERE vendor_id = $1 LIMIT 1`,
+      [vendor.id]
+    );
+    return NextResponse.json({
+      productIds: normalizeIds(row?.product_ids),
+      updatedAt: row?.updated_at || null,
+    });
+  } catch {
+    return NextResponse.json(
+      { error: "Falta aplicar supabase/self-host/migrate-promo-share.sql en la DB" },
+      { status: 503 }
+    );
+  }
+}
+
+export async function PATCH(request: Request) {
+  const { vendor } = await getVendorByRequest(request);
+  if (!vendor) {
+    return NextResponse.json({ error: "No autorizado" }, { status: 403 });
+  }
+  let body: { productIds?: unknown };
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "JSON inválido" }, { status: 400 });
+  }
+  const ids = normalizeIds(body.productIds);
+  if (!Array.isArray(body.productIds) || (body.productIds as unknown[]).length > 3) {
+    return NextResponse.json({ error: "Máximo 3 productos" }, { status: 400 });
+  }
+  try {
+    if (ids.length > 0) {
+      const valid = await queryMany<{ id: string }>(
+        `SELECT id FROM products
+         WHERE vendor_id = $1 AND id = ANY($2)
+           AND promo_price IS NOT NULL AND promo_price > 0 AND promo_price < price
+         LIMIT 3`,
+        [vendor.id, ids]
+      );
+      const validIds = new Set((valid || []).map((r) => r.id));
+      const ordered = ids.filter((id) => validIds.has(id));
+      if (ordered.length !== ids.length) {
+        return NextResponse.json(
+          { error: "Algún producto no tiene promo válida" },
+          { status: 400 }
+        );
+      }
+    }
+    await query(
+      `INSERT INTO vendor_promo_images (vendor_id, image_url, product_ids, updated_at)
+       VALUES ($1, '', $2::jsonb, now())
+       ON CONFLICT (vendor_id) DO UPDATE
+       SET product_ids = $2::jsonb, updated_at = now()`,
+      [vendor.id, JSON.stringify(ids)]
+    );
+    const row = await queryOne<SelectionRow>(
+      `SELECT product_ids, updated_at FROM vendor_promo_images WHERE vendor_id = $1 LIMIT 1`,
+      [vendor.id]
+    );
+    return NextResponse.json({
+      productIds: normalizeIds(row?.product_ids),
+      updatedAt: row?.updated_at || null,
+    });
+  } catch {
+    return NextResponse.json(
+      { error: "Falta aplicar supabase/self-host/migrate-promo-share.sql en la DB" },
+      { status: 503 }
+    );
+  }
+}

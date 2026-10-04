@@ -30,28 +30,69 @@ export function PromosSection({
 }) {
   const [products, setProducts] = useState<PromoProduct[]>([]);
   const [promoImage, setPromoImage] = useState<string | null>(null);
+  const [selection, setSelection] = useState<string[]>([]);
+  const [updatedAt, setUpdatedAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [shareOpen, setShareOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  const [savingSelection, setSavingSelection] = useState(false);
+  const [selectError, setSelectError] = useState<string | null>(null);
 
   useEffect(() => {
     loadData();
   }, [vendorId]);
 
-  async function loadData() {
-    setLoading(true);
+  async function loadData(silent = false) {
+    if (!silent) setLoading(true);
     try {
       const res = await fetch(`/api/vendor/promos?vendorId=${vendorId}`);
       if (res.ok) {
         const data = await res.json();
         setProducts(data.products || []);
         setPromoImage(data.promoImage || null);
+        const validIds = new Set((data.products || []).map((p: PromoProduct) => p.id));
+        setSelection(((data.selection || []) as string[]).filter((id) => validIds.has(id)));
+        setUpdatedAt(data.updatedAt || null);
       }
     } catch (e) {
       console.error("Error loading promos:", e);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
+    }
+  }
+
+  async function toggleSelect(id: string) {
+    const included = selection.includes(id);
+    const next = included
+      ? selection.filter((s) => s !== id)
+      : selection.length >= 3
+        ? selection
+        : [...selection, id];
+    if (next === selection) return;
+    setSelection(next);
+    setSelectError(null);
+    setSavingSelection(true);
+    try {
+      const res = await fetch("/api/vendor/promo-selection", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ productIds: next }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setUpdatedAt(data.updatedAt || null);
+      } else if (res.status === 503) {
+        setSelectError("Falta aplicar la migración migrate-promo-selection.sql en la DB.");
+      } else {
+        const data = await res.json().catch(() => null);
+        setSelectError(data?.error || "No se pudo guardar la selección.");
+      }
+    } catch (err) {
+      console.error("Error saving selection:", err);
+      setSelectError("No se pudo guardar la selección.");
+    } finally {
+      setSavingSelection(false);
     }
   }
 
@@ -70,8 +111,7 @@ export function PromosSection({
       });
 
       if (res.ok) {
-        const data = await res.json();
-        setPromoImage(data.url);
+        await loadData(true);
       }
     } catch (err) {
       console.error("Error uploading:", err);
@@ -83,7 +123,7 @@ export function PromosSection({
   async function handleDeleteImage() {
     try {
       await fetch("/api/vendor/promo-image", { method: "DELETE" });
-      setPromoImage(null);
+      await loadData(true);
     } catch (err) {
       console.error("Error deleting:", err);
     }
@@ -92,7 +132,9 @@ export function PromosSection({
   const hasPromos = products.length > 0;
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://www.portal659.com.ar";
   const promoUrl = `${siteUrl}/promo/${slug}`;
-  const ogImageUrl = `${siteUrl}/og/promo/${slug}.jpg`;
+  const ogImageUrl = updatedAt
+    ? `${siteUrl}/og/promo/${slug}.jpg?v=${encodeURIComponent(updatedAt)}`
+    : `${siteUrl}/og/promo/${slug}.jpg`;
 
   if (loading) {
     return (
@@ -161,7 +203,8 @@ export function PromosSection({
           <div className="space-y-2">
             <p className="text-sm font-medium">Imagen de promo (opcional):</p>
             <p className="text-xs text-gray-500">
-              Si no subís una imagen, se usa la foto de tu tienda con un badge "PROMO".
+              Si subís una imagen, manda ella. Si no, se compone una con tus destacados
+              (foto + logo + badge PROMO).
             </p>
             <div className="flex gap-2">
               <label className="flex-1">
@@ -206,9 +249,24 @@ export function PromosSection({
           </div>
 
           <div className="space-y-2">
-            <p className="text-sm font-medium">
-              Productos en promo ({products.length}):
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-sm font-medium">
+                Productos en promo ({products.length}):
+              </p>
+              {products.length > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  Destacados en imagen: {selection.length}/3
+                  {savingSelection ? " · guardando…" : ""}
+                </p>
+              )}
+            </div>
+            <p className="text-xs text-gray-500">
+              Tildá hasta 3 productos para armar la imagen (foto + logo + badge PROMO).
+              Si no elegís, se usan los de mayor descuento.
             </p>
+            {selectError && (
+              <p className="text-xs text-amber-700 bg-amber-50 p-2 rounded-lg">{selectError}</p>
+            )}
             {products.length === 0 ? (
               <p className="text-sm text-gray-500">
                 No tenés productos en promo. Agregá un precio promocional a tus productos para que aparezcan acá.
@@ -217,11 +275,35 @@ export function PromosSection({
               <div className="space-y-2 max-h-64 overflow-y-auto">
                 {products.map((p) => {
                   const pct = Math.round((1 - p.promo_price / p.price) * 100);
+                  const order = selection.indexOf(p.id);
+                  const checked = order >= 0;
+                  const disabled = !checked && selection.length >= 3;
                   return (
                     <div
                       key={p.id}
-                      className="flex items-center gap-3 p-2 border rounded-lg"
+                      className={`flex items-center gap-3 p-2 border rounded-lg ${checked ? "border-red-300 bg-red-50/50" : ""}`}
                     >
+                      <button
+                        type="button"
+                        role="checkbox"
+                        aria-checked={checked}
+                        aria-label={`Destacar ${p.name} en la imagen`}
+                        disabled={disabled}
+                        onClick={() => toggleSelect(p.id)}
+                        className={`h-5 w-5 rounded-md border-2 flex-shrink-0 flex items-center justify-center transition-colors ${
+                          checked
+                            ? "bg-red-500 border-red-500 text-white"
+                            : disabled
+                              ? "border-muted bg-muted/50 text-transparent cursor-not-allowed"
+                              : "border-muted-foreground/40 hover:border-red-400"
+                        }`}
+                      >
+                        {checked ? (
+                          <span className="text-[11px] font-bold leading-none">{order + 1}</span>
+                        ) : (
+                          <span className="text-transparent text-[11px] leading-none">·</span>
+                        )}
+                      </button>
                       <div className="w-12 h-12 rounded overflow-hidden flex-shrink-0 bg-gray-100">
                         <ProductImage
                           src={p.image_url}

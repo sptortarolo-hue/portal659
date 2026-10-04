@@ -77,11 +77,19 @@ export async function POST(request: Request) {
   const url = `${getSiteUrl()}/uploads/promo/${vendor.id}/${outFilename}`;
 
   try {
-    await query(
-      `INSERT INTO vendor_promo_images (vendor_id, image_url) VALUES ($1, $2)
-       ON CONFLICT (vendor_id) DO UPDATE SET image_url = $2, created_at = now()`,
-      [vendor.id, url]
-    );
+    try {
+      await query(
+        `INSERT INTO vendor_promo_images (vendor_id, image_url, updated_at) VALUES ($1, $2, now())
+         ON CONFLICT (vendor_id) DO UPDATE SET image_url = $2, updated_at = now()`,
+        [vendor.id, url]
+      );
+    } catch {
+      await query(
+        `INSERT INTO vendor_promo_images (vendor_id, image_url) VALUES ($1, $2)
+         ON CONFLICT (vendor_id) DO UPDATE SET image_url = $2, created_at = now()`,
+        [vendor.id, url]
+      );
+    }
   } catch {
     return NextResponse.json(
       { error: "Falta aplicar supabase/self-host/migrate-promo-share.sql en la DB" },
@@ -101,7 +109,7 @@ export async function GET(request: Request) {
   const row = await queryOne<{ image_url: string }>(
     `SELECT image_url FROM vendor_promo_images WHERE vendor_id = $1 LIMIT 1`,
     [vendor.id]
-  );
+  ).catch(() => null);
 
   return NextResponse.json({ imageUrl: row?.image_url || null });
 }
@@ -113,7 +121,14 @@ export async function DELETE(request: Request) {
   }
 
   try {
-    await query(`DELETE FROM vendor_promo_images WHERE vendor_id = $1`, [vendor.id]);
+    try {
+      await query(
+        `UPDATE vendor_promo_images SET image_url = '', updated_at = now() WHERE vendor_id = $1`,
+        [vendor.id]
+      );
+    } catch {
+      await query(`DELETE FROM vendor_promo_images WHERE vendor_id = $1`, [vendor.id]);
+    }
   } catch {
     return NextResponse.json(
       { error: "Falta aplicar supabase/self-host/migrate-promo-share.sql en la DB" },

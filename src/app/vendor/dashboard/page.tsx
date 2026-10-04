@@ -33,6 +33,7 @@ import {
   Users,
   Receipt,
   Boxes,
+  Image,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 // Modal de recorte: solo se carga cuando se abre (fuera del bundle inicial).
@@ -150,7 +151,7 @@ type Offer = DBProduct;
 
 type MenuCategory = { id: string; name: string; position: number };
 
-  type DashTab = "hoy" | "config" | "menu" | "orders" | "pedidos" | "mostrador" | "history" | "comanda" | "analytics" | "pos" | "mesas" | "caja" | "clientes" | "reviews" | "recetas" | "fiscal" | "inventario";
+  type DashTab = "hoy" | "config" | "menu" | "orders" | "pedidos" | "mostrador" | "history" | "comanda" | "analytics" | "pos" | "mesas" | "caja" | "clientes" | "reviews" | "recetas" | "fiscal" | "inventario" | "galeria";
 
 // Tabs pesados con fetch propio: se memoizan para no re-renderizarlos en cada
 // tecla/búsqueda del dashboard (solo cambian cuando cambian sus props).
@@ -1390,9 +1391,10 @@ function VendorDashboardInner() {
     isService && tab === "orders" ? (isEstetica ? "Consultas" : "Presupuestos")
     : isService && tab === "pos" ? "Turnos"
     : isService && tab === "caja" ? "Cobros"
-    : isService && tab === "config" ? (isEstetica ? "Configuración" : "Ficha")
+    : isService && tab === "config" ? "Configuración"
     : isService && tab === "history" ? "Historial"
     : isService && tab === "clientes" ? "Clientes"
+    : isService && tab === "galeria" ? "Galería"
     : isEstetica && tab === "pedidos" ? "Pedidos"
     : isEstetica && tab === "mostrador" ? "Mostrador"
     : isEstetica && tab === "menu" ? "Catálogo"
@@ -1445,7 +1447,7 @@ function VendorDashboardInner() {
         planSlug={effectivePlan.plan?.slug ?? null}
         canFiscal={effectivePlan.can("fiscal")}
         canInventory={effectivePlan.can("inventory")}
-        configNavSections={(isService && !isEstetica) ? null : sectionsForVertical(vendor?.vertical)}
+        configNavSections={sectionsForVertical(vendor?.vertical)}
         activeConfigSection={configSection}
         onConfigSection={handleConfigSection}
         configSectionStatus={(id) => getConfigSectionStatus(id, vendor)}
@@ -1660,11 +1662,14 @@ function VendorDashboardInner() {
                 canQuotePrice={canQuotePrice}
                 canDeposits={canDeposits}
                 onQuotesChanged={loadServiceData}
+                configSectionId={configSection}
+                onConfigSectionId={handleConfigSection}
                 section={
                   tab === "orders" ? "presupuestos"
                   : tab === "pos" ? "turnos"
                   : tab === "caja" ? "cobros"
                   : tab === "config" ? "ficha"
+                  : tab === "galeria" ? "galeria"
                   : tab === "reviews" ? "reviews"
                   : tab === "history" ? "history"
                   : tab === "clientes" ? "clientes"
@@ -1701,10 +1706,9 @@ function VendorDashboardInner() {
             <>
               <div className={tab === "config" ? "" : "hidden"}>
                 <div className="flex gap-4 items-start">
-                  {/* Segunda columna de secciones (estilo Fudo): solo desktop y
-                      no-servicio (estética sí tiene menú de secciones). El menú principal queda intacto en la sidebar.
+                  {/* Segunda columna de secciones (estilo Fudo): solo desktop.
+                      El menú principal queda intacto en la sidebar.
                       En mobile mandan el drawer + el drill-down de Config. */}
-                  {(!isService || isEstetica) && (
                     <nav className="hidden md:block w-56 flex-shrink-0 md:sticky md:top-24 self-start rounded-xl border border-border bg-card p-3 space-y-4">
                       {CONFIG_SECTION_GROUPS.map((g) => {
                         const items = (sectionsForVertical(vendor?.vertical) ?? []).filter((id) =>
@@ -1742,12 +1746,10 @@ function VendorDashboardInner() {
                         );
                       })}
                     </nav>
-                  )}
                   <div className="flex-1 min-w-0 space-y-4">
                     {/* Alertas push: en gastro/comercio/moda/estética vive como sección
-                        "Alertas" del menú de Configuración; servicio puro no tiene
-                        menú de secciones y la muestra fija acá (Ficha no es
-                        pantalla operativa). */}
+                        "Alertas" del menú de Configuración; servicio puro la muestra
+                        fija acá. */}
                     {isService && !isEstetica && (
                       <div className="space-y-3">
                         <PushAlertCard />
@@ -2006,8 +2008,11 @@ function VendorDashboardInner() {
             <div className="grid grid-cols-2 gap-2">
               {isService ? (
                 <>
+                  <button onClick={() => { setTab("galeria"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "galeria" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
+                    <Image className="h-5 w-5" />Galería
+                  </button>
                   <button onClick={() => { setTab("config"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "config" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
-                    <Wrench className="h-5 w-5" />{isEstetica ? "Configuración" : "Ficha"}
+                    <Wrench className="h-5 w-5" />Configuración
                   </button>
                   {isEstetica && (
                     <>

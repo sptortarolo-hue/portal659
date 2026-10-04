@@ -6,6 +6,7 @@ import { HoursEditor } from "@/components/dashboard/hours-editor";
 import { GalleryManager } from "@/components/dashboard/gallery-manager";
 import { LocationPicker } from "./location-picker";
 import { CollapsibleSection } from "@/components/ui/collapsible-section";
+import { ConfigSaveBar, ConfigSection, ConfigSections } from "@/components/dashboard/config-sections";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,7 +38,7 @@ type Props = {
   uploading: boolean;
   onCrop: (target: "cover" | "logo" | "offer", src?: string) => void;
   /** Sub-vista a mostrar (el dashboard switchea por tab). Sin section = todo (legacy). */
-  section?: "hoy" | "presupuestos" | "turnos" | "cobros" | "ficha" | "reviews" | "history" | "clientes";
+  section?: "hoy" | "presupuestos" | "turnos" | "cobros" | "ficha" | "reviews" | "history" | "clientes" | "galeria";
   /** Navegación a otra sub-vista (botones del Hoy). */
   onNavigate?: (section: "orders" | "pos" | "caja" | "config" | "pedidos" | "clientes") => void;
   /** Pedidos de productos (solo estética los muestra en el Hoy). */
@@ -51,6 +52,8 @@ type Props = {
   /** El plan permite libro de clientes (Oficios). Sin esto, tab Clientes muestra PlanLock. */
   canCrm?: boolean;
   onQuotesChanged?: () => void;
+  configSectionId?: string;
+  onConfigSectionId?: (id: string) => void;
 };
 
 const BOOKING_STATUS_COLORS: Record<string, string> = {
@@ -305,7 +308,10 @@ export default function DashboardServicio({
   canCrm = false,
   onQuotesChanged,
   orders: ordersProp = [],
+  configSectionId,
+  onConfigSectionId,
 }: Props) {
+  const [saving, setSaving] = useState(false);
   // Sin section se muestra todo (legacy); con section, solo esa sub-vista.
   const sec = section ?? "all";
   // Estética opera sobre este mismo panel (turnera + consultas) y suma
@@ -543,6 +549,21 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
   const sortedDates = Object.keys(groupedBookings).sort((a, b) => a.localeCompare(b));
 
   async function handleSaveAll() {
+    await doSaveVendor();
+  }
+
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    setMsg("");
+    try {
+      await doSaveVendor();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function doSaveVendor() {
     await saveVendor({
       store_name: storeName,
       vertical: storeVertical,
@@ -569,6 +590,13 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
       quote_slots: quoteSlots,
       cancel_policy_text: cancelPolicy.trim() || null,
       cancel_hours: cancelHours === "" ? 24 : Math.max(0, Number(cancelHours) || 0),
+    });
+  }
+
+  // Cobros vive fuera del form de ficha: guarda solo la seña por defecto.
+  async function handleSaveDeposit() {
+    await saveVendor({
+      deposit_default_pct: depositDefault === "" ? null : Number(depositDefault),
     });
   }
 
@@ -875,7 +903,9 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
         isService
       />
 
-      <CollapsibleSection icon="🔧" title="Tu servicio" defaultOpen badge="Servicio">
+      <form onSubmit={handleSave}>
+      <ConfigSections storageKey="portal659-config-servicio" activeId={configSectionId} onActiveChange={onConfigSectionId}>
+      <ConfigSection id="perfil" label="Perfil" icon="🏪" badge="Servicio">
         <div className="space-y-3">
           <div>
             <Label>Tu vertical</Label>
@@ -923,13 +953,10 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
               <option value="otros" />
             </datalist>
           </div>
-          <Button onClick={handleSaveAll} className="w-full" disabled={uploading}>
-            {uploading ? "Guardando..." : "Guardar cambios"}
-          </Button>
         </div>
-      </CollapsibleSection>
+      </ConfigSection>
 
-      <CollapsibleSection icon="📍" title="Ubicación y horarios">
+      <ConfigSection id="ubicacion" label="Ubicación y horarios" icon="📍">
         <div className="space-y-3">
           <div>
             <Label>Dirección</Label>
@@ -948,13 +975,10 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
             <Label>Horarios</Label>
             <HoursEditor value={hours} onChange={setHours} />
           </div>
-          <Button onClick={handleSaveAll} className="w-full" disabled={uploading}>
-            {uploading ? "Guardando..." : "Guardar cambios"}
-          </Button>
         </div>
-      </CollapsibleSection>
+      </ConfigSection>
 
-      <CollapsibleSection icon="📸" title="Fotos">
+      <ConfigSection id="perfil" label="Perfil" icon="🏪">
         <div className="space-y-3">
           <div>
             <Label>Foto de portada</Label>
@@ -992,26 +1016,18 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
               <img src={logoPreview} alt="Logo" className="mt-2 h-16 w-16 object-cover rounded-full border" />
             )}
           </div>
-          <Button onClick={handleSaveAll} className="w-full" disabled={uploading}>
-            {uploading ? "Guardando..." : "Guardar fotos"}
-          </Button>
+          <div>
+            <Label>Descripción</Label>
+            <Textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Contá qué hacés, tu experiencia, especialidades..."
+            />
+          </div>
         </div>
-      </CollapsibleSection>
+      </ConfigSection>
 
-      <CollapsibleSection icon="📝" title="Descripción">
-        <div className="space-y-3">
-          <Textarea
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="Contá qué hacés, tu experiencia, especialidades..."
-          />
-          <Button onClick={handleSaveAll} className="w-full" disabled={uploading}>
-            {uploading ? "Guardando..." : "Guardar"}
-          </Button>
-        </div>
-      </CollapsibleSection>
-
-      <CollapsibleSection icon="📱" title="Contacto">
+      <ConfigSection id="contacto" label="Contacto y redes" icon="📱">
         <div className="space-y-3">
           <div>
             <Label>WhatsApp</Label>
@@ -1021,14 +1037,6 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
             <Label>Teléfono directo</Label>
             <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="2215550000" />
           </div>
-          <Button onClick={handleSaveAll} className="w-full" disabled={uploading}>
-            {uploading ? "Guardando..." : "Guardar contacto"}
-          </Button>
-        </div>
-      </CollapsibleSection>
-
-      <CollapsibleSection icon="🌐" title="Redes sociales">
-        <div className="space-y-3">
           <div>
             <Label>Instagram</Label>
             <Input value={instagram} onChange={(e) => setInstagram(e.target.value)} placeholder="@tuservicio" />
@@ -1037,13 +1045,10 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
             <Label>Facebook</Label>
             <Input value={facebook} onChange={(e) => setFacebook(e.target.value)} placeholder="https://facebook.com/tuservicio" />
           </div>
-          <Button onClick={handleSaveAll} className="w-full" disabled={uploading}>
-            {uploading ? "Guardando..." : "Guardar redes"}
-          </Button>
         </div>
-      </CollapsibleSection>
+      </ConfigSection>
 
-      <CollapsibleSection icon="🔧" title="Servicios que ofrecés" defaultOpen>
+      <ConfigSection id="servicios" label="Servicios" icon="🔧">
         <div className="space-y-3">
           <div>
             <Label>Servicios</Label>
@@ -1080,14 +1085,6 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
             </div>
             <Switch checked={acceptingQuotes} onCheckedChange={setAcceptingQuotes} />
           </div>
-          <Button onClick={handleSaveAll} className="w-full" disabled={uploading}>
-            {uploading ? "Guardando..." : "Guardar servicios"}
-          </Button>
-        </div>
-      </CollapsibleSection>
-
-      <CollapsibleSection icon="📋" title="Solicitudes online">
-        <div className="space-y-3">
           <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2">
             <div>
               <p className="text-sm font-medium">Turnera pública</p>
@@ -1146,13 +1143,10 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
               </div>
             </>
           )}
-          <Button onClick={handleSaveAll} className="w-full" disabled={uploading}>
-            {uploading ? "Guardando..." : "Guardar solicitudes"}
-          </Button>
         </div>
-      </CollapsibleSection>
+      </ConfigSection>
 
-      <CollapsibleSection icon="🚨" title="Urgencia 24hs">
+      <ConfigSection id="urgencia" label="Urgencia 24hs" icon="🚨">
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <div>
@@ -1188,13 +1182,17 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
               </div>
             </div>
           )}
-          <Button onClick={handleSaveAll} className="w-full" disabled={uploading}>
-            {uploading ? "Guardando..." : "Guardar configuración"}
-          </Button>
         </div>
-      </CollapsibleSection>
+      </ConfigSection>
+      <ConfigSaveBar saving={saving || uploading} onDiscard={() => { setMsg(""); reload(); }} />
+      </ConfigSections>
+      </form>
+      </>
+      )}
 
-      <CollapsibleSection icon="🖼️" title={`Galería de trabajos (${galleryCount})`}>
+      {(sec === "all" || sec === "galeria") && (
+      <>
+      <CollapsibleSection icon="🖼️" title={`Galería de trabajos (${galleryCount})`} defaultOpen>
         <GalleryManager
           title="Fotos de trabajos realizados"
           emptyText="Todavía no subiste fotos de trabajos."

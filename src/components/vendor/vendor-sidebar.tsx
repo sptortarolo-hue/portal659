@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { X, Package, ChefHat, ShoppingBag, LayoutGrid, UtensilsCrossed, Settings, BarChart3, History, Star, ExternalLink, LogOut, Home, Sparkles, Calculator, Bot, DollarSign, Receipt, Users, MessageSquare, CalendarDays, ClipboardList, Boxes } from "lucide-react";
+import { X, Package, ChefHat, ShoppingBag, LayoutGrid, UtensilsCrossed, Settings, BarChart3, History, Star, ExternalLink, LogOut, Home, Sparkles, Calculator, Bot, DollarSign, Receipt, Users, MessageSquare, CalendarDays, ClipboardList, Boxes, Image } from "lucide-react";
 import type { ConfigSectionStatus } from "@/components/dashboard/config-nav";
 
-type Tab = "hoy" | "config" | "menu" | "orders" | "pedidos" | "mostrador" | "history" | "comanda" | "analytics" | "pos" | "mesas" | "caja" | "clientes" | "reviews" | "recetas" | "fiscal" | "inventario";
+type Tab = "hoy" | "config" | "menu" | "orders" | "pedidos" | "mostrador" | "history" | "comanda" | "analytics" | "pos" | "mesas" | "caja" | "clientes" | "reviews" | "recetas" | "fiscal" | "inventario" | "galeria";
 
 interface VendorSidebarProps {
   open: boolean;
@@ -20,7 +20,7 @@ interface VendorSidebarProps {
   isGastro: boolean;
   isModa: boolean;
   isComercio?: boolean;
-  /** Vertical servicios: menú propio (Presupuestos/Turnos/Cobros/Ficha). */
+  /** Vertical servicios: menú propio (Presupuestos/Turnos/Cobros/Configuración). */
   isService?: boolean;
   /** Vertical estética: suma Pedidos + Catálogo al menú de servicios. */
   isEstetica?: boolean;
@@ -299,10 +299,16 @@ export default function VendorSidebar({
               {isService ? (
                 <>
                   <NavButton
+                    active={currentTab === "galeria"}
+                    onClick={() => handleTab("galeria")}
+                    icon={Image}
+                    label="Galería"
+                  />
+                  <NavButton
                     active={currentTab === "config"}
                     onClick={() => handleTab("config")}
                     icon={ClipboardList}
-                    label={isEstetica ? "Configuración" : "Ficha"}
+                    label="Configuración"
                   />
                   <NavButton
                     active={currentTab === "clientes"}

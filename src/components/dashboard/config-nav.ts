@@ -10,9 +10,11 @@ import {
   Printer,
   Receipt,
   ShoppingBag,
+  Siren,
   Store,
   Timer,
   Users,
+  Wrench,
   Settings2,
   type LucideIcon,
 } from "lucide-react";
@@ -40,6 +42,8 @@ export const CONFIG_SECTION_ICONS: Record<string, LucideIcon> = {
   turnera: CalendarDays,
   fichas: ClipboardList,
   packs: Gift,
+  servicios: Wrench,
+  urgencia: Siren,
 };
 
 export const CONFIG_SECTION_DESCS: Record<string, string> = {
@@ -57,6 +61,8 @@ export const CONFIG_SECTION_DESCS: Record<string, string> = {
   turnera: "Servicios, profesionales, sedes y turnera online.",
   fichas: "Modelos de ficha por servicio.",
   packs: "Packs de sesiones, giftcards y comisiones.",
+  servicios: "Qué ofrecés, zona y solicitudes online.",
+  urgencia: "Emergencias 24hs y recargo.",
 };
 
 export const CONFIG_SECTION_GROUPS: Array<{
@@ -67,6 +73,7 @@ export const CONFIG_SECTION_GROUPS: Array<{
   { id: "negocio", label: "Local", sections: ["perfil", "ubicacion", "contacto"] },
   { id: "ventas", label: "Ventas", sections: ["pagos", "menu", "catalogo"] },
   { id: "turnera", label: "Turnera", sections: ["turnera", "fichas", "packs"] },
+  { id: "servicio", label: "Servicio", sections: ["servicios", "urgencia"] },
   { id: "operacion", label: "Operación", sections: ["preparacion", "equipo", "impresora", "alertas", "fiscal"] },
 ];
 
@@ -87,6 +94,8 @@ export const CONFIG_SECTION_LABELS: Record<string, string> = {
   turnera: "Turnera",
   fichas: "Fichas",
   packs: "Packs y regalos",
+  servicios: "Servicios",
+  urgencia: "Urgencia 24hs",
 };
 
 /** Secciones disponibles por vertical (orden de la nav). */
@@ -100,6 +109,8 @@ export function sectionsForVertical(vertical: string | null | undefined): string
       return ["perfil", "ubicacion", "contacto", "pagos", "equipo", "impresora", "alertas", "fiscal"];
     case "estetica":
       return ["perfil", "ubicacion", "contacto", "pagos", "turnera", "fichas", "packs", "impresora", "alertas"];
+    case "servicio":
+      return ["perfil", "ubicacion", "contacto", "servicios", "urgencia"];
     default:
       return ["perfil", "ubicacion", "contacto", "pagos"];
   }

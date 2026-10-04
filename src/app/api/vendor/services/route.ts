@@ -58,9 +58,24 @@ export async function POST(request: Request) {
   if (commissionPct !== null && (!Number.isFinite(commissionPct) || commissionPct < 0 || commissionPct > 100)) {
     return NextResponse.json({ error: "La comisión debe estar entre 0 y 100" }, { status: 400 });
   }
+  // Seña obligatoria ("si no paga, no reserva"): exige monto de seña.
+  const requireDeposit = body.require_deposit === true;
+  // Foto del servicio (carta visual). Solo URLs de uploads propios.
+  let imageUrl: string | null =
+    typeof body.image_url === "string" && body.image_url.trim() ? body.image_url.trim().slice(0, 500) : null;
+  if (imageUrl && !imageUrl.startsWith("/uploads/") && !imageUrl.includes("/uploads/")) {
+    imageUrl = null;
+  }
+  const hoursRaw = body.deposit_hours;
+  const depositHours = hoursRaw == null || hoursRaw === "" ? 24 : Math.round(Number(hoursRaw));
+  if (requireDeposit && !(depositAmount != null && depositAmount > 0)) {
+    return NextResponse.json({ error: "Para exigir seña poné primero el monto" }, { status: 400 });
+  }
+  if (!Number.isFinite(depositHours) || depositHours < 1 || depositHours > 168) {
+    return NextResponse.json({ error: "Las horas para pagar deben estar entre 1 y 168" }, { status: 400 });
+  }
   // Sede (multi-sede light): valida que sea del comercio.
-  let locationId: string | null = typeof body.location_id === "string" && body.location_id ? body.location_id : null;
-  if (locationId) {
+  let locationId: string | null = typeof body.location_id === "string" && body.location_id ? body.location_id : null;  if (locationId) {
     try {
       const loc = await queryOne<{ id: string }>(
         `SELECT id FROM estetica_locations WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
@@ -122,6 +137,33 @@ export async function POST(request: Request) {
             depositAmount,
             body.active === false ? false : true,
           ]
+        );
+      }
+    }
+    // Foto (migración aparte): post-update tolerante.
+    if (imageUrl) {
+      try {
+        const withPhoto = await queryOne<Record<string, unknown>>(
+          `UPDATE services SET image_url = $1 WHERE id = $2 RETURNING *`,
+          [imageUrl, (row as { id: string }).id]
+        );
+        if (withPhoto) row = withPhoto;
+      } catch { /* sin columna: se ignora */ }
+    }
+    // Seña obligatoria (migración aparte): post-update tolerante. Si el
+    // comercio lo pidió explícito y falta la columna, avisar (503).
+    const wantsRequire = body.require_deposit !== undefined || body.deposit_hours !== undefined;
+    try {
+      const updated = await queryOne<Record<string, unknown>>(
+        `UPDATE services SET require_deposit = $1, deposit_hours = $2 WHERE id = $3 RETURNING *`,
+        [requireDeposit, depositHours, (row as { id: string }).id]
+      );
+      if (updated) return NextResponse.json({ service: updated });
+    } catch {
+      if (wantsRequire) {
+        return NextResponse.json(
+          { error: "Falta aplicar la migración migrate-estetica-require-deposit.sql en la base" },
+          { status: 503 }
         );
       }
     }

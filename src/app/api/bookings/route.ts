@@ -1,5 +1,6 @@
 import { query, queryMany, queryOne } from "@/lib/db";
 import { sendPushToUser } from "@/lib/push";
+import { getSiteUrl } from "@/lib/site-url";
 import { getServiceQuota, ServiceQuotaError } from "@/lib/service-quota";
 import { toE164 } from "@/lib/phone";
 import { NextResponse } from "next/server";
@@ -46,6 +47,8 @@ export const POST = withRateLimit(async (request: Request) => {
   let servicePrice: number | null = null;
   let serviceCommission: number | null = null;
   let staffCommission: number | null = null;
+  let requireDeposit = false;
+  let depositHours = 24;
   try {
     if (serviceId) {
       const svc = await queryOne<{
@@ -55,9 +58,11 @@ export const POST = withRateLimit(async (request: Request) => {
         deposit_amount: number | null;
         price: number | null;
         commission_pct: number | null;
+        require_deposit: boolean | null;
+        deposit_hours: number | null;
         active: boolean | null;
       }>(
-        `SELECT name, duration_min, buffer_min, deposit_amount, price, commission_pct, active FROM services WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
+        `SELECT name, duration_min, buffer_min, deposit_amount, price, commission_pct, require_deposit, deposit_hours, active FROM services WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
         [serviceId, vendorId]
       ).catch(() =>
         queryOne<{
@@ -67,6 +72,23 @@ export const POST = withRateLimit(async (request: Request) => {
           deposit_amount: number | null;
           price: number | null;
           commission_pct: number | null;
+          require_deposit: boolean | null;
+          deposit_hours: number | null;
+          active: boolean | null;
+        }>(
+          `SELECT name, duration_min, buffer_min, deposit_amount, price, commission_pct, active FROM services WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
+          [serviceId, vendorId]
+        )
+      ).catch(() =>
+        queryOne<{
+          name: string;
+          duration_min: number | null;
+          buffer_min: number | null;
+          deposit_amount: number | null;
+          price: number | null;
+          commission_pct: number | null;
+          require_deposit: boolean | null;
+          deposit_hours: number | null;
           active: boolean | null;
         }>(
           `SELECT name, duration_min, buffer_min, deposit_amount, active FROM services WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
@@ -82,6 +104,13 @@ export const POST = withRateLimit(async (request: Request) => {
       if (svc.deposit_amount != null && Number(svc.deposit_amount) > 0) depositAmount = Number(svc.deposit_amount);
       if (svc.price != null && Number(svc.price) >= 0) servicePrice = Number(svc.price);
       if (svc.commission_pct != null && Number(svc.commission_pct) >= 0) serviceCommission = Number(svc.commission_pct);
+      // Seña obligatoria solo si hay monto configurado (si no, se ignora).
+      if (svc.require_deposit === true && depositAmount != null && depositAmount > 0) {
+        requireDeposit = true;
+        if (svc.deposit_hours != null && Number(svc.deposit_hours) >= 1) {
+          depositHours = Math.min(168, Math.max(1, Math.floor(Number(svc.deposit_hours))));
+        }
+      }
     }
     if (staffId) {
       const st = await queryOne<{ id: string; commission_pct: number | null }>(
@@ -216,6 +245,78 @@ export const POST = withRateLimit(async (request: Request) => {
     }
   }
 
+  // Seña obligatoria ("si no paga, no reserva"): el turno nace pendiente de
+  // pago. Si el comercio tiene MP, se genera la preferencia en el acto y se
+  // devuelve el link; si no, queda pendiente y se coordina por WhatsApp.
+  // El cron auto-cancela vencidos (deposit_hours).
+  let depositInitPoint: string | null = null;
+  let depositWarning: string | null = null;
+  if (requireDeposit && booking?.id && depositAmount != null && depositAmount > 0) {
+    try {
+      await query(
+        `UPDATE bookings SET deposit_amount = $1, deposit_status = 'pending' WHERE id = $2`,
+        [depositAmount, booking.id]
+      );
+    } catch { /* sin columnas: el cron lo trata como normal */ }
+    try {
+      const { getVendorMpToken, isMpEnabled } = await import("@/lib/mp-oauth");
+      if (isMpEnabled()) {
+        const vmp = await queryOne<{
+          store_name: string | null;
+          slug: string | null;
+          mp_access_token: string | null;
+          mp_refresh_token: string | null;
+          mp_public_key: string | null;
+          mp_user_id: number | null;
+          mp_expires_at: string | null;
+        }>(
+          `SELECT store_name, slug, mp_access_token, mp_refresh_token, mp_public_key, mp_user_id, mp_expires_at
+           FROM vendors WHERE id = $1 LIMIT 1`,
+          [vendorId]
+        ).catch(() => undefined);
+        const mpToken = vmp ? await getVendorMpToken(vmp as never).catch(() => null) : null;
+        if (mpToken) {
+          const siteUrl = getSiteUrl(request);
+          const back = `${siteUrl}/tienda/${(vmp as { slug?: string | null })?.slug || vendorId}`;
+          const externalReference = `portal659_sena_turno_${booking.id}_${Date.now()}`;
+          const pref = await fetch("https://api.mercadopago.com/checkout/preferences", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${mpToken}` },
+            body: JSON.stringify({
+              items: [
+                {
+                  title: `Seña turno — ${serviceName || "servicio"} (${customerName})`.slice(0, 120),
+                  unit_price: depositAmount,
+                  quantity: 1,
+                  currency_id: "ARS",
+                },
+              ],
+              metadata: { vendor_id: vendorId, booking_id: booking.id, kind: "service_deposit" },
+              external_reference: externalReference,
+              back_urls: { success: back, failure: back, pending: back },
+              auto_return: "approved",
+              notification_url: `${siteUrl}/api/webhooks/mercadopago`,
+            }),
+            signal: AbortSignal.timeout(15000),
+          });
+          const pdata = await pref.json().catch(() => null);
+          if (pdata?.id) {
+            const isTest = mpToken.startsWith("TEST-");
+            depositInitPoint = (isTest && pdata.sandbox_init_point ? pdata.sandbox_init_point : pdata.init_point) || null;
+          } else {
+            depositWarning = "No se pudo generar el pago online: coordiná la seña por WhatsApp.";
+          }
+        } else {
+          depositWarning = "Este servicio exige seña: coordiná el pago por WhatsApp.";
+        }
+      } else {
+        depositWarning = "Este servicio exige seña: coordiná el pago por WhatsApp.";
+      }
+    } catch {
+      depositWarning = "Este servicio exige seña: coordiná el pago por WhatsApp.";
+    }
+  }
+
   const vendor = await queryOne<{ user_id: string }>(
     `SELECT user_id, store_name FROM vendors WHERE id = $1 LIMIT 1`,
     [vendorId]
@@ -289,5 +390,37 @@ export const POST = withRateLimit(async (request: Request) => {
     } catch { /* best-effort */ }
   }
 
-  return NextResponse.json({ ok: true, bookingId: booking?.id, packUsed, packWarning });
+  // Confirmación por WhatsApp (fire-and-forget): no frena la respuesta.
+  // Solo diurno; opt-out vendors.wa_reminders; sin relay vinculado no sale.
+  try {
+    const { isDaytimeAR: isDay, sendWaText: sendWa } = await import("@/lib/wa-send");
+    if (isDay() && customerPhone && booking?.id) {
+      const vrow = await queryOne<{ store_name: string | null; wa_reminders: boolean | null }>(
+        `SELECT store_name, wa_reminders FROM vendors WHERE id = $1 LIMIT 1`,
+        [vendorId]
+      ).catch(() => null);
+      if ((vrow as any)?.wa_reminders !== false) {
+        // Si la migración de confirm_token no está, se avisa sin link.
+        let withLink = true;
+        try {
+          await queryOne(`SELECT confirm_token FROM bookings WHERE id = $1 LIMIT 1`, [booking.id]);
+        } catch {
+          withLink = false;
+        }
+        const siteUrl = getSiteUrl(request);
+        void sendWa({
+          vendorId,
+          waId: customerPhone,
+          text:
+            `✅ ¡Turno recibido en ${(vrow as any)?.store_name || "el local"}! ${bookingDate} a las ${String(bookingTime).slice(0, 5)}` +
+            (serviceName ? ` · ${serviceName}` : "") +
+            (requireDeposit && depositAmount
+              ? ` Para confirmarlo aboná la seña de $${Number(depositAmount).toLocaleString("es-AR")} dentro de ${depositHours}h${depositInitPoint ? ` acá: ${depositInitPoint}` : ""}. Si no se acredita, el turno se libera.`
+              : withLink ? ` Confirmalo o cancelalo acá: ${siteUrl}/turno/${confirmToken}` : ""),
+        }).catch(() => undefined);
+      }
+    }
+  } catch { /* best-effort */ }
+
+  return NextResponse.json({ ok: true, bookingId: booking?.id, packUsed, packWarning, depositRequired: requireDeposit, depositAmount, depositInitPoint, depositWarning });
 }, { maxRequests: 10 });

@@ -110,6 +110,19 @@ export async function PATCH(
     [id]
   );
 
+  // Si se liberó un hueco con gente en espera, avisar el conteo para que el
+  // comercio contacte (la lista vive en Turnos).
+  let waitlistCount = 0;
+  if (status === "cancelled" && existing) {
+    try {
+      const w = await queryOne<{ c: number }>(
+        `SELECT COUNT(*)::int AS c FROM waitlist WHERE vendor_id = $1 AND booking_date = $2::date`,
+        [vendor.id, existing.booking_date]
+      ).catch(() => ({ c: 0 }));
+      waitlistCount = w?.c || 0;
+    } catch { /* sin tabla: 0 */ }
+  }
+
   // Aviso al cliente (push si tiene cuenta con ese teléfono; si no, el vendor
   // usa el link de WhatsApp de la agenda). Best-effort, no bloquea.
   if (status === "confirmed" || status === "cancelled") {
@@ -124,5 +137,5 @@ export async function PATCH(
     });
   }
 
-  return NextResponse.json({ booking });
+  return NextResponse.json({ booking, waitlistCount });
 }

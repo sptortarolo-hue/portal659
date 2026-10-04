@@ -429,6 +429,14 @@ export type Vendor = {
   cancel_policy_text?: string | null;
   /** Anticipación mínima para cancelar (horas; default 24). */
   cancel_hours?: number | null;
+  /** Recordatorios por WhatsApp (NULL = activados; false = solo push). */
+  wa_reminders?: boolean | null;
+  /** Link a reseñas de Google del local (para pedir opinión post-visita). */
+  google_review_url?: string | null;
+  /** Fidelización: cada N sesiones... */
+  loyalty_every?: number | null;
+  /** ...% de descuento manual. */
+  loyalty_pct?: number | null;
   is_admin: boolean;
   printer_ip: string | null;
   printer_port: number | null;

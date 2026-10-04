@@ -2,11 +2,13 @@
 
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ConfigSection, ConfigSections } from "@/components/dashboard/config-sections";
 import { PushAlertCard } from "@/components/dashboard/push-alert-card";
+import { WaRemindersCard } from "@/components/dashboard/wa-reminders-card";
 import { Switch } from "@/components/ui/switch";
 import { ChipToggle } from "@/components/ui/chip-toggle";
 import { RadioCards } from "@/components/ui/radio-cards";
@@ -152,6 +154,15 @@ export default function DashboardEstetica({
   const [cancelHours, setCancelHours] = useState(
     (vendor as any)?.cancel_hours != null ? String((vendor as any).cancel_hours) : "24"
   );
+  const [googleReviewUrl, setGoogleReviewUrl] = useState(
+    typeof vendor?.google_review_url === "string" ? vendor.google_review_url : ""
+  );
+  const [loyaltyEvery, setLoyaltyEvery] = useState(
+    (vendor as any)?.loyalty_every != null ? String((vendor as any).loyalty_every) : ""
+  );
+  const [loyaltyPct, setLoyaltyPct] = useState(
+    (vendor as any)?.loyalty_pct != null ? String((vendor as any).loyalty_pct) : ""
+  );
   const [depositDefault, setDepositDefault] = useState(
     vendor?.deposit_default_pct != null ? String(vendor.deposit_default_pct) : ""
   );
@@ -193,6 +204,9 @@ export default function DashboardEstetica({
     );
     setCancelPolicy(typeof vendor.cancel_policy_text === "string" ? vendor.cancel_policy_text : "");
     setCancelHours((vendor as any)?.cancel_hours != null ? String((vendor as any).cancel_hours) : "24");
+    setGoogleReviewUrl(typeof vendor.google_review_url === "string" ? vendor.google_review_url : "");
+    setLoyaltyEvery((vendor as any)?.loyalty_every != null ? String((vendor as any).loyalty_every) : "");
+    setLoyaltyPct((vendor as any)?.loyalty_pct != null ? String((vendor as any).loyalty_pct) : "");
     setDepositDefault(vendor.deposit_default_pct != null ? String(vendor.deposit_default_pct) : "");
     setStorePreview(vendor.image_url || null);
     setLogoPreview(vendor.logo_url || null);
@@ -258,7 +272,7 @@ export default function DashboardEstetica({
 
   async function saveContacto() {
     try {
-      await saveVendor({ whatsapp, phone, instagram, facebook });
+      await saveVendor({ whatsapp, phone, instagram, facebook, google_review_url: googleReviewUrl.trim() || null });
       setMsg("Contacto guardado");
     } catch {
       setMsg("Error al guardar");
@@ -441,6 +455,13 @@ export default function DashboardEstetica({
               <Label>Facebook</Label>
               <Input value={facebook} onChange={(e) => setFacebook(e.target.value)} placeholder="https://facebook.com/tucentro" />
             </div>
+            <div>
+              <Label>Link a tus reseñas de Google (opcional)</Label>
+              <Input value={googleReviewUrl} onChange={(e) => setGoogleReviewUrl(e.target.value)} placeholder="https://g.page/..." />
+              <p className="text-xs text-muted-foreground mt-1">
+                Se usa para pedir opinión automáticamente después de cada visita.
+              </p>
+            </div>
             <Button onClick={saveContacto} className="w-full" disabled={uploading}>
               {uploading ? "Guardando..." : "Guardar contacto"}
             </Button>
@@ -620,6 +641,42 @@ export default function DashboardEstetica({
             <EsteticaPacksManager />
             <EsteticaGiftcardsManager />
             <EsteticaCommissionsReport />
+            <Card className="p-4 space-y-3">
+              <div>
+                <p className="font-medium text-sm">⭐ Fidelización</p>
+                <p className="text-xs text-muted-foreground">
+                  Cada N sesiones la clienta gana % off (lo aplicás al cobrar). El panel muestra su progreso en Clientes.
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label className="text-xs">Cada N sesiones</Label>
+                  <Input value={loyaltyEvery} onChange={(e) => setLoyaltyEvery(e.target.value)} inputMode="numeric" placeholder="Ej: 8" className="mt-1 h-9 text-sm" />
+                </div>
+                <div>
+                  <Label className="text-xs">% off (vacío = apagado)</Label>
+                  <Input value={loyaltyPct} onChange={(e) => setLoyaltyPct(e.target.value)} inputMode="decimal" placeholder="Ej: 20" className="mt-1 h-9 text-sm" />
+                </div>
+              </div>
+              <Button
+                size="sm"
+                className="w-full"
+                disabled={uploading}
+                onClick={async () => {
+                  try {
+                    await saveVendor({
+                      loyalty_every: loyaltyEvery === "" ? null : Number(loyaltyEvery),
+                      loyalty_pct: loyaltyPct === "" ? null : Number(loyaltyPct),
+                    });
+                    setMsg("Fidelización guardada");
+                  } catch {
+                    setMsg("Error al guardar");
+                  }
+                }}
+              >
+                Guardar fidelización
+              </Button>
+            </Card>
           </div>
         </ConfigSection>
 
@@ -633,7 +690,10 @@ export default function DashboardEstetica({
         </ConfigSection>
 
         <ConfigSection id="alertas" label="Alertas" icon="🔔">
-          <PushAlertCard />
+          <div className="space-y-3">
+            <PushAlertCard />
+            <WaRemindersCard />
+          </div>
         </ConfigSection>
       </ConfigSections>
       {msg && <p className="text-sm text-muted-foreground">{msg}</p>}

@@ -72,6 +72,41 @@ export async function PATCH(
     sets.push(`active = $${idx++}`);
     vals.push(body.active !== false);
   }
+  if (body.require_deposit !== undefined) {
+    if (body.require_deposit === true) {
+      // Exigir seña requiere monto: el que viene o el ya guardado.
+      let amount: number | null = null;
+      if (body.deposit_amount !== undefined) {
+        const raw = body.deposit_amount;
+        amount = raw == null || raw === "" ? null : Number(raw);
+      } else {
+        const cur = await queryOne<{ deposit_amount: number | null }>(
+          `SELECT deposit_amount FROM services WHERE vendor_id = $1 AND id = $2 LIMIT 1`,
+          [vendor.id, id]
+        ).catch(() => null);
+        amount = cur?.deposit_amount != null ? Number(cur.deposit_amount) : null;
+      }
+      if (!(amount != null && amount > 0)) {
+        return NextResponse.json({ error: "Para exigir seña poné primero el monto" }, { status: 400 });
+      }
+    }
+    sets.push(`require_deposit = $${idx++}`);
+    vals.push(body.require_deposit === true);
+  }
+  if (body.deposit_hours !== undefined) {
+    const n = body.deposit_hours == null || body.deposit_hours === "" ? 24 : Math.round(Number(body.deposit_hours));
+    if (!Number.isFinite(n) || n < 1 || n > 168) {
+      return NextResponse.json({ error: "Las horas para pagar deben estar entre 1 y 168" }, { status: 400 });
+    }
+    sets.push(`deposit_hours = $${idx++}`);
+    vals.push(n);
+  }
+  if (body.image_url !== undefined) {
+    const raw = typeof body.image_url === "string" ? body.image_url.trim().slice(0, 500) : "";
+    const url = raw && (raw.startsWith("/uploads/") || raw.includes("/uploads/")) ? raw : null;
+    sets.push(`image_url = $${idx++}`);
+    vals.push(url);
+  }
   if (body.location_id !== undefined) {
     const raw = typeof body.location_id === "string" && body.location_id ? body.location_id : null;
     if (raw) {
@@ -102,7 +137,7 @@ export async function PATCH(
     return NextResponse.json({ service: row });
   } catch {
     return NextResponse.json(
-      { error: "Falta aplicar la migración migrate-estetica.sql (o migrate-estetica-commissions.sql para precio/comisión) en la base" },
+      { error: "Falta aplicar la migración migrate-estetica.sql (o migrate-estetica-commissions.sql para precio/comisión, migrate-estetica-require-deposit.sql para seña obligatoria) en la base" },
       { status: 503 }
     );
   }

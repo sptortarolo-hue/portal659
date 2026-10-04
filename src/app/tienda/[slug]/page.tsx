@@ -13,7 +13,7 @@ import { ReviewList } from "@/components/reviews/review-list";
 import { FavoriteButton } from "@/components/favorites/favorite-button";
 import { QuoteForm } from "@/components/services/quote-form";
 import { BookingForm } from "@/components/services/booking-form";
-import { PackBuyCard, GiftcardBuyCard } from "@/components/services/estetica-shop";
+import { PackBuyCard, GiftcardBuyCard, ServicePickCards } from "@/components/services/estetica-shop";
 import { StickyWhatsApp } from "@/components/store/sticky-whatsapp";
 import { VariantSelector } from "@/components/store/variant-selector";
 import { ProductCard } from "@/components/store/product-card";
@@ -386,7 +386,7 @@ export default async function TiendaPage({
   const isEstetica = v.vertical === "estetica";
   // Catálogo de servicios + profesionales (estética): turnera por servicio
   // con duración y agenda por profesional. Tolerante a migración sin aplicar.
-  let esteticaServices: { id: string; name: string; deposit_amount: number | null; duration_min: number | null; price: number | null }[] = [];
+  let esteticaServices: { id: string; name: string; deposit_amount: number | null; duration_min: number | null; price: number | null; require_deposit: boolean | null; deposit_hours: number | null; image_url: string | null }[] = [];
   let esteticaStaff: { id: string; name: string }[] = [];
   let esteticaLocations: { id: string; name: string; address: string | null }[] = [];
   let esteticaPacks: { id: string; name: string; sessions_total: number | null; price: number | null }[] = [];
@@ -394,8 +394,18 @@ export default async function TiendaPage({
   if (isEstetica) {
     try {
       const srows = await queryMany<any>(
-        `SELECT id, name, deposit_amount, duration_min, price FROM services WHERE vendor_id = $1 AND active = true ORDER BY position ASC, name ASC`,
+        `SELECT id, name, deposit_amount, duration_min, price, require_deposit, deposit_hours, image_url FROM services WHERE vendor_id = $1 AND active = true ORDER BY position ASC, name ASC`,
         [v.id]
+      ).catch(() =>
+        queryMany<any>(
+          `SELECT id, name, deposit_amount, duration_min, price, require_deposit, deposit_hours FROM services WHERE vendor_id = $1 AND active = true ORDER BY position ASC, name ASC`,
+          [v.id]
+        ).catch(() => null)
+      ).catch(() =>
+        queryMany<any>(
+          `SELECT id, name, deposit_amount, duration_min, price FROM services WHERE vendor_id = $1 AND active = true ORDER BY position ASC, name ASC`,
+          [v.id]
+        )
       ).catch(() =>
         queryMany<any>(
           `SELECT id, name, deposit_amount, duration_min FROM services WHERE vendor_id = $1 AND active = true ORDER BY position ASC, name ASC`,
@@ -408,6 +418,9 @@ export default async function TiendaPage({
         deposit_amount: s.deposit_amount != null ? Number(s.deposit_amount) : null,
         duration_min: s.duration_min != null ? Number(s.duration_min) : null,
         price: s.price != null ? Number(s.price) : null,
+        require_deposit: s.require_deposit === true,
+        deposit_hours: s.deposit_hours != null ? Number(s.deposit_hours) : null,
+        image_url: typeof s.image_url === "string" && s.image_url ? s.image_url : null,
       }));
     } catch { esteticaServices = []; }
     try {
@@ -771,10 +784,15 @@ export default async function TiendaPage({
             )}
 
             {!serviceQuotaFull && v.bookings_enabled !== false && (
-            <div className="border border-border rounded-2xl p-6 bg-card mb-6">
+            <div id="reservar-turno" className="border border-border rounded-2xl p-6 bg-card mb-6 scroll-mt-24">
               <h3 className="font-display text-lg font-semibold mb-4">
                 📅 Reservar turno
               </h3>
+              {isEstetica && esteticaServices.length > 0 && (
+                <div className="mb-5">
+                  <ServicePickCards services={esteticaServices} />
+                </div>
+              )}
               <BookingForm
                 vendorId={v.id}
                 vendorName={v.store_name}

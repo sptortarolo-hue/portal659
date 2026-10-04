@@ -42,6 +42,7 @@ services:
       - PRINT_BRIDGE_SECRET=${PRINT_BRIDGE_SECRET}
       - LLM_API_KEY=${LLM_API_KEY}
       - WA_BOT_SECRET=${WA_BOT_SECRET}
+      - WABOT_URL=${WABOT_URL:-http://portal659-wabot:8792}
       - CRON_SECRET=${CRON_SECRET}
     volumes:
       - uploads_data:/app/uploads

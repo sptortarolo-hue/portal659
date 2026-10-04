@@ -83,12 +83,14 @@ export async function POST(request: Request) {
     urgent_enabled,
     urgent_surcharge_pct,
     deposit_default_pct,
-    bookings_enabled,
-    quote_pref_enabled,
+    bookings_enabled,    quote_pref_enabled,
     quote_days,
     quote_slots,
     cancel_policy_text,
     cancel_hours,
+    google_review_url,
+    loyalty_every,
+    loyalty_pct,
     printer_ip,
     printer_port,
     paper_size,
@@ -294,6 +296,25 @@ export async function POST(request: Request) {
     }
     payload.deposit_default_pct = pct;
   }
+  // Link a reseñas de Google + fidelización (cada N sesiones, % off manual).
+  if (google_review_url !== undefined) {
+    const u = typeof google_review_url === "string" ? google_review_url.trim().slice(0, 500) : "";
+    payload.google_review_url = u || null;
+  }
+  if (loyalty_every !== undefined) {
+    const n = loyalty_every == null || loyalty_every === "" ? null : Math.floor(Number(loyalty_every));
+    if (n !== null && (!Number.isFinite(n) || n < 2 || n > 100)) {
+      return NextResponse.json({ error: "La fidelización debe ser cada 2 a 100 sesiones" }, { status: 400 });
+    }
+    payload.loyalty_every = n;
+  }
+  if (loyalty_pct !== undefined) {
+    const n = loyalty_pct == null || loyalty_pct === "" ? null : Number(loyalty_pct);
+    if (n !== null && (!Number.isFinite(n) || n <= 0 || n > 100)) {
+      return NextResponse.json({ error: "El % de fidelización debe estar entre 1 y 100" }, { status: 400 });
+    }
+    payload.loyalty_pct = n;
+  }
   if (printer_ip !== undefined) payload.printer_ip = printer_ip || null;
   if (printer_port !== undefined) payload.printer_port = printer_port || 9100;
   if (paper_size !== undefined) payload.paper_size = paper_size || "80mm";
@@ -408,6 +429,9 @@ export async function POST(request: Request) {
         "floor_bg_url",
         "cancel_policy_text",
         "cancel_hours",
+        "google_review_url",
+        "loyalty_every",
+        "loyalty_pct",
       ].filter((k) => k in payload && msg.includes(k));
       if (droppable.length > 0) {
         for (const k of droppable) delete payload[k];

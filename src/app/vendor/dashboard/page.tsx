@@ -68,6 +68,7 @@ import { MenuStudio } from "@/components/dashboard/menu-studio";
 import ComandaKDS from "@/components/dashboard/comanda-kds";
 import { playNewOrderAlert, resumeAudioContext, startTitleFlash, stopTitleFlash, startRepeatAlert, stopRepeatAlert } from "@/lib/sounds";
 import { PushAlertCard } from "@/components/dashboard/push-alert-card";
+import { WaRemindersCard } from "@/components/dashboard/wa-reminders-card";
 import { resolveVendorPlan, daysLeft, type FeatureKey } from "@/lib/plans";
 import { PlanBanner } from "@/components/vendor/plan-banner";
 import { PlanLock } from "@/components/vendor/plan-lock";
@@ -1747,7 +1748,12 @@ function VendorDashboardInner() {
                         "Alertas" del menú de Configuración; servicio puro no tiene
                         menú de secciones y la muestra fija acá (Ficha no es
                         pantalla operativa). */}
-                    {isService && !isEstetica && <PushAlertCard />}
+                    {isService && !isEstetica && (
+                      <div className="space-y-3">
+                        <PushAlertCard />
+                        <WaRemindersCard />
+                      </div>
+                    )}
                     <TabErrorBoundary tab="config">{configContent}</TabErrorBoundary>
                   </div>
                 </div>

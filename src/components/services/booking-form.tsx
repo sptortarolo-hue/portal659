@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,7 +12,7 @@ type Props = {
   vendorName: string;
   services?: { id: string; name: string }[];
   /** Catálogo de servicios de estética (con seña, duración y precio): reserva por ID. */
-  serviceOptions?: { id: string; name: string; deposit_amount: number | null; duration_min: number | null; price?: number | null }[];
+  serviceOptions?: { id: string; name: string; deposit_amount: number | null; duration_min: number | null; price?: number | null; require_deposit?: boolean | null; deposit_hours?: number | null }[];
   /** Profesionales del centro (agenda por profesional). */
   staffOptions?: { id: string; name: string }[];
   /** Sedes del centro (multi-sede light). */
@@ -33,6 +33,23 @@ export function BookingForm({ vendorId, vendorName, services, serviceOptions, st
   const [creditsLoading, setCreditsLoading] = useState(false);
   const [usePackId, setUsePackId] = useState("");
   const [packMsg, setPackMsg] = useState("");
+  const [depositPayUrl, setDepositPayUrl] = useState<string | null>(null);
+  const [depositMsg, setDepositMsg] = useState("");
+  // Lista de espera (el horario está ocupado).
+  const [overlap, setOverlap] = useState(false);
+  const [waiting, setWaiting] = useState(false);
+  const [waitDone, setWaitDone] = useState(false);
+  const [waitBusy, setWaitBusy] = useState(false);
+
+  // Carta visual: "Elegir" preselecciona el servicio en el formulario.
+  useEffect(() => {
+    const onPick = (e: Event) => {
+      const id = (e as CustomEvent)?.detail?.serviceId;
+      if (typeof id === "string" && id) setServiceId(id);
+    };
+    window.addEventListener("portal:pick-service", onPick);
+    return () => window.removeEventListener("portal:pick-service", onPick);
+  }, []);
   const [bookingDate, setBookingDate] = useState("");
   const [bookingTime, setBookingTime] = useState("");
   const [notes, setNotes] = useState("");
@@ -53,6 +70,14 @@ export function BookingForm({ vendorId, vendorName, services, serviceOptions, st
         </p>
         {packMsg && (
           <p className="text-sm mt-2 rounded-lg bg-green-50 border border-green-200 text-green-800 px-3 py-2">{packMsg}</p>
+        )}
+        {depositPayUrl && (
+          <a href={depositPayUrl} className="block mt-3 rounded-xl bg-primary text-primary-foreground font-bold px-4 py-3 text-sm hover:bg-primary/90">
+            💳 Pagar la seña ahora para confirmar
+          </a>
+        )}
+        {depositMsg && (
+          <p className="text-sm mt-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 px-3 py-2">{depositMsg}</p>
         )}
       </div>
     );
@@ -79,11 +104,42 @@ export function BookingForm({ vendorId, vendorName, services, serviceOptions, st
     }
   }
 
+  async function joinWaitlist() {    if (!name || !phone || !bookingDate) return;
+    setWaitBusy(true);
+    try {
+      const res = await fetch("/api/waitlist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          vendorId,
+          customerName: name,
+          customerPhone: phone,
+          serviceId: useCatalog ? serviceId || null : null,
+          staffId: staffId || null,
+          bookingDate,
+          bookingTime: bookingTime || null,
+          notes: notes || null,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (data.error) {
+        setError(data.error);
+        return;
+      }
+      setWaitDone(true);
+    } catch {
+      setError("Error de conexión");
+    } finally {
+      setWaitBusy(false);
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name || !phone || !bookingDate || !bookingTime) return;
     setLoading(true);
     setError("");
+    setOverlap(false);
 
     const res = await fetch("/api/bookings", {
       method: "POST",
@@ -105,6 +161,13 @@ export function BookingForm({ vendorId, vendorName, services, serviceOptions, st
 
     const data = await res.json();
     if (data.error) {
+      // Horario ocupado → ofrecer lista de espera (solo estética con turnera
+      // por servicio: hay serviceId o catálogo).
+      if (res.status === 409 && useCatalog) {
+        setOverlap(true);
+        setLoading(false);
+        return;
+      }
       setError(data.error);
       setLoading(false);
       return;
@@ -114,6 +177,13 @@ export function BookingForm({ vendorId, vendorName, services, serviceOptions, st
       setPackMsg(`✅ Se usó 1 sesión de ${data.packUsed.pack_name} (quedan ${data.packUsed.remaining}).`);
     } else if (data.packWarning) {
       setPackMsg(`⚠️ ${data.packWarning}`);
+    }
+    if (data.depositRequired) {
+      if (data.depositInitPoint) {
+        setDepositPayUrl(String(data.depositInitPoint));
+      } else {
+        setDepositMsg(data.depositWarning || "Este servicio exige seña: coordiná el pago por WhatsApp.");
+      }
     }
     setDone(true);
     setLoading(false);
@@ -167,6 +237,7 @@ export function BookingForm({ vendorId, vendorName, services, serviceOptions, st
           {chosenService?.deposit_amount ? (
             <p className="text-xs text-muted-foreground mt-1">
               💰 Este servicio pide una seña de ${Number(chosenService.deposit_amount).toLocaleString("es-AR")} para confirmar (te la descuentan el día del turno).
+              {chosenService.require_deposit ? " 🔒 Sin la seña el turno se libera." : ""}
             </p>
           ) : null}
         </div>
@@ -233,6 +304,21 @@ export function BookingForm({ vendorId, vendorName, services, serviceOptions, st
         <Textarea id="b-notes" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Alguna indicación extra..." rows={2} />
       </div>
       {error && <p className="text-sm text-red-600">{error}</p>}
+      {overlap && !waitDone && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 space-y-2">
+          <p className="text-xs font-medium text-amber-900">
+            😕 Ese horario ya está ocupado. ¿Te avisamos si se libera?
+          </p>
+          <Button type="button" size="sm" className="w-full" disabled={waitBusy} onClick={joinWaitlist}>
+            {waitBusy ? "Anotando..." : "🔔 Avisame si se libera"}
+          </Button>
+        </div>
+      )}
+      {waitDone && (
+        <p className="text-xs rounded-lg bg-green-50 border border-green-200 text-green-800 px-3 py-2">
+          ✅ Anotada en lista de espera. Si se libera, te escribimos.
+        </p>
+      )}
       <Button type="submit" className="w-full" disabled={loading}>
         {loading ? "Reservando..." : "Reservar turno"}
       </Button>

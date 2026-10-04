@@ -16,6 +16,9 @@ type Service = {
   deposit_amount: number | null;
   price: number | null;
   commission_pct: number | null;
+  require_deposit?: boolean | null;
+  deposit_hours?: number | null;
+  image_url?: string | null;
   active: boolean | null;
 };
 
@@ -34,12 +37,32 @@ export function EsteticaServicesManager({ onChanged }: { onChanged?: () => void 
   const [price, setPrice] = useState("");
   const [commission, setCommission] = useState("");
   const [locationId, setLocationId] = useState("");
+  const [requireDeposit, setRequireDeposit] = useState(false);
+  const [depositHours, setDepositHours] = useState("24");
+  const [imageUrl, setImageUrl] = useState("");
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [locations, setLocations] = useState<{ id: string; name: string }[]>([]);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editPrice, setEditPrice] = useState("");
   const [editCommission, setEditCommission] = useState("");
+  const [editRequire, setEditRequire] = useState(false);
+  const [editHours, setEditHours] = useState("24");
+  const [editImage, setEditImage] = useState("");
+
+  async function uploadServicePhoto(file: File): Promise<string | null> {
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("folder", "services");
+    try {
+      const res = await fetch("/api/vendor/upload", { method: "POST", body: fd });
+      const data = await res.json().catch(() => ({}));
+      return typeof data.url === "string" ? data.url : null;
+    } catch {
+      return null;
+    }
+  }
 
   async function load() {
     setLoading(true);
@@ -81,6 +104,9 @@ export function EsteticaServicesManager({ onChanged }: { onChanged?: () => void 
           price: price === "" ? null : Number(price),
           commission_pct: commission === "" ? null : Number(commission),
           location_id: locationId || undefined,
+          require_deposit: requireDeposit,
+          deposit_hours: depositHours === "" ? 24 : Number(depositHours),
+          image_url: imageUrl || undefined,
         }),
       });
       const data = await res.json();
@@ -95,6 +121,9 @@ export function EsteticaServicesManager({ onChanged }: { onChanged?: () => void 
       setPrice("");
       setCommission("");
       setLocationId("");
+      setRequireDeposit(false);
+      setDepositHours("24");
+      setImageUrl("");
       await load();
       onChanged?.();
     } catch {
@@ -112,6 +141,9 @@ export function EsteticaServicesManager({ onChanged }: { onChanged?: () => void 
         body: JSON.stringify({
           price: editPrice === "" ? null : Number(editPrice),
           commission_pct: editCommission === "" ? null : Number(editCommission),
+          require_deposit: editRequire,
+          deposit_hours: editHours === "" ? 24 : Number(editHours),
+          image_url: editImage || null,
         }),
       });
       const data = await res.json();
@@ -176,13 +208,17 @@ export function EsteticaServicesManager({ onChanged }: { onChanged?: () => void 
             <div key={s.id} className="rounded-lg bg-muted px-2.5 py-2 text-xs">
               <div className="flex items-center gap-2">
                 <span className="flex-1 min-w-0">
+                  {s.image_url && (
+                    <img src={s.image_url} alt="" className="h-10 w-10 rounded-lg object-cover border border-border mb-1" />
+                  )}
                   <span className={`block font-medium truncate ${s.active === false ? "line-through opacity-60" : ""}`}>{s.name}</span>
                   <span className="block text-muted-foreground">
                     {s.duration_min ?? 60} min{s.buffer_min ? ` +${s.buffer_min} buffer` : ""} · seña {s.deposit_amount ? money(Number(s.deposit_amount)) : "no"}
                     {s.price != null ? ` · ${money(Number(s.price))}` : ""}{s.commission_pct != null ? ` · ${Number(s.commission_pct)}%` : ""}
+                    {s.require_deposit ? ` · 🔒 seña obligatoria (${s.deposit_hours ?? 24}h)` : ""}
                   </span>
                 </span>
-                <button type="button" onClick={() => { setEditingId(editingId === s.id ? null : s.id); setEditPrice(s.price != null ? String(s.price) : ""); setEditCommission(s.commission_pct != null ? String(s.commission_pct) : ""); }} className="text-muted-foreground hover:text-foreground flex-shrink-0" title="Precio y comisión">
+                <button type="button" onClick={() => { setEditingId(editingId === s.id ? null : s.id); setEditPrice(s.price != null ? String(s.price) : ""); setEditCommission(s.commission_pct != null ? String(s.commission_pct) : ""); setEditRequire(s.require_deposit === true); setEditHours(s.deposit_hours != null ? String(s.deposit_hours) : "24"); setEditImage(typeof s.image_url === "string" ? s.image_url : ""); }} className="text-muted-foreground hover:text-foreground flex-shrink-0" title="Precio, comisión y seña">
                   ✏️
                 </button>
                 <button type="button" onClick={() => toggle(s)} className="text-muted-foreground hover:text-foreground flex-shrink-0" title={s.active === false ? "Activar" : "Pausar"}>
@@ -202,8 +238,46 @@ export function EsteticaServicesManager({ onChanged }: { onChanged?: () => void 
                     <Label className="text-xs">Comisión % (vacío = la del profesional)</Label>
                     <Input value={editCommission} onChange={(e) => setEditCommission(e.target.value)} inputMode="decimal" placeholder="Ej: 40" className="mt-1 h-9 text-sm bg-background" />
                   </div>
+                  <div className="col-span-2 space-y-2 rounded-md border border-border p-2">
+                    <label className="flex items-center gap-2 text-xs cursor-pointer">
+                      <input type="checkbox" checked={editRequire} onChange={(e) => setEditRequire(e.target.checked)} className="h-4 w-4" />
+                      🔒 Exigir seña para reservar (si no paga, no reserva)
+                    </label>
+                    {editRequire && (
+                      <div>
+                        <Label className="text-xs">Horas para pagar antes de liberar el turno</Label>
+                        <Input value={editHours} onChange={(e) => setEditHours(e.target.value)} inputMode="numeric" placeholder="24" className="mt-1 h-9 text-sm bg-background" />
+                      </div>
+                    )}
+                  </div>
                   <div className="col-span-2">
-                    <Button size="sm" className="w-full" onClick={() => saveEdit(s.id)}>Guardar precio y comisión</Button>
+                    <Label className="text-xs">Foto (opcional, se ve en la carta)</Label>
+                    <div className="flex items-center gap-2 mt-1">
+                      {editImage ? (
+                        <>
+                          <img src={editImage} alt="" className="h-10 w-10 rounded-lg object-cover border border-border" />
+                          <button type="button" onClick={() => setEditImage("")} className="text-xs text-red-600 hover:underline">Quitar</button>
+                        </>
+                      ) : (
+                        <label className="inline-flex items-center gap-2 rounded-md border border-input px-3 py-2 text-xs font-medium cursor-pointer hover:bg-muted">
+                          📷 Subir foto
+                          <input
+                            type="file" accept="image/*" className="hidden"
+                            onChange={async (e) => {
+                              const f = e.target.files?.[0];
+                              if (!f) return;
+                              const url = await uploadServicePhoto(f);
+                              if (url) setEditImage(url);
+                              else setMsg("No se pudo subir la foto");
+                              e.target.value = "";
+                            }}
+                          />
+                        </label>
+                      )}
+                    </div>
+                  </div>
+                  <div className="col-span-2">
+                    <Button size="sm" className="w-full" onClick={() => saveEdit(s.id)}>Guardar precio, comisión y seña</Button>
                   </div>
                 </div>
               )}
@@ -251,6 +325,46 @@ export function EsteticaServicesManager({ onChanged }: { onChanged?: () => void 
             </select>
           </div>
         )}
+        <div className="col-span-2">
+          <Label className="text-xs">Foto (opcional, se ve en la carta)</Label>
+          <div className="flex items-center gap-2 mt-1">
+            {imageUrl ? (
+              <>
+                <img src={imageUrl} alt="" className="h-10 w-10 rounded-lg object-cover border border-border" />
+                <button type="button" onClick={() => setImageUrl("")} className="text-xs text-red-600 hover:underline">Quitar</button>
+              </>
+            ) : (
+              <label className="inline-flex items-center gap-2 rounded-md border border-input px-3 py-2 text-xs font-medium cursor-pointer hover:bg-muted">
+                {uploadingPhoto ? "Subiendo..." : "📷 Subir foto"}
+                <input
+                  type="file" accept="image/*" className="hidden"
+                  onChange={async (e) => {
+                    const f = e.target.files?.[0];
+                    if (!f) return;
+                    setUploadingPhoto(true);
+                    const url = await uploadServicePhoto(f);
+                    setUploadingPhoto(false);
+                    if (url) setImageUrl(url);
+                    else setMsg("No se pudo subir la foto");
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+            )}
+          </div>
+        </div>
+        <div className="col-span-2 space-y-2 rounded-md border border-border p-2">
+          <label className="flex items-center gap-2 text-xs cursor-pointer">
+            <input type="checkbox" checked={requireDeposit} onChange={(e) => setRequireDeposit(e.target.checked)} className="h-4 w-4" />
+            🔒 Exigir seña para reservar (si no paga, no reserva)
+          </label>
+          {requireDeposit && (
+            <div>
+              <Label className="text-xs">Horas para pagar (vacío = 24)</Label>
+              <Input value={depositHours} onChange={(e) => setDepositHours(e.target.value)} inputMode="numeric" placeholder="24" className="mt-1 h-9 text-sm" />
+            </div>
+          )}
+        </div>
       </div>
       {msg && <p className="text-xs text-red-600">{msg}</p>}
       <Button size="sm" className="w-full" onClick={create} disabled={saving}>
@@ -1172,6 +1286,103 @@ export function EsteticaLocationsManager({ onChanged }: { onChanged?: () => void
       <Button size="sm" className="w-full" onClick={create} disabled={saving}>
         {saving ? "Guardando..." : "＋ Agregar sede"}
       </Button>
+    </Card>
+  );
+}
+
+export type WaitEntry = {
+  id: string;
+  customer_name: string;
+  customer_phone: string;
+  service_id: string | null;
+  staff_id: string | null;
+  service_label: string | null;
+  staff_label: string | null;
+  booking_date: string;
+  booking_time: string | null;
+  notes: string | null;
+};
+
+/** Lista de espera (estética): quién quiere el hueco si se libera. */
+export function EsteticaWaitlistManager({
+  onSchedule,
+}: {
+  onSchedule: (w: WaitEntry) => void;
+}) {
+  const [waiting, setWaiting] = useState<WaitEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [missing, setMissing] = useState(false);
+
+  async function load() {
+    setLoading(true);
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      const res = await fetch(`/api/vendor/waitlist?date=${today}`);
+      const data = await res.json().catch(() => ({}));
+      if (data.migrationMissing) setMissing(true);
+      const all: WaitEntry[] = data.waiting || [];
+      // Próximos 8 días (la de hoy + semana).
+      const max = new Date();
+      max.setDate(max.getDate() + 8);
+      const maxIso = max.toISOString().slice(0, 10);
+      setWaiting(all.filter((w) => w.booking_date >= today && w.booking_date <= maxIso));
+    } catch {
+      /* noop */
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function remove(id: string) {
+    try {
+      await fetch(`/api/vendor/waitlist/${id}`, { method: "DELETE" });
+      await load();
+    } catch { /* noop */ }
+  }
+
+  if (missing) return null;
+  if (loading) return <p className="text-xs text-muted-foreground">Cargando espera...</p>;
+  if (waiting.length === 0) return null;
+
+  return (
+    <Card className="p-3 border-amber-200 bg-amber-50">
+      <p className="font-medium text-sm mb-2">🔔 Lista de espera ({waiting.length})</p>
+      <div className="space-y-1.5">
+        {waiting.map((w) => (
+          <div key={w.id} className="flex items-center gap-2 rounded-lg bg-background px-2.5 py-2 text-xs">
+            <span className="flex-1 min-w-0">
+              <span className="block font-medium truncate">{w.customer_name} · {w.booking_date}{w.booking_time ? ` ${String(w.booking_time).slice(0, 5)}` : ""}</span>
+              <span className="block text-muted-foreground truncate">
+                {[w.service_label, w.staff_label].filter(Boolean).join(" · ") || w.customer_phone}
+              </span>
+            </span>
+            <a
+              href={`https://wa.me/${String(w.customer_phone).replace(/[^0-9]/g, "")}?text=${encodeURIComponent(`Hola ${w.customer_name}! Se liberó un hueco el ${w.booking_date}. ¿Lo querés?`)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-green-600 font-medium flex-shrink-0 hover:underline"
+            >
+              📲
+            </a>
+            <button
+              type="button"
+              onClick={() => onSchedule(w)}
+              className="rounded-md bg-primary text-primary-foreground px-2 py-1 font-medium flex-shrink-0"
+              title="Agendar turno con estos datos"
+            >
+              Agendar
+            </button>
+            <button type="button" onClick={() => remove(w.id)} className="text-muted-foreground hover:text-red-600 flex-shrink-0" title="Quitar">
+              ✕
+            </button>
+          </div>
+        ))}
+      </div>
     </Card>
   );
 }

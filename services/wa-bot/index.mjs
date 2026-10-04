@@ -45,6 +45,9 @@ const server = createServer(async (req, res) => {
     const waId = String(body.waId || "");
     const text = String(body.text || "");
     const orderId = body.orderId ? String(body.orderId) : null;
+    // noState: recordatorios/avisos — no toca la máquina del asistente
+    // (no setea awaiting_receipt) pero sí respeta rate limits.
+    const noState = body.noState === true;
     if (!vendorId || !waId || !text) {
       res.writeHead(400, { "content-type": "application/json" });
       res.end(JSON.stringify({ error: "vendorId, waId y text requeridos" }));
@@ -74,18 +77,30 @@ const server = createServer(async (req, res) => {
     const st = await getState(vendorId, waId).catch(() => null);
     // Ya esperando comprobante de ESTE pedido: no duplicar el mensaje (el
     // flujo del asistente ya lo mandó al confirmar).
-    if (st?.step === "awaiting_receipt" && orderId && st?.orderId === orderId) {
+    if (!noState && st?.step === "awaiting_receipt" && orderId && st?.orderId === orderId) {
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ ok: true, sent: false, reason: "ya_enviado" }));
       return;
     }
+    // Rate limit de salida también para inyectados (recordatorios): si el
+    // lote supera los caps, no mandar (handoff silencioso al dueño).
+    try {
+      const { hour, day } = await countOutbound(vendorId, 1).catch(() => ({ hour: 0, day: 0 }));
+      if (hour > config.maxMsgPerHour || day > config.maxMsgPerDay) {
+        stats.limitsHit++;
+        console.log(`[ban-risque] ${vendorId} salida h=${hour}/${config.maxMsgPerHour} d=${day}/${config.maxMsgPerDay} en /send — no se manda`);
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ ok: true, sent: false, reason: "limits" }));
+        return;
+      }
+    } catch { /* sin redis: se sigue */ }
     // En medio del flujo del asistente: el mensaje IGUAL se manda (el comercio
     // aceptó y el cliente debe saberlo) pero SIN tocar el estado — el carrito
     // del asistente no se pierde. El comprobante entra por el fallback de
     // teléfono (pending-receipt).
     const enFlujo = st?.step === "flow" || st?.step === "confirm";
 
-    if (!enFlujo) {
+    if (!enFlujo && !noState) {
       // Setear el estado de espera de comprobante (orderId del pedido web).
       await startAwaitingReceipt({ id: vendorId }, waId, orderId, waId).catch(() => {});
     }

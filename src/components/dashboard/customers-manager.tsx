@@ -269,7 +269,7 @@ function waLink(phone: string): string {
   return `https://wa.me/${d}`;
 }
 
-export function CustomersManager({ serviceMode = false, vendorId = null }: { serviceMode?: boolean; vendorId?: string | null } = {}) {
+export function CustomersManager({ serviceMode = false, vendorId = null, loyaltyEvery = null, loyaltyPct = null }: { serviceMode?: boolean; vendorId?: string | null; loyaltyEvery?: number | null; loyaltyPct?: number | null } = {}) {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -612,6 +612,16 @@ export function CustomersManager({ serviceMode = false, vendorId = null }: { ser
                 <div className="text-right flex-shrink-0">
                   <p className="text-sm font-bold tabular-nums">{money(c.total_spent)}</p>
                   <p className="text-[10px] text-muted-foreground">{c.total_orders} {serviceMode ? (c.total_orders === 1 ? "trabajo" : "trabajos") : (c.total_orders === 1 ? "pedido" : "pedidos")}</p>
+                  {serviceMode && loyaltyEvery != null && loyaltyEvery >= 2 && (
+                    <p className="text-[10px] font-bold text-amber-600">
+                      {(() => {
+                        const n = c.total_orders % loyaltyEvery;
+                        return n === 0 && c.total_orders > 0
+                          ? `🎁 ¡Premio! ${loyaltyPct ? `${loyaltyPct}% off` : "beneficio"} en su próxima visita`
+                          : `⭐ ${n}/${loyaltyEvery} para el premio`;
+                      })()}
+                    </p>
+                  )}
                 </div>
               </button>
 

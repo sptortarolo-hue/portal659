@@ -20,6 +20,7 @@ import { CustomersManager } from "@/components/dashboard/customers-manager";
 import { PlanLock } from "@/components/vendor/plan-lock";
 import { QuoteManualModal } from "@/components/dashboard/quote-manual-modal";
 import { BookingManualModal } from "@/components/dashboard/booking-manual-modal";
+import { EsteticaWaitlistManager, type WaitEntry } from "@/components/dashboard/estetica-managers";
 import type { Vendor, Product, ProductModifier, Booking, VendorGallery } from "@/types/database";
 
 type Props = {
@@ -415,6 +416,7 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
     serviceId: string;
     staffId: string;
     durationMin: number;
+    date?: string;
   } | null>(null);
 
   async function handleConvertQuote(id: string) {
@@ -607,6 +609,9 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
       if (data.error) {
         setMsg(data.error);
         return;
+      }
+      if (Number(data.waitlistCount) > 0) {
+        setMsg(`Turno cancelado. 🔔 Hay ${data.waitlistCount} en lista de espera para ese día: contactalas desde Turnos.`);
       }
       reload();
     } catch {
@@ -1208,6 +1213,21 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
           <Button size="sm" className="w-full h-8 text-xs" onClick={() => setBookingModalOpen(true)}>
             ＋ Nuevo turno
           </Button>
+          {isEstetica && (
+            <EsteticaWaitlistManager
+              onSchedule={(w: WaitEntry) => {
+                setRebook({
+                  customerName: w.customer_name,
+                  customerPhone: w.customer_phone,
+                  serviceId: w.service_id || "",
+                  staffId: w.staff_id || "",
+                  durationMin: 60,
+                  date: w.booking_date,
+                });
+                setBookingModalOpen(true);
+              }}
+            />
+          )}
           <div className="flex gap-1 flex-wrap">
             {(["all", "pending", "confirmed", "cancelled", "noshow"] as const).map((status) => (
               <Button
@@ -1844,7 +1864,12 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
 
       {sec === "clientes" && (
         canCrm ? (
-          <CustomersManager serviceMode vendorId={vendor?.id || null} />
+          <CustomersManager
+            serviceMode
+            vendorId={vendor?.id || null}
+            loyaltyEvery={(vendor as any)?.loyalty_every ?? null}
+            loyaltyPct={(vendor as any)?.loyalty_pct ?? null}
+          />
         ) : (
           <PlanLock
             title="Libro de clientes"
@@ -1868,8 +1893,9 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
 
       {bookingModalOpen && (
         <BookingManualModal
-          key={rebook ? `rebook-${rebook.customerPhone}-${rebook.serviceId}-${rebook.staffId}` : "new"}
+          key={rebook ? `rebook-${rebook.customerPhone}-${rebook.serviceId}-${rebook.staffId}-${rebook.date || ""}` : "new"}
           onClose={() => { setBookingModalOpen(false); setRebook(null); }}
+          initialDate={rebook?.date}
           serviceOptions={isEstetica ? catalogServices : undefined}
           staffOptions={isEstetica ? catalogStaff : undefined}
           locationOptions={isEstetica ? catalogLocations : undefined}

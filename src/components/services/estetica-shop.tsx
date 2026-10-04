@@ -5,8 +5,46 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
+import { ProductImage } from "@/components/product-image";
 
 const money = (n: number) => `$${Number(n).toLocaleString("es-AR")}`;
+
+/** Carta visual de servicios (estilo apps de belleza): foto, precio, duración y Elegir. */
+export function ServicePickCards({
+  services,
+}: {
+  services: { id: string; name: string; deposit_amount: number | null; duration_min: number | null; price: number | null; require_deposit?: boolean | null; image_url?: string | null }[];
+}) {
+  if (services.length === 0) return null;
+  function pick(id: string) {
+    try {
+      window.dispatchEvent(new CustomEvent("portal:pick-service", { detail: { serviceId: id } }));
+      document.getElementById("reservar-turno")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    } catch { /* noop */ }
+  }
+  return (
+    <div className="grid sm:grid-cols-2 gap-3">
+      {services.map((s) => (
+        <Card key={s.id} className="p-3 flex gap-3 items-center">
+          <div className="h-16 w-16 rounded-xl overflow-hidden flex-shrink-0 bg-muted">
+            <ProductImage src={s.image_url || null} name={s.name} vertical="estetica" alt={s.name} className="w-full h-full object-cover" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="font-semibold text-sm truncate">{s.name}</p>
+            <p className="text-xs text-muted-foreground">
+              {s.duration_min ? `${s.duration_min} min` : ""}
+              {s.price != null ? ` · ${money(Number(s.price))}` : ""}
+              {s.require_deposit ? " · 🔒 con seña" : ""}
+            </p>
+            <Button size="sm" className="mt-1.5 h-8 text-xs" onClick={() => pick(s.id)}>
+              Elegir
+            </Button>
+          </div>
+        </Card>
+      ))}
+    </div>
+  );
+}
 
 /**
  * Compra online de un pack de sesiones (estética) con Mercado Pago.

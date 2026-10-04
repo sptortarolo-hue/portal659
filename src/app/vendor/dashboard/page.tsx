@@ -59,6 +59,7 @@ import DashboardComercio from "@/components/dashboard/dashboard-comercio";
 import DashboardServicio from "@/components/dashboard/dashboard-servicio";
 import DashboardEstetica from "@/components/dashboard/dashboard-estetica";
 import DashboardGenerico from "@/components/dashboard/dashboard-generico";
+import { GalleryManager } from "@/components/dashboard/gallery-manager";
 import DashboardModa from "@/components/dashboard/dashboard-moda";
 import { VendorAnalytics } from "@/components/dashboard/vendor-analytics";
 import { VendorReviews } from "@/components/vendor/vendor-reviews";
@@ -1965,6 +1966,17 @@ function VendorDashboardInner() {
                   <MemoVendorOrderHistory isRetail={isRetail} vendorId={vendor?.id} onOpenOrder={setSelectedOrder} />
                 </div>
               )}
+              {isComercio && mountedTabs.has("galeria") && (
+                <div className={tab === "galeria" ? "" : "hidden"}>
+                  <TabErrorBoundary tab="galeria">
+                    <GalleryManager
+                      title="Galería de fotos de tu vidriera"
+                      emptyText="Todavía no subiste fotos de tu local."
+                      captionPlaceholder="Ej: frente del local, ofertas..."
+                    />
+                  </TabErrorBoundary>
+                </div>
+              )}
               {mountedTabs.has("hoy") && (
                 <div className={tab === "hoy" ? "" : "hidden"}>
                   <TabErrorBoundary tab="hoy">
@@ -2092,6 +2104,11 @@ function VendorDashboardInner() {
                 {isModa ? <Shirt className="h-5 w-5" /> : isComercio ? <ShoppingBag className="h-5 w-5" /> : <Utensils className="h-5 w-5" />}
                 {isRetail ? "Catálogo" : "Menú"} ({menuCount})
               </button>
+              {isComercio && (
+                <button onClick={() => { setTab("galeria"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "galeria" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
+                  <Image className="h-5 w-5" />Galería
+                </button>
+              )}
               {isGastro && (
                 <button onClick={() => { setTab("recetas"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "recetas" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
                   <FileText className="h-5 w-5" />Recetas

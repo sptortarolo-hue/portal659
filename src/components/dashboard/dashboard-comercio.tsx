@@ -26,7 +26,6 @@ import { PrinterConfigSection } from "@/components/dashboard/printer-config-sect
 import { StaffManager } from "@/components/vendor/staff-manager";
 import { FiscalTabShortcut } from "@/components/dashboard/fiscal-config-section";
 import { HoursEditor } from "@/components/dashboard/hours-editor";
-import { GalleryManager } from "@/components/dashboard/gallery-manager";
 import { LocationPicker } from "./location-picker";
 import { ModifierLibrary } from "@/components/dashboard/modifier-editor";
 import type { Vendor, Product, ProductModifier } from "@/types/database";
@@ -460,11 +459,6 @@ export default function DashboardComercio({
               />
             )}
           </div>
-          <GalleryManager
-            title="Galería de fotos de tu vidriera"
-            emptyText="Todavía no subiste fotos de tu local."
-            captionPlaceholder="Ej: frente del local, ofertas..."
-          />
         </div>
       </ConfigSection>
 

@@ -943,7 +943,8 @@ function VendorDashboardInner() {
 
   // Verticales: declarados ANTES del useMemo de dashboardProps para que estén disponibles.
   // Estética opera sobre el circuito de servicios (turnera + presupuestos):
-  // comparte bandeja, agenda, cobros y ficha con servicios.
+  // comparte bandeja, agenda y cobros con servicios, pero la Configuración
+  // es propia (DashboardEstetica: turnera, profesionales, fichas, packs).
   const isEstetica = vendor?.vertical === "estetica";
   const isService = vendor?.vertical === "servicio" || isEstetica;
   const isGastro = vendor?.vertical === "gastronomia";
@@ -1653,6 +1654,49 @@ function VendorDashboardInner() {
                   vendorId={vendor?.id}
                 />
                 </TabErrorBoundary>
+              ) : isEstetica && tab === "config" ? (
+              <div className="flex gap-4 items-start">
+                <nav className="hidden md:block w-56 flex-shrink-0 md:sticky md:top-24 self-start rounded-xl border border-border bg-card p-3 space-y-4">
+                  {CONFIG_SECTION_GROUPS.map((g) => {
+                    const items = (sectionsForVertical(vendor?.vertical) ?? []).filter((id) =>
+                      g.sections.includes(id)
+                    );
+                    if (items.length === 0) return null;
+                    return (
+                      <div key={g.id}>
+                        <p className="px-2 mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                          {g.label}
+                        </p>
+                        <div className="space-y-0.5">
+                          {items.map((id) => {
+                            const Icon = configSectionIcon(id);
+                            const st = getConfigSectionStatus(id, vendor);
+                            return (
+                              <button
+                                key={id}
+                                type="button"
+                                onClick={() => handleConfigSection(id)}
+                                className={`w-full flex items-center gap-2.5 px-2 py-2 rounded-lg text-sm font-medium text-left transition-colors ${
+                                  configSection === id
+                                    ? "bg-primary/10 text-primary"
+                                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                                }`}
+                              >
+                                <Icon className="h-4 w-4 flex-shrink-0" />
+                                <span className="flex-1 truncate">{CONFIG_SECTION_LABELS[id] ?? id}</span>
+                                {st && <StatusDot status={st} />}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </nav>
+                <div className="flex-1 min-w-0 space-y-4">
+                  <TabErrorBoundary tab="config">{configContent}</TabErrorBoundary>
+                </div>
+              </div>
               ) : (
               <DashboardServicio
                 {...dashboardProps}
@@ -2008,9 +2052,11 @@ function VendorDashboardInner() {
             <div className="grid grid-cols-2 gap-2">
               {isService ? (
                 <>
-                  <button onClick={() => { setTab("galeria"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "galeria" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
-                    <Image className="h-5 w-5" />Galería
-                  </button>
+                  {!isEstetica && (
+                    <button onClick={() => { setTab("galeria"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "galeria" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
+                      <Image className="h-5 w-5" />Galería
+                    </button>
+                  )}
                   <button onClick={() => { setTab("config"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "config" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
                     <Wrench className="h-5 w-5" />Configuración
                   </button>

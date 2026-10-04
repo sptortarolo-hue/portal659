@@ -298,12 +298,14 @@ export default function VendorSidebar({
             <div className="space-y-0.5">
               {isService ? (
                 <>
-                  <NavButton
-                    active={currentTab === "galeria"}
-                    onClick={() => handleTab("galeria")}
-                    icon={Image}
-                    label="Galería"
-                  />
+                  {!isEstetica && (
+                    <NavButton
+                      active={currentTab === "galeria"}
+                      onClick={() => handleTab("galeria")}
+                      icon={Image}
+                      label="Galería"
+                    />
+                  )}
                   <NavButton
                     active={currentTab === "config"}
                     onClick={() => handleTab("config")}

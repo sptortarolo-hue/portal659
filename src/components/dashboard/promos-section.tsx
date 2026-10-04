@@ -31,6 +31,7 @@ export function PromosSection({
   const [products, setProducts] = useState<PromoProduct[]>([]);
   const [promoImage, setPromoImage] = useState<string | null>(null);
   const [selection, setSelection] = useState<string[]>([]);
+  const [mode, setMode] = useState<"auto" | "manual">("auto");
   const [updatedAt, setUpdatedAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [shareOpen, setShareOpen] = useState(false);
@@ -54,11 +55,39 @@ export function PromosSection({
         const validIds = new Set((data.products || []).map((p: PromoProduct) => p.id));
         setSelection(((data.selection || []) as string[]).filter((id) => validIds.has(id)));
         setUpdatedAt(data.updatedAt || null);
+        setMode(data.mode === "manual" ? "manual" : "auto");
       }
     } catch (e) {
       console.error("Error loading promos:", e);
     } finally {
       if (!silent) setLoading(false);
+    }
+  }
+
+  async function saveSelection(next: string[], nextMode: "auto" | "manual") {
+    setSelectError(null);
+    setSavingSelection(true);
+    try {
+      const res = await fetch("/api/vendor/promo-selection", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ productIds: next, mode: nextMode }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setUpdatedAt(data.updatedAt || null);
+        setMode(data.mode === "manual" ? "manual" : "auto");
+      } else if (res.status === 503) {
+        setSelectError("Falta aplicar la migración migrate-promo-mode.sql en la DB.");
+      } else {
+        const data = await res.json().catch(() => null);
+        setSelectError(data?.error || "No se pudo guardar.");
+      }
+    } catch (err) {
+      console.error("Error saving selection:", err);
+      setSelectError("No se pudo guardar.");
+    } finally {
+      setSavingSelection(false);
     }
   }
 
@@ -71,29 +100,18 @@ export function PromosSection({
         : [...selection, id];
     if (next === selection) return;
     setSelection(next);
-    setSelectError(null);
-    setSavingSelection(true);
-    try {
-      const res = await fetch("/api/vendor/promo-selection", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ productIds: next }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setUpdatedAt(data.updatedAt || null);
-      } else if (res.status === 503) {
-        setSelectError("Falta aplicar la migración migrate-promo-selection.sql en la DB.");
-      } else {
-        const data = await res.json().catch(() => null);
-        setSelectError(data?.error || "No se pudo guardar la selección.");
-      }
-    } catch (err) {
-      console.error("Error saving selection:", err);
-      setSelectError("No se pudo guardar la selección.");
-    } finally {
-      setSavingSelection(false);
-    }
+    await saveSelection(next, mode);
+  }
+
+  async function changeMode(nextMode: "auto" | "manual") {
+    if (nextMode === mode) return;
+    setMode(nextMode);
+    await saveSelection(selection, nextMode);
+  }
+
+  async function refreshImage() {
+    await saveSelection(selection, mode);
+    await loadData(true);
   }
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -162,27 +180,61 @@ export function PromosSection({
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex gap-2">
+          <div className="flex flex-col sm:flex-row gap-2">
             <Button
               onClick={() => setShareOpen(true)}
               disabled={!hasPromos}
               className="flex-1"
             >
-              <Share className="w-4 h-4 mr-2" />
+              <Share className="w-4 h-4 mr-2 flex-shrink-0" />
               Compartir promos en WhatsApp
             </Button>
             <Button
               variant="outline"
               onClick={() => setShowPreview(!showPreview)}
             >
-              <Eye className="w-4 h-4 mr-2" />
+              <Eye className="w-4 h-4 mr-2 flex-shrink-0" />
               {showPreview ? "Ocultar preview" : "Ver preview"}
             </Button>
           </div>
 
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => changeMode("auto")}
+              aria-pressed={mode === "auto"}
+              className={`rounded-xl border-2 p-3 text-left transition-colors ${
+                mode === "auto" ? "border-red-400 bg-red-50/60" : "border-border hover:border-red-200"
+              }`}
+            >
+              <p className="text-sm font-bold">Componer con productos</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Foto + logo + badge PROMO, armada sola.
+              </p>
+            </button>
+            <button
+              type="button"
+              onClick={() => changeMode("manual")}
+              aria-pressed={mode === "manual"}
+              className={`rounded-xl border-2 p-3 text-left transition-colors ${
+                mode === "manual" ? "border-red-400 bg-red-50/60" : "border-border hover:border-red-200"
+              }`}
+            >
+              <p className="text-sm font-bold">Usar mi foto</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Subí una imagen propia para la tarjeta.
+              </p>
+            </button>
+          </div>
+
           {showPreview && (
             <div className="border rounded-lg p-4 bg-gray-50">
-              <p className="text-sm font-medium mb-2">Así se ve el link en WhatsApp:</p>
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                <p className="text-sm font-medium">Así se ve el link en WhatsApp:</p>
+                <Button variant="outline" size="sm" onClick={refreshImage} disabled={savingSelection}>
+                  {savingSelection ? "Actualizando…" : "Actualizar imagen"}
+                </Button>
+              </div>
               <div className="bg-white rounded-lg border p-3 max-w-sm">
                 <div className="aspect-[1200/630] rounded overflow-hidden mb-2">
                   <img
@@ -200,12 +252,9 @@ export function PromosSection({
             </div>
           )}
 
+          {mode === "manual" && (
           <div className="space-y-2">
-            <p className="text-sm font-medium">Imagen de promo (opcional):</p>
-            <p className="text-xs text-gray-500">
-              Si subís una imagen, manda ella. Si no, se compone una con tus destacados
-              (foto + logo + badge PROMO).
-            </p>
+            <p className="text-sm font-medium">Tu foto para la tarjeta:</p>
             <div className="flex gap-2">
               <label className="flex-1">
                 <input
@@ -247,9 +296,11 @@ export function PromosSection({
               </div>
             )}
           </div>
+          )}
 
+          {mode === "auto" && (
           <div className="space-y-2">
-            <div className="flex items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-sm font-medium">
                 Productos en promo ({products.length}):
               </p>
@@ -316,7 +367,7 @@ export function PromosSection({
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium truncate">{p.name}</p>
-                        <div className="flex items-center gap-2 text-xs">
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
                           <span className="text-gray-400 line-through">
                             ${p.price.toLocaleString("es-AR")}
                           </span>
@@ -334,6 +385,7 @@ export function PromosSection({
               </div>
             )}
           </div>
+          )}
         </CardContent>
       </Card>
 

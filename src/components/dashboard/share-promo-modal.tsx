@@ -19,15 +19,11 @@ export function SharePromoModal({
   slug: string;
   hasPromos: boolean;
 }) {
-  const [message, setMessage] = useState(
-    `🔥 ¡Promos en ${storeName}!\nDescuentos exclusivos por tiempo limitado\n👉 Ver promos: https://www.portal659.com.ar/promo/${slug}`
-  );
+  const [message, setMessage] = useState(`https://www.portal659.com.ar/promo/${slug}`);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    setMessage(
-      `🔥 ¡Promos en ${storeName}!\nDescuentos exclusivos por tiempo limitado\n👉 Ver promos: https://www.portal659.com.ar/promo/${slug}`
-    );
+    setMessage(`https://www.portal659.com.ar/promo/${slug}`);
   }, [storeName, slug, open]);
 
   const handleCopy = async () => {
@@ -45,13 +41,13 @@ export function SharePromoModal({
     <Modal open={open} onClose={() => onOpenChange(false)} title="Compartir promos en WhatsApp">
       <div className="space-y-4 p-6">
         <p className="text-sm text-muted-foreground">
-          Copiá el mensaje y pegalo en tu grupo de WhatsApp, o abrí WhatsApp directamente.
+          Pegá solo el link: WhatsApp muestra la tarjeta-imagen. Podés agregar texto si querés.
         </p>
 
         <Textarea
           value={message}
           onChange={(e) => setMessage(e.target.value)}
-          rows={5}
+          rows={3}
           className="resize-none"
         />
 

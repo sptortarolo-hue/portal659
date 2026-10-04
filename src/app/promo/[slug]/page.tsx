@@ -179,9 +179,9 @@ export default async function PromoPage({
               return (
                 <div
                   key={o.id}
-                  className="rounded-2xl border-2 border-red-200 bg-white p-4 flex items-center gap-4 shadow-sm"
+                  className="rounded-2xl border-2 border-red-200 bg-white p-3 sm:p-4 flex items-center gap-3 sm:gap-4 shadow-sm"
                 >
-                  <div className="h-24 w-24 rounded-xl overflow-hidden flex-shrink-0 bg-gray-100">
+                  <div className="h-20 w-20 sm:h-24 sm:w-24 rounded-xl overflow-hidden flex-shrink-0 bg-gray-100">
                     <ProductImage
                       src={o.image_url || null}
                       name={o.name}
@@ -203,7 +203,7 @@ export default async function PromoPage({
                     {o.description && (
                       <p className="text-sm text-gray-500 mt-1 line-clamp-1">{o.description}</p>
                     )}
-                    <div className="flex items-center gap-2 mt-2">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-2">
                       <span className="text-sm text-gray-400 line-through tabular-nums">
                         ${Number(o.price).toLocaleString("es-AR")}
                       </span>

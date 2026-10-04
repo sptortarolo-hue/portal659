@@ -5,6 +5,7 @@ import { NextResponse } from "next/server";
 type SelectionRow = {
   product_ids: unknown;
   updated_at: string;
+  mode: unknown;
 };
 
 function normalizeIds(value: unknown): string[] {
@@ -23,14 +24,27 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "No autorizado" }, { status: 403 });
   }
   try {
-    const row = await queryOne<SelectionRow>(
-      `SELECT product_ids, updated_at FROM vendor_promo_images WHERE vendor_id = $1 LIMIT 1`,
-      [vendor.id]
-    );
-    return NextResponse.json({
-      productIds: normalizeIds(row?.product_ids),
-      updatedAt: row?.updated_at || null,
-    });
+    try {
+      const row = await queryOne<SelectionRow>(
+        `SELECT product_ids, updated_at, mode FROM vendor_promo_images WHERE vendor_id = $1 LIMIT 1`,
+        [vendor.id]
+      );
+      return NextResponse.json({
+        productIds: normalizeIds(row?.product_ids),
+        updatedAt: row?.updated_at || null,
+        mode: row?.mode === "manual" ? "manual" : "auto",
+      });
+    } catch {
+      const legacy = await queryOne<Omit<SelectionRow, "mode">>(
+        `SELECT product_ids, updated_at FROM vendor_promo_images WHERE vendor_id = $1 LIMIT 1`,
+        [vendor.id]
+      );
+      return NextResponse.json({
+        productIds: normalizeIds(legacy?.product_ids),
+        updatedAt: legacy?.updated_at || null,
+        mode: "auto",
+      });
+    }
   } catch {
     return NextResponse.json(
       { error: "Falta aplicar supabase/self-host/migrate-promo-share.sql en la DB" },
@@ -44,7 +58,7 @@ export async function PATCH(request: Request) {
   if (!vendor) {
     return NextResponse.json({ error: "No autorizado" }, { status: 403 });
   }
-  let body: { productIds?: unknown };
+  let body: { productIds?: unknown; mode?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -54,6 +68,7 @@ export async function PATCH(request: Request) {
   if (!Array.isArray(body.productIds) || (body.productIds as unknown[]).length > 3) {
     return NextResponse.json({ error: "Máximo 3 productos" }, { status: 400 });
   }
+  const mode = body.mode === "manual" ? "manual" : "auto";
   try {
     if (ids.length > 0) {
       const valid = await queryMany<{ id: string }>(
@@ -72,20 +87,31 @@ export async function PATCH(request: Request) {
         );
       }
     }
-    await query(
-      `INSERT INTO vendor_promo_images (vendor_id, image_url, product_ids, updated_at)
-       VALUES ($1, '', $2::jsonb, now())
-       ON CONFLICT (vendor_id) DO UPDATE
-       SET product_ids = $2::jsonb, updated_at = now()`,
-      [vendor.id, JSON.stringify(ids)]
-    );
+    try {
+      await query(
+        `INSERT INTO vendor_promo_images (vendor_id, image_url, product_ids, updated_at, mode)
+         VALUES ($1, '', $2::jsonb, now(), $3)
+         ON CONFLICT (vendor_id) DO UPDATE
+         SET product_ids = $2::jsonb, updated_at = now(), mode = $3`,
+        [vendor.id, JSON.stringify(ids), mode]
+      );
+    } catch {
+      await query(
+        `INSERT INTO vendor_promo_images (vendor_id, image_url, product_ids, updated_at)
+         VALUES ($1, '', $2::jsonb, now())
+         ON CONFLICT (vendor_id) DO UPDATE
+         SET product_ids = $2::jsonb, updated_at = now()`,
+        [vendor.id, JSON.stringify(ids)]
+      );
+    }
     const row = await queryOne<SelectionRow>(
-      `SELECT product_ids, updated_at FROM vendor_promo_images WHERE vendor_id = $1 LIMIT 1`,
+      `SELECT product_ids, updated_at, mode FROM vendor_promo_images WHERE vendor_id = $1 LIMIT 1`,
       [vendor.id]
-    );
+    ).catch(() => null);
     return NextResponse.json({
       productIds: normalizeIds(row?.product_ids),
       updatedAt: row?.updated_at || null,
+      mode: row?.mode === "manual" ? "manual" : mode,
     });
   } catch {
     return NextResponse.json(

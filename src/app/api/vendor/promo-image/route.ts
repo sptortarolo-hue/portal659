@@ -79,16 +79,24 @@ export async function POST(request: Request) {
   try {
     try {
       await query(
-        `INSERT INTO vendor_promo_images (vendor_id, image_url, updated_at) VALUES ($1, $2, now())
-         ON CONFLICT (vendor_id) DO UPDATE SET image_url = $2, updated_at = now()`,
+        `INSERT INTO vendor_promo_images (vendor_id, image_url, updated_at, mode) VALUES ($1, $2, now(), 'manual')
+         ON CONFLICT (vendor_id) DO UPDATE SET image_url = $2, updated_at = now(), mode = 'manual'`,
         [vendor.id, url]
       );
     } catch {
-      await query(
-        `INSERT INTO vendor_promo_images (vendor_id, image_url) VALUES ($1, $2)
-         ON CONFLICT (vendor_id) DO UPDATE SET image_url = $2, created_at = now()`,
-        [vendor.id, url]
-      );
+      try {
+        await query(
+          `INSERT INTO vendor_promo_images (vendor_id, image_url, updated_at) VALUES ($1, $2, now())
+           ON CONFLICT (vendor_id) DO UPDATE SET image_url = $2, updated_at = now()`,
+          [vendor.id, url]
+        );
+      } catch {
+        await query(
+          `INSERT INTO vendor_promo_images (vendor_id, image_url) VALUES ($1, $2)
+           ON CONFLICT (vendor_id) DO UPDATE SET image_url = $2, created_at = now()`,
+          [vendor.id, url]
+        );
+      }
     }
   } catch {
     return NextResponse.json(
@@ -123,11 +131,18 @@ export async function DELETE(request: Request) {
   try {
     try {
       await query(
-        `UPDATE vendor_promo_images SET image_url = '', updated_at = now() WHERE vendor_id = $1`,
+        `UPDATE vendor_promo_images SET image_url = '', updated_at = now(), mode = 'auto' WHERE vendor_id = $1`,
         [vendor.id]
       );
     } catch {
-      await query(`DELETE FROM vendor_promo_images WHERE vendor_id = $1`, [vendor.id]);
+      try {
+        await query(
+          `UPDATE vendor_promo_images SET image_url = '', updated_at = now() WHERE vendor_id = $1`,
+          [vendor.id]
+        );
+      } catch {
+        await query(`DELETE FROM vendor_promo_images WHERE vendor_id = $1`, [vendor.id]);
+      }
     }
   } catch {
     return NextResponse.json(

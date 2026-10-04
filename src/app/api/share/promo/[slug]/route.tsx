@@ -101,16 +101,26 @@ export async function GET(
 
   let manualImage: string | null = null;
   let selectedIds: string[] = [];
+  let mode: "auto" | "manual" = "auto";
   try {
-    const row = await queryOne<{ image_url: string; product_ids: unknown }>(
-      `SELECT image_url, product_ids FROM vendor_promo_images WHERE vendor_id = (SELECT id FROM vendors WHERE slug = $1 LIMIT 1) LIMIT 1`,
-      [slug]
-    );
-    manualImage = row?.image_url || null;
-    if (Array.isArray(row?.product_ids)) {
-      selectedIds = (row?.product_ids as unknown[]).filter(
-        (v): v is string => typeof v === "string"
+    try {
+      const row = await queryOne<{ image_url: string; product_ids: unknown; mode: unknown }>(
+        `SELECT image_url, product_ids, mode FROM vendor_promo_images WHERE vendor_id = (SELECT id FROM vendors WHERE slug = $1 LIMIT 1) LIMIT 1`,
+        [slug]
       );
+      manualImage = row?.image_url || null;
+      if (row?.mode === "manual") mode = "manual";
+      if (Array.isArray(row?.product_ids)) {
+        selectedIds = (row?.product_ids as unknown[]).filter(
+          (v): v is string => typeof v === "string"
+        );
+      }
+    } catch {
+      const legacy = await queryOne<{ image_url: string }>(
+        `SELECT image_url FROM vendor_promo_images WHERE vendor_id = (SELECT id FROM vendors WHERE slug = $1 LIMIT 1) LIMIT 1`,
+        [slug]
+      );
+      manualImage = legacy?.image_url || null;
     }
   } catch {
     try {
@@ -445,9 +455,95 @@ export async function GET(
     );
   }
 
+  // Tarjeta de texto cuando hay promos pero sin fotos: titular de
+  // descuento + producto + precios + logo sobre fondo promo.
+  function textOnlyCard(items: PromoProduct[], logoOk: boolean) {
+    const best = Math.max(...items.map(discountOf));
+    const hero = items[0];
+    const extra = items.length > 1 ? ` +${items.length - 1} más` : "";
+    return ogJpeg(
+      <div
+        style={{
+          width: W,
+          height: H,
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "center",
+          alignItems: "center",
+          position: "relative",
+          backgroundImage: "linear-gradient(135deg, #7f1d1d 0%, #b91c1c 55%, #ea580c 100%)",
+          fontFamily: FONT,
+          padding: "48px 64px",
+        }}
+      >
+        <div
+          style={{
+            position: "absolute",
+            left: 880,
+            top: -140,
+            width: 420,
+            height: 420,
+            borderRadius: 999,
+            background: "rgba(255,255,255,0.08)",
+          }}
+        />
+        {ribbon()}
+        <div
+          style={{
+            display: "flex",
+            background: "#ffffff",
+            color: "#b91c1c",
+            fontSize: 30,
+            fontWeight: 800,
+            padding: "10px 28px",
+            borderRadius: 999,
+          }}
+        >
+          PROMO
+        </div>
+        <div style={{ fontSize: 110, fontWeight: 800, color: "#ffffff", lineHeight: 1.05, marginTop: 8 }}>
+          -{best}%
+        </div>
+        <div style={{ fontSize: 34, fontWeight: 700, color: "#ffffff", marginTop: 6 }}>
+          {hero.name}
+          {extra}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 14 }}>
+          <div style={{ fontSize: 30, color: "rgba(255,255,255,0.7)", textDecoration: "line-through" }}>
+            {money(hero.price)}
+          </div>
+          <div
+            style={{
+              display: "flex",
+              background: "#ffffff",
+              color: "#b91c1c",
+              fontSize: 40,
+              fontWeight: 800,
+              padding: "8px 24px",
+              borderRadius: 999,
+            }}
+          >
+            {money(hero.promo_price)}
+          </div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 20 }}>
+          {logoOk && logoUrl && (
+            <img
+              src={logoUrl}
+              width={68}
+              height={68}
+              style={{ borderRadius: 999, objectFit: "cover", border: "3px solid rgba(255,255,255,0.9)" }}
+            />
+          )}
+          <div style={{ fontSize: 28, fontWeight: 700, color: "#ffffff" }}>{storeName}</div>
+        </div>
+      </div>
+    );
+  }
+
   try {
-    // 1) Foto manual del comercio: manda ella (diseño actual con badge de texto).
-    if (manualImage) {
+    // 1) Modo manual con foto: manda la foto del comercio.
+    if (mode === "manual" && manualImage) {
       return await manualCard(manualImage);
     }
 
@@ -469,17 +565,18 @@ export async function GET(
       picked = [...valid].sort((a, b) => discountOf(b) - discountOf(a)).slice(0, 3);
     }
     if (picked.length === 0) {
-      return await manualCard(vendor.image_url);
+      return await manualCard(manualImage || vendor.image_url);
     }
 
     const urls = [logoUrl, ...picked.map((p) => p.image_url)];
     const checks = await Promise.all(urls.map((u) => remoteOk(u)));
     const logoOk = checks[0];
     const photoOk = checks.slice(1);
-    if (!photoOk.some(Boolean)) {
-      return await manualCard(vendor.image_url);
-    }
     const withPhoto = picked.filter((_, i) => photoOk[i]);
+    // Sin fotos accesibles: tarjeta de texto (nunca cae en silencio a la vieja).
+    if (withPhoto.length === 0) {
+      return await textOnlyCard(picked, logoOk);
+    }
     return await composedCard(withPhoto, logoOk);
   } catch (err) {
     console.error("[share-promo] fallo render, usando fallback:", err);

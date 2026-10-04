@@ -23,18 +23,21 @@ export async function GET(request: Request) {
   let promoImageUrl: string | null = null;
   let productIds: string[] = [];
   let updatedAt: string | null = null;
+  let mode: "auto" | "manual" = "auto";
   try {
     try {
       const row = await queryOne<{
         image_url: string;
         product_ids: unknown;
         updated_at: string;
+        mode: unknown;
       }>(
-        `SELECT image_url, product_ids, updated_at FROM vendor_promo_images WHERE vendor_id = $1 LIMIT 1`,
+        `SELECT image_url, product_ids, updated_at, mode FROM vendor_promo_images WHERE vendor_id = $1 LIMIT 1`,
         [vendor.id]
       );
       promoImageUrl = row?.image_url || null;
       updatedAt = row?.updated_at || null;
+      if (row?.mode === "manual") mode = "manual";
       if (Array.isArray(row?.product_ids)) {
         productIds = (row.product_ids as unknown[]).filter(
           (v): v is string => typeof v === "string"
@@ -56,5 +59,6 @@ export async function GET(request: Request) {
     promoImage: promoImageUrl,
     selection: productIds,
     updatedAt,
+    mode,
   });
 }

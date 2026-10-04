@@ -153,6 +153,60 @@ type MenuCategory = { id: string; name: string; position: number };
 
   type DashTab = "hoy" | "config" | "menu" | "orders" | "pedidos" | "mostrador" | "history" | "comanda" | "analytics" | "pos" | "mesas" | "caja" | "clientes" | "reviews" | "recetas" | "fiscal" | "inventario" | "galeria";
 
+/**
+ * Segunda columna de Configuración en desktop (estilo Fudo): la usan todas
+ * las verticales con el mismo render; solo cambia la lista de secciones.
+ */
+function ConfigDesktopNav({
+  vendor,
+  configSection,
+  onSelect,
+}: {
+  vendor: Vendor | null;
+  configSection: string;
+  onSelect: (id: string) => void;
+}) {
+  return (
+    <nav className="hidden md:block w-56 flex-shrink-0 md:sticky md:top-24 self-start rounded-xl border border-border bg-card p-3 space-y-4">
+      {CONFIG_SECTION_GROUPS.map((g) => {
+        const items = (sectionsForVertical(vendor?.vertical) ?? []).filter((id) =>
+          g.sections.includes(id)
+        );
+        if (items.length === 0) return null;
+        return (
+          <div key={g.id}>
+            <p className="px-2 mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              {g.label}
+            </p>
+            <div className="space-y-0.5">
+              {items.map((id) => {
+                const Icon = configSectionIcon(id);
+                const st = getConfigSectionStatus(id, vendor);
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => onSelect(id)}
+                    className={`w-full flex items-center gap-2.5 px-2 py-2 rounded-lg text-sm font-medium text-left transition-colors ${
+                      configSection === id
+                        ? "bg-primary/10 text-primary"
+                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                    }`}
+                  >
+                    <Icon className="h-4 w-4 flex-shrink-0" />
+                    <span className="flex-1 truncate">{CONFIG_SECTION_LABELS[id] ?? id}</span>
+                    {st && <StatusDot status={st} />}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+    </nav>
+  );
+}
+
 // Tabs pesados con fetch propio: se memoizan para no re-renderizarlos en cada
 // tecla/búsqueda del dashboard (solo cambian cuando cambian sus props).
 const MemoMostrador = memo(Mostrador);
@@ -1396,6 +1450,7 @@ function VendorDashboardInner() {
     : isService && tab === "history" ? "Historial"
     : isService && tab === "clientes" ? "Clientes"
     : isService && tab === "galeria" ? "Galería"
+    : isComercio && tab === "galeria" ? "Galería"
     : isEstetica && tab === "pedidos" ? "Pedidos"
     : isEstetica && tab === "mostrador" ? "Mostrador"
     : isEstetica && tab === "menu" ? "Catálogo"
@@ -1656,45 +1711,28 @@ function VendorDashboardInner() {
                 </TabErrorBoundary>
               ) : isEstetica && tab === "config" ? (
               <div className="flex gap-4 items-start">
-                <nav className="hidden md:block w-56 flex-shrink-0 md:sticky md:top-24 self-start rounded-xl border border-border bg-card p-3 space-y-4">
-                  {CONFIG_SECTION_GROUPS.map((g) => {
-                    const items = (sectionsForVertical(vendor?.vertical) ?? []).filter((id) =>
-                      g.sections.includes(id)
-                    );
-                    if (items.length === 0) return null;
-                    return (
-                      <div key={g.id}>
-                        <p className="px-2 mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                          {g.label}
-                        </p>
-                        <div className="space-y-0.5">
-                          {items.map((id) => {
-                            const Icon = configSectionIcon(id);
-                            const st = getConfigSectionStatus(id, vendor);
-                            return (
-                              <button
-                                key={id}
-                                type="button"
-                                onClick={() => handleConfigSection(id)}
-                                className={`w-full flex items-center gap-2.5 px-2 py-2 rounded-lg text-sm font-medium text-left transition-colors ${
-                                  configSection === id
-                                    ? "bg-primary/10 text-primary"
-                                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                                }`}
-                              >
-                                <Icon className="h-4 w-4 flex-shrink-0" />
-                                <span className="flex-1 truncate">{CONFIG_SECTION_LABELS[id] ?? id}</span>
-                                {st && <StatusDot status={st} />}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </nav>
+                <ConfigDesktopNav vendor={vendor} configSection={configSection} onSelect={handleConfigSection} />
                 <div className="flex-1 min-w-0 space-y-4">
                   <TabErrorBoundary tab="config">{configContent}</TabErrorBoundary>
+                </div>
+              </div>
+              ) : tab === "config" ? (
+              <div className="flex gap-4 items-start">
+                <ConfigDesktopNav vendor={vendor} configSection={configSection} onSelect={handleConfigSection} />
+                <div className="flex-1 min-w-0 space-y-4">
+                  <DashboardServicio
+                    {...dashboardProps}
+                    quotes={quotes}
+                    quota={serviceQuota}
+                    canQuotePrice={canQuotePrice}
+                    canDeposits={canDeposits}
+                    onQuotesChanged={loadServiceData}
+                    configSectionId={configSection}
+                    onConfigSectionId={handleConfigSection}
+                    section="ficha"
+                    onNavigate={handleTabChange}
+                    canCrm={effectivePlan.can("crm")}
+                  />
                 </div>
               </div>
               ) : (
@@ -1712,7 +1750,6 @@ function VendorDashboardInner() {
                   tab === "orders" ? "presupuestos"
                   : tab === "pos" ? "turnos"
                   : tab === "caja" ? "cobros"
-                  : tab === "config" ? "ficha"
                   : tab === "galeria" ? "galeria"
                   : tab === "reviews" ? "reviews"
                   : tab === "history" ? "history"
@@ -1753,43 +1790,7 @@ function VendorDashboardInner() {
                   {/* Segunda columna de secciones (estilo Fudo): solo desktop.
                       El menú principal queda intacto en la sidebar.
                       En mobile mandan el drawer + el drill-down de Config. */}
-                    <nav className="hidden md:block w-56 flex-shrink-0 md:sticky md:top-24 self-start rounded-xl border border-border bg-card p-3 space-y-4">
-                      {CONFIG_SECTION_GROUPS.map((g) => {
-                        const items = (sectionsForVertical(vendor?.vertical) ?? []).filter((id) =>
-                          g.sections.includes(id)
-                        );
-                        if (items.length === 0) return null;
-                        return (
-                          <div key={g.id}>
-                            <p className="px-2 mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                              {g.label}
-                            </p>
-                            <div className="space-y-0.5">
-                              {items.map((id) => {
-                                const Icon = configSectionIcon(id);
-                                const st = getConfigSectionStatus(id, vendor);
-                                return (
-                                  <button
-                                    key={id}
-                                    type="button"
-                                    onClick={() => handleConfigSection(id)}
-                                    className={`w-full flex items-center gap-2.5 px-2 py-2 rounded-lg text-sm font-medium text-left transition-colors ${
-                                      configSection === id
-                                        ? "bg-primary/10 text-primary"
-                                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                                    }`}
-                                  >
-                                    <Icon className="h-4 w-4 flex-shrink-0" />
-                                    <span className="flex-1 truncate">{CONFIG_SECTION_LABELS[id] ?? id}</span>
-                                    {st && <StatusDot status={st} />}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </nav>
+                    <ConfigDesktopNav vendor={vendor} configSection={configSection} onSelect={handleConfigSection} />
                   <div className="flex-1 min-w-0 space-y-4">
                     {/* Alertas push: en gastro/comercio/moda/estética vive como sección
                         "Alertas" del menú de Configuración; servicio puro la muestra

@@ -329,7 +329,8 @@ export default function VendorSidebar({
                   )}
                 </>
               ) : (
-                GESTION_ITEMS.filter((i) => i.show(isGastro, isModa, isComercio)).map((item) => {
+                <>
+                {GESTION_ITEMS.filter((i) => i.show(isGastro, isModa, isComercio)).map((item) => {
                   const suffix = item.suffix ? item.suffix(menuCount) : null;
                   const label = item.tab === "menu" && (isModa || isComercio) ? "Catálogo" : item.label;
                   return (
@@ -342,7 +343,16 @@ export default function VendorSidebar({
                       suffix={suffix ?? undefined}
                     />
                   );
-                })
+                })}
+                {isComercio && (
+                  <NavButton
+                    active={currentTab === "galeria"}
+                    onClick={() => handleTab("galeria")}
+                    icon={Image}
+                    label="Galería"
+                  />
+                )}
+                </>
               )}
             </div>
           </div>

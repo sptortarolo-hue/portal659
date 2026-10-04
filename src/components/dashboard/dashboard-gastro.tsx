@@ -18,6 +18,7 @@ import { PrinterConfigSection } from "@/components/dashboard/printer-config-sect
 import { FiscalTabShortcut } from "@/components/dashboard/fiscal-config-section";
 import { HoursEditor } from "@/components/dashboard/hours-editor";
 import { GalleryManager } from "@/components/dashboard/gallery-manager";
+import { PromosSection } from "@/components/dashboard/promos-section";
 import { LocationPicker } from "./location-picker";
 import { StaffManager } from "@/components/vendor/staff-manager";
 import type { Vendor, VendorGallery } from "@/types/database";
@@ -519,6 +520,17 @@ export default function DashboardGastro({
             🍽️ Ir al Menú
           </Button>
         </div>
+      </ConfigSection>
+
+      <ConfigSection id="promos" label="Promos" icon="🔗">
+        {vendor && vendor.slug && (
+          <PromosSection
+            vendorId={vendor.id}
+            storeName={vendor.store_name}
+            slug={vendor.slug}
+            vertical={vendor.vertical}
+          />
+        )}
       </ConfigSection>
 
       <ConfigSection id="perfil" label="Perfil" icon="🏪" badge={galleryCount > 0 ? String(galleryCount) : undefined}>

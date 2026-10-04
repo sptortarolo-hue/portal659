@@ -22,6 +22,7 @@ import { StripeConnectCard } from "@/components/dashboard/stripe-connect-card";
 import { PrinterConfigSection } from "@/components/dashboard/printer-config-section";
 import { HoursEditor } from "@/components/dashboard/hours-editor";
 import { GalleryManager } from "@/components/dashboard/gallery-manager";
+import { PromosSection } from "@/components/dashboard/promos-section";
 import { LocationPicker } from "./location-picker";
 import {
   EsteticaServicesManager,
@@ -715,6 +716,17 @@ export default function DashboardEstetica({
             <PushAlertCard />
             <WaRemindersCard />
           </div>
+        </ConfigSection>
+
+        <ConfigSection id="promos" label="Promos" icon="🔗">
+          {vendor && vendor.slug && (
+            <PromosSection
+              vendorId={vendor.id}
+              storeName={vendor.store_name}
+              slug={vendor.slug}
+              vertical={vendor.vertical}
+            />
+          )}
         </ConfigSection>
       </ConfigSections>
       {msg && <p className="text-sm text-muted-foreground">{msg}</p>}

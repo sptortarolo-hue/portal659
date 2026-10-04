@@ -35,6 +35,7 @@ const nextConfig: NextConfig = {
       // al instante en vez de esperar el render del VPS). La query
       // (?preview=token) pasa intacta al destino.
       { source: "/og/tienda/:slug.jpg", destination: "/api/share/tienda/:slug" },
+      { source: "/og/promo/:slug.jpg", destination: "/api/share/promo/:slug" },
     ];
   },
 };

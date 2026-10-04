@@ -150,6 +150,19 @@ export async function POST(request: Request) {
         if (withPhoto) row = withPhoto;
       } catch { /* sin columna: se ignora */ }
     }
+    // Categoría de carta (migración aparte): post-update tolerante.
+    {
+      const rawCat = typeof body.category === "string" ? body.category.trim().slice(0, 60) : "";
+      if (rawCat) {
+        try {
+          const withCat = await queryOne<Record<string, unknown>>(
+            `UPDATE services SET category = $1 WHERE id = $2 RETURNING *`,
+            [rawCat, (row as { id: string }).id]
+          );
+          if (withCat) row = withCat;
+        } catch { /* sin columna: se ignora */ }
+      }
+    }
     // Seña obligatoria (migración aparte): post-update tolerante. Si el
     // comercio lo pidió explícito y falta la columna, avisar (503).
     const wantsRequire = body.require_deposit !== undefined || body.deposit_hours !== undefined;

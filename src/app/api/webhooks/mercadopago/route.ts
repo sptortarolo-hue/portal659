@@ -47,7 +47,13 @@ function verifyMercadoPagoSignature(
 export async function POST(request: Request) {
   const bodyText = await request.text();
   const MP_WEBHOOK_SECRET = process.env.MP_WEBHOOK_SECRET;
-  const body = JSON.parse(bodyText);
+  let body: any;
+  try {
+    body = JSON.parse(bodyText);
+  } catch {
+    // Body roto: 400 (no reintentable) en vez de 500.
+    return NextResponse.json({ error: "Body inválido" }, { status: 400 });
+  }
 
   if (MP_WEBHOOK_SECRET) {
     const signature = request.headers.get("x-signature");
@@ -192,10 +198,18 @@ export async function POST(request: Request) {
               const paidAmount = Number(payment.transaction_amount) || 0;
               const expected = Number(booking.deposit_amount) || 0;
               const mismatch = expected > 0 && Math.abs(paidAmount - expected) > 1;
-              await query(
-                `UPDATE bookings SET deposit_status = 'paid', mp_payment_id = $1 WHERE id = $2`,
-                [String(payment.id || ""), bookingId]
-              ).catch(() => undefined);
+              // Persistencia verificada: si falla, 500 para que MP reintente
+              // (plata cobrada pero seña sin marcar = estado roto).
+              try {
+                const marked = await queryOne<{ id: string }>(
+                  `UPDATE bookings SET deposit_status = 'paid', mp_payment_id = $1 WHERE id = $2 RETURNING id`,
+                  [String(payment.id || ""), bookingId]
+                );
+                if (!marked) throw new Error("update sin fila");
+              } catch (e) {
+                logApiError("mp-webhook/sena-turno-persist", e);
+                return NextResponse.json({ error: "Reintentar" }, { status: 500 });
+              }
               const vrow = await queryOne<{ user_id: string; store_name: string }>(
                 `SELECT user_id, store_name FROM vendors WHERE id = $1 LIMIT 1`,
                 [booking.vendor_id]
@@ -222,7 +236,7 @@ export async function POST(request: Request) {
                   });
                 } catch { /* best-effort */ }
               }
-              console.log(`[mp-webhook] seña turno ok booking=${bookingId} amount=${paidAmount} mismatch=${mismatch}`);
+              console.log(`[mp-webhook] seña turno ok booking=${bookingId} mismatch=${mismatch}`);
             }
           }
           return NextResponse.json({ ok: true });
@@ -252,11 +266,17 @@ export async function POST(request: Request) {
               // Tolerancia de $1 por redondeo; si difiere mucho igual se marca
               // (la plata entró) pero se avisa en la notificación.
               const mismatch = expected > 0 && Math.abs(paidAmount - expected) > 1;
-              await query(
-                `UPDATE quotes SET deposit_status = 'paid', status = 'accepted', mp_payment_id = $1, accepted_at = now()
-                 WHERE id = $2`,
-                [String(payment.id || ""), quoteId]
-              );
+              try {
+                const marked = await queryOne<{ id: string }>(
+                  `UPDATE quotes SET deposit_status = 'paid', status = 'accepted', mp_payment_id = $1, accepted_at = now()
+                   WHERE id = $2 RETURNING id`,
+                  [String(payment.id || ""), quoteId]
+                );
+                if (!marked) throw new Error("update sin fila");
+              } catch (e) {
+                logApiError("mp-webhook/sena-persist", e);
+                return NextResponse.json({ error: "Reintentar" }, { status: 500 });
+              }
               const vrow = await queryOne<{ user_id: string; store_name: string; vertical: string | null }>(
                 `SELECT user_id, store_name, vertical FROM vendors WHERE id = $1 LIMIT 1`,
                 [quote.vendor_id]
@@ -324,7 +344,7 @@ export async function POST(request: Request) {
                     await sendPushToUser(vrow.user_id, { title, body, link: "/vendor/dashboard" });
                   } catch { /* best-effort */ }
                 }
-                console.log(`[mp-webhook] pack ok vendor=${pVendorId} pack=${packId} phone=${phone}`);
+                console.log(`[mp-webhook] pack ok vendor=${pVendorId} pack=${packId}`);
               }
             } catch (e) {
               logApiError("mp-webhook/pack", e);
@@ -375,7 +395,7 @@ export async function POST(request: Request) {
                     await sendPushToUser(vrow.user_id, { title, body, link: "/vendor/dashboard" });
                   } catch { /* best-effort */ }
                 }
-                console.log(`[mp-webhook] giftcard ok vendor=${gVendorId} code=${card.code} amount=${gAmount}`);
+                console.log(`[mp-webhook] giftcard ok vendor=${gVendorId} amount=${gAmount}`);
               }
             } catch (e) {
               logApiError("mp-webhook/giftcard", e);

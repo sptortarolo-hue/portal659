@@ -28,6 +28,10 @@ export const POST = withRateLimit(async (request: Request) => {
   if (cents < 1000) {
     return NextResponse.json({ error: "El monto mínimo es $1.000" }, { status: 400 });
   }
+  // Tope anti-typo ($500.000): un cero de más no debería emitir una giftcard gigante.
+  if (cents > 500000) {
+    return NextResponse.json({ error: "El monto máximo online es $500.000 (por más, coordiná por WhatsApp)" }, { status: 400 });
+  }
   const phone = toE164(String(customerPhone));
   if (!phone) {
     return NextResponse.json({ error: "Ingresá un celular válido" }, { status: 400 });

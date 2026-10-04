@@ -53,6 +53,10 @@ export async function POST(request: Request) {
       locationId = null;
     }
   }
+  // Foto y bio (migración aparte): post-update tolerante.
+  const photoRaw = typeof body.photo_url === "string" ? body.photo_url.trim().slice(0, 500) : "";
+  const photoUrl = photoRaw && (photoRaw.startsWith("/uploads/") || photoRaw.includes("/uploads/")) ? photoRaw : null;
+  const bio = typeof body.bio === "string" ? body.bio.trim().slice(0, 300) : null;
   try {
     let row;
     try {
@@ -94,6 +98,15 @@ export async function POST(request: Request) {
           ]
         );
       }
+    }
+    if (photoUrl || bio) {
+      try {
+        const withPhoto = await queryOne<Record<string, unknown>>(
+          `UPDATE estetica_staff SET photo_url = $1, bio = $2 WHERE id = $3 RETURNING *`,
+          [photoUrl, bio, (row as { id: string }).id]
+        );
+        if (withPhoto) row = withPhoto;
+      } catch { /* sin columnas: se ignora */ }
     }
     return NextResponse.json({ staff: row });
   } catch {

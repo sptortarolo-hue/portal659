@@ -23,7 +23,10 @@ export async function PATCH(
   if (!vendor) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
 
   const { id } = await params;
-  const body = await request.json();
+  const body = await request.json().catch(() => null);
+  if (!body || typeof body !== "object") {
+    return NextResponse.json({ error: "Solicitud inválida" }, { status: 400 });
+  }
 
   const existing = await queryOne<{
     id: string;
@@ -100,7 +103,7 @@ export async function PATCH(
       );
     }
     if (emsg.startsWith("Falta aplicar")) {
-      return NextResponse.json({ error: emsg }, { status: 400 });
+      return NextResponse.json({ error: emsg }, { status: 503 });
     }
     throw e;
   }

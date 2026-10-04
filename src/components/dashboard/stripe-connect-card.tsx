@@ -43,7 +43,9 @@ export function StripeConnectCard({
             ? "⚠️ La conexión expiró (más de 10 min). Probá de nuevo."
             : reason === "exchange"
               ? "⚠️ Stripe no devolvió los permisos. Probá de nuevo o revisá tu cuenta."
-              : "⚠️ No se pudo conectar. Probá de nuevo.",
+              : reason === "db"
+                ? "⚠️ No se pudo guardar la conexión (falta migración en el servidor). Avisale al administrador."
+                : "⚠️ No se pudo conectar. Probá de nuevo.",
       });
     }
     if (st) {

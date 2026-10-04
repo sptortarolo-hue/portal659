@@ -35,6 +35,10 @@ export function BookingForm({ vendorId, vendorName, services, serviceOptions, st
   const [packMsg, setPackMsg] = useState("");
   const [depositPayUrl, setDepositPayUrl] = useState<string | null>(null);
   const [depositMsg, setDepositMsg] = useState("");
+  // Grilla de huecos (estética con catálogo): evita probar horarios ocupados.
+  const [slots, setSlots] = useState<{ time: string; available: boolean }[]>([]);
+  const [slotsLoading, setSlotsLoading] = useState(false);
+  const [slotsClosed, setSlotsClosed] = useState(false);
   // Lista de espera (el horario está ocupado).
   const [overlap, setOverlap] = useState(false);
   const [waiting, setWaiting] = useState(false);
@@ -59,6 +63,39 @@ export function BookingForm({ vendorId, vendorName, services, serviceOptions, st
 
   const useCatalog = !!serviceOptions && serviceOptions.length > 0;
   const chosenService = useCatalog ? serviceOptions.find((s) => s.id === serviceId) : undefined;
+  const useSlots = useCatalog && !!serviceId && !!bookingDate;
+
+  useEffect(() => {
+    if (!useSlots) {
+      setSlots([]);
+      setSlotsClosed(false);
+      return;
+    }
+    let cancelled = false;
+    setSlotsLoading(true);
+    const qs = new URLSearchParams({ vendorId, date: bookingDate, serviceId });
+    if (staffId) qs.set("staffId", staffId);
+    fetch(`/api/slot-availability?${qs.toString()}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (cancelled) return;
+        setSlots(Array.isArray(d.slots) ? d.slots : []);
+        setSlotsClosed(d.closed === true);
+        if (bookingTime && Array.isArray(d.slots) && !d.slots.some((s: any) => s.time === bookingTime && s.available)) {
+          setBookingTime("");
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setSlots([]);
+      })
+      .finally(() => {
+        if (!cancelled) setSlotsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vendorId, serviceId, staffId, bookingDate, useSlots]);
 
   if (done) {
     return (
@@ -299,6 +336,36 @@ export function BookingForm({ vendorId, vendorName, services, serviceOptions, st
           <TimeSelect24 value={bookingTime} onChange={setBookingTime} aria-label="Horario" />
         </div>
       </div>
+      {useSlots && (
+        <div>
+          <Label>Huecos disponibles{slotsLoading ? " (cargando...)" : ""}</Label>
+          {slotsClosed ? (
+            <p className="text-xs text-muted-foreground mt-1">Cerrado ese día. Probá otra fecha.</p>
+          ) : slots.length === 0 && !slotsLoading ? (
+            <p className="text-xs text-muted-foreground mt-1">Elegí la hora abajo.</p>
+          ) : (
+            <div className="flex flex-wrap gap-1.5 mt-1.5">
+              {slots.map((s) => (
+                <button
+                  key={s.time}
+                  type="button"
+                  disabled={!s.available}
+                  onClick={() => setBookingTime(s.time)}
+                  className={`px-3 py-1.5 rounded-full border text-sm transition-colors ${
+                    bookingTime === s.time
+                      ? "border-primary bg-primary/10 text-primary font-medium"
+                      : s.available
+                        ? "border-border text-muted-foreground"
+                        : "border-border text-muted-foreground/40 line-through"
+                  }`}
+                >
+                  {s.time}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
       <div>
         <Label htmlFor="b-notes">Notas (opcional)</Label>
         <Textarea id="b-notes" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Alguna indicación extra..." rows={2} />

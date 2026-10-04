@@ -141,7 +141,7 @@ export async function POST(
     return NextResponse.json({ initPoint, amount, via: "mp", sandbox: isTest });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Error de conexión con Mercado Pago";
-    const status = msg.startsWith("Falta aplicar") ? 400 : 500;
+    const status = msg.startsWith("Falta aplicar") ? 503 : 500;
     return NextResponse.json({ error: msg }, { status });
   }
 }

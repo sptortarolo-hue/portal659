@@ -953,33 +953,6 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
               <option value="otros" />
             </datalist>
           </div>
-        </div>
-      </ConfigSection>
-
-      <ConfigSection id="ubicacion" label="Ubicación y horarios" icon="📍">
-        <div className="space-y-3">
-          <div>
-            <Label>Dirección</Label>
-            <Input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Calle y número" />
-          </div>
-          <LocationPicker
-            lat={lat}
-            lng={lng}
-            onChange={(newLat, newLng) => {
-              setLat(newLat);
-              setLng(newLng);
-            }}
-            neighborhood={vendor?.neighborhood}
-          />
-          <div>
-            <Label>Horarios</Label>
-            <HoursEditor value={hours} onChange={setHours} />
-          </div>
-        </div>
-      </ConfigSection>
-
-      <ConfigSection id="perfil" label="Perfil" icon="🏪">
-        <div className="space-y-3">
           <div>
             <Label>Foto de portada</Label>
             <Input
@@ -1023,6 +996,28 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Contá qué hacés, tu experiencia, especialidades..."
             />
+          </div>
+        </div>
+      </ConfigSection>
+
+      <ConfigSection id="ubicacion" label="Ubicación y horarios" icon="📍">
+        <div className="space-y-3">
+          <div>
+            <Label>Dirección</Label>
+            <Input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Calle y número" />
+          </div>
+          <LocationPicker
+            lat={lat}
+            lng={lng}
+            onChange={(newLat, newLng) => {
+              setLat(newLat);
+              setLng(newLng);
+            }}
+            neighborhood={vendor?.neighborhood}
+          />
+          <div>
+            <Label>Horarios</Label>
+            <HoursEditor value={hours} onChange={setHours} />
           </div>
         </div>
       </ConfigSection>

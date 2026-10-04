@@ -37,6 +37,8 @@ export function EsteticaServicesManager({ onChanged }: { onChanged?: () => void 
   const [price, setPrice] = useState("");
   const [commission, setCommission] = useState("");
   const [locationId, setLocationId] = useState("");
+  const [category, setCategory] = useState("");
+  const [categories, setCategories] = useState<string[]>([]);
   const [requireDeposit, setRequireDeposit] = useState(false);
   const [depositHours, setDepositHours] = useState("24");
   const [imageUrl, setImageUrl] = useState("");
@@ -50,6 +52,7 @@ export function EsteticaServicesManager({ onChanged }: { onChanged?: () => void 
   const [editRequire, setEditRequire] = useState(false);
   const [editHours, setEditHours] = useState("24");
   const [editImage, setEditImage] = useState("");
+  const [editCategory, setEditCategory] = useState("");
 
   async function uploadServicePhoto(file: File): Promise<string | null> {
     const fd = new FormData();
@@ -71,6 +74,7 @@ export function EsteticaServicesManager({ onChanged }: { onChanged?: () => void 
       const data = await res.json();
       if (data.migrationMissing) setMissing(true);
       setServices(data.services || []);
+      setCategories([...new Set((data.services || []).map((s: any) => String(s.category || "").trim()).filter(Boolean))] as string[]);
     } catch {
       /* noop */
     } finally {
@@ -107,6 +111,7 @@ export function EsteticaServicesManager({ onChanged }: { onChanged?: () => void 
           require_deposit: requireDeposit,
           deposit_hours: depositHours === "" ? 24 : Number(depositHours),
           image_url: imageUrl || undefined,
+          category: category.trim() || undefined,
         }),
       });
       const data = await res.json();
@@ -124,6 +129,7 @@ export function EsteticaServicesManager({ onChanged }: { onChanged?: () => void 
       setRequireDeposit(false);
       setDepositHours("24");
       setImageUrl("");
+      setCategory("");
       await load();
       onChanged?.();
     } catch {
@@ -144,6 +150,7 @@ export function EsteticaServicesManager({ onChanged }: { onChanged?: () => void 
           require_deposit: editRequire,
           deposit_hours: editHours === "" ? 24 : Number(editHours),
           image_url: editImage || null,
+          category: editCategory.trim() || null,
         }),
       });
       const data = await res.json();
@@ -212,13 +219,16 @@ export function EsteticaServicesManager({ onChanged }: { onChanged?: () => void 
                     <img src={s.image_url} alt="" className="h-10 w-10 rounded-lg object-cover border border-border mb-1" />
                   )}
                   <span className={`block font-medium truncate ${s.active === false ? "line-through opacity-60" : ""}`}>{s.name}</span>
+                  {(s as any).category && (
+                    <span className="inline-block rounded-full bg-primary/10 text-primary text-[10px] font-bold px-2 py-0.5 mt-0.5">{String((s as any).category)}</span>
+                  )}
                   <span className="block text-muted-foreground">
                     {s.duration_min ?? 60} min{s.buffer_min ? ` +${s.buffer_min} buffer` : ""} · seña {s.deposit_amount ? money(Number(s.deposit_amount)) : "no"}
                     {s.price != null ? ` · ${money(Number(s.price))}` : ""}{s.commission_pct != null ? ` · ${Number(s.commission_pct)}%` : ""}
                     {s.require_deposit ? ` · 🔒 seña obligatoria (${s.deposit_hours ?? 24}h)` : ""}
                   </span>
                 </span>
-                <button type="button" onClick={() => { setEditingId(editingId === s.id ? null : s.id); setEditPrice(s.price != null ? String(s.price) : ""); setEditCommission(s.commission_pct != null ? String(s.commission_pct) : ""); setEditRequire(s.require_deposit === true); setEditHours(s.deposit_hours != null ? String(s.deposit_hours) : "24"); setEditImage(typeof s.image_url === "string" ? s.image_url : ""); }} className="text-muted-foreground hover:text-foreground flex-shrink-0" title="Precio, comisión y seña">
+                <button type="button" onClick={() => { setEditingId(editingId === s.id ? null : s.id); setEditPrice(s.price != null ? String(s.price) : ""); setEditCommission(s.commission_pct != null ? String(s.commission_pct) : ""); setEditRequire(s.require_deposit === true); setEditHours(s.deposit_hours != null ? String(s.deposit_hours) : "24"); setEditImage(typeof s.image_url === "string" ? s.image_url : ""); setEditCategory(typeof (s as any).category === "string" ? (s as any).category : ""); }} className="text-muted-foreground hover:text-foreground flex-shrink-0" title="Precio, comisión y seña">
                   ✏️
                 </button>
                 <button type="button" onClick={() => toggle(s)} className="text-muted-foreground hover:text-foreground flex-shrink-0" title={s.active === false ? "Activar" : "Pausar"}>
@@ -237,6 +247,10 @@ export function EsteticaServicesManager({ onChanged }: { onChanged?: () => void 
                   <div>
                     <Label className="text-xs">Comisión % (vacío = la del profesional)</Label>
                     <Input value={editCommission} onChange={(e) => setEditCommission(e.target.value)} inputMode="decimal" placeholder="Ej: 40" className="mt-1 h-9 text-sm bg-background" />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Rubro</Label>
+                    <Input value={editCategory} onChange={(e) => setEditCategory(e.target.value)} placeholder="Ej: Uñas" list="estetica-service-cats" className="mt-1 h-9 text-sm bg-background" />
                   </div>
                   <div className="col-span-2 space-y-2 rounded-md border border-border p-2">
                     <label className="flex items-center gap-2 text-xs cursor-pointer">
@@ -289,6 +303,21 @@ export function EsteticaServicesManager({ onChanged }: { onChanged?: () => void 
         <div className="col-span-2">
           <Label className="text-xs">Nombre del servicio</Label>
           <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ej: Kapping gel" className="mt-1 h-9 text-sm" />
+        </div>
+        <div className="col-span-2">
+          <Label className="text-xs">Rubro (opcional, agrupa la carta)</Label>
+          <Input
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+            placeholder="Ej: Uñas, Pestañas, Cejas"
+            list="estetica-service-cats"
+            className="mt-1 h-9 text-sm"
+          />
+          <datalist id="estetica-service-cats">
+            {categories.map((c) => (
+              <option key={c} value={c} />
+            ))}
+          </datalist>
         </div>
         <div>
           <Label className="text-xs">Duración (min)</Label>
@@ -389,12 +418,30 @@ export function EsteticaStaffManager({ onChanged }: { onChanged?: () => void }) 
   const [missing, setMissing] = useState(false);
   const [name, setName] = useState("");
   const [commission, setCommission] = useState("");
+  const [bio, setBio] = useState("");
+  const [photoUrl, setPhotoUrl] = useState("");
+  const [uploadingStaffPhoto, setUploadingStaffPhoto] = useState(false);
   const [staffLocationId, setStaffLocationId] = useState("");
   const [staffLocations, setStaffLocations] = useState<{ id: string; name: string }[]>([]);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editCommission, setEditCommission] = useState("");
+  const [editBio, setEditBio] = useState("");
+  const [editPhoto, setEditPhoto] = useState("");
+
+  async function uploadStaffPhoto(file: File): Promise<string | null> {
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("folder", "services");
+    try {
+      const res = await fetch("/api/vendor/upload", { method: "POST", body: fd });
+      const data = await res.json().catch(() => ({}));
+      return typeof data.url === "string" ? data.url : null;
+    } catch {
+      return null;
+    }
+  }
 
   async function load() {
     setLoading(true);
@@ -428,7 +475,7 @@ export function EsteticaStaffManager({ onChanged }: { onChanged?: () => void }) 
       const res = await fetch("/api/vendor/estetica-staff", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), commission_pct: commission === "" ? null : Number(commission), location_id: staffLocationId || undefined }),
+        body: JSON.stringify({ name: name.trim(), commission_pct: commission === "" ? null : Number(commission), location_id: staffLocationId || undefined, photo_url: photoUrl || undefined, bio: bio.trim() || undefined }),
       });
       const data = await res.json();
       if (data.error) {
@@ -437,6 +484,8 @@ export function EsteticaStaffManager({ onChanged }: { onChanged?: () => void }) 
       }
       setName("");
       setCommission("");
+      setBio("");
+      setPhotoUrl("");
       setStaffLocationId("");
       await load();
       onChanged?.();
@@ -452,7 +501,11 @@ export function EsteticaStaffManager({ onChanged }: { onChanged?: () => void }) 
       const res = await fetch(`/api/vendor/estetica-staff/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ commission_pct: editCommission === "" ? null : Number(editCommission) }),
+        body: JSON.stringify({
+          commission_pct: editCommission === "" ? null : Number(editCommission),
+          bio: editBio.trim() || null,
+          photo_url: editPhoto || null,
+        }),
       });
       const data = await res.json();
       if (data.error) {
@@ -515,11 +568,14 @@ export function EsteticaStaffManager({ onChanged }: { onChanged?: () => void }) 
           {staff.map((s) => (
             <div key={s.id} className="rounded-lg bg-muted px-2.5 py-2 text-xs">
               <div className="flex items-center gap-2">
+                {(s as any).photo_url && (
+                  <img src={String((s as any).photo_url)} alt="" className="h-9 w-9 rounded-full object-cover border border-border flex-shrink-0" />
+                )}
                 <span className={`flex-1 min-w-0 font-medium truncate ${s.active === false ? "line-through opacity-60" : ""}`}>
                   {s.name}{s.commission_pct != null ? ` · ${Number(s.commission_pct)}%` : ""}
                 </span>
-                <button type="button" onClick={() => { setEditingId(editingId === s.id ? null : s.id); setEditCommission(s.commission_pct != null ? String(s.commission_pct) : ""); }} className="text-muted-foreground hover:text-foreground flex-shrink-0" title="Comisión">
-                  %
+                <button type="button" onClick={() => { setEditingId(editingId === s.id ? null : s.id); setEditCommission(s.commission_pct != null ? String(s.commission_pct) : ""); setEditBio(typeof (s as any).bio === "string" ? (s as any).bio : ""); setEditPhoto(typeof (s as any).photo_url === "string" ? (s as any).photo_url : ""); }} className="text-muted-foreground hover:text-foreground flex-shrink-0" title="Editar">
+                  ✏️
                 </button>
                 <button type="button" onClick={() => toggle(s)} className="text-muted-foreground hover:text-foreground flex-shrink-0" title={s.active === false ? "Activar" : "Pausar"}>
                   {s.active === false ? "▶️" : "⏸️"}
@@ -529,9 +585,35 @@ export function EsteticaStaffManager({ onChanged }: { onChanged?: () => void }) 
                 </button>
               </div>
               {editingId === s.id && (
-                <div className="flex gap-2 mt-2">
-                  <Input value={editCommission} onChange={(e) => setEditCommission(e.target.value)} inputMode="decimal" placeholder="Comisión % (vacío = sin comisión)" className="h-9 text-sm bg-background" />
-                  <Button size="sm" onClick={() => saveCommission(s.id)}>Guardar</Button>
+                <div className="mt-2 space-y-2">
+                  <div className="flex gap-2">
+                    <Input value={editCommission} onChange={(e) => setEditCommission(e.target.value)} inputMode="decimal" placeholder="Comisión % (vacío = sin comisión)" className="h-9 text-sm bg-background" />
+                    <Button size="sm" onClick={() => saveCommission(s.id)}>Guardar</Button>
+                  </div>
+                  <Input value={editBio} onChange={(e) => setEditBio(e.target.value)} placeholder="Bio (ej: especialista en lifting)" className="h-9 text-sm bg-background" />
+                  <div className="flex items-center gap-2">
+                    {editPhoto ? (
+                      <>
+                        <img src={editPhoto} alt="" className="h-9 w-9 rounded-full object-cover border border-border" />
+                        <button type="button" onClick={() => setEditPhoto("")} className="text-xs text-red-600 hover:underline">Quitar</button>
+                      </>
+                    ) : (
+                      <label className="inline-flex items-center gap-2 rounded-md border border-input px-3 py-2 text-xs font-medium cursor-pointer hover:bg-muted">
+                        📷 Foto
+                        <input
+                          type="file" accept="image/*" className="hidden"
+                          onChange={async (e) => {
+                            const f = e.target.files?.[0];
+                            if (!f) return;
+                            const url = await uploadStaffPhoto(f);
+                            if (url) setEditPhoto(url);
+                            else setMsg("No se pudo subir la foto");
+                            e.target.value = "";
+                          }}
+                        />
+                      </label>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
@@ -546,6 +628,38 @@ export function EsteticaStaffManager({ onChanged }: { onChanged?: () => void }) 
         <div>
           <Label className="text-xs">Comisión % (opcional)</Label>
           <Input value={commission} onChange={(e) => setCommission(e.target.value)} inputMode="decimal" placeholder="Ej: 40" className="mt-1 h-9 text-sm" />
+        </div>
+        <div className="col-span-2">
+          <Label className="text-xs">Bio (opcional, se ve en la carta)</Label>
+          <Input value={bio} onChange={(e) => setBio(e.target.value)} placeholder="Ej: especialista en lifting" className="mt-1 h-9 text-sm" />
+        </div>
+        <div className="col-span-2">
+          <Label className="text-xs">Foto (opcional)</Label>
+          <div className="flex items-center gap-2 mt-1">
+            {photoUrl ? (
+              <>
+                <img src={photoUrl} alt="" className="h-9 w-9 rounded-full object-cover border border-border" />
+                <button type="button" onClick={() => setPhotoUrl("")} className="text-xs text-red-600 hover:underline">Quitar</button>
+              </>
+            ) : (
+              <label className="inline-flex items-center gap-2 rounded-md border border-input px-3 py-2 text-xs font-medium cursor-pointer hover:bg-muted">
+                {uploadingStaffPhoto ? "Subiendo..." : "📷 Subir foto"}
+                <input
+                  type="file" accept="image/*" className="hidden"
+                  onChange={async (e) => {
+                    const f = e.target.files?.[0];
+                    if (!f) return;
+                    setUploadingStaffPhoto(true);
+                    const url = await uploadStaffPhoto(f);
+                    setUploadingStaffPhoto(false);
+                    if (url) setPhotoUrl(url);
+                    else setMsg("No se pudo subir la foto");
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+            )}
+          </div>
         </div>
         {staffLocations.length > 0 && (
           <div className="col-span-2">

@@ -35,10 +35,16 @@ export async function GET(request: Request) {
     return NextResponse.redirect(dashboardUrl("stripe=error&reason=exchange"));
   }
 
-  await queryOne(
-    `UPDATE vendors SET stripe_account_id = $1, stripe_connected_at = now() WHERE id = $2`,
+  // Verificar persistencia antes de festejar: sin migración el UPDATE falla
+  // en silencio y el comercio creería estar conectado.
+  const saved = await queryOne<{ stripe_account_id: string | null }>(
+    `UPDATE vendors SET stripe_account_id = $1, stripe_connected_at = now() WHERE id = $2 RETURNING stripe_account_id`,
     [exchanged.accountId, verified.vendorId]
   ).catch(() => undefined);
+
+  if (!saved?.stripe_account_id) {
+    return NextResponse.redirect(dashboardUrl("stripe=error&reason=db"));
+  }
 
   return NextResponse.redirect(dashboardUrl("stripe=connected"));
 }

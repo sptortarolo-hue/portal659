@@ -35,6 +35,15 @@ export async function PATCH(
     sets.push(`active = $${idx++}`);
     vals.push(body.active !== false);
   }
+  if (body.photo_url !== undefined) {
+    const raw = typeof body.photo_url === "string" ? body.photo_url.trim().slice(0, 500) : "";
+    sets.push(`photo_url = $${idx++}`);
+    vals.push(raw && (raw.startsWith("/uploads/") || raw.includes("/uploads/")) ? raw : null);
+  }
+  if (body.bio !== undefined) {
+    sets.push(`bio = $${idx++}`);
+    vals.push(typeof body.bio === "string" ? body.bio.trim().slice(0, 300) || null : null);
+  }
   if (body.location_id !== undefined) {
     const raw = typeof body.location_id === "string" && body.location_id ? body.location_id : null;
     if (raw) {

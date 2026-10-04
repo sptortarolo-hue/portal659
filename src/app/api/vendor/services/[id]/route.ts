@@ -107,6 +107,11 @@ export async function PATCH(
     sets.push(`image_url = $${idx++}`);
     vals.push(url);
   }
+  if (body.category !== undefined) {
+    const raw = typeof body.category === "string" ? body.category.trim().slice(0, 60) : "";
+    sets.push(`category = $${idx++}`);
+    vals.push(raw || null);
+  }
   if (body.location_id !== undefined) {
     const raw = typeof body.location_id === "string" && body.location_id ? body.location_id : null;
     if (raw) {

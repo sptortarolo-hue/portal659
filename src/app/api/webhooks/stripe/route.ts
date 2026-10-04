@@ -48,8 +48,10 @@ export async function POST(request: Request) {
       }
     }
   } catch (e) {
-    // Stripe reintenta: se loguea pero no se falla (un fallo acá es plata sin marcar).
+    // Fallo persistiendo (plata cobrada pero seña sin marcar): 500 para que
+    // Stripe reintente, no ok silencioso.
     console.error("[stripe-webhook]", e instanceof Error ? e.message : e);
+    return NextResponse.json({ error: "Reintentar" }, { status: 500 });
   }
 
   return NextResponse.json({ ok: true });
@@ -72,11 +74,13 @@ async function markQuoteDepositPaid(quoteId: string, sessionId: string, paidAmou
 
   const expected = Number(quote.deposit_amount) || 0;
   const mismatch = expected > 0 && Math.abs(paidAmount - expected) > 1;
-  await query(
+  // Si no persiste (migración sin aplicar), lanzar para que Stripe reintente.
+  const marked = await queryOne<{ id: string }>(
     `UPDATE quotes SET deposit_status = 'paid', status = 'accepted', mp_payment_id = $1, accepted_at = now()
-     WHERE id = $2`,
+     WHERE id = $2 RETURNING id`,
     [`stripe:${sessionId}`, quoteId]
-  );
+  ).catch(() => undefined);
+  if (!marked) throw new Error("markQuoteDepositPaid sin persistencia");
   const vrow = await queryOne<{ user_id: string; store_name: string; vertical: string | null }>(
     `SELECT user_id, store_name, vertical FROM vendors WHERE id = $1 LIMIT 1`,
     [quote.vendor_id]

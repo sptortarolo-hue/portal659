@@ -18,6 +18,18 @@ export const POST = withRateLimit(async (request: Request) => {
   if (!/^[0-9a-f-]{36}$/i.test(vendorId) || !customerName || !phone || !/^\d{4}-\d{2}-\d{2}$/.test(bookingDate)) {
     return NextResponse.json({ error: "Faltan datos requeridos" }, { status: 400 });
   }
+  // Sin espera para fechas pasadas (ensucia el panel).
+  try {
+    const todayAR = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Argentina/Buenos_Aires",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
+    if (bookingDate < todayAR) {
+      return NextResponse.json({ error: "La fecha ya pasó" }, { status: 400 });
+    }
+  } catch { /* sin TZ: se sigue */ }
   try {
     const vendor = await queryOne<{ id: string }>(
       `SELECT id FROM vendors WHERE id = $1 AND vertical = 'estetica' LIMIT 1`,

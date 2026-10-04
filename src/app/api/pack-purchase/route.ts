@@ -40,10 +40,20 @@ export const POST = withRateLimit(async (request: Request) => {
     return NextResponse.json({ error: "Comercio no encontrado" }, { status: 404 });
   }
 
+  let packMissingTable = false;
   const pack = await queryOne<{ id: string; name: string; sessions_total: number; price: number | null }>(
     `SELECT id, name, sessions_total, price FROM service_packs WHERE id = $1 AND vendor_id = $2 AND active = true LIMIT 1`,
     [packId, vendorId]
-  ).catch(() => undefined);
+  ).catch((e) => {
+    if ((e as { code?: string })?.code === "42P01") packMissingTable = true;
+    return undefined;
+  });
+  if (packMissingTable) {
+    return NextResponse.json(
+      { error: "Packs no disponibles por ahora (falta migración en el servidor)" },
+      { status: 503 }
+    );
+  }
   if (!pack || !(Number(pack.price) > 0)) {
     return NextResponse.json({ error: "El pack ya no está disponible" }, { status: 400 });
   }

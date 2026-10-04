@@ -386,16 +386,21 @@ export default async function TiendaPage({
   const isEstetica = v.vertical === "estetica";
   // Catálogo de servicios + profesionales (estética): turnera por servicio
   // con duración y agenda por profesional. Tolerante a migración sin aplicar.
-  let esteticaServices: { id: string; name: string; deposit_amount: number | null; duration_min: number | null; price: number | null; require_deposit: boolean | null; deposit_hours: number | null; image_url: string | null }[] = [];
-  let esteticaStaff: { id: string; name: string }[] = [];
+  let esteticaServices: { id: string; name: string; deposit_amount: number | null; duration_min: number | null; price: number | null; require_deposit: boolean | null; deposit_hours: number | null; image_url: string | null; category: string | null }[] = [];
+  let esteticaStaff: { id: string; name: string; photo_url: string | null; bio: string | null }[] = [];
   let esteticaLocations: { id: string; name: string; address: string | null }[] = [];
   let esteticaPacks: { id: string; name: string; sessions_total: number | null; price: number | null }[] = [];
   let esteticaMpConnected = false;
   if (isEstetica) {
     try {
       const srows = await queryMany<any>(
-        `SELECT id, name, deposit_amount, duration_min, price, require_deposit, deposit_hours, image_url FROM services WHERE vendor_id = $1 AND active = true ORDER BY position ASC, name ASC`,
+        `SELECT id, name, deposit_amount, duration_min, price, require_deposit, deposit_hours, image_url, category FROM services WHERE vendor_id = $1 AND active = true ORDER BY position ASC, name ASC`,
         [v.id]
+      ).catch(() =>
+        queryMany<any>(
+          `SELECT id, name, deposit_amount, duration_min, price, require_deposit, deposit_hours, image_url FROM services WHERE vendor_id = $1 AND active = true ORDER BY position ASC, name ASC`,
+          [v.id]
+        ).catch(() => null)
       ).catch(() =>
         queryMany<any>(
           `SELECT id, name, deposit_amount, duration_min, price, require_deposit, deposit_hours FROM services WHERE vendor_id = $1 AND active = true ORDER BY position ASC, name ASC`,
@@ -421,14 +426,25 @@ export default async function TiendaPage({
         require_deposit: s.require_deposit === true,
         deposit_hours: s.deposit_hours != null ? Number(s.deposit_hours) : null,
         image_url: typeof s.image_url === "string" && s.image_url ? s.image_url : null,
+        category: typeof s.category === "string" && s.category.trim() ? s.category.trim() : null,
       }));
     } catch { esteticaServices = []; }
     try {
       const trows = await queryMany<any>(
-        `SELECT id, name FROM estetica_staff WHERE vendor_id = $1 AND active = true ORDER BY position ASC, name ASC`,
+        `SELECT id, name, photo_url, bio FROM estetica_staff WHERE vendor_id = $1 AND active = true ORDER BY position ASC, name ASC`,
         [v.id]
+      ).catch(() =>
+        queryMany<any>(
+          `SELECT id, name FROM estetica_staff WHERE vendor_id = $1 AND active = true ORDER BY position ASC, name ASC`,
+          [v.id]
+        )
       );
-      esteticaStaff = (trows || []).map((t: any) => ({ id: String(t.id), name: String(t.name ?? "") }));
+      esteticaStaff = (trows || []).map((t: any) => ({
+        id: String(t.id),
+        name: String(t.name ?? ""),
+        photo_url: typeof t.photo_url === "string" && t.photo_url ? t.photo_url : null,
+        bio: typeof t.bio === "string" && t.bio.trim() ? t.bio.trim() : null,
+      }));
     } catch { esteticaStaff = []; }
     try {
       const lrows = await queryMany<any>(
@@ -789,8 +805,39 @@ export default async function TiendaPage({
                 📅 Reservar turno
               </h3>
               {isEstetica && esteticaServices.length > 0 && (
+                <div className="mb-5 space-y-5">
+                  {(() => {
+                    const groups: { name: string | null; items: typeof esteticaServices }[] = [];
+                    for (const s of esteticaServices) {
+                      const g = groups.find((x) => (x.name || "") === (s.category || ""));
+                      if (g) g.items.push(s);
+                      else groups.push({ name: s.category, items: [s] });
+                    }
+                    return groups.map((g) => (
+                      <div key={g.name || "servicios"}>
+                        {g.name && (
+                          <h4 className="font-display text-base font-semibold mb-2">{g.name}</h4>
+                        )}
+                        <ServicePickCards services={g.items} />
+                      </div>
+                    ));
+                  })()}
+                </div>
+              )}
+              {isEstetica && esteticaStaff.some((t) => t.photo_url || t.bio) && (
                 <div className="mb-5">
-                  <ServicePickCards services={esteticaServices} />
+                  <h4 className="font-display text-base font-semibold mb-2">💇 Nuestro equipo</h4>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    {esteticaStaff.map((t) => (
+                      <div key={t.id} className="rounded-2xl border border-border bg-card p-3 text-center">
+                        <div className="h-16 w-16 rounded-full overflow-hidden mx-auto bg-muted">
+                          <ProductImage src={t.photo_url} name={t.name} vertical="estetica" alt={t.name} className="w-full h-full object-cover" />
+                        </div>
+                        <p className="font-semibold text-sm mt-2 truncate">{t.name}</p>
+                        {t.bio && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{t.bio}</p>}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
               <BookingForm
@@ -816,6 +863,15 @@ export default async function TiendaPage({
             {isEstetica && acceptsCart && sections.length > 0 && (
               <>
                 <h2 className="font-display text-2xl font-semibold mt-6 mb-4">🛍️ Productos</h2>
+                {promos.length > 0 && (
+                  <PromoSection
+                    items={promos}
+                    vendor={vendorBrief}
+                    modifiersByProduct={modifiersByProduct}
+                    acceptsCart={acceptsCart}
+                    consultHref={waUrl}
+                  />
+                )}
                 {sections.map((s, i) => (
                   <section key={s.name} id={`seccion-${i}`} className="mb-10">
                     <h3 className="font-display text-xl font-semibold mb-4 border-b border-border pb-2">

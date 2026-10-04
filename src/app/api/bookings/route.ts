@@ -14,18 +14,46 @@ const toMinutes = (t: string): number | null => {
 };
 
 export const POST = withRateLimit(async (request: Request) => {
-  const body = await request.json();
-  const { vendorId, productName, bookingDate, bookingTime, notes, customerName, customerPhone } = body;
+  const body = await request.json().catch(() => null);
+  if (!body || typeof body !== "object") {
+    return NextResponse.json({ error: "Solicitud inválida" }, { status: 400 });
+  }
+  const raw = body as Record<string, unknown>;
+  const vendorId = String(raw.vendorId || "");
+  const productName = raw.productName != null ? String(raw.productName) : null;
+  const bookingDate = String(raw.bookingDate || "");
+  const bookingTime = String(raw.bookingTime || "");
+  const notes = raw.notes != null ? String(raw.notes) : null;
+  const customerName = String(raw.customerName || "").trim();
+  const customerPhoneRaw = String(raw.customerPhone || "");
+  // Teléfono normalizado E164 (matchea créditos de packs y evita duplicados
+  // por formato). Sin celular válido no hay turno (se avisa por WA).
+  const customerPhone = String(toE164(customerPhoneRaw) || "");
+  if (!customerPhone) {
+    return NextResponse.json({ error: "Ingresá un celular válido" }, { status: 400 });
+  }
   const staffId = typeof body.staffId === "string" && body.staffId ? body.staffId : null;
   const serviceId = typeof body.serviceId === "string" && body.serviceId ? body.serviceId : null;
   const locationIdRaw = typeof body.locationId === "string" && body.locationId ? body.locationId : null;
 
-  if (!vendorId || !bookingDate || !bookingTime || !customerName || !customerPhone) {
+  if (!vendorId || !bookingDate || !bookingTime || !customerName) {
     return NextResponse.json({ error: "Faltan datos requeridos" }, { status: 400 });
   }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(bookingDate)) || toMinutes(String(bookingTime)) == null) {
     return NextResponse.json({ error: "Fecha u hora inválida" }, { status: 400 });
   }
+  // Sin turnos en el pasado (compara fecha AR, sin hora: el de hoy vale).
+  try {
+    const todayAR = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Argentina/Buenos_Aires",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
+    if (String(bookingDate) < todayAR) {
+      return NextResponse.json({ error: "La fecha ya pasó" }, { status: 400 });
+    }
+  } catch { /* sin TZ: se sigue */ }
 
   // Tope mensual del plan (servicios: 5; estética gratis: 10). 429 si se alcanza.
   try {

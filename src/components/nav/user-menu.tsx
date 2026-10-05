@@ -182,6 +182,13 @@ export function UserMenu() {
                   </Link>
                 </>
               )}
+              <Link
+                href="/manuales"
+                className="flex items-center gap-3 px-4 py-3 text-sm text-foreground hover:bg-muted transition-colors"
+                onClick={() => setMenuOpen(false)}
+              >
+                <span>📘</span> Manuales y guías
+              </Link>
               <div className="border-t border-border my-1" />
               <button
                 onClick={handleLogout}
@@ -219,6 +226,13 @@ export function UserMenu() {
                 onClick={() => setMenuOpen(false)}
               >
                 <span>🛵</span> Unirme como repartidor
+              </Link>
+              <Link
+                href="/manuales"
+                className="flex items-center gap-3 px-4 py-3 text-sm text-foreground hover:bg-muted transition-colors"
+                onClick={() => setMenuOpen(false)}
+              >
+                <span>📘</span> Manuales y guías
               </Link>
             </>
           )}

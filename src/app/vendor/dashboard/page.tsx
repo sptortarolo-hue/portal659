@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useRenderGuard } from "@/hooks/use-render-guard";
 import { TabErrorBoundary } from "@/components/dashboard/tab-error-boundary";
@@ -34,6 +35,7 @@ import {
   Receipt,
   Boxes,
   Image,
+  BookOpen,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 // Modal de recorte: solo se carga cuando se abre (fuera del bundle inicial).
@@ -2149,6 +2151,13 @@ function VendorDashboardInner() {
                 </>
               )}
             </div>
+            <Link
+              href="/manuales"
+              onClick={() => setMoreOpen(false)}
+              className="mt-2 flex items-center gap-2 p-3 rounded-xl border border-primary/30 bg-primary/5 text-sm font-medium text-primary col-span-2"
+            >
+              <BookOpen className="h-5 w-5" />📘 Manuales — Guías por rubro
+            </Link>
           </div>
           </div>
         )}

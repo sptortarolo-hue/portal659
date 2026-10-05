@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { X, Package, ChefHat, ShoppingBag, LayoutGrid, UtensilsCrossed, Settings, BarChart3, History, Star, ExternalLink, LogOut, Home, Sparkles, Calculator, Bot, DollarSign, Receipt, Users, MessageSquare, CalendarDays, ClipboardList, Boxes, Image } from "lucide-react";
+import { X, Package, ChefHat, ShoppingBag, LayoutGrid, UtensilsCrossed, Settings, BarChart3, History, Star, ExternalLink, LogOut, Home, Sparkles, Calculator, Bot, DollarSign, Receipt, Users, MessageSquare, CalendarDays, ClipboardList, Boxes, Image, BookOpen } from "lucide-react";
 import type { ConfigSectionStatus } from "@/components/dashboard/config-nav";
 
 type Tab = "hoy" | "config" | "menu" | "orders" | "pedidos" | "mostrador" | "history" | "comanda" | "analytics" | "pos" | "mesas" | "caja" | "clientes" | "reviews" | "recetas" | "fiscal" | "inventario" | "galeria";
@@ -393,6 +393,15 @@ export default function VendorSidebar({
           >
             <Bot className="h-4 w-4 text-primary" />
             <span className="flex-1 truncate">Bot de WhatsApp</span>
+          </Link>
+          <Link
+            href="/manuales"
+            target="_blank"
+            className="flex items-center gap-3 rounded-lg border border-border px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+          >
+            <BookOpen className="h-4 w-4 text-primary" />
+            <span className="flex-1 truncate">Manuales</span>
+            <ExternalLink className="h-3 w-3" />
           </Link>
           <Link
             href="/"

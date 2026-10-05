@@ -107,6 +107,21 @@ export default function RegisterPage() {
         <p className="text-muted-foreground mt-2">
           Registrate y armá tu vidriera en Portal 659 en minutos
         </p>
+        <p className="text-sm text-muted-foreground mt-2">
+          ¿Dudas? Mirá las{" "}
+          <Link
+            href={
+              tipo === "gastronomia"
+                ? "/manuales/gastronomia"
+                : tipo === "comercio"
+                  ? "/manuales/comercio"
+                  : "/manuales"
+            }
+            className="text-primary underline"
+          >
+            guías paso a paso
+          </Link>
+        </p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">

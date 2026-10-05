@@ -17,6 +17,7 @@ import {
   Sparkles,
   Calculator,
   Users,
+  BookOpen,
 } from "lucide-react";
 import type { Order, Booking, Vendor } from "@/types/database";
 import { StorePreviewCard } from "@/components/vendor/store-preview-card";
@@ -153,6 +154,12 @@ export function DashboardHome({
   const sellsOrders = isGastro || isModa || isComercio;
   // Retail (moda/comercio): flow con aceptación + empaque ("Por aceptar", "Empaquetando").
   const isRetail = isModa || isComercio;
+  // Deep-link al manual de su vertical (default: índice de manuales).
+  const manualUrl = isGastro
+    ? "/manuales/gastronomia"
+    : isComercio
+      ? "/manuales/comercio"
+      : "/manuales";
 
   // KPIs de venta (gastro + moda)
   const notCancelled = orders.filter((o) => o.status !== "cancelled");
@@ -330,6 +337,19 @@ export function DashboardHome({
                   onClick={() => onNavigate(s.tab)}
                 />
               ))}
+            <Link
+              href={manualUrl}
+              className="flex items-center gap-3 rounded-2xl border border-border bg-card p-3.5 hover:border-primary/30 hover:shadow-sm transition-all"
+            >
+              <span className="inline-flex items-center justify-center h-10 w-10 rounded-xl bg-amber-100 text-amber-700 flex-shrink-0">
+                <BookOpen className="h-5 w-5" />
+              </span>
+              <span className="flex-1 min-w-0">
+                <span className="block text-sm font-semibold">Manuales</span>
+                <span className="block text-xs text-muted-foreground truncate">Guías paso a paso de tu rubro</span>
+              </span>
+              <ArrowRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+            </Link>
           </div>
         </>
       ) : (
@@ -403,6 +423,19 @@ export function DashboardHome({
               <span className="flex-1 min-w-0">
                 <span className="block text-sm font-semibold">Ver planes</span>
                 <span className="block text-xs text-muted-foreground truncate">Sumá venta online cuando crezcas</span>
+              </span>
+              <ArrowRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+            </Link>
+            <Link
+              href={manualUrl}
+              className="flex items-center gap-3 rounded-2xl border border-border bg-card p-3.5 hover:border-primary/30 hover:shadow-sm transition-all"
+            >
+              <span className="inline-flex items-center justify-center h-10 w-10 rounded-xl bg-amber-100 text-amber-700 flex-shrink-0">
+                <BookOpen className="h-5 w-5" />
+              </span>
+              <span className="flex-1 min-w-0">
+                <span className="block text-sm font-semibold">Manuales</span>
+                <span className="block text-xs text-muted-foreground truncate">Guías paso a paso de tu rubro</span>
               </span>
               <ArrowRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
             </Link>

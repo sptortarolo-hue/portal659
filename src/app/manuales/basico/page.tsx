@@ -5,7 +5,7 @@ import type { Metadata } from "next";
 export const metadata: Metadata = {
   title: "Uso básico | Portal 659",
   description:
-    "Manual básico transversal a todas las verticales: cuenta, panel, configuración, micrositio, pedidos y cobros.",
+    "Manual básico transversal a todos los rubros: cuenta, panel, configuración, micrositio, pedidos y cobros.",
 };
 
 export default function BasicoPage() {
@@ -16,7 +16,7 @@ export default function BasicoPage() {
         <h1 className="font-display text-2xl font-semibold">Uso básico</h1>
       </div>
       <p className="text-muted-foreground mb-4 text-sm">
-        Sirve para <strong>todas las verticales</strong> (gastronomía, comercio,
+        Sirve para <strong>todos los rubros</strong> (gastronomía, comercio,
         servicios, moda y estética). Los detalles propios de tu rubro están en
         su manual específico.
       </p>

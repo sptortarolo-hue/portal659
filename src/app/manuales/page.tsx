@@ -4,7 +4,7 @@ import { Logo } from "@/components/brand/logo";
 export const metadata = {
   title: "Manuales | Portal 659",
   description:
-    "Guías paso a paso para usar Portal 659: manual básico transversal a todas las verticales y manuales específicos de gastronomía y comercio de barrio.",
+    "Guías paso a paso para usar Portal 659: manual básico transversal a todos los rubros y manuales específicos de gastronomía y comercio de barrio.",
 };
 
 function Card({
@@ -54,8 +54,8 @@ export default function ManualesPage() {
         <h1 className="font-display text-2xl font-semibold">Manuales del comercio</h1>
       </div>
       <p className="text-muted-foreground mb-8">
-        Empezá por el <strong>manual básico</strong>, que sirve para todas las
-        verticales. Después consultá el manual específico de tu rubro para los
+        Empezá por el <strong>manual básico</strong>, que sirve para todos los
+        rubros. Después consultá el manual específico de tu rubro para los
         detalles propios de tu forma de vender.
       </p>
 
@@ -64,7 +64,7 @@ export default function ManualesPage() {
         <Card
           href="/manuales/basico"
           emoji="📘"
-          title="Uso básico (todas las verticales)"
+          title="Uso básico (todos los rubros)"
           desc="Cuenta, panel, configuración, micrositio y QR, recibir pedidos y cobrar. Lo común a gastronomía, comercio, servicios, moda y estética."
         />
         <Card
@@ -87,7 +87,7 @@ export default function ManualesPage() {
         />
       </div>
 
-      <h2 className="font-display text-lg font-semibold mb-3">Por vertical</h2>
+      <h2 className="font-display text-lg font-semibold mb-3">Por rubro</h2>
       <div className="space-y-4">
         <Card
           href="/manuales/gastronomia"

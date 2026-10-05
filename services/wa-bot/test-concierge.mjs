@@ -52,20 +52,21 @@ async function main() {
   if (!s.includes("Che Sancho") || !s.includes("abiert") || !s.includes("ayuda") || !s.includes("portal659.com.ar/tienda/")) { console.log("!!! saludo incompleto"); ok = false; }
   else { console.log(">>> OK: saludo con abierto + menú + pie de ayuda"); }
 
-  // 2. Pedido armado → ok + canal abierto. latest-orders 404 → cae al menú de la tienda.
+  // 2. Pedido armado → silencio (el chat queda abierto para eventos, no contesta).
   r = await handleInbound({ vendor, waId: wa, body: "quiero una empanada" });
-  show("quiero empanada (sin pedido reciente)", r);
-  const ok2 = (r.replies || []).join(" ");
-  if (!ok2.includes("Ya tenemos tu pedido") || !ok2.includes("ayuda") || !ok2.includes("portal659")) { console.log("!!! el pedido armado no fue ok"); ok = false; }
-  else { console.log(">>> OK: pedido armado → ok + canal abierto (sin pedir más nada)"); }
+  show("quiero empanada (sin pedido reciente)", r._silent ? [] : r.replies);
+  const silent = (r.replies || []).length === 0;
+  if (!silent) { console.log("!!! el pedido armado no fue silencioso"); ok = false; }
+  else { console.log(">>> OK: pedido armado → responde nada (canal abierto para eventos)"); }
 
-  // Con pedido reciente → el link se vuelva de seguimiento.
+  // Con pedido reciente → también silencio (la app gestiona el aviso).
   recentOrder = { pickupNumber: 7, trackUrl: "https://www.portal659.com.ar/seguimiento/abc" };
-  r = await handleInbound({ vendor, waId: wa, body: "agregame una coca" });
-  show("pedido + pedido reciente", r);
+  r = await handleInbound({ vendor, waId: wa, body: "agregame una cocacola" });
+  show("texto con pedido reciente", r);
   const ok3 = (r.replies || []).join(" ");
-  if (!ok3.includes("Nro. 7") || !ok3.includes("seguimiento/abc")) { console.log("!!! no se enfatizó el link de seguimiento del pedido"); ok = false; }
-  else { console.log(">>> OK: pedido con nro + link de seguimiento cuando ya existe"); }
+  if ((r.replies || []).length !== 0) { console.log("!!! con pedido reciente el bot contestó (debe quedar mudo)"); ok = false; }
+  else { console.log(">>> OK: con pedido reciente también queda mudo"); }
+  recentOrder = null;
 
   // 3. Cualquier otra cosa → pregunta persona (1 sí / 2 no). Texto neutro para
   // no disparar el handoff global por accidente.

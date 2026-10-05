@@ -58,9 +58,8 @@ export async function POST(
   if (vendorRow?.transfer_holder) lines.push(`Titular: ${vendorRow.transfer_holder}`);
   lines.push(`Monto: $${Number(order.total).toLocaleString("es-AR")}`);
   lines.push("", "Mandanos la foto o el PDF del comprobante por acá y lo verificamos enseguida. 🙏");
-  if (order.track_token) {
-    lines.push(`📦 Seguí tu pedido acá: ${getSiteUrl()}/seguimiento/${order.track_token}`);
-  }
+  // Sin link de seguimiento acá: el tracking solo va en los mensajes de
+  // aceptación y "en camino" — los otros eventos no la repiten.
 
   const wabotUrl = (process.env.WABOT_URL || "http://wabot:8792").replace(/\/$/, "");
   const r = await fetch(`${wabotUrl}/send`, {

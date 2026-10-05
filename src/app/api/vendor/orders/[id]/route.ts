@@ -594,7 +594,7 @@ export async function PATCH(
       const text = isOnRoadEvent
         ? `🛵 ¡Tu pedido ${nro} va en camino! (${store}).${link}`
         : isReadyEvent
-          ? `🛍️ ¡Tu pedido ${nro} está listo para retirar! Pasá a buscarlo por *${store}*.${addr}${link}`
+          ? `🛍️ ¡Tu pedido ${nro} está listo para retirar! Pasá a buscarlo por *${store}*.${addr}`
           : `✅ ¡Tu pedido ${nro} fue aceptado por *${store}*!${link}`;
       const wabotUrl = (process.env.WABOT_URL || "http://wabot:8792").replace(/\/$/, "");
       await fetch(`${wabotUrl}/send`, {

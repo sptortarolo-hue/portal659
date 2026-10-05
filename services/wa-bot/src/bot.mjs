@@ -1084,21 +1084,14 @@ async function handleConcierge({ vendor, text, state, replies, waId }) {
     return;
   }
 
-  // El pedido armado: SOLO cuando el texto menciona productos del menú (el bot
-  // entiende "quiero X", "dame Y", etc.). El link del último pedido enriquece
-  // el as en ese caso. Si el texto es neutral pero el cliente tiene un pedido →
-  // el ask-person — no el ok — porque el cliente no está pidiendo, está hablando.
+  // El pedido armado por la app/página web: el mensaje con productos (o pedido
+  // reciente del teléfono) NO recibe respuesta. El cliente pidió online sin
+  // iniciar una conversación → el canal queda abierto para los eventos del
+  // pedido (aceptación, en camino, listo, datos de pago) que la app manda.
   const products = await getMenu(vendor.id).catch(() => []);
   const mentionsProduct = Array.isArray(products) && products.length > 0 && extractFromText(text, products).length > 0;
-  if (mentionsProduct) {
-    const recent = await latestOrderFor(vendor.id, state.customerPhone || waId);
-    const link = recent?.trackUrl || shopUrl(vendor);
-    const nro = recent?.pickupNumber != null ? ` Nro. ${recent.pickupNumber}` : "";
-    replies.push(
-      `¡Perfecto! 👌 Ya tenemos tu pedido${nro} con *${vendor.store_name}*. ` +
-      `Te avisamos por acá las novedades: aceptado → en camino → listo. Podés seguirlo acá: ${link}\n\n` +
-      `🙌 Si querés hablar con una persona, escribime *ayuda* en cualquier momento.`
-    );
+  const hasOrder = await latestOrderFor(vendor.id, state.customerPhone || waId);
+  if (mentionsProduct || hasOrder) {
     return;
   }
 

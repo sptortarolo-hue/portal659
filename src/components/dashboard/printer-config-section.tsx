@@ -327,7 +327,7 @@ export function PrinterConfigSection({
               <p className="mt-2 rounded-lg bg-amber-50 border border-amber-200 p-2 text-[11px] text-amber-800">
                 ¿Tu antivirus (AVG/Avast) lo marca? Es un <strong>falso positivo heurístico</strong>.
                 Restaurá el archivo, agregá una excepción y avisanos. Guía en
-                <a href="/manuales/impresora" className="underline"> el manual de impresora</a>.
+                <a href="/manuales/basico" className="underline"> el manual básico (sección impresora)</a>.
               </p>
             </details>
 

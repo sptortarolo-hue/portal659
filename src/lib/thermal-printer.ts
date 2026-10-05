@@ -214,7 +214,7 @@ function wrapNameLines(ctx: any, text: string, maxWidth: number): string[] {
 /**
  * Compone el bitmap del encabezado:
  *  - 80mm (576px): logo redondo a la izquierda (~30%) + nombre a la derecha.
- *  - 58mm (384px): logo centrado arriba (mismo tamaÃ±o) + nombre debajo.
+ *  - 58mm (384px): logo centrado arriba (mismo tamaño) + nombre debajo.
  * Devuelve un PNG blanco/negro listo para printImageBuffer, o null si falla.
  */
 async function renderStoreHeader(
@@ -333,9 +333,9 @@ function shortSocialHandle(value: string, host: string): string {
 }
 
 /**
- * Encabezado de todos los documentos: logo+nombre (bitmap si hay logo y estÃ¡
- * activado; si no, nombre en texto) + lÃ­neas de datos on/off por lÃ­nea.
- * El nombre del negocio y el pie de pÃ¡gina siempre se imprimen.
+ * Encabezado de todos los documentos: logo+nombre (bitmap si hay logo y está
+ * activado; si no, nombre en texto) + líneas de datos on/off por línea.
+ * El nombre del negocio y el pie de página siempre se imprimen.
  */
 async function composeStoreHeader(printer: any, vendor: PrinterVendor, width: number): Promise<void> {
   const wantLogo = vendor.print_logo !== false && !!vendor.logo_url;
@@ -368,7 +368,7 @@ async function composeStoreHeader(printer: any, vendor: PrinterVendor, width: nu
   if (vendor.print_phone !== false && (phone || whatsapp)) {
     const tel = phone ? `Tel: ${phone}` : null;
     const wa = whatsapp ? `WA: ${whatsapp}` : null;
-    const combined = [tel, wa].filter(Boolean).join(" Â· ");
+    const combined = [tel, wa].filter(Boolean).join(" · ");
     if (combined.length <= width) {
       printer.println(combined);
     } else {
@@ -380,7 +380,7 @@ async function composeStoreHeader(printer: any, vendor: PrinterVendor, width: nu
   const ig = vendor.instagram ? `IG: @${shortSocialHandle(vendor.instagram, "instagram")}` : null;
   const fb = vendor.facebook ? `FB: ${shortSocialHandle(vendor.facebook, "facebook")}` : null;
   if (vendor.print_social !== false && (ig || fb)) {
-    const combined = [ig, fb].filter(Boolean).join(" Â· ");
+    const combined = [ig, fb].filter(Boolean).join(" · ");
     if (combined.length <= width) {
       printer.println(combined);
     } else {
@@ -469,7 +469,7 @@ function formatItemLine(item: OrderItem, width: number): string[] {
 async function createPrinter(vendor: PrinterVendor): Promise<{ ok: true; printer: any } | { ok: false; error: string }> {
   await loadModule();
   if (!ThermalPrinter || !PrinterTypes) {
-    return { ok: false, error: "MÃ³dulo de impresiÃ³n no disponible" };
+    return { ok: false, error: "Módulo de impresión no disponible" };
   }
   const width = vendor.paper_size === "58mm" ? 32 : 48;
   const interfaceStr = vendor.printer_ip
@@ -524,7 +524,7 @@ async function composeComanda(printer: any, vendor: PrinterVendor, order: Order)
   printer.bold(true);
   printer.println(`${dateStr} ${timeStr}`);
   printer.bold(false);
-  // NÃºmero universal del pedido del dÃ­a (grande, para cantar a cocina/caja).
+  // Número universal del pedido del día (grande, para cantar a cocina/caja).
   if (order.pickup_number != null) {
     printer.alignCenter();
     printer.setTextSize(2, 2);
@@ -1759,7 +1759,7 @@ async function pushToBridge(
   job: BridgeJob
 ): Promise<{ ok: boolean; offline?: boolean; error?: string }> {
   if (!token) {
-    return { ok: false, error: "Falta el token del puente (regeneralo en la secciÃ³n Impresora)" };
+    return { ok: false, error: "Falta el token del puente (regeneralo en la sección Impresora)" };
   }
   const base = (process.env.PRINT_BRIDGE_URL || "").replace(/\/$/, "");
   const secret = process.env.PRINT_BRIDGE_SECRET || "";
@@ -1781,7 +1781,7 @@ async function pushToBridge(
     | { ok?: boolean; offline?: boolean; error?: string }
     | null;
   if (!data) {
-    return { ok: false, error: `El relay respondiÃ³ ${res.status}` };
+    return { ok: false, error: `El relay respondió ${res.status}` };
   }
   return { ok: data.ok === true, offline: data.offline === true, error: data.error };
 }

@@ -68,7 +68,21 @@ export default function GastronomiaPage() {
         </div>
 
         <div>
-          <h2 className="font-display text-lg font-semibold mb-3">5. Tiempos y reparto</h2>
+          <h2 className="font-display text-lg font-semibold mb-3">5. Menú, Preparación y Costo e Inventario</h2>
+          <p className="mb-3">
+            La carta se carga en <span className="font-medium">Más → Menú</span> (platos, opciones,
+            precios por volumen y promos: mirá{" "}
+            <a className="text-primary font-medium" href="/manuales/catalogo">Catálogo y menú</a>).
+            En <span className="font-medium">Preparación y Costo</span> cargás insumos con su merma
+            y armás la preparación de cada plato para conocer su costo real y food-cost, con
+            semáforo configurable. El stock, las compras y la reposición viven en{" "}
+            <a className="text-primary font-medium" href="/manuales/inventario">Inventario</a>.
+          </p>
+          <Captura base="costos-preparacion" alt="Preparación y Costo" />
+        </div>
+
+        <div>
+          <h2 className="font-display text-lg font-semibold mb-3">6. Tiempos y reparto</h2>
           <p>
             En <span className="font-medium">Configuración</span> definí tu{" "}
             <span className="font-medium">tiempo de preparación</span> (lo que ve el cliente al
@@ -79,7 +93,7 @@ export default function GastronomiaPage() {
         </div>
 
         <div>
-          <h2 className="font-display text-lg font-semibold mb-3">6. Impresora en cocina y caja</h2>
+          <h2 className="font-display text-lg font-semibold mb-3">7. Impresora en cocina y caja</h2>
           <p className="mb-3">
             Con la <span className="font-medium">impresión automática</span> activada, cada pedido
             aceptado imprime su comanda solo. Si algo falla, desde el pedido podés reimprimir o

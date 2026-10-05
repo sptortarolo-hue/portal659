@@ -41,7 +41,11 @@ export default function ComercioPage() {
             En <span className="font-medium">Más → Catálogo</span> cargás tus productos con foto,
             precio y stock. Podés importarlos desde Excel, traerlos por WhatsApp e imprimir{" "}
             <span className="font-medium">etiquetas</span> con precio para la góndola. Si querés
-            vista de vidriera (grilla de fotos), activala en tu configuración.
+            vista de vidriera (grilla de fotos), activala en tu configuración. El detalle de
+            carga, opciones, volumen y promos está en{" "}
+            <a className="text-primary font-medium" href="/manuales/catalogo">Catálogo y menú</a>,
+            y el stock en{" "}
+            <a className="text-primary font-medium" href="/manuales/inventario">Inventario</a>.
           </p>
           <Captura base="comercio-catalogo" alt="Catálogo del comercio" />
         </div>

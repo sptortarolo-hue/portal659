@@ -51,10 +51,10 @@ export async function PUT(request: Request) {
 
   // Tope moda (ropa y accesorios): 1 portada (products.image_url) + hasta
   // 7 extras en product_images = 8 fotos total. Solo moda usa esta tabla
-  // hoy (gastro va por image_url), asÃ­ que el cap no afecta a nadie mÃ¡s.
+  // hoy (gastro va por image_url), así que el cap no afecta a nadie más.
   const MAX_EXTRA_IMAGES = 7;
   // Cada foto puede llevar color de variante (fotos por color, fase A).
-  // Tolerante a migraciÃ³n sin aplicar: sin la columna, color queda null.
+  // Tolerante a migración sin aplicar: sin la columna, color queda null.
   const hasColor = await queryOne<{ exists: boolean }>(
     `SELECT EXISTS (
        SELECT 1 FROM information_schema.columns
@@ -73,7 +73,7 @@ export async function PUT(request: Request) {
       return { product_id, image_url: url, color, position: i };
     });
 
-  // Atomicidad: si un INSERT falla a mitad, las imÃ¡genes no quedan corruptas.
+  // Atomicidad: si un INSERT falla a mitad, las imágenes no quedan corruptas.
   await withTransaction(async (tx) => {
     await tx.queryVoid(`DELETE FROM product_images WHERE product_id = $1`, [product_id]);
     for (const row of rawItems) {

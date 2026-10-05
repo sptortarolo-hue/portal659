@@ -4,10 +4,10 @@ import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
-const GATE_MSG = "Compras e inventario forman parte del plan GestiÃ³n integral";
+const GATE_MSG = "Compras e inventario forman parte del plan Gestión integral";
 
 /** Historial de precios de un insumo (?ingredientId=): serie para ver la
- *  variaciÃ³n del costo en el tiempo. */
+ *  variación del costo en el tiempo. */
 export async function GET(request: Request) {
   const gate = await gateRequest(request);
   if (!gate.ok) return gateError(gate);

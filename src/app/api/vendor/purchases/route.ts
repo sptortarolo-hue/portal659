@@ -6,7 +6,7 @@ import type { Ingredient, ReceiptType } from "@/types/database";
 
 export const dynamic = "force-dynamic";
 
-const GATE_MSG = "Compras e inventario forman parte del plan GestiÃ³n integral";
+const GATE_MSG = "Compras e inventario forman parte del plan Gestión integral";
 
 const VALID_RECEIPTS: ReceiptType[] = [
   "factura_a",
@@ -20,7 +20,7 @@ const VALID_RECEIPTS: ReceiptType[] = [
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 const round4 = (n: number) => Math.round((n + Number.EPSILON) * 10000) / 10000;
 
-/** Lista de compras (mÃ¡s recientes primero, con proveedor y cantidad de lÃ­neas). */
+/** Lista de compras (más recientes primero, con proveedor y cantidad de líneas). */
 export async function GET(request: Request) {
   const gate = await gateRequest(request);
   if (!gate.ok) return gateError(gate);
@@ -81,10 +81,10 @@ export async function POST(request: Request) {
     if (!s) return NextResponse.json({ error: "Proveedor no encontrado" }, { status: 404 });
   }
   if (purchased_at && !/^\d{4}-\d{2}-\d{2}$/.test(purchased_at)) {
-    return NextResponse.json({ error: "Fecha invÃ¡lida (usÃ¡ AAAA-MM-DD)" }, { status: 400 });
+    return NextResponse.json({ error: "Fecha inválida (usá AAAA-MM-DD)" }, { status: 400 });
   }
   if (!Array.isArray(rawItems) || rawItems.length === 0) {
-    return NextResponse.json({ error: "La compra necesita al menos una lÃ­nea" }, { status: 400 });
+    return NextResponse.json({ error: "La compra necesita al menos una línea" }, { status: 400 });
   }
 
   const ingIds = Array.from(
@@ -160,7 +160,7 @@ export async function POST(request: Request) {
     }
   }
 
-  // Normalizar + validar lÃ­neas (conversiÃ³n a unidad base).
+  // Normalizar + validar líneas (conversión a unidad base).
   type NormLine =
     | { kind: "ingredient"; ingredient_id: string; qty: number; unit: string; unit_cost: number; qty_base: number; unit_cost_net: number; line_total: number }
     | { kind: "product"; product_id: string; qty: number; unit_cost: number; line_total: number }
@@ -193,20 +193,20 @@ export async function POST(request: Request) {
     }
     const iid = String(raw?.ingredient_id || "");
     const ing = ingMap.get(iid);
-    if (!ing) return NextResponse.json({ error: `LÃ­nea ${idx + 1}: insumo invÃ¡lido` }, { status: 400 });
+    if (!ing) return NextResponse.json({ error: `Línea ${idx + 1}: insumo inválido` }, { status: 400 });
     const qty = Number(raw?.qty);
     if (!isFinite(qty) || qty <= 0) {
-      return NextResponse.json({ error: `LÃ­nea ${idx + 1} (â€œ${ing.name}â€): cantidad invÃ¡lida` }, { status: 400 });
+      return NextResponse.json({ error: `Línea ${idx + 1} (â€œ${ing.name}â€): cantidad inválida` }, { status: 400 });
     }
     const unitCostLine = Number(raw?.unit_cost);
     if (!isFinite(unitCostLine) || unitCostLine < 0) {
-      return NextResponse.json({ error: `LÃ­nea ${idx + 1} (â€œ${ing.name}â€): costo invÃ¡lido` }, { status: 400 });
+      return NextResponse.json({ error: `Línea ${idx + 1} (â€œ${ing.name}â€): costo inválido` }, { status: 400 });
     }
     const unit = String(raw?.unit || ing.base_unit).trim();
     const factor = unitFactor(unit, ing.base_unit);
     if (factor === null) {
       return NextResponse.json(
-        { error: `LÃ­nea ${idx + 1} (â€œ${ing.name}â€): la unidad â€œ${unit}â€ no es compatible con â€œ${ing.base_unit}â€` },
+        { error: `Línea ${idx + 1} (â€œ${ing.name}â€): la unidad â€œ${unit}â€ no es compatible con â€œ${ing.base_unit}â€` },
         { status: 400 }
       );
     }

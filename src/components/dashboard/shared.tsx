@@ -119,7 +119,7 @@ type Offer = {
   stock: number | null;
   stock_low_threshold: number | null;
   stock_control?: boolean;
-  /** Costo de compra (inventario): distinto del food-cost de receta. */
+  /** Costo de compra (inventario): distinto del food-cost de preparación. */
   cost_last?: number | null;
   promo_price: number | null;
   requires_prep?: boolean;
@@ -188,7 +188,7 @@ type OfferFormProps = {
   showUnit?: boolean;
   offUnit?: string;
   setOffUnit?: (v: string) => void;
-  /** Costo manual de compra (inventario): no pisa el costo de receta. */
+  /** Costo manual de compra (inventario): no pisa el costo de preparación. */
   showCost?: boolean;
   offCost?: string;
   setOffCost?: (v: string) => void;
@@ -363,7 +363,7 @@ export function OfferForm({
             <Label>{costLabel}</Label>
             <Input type="number" step="0.01" min="0" value={offCost} onChange={(e) => setOffCost(e.target.value)} placeholder="Vacío = sin dato" />
             <p className="text-xs text-muted-foreground mt-0.5">
-              Costo de compra manual (no toca el costo de receta). La próxima compra lo actualiza.
+              Costo de compra manual (no toca el costo de preparación). La próxima compra lo actualiza.
             </p>
           </div>
         )}
@@ -552,7 +552,7 @@ export function OfferList({ offers, onEdit, onToggleFeatured, onToggleAvailable,
   editingId?: string | null;
   editForm?: ReactNode;
   onEditModifiers?: (o: Offer) => void;
-  /** Costo por plato (módulo Recetas): { [productId]: { cost, pct, status } }. */
+  /** Costo por plato (módulo Preparación y Costo): { [productId]: { cost, pct, status } }. */
   costByProduct?: Record<string, { cost: number | null; pct: number | null; status: "ok" | "warn" | "bad" | "none" }>;
   /** Muestra el costo de compra en la fila (inventario, distinto del food-cost). */
   showBuyCost?: boolean;

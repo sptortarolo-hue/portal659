@@ -55,7 +55,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Los precios por volumen están disponibles para gastronomía y comercios de barrio" }, { status: 403 });
   }
   if (!(await tablesReady())) {
-    return NextResponse.json({ error: "Falta aplicar la migraciÃ³n de precios por volumen" }, { status: 503 });
+    return NextResponse.json({ error: "Falta aplicar la migración de precios por volumen" }, { status: 503 });
   }
 
   const body = await request.json().catch(() => ({}));
@@ -81,7 +81,7 @@ export async function POST(request: Request) {
     const ids = new Set((g.product_ids || []).map(String));
     if (v.value.productIds.some((id) => ids.has(id))) {
       return NextResponse.json(
-        { error: `Uno de esos productos ya estÃ¡ en el grupo "${g.name}"` },
+        { error: `Uno de esos productos ya está en el grupo "${g.name}"` },
         { status: 400 }
       );
     }

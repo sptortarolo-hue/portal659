@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
-const GATE_MSG = "Compras e inventario forman parte del plan GestiÃ³n integral";
+const GATE_MSG = "Compras e inventario forman parte del plan Gestión integral";
 
 /** Lista de proveedores del comercio. */
 export async function GET(request: Request) {
@@ -35,7 +35,7 @@ export async function POST(request: Request) {
 
   const body = await request.json();
   const name = String(body?.name || "").trim();
-  if (!name) return NextResponse.json({ error: "IndicÃ¡ el nombre del proveedor" }, { status: 400 });
+  if (!name) return NextResponse.json({ error: "Indicá el nombre del proveedor" }, { status: 400 });
 
   const phone =
     body?.phone != null && String(body.phone).trim() !== "" ? String(body.phone).trim() : null;

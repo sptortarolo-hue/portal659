@@ -7,7 +7,7 @@ type DrawerTab = "datos" | "opciones" | "receta";
 
 /**
  * Drawer lateral de producto (solo escritorio): datos básicos, opciones
- * (modificadores) y receta (costo/food-cost) en solapas internas.
+ * (modificadores) y preparación (costo/food-cost) en solapas internas.
  * Los contenidos llegan ya armados por el padre (`MenuStudio`).
  */
 export function ProductDrawer({
@@ -25,9 +25,9 @@ export function ProductDrawer({
   open: boolean;
   title: string;
   subtitle?: string;
-  /** true cuando se está creando (Opciones/Receta se habilitan al guardar). */
+  /** true cuando se está creando (Opciones/Preparación se habilitan al guardar). */
   isNew: boolean;
-  /** false → la solapa Receta muestra bloqueo de plan. */
+  /** false → la solapa Preparación muestra bloqueo de plan. */
   hasRecipes: boolean;
   onClose: () => void;
   datosNode: ReactNode;
@@ -47,7 +47,7 @@ export function ProductDrawer({
   const TABS: { id: DrawerTab; icon: string; label: string; disabled?: boolean }[] = [
     { id: "datos", icon: "📝", label: "Datos" },
     { id: "opciones", icon: "⚙️", label: "Opciones", disabled: isNew },
-    { id: "receta", icon: hasRecipes ? "🧪" : "🔒", label: "Receta", disabled: isNew },
+    { id: "receta", icon: hasRecipes ? "🧪" : "🔒", label: "Preparación", disabled: isNew },
   ];
 
   return (
@@ -80,7 +80,7 @@ export function ProductDrawer({
 
         {isNew && tab !== "datos" ? (
           <p className="text-xs text-muted-foreground">
-            {isRetail ? "Guardá el producto primero; después le asignás opciones." : "Guardá el plato primero; después le asignás opciones y receta."}
+            {isRetail ? "Guardá el producto primero; después le asignás opciones." : "Guardá el plato primero; después le asignás opciones y preparación."}
           </p>
         ) : null}
       </div>

@@ -13,13 +13,13 @@ function normalizeOptions(options: unknown): ModifierOption[] {
       price_mod: Number(o?.price_mod ?? o?.price ?? 0) || 0,
       // Familia opcional (filtro en la hoja de gustos). Se guarda en el JSONB.
       ...(String(o?.category ?? "").trim() ? { category: String(o.category).trim().slice(0, 40) } : {}),
-      // Gusto pausado (ej: se acabÃ³ el pistacho): se oculta sin borrarlo.
+      // Gusto pausado (ej: se acabó el pistacho): se oculta sin borrarlo.
       ...(o?.available === false ? { available: false } : {}),
     }))
     .filter((o) => o.label !== "");
 }
 
-/** Clampea el mÃ­nimo al rango vÃ¡lido. NULL = legacy (solo si no es obligatorio). */
+/** Clampea el mínimo al rango válido. NULL = legacy (solo si no es obligatorio). */
 function normalizeMin(min: unknown, max: number, required: boolean): number | null {
   if (!required) return null;
   const m = Math.floor(Number(min));
@@ -49,7 +49,7 @@ export async function GET(request: Request) {
     [vendor.id]
   );
   // Links con overrides por producto (NULL = default del grupo). Fallback si
-  // la migraciÃ³n migrate-link-overrides.sql aÃºn no se aplicÃ³.
+  // la migración migrate-link-overrides.sql aún no se aplicó.
   try {
     links = await queryMany<Record<string, unknown>>(
       `SELECT l.product_id, l.group_id, l.position, l.max_selections AS link_max, l.min_selections AS link_min
@@ -81,8 +81,8 @@ export async function GET(request: Request) {
     (productIdsByGroup[gid] ||= []).push(pid);
     (assignments[pid] ||= []).push(gid);
     const group = (groups || []).find((g) => g.id === gid);
-    // Overrides por link (NULL = default del grupo). Ausentes si la migraciÃ³n
-    // migrate-link-overrides.sql aÃºn no se aplicÃ³.
+    // Overrides por link (NULL = default del grupo). Ausentes si la migración
+    // migrate-link-overrides.sql aún no se aplicó.
     if (group) flat.push({ ...group, product_id: pid, position: l.position, link_max: l.link_max ?? null, link_min: l.link_min ?? null });
   }
 
@@ -104,8 +104,8 @@ export async function POST(request: Request) {
 
   const name = String(group_name || "").trim();
   const norm = normalizeOptions(options);
-  if (!name) return NextResponse.json({ error: "IndicÃ¡ el nombre del grupo" }, { status: 400 });
-  if (norm.length === 0) return NextResponse.json({ error: "El grupo necesita al menos una opciÃ³n vÃ¡lida" }, { status: 400 });
+  if (!name) return NextResponse.json({ error: "Indicá el nombre del grupo" }, { status: 400 });
+  if (norm.length === 0) return NextResponse.json({ error: "El grupo necesita al menos una opción válida" }, { status: 400 });
 
   const req = required === true || is_variant === true;
   const maxN = Math.max(1, Number(max_selections) || 1);
@@ -121,8 +121,8 @@ export async function POST(request: Request) {
   }
 
   const group = await withTransaction(async (tx) => {
-    // min_selections vive en la migraciÃ³n migrate-min-selections.sql. Si el
-    // comercio aÃºn no la aplicÃ³, reintentamos sin la columna (sin romper).
+    // min_selections vive en la migración migrate-min-selections.sql. Si el
+    // comercio aún no la aplicó, reintentamos sin la columna (sin romper).
     const insertWithMin = async () =>
       tx.queryOne<Record<string, unknown>>(
         `INSERT INTO modifier_groups (vendor_id, group_name, options, required, max_selections, min_selections, is_variant)

@@ -144,7 +144,7 @@ export function IngredientForm({
           </div>
           <div className="flex items-end gap-2 pb-2">
             <Switch checked={isElaborated} onCheckedChange={setIsElaborated} />
-            <Label className="text-xs">Es elaborado 🧪<br /><span className="text-muted-foreground">(lleva sub-receta)</span></Label>
+            <Label className="text-xs">Es elaborado 🧪<br /><span className="text-muted-foreground">(lleva sub-preparación)</span></Label>
           </div>
         </div>
         <p className="text-xs text-muted-foreground -mt-1">

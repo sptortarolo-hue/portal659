@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
-const GATE_MSG = "Compras e inventario forman parte del plan GestiÃ³n integral";
+const GATE_MSG = "Compras e inventario forman parte del plan Gestión integral";
 
 /** Edita un proveedor. */
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -43,7 +43,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       : current.notes;
   const active = body?.active !== undefined ? body.active !== false : current.active;
 
-  if (!name) return NextResponse.json({ error: "IndicÃ¡ el nombre del proveedor" }, { status: 400 });
+  if (!name) return NextResponse.json({ error: "Indicá el nombre del proveedor" }, { status: 400 });
 
   const row = await queryOne<Record<string, unknown>>(
     `UPDATE suppliers SET name = $1, phone = $2, email = $3, notes = $4, active = $5, updated_at = now()
@@ -53,7 +53,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   return NextResponse.json({ supplier: row });
 }
 
-/** Borra un proveedor. Si tiene compras, se archiva (baja lÃ³gica) para no
+/** Borra un proveedor. Si tiene compras, se archiva (baja lógica) para no
  *  perder el historial; si no, se borra de verdad. */
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const gate = await gateRequest(request);

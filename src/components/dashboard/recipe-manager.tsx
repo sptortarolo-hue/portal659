@@ -98,7 +98,7 @@ function ThresholdSettings({
 }
 
 // ---------------------------------------------------------------------------
-// Tab Recetas: carta con semáforo + editor | biblioteca de insumos | compras.
+// Tab Preparación y Costo: carta con semáforo + editor | biblioteca de insumos | compras.
 // ---------------------------------------------------------------------------
 export function RecipeManager() {
   const [view, setView] = useState<"platos" | "insumos" | "compras">("platos");
@@ -174,7 +174,7 @@ export function RecipeManager() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-2 flex-wrap">
-        <h2 className="font-display text-xl font-semibold">Recetas y costos</h2>
+        <h2 className="font-display text-xl font-semibold">Preparación y Costo</h2>
         <div className="flex rounded-xl border border-border overflow-hidden text-sm font-medium">
           <button
             onClick={() => setView("platos")}
@@ -243,7 +243,7 @@ export function RecipeManager() {
                         Venta ${p.price.toLocaleString("es-AR")}
                         {c?.has_recipe && c.cost !== null
                           ? ` · Costo ${formatMoney(c.cost)}`
-                          : " · Sin receta"}
+                          : " · Sin preparación"}
                         {c?.linked_from && ` · 🔗 ${c.linked_from.product_name}`}
                       </span>
                     </span>
@@ -252,7 +252,7 @@ export function RecipeManager() {
                         {c.food_cost_pct !== null ? `${c.food_cost_pct.toLocaleString("es-AR")}%` : "—"}
                       </Badge>
                     ) : (
-                      <Badge variant="secondary" className="flex-shrink-0">Sin receta</Badge>
+                      <Badge variant="secondary" className="flex-shrink-0">Sin preparación</Badge>
                     )}
                   </button>
                 );
@@ -270,7 +270,7 @@ export function RecipeManager() {
                     key={selectedProduct}
                     target={{ productId: p.id }}
                     title={p.name}
-                    subtitle="Receta del plato (cantidades netas por porción)"
+                    subtitle="Preparación del plato (cantidades netas por porción)"
                     salePrice={p.price}
                     ingredients={ingredients.filter((i) => i.active)}
                     recipes={recipes}
@@ -289,7 +289,7 @@ export function RecipeManager() {
               })()
             ) : (
               <Card className="p-6 text-center text-sm text-muted-foreground">
-                Elegí un plato de la carta para ver o cargar su receta. El costo se calcula solo a partir de los insumos.
+                Elegí un plato de la carta para ver o cargar su preparación. El costo se calcula solo a partir de los insumos.
               </Card>
             )}
           </div>
@@ -335,7 +335,7 @@ export function RecipeManager() {
                       <span className="block text-xs text-muted-foreground tabular-nums">
                         ${Number(i.cost_per_unit).toLocaleString("es-AR")}/{i.base_unit}
                         {i.waste_pct > 0 ? ` · merma ${i.waste_pct}%` : ""}
-                        {i.is_elaborated ? (hasSub ? " · con sub-receta" : " · sin sub-receta") : ""}
+                        {i.is_elaborated ? (hasSub ? " · con sub-preparación" : " · sin sub-preparación") : ""}
                       </span>
                     </span>
                     {!i.active && <Badge variant="secondary">Inactivo</Badge>}
@@ -345,11 +345,11 @@ export function RecipeManager() {
             </div>
             {elaborated.length > 0 && (
               <p className="text-xs text-muted-foreground px-1 pt-2">
-                🧪 = elaborado: cargale su sub-receta con el rinde (ej. 1000 ml de salsa).
+                🧪 = elaborado: cargale su sub-preparación con el rinde (ej. 1000 ml de salsa).
               </p>
             )}
           </Card>
-          {/* Form + sub-receta */}
+          {/* Form + sub-preparación */}
           <div className="space-y-4 lg:sticky lg:top-20">
             {editingIngredient === "new" ? (
               <IngredientForm
@@ -369,7 +369,7 @@ export function RecipeManager() {
                   <RecipeEditor
                     key={`sub-${selectedElaborated}`}
                     target={{ ingredientId: selectedElaborated }}
-                    title={`Sub-receta: ${editingIngredient.name}`}
+                    title={`Sub-preparación: ${editingIngredient.name}`}
                     subtitle="Costo del elaborado (se prorratea en los platos que lo usan)"
                     yieldUnit={(ingredients.find((i) => i.id === selectedElaborated)?.base_unit as string) || "g"}
                     ingredients={ingredients.filter((i) => i.active && i.id !== selectedElaborated)}
@@ -383,7 +383,7 @@ export function RecipeManager() {
               </>
             ) : (
               <Card className="p-6 text-center text-sm text-muted-foreground">
-                Elegí un insumo para editarlo, o creá uno nuevo. Si es elaborado 🧪, acá mismo le cargás la sub-receta.
+                Elegí un insumo para editarlo, o creá uno nuevo. Si es elaborado 🧪, acá mismo le cargás la sub-preparación.
               </Card>
             )}
           </div>

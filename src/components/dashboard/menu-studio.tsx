@@ -68,10 +68,10 @@ type Props = {
   reload: () => void;
   msg: string;
   setMsg: (m: string) => void;
-  /** Muestra el chip de food-cost por plato y habilita la receta en el drawer. */
+  /** Muestra el chip de food-cost por plato y habilita la preparación en el drawer. */
   showCosts?: boolean;
   isComercio?: boolean;
-  /** Plan del comercio: si no tiene recetas, la solapa Receta muestra PlanLock. */
+  /** Plan del comercio: si no tiene preparación, la solapa Preparación muestra PlanLock. */
   hasRecipes?: boolean;
   /** Permite editar el costo de compra manual (plan Gestión: inventory o recipes). */
   canEditCost?: boolean;
@@ -200,7 +200,7 @@ function applyOp(price: number, op: BulkOp, value: number): number {
 /**
  * Panel integrado del menú (gastro): productos, categorías, biblioteca de
  * opciones/modificadores, precios por volumen e importación por Excel.
- * Desktop (≥lg): tabla densa + drawer lateral con Datos/Opciones/Receta y
+ * Desktop (≥lg): tabla densa + drawer lateral con Datos/Opciones/Preparación y
  * acción masiva de precios. Mobile (<lg): mismas cards + edición inline de
  * siempre (OfferList).
  */
@@ -255,7 +255,7 @@ export function MenuStudio({
   const [offPackSize, setOffPackSize] = useState("");
   // Unidad de venta (balanza): "unidad" o "kg" (precio por kilo).
   const [offUnit, setOffUnit] = useState("unidad");
-  // Costo de compra manual (inventario): convive con el food-cost de receta.
+  // Costo de compra manual (inventario): convive con el food-cost de preparación.
   const [offCost, setOffCost] = useState("");
   // Código de barras / SKU (búsqueda y etiquetas en mostrador).
   const [offSku, setOffSku] = useState("");
@@ -277,7 +277,7 @@ export function MenuStudio({
   const [bulkValue, setBulkValue] = useState("");
   const [bulkSaving, setBulkSaving] = useState(false);
 
-  // Contexto de recetas: se carga lazy la primera vez que se abre el drawer.
+  // Contexto de preparación: se carga lazy la primera vez que se abre el drawer.
   const [recipeCtx, setRecipeCtx] = useState<RecipeCtx | null>(null);
   const recipeCtxLoadingRef = useRef(false);
   const [recipeCtxLoading, setRecipeCtxLoading] = useState(false);
@@ -302,7 +302,7 @@ export function MenuStudio({
 
   const ensureRecipeCtx = useCallback(async () => {
     // Se llama al abrir el drawer: recarga fresca por si el usuario tocó
-    // el tab Recetas entre aperturas. El ref evita requests duplicados.
+    // el tab Preparación y Costo entre aperturas. El ref evita requests duplicados.
     if (recipeCtxLoadingRef.current) return;
     recipeCtxLoadingRef.current = true;
     setRecipeCtxLoading(true);
@@ -314,7 +314,7 @@ export function MenuStudio({
     }
   }, [refreshRecipeCtx]);
 
-  // Food-cost por plato (módulo Recetas): 403 si el plan no lo incluye, se ignora.
+  // Food-cost por plato (módulo Preparación y Costo): 403 si el plan no lo incluye, se ignora.
   useEffect(() => {
     if (!showCosts) return;
     let cancelled = false;
@@ -512,7 +512,7 @@ export function MenuStudio({
       menuDraft.clear();
       if (!editingId && drawerOpen && data.offer?.id) {
         // Alta desde el drawer desktop: queda abierto en modo edición para
-        // cargar opciones/receta sin reabrir.
+        // cargar opciones/preparación sin reabrir.
         setEditingId(data.offer.id);
         if (hasRecipes) ensureRecipeCtx();
       } else {
@@ -790,14 +790,14 @@ export function MenuStudio({
     if (!hasRecipes) {
       recetaNode = (
         <PlanLock
-          title="Recetas y costos"
-          description={isComercio ? "La receta por producto (escandallo) y el semáforo de food cost forman parte del plan Gestión integral." : "La receta por plato (escandallo) y el semáforo de food cost forman parte del plan Gestión integral."}
+          title="Preparación y Costo"
+          description={isComercio ? "La preparación por producto (escandallo) y el semáforo de food cost forman parte del plan Gestión integral." : "La preparación por plato (escandallo) y el semáforo de food cost forman parte del plan Gestión integral."}
         />
       );
     } else if (!recipeCtx) {
       recetaNode = (
         <p className="text-sm text-muted-foreground py-6 text-center">
-          {recipeCtxLoading ? "Cargando insumos y recetas…" : "Preparando editor…"}
+          {recipeCtxLoading ? "Cargando insumos y preparaciones…" : "Preparando editor…"}
         </p>
       );
     } else if (editingOffer) {
@@ -806,7 +806,7 @@ export function MenuStudio({
           key={editingId}
           target={{ productId: editingOffer.id }}
           title={editingOffer.name}
-          subtitle={isComercio ? "Receta del producto (cantidades netas por porción)" : "Receta del plato (cantidades netas por porción)"}
+          subtitle={isComercio ? "Preparación del producto (cantidades netas por porción)" : "Preparación del plato (cantidades netas por porción)"}
           salePrice={Number(editingOffer.price) || 0}
           ingredients={recipeCtx.ingredients.filter((i) => i.active)}
           recipes={recipeCtx.recipes}
@@ -1256,7 +1256,7 @@ export function MenuStudio({
         subtitle={
           editingId
             ? editingOffer?.category || undefined
-            : "Completá los datos y guardá; después asignás opciones y receta."
+            : "Completá los datos y guardá; después asignás opciones y preparación."
         }
         isNew={!editingId}
         hasRecipes={hasRecipes}

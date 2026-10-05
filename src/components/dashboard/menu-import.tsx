@@ -70,7 +70,7 @@ export function MenuImportModal({ open, onClose, onImported, isComercio = false,
   const [step, setStep] = useState<"upload" | "preview" | "done">("upload");
   const [analyze, setAnalyze] = useState<AnalyzeResult | null>(null);
   const [items, setItems] = useState<EditableItem[]>([]);
-  // Payload FUDO extra (ingredientes/recetas/grupos) para mandar en el import.
+  // Payload FUDO extra (ingredientes/preparaciones/grupos) para mandar en el import.
   const [fudoPayload, setFudoPayload] = useState<FudoSummary | null>(null);
   const [overwriteRecipes, setOverwriteRecipes] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
@@ -196,7 +196,7 @@ return (
           <p className="text-sm text-muted-foreground">
             ¿Venís de <strong>FUDO</strong>? Subí el <strong>Importar-productos.xlsx</strong> tal cual lo descargás:
             detectamos las hojas de productos, ingredientes y grupos modificadores, más una hoja opcional{" "}
-            <strong>Recetas</strong> con formato Portal (<em>Plato | Ingrediente | Cantidad | Unidad | Rinde</em>) —
+            <strong>Preparaciones</strong> con formato Portal (<em>Plato | Ingrediente | Cantidad | Unidad | Rinde</em>) —
             FUDO no exporta el escandallo, así que esa hoja la completás vos una vez.
           </p>
           <label className="block">
@@ -239,7 +239,7 @@ return (
                 <p>
                   🧂 Ingredientes: <strong>{analyze.fudo.ingredientCount}</strong>
                   {" · "}🧩 Grupos modificadores: <strong>{analyze.fudo.groupCount}</strong>
-                  {" · "}📖 Recetas: <strong>{analyze.fudo.recipeDishCount}</strong> platos / <strong>{analyze.fudo.recipeLineCount}</strong> líneas
+                  {" · "}📖 Preparaciones: <strong>{analyze.fudo.recipeDishCount}</strong> platos / <strong>{analyze.fudo.recipeLineCount}</strong> líneas
                 </p>
                 {analyze.fudo.recipeDishCount > 0 && (
                   <label className="mt-1 flex items-center gap-2 text-xs">
@@ -248,7 +248,7 @@ return (
                       checked={overwriteRecipes}
                       onChange={(e) => setOverwriteRecipes(e.target.checked)}
                     />
-                    Sobrescribir recetas existentes (por defecto se conservan las que ya tienen escandallo)
+                    Sobrescribir preparaciones existentes (por defecto se conservan las que ya tienen escandallo)
                   </label>
                 )}
               </div>
@@ -366,7 +366,7 @@ return (
                 <>
                   <li>🧂 Ingredientes: <strong>{result.fudo.ingredients}</strong></li>
                   <li>🧩 Links de grupos FUDO: <strong>{result.fudo.groupsLinked}</strong></li>
-                  <li>📖 Recetas creadas: <strong>{result.fudo.recipes}</strong> ({result.fudo.recipeLines} líneas{result.fudo.recipesSkipped > 0 && <>, {result.fudo.recipesSkipped} conservadas</>})</li>
+                  <li>📖 Preparaciones creadas: <strong>{result.fudo.recipes}</strong> ({result.fudo.recipeLines} líneas{result.fudo.recipesSkipped > 0 && <>, {result.fudo.recipesSkipped} conservadas</>})</li>
                 </>
               )}
             </ul>

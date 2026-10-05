@@ -44,7 +44,7 @@ export function targetKey(t: DraftTarget): string {
 }
 
 // ---------------------------------------------------------------------------
-// Editor de receta (plato o insumo elaborado), con costo en vivo.
+// Editor de preparación (plato o insumo elaborado), con costo en vivo.
 // ---------------------------------------------------------------------------
 export function RecipeEditor({
   target,
@@ -74,7 +74,7 @@ export function RecipeEditor({
   allItems: RecipeItem[];
   /** Catálogo para vincular otras presentaciones (solo platos). */
   products?: ProductBrief[];
-  /** Links existentes (se filtran por receta acá adentro). */
+  /** Links existentes (se filtran por preparación acá adentro). */
   links?: RecipeLinkInfo[];
   /** Umbrales del semáforo del comercio. */
   thresholds?: { warn: number; bad: number };
@@ -104,7 +104,7 @@ export function RecipeEditor({
   const [error, setError] = useState("");
   const [keySeq, setKeySeq] = useState(1);
 
-  // Cargar receta existente al abrir/cambiar de objetivo o cuando cambian los
+  // Cargar preparación existente al abrir/cambiar de objetivo o cuando cambian los
   // datos del servidor (ej. después de guardar). La firma es por contenido:
   // estable entre renders con los mismos datos (sin loops) y cambia solo si
   // el servidor trae algo distinto.
@@ -206,7 +206,7 @@ export function RecipeEditor({
 
   async function handleDelete() {
     if (!existing) return;
-    if (!window.confirm("¿Borrar esta receta? Los insumos no se tocan.")) return;
+    if (!window.confirm("¿Borrar esta preparación? Los insumos no se tocan.")) return;
     setSaving(true);
     const qs =
       "productId" in target ? `?productId=${target.productId}` : `?ingredientId=${target.ingredientId}`;
@@ -411,7 +411,7 @@ export function RecipeEditor({
       )}
       <div className="flex gap-2">
         <Button onClick={handleSave} disabled={saving} className="flex-1">
-          {saving ? "Guardando…" : existing ? "Guardar cambios" : "Crear receta"}
+          {saving ? "Guardando…" : existing ? "Guardar cambios" : "Crear preparación"}
         </Button>
         {existing && (
           <>
@@ -421,7 +421,7 @@ export function RecipeEditor({
                 const url = `/api/vendor/recipes/${existing.recipe.id}/pdf`;
                 window.open(url, "_blank");
               }}
-              title="Descargar ficha de receta en PDF"
+              title="Descargar ficha de preparación en PDF"
             >
               📄 PDF
             </Button>
@@ -437,7 +437,7 @@ export function RecipeEditor({
 
 // ---------------------------------------------------------------------------
 // Otras presentaciones del mismo batch (porción + entera): productos
-// vinculados a esta receta, cada uno con sus porciones y su precio propio.
+// vinculados a esta preparación, cada uno con sus porciones y su precio propio.
 // ---------------------------------------------------------------------------
 function RecipePresentations({
   recipeId,
@@ -473,7 +473,7 @@ function RecipePresentations({
 
   async function handleAdd() {
     setError("");
-    if (!recipeId) return setError("Guardá la receta primero");
+    if (!recipeId) return setError("Guardá la preparación primero");
     if (!selProduct) return setError("Elegí el producto");
     const sv = Number(servings);
     if (!isFinite(sv) || sv <= 0) return setError("Las porciones deben ser mayores a 0");
@@ -491,7 +491,7 @@ function RecipePresentations({
   }
 
   async function handleRemove(productId: string, name: string) {
-    if (!window.confirm(`¿Desvincular “${name}”? Queda sin receta.`)) return;
+    if (!window.confirm(`¿Desvincular “${name}”? Queda sin preparación.`)) return;
     const r = await apiJson(`/api/vendor/recipes/links?productId=${productId}`, { method: "DELETE" });
     if (!r.ok) return setError(r.error || "No se pudo desvincular");
     onChanged();
@@ -549,7 +549,7 @@ function RecipePresentations({
           <Button type="button" size="sm" onClick={handleAdd} disabled={saving || !recipeId}>+</Button>
         </div>
       ) : (
-        <p className="text-xs text-muted-foreground">No hay productos libres para vincular (todos tienen receta o link).</p>
+        <p className="text-xs text-muted-foreground">No hay productos libres para vincular (todos tienen preparación o link).</p>
       )}
       {error && <p className="text-xs text-red-600">{error}</p>}
     </div>

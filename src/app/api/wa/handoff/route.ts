@@ -3,9 +3,9 @@ import { queryOne } from "@/lib/db";
 import { authWaBot } from "@/lib/wa-bot";
 
 /**
- * POST /api/wa/handoff â€” el bot de WhatsApp detectÃ³ que el cliente quiere
+ * POST /api/wa/handoff â€” el bot de WhatsApp detectó que el cliente quiere
  * hablar con una persona (o que no lo entiende 2 veces seguidas). Se crea una
- * notificaciÃ³n + push al dueÃ±o y el bot queda en pausa en ese chat 30 min.
+ * notificación + push al dueño y el bot queda en pausa en ese chat 30 min.
  */
 export async function POST(request: Request) {
   if (!authWaBot(request)) {

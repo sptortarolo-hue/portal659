@@ -19,7 +19,7 @@ type Offer = {
   stock: number | null;
   stock_low_threshold: number | null;
   stock_control?: boolean;
-  /** Costo de compra (inventario): distinto del food-cost de receta. */
+  /** Costo de compra (inventario): distinto del food-cost de preparación. */
   cost_last?: number | null;
   promo_price: number | null;
   requires_prep?: boolean;
@@ -49,7 +49,7 @@ export function ProductsTable({
 }: {
   offers: Offer[];
   costByProduct?: Record<string, CostInfo>;
-  /** Muestra el costo de compra cuando no hay food-cost de receta. */
+  /** Muestra el costo de compra cuando no hay food-cost de preparación. */
   showBuyCost?: boolean;
   selected: Set<string>;
   onToggleSelect: (id: string) => void;

@@ -67,6 +67,18 @@ export default function ManualesPage() {
           title="Uso básico (todas las verticales)"
           desc="Cuenta, panel, configuración, micrositio y QR, recibir pedidos y cobrar. Lo común a gastronomía, comercio, servicios, moda y estética."
         />
+        <Card
+          href="/manuales/catalogo"
+          emoji="📦"
+          title="Catálogo y menú"
+          desc="Cargar platos y productos, opciones, variantes color por talle, precios por volumen y promos."
+        />
+        <Card
+          href="/manuales/inventario"
+          emoji="📒"
+          title="Inventario y stock"
+          desc="Proveedores, compras, conteos físicos, kardex y reposición sugerida."
+        />
       </div>
 
       <h2 className="font-display text-lg font-semibold mb-3">Por vertical</h2>

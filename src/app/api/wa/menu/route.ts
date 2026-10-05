@@ -2,7 +2,7 @@
 import { queryOne, queryMany } from "@/lib/db";
 import { authWaBot } from "@/lib/wa-bot";
 
-/** MenÃº pÃºblico de un vendor, listo para que el bot (NLU) lo consuma.
+/** Menú público de un vendor, listo para que el bot (NLU) lo consuma.
  *  Exige `WA_BOT_SECRET` (endpoint interno). Devuelve productos + modificadores
  *  (grupos/opciones) + variantes, sin depender del render del micrositio. */
 export async function GET(request: Request) {

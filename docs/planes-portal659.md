@@ -10,7 +10,7 @@ se paga cuando el negocio pide más.
 |---|---|---|---|---|---|
 | **Gratuito** | $0 | Carta completa (ilimitado) | **20** (configurable) | **5** (configurable) | micrositio + QR + carrito + checkout por WhatsApp |
 | **Pedidos** | $4.990 | ilimitado | ilimitado | — | + analytics 7 días + gestión de reseñas |
-| **Gestión integral** | $12.990 | ilimitado | ilimitado | — | + POS (Mostrador) + Mesas + Comanda (KDS) + impresión + cobro online + **Recetas/escandallo** |
+| **Gestión integral** | $12.990 | ilimitado | ilimitado | — | + POS (Mostrador) + Mesas + Comanda (KDS) + impresión + cobro online + **Preparación y Costo (escandallo)** |
 | **Oficios** | $2.990 | — | — | ilimitado | cotización con precio + seña MP + urgencia con recargo + reseñas + destacado + analytics 30 días |
 | **Estética gratis** | $0 | vidriera + online | **5 pedidos** | **10 solicitudes** | turnera por servicio + profesional con control de solape + packs de sesiones + ficha con alergias + checkout de productos |
 | **Estética fase 3** | — | — | — | — | comisiones por profesional (reporte) + giftcards + rebooking + cumpleaños + multi-sede light + Stripe Connect (señas con tarjeta a la cuenta del comercio) |
@@ -64,7 +64,7 @@ ilimitado), `max_orders_month` (vacío = ilimitado), `badge`, `popular`, y la pr
 (`promo_price`, `promo_months`, `promo_ends_at`, `promo_label`). Aplicado vía
 `PATCH /api/admin/plans` (lista ALLOWED).
 
-## Módulo Recetas / escandallo (gastronomía, plan Gestión integral)
+## Módulo Preparación y Costo / escandallo (gastronomía, plan Gestión integral)
 
 - Feature flag `recipes` en `plans.features` (solo `gestion` en `true`; ver
   `supabase/self-host/migrate-recipes.sql`). Gate con `can("recipes")` en APIs y tab.
@@ -76,7 +76,7 @@ ilimitado), `max_orders_month` (vacío = ilimitado), `badge`, `popular`, y la pr
   anti-ciclos), food-cost % = costo ÷ precio, semáforo 🟢<30 🟡30–35 🔴>35,
   precio sugerido = costo ÷ food-cost objetivo.
 - El costo del plato **se deriva siempre** (no se persiste): al cambiar un insumo se
-  recalcula todo lo que lo usa. UI: tab **Recetas** (`RecipeManager`) + chip de
+  recalcula todo lo que lo usa. UI: tab **Preparación y Costo** (`RecipeManager`) + chip de
   food-cost en el Menú. Alcance v1: solo costeo informativo (sin descuento de
   stock al vender, sin CMV/teórico-vs-real — fase 2).
 - **Compras** (misma feature `recipes`): `suppliers` + `purchases`/`purchase_items`
@@ -85,13 +85,13 @@ ilimitado), `max_orders_month` (vacío = ilimitado), `badge`, `popular`, y la pr
   costo al **último precio** (los platos se recalculan solos) y deja historial para
   ver variación de precios por insumo. Borrar una compra revierte al precio anterior.
   Sin stock ni cuenta corriente (fase 2).
-- **Receta compartida** (`supabase/self-host/migrate-recipe-links.sql`): tabla
-  `product_recipe_links` (producto → receta de otro + `servings`). La misma
+- **Preparación compartida** (`supabase/self-host/migrate-recipe-links.sql`): tabla
+  `product_recipe_links` (producto → preparación de otro + `servings`). La misma
   elaboración se vende porcionada y entera: el costo se deriva
   (`total ÷ rinde × servings`) pero el precio, semáforo y sugerido son propios de
-  cada producto. Un producto tiene receta propia o link, nunca ambas.
+  cada producto. Un producto tiene preparación propia o link, nunca ambas.
 - **Semáforo editable** (misma migración): `vendors.food_cost_warn/food_cost_bad`
-  (NULL = 30/35). Se edita en el tab Recetas (tarjeta 🚦) vía `POST /api/vendor/me`;
+  (NULL = 30/35). Se edita en el tab Preparación y Costo (tarjeta 🚦) vía `POST /api/vendor/me`;
   `GET /api/vendor/recipes/costs` calcula con esos umbrales y los devuelve.
 - **Diferenciación online/contacto**: helper `vendorSellsOnline()` (plan con carrito
   Y `vendors.accepts_online_orders !== false`) alimenta badges `🛒 Pedí online` /

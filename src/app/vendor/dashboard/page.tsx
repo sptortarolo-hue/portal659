@@ -1461,7 +1461,7 @@ function VendorDashboardInner() {
     : tab === "comanda" ? "Comanda"
     : tab === "pos" ? "Mostrador"
     : tab === "mesas" ? "Mesas"
-    : tab === "recetas" ? "Recetas"
+    : tab === "recetas" ? "Preparación y Costo"
     : tab === "analytics" ? "Estadísticas"
     : tab === "history" ? "Histórico"
     : tab === "reviews" ? "Reseñas"
@@ -1938,8 +1938,8 @@ function VendorDashboardInner() {
                     <MemoRecipeManager />
                   ) : (
                     <PlanLock
-                      title="Recetas y costos"
-                      description="Cargá insumos con su merma, armá la receta de cada plato y conocé tu costo real y food cost. Parte del plan Gestión integral."
+                      title="Preparación y Costo"
+                      description="Cargá insumos con su merma, armá la preparación de cada plato y conocé tu costo real y food cost. Parte del plan Gestión integral."
                     />
                   )}
                 </div>
@@ -2111,7 +2111,7 @@ function VendorDashboardInner() {
               )}
               {isGastro && (
                 <button onClick={() => { setTab("recetas"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "recetas" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
-                  <FileText className="h-5 w-5" />Recetas
+                  <FileText className="h-5 w-5" />Preparación y Costo
                 </button>
               )}
               {(isGastro || isComercio || isModa) && (

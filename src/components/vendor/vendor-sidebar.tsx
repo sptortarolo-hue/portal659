@@ -55,7 +55,7 @@ const OPERACION_ITEMS: { tab: Tab; label: string; icon: typeof Package; show: (g
 
 const GESTION_ITEMS: { tab: Tab; label: string; icon: typeof UtensilsCrossed; show: (g: boolean, m: boolean, c: boolean) => boolean; suffix?: (count: number) => string }[] = [
   { tab: "menu", label: "Menú", icon: UtensilsCrossed, show: () => true, suffix: (c) => `${c}` },
-  { tab: "recetas", label: "Recetas", icon: Calculator, show: (g) => g },
+  { tab: "recetas", label: "Preparación y Costo", icon: Calculator, show: (g) => g },
   { tab: "clientes", label: "Clientes", icon: Users, show: (g, m, c) => g || c || m },
   { tab: "config", label: "Configuración", icon: Settings, show: () => true },
 ];

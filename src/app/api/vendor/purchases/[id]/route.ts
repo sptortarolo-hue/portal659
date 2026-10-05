@@ -4,9 +4,9 @@ import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
-const GATE_MSG = "Compras e inventario forman parte del plan GestiÃ³n integral";
+const GATE_MSG = "Compras e inventario forman parte del plan Gestión integral";
 
-/** Detalle de una compra con sus lÃ­neas. */
+/** Detalle de una compra con sus líneas. */
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const gate = await gateRequest(request);
   if (!gate.ok) return gateError(gate);
@@ -38,7 +38,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
 /** Borra una compra y revierte el costo de cada insumo al de su compra
  *  anterior vigente (si no hay anterior, se conserva el costo actual para
- *  no destruir informaciÃ³n). */
+ *  no destruir información). */
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const gate = await gateRequest(request);
   if (!gate.ok) return gateError(gate);

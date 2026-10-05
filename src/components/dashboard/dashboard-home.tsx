@@ -210,7 +210,7 @@ export function DashboardHome({
     },
     {
       tab: "recetas",
-      label: "Recetas",
+      label: "Preparación y Costo",
       desc: "Costos y food cost de tus platos",
       icon: Calculator,
       accent: "bg-green-100 text-green-700",

@@ -1,6 +1,7 @@
 ﻿import { NextResponse } from "next/server";
 import { queryOne, queryMany } from "@/lib/db";
 import { authWaBot } from "@/lib/wa-bot";
+import { isStoreOpen, openStatusText } from "@/lib/open-hours";
 
 /** Menú público de un vendor, listo para que el bot (NLU) lo consuma.
  *  Exige `WA_BOT_SECRET` (endpoint interno). Devuelve productos + modificadores
@@ -17,8 +18,8 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "vendorId requerido" }, { status: 400 });
   }
 
-  const vendor = await queryOne<{ id: string; store_name: string; vertical: string }>(
-    `SELECT id, store_name, vertical FROM vendors WHERE id = $1 LIMIT 1`,
+  const vendor = await queryOne<{ id: string; store_name: string; vertical: string; hours: string | null; open_override: boolean | null }>(
+    `SELECT id, store_name, vertical, hours, open_override FROM vendors WHERE id = $1 LIMIT 1`,
     [vendorId]
   );
   if (!vendor) return NextResponse.json({ error: "Comercio no encontrado" }, { status: 404 });
@@ -85,8 +86,10 @@ export async function GET(request: Request) {
     }
   }
 
+  const storeOpen = isStoreOpen(vendor);
+
   return NextResponse.json({
-    vendor: { id: vendor.id, store_name: vendor.store_name, vertical: vendor.vertical },
+    vendor: { id: vendor.id, store_name: vendor.store_name, vertical: vendor.vertical, store_open: storeOpen, open_text: openStatusText(storeOpen) },
     products: products.map((p) => ({
       id: p.id,
       name: p.name,

@@ -27,4 +27,8 @@ export const config = {
   maxMsgPerHour: Number(process.env.WA_MAX_MSG_PER_HOUR || 60),
   maxMsgPerDay: Number(process.env.WA_MAX_MSG_PER_DAY || 500),
   maxNewChatsPerHour: Number(process.env.WA_MAX_NEW_CHATS_PER_HOUR || 15),
+  // Modo del bot de WhatsApp: "orders" (toma pedidos) o "concierge" (saludo,
+  // menú, "¿tuviste un problema?" + forwarding al dueño). Default concierge.
+  // No se borra código: el flujo de pedidos solo no se entra cuando está off.
+  takeOrders: process.env.BOT_TAKE_ORDERS === "1",
 };

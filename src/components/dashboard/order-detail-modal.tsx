@@ -85,6 +85,10 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
   const [mpBusy, setMpBusy] = useState(false);
   const [apBusy, setApBusy] = useState<"deposit" | "remainder" | null>(null);
   const [apError, setApError] = useState("");
+  // "💳 Enviar datos de pago por WA": el comercio manda el alias/CBU/monto al
+  // cliente por el bot manualmente; el comprobante vuelve por el chat del bot.
+  const [payBusy, setPayBusy] = useState(false);
+  const [payMsg, setPayMsg] = useState("");
 
   // Tildado de empaque (retail, estado Empaquetando): mismo array kitchen_done
   // que la comanda gastro. Solo lectura + tildado (la edición sigue en Nuevo).
@@ -153,12 +157,35 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
   useEffect(() => {
     setMpLink(null);
     setApError("");
+    setPayMsg("");
   }, [order.id]);
 
   const ap = apartadoInfo(order);
   // Apartado con saldo pendiente en el paso de aceptar: el camino correcto
   // es cobrar el saldo (no aceptar directo). Se reemplaza el botón primario.
   const apartadoUnpaidAccept = ap.isApartado && !ap.fullyPaid && ap.active && nextStatusFor(order.status as OrderStatus, order.method, isRetail, order.channel, orderNeedsKitchen(order)) === "confirmed";
+
+  async function handleSendPaymentData() {
+    if (payBusy) return;
+    setPayBusy(true);
+    setPayMsg("");
+    try {
+      const res = await fetch(`/api/vendor/orders/${order.id}/send-payment-data`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setPayMsg(data?.error || "No se pudo enviar.");
+        return;
+      }
+      if (data.sent === true) setPayMsg("✅ Datos de pago enviados por WhatsApp.");
+      else if (data.reason === "sin_relay") setPayMsg("No se envió: el bot del comercio no está conectado (el teléfono con la app Portal Wa Link está apagado).");
+      else if (data.reason === "ya_enviado") setPayMsg("Ya se enviaron los datos de pago de este pedido (esa ventana ya está esperando el comprobante).");
+      else setPayMsg(`No se envió${data.reason ? ` (${data.reason})` : ""}.`);
+    } catch {
+      setPayMsg("Error de red. Probá de nuevo.");
+    } finally {
+      setPayBusy(false);
+    }
+  }
 
   async function handleApartadoMark(kind: "deposit" | "remainder") {
     setApError("");
@@ -821,6 +848,16 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
                       )}
                     </div>
                   )}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full border-primary/40 text-primary hover:bg-primary/10"
+                    disabled={payBusy}
+                    onClick={handleSendPaymentData}
+                  >
+                    {payBusy ? "Enviando..." : "💳 Enviar datos de pago por WhatsApp"}
+                  </Button>
+                  {payMsg && <p className="text-center text-[10px] text-muted-foreground">{payMsg}</p>}
                   {onMarkPaid && (
                     <Button
                       type="button"

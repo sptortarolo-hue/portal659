@@ -188,6 +188,15 @@ if (state.pausedUntil && state.pausedUntil > Date.now()) {
       return await handoffHuman(vendor, waId, text, state);
     }
 
+    // Modo conserje (BOT_TAKE_ORDERS no está en "1"): saludar, compartir el
+    // menú online, preguntar si hubo un problema para pedir (handoff a la
+    // persona) y escuchar consultas/sugerencias — sin armar el pedido. El
+    // flujo de pedidos queda intacto pero no se entra con esto.
+    if (!config.takeOrders) {
+      await handleConcierge({ vendor, text, state, replies, waId });
+      return await persist(state, vendor.id, waId, replies);
+    }
+
     // En flujo: completar lo que falta (o corregir).
     if (state.step !== "idle") {
       await handleStep({ vendor, text, state, replies, waId });
@@ -974,15 +983,108 @@ async function createOrder(vendorId, state) {
 }
 
 // ———————————————————————————————————————————————————————————————————————————
-// Handoff a humano
+// Concierge (BOT_TAKE_ORDERS apagado): saludar, compartir el menú online,
+// preguntar si hubo un problema para pedir (handoff al dueño) y escuchar
+// consultas/sugerencias. El flujo de armado de pedido NO se entra — los
+// pedidos entran solo por la web. Los únicos estados reales: awareness
+// (ninguno) → "concierge_asked" (esperando sí/no) → "concierge_feedback"
+// (esperando la consulta) → handoff. El await de comprobante sigue igual.
 // ———————————————————————————————————————————————————————————————————————————
+
+const RE_CONCIERGE_YES = /^(sí|si|dale|ok|okey|tengo un problema|tengo problemas|si tengo|s tengo|sí tengo)(?=[\s.,!¡]|$)/i;
+const RE_CONCIERGE_NO  = /^(no|nop|ninguno|ninguna|todo bien|cero|sin problema|sin problemas|no tuve)\b/i;
+const RE_PROBLEMA = /\b(problema|problemas|error|traba|trabar|falla|falló|fallo|fallas|no pude|no me funcion|no me funciona|no me deja|no sale|no me salen|no me funciona|no responde|roto|rota)\b/i;
+
+async function handleConcierge({ vendor, text, state, replies, waId }) {
+  const low = text.trim().toLowerCase();
+
+  // Comprobante pendiente (de un pedido web por transferencia): el texto sigue
+  // esperando la foto del comprobante — eso no cambia con el modo conserje.
+  if (state.step === "awaiting_receipt") {
+    replies.push("Estoy esperando tu comprobante (foto o PDF). Si cambiás de idea, escribime *cancelar*.");
+    return;
+  }
+
+  // Re-pedir menú (siempre funciona).
+  if (RE_MENU.test(low)) {
+    replies.push(`📋 Menú online con fotos y precios:\n${shopUrl(vendor)}\n\n¿Tuviste algún problema para hacer tu pedido? Respondé sí o no 👇`);
+    state.step = "concierge_asked";
+    return;
+  }
+
+  // Handoff directo si el primer mensaje ya trae un problema ("no me funciona").
+  //
+  // OJO: handoffHuman devuelve sus replies — acá se pushean al array del
+  // handler para que el gate de handleInbound las persista (antes retornaba y
+  // el gate veía el array vacío, con lo que el cliente nunca recibía nada).
+  if (state.step === "idle" && RE_PROBLEMA.test(low)) {
+    const r = await handoffHuman(vendor, waId, text, state);
+    replies.push(...(r.replies || []));
+    return;
+  }
+
+  if (state.step === "concierge_asked") {
+    if (RE_CONCIERGE_NO.test(low) && !RE_PROBLEMA.test(low)) {
+      replies.push(`¡Dale! ¿Tenés alguna consulta o sugerencia? Escríbila acá y se la paso a *${vendor.store_name}* 🙌`);
+      state.step = "concierge_feedback";
+      return;
+    }
+    if (RE_CONCIERGE_YES.test(text) || RE_PROBLEMA.test(text)) {
+      const r = await handoffHuman(vendor, waId, text, state);
+      replies.push(...(r.replies || []));
+      return;
+    }
+    // Si mencionó un producto, el bot no lo pedía: ofrecer el menú + repetir
+    // la pregunta; si no, solo repetir la pregunta.
+    try {
+      const products = await getMenu(vendor.id);
+      if (Array.isArray(products) && products.length > 0 && matchAllProducts(products, text).length > 0) {
+        replies.push(`📲 Todo eso lo tenés en el menú online:\n${shopUrl(vendor)}\n\n¿Tuviste algún problema para hacer tu pedido? Respondé sí o no 👇`);
+        return;
+      }
+    } catch { /* carteles sin menú: sigue la pregunta */ }
+    replies.push(`Respondéme con sí o con no: ¿tuviste algún problema para hacer tu pedido? 😊`);
+    return;
+  }
+
+  // Consulta/sugerencia: reenviar al comercio (notificación) y confirmar.
+  if (state.step === "concierge_feedback") {
+    await notifyHandoff(vendor.id, waId, `💬 ${String(text).slice(0, 200)}`);
+    replies.push(`¡Gracias! Le pasé tu mensaje al equipo de *${vendor.store_name}* — te contestan por acá enseguida 🙌`);
+    state.step = "idle";
+    return;
+  }
+
+  // Primer mensaje de la conversación (o después de que pasó la pausa del
+  // handoff): saludar + evaluar abierto/cerrado + menú online + pregunta del
+  // problema.
+  let openLine = "";
+  try {
+    const r = await fetch(`${config.appUrl}/api/wa/menu?vendorId=${encodeURIComponent(vendor.id)}`, {
+      headers: { Authorization: `Bearer ${config.waBotSecret}` },
+      signal: AbortSignal.timeout(8_000),
+    });
+    const info = r.ok ? await r.json().catch(() => null) : null;
+    const isOpen = info?.vendor?.store_open;
+    openLine = isOpen === true ? "Estamos abiertos ahora ✓" : isOpen === false ? "Estamos cerrados ahora" : "";
+  } catch { /* el saludo va sin la línea de horario */ }
+
+  state.welcomed = true;
+  state.step = "concierge_asked";
+  replies.push([
+    `Hola 👋 Soy el asistente de *${vendor.store_name}*.`,
+    ...(openLine ? [openLine] : []),
+    `📲 Mirá el menú online:\n${shopUrl(vendor)}`,
+    `Contame: ¿tuviste algún problema para hacer tu pedido? 😊\n(respondé sí o no 👇)`,
+  ].join("\n\n"));
+}
 
 async function handoffHuman(vendor, waId, text, state) {
   state.pausedUntil = Date.now() + HANDOFF_PAUSE_MIN * 60 * 1000;
   state.handoffCount = 0;
   await setState(vendor.id, waId, state);
   await notifyHandoff(vendor.id, waId, text);
-  return { replies: ["Te paso con el comercio — te contestan enseguida por este chat. 🙌"] };
+  return { replies: [`Enseguida te atiende una persona de *${vendor.store_name}* 🙌`] };
 }
 
 async function notifyHandoff(vendorId, waId, text) {

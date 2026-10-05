@@ -983,100 +983,130 @@ async function createOrder(vendorId, state) {
 }
 
 // ———————————————————————————————————————————————————————————————————————————
-// Concierge (BOT_TAKE_ORDERS apagado): saludar, compartir el menú online,
-// preguntar si hubo un problema para pedir (handoff al dueño) y escuchar
-// consultas/sugerencias. El flujo de armado de pedido NO se entra — los
-// pedidos entran solo por la web. Los únicos estados reales: awareness
-// (ninguno) → "concierge_asked" (esperando sí/no) → "concierge_feedback"
-// (esperando la consulta) → handoff. El await de comprobante sigue igual.
+// Concierge v2 (BOT_TAKE_ORDERS apagado): el bot NO arma pedidos por chat.
+// 1) Saluda, comparte el menú online y evalúa abierto/cerrado.
+// 2) Cualquier texto que suene a pedido (productos del menú, o el cliente ya
+//    tiene pedido reciente por teléfono) → tomarlo como ok, abrir el canal.
+// 3) Cualquier otra cosa → ofrecer atención humana: "¿Querés que lo atienda
+//    una persona de {store}? 1️⃣ Sí 2️⃣ No".
+// 4) "ayuda" en cualquier momento → una persona del comercio se pone.
+// El flujo de pedido viejo queda intacto (sin borrar), solo sin entrar.
 // ———————————————————————————————————————————————————————————————————————————
 
-const RE_CONCIERGE_YES = /^(sí|si|dale|ok|okey|tengo un problema|tengo problemas|si tengo|s tengo|sí tengo)(?=[\s.,!¡]|$)/i;
-const RE_CONCIERGE_NO  = /^(no|nop|ninguno|ninguna|todo bien|cero|sin problema|sin problemas|no tuve)\b/i;
-const RE_PROBLEMA = /\b(problema|problemas|error|traba|trabar|falla|falló|fallo|fallas|no pude|no me funcion|no me funciona|no me deja|no sale|no me salen|no me funciona|no responde|roto|rota)\b/i;
+const RE_AYUDA = /\bayuda\b/i;
+const RE_PROBLEMA = /\b(problema|problemas|error|traba|trabar|falla|falló|fallo|fallas|no pude|no me funcion|no me funciona|no me deja|no sale|roto|rota)\b/i;
+const RE_PERSON_SI = /^(1|sí|si|dale|ok|okey|bueno|perfecto|si quiero|sí quiero)(?=[\s.,!¡]|$)/i;
+const RE_PERSON_NO = /^(2|no|nop|no quiero|no gracias|cero)(?=[\s.,!¡]|$)/i;
+
+async function latestOrderFor(vendorId, phone) {
+  try {
+    const r = await fetch(`${config.appUrl}/api/wa/latest-orders?vendorId=${encodeURIComponent(vendorId)}&phone=${encodeURIComponent(String(phone || ""))}`, {
+      headers: { Authorization: `Bearer ${config.waBotSecret}` },
+      signal: AbortSignal.timeout(8_000),
+    });
+    if (!r.ok) return null;
+    const data = await r.json().catch(() => null);
+    if (!data?.pickupNumber && !data?.trackUrl) return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
 
 async function handleConcierge({ vendor, text, state, replies, waId }) {
   const low = text.trim().toLowerCase();
 
   // Comprobante pendiente (de un pedido web por transferencia): el texto sigue
-  // esperando la foto del comprobante — eso no cambia con el modo conserje.
+  // esperando la foto — no cambia con el modo conserje.
   if (state.step === "awaiting_receipt") {
     replies.push("Estoy esperando tu comprobante (foto o PDF). Si cambiás de idea, escribime *cancelar*.");
     return;
   }
 
-  // Re-pedir menú (siempre funciona).
+  // Re-pedir menú / carta (siempre funciona): el link y el pie de ayuda.
   if (RE_MENU.test(low)) {
-    replies.push(`📋 Menú online con fotos y precios:\n${shopUrl(vendor)}\n\n¿Tuviste algún problema para hacer tu pedido? Respondé sí o no 👇`);
-    state.step = "concierge_asked";
+    replies.push(`📋 Menú online con fotos y precios:\n${shopUrl(vendor)}\n\n🙌 Si querés hablar con una persona, escribime *ayuda* en cualquier momento.`);
     return;
   }
 
-  // Handoff directo si el primer mensaje ya trae un problema ("no me funciona").
-  //
-  // OJO: handoffHuman devuelve sus replies — acá se pushean al array del
-  // handler para que el gate de handleInbound las persista (antes retornaba y
-  // el gate veía el array vacío, con lo que el cliente nunca recibía nada).
-  if (state.step === "idle" && RE_PROBLEMA.test(low)) {
+  // "ayuda" o un problema directo ("no me funciona", "falló") → una persona
+  // toma el hilo de una vez (sin pasar por la pregunta 1/2).
+  if (RE_AYUDA.test(low) || RE_PROBLEMA.test(low)) {
     const r = await handoffHuman(vendor, waId, text, state);
     replies.push(...(r.replies || []));
-    return;
-  }
-
-  if (state.step === "concierge_asked") {
-    if (RE_CONCIERGE_NO.test(low) && !RE_PROBLEMA.test(low)) {
-      replies.push(`¡Dale! ¿Tenés alguna consulta o sugerencia? Escríbila acá y se la paso a *${vendor.store_name}* 🙌`);
-      state.step = "concierge_feedback";
-      return;
-    }
-    if (RE_CONCIERGE_YES.test(text) || RE_PROBLEMA.test(text)) {
-      const r = await handoffHuman(vendor, waId, text, state);
-      replies.push(...(r.replies || []));
-      return;
-    }
-    // Si mencionó un producto, el bot no lo pedía: ofrecer el menú + repetir
-    // la pregunta; si no, solo repetir la pregunta.
-    try {
-      const products = await getMenu(vendor.id);
-      if (Array.isArray(products) && products.length > 0 && matchAllProducts(products, text).length > 0) {
-        replies.push(`📲 Todo eso lo tenés en el menú online:\n${shopUrl(vendor)}\n\n¿Tuviste algún problema para hacer tu pedido? Respondé sí o no 👇`);
-        return;
-      }
-    } catch { /* carteles sin menú: sigue la pregunta */ }
-    replies.push(`Respondéme con sí o con no: ¿tuviste algún problema para hacer tu pedido? 😊`);
-    return;
-  }
-
-  // Consulta/sugerencia: reenviar al comercio (notificación) y confirmar.
-  if (state.step === "concierge_feedback") {
-    await notifyHandoff(vendor.id, waId, `💬 ${String(text).slice(0, 200)}`);
-    replies.push(`¡Gracias! Le pasé tu mensaje al equipo de *${vendor.store_name}* — te contestan por acá enseguida 🙌`);
     state.step = "idle";
     return;
   }
 
-  // Primer mensaje de la conversación (o después de que pasó la pausa del
-  // handoff): saludar + evaluar abierto/cerrado + menú online + pregunta del
-  // problema.
-  let openLine = "";
-  try {
-    const r = await fetch(`${config.appUrl}/api/wa/menu?vendorId=${encodeURIComponent(vendor.id)}`, {
-      headers: { Authorization: `Bearer ${config.waBotSecret}` },
-      signal: AbortSignal.timeout(8_000),
-    });
-    const info = r.ok ? await r.json().catch(() => null) : null;
-    const isOpen = info?.vendor?.store_open;
-    openLine = isOpen === true ? "Estamos abiertos ahora ✓" : isOpen === false ? "Estamos cerrados ahora" : "";
-  } catch { /* el saludo va sin la línea de horario */ }
+  // El cliente responde a la pregunta "¿quieres que lo atienda una persona?".
+  if (state.step === "concierge_askperson") {
+    if (RE_PERSON_SI.test(low)) {
+      const r = await handoffHuman(vendor, waId, text, state);
+      replies.push(...(r.replies || []));
+      state.step = "idle";
+      return;
+    }
+    if (RE_PERSON_NO.test(low)) {
+      state.step = "idle";
+      const recent = await latestOrderFor(vendor.id, state.customerPhone || waId);
+      const link = recent?.trackUrl || shopUrl(vendor);
+      replies.push(
+        `Perfecto. Esperamos su pedido; si ya lo realizó, podrá seguirlo en el link.\n📦 ${link}`
+      );
+      return;
+    }
+    replies.push(`Respondé *1* para hablar con una persona o *2* para seguir conmigo.`);
+    return;
+  }
 
-  state.welcomed = true;
-  state.step = "concierge_asked";
-  replies.push([
-    `Hola 👋 Soy el asistente de *${vendor.store_name}*.`,
-    ...(openLine ? [openLine] : []),
-    `📲 Mirá el menú online:\n${shopUrl(vendor)}`,
-    `Contame: ¿tuviste algún problema para hacer tu pedido? 😊\n(respondé sí o no 👇)`,
-  ].join("\n\n"));
+  // El primer mensaje de la conversación → saludo (abierto/cerrado) + menú
+  // online + el tope de "ayuda" para hablar con persona. Siempre — aunque el
+  // cliente arranque sin saludar: el encabezado es la oferta del comercio.
+  if (!state.welcomed) {
+    state.welcomed = true;
+    state.step = "idle";
+    let openLine = "";
+    try {
+      const r = await fetch(`${config.appUrl}/api/wa/menu?vendorId=${encodeURIComponent(vendor.id)}`, {
+        headers: { Authorization: `Bearer ${config.waBotSecret}` },
+        signal: AbortSignal.timeout(8_000),
+      });
+      const info = r.ok ? await r.json().catch(() => null) : null;
+      const isOpen = info?.vendor?.store_open;
+      openLine = isOpen === true ? "Estamos abiertos ahora ✓" : isOpen === false ? "Estamos cerrados ahora" : "";
+    } catch { /* el saludo va sin la línea de horario */ }
+    replies.push([
+      `Hola 👋 Soy el asistente de *${vendor.store_name}*.`,
+      ...(openLine ? [openLine] : []),
+      `📲 Mirá el menú online:\n${shopUrl(vendor)}`,
+      `🙌 Si querés hablar con una persona, escribime *ayuda* en cualquier momento.`,
+    ].join("\n\n"));
+    return;
+  }
+
+  // El pedido armado: SOLO cuando el texto menciona productos del menú (el bot
+  // entiende "quiero X", "dame Y", etc.). El link del último pedido enriquece
+  // el as en ese caso. Si el texto es neutral pero el cliente tiene un pedido →
+  // el ask-person — no el ok — porque el cliente no está pidiendo, está hablando.
+  const products = await getMenu(vendor.id).catch(() => []);
+  const mentionsProduct = Array.isArray(products) && products.length > 0 && extractFromText(text, products).length > 0;
+  if (mentionsProduct) {
+    const recent = await latestOrderFor(vendor.id, state.customerPhone || waId);
+    const link = recent?.trackUrl || shopUrl(vendor);
+    const nro = recent?.pickupNumber != null ? ` Nro. ${recent.pickupNumber}` : "";
+    replies.push(
+      `¡Perfecto! 👌 Ya tenemos tu pedido${nro} con *${vendor.store_name}*. ` +
+      `Te avisamos por acá las novedades: aceptado → en camino → listo. Podés seguirlo acá: ${link}\n\n` +
+      `🙌 Si querés hablar con una persona, escribime *ayuda* en cualquier momento.`
+    );
+    return;
+  }
+
+  // Cualquier otra cosa: ofrecer la persona (una sola pregunta: 1 sí / 2 no).
+  state.step = "concierge_askperson";
+  replies.push(
+    `«¿Querés que lo atienda una persona de *${vendor.store_name}*?»\n\n1️⃣ Sí\n2️⃣ No\n\n🙌 (Escribí *ayuda* en cualquier momento y te responde una persona.)`
+  );
 }
 
 async function handoffHuman(vendor, waId, text, state) {

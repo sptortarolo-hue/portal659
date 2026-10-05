@@ -1,5 +1,5 @@
 import { gateRequest, gateError } from "@/lib/subscription-gate";
-import { queryMany } from "@/lib/db";
+import { queryMany, queryOne } from "@/lib/db";
 import { NextResponse } from "next/server";
 import ExcelJS from "exceljs";
 
@@ -25,6 +25,15 @@ export async function GET(request: Request) {
   const format = searchParams.get("format") === "xlsx" ? "xlsx" : searchParams.get("format") === "csv" ? "csv" : "json";
 
   try {
+    // Flag de prueba (migrate-service-preview.sql): los turnos de prueba no
+    // cuentan como trabajo real. Sin columna, no se filtra.
+    let pf = "";
+    try {
+      const pc = await queryOne<{ exists: boolean }>(
+        `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'bookings' AND column_name = 'is_preview') AS exists`
+      );
+      if (pc?.exists === true) pf = " AND COALESCE(b.is_preview, false) = false";
+    } catch { /* sin flag */ }
     let rows;
     try {
       // Snapshot (migrate-estetica-commissions.sql).
@@ -41,7 +50,7 @@ export async function GET(request: Request) {
                 COALESCE(SUM(b.service_price * COALESCE(b.commission_pct, 0) / 100), 0)::float AS comision
          FROM bookings b
          LEFT JOIN estetica_staff st ON st.id = b.staff_id
-         WHERE b.vendor_id = $1 AND b.status = 'confirmed'
+         WHERE b.vendor_id = $1 AND b.status = 'confirmed'${pf}
            AND b.booking_date >= $2 AND b.booking_date <= $3
          GROUP BY b.staff_id, st.name
          ORDER BY comision DESC`,
@@ -63,7 +72,7 @@ export async function GET(request: Request) {
          FROM bookings b
          LEFT JOIN services s ON s.id = b.service_id
          LEFT JOIN estetica_staff st ON st.id = b.staff_id
-         WHERE b.vendor_id = $1 AND b.status = 'confirmed'
+         WHERE b.vendor_id = $1 AND b.status = 'confirmed'${pf}
            AND b.booking_date >= $2 AND b.booking_date <= $3
          GROUP BY b.staff_id, st.name
          ORDER BY comision DESC`,

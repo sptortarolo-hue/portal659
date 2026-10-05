@@ -2,6 +2,7 @@ import { query, queryMany, queryOne } from "@/lib/db";
 import { getSiteUrl } from "@/lib/site-url";
 import { sendPushToUser } from "@/lib/push";
 import { getServiceQuota, ServiceQuotaError } from "@/lib/service-quota";
+import { isPreviewTokenForVendor } from "@/lib/preview-flag";
 import { getVendorByRequest } from "@/lib/vendor-utils";
 import { NextResponse } from "next/server";
 import { withRateLimit } from "@/lib/api-wrapper";
@@ -20,9 +21,13 @@ export const POST = withRateLimit(async (request: Request) => {
     .map((u) => String(u || "").trim())
     .filter((u) => u.startsWith(`${siteUrl}/uploads/service-requests/`) || u.startsWith("/uploads/service-requests/"))
     .slice(0, 3);
+  // Modo prueba (link ?preview=<token> o flag explícito): no consume tope ni
+  // avisa al comercio.
+  const isPreview =
+    body.isPreview === true || (await isPreviewTokenForVendor(String(vendorId), body.previewToken));
 
   // Tope mensual del plan gratuito (5 solicitudes combinadas). 429 si se alcanza.
-  try {
+  if (!isPreview) try {
     const quota = await getServiceQuota(vendorId);
     if (quota.limit != null && quota.used >= quota.limit) throw new ServiceQuotaError();
   } catch (e) {
@@ -35,9 +40,9 @@ export const POST = withRateLimit(async (request: Request) => {
   let quote: { id: string } | undefined;
   try {
     quote = await queryOne<{ id: string }>(
-      `INSERT INTO quotes (vendor_id, customer_name, customer_phone, service_name, description, preferred_date, preferred_time, photo_urls, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending') RETURNING id`,
-      [vendorId, customerName, customerPhone, serviceName || null, description, preferredDate || null, preferredTime || null, JSON.stringify(photos)]
+      `INSERT INTO quotes (vendor_id, customer_name, customer_phone, service_name, description, preferred_date, preferred_time, photo_urls, status, is_preview)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', $9) RETURNING id`,
+      [vendorId, customerName, customerPhone, serviceName || null, description, preferredDate || null, preferredTime || null, JSON.stringify(photos), isPreview]
     );
   } catch {
     // Columna photo_urls aún no migrada: guardar sin fotos.
@@ -53,7 +58,7 @@ export const POST = withRateLimit(async (request: Request) => {
     [vendorId]
   );
 
-  if (vendor?.user_id) {
+  if (!isPreview && vendor?.user_id) {
     const desc = `${description.slice(0, 80)}${description.length > 80 ? "..." : ""}`;
     const isEstetica = vendor.vertical === "estetica";
     await query(

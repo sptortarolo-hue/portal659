@@ -2,6 +2,7 @@ import { gateRequest } from "@/lib/subscription-gate";
 import { query, queryOne } from "@/lib/db";
 import { getSiteUrl } from "@/lib/site-url";
 import { getVendorMpToken, isMpEnabled, type VendorMpRow } from "@/lib/mp-oauth";
+import { isPreviewRow } from "@/lib/preview-flag";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -55,6 +56,9 @@ export async function POST(
   }
   if (booking.deposit_status === "paid") {
     return NextResponse.json({ error: "La seña ya está pagada" }, { status: 400 });
+  }
+  if (await isPreviewRow("bookings", id)) {
+    return NextResponse.json({ error: "No se cobran señas en turnos de prueba" }, { status: 400 });
   }
 
   // Monto: snapshot del turno; si no tiene, el vigente del servicio.

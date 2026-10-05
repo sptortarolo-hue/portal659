@@ -40,10 +40,26 @@ export async function POST(
     customer_phone: string;
     service_name: string | null;
     quoted_price: number | null;
+    is_preview: boolean | null;
   }>(
-    `SELECT id, vendor_id, status, customer_name, customer_phone, service_name, quoted_price
+    `SELECT id, vendor_id, status, customer_name, customer_phone, service_name, quoted_price, is_preview
      FROM quotes WHERE id = $1 LIMIT 1`,
     [id]
+  ).catch(() =>
+    queryOne<{
+      id: string;
+      vendor_id: string;
+      status: string;
+      customer_name: string;
+      customer_phone: string;
+      service_name: string | null;
+      quoted_price: number | null;
+      is_preview: boolean | null;
+    }>(
+      `SELECT id, vendor_id, status, customer_name, customer_phone, service_name, quoted_price, NULL::boolean AS is_preview
+       FROM quotes WHERE id = $1 LIMIT 1`,
+      [id]
+    )
   );
   if (!quote) return NextResponse.json({ error: "No encontrado" }, { status: 404 });
   if (quote.vendor_id !== gate.vendor.id) {
@@ -58,20 +74,23 @@ export async function POST(
 
   try {
     const bookingId = await withTransaction(async (tx) => {
+      const isPreview = gate.previewSession === true || quote.is_preview === true;
       if (quote.status !== "accepted") {
         await tx.queryVoid(`UPDATE quotes SET status = 'accepted', accepted_at = now() WHERE id = $1`, [id]);
-        await addServiceJob(tx, gate.vendor.id, {
-          phone: quote.customer_phone,
-          name: quote.customer_name,
-          total: Number(quote.quoted_price) || 0,
-        });
+        if (!isPreview) {
+          await addServiceJob(tx, gate.vendor.id, {
+            phone: quote.customer_phone,
+            name: quote.customer_name,
+            total: Number(quote.quoted_price) || 0,
+          });
+        }
       }
       const confirmVal = crypto.randomBytes(16).toString("hex");
       let b;
       try {
         b = await tx.query<{ id: string }>(
-          `INSERT INTO bookings (vendor_id, product_id, customer_id, product_name, customer_name, customer_phone, booking_date, booking_time, duration_min, confirm_token, notes, status, origin, quote_id)
-           VALUES ($1, NULL, NULL, $2, $3, $4, $5, $6, $7, $8, $9, 'confirmed', 'vendor', $10) RETURNING id`,
+          `INSERT INTO bookings (vendor_id, product_id, customer_id, product_name, customer_name, customer_phone, booking_date, booking_time, duration_min, confirm_token, notes, status, origin, quote_id, is_preview)
+           VALUES ($1, NULL, NULL, $2, $3, $4, $5, $6, $7, $8, $9, 'confirmed', 'vendor', $10, $11) RETURNING id`,
           [
             gate.vendor.id,
             quote.service_name,
@@ -83,6 +102,7 @@ export async function POST(
             confirmVal,
             String(body.notes || "").trim().slice(0, 2000) || null,
             id,
+            isPreview,
           ]
         );
       } catch {

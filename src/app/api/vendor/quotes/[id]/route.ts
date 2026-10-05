@@ -1,6 +1,7 @@
 import { gateRequest } from "@/lib/subscription-gate";
 import { notifyServiceClient } from "@/lib/service-notify";
 import { addServiceJob } from "@/lib/customers";
+import { isPreviewRow } from "@/lib/preview-flag";
 import { query, queryOne, withTransaction } from "@/lib/db";
 import { NextResponse } from "next/server";
 
@@ -63,16 +64,20 @@ export async function PATCH(
         id,
       ]);
       // Aceptar suma el trabajo al libro del cliente (una sola vez).
+      // Las consultas de prueba no tocan el libro.
       if (update.status === "accepted" && existing.status !== "accepted") {
+        const isPreviewQuote = await isPreviewRow("quotes", id);
         const row = await tx.query<{ quoted_price: number | null }>(
           `SELECT quoted_price FROM quotes WHERE id = $1 LIMIT 1`,
           [id]
         );
-        await addServiceJob(tx, gate.vendor.id, {
-          phone: existing.customer_phone,
-          name: existing.customer_name,
-          total: Number(row[0]?.quoted_price) || 0,
-        });
+        if (!isPreviewQuote) {
+          await addServiceJob(tx, gate.vendor.id, {
+            phone: existing.customer_phone,
+            name: existing.customer_name,
+            total: Number(row[0]?.quoted_price) || 0,
+          });
+        }
       }
     });
   } catch (e) {
@@ -118,4 +123,35 @@ export async function PATCH(
   }
 
   return NextResponse.json({ quote });
+}
+
+/**
+ * Borra una consulta SOLO si es de prueba (is_preview). Las reales no se
+ * borran (se descartan). Espejo del borrado de pedidos de prueba.
+ */
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const gate = await gateRequest(request);
+  if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status });
+  const { id } = await params;
+  const row = await queryOne<{ vendor_id: string; is_preview: boolean | null }>(
+    `SELECT vendor_id, is_preview FROM quotes WHERE id = $1 LIMIT 1`,
+    [id]
+  ).catch(() =>
+    queryOne<{ vendor_id: string; is_preview: boolean | null }>(
+      `SELECT vendor_id, NULL::boolean AS is_preview FROM quotes WHERE id = $1 LIMIT 1`,
+      [id]
+    ).catch(() => null)
+  );
+  if (!row) return NextResponse.json({ error: "No encontrado" }, { status: 404 });
+  if (row.vendor_id !== gate.vendor.id) {
+    return NextResponse.json({ error: "No autorizado" }, { status: 403 });
+  }
+  if (row.is_preview !== true) {
+    return NextResponse.json({ error: "Solo se pueden borrar consultas de prueba" }, { status: 400 });
+  }
+  await query(`DELETE FROM quotes WHERE id = $1 AND vendor_id = $2`, [id, gate.vendor.id]);
+  return NextResponse.json({ ok: true });
 }

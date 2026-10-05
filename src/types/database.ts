@@ -523,6 +523,8 @@ export type Booking = {
   origin?: QuoteOrigin;
   duration_min?: number | null;
   quote_id?: string | null;
+  /** Turno de prueba (modo preview). true = no cuenta en topes/métricas/CRM. */
+  is_preview?: boolean;
   created_at: string;
 };
 
@@ -563,6 +565,8 @@ export type Quote = {
   photo_urls?: string[] | null;
   /** portal = online del cliente (cuenta al tope) · vendor = manual (no cuenta). */
   origin?: QuoteOrigin;
+  /** Consulta de prueba (modo preview). true = no cuenta en topes/métricas/CRM. */
+  is_preview?: boolean;
   created_at: string;
 };
 

@@ -26,9 +26,18 @@ export async function GET(request: Request) {
   const quotes = await queryMany<Record<string, unknown>>(
     `SELECT id, customer_name, customer_phone, service_name, description,
             preferred_date, preferred_time, status, vendor_notes, quoted_price,
-            deposit_amount, deposit_pct, deposit_status, photo_urls, created_at
+            deposit_amount, deposit_pct, deposit_status, photo_urls, is_preview, created_at
      FROM quotes WHERE ${conditions.join(" AND ")} ORDER BY created_at DESC LIMIT 100`,
     params
+  ).catch(() =>
+    // Sin flag de prueba: sin columna.
+    queryMany<Record<string, unknown>>(
+      `SELECT id, customer_name, customer_phone, service_name, description,
+              preferred_date, preferred_time, status, vendor_notes, quoted_price,
+              deposit_amount, deposit_pct, deposit_status, photo_urls, created_at
+       FROM quotes WHERE ${conditions.join(" AND ")} ORDER BY created_at DESC LIMIT 100`,
+      params
+    )
   ).catch(() =>
     // Migración de seña aún no aplicada: sin columnas de depósito.
     queryMany<Record<string, unknown>>(
@@ -106,11 +115,12 @@ export async function POST(request: Request) {
     items.length > 0 ? itemsTotal : Math.max(0, Number(body.quoted_price) || 0);
 
   let quoteId: string | null = null;
+  const isPreview = gate.previewSession === true;
   try {
     quoteId = await withTransaction(async (tx) => {
       const q = await tx.query<{ id: string }>(
-        `INSERT INTO quotes (vendor_id, customer_name, customer_phone, service_name, description, preferred_date, preferred_time, status, vendor_notes, quoted_price, origin)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, 'responded', $8, $9, 'vendor') RETURNING id`,
+        `INSERT INTO quotes (vendor_id, customer_name, customer_phone, service_name, description, preferred_date, preferred_time, status, vendor_notes, quoted_price, origin, is_preview)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'responded', $8, $9, 'vendor', $10) RETURNING id`,
         [
           gate.vendor.id,
           customerName,
@@ -121,6 +131,7 @@ export async function POST(request: Request) {
           String(body.preferred_time || "").trim() || null,
           String(body.vendor_notes || "").trim().slice(0, 2000) || null,
           quotedPrice,
+          isPreview,
         ]
       );
       const id = q[0]?.id;
@@ -132,7 +143,9 @@ export async function POST(request: Request) {
           [id, it.kind, it.description, it.qty, it.unit_price, it.position]
         );
       }
-      await ensureServiceCustomer(tx, gate.vendor.id, { phone: customerPhone, name: customerName });
+      if (!isPreview) {
+        await ensureServiceCustomer(tx, gate.vendor.id, { phone: customerPhone, name: customerName });
+      }
       return id;
     });
   } catch (e) {

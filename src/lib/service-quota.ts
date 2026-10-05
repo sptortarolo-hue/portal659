@@ -37,16 +37,24 @@ export async function getServiceQuota(vendorId: string): Promise<{
   const countWithOrigin = async (table: string): Promise<number> => {
     try {
       const row = await queryOne<{ c: number }>(
-        `SELECT COUNT(*)::int AS c FROM ${table} WHERE vendor_id = $1 AND status <> 'cancelled' AND origin = 'portal' AND created_at >= ${monthStart}`,
+        `SELECT COUNT(*)::int AS c FROM ${table} WHERE vendor_id = $1 AND status <> 'cancelled' AND origin = 'portal' AND COALESCE(is_preview, false) = false AND created_at >= ${monthStart}`,
         [vendorId]
       );
       return row?.c ?? 0;
     } catch {
-      const row = await queryOne<{ c: number }>(
-        `SELECT COUNT(*)::int AS c FROM ${table} WHERE vendor_id = $1 AND status <> 'cancelled' AND created_at >= ${monthStart}`,
-        [vendorId]
-      ).catch(() => ({ c: 0 }));
-      return row?.c ?? 0;
+      try {
+        const row = await queryOne<{ c: number }>(
+          `SELECT COUNT(*)::int AS c FROM ${table} WHERE vendor_id = $1 AND status <> 'cancelled' AND origin = 'portal' AND created_at >= ${monthStart}`,
+          [vendorId]
+        );
+        return row?.c ?? 0;
+      } catch {
+        const row = await queryOne<{ c: number }>(
+          `SELECT COUNT(*)::int AS c FROM ${table} WHERE vendor_id = $1 AND status <> 'cancelled' AND created_at >= ${monthStart}`,
+          [vendorId]
+        ).catch(() => ({ c: 0 }));
+        return row?.c ?? 0;
+      }
     }
   };
   const [qc, bc] = await Promise.all([countWithOrigin("quotes"), countWithOrigin("bookings")]);

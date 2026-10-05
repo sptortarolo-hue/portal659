@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { TimeSelect24 } from "@/components/ui/time-select-24";
+import { readPreviewSession } from "@/components/store/preview-session-sync";
 
 type Props = {
   vendorId: string;
@@ -60,6 +61,12 @@ export function BookingForm({ vendorId, vendorName, services, serviceOptions, st
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState("");
+  // Modo prueba: reserva de prueba (no cuenta en topes/CRM ni cobra seña).
+  const [previewCtx, setPreviewCtx] = useState<{ token: string | null } | null>(null);
+  useEffect(() => {
+    setPreviewCtx(readPreviewSession(vendorId));
+  }, [vendorId]);
+  const isPreview = previewCtx !== null;
 
   const useCatalog = !!serviceOptions && serviceOptions.length > 0;
   const chosenService = useCatalog ? serviceOptions.find((s) => s.id === serviceId) : undefined;
@@ -193,6 +200,8 @@ export function BookingForm({ vendorId, vendorName, services, serviceOptions, st
         bookingDate,
         bookingTime,
         notes: notes || null,
+        isPreview,
+        previewToken: previewCtx?.token ?? null,
       }),
     });
 
@@ -228,6 +237,11 @@ export function BookingForm({ vendorId, vendorName, services, serviceOptions, st
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      {isPreview && (
+        <p className="rounded-lg bg-violet-50 border border-violet-200 text-violet-800 px-3 py-2 text-xs">
+          🧪 Estás en modo prueba: la reserva se marca como prueba y no cuenta para el tope ni envía avisos.
+        </p>
+      )}
       <div>
         <Label htmlFor="b-name">Tu nombre</Label>
         <Input id="b-name" value={name} onChange={e => setName(e.target.value)} placeholder="Nombre y apellido" required />

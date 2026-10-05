@@ -656,6 +656,27 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
     }
   }
 
+  // Purga de filas de prueba (turnos/consultas). Solo borra is_preview=true;
+  // el endpoint rechaza las reales.
+  const [purgingPreview, setPurgingPreview] = useState(false);
+  async function purgePreview(kind: "bookings" | "quotes") {
+    const rows: any[] = kind === "bookings" ? bookings : (quotes as any[]);
+    const ids = rows.filter((r) => r?.is_preview === true).map((r) => r.id);
+    if (ids.length === 0) return;
+    const what = kind === "bookings" ? "turno(s)" : presupuestosLow;
+    if (!window.confirm(`¿Borrar ${ids.length} ${what} de prueba?`)) return;
+    setPurgingPreview(true);
+    try {
+      for (const id of ids) {
+        await fetch(`/api/vendor/${kind}/${id}`, { method: "DELETE" });
+      }
+      if (kind === "bookings") reload();
+      else loadQuotes();
+    } finally {
+      setPurgingPreview(false);
+    }
+  }
+
   async function handlePrintQuote(id: string) {
     setMsg("");
     try {
@@ -1223,6 +1244,16 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
       <>
       <CollapsibleSection icon="📅" title={`Agenda de turnos (${bookings.length})`} defaultOpen>
         <div className="space-y-3">
+          {bookings.some((b: any) => b?.is_preview === true) && (
+            <div className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 flex items-center gap-2 flex-wrap">
+              <p className="text-xs text-violet-800 flex-1 min-w-0">
+                🧪 Tenés {bookings.filter((b: any) => b?.is_preview === true).length} turno(s) de prueba
+              </p>
+              <Button size="sm" variant="outline" className="h-7 text-xs" disabled={purgingPreview} onClick={() => purgePreview("bookings")}>
+                {purgingPreview ? "Borrando..." : "Borrar pruebas"}
+              </Button>
+            </div>
+          )}
           <Button size="sm" className="w-full h-8 text-xs" onClick={() => setBookingModalOpen(true)}>
             ＋ Nuevo turno
           </Button>
@@ -1303,6 +1334,11 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
                               </a>
                             )}
                           </div>
+                          {(booking as any).is_preview && (
+                            <span className="flex-shrink-0 rounded-full bg-violet-100 text-violet-700 px-1.5 py-0.5 text-[10px] font-semibold">
+                              🧪 PRUEBA
+                            </span>
+                          )}
                           <Badge className={`flex-shrink-0 ${BOOKING_STATUS_COLORS[booking.status] || ""}`}>
                             {BOOKING_STATUS_LABELS[booking.status] || booking.status}
                           </Badge>
@@ -1529,6 +1565,16 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
       <>
       <CollapsibleSection icon="💬" title={`${presupuestosLabel} (${quotes.length})`} defaultOpen>
         <div className="space-y-3">
+          {(quotes as any[]).some((q: any) => q?.is_preview === true) && (
+            <div className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 flex items-center gap-2 flex-wrap">
+              <p className="text-xs text-violet-800 flex-1 min-w-0">
+                🧪 Tenés {(quotes as any[]).filter((q: any) => q?.is_preview === true).length} {presupuestosLow} de prueba
+              </p>
+              <Button size="sm" variant="outline" className="h-7 text-xs" disabled={purgingPreview} onClick={() => purgePreview("quotes")}>
+                {purgingPreview ? "Borrando..." : "Borrar pruebas"}
+              </Button>
+            </div>
+          )}
           <Button size="sm" className="w-full h-8 text-xs" onClick={() => setQuoteModalOpen(true)}>
             {isEstetica ? "＋ Nueva consulta" : "＋ Nuevo presupuesto"}
           </Button>
@@ -1575,6 +1621,11 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
                           {q.preferred_date || "Sin fecha"}{q.preferred_time ? ` ${q.preferred_time}` : ""}
                         </p>
                       </div>
+                      {(q as any).is_preview && (
+                        <span className="flex-shrink-0 rounded-full bg-violet-100 text-violet-700 px-1.5 py-0.5 text-[10px] font-semibold">
+                          🧪 PRUEBA
+                        </span>
+                      )}
                       <Badge className="flex-shrink-0">{QUOTE_STATUS_LABELS[q.status] || q.status}</Badge>
                     </div>
                     <p className="text-xs text-muted-foreground mb-2 break-words">{q.description}</p>

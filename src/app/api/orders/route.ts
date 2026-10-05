@@ -27,6 +27,8 @@ export const POST = withRateLimit(async (request: Request) => {
     deliveryZoneId,
     deliveryOutOfArea,
     deliveryWindow,
+    isPreview,
+    previewToken,
   } = body;
 
   try {
@@ -45,6 +47,8 @@ export const POST = withRateLimit(async (request: Request) => {
       deliveryZoneId: typeof deliveryZoneId === "string" ? deliveryZoneId : null,
       deliveryOutOfArea: deliveryOutOfArea === true,
       deliveryWindow: typeof deliveryWindow === "string" ? deliveryWindow : null,
+      isPreview: isPreview === true,
+      previewToken: typeof previewToken === "string" ? previewToken : null,
     });
 
     return NextResponse.json({

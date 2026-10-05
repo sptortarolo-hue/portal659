@@ -158,13 +158,23 @@ export async function GET(request: Request) {
     fichaCapable = !!svc?.exists && !!tpl?.exists && !!ent?.exists;
   } catch { /* sin link */ }
 
+  // Flag de prueba (migrate-service-preview.sql): no recordar ni reseñar
+  // turnos de prueba. Sin columna, no se filtra (como antes).
+  let previewFilter = "";
+  try {
+    const pc = await queryOne<{ exists: boolean }>(
+      `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'bookings' AND column_name = 'is_preview') AS exists`
+    );
+    if (pc?.exists === true) previewFilter = " AND COALESCE(b.is_preview, false) = false";
+  } catch { /* sin flag */ }
+
   // --- T-24h: mañana, comercio + cliente ---
   const due24 = await queryMany<DueBooking>(
     `SELECT b.id, b.vendor_id, b.customer_name, b.customer_phone, b.product_name,
             b.booking_date::text AS booking_date, b.booking_time::text AS booking_time,
             v.store_name, v.user_id${waSel}${tokenSel}${svcSel}
      FROM bookings b JOIN vendors v ON v.id = b.vendor_id
-     WHERE b.status = 'confirmed' AND b.booking_date = $1
+     WHERE b.status = 'confirmed' AND b.booking_date = $1${previewFilter}
        AND NOT EXISTS (SELECT 1 FROM service_reminder_log l WHERE l.booking_id = b.id AND l.kind = 't24')`,
     [tomorrowAR]
   ).catch(() => []);
@@ -221,7 +231,7 @@ export async function GET(request: Request) {
               v.store_name, v.user_id${waSel}${tokenSel}
        FROM bookings b JOIN vendors v ON v.id = b.vendor_id
        WHERE b.status = 'confirmed' AND b.booking_date = $1
-         AND b.booking_time >= $2 AND b.booking_time <= $3
+         AND b.booking_time >= $2 AND b.booking_time <= $3${previewFilter}
          AND NOT EXISTS (SELECT 1 FROM service_reminder_log l WHERE l.booking_id = b.id AND l.kind = 't2')`,
       [todayAR, nowHHMM, in2hHHMM]
     ).catch(() => []);
@@ -278,7 +288,7 @@ export async function GET(request: Request) {
        JOIN services s ON s.id = b.service_id
        WHERE b.status = 'pending' AND COALESCE(b.origin, 'portal') = 'portal'
          AND COALESCE(b.deposit_status, 'none') <> 'paid'
-         AND COALESCE(s.require_deposit, false) = true
+         AND COALESCE(s.require_deposit, false) = true${previewFilter}
          AND b.created_at < now() - (COALESCE(s.deposit_hours, 24) || ' hours')::interval`
     ).catch(() => []);
     for (const b of stale || []) {
@@ -335,7 +345,7 @@ export async function GET(request: Request) {
                 v.store_name, v.slug, v.google_review_url, v.wa_reminders
          FROM bookings b JOIN vendors v ON v.id = b.vendor_id
          WHERE b.status = 'confirmed' AND b.booking_date = $1
-           AND v.vertical = 'estetica'
+           AND v.vertical = 'estetica'${previewFilter}
            AND NOT EXISTS (SELECT 1 FROM service_review_log l WHERE l.booking_id = b.id)
          LIMIT 100`,
         [yesterdayAR]

@@ -1,6 +1,7 @@
 import { getVendorByRequest } from "@/lib/vendor-utils";
 import { notifyServiceClient } from "@/lib/service-notify";
 import { addServiceJob, decrementCustomerFromOrder } from "@/lib/customers";
+import { isPreviewRow } from "@/lib/preview-flag";
 import { queryOne, query, withTransaction } from "@/lib/db";
 import { NextResponse } from "next/server";
 
@@ -100,9 +101,12 @@ export async function PATCH(
 
   // Libro del cliente: confirmar un turno ya pasado suma el trabajo; cancelar
   // o marcar ausente un turno contado lo resta. Futuros no cuentan todavía.
+  // Los turnos de prueba nunca tocan el libro.
+  const isPreviewBooking = await isPreviewRow("bookings", id);
   const wasCounted =
-    existing.status === "confirmed" && existing.booking_date <= todayAR();
-  const willCount = status === "confirmed" && existing.booking_date <= todayAR();
+    !isPreviewBooking && existing.status === "confirmed" && existing.booking_date <= todayAR();
+  const willCount =
+    !isPreviewBooking && status === "confirmed" && existing.booking_date <= todayAR();
   // Seña a retener: solo si la política es forfeit y la seña está pagada.
   const forfeitDeposit =
     status === "noshow" && noshowPolicy === "forfeit" && existing.deposit_status === "paid";
@@ -189,4 +193,35 @@ export async function PATCH(
   }
 
   return NextResponse.json({ booking, waitlistCount, consequence });
+}
+
+/**
+ * Borra un turno SOLO si es de prueba (is_preview). Los turnos reales no se
+ * borran nunca (se cancelan). Espejo del borrado de pedidos de prueba.
+ */
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { vendor } = await getVendorByRequest(request);
+  if (!vendor) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
+  const { id } = await params;
+  const row = await queryOne<{ vendor_id: string; is_preview: boolean | null }>(
+    `SELECT vendor_id, is_preview FROM bookings WHERE id = $1 LIMIT 1`,
+    [id]
+  ).catch(() =>
+    queryOne<{ vendor_id: string; is_preview: boolean | null }>(
+      `SELECT vendor_id, NULL::boolean AS is_preview FROM bookings WHERE id = $1 LIMIT 1`,
+      [id]
+    ).catch(() => null)
+  );
+  if (!row) return NextResponse.json({ error: "No encontrado" }, { status: 404 });
+  if (row.vendor_id !== vendor.id) {
+    return NextResponse.json({ error: "No autorizado" }, { status: 403 });
+  }
+  if (row.is_preview !== true) {
+    return NextResponse.json({ error: "Solo se pueden borrar turnos de prueba" }, { status: 400 });
+  }
+  await query(`DELETE FROM bookings WHERE id = $1 AND vendor_id = $2`, [id, vendor.id]);
+  return NextResponse.json({ ok: true });
 }

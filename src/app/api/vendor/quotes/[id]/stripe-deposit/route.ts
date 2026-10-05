@@ -2,6 +2,7 @@ import { gateRequest } from "@/lib/subscription-gate";
 import { query, queryOne } from "@/lib/db";
 import { getSiteUrl } from "@/lib/site-url";
 import { createDepositSession, isStripeEnabled } from "@/lib/stripe-connect";
+import { isPreviewRow } from "@/lib/preview-flag";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -52,6 +53,9 @@ export async function POST(
       { error: gate.vendor.vertical === "estetica" ? "Primero cotizá la consulta con un precio." : "Primero cotizá el presupuesto con un precio." },
       { status: 400 }
     );
+  }
+  if (await isPreviewRow("quotes", id)) {
+    return NextResponse.json({ error: "No se cobran señas en consultas de prueba" }, { status: 400 });
   }
 
   const body = await request.json().catch(() => ({}));

@@ -199,6 +199,8 @@ export async function POST(request: Request) {
   const startsAt = `${bookingDate}T${String(bookingTime).slice(0, 5)}:00`;
   const endMin = toMinutes(bookingTime)! + durationMin + bufferMin;
   const endsAt = `${bookingDate}T${String(Math.floor(endMin / 60)).padStart(2, "0")}:${String(endMin % 60).padStart(2, "0")}:00`;
+  // Sesión de prueba compartida: el turno no cuenta en CRM/topes.
+  const isPreview = gate.previewSession === true;
 
   let bookingId: string | null = null;
   try {
@@ -210,9 +212,9 @@ export async function POST(request: Request) {
       const confirmVal = crypto.randomBytes(16).toString("hex");
       try {
         b = await tx.query<{ id: string }>(
-          `INSERT INTO bookings (vendor_id, product_id, customer_id, product_name, customer_name, customer_phone, booking_date, booking_time, duration_min, staff_id, service_id, starts_at, ends_at, service_price, commission_pct, location_id, confirm_token, notes, status, origin, quote_id)
-           VALUES ($1, NULL, NULL, $2, $3, $4, $5, $6, $7, $8, $9, $10::timestamptz, $11::timestamptz, $12, $13, $14, $15, $16, 'confirmed', 'vendor', $17) RETURNING id`,
-          [gate.vendor.id, pnameVal, customerName, customerPhone, bookingDate, bookingTime, durationMin, staffId, serviceId, startsAt, endsAt, servicePrice, snapshotCommission, locationId, confirmVal, notesVal, quoteVal]
+          `INSERT INTO bookings (vendor_id, product_id, customer_id, product_name, customer_name, customer_phone, booking_date, booking_time, duration_min, staff_id, service_id, starts_at, ends_at, service_price, commission_pct, location_id, confirm_token, notes, status, origin, quote_id, is_preview)
+           VALUES ($1, NULL, NULL, $2, $3, $4, $5, $6, $7, $8, $9, $10::timestamptz, $11::timestamptz, $12, $13, $14, $15, $16, 'confirmed', 'vendor', $17, $18) RETURNING id`,
+          [gate.vendor.id, pnameVal, customerName, customerPhone, bookingDate, bookingTime, durationMin, staffId, serviceId, startsAt, endsAt, servicePrice, snapshotCommission, locationId, confirmVal, notesVal, quoteVal, isPreview]
         );
       } catch {
         try {
@@ -239,7 +241,9 @@ export async function POST(request: Request) {
       }
       const id = b[0]?.id;
       if (!id) throw new Error("No se pudo crear el turno");
-      await ensureServiceCustomer(tx, gate.vendor.id, { phone: customerPhone, name: customerName });
+      if (!isPreview) {
+        await ensureServiceCustomer(tx, gate.vendor.id, { phone: customerPhone, name: customerName });
+      }
       return id;
     });
   } catch (e) {

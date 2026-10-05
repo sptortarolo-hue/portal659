@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { readPreviewSession } from "@/components/store/preview-session-sync";
 
 const DAY_LABELS: Record<string, string> = {
   lun: "Lun", mar: "Mar", mie: "Mié", jue: "Jue", vie: "Vie", sab: "Sáb", dom: "Dom",
@@ -39,6 +40,12 @@ export function QuoteForm({ vendorId, vendorName, servicesList, prefEnabled = tr
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState("");
+  // Modo prueba: consulta de prueba (no cuenta en topes ni avisa al comercio).
+  const [previewCtx, setPreviewCtx] = useState<{ token: string | null } | null>(null);
+  useEffect(() => {
+    setPreviewCtx(readPreviewSession(vendorId));
+  }, [vendorId]);
+  const isPreview = previewCtx !== null;
 
   if (done) {
     return (
@@ -92,6 +99,8 @@ export function QuoteForm({ vendorId, vendorName, servicesList, prefEnabled = tr
           : null,
         preferredTime: prefSlot || null,
         photoUrls,
+        isPreview,
+        previewToken: previewCtx?.token ?? null,
       }),
     });
 
@@ -108,6 +117,11 @@ export function QuoteForm({ vendorId, vendorName, servicesList, prefEnabled = tr
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      {isPreview && (
+        <p className="rounded-lg bg-violet-50 border border-violet-200 text-violet-800 px-3 py-2 text-xs">
+          🧪 Estás en modo prueba: la consulta se marca como prueba y no cuenta para el tope ni envía avisos.
+        </p>
+      )}
       <div>
         <Label htmlFor="q-name">Tu nombre</Label>
         <Input id="q-name" value={name} onChange={e => setName(e.target.value)} placeholder="Nombre y apellido" required />

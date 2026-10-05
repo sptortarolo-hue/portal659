@@ -46,6 +46,10 @@ export type CreateOrderInput = {
   deliveryOutOfArea?: boolean | null;
   /** Turno de entrega elegido (id de slot "YYYY-MM-DD|HH:MM-HH:MM", retail). */
   deliveryWindow?: string | null;
+  /** Pedido de prueba (preview): no cuenta en topes ni descuenta stock/CRM. */
+  isPreview?: boolean | null;
+  /** Token del link ?preview= (valida contra vendors.preview_token). */
+  previewToken?: string | null;
 };
 
 export type CreateOrderResult = {
@@ -131,6 +135,19 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
     throw new Error("Faltan datos requeridos");
   }
 
+  // Modo prueba (preview del micrositio): el pedido no cuenta en topes ni
+  // descuenta stock/CRM ni manda mails. Tolerante a migración sin aplicar.
+  const isPreview =
+    input.isPreview === true ||
+    (await (async () => {
+      try {
+        const { isPreviewTokenForVendor } = await import("@/lib/preview-flag");
+        return await isPreviewTokenForVendor(vendorId, input.previewToken);
+      } catch {
+        return false;
+      }
+    })());
+
   // Teléfono del cliente: celular argentino válido (WhatsApp), normalizado a
   // E.164 sin "+" (549...). Misma validación que el registro de usuarios —
   // de acá salen los links wa.me del comercio, así que tiene que ser real.
@@ -198,8 +215,17 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
       const countRow = await queryOne<{ c: number }>(
         `SELECT COUNT(*)::int AS c FROM orders
          WHERE vendor_id = $1 AND channel = 'app' AND status <> 'cancelled'
+           AND COALESCE(is_preview, false) = false
            AND created_at >= date_trunc('month', now())`,
         [vendorId]
+      ).catch(() =>
+        // Columna is_preview aún no migrada: contar igual que antes.
+        queryOne<{ c: number }>(
+          `SELECT COUNT(*)::int AS c FROM orders
+           WHERE vendor_id = $1 AND channel = 'app' AND status <> 'cancelled'
+             AND created_at >= date_trunc('month', now())`,
+          [vendorId]
+        )
       );
       if ((countRow?.c ?? 0) >= plan.maxOrdersMonth) {
         throw new OrderLimitError();
@@ -302,6 +328,16 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
   );
   const hasWindowCol = windowCol?.exists === true;
 
+  // Tolerante a migración de preview sin aplicar: si la columna no existe, el
+  // pedido se guarda igual (sin flag de prueba).
+  const previewCol = await queryOne<{ exists: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1 FROM information_schema.columns
+       WHERE table_name = 'orders' AND column_name = 'is_preview'
+     ) AS exists`
+  );
+  const hasPreviewCol = previewCol?.exists === true;
+
   try {
     await withTransaction(async (tx) => {
       const paymentStatus = paymentMethodNorm === "transferencia" ? "pending" : "paid";
@@ -334,7 +370,9 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
       resolvedZoneName = pricing.deliveryZoneName;
       resolvedOutOfArea = pricing.deliveryOutOfArea;
 
-      const movedStock: StockMove[] = await adjustStockForItems(tx, resolvedItems.filter((i) => (i as any).unit !== "kg"), "decrement");
+      const movedStock: StockMove[] = isPreview
+        ? []
+        : await adjustStockForItems(tx, resolvedItems.filter((i) => (i as any).unit !== "kg"), "decrement");
       pickupNumber = await nextOrderNumber(tx, vendorId);
 
       // $16 = track_token; después van las columnas opcionales con
@@ -353,9 +391,13 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
       const windowCols = hasWindowCol ? ", delivery_window" : "";
       const windowVals = hasWindowCol ? `, $${nextParam++}` : "";
       const windowParams: unknown[] = hasWindowCol ? [resolvedWindow] : [];
+      // Flag de prueba (migrate-service-preview.sql).
+      const previewCols = hasPreviewCol ? ", is_preview" : "";
+      const previewVals = hasPreviewCol ? `, $${nextParam++}` : "";
+      const previewParams: unknown[] = hasPreviewCol ? [isPreview] : [];
       const rows = await tx.query<{ id: string }>(
-        `INSERT INTO orders (vendor_id, customer_id, customer_name, customer_phone, customer_address, method, payment_method, items, total, status, notes, device_id, payment_status, pickup_number, cash_pct, cash_discount, track_token${volumeCols}${zoneCols}${windowCols})
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'new', $10, $11, $12, $13, $14, $15, $16${volumeVals}${zoneVals}${windowVals})
+        `INSERT INTO orders (vendor_id, customer_id, customer_name, customer_phone, customer_address, method, payment_method, items, total, status, notes, device_id, payment_status, pickup_number, cash_pct, cash_discount, track_token${volumeCols}${zoneCols}${windowCols}${previewCols})
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'new', $10, $11, $12, $13, $14, $15, $16${volumeVals}${zoneVals}${windowVals}${previewVals})
          RETURNING id`,
         [
           vendorId,
@@ -377,12 +419,13 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
           ...volumeParams,
           ...zoneParams,
           ...windowParams,
+          ...previewParams,
         ]
       );
       orderId = rows[0]?.id;
 
-      // Kardex: lo reservado por la venta.
-      if (orderId) {
+      // Kardex: lo reservado por la venta. En pruebas no se descuenta stock.
+      if (orderId && !isPreview) {
         for (const m of movedStock) {
           await logStockMovement(tx, {
             vendorId,
@@ -395,7 +438,7 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
         }
       }
 
-      if (customerPhoneE164 && !customerPhoneE164.startsWith("lid:")) {
+      if (!isPreview && customerPhoneE164 && !customerPhoneE164.startsWith("lid:")) {
         await upsertCustomerFromOrder(tx, vendorId, {
           phone: customerPhoneE164,
           name: customerName,
@@ -417,7 +460,7 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
           [
             vendor.user_id,
             "Nuevo pedido recibido",
-            `Nro. ${pickupNumber} · ${customerName} hizo un pedido de ${resolvedItemsCount} producto${resolvedItemsCount > 1 ? "s" : ""} por $${resolvedTotal.toLocaleString("es-AR")} · ${paymentLabel}`,
+            `${isPreview ? "🧪 [PRUEBA] " : ""}Nro. ${pickupNumber} · ${customerName} hizo un pedido de ${resolvedItemsCount} producto${resolvedItemsCount > 1 ? "s" : ""} por $${resolvedTotal.toLocaleString("es-AR")} · ${paymentLabel}`,
             "order",
             "/vendor/dashboard",
           ]
@@ -450,7 +493,7 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
           ? "🏦 Transferencia"
           : "📱 Coordinar";
     void sendPushToUser(vendor.user_id, {
-      title: `🛎️ Pedido nuevo #${pickupNumber} · $${resolvedTotal.toLocaleString("es-AR")}`,
+      title: `${isPreview ? "🧪 " : "🛎️ "}Pedido nuevo #${pickupNumber} · $${resolvedTotal.toLocaleString("es-AR")}`,
       body: `${customerName} · ${resolvedItemsCount} producto${resolvedItemsCount !== 1 ? "s" : ""} · ${paymentLabel}`,
       link: "/vendor/dashboard",
       // Tag único por pedido: no colapsa con otros y renotify hace que
@@ -467,7 +510,7 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
       `SELECT email FROM profiles WHERE id = $1 LIMIT 1`,
       [vendor.user_id]
     );
-    if (userProfile?.email) {
+    if (!isPreview && userProfile?.email) {
       const emailContent = newOrderVendorEmail({
         storeName: vendor.store_name,
         orderNumber: pickupNumber,

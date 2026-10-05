@@ -2,6 +2,7 @@ import { query, queryMany, queryOne } from "@/lib/db";
 import { sendPushToUser } from "@/lib/push";
 import { getSiteUrl } from "@/lib/site-url";
 import { getServiceQuota, ServiceQuotaError } from "@/lib/service-quota";
+import { isPreviewTokenForVendor } from "@/lib/preview-flag";
 import { toE164 } from "@/lib/phone";
 import { NextResponse } from "next/server";
 import { withRateLimit } from "@/lib/api-wrapper";
@@ -35,6 +36,10 @@ export const POST = withRateLimit(async (request: Request) => {
   const staffId = typeof body.staffId === "string" && body.staffId ? body.staffId : null;
   const serviceId = typeof body.serviceId === "string" && body.serviceId ? body.serviceId : null;
   const locationIdRaw = typeof body.locationId === "string" && body.locationId ? body.locationId : null;
+  // Modo prueba (link ?preview=<token> o flag explícito): el turno no cuenta
+  // en topes/CRM/packs ni cobra seña.
+  const isPreview =
+    raw.isPreview === true || (await isPreviewTokenForVendor(vendorId, raw.previewToken));
 
   if (!vendorId || !bookingDate || !bookingTime || !customerName) {
     return NextResponse.json({ error: "Faltan datos requeridos" }, { status: 400 });
@@ -56,7 +61,8 @@ export const POST = withRateLimit(async (request: Request) => {
   } catch { /* sin TZ: se sigue */ }
 
   // Tope mensual del plan (servicios: 5; estética gratis: 10). 429 si se alcanza.
-  try {
+  // En modo prueba no se consume tope.
+  if (!isPreview) try {
     const quota = await getServiceQuota(vendorId);
     if (quota.limit != null && quota.used >= quota.limit) throw new ServiceQuotaError();
   } catch (e) {
@@ -250,9 +256,9 @@ export const POST = withRateLimit(async (request: Request) => {
   let booking: { id: string } | undefined;
   try {
     booking = await queryOne<{ id: string }>(
-      `INSERT INTO bookings (vendor_id, product_id, customer_id, product_name, customer_name, customer_phone, booking_date, booking_time, duration_min, staff_id, service_id, starts_at, ends_at, deposit_amount, service_price, commission_pct, location_id, confirm_token, notes, status)
-       VALUES ($1, NULL, NULL, $2, $3, $4, $5, $6, $7, $8, $9, $10::timestamptz, $11::timestamptz, $12, $13, $14, $15, $16, $17, 'pending') RETURNING id`,
-      [vendorId, serviceName || productName || null, customerName, customerPhone, bookingDate, String(bookingTime).slice(0, 5), durationMin, staffId, serviceId, startsAt, endsAt, depositAmount, servicePrice, snapshotCommission, locationId, confirmToken, notes || null]
+      `INSERT INTO bookings (vendor_id, product_id, customer_id, product_name, customer_name, customer_phone, booking_date, booking_time, duration_min, staff_id, service_id, starts_at, ends_at, deposit_amount, service_price, commission_pct, location_id, confirm_token, notes, status, is_preview)
+       VALUES ($1, NULL, NULL, $2, $3, $4, $5, $6, $7, $8, $9, $10::timestamptz, $11::timestamptz, $12, $13, $14, $15, $16, $17, 'pending', $18) RETURNING id`,
+      [vendorId, serviceName || productName || null, customerName, customerPhone, bookingDate, String(bookingTime).slice(0, 5), durationMin, staffId, serviceId, startsAt, endsAt, depositAmount, servicePrice, snapshotCommission, locationId, confirmToken, notes || null, isPreview]
     );
   } catch {
     try {
@@ -292,7 +298,7 @@ export const POST = withRateLimit(async (request: Request) => {
   // El cron auto-cancela vencidos (deposit_hours).
   let depositInitPoint: string | null = null;
   let depositWarning: string | null = null;
-  if (requireDeposit && booking?.id && depositAmount != null && depositAmount > 0) {
+  if (!isPreview && requireDeposit && booking?.id && depositAmount != null && depositAmount > 0) {
     try {
       await query(
         `UPDATE bookings SET deposit_amount = $1, deposit_status = 'pending' WHERE id = $2`,
@@ -369,7 +375,7 @@ export const POST = withRateLimit(async (request: Request) => {
   let packWarning: string | null = null;
   let packUsed: { pack_name: string; remaining: number } | null = null;
   const usePack = body.usePackCredit;
-  if (usePack && booking?.id) {
+  if (!isPreview && usePack && booking?.id) {
     try {
       const phoneE164 = toE164(String(customerPhone));
       const wantPack = typeof usePack === "string" && usePack ? usePack : null;
@@ -414,7 +420,7 @@ export const POST = withRateLimit(async (request: Request) => {
       [
         vendor.user_id,
         "Nuevo turno reservado",
-        `${customerName} reservó turno para ${bookingDate} a las ${bookingTime}${label ? ` — ${label}` : ""}`,
+        `${isPreview ? "🧪 [PRUEBA] " : ""}${customerName} reservó turno para ${bookingDate} a las ${bookingTime}${label ? ` — ${label}` : ""}`,
       ]
     );
     try {
@@ -435,7 +441,7 @@ export const POST = withRateLimit(async (request: Request) => {
   // Solo diurno; opt-out vendors.wa_reminders; sin relay vinculado no sale.
   try {
     const { isDaytimeAR: isDay, sendWaText: sendWa } = await import("@/lib/wa-send");
-    if (isDay() && customerPhone && booking?.id) {
+    if (!isPreview && isDay() && customerPhone && booking?.id) {
       const vrow = await queryOne<{ store_name: string | null; wa_reminders: boolean | null }>(
         `SELECT store_name, wa_reminders FROM vendors WHERE id = $1 LIMIT 1`,
         [vendorId]

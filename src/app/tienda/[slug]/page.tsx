@@ -13,7 +13,8 @@ import { ReviewList } from "@/components/reviews/review-list";
 import { FavoriteButton } from "@/components/favorites/favorite-button";
 import { QuoteForm } from "@/components/services/quote-form";
 import { BookingForm } from "@/components/services/booking-form";
-import { PackBuyCard, GiftcardBuyCard, ServicePickCards } from "@/components/services/estetica-shop";
+import { PackBuyCard, GiftcardBuyCard } from "@/components/services/estetica-shop";
+import { EsteticaServicesSection } from "@/components/services/service-booking-sheet";
 import { StickyWhatsApp } from "@/components/store/sticky-whatsapp";
 import { VariantSelector } from "@/components/store/variant-selector";
 import { ProductCard } from "@/components/store/product-card";
@@ -382,7 +383,7 @@ export default async function TiendaPage({
   const isEstetica = v.vertical === "estetica";
   // Catálogo de servicios + profesionales (estética): turnera por servicio
   // con duración y agenda por profesional. Tolerante a migración sin aplicar.
-  let esteticaServices: { id: string; name: string; deposit_amount: number | null; duration_min: number | null; price: number | null; require_deposit: boolean | null; deposit_hours: number | null; image_url: string | null; category: string | null }[] = [];
+  let esteticaServices: { id: string; name: string; deposit_amount: number | null; duration_min: number | null; price: number | null; require_deposit: boolean | null; deposit_hours: number | null; image_url: string | null; category: string | null; description: string | null }[] = [];
   let esteticaStaff: { id: string; name: string; photo_url: string | null; bio: string | null }[] = [];
   let esteticaLocations: { id: string; name: string; address: string | null }[] = [];
   let esteticaPacks: { id: string; name: string; sessions_total: number | null; price: number | null }[] = [];
@@ -390,11 +391,11 @@ export default async function TiendaPage({
   if (isEstetica) {
     try {
       const srows = await queryMany<any>(
-        `SELECT id, name, deposit_amount, duration_min, price, require_deposit, deposit_hours, image_url, category FROM services WHERE vendor_id = $1 AND active = true ORDER BY position ASC, name ASC`,
+        `SELECT id, name, deposit_amount, duration_min, price, require_deposit, deposit_hours, image_url, category, description FROM services WHERE vendor_id = $1 AND active = true ORDER BY position ASC, name ASC`,
         [v.id]
       ).catch(() =>
         queryMany<any>(
-          `SELECT id, name, deposit_amount, duration_min, price, require_deposit, deposit_hours, image_url FROM services WHERE vendor_id = $1 AND active = true ORDER BY position ASC, name ASC`,
+          `SELECT id, name, deposit_amount, duration_min, price, require_deposit, deposit_hours, image_url, category FROM services WHERE vendor_id = $1 AND active = true ORDER BY position ASC, name ASC`,
           [v.id]
         ).catch(() => null)
       ).catch(() =>
@@ -423,6 +424,7 @@ export default async function TiendaPage({
         deposit_hours: s.deposit_hours != null ? Number(s.deposit_hours) : null,
         image_url: typeof s.image_url === "string" && s.image_url ? s.image_url : null,
         category: typeof s.category === "string" && s.category.trim() ? s.category.trim() : null,
+        description: typeof s.description === "string" && s.description.trim() ? s.description.trim().slice(0, 2000) : null,
       }));
     } catch { esteticaServices = []; }
     try {
@@ -779,20 +781,46 @@ export default async function TiendaPage({
             </div>
 
             {v.accepting_quotes && !serviceQuotaFull && (
-              <div className="border border-border rounded-2xl p-6 bg-card mb-6">
-                <h3 className="font-display text-lg font-semibold mb-4">
-                  {isEstetica ? "💬 Pedir una consulta" : "📋 Solicitar presupuesto"}
-                </h3>
-                <QuoteForm
-                  vendorId={v.id}
-                  vendorName={v.store_name}
-                  servicesList={v.services_list}
-                  estetica={isEstetica}
-                  prefEnabled={v.quote_pref_enabled !== false}
-                  prefDays={Array.isArray(v.quote_days) ? v.quote_days : undefined}
-                  prefSlots={Array.isArray(v.quote_slots) ? v.quote_slots : undefined}
-                />
-              </div>
+              isEstetica ? (
+                <details
+                  className="border border-border rounded-2xl bg-card mb-6 group"
+                  open={esteticaServices.length === 0}
+                >
+                  <summary className="cursor-pointer list-none p-6 font-display text-lg font-semibold flex items-center justify-between gap-2">
+                    <span>💬 Consultanos</span>
+                    <span className="text-muted-foreground text-sm group-open:rotate-180 transition-transform">▾</span>
+                  </summary>
+                  <div className="px-6 pb-6">
+                    <p className="text-sm text-muted-foreground mb-4">
+                      ¿No encontrás lo que buscás? Escribinos y te asesoramos.
+                    </p>
+                    <QuoteForm
+                      vendorId={v.id}
+                      vendorName={v.store_name}
+                      servicesList={v.services_list}
+                      estetica
+                      prefEnabled={v.quote_pref_enabled !== false}
+                      prefDays={Array.isArray(v.quote_days) ? v.quote_days : undefined}
+                      prefSlots={Array.isArray(v.quote_slots) ? v.quote_slots : undefined}
+                    />
+                  </div>
+                </details>
+              ) : (
+                <div className="border border-border rounded-2xl p-6 bg-card mb-6">
+                  <h3 className="font-display text-lg font-semibold mb-4">
+                    📋 Solicitar presupuesto
+                  </h3>
+                  <QuoteForm
+                    vendorId={v.id}
+                    vendorName={v.store_name}
+                    servicesList={v.services_list}
+                    estetica={false}
+                    prefEnabled={v.quote_pref_enabled !== false}
+                    prefDays={Array.isArray(v.quote_days) ? v.quote_days : undefined}
+                    prefSlots={Array.isArray(v.quote_slots) ? v.quote_slots : undefined}
+                  />
+                </div>
+              )
             )}
 
             {!serviceQuotaFull && v.bookings_enabled !== false && (
@@ -801,24 +829,14 @@ export default async function TiendaPage({
                 📅 Reservar turno
               </h3>
               {isEstetica && esteticaServices.length > 0 && (
-                <div className="mb-5 space-y-5">
-                  {(() => {
-                    const groups: { name: string | null; items: typeof esteticaServices }[] = [];
-                    for (const s of esteticaServices) {
-                      const g = groups.find((x) => (x.name || "") === (s.category || ""));
-                      if (g) g.items.push(s);
-                      else groups.push({ name: s.category, items: [s] });
-                    }
-                    return groups.map((g) => (
-                      <div key={g.name || "servicios"}>
-                        {g.name && (
-                          <h4 className="font-display text-base font-semibold mb-2">{g.name}</h4>
-                        )}
-                        <ServicePickCards services={g.items} />
-                      </div>
-                    ));
-                  })()}
-                </div>
+                <EsteticaServicesSection
+                  services={esteticaServices}
+                  vendorId={v.id}
+                  vendorName={v.store_name}
+                  staffOptions={esteticaStaff.length > 0 ? esteticaStaff : undefined}
+                  locationOptions={esteticaLocations.length > 0 ? esteticaLocations : undefined}
+                  cancelPolicy={typeof v.cancel_policy_text === "string" && v.cancel_policy_text.trim() ? v.cancel_policy_text.trim() : null}
+                />
               )}
               {isEstetica && esteticaStaff.some((t) => t.photo_url || t.bio) && (
                 <div className="mb-5">
@@ -836,15 +854,17 @@ export default async function TiendaPage({
                   </div>
                 </div>
               )}
-              <BookingForm
-                vendorId={v.id}
-                vendorName={v.store_name}
-                services={isEstetica && esteticaServices.length > 0 ? undefined : offers?.map((o: any) => ({ id: o.id, name: o.name }))}
-                serviceOptions={isEstetica && esteticaServices.length > 0 ? esteticaServices : undefined}
-                staffOptions={isEstetica && esteticaStaff.length > 0 ? esteticaStaff : undefined}
-                locationOptions={isEstetica && esteticaLocations.length > 0 ? esteticaLocations : undefined}
-                cancelPolicy={isEstetica && typeof v.cancel_policy_text === "string" && v.cancel_policy_text.trim() ? v.cancel_policy_text.trim() : null}
-              />
+              {(!isEstetica || esteticaServices.length === 0) && (
+                <BookingForm
+                  vendorId={v.id}
+                  vendorName={v.store_name}
+                  services={isEstetica && esteticaServices.length > 0 ? undefined : offers?.map((o: any) => ({ id: o.id, name: o.name }))}
+                  serviceOptions={isEstetica && esteticaServices.length > 0 ? esteticaServices : undefined}
+                  staffOptions={isEstetica && esteticaStaff.length > 0 ? esteticaStaff : undefined}
+                  locationOptions={isEstetica && esteticaLocations.length > 0 ? esteticaLocations : undefined}
+                  cancelPolicy={isEstetica && typeof v.cancel_policy_text === "string" && v.cancel_policy_text.trim() ? v.cancel_policy_text.trim() : null}
+                />
+              )}
             </div>
             )}
 

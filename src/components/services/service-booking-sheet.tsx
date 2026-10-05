@@ -150,6 +150,8 @@ export function ServiceBookingSheet({
   onClose: () => void;
 }) {
   const [step, setStep] = useState<"detail" | "book">("detail");
+  // Foto ampliada (como la galería de gastro): overlay propio sobre el sheet.
+  const [photoOpen, setPhotoOpen] = useState(false);
 
   // Preselecciona el servicio en el formulario al pasar al paso de reserva
   // (mismo evento que usaba el botón "Elegir").
@@ -185,18 +187,69 @@ export function ServiceBookingSheet({
             ×
           </button>
         </div>
-        <div className="overflow-y-auto">
-          {step === "detail" ? (
-            <div>
-              <div className="relative w-full aspect-[4/3] overflow-hidden bg-accent/60">
+        {photoOpen && service.image_url && (
+          <div
+            className="fixed inset-0 z-[90] bg-black/85 flex flex-col"
+            onClick={() => setPhotoOpen(false)}
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Foto de ${service.name}`}
+          >
+            <div className="flex items-center justify-end px-4 pt-[calc(env(safe-area-inset-top,0px)+0.75rem)] text-white">
+              <button
+                type="button"
+                onClick={() => setPhotoOpen(false)}
+                aria-label="Cerrar"
+                className="h-11 w-11 rounded-full bg-white/10 flex items-center justify-center text-xl"
+              >
+                ✕
+              </button>
+            </div>
+            <div
+              className="flex-1 min-h-0 min-w-0 flex items-center justify-center p-4"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="relative max-h-full max-w-full rounded-lg overflow-hidden bg-black">
                 <ProductImage
                   src={service.image_url}
                   name={service.name}
                   vertical="estetica"
                   alt={service.name}
-                  className="w-full h-full object-cover"
+                  className="max-h-[75vh] w-auto max-w-full object-contain"
                 />
               </div>
+            </div>
+            <p className="text-center text-white text-sm pb-[calc(env(safe-area-inset-bottom,0px)+1rem)] px-4 truncate">
+              {service.name}
+            </p>
+          </div>
+        )}
+        <div className="overflow-y-auto">
+          {step === "detail" ? (
+            <div>
+              {service.image_url ? (
+                <button
+                  type="button"
+                  onClick={() => setPhotoOpen(true)}
+                  className="relative block w-full aspect-[4/3] overflow-hidden bg-accent/60"
+                  aria-label={`Ampliar foto de ${service.name}`}
+                >
+                  <ProductImage
+                    src={service.image_url}
+                    name={service.name}
+                    vertical="estetica"
+                    alt={service.name}
+                    className="w-full h-full object-cover"
+                  />
+                  <span className="absolute bottom-2 right-2 h-8 w-8 rounded-full bg-black/60 text-white flex items-center justify-center" aria-hidden="true">
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M10 18a8 8 0 100-16 8 8 0 000 16zm1-11v6m-3-3h6" />
+                    </svg>
+                  </span>
+                </button>
+              ) : (
+                <div className="w-full aspect-[4/3] bg-accent/60" />
+              )}
               <div className="p-4 space-y-3">
                 {service.category && (
                   <p className="text-[11px] font-semibold tracking-widest uppercase text-muted-foreground">

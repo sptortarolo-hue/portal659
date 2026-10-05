@@ -780,47 +780,21 @@ export default async function TiendaPage({
               )}
             </div>
 
-            {v.accepting_quotes && !serviceQuotaFull && (
-              isEstetica ? (
-                <details
-                  className="border border-border rounded-2xl bg-card mb-6 group"
-                  open={esteticaServices.length === 0}
-                >
-                  <summary className="cursor-pointer list-none p-6 font-display text-lg font-semibold flex items-center justify-between gap-2">
-                    <span>💬 Consultanos</span>
-                    <span className="text-muted-foreground text-sm group-open:rotate-180 transition-transform">▾</span>
-                  </summary>
-                  <div className="px-6 pb-6">
-                    <p className="text-sm text-muted-foreground mb-4">
-                      ¿No encontrás lo que buscás? Escribinos y te asesoramos.
-                    </p>
-                    <QuoteForm
-                      vendorId={v.id}
-                      vendorName={v.store_name}
-                      servicesList={v.services_list}
-                      estetica
-                      prefEnabled={v.quote_pref_enabled !== false}
-                      prefDays={Array.isArray(v.quote_days) ? v.quote_days : undefined}
-                      prefSlots={Array.isArray(v.quote_slots) ? v.quote_slots : undefined}
-                    />
-                  </div>
-                </details>
-              ) : (
-                <div className="border border-border rounded-2xl p-6 bg-card mb-6">
-                  <h3 className="font-display text-lg font-semibold mb-4">
-                    📋 Solicitar presupuesto
-                  </h3>
-                  <QuoteForm
-                    vendorId={v.id}
-                    vendorName={v.store_name}
-                    servicesList={v.services_list}
-                    estetica={false}
-                    prefEnabled={v.quote_pref_enabled !== false}
-                    prefDays={Array.isArray(v.quote_days) ? v.quote_days : undefined}
-                    prefSlots={Array.isArray(v.quote_slots) ? v.quote_slots : undefined}
-                  />
-                </div>
-              )
+            {v.accepting_quotes && !serviceQuotaFull && !isEstetica && (
+              <div className="border border-border rounded-2xl p-6 bg-card mb-6">
+                <h3 className="font-display text-lg font-semibold mb-4">
+                  📋 Solicitar presupuesto
+                </h3>
+                <QuoteForm
+                  vendorId={v.id}
+                  vendorName={v.store_name}
+                  servicesList={v.services_list}
+                  estetica={false}
+                  prefEnabled={v.quote_pref_enabled !== false}
+                  prefDays={Array.isArray(v.quote_days) ? v.quote_days : undefined}
+                  prefSlots={Array.isArray(v.quote_slots) ? v.quote_slots : undefined}
+                />
+              </div>
             )}
 
             {!serviceQuotaFull && v.bookings_enabled !== false && (
@@ -938,6 +912,33 @@ export default async function TiendaPage({
                   <GiftcardBuyCard vendorId={v.id} mpConnected={esteticaMpConnected} waUrl={waUrl} />
                 </div>
               </div>
+            )}
+
+            {/* Consultanos (estética): al final, colapsado salvo sin servicios */}
+            {isEstetica && v.accepting_quotes && !serviceQuotaFull && (
+              <details
+                className="border border-border rounded-2xl bg-card mt-6 mb-6 group"
+                open={esteticaServices.length === 0}
+              >
+                <summary className="cursor-pointer list-none p-6 font-display text-lg font-semibold flex items-center justify-between gap-2">
+                  <span>💬 Consultanos</span>
+                  <span className="text-muted-foreground text-sm group-open:rotate-180 transition-transform">▾</span>
+                </summary>
+                <div className="px-6 pb-6">
+                  <p className="text-sm text-muted-foreground mb-4">
+                    ¿No encontrás lo que buscás? Escribinos y te asesoramos.
+                  </p>
+                  <QuoteForm
+                    vendorId={v.id}
+                    vendorName={v.store_name}
+                    servicesList={v.services_list}
+                    estetica
+                    prefEnabled={v.quote_pref_enabled !== false}
+                    prefDays={Array.isArray(v.quote_days) ? v.quote_days : undefined}
+                    prefSlots={Array.isArray(v.quote_slots) ? v.quote_slots : undefined}
+                  />
+                </div>
+              </details>
             )}
           </>
         ) : noCart && sections.length === 0 ? (

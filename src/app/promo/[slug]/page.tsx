@@ -1,5 +1,6 @@
 import { queryOne, queryMany } from "@/lib/db";
 import { queryEffectiveModifiers } from "@/lib/modifier-rules";
+import { discountOf, isValidPromo } from "@/lib/promo";
 import { resolveVendorPlan, vendorSellsOnline } from "@/lib/plans";
 import { notFound } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
@@ -113,15 +114,10 @@ export default async function PromoPage({
   const isComercio = v.vertical === "comercio";
   const isCatalog = isModa || isComercio;
 
-  const promos = (offers || [])
-    .filter(
-      (o: any) =>
-        o.promo_price != null && Number(o.promo_price) > 0 && Number(o.promo_price) < Number(o.price)
-    )
-    .sort(
-      (a: any, b: any) =>
-        1 - Number(b.promo_price) / Number(b.price) - (1 - Number(a.promo_price) / Number(a.price))
-    );
+  const listed = (offers || []).filter(
+    (o: any) => o.promo_price != null || o.promo_only === true
+  );
+  const promos = [...listed].sort((a: any, b: any) => discountOf(b) - discountOf(a));
 
   const waNumber = v.whatsapp || v.phone;
   const waText = `Hola ${v.store_name}! Vi tus promos en Portal 659. ¿Me contás más?`;
@@ -175,7 +171,9 @@ export default async function PromoPage({
         ) : (
           <div className="grid gap-4">
             {promos.map((o: any) => {
-              const pct = Math.round((1 - Number(o.promo_price) / Number(o.price)) * 100);
+              const hasOff = isValidPromo(o);
+              const pct = discountOf(o);
+              const salePrice = hasOff ? Number(o.promo_price) : Number(o.price);
               return (
                 <div
                   key={o.id}
@@ -204,12 +202,25 @@ export default async function PromoPage({
                       <p className="text-sm text-gray-500 mt-1 line-clamp-1">{o.description}</p>
                     )}
                     <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-2">
-                      <span className="text-sm text-gray-400 line-through tabular-nums">
-                        ${Number(o.price).toLocaleString("es-AR")}
-                      </span>
-                      <span className="font-bold text-red-600 tabular-nums">
-                        ${Number(o.promo_price).toLocaleString("es-AR")}
-                      </span>
+                      {hasOff ? (
+                        <>
+                          <span className="text-sm text-gray-400 line-through tabular-nums">
+                            ${Number(o.price).toLocaleString("es-AR")}
+                          </span>
+                          <span className="font-bold text-red-600 tabular-nums">
+                            ${Number(o.promo_price).toLocaleString("es-AR")}
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="font-bold text-red-600 tabular-nums">
+                            ${Number(o.price).toLocaleString("es-AR")}
+                          </span>
+                          <span className="text-[10px] font-bold text-white bg-red-500 rounded-full px-2 py-0.5 whitespace-nowrap">
+                            PROMO
+                          </span>
+                        </>
+                      )}
                     </div>
                   </div>
                   <div className="flex-shrink-0">
@@ -217,12 +228,12 @@ export default async function PromoPage({
                       <AddToCartButton
                         offerId={o.id}
                         name={o.name}
-                        price={Number(o.promo_price)}
+                        price={salePrice}
                         vendor={v}
                         modifiers={modifiersByProduct[o.id] || []}
                         cashExcluded={!!o.cash_discount_excluded}
                         origPrice={Number(o.price)}
-                        hasPromo
+                        hasPromo={hasOff}
                       />
                     ) : (
                       <a

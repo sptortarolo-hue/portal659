@@ -73,8 +73,8 @@ export async function PATCH(request: Request) {
     if (ids.length > 0) {
       const valid = await queryMany<{ id: string }>(
         `SELECT id FROM products
-         WHERE vendor_id = $1 AND id = ANY($2)
-           AND promo_price IS NOT NULL AND promo_price > 0 AND promo_price < price
+         WHERE vendor_id = $1 AND id = ANY($2) AND available = true
+           AND (promo_price IS NOT NULL OR promo_only = true)
          LIMIT 3`,
         [vendor.id, ids]
       );
@@ -82,7 +82,7 @@ export async function PATCH(request: Request) {
       const ordered = ids.filter((id) => validIds.has(id));
       if (ordered.length !== ids.length) {
         return NextResponse.json(
-          { error: "Algún producto no tiene promo válida" },
+          { error: "Algún producto no está en promo" },
           { status: 400 }
         );
       }

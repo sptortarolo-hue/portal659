@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { SharePromoModal } from "@/components/dashboard/share-promo-modal";
 import { ProductImage } from "@/components/product-image";
+import { discountOf, isValidPromo } from "@/lib/promo";
 
 type PromoProduct = {
   id: string;
@@ -325,7 +326,8 @@ export function PromosSection({
             ) : (
               <div className="space-y-2 max-h-64 overflow-y-auto">
                 {products.map((p) => {
-                  const pct = Math.round((1 - p.promo_price / p.price) * 100);
+                  const hasOff = isValidPromo(p);
+                  const pct = discountOf(p);
                   const order = selection.indexOf(p.id);
                   const checked = order >= 0;
                   const disabled = !checked && selection.length >= 3;
@@ -374,9 +376,18 @@ export function PromosSection({
                           <span className="font-bold text-red-600">
                             ${p.promo_price.toLocaleString("es-AR")}
                           </span>
-                          <Badge className="bg-red-100 text-red-700 text-[10px] px-1.5 py-0">
-                            −{pct}%
-                          </Badge>
+                          {hasOff ? (
+                            <Badge className="bg-red-100 text-red-700 text-[10px] px-1.5 py-0">
+                              −{pct}%
+                            </Badge>
+                          ) : (
+                            <span className="text-[10px] font-bold text-white bg-red-500 px-1.5 py-0 rounded-full">
+                              PROMO
+                            </span>
+                          )}
+                          <span className="text-[10px] font-bold text-green-700 bg-green-100 px-1.5 py-0 rounded-full">
+                            ✓ imagen
+                          </span>
                         </div>
                       </div>
                     </div>

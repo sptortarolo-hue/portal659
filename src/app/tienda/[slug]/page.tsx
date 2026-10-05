@@ -35,6 +35,7 @@ import { PreviewBanner } from "@/components/store/preview-banner";
 import { VisitBeacon } from "@/components/store/visit-beacon";
 import { PreviewSessionSync } from "@/components/store/preview-session-sync";
 import { canPreviewVendor, getPreviewActor, isServingPreview } from "@/lib/preview";
+import { discountOf } from "@/lib/promo";
 import type { Metadata } from "next";
 
 export const dynamic = "force-dynamic";
@@ -277,16 +278,11 @@ export default async function TiendaPage({
   // Solo-promo: sale en la sección Promo, no en el menú (tolerante a
   // migración sin aplicar: promo_only llega undefined y no excluye).
   const menuOffers = (offers || []).filter((o: any) => o.promo_only !== true);
-  // Promo: precio promo válido y menor al de lista, ordenada por % off.
+  // Promo (criterio OR): precio promo o marcado promo_only. Descuentos
+  // reales primero, promo_only sin descuento después.
   const promos = (offers || [])
-    .filter(
-      (o: any) =>
-        o.promo_price != null && Number(o.promo_price) > 0 && Number(o.promo_price) < Number(o.price)
-    )
-    .sort(
-      (a: any, b: any) =>
-        1 - Number(b.promo_price) / Number(b.price) - (1 - Number(a.promo_price) / Number(a.price))
-    );
+    .filter((o: any) => o.promo_price != null || o.promo_only === true)
+    .sort((a: any, b: any) => discountOf(b) - discountOf(a));
   // Packs multi-producto (para CTA + sección). Se calcula tras volumeGroups.
   if (cats && cats.length > 0) {
     const used = new Set<string>();

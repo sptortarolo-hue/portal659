@@ -2,9 +2,11 @@ import { ImageResponse } from "next/og";
 import type { ReactElement } from "react";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { NextResponse } from "next/server";
 import { queryMany, queryOne } from "@/lib/db";
 import { getSiteUrl } from "@/lib/site-url";
 import { isPreviewTokenValid } from "@/lib/preview";
+import { discountOf, isValidPromo, promoMoney as money } from "@/lib/promo";
 
 export const runtime = "nodejs";
 
@@ -49,20 +51,10 @@ type PromoProduct = {
   id: string;
   name: string;
   price: number;
-  promo_price: number;
+  promo_price: number | null;
+  promo_only: boolean | null;
   image_url: string | null;
 };
-
-function discountOf(p: PromoProduct): number {
-  const price = Number(p.price);
-  const promo = Number(p.promo_price);
-  if (!price || !promo || promo >= price) return 0;
-  return Math.round((1 - promo / price) * 100);
-}
-
-function money(n: number): string {
-  return `$${Number(n).toLocaleString("es-AR")}`;
-}
 
 export async function GET(
   request: Request,
@@ -262,7 +254,9 @@ export async function GET(
   // foto(s) elegidas por el comercio + logo del local.
   function composedCard(items: PromoProduct[], logoOk: boolean) {
     const best = Math.max(...items.map(discountOf));
+    const hasOff = best > 0;
     const hero = items[0];
+    const heroOff = discountOf(hero);
     const rest = items.slice(1);
     return ogJpeg(
       <div
@@ -324,28 +318,46 @@ export async function GET(
             PROMO
           </div>
           <div style={{ fontSize: 118, fontWeight: 800, color: "#ffffff", lineHeight: 1.05, marginTop: 8 }}>
-            -{best}%
+            {hasOff ? `-${best}%` : "PROMO"}
           </div>
           <div style={{ fontSize: 34, fontWeight: 700, color: "#ffffff", marginTop: 6, maxWidth: 560 }}>
             {hero.name}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 14 }}>
-            <div style={{ fontSize: 30, color: "rgba(255,255,255,0.7)", textDecoration: "line-through" }}>
-              {money(hero.price)}
-            </div>
-            <div
-              style={{
-                display: "flex",
-                background: "#ffffff",
-                color: "#b91c1c",
-                fontSize: 40,
-                fontWeight: 800,
-                padding: "8px 24px",
-                borderRadius: 999,
-              }}
-            >
-              {money(hero.promo_price)}
-            </div>
+            {heroOff > 0 ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                <div style={{ fontSize: 30, color: "rgba(255,255,255,0.7)", textDecoration: "line-through" }}>
+                  {money(hero.price)}
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    background: "#ffffff",
+                    color: "#b91c1c",
+                    fontSize: 40,
+                    fontWeight: 800,
+                    padding: "8px 24px",
+                    borderRadius: 999,
+                  }}
+                >
+                  {money(hero.promo_price!)}
+                </div>
+              </div>
+            ) : (
+              <div
+                style={{
+                  display: "flex",
+                  background: "#ffffff",
+                  color: "#b91c1c",
+                  fontSize: 40,
+                  fontWeight: 800,
+                  padding: "8px 24px",
+                  borderRadius: 999,
+                }}
+              >
+                {money(hero.price)}
+              </div>
+            )}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 22 }}>
             {logoOk && logoUrl && (
@@ -384,25 +396,27 @@ export async function GET(
                   style={{ borderRadius: 36, objectFit: "cover", border: "6px solid rgba(255,255,255,0.9)" }}
                 />
               )}
-              <div
-                style={{
-                  position: "absolute",
-                  top: 24,
-                  left: 24,
-                  width: 124,
-                  height: 124,
-                  borderRadius: 999,
-                  background: "#ffffff",
-                  color: "#b91c1c",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: 36,
-                  fontWeight: 800,
-                }}
-              >
-                -{best}%
-              </div>
+              {heroOff > 0 && (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: 24,
+                    left: 24,
+                    width: 124,
+                    height: 124,
+                    borderRadius: 999,
+                    background: "#ffffff",
+                    color: "#b91c1c",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: 36,
+                    fontWeight: 800,
+                  }}
+                >
+                  -{heroOff}%
+                </div>
+              )}
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "row", alignItems: "center", gap: 20 }}>
@@ -415,25 +429,27 @@ export async function GET(
                     style={{ borderRadius: 32, objectFit: "cover", border: "6px solid rgba(255,255,255,0.9)" }}
                   />
                 )}
-                <div
-                  style={{
-                    position: "absolute",
-                    top: 20,
-                    left: 20,
-                    width: 112,
-                    height: 112,
-                    borderRadius: 999,
-                    background: "#ffffff",
-                    color: "#b91c1c",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: 33,
-                    fontWeight: 800,
-                  }}
-                >
-                  -{best}%
-                </div>
+                {heroOff > 0 && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: 20,
+                      left: 20,
+                      width: 112,
+                      height: 112,
+                      borderRadius: 999,
+                      background: "#ffffff",
+                      color: "#b91c1c",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 33,
+                      fontWeight: 800,
+                    }}
+                  >
+                    -{heroOff}%
+                  </div>
+                )}
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
                 {rest.slice(0, 2).map((p) =>
@@ -459,7 +475,9 @@ export async function GET(
   // descuento + producto + precios + logo sobre fondo promo.
   function textOnlyCard(items: PromoProduct[], logoOk: boolean) {
     const best = Math.max(...items.map(discountOf));
+    const hasOff = best > 0;
     const hero = items[0];
+    const heroOff = discountOf(hero);
     const extra = items.length > 1 ? ` +${items.length - 1} más` : "";
     return ogJpeg(
       <div
@@ -502,29 +520,47 @@ export async function GET(
           PROMO
         </div>
         <div style={{ fontSize: 110, fontWeight: 800, color: "#ffffff", lineHeight: 1.05, marginTop: 8 }}>
-          -{best}%
+          {hasOff ? `-${best}%` : "PROMO"}
         </div>
         <div style={{ fontSize: 34, fontWeight: 700, color: "#ffffff", marginTop: 6 }}>
           {hero.name}
           {extra}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 14 }}>
-          <div style={{ fontSize: 30, color: "rgba(255,255,255,0.7)", textDecoration: "line-through" }}>
-            {money(hero.price)}
-          </div>
-          <div
-            style={{
-              display: "flex",
-              background: "#ffffff",
-              color: "#b91c1c",
-              fontSize: 40,
-              fontWeight: 800,
-              padding: "8px 24px",
-              borderRadius: 999,
-            }}
-          >
-            {money(hero.promo_price)}
-          </div>
+          {heroOff > 0 ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+              <div style={{ fontSize: 30, color: "rgba(255,255,255,0.7)", textDecoration: "line-through" }}>
+                {money(hero.price)}
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  background: "#ffffff",
+                  color: "#b91c1c",
+                  fontSize: 40,
+                  fontWeight: 800,
+                  padding: "8px 24px",
+                  borderRadius: 999,
+                }}
+              >
+                {money(hero.promo_price!)}
+              </div>
+            </div>
+          ) : (
+            <div
+              style={{
+                display: "flex",
+                background: "#ffffff",
+                color: "#b91c1c",
+                fontSize: 40,
+                fontWeight: 800,
+                padding: "8px 24px",
+                borderRadius: 999,
+              }}
+            >
+              {money(hero.price)}
+            </div>
+          )}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 20 }}>
           {logoOk && logoUrl && (
@@ -541,6 +577,64 @@ export async function GET(
     );
   }
 
+  // Diagnóstico sin adivinar: /og/promo/<slug>.jpg?debug=1 devuelve el
+  // conteo (productos válidos, elegidos, fotos ok, modo). Los mismos datos
+  // que ve la landing /promo (públicos), sin exponer nada privado.
+  if (new URL(request.url).searchParams.get("debug") === "1") {
+    const diag = await queryMany<{
+      id: string;
+      name: string;
+      price: number;
+      promo_price: number | null;
+      promo_only: boolean | null;
+      available: boolean;
+      image_url: string | null;
+    }>(
+      `SELECT id, name, price, promo_price, promo_only, available, image_url FROM products
+       WHERE vendor_id = (SELECT id FROM vendors WHERE slug = $1 LIMIT 1)`,
+      [slug]
+    ).catch(() => []);
+    const diagListed = (diag || []).filter(
+      (p) => p.promo_price != null || p.promo_only === true
+    );
+    const diagById = new Map(diagListed.map((p) => [p.id, p]));
+    const diagPicked = selectedIds
+      .map((id) => diagById.get(id))
+      .filter((p): p is (typeof diagListed)[number] => !!p)
+      .slice(0, 3);
+    const diagAuto = [
+      ...diagListed.filter(isValidPromo).sort((a, b) => discountOf(b) - discountOf(a)),
+      ...diagListed.filter((p) => !isValidPromo(p)),
+    ].slice(0, 3);
+    const diagList = diagPicked.length > 0 ? diagPicked : diagAuto;
+    const diagValid = diagListed.filter(isValidPromo);
+    const diagPhotos = await Promise.all(
+      diagList.map(async (p) => ({ id: p.id, photo: !!p.image_url, ok: await remoteOk(p.image_url) }))
+    );
+    return NextResponse.json({
+      code: "promo-og-v2",
+      slug,
+      visible: vendor.visible,
+      mode,
+      manualImage: !!manualImage,
+      selection: selectedIds,
+      productsTotal: (diag || []).length,
+      productsValid: diagValid.map((p) => ({
+        id: p.id,
+        name: p.name,
+        price: Number(p.price),
+        promoPrice: p.promo_price != null ? Number(p.promo_price) : null,
+        promoOnly: !!p.promo_only,
+        available: p.available,
+        hasPhoto: !!p.image_url,
+        hasDiscount: isValidPromo(p),
+        discount: discountOf(p),
+      })),
+      picked: diagList.map((p) => p.id),
+      photos: diagPhotos,
+    });
+  }
+
   try {
     // 1) Modo manual con foto: manda la foto del comercio.
     if (mode === "manual" && manualImage) {
@@ -549,10 +643,10 @@ export async function GET(
 
     // 2) Composición con productos: selección del comercio o top-3 automático.
     const all = await queryMany<PromoProduct>(
-      `SELECT id, name, price, promo_price, image_url FROM products
+      `SELECT id, name, price, promo_price, promo_only, image_url FROM products
        WHERE vendor_id = (SELECT id FROM vendors WHERE slug = $1 LIMIT 1)
          AND available = true
-         AND promo_price IS NOT NULL AND promo_price > 0 AND promo_price < price`,
+         AND (promo_price IS NOT NULL OR promo_only = true)`,
       [slug]
     );
     const valid = all || [];
@@ -562,9 +656,17 @@ export async function GET(
       .filter((p): p is PromoProduct => !!p)
       .slice(0, 3);
     if (picked.length === 0) {
-      picked = [...valid].sort((a, b) => discountOf(b) - discountOf(a)).slice(0, 3);
+      // Descuentos reales primero, promo_only sin descuento después.
+      const withOff = valid.filter(isValidPromo).sort((a, b) => discountOf(b) - discountOf(a));
+      const rest = valid.filter((p) => !isValidPromo(p));
+      picked = [...withOff, ...rest].slice(0, 3);
     }
     if (picked.length === 0) {
+      console.error("[share-promo] sin productos en promo, fallback", {
+        slug,
+        mode,
+        selectedIds,
+      });
       return await manualCard(manualImage || vendor.image_url);
     }
 

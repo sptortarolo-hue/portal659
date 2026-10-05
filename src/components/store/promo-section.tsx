@@ -10,7 +10,7 @@ export type PromoItem = {
   name: string;
   description?: string | null;
   price: number;
-  promo_price: number;
+  promo_price: number | null;
   image_url?: string | null;
   category?: string | null;
   cash_discount_excluded?: boolean | null;
@@ -41,7 +41,12 @@ export function PromoSection({
       <p className="text-xs text-muted-foreground mb-3">Solo por tiempo limitado</p>
       <div className="space-y-3">
         {items.map((o) => {
-          const pct = Math.round((1 - Number(o.promo_price) / Number(o.price)) * 100);
+          const hasOff =
+            o.promo_price != null && Number(o.promo_price) > 0 && Number(o.promo_price) < Number(o.price);
+          const pct = hasOff
+            ? Math.round((1 - Number(o.promo_price!) / Number(o.price)) * 100)
+            : 0;
+          const salePrice = hasOff ? Number(o.promo_price!) : Number(o.price);
           const mods = modifiersByProduct?.[o.id] || [];
           return (
             <div
@@ -70,13 +75,26 @@ export function PromoSection({
                 {o.description && (
                   <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{o.description}</p>
                 )}
-                <div className="flex items-center gap-2 mt-1">
-                  <span className="text-xs text-muted-foreground line-through tabular-nums">
-                    ${Number(o.price).toLocaleString("es-AR")}
-                  </span>
-                  <span className="font-bold text-primary tabular-nums">
-                    ${Number(o.promo_price).toLocaleString("es-AR")}
-                  </span>
+                <div className="flex flex-wrap items-center gap-2 mt-1">
+                  {hasOff ? (
+                    <>
+                      <span className="text-xs text-muted-foreground line-through tabular-nums">
+                        ${Number(o.price).toLocaleString("es-AR")}
+                      </span>
+                      <span className="font-bold text-primary tabular-nums">
+                        ${Number(o.promo_price!).toLocaleString("es-AR")}
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="font-bold text-primary tabular-nums">
+                        ${Number(o.price).toLocaleString("es-AR")}
+                      </span>
+                      <span className="text-[10px] font-bold text-white bg-red-500 rounded-full px-2 py-0.5 whitespace-nowrap">
+                        PROMO
+                      </span>
+                    </>
+                  )}
                 </div>
               </div>
               <div className="flex-shrink-0">
@@ -84,12 +102,12 @@ export function PromoSection({
                   <AddToCartButton
                     offerId={o.id}
                     name={o.name}
-                    price={Number(o.promo_price)}
+                    price={salePrice}
                     vendor={vendor}
                     modifiers={mods}
                     cashExcluded={!!o.cash_discount_excluded}
                     origPrice={Number(o.price)}
-                    hasPromo
+                    hasPromo={hasOff}
                   />
                 ) : (
                   <a

@@ -91,11 +91,12 @@ export async function PATCH(
     return NextResponse.json({ error: "No autorizado" }, { status: 403 });
   }
 
-  const fullVendor = await queryOne<{ id: string; store_name: string; slug: string | null; block_unpaid_orders: boolean; vertical: string; delivery_fee: number | null; free_delivery_min: number | null; cash_discount_pct: number | null; kitchen_strict_close: boolean | null }>(
+  const fullVendor = await queryOne<{ id: string; store_name: string; slug: string | null; block_unpaid_orders: boolean; vertical: string; delivery_fee: number | null; free_delivery_min: number | null; cash_discount_pct: number | null; kitchen_strict_close: boolean | null; address: string | null; }>(
     `SELECT id, store_name, slug, block_unpaid_orders, vertical, delivery_fee, free_delivery_min, cash_discount_pct,
       -- Tolerante a migración de cierre estricto sin aplicar (default: libre).
       CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'vendors' AND column_name = 'kitchen_strict_close')
-        THEN kitchen_strict_close ELSE false END AS kitchen_strict_close
+        THEN kitchen_strict_close ELSE false END AS kitchen_strict_close,
+      address
       FROM vendors WHERE id = $1 LIMIT 1`,
     [vendor.id]
   );
@@ -575,9 +576,10 @@ export async function PATCH(
   // sin el bot conectado el flow sigue igual que siempre.
   const isAcceptEvent = status && currentOrder.status === "new" && status !== "cancelled";
   const isOnRoadEvent = status === "sent" && order.method === "delivery";
+  const isReadyEvent = status === "ready" && order.method === "pickup";
   const hasRealPhone = typeof order.customer_phone === "string" && !!order.customer_phone && !(order.customer_phone as string).startsWith("lid:");
   if (
-    (isAcceptEvent || isOnRoadEvent) &&
+    (isAcceptEvent || isOnRoadEvent || isReadyEvent) &&
     currentOrder.is_preview !== true &&
     !isCounterPickup &&
     hasRealPhone
@@ -588,9 +590,12 @@ export async function PATCH(
         ? ` Seguí tu pedido acá: ${getSiteUrl()}/seguimiento/${order.track_token}`
         : "";
       const store = fullVendor?.store_name || "el comercio";
+      const addr = fullVendor?.address ? ` Nos encontrás en ${fullVendor.address}.` : "";
       const text = isOnRoadEvent
         ? `🛵 ¡Tu pedido ${nro} va en camino! (${store}).${link}`
-        : `✅ ¡Tu pedido ${nro} fue aceptado por *${store}*!${link}`;
+        : isReadyEvent
+          ? `🛍️ ¡Tu pedido ${nro} está listo para retirar! Pasá a buscarlo por *${store}*.${addr}${link}`
+          : `✅ ¡Tu pedido ${nro} fue aceptado por *${store}*!${link}`;
       const wabotUrl = (process.env.WABOT_URL || "http://wabot:8792").replace(/\/$/, "");
       await fetch(`${wabotUrl}/send`, {
         method: "POST",

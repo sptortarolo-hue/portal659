@@ -72,7 +72,7 @@ export default function InventarioPage() {
             pagaste por cada producto (lo actualiza cada compra); el{" "}
             <span className="font-medium">food-cost</span> es lo que te cuesta elaborar cada plato
             según sus insumos, y vive en{" "}
-            <a className="text-primary font-medium" href="/manuales/gastronomia">
+            <a className="text-primary font-medium" href="/manuales/preparacion-costos">
               Preparación y Costo
             </a>{" "}
             (gastronomía).

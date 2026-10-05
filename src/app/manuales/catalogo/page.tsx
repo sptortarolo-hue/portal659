@@ -96,9 +96,10 @@ export default function CatalogoPage() {
 
         <div className="border-t border-border pt-6 mt-8">
           <p className="text-muted-foreground text-sm">
-            ¿Gastronomía? Seguí con{" "}
-            <a className="text-primary font-medium" href="/manuales/gastronomia">Preparación y Costo</a>{" "}
-            para costear cada plato. ¿Stock? Mirá{" "}
+            ¿Gastronomía? Costeá cada plato en{" "}
+            <a className="text-primary font-medium" href="/manuales/preparacion-costos">Preparación y Costo</a>{" "}
+            (o el resumen en <a className="text-primary font-medium" href="/manuales/gastronomia">Gastronomía</a>).
+            ¿Stock? Mirá{" "}
             <a className="text-primary font-medium" href="/manuales/inventario">Inventario</a>.
           </p>
         </div>

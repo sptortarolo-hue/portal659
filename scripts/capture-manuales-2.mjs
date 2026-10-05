@@ -36,6 +36,9 @@ const FLOWS =
           { slug: "catalogo-volumen", tab: "Menú", sub: "Precios por volumen" },
           { slug: "catalogo-promos", config: "Promos" },
           { slug: "costos-preparacion", tab: "Preparación y Costo" },
+          { slug: "preparacion-insumos", tab: "Preparación y Costo", sub: "Insumos", fila: "Harina" },
+          { slug: "preparacion-editor", tab: "Preparación y Costo", fila: "Costo \\$" },
+          { slug: "preparacion-semaforo", tab: "Preparación y Costo", semaforo: true },
         ];
 
 const VIEWPORTS = [
@@ -160,6 +163,59 @@ async function main() {
           // Sub-vista (solapa) dentro del tab ya abierto
           await visibleBtn(page, new RegExp(flow.sub)).click({ timeout: 8000 });
           await page.waitForTimeout(1500);
+          await closeOverlays(page);
+        }
+
+        if (flow.fila) {
+          // Clic en la fila (botón) que contenga el texto dado y scroll a ella
+          try {
+            await page.waitForFunction((t) => document.body.innerText.includes(t), flow.fila, { timeout: 12000 });
+          } catch {}
+          await page.waitForTimeout(800);
+          try {
+            const btn = page
+              .getByRole("button", { name: new RegExp(flow.fila) })
+              .filter({ visible: true })
+              .first();
+            await btn.scrollIntoViewIfNeeded();
+            await btn.click({ timeout: 8000 });
+            console.log(`  click fila ${flow.fila}`);
+          } catch (e) {
+            console.log(`  fila ${flow.fila} falló:`, String(e).split("\n")[0].slice(0, 100));
+          }
+          await page.waitForTimeout(2000);
+          // OJO: no llamar closeOverlays acá (cerraría el editor recién abierto)
+          // Scrollear al editor abierto (h3 con el nombre o costo en vivo)
+          await page.evaluate(() => {
+            const els = Array.from(document.querySelectorAll("h1,h2,h3,p,label,legend"));
+            const t = els.find(
+              (x) => /Costo total|Guardar cambios|Crear preparación/.test(x.textContent || "") && x.offsetParent !== null
+            );
+            if (t) {
+              t.scrollIntoView({ block: "center" });
+              window.scrollBy(0, -100);
+            }
+          });
+          await page.waitForTimeout(500);
+        }
+
+        if (flow.semaforo) {
+          // Expandir el bloque 🚦 Semáforo con su Editar
+          try {
+            const det = page.locator("details").filter({ hasText: "Semáforo" }).first();
+            if ((await det.count()) > 0) {
+              const sum = det.locator("summary").first();
+              if ((await sum.count()) > 0) await sum.click({ timeout: 5000 });
+              else await det.click({ timeout: 5000 });
+            } else {
+              const ed = page.getByRole("button", { name: /Editar/ }).filter({ visible: true }).first();
+              await ed.scrollIntoViewIfNeeded();
+            }
+            console.log("  semáforo expandido");
+          } catch (e) {
+            console.log("  semáforo falló:", String(e).split("\n")[0].slice(0, 100));
+          }
+          await page.waitForTimeout(1000);
           await closeOverlays(page);
         }
 

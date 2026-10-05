@@ -79,6 +79,12 @@ export default function ManualesPage() {
           title="Inventario y stock"
           desc="Proveedores, compras, conteos físicos, kardex y reposición sugerida."
         />
+        <Card
+          href="/manuales/preparacion-costos"
+          emoji="🧪"
+          title="Preparación y Costo"
+          desc="Insumos con merma, costo por plato, food-cost con semáforo y ficha PDF. Gastronomía."
+        />
       </div>
 
       <h2 className="font-display text-lg font-semibold mb-3">Por vertical</h2>

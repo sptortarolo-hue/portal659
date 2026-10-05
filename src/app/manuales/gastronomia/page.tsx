@@ -75,7 +75,9 @@ export default function GastronomiaPage() {
             <a className="text-primary font-medium" href="/manuales/catalogo">Catálogo y menú</a>).
             En <span className="font-medium">Preparación y Costo</span> cargás insumos con su merma
             y armás la preparación de cada plato para conocer su costo real y food-cost, con
-            semáforo configurable. El stock, las compras y la reposición viven en{" "}
+            semáforo configurable (detalle en{" "}
+            <a className="text-primary font-medium" href="/manuales/preparacion-costos">el manual</a>).
+            El stock, las compras y la reposición viven en{" "}
             <a className="text-primary font-medium" href="/manuales/inventario">Inventario</a>.
           </p>
           <Captura base="costos-preparacion" alt="Preparación y Costo" />

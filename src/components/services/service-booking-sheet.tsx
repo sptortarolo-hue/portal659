@@ -209,13 +209,22 @@ export function ServiceBookingSheet({
               className="flex-1 min-h-0 min-w-0 flex items-center justify-center p-4"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="relative max-h-full max-w-full rounded-lg overflow-hidden bg-black">
+              {/* Relleno con blur de la misma foto (fondo) + imagen nítida contenida */}
+              <div className="relative w-full max-w-3xl max-h-full aspect-[4/3] sm:aspect-[16/10] rounded-lg overflow-hidden">
+                <ProductImage
+                  src={service.image_url}
+                  name={service.name}
+                  vertical="estetica"
+                  alt=""
+                  aria-hidden="true"
+                  className="absolute inset-0 w-full h-full object-cover blur-2xl brightness-50 scale-110"
+                />
                 <ProductImage
                   src={service.image_url}
                   name={service.name}
                   vertical="estetica"
                   alt={service.name}
-                  className="max-h-[75vh] w-auto max-w-full object-contain"
+                  className="relative w-full h-full object-contain"
                 />
               </div>
             </div>

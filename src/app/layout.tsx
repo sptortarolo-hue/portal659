@@ -37,14 +37,33 @@ export const viewport: Viewport = {
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "https://www.portal659.com.ar"),
-  title: "Portal 659 — El centro comercial de tu barrio",
+  title: "Portal 659 — Comercios, kioscos y delivery en Sicardi y Garibaldi",
   description:
-    "Portal 659: el centro comercial de Sicardi y Garibaldi en tu pantalla. Comida, almacenes y servicios del barrio, con pedido o contacto directo por WhatsApp y 0% comisión.",
-  keywords: ["centro comercial", "barrio", "delivery", "whatsapp", "gastronomía", "comercio", "servicios", "Sicardi", "Garibaldi"],
+    "Portal 659: el centro comercial de Sicardi y Garibaldi en tu pantalla. Kioscos, almacenes, gastronomía, moda y servicios del barrio, con pedido o contacto directo por WhatsApp y 0% comisión.",
+  keywords: [
+    "comercios de barrio",
+    "kiosco",
+    "almacén",
+    "delivery de barrio",
+    "gastronomía",
+    "rotisería",
+    "servicios y oficios",
+    "centro comercial",
+    "Sicardi",
+    "Garibaldi",
+    "La Plata",
+  ],
   authors: [{ name: "Portal 659" }],
+  // Canonical base: cada página pública define el suyo; este cubre la home.
+  alternates: { canonical: "/" },
+  // Verificación de Google Search Console (meta tag). Se setea por env
+  // GOOGLE_SITE_VERIFICATION (solo el token `content`, sin la etiqueta).
+  ...(process.env.GOOGLE_SITE_VERIFICATION
+    ? { verification: { google: process.env.GOOGLE_SITE_VERIFICATION } }
+    : {}),
   openGraph: {
     title: "Portal 659 — El centro comercial de tu barrio",
-    description: "Comida, almacenes y servicios del barrio, con pedido o contacto directo por WhatsApp.",
+    description: "Comida, kioscos, almacenes y servicios de Sicardi y Garibaldi, con pedido o contacto directo por WhatsApp.",
     type: "website",
     locale: "es_AR",
     siteName: "Portal 659",
@@ -124,7 +143,7 @@ export default function RootLayout({
                     <Link href="/barrio" className="hover:text-foreground transition-colors">Info del barrio</Link>
                     <Link href="/planes" className="hover:text-foreground transition-colors">Planes</Link>
                     <Link href="/manuales" className="hover:text-foreground transition-colors">Manuales</Link>
-                    <Link href="/comercios" className="hover:text-foreground transition-colors">Sumar mi comercio</Link>
+                    <Link href="/comercios" className="hover:text-foreground transition-colors">Sistema para comercios</Link>
                     <Link href="/privacidad" className="hover:text-foreground transition-colors">Privacidad</Link>
                   </div>
                 </div>

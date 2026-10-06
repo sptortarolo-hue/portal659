@@ -5,12 +5,51 @@ import { getZone } from "@/lib/zone";
 import { vendorSellsOnline, resolveVendorPlan } from "@/lib/plans";
 import { cashAppliesToItem, normalizeCashPct } from "@/lib/cash-discount";
 import { sortTalles } from "@/lib/size-guides";
+import { verticalSeoName } from "@/lib/json-ld";
 import { CashPrice } from "@/components/store/cash-price";
 import type { Plan } from "@/types/database";
+import type { Metadata } from "next";
 import { Card, CardContent } from "@/components/ui/card";
 import { ProductImage } from "@/components/product-image";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * SEO del buscador: título/description según q/vertical, con keywords de la
+ * zona (las búsquedas objetivo: "kioscos en Sicardi", "delivery Garibaldi").
+ * Canonical propio por vertical (cada rubro puede rankear); los filtros de
+ * moda/precio nunca van al canonical (evita variantes duplicadas).
+ */
+export async function generateMetadata({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string; vertical?: string; online?: string }>;
+}): Promise<Metadata> {
+  const zone = await getZone();
+  const sp = await searchParams;
+  const q = (sp?.q || "").trim();
+  const vert = sp?.vertical || null;
+
+  let title: string;
+  let description: string;
+  if (q) {
+    title = `${q} en ${zone.name} | Portal 659`;
+    description = `Buscá "${q}" en los comercios de ${zone.name}: ${q} cerca tuyo, con pedido online o contacto directo por WhatsApp. 0% comisión.`;
+  } else if (vert) {
+    const name = verticalSeoName(vert);
+    title = `${name} en ${zone.name} | Portal 659`;
+    description = `${name} de ${zone.name} (La Plata): catálogo, precios, pedidos online y contacto directo por WhatsApp. El centro comercial de tu barrio, 0% comisión.`;
+  } else {
+    title = `Comercios y delivery en ${zone.name} | Portal 659`;
+    description = `Buscá comercios, kioscos, almacenes, gastronomía y servicios de ${zone.name}. Pedí online o contactá directo por WhatsApp, 0% comisión.`;
+  }
+
+  return {
+    title,
+    description,
+    alternates: { canonical: vert && !q ? `/buscar?vertical=${encodeURIComponent(vert)}` : "/buscar" },
+  };
+}
 
 type VendorRow = {
   id: string;

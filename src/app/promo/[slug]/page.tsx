@@ -72,9 +72,13 @@ export async function generateMetadata({
     title,
     description,
     ...(preview ? { robots: { index: false, follow: false } } : {}),
+    // Canonical propio (sin ?preview) para consolidar señales en la URL limpia.
+    alternates: { canonical: `/promo/${slug}` },
     openGraph: {
       title,
       description,
+      // Canónica OG para que shares de la promo apunten a la URL sin query.
+      url: `${siteUrl}/promo/${slug}`,
       images: [{ url: shareImage, width: 1200, height: 630 }],
       type: "website",
     },

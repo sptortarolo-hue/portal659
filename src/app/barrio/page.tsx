@@ -1,8 +1,16 @@
 import { queryMany } from "@/lib/db";
 import { getZone } from "@/lib/zone";
 import Link from "next/link";
+import type { Metadata } from "next";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "Info del barrio: transporte, horarios y avisos | Portal 659",
+  description:
+    "Información útil de Sicardi y Garibaldi: horarios de transporte, teléfonos útiles, horarios del barrio y avisos de la comunidad.",
+  alternates: { canonical: "/barrio" },
+};
 
 const CATEGORY_META: Record<string, { label: string; icon: string; accent: string }> = {
   transporte: { label: "Transporte", icon: "🚌", accent: "bg-sky-50 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300" },

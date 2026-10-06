@@ -44,6 +44,8 @@ services:
       - WA_BOT_SECRET=${WA_BOT_SECRET}
       - WABOT_URL=${WABOT_URL:-http://portal659-wabot:8792}
       - CRON_SECRET=${CRON_SECRET}
+      # Meta de verificación de Search Console (layout.tsx lo lee en runtime).
+      - GOOGLE_SITE_VERIFICATION=${GOOGLE_SITE_VERIFICATION:-}
     volumes:
       - uploads_data:/app/uploads
     expose:

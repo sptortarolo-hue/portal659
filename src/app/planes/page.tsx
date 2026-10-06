@@ -6,6 +6,13 @@ import { Badge } from "@/components/ui/badge";
 
 export const dynamic = "force-dynamic";
 
+export const metadata = {
+  title: "Planes para comercios de barrio — precios y funciones | Portal 659",
+  description:
+    "Planes para tu comercio, kiosco, almacén o gastronomía: gratis para empezar, pedidos ilimitados, POS con mostrador y caja, impresión de tickets y cobro online. 0% comisión por venta.",
+  alternates: { canonical: "/planes" },
+};
+
 export const FEATURE_LABELS: Record<string, string> = {
   info: "Ficha de comercio + menú informativo",
   cart: "Carrito y pedido online",

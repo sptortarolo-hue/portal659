@@ -6,6 +6,13 @@ import type { Vendor } from "@/types/database";
 
 export const dynamic = "force-dynamic";
 
+export const metadata = {
+  title: "Mapa de comercios del barrio | Portal 659",
+  description:
+    "Mapa interactivo de los comercios de Sicardi y Garibaldi: kioscos, almacenes, gastronomía y servicios cerca tuyo. Cómo llegar y pedidos por WhatsApp.",
+  alternates: { canonical: "/mapa" },
+};
+
 export default async function MapaPage() {
   const zone = await getZone();
   const vendors = await queryMany<Vendor>(

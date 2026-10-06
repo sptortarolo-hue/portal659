@@ -1,5 +1,6 @@
 import { gateRequest, gateError } from "@/lib/subscription-gate";
 import { queryMany } from "@/lib/db";
+import { customerMatches, searchTokens, tokenDigits } from "@/lib/search-match";
 import { NextResponse } from "next/server";
 
 export type LookupCustomer = {
@@ -14,7 +15,8 @@ export type LookupCustomer = {
  * o nombre + frecuentes). Gate `pos`, NO `crm`: la ficha ya la escribe
  * `pos/order` al cobrar, así que todo plan con Mostrador puede leerla.
  *
- * - `?q=`: ≥2 caracteres, match por dígitos en teléfono o ILIKE en nombre.
+ * - `?q=`: ≥2 caracteres, match por tokens en nombre/dirección (insensible
+ *   a tildes) o dígitos en teléfono. "juan 221" exige ambas partes.
  * - sin `q`: devuelve los 4 más recientes (fila "Frecuentes" del picker).
  * - Fallback: si la tabla `customers` no existe (migración sin aplicar),
  *   deriva candidatos de `orders` recientes (mismo shape, total_orders 0).
@@ -31,7 +33,6 @@ export async function GET(request: Request) {
 
   const url = new URL(request.url);
   const q = (url.searchParams.get("q") || "").trim();
-  const digits = q.replace(/[^\d]/g, "");
   const vendorId = gate.vendor.id;
 
   try {
@@ -47,26 +48,59 @@ export async function GET(request: Request) {
       return NextResponse.json({ customers: rows || [] });
     }
 
-    const hasDigits = digits.length >= 2;
-    const rows = hasDigits
-      ? await queryMany<LookupCustomer>(
+    // Búsqueda por tokens: cada palabra debe aparecer en nombre, dirección
+    // o (con ≥2 dígitos) en el teléfono. Insensible a tildes vía translate()
+    // (sin extensión unaccent). "juan 221" matchea nombre+juan y tel+221.
+    const TR_FROM = "áéíóúñãõàèìòùâêîôûäëïöüç";
+    const TR_TO = "aeiounaoaeiouaeiouaeiouc";
+    const trCol = (col: string) =>
+      `translate(lower(COALESCE(${col},'')), '${TR_FROM}', '${TR_TO}')`;
+    const tokens = searchTokens(q);
+    const conds: string[] = [];
+    const params: unknown[] = [vendorId];
+    for (const t of tokens) {
+      const td = tokenDigits(t);
+      if (td.length >= 2) {
+        params.push(td, t);
+        const a = params.length - 1;
+        const b = params.length;
+        conds.push(
+          `(phone LIKE '%' || $${a} || '%' OR ${trCol("name")} LIKE '%' || $${b} || '%' OR ${trCol("address")} LIKE '%' || $${b} || '%')`
+        );
+      } else {
+        params.push(t);
+        const a = params.length;
+        conds.push(
+          `(${trCol("name")} LIKE '%' || $${a} || '%' OR ${trCol("address")} LIKE '%' || $${a} || '%')`
+        );
+      }
+    }
+    let rows: LookupCustomer[];
+    try {
+      rows =
+        (await queryMany<LookupCustomer>(
+          `SELECT phone, name, address, total_orders
+           FROM customers
+           WHERE vendor_id = $1 AND ${conds.join(" AND ")}
+           ORDER BY last_order_at DESC NULLS LAST, total_spent DESC
+           LIMIT 8`,
+          params
+        )) || [];
+    } catch {
+      // Fallback legacy (una sola condición ILIKE).
+      rows =
+        (await queryMany<LookupCustomer>(
           `SELECT phone, name, address, total_orders
            FROM customers
            WHERE vendor_id = $1
              AND (phone LIKE '%' || $2 || '%' OR name ILIKE '%' || $3 || '%')
            ORDER BY last_order_at DESC NULLS LAST, total_spent DESC
            LIMIT 8`,
-          [vendorId, digits, q]
-        )
-      : await queryMany<LookupCustomer>(
-          `SELECT phone, name, address, total_orders
-           FROM customers
-           WHERE vendor_id = $1
-             AND name ILIKE '%' || $2 || '%'
-           ORDER BY last_order_at DESC NULLS LAST, total_spent DESC
-           LIMIT 8`,
-          [vendorId, q]
-        );
+          [vendorId, q.replace(/[^\d]/g, ""), q]
+        ).catch(() => [])) || [];
+    }
+    // Refuerzo en JS (misma regla en todos lados): por si el SQL difiere.
+    rows = rows.filter((r) => customerMatches(r, q));
     return NextResponse.json({ customers: rows || [] });
   } catch {
     // Sin tabla customers (migración pendiente): derivar de pedidos recientes.
@@ -86,13 +120,16 @@ export async function GET(request: Request) {
          LIMIT 60`,
         [vendorId]
       );
-      const ql = q.toLowerCase();
-      const hasDigits = digits.length >= 2;
       const filtered = (rows || [])
-        .filter(
-          (r) =>
-            (hasDigits && String(r.phone || "").replace(/[^\d]/g, "").includes(digits)) ||
-            String(r.name || "").toLowerCase().includes(ql)
+        .filter((r) =>
+          customerMatches(
+            {
+              name: r.name ? String(r.name) : null,
+              phone: String(r.phone || ""),
+              address: r.address ? String(r.address) : null,
+            },
+            q
+          )
         )
         .slice(0, q ? 8 : 4)
         .map((r) => ({

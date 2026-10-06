@@ -1,6 +1,7 @@
 import { gateRequest, gateError } from "@/lib/subscription-gate";
 import { queryMany, queryOne } from "@/lib/db";
 import { toE164 } from "@/lib/phone";
+import { customerMatches } from "@/lib/search-match";
 import { NextResponse } from "next/server";
 
 const INACTIVE_DAYS = 30;
@@ -66,8 +67,10 @@ export async function GET(request: Request) {
 
   const filtered = q
     ? withSegments.filter((c) =>
-        (c.name || "").toLowerCase().includes(q.toLowerCase()) ||
-        c.phone.includes(q.replace(/[^\d]/g, ""))
+        customerMatches(
+          { name: c.name, phone: c.phone, address: c.address },
+          q
+        )
       )
     : withSegments;
 

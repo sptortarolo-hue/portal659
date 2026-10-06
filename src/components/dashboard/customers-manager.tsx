@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { CustomerFormTimeline } from "@/components/dashboard/customer-form-timeline";
+import { customerMatches } from "@/lib/search-match";
 
 type Segment = "frecuente" | "nuevo" | "inactivo" | "ocasional";
 
@@ -411,13 +412,10 @@ export function CustomersManager({ serviceMode = false, vendorId = null, loyalty
     }
   }
 
-  const q = query.trim().toLowerCase();
+  const q = query.trim();
   const filtered = customers.filter((c) => {    if (segment !== "all" && c.segment !== segment) return false;
     if (!q) return true;
-    return (
-      (c.name || "").toLowerCase().includes(q) ||
-      c.phone.includes(q.replace(/[^\d]/g, ""))
-    );
+    return customerMatches({ name: c.name, phone: c.phone, address: (c as any).address }, q);
   });
 
   if (loading) return <p className="text-muted-foreground text-sm">Cargando clientes...</p>;

@@ -20,10 +20,12 @@ export function CustomerPicker({
 }) {
   const [q, setQ] = useState("");
   const [suggestions, setSuggestions] = useState<CustomerSuggestion[]>([]);
-  const [allowed, setAllowed] = useState(true);
+  // Sin CRM (plan): el endpoint da 403. Se muestra el motivo en vez de
+  // ocultar el buscador, y se reintenta en cada búsqueda.
+  const [denied, setDenied] = useState(false);
 
   useEffect(() => {
-    if (q.trim().length < 2 || !allowed) {
+    if (q.trim().length < 2) {
       setSuggestions([]);
       return;
     }
@@ -31,17 +33,17 @@ export function CustomerPicker({
       try {
         const res = await fetch(`/api/vendor/customers?q=${encodeURIComponent(q.trim())}`);
         if (res.status === 403) {
-          setAllowed(false);
+          setDenied(true);
+          setSuggestions([]);
           return;
         }
+        setDenied(false);
         const data = await res.json();
         setSuggestions((data.customers || []).slice(0, 5));
       } catch { /* noop */ }
     }, 300);
     return () => window.clearTimeout(t);
-  }, [q, allowed]);
-
-  if (!allowed) return null;
+  }, [q]);
 
   return (
     <div>
@@ -52,6 +54,11 @@ export function CustomerPicker({
         placeholder="Nombre o teléfono..."
         className="mt-1 h-8 text-xs"
       />
+      {denied && (
+        <p className="mt-1 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-800">
+          El libro de clientes forma parte de los planes pagos (Gestión u Oficios).
+        </p>
+      )}
       {suggestions.length > 0 && (
         <div className="mt-1 rounded-lg border border-border divide-y divide-border max-h-36 overflow-y-auto">
           {suggestions.map((c) => (

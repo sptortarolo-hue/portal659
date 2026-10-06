@@ -32,6 +32,8 @@ export function CustomerPicker({ query, onQueryChange, onSelect, onEnterKey, pla
   const [results, setResults] = useState<LookupCustomer[]>([]);
   const [highlight, setHighlight] = useState(0);
   const [focused, setFocused] = useState(false);
+  // Sin Mostrador en el plan (lookup 403): se muestra el motivo.
+  const [denied, setDenied] = useState(false);
   const reqId = useRef(0);
 
   // Lookup con debounce (250ms). Sin query y con foco: frecuentes.
@@ -47,6 +49,13 @@ export function CustomerPicker({ query, onQueryChange, onSelect, onEnterKey, pla
       try {
         const url = q ? `/api/vendor/customers/lookup?q=${encodeURIComponent(q)}` : "/api/vendor/customers/lookup";
         const res = await fetch(url);
+        if (res.status === 403) {
+          if (reqId.current !== id) return;
+          setDenied(true);
+          setResults([]);
+          return;
+        }
+        setDenied(false);
         const d = await res.json().catch(() => ({}));
         if (reqId.current !== id) return;
         const list = Array.isArray(d?.customers) ? (d.customers as LookupCustomer[]) : [];
@@ -107,6 +116,11 @@ export function CustomerPicker({ query, onQueryChange, onSelect, onEnterKey, pla
       />
       {open && (
         <div className="mt-1.5 rounded-xl border border-border bg-card divide-y divide-border overflow-hidden">
+          {denied && (
+            <p className="px-3 py-2 text-[11px] text-amber-800 bg-amber-50">
+              La búsqueda de clientes requiere Mostrador (planes pagos).
+            </p>
+          )}
           {query.trim() === "" && (
             <p className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
               Frecuentes

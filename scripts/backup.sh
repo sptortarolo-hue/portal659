@@ -71,6 +71,21 @@ prune_local() {
 # --- 1. DB -------------------------------------------------------------------
 DB_FILE="$BACKUP_ROOT/db/portal659-$NOW.sql.gz"
 if docker ps --format '{{.Names}}' | grep -qx 'portal659-db'; then
+  # Esperar que Postgres acepte conexiones (tras un restart el contenedor
+  # figura "up" pero sigue en recovery; sin esto pg_dump falla y ensucia
+  # errors.log con un falso error — visto 24-sep-2026).
+  READY=no
+  for _i in $(seq 1 30); do
+    if docker exec portal659-db pg_isready -U "$PGUSER" -d "$PGDB" >/dev/null 2>&1; then
+      READY=yes
+      break
+    fi
+    sleep 2
+  done
+  if [ "$READY" != "yes" ]; then
+    echo "[$NOW] ERROR: portal659-db no acepta conexiones tras 60s — skip DB (revisá el contenedor)"
+    rm -f "$DB_FILE"
+  else
   echo "[$NOW] pg_dump → $DB_FILE"
   # stderr a errors.log para no ensuciar el dump; si pg_dump corta a la mitad,
   # el stream gzip queda truncado y lo detecta gzip -t.
@@ -83,6 +98,7 @@ if docker ps --format '{{.Names}}' | grep -qx 'portal659-db'; then
   else
     echo "[$NOW] ERROR: dump de DB incompleto o vacío — NO se sube a R2 (revisá errors.log)"
     exit 1
+  fi
   fi
 else
   echo "[$NOW] WARNING: portal659-db no corre (¿primer arranque?), skip DB"

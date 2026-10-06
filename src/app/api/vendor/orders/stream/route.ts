@@ -30,7 +30,10 @@ export async function GET(request: Request) {
             `SELECT id, status, pickup_number, customer_name, total, channel,
                     method, payment_method, payment_status, estimated_minutes,
                     created_at, closed_at, updated_at, items, modification_notes,
-                    customer_phone, customer_address, is_preview,
+                    customer_phone, customer_address, is_preview, transfer_proof_url,
+                    CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'courier_lat') THEN courier_lat ELSE NULL END AS courier_lat,
+                    CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'courier_lng') THEN courier_lng ELSE NULL END AS courier_lng,
+                    CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'courier_updated_at') THEN courier_updated_at ELSE NULL END AS courier_updated_at,
                     -- Tildado de empaque/cocina: sin esto el SSE reemplaza el
                     -- objeto y los ticks tildados en otro dispositivo se pierden.
                     CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'kitchen_done')

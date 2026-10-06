@@ -28,6 +28,8 @@ type HistoryOrder = {
   modification_notes?: string | null;
   is_preview?: boolean;
   is_direct?: boolean;
+  /** 🧾 Comprobante de transferencia subido por el cliente por el bot (WA). */
+  transfer_proof_url?: string | null;
 };
 
 const PAYMENT_LABELS: Record<string, string> = {
@@ -246,6 +248,7 @@ export function VendorOrderHistory({ isRetail = false, vendorId = null, onOpenOr
                 </p>
                 <p className="text-[11px] text-muted-foreground/70">
                   {o.is_direct ? "⚡ Venta directa" : o.method === "delivery" ? "🛵 Delivery" : "🏠 Retiro"} · {PAYMENT_LABELS[o.payment_method || ""] || o.payment_method || "-"}
+                  {o.transfer_proof_url && ` · 🧾 comprobante`}
                 </p>
               </div>
               <div className="text-right shrink-0">

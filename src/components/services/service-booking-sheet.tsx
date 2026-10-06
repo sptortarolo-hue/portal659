@@ -210,7 +210,8 @@ export function ServiceBookingSheet({
               onClick={(e) => e.stopPropagation()}
             >
               {/* Relleno con blur de la misma foto (fondo) + imagen nítida contenida */}
-              <div className="relative w-full max-w-3xl max-h-full aspect-[4/3] sm:aspect-[16/10] rounded-lg overflow-hidden">
+              {/* Marco 9:16 vertical: alto manda (75vh), ancho por aspect, con tope */}
+              <div className="relative h-[75vh] aspect-[9/16] max-w-[calc(100vw-2rem)] rounded-lg overflow-hidden">
                 <ProductImage
                   src={service.image_url}
                   name={service.name}

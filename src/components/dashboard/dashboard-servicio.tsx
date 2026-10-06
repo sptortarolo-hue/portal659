@@ -528,6 +528,19 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
 
   const [storePreview, setStorePreview] = useState<string | null>(vendor?.image_url || null);
   const [logoPreview, setLogoPreview] = useState<string | null>(vendor?.logo_url || null);
+  // Archivos en staging (patrón gastro): se suben al guardar, no antes.
+  const [storeFile, setStoreFile] = useState<File | null>(null);
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+
+  async function uploadStagedImage(file: File): Promise<string> {
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("folder", "vendors");
+    const res = await fetch("/api/vendor/upload", { method: "POST", body: fd });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.url) throw new Error(data.error || "No se pudo subir la imagen");
+    return data.url as string;
+  }
 
   const [bookingFilter, setBookingFilter] = useState<"all" | "pending" | "confirmed" | "cancelled" | "noshow">("all");
   const [galleryCount, setGalleryCount] = useState(gallery.length);
@@ -565,6 +578,28 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
   }
 
   async function doSaveVendor() {
+    // Subir portada/logo en staging antes de guardar (si falla, abortar con
+    // mensaje en vez de persistir URLs blob inválidas).
+    const hadStoreFile = !!storeFile;
+    const hadLogoFile = !!logoFile;
+    let imageUrl: string | undefined;
+    let logoUrl: string | undefined;
+    if (storeFile) {
+      try {
+        imageUrl = await uploadStagedImage(storeFile);
+      } catch (e) {
+        setMsg(e instanceof Error ? e.message : "No se pudo subir la foto de portada");
+        throw e;
+      }
+    }
+    if (logoFile) {
+      try {
+        logoUrl = await uploadStagedImage(logoFile);
+      } catch (e) {
+        setMsg(e instanceof Error ? e.message : "No se pudo subir el logo");
+        throw e;
+      }
+    }
     await saveVendor({
       store_name: storeName,
       vertical: storeVertical,
@@ -578,6 +613,8 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
       phone,
       instagram,
       facebook,
+      ...(imageUrl ? { image_url: imageUrl } : {}),
+      ...(logoUrl ? { logo_url: logoUrl } : {}),
       services_list: servicesList,
       service_area: serviceArea,
       free_estimate: freeEstimate,
@@ -592,6 +629,8 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
       cancel_policy_text: cancelPolicy.trim() || null,
       cancel_hours: cancelHours === "" ? 24 : Math.max(0, Number(cancelHours) || 0),
     });
+    if (hadStoreFile) setStoreFile(null);
+    if (hadLogoFile) setLogoFile(null);
   }
 
   // Cobros vive fuera del form de ficha: guarda solo la seña por defecto.
@@ -992,6 +1031,7 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
                 const f = e.target.files?.[0] || null;
                 if (f) {
                   const src = URL.createObjectURL(f);
+                  setStoreFile(f);
                   setStorePreview(src);
                   onCrop("cover", src);
                 }
@@ -1010,6 +1050,7 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
                 const f = e.target.files?.[0] || null;
                 if (f) {
                   const src = URL.createObjectURL(f);
+                  setLogoFile(f);
                   setLogoPreview(src);
                   onCrop("logo", src);
                 }

@@ -37,9 +37,11 @@ type Props = {
   allowQty?: boolean;
   /** Al cambiar de color (la ficha cambia la foto principal a la de ese color). */
   onColorChange?: (color: string) => void;
+  /** Callback tras agregar (la ficha de grilla se cierra y vuelve al catálogo). */
+  onAdded?: () => void;
 };
 
-export function VariantSelector({ productId, name, variants, vendor, stockControl = true, cashExcluded = false, image, sizeGuide, allowQty = false, onColorChange }: Props) {
+export function VariantSelector({ productId, name, variants, vendor, stockControl = true, cashExcluded = false, image, sizeGuide, allowQty = false, onColorChange, onAdded }: Props) {
   const { addItem } = useCart();
   const { addToast } = useToast();
   const [color, setColor] = useState<string | null>(null);
@@ -88,6 +90,7 @@ export function VariantSelector({ productId, name, variants, vendor, stockContro
     addToast(n > 1 ? `${name} (${current.color} / ${current.talle}) × ${n} agregado al carrito` : `${name} (${current.color} / ${current.talle}) agregado al carrito`);
     setAdded(true);
     setTimeout(() => setAdded(false), 1500);
+    onAdded?.();
     if (switched) addToast("Se limpió el carrito anterior (solo podés pedir de un local a la vez)");
   }
 

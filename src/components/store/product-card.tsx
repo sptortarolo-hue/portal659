@@ -50,6 +50,8 @@ function variantSummary(vars: any[]) {
 export function ProductCard({ product, variants = [], images = [], vendor, modifiers, acceptsCart = true, consultHref }: Props) {
   const [open, setOpen] = useState(false);
   const [activeImg, setActiveImg] = useState(0);
+  // Cantidad para productos simples (los de variantes la manejan en VariantSelector).
+  const [qty, setQty] = useState(1);
   const sheetRef = useRef<HTMLDivElement | null>(null);
   const touchX = useRef<number | null>(null);
   const cardTouchX = useRef<number | null>(null);
@@ -65,6 +67,14 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
     : (product.stock ?? 0);
   const stockControl = product.stock_control !== false;
   const outStock = stockControl && totalStock <= 0;
+  // Tope del stepper en simples: stock si hay control, si no 99.
+  const maxQty = !hasVariants && stockControl ? Math.max(1, product.stock ?? 0) : 99;
+  // Al agregar se cierra la ficha y se vuelve al catálogo (igual que lista).
+  function closeSheet() {
+    setOpen(false);
+    setActiveImg(0);
+    setQty(1);
+  }
   const lowStock = stockControl && !outStock && totalStock <= (hasVariants ? 5 : (product.stock_low_threshold ?? 5));
 
   const bestDiscount = hasVariants
@@ -132,7 +142,7 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
       <div className="flex flex-col rounded-xl overflow-hidden border border-border bg-card shadow-sm hover:shadow-md transition-shadow">
         <button
           type="button"
-          onClick={() => setOpen(true)}
+          onClick={() => { setQty(1); setOpen(true); }}
           onTouchStart={(e) => { cardTouchX.current = e.touches[0]?.clientX ?? null; }}
           onTouchEnd={(e) => {
             // Carrusel en la card (fase A): swipe horizontal rota las fotos sin
@@ -305,6 +315,7 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
                     image={cover}
                     sizeGuide={product.size_guide ?? null}
                     allowQty
+                    onAdded={closeSheet}
                     onColorChange={(c) => {
                       // Fotos por color: al elegir color, la foto principal pasa
                       // a la primera foto de la galería asociada a ese color.
@@ -313,15 +324,43 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
                     }}
                   />
                 ) : (
-                  <AddToCartButton
-                    offerId={product.id}
-                    name={product.name}
-                    price={product.promo_price ? Number(product.promo_price) : Number(product.price)}
-                    vendor={vendor}
-                    modifiers={modifiers}
-                    cashExcluded={product.promo_price != null && !!product.cash_discount_excluded}
-                    image={cover}
-                  />
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs font-medium text-muted-foreground">Cantidad</span>
+                      <div className="flex items-center rounded-lg border border-border overflow-hidden">
+                        <button
+                          type="button"
+                          onClick={() => setQty((q) => Math.max(1, q - 1))}
+                          disabled={qty <= 1}
+                          className="h-8 w-8 flex items-center justify-center text-sm font-semibold text-foreground hover:bg-muted disabled:opacity-30"
+                          aria-label="Menos cantidad"
+                        >
+                          −
+                        </button>
+                        <span className="w-9 text-center text-sm font-semibold tabular-nums">{qty}</span>
+                        <button
+                          type="button"
+                          onClick={() => setQty((q) => Math.min(maxQty, q + 1))}
+                          disabled={qty >= maxQty}
+                          className="h-8 w-8 flex items-center justify-center text-sm font-semibold text-foreground hover:bg-muted disabled:opacity-30"
+                          aria-label="Más cantidad"
+                        >
+                          +
+                        </button>
+                      </div>
+                    </div>
+                    <AddToCartButton
+                      offerId={product.id}
+                      name={product.name}
+                      price={product.promo_price ? Number(product.promo_price) : Number(product.price)}
+                      vendor={vendor}
+                      modifiers={modifiers}
+                      cashExcluded={product.promo_price != null && !!product.cash_discount_excluded}
+                      image={cover}
+                      qty={qty}
+                      onAdded={closeSheet}
+                    />
+                  </div>
                 )}
               </div>
             </div>

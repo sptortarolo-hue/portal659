@@ -38,6 +38,10 @@ type AddToCartButtonProps = {
   packPrice?: number;
   /** Foto miniatura para el carrito (moda). Opcional, no rompe gastro. */
   image?: string | null;
+  /** Cantidad a agregar (grilla/vidriera). Default 1. Con pack se ignora (manda el pack). */
+  qty?: number;
+  /** Callback tras agregar (la ficha de grilla se cierra y vuelve al catálogo). */
+  onAdded?: () => void;
 };
 
 export function AddToCartButton({
@@ -52,6 +56,8 @@ export function AddToCartButton({
   packSize,
   packPrice,
   image,
+  qty,
+  onAdded,
 }: AddToCartButtonProps) {
   const { addItem, items } = useCart();
   const { addToast } = useToast();
@@ -60,23 +66,25 @@ export function AddToCartButton({
 
   const doAdd = useCallback(
     (mods?: CartModifier[]) => {
+      const hasPack = packSize != null && packSize >= 2;
+      const n = hasPack ? packSize : Math.max(1, Math.floor(qty ?? 1));
       const switched = addItem(vendor, {
         offerId,
         name,
         price,
-        qty: packSize && packSize >= 2 ? packSize : 1,
+        qty: n,
         modifiers: mods,
         cashExcluded,
         origPrice,
         hasPromo,
-        packSize: packSize && packSize >= 2 ? packSize : undefined,
-        packPrice: packPrice && packSize && packSize >= 2 ? packPrice : undefined,
+        packSize: hasPack ? packSize : undefined,
+        packPrice: packPrice && hasPack ? packPrice : undefined,
         image: image ?? null,
       });
       if (switched) {
         addToast("Se limpió el carrito anterior (solo podés pedir de un local a la vez)");
       } else {
-        addToast(`${name} agregado al carrito`);
+        addToast(n > 1 ? `${n} × ${name} agregados al carrito` : `${name} agregado al carrito`);
       }
       // Pack combinable: si el producto es miembro de un grupo multi y el pack
       // no estaba completo antes de este agregado, se abre el sheet (el host
@@ -100,8 +108,9 @@ export function AddToCartButton({
       }
       setAdded(true);
       setTimeout(() => setAdded(false), 1500);
+      onAdded?.();
     },
-    [addItem, items, vendor, offerId, name, price, cashExcluded, origPrice, hasPromo, packSize, packPrice, image, addToast]
+    [addItem, items, vendor, offerId, name, price, cashExcluded, origPrice, hasPromo, packSize, packPrice, image, qty, onAdded, addToast]
   );
 
   const handleClick = useCallback(() => {

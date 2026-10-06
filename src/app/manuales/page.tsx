@@ -85,6 +85,18 @@ export default function ManualesPage() {
           title="Preparación y Costo"
           desc="Insumos con merma, costo por plato, food-cost con semáforo y ficha PDF. Gastronomía."
         />
+        <Card
+          href="/manuales/preparacion-costos"
+          emoji="🧪"
+          title="Preparación y Costo"
+          desc="Insumos con merma, costo por plato, food-cost con semáforo y ficha PDF. Gastronomía."
+        />
+        <Card
+          href="/manuales/reparto"
+          emoji="🛵"
+          title="Repartidor y entregas"
+          desc="Alta del repartidor, app Android, permisos, tomar y entregar con punto vivo."
+        />
       </div>
 
       <h2 className="font-display text-lg font-semibold mb-3">Por rubro</h2>

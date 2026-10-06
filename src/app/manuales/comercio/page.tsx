@@ -121,6 +121,8 @@ export default function ComercioPage() {
           <p className="text-muted-foreground text-sm">
             ¿También vendés comida elaborada? Mirá el manual de{" "}
             <a className="text-primary font-medium" href="/manuales/gastronomia">Gastronomía</a>.
+            Para el delivery con repartidores propios:{" "}
+            <a className="text-primary font-medium" href="/manuales/reparto">Repartidor y entregas</a>.
           </p>
         </div>
       </section>

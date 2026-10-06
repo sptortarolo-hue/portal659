@@ -84,12 +84,14 @@ export default function GastronomiaPage() {
         </div>
 
         <div>
-          <h2 className="font-display text-lg font-semibold mb-3">6. Tiempos y reparto</h2>
+          <h2 className="font-display text-lg font-semibold mb-3">6. Tiempos, reparto y repartidor</h2>
           <p>
             En <span className="font-medium">Configuración</span> definí tu{" "}
             <span className="font-medium">tiempo de preparación</span> (lo que ve el cliente al
             pedir), tus <span className="font-medium">repartidores</span> y si aceptás retiro,
-            domicilio o ambos. Con el interruptor del encabezado podés pausar la venta online
+            domicilio o ambos. Cómo dar de alta a tu repartidor, la app y el punto vivo están en{" "}
+            <a className="text-primary font-medium" href="/manuales/reparto">Repartidor y entregas</a>.
+            Con el interruptor del encabezado podés pausar la venta online
             (Abierto/Cerrado) sin tocar los horarios.
           </p>
         </div>

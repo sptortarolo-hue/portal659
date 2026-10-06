@@ -30,6 +30,15 @@ const FLOWS =
       ]
     : SET === "moda"
       ? [{ slug: "variantes", tab: "Catálogo", product: true }]
+      : SET === "reparto"
+        ? [
+            // OJO: tablero loguea como repartidor y cambia la sesión del contexto;
+            // por eso va último.
+            { slug: "equipo", config: "Repartidores" },
+            { slug: "pedido", pedidoSent: true },
+            { slug: "vincular", vincular: "KX7M2Q" },
+            { slug: "tablero", repartidor: true },
+          ]
       : [
           { slug: "catalogo-editor", tab: "Menú", nuevo: true },
           { slug: "catalogo-opciones", tab: "Menú", sub: "Opciones" },
@@ -72,8 +81,24 @@ async function closeOverlays(page) {
   } catch {}
 }
 
-// Ir a un tab que puede estar en el bottom nav, la sidebar o el sheet "Más"
+// Ir a un tab que puede estar en el bottom nav, la sidebar o el sheet "Más".
+// Primero se prueba el nav directo (bottom/sidebar); el sheet solo si no está.
 async function goTab(page, label, isMobile) {
+  // Solo el bottom nav (fixed): el header tiene su propio botón "Menú"
+  const bottomNav = page.locator("nav").filter({ hasText: "Más" }).first();
+  const direct =
+    (await bottomNav.count()) > 0
+      ? bottomNav.locator("button", { hasText: label }).filter({ visible: true }).first()
+      : page.locator("nav").locator("button", { hasText: label }).filter({ visible: true }).first();
+  // Evitar falsos positivos del header (ej. "☰Menú"): el label debe coincidir razonablemente
+  if ((await direct.count()) > 0) {
+    const txt = ((await direct.textContent()) || "").trim();
+    if (txt.length < label.length + 12) {
+      await direct.click({ timeout: 8000 });
+      await page.waitForTimeout(1200);
+      return;
+    }
+  }
   if (isMobile) {
     const moreBtn = page.locator("nav").locator("button", { hasText: "Más" }).last();
     if ((await moreBtn.count()) > 0) await moreBtn.click({ timeout: 5000 });
@@ -83,6 +108,7 @@ async function goTab(page, label, isMobile) {
     if ((await inSheet.count()) > 0) {
       await inSheet.first().click({ timeout: 8000 });
     } else {
+      await closeOverlays(page);
       await visibleBtn(page, new RegExp(label)).click({ timeout: 8000 });
     }
     await page.waitForTimeout(1200);
@@ -137,6 +163,51 @@ async function main() {
 
     for (const flow of FLOWS) {
       try {
+        if (flow.repartidor) {
+          // Login como repartidor (teléfono + contraseña) en /vincular
+          await page.goto(`${BASE}/vincular`, { waitUntil: "networkidle", timeout: 30000 });
+          await page.waitForTimeout(1200);
+          await page.evaluate(() => {
+            const inputs = Array.from(document.querySelectorAll("input"));
+            const tel = inputs.find(
+              (i) => (i.placeholder || "").toLowerCase().includes("tel") || i.type === "tel" || i.inputMode === "tel"
+            );
+            const pwd = inputs.find((i) => i.type === "password");
+            const set = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+            if (tel) {
+              tel.focus();
+              set.call(tel, "2215550134");
+              tel.dispatchEvent(new Event("input", { bubbles: true }));
+              tel.dispatchEvent(new Event("change", { bubbles: true }));
+            }
+            if (pwd) {
+              pwd.focus();
+              set.call(pwd, "reparto123");
+              pwd.dispatchEvent(new Event("input", { bubbles: true }));
+              pwd.dispatchEvent(new Event("change", { bubbles: true }));
+            }
+            const btns = Array.from(document.querySelectorAll("button"));
+            const b = btns.find((x) => /ingresar|entrar|continuar/i.test(x.textContent || "") && x.offsetParent !== null);
+            if (b) b.click();
+          });
+          await page.waitForURL("**/vendor/dashboard**", { timeout: 15000 });
+          try {
+            await page.waitForFunction(
+              () => /Disponibles|Mis entregas|Sin pedidos|Tomar pedido/i.test(document.body.innerText),
+              { timeout: 15000 }
+            );
+          } catch {}
+          await page.waitForTimeout(1500);
+          await snap(page, flow.slug, vp);
+          continue;
+        }
+        if (flow.vincular) {
+          // Página de vinculación con código, sin login
+          await page.goto(`${BASE}/vincular?code=${flow.vincular}`, { waitUntil: "networkidle", timeout: 30000 });
+          await page.waitForTimeout(1500);
+          await snap(page, flow.slug, vp);
+          continue;
+        }
         await page.goto(`${BASE}/`, { waitUntil: "domcontentloaded", timeout: 30000 });
         await page.goto(`${BASE}/vendor/dashboard`, { waitUntil: "networkidle", timeout: 30000 });
         await page.waitForTimeout(1500);
@@ -145,6 +216,76 @@ async function main() {
           await goConfigSection(page, flow.config, isMobile);
         } else if (flow.tab) {
           await goTab(page, flow.tab, isMobile);
+        }
+
+        if (flow.pedidoSent) {
+          // Abrir el detalle del pedido delivery en camino (sent)
+          await goTab(page, "Pedidos", isMobile);
+          // Verificar que caímos en Pedidos; si no, clickear el item del sidebar
+          const onPedidos = await page.evaluate(() =>
+            /Buscar nombre|En camino|Por aceptar/i.test(document.body.innerText)
+          );
+          if (!onPedidos) {
+            const side = page.locator("aside").locator("button", { hasText: "Pedidos" }).first();
+            if ((await side.count()) > 0) await side.click({ timeout: 8000 });
+            else {
+              const anyNav = page.locator("nav").locator("button", { hasText: /^Pedidos/ }).first();
+              if ((await anyNav.count()) > 0) await anyNav.click({ timeout: 8000 });
+            }
+            await page.waitForTimeout(1500);
+          }
+          try {
+            await page.waitForFunction(() => /En camino/i.test(document.body.innerText), { timeout: 12000 });
+          } catch {}
+          await page.waitForTimeout(800);
+          const opened = await page.evaluate(() => {
+            // 1) "Ver detalle →" dentro de la tarjeta de María Vecina
+            // 2) si no hay, la tarjeta clickeable (cursor pointer)
+            const all = Array.from(document.querySelectorAll("*"));
+            const nameEl = all.find(
+              (el) => el.childElementCount === 0 && (el.textContent || "").trim() === "María Vecina"
+            );
+            if (!nameEl) return false;
+            // Ancestro MÁS CHICO con "Ver detalle →" que NO contenga otro pedido
+            let link = null;
+            let el = nameEl.parentElement;
+            for (let i = 0; i < 8 && el && el.tagName !== "BODY" && !link; i++) {
+              const links = Array.from(el.querySelectorAll("*")).filter(
+                (x) => (x.textContent || "").trim() === "Ver detalle →" && x.offsetParent !== null
+              );
+              if (links.length > 0 && !/Pedro Vecino/.test(el.textContent || "")) link = links[0];
+              el = el.parentElement;
+            }
+            if (link) {
+              link.scrollIntoView({ block: "center" });
+              link.click();
+              return true;
+            }
+            let card = nameEl.parentElement;
+            for (let i = 0; i < 10 && card && card.tagName !== "BODY"; i++) {
+              if (card.offsetParent !== null && getComputedStyle(card).cursor === "pointer") {
+                card.scrollIntoView({ block: "center" });
+                card.click();
+                return true;
+              }
+              card = card.parentElement;
+            }
+            return false;
+          });
+          console.log(`  pedido sent: ${opened ? "abierto" : "NO ENCONTRADO"}`);
+          await page.waitForTimeout(2500);
+          // Scrollear al mapa/reparto dentro del modal
+          await page.evaluate(() => {
+            const els = Array.from(document.querySelectorAll("h1,h2,h3,p,span,div"));
+            const t = els.find(
+              (x) => /Reparto en curso|repartidor|Asignado|Compartiendo/i.test(x.textContent || "") && x.offsetParent !== null
+            );
+            if (t) {
+              t.scrollIntoView({ block: "center" });
+              window.scrollBy(0, -80);
+            }
+          });
+          await page.waitForTimeout(500);
         }
 
         if (flow.nuevo) {

@@ -1220,8 +1220,8 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
           />
         )}
       </ConfigSection>
-      <ConfigSaveBar saving={saving || uploading} onDiscard={() => { setMsg(""); reload(); }} />
       </ConfigSections>
+      <ConfigSaveBar saving={saving || uploading} onDiscard={() => { setMsg(""); reload(); }} />
       </form>
       </>
       )}

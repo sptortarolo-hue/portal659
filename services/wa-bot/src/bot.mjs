@@ -1059,9 +1059,20 @@ async function handleConcierge({ vendor, text, state, replies, waId }) {
     return;
   }
 
+  // El pedido armado por la app/página web: el mensaje con productos del menú
+  // (o un pedido reciente en el teléfono) NO recibe respuesta. El cliente pidió
+  // online sin iniciar una conversación → el canal queda abierto para los
+  // eventos del pedido (aceptación, en camino, listo, datos de pago) que la app
+  // manda. ANTES del saludo: si el primer texto ya era pedido, no responde.
+  const products = await getMenu(vendor.id).catch(() => []);
+  const mentionsProduct = Array.isArray(products) && products.length > 0 && extractFromText(text, products).length > 0;
+  const hasOrder = await latestOrderFor(vendor.id, state.customerPhone || waId);
+  if (mentionsProduct || hasOrder) {
+    return;
+  }
+
   // El primer mensaje de la conversación → saludo (abierto/cerrado) + menú
-  // online + el tope de "ayuda" para hablar con persona. Siempre — aunque el
-  // cliente arranque sin saludar: el encabezado es la oferta del comercio.
+  // online + el tope de "ayuda" para hablar con persona.
   if (!state.welcomed) {
     state.welcomed = true;
     state.step = "idle";
@@ -1081,17 +1092,6 @@ async function handleConcierge({ vendor, text, state, replies, waId }) {
       `📲 Mirá el menú online:\n${shopUrl(vendor)}`,
       `🙌 Si querés hablar con una persona, escribime *ayuda* en cualquier momento.`,
     ].join("\n\n"));
-    return;
-  }
-
-  // El pedido armado por la app/página web: el mensaje con productos (o pedido
-  // reciente del teléfono) NO recibe respuesta. El cliente pidió online sin
-  // iniciar una conversación → el canal queda abierto para los eventos del
-  // pedido (aceptación, en camino, listo, datos de pago) que la app manda.
-  const products = await getMenu(vendor.id).catch(() => []);
-  const mentionsProduct = Array.isArray(products) && products.length > 0 && extractFromText(text, products).length > 0;
-  const hasOrder = await latestOrderFor(vendor.id, state.customerPhone || waId);
-  if (mentionsProduct || hasOrder) {
     return;
   }
 

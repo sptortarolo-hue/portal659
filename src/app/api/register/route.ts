@@ -6,7 +6,7 @@ import { getSiteUrl } from "@/lib/site-url";
 import { createHash, randomBytes } from "crypto";
 import { checkArgPhone, toE164Plus } from "@/lib/phone";
 
-const TIPOS = ["gastronomia", "comercio", "servicio", "moda", "salud", "estetica", "otro"] as const;
+const TIPOS = ["gastronomia", "comercio", "servicio", "moda", "estetica", "otro"] as const;
 
 export async function POST(request: Request) {
   const { email, password, firstName, lastName, storeName, whatsapp, tipo } = await request.json();
@@ -40,7 +40,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Ingresá el nombre del local comercial" }, { status: 400 });
   }
 
-  const selected = TIPOS.includes(tipo) ? tipo : "gastronomia";
+  // "salud" legacy (ya no se ofrece): va a comercio, que es su modelo real.
+  const normalized = tipo === "salud" ? "comercio" : tipo;
+  const selected = (TIPOS as readonly string[]).includes(normalized) ? normalized : "gastronomia";
   const passwordHash = await hashPassword(password);
 
   const confirmToken = randomBytes(32).toString("hex");

@@ -103,7 +103,7 @@ export async function GET() {
     {
       email: "vendedor8@test.com", password: "test123456", full_name: "Farmacia del Barrio",
       phone: "2215550108", store_name: "Farmacia Sicardi", slug: "farmacia-sicardi",
-      category: "farmacia", vertical: "salud", whatsapp: "5492215550108", neighborhood: "sicardi",
+      category: "farmacia", vertical: "comercio", whatsapp: "5492215550108", neighborhood: "sicardi",
       address: "Calle 48 y 22, Sicardi", hours: "Lun a Dom · 8:00 a 22:00",
       description: "Farmacia de barrio con delivery sin cargo en la zona.",
       payment_methods: "Efectivo, Débito, Mercado Pago", delivery_options: "ambos",

@@ -12,11 +12,10 @@ import { checkArgPhone, toE164Plus } from "@/lib/phone";
 
 const TIPO_OPTIONS = [
   { value: "gastronomia", label: "Gastronomía (rotisería, pizzas, comida casera)" },
-  { value: "comercio", label: "Comercio del barrio (almacén, verdulería, carnicería, kiosco, librería, ferretería, floristería, pet shop, veterinaria)" },
+  { value: "comercio", label: "Comercio del barrio (almacén, farmacia, dietética, perfumería, kiosco, pet shop, veterinaria)" },
   { value: "servicio", label: "Servicio u oficio (electricista, plomero, jardinería)" },
   { value: "moda", label: "Ropa y accesorios (indumentaria, calzado, bijouterie)" },
-  { value: "salud", label: "Salud y bienestar (farmacia, peluquería, estética)" },
-  { value: "estetica", label: "Estética y belleza (uñas, pestañas, cejas, masajes)" },
+  { value: "estetica", label: "Estética y belleza (uñas, pestañas, cejas, masajes, peluquería)" },
   { value: "otro", label: "Otro" },
 ] as const;
 

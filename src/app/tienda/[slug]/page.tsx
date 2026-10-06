@@ -37,6 +37,7 @@ import { VisitBeacon } from "@/components/store/visit-beacon";
 import { PreviewSessionSync } from "@/components/store/preview-session-sync";
 import { canPreviewVendor, getPreviewActor, isServingPreview } from "@/lib/preview";
 import { discountOf } from "@/lib/promo";
+import { breadcrumbJsonLd, neighborhoodLabel, vendorJsonLd, verticalSeoName } from "@/lib/json-ld";
 import type { Metadata } from "next";
 
 export const dynamic = "force-dynamic";
@@ -81,8 +82,15 @@ export async function generateMetadata({
 
   if (!vendor) return {};
 
-  const title = `${vendor.store_name} — Portal 659`;
-  const description = vendor.description || `${vendor.store_name} en ${vendor.neighborhood || "tu barrio"}. Pedí por WhatsApp o delivery.`;
+  // Título con keywords: "{Nombre} — Rubro en Barrio | Portal 659". El rubro
+  // (category del vendor o nombre del vertical) y el barrio son las búsquedas
+  // objetivo ("kiosco Sicardi", "rotisería Garibaldi").
+  const hood = neighborhoodLabel(vendor.neighborhood) || "tu barrio";
+  const rubro = vendor.category || verticalSeoName(vendor.vertical);
+  const title = `${vendor.store_name} — ${rubro} en ${hood} | Portal 659`;
+  const description =
+    vendor.description?.slice(0, 155) ||
+    `${vendor.store_name}: ${rubro.toLowerCase()} en ${hood}, La Plata. Mirá el catálogo y pedí online o contactá directo por WhatsApp — 0% comisión.`;
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://www.portal659.com.ar";
   // Tarjeta generada (banner + logo + leyenda) para que WhatsApp la muestre al pegar el link.
   // En preview se propaga el token para que la imagen también salga.
@@ -97,9 +105,12 @@ export async function generateMetadata({
     description,
     // El modo prueba nunca se indexa.
     ...(preview ? { robots: { index: false, follow: false } } : {}),
+    // Canonical sin ?preview: consolida señales en la URL pública.
+    alternates: { canonical: `/tienda/${slug}` },
     openGraph: {
       title,
       description,
+      url: `${siteUrl}/tienda/${slug}`,
       images: [{ url: shareImage, width: 1200, height: 630 }],
       type: "website",
     },
@@ -536,17 +547,17 @@ export default async function TiendaPage({
     : null;
 
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://www.portal659.com.ar";
-  const jsonLd = {
-    "@context": "https://schema.org",
-    "@type": "LocalBusiness",
-    name: v.store_name,
-    url: `${siteUrl}/tienda/${v.slug}`,
-    image: v.image_url || v.logo_url || undefined,
-    ...(v.address ? { address: { "@type": "PostalAddress", streetAddress: v.address, addressLocality: "Sicardi, La Plata" } } : {}),
-    ...(v.whatsapp ? { telephone: v.whatsapp } : {}),
-    ...(avgRating != null ? { aggregateRating: { "@type": "AggregateRating", ratingValue: Number(avgRating.toFixed(1)), reviewCount } } : {}),
-    ...(v.instagram ? { sameAs: [v.instagram.startsWith("http") ? v.instagram : `https://instagram.com/${v.instagram.replace("@", "")}`] } : {}),
-  };
+  const hood = neighborhoodLabel(v.neighborhood);
+  const jsonLd = [
+    // Negocio local: tipo por vertical, dirección real, geo, horarios, rating.
+    vendorJsonLd({ siteUrl, vendor: v, avgRating, reviewCount }),
+    // Migas de pan (Inicio › rubro › comercio) para el resultado en Google.
+    breadcrumbJsonLd([
+      { name: "Inicio", url: siteUrl },
+      { name: hood ? `${verticalSeoName(v.vertical)} en ${hood}` : "Comercios", url: hood ? `${siteUrl}/buscar?vertical=${encodeURIComponent(v.vertical || "")}` : `${siteUrl}/buscar` },
+      { name: v.store_name, url: `${siteUrl}/tienda/${v.slug}` },
+    ]),
+  ];
 
   return (
     <main className="pb-28 overflow-x-clip">

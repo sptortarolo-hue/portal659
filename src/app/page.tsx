@@ -8,6 +8,7 @@ import { HorizontalCarousel } from "@/components/ui/horizontal-carousel";
 import { VendorCard } from "@/components/store/vendor-card";
 import { MostOrderedSection } from "@/components/home/most-ordered-section";
 import { OpenNowSection } from "@/components/home/open-now-section";
+import { itemListJsonLd, organizationJsonLd, websiteJsonLd } from "@/lib/json-ld";
 import type { Vendor, Plan, Product } from "@/types/database";
 
 type OfferWithVendor = Product & {
@@ -16,10 +17,13 @@ type OfferWithVendor = Product & {
 
 export const dynamic = "force-dynamic";
 
+// Zona activa única (Sicardi y Garibaldi): el título menciona el barrio
+// explícito porque es la búsqueda objetivo ("comercios/kioscos en Sicardi").
 export const metadata = {
-  title: "Portal 659 — El centro comercial de tu barrio",
+  title: "Portal 659 — Comercios, kioscos y delivery en Sicardi y Garibaldi",
   description:
-    "Comercios de Sicardi y Garibaldi en una sola pantalla: gastronomía, almacenes, moda y servicios. Pedí por WhatsApp directo y 0% comisión. Descubrí la oferta de hoy y la info del barrio.",
+    "Comercios de Sicardi y Garibaldi (La Plata) en una sola pantalla: kioscos, almacenes, gastronomía, moda y servicios. Pedí online o por WhatsApp directo, 0% comisión. Ofertas de hoy e info del barrio.",
+  alternates: { canonical: "/" },
 };
 
 export default async function HomePage() {
@@ -71,8 +75,21 @@ export default async function HomePage() {
   const onlineByVendor: Record<string, boolean> = {};
   for (const v of vendors || []) onlineByVendor[v.id] = vendorSellsOnline(v, plans || []);
 
+  const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || "https://www.portal659.com.ar").replace(/\/$/, "");
+  const jsonLd = [
+    websiteJsonLd(siteUrl),
+    organizationJsonLd(siteUrl),
+    itemListJsonLd(
+      (vendors || []).slice(0, 30).map((v) => ({ name: v.store_name, url: `${siteUrl}/tienda/${v.slug}` }))
+    ),
+  ];
+
   return (
     <main>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
       {/* Hero corto: buscador + zone */}
       <section className="relative overflow-hidden bg-gradient-to-br from-primary via-primary/90 to-primary">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(163,230,53,0.15),transparent_50%)]" />
@@ -280,10 +297,10 @@ export default async function HomePage() {
               Para comercios
             </p>
             <h2 className="font-display text-2xl sm:text-3xl font-semibold text-white max-w-2xl mx-auto">
-              ¿Tenés un comercio en el barrio? Sumalo gratis
+              ¿Tenés un comercio? Hacelo trabajar mejor
             </h2>
             <p className="mt-3 text-sm sm:text-base text-white/80 max-w-xl mx-auto">
-              Tu micrositio con QR en minutos — catálogo, pedidos y WhatsApp directo. 0% comisión, sin letra chica.
+              Pedidos ordenados, catálogo, QR y WhatsApp directo. Empezá gratis, 0% comisión.
             </p>
             <div className="mt-6 flex flex-col sm:flex-row items-center justify-center gap-3">
               <Link

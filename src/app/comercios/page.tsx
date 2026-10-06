@@ -10,9 +10,21 @@ import type { Plan, Vendor } from "@/types/database";
 export const dynamic = "force-dynamic";
 
 export const metadata = {
-  title: "Sumá tu comercio u oficio al barrio, 0% comisión — Portal 659",
+  title: "¿Cuánto tiempo perdés organizando pedidos? Trabajá mejor — 0% comisión | Portal 659",
   description:
-    "Mostrá tu comercio u oficio en Portal 659, el centro comercial de tu barrio: catálogo con QR, pedidos por app o WhatsApp, mostrador, mesas y facturación. Empezá gratis, 0% comisión por venta para siempre.",
+    "Portal 659 hace que tu comercio trabaje mejor: el cliente arma el pedido y vos lo recibís ordenado y listo para preparar en tu WhatsApp. Catálogo con QR, mostrador (POS), comanda digital, caja, impresión de tickets, turnera y cobros. Empezá gratis y 0% comisión por venta, para siempre.",
+  keywords: [
+    "sistema de gestión para comercios",
+    "sistema para kiosco",
+    "POS comercio de barrio",
+    "carta QR",
+    "comanda digital",
+    "turnera online estética",
+    "vender online barrio",
+    "Sicardi",
+    "Garibaldi",
+  ],
+  alternates: { canonical: "/comercios" },
 };
 
 const VERTICAL_OFFERS = [
@@ -70,7 +82,7 @@ const HOW_IT_WORKS = [
   {
     step: "1",
     title: "Creás tu cuenta",
-    desc: "Elegís tu rubro y cargás tus datos, solo y sin instalar nada. En dos minutos ya tenés tu vidriera online.",
+    desc: "Elegís tu rubro y cargás tus datos, solo y sin instalar nada. En dos minutos ya estás vendiendo.",
   },
   {
     step: "2",
@@ -80,40 +92,40 @@ const HOW_IT_WORKS = [
   {
     step: "3",
     title: "Compartís tu QR",
-    desc: "Lo pegás en tu local o lo mandás por WhatsApp. Tus vecinos te encuentran y te piden directo.",
+    desc: "Lo pegás en tu local o lo mandás por WhatsApp. Cada pedido te llega ordenado, listo para preparar.",
   },
 ] as const;
 
 const BENEFITS = [
+  {
+    icon: "📲",
+    title: "El pedido llega ordenado",
+    desc: "El cliente arma su pedido con cantidades, opciones y dirección. Vos lo recibís listo para preparar: se acabó el ida y vuelta de mensajes.",
+  },
+  {
+    icon: "🧾",
+    title: "Herramientas para trabajar mejor",
+    desc: "Mostrador, Caja, clientes, impresión de tickets y cobros. Gastronomía suma comanda digital, mesas y estadísticas.",
+  },
+  {
+    icon: "💬",
+    title: "Tu WhatsApp de siempre",
+    desc: "Sin intermediarios ni otra app que aprender: todo cae en el WhatsApp que ya usás, sin comisión por venta.",
+  },
   {
     icon: "💸",
     title: "0% comisión, la plata es tuya",
     desc: "Cobrá en efectivo, transferencia o Mercado Pago directo en tu cuenta. Nunca un porcentaje de tus ventas.",
   },
   {
-    icon: "💬",
-    title: "Contacto Directo",
-    desc: "Recibís los pedidos y consultas directo en tu WhatsApp. Sin intermediarios.",
-  },
-  {
-    icon: "📱",
-    title: "Tu Vidriera en el Barrio",
-    desc: "Aparecés en el celular de tus vecinos junto a otros comercios de tu zona. Más visibilidad, más ventas.",
-  },
-  {
-    icon: "🛒",
-    title: "Autogestión del Cliente",
-    desc: "El cliente arma su pedido, elige talle o variante, y vos lo recibís listo para preparar o entregar.",
-  },
-  {
-    icon: "🧾",
-    title: "Herramientas de Gestión",
-    desc: "Mostrador, Caja, CRM de clientes, impresoras térmicas y facturación electrónica para profesionalizar tu negocio.",
-  },
-  {
     icon: "📊",
-    title: "Estadísticas y Reseñas",
+    title: "Controlá tu negocio",
     desc: "Sabés qué es lo que más se vende y qué opinan tus clientes para seguir mejorando.",
+  },
+  {
+    icon: "🌐",
+    title: "Y además, quedás visible",
+    desc: "Tu comercio publicado en el celular de tus vecinos, junto a los demás locales del barrio. Más visibilidad, más ventas.",
   },
 ] as const;
 
@@ -134,10 +146,10 @@ const FAQS = [
     q: "¿Puedo pausar pedidos o la venta online?",
     a: "Sí, con un solo toque en tu panel: apagás la venta y la carta queda visible como vidriera (cada producto pasa a 'Consultar por WhatsApp'). Nada se despublica.",
   },
-  {
-    q: "Ya uso WhatsApp, ¿para qué la app?",
-    a: "Porque con Portal 659 el pedido llega armado (detalle, cantidades, opciones y dirección), tu carta queda publicada y actualizada siempre, y tenés QR, comanda y estadísticas. Tu WhatsApp sigue siendo el mismo.",
-  },
+    {
+      q: "Ya uso WhatsApp, ¿para qué la app?",
+      a: "Porque con Portal 659 el pedido llega armado (detalle, cantidades, opciones y dirección) en vez de una catarata de mensajes, tu carta queda publicada y actualizada siempre, y tenés QR, comanda y estadísticas. No es otra herramienta para aprender: es tu WhatsApp de siempre, pero sin el desorden.",
+    },
   {
     q: "¿Cobran comisión como las apps de delivery?",
     a: "No, nunca. Ni en el plan gratis ni en los pagos: 0% de comisión por venta, para siempre. Solo pagás la herramienta si elegís un plan pago.",
@@ -177,13 +189,13 @@ export default async function ComerciosLanding() {
             Para comercios · {zone.name}
           </p>
            <h1 className="font-display text-3xl sm:text-5xl font-semibold text-white leading-tight">
-              ¿Tenés un comercio u oficio en el barrio?
-              <span className="block text-sun">Vendé sin pagar comisión.</span>
+              ¿Cuánto tiempo perdés todos los días organizando pedidos?
+              <span className="block text-sun">Portal 659 hace que tu comercio trabaje mejor.</span>
             </h1>
             <p className="mt-4 text-sm sm:text-base text-white/85 max-w-xl mx-auto">
-              Portal 659 es el centro comercial de {zone.name}. Tu catálogo
-              con QR en el celular de tus vecinos, pedidos por app o WhatsApp y
-              herramientas de gestión. <strong className="text-white">0% de comisión por venta, para siempre.</strong>
+              Vendé. Organizá. Controlá. Crecé. El cliente arma el pedido con
+              cantidades y opciones y vos lo recibís <strong className="text-white">ordenado y listo para preparar</strong>,
+              directo en tu WhatsApp. <strong className="text-white">0% de comisión por venta, para siempre.</strong>
             </p>
           <div className="mt-6 flex flex-col sm:flex-row items-center justify-center gap-3">
             <Link
@@ -200,9 +212,10 @@ export default async function ComerciosLanding() {
             </a>
           </div>
           <div className="mt-6 flex flex-wrap items-center justify-center gap-2 text-[11px] text-white/80">
-            <span className="rounded-full bg-sun/20 border border-sun/40 text-sun px-3 py-1 font-bold">0% comisión, la plata es tuya</span>
+            <span className="rounded-full bg-sun/20 border border-sun/40 text-sun px-3 py-1 font-bold">El pedido llega ordenado</span>
             <span className="rounded-full bg-white/10 px-3 py-1">Sin instalar nada</span>
-            <span className="rounded-full bg-white/10 px-3 py-1">En 10 minutos estás online</span>
+            <span className="rounded-full bg-white/10 px-3 py-1">En 10 minutos estás trabajando</span>
+            <span className="rounded-full bg-white/10 px-3 py-1">0% comisión</span>
           </div>
         </div>
       </section>
@@ -251,9 +264,9 @@ export default async function ComerciosLanding() {
 
       {/* Beneficios */}
       <section className="container mx-auto px-4 py-10 max-w-4xl">
-        <h2 className="font-display text-2xl sm:text-3xl font-semibold text-center mb-8">
-          Todo lo que te llevás
-        </h2>
+          <h2 className="font-display text-2xl sm:text-3xl font-semibold text-center mb-8">
+            No es solo para mostrar tu negocio. Es para ayudarte a manejarlo.
+          </h2>
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {BENEFITS.map((b) => (
             <div key={b.title} className="rounded-2xl border border-border bg-card p-5">
@@ -396,7 +409,7 @@ export default async function ComerciosLanding() {
               Empezá gratis hoy, sin comisión
             </h2>
             <p className="mt-2 text-sm text-white/85 max-w-md mx-auto">
-              Escaneá el código o apretá el botón. Tu comercio online en minutos, 0% por venta.
+              Escaneá el código o apretá el botón. En minutos estás trabajando mejor, 0% por venta.
             </p>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
@@ -413,7 +426,8 @@ export default async function ComerciosLanding() {
               </Link>
             </div>
             <p className="mt-4 text-[11px] text-white/60">
-              ¿Preferís mirar primero? Entrá a <Link href="/" className="underline">portal659.com.ar</Link> y mirá los comercios del barrio.
+              ¿Preferís hablar? Escribinos por WhatsApp al 221 201-0898. O mirá primero los comercios en{" "}
+              <Link href="/" className="underline">portal659.com.ar</Link>.
             </p>
           </div>
         </div>

@@ -62,6 +62,32 @@ Todo el texto de abajo está listo para copiar y pegar. Adaptá los nombres de c
 >
 > Escaneá el QR → portal659.com.ar
 
+## Folleto para comercios (una cara general — enfoque herramienta de trabajo)
+
+> ¿CUÁNTO TIEMPO PERDÉS TODOS LOS DÍAS ORGANIZANDO PEDIDOS?
+>
+> **Portal 659 hace que tu comercio trabaje mejor.**
+> Vendé. Organizá. Controlá. Crecé.
+>
+> Con Portal 659 tenés:
+> 🌐 **Tu comercio online** — Tu propia vidriera dentro del Portal.
+> 🛍️ **Catálogo y menú digital** — Tus productos, precios, fotos y opciones siempre disponibles.
+> 📲 **Pedidos online** — El cliente arma el pedido y vos lo recibís ordenado y listo para preparar.
+> 📱 **WhatsApp integrado** — El pedido llega al WhatsApp de siempre, sin intermediarios ni comisión por venta.
+>
+> **Y además, gestioná tu negocio** (según tu rubro):
+> Comanda digital · Mostrador · Mesas · Impresión · Cobros · Estadísticas.
+> Todo desde el celular o la PC.
+>
+> **NO ES SOLO PARA MOSTRAR TU NEGOCIO. ES PARA AYUDARTE A MANEJARLO.**
+>
+> Probalo. Empezá gratis.
+> 📲 221 201-0898
+> 🌐 www.portal659.com.ar
+>
+> *Portal 659 — El centro comercial del barrio, en tu pantalla.*
+> *No te damos otra herramienta para usar. Te damos una herramienta para trabajar mejor.*
+
 ## Stickers con QR
 
 - QR grande (a la home `https://www.portal659.com.ar`) para pegar en la caja / puerta del local.

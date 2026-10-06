@@ -42,7 +42,6 @@ const VERTICAL_OPTIONS = [
   { value: "comercio", label: "Comercio del barrio" },
   { value: "servicio", label: "Servicio u oficio" },
   { value: "moda", label: "Ropa y accesorios" },
-  { value: "salud", label: "Salud y bienestar (farmacia, peluquería)" },
   { value: "estetica", label: "Estética y belleza (uñas, pestañas, cejas, masajes)" },
   { value: "otro", label: "Otro" },
 ] as const;

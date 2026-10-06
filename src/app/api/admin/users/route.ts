@@ -82,6 +82,8 @@ export async function POST(request: Request) {
   const passwordHash = await hashPassword(password);
   const fullName = `${firstName} ${lastName}`;
 
+  // "salud" legacy: los nuevos van a comercio (su modelo real).
+  const safeVertical = vertical === "salud" ? "comercio" : vertical;
   const user = await withTransaction(async (tx) => {
     const created = await tx.queryOne<{ id: string; email: string }>(
       `INSERT INTO profiles (email, password_hash, full_name, whatsapp, role, email_confirmed)
@@ -94,7 +96,7 @@ export async function POST(request: Request) {
     await tx.queryVoid(
       `INSERT INTO vendors (user_id, store_name, vertical, verified, is_admin)
        VALUES ($1, $2, $3, true, false)`,
-      [created.id, firstName, vertical || "gastronomia"]
+      [created.id, firstName, safeVertical || "gastronomia"]
     );
     return created;
   });
@@ -133,7 +135,7 @@ export async function PATCH(request: Request) {
     if (vertical !== undefined) {
       await tx.queryVoid(
         `UPDATE vendors SET vertical = $2 WHERE user_id = $1`,
-        [userId, vertical]
+        [userId, vertical === "salud" ? "comercio" : vertical]
       );
     }
   });

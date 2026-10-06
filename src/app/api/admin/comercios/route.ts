@@ -83,6 +83,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "store_name es requerido" }, { status: 400 });
   }
 
+  // Whitelist de verticales ("salud" legacy va a comercio, su modelo real).
+  const VALID_VERTICALS = ["gastronomia", "comercio", "servicio", "moda", "estetica", "otro"];
+  const safeVertical = vertical === "salud" ? "comercio" : vertical;
+  const resolvedVertical = VALID_VERTICALS.includes(safeVertical) ? safeVertical : "gastronomia";
+
   const vendor = await queryOne<Record<string, unknown>>(
     `INSERT INTO vendors (
        user_id, store_name, slug, vertical, neighborhood,
@@ -93,7 +98,7 @@ export async function POST(request: Request) {
       user_id || null,
       store_name,
       slug || store_name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, ""),
-      vertical || "gastronomia",
+      resolvedVertical,
       neighborhood || "sicardi",
       description || "",
       phone || "",
@@ -105,7 +110,7 @@ export async function POST(request: Request) {
   );
 
   if (vendor) {
-    await seedDefaultCategories(vendor.id as string, vertical || "gastronomia");
+    await seedDefaultCategories(vendor.id as string, resolvedVertical);
   }
 
   return NextResponse.json({ vendor });

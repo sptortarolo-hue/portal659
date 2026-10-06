@@ -118,6 +118,8 @@ export async function PATCH(
   for (const k of Object.keys(body)) {
     if (allowed.includes(k)) clean[k] = body[k];
   }
+  // "salud" legacy va a comercio (su modelo real).
+  if (clean.vertical === "salud") clean.vertical = "comercio";
   const cols = Object.keys(clean);
   if (cols.length === 0) return NextResponse.json({ ok: true });
   await query(`UPDATE vendors SET ${buildSetClauses(clean)} WHERE id = $1`, buildValues(id, clean));

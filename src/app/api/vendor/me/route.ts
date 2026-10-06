@@ -168,8 +168,11 @@ export async function POST(request: Request) {
   }
 
   const VALID_VERTICALS = ["gastronomia", "comercio", "servicio", "moda", "salud", "estetica", "otro"];
-  const resolvedVertical = VALID_VERTICALS.includes(vertical)
-    ? vertical
+  // "salud" legacy: lo nuevo va a comercio (su modelo real); lo existente se
+  // conserva tal cual (no se toca si el vendor ya es salud).
+  const normalizedVertical = vertical === "salud" ? "comercio" : vertical;
+  const resolvedVertical = VALID_VERTICALS.includes(normalizedVertical)
+    ? normalizedVertical
     : "gastronomia";
 
   const { vendor: existing } = await getVendorByRequest(request);

@@ -988,7 +988,6 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
               <option value="gastronomia">Gastronomía</option>
               <option value="comercio">Comercio del barrio</option>
               <option value="moda">Ropa y accesorios</option>
-              <option value="salud">Salud y bienestar</option>
               <option value="otro">Otro</option>
             </select>
             {storeVertical !== (vendor?.vertical || "servicio") && (

@@ -1825,6 +1825,7 @@ function VendorDashboardInner() {
                     vendorId={vendor?.id}
                     vendorLogo={vendor?.logo_url || null}
                     vendorName={vendor?.store_name || null}
+                    productImages={productImages}
                   />
                   </TabErrorBoundary>
                 ) : (

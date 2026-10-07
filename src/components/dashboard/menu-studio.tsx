@@ -77,6 +77,8 @@ type Props = {
   canEditCost?: boolean;
   /** Para el borrador del formulario (24h). */
   vendorId?: string | null;
+  /** Todas las fotos extra (portada + extras del micrositio). Solo lectura para precarga. */
+  productImages?: { product_id: string; image_url: string; color?: string | null }[];
   /** Muestra el Kit heladería en la solapa Opciones (solo gastronomía). */
   enableHeladeriaKit?: boolean;
   /** Logo del comercio (vista previa de etiquetas de góndola). */
@@ -218,7 +220,11 @@ export function MenuStudio({
   vendorId = null,
   vendorLogo = null,
   vendorName = null,
+  productImages = [],
 }: Props) {
+  // Galería simple: portada + hasta 3 extras (sin color, a diferencia de moda).
+  const MAX_EXTRA_IMAGES = 3;
+  const [galleryUrls, setGalleryUrls] = useState<{ url: string }[]>([]);
   const [view, setView] = useState<View>("productos");
   const [showImport, setShowImport] = useState(false);
   const [showImportWa, setShowImportWa] = useState(false);
@@ -357,10 +363,61 @@ export function MenuStudio({
     setOffSku("");
     setOffRemotePhoto(null);
     setOffCost("");
+    setGalleryUrls([]);
+  }
+
+  const imagesByProduct = useCallback(() => {
+    const map: Record<string, { url: string }[]> = {};
+    for (const pi of productImages || []) {
+      if (!map[pi.product_id]) map[pi.product_id] = [];
+      map[pi.product_id].push({ url: pi.image_url });
+    }
+    return map;
+  }, [productImages]);
+
+  async function handleGalleryUpload(files: FileList | null) {
+    if (!files) return;
+    const room = MAX_EXTRA_IMAGES - galleryUrls.length;
+    if (room <= 0) {
+      setMsg(`Máximo ${MAX_EXTRA_IMAGES} fotos extra (más la portada)`);
+      return;
+    }
+    const added: { url: string }[] = [];
+    for (const f of Array.from(files).slice(0, room)) {
+      const fd = new FormData();
+      fd.append("file", f);
+      fd.append("folder", "offers");
+      const upRes = await fetch("/api/vendor/upload", { method: "POST", body: fd });
+      const upData = await upRes.json().catch(() => ({ url: null }));
+      if (upData.url) added.push({ url: upData.url });
+    }
+    setGalleryUrls((prev) => [...prev, ...added].slice(0, MAX_EXTRA_IMAGES));
+    if (files.length > room) setMsg(`Se agregaron ${room}; máximo ${MAX_EXTRA_IMAGES} fotos extra`);
+  }
+
+  function moveGalleryUrl(i: number, dir: -1 | 1) {
+    setGalleryUrls((prev) => {
+      const j = i + dir;
+      if (j < 0 || j >= prev.length) return prev;
+      const next = [...prev];
+      [next[i], next[j]] = [next[j], next[i]];
+      return next;
+    });
+  }
+
+  function makeCoverFromGallery(i: number) {
+    setGalleryUrls((prev) => {
+      const item = prev[i];
+      if (!item) return prev;
+      setOffPreview(item.url);
+      setOffFile(null);
+      return prev.filter((_, idx) => idx !== i);
+    });
   }
 
   function startEdit(offer: Offer) {
     setEditingId(offer.id);
+    setGalleryUrls((imagesByProduct()[offer.id] || []).slice(0, MAX_EXTRA_IMAGES));
     setOffName(offer.name);
     setOffDesc(offer.description || "");
     setOffPrice(String(offer.price));
@@ -391,19 +448,21 @@ export function MenuStudio({
     offRequiresPrep: boolean; offCashExcluded: boolean; offPackSize: string;
     offUnit: string; offSku: string; offCost: string;
     offRemotePhoto: string | null; hadFile: boolean;
+    galleryUrls: { url: string }[];
   };
   const [photoNotice, setPhotoNotice] = useState(false);
   const menuDraft = useFormDraft<MenuDraft>({
     vendorId,
     key: "menu-studio",
-    watch: [showForm, editingId, offName, offDesc, offPrice, offCategory, offPreview, offStock, offStockControl, offPromoPrice, offStockLowThreshold, offRequiresPrep, offCashExcluded, offPackSize, offUnit, offSku, offCost, offRemotePhoto],
+    watch: [showForm, editingId, offName, offDesc, offPrice, offCategory, offPreview, offStock, offStockControl, offPromoPrice, offStockLowThreshold, offRequiresPrep, offCashExcluded, offPackSize, offUnit, offSku, offCost, offRemotePhoto, galleryUrls],
     snapshot: () => {
       if (!showForm) return null;
-      if (!editingId && !offName.trim() && !offPrice && !offDesc.trim()) return null;
+      if (!editingId && !offName.trim() && !offPrice && !offDesc.trim() && galleryUrls.length === 0) return null;
       return {
         editingId, offName, offDesc, offPrice, offCategory, offPreview, offStock,
         offStockControl, offPromoPrice, offStockLowThreshold, offRequiresPrep,
         offCashExcluded, offPackSize, offUnit, offSku, offCost, offRemotePhoto,
+        galleryUrls,
         hadFile: offFile != null,
       };
     },
@@ -427,6 +486,7 @@ export function MenuStudio({
       setOffSku(d.offSku || "");
       setOffCost(d.offCost || "");
       setOffRemotePhoto(d.offRemotePhoto || null);
+      if (Array.isArray(d.galleryUrls)) setGalleryUrls(d.galleryUrls.filter((g) => g && g.url).slice(0, MAX_EXTRA_IMAGES));
       setPhotoNotice(d.hadFile === true);
     },
     onRestored: () => setShowForm(true),
@@ -510,6 +570,15 @@ export function MenuStudio({
     } else {
       setMsg(editingId ? `${itemLabel} actualizado` : `${itemLabel} agregado`);
       menuDraft.clear();
+      // Galería extra (portada + hasta 3): reemplazo total por producto.
+      const savedId = editingId || data.offer?.id;
+      if (savedId) {
+        await fetch("/api/vendor/product-images", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ product_id: savedId, images: galleryUrls.slice(0, MAX_EXTRA_IMAGES).map((g) => ({ image_url: g.url, color: null })) }),
+        }).catch(() => {});
+      }
       if (!editingId && drawerOpen && data.offer?.id) {
         // Alta desde el drawer desktop: queda abierto en modo edición para
         // cargar opciones/preparación sin reabrir.
@@ -764,6 +833,40 @@ export function MenuStudio({
   );
 
   // Mobile (inline): form + modificadores debajo, como venía funcionando.
+  const galleryNode = (
+    <div>
+      <Label>Fotos extra ({galleryUrls.length}/{MAX_EXTRA_IMAGES}) — frente, opciones, variantes</Label>
+      <Input
+        type="file"
+        accept="image/*"
+        multiple
+        disabled={galleryUrls.length >= MAX_EXTRA_IMAGES}
+        onChange={(e) => { handleGalleryUpload(e.target.files); e.target.value = ""; }}
+      />
+      {galleryUrls.length > 0 && (
+        <div className="flex gap-2 mt-2 flex-wrap">
+          {galleryUrls.map((g, i) => (
+            <div key={`${g.url}-${i}`} className="relative h-16 w-16 rounded-lg overflow-hidden border border-border">
+              <ProductImage src={g.url} name={offName || "foto"} alt={offName || "foto"} className="w-full h-full object-cover" />
+              <button
+                type="button"
+                onClick={() => setGalleryUrls((prev) => prev.filter((_, idx) => idx !== i))}
+                title="Quitar"
+                className="absolute top-0 right-0 bg-black/60 text-white text-xs h-4 w-4 rounded-full"
+              >
+                ✕
+              </button>
+              <div className="absolute bottom-0 left-0 right-0 flex justify-center gap-1 bg-black/50">
+                <button type="button" disabled={i === 0} onClick={() => moveGalleryUrl(i, -1)} title="Mover antes" className="text-white text-[10px] px-1 disabled:opacity-30">◀</button>
+                <button type="button" onClick={() => makeCoverFromGallery(i)} title="Hacer portada" className="text-amber-300 text-[10px] px-1">★</button>
+                <button type="button" disabled={i === galleryUrls.length - 1} onClick={() => moveGalleryUrl(i, 1)} title="Mover después" className="text-white text-[10px] px-1 disabled:opacity-30">▶</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
   const offerFormInline = (
     <div className="space-y-3">
       {menuDraft.restored && (
@@ -779,6 +882,7 @@ export function MenuStudio({
         </div>
       )}
       {offerForm}
+      {galleryNode}
       {editingId && <ProductModifiersBlock productId={editingId} productName={offName} />}
     </div>
   );
@@ -1271,7 +1375,7 @@ export function MenuStudio({
               Descartar
             </button>
           </div>
-        )}{offerForm}</div>}
+        )}{offerForm}{galleryNode}</div>}
         opcionesNode={
           editingId ? <ProductModifiersBlock productId={editingId} productName={offName} /> : null
         }

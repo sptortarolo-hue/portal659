@@ -19,8 +19,12 @@ type ModifierPickerProps = {
   modifiers: ProductModifier[];
   productName: string;
   basePrice: number;
-  onConfirm: (selected: CartModifier[], finalPrice: number) => void;
+  onConfirm: (selected: CartModifier[], finalPrice: number, qty?: number) => void;
   onCancel: () => void;
+  /** Muestra stepper de cantidad en el footer (micrositio grilla). Default apagado. */
+  showQty?: boolean;
+  /** Tope del stepper (stock si hay control). Default 99. */
+  maxQty?: number;
 };
 
 export function ModifierPicker({
@@ -29,8 +33,11 @@ export function ModifierPicker({
   basePrice,
   onConfirm,
   onCancel,
+  showQty = false,
+  maxQty = 99,
 }: ModifierPickerProps) {
   const [selected, setSelected] = useState<Record<string, ModifierOption[]>>({});
+  const [qty, setQty] = useState(1);
   // Estado solo del modo hoja (grupos grandes): búsqueda + categoría + hint.
   const [queries, setQueries] = useState<Record<string, string>>({});
   const [cats, setCats] = useState<Record<string, string | null>>({});
@@ -77,7 +84,7 @@ export function ModifierPicker({
       }
     }
     const modTotal = flat.reduce((s, m) => s + m.price_mod, 0);
-    onConfirm(flat, basePrice + modTotal);
+    onConfirm(flat, basePrice + modTotal, showQty ? Math.max(1, Math.min(maxQty, qty)) : undefined);
   }
 
   const totalModPrice = Object.values(selected)
@@ -303,10 +310,33 @@ export function ModifierPicker({
             <div>
               <span className="text-sm text-muted-foreground">Total: </span>
               <span className="font-bold">
-                ${(basePrice + totalModPrice).toLocaleString("es-AR")}
+                ${((basePrice + totalModPrice) * (showQty ? qty : 1)).toLocaleString("es-AR")}
               </span>
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 items-center">
+              {showQty && (
+                <div className="flex items-center rounded-lg border border-border overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setQty((q) => Math.max(1, q - 1))}
+                    disabled={qty <= 1}
+                    className="h-8 w-8 flex items-center justify-center text-sm font-semibold hover:bg-muted disabled:opacity-30"
+                    aria-label="Menos cantidad"
+                  >
+                    −
+                  </button>
+                  <span className="w-8 text-center text-sm font-semibold tabular-nums">{qty}</span>
+                  <button
+                    type="button"
+                    onClick={() => setQty((q) => Math.min(maxQty, q + 1))}
+                    disabled={qty >= maxQty}
+                    className="h-8 w-8 flex items-center justify-center text-sm font-semibold hover:bg-muted disabled:opacity-30"
+                    aria-label="Más cantidad"
+                  >
+                    +
+                  </button>
+                </div>
+              )}
               <button
                 onClick={onCancel}
                 className="px-4 py-2 text-sm rounded-lg border border-border hover:bg-muted"

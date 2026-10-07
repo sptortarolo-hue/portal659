@@ -134,13 +134,20 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
   useEffect(() => {
     if (!open) return;
     const onPop = () => { setOpen(false); setActiveImg(0); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { setOpen(false); setActiveImg(0); }
+      else if (e.key === "ArrowLeft") { setActiveImg((i) => Math.max(0, i - 1)); }
+      else if (e.key === "ArrowRight") { setActiveImg((i) => Math.min(imgs.length - 1, i + 1)); }
+    };
     window.addEventListener("popstate", onPop);
+    window.addEventListener("keydown", onKey);
     history.pushState({ portal659Sheet: true }, "", window.location.href);
     return () => {
       window.removeEventListener("popstate", onPop);
+      window.removeEventListener("keydown", onKey);
       history.replaceState({}, "", window.location.href);
     };
-  }, [open]);
+  }, [open, imgs.length]);
 
   // Descuento en efectivo: sobre el mínimo del rango (o precio exacto).
   const cardHasPromo = hasVariants
@@ -264,6 +271,28 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
                     <span className="absolute bottom-2 right-2 rounded-full bg-black/60 text-white text-[11px] font-semibold px-2 py-0.5 tabular-nums">
                       {activeImg + 1} / {imgs.length}
                     </span>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); setActiveImg((i) => Math.max(0, i - 1)); }}
+                      disabled={activeImg <= 0}
+                      aria-label="Foto anterior"
+                      className="hidden sm:flex absolute left-2 top-1/2 -translate-y-1/2 h-9 w-9 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80 disabled:opacity-30"
+                    >
+                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                      </svg>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); setActiveImg((i) => Math.min(imgs.length - 1, i + 1)); }}
+                      disabled={activeImg >= imgs.length - 1}
+                      aria-label="Foto siguiente"
+                      className="hidden sm:flex absolute right-2 top-1/2 -translate-y-1/2 h-9 w-9 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80 disabled:opacity-30"
+                    >
+                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </button>
                     <span className="absolute bottom-2 left-0 right-0 flex justify-center gap-1">
                       {imgs.map((_, i) => (
                         <span key={i} className={`h-1.5 rounded-full transition-all ${i === activeImg ? "w-4 bg-white" : "w-1.5 bg-white/60"}`} />
@@ -340,7 +369,8 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
                   />
                 ) : (
                   <div className="space-y-3">
-                    <div className="flex items-center gap-3">
+                    {(modifiers?.length ?? 0) === 0 && (
+                      <div className="flex items-center gap-3">
                       <span className="text-xs font-medium text-muted-foreground">Cantidad</span>
                       <div className="flex items-center rounded-lg border border-border overflow-hidden">
                         <button
@@ -363,7 +393,8 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
                           +
                         </button>
                       </div>
-                    </div>
+                      </div>
+                    )}
                     <AddToCartButton
                       offerId={product.id}
                       name={product.name}
@@ -374,6 +405,8 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
                       image={cover}
                       qty={qty}
                       onAdded={closeSheet}
+                      showPickerQty={(modifiers?.length ?? 0) > 0}
+                      pickerMaxQty={maxQty}
                     />
                   </div>
                 )}

@@ -42,6 +42,10 @@ type AddToCartButtonProps = {
   qty?: number;
   /** Callback tras agregar (la ficha de grilla se cierra y vuelve al catálogo). */
   onAdded?: () => void;
+  /** Muestra stepper de cantidad dentro del picker de opciones. */
+  showPickerQty?: boolean;
+  /** Tope del stepper del picker (stock si hay control). */
+  pickerMaxQty?: number;
 };
 
 export function AddToCartButton({
@@ -58,6 +62,8 @@ export function AddToCartButton({
   image,
   qty,
   onAdded,
+  showPickerQty,
+  pickerMaxQty,
 }: AddToCartButtonProps) {
   const { addItem, items } = useCart();
   const { addToast } = useToast();
@@ -65,14 +71,14 @@ export function AddToCartButton({
   const [showPicker, setShowPicker] = useState(false);
 
   const doAdd = useCallback(
-    (mods?: CartModifier[]) => {
+    (mods?: CartModifier[], n?: number) => {
       const hasPack = packSize != null && packSize >= 2;
-      const n = hasPack ? packSize : Math.max(1, Math.floor(qty ?? 1));
+      const count = hasPack ? packSize : Math.max(1, Math.floor(n ?? qty ?? 1));
       const switched = addItem(vendor, {
         offerId,
         name,
         price,
-        qty: n,
+        qty: count,
         modifiers: mods,
         cashExcluded,
         origPrice,
@@ -84,7 +90,7 @@ export function AddToCartButton({
       if (switched) {
         addToast("Se limpió el carrito anterior (solo podés pedir de un local a la vez)");
       } else {
-        addToast(n > 1 ? `${n} × ${name} agregados al carrito` : `${name} agregado al carrito`);
+        addToast(count > 1 ? `${count} × ${name} agregados al carrito` : `${name} agregado al carrito`);
       }
       // Pack combinable: si el producto es miembro de un grupo multi y el pack
       // no estaba completo antes de este agregado, se abre el sheet (el host
@@ -140,11 +146,13 @@ export function AddToCartButton({
           modifiers={modifiers!}
           productName={name}
           basePrice={price}
-          onConfirm={(selected, _finalPrice) => {
-            doAdd(selected.length > 0 ? selected : undefined);
+          onConfirm={(selected, _finalPrice, pickerQty) => {
+            doAdd(selected.length > 0 ? selected : undefined, pickerQty);
             setShowPicker(false);
           }}
           onCancel={() => setShowPicker(false)}
+          showQty={showPickerQty}
+          maxQty={pickerMaxQty}
         />
       )}
     </>

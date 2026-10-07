@@ -243,7 +243,11 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
 
   // Desktop: fila compacta con botón directo (comportamiento actual).
   const desktopRow = (
-    <div className="hidden sm:block border border-border rounded-xl p-4 bg-card hover:shadow-md transition-shadow scroll-mt-24">
+    <div
+      onClick={openSheet}
+      title="Ver detalle"
+      className="hidden sm:block border border-border rounded-xl p-4 bg-card hover:shadow-md transition-shadow scroll-mt-24 cursor-pointer"
+    >
       <div className="flex items-start justify-between gap-4">
       <div className="flex items-start gap-3 min-w-0">
         {product.image_url ? (
@@ -264,7 +268,7 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
           {volBadge && acceptsCart && !outStock && volGroup && (
             <button
               type="button"
-              onClick={() => openPack(volGroup.id)}
+              onClick={(e) => { e.stopPropagation(); openPack(volGroup.id); }}
               title={hasCombo ? "Ver pack combinable" : "Ver precio por cantidad"}
               className={`text-[10px] font-semibold rounded-full px-1.5 py-0.5 whitespace-nowrap border cursor-pointer ${volColor ? `${volColor.soft} ${volColor.border} ${volColor.text}` : "bg-emerald-50 border-emerald-200 text-emerald-700"}`}
             >{volBadge}</button>
@@ -275,7 +279,7 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
           )}
         </div>
       </div>
-      <div className="flex flex-col items-end gap-2 flex-shrink-0">
+      <div className="flex flex-col items-end gap-2 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
         {pack > 1 ? (
           <div className="text-right">
             <span className="font-bold">${basePrice.toLocaleString("es-AR")}</span>
@@ -421,9 +425,14 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
       {desktopRow}
       {mobileRow}
 
-      {/* Ficha fullscreen mobile */}
+      {/* Ficha: fullscreen en mobile, modal centrado en desktop (igual contenido) */}
       {open && (
-        <div className="sm:hidden fixed inset-0 z-[60] bg-background flex flex-col">
+        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center" onClick={() => setOpen(false)}>
+          <div className="hidden sm:block absolute inset-0 bg-black/60" aria-hidden />
+          <div
+            className="relative bg-background flex flex-col w-full h-full sm:h-fit sm:max-h-[90vh] sm:max-w-md sm:m-4 sm:rounded-2xl sm:border sm:border-border overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
           <header className="flex items-center gap-2 border-b border-border px-3 py-3">
             <button
               onClick={() => setOpen(false)}
@@ -437,7 +446,7 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
             <h3 className="font-display font-semibold leading-tight truncate">{product.name}</h3>
           </header>
 
-          <div ref={sheetBodyRef} className="flex-1 overflow-y-auto">
+          <div ref={sheetBodyRef} className="flex-1 overflow-y-auto min-h-0">
             {imageBlock}
 
             <div className="p-4 space-y-3">
@@ -670,6 +679,7 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
                 </a>
               ))}
           </footer>
+          </div>
         </div>
       )}
     </div>

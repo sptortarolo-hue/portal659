@@ -57,7 +57,22 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
   const cardTouchX = useRef<number | null>(null);
 
   const hasVariants = variants.length > 0;
-  const imgs = images.length > 0 ? images : product.image_url ? [{ image_url: product.image_url }] : [];
+  // Galería = portada primero + extras (dedup por URL). Antes, con que hubiera
+  // 1 extra, la portada se caía de la vista.
+  const imgs = (() => {
+    const seen = new Set<string>();
+    const out: { image_url: string; color?: string | null }[] = [];
+    for (const im of [
+      ...(product.image_url ? [{ image_url: product.image_url }] : []),
+      ...(images || []),
+    ]) {
+      const u = im?.image_url;
+      if (!u || seen.has(u)) continue;
+      seen.add(u);
+      out.push(im);
+    }
+    return out;
+  })();
   const cover = imgs[activeImg]?.image_url || imgs[0]?.image_url || null;
 
   const summary = hasVariants ? variantSummary(variants) : null;

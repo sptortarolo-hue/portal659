@@ -1061,6 +1061,17 @@ export default async function TiendaPage({
                         }
                         const oVariants = variantsByProduct[o.id] || [];
                         const oImages = imagesByProduct[o.id] || [];
+                        // Galería = portada primero + extras (dedup): igual que ProductCard.
+                        const _seen = new Set<string>();
+                        const oAllImages = [
+                          ...(o.image_url ? [{ image_url: o.image_url }] : []),
+                          ...oImages,
+                        ].filter((im: any) => {
+                          const u = im?.image_url;
+                          if (!u || _seen.has(u)) return false;
+                          _seen.add(u);
+                          return true;
+                        });
                         if (oVariants.length > 0) {
                           const range = variantRange(oVariants);
                           const totalStock = oVariants.reduce((a, v: any) => a + (v.stock ?? 0), 0);
@@ -1073,13 +1084,9 @@ export default async function TiendaPage({
                               className="border border-border rounded-xl p-4 bg-card space-y-3 scroll-mt-16 sm:scroll-mt-24"
                             >
                               <div className="flex items-start gap-3">
-                                {oImages.length > 0 ? (
+                                {oAllImages.length > 0 ? (
                                   <div className="h-20 w-20 rounded-xl overflow-hidden flex-shrink-0">
-                                    <ProductImage src={oImages[0].image_url} name={o.name} category={o.category} vertical={v.vertical} alt={o.name} className="w-full h-full object-cover" />
-                                  </div>
-                                ) : o.image_url ? (
-                                  <div className="h-20 w-20 rounded-xl overflow-hidden flex-shrink-0">
-                                    <ProductImage src={o.image_url} name={o.name} category={o.category} vertical={v.vertical} alt={o.name} className="w-full h-full object-cover" />
+                                    <ProductImage src={oAllImages[0].image_url} name={o.name} category={o.category} vertical={v.vertical} alt={o.name} className="w-full h-full object-cover" />
                                   </div>
                                 ) : (
                                   <div className="h-20 w-20 rounded-xl flex items-center justify-center flex-shrink-0 overflow-hidden">
@@ -1092,8 +1099,8 @@ export default async function TiendaPage({
                                     {o.featured_today && (
                                       <Badge className="bg-sun text-ink hover:bg-sun">Hoy</Badge>
                                     )}
-                                    {oImages.length > 1 && (
-                                      <Badge variant="secondary" className="text-[10px]">📷 {oImages.length}</Badge>
+                                    {oAllImages.length > 1 && (
+                                      <Badge variant="secondary" className="text-[10px]">📷 {oAllImages.length}</Badge>
                                     )}
                                   </div>
                                   <div className="flex items-center gap-2 mt-1">

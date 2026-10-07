@@ -906,6 +906,7 @@ export default async function TiendaPage({
                             modifiers={modifiersByProduct[o.id] || []}
                             acceptsCart={acceptsCart}
                             consultHref={waUrl}
+                            images={imagesByProduct[o.id] || []}
                           />
                         </div>
                       ))}
@@ -1153,6 +1154,7 @@ export default async function TiendaPage({
                             modifiers={modifiersByProduct[o.id] || []}
                             acceptsCart={acceptsCart}
                             consultHref={waUrl}
+                            images={imagesByProduct[o.id] || []}
                           />
                         </div>
                         );

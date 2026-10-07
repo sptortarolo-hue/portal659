@@ -66,6 +66,16 @@ async function loadVendorForRequest(slug: string, previewParam: string | null) {
   return { vendor: hidden, preview: isServingPreview(hidden) };
 }
 
+/**
+ * Texto de presentación cuando el comercio no cargó descripción: evita la
+ * página "fina" (sin texto indexable) usando rubro + barrio, las keywords
+ * objetivo ("kiosco Sicardi", "rotisería Garibaldi"). Se usa igual en el
+ * meta description y en el cuerpo visible.
+ */
+function fallbackVendorBlurb(storeName: string, rubro: string, hood: string): string {
+  return `${storeName}: ${rubro.toLowerCase()} en ${hood}, La Plata. Mirá el catálogo y pedí online o contactá directo por WhatsApp — 0% comisión.`;
+}
+
 export async function generateMetadata({
   params,
   searchParams,
@@ -90,7 +100,7 @@ export async function generateMetadata({
   const title = `${vendor.store_name} — ${rubro} en ${hood} | Portal 659`;
   const description =
     vendor.description?.slice(0, 155) ||
-    `${vendor.store_name}: ${rubro.toLowerCase()} en ${hood}, La Plata. Mirá el catálogo y pedí online o contactá directo por WhatsApp — 0% comisión.`;
+    fallbackVendorBlurb(vendor.store_name, rubro, hood);
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://www.portal659.com.ar";
   // Tarjeta generada (banner + logo + leyenda) para que WhatsApp la muestre al pegar el link.
   // En preview se propaga el token para que la imagen también salga.
@@ -253,6 +263,13 @@ export default async function TiendaPage({
   const isComercio = v.vertical === "comercio";
   // Retail (moda/comercio): se habla de "catálogo" y productos, no de carta/menú.
   const isCatalog = isModa || isComercio;
+  // Blurb visible cuando el comercio no cargó descripción (mismo texto del
+  // meta description: rubro + barrio como keywords objetivo).
+  const storeHood = neighborhoodLabel(v.neighborhood) || "tu barrio";
+  const storeRubro = v.category || verticalSeoName(v.vertical);
+  const storeBlurb =
+    (typeof v.description === "string" && v.description.trim()) ||
+    fallbackVendorBlurb(v.store_name, storeRubro, storeHood);
   // Franjas de reparto (retail): el cliente ve cuándo le llega el pedido.
   // Tolerante a migración sin aplicar (delivery_hours llega undefined).
   let retailSlots: { id: string; label: string; range: string; isToday: boolean; isTomorrow: boolean }[] = [];
@@ -652,8 +669,10 @@ export default async function TiendaPage({
               <VendorShareButton slug={v.slug} storeName={v.store_name} />
             </div>
           </div>
-          {v.description && (
+          {v.description ? (
             <p className="text-muted-foreground mt-2">{v.description}</p>
+          ) : (
+            <p className="text-muted-foreground mt-2">{storeBlurb}</p>
           )}
 
           {/* Tags */}

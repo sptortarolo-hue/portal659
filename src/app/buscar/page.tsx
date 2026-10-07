@@ -165,12 +165,21 @@ export default async function BuscarPage({
     let list = vertical ? allVendors.filter((v) => v.vertical === vertical) : allVendors;
     const onlineCount = list.filter((v) => isOnline(v)).length;
     if (onlineOnly) list = list.filter((v) => isOnline(v));
+    // SEO: el h1 acompaña al title por vertical ("Kioscos, almacenes y
+    // comercios en Sicardi y Garibaldi") + párrafo indexable con la
+    // descripción del rubro. Sin vertical, encabezado genérico.
+    const activeVert = vertical ? VERTICALS.find((vt) => vt.slug === vertical) : null;
+    const vertSeo = vertical ? verticalSeoName(vertical) : null;
     return (
       <main className="container mx-auto px-4 py-8 max-w-4xl">
         <div className="mb-6">
-          <h1 className="font-display text-3xl font-semibold mb-2">Explorar comercios</h1>
+          <h1 className="font-display text-3xl font-semibold mb-2">
+            {activeVert && vertSeo ? `${vertSeo} en ${zone.name}` : "Explorar comercios"}
+          </h1>
           <p className="text-muted-foreground text-sm">
-            Comercios de {zone.name} · elegí una categoría para filtrar
+            {activeVert
+              ? `${activeVert.description} en ${zone.name} (La Plata): mirá catálogos y precios, pedí online o contactá directo por WhatsApp, 0% comisión.`
+              : `Comercios de ${zone.name} · elegí una categoría para filtrar`}
           </p>
         </div>
 
@@ -184,7 +193,7 @@ export default async function BuscarPage({
           >
             Todos
           </Link>
-          {VERTICALS.map((vert) => (
+          {VERTICALS.filter((vert) => vert.slug !== "salud").map((vert) => (
             <Link
               key={vert.slug}
               href={hrefVertical(vert.slug)}
@@ -400,7 +409,7 @@ export default async function BuscarPage({
         >
           Todos
         </Link>
-        {VERTICALS.map((vert) => (
+        {VERTICALS.filter((vert) => vert.slug !== "salud").map((vert) => (
           <Link
             key={vert.slug}
             href={hrefVertical(vert.slug)}

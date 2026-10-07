@@ -125,7 +125,7 @@ export default function VendorCreateModal({ open, onClose, onCreate }: VendorCre
                 value={form.vertical}
                 onChange={(e) => setForm({ ...form, vertical: e.target.value })}
               >
-                {VERTICALS.map((v) => (
+                {VERTICALS.filter((v) => v.slug !== "salud").map((v) => (
                   <option key={v.slug} value={v.slug}>{v.name}</option>
                 ))}
               </select>

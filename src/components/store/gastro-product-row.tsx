@@ -59,7 +59,7 @@ type Props = {
   modifiers?: ProductModifier[];
   acceptsCart?: boolean;
   consultHref?: string;
-  /** Fotos extra (además de la portada) para el lightbox. */
+  /** Fotos extra (además de la portada) para pasarlas in situ en la ficha. */
   images?: { image_url: string }[];
 };
 
@@ -74,9 +74,11 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
   const [open, setOpen] = useState(false);
   const { addItem, items } = useCart();
   const { addToast } = useToast();
-  // Lightbox solo-lectura (no toca el flujo de compra): portada + extras.
-  const [lightIdx, setLightIdx] = useState<number | null>(null);
-  const lightTouchX = useRef<number | null>(null);
+  // Fotos in situ en la ficha (swipe + dots + flechas desktop), igual que
+  // la vidriera. Sin vistas nuevas: la galería es portada + extras.
+  // Foto activa de la ficha (índice en gallery).
+  const [sheetImg, setSheetImg] = useState(0);
+  const sheetTouchX = useRef<number | null>(null);
   const gallery = (() => {
     const seen = new Set<string>();
     const out: string[] = [];
@@ -88,20 +90,15 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
     return out;
   })();
   useEffect(() => {
-    if (lightIdx === null) return;
+    if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setLightIdx(null);
-      else if (e.key === "ArrowLeft") setLightIdx((i) => (i === null ? i : (i - 1 + gallery.length) % gallery.length));
-      else if (e.key === "ArrowRight") setLightIdx((i) => (i === null ? i : (i + 1) % gallery.length));
+      if (e.key === "Escape") setOpen(false);
+      else if (gallery.length > 1 && e.key === "ArrowLeft") setSheetImg((i) => (i - 1 + gallery.length) % gallery.length);
+      else if (gallery.length > 1 && e.key === "ArrowRight") setSheetImg((i) => (i + 1) % gallery.length);
     };
-    const onPop = () => setLightIdx(null);
     window.addEventListener("keydown", onKey);
-    window.addEventListener("popstate", onPop);
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      window.removeEventListener("popstate", onPop);
-    };
-  }, [lightIdx === null, gallery.length]);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, gallery.length]);
 
   // Estado inline de la ficha mobile (modificadores + cantidad).
   const [selected, setSelected] = useState<Record<string, ModifierOption[]>>({});
@@ -226,6 +223,7 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
     setQueries({});
     setCats({});
     setHints({});
+    setSheetImg(0);
     setOpen(true);
   }
 
@@ -281,14 +279,9 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
       <div className="flex items-start justify-between gap-4">
       <div className="flex items-start gap-3 min-w-0">
         {product.image_url ? (
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); if (gallery.length > 0) setLightIdx(0); }}
-            className="h-20 w-20 rounded-xl overflow-hidden flex-shrink-0 cursor-zoom-in"
-            aria-label={`Ver fotos de ${product.name}`}
-          >
-            <ProductImage src={product.image_url} name={product.name} category={product.category} vertical={vendor.vertical} alt={product.name} className="w-full h-full object-cover pointer-events-none" />
-          </button>
+          <div className="h-20 w-20 rounded-xl overflow-hidden flex-shrink-0">
+            <ProductImage src={product.image_url} name={product.name} category={product.category} vertical={vendor.vertical} alt={product.name} className="w-full h-full object-cover" />
+          </div>
         ) : (
           <div className="h-20 w-20 rounded-xl flex items-center justify-center flex-shrink-0 overflow-hidden">
             <ProductImage src={null} name={product.name} category={product.category} vertical={vendor.vertical} alt={product.name} className="w-full h-full" iconClassName="h-8 w-8" />
@@ -378,13 +371,9 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
       className="sm:hidden w-full text-left border border-border rounded-xl p-3 bg-card flex items-center gap-3 active:scale-[0.99] transition-transform scroll-mt-16"
     >
       {product.image_url ? (
-        <span
-          onClick={(e) => { e.stopPropagation(); if (gallery.length > 0) setLightIdx(0); }}
-          className="h-16 w-16 rounded-xl overflow-hidden flex-shrink-0 cursor-zoom-in"
-          aria-label={`Ver fotos de ${product.name}`}
-        >
-          <ProductImage src={product.image_url} name={product.name} category={product.category} vertical={vendor.vertical} alt={product.name} className="w-full h-full object-cover pointer-events-none" />
-        </span>
+        <div className="h-16 w-16 rounded-xl overflow-hidden flex-shrink-0">
+          <ProductImage src={product.image_url} name={product.name} category={product.category} vertical={vendor.vertical} alt={product.name} className="w-full h-full object-cover" />
+        </div>
       ) : (
         <div className="h-16 w-16 rounded-xl flex items-center justify-center flex-shrink-0 overflow-hidden bg-accent">
           <ProductImage src={null} name={product.name} category={product.category} vertical={vendor.vertical} alt={product.name} className="w-full h-full" iconClassName="h-6 w-6" />
@@ -431,38 +420,80 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
 
   // Imagen 45% de la altura vertical con estrategia Instagram: foto completa en
   // object-contain sobre un fondo con la misma imagen blureada en cover.
+  const sheetSrc = gallery[Math.min(sheetImg, gallery.length - 1)] ?? product.image_url;
   const imageBlock = product.image_url ? (
-    <button
-      type="button"
-      onClick={() => { if (gallery.length > 0) setLightIdx(0); }}
-      className="block h-[45vh] w-full overflow-hidden relative bg-accent cursor-zoom-in"
-      aria-label={`Ver fotos de ${product.name}`}
+    <div
+      className="h-[45vh] w-full overflow-hidden relative bg-accent"
+      onTouchStart={(e) => { sheetTouchX.current = e.touches[0]?.clientX ?? null; }}
+      onTouchEnd={(e) => {
+        if (sheetTouchX.current == null || gallery.length < 2) return;
+        const dx = (e.changedTouches[0]?.clientX ?? 0) - sheetTouchX.current;
+        if (Math.abs(dx) >= 40) {
+          setSheetImg((i) => (dx < 0 ? (i + 1) % gallery.length : (i - 1 + gallery.length) % gallery.length));
+        }
+        sheetTouchX.current = null;
+      }}
     >
       <ProductImage
-        src={product.image_url}
+        src={sheetSrc}
         name={product.name}
         category={product.category}
         vertical={vendor.vertical}
         alt={product.name}
-        className="absolute inset-0 pointer-events-none"
+        className="absolute inset-0"
         imgClassName="blur-lg scale-110"
         fit="cover"
       />
       <ProductImage
-        src={product.image_url}
+        src={sheetSrc}
         name={product.name}
         category={product.category}
         vertical={vendor.vertical}
         alt={product.name}
-        className="relative w-full h-full pointer-events-none"
+        className="relative w-full h-full"
         fit="contain"
       />
       {gallery.length > 1 && (
-        <span className="absolute bottom-2 right-2 rounded-full bg-black/60 text-white text-[11px] font-semibold px-2 py-0.5 tabular-nums">
-          1 / {gallery.length}
-        </span>
+        <>
+          <span className="absolute bottom-2 right-2 rounded-full bg-black/60 text-white text-[11px] font-semibold px-2 py-0.5 tabular-nums">
+            {Math.min(sheetImg, gallery.length - 1) + 1} / {gallery.length}
+          </span>
+          <button
+            type="button"
+            onClick={() => setSheetImg((i) => (i - 1 + gallery.length) % gallery.length)}
+            disabled={sheetImg <= 0}
+            aria-label="Foto anterior"
+            className="hidden sm:flex absolute left-2 top-1/2 -translate-y-1/2 h-9 w-9 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80 disabled:opacity-30"
+          >
+            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            onClick={() => setSheetImg((i) => (i + 1) % gallery.length)}
+            disabled={sheetImg >= gallery.length - 1}
+            aria-label="Foto siguiente"
+            className="hidden sm:flex absolute right-2 top-1/2 -translate-y-1/2 h-9 w-9 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80 disabled:opacity-30"
+          >
+            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+          <span className="absolute bottom-2 left-0 right-0 flex justify-center gap-1">
+            {gallery.map((_, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => setSheetImg(i)}
+                aria-label={`Ir a foto ${i + 1}`}
+                className={`h-1.5 rounded-full transition-all ${i === Math.min(sheetImg, gallery.length - 1) ? "w-4 bg-white" : "w-1.5 bg-white/60"}`}
+              />
+            ))}
+          </span>
+        </>
       )}
-    </button>
+    </div>
   ) : (
     <div className="h-[45vh] w-full bg-accent flex items-center justify-center">
       <ProductImage src={null} name={product.name} category={product.category} vertical={vendor.vertical} alt={product.name} className="w-full h-full" iconClassName="h-20 w-20" />
@@ -729,81 +760,6 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
               ))}
           </footer>
           </div>
-        </div>
-      )}
-      {/* Lightbox solo-lectura de fotos (no interfiere con la compra) */}
-      {lightIdx !== null && gallery.length > 0 && (
-        <div
-          className="fixed inset-0 z-[90] bg-black/85 flex flex-col"
-          onClick={() => setLightIdx(null)}
-          role="dialog"
-          aria-modal="true"
-          aria-label={`Fotos de ${product.name}`}
-        >
-          <div className="flex items-center justify-between px-4 pt-[calc(env(safe-area-inset-top,0px)+0.75rem)] text-white">
-            <span className="text-sm font-medium tabular-nums">
-              {lightIdx + 1} / {gallery.length}
-            </span>
-            <button
-              type="button"
-              onClick={() => setLightIdx(null)}
-              aria-label="Cerrar fotos"
-              className="h-11 w-11 rounded-full bg-white/10 flex items-center justify-center"
-            >
-              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-          <div
-            className="flex-1 min-h-0 flex items-center justify-center px-2"
-            onClick={(e) => e.stopPropagation()}
-            onTouchStart={(e) => { lightTouchX.current = e.touches[0]?.clientX ?? null; }}
-            onTouchEnd={(e) => {
-              if (lightTouchX.current == null) return;
-              const dx = (e.changedTouches[0]?.clientX ?? 0) - lightTouchX.current;
-              if (Math.abs(dx) >= 40) {
-                setLightIdx((i) => (i === null ? i : (dx < 0 ? (i + 1) % gallery.length : (i - 1 + gallery.length) % gallery.length)));
-              }
-              lightTouchX.current = null;
-            }}
-          >
-            <div className="relative h-[70vh] max-w-full aspect-[4/5] rounded-lg overflow-hidden bg-black">
-              <ProductImage
-                src={gallery[lightIdx] ?? null}
-                name={product.name}
-                category={product.category}
-                vertical={vendor.vertical}
-                alt={`${product.name} — foto ${lightIdx + 1} de ${gallery.length}`}
-                className="w-full h-full object-contain"
-              />
-              {gallery.length > 1 && (
-                <>
-                  <button
-                    type="button"
-                    aria-label="Foto anterior"
-                    onClick={(e) => { e.stopPropagation(); setLightIdx((i) => (i === null ? i : (i - 1 + gallery.length) % gallery.length)); }}
-                    className="absolute left-2 top-1/2 -translate-y-1/2 h-11 w-11 rounded-full bg-black/60 text-white flex items-center justify-center"
-                  >
-                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                    </svg>
-                  </button>
-                  <button
-                    type="button"
-                    aria-label="Foto siguiente"
-                    onClick={(e) => { e.stopPropagation(); setLightIdx((i) => (i === null ? i : (i + 1) % gallery.length)); }}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 h-11 w-11 rounded-full bg-black/60 text-white flex items-center justify-center"
-                  >
-                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-          <div className="pb-[calc(env(safe-area-inset-bottom,0px)+1rem)]" />
         </div>
       )}
     </div>

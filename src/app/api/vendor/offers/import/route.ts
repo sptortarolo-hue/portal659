@@ -2,11 +2,13 @@ import { getVendorByRequest } from "@/lib/vendor-utils";
 import { queryMany, queryOne, withTransaction, type Tx } from "@/lib/db";
 import { resolveVendorPlan } from "@/lib/plans";
 import { cleanMenu } from "@/lib/llm";
+import { unitFactor } from "@/lib/costing";
 import {
   parseFudoSheets,
   normalizeUnit,
   inferBaseUnit,
   normName,
+  cellText,
   type FudoIngredient,
   type FudoRecipeLine,
   type FudoGroupDef,
@@ -55,6 +57,7 @@ type CleanedItem = {
   available?: boolean;
   featured?: boolean;
   cost?: number | null;
+  supplier?: string;
   stock?: number | null;
   stockMin?: number | null;
   stockControl?: boolean;
@@ -135,7 +138,9 @@ async function parseWorkbook(buf: Buffer): Promise<Record<string, unknown>[]> {
 
   const rows: string[][] = [];
   sheet.eachRow((row) => {
-    rows.push((row.values as unknown[]).slice(1).map((v) => (v == null ? "" : String(v))));
+    // cellText: los headers de FUDO vienen como rich-text (negrita, `*`);
+    // String() directo daría "[object Object]" y rompería el mapeo.
+    rows.push((row.values as unknown[]).slice(1).map((v) => cellText(v)));
   });
 
   // detectar fila de encabezado
@@ -218,7 +223,7 @@ async function readAllSheets(buf: Buffer): Promise<{ name: string; rows: string[
   return wb.worksheets.map((sheet) => {
     const rows: string[][] = [];
     sheet.eachRow((row) => {
-      rows.push((row.values as unknown[]).slice(1).map((v) => (v == null ? "" : String(v))));
+      rows.push((row.values as unknown[]).slice(1).map((v) => cellText(v)));
     });
     return { name: sheet.name || "hoja", rows };
   });
@@ -349,6 +354,7 @@ async function analyzeFudo(
       available: p.available,
       featured: p.featured,
       cost: p.cost,
+      supplier: p.supplier || "",
       stock: p.stock,
       stockMin: p.stockMin,
       stockControl: p.stockControl,
@@ -431,15 +437,39 @@ async function analyzeFudo(
   });
 }
 
+// upsert tolerante de un proveedor por nombre. Null si la tabla no existe.
+async function upsertSupplierTx(tx: Tx, vendorId: string, name: string): Promise<string | null> {
+  const clean = String(name || "").trim();
+  if (!clean) return null;
+  const existing = await tx.queryOne<{ id: string }>(
+    `SELECT id FROM suppliers WHERE vendor_id = $1 AND lower(name) = lower($2) LIMIT 1`,
+    [vendorId, clean]
+  ).catch(() => null);
+  if (existing?.id) return existing.id;
+  const rows = await tx.query<{ id: string }>(
+    `INSERT INTO suppliers (vendor_id, name) VALUES ($1, $2) RETURNING id`,
+    [vendorId, clean]
+  ).catch(() => []);
+  return rows[0]?.id ?? null;
+}
+
 // upsert tolerante de un insumo por nombre normalizado.
-// Crea con base_unit inferida de la unidad FUDO; si ya existe, actualiza
-// costo/merma (no pisa la base si ya tiene recetas que la usan).
+// - Crea con base_unit inferida de la unidad FUDO.
+// - El costo FUDO viene por unidad de línea (ej. $/kg): se convierte a
+//   costo por unidad BASE (ej. $/g) antes de guardar cost_per_unit.
+// - Si ya existe, actualiza costo/merma (no pisa la base si ya tiene recetas).
+// - Deja lista de precios del proveedor (tolerante a migrate-inventory.sql).
 async function upsertIngredientTx(
   tx: Tx,
   vendorId: string,
-  ing: { name: string; category: string; unit: string; cost: number | null; wastePct: number }
+  ing: { name: string; category: string; unit: string; cost: number | null; wastePct: number; supplier?: string }
 ): Promise<string | null> {
   const base = inferBaseUnit(ing.unit);
+  const lineUnit = normalizeUnit(ing.unit);
+  const factor = unitFactor(lineUnit, base) ?? 1;
+  const round4 = (n: number) => Math.round(n * 10000) / 10000;
+  const costPerBase = ing.cost != null ? round4(ing.cost / factor) : null;
+  const supplierId = ing.supplier ? await upsertSupplierTx(tx, vendorId, ing.supplier) : null;
   const existing = await tx.queryOne<{ id: string; base_unit: string }>(
     `SELECT id, base_unit FROM ingredients WHERE vendor_id = $1 AND lower(name) = lower($2) LIMIT 1`,
     [vendorId, ing.name]
@@ -448,28 +478,55 @@ async function upsertIngredientTx(
     // Actualizar costo/merma/notas sin tocar base_unit (409 si está en uso).
     await tx.queryVoid(
       `UPDATE ingredients SET cost_per_unit = COALESCE($1, cost_per_unit), waste_pct = $2, notes = COALESCE(NULLIF(notes,''), $3) WHERE id = $4`,
-      [ing.cost, ing.wastePct, `Importado de FUDO${ing.category ? ` · ${ing.category}` : ""}`, existing.id]
+      [costPerBase, ing.wastePct, `Importado de FUDO${ing.category ? ` · ${ing.category}` : ""}`, existing.id]
     ).catch(() => null);
     // Intentar guardar categoría si la columna existe (migración nueva).
     await tx.queryVoid(`UPDATE ingredients SET category = $1 WHERE id = $2`, [ing.category, existing.id]).catch(() => null);
+    if (supplierId && ing.cost != null) {
+      await tx.queryVoid(
+        `INSERT INTO supplier_pricelists (supplier_id, vendor_id, ingredient_id, price, unit)
+         SELECT $1, $2, $3, $4, $5 WHERE NOT EXISTS (SELECT 1 FROM supplier_pricelists
+           WHERE supplier_id = $1 AND ingredient_id = $3 AND price = $4 AND unit = $5)`,
+        [supplierId, vendorId, existing.id, ing.cost, lineUnit]
+      ).catch(() => null);
+    }
     return existing.id;
   }
   try {
     const rows = await tx.query<{ id: string }>(
       `INSERT INTO ingredients (vendor_id, name, base_unit, cost_per_unit, waste_pct, notes, category)
        VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-      [vendorId, ing.name, base, ing.cost ?? 0, ing.wastePct, `Importado de FUDO${ing.category ? ` · ${ing.category}` : ""}`, ing.category]
+      [vendorId, ing.name, base, costPerBase ?? 0, ing.wastePct, `Importado de FUDO${ing.category ? ` · ${ing.category}` : ""}`, ing.category]
     );
-    if (rows[0]?.id) return rows[0].id;
+    if (rows[0]?.id) {
+      if (supplierId && ing.cost != null) {
+        await tx.queryVoid(
+          `INSERT INTO supplier_pricelists (supplier_id, vendor_id, ingredient_id, price, unit)
+           SELECT $1, $2, $3, $4, $5 WHERE NOT EXISTS (SELECT 1 FROM supplier_pricelists
+             WHERE supplier_id = $1 AND ingredient_id = $3 AND price = $4 AND unit = $5)`,
+          [supplierId, vendorId, rows[0].id, ing.cost, lineUnit]
+        ).catch(() => null);
+      }
+      return rows[0].id;
+    }
   } catch {
     // Sin columna category (migración pendiente): reintentar sin ella.
   }
   const rows = await tx.query<{ id: string }>(
     `INSERT INTO ingredients (vendor_id, name, base_unit, cost_per_unit, waste_pct, notes)
      VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-    [vendorId, ing.name, base, ing.cost ?? 0, ing.wastePct, `Importado de FUDO${ing.category ? ` · ${ing.category}` : ""}`]
+    [vendorId, ing.name, base, costPerBase ?? 0, ing.wastePct, `Importado de FUDO${ing.category ? ` · ${ing.category}` : ""}`]
   ).catch(() => []);
-  return rows[0]?.id ?? null;
+  const newId = rows[0]?.id ?? null;
+  if (newId && supplierId && ing.cost != null) {
+    await tx.queryVoid(
+      `INSERT INTO supplier_pricelists (supplier_id, vendor_id, ingredient_id, price, unit)
+       SELECT $1, $2, $3, $4, $5 WHERE NOT EXISTS (SELECT 1 FROM supplier_pricelists
+         WHERE supplier_id = $1 AND ingredient_id = $3 AND price = $4 AND unit = $5)`,
+      [supplierId, vendorId, newId, ing.cost, lineUnit]
+    ).catch(() => null);
+  }
+  return newId;
 }
 
 export async function POST(request: Request) {
@@ -681,6 +738,7 @@ export async function POST(request: Request) {
       // upsert productos
       let imported = 0;
       let updated = 0;
+      const suppliersUpserted = new Set<string>();
       for (const it of items) {
         const name = (it.name || "").trim();
         if (!name) {
@@ -692,7 +750,6 @@ export async function POST(request: Request) {
           errors.push({ name, error: "Precio inválido" });
           continue;
         }
-
         const sku =
           typeof (it as any).sku === "string" && (it as any).sku.trim() !== ""
             ? (it as any).sku.trim().slice(0, 64)
@@ -783,6 +840,13 @@ export async function POST(request: Request) {
             await tx.queryVoid(`UPDATE products SET stock_low_threshold = $1 WHERE id = $2`, [rowStockMinNum, productId]).catch(() => null);
           }
           imported++;
+        }
+
+        // Proveedor FUDO: se da de alta para que figure en Compras/Proveedores.
+        const rowSupplier = typeof it.supplier === "string" ? it.supplier.trim() : "";
+        if (rowSupplier) {
+          const sid = await upsertSupplierTx(tx, vendor.id, rowSupplier);
+          if (sid) suppliersUpserted.add(sid);
         }
 
         // Modificantes del producto (columnas "Modificante N descripción/precio").
@@ -904,7 +968,6 @@ export async function POST(request: Request) {
       let recipeLinesCreated = 0;
       let recipesSkipped = 0;
       if (fudoRecipeLines.length > 0) {
-        const { unitFactor } = await import("@/lib/costing");
         const byDish = new Map<string, { dish: string; lines: FudoRecipeLine[]; yield: number; instructions: string }>();
         for (const l of fudoRecipeLines) {
           const k = normName(l.dish);
@@ -1006,7 +1069,7 @@ export async function POST(request: Request) {
         }
       }
 
-      return { imported, updated, fudoGroupsLinked, ingredientsUpserted, recipesCreated, recipeLinesCreated, recipesSkipped };
+      return { imported, updated, suppliers: suppliersUpserted.size, fudoGroupsLinked, ingredientsUpserted, recipesCreated, recipeLinesCreated, recipesSkipped };
     });
 
     return NextResponse.json({
@@ -1021,6 +1084,7 @@ export async function POST(request: Request) {
         recipes: result.recipesCreated,
         recipeLines: result.recipeLinesCreated,
         recipesSkipped: result.recipesSkipped,
+        suppliers: result.suppliers,
       },
     });
   }

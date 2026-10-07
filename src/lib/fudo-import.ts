@@ -26,6 +26,7 @@ export type FudoProduct = {
   available: boolean;
   featured: boolean;
   cost: number | null;
+  supplier: string;
   stock: number | null;
   stockMin: number | null;
   stockControl: boolean;
@@ -36,6 +37,7 @@ export type FudoIngredient = {
   category: string;
   unit: string;
   cost: number | null;
+  supplier: string;
   wastePct: number;
 };
 
@@ -80,8 +82,38 @@ export type FudoParsed = {
   sheetsFound: string[];
 };
 
+/**
+ * Extrae texto plano de un valor de celda ExcelJS.
+ *
+ * Los encabezados del Excel de FUDO vienen con formato (negrita, `*`,
+ * saltos de línea) y ExcelJS los devuelve como objetos rich-text
+ * `{richText: [{text}]}`. Un `String(v)` directo da "[object Object]"
+ * y rompe todo el mapeo de columnas — por eso existe este helper.
+ * Úsalo SIEMPRE en vez de `String(v ?? "")` al leer celdas.
+ */
+export function cellText(v: unknown): string {
+  if (v == null) return "";
+  if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") return String(v);
+  if (typeof v === "object") {
+    const o = v as Record<string, unknown>;
+    // Rich text: {richText: [{text: "Nombre"}, {text: "*"}]}
+    if (Array.isArray(o.richText)) {
+      return o.richText.map((r) => (typeof r === "object" && r !== null ? String((r as Record<string, unknown>).text ?? "") : "")).join("");
+    }
+    // Hipervínculo: {text, hyperlink} | {result}
+    if (o.text != null && typeof o.text !== "object") return String(o.text);
+    if (o.result != null && typeof o.result !== "object") return String(o.result);
+    // Fórmula con resultado cacheado: {formula, result} | {sharedFormula, result}
+    if (o.richText == null && o.hyperlink == null) {
+      const maybeResult = (o as { result?: unknown }).result;
+      if (maybeResult != null && typeof maybeResult !== "object") return String(maybeResult);
+    }
+  }
+  return String(v);
+}
+
 export function normHeader(k: unknown): string {
-  return String(k ?? "")
+  return cellText(k)
     .trim()
     .toLowerCase()
     .normalize("NFD")
@@ -92,7 +124,7 @@ export function normHeader(k: unknown): string {
 
 function num(v: unknown): number | null {
   if (v == null || v === "") return null;
-  let s = String(v).trim();
+  let s = cellText(v).trim();
   if (!s) return null;
   // "$ 2.500,50" / "2500" / "0.3 kg" (por si viene con unidad pegada)
   s = s.replace(/[$\s]/g, "");
@@ -230,9 +262,21 @@ function parseProductsSheet(grid: SheetGrid, warnings: { row: string; reason: st
   const iActive = headerIndex(headers, "activo", "disponible", "habilitado", "vigente");
   const iFav = headerIndex(headers, "favorito", "destacado", "estrella");
   const iCost = headerIndex(headers, "costo", "coste", "cost", "costounitario");
-  const iStock = headerIndex(headers, "stock", "existencia", "cantidad");
+  const iSupplier = headerIndex(headers, "proveedor", "supplier", "distribuidor");
+  const iSub = headerIndex(headers, "subcategoria", "subrubro", "subseccion");
+  // "Controlar stock (SÍ/NO)": flag explícito. NO es cantidad — se detecta
+  // aparte para que el match parcial de "stock" no lo tome como stock qty.
+  const iStockFlag = headerIndex(headers, "controlarstock", "controlstock", "controlastock");
+  let iStock = headerIndex(headers, "stock", "existencia", "cantidad");
+  if (iStock === iStockFlag) iStock = -1; // era el flag, no cantidad
   const iStockMin = headerIndex(headers, "stockminimo", "minimo", "stocksminimo");
   const iGroup = headerIndex(headers, "grupo", "grupomodificantes", "grupodeopciones");
+  // Columnas FUDO sin equivalente en Portal: se informan una sola vez, no por fila.
+  const IGNORED_LABELS = ["tiendaonline", "menuqr", "permitirvendersolo", "vendersinstock", "posicion"];
+  const ignored = headers.filter((h) => IGNORED_LABELS.some((a) => normHeader(h).includes(a)));
+  if (ignored.length > 0) {
+    warnings.push({ row: grid.name, reason: `Columnas sin equivalente ignoradas: ${ignored.map((h) => cellText(h).replace(/\s+/g, " ").trim()).join(", ")}` });
+  }
   // Modificante N descripción/precio (formato Portal, también tolerado acá)
   const modCols: { desc: number; price: number }[] = [];
   for (let n = 1; n <= 20; n++) {
@@ -245,7 +289,7 @@ function parseProductsSheet(grid: SheetGrid, warnings: { row: string; reason: st
   const seen = new Set<string>();
   data.forEach((r, idx) => {
     if (r.every((c) => !String(c ?? "").trim())) return;
-    const name = String(r[iName] ?? "").trim();
+    const name = cellText(r[iName] ?? "").trim();
     if (iName < 0 || !name) {
       warnings.push({ row: `${grid.name} fila ${idx + 2}`, reason: "Sin nombre (se omite)" });
       return;
@@ -255,31 +299,36 @@ function parseProductsSheet(grid: SheetGrid, warnings: { row: string; reason: st
       warnings.push({ row: name, reason: "Precio inválido o vacío (se omite)" });
       return;
     }
-    const key = name.toLowerCase();
+    const key = normName(name);
     if (seen.has(key)) {
       warnings.push({ row: name, reason: "Duplicado en el archivo (se usa la última fila)" });
     }
     seen.add(key);
     const modifiers = modCols
       .map(({ desc, price: pi }) => ({
-        desc: String(r[desc] ?? "").trim(),
+        desc: cellText(r[desc] ?? "").trim(),
         price_mod: pi >= 0 ? num(r[pi]) ?? 0 : 0,
       }))
       .filter((m) => m.desc !== "");
+    const cat = cellText(r[iCat] ?? "").trim() || "otras";
+    const sub = iSub >= 0 ? cellText(r[iSub] ?? "").trim() : "";
+    const stockQty = iStock >= 0 ? num(r[iStock]) : null;
+    const flagVal = iStockFlag >= 0 ? cellText(r[iStockFlag] ?? "") : "";
     out.push({
       name,
       price,
-      category: String(r[iCat] ?? "").trim() || "otras",
-      description: String(r[iDesc] ?? "").trim(),
-      sku: iSku >= 0 ? String(r[iSku] ?? "").trim().slice(0, 64) : iId >= 0 ? "" : "",
-      group: iGroup >= 0 ? String(r[iGroup] ?? "").trim() : "",
+      category: sub && normName(sub) !== normName(cat) ? `${cat} / ${sub}` : cat,
+      description: cellText(r[iDesc] ?? "").trim(),
+      sku: iSku >= 0 ? cellText(r[iSku] ?? "").trim().slice(0, 64) : iId >= 0 ? "" : "",
+      group: iGroup >= 0 ? cellText(r[iGroup] ?? "").trim() : "",
       modifiers,
       available: iActive >= 0 ? boolSiNo(r[iActive], true) : true,
       featured: iFav >= 0 ? boolSiNo(r[iFav], false) : false,
       cost: iCost >= 0 ? num(r[iCost]) : null,
-      stock: iStock >= 0 ? num(r[iStock]) : null,
+      supplier: iSupplier >= 0 ? cellText(r[iSupplier] ?? "").trim() : "",
+      stock: stockQty,
       stockMin: iStockMin >= 0 ? num(r[iStockMin]) : null,
-      stockControl: iStock >= 0 && String(r[iStock] ?? "").trim() !== "",
+      stockControl: iStockFlag >= 0 ? boolSiNo(flagVal, false) : stockQty != null,
     });
   });
   return out;
@@ -292,25 +341,27 @@ function parseIngredientsSheet(grid: SheetGrid, warnings: { row: string; reason:
   const iCat = headerIndex(headers, "categoria", "seccion", "rubro", "category");
   const iUnit = headerIndex(headers, "unidad", "unidadmedida", "medida", "unit", "um");
   const iCost = headerIndex(headers, "costo", "coste", "cost", "precio", "price", "valor");
+  const iSupplier = headerIndex(headers, "proveedor", "supplier", "distribuidor");
   const iWaste = headerIndex(headers, "merma", "desperdicio", "waste", "perdida");
   const out: FudoIngredient[] = [];
   const seen = new Set<string>();
   data.forEach((r, idx) => {
     if (r.every((c) => !String(c ?? "").trim())) return;
-    const name = String(r[iName] ?? "").trim();
+    const name = cellText(r[iName] ?? "").trim();
     if (iName < 0 || !name) {
       warnings.push({ row: `${grid.name} fila ${idx + 2}`, reason: "Ingrediente sin nombre (se omite)" });
       return;
     }
-    const key = name.toLowerCase();
+    const key = normName(name);
     if (seen.has(key)) warnings.push({ row: name, reason: "Ingrediente duplicado (se usa la última fila)" });
     seen.add(key);
     const waste = iWaste >= 0 ? num(r[iWaste]) ?? 0 : 0;
     out.push({
       name,
-      category: String(r[iCat] ?? "").trim() || "general",
-      unit: String(r[iUnit] ?? "").trim() || "u",
+      category: cellText(r[iCat] ?? "").trim() || "general",
+      unit: cellText(r[iUnit] ?? "").trim() || "u",
       cost: iCost >= 0 ? num(r[iCost]) : null,
+      supplier: iSupplier >= 0 ? cellText(r[iSupplier] ?? "").trim() : "",
       wastePct: Math.min(Math.max(waste, 0), 99.99),
     });
   });
@@ -328,12 +379,12 @@ function parseGroupLogicSheet(grid: SheetGrid): FudoGroupDef[] {
   const out: FudoGroupDef[] = [];
   for (const r of data) {
     if (r.every((c) => !String(c ?? "").trim())) continue;
-    const name = String(r[iName] ?? "").trim();
+    const name = cellText(r[iName] ?? "").trim();
     if (!name) continue;
     const logicRaw = normHeader(r[iLogic]);
     out.push({
       name,
-      publicName: iPublic >= 0 ? String(r[iPublic] ?? "").trim() : "",
+      publicName: iPublic >= 0 ? cellText(r[iPublic] ?? "").trim() : "",
       pricing: logicRaw.includes("max") ? "max" : "sum",
       min: iMin >= 0 ? Math.max(0, Math.floor(num(r[iMin]) ?? 0)) : 0,
       max: iMax >= 0 ? Math.max(1, Math.floor(num(r[iMax]) ?? 1)) : 1,
@@ -352,8 +403,8 @@ function parseGroupCompositionSheet(grid: SheetGrid): FudoGroupOption[] {
   const out: FudoGroupOption[] = [];
   for (const r of data) {
     if (r.every((c) => !String(c ?? "").trim())) continue;
-    const group = String(r[iGroup] ?? "").trim();
-    const label = String(r[iProd] ?? "").trim();
+    const group = cellText(r[iGroup] ?? "").trim();
+    const label = cellText(r[iProd] ?? "").trim();
     if (!group || !label) continue;
     out.push({
       group,
@@ -373,8 +424,8 @@ function parseAssociationSheet(grid: SheetGrid): FudoAssociation[] {
   const out: FudoAssociation[] = [];
   for (const r of data) {
     if (r.every((c) => !String(c ?? "").trim())) continue;
-    const group = String(r[iGroup] ?? "").trim();
-    const product = String(r[iProd] ?? "").trim();
+    const group = cellText(r[iGroup] ?? "").trim();
+    const product = cellText(r[iProd] ?? "").trim();
     if (!group || !product) continue;
     out.push({ group, product });
   }
@@ -394,8 +445,8 @@ function parseRecipesSheet(grid: SheetGrid, warnings: { row: string; reason: str
   const out: FudoRecipeLine[] = [];
   data.forEach((r, idx) => {
     if (r.every((c) => !String(c ?? "").trim())) return;
-    const dish = String(r[iDish] ?? "").trim();
-    const ingredient = String(r[iIng] ?? "").trim();
+    const dish = cellText(r[iDish] ?? "").trim();
+    const ingredient = cellText(r[iIng] ?? "").trim();
     if (!dish || !ingredient) {
       warnings.push({ row: `${grid.name} fila ${idx + 2}`, reason: "Receta sin plato o sin ingrediente (se omite)" });
       return;
@@ -411,9 +462,9 @@ function parseRecipesSheet(grid: SheetGrid, warnings: { row: string; reason: str
       dish,
       ingredient,
       qty,
-      unit: iUnit >= 0 && String(r[iUnit] ?? "").trim() ? String(r[iUnit]).trim() : "u",
+      unit: iUnit >= 0 && cellText(r[iUnit] ?? "").trim() ? cellText(r[iUnit]).trim() : "u",
       yield: iYield >= 0 && (num(r[iYield]) ?? 0) > 0 ? (num(r[iYield]) as number) : 1,
-      instructions: iInstr >= 0 ? String(r[iInstr] ?? "").trim() : "",
+      instructions: iInstr >= 0 ? cellText(r[iInstr] ?? "").trim() : "",
     });
   });
   return out;

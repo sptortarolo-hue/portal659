@@ -15,13 +15,14 @@ type EditableItem = {
   available?: boolean;
   featured?: boolean;
   cost?: number | null;
+  supplier?: string;
   stock?: number | null;
   stockMin?: number | null;
   stockControl?: boolean;
 };
 
 type FudoSummary = {
-  ingredients: { name: string; category: string; unit: string; cost: number | null; wastePct: number }[];
+  ingredients: { name: string; category: string; unit: string; cost: number | null; supplier: string; wastePct: number }[];
   ingredientCount: number;
   groups: { name: string; pricing: string; min: number; max: number; options: { group: string; label: string; price: number }[]; linkedProducts: string[] }[];
   groupCount: number;
@@ -49,7 +50,7 @@ type ImportResult = {
   updated: number;
   createdCategories: string[];
   errors: { name: string; error: string }[];
-  fudo?: { groupsLinked: number; ingredients: number; recipes: number; recipeLines: number; recipesSkipped: number };
+  fudo?: { groupsLinked: number; ingredients: number; recipes: number; recipeLines: number; recipesSkipped: number; suppliers: number };
 };
 
 type Props = {
@@ -366,7 +367,10 @@ return (
                 <>
                   <li>🧂 Ingredientes: <strong>{result.fudo.ingredients}</strong></li>
                   <li>🧩 Links de grupos FUDO: <strong>{result.fudo.groupsLinked}</strong></li>
-                  <li>📖 Preparaciones creadas: <strong>{result.fudo.recipes}</strong> ({result.fudo.recipeLines} líneas{result.fudo.recipesSkipped > 0 && <>, {result.fudo.recipesSkipped} conservadas</>})</li>
+                  <li>📖 Recetas creadas: <strong>{result.fudo.recipes}</strong> ({result.fudo.recipeLines} líneas{result.fudo.recipesSkipped > 0 && <>, {result.fudo.recipesSkipped} conservadas</>})</li>
+                  {(result.fudo.suppliers ?? 0) > 0 && (
+                    <li>🚚 Proveedores: <strong>{result.fudo.suppliers}</strong></li>
+                  )}
                 </>
               )}
             </ul>

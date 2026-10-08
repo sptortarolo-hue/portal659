@@ -10,9 +10,13 @@ import { NextResponse } from "next/server";
  * a ESTE comercio. Sin `STRIPE_ENABLED=1` se rechaza aunque se acceda directo.
  */
 export async function GET(request: Request) {
-  const { vendor } = await getVendorByRequest(request);
+  const { vendor, staffRole } = await getVendorByRequest(request);
   if (!vendor) {
     return NextResponse.redirect(new URL("/login", getSiteUrl(request)));
+  }
+  // La conexión de Stripe es del dueño (el staff no vincula cuentas).
+  if (staffRole === "delivery" || staffRole === "staff") {
+    return NextResponse.json({ error: "Solo el dueño puede conectar Stripe" }, { status: 403 });
   }
 
   if (!isStripeEnabled()) {

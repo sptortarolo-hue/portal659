@@ -564,7 +564,7 @@ export default function DashboardComercio({
         </div>
       </ConfigSection>
 
-      <ConfigSection id="equipo" label="Repartidores" icon="🛵">
+      <ConfigSection id="equipo" label="Equipo y usuarios" icon="🛵">
         <StaffManager storeName={vendor?.store_name} />
       </ConfigSection>
 

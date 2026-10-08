@@ -54,7 +54,7 @@ export const CONFIG_SECTION_DESCS: Record<string, string> = {
   contacto: "Cómo te contactan tus clientes.",
   pagos: "Medios de pago, entrega, Mercado Pago y venta online.",
   preparacion: "Demora que ven tus clientes en el micrositio.",
-  equipo: "Personal de reparto.",
+  equipo: "Repartidores y usuarios del local (nombre, nivel y contraseña).",
   impresora: "Tickets y comandas en papel.",
   alertas: "Avisos de pedido nuevo en este celu.",
   fiscal: "Abrir la pestaña Facturación: comprobantes, NC y reportes.",
@@ -88,7 +88,7 @@ export const CONFIG_SECTION_LABELS: Record<string, string> = {
   contacto: "Contacto y redes",
   pagos: "Pagos y entrega",
   preparacion: "Tiempo de preparación",
-  equipo: "Repartidores",
+  equipo: "Equipo y usuarios",
   impresora: "Impresora",
   alertas: "Alertas",
   fiscal: "Facturación",
@@ -112,9 +112,9 @@ export function sectionsForVertical(vertical: string | null | undefined): string
     case "moda":
       return ["perfil", "ubicacion", "contacto", "pagos", "equipo", "impresora", "alertas", "fiscal", "promos"];
     case "estetica":
-      return ["perfil", "ubicacion", "contacto", "pagos", "turnera", "fichas", "packs", "impresora", "alertas", "promos"];
+      return ["perfil", "ubicacion", "contacto", "pagos", "turnera", "fichas", "packs", "equipo", "impresora", "alertas", "promos"];
     case "servicio":
-      return ["perfil", "ubicacion", "contacto", "servicios", "urgencia", "promos"];
+      return ["perfil", "ubicacion", "contacto", "servicios", "urgencia", "equipo", "promos"];
     default:
       return ["perfil", "ubicacion", "contacto", "pagos", "promos"];
   }

@@ -22,7 +22,7 @@ export type LookupCustomer = {
  *   deriva candidatos de `orders` recientes (mismo shape, total_orders 0).
  */
 export async function GET(request: Request) {
-  const gate = await gateRequest(request);
+  const gate = await gateRequest(request, { allowStaff: true });
   if (!gate.ok) return gateError(gate);
   if (!gate.plan.can("pos")) {
     return NextResponse.json(

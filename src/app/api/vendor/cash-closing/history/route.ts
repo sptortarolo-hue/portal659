@@ -3,7 +3,7 @@ import { queryMany } from "@/lib/db";
 import { NextResponse } from "next/server";
 
 export async function GET(request: Request) {
-  const gate = await gateRequest(request);
+  const gate = await gateRequest(request, { allowStaff: true });
   if (!gate.ok) return gateError(gate);
   if (!gate.plan.can("pos")) {
     return NextResponse.json(

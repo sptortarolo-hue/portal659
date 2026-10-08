@@ -6,7 +6,7 @@ export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const gate = await gateRequest(request);
+  const gate = await gateRequest(request, { allowStaff: true });
   if (!gate.ok) return gateError(gate);
   if (!gate.plan.can("mesas")) {
     return NextResponse.json({ error: "Las mesas forman parte del plan Gestión integral" }, { status: 403 });
@@ -56,7 +56,7 @@ export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const gate = await gateRequest(request);
+  const gate = await gateRequest(request, { allowStaff: true });
   if (!gate.ok) return gateError(gate);
   if (!gate.plan.can("mesas")) {
     return NextResponse.json({ error: "Las mesas forman parte del plan Gestión integral" }, { status: 403 });

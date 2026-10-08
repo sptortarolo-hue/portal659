@@ -22,7 +22,7 @@ function parseDate(v: string | null, fallback: Date): Date {
  * Sin params: últimos 30 días. Rango máximo: 366 días.
  */
 export async function GET(request: Request) {
-  const gate = await gateRequest(request);
+  const gate = await gateRequest(request, { allowStaff: true });
   if (!gate.ok) return gateError(gate);
   if (!gate.plan.can("pos")) {
     return NextResponse.json(

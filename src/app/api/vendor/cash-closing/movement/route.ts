@@ -9,7 +9,7 @@ import { NextResponse } from "next/server";
  * El retiro se bloquea si supera el disponible (el cajón no queda negativo).
  */
 export async function POST(request: Request) {
-  const gate = await gateRequest(request);
+  const gate = await gateRequest(request, { allowStaff: true });
   if (!gate.ok) return gateError(gate);
   if (!gate.plan.can("pos")) {
     return NextResponse.json(

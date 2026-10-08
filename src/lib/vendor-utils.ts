@@ -24,22 +24,28 @@ function getCookie(request: Request, name: string): string | null {
 
 export { ADMIN_AS_COOKIE };
 
-export type StaffRole = "owner" | "delivery" | null;
+export type StaffRole = "owner" | "delivery" | "staff" | null;
+
+/** Nivel del usuario del local (solo cuando staffRole === "staff"). */
+export type StaffLevel = "admin" | "empleado" | null;
 
 /**
  * Obtiene el vendor (comercio) del usuario autenticado.
  * - Owner: vendors.user_id = user.id.
- * - Staff: vendor_staff.profile_id = user.id (repartidor / delivery).
+ * - Staff: vendor_staff.profile_id = user.id (repartidor / delivery, o
+ *   usuario del local / staff con su staff_level).
  * - Admin con `portal659-admin-as`: resuelve por id (modo llave en mano).
  * - Sesión de prueba (`portal659-preview-dashboard`): acceso temporal al
  *   panel de UN comercio, sin cuenta. `previewSession: true`, `userId: null`.
  * Devuelve también `staffRole` ("owner" para sesión de prueba, null si es
- * dueño, "delivery" si es repartidor).
+ * dueño, "delivery" si es repartidor, "staff" si es usuario del local) y
+ * `staffLevel` ("admin" = Encargado / "empleado" = Empleado, solo staff).
  */
 export async function getVendorByRequest(request: Request): Promise<{
   userId: string | null;
   vendor: { id: string; user_id: string | null } | null;
   staffRole: StaffRole;
+  staffLevel: StaffLevel;
   previewSession: boolean;
 }> {
   // Sesión de prueba: no requiere usuario registrado.
@@ -49,11 +55,11 @@ export async function getVendorByRequest(request: Request): Promise<{
       `SELECT id, user_id FROM vendors WHERE id = $1 LIMIT 1`,
       [previewVendorId]
     );
-    return { userId: null, vendor: vendor ?? null, staffRole: "owner", previewSession: true };
+    return { userId: null, vendor: vendor ?? null, staffRole: "owner", staffLevel: null, previewSession: true };
   }
 
   const user = await getAuthUser(request);
-  if (!user) return { userId: null, vendor: null, staffRole: null, previewSession: false };
+  if (!user) return { userId: null, vendor: null, staffRole: null, staffLevel: null, previewSession: false };
 
   const asVendorId = getCookie(request, ADMIN_AS_COOKIE);
   if (asVendorId && user.is_admin) {
@@ -61,34 +67,54 @@ export async function getVendorByRequest(request: Request): Promise<{
       `SELECT id, user_id FROM vendors WHERE id = $1 LIMIT 1`,
       [asVendorId]
     );
-    return { userId: user.id, vendor: vendor ?? null, staffRole: null, previewSession: false };
+    return { userId: user.id, vendor: vendor ?? null, staffRole: null, staffLevel: null, previewSession: false };
   }
 
   const vendor = await queryOne<{ id: string; user_id: string }>(
     `SELECT id, user_id FROM vendors WHERE user_id = $1 LIMIT 1`,
     [user.id]
   );
-  if (vendor) return { userId: user.id, vendor, staffRole: null, previewSession: false };
+  if (vendor) return { userId: user.id, vendor, staffRole: null, staffLevel: null, previewSession: false };
 
-  // No es dueño: ¿es repartidor vinculado por código y activo?
-  const staff = await queryOne<{ vendor_id: string; role: string }>(
-    `SELECT vendor_id, role FROM vendor_staff WHERE profile_id = $1 AND status = 'active' LIMIT 1`,
-    [user.id]
-  );
+  // No es dueño: ¿staff vinculado y activo? (repartidor o usuario del
+  // local). Tolerante a migración sin aplicar (sin columnas nuevas cae al
+  // SELECT legacy de role).
+  let staff: { vendor_id: string; role: string; staff_level?: string | null } | null = null;
+  try {
+    staff =
+      (await queryOne<{ vendor_id: string; role: string; staff_level: string | null }>(
+        `SELECT vendor_id, role, staff_level FROM vendor_staff WHERE profile_id = $1 AND status = 'active' LIMIT 1`,
+        [user.id]
+      )) ?? null;
+  } catch {
+    staff =
+      (await queryOne<{ vendor_id: string; role: string }>(
+        `SELECT vendor_id, role FROM vendor_staff WHERE profile_id = $1 AND status = 'active' LIMIT 1`,
+        [user.id]
+      )) ?? null;
+  }
   if (staff) {
     const sv = await queryOne<{ id: string; user_id: string | null }>(
       `SELECT id, user_id FROM vendors WHERE id = $1 LIMIT 1`,
       [staff.vendor_id]
     );
+    if (staff.role === "delivery") {
+      return { userId: user.id, vendor: sv ?? null, staffRole: "delivery", staffLevel: null, previewSession: false };
+    }
+    if (staff.role === "staff") {
+      const level: StaffLevel = staff.staff_level === "admin" ? "admin" : "empleado";
+      return { userId: user.id, vendor: sv ?? null, staffRole: "staff", staffLevel: level, previewSession: false };
+    }
     return {
       userId: user.id,
       vendor: sv ?? null,
-      staffRole: staff.role === "delivery" ? ("delivery" as const) : ("owner" as const),
+      staffRole: "owner" as const,
+      staffLevel: null,
       previewSession: false,
     };
   }
 
-  return { userId: user.id, vendor: null, staffRole: null, previewSession: false };
+  return { userId: user.id, vendor: null, staffRole: null, staffLevel: null, previewSession: false };
 }
 
 /**

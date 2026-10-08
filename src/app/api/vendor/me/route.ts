@@ -14,7 +14,7 @@ function slugify(text: string): string {
 }
 
 export async function GET(request: Request) {
-  const { vendor: resolved, staffRole, previewSession, userId } =
+  const { vendor: resolved, staffRole, staffLevel, previewSession, userId } =
     await getVendorByRequest(request);
 
   // Sesión de prueba: entra sin usuario registrado.
@@ -23,7 +23,7 @@ export async function GET(request: Request) {
       `SELECT * FROM vendors WHERE id = $1 LIMIT 1`,
       [resolved.id]
     );
-    return NextResponse.json({ vendor, staffRole, userId: null, preview: true });
+    return NextResponse.json({ vendor, staffRole, staffLevel, userId: null, preview: true });
   }
 
   const user = await getAuthUser(request);
@@ -32,7 +32,7 @@ export async function GET(request: Request) {
   }
 
   if (!resolved) {
-    return NextResponse.json({ vendor: null, staffRole, userId: user.id });
+    return NextResponse.json({ vendor: null, staffRole, staffLevel, userId: user.id });
   }
 
   const vendor = await queryOne<Record<string, unknown>>(
@@ -40,13 +40,23 @@ export async function GET(request: Request) {
     [resolved.id]
   );
 
-  return NextResponse.json({ vendor, staffRole, userId: user.id, preview: previewSession });
+  return NextResponse.json({ vendor, staffRole, staffLevel, userId: user.id, preview: previewSession });
 }
 
 export async function POST(request: Request) {
   const user = await getAuthUser(request);
   if (!user) {
     return NextResponse.json({ error: "No autenticado" }, { status: 401 });
+  }
+  // Usuarios del local: solo el Encargado puede editar la config (el
+  // Empleado opera sin tocarla). Usuarios/plata/fiscal siguen dueño-only
+  // en sus propias rutas.
+  const { staffRole, staffLevel } = await getVendorByRequest(request);
+  if (staffRole === "delivery") {
+    return NextResponse.json({ error: "No autorizado" }, { status: 403 });
+  }
+  if (staffRole === "staff" && staffLevel !== "admin") {
+    return NextResponse.json({ error: "Tu nivel de usuario no puede cambiar la configuración" }, { status: 403 });
   }
 
   const body = await request.json();

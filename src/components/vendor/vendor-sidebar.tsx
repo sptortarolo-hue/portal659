@@ -42,6 +42,8 @@ interface VendorSidebarProps {
   activeConfigSection?: string;
   onConfigSection?: (id: string) => void;
   configSectionStatus?: (id: string) => ConfigSectionStatus | undefined;
+  /** Empleado raso: oculta Gestión, Análisis sensible y links de plan/bot. */
+  isEmployee?: boolean;
 }
 
 /** g = gastro · m = moda · c = comercio */
@@ -143,6 +145,7 @@ export default function VendorSidebar({
   planSlug,
   canFiscal = false,
   canInventory = false,
+  isEmployee = false,
 }: VendorSidebarProps) {
   function handleTab(tab: Tab) {
     onTabChange(tab);
@@ -292,7 +295,8 @@ export default function VendorSidebar({
             </div>
           </div>
 
-          {/* Gestión */}
+          {/* Gestión — el empleado opera sin gestión (ni menú, ni clientes, ni config) */}
+          {!isEmployee && (
           <div>
             <p className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Gestión</p>
             <div className="space-y-0.5">
@@ -356,12 +360,15 @@ export default function VendorSidebar({
               )}
             </div>
           </div>
+          )}
 
-          {/* Análisis */}
+          {/* Análisis — el empleado solo ve el histórico */}
           <div>
             <p className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Análisis</p>
             <div className="space-y-0.5">
-              {((isService && !isEstetica) ? ANALISIS_ITEMS.filter((i) => i.tab !== "analytics") : ANALISIS_ITEMS).map((item) => (
+              {((isService && !isEstetica) ? ANALISIS_ITEMS.filter((i) => i.tab !== "analytics") : ANALISIS_ITEMS)
+                .filter((i) => !isEmployee || i.tab === "history")
+                .map((item) => (
                 <NavButton
                   key={item.tab}
                   active={currentTab === item.tab}
@@ -375,9 +382,9 @@ export default function VendorSidebar({
           </>
         </nav>
 
-        {/* Footer */}
+        {/* Footer — el empleado no ve plan ni bot */}
         <div className="px-3 py-3 border-t border-border space-y-2">
-          {planSlug && (
+          {planSlug && !isEmployee && (
             <Link
               href="/vendor/suscripcion"
               className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
@@ -387,6 +394,7 @@ export default function VendorSidebar({
               <span className="text-primary">→</span>
             </Link>
           )}
+          {!isEmployee && (
           <Link
             href="/vendor/wa-bot"
             className="flex items-center gap-3 rounded-lg border border-border px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
@@ -394,6 +402,7 @@ export default function VendorSidebar({
             <Bot className="h-4 w-4 text-primary" />
             <span className="flex-1 truncate">Bot de WhatsApp</span>
           </Link>
+          )}
           <Link
             href="/manuales"
             target="_blank"

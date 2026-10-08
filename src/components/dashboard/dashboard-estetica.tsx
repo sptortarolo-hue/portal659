@@ -20,6 +20,7 @@ import {
 import { MpConnectCard } from "@/components/dashboard/mp-connect-card";
 import { StripeConnectCard } from "@/components/dashboard/stripe-connect-card";
 import { PrinterConfigSection } from "@/components/dashboard/printer-config-section";
+import { StaffManager } from "@/components/vendor/staff-manager";
 import { HoursEditor } from "@/components/dashboard/hours-editor";
 import { GalleryManager } from "@/components/dashboard/gallery-manager";
 import { PromosSection } from "@/components/dashboard/promos-section";
@@ -715,6 +716,10 @@ export default function DashboardEstetica({
             <PushAlertCard />
             <WaRemindersCard />
           </div>
+        </ConfigSection>
+
+        <ConfigSection id="equipo" label="Equipo y usuarios" icon="👥">
+          <StaffManager storeName={vendor?.store_name} showCouriers={false} />
         </ConfigSection>
 
         <ConfigSection id="promos" label="Promos" icon="🔗">

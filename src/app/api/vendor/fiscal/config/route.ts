@@ -18,7 +18,10 @@ type FiscalRow = Pick<
 
 /** Config fiscal del comercio (los secretos NUNCA salen de acá). */
 export async function GET(request: Request) {
-  const { vendor: gateVendor } = await getVendorByRequest(request);
+  const { vendor: gateVendor, staffRole: gateStaff } = await getVendorByRequest(request);
+  if (gateStaff === "delivery" || gateStaff === "staff") {
+    return NextResponse.json({ error: "No autorizado" }, { status: 403 });
+  }
   if (!gateVendor) {
     return NextResponse.json({ error: "No autenticado" }, { status: 401 });
   }
@@ -64,7 +67,10 @@ export async function GET(request: Request) {
 
 /** Guarda CUIT / punto de venta / entorno / certificado+clave (cifrados). */
 export async function PATCH(request: Request) {
-  const { vendor: gateVendor } = await getVendorByRequest(request);
+  const { vendor: gateVendor, staffRole: gateStaff } = await getVendorByRequest(request);
+  if (gateStaff === "delivery" || gateStaff === "staff") {
+    return NextResponse.json({ error: "No autorizado" }, { status: 403 });
+  }
   if (!gateVendor) {
     return NextResponse.json({ error: "No autenticado" }, { status: 401 });
   }

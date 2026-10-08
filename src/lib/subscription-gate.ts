@@ -12,6 +12,8 @@ export type GateSuccess = {
   plan: EffectivePlan;
   /** Sesión de prueba (link compartido, sin cuenta): todo queda marcado. */
   previewSession?: boolean;
+  staffRole: "owner" | "delivery" | "staff" | null;
+  staffLevel: "admin" | "empleado" | null;
 };
 
 export type GateFailure = {
@@ -22,7 +24,10 @@ export type GateFailure = {
 
 export type GateResult = GateSuccess | GateFailure;
 
-export async function gateRequest(request: Request): Promise<GateResult> {
+export async function gateRequest(
+  request: Request,
+  opts?: { allowStaff?: boolean }
+): Promise<GateResult> {
   // Sesión de prueba (link compartido, sin cuenta): acceso total temporal
   // al panel de UN comercio. Todo lo que cree queda marcado como prueba.
   const resolved = await getVendorByRequest(request);
@@ -35,7 +40,7 @@ export async function gateRequest(request: Request): Promise<GateResult> {
       return { ok: false, error: "Comercio no encontrado", status: 404 };
     }
     const plan = resolveVendorPlan(vendor, plans);
-    return { ok: true, user: { id: `preview:${vendor.id}` }, vendor, plans, plan, previewSession: true };
+    return { ok: true, user: { id: `preview:${vendor.id}` }, vendor, plans, plan, previewSession: true, staffRole: "owner", staffLevel: null };
   }
 
   const authUser = await getAuthUser(request);
@@ -43,9 +48,14 @@ export async function gateRequest(request: Request): Promise<GateResult> {
     return { ok: false, error: "No autenticado", status: 401 };
   }
 
-  // Repartidores (y staff): fuera de las rutas gated (mismo alcance que antes,
-  // cuando solo pasaba el dueño por user_id).
-  if (resolved.staffRole !== null) {
+  // Repartidores: siempre fuera de las rutas gated. Usuarios del local
+  // (staff): solo entran a las rutas operativas que lo piden explícito
+  // (mostrador, mesas, caja con Z, lookup de clientes). El resto sigue
+  // dueño-only (config sensible, plata, fiscal, usuarios).
+  if (resolved.staffRole === "delivery") {
+    return { ok: false, error: "No autorizado", status: 403 };
+  }
+  if (resolved.staffRole === "staff" && !opts?.allowStaff) {
     return { ok: false, error: "No autorizado", status: 403 };
   }
 
@@ -63,7 +73,7 @@ export async function gateRequest(request: Request): Promise<GateResult> {
   const plans = await queryMany<Plan>(`SELECT * FROM plans ORDER BY sort ASC`);
   const plan = resolveVendorPlan(vendor, plans);
 
-  return { ok: true, user: { id: authUser.id }, vendor, plans, plan };
+  return { ok: true, user: { id: authUser.id }, vendor, plans, plan, staffRole: resolved.staffRole, staffLevel: resolved.staffLevel };
 }
 
 export function gateError(result: GateFailure) {

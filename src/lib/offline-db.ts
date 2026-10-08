@@ -26,6 +26,7 @@ export type VendorSnapshot = {
   vendor: Record<string, any>;
   plans: Record<string, any>[];
   staffRole?: string | null;
+  staffLevel?: string | null;
   cachedAt: number;
 };
 

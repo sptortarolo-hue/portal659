@@ -7,8 +7,11 @@ import { query, queryOne } from "@/lib/db";
 export async function GET(request: Request) {
   const user = await getAuthUser(request);
   if (!user) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
-  const { vendor } = await getVendorByRequest(request);
+  const { vendor, staffRole } = await getVendorByRequest(request);
   if (!vendor) return NextResponse.json({ error: "No autorizado" }, { status: 403 });
+  if (staffRole === "delivery" || staffRole === "staff") {
+    return NextResponse.json({ error: "No autorizado" }, { status: 403 });
+  }
 
   const bot = await queryOne(
     `SELECT wa_phone, status, enabled, token, created_at, updated_at
@@ -21,8 +24,11 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const user = await getAuthUser(request);
   if (!user) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
-  const { vendor } = await getVendorByRequest(request);
+  const { vendor, staffRole } = await getVendorByRequest(request);
   if (!vendor) return NextResponse.json({ error: "No autorizado" }, { status: 403 });
+  if (staffRole === "delivery" || staffRole === "staff") {
+    return NextResponse.json({ error: "No autorizado" }, { status: 403 });
+  }
 
   const token = "wa_" + randomBytes(24).toString("base64url");
   await query(
@@ -36,8 +42,11 @@ export async function POST(request: Request) {
 export async function PATCH(request: Request) {
   const user = await getAuthUser(request);
   if (!user) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
-  const { vendor } = await getVendorByRequest(request);
+  const { vendor, staffRole } = await getVendorByRequest(request);
   if (!vendor) return NextResponse.json({ error: "No autorizado" }, { status: 403 });
+  if (staffRole === "delivery" || staffRole === "staff") {
+    return NextResponse.json({ error: "No autorizado" }, { status: 403 });
+  }
 
   const body = await request.json().catch(() => ({}));
   const { enabled, wa_phone } = body as { enabled?: boolean; wa_phone?: string };

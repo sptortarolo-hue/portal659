@@ -10,7 +10,10 @@ import { NextResponse } from "next/server";
  * GET /api/vendor/fiscal/pdf?invoiceId=[&format=url] → archivo o {pdf_url}.
  */
 export async function GET(request: Request) {
-  const { vendor: gateVendor } = await getVendorByRequest(request);
+  const { vendor: gateVendor, staffRole: gateStaff } = await getVendorByRequest(request);
+  if (gateStaff === "delivery" || gateStaff === "staff") {
+    return NextResponse.json({ error: "No autorizado" }, { status: 403 });
+  }
   if (!gateVendor) {
     return NextResponse.json({ error: "No autenticado" }, { status: 401 });
   }

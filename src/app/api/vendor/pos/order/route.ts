@@ -29,7 +29,7 @@ const PAYMENT_METHODS = ["efectivo", "transferencia", "tarjeta", "mixto", "whats
 type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 
 export async function POST(request: Request) {
-  const gate = await gateRequest(request);
+  const gate = await gateRequest(request, { allowStaff: true });
   if (!gate.ok) return gateError(gate);
 
   if (!gate.plan.can("pos")) {

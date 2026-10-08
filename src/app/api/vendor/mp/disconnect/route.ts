@@ -9,9 +9,12 @@ import { NextResponse } from "next/server";
  * que vuelva a conectar).
  */
 export async function POST(request: Request) {
-  const { vendor } = await getVendorByRequest(request);
+  const { vendor, staffRole } = await getVendorByRequest(request);
   if (!vendor) {
     return NextResponse.json({ error: "No autenticado" }, { status: 401 });
+  }
+  if (staffRole === "delivery" || staffRole === "staff") {
+    return NextResponse.json({ error: "Solo el dueño puede desconectar Mercado Pago" }, { status: 403 });
   }
 
   await queryOne(

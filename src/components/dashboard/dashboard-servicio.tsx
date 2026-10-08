@@ -23,6 +23,7 @@ import { PlanLock } from "@/components/vendor/plan-lock";
 import { QuoteManualModal } from "@/components/dashboard/quote-manual-modal";
 import { BookingManualModal } from "@/components/dashboard/booking-manual-modal";
 import { EsteticaWaitlistManager, type WaitEntry } from "@/components/dashboard/estetica-managers";
+import { StaffManager } from "@/components/vendor/staff-manager";
 import type { Vendor, Product, ProductModifier, Booking, VendorGallery } from "@/types/database";
 
 type Props = {
@@ -1248,6 +1249,10 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
             </div>
           )}
         </div>
+      </ConfigSection>
+
+      <ConfigSection id="equipo" label="Equipo y usuarios" icon="👥">
+        <StaffManager storeName={vendor?.store_name} showCouriers={false} />
       </ConfigSection>
 
       <ConfigSection id="promos" label="Promos" icon="🔗">

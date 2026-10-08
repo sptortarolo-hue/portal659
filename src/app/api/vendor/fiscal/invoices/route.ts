@@ -6,7 +6,10 @@ import { NextResponse } from "next/server";
 
 /** Historial de comprobantes fiscales del comercio (últimos 50). */
 export async function GET(request: Request) {
-  const { vendor: gateVendor } = await getVendorByRequest(request);
+  const { vendor: gateVendor, staffRole: gateStaff } = await getVendorByRequest(request);
+  if (gateStaff === "delivery" || gateStaff === "staff") {
+    return NextResponse.json({ error: "No autorizado" }, { status: 403 });
+  }
   if (!gateVendor) {
     return NextResponse.json({ error: "No autenticado" }, { status: 401 });
   }

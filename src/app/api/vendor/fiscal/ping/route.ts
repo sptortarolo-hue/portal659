@@ -13,7 +13,10 @@ import { NextResponse } from "next/server";
  * numeración ni tocar pedidos.
  */
 export async function POST(request: Request) {
-  const { vendor: gateVendor } = await getVendorByRequest(request);
+  const { vendor: gateVendor, staffRole: gateStaff } = await getVendorByRequest(request);
+  if (gateStaff === "delivery" || gateStaff === "staff") {
+    return NextResponse.json({ error: "No autorizado" }, { status: 403 });
+  }
   if (!gateVendor) {
     return NextResponse.json({ error: "No autenticado" }, { status: 401 });
   }

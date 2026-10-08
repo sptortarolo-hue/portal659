@@ -26,7 +26,10 @@ const csvCell = (v: string | number | null | undefined): string => {
  * Default: mes actual. Incluye facturas (11) y NC (13).
  */
 export async function GET(request: Request) {
-  const { vendor: gateVendor } = await getVendorByRequest(request);
+  const { vendor: gateVendor, staffRole: gateStaff } = await getVendorByRequest(request);
+  if (gateStaff === "delivery" || gateStaff === "staff") {
+    return NextResponse.json({ error: "No autorizado" }, { status: 403 });
+  }
   if (!gateVendor) {
     return NextResponse.json({ error: "No autenticado" }, { status: 401 });
   }

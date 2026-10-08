@@ -32,19 +32,48 @@ export async function GET(request: Request) {
     [user.id]
   );
 
-  // Staff (repartidor): si no es dueño pero está vinculado activo a un comercio.
-  const staff = await queryOne<{
+  // Staff: si no es dueño pero está vinculado activo a un comercio
+  // (repartidor o usuario del local). Tolerante a migración sin aplicar.
+  let staff: {
     role: string;
     store_name: string;
     vendor_id: string;
-  }>(
-    `SELECT vs.role, v.store_name, v.id AS vendor_id
-     FROM vendor_staff vs
-     JOIN vendors v ON v.id = vs.vendor_id
-     WHERE vs.profile_id = $1 AND vs.status = 'active' AND vs.role = 'delivery'
-     LIMIT 1`,
-    [user.id]
-  );
+    staff_level?: string | null;
+    display_name?: string | null;
+    username?: string | null;
+  } | null = null;
+  try {
+    staff =
+      (await queryOne<{
+        role: string;
+        store_name: string;
+        vendor_id: string;
+        staff_level: string | null;
+        display_name: string | null;
+        username: string | null;
+      }>(
+        `SELECT vs.role, v.store_name, v.id AS vendor_id, vs.staff_level, vs.display_name, vs.username
+         FROM vendor_staff vs
+         JOIN vendors v ON v.id = vs.vendor_id
+         WHERE vs.profile_id = $1 AND vs.status = 'active' AND vs.role IN ('delivery', 'staff')
+         LIMIT 1`,
+        [user.id]
+      )) ?? null;
+  } catch {
+    staff =
+      (await queryOne<{
+        role: string;
+        store_name: string;
+        vendor_id: string;
+      }>(
+        `SELECT vs.role, v.store_name, v.id AS vendor_id
+         FROM vendor_staff vs
+         JOIN vendors v ON v.id = vs.vendor_id
+         WHERE vs.profile_id = $1 AND vs.status = 'active' AND vs.role = 'delivery'
+         LIMIT 1`,
+        [user.id]
+      )) ?? null;
+  }
 
   return NextResponse.json({
     user: {

@@ -8,7 +8,7 @@ import { NextResponse } from "next/server";
  * Un solo turno abierto por comercio (409 si ya hay uno).
  */
 export async function POST(request: Request) {
-  const gate = await gateRequest(request);
+  const gate = await gateRequest(request, { allowStaff: true });
   if (!gate.ok) return gateError(gate);
   if (!gate.plan.can("pos")) {
     return NextResponse.json(

@@ -10,9 +10,13 @@ import { NextResponse } from "next/server";
  * Sin `MP_ENABLED=1` (sin OK de MP), se rechaza aunque se acceda directo.
  */
 export async function GET(request: Request) {
-  const { vendor } = await getVendorByRequest(request);
+  const { vendor, staffRole } = await getVendorByRequest(request);
   if (!vendor) {
     return NextResponse.redirect(new URL("/login", getSiteUrl(request)));
+  }
+  // La conexión de Mercado Pago es del dueño (el staff no vincula cuentas).
+  if (staffRole === "delivery" || staffRole === "staff") {
+    return NextResponse.json({ error: "Solo el dueño puede conectar Mercado Pago" }, { status: 403 });
   }
 
   if (!isMpEnabled()) {

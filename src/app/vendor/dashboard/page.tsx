@@ -249,7 +249,8 @@ function VendorDashboardInner() {
   const searchParams = useSearchParams();
   const impersonatingId = searchParams.get("as");
   const [vendor, setVendor] = useState<Vendor | null>(null);
-  const [staffRole, setStaffRole] = useState<"owner" | "delivery" | null>(null);
+  const [staffRole, setStaffRole] = useState<"owner" | "delivery" | "staff" | null>(null);
+  const [staffLevel, setStaffLevel] = useState<"admin" | "empleado" | null>(null);
   const [previewSession, setPreviewSession] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const [offers, setOffers] = useState<Offer[]>([]);
@@ -516,7 +517,10 @@ function VendorDashboardInner() {
           // Repartidores no operan offline (su vista exige servidor).
           if (snap?.vendor && (snap.staffRole ?? null) !== "delivery") {
             setVendor(snap.vendor as unknown as Vendor);
-            if (snap.staffRole) setStaffRole(snap.staffRole as "owner" | "delivery");
+            if (snap.staffRole) setStaffRole(snap.staffRole as "owner" | "delivery" | "staff");
+            if ((snap as { staffLevel?: string }).staffLevel) {
+              setStaffLevel((snap as { staffLevel?: string }).staffLevel as "admin" | "empleado");
+            }
             if (Array.isArray(snap.plans) && snap.plans.length > 0) {
               setPlans(snap.plans as unknown as Plan[]);
             }
@@ -543,6 +547,7 @@ function VendorDashboardInner() {
         }
       }
       if (me.staffRole) setStaffRole(me.staffRole);
+      if (me.staffLevel) setStaffLevel(me.staffLevel);
       if (me.userId) setUserId(me.userId);
       if (off.offers) setOffers(off.offers);
       if (ord.orders) setOrders(ord.orders);
@@ -590,9 +595,10 @@ function VendorDashboardInner() {
         vendor: vendor as unknown as Record<string, any>,
         plans: plans as unknown as Record<string, any>[],
         staffRole: staffRole ?? null,
+        staffLevel: staffLevel ?? null,
       }).catch(() => {});
     }
-  }, [vendor, plans, staffRole]);
+  }, [vendor, plans, staffRole, staffLevel]);
   // Protección multi-usuario: al cambiar de comercio (logout/login con otro
   // usuario, impersonación admin) se evictan las cachés de lectura del
   // anterior. El outbox/prints pendientes SE PRESERVA (clearVendorData no lo
@@ -1012,6 +1018,16 @@ function VendorDashboardInner() {
   // Estética vende productos sin cocina: sus pedidos usan el flow retail
   // ("Empaquetando", etc.) aunque no sea vertical retail.
   const orderFlowRetail = isRetail || isEstetica;
+
+  // Usuario del local nivel Empleado: opera (pedidos, mostrador, mesas,
+  // comanda, caja con Z, histórico) sin config ni gestión. El Encargado
+  // (staff admin) ve todo salvo usuarios/suscripción (eso lo bloquea el server).
+  const isEmployee = staffRole === "staff" && staffLevel !== "admin";
+  const EMPLOYEE_FORBIDDEN: DashTab[] = ["config", "menu", "analytics", "clientes", "reviews", "recetas", "fiscal", "inventario", "galeria"];
+  useEffect(() => {
+    if (isEmployee && EMPLOYEE_FORBIDDEN.includes(tab)) setTab("hoy");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEmployee, tab]);
 
   const dashboardProps = useMemo(() => ({
     vendor, offers, categories, modifiers, gallery, bookings, msg,
@@ -1510,6 +1526,7 @@ function VendorDashboardInner() {
         activeConfigSection={configSection}
         onConfigSection={handleConfigSection}
         configSectionStatus={(id) => getConfigSectionStatus(id, vendor)}
+        isEmployee={isEmployee}
       />
       )}
 
@@ -1556,8 +1573,10 @@ function VendorDashboardInner() {
                 </p>
               </div>
 
-              {/* Controles operativos en desktop (fila 1) */}
+              {/* Controles operativos en desktop (fila 1). El empleado no toca config: solo caja. */}
               <div className="hidden sm:flex items-center gap-3">
+                {!isEmployee && (
+                  <>
                 <OpenToggle vendor={vendor} onSaved={(v) => setVendor(v)} />
                 {(isComercio || isModa) && (vendor.delivery_options || "ambos") !== "retiro" && (
                   <DeliveryToggle vendor={vendor} onSaved={(v) => setVendor(v)} />
@@ -1573,6 +1592,8 @@ function VendorDashboardInner() {
                       document.getElementById("printer-config")?.scrollIntoView({ behavior: "smooth", block: "start" });
                     }, 120);
                   }} />
+                )}
+                  </>
                 )}
                 {effectivePlan.can("pos") && (
                   <CashShiftPill
@@ -1599,8 +1620,10 @@ function VendorDashboardInner() {
               </div>
             </div>
 
-            {/* Fila 2: controles operativos — solo mobile */}
+            {/* Fila 2: controles operativos — solo mobile (empleado: solo caja) */}
             <div className="flex sm:hidden items-center gap-2 overflow-x-auto pt-2">
+              {!isEmployee && (
+                <>
               <OpenToggle vendor={vendor} onSaved={(v) => setVendor(v)} />
               {(isComercio || isModa) && (vendor.delivery_options || "ambos") !== "retiro" && (
                 <DeliveryToggle vendor={vendor} onSaved={(v) => setVendor(v)} />
@@ -1616,6 +1639,8 @@ function VendorDashboardInner() {
                     document.getElementById("printer-config")?.scrollIntoView({ behavior: "smooth", block: "start" });
                   }, 120);
                 }} />
+              )}
+                </>
               )}
               {effectivePlan.can("pos") && (
                 <CashShiftPill
@@ -1658,8 +1683,8 @@ function VendorDashboardInner() {
           <OfflineConflicts vendorId={vendor.id} />
         </div>
 
-        {/* Banner de suscripción — solo en Hoy */}
-        {tab === "hoy" && <PlanBanner plan={planBannerData as any} />}
+        {/* Banner de suscripción — solo en Hoy (el empleado no gestiona el plan) */}
+        {tab === "hoy" && !isEmployee && <PlanBanner plan={planBannerData as any} />}
 
           {/* Stats bar — solo en tab de pedidos (no aplica a servicios: su tab "orders" es Presupuestos/Consultas) */}
         {!isService && tab === "orders" && orders.length > 0 && (
@@ -2068,14 +2093,16 @@ function VendorDashboardInner() {
             <div className="grid grid-cols-2 gap-2">
               {isService ? (
                 <>
-                  {!isEstetica && (
+                  {!isEstetica && !isEmployee && (
                     <button onClick={() => { setTab("galeria"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "galeria" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
                       <Image className="h-5 w-5" />Galería
                     </button>
                   )}
+                  {!isEmployee && (
                   <button onClick={() => { setTab("config"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "config" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
                     <Wrench className="h-5 w-5" />Configuración
                   </button>
+                  )}
                   {isEstetica && (
                     <>
                       <button onClick={() => { setTab("pedidos"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "pedidos" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
@@ -2084,18 +2111,22 @@ function VendorDashboardInner() {
                       <button onClick={() => { setTab("mostrador"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "mostrador" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
                         <Monitor className="h-5 w-5" />Mostrador
                       </button>
+                      {!isEmployee && (
                       <button onClick={() => { setTab("menu"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "menu" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
                         <ShoppingBag className="h-5 w-5" />Catálogo ({menuCount})
                       </button>
+                      )}
                     </>
                   )}
+                  {!isEmployee && (
                   <button onClick={() => { setTab("reviews"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "reviews" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
                     <Star className="h-5 w-5" />Reseñas
                   </button>
+                  )}
                   <button onClick={() => { setTab("history"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "history" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
                     <History className="h-5 w-5" />Historial
                   </button>
-                  {isEstetica && (
+                  {isEstetica && !isEmployee && (
                     <button onClick={() => { setTab("analytics"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "analytics" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
                       <BarChart className="h-5 w-5" />Estadísticas
                     </button>
@@ -2103,16 +2134,18 @@ function VendorDashboardInner() {
                 </>
               ) : (
                 <>
+              {!isEmployee && (
               <button onClick={() => { setTab("menu"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "menu" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
                 {isModa ? <Shirt className="h-5 w-5" /> : isComercio ? <ShoppingBag className="h-5 w-5" /> : <Utensils className="h-5 w-5" />}
                 {isRetail ? "Catálogo" : "Menú"} ({menuCount})
               </button>
-              {isComercio && (
+              )}
+              {isComercio && !isEmployee && (
                 <button onClick={() => { setTab("galeria"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "galeria" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
                   <Image className="h-5 w-5" />Galería
                 </button>
               )}
-              {isGastro && (
+              {isGastro && !isEmployee && (
                 <button onClick={() => { setTab("recetas"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "recetas" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
                   <FileText className="h-5 w-5" />Preparación y Costo
                 </button>
@@ -2122,33 +2155,39 @@ function VendorDashboardInner() {
                   <DollarSign className="h-5 w-5" />Caja
                 </button>
               )}
-              {(isGastro || isComercio || isModa) && (
+              {(isGastro || isComercio || isModa) && !isEmployee && (
                 <button onClick={() => { setTab("clientes"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "clientes" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
                   <Users className="h-5 w-5" />Clientes
                 </button>
               )}
-              {(isGastro || isComercio || isModa) && (
+              {(isGastro || isComercio || isModa) && !isEmployee && (
                 <button onClick={() => { setTab("fiscal"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "fiscal" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
                   <Receipt className="h-5 w-5" />Facturación
                 </button>
               )}
-              {(isGastro || isComercio || isModa) && (
+              {(isGastro || isComercio || isModa) && !isEmployee && (
                 <button onClick={() => { setTab("inventario"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "inventario" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
                   <Boxes className="h-5 w-5" />Inventario
                 </button>
               )}
+              {!isEmployee && (
               <button onClick={() => { setTab("config"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "config" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
                 <Wrench className="h-5 w-5" />Configuración
               </button>
+              )}
+              {!isEmployee && (
               <button onClick={() => { setTab("analytics"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "analytics" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
                 <BarChart className="h-5 w-5" />Estadísticas
               </button>
+              )}
               <button onClick={() => { setTab("history"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "history" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
                 <History className="h-5 w-5" />Histórico de ventas
               </button>
+              {!isEmployee && (
               <button onClick={() => { setTab("reviews"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "reviews" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
                 <Star className="h-5 w-5" />Reseñas
               </button>
+              )}
                 </>
               )}
             </div>

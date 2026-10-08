@@ -11,7 +11,7 @@ import { NextResponse } from "next/server";
  */
 export async function POST(request: Request) {
   const { vendor: resolved, staffRole, previewSession } = await getVendorByRequest(request);
-  if (!resolved || staffRole === "delivery" || previewSession) {
+  if (!resolved || staffRole !== null || previewSession) {
     return NextResponse.json({ error: "No autorizado" }, { status: 403 });
   }
 

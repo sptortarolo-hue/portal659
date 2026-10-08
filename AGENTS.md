@@ -214,6 +214,15 @@ Portal 659: "El centro comercial de tu barrio". Hub multicommerce hiperlocal (Si
   Salidas: `app-release-bundle.aab` (subir a Play) y `app-release-signed.apk` (instalar directo).
 - `bubblewrap init` es interactivo y falla en shells sin TTY; por eso se genera el proyecto con `_generate-twa.cjs` (llama a `@bubblewrap/core` `TwaGenerator`) y el build usa las env vars de password.
 
+## Publicación en Google Play Store
+
+- **Cuenta personal** → requiere **prueba cerrada** (12 verificadores + 14 días) antes de Production. No se puede saltar.
+- **Portal 659** (TWA, `ar.portal659.app`): AAB listo en `portal659-twa/app-release-bundle.aab`. Plan completo en `docs/publicacion-play-store.md`.
+- **Portal Print** (`ar.portal659.print`): AAB listo en `android/android/app/build/outputs/bundle/release/app-release.aab` (versionCode 2). FGS corregido a `specialUse` (sin tope 6h). Ya en prueba cerrada.
+- **Orden recomendado:** Portal Print primero (ya está en prueba cerrada), Portal 659 después.
+- **Tiempos:** Prueba cerrada 14 días + review producción 3-7 días = **17-21 días** total.
+- **Checklist pre-revisión:** ficha completa + política de privacidad verificada + seguridad de datos + clasificación de contenido + declaración FGS (solo Portal Print) + 12 verificadores aceptados.
+
 ## Plan de sprints restantes (del plan original)
 
 > Alcances a confirmar con el usuario antes de implementar (como se hizo en Sprints 4 y 5).

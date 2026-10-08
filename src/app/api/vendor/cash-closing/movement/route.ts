@@ -1,12 +1,15 @@
 import { gateRequest, gateError } from "@/lib/subscription-gate";
 import { queryOne } from "@/lib/db";
 import { computeShiftSummary, getOpenShift } from "@/lib/cash-closing";
+import { normalizeExpenseCategory } from "@/lib/expenses";
+import { recordExpense } from "@/lib/expenses-server";
 import { NextResponse } from "next/server";
 
 /**
  * Movimiento manual de efectivo dentro del turno abierto (no es una venta):
  * ingreso (fondo extra, cambio) o retiro (proveedor, retiro parcial).
  * El retiro se bloquea si supera el disponible (el cajón no queda negativo).
+ * Un retiro con categoría alimenta el libro de Gastos (origen caja).
  */
 export async function POST(request: Request) {
   const gate = await gateRequest(request, { allowStaff: true });
@@ -40,6 +43,9 @@ export async function POST(request: Request) {
   if (!reason) {
     return NextResponse.json({ error: "Indicá el motivo del movimiento" }, { status: 400 });
   }
+  // Categoría de gasto (opcional, solo retiros): alimenta el libro de Gastos.
+  // Sin categoría el retiro no es gasto (ej. retiro parcial al safe).
+  const category = kind === "retiro" ? normalizeExpenseCategory(body?.category) : null;
 
   const summary = await computeShiftSummary(gate.vendor.id, shift);
   if (kind === "retiro" && amount > summary.expectedCash) {
@@ -57,18 +63,47 @@ export async function POST(request: Request) {
   let movement;
   try {
     movement = await queryOne<{ id: string; created_at: string }>(
-      `INSERT INTO cash_movements (vendor_id, shift_id, kind, amount, reason, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, created_at`,
-      [gate.vendor.id, shift.id, kind, Math.round(amount * 100) / 100, reason, userId]
+      `INSERT INTO cash_movements (vendor_id, shift_id, kind, amount, reason, created_by, category)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, created_at`,
+      [gate.vendor.id, shift.id, kind, Math.round(amount * 100) / 100, reason, userId, category]
     );
-  } catch {
-    return NextResponse.json(
-      { error: "Falta aplicar la migración de turnos de caja en la base de datos", code: "migration_missing" },
-      { status: 503 }
-    );
+  } catch (e) {
+    // Columna category sin migrar: se guarda sin categoría (y sin gasto).
+    const msg = e instanceof Error ? e.message : "";
+    if (!/column .*category.* does not exist|relation .*cash_movements.* does not exist/i.test(msg)) {
+      return NextResponse.json(
+        { error: "Falta aplicar la migración de turnos de caja en la base de datos", code: "migration_missing" },
+        { status: 503 }
+      );
+    }
+    try {
+      movement = await queryOne<{ id: string; created_at: string }>(
+        `INSERT INTO cash_movements (vendor_id, shift_id, kind, amount, reason, created_by)
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, created_at`,
+        [gate.vendor.id, shift.id, kind, Math.round(amount * 100) / 100, reason, userId]
+      );
+    } catch {
+      return NextResponse.json(
+        { error: "Falta aplicar la migración de turnos de caja en la base de datos", code: "migration_missing" },
+        { status: 503 }
+      );
+    }
   }
   if (!movement) {
     return NextResponse.json({ error: "No se pudo registrar el movimiento" }, { status: 500 });
+  }
+  // Auto-feed de gastos: el retiro categorizado genera su asiento (idempotente).
+  if (kind === "retiro" && category && movement) {
+    await recordExpense({
+      vendorId: gate.vendor.id,
+      source: "caja",
+      sourceId: movement.id,
+      category,
+      amount,
+      note: reason,
+      paymentMethod: "efectivo",
+      createdBy: userId,
+    });
   }
   const after = await computeShiftSummary(gate.vendor.id, shift);
   return NextResponse.json({ ok: true, movement, disponible: after.expectedCash });

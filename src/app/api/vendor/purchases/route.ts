@@ -344,5 +344,33 @@ export async function POST(request: Request) {
     throw e;
   }
 
+  // Auto-feed del libro de Gastos (origen compra, idempotente por
+  // purchase_id; best-effort: si falta la migración no rompe la compra).
+  try {
+    if (total > 0) {
+      const { recordExpense } = await import("@/lib/expenses-server");
+      let supplierName: string | null = null;
+      if (supplier_id) {
+        const s = await queryOne<{ name: string }>(
+          `SELECT name FROM suppliers WHERE id = $1 AND vendor_id = $2`,
+          [supplier_id, gate.vendor.id]
+        ).catch(() => null);
+        supplierName = s?.name || null;
+      }
+      await recordExpense({
+        vendorId: gate.vendor.id,
+        source: "compra",
+        sourceId: purchaseId,
+        category: "Proveedores",
+        amount: total,
+        spentAt: purchased_at,
+        supplier: supplierName,
+        note: receipt_number ? `Comprobante ${receipt_number}` : null,
+      });
+    }
+  } catch {
+    /* el gasto se puede cargar manual después */
+  }
+
   return NextResponse.json({ purchase_id: purchaseId, total });
 }

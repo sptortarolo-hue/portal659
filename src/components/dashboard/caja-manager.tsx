@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { CASH_METHOD_LABELS } from "@/lib/cash-methods";
+import { EXPENSE_CATEGORIES } from "@/lib/expenses";
 
 type MethodTotals = { count: number; total: number };
 
@@ -101,6 +102,7 @@ export function CajaManager({ closeRequest = 0 }: { closeRequest?: number }) {
   const [movKind, setMovKind] = useState<"ingreso" | "retiro" | null>(null);
   const [movAmount, setMovAmount] = useState("");
   const [movReason, setMovReason] = useState("");
+  const [movCategory, setMovCategory] = useState("");
   const [movSaving, setMovSaving] = useState(false);
   // Pre-cierre (modal en 2 pasos: 1 Revisar, 2 Confirmar)
   const [showPreClose, setShowPreClose] = useState(false);
@@ -325,18 +327,25 @@ export function CajaManager({ closeRequest = 0 }: { closeRequest?: number }) {
       const res = await fetch("/api/vendor/cash-closing/movement", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kind: movKind, amount, reason: movReason.trim() }),
+        body: JSON.stringify({
+          kind: movKind,
+          amount,
+          reason: movReason.trim(),
+          // Solo retiros categorizados alimentan Gastos.
+          ...(movKind === "retiro" && movCategory ? { category: movCategory } : {}),
+        }),
       });
       const d = await res.json().catch(() => null);
       if (res.ok && d?.ok) {
         setMsg(
           movKind === "ingreso"
             ? `Ingreso de ${money(amount)} registrado.`
-            : `Retiro de ${money(amount)} registrado.`
+            : `Retiro de ${money(amount)} registrado${movCategory ? " (va a Gastos)." : "."}`
         );
         setMovKind(null);
         setMovAmount("");
         setMovReason("");
+        setMovCategory("");
         await load();
       } else {
         setMsg(d?.error || "No se pudo registrar el movimiento.");
@@ -444,10 +453,10 @@ export function CajaManager({ closeRequest = 0 }: { closeRequest?: number }) {
             <p className="font-display text-3xl font-bold tabular-nums">{money(disponible)}</p>
           </div>
           <div className="grid grid-cols-3 gap-2">
-            <Button type="button" variant="outline" onClick={() => { setMovKind("ingreso"); setMovAmount(""); setMovReason(""); }}>
+            <Button type="button" variant="outline" onClick={() => { setMovKind("ingreso"); setMovAmount(""); setMovReason(""); setMovCategory(""); }}>
               + Ingresar
             </Button>
-            <Button type="button" variant="outline" onClick={() => { setMovKind("retiro"); setMovAmount(""); setMovReason(""); }}>
+            <Button type="button" variant="outline" onClick={() => { setMovKind("retiro"); setMovAmount(""); setMovReason(""); setMovCategory(""); }}>
               − Retirar
             </Button>
             <Button type="button" onClick={openPreClose}>
@@ -858,6 +867,26 @@ export function CajaManager({ closeRequest = 0 }: { closeRequest?: number }) {
               maxLength={140}
               className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
             />
+            {movKind === "retiro" && (
+              <div>
+                <label className="text-xs text-muted-foreground">Categoría de gasto (opcional)</label>
+                <select
+                  value={movCategory}
+                  onChange={(e) => setMovCategory(e.target.value)}
+                  className="mt-1 w-full h-10 rounded-md border border-input bg-background px-2 text-sm"
+                >
+                  <option value="">Sin categoría — no es gasto</option>
+                  {EXPENSE_CATEGORIES.map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+                {movCategory && (
+                  <p className="text-[11px] text-muted-foreground mt-1">
+                    Va al libro de Gastos como {movCategory}.
+                  </p>
+                )}
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-2">
               <Button type="button" variant="outline" onClick={() => setMovKind(null)} disabled={movSaving}>
                 Cancelar

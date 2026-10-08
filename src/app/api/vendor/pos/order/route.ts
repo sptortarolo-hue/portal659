@@ -123,9 +123,14 @@ export async function POST(request: Request) {
     }
   }
 
+  // Los ids "manual:..." del mostrador NO son uuids: se limpian al
+  // normalizar para que no contaminen "Lo más pedido" (el flag `manual`,
+  // el nombre y el precio se conservan para ticket/totales).
+  const isUuid = (s: unknown): s is string =>
+    typeof s === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
   const normalizedItems: { product_id?: any; variant_id?: any; name: any; price: number; qty: number; modifiers?: any; requires_prep: boolean; pack_size?: number; unit?: string; manual?: boolean }[] = items.map((i: any) => ({
-    product_id: i.product_id || undefined,
-    variant_id: i.variant_id || undefined,
+    product_id: isUuid(i.product_id) ? i.product_id : undefined,
+    variant_id: isUuid(i.variant_id) ? i.variant_id : undefined,
     name: i.name,
     price: Number(i.price),
     qty: Number(i.qty) || 1,
@@ -141,8 +146,6 @@ export async function POST(request: Request) {
   // neto). Nunca se confía en el `price`/`total` del cliente.
   // Líneas manuales ("manual:...") o sin uuid no van a pricing: se cobran
   // al precio declarado (tolerancia para catálogos viejos en el snapshot).
-  const isUuid = (s: unknown): s is string =>
-    typeof s === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
   const pricedInput: IncomingOrderItem[] = [];
   const pricedPrep: boolean[] = [];
   const passthrough: typeof normalizedItems = [];

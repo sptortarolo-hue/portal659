@@ -771,7 +771,7 @@ onAdd={async (name) => { const r = await apiJson("/api/vendor/categories", { met
                     </div>
                     <div className="hidden sm:flex items-center gap-1 flex-shrink-0">
                       <Button variant="outline" size="sm" onClick={() => startEdit(offer)}>Editar</Button>
-                      <Button variant="outline" size="sm" onClick={() => toggleFeatured(offer)}>{offer.featured_today ? "Quitar" : "Destacar"}</Button>
+                      <Button variant="outline" size="sm" onClick={() => toggleFeatured(offer)}>{offer.featured_today ? "Quitar" : "Oferta del día"}</Button>
                       <Button variant="outline" size="sm" onClick={() => toggleAvailable(offer)}>{offer.available ? "Pausar" : "Activar"}</Button>
                       <Button variant="ghost" size="sm" className="text-red-600" onClick={() => deleteOffer(offer)}>Eliminar</Button>
                     </div>
@@ -780,7 +780,7 @@ onAdd={async (name) => { const r = await apiJson("/api/vendor/categories", { met
                         trigger={<span className="text-xl">⋯</span>}
                         items={[
                           { label: "Editar", icon: "✏️", onClick: () => startEdit(offer) },
-                          { label: offer.featured_today ? "Quitar de Hoy" : "Destacar Hoy", icon: "⭐", onClick: () => toggleFeatured(offer) },
+                          { label: offer.featured_today ? "Quitar de Hoy" : "Oferta del día", icon: "⭐", onClick: () => toggleFeatured(offer) },
                           { label: offer.available ? "Pausar" : "Activar", icon: offer.available ? "⏸️" : "▶️", onClick: () => toggleAvailable(offer) },
                           { label: "Eliminar", icon: "🗑️", onClick: () => deleteOffer(offer), destructive: true },
                         ]}

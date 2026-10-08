@@ -251,7 +251,7 @@ export function ProductsTable({
                     items={[
                       { label: "Editar", icon: "✏️", onClick: () => onEdit(offer) },
                       {
-                        label: offer.featured_today ? "Quitar de Hoy" : "Destacar Hoy",
+                        label: offer.featured_today ? "Quitar de Hoy" : "Oferta del día",
                         icon: "⭐",
                         onClick: () => onToggleFeatured(offer),
                       },

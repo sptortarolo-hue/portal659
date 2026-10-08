@@ -203,6 +203,14 @@ export async function POST(request: Request) {
       ...extraVals,
     ]
   );
+  // Oferta del día única por comercio (igual que el PATCH: el nuevo
+  // destacado apaga el anterior del mismo vendor).
+  if (!!featured_today && offer) {
+    await queryOne(
+      `UPDATE products SET featured_today = false WHERE vendor_id = $1 AND id <> $2`,
+      [vendor.id, (offer as Record<string, unknown>).id]
+    ).catch(() => {});
+  }
 
   return NextResponse.json({ offer });
 }

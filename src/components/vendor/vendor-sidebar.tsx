@@ -4,7 +4,7 @@ import Link from "next/link";
 import { X, Package, ChefHat, ShoppingBag, LayoutGrid, UtensilsCrossed, Settings, BarChart3, History, Star, ExternalLink, LogOut, Home, Sparkles, Calculator, Bot, DollarSign, Receipt, Users, MessageSquare, CalendarDays, ClipboardList, Boxes, Image, BookOpen } from "lucide-react";
 import type { ConfigSectionStatus } from "@/components/dashboard/config-nav";
 
-type Tab = "hoy" | "config" | "menu" | "orders" | "pedidos" | "mostrador" | "history" | "comanda" | "analytics" | "pos" | "mesas" | "caja" | "clientes" | "reviews" | "recetas" | "fiscal" | "inventario" | "galeria";
+type Tab = "hoy" | "config" | "menu" | "orders" | "pedidos" | "mostrador" | "history" | "comanda" | "analytics" | "pos" | "mesas" | "caja" | "gastos" | "clientes" | "reviews" | "recetas" | "fiscal" | "inventario" | "galeria";
 
 interface VendorSidebarProps {
   open: boolean;
@@ -59,6 +59,7 @@ const GESTION_ITEMS: { tab: Tab; label: string; icon: typeof UtensilsCrossed; sh
   { tab: "menu", label: "Menú", icon: UtensilsCrossed, show: () => true, suffix: (c) => `${c}` },
   { tab: "recetas", label: "Preparación y Costo", icon: Calculator, show: (g) => g },
   { tab: "clientes", label: "Clientes", icon: Users, show: (g, m, c) => g || c || m },
+  { tab: "gastos", label: "Gastos", icon: Receipt, show: (g, m, c) => g || c || m },
   { tab: "config", label: "Configuración", icon: Settings, show: () => true },
 ];
 

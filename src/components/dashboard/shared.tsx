@@ -631,7 +631,7 @@ export function OfferList({ offers, onEdit, onToggleFeatured, onToggleAvailable,
                 </div>
                 <div className="hidden sm:flex items-center gap-1 flex-shrink-0">
                   <Button variant="outline" size="sm" onClick={() => onEdit(offer)}>Editar</Button>
-                  <Button variant="outline" size="sm" onClick={() => onToggleFeatured(offer)}>{offer.featured_today ? "Quitar" : "Destacar"}</Button>
+                  <Button variant="outline" size="sm" onClick={() => onToggleFeatured(offer)}>{offer.featured_today ? "Quitar" : "Oferta del día"}</Button>
                   {onTogglePromoOnly && (
                     <Button variant="outline" size="sm" onClick={() => onTogglePromoOnly(offer)}>{offer.promo_only ? "A menú" : "Solo promo"}</Button>
                   )}
@@ -644,7 +644,7 @@ export function OfferList({ offers, onEdit, onToggleFeatured, onToggleAvailable,
                     items={[
                       { label: "Editar", icon: "✏️", onClick: () => onEdit(offer) },
                       { label: "Modificadores", icon: "⚙️", onClick: () => onEditModifiers ? onEditModifiers(offer) : onEdit(offer) },
-                      { label: offer.featured_today ? "Quitar de Hoy" : "Destacar Hoy", icon: "⭐", onClick: () => onToggleFeatured(offer) },
+                      { label: offer.featured_today ? "Quitar de Hoy" : "Oferta del día", icon: "⭐", onClick: () => onToggleFeatured(offer) },
                       ...(onTogglePromoOnly ? [{ label: offer.promo_only ? "Volver al menú" : "Solo promo", icon: "🏷️", onClick: () => onTogglePromoOnly(offer) }] : []),
                       { label: offer.available ? "Pausar" : "Activar", icon: offer.available ? "⏸️" : "▶️", onClick: () => onToggleAvailable(offer) },
                       { label: "Eliminar", icon: "🗑️", onClick: () => onDelete(offer), destructive: true },

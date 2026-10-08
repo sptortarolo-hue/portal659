@@ -45,10 +45,17 @@ export default async function HomePage() {
 
   const plans = await queryMany<Plan>(`SELECT * FROM plans ORDER BY sort ASC`);
 
+  // Oferta del día: una sola por comercio (los destacados viejos con más de
+  // una oferta se deduplican acá; el server ya enforcea 1 por vendor).
+  const seenFeaturedVendors = new Set<string>();
   const featured =
-    (offers || [])?.filter(
-      (o) => o.featured_today && o.vendors?.vertical !== "servicio"
-    ) || [];
+    (offers || [])?.filter((o) => {
+      if (!o.featured_today || o.vendors?.vertical === "servicio") return false;
+      const vid = o.vendors?.id;
+      if (!vid || seenFeaturedVendors.has(vid)) return false;
+      seenFeaturedVendors.add(vid);
+      return true;
+    }) || [];
   const destacados = (vendors || []).filter((v) => {
     if (v.featured) return true;
     // Prioridad del plan Oficios: servicios con plan vigente también destacan.

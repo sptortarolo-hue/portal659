@@ -4,6 +4,7 @@ import { useState } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { useCashShift } from "@/lib/use-cash-shift";
+import { EXPENSE_CATEGORIES } from "@/lib/expenses";
 
 function money(n: number | null | undefined): string {
   return `$${Number(n || 0).toLocaleString("es-AR")}`;
@@ -38,6 +39,7 @@ export function CashShiftPill({
   const [movKind, setMovKind] = useState<"ingreso" | "retiro" | null>(null);
   const [movAmount, setMovAmount] = useState("");
   const [movReason, setMovReason] = useState("");
+  const [movCategory, setMovCategory] = useState("");
   const [movSaving, setMovSaving] = useState(false);
   const [movError, setMovError] = useState("");
 
@@ -45,6 +47,7 @@ export function CashShiftPill({
     setMovKind(null);
     setMovAmount("");
     setMovReason("");
+    setMovCategory("");
     setMovError("");
     setMenuOpen(true);
   }
@@ -62,12 +65,14 @@ export function CashShiftPill({
     }
     setMovSaving(true);
     setMovError("");
-    const r = await recordMovement(movKind, amount, movReason.trim());
+    const r = await recordMovement(movKind, amount, movReason.trim(), movCategory || undefined);
     setMovSaving(false);
     if (r.ok) {
       setMovKind(null);
       setMovAmount("");
       setMovReason("");
+      setMovCategory("");
+      await refresh();
     } else {
       setMovError(r.error || "No se pudo registrar el movimiento.");
     }
@@ -206,6 +211,19 @@ export function CashShiftPill({
                   maxLength={140}
                   className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
                 />
+                {movKind === "retiro" && (
+                  <select
+                    value={movCategory}
+                    onChange={(e) => setMovCategory(e.target.value)}
+                    aria-label="Categoría de gasto"
+                    className="w-full h-10 rounded-md border border-input bg-background px-2 text-sm"
+                  >
+                    <option value="">Sin categoría — no es gasto</option>
+                    {EXPENSE_CATEGORIES.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                )}
                 {movError && <p className="text-xs text-red-600">{movError}</p>}
                 <div className="grid grid-cols-2 gap-2">
                   <Button type="button" variant="outline" size="sm" onClick={() => setMovKind(null)} disabled={movSaving}>

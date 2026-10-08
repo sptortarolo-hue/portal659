@@ -136,5 +136,13 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     }
   });
 
+  // El gasto auto-generado por la compra se va con ella (best-effort).
+  try {
+    const { deleteSourceExpense } = await import("@/lib/expenses-server");
+    await deleteSourceExpense(gate.vendor.id, "compra", id);
+  } catch {
+    /* el gasto se puede borrar manual */
+  }
+
   return NextResponse.json({ ok: true, reverted: result });
 }

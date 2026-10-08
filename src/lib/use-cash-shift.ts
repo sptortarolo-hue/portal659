@@ -52,12 +52,19 @@ export function useCashShift(enabled = true, pollMs = 30000) {
   // turno para que el disponible quede actualizado. Mismas validaciones
   // que el tab Caja (el servidor bloquea el retiro sin disponible).
   const recordMovement = useCallback(
-    async (kind: "ingreso" | "retiro", amount: number, reason: string): Promise<{ ok: boolean; error?: string }> => {
+    async (
+      kind: "ingreso" | "retiro",
+      amount: number,
+      reason: string,
+      category?: string
+    ): Promise<{ ok: boolean; error?: string }> => {
       try {
+        const body: Record<string, unknown> = { kind, amount, reason };
+        if (kind === "retiro" && category) body.category = category;
         const res = await fetch("/api/vendor/cash-closing/movement", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ kind, amount, reason }),
+          body: JSON.stringify(body),
         });
         const d = await res.json().catch(() => null);
         if (res.ok && d?.ok) {

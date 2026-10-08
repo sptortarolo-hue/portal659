@@ -79,6 +79,7 @@ import { PlanLock } from "@/components/vendor/plan-lock";
 import { Mostrador } from "@/components/vendor/mostrador";
 import { Mesas } from "@/components/vendor/mesas";
 import { CajaManager } from "@/components/dashboard/caja-manager";
+import { ExpensesManager } from "@/components/dashboard/expenses-manager";
 import { FiscalConfigSection } from "@/components/dashboard/fiscal-config-section";
 import { InventoryTab } from "@/components/dashboard/inventory-tab";
 import { CustomersManager } from "@/components/dashboard/customers-manager";
@@ -154,7 +155,7 @@ type Offer = DBProduct;
 
 type MenuCategory = { id: string; name: string; position: number };
 
-  type DashTab = "hoy" | "config" | "menu" | "orders" | "pedidos" | "mostrador" | "history" | "comanda" | "analytics" | "pos" | "mesas" | "caja" | "clientes" | "reviews" | "recetas" | "fiscal" | "inventario" | "galeria";
+  type DashTab = "hoy" | "config" | "menu" | "orders" | "pedidos" | "mostrador" | "history" | "comanda" | "analytics" | "pos" | "mesas" | "caja" | "gastos" | "clientes" | "reviews" | "recetas" | "fiscal" | "inventario" | "galeria";
 
 /**
  * Segunda columna de Configuración en desktop (estilo Fudo): la usan todas
@@ -215,6 +216,7 @@ function ConfigDesktopNav({
 const MemoMostrador = memo(Mostrador);
 const MemoMesas = memo(Mesas);
 const MemoCajaManager = memo(CajaManager);
+const MemoExpensesManager = memo(ExpensesManager);
 const MemoCustomersManager = memo(CustomersManager);
 const MemoComandaKDS = memo(ComandaKDS);
 const MemoVendorAnalytics = memo(VendorAnalytics);
@@ -361,7 +363,7 @@ function VendorDashboardInner() {
   // Borrador de UI (24h): pestaña, filtros y pedido abierto sobreviven a recargas.
   const dashDraftReady = useRef(false);
   const pendingOrderId = useRef<string | null>(null);
-  const VALID_TABS: DashTab[] = ["hoy", "config", "menu", "orders", "pedidos", "mostrador", "history", "comanda", "analytics", "pos", "mesas", "caja", "clientes", "reviews", "recetas", "fiscal", "inventario"];
+  const VALID_TABS: DashTab[] = ["hoy", "config", "menu", "orders", "pedidos", "mostrador", "history", "comanda", "analytics", "pos", "mesas", "caja", "gastos", "clientes", "reviews", "recetas", "fiscal", "inventario"];
   useEffect(() => {
     if (dashDraftReady.current || !vendor?.id) return;
     dashDraftReady.current = true;
@@ -1479,6 +1481,9 @@ function VendorDashboardInner() {
     : tab === "comanda" ? "Comanda"
     : tab === "pos" ? "Mostrador"
     : tab === "mesas" ? "Mesas"
+    : tab === "caja" ? "Caja"
+    : tab === "gastos" ? "Gastos"
+    : tab === "clientes" ? "Clientes"
     : tab === "recetas" ? "Preparación y Costo"
     : tab === "analytics" ? "Estadísticas"
     : tab === "history" ? "Histórico"
@@ -1715,7 +1720,7 @@ function VendorDashboardInner() {
         )}
 
         {/* Tab content */}
-        <div className={`flex-1 px-4 mt-4 pb-28 lg:pb-10 ${tab === "comanda" ? "w-full max-w-none" : `mx-auto w-full ${["orders", "pedidos", "mostrador", "history", "pos", "mesas", "caja", "clientes", "analytics", "recetas", "inventario", "hoy", "menu"].includes(tab) ? "max-w-7xl" : "max-w-4xl"}`}`}>
+        <div className={`flex-1 px-4 mt-4 pb-28 lg:pb-10 ${tab === "comanda" ? "w-full max-w-none" : `mx-auto w-full ${["orders", "pedidos", "mostrador", "history", "pos", "mesas", "caja", "gastos", "clientes", "analytics", "recetas", "inventario", "hoy", "menu"].includes(tab) ? "max-w-7xl" : "max-w-4xl"}`}`}>
           <TabErrorBoundary tab={tab || "dashboard"}>
           {isService ? (
             <div className="space-y-4">
@@ -1924,6 +1929,18 @@ function VendorDashboardInner() {
                   )}
                 </div>
               )}
+              {mountedTabs.has("gastos") && (
+                <div className={tab === "gastos" ? "" : "hidden"}>
+                  {effectivePlan.can("pos") ? (
+                    <MemoExpensesManager />
+                  ) : (
+                    <PlanLock
+                      title="Libro de gastos"
+                      description="Gastos manuales, retiros de caja y compras a proveedor en un solo lugar, con reportes. Parte del plan Gestión integral."
+                    />
+                  )}
+                </div>
+              )}
               {mountedTabs.has("clientes") && (
                 <div className={tab === "clientes" ? "" : "hidden"}>
                   {effectivePlan.can("crm") ? (
@@ -2078,7 +2095,7 @@ function VendorDashboardInner() {
             )}
               </>
             )}
-            <button onClick={() => setMoreOpen((v) => !v)} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors ${["config", "menu", "analytics", "history", "reviews", "recetas", "caja", "clientes", "inventario", "pedidos", "mostrador"].includes(tab) ? "text-primary" : "text-muted-foreground"}`}>
+            <button onClick={() => setMoreOpen((v) => !v)} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors ${["config", "menu", "analytics", "history", "reviews", "recetas", "caja", "gastos", "clientes", "inventario", "pedidos", "mostrador"].includes(tab) ? "text-primary" : "text-muted-foreground"}`}>
               <span className="text-lg">{moreOpen ? <X className="h-5 w-5" /> : <MoreHorizontal className="h-5 w-5" />}</span>Más
             </button>
           </div>
@@ -2153,6 +2170,11 @@ function VendorDashboardInner() {
               {(isGastro || isComercio || isModa) && (
                 <button onClick={() => { setTab("caja"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "caja" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
                   <DollarSign className="h-5 w-5" />Caja
+                </button>
+              )}
+              {(isGastro || isComercio || isModa) && !isEmployee && (
+                <button onClick={() => { setTab("gastos"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "gastos" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
+                  <Receipt className="h-5 w-5" />Gastos
                 </button>
               )}
               {(isGastro || isComercio || isModa) && !isEmployee && (

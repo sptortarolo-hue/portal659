@@ -117,8 +117,13 @@ export async function POST(request: Request) {
       ? (paymentMethod as PaymentMethod)
       : "efectivo";
 
+    // Los ids "manual:..." NO son uuids: se limpian al normalizar para que
+    // no contaminen "Lo más pedido" (el flag `manual`, nombre y precio se
+    // conservan para cuenta/totales).
+    const isUuid = (s: unknown): s is string =>
+      typeof s === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
     const normalizedItems: { product_id?: any; name: any; price: number; qty: number; modifiers?: any; requires_prep: boolean; manual?: boolean }[] = items.map((i: any) => ({
-      product_id: i.product_id || undefined,
+      product_id: isUuid(i.product_id) ? i.product_id : undefined,
       name: i.name,
       price: Number(i.price),
       qty: Number(i.qty) || 1,
@@ -131,8 +136,6 @@ export async function POST(request: Request) {
     // misma regla que el canal app (precios de DB + volumen). Así los
     // combinados por pack aplican también en mesa, incluso sumando varias
     // consumiciones. Líneas manuales o sin uuid van al precio declarado.
-    const isUuid = (s: unknown): s is string =>
-      typeof s === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
     const round2 = (n: number) => Math.round(n * 100) / 100;
     async function resolveTableItems(raw: typeof normalizedItems): Promise<{ items: Record<string, any>[]; total: number; volumeDiscount: number }> {
       const priced: IncomingOrderItem[] = [];

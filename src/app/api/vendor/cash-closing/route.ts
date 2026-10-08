@@ -73,6 +73,54 @@ export async function POST(request: Request) {
   const cashDifference = Math.round((cashDeclared - cashDiffBase) * 100) / 100;
   const notes =
     typeof body?.notes === "string" && body.notes.trim() ? body.notes.trim().slice(0, 500) : null;
+  // Entrega opcional del turno (pase Juan → María): perfil del local o nombre
+  // libre. Vacío = cierre común sin receptor. Se valida que el perfil sea
+  // del comercio (dueño o staff activo); si no, 400.
+  const handedProfileRaw =
+    typeof body?.handed_to_profile === "string" ? body.handed_to_profile.trim() : "";
+  const handedNameRaw =
+    typeof body?.handed_to_name === "string" ? body.handed_to_name.trim().slice(0, 80) : "";
+  let handedToProfile: string | null = null;
+  let handedToName: string | null = null;
+  if (handedProfileRaw || handedNameRaw) {
+    if (handedProfileRaw) {
+      const vendorRow = gate.vendor as Record<string, unknown>;
+      let okReceiver = vendorRow?.user_id === handedProfileRaw;
+      if (!okReceiver) {
+        const staffHit = await queryOne<{ profile_id: string }>(
+          `SELECT profile_id FROM vendor_staff
+           WHERE vendor_id = $1 AND profile_id = $2 AND status = 'active' LIMIT 1`,
+          [gate.vendor.id, handedProfileRaw]
+        ).catch(() => null);
+        okReceiver = !!staffHit;
+      }
+      if (!okReceiver) {
+        return NextResponse.json(
+          { error: "Receptor inválido: tiene que ser un usuario del local", code: "invalid_receiver" },
+          { status: 400 }
+        );
+      }
+      handedToProfile = handedProfileRaw;
+    } else {
+      handedToName = handedNameRaw;
+    }
+  }
+  // Si se pidió entrega, las columnas tienen que existir: nunca cerrar
+  // "con entrega" sin registrarla (el fallback silencioso perdería el dato).
+  if ((handedToProfile || handedToName) && shift) {
+    const hasHandoverCols = await queryOne<{ exists: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1 FROM information_schema.columns
+         WHERE table_name = 'cash_shifts' AND column_name = 'handed_to_profile'
+       ) AS exists`
+    ).catch(() => null);
+    if (!hasHandoverCols?.exists) {
+      return NextResponse.json(
+        { error: "Falta aplicar la migración de pase de turno en la base de datos", code: "migration_missing" },
+        { status: 503 }
+      );
+    }
+  }
   // Sesión de prueba: no tiene perfil en la tabla (user.id es "preview:..."),
   // el cierre queda sin created_by en vez de romper el FK.
   const userId = gate.previewSession ? null : gate.user.id;
@@ -130,10 +178,20 @@ export async function POST(request: Request) {
       );
     }
     if (shift && row) {
-      await tx.queryVoid(
-        `UPDATE cash_shifts SET status = 'closed', closed_at = now(), closing_id = $1 WHERE id = $2`,
-        [row.id, shift.id]
-      );
+      try {
+        await tx.queryVoid(
+          `UPDATE cash_shifts SET status = 'closed', closed_at = now(), closing_id = $1,
+                  handed_to_profile = $2, handed_to_name = $3 WHERE id = $4`,
+          [row.id, handedToProfile, handedToName, shift.id]
+        );
+      } catch (e: any) {
+        // Migración de pase sin aplicar: se cierra sin entrega.
+        if (e?.code !== "42703" && !String(e?.message || "").includes("handed_to")) throw e;
+        await tx.queryVoid(
+          `UPDATE cash_shifts SET status = 'closed', closed_at = now(), closing_id = $1 WHERE id = $2`,
+          [row.id, shift.id]
+        );
+      }
     }
     return row;
   });
@@ -141,6 +199,7 @@ export async function POST(request: Request) {
   return NextResponse.json({
     ok: true,
     closing,
+    handed_to: handedToProfile || handedToName ? true : false,
     summary: { ...summary, cashDeclared, cashDifference, expectedCash },
   });
 }

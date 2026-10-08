@@ -24,14 +24,17 @@ export async function GET(request: Request) {
 
   // Enriquecimiento con el turno (tolerante a migración sin aplicar o a
   // cierres legacy sin turno: esos quedan sin datos de apertura).
+  // handed_to: perfil resuelto a nombre o texto libre (NULL = cierre común).
   try {
     const shifts = await queryMany<Record<string, any>>(
       `SELECT c.id AS closing_id, c.opening_amount, c.movements, c.expected_cash,
-              s.opened_at, p.full_name AS opened_by_name, cb.full_name AS closed_by_name
+              s.opened_at, p.full_name AS opened_by_name, cb.full_name AS closed_by_name,
+              COALESCE(hp.full_name, s.handed_to_name) AS handed_to
        FROM cash_closings c
        LEFT JOIN cash_shifts s ON s.id = c.shift_id
        LEFT JOIN profiles p ON p.id = s.opened_by
        LEFT JOIN profiles cb ON cb.id = c.created_by
+       LEFT JOIN profiles hp ON hp.id = s.handed_to_profile
        WHERE c.vendor_id = $1`,
       [gate.vendor.id]
     );
@@ -47,6 +50,7 @@ export async function GET(request: Request) {
         c.opened_by_name = s.opened_by_name;
       }
       c.closed_by_name = s.closed_by_name || null;
+      c.handed_to = s.handed_to || null;
     }
   } catch {
     // Sin columnas/tablas de turnos: historial legacy sin enriquecer.

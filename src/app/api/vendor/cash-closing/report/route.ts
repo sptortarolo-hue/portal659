@@ -48,11 +48,13 @@ export async function GET(request: Request) {
               c.discounts_total, c.net_total, c.by_method, c.cash_declared,
               c.cash_difference, c.notes, c.opening_amount, c.movements,
               c.expected_cash, c.shift_id, s.opened_at, p.full_name AS opened_by_name,
-              cb.full_name AS closed_by_name
+              cb.full_name AS closed_by_name,
+              COALESCE(hp.full_name, s.handed_to_name) AS handed_to
        FROM cash_closings c
        LEFT JOIN cash_shifts s ON s.id = c.shift_id
        LEFT JOIN profiles p ON p.id = s.opened_by
        LEFT JOIN profiles cb ON cb.id = c.created_by
+       LEFT JOIN profiles hp ON hp.id = s.handed_to_profile
        WHERE c.vendor_id = $1 AND c.closed_at >= $2 AND c.closed_at <= $3
        ORDER BY c.closed_at ASC`,
       [gate.vendor.id, from.toISOString(), to.toISOString()]
@@ -178,6 +180,7 @@ export async function GET(request: Request) {
     return {
       cierre: fmtDT(r.closed_at),
       abiertaPor: r.opened_by_name || "—",
+      entregadaA: r.handed_to || "—",
       pedidos: Number(r.orders_count) || 0,
       neto: Number(r.net_total) || 0,
       esperado: r.expected_cash != null ? Number(r.expected_cash) : "",
@@ -249,6 +252,7 @@ export async function GET(request: Request) {
     table("Detalle", [
       { header: "Cierre", key: "cierre", width: 18 },
       { header: "Abierta por", key: "abiertaPor", width: 22 },
+      { header: "Entregada a", key: "entregadaA", width: 22 },
       { header: "Pedidos", key: "pedidos", width: 12 },
       { header: "Neto", key: "neto", numFmt: moneyFmt },
       { header: "Esperado", key: "esperado", numFmt: moneyFmt },
@@ -304,8 +308,8 @@ export async function GET(request: Request) {
     ["Medio", "Pedidos", "Total"].map(cell).join(";"),
     ...methodRows.map((r) => [r.medio, r.count, r.total].map(cell).join(";")),
     "",
-    ["Cierre", "Abierta por", "Pedidos", "Neto", "Esperado", "Contado", "Dif."].map(cell).join(";"),
-    ...detailRows.map((r) => [r.cierre, r.abiertaPor, r.pedidos, r.neto, r.esperado, r.contado, r.dif].map(cell).join(";")),
+    ["Cierre", "Abierta por", "Entregada a", "Pedidos", "Neto", "Esperado", "Contado", "Dif."].map(cell).join(";"),
+    ...detailRows.map((r) => [r.cierre, r.abiertaPor, r.entregadaA, r.pedidos, r.neto, r.esperado, r.contado, r.dif].map(cell).join(";")),
     ...(movementRows.length > 0
       ? [
           "",

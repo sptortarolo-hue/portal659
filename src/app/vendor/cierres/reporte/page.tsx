@@ -173,6 +173,7 @@ function ReportePrintInner() {
                     <td className="py-1 pr-2">
                       {fmtDateTime(c.closed_at)}
                       {c.opened_by_name ? <span className="text-neutral-500"> · {c.opened_by_name}</span> : null}
+                      {c.handed_to ? <span className="text-neutral-500"> → {c.handed_to}</span> : null}
                     </td>
                     <td className="py-1 pr-2 text-right">${Number(c.net_total).toLocaleString("es-AR")}</td>
                     <td className="py-1 text-right">

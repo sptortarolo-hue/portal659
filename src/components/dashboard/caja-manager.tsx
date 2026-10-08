@@ -55,6 +55,7 @@ type Closing = {
   opened_at?: string | null;
   opening_amount?: number | null;
   opened_by_name?: string | null;
+  handed_to?: string | null;
   movements?: { ingresos: number; retiros: number } | null;
   expected_cash?: number | null;
 };
@@ -107,12 +108,41 @@ export function CajaManager({ closeRequest = 0 }: { closeRequest?: number }) {
   // Pre-cierre (modal en 2 pasos: 1 Revisar, 2 Confirmar)
   const [showPreClose, setShowPreClose] = useState(false);
   const [preStep, setPreStep] = useState<1 | 2>(1);
+  // Pase de turno (entrega opcional en el paso 2): "" = cierre común,
+  // profileId = usuario del local, "__free" = nombre libre.
+  const [handoverTo, setHandoverTo] = useState("");
+  const [handoverName, setHandoverName] = useState("");
+  const [receivers, setReceivers] = useState<{ id: string; name: string }[]>([]);
+  // Tras cerrar con entrega: ofrece abrir el turno del receptor.
+  const [handoverDone, setHandoverDone] = useState<{ name: string; amount: number } | null>(null);
+  const [openingNext, setOpeningNext] = useState(false);
+
+  async function loadReceivers() {
+    try {
+      const res = await fetch("/api/vendor/staff");
+      const d = await res.json().catch(() => null);
+      const list = Array.isArray(d?.staff) ? d.staff : Array.isArray(d) ? d : [];
+      setReceivers(
+        list
+          .filter((s: any) => s && s.profile_id && s.status === "active" && s.role !== "delivery")
+          .map((s: any) => ({
+            id: String(s.profile_id),
+            name: String(s.display_name || s.full_name || s.username || "Usuario"),
+          }))
+      );
+    } catch {
+      /* sin lista: queda el nombre libre */
+    }
+  }
 
   // Abrir el pre-cierre con números frescos (pueden haber entrado ventas).
   async function openPreClose() {
     setPreStep(1);
+    setHandoverTo("");
+    setHandoverName("");
+    setHandoverDone(null);
     setShowPreClose(true);
-    await load();
+    await Promise.all([load(), loadReceivers()]);
   }
 
   // Pedido de cierre desde la pill del header: auto-abre el pre-cierre
@@ -364,23 +394,48 @@ export function CajaManager({ closeRequest = 0 }: { closeRequest?: number }) {
       setMsg("Contá el efectivo del cajón antes de cerrar la caja.");
       return;
     }
+    // Entrega opcional: perfil del local o nombre libre (vacío = cierre común).
+    const freeName = handoverTo === "__free" ? handoverName.trim().slice(0, 80) : "";
+    if (handoverTo === "__free" && !freeName) {
+      setMsg("Escribí el nombre de quien recibe la caja (o elegí cierre común).");
+      return;
+    }
+    const receiverName =
+      handoverTo && handoverTo !== "__free"
+        ? receivers.find((r) => r.id === handoverTo)?.name || "el receptor"
+        : freeName || null;
     setClosing(true);
     setMsg("");
     try {
       const res = await fetch("/api/vendor/cash-closing", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cashDeclared: declared, notes }),
+        body: JSON.stringify({
+          cashDeclared: declared,
+          notes,
+          ...(handoverTo && handoverTo !== "__free"
+            ? { handed_to_profile: handoverTo }
+            : freeName
+              ? { handed_to_name: freeName }
+              : {}),
+        }),
       });
       const d = await res.json().catch(() => null);
       if (res.ok && d?.ok) {
-        setMsg("Caja cerrada. Los próximos cobros arrancan desde ahora.");
         // El contado de este cierre prellena la próxima apertura.
         if (cashDeclared !== "") setOpeningAmount(cashDeclared);
         setCashDeclared("");
         setNotes("");
         setShowPreClose(false);
         setPreStep(1);
+        if (receiverName) {
+          // Pase registrado: ofrecer abrir el turno del receptor con lo contado.
+          setHandoverDone({ name: receiverName, amount: declared });
+        } else {
+          setMsg("Caja cerrada. Los próximos cobros arrancan desde ahora.");
+        }
+        setHandoverTo("");
+        setHandoverName("");
         setShowHistory(true);
         await load();
         if (d.closing?.id) await handlePrint(d.closing.id);
@@ -391,6 +446,32 @@ export function CajaManager({ closeRequest = 0 }: { closeRequest?: number }) {
       setMsg("No se pudo cerrar la caja. Revisá tu conexión.");
     } finally {
       setClosing(false);
+    }
+  }
+
+  // Abrir el turno del receptor tras el pase (mismo endpoint de apertura).
+  async function handleOpenNext() {
+    if (!handoverDone) return;
+    setOpeningNext(true);
+    try {
+      const res = await fetch("/api/vendor/cash-closing/open", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ opening_amount: handoverDone.amount }),
+      });
+      const d = await res.json().catch(() => null);
+      if (res.ok && d?.ok) {
+        setMsg(`Turno de ${handoverDone.name} abierto con ${money(handoverDone.amount)}.`);
+        setHandoverDone(null);
+        setOpeningAmount("");
+        await load();
+      } else {
+        setMsg(d?.error || "No se pudo abrir el turno.");
+      }
+    } catch {
+      setMsg("No se pudo abrir el turno. Revisá tu conexión.");
+    } finally {
+      setOpeningNext(false);
     }
   }
 
@@ -421,9 +502,28 @@ export function CajaManager({ closeRequest = 0 }: { closeRequest?: number }) {
       </div>
 
       {msg && (
-        <p className={`text-sm rounded-lg px-3 py-2 ${msg.includes("Caja cerrada") || msg.includes("abierta") || msg.includes("registrado") || msg.includes("impresora") || msg.includes("encolada") ? "text-green-600 bg-green-50" : "text-red-600 bg-red-50"}`}>
+        <p className={`text-sm rounded-lg px-3 py-2 ${msg.includes("Caja cerrada") || msg.includes("abierta") || msg.includes("abierto") || msg.includes("registrado") || msg.includes("impresora") || msg.includes("encolada") ? "text-green-600 bg-green-50" : "text-red-600 bg-red-50"}`}>
           {msg}
         </p>
+      )}
+
+      {handoverDone && !shift && (
+        <div className="border border-primary/30 bg-primary/5 rounded-xl p-4 space-y-3">
+          <div>
+            <h3 className="font-medium text-sm">Turno entregado a {handoverDone.name} ✓</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Contado: {money(handoverDone.amount)}. Que verifique el conteo al abrir.
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <Button type="button" variant="outline" onClick={() => setHandoverDone(null)}>
+              Después
+            </Button>
+            <Button type="button" onClick={handleOpenNext} disabled={openingNext}>
+              {openingNext ? "Abriendo..." : `Abrir turno (${money(handoverDone.amount)})`}
+            </Button>
+          </div>
+        </div>
       )}
 
       {shift ? (
@@ -471,6 +571,11 @@ export function CajaManager({ closeRequest = 0 }: { closeRequest?: number }) {
             <p className="text-xs text-muted-foreground mt-0.5">
               Registrá el fondo inicial en efectivo: las ventas y movimientos del turno se cuentan desde la apertura.
             </p>
+            {closings.length > 0 && closings[0].cash_declared != null && (
+              <p className="text-xs text-muted-foreground mt-1">
+                El turno anterior contó {money(closings[0].cash_declared)} — verificalo al abrir.
+              </p>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <span className="text-sm text-muted-foreground">$</span>
@@ -734,6 +839,7 @@ export function CajaManager({ closeRequest = 0 }: { closeRequest?: number }) {
                         {c.opened_at != null && (
                           <p className="text-xs text-muted-foreground">
                             Turno{c.opened_by_name ? ` de ${c.opened_by_name}` : ""} · inicial {money(c.opening_amount)}
+                            {c.handed_to ? ` → entregado a ${c.handed_to}` : ""}
                           </p>
                         )}
                       </div>
@@ -1039,6 +1145,32 @@ export function CajaManager({ closeRequest = 0 }: { closeRequest?: number }) {
                 <p className="text-xs text-muted-foreground text-center">
                   Al confirmar se congela el turno y se genera el Z. No se puede rectificar después.
                 </p>
+                <div>
+                  <label className="text-xs text-muted-foreground">Entregar turno a (opcional)</label>
+                  <select
+                    value={handoverTo}
+                    onChange={(e) => setHandoverTo(e.target.value)}
+                    disabled={saving}
+                    className="mt-1 w-full h-10 rounded-md border border-input bg-background px-2 text-sm"
+                  >
+                    <option value="">Sin receptor — cierre común</option>
+                    {receivers.map((r) => (
+                      <option key={r.id} value={r.id}>{r.name}</option>
+                    ))}
+                    <option value="__free">Otra persona… (escribir nombre)</option>
+                  </select>
+                  {handoverTo === "__free" && (
+                    <input
+                      type="text"
+                      value={handoverName}
+                      onChange={(e) => setHandoverName(e.target.value)}
+                      placeholder="Nombre de quien recibe"
+                      maxLength={80}
+                      disabled={saving}
+                      className="mt-2 w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
+                    />
+                  )}
+                </div>
                 <div className="grid grid-cols-2 gap-2">
                   <Button type="button" variant="outline" onClick={() => setPreStep(1)} disabled={saving}>
                     ← Volver

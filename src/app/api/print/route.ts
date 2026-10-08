@@ -57,11 +57,13 @@ export async function POST(request: Request) {
               c.by_method, c.cash_declared, c.cash_difference, c.notes,
               s.opened_at, c.opening_amount, p.full_name AS opened_by_name,
               cb.full_name AS closed_by_name,
+              COALESCE(hp.full_name, s.handed_to_name) AS handed_to,
               c.movements, c.expected_cash
        FROM cash_closings c
        LEFT JOIN cash_shifts s ON s.id = c.shift_id
        LEFT JOIN profiles p ON p.id = s.opened_by
        LEFT JOIN profiles cb ON cb.id = c.created_by
+       LEFT JOIN profiles hp ON hp.id = s.handed_to_profile
        WHERE c.id = $1 AND c.vendor_id = $2 LIMIT 1`,
       [closingId, vendor.id]
     ).catch(async () => {

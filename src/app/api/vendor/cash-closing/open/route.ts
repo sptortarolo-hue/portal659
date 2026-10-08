@@ -35,13 +35,37 @@ export async function POST(request: Request) {
   }
 
   const userId = gate.previewSession ? null : gate.user.id;
+  // Eslabón con el turno anterior (para el pase Juan → María y la
+  // verificación al abrir). Tolerante a migración de pase sin aplicar.
+  let previousShiftId: string | null = null;
+  try {
+    const prev = await queryOne<{ id: string }>(
+      `SELECT id FROM cash_shifts
+       WHERE vendor_id = $1 AND status = 'closed'
+       ORDER BY closed_at DESC NULLS LAST, opened_at DESC LIMIT 1`,
+      [gate.vendor.id]
+    );
+    previousShiftId = prev?.id || null;
+  } catch {
+    previousShiftId = null;
+  }
   let shift;
   try {
-    shift = await queryOne<{ id: string; opened_at: string }>(
-      `INSERT INTO cash_shifts (vendor_id, opening_amount, opened_by)
-       VALUES ($1, $2, $3) RETURNING id, opened_at`,
-      [gate.vendor.id, Math.round(opening * 100) / 100, userId]
-    );
+    try {
+      shift = await queryOne<{ id: string; opened_at: string }>(
+        `INSERT INTO cash_shifts (vendor_id, opening_amount, opened_by, previous_shift_id)
+         VALUES ($1, $2, $3, $4) RETURNING id, opened_at`,
+        [gate.vendor.id, Math.round(opening * 100) / 100, userId, previousShiftId]
+      );
+    } catch (e: any) {
+      // Migración de pase sin aplicar: apertura sin eslabón.
+      if (e?.code !== "42703" && !String(e?.message || "").includes("previous_shift_id")) throw e;
+      shift = await queryOne<{ id: string; opened_at: string }>(
+        `INSERT INTO cash_shifts (vendor_id, opening_amount, opened_by)
+         VALUES ($1, $2, $3) RETURNING id, opened_at`,
+        [gate.vendor.id, Math.round(opening * 100) / 100, userId]
+      );
+    }
   } catch {
     return NextResponse.json(
       { error: "Falta aplicar la migración de turnos de caja en la base de datos", code: "migration_missing" },

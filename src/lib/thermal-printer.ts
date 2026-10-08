@@ -74,6 +74,8 @@ export type CashClosingPrintData = {
   opened_by_name?: string | null;
   /** Quien confirmó el cierre (created_by). */
   closed_by_name?: string | null;
+  /** Receptor del pase de turno (NULL = cierre común). */
+  handed_to?: string | null;
   movements?: { ingresos: number; retiros: number } | null;
   expected_cash?: number | null;
 };
@@ -1117,6 +1119,8 @@ async function composeCashClose(
   {
     const closer = String(closing.closed_by_name || "").trim();
     if (closer) printer.println(`Cerrada por: ${closer}`);
+    const handed = String(closing.handed_to || "").trim();
+    if (handed) printer.println(`Entregada a: ${handed}`);
   }
   // Turno de caja: apertura + responsable + movimientos (solo cierres con turno).
   if (closing.opened_at != null) {

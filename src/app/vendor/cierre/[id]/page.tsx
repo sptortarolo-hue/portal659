@@ -23,6 +23,7 @@ type Closing = {
   opening_amount?: number | null;
   opened_by_name?: string | null;
   closed_by_name?: string | null;
+  handed_to?: string | null;
   movements?: { ingresos: number; retiros: number } | null;
   expected_cash?: number | null;
 };
@@ -142,6 +143,7 @@ export default function CierrePrintPage() {
             <div className="grid grid-cols-2 gap-2">
               <p><span className="font-bold">Apertura:</span> {fmt(c.opened_at)}{c.opened_by_name ? ` por ${c.opened_by_name}` : ""}</p>
               <p><span className="font-bold">Fondo inicial:</span> {money(c.opening_amount)}</p>
+              {c.handed_to ? <p><span className="font-bold">Entregado a:</span> {c.handed_to}</p> : null}
               {movIng > 0 && <p><span className="font-bold">Ingresos manuales:</span> {money(movIng)}</p>}
               {movRet > 0 && <p><span className="font-bold">Retiros manuales:</span> {money(movRet)}</p>}
               {c.expected_cash != null && (

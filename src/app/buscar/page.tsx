@@ -6,6 +6,7 @@ import { vendorSellsOnline, resolveVendorPlan } from "@/lib/plans";
 import { cashAppliesToItem, normalizeCashPct } from "@/lib/cash-discount";
 import { sortTalles } from "@/lib/size-guides";
 import { verticalSeoName } from "@/lib/json-ld";
+import { fetchRankStats, rankVendors } from "@/lib/ranking";
 import { CashPrice } from "@/components/store/cash-price";
 import type { Plan } from "@/types/database";
 import type { Metadata } from "next";
@@ -65,6 +66,12 @@ type VendorRow = {
   accepts_online_orders?: boolean | null;
   payment_methods?: string | null;
   cash_discount_pct?: number | null;
+  // Columnas que usa el ranking (vienen por SELECT *; declararlas evita que
+  // un recorte futuro de la query degrade el orden en silencio).
+  featured?: boolean | null;
+  created_at?: string | null;
+  hours?: string | null;
+  open_override?: boolean | null;
 };
 
 type ProductRow = {
@@ -165,6 +172,8 @@ export default async function BuscarPage({
     let list = vertical ? allVendors.filter((v) => v.vertical === vertical) : allVendors;
     const onlineCount = list.filter((v) => isOnline(v)).length;
     if (onlineOnly) list = list.filter((v) => isOnline(v));
+    // Mismo ranking de la home (src/lib/ranking.ts). Best-effort.
+    list = rankVendors(list, await fetchRankStats(list.map((v) => v.id)));
     // SEO: el h1 acompaña al title por vertical ("Kioscos, almacenes y
     // comercios en Sicardi y Garibaldi") + párrafo indexable con la
     // descripción del rubro. Sin vertical, encabezado genérico.

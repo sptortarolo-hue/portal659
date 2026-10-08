@@ -8,6 +8,7 @@ import { HorizontalCarousel } from "@/components/ui/horizontal-carousel";
 import { VendorCard } from "@/components/store/vendor-card";
 import { MostOrderedSection } from "@/components/home/most-ordered-section";
 import { OpenNowSection } from "@/components/home/open-now-section";
+import { fetchRankStats, rankVendors } from "@/lib/ranking";
 import { itemListJsonLd, organizationJsonLd, websiteJsonLd } from "@/lib/json-ld";
 import type { Vendor, Plan, Product } from "@/types/database";
 
@@ -70,6 +71,14 @@ export default async function HomePage() {
   for (const v of vendors || []) {
     const s = verticalSlug(v);
     if (vendorsByVertical[s]) vendorsByVertical[s].push(v);
+  }
+
+  // Ranking por sección: Destacado > Abierto > Oferta hoy > Boost nuevo >
+  // Rating > Pedidos > novedad (src/lib/ranking.ts). Best-effort: si falla,
+  // queda el orden de la query.
+  const rankStats = await fetchRankStats((vendors || []).map((v) => v.id));
+  for (const vert of VERTICALS) {
+    vendorsByVertical[vert.slug] = rankVendors(vendorsByVertical[vert.slug] || [], rankStats);
   }
 
   const onlineByVendor: Record<string, boolean> = {};

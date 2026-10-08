@@ -964,11 +964,14 @@ function VendorDashboardInner() {
       // qrcode solo se carga al compartir (fuera del bundle inicial).
       // Carta solo-QR: se comparte la carta (/carta). Si es pública, el
       // micrositio directo a la carta (?menu=1) y marca la fuente ?from=qr.
+      // Servicios: sin carta/menú, se comparte la vidriera (/tienda).
       const { default: QRCode } = await import("qrcode");
       const cartaQrOnly = (vendor as any).carta_visibility !== "public";
-      const url = cartaQrOnly
-        ? `${window.location.origin}/carta/${vendor.slug}`
-        : `${window.location.origin}/tienda/${vendor.slug}?menu=1&from=qr`;
+      const url = vendor?.vertical === "servicio"
+        ? `${window.location.origin}/tienda/${vendor.slug}`
+        : cartaQrOnly
+          ? `${window.location.origin}/carta/${vendor.slug}`
+          : `${window.location.origin}/tienda/${vendor.slug}?menu=1&from=qr`;
       setQrDataUrl(await QRCode.toDataURL(url, { width: 480, margin: 1 }));
     } catch { /* noop */ }
   }, [vendor?.slug, (vendor as any)?.carta_visibility]);
@@ -976,7 +979,9 @@ function VendorDashboardInner() {
   const copyLink = useCallback(async () => {
     if (!vendor?.slug) return;
     try {
-      const path = (vendor as any).carta_visibility !== "public" ? `/carta/${vendor.slug}` : `/tienda/${vendor.slug}`;
+      const path = vendor?.vertical === "servicio"
+        ? `/tienda/${vendor.slug}`
+        : (vendor as any).carta_visibility !== "public" ? `/carta/${vendor.slug}` : `/tienda/${vendor.slug}`;
       await navigator.clipboard.writeText(`${window.location.origin}${path}`);
       setCopied(true);
     } catch { /* noop */ }
@@ -2235,25 +2240,29 @@ function VendorDashboardInner() {
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={() => setShareOpen(false)}>
           <div className="bg-card rounded-2xl p-6 max-w-sm w-full text-center" onClick={(e) => e.stopPropagation()}>
             <h3 className="font-display text-xl font-semibold mb-1">Compartí tu vidriera</h3>
-            {(vendor as any).carta_visibility !== "public" ? (
+            {vendor?.vertical === "servicio" ? (
+              <p className="text-sm text-muted-foreground mb-4">El QR lleva directo a tu vidriera (listo para imprimir y pegar).</p>
+            ) : (vendor as any).carta_visibility !== "public" ? (
               <p className="text-sm text-muted-foreground mb-4">El QR lleva a tu {isRetail ? "catálogo" : "carta de mesa"} (solo lectura, sin carrito).</p>
             ) : (
               <p className="text-sm text-muted-foreground mb-4">{isRetail ? "El QR lleva directo a tu catálogo (listo para imprimir y pegar en la vidriera o el vidrio)." : "El QR lleva directo a tu carta (listo para imprimir y pegar en la mesa o el vidrio)."}</p>
             )}
             {qrDataUrl ? <img src={qrDataUrl} alt="QR" className="mx-auto w-48 h-48 mb-4" /> : <div className="mx-auto w-48 h-48 mb-4 bg-skeleton rounded-lg" />}
-            <p className="text-xs text-muted-foreground break-all mb-4">{window.location.origin}{(vendor as any).carta_visibility !== "public" ? `/carta/${vendor.slug}` : `/tienda/${vendor.slug}`}</p>
+            <p className="text-xs text-muted-foreground break-all mb-4">{window.location.origin}{vendor?.vertical === "servicio" ? `/tienda/${vendor.slug}` : (vendor as any).carta_visibility !== "public" ? `/carta/${vendor.slug}` : `/tienda/${vendor.slug}`}</p>
             <div className="space-y-2">
               <a
                 href={`https://wa.me/?text=${encodeURIComponent(
-                  (vendor as any).carta_visibility !== "public"
-                    ? `Mirá ${isRetail ? "el catálogo" : "la carta"} de ${vendor.store_name} en Portal 659 ${isRetail ? "🛍️" : "📋"}\n${window.location.origin}/carta/${vendor.slug}`
-                    : `Mirá el ${isRetail ? "catálogo" : "menú"} de ${vendor.store_name} en Portal 659 🛍️\n${window.location.origin}/tienda/${vendor.slug}?menu=1\n\nPedí directo por WhatsApp — 0% comisión`
+                  vendor?.vertical === "servicio"
+                    ? `Mirá a ${vendor.store_name} en Portal 659 🛍️\n${window.location.origin}/tienda/${vendor.slug}\n\nEscribiles directo por WhatsApp — 0% comisión`
+                    : (vendor as any).carta_visibility !== "public"
+                      ? `Mirá ${isRetail ? "el catálogo" : "la carta"} de ${vendor.store_name} en Portal 659 ${isRetail ? "🛍️" : "📋"}\n${window.location.origin}/carta/${vendor.slug}`
+                      : `Mirá el ${isRetail ? "catálogo" : "menú"} de ${vendor.store_name} en Portal 659 🛍️\n${window.location.origin}/tienda/${vendor.slug}?menu=1\n\nPedí directo por WhatsApp — 0% comisión`
                 )}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="block w-full rounded-xl bg-green-500 text-white text-sm font-medium py-2.5 hover:bg-green-600 transition-colors"
               >
-                📲 {(vendor as any).carta_visibility !== "public" ? (isRetail ? "Compartir catálogo" : "Compartir carta") : isRetail ? "Compartir tienda" : "Compartir menú"}
+                📲 {vendor?.vertical === "servicio" ? "Compartir tienda" : (vendor as any).carta_visibility !== "public" ? (isRetail ? "Compartir catálogo" : "Compartir carta") : isRetail ? "Compartir tienda" : "Compartir menú"}
               </a>
               <div className="grid grid-cols-2 gap-2">
                 {qrDataUrl && (
@@ -2265,14 +2274,16 @@ function VendorDashboardInner() {
                     ⬇️ QR (PNG)
                   </a>
                 )}
-                <a
-                  href="/vendor/carta-qr"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="rounded-xl border border-border bg-background text-sm font-medium py-2.5 hover:bg-muted transition-colors"
-                >
-                  🖨️ Cartel para imprimir
-                </a>
+                {vendor?.vertical !== "servicio" && (
+                  <a
+                    href="/vendor/carta-qr"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="rounded-xl border border-border bg-background text-sm font-medium py-2.5 hover:bg-muted transition-colors"
+                  >
+                    🖨️ Cartel para imprimir
+                  </a>
+                )}
               </div>
               <div className="flex gap-2">
                 <Button className="flex-1" onClick={copyLink}>{copied ? "¡Copiado!" : "Copiar link"}</Button>

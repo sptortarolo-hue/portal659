@@ -676,7 +676,7 @@ export default async function TiendaPage({
                 )}
               </span>
               <FavoriteButton vendorId={v.id} />
-              <WhatsAppShareButton slug={v.slug} storeName={v.store_name} catalog={isCatalog} menuHidden={menuHidden} />
+              <WhatsAppShareButton slug={v.slug} storeName={v.store_name} catalog={isCatalog} menuHidden={menuHidden} isService={isService} />
               <VendorShareButton slug={v.slug} storeName={v.store_name} />
             </div>
           </div>
@@ -745,7 +745,7 @@ export default async function TiendaPage({
 
           {/* Links */}
           <div className="flex flex-wrap gap-3 mt-3">
-            {(v as any).carta_visibility === "public" && (
+            {(v as any).carta_visibility === "public" && !isService && (
               <a href={`/carta/${v.slug}`} className="text-sm text-primary font-medium hover:underline">
                 {isCatalog ? "🛍️ Ver catálogo" : "📋 Ver carta de mesa"}
               </a>

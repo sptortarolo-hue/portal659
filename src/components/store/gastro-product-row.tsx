@@ -10,21 +10,24 @@ import { useCart, type CartModifier, type CartVolumeGroup } from "@/lib/cart";
 import { useToast } from "@/lib/toast";
 import { volumeBadgeText, volumeGroupColor } from "@/lib/volume-pricing";
 import { openPack } from "@/components/store/pack-sheet";
+import { OptionPrice } from "@/components/offers/option-price";
 import {
   BIG_GROUP_THRESHOLD,
   activeOptions,
   categoriesOf,
   effectiveMax,
+  effectiveOptionPrice,
   filterOptions,
   groupStatusText,
   isTotalMode,
-  minTotalPrice,
   missingCount,
   missingText,
   optionContribution,
-  optionTotalPrice,
+  selectionHasPromo,
   toggleWithCap,
+  totalPriceRange,
 } from "@/lib/modifier-select";
+import { FromPrice } from "@/components/store/from-price";
 import type { ProductModifier, ModifierOption } from "@/types/database";
 
 type VendorBrief = {
@@ -194,14 +197,16 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
     })
     .reduce((s, n) => s + n, 0);
   const unitTotal = baseUnit + modTotal;
-  // Grupos en modo total (ej. Tamaño): la fila titula "desde $mín".
+  // Grupos en modo total (ej. Tamaño): rango para el "desde" refinado.
   // Solo en el caso simple (sin promo/pack/peso, donde mandan esos displays).
-  const fromMin =
+  const desdeRange =
     !hasPromo && pack === 1 && !isKg
-      ? minTotalPrice(
+      ? totalPriceRange(
           modifiers.filter((m) => isTotalMode(m)).flatMap((m) => activeOptions(m.options || []))
         )
       : null;
+  const showDesde = desdeRange != null && desdeRange.max !== desdeRange.min;
+  const singleTotal = desdeRange != null && desdeRange.max === desdeRange.min ? desdeRange.min : null;
   // Por peso: el cliente indica los kilos (acepta coma decimal).
   const kgNum = isKg ? Number(String(kg).replace(",", ".")) : NaN;
   const kgOk = isKg ? Number.isFinite(kgNum) && kgNum > 0 && kgNum <= 99 : true;
@@ -254,7 +259,7 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
           group,
           label: o.label,
           price_mod: optionContribution(o, baseUnit, total),
-          ...(total && optionTotalPrice(o) != null ? { price_total: optionTotalPrice(o)! } : {}),
+          ...(total ? { price_total: effectiveOptionPrice(o, true) } : {}),
         });
       }
     }
@@ -264,7 +269,8 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
       price: baseUnit,
       qty: isKg ? kgNum : qty,
       modifiers: flat.length > 0 ? flat : undefined,
-      cashExcluded,
+      // Una opción en promo marca el ítem en promo (sin cash), como el producto.
+      cashExcluded: cashExcluded || selectionHasPromo(modifiers, flat),
       // Con pack: origPrice = precio de LISTA del paquete (full precision para
       // el espejo de volumen), no la unidad derivada.
       origPrice: pack > 1 ? Number(product.price) : listBaseUnit,
@@ -348,9 +354,11 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
             <span className="font-bold text-primary">${Number(product.promo_price).toLocaleString("es-AR")}</span>
             <span className="block text-xs text-muted-foreground line-through">${Number(product.price).toLocaleString("es-AR")}</span>
           </div>
-        ) : fromMin != null ? (
+        ) : showDesde ? (
+          <FromPrice min={desdeRange!.min} max={desdeRange!.max} valueClassName="font-bold" />
+        ) : singleTotal != null ? (
           <span className="font-bold">
-            Desde ${fromMin.toLocaleString("es-AR")}
+            ${singleTotal.toLocaleString("es-AR")}
           </span>
         ) : (
           <span className="font-bold">
@@ -433,8 +441,10 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
               <span className="font-bold text-primary">${Number(product.promo_price).toLocaleString("es-AR")}</span>
               <span className="text-xs text-muted-foreground line-through">${Number(product.price).toLocaleString("es-AR")}</span>
             </>
-          ) : fromMin != null ? (
-            <span className="font-bold">Desde ${fromMin.toLocaleString("es-AR")}</span>
+          ) : showDesde ? (
+            <FromPrice min={desdeRange!.min} max={desdeRange!.max} valueClassName="font-bold" />
+          ) : singleTotal != null ? (
+            <span className="font-bold">${singleTotal.toLocaleString("es-AR")}</span>
           ) : (
             <span className="font-bold">${Number(product.price).toLocaleString("es-AR")}</span>
           )}
@@ -580,8 +590,10 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
                       <span className="font-display text-2xl font-bold text-primary">${Number(product.promo_price).toLocaleString("es-AR")}</span>
                       <span className="text-sm text-muted-foreground line-through">${Number(product.price).toLocaleString("es-AR")}</span>
                     </div>
-                  ) : fromMin != null ? (
-                    <span className="font-display text-2xl font-bold">Desde ${fromMin.toLocaleString("es-AR")}</span>
+                  ) : showDesde ? (
+                    <FromPrice min={desdeRange!.min} max={desdeRange!.max} valueClassName="font-display text-2xl font-bold" />
+                  ) : singleTotal != null ? (
+                    <span className="font-display text-2xl font-bold">${singleTotal.toLocaleString("es-AR")}</span>
                   ) : (
                     <span className="font-display text-2xl font-bold">${Number(product.price).toLocaleString("es-AR")}</span>
                   )}
@@ -709,15 +721,7 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
                                   </span>
                                   <span className="truncate">{opt.label}</span>
                                 </span>
-                                {isTotalMode(mod) ? (
-                                  optionTotalPrice(opt) != null && (
-                                    <span className="font-medium flex-shrink-0 ml-2">${optionTotalPrice(opt)!.toLocaleString("es-AR")}</span>
-                                  )
-                                ) : (
-                                  Number(opt.price_mod) > 0 && (
-                                    <span className="text-muted-foreground flex-shrink-0 ml-2">+${Number(opt.price_mod).toLocaleString("es-AR")}</span>
-                                  )
-                                )}
+                                <OptionPrice opt={opt} totalMode={isTotalMode(mod)} className="text-muted-foreground flex-shrink-0 ml-2" />
                               </button>
                             );
                           })}

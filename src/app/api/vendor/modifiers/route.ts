@@ -1,6 +1,7 @@
 ﻿import { getVendorByRequest } from "@/lib/vendor-utils";
 import { queryMany, queryOne, withTransaction } from "@/lib/db";
 import { isMissingColumnError, queryEffectiveModifiers } from "@/lib/modifier-rules";
+import { validateOptionPromos } from "@/lib/modifier-select";
 import { NextResponse } from "next/server";
 import type { ModifierOption } from "@/types/database";
 
@@ -14,6 +15,10 @@ function normalizeOptions(options: unknown): ModifierOption[] {
       // Precio final de la opción (modo "total" del grupo). Vive en el JSONB.
       ...(Number.isFinite(Number(o?.price_total)) && Number(o.price_total) >= 0
         ? { price_total: Number(o.price_total) }
+        : {}),
+      // Promo de la opción (absoluta, misma base que el precio que reemplaza).
+      ...(o?.promo != null && o.promo !== "" && Number.isFinite(Number(o.promo)) && Number(o.promo) >= 0
+        ? { promo: Number(o.promo) }
         : {}),
       // Familia opcional (filtro en la hoja de gustos). Se guarda en el JSONB.
       ...(String(o?.category ?? "").trim() ? { category: String(o.category).trim().slice(0, 40) } : {}),
@@ -123,6 +128,12 @@ export async function POST(request: Request) {
     );
   }
   const priceMode = body.price_mode === "total" ? "total" : "diferencia";
+
+  // La promo de cada opción debe ser menor que su precio (según modo).
+  const promoError = validateOptionPromos(norm, priceMode === "total");
+  if (promoError) {
+    return NextResponse.json({ error: promoError }, { status: 400 });
+  }
 
   let cleanIds: string[] = [];
   if (Array.isArray(product_ids) && product_ids.length > 0) {

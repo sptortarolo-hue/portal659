@@ -2,6 +2,7 @@ import { getVendorByRequest } from "@/lib/vendor-utils";
 import { queryOne, queryMany, query, withTransaction } from "@/lib/db";
 import { NextResponse } from "next/server";
 import type { ModifierOption } from "@/types/database";
+import { validateOptionPromos } from "@/lib/modifier-select";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +14,10 @@ function normalizeOptions(options: unknown): ModifierOption[] {
       // Precio final de la opción (modo "total" del grupo). Vive en el JSONB.
       ...(Number.isFinite(Number(o?.price_total)) && Number(o.price_total) >= 0
         ? { price_total: Number(o.price_total) }
+        : {}),
+      // Promo de la opción (absoluta, misma base que el precio que reemplaza).
+      ...(o?.promo != null && o.promo !== "" && Number.isFinite(Number(o.promo)) && Number(o.promo) >= 0
+        ? { promo: Number(o.promo) }
         : {}),
       // Familia opcional (filtro en la hoja de gustos). Se guarda en el JSONB.
       ...(String(o?.category ?? "").trim() ? { category: String(o.category).trim().slice(0, 40) } : {}),
@@ -30,10 +35,20 @@ export async function PATCH(
   if (!vendor) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
 
   const { id } = await params;
-  const existing = await queryOne<{ id: string; max_selections: number }>(
-    `SELECT id, max_selections FROM modifier_groups WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
-    [id, vendor.id]
-  );
+  // price_mode vive en su migración: reintento sin la columna si falta.
+  let existing: { id: string; max_selections: number; price_mode?: string | null } | null | undefined = null;
+  try {
+    existing = await queryOne<{ id: string; max_selections: number; price_mode: string | null }>(
+      `SELECT id, max_selections, price_mode FROM modifier_groups WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
+      [id, vendor.id]
+    );
+  } catch (e) {
+    if (!/price_mode/i.test(String((e as Error)?.message || ""))) throw e;
+    existing = await queryOne<{ id: string; max_selections: number }>(
+      `SELECT id, max_selections FROM modifier_groups WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
+      [id, vendor.id]
+    );
+  }
   if (!existing) return NextResponse.json({ error: "No encontrado" }, { status: 404 });
 
   const body = await request.json();
@@ -43,7 +58,14 @@ export async function PATCH(
   if (typeof group_name === "string" && group_name.trim()) update.group_name = group_name.trim();
   if (Array.isArray(options)) {
     const norm = normalizeOptions(options);
-    if (norm.length > 0) update.options = JSON.stringify(norm);
+    if (norm.length > 0) {
+      // La promo se valida contra el modo efectivo (el que viene o el guardado).
+      const effMode =
+        price_mode === "diferencia" || price_mode === "total" ? price_mode : (existing as any)?.price_mode === "total" ? "total" : "diferencia";
+      const promoError = validateOptionPromos(norm, effMode === "total");
+      if (promoError) return NextResponse.json({ error: promoError }, { status: 400 });
+      update.options = JSON.stringify(norm);
+    }
   }
   if (typeof required === "boolean") update.required = required;
   if (max_selections !== undefined) update.max_selections = Math.max(1, Number(max_selections) || 1);

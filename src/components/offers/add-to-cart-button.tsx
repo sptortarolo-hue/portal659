@@ -6,6 +6,7 @@ import type { CartModifier, CartVolumeGroup } from "@/lib/cart";
 import type { ProductModifier } from "@/types/database";
 import { ModifierPicker } from "./modifier-picker";
 import { useToast } from "@/lib/toast";
+import { selectionHasPromo } from "@/lib/modifier-select";
 
 type AddToCartButtonProps = {
   offerId: string;
@@ -80,9 +81,10 @@ export function AddToCartButton({
         price,
         qty: count,
         modifiers: mods,
-        cashExcluded,
+        // Una opción en promo marca el ítem en promo (sin cash), como el producto.
+        cashExcluded: cashExcluded || selectionHasPromo(modifiers, mods),
         origPrice,
-        hasPromo,
+        hasPromo: hasPromo || selectionHasPromo(modifiers, mods),
         packSize: hasPack ? packSize : undefined,
         packPrice: packPrice && hasPack ? packPrice : undefined,
         image: image ?? null,
@@ -116,7 +118,7 @@ export function AddToCartButton({
       setTimeout(() => setAdded(false), 1500);
       onAdded?.();
     },
-    [addItem, items, vendor, offerId, name, price, cashExcluded, origPrice, hasPromo, packSize, packPrice, image, qty, onAdded, addToast]
+    [addItem, items, vendor, offerId, name, price, cashExcluded, origPrice, hasPromo, packSize, packPrice, image, qty, onAdded, addToast, modifiers]
   );
 
   const handleClick = useCallback(() => {

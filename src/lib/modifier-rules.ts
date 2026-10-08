@@ -16,7 +16,7 @@
 export type EffectiveModifierRow = {
   id: string;
   group_name: string;
-  options: { label?: string; price_mod?: number; price_total?: number | null; category?: string; available?: boolean }[];
+  options: { label?: string; price_mod?: number; price_total?: number | null; promo?: number | null; category?: string; available?: boolean }[];
   required: boolean;
   max_selections: number;
   /** Puede venir undefined si la migración de min aún no se aplicó (= legacy). */

@@ -103,10 +103,41 @@ export function optionTotalPrice(o: ModifierOption | null | undefined): number |
   return Number.isFinite(t) && t >= 0 ? t : null;
 }
 
+/** Precio normal de la opción según modo (lo que se tacha si hay promo). */
+export function normalOptionPrice(
+  o: ModifierOption | null | undefined,
+  totalMode: boolean
+): number {
+  if (totalMode) {
+    const t = optionTotalPrice(o);
+    if (t != null) return t;
+  }
+  return Number(o?.price_mod) || 0;
+}
+
+/** Promo válida de la opción (null = sin promo o inválida). Debe ser menor que el precio normal. */
+export function promoOptionPrice(
+  o: ModifierOption | null | undefined,
+  totalMode: boolean
+): number | null {
+  const p = Number(o?.promo);
+  if (!Number.isFinite(p) || p < 0) return null;
+  const normal = normalOptionPrice(o, totalMode);
+  return p < normal ? p : null;
+}
+
+/** Precio efectivo de la opción: promo válida o precio normal. */
+export function effectiveOptionPrice(
+  o: ModifierOption | null | undefined,
+  totalMode: boolean
+): number {
+  return promoOptionPrice(o, totalMode) ?? normalOptionPrice(o, totalMode);
+}
+
 /**
  * Aporte de la opción al total del ítem (regla canónica: lo que se guarda
- * en `price_mod`). En modo total = total_opción − base_producto; si la
- * opción no trae total, cae al delta cargado (compat).
+ * en `price_mod`). En modo total = efectivo_opción − base_producto
+ * (la base se ignora); en diferencia = efectivo (promo o extra).
  */
 export function optionContribution(
   o: ModifierOption,
@@ -114,21 +145,80 @@ export function optionContribution(
   totalMode: boolean
 ): number {
   if (totalMode) {
-    const t = optionTotalPrice(o);
-    if (t != null) return t - (Number(basePrice) || 0);
+    return effectiveOptionPrice(o, true) - (Number(basePrice) || 0);
   }
-  return Number(o?.price_mod) || 0;
+  return effectiveOptionPrice(o, false);
 }
 
-/** Mínimo de los totales del grupo (para "desde $X"). Null si no hay totales. */
-export function minTotalPrice(options: ModifierOption[]): number | null {
-  let min: number | null = null;
-  for (const o of options || []) {
-    const t = optionTotalPrice(o);
-    if (t == null) continue;
-    if (min == null || t < min) min = t;
+/** ¿Alguna opción tiene promo válida? (marca el ítem en promo: sin cash). */
+export function anyOptionPromo(
+  opts: ModifierOption[],
+  totalMode: boolean
+): boolean {
+  return (opts || []).some((o) => promoOptionPrice(o, totalMode) != null);
+}
+
+/** ¿Alguna opción SELECCIONADA tiene promo válida? Busca el grupo de cada selección. */
+export function selectionHasPromo(
+  groups:
+    | {
+        group_name: string;
+        price_mode?: string | null;
+        max_selections?: number | null;
+        options?: ModifierOption[];
+      }[]
+    | null
+    | undefined,
+  selected: { group: string; label: string }[] | null | undefined
+): boolean {
+  for (const s of selected || []) {
+    const g = (groups || []).find((x) => x.group_name === s.group);
+    if (!g) continue;
+    const total = isTotalMode(g);
+    const opt = (g.options || []).find((o) => o.label === s.label);
+    if (opt && promoOptionPrice(opt, total) != null) return true;
   }
-  return min;
+  return false;
+}
+
+/** Mínimo efectivo del grupo (promo-aware, para "desde $X"). Null si no hay totales. */
+export function minTotalPrice(options: ModifierOption[], totalMode = true): number | null {
+  const r = totalPriceRange(options, totalMode);
+  return r?.min ?? null;
+}
+
+/** Rango efectivo {min,max} de los totales del grupo (promo-aware). Null si no hay totales. */
+export function totalPriceRange(
+  options: ModifierOption[],
+  totalMode = true
+): { min: number; max: number } | null {
+  let min: number | null = null;
+  let max: number | null = null;
+  for (const o of options || []) {
+    const t = totalMode ? optionTotalPrice(o) : null;
+    if (t == null) continue;
+    const eff = promoOptionPrice(o, true) ?? t;
+    if (min == null || eff < min) min = eff;
+    if (max == null || eff > max) max = eff;
+  }
+  return min == null || max == null ? null : { min, max };
+}
+
+/** Valida promos de una lista de opciones. Null = ok, string = mensaje de error. */
+export function validateOptionPromos(
+  options: { label?: string; price_mod?: number; price_total?: number | null; promo?: number | null }[],
+  totalMode: boolean
+): string | null {
+  for (const o of options || []) {
+    if (o?.promo == null || (o.promo as unknown) === "") continue;
+    const p = Number(o.promo);
+    const label = String(o?.label || "opción");
+    if (!Number.isFinite(p) || p < 0) return `La promo de "${label}" no es un precio válido`;
+    if (!(p < normalOptionPrice(o as ModifierOption, totalMode))) {
+      return `La promo de "${label}" debe ser menor que su precio`;
+    }
+  }
+  return null;
 }
 
 /** Familias presentes en las opciones (para chips de filtro). */

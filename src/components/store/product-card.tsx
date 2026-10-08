@@ -5,8 +5,9 @@ import { AddToCartButton } from "@/components/offers/add-to-cart-button";
 import { VariantSelector } from "./variant-selector";
 import { ProductImage } from "@/components/product-image";
 import { CashPrice } from "@/components/store/cash-price";
+import { FromPrice } from "@/components/store/from-price";
 import { cashAppliesToItem, normalizeCashPct } from "@/lib/cash-discount";
-import { activeOptions, isTotalMode, minTotalPrice } from "@/lib/modifier-select";
+import { activeOptions, isTotalMode, totalPriceRange } from "@/lib/modifier-select";
 
 type VendorBrief = {
   id: string;
@@ -78,16 +79,8 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
 
   const summary = hasVariants ? variantSummary(variants) : null;
 
-  // Grupos en modo total (ej. Tamaño): la tarjeta titula "Desde $mín",
-  // igual que con variantes. Sin promo (la promo manda en el display).
-  const modsTotalMin =
-    !hasVariants && product.promo_price == null
-      ? minTotalPrice(
-          (modifiers || [])
-            .filter((m) => isTotalMode(m))
-            .flatMap((m) => activeOptions(m.options || []))
-        )
-      : null;
+  // Grupos en modo total (ej. Tamaño): rango para el "desde" refinado.
+  // Sin promo (la promo manda en el display).
 
   const totalStock = hasVariants
     ? variants.reduce((a, v) => a + (v.stock ?? 0), 0)
@@ -110,12 +103,28 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
       ? Math.round((1 - Number(product.promo_price) / Number(product.price)) * 100)
       : null;
 
+  // Rango de precios para el display refinado: variantes con spread o
+  // grupos en modo total. Con valor único se muestra el precio plano.
+  const modsRange =
+    !hasVariants && product.promo_price == null
+      ? totalPriceRange(
+          (modifiers || [])
+            .filter((m) => isTotalMode(m))
+            .flatMap((m) => activeOptions(m.options || []))
+        )
+      : null;
+  const desdeRange =
+    hasVariants && summary && summary.min !== summary.max
+      ? { min: summary.min, max: summary.max }
+      : modsRange && modsRange.max !== modsRange.min
+        ? modsRange
+        : null;
+  const modsSingle = modsRange && modsRange.max === modsRange.min ? modsRange.min : null;
+
   const priceLabel = hasVariants && summary
-    ? summary.min === summary.max
-      ? `$${summary.min.toLocaleString("es-AR")}`
-      : `Desde $${summary.min.toLocaleString("es-AR")}`
-    : modsTotalMin != null
-      ? `Desde $${modsTotalMin.toLocaleString("es-AR")}`
+    ? `$${summary.min.toLocaleString("es-AR")}`
+    : modsSingle != null
+      ? `$${modsSingle.toLocaleString("es-AR")}`
       : `$${(product.promo_price ?? product.price).toLocaleString("es-AR")}`;
 
   const regularLabel = hasVariants && summary
@@ -237,7 +246,11 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
             <CashPrice price={cardCashBase} hasPromo={cardHasPromo} excluded={product.cash_discount_excluded} cashPct={vendor.cashDiscountPct} size="sm" prefix={cardCashRange ? "Desde " : ""} plainClassName="font-display font-bold text-sm" />
           ) : (
             <div className="flex items-baseline gap-1.5 mt-0.5">
-              <span className={`font-display font-bold text-sm ${bestDiscount != null ? "text-primary" : ""}`}>{priceLabel}</span>
+              {desdeRange ? (
+                <FromPrice min={desdeRange.min} max={desdeRange.max} valueClassName={`font-display font-bold text-sm ${bestDiscount != null ? "text-primary" : ""}`} />
+              ) : (
+                <span className={`font-display font-bold text-sm ${bestDiscount != null ? "text-primary" : ""}`}>{priceLabel}</span>
+              )}
               {regularLabel && <span className="text-[10px] text-muted-foreground line-through">{regularLabel}</span>}
             </div>
           )}
@@ -337,7 +350,11 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
                   <CashPrice price={cardCashBase} hasPromo={cardHasPromo} excluded={product.cash_discount_excluded} cashPct={vendor.cashDiscountPct} size="lg" prefix={cardCashRange ? "Desde " : ""} plainClassName="font-bold text-lg" />
                 ) : (
                   <div className="flex items-baseline gap-2 flex-wrap">
-                    <span className="font-bold text-lg">{priceLabel}</span>
+                    {desdeRange ? (
+                      <FromPrice min={desdeRange.min} max={desdeRange.max} valueClassName="font-bold text-lg" />
+                    ) : (
+                      <span className="font-bold text-lg">{priceLabel}</span>
+                    )}
                     {regularLabel && <span className="text-sm text-muted-foreground line-through">{regularLabel}</span>}
                     {bestDiscount != null && (
                       <span className="rounded-full bg-red-500 text-white text-[11px] font-bold px-2 py-0.5">-{bestDiscount}%</span>

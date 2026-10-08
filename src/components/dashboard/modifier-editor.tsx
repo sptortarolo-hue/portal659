@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Card } from "@/components/ui/card";
 import type { ModifierGroup, ModifierOption } from "@/types/database";
+import { validateOptionPromos } from "@/lib/modifier-select";
 
 type GroupRow = ModifierGroup & { product_ids?: string[]; products_count?: number };
 
@@ -105,6 +106,11 @@ function GroupForm({
         ...(useTotal && Number.isFinite(Number(o.price_total)) && Number(o.price_total) >= 0
           ? { price_total: Number(o.price_total) }
           : {}),
+        // Promo: precio rebajado (misma base que el precio que reemplaza).
+        // Vacío = sin promo.
+        ...(o.promo != null && (o.promo as unknown) !== "" && Number.isFinite(Number(o.promo)) && Number(o.promo) >= 0
+          ? { promo: Number(o.promo) }
+          : {}),
         ...(String(o.category ?? "").trim() ? { category: String(o.category).trim().slice(0, 40) } : {}),
         // El pausado (👁/🚫) tiene que sobrevivir al guardado: si se pierde
         // acá, el gusto vuelve a mostrarse en la venta (misma normalización
@@ -114,6 +120,8 @@ function GroupForm({
       .filter((o) => o.label !== "");
     if (!name.trim()) return setError("Indicá el nombre del grupo");
     if (clean.length === 0) return setError("Agregá al menos una opción");
+    const promoError = validateOptionPromos(clean, useTotal);
+    if (promoError) return setError(promoError);
     const req = required || isVariant;
     // Mínimo: vacío = legacy (≥1 si obligatorio). Clampeado a 1..max.
     let minN: number | null = null;
@@ -277,6 +285,16 @@ function GroupForm({
                 }
                 placeholder={priceMode === "total" ? "$ total" : "$"}
                 title={priceMode === "total" ? "Precio final eligiendo esta opción" : "Diferencia que suma la opción"}
+                className="flex-1 sm:flex-none sm:w-20 min-w-0"
+              />
+              <Input
+                type="number"
+                step="0.01"
+                inputMode="decimal"
+                value={o.promo != null ? String(o.promo) : ""}
+                onChange={(e) => setOpt(i, { promo: e.target.value === "" ? undefined : Number(e.target.value) || 0 })}
+                placeholder="$ promo"
+                title="Precio promocional (vacío = sin promo). Debe ser menor que el precio."
                 className="flex-1 sm:flex-none sm:w-20 min-w-0"
               />
               <div className="flex gap-1 sm:gap-2 flex-shrink-0">
@@ -634,15 +652,28 @@ export function ModifierLibrary({ products, onChanged, enableHeladeriaKit = fals
               </div>
               <div className="flex flex-wrap gap-1 mt-2">
                 {(g.options || []).map((o, i) => {
-                  const isTotal = (g as ModifierGroup).price_mode === "total" && o.price_total != null;
+                  const groupTotal = (g as ModifierGroup).price_mode === "total";
+                  const normal = groupTotal && o.price_total != null ? Number(o.price_total) : Number(o.price_mod) || 0;
+                  const fmt = (n: number) =>
+                    groupTotal
+                      ? `$${n.toLocaleString("es-AR")}`
+                      : n > 0
+                        ? `+$${n.toLocaleString("es-AR")}`
+                        : `$${n.toLocaleString("es-AR")}`;
+                  const hasPromo = o.promo != null && Number(o.promo) >= 0 && Number(o.promo) < normal;
+                  const showNormal = groupTotal ? o.price_total != null : o.price_mod !== 0;
                   return (
                     <span key={i} className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] ${o.available === false ? "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" : "bg-muted text-muted-foreground"}`}>
                       {o.available === false && <span title="Pausado (oculto en la venta)">🚫</span>}
                       {o.label}
                       {o.category ? <span className="opacity-70">· {o.category}</span> : null}
-                      {isTotal
-                        ? <span className="text-primary">${Number(o.price_total).toLocaleString("es-AR")}</span>
-                        : o.price_mod !== 0 && <span className="text-primary">{o.price_mod > 0 ? `+$${o.price_mod}` : `$${o.price_mod}`}</span>}
+                      {hasPromo ? (
+                        <span className="text-primary font-semibold">
+                          <span className="line-through opacity-70 font-normal">{fmt(normal)}</span> {fmt(Number(o.promo))} 🔥
+                        </span>
+                      ) : showNormal ? (
+                        <span className="text-primary">{fmt(normal)}</span>
+                      ) : null}
                     </span>
                   );
                 })}

@@ -8,15 +8,16 @@ import {
   activeOptions,
   categoriesOf,
   effectiveMax,
+  effectiveOptionPrice,
   filterOptions,
   groupStatusText,
   isTotalMode,
   missingCount,
   missingText,
   optionContribution,
-  optionTotalPrice,
   toggleWithCap,
 } from "@/lib/modifier-select";
+import { OptionPrice } from "@/components/offers/option-price";
 
 type ModifierPickerProps = {
   modifiers: ProductModifier[];
@@ -81,8 +82,8 @@ export function ModifierPicker({
 
   function handleConfirm() {
     // Regla canónica: lo guardado en price_mod es el APORTE al total.
-    // En modo total el aporte = total_opción − base (la base se ignora).
-    // price_total viaja solo para display (chips del carrito).
+    // En modo total el aporte = efectivo_opción − base (la base se ignora).
+    // price_total viaja con el EFECTIVO (promo-aware) solo para display.
     const flat: CartModifier[] = [];
     for (const [group, opts] of Object.entries(selected)) {
       const mod = modifiers.find((m) => m.group_name === group);
@@ -92,7 +93,7 @@ export function ModifierPicker({
           group,
           label: o.label,
           price_mod: optionContribution(o, basePrice, total),
-          ...(total && optionTotalPrice(o) != null ? { price_total: optionTotalPrice(o)! } : {}),
+          ...(total ? { price_total: effectiveOptionPrice(o, true) } : {}),
         });
       }
     }
@@ -199,17 +200,7 @@ export function ModifierPicker({
                             </span>
                             {opt.label}
                           </span>
-                          {showTotal
-                            ? optionTotalPrice(opt) != null && (
-                              <span className="font-medium">
-                                ${optionTotalPrice(opt)!.toLocaleString("es-AR")}
-                              </span>
-                            )
-                            : opt.price_mod > 0 && (
-                              <span className="text-muted-foreground">
-                                +${opt.price_mod.toLocaleString("es-AR")}
-                              </span>
-                            )}
+                          <OptionPrice opt={opt} totalMode={showTotal} className="text-muted-foreground" />
                         </button>
                       );
                     })}
@@ -297,17 +288,7 @@ export function ModifierPicker({
                           </span>
                           <span className="truncate">{opt.label}</span>
                         </span>
-                        {showTotal
-                          ? optionTotalPrice(opt) != null && (
-                            <span className="font-medium flex-shrink-0 ml-2">
-                              ${optionTotalPrice(opt)!.toLocaleString("es-AR")}
-                            </span>
-                          )
-                          : opt.price_mod > 0 && (
-                            <span className="text-muted-foreground flex-shrink-0 ml-2">
-                              +${opt.price_mod.toLocaleString("es-AR")}
-                            </span>
-                          )}
+                        <OptionPrice opt={opt} totalMode={showTotal} className="text-muted-foreground flex-shrink-0 ml-2" />
                       </button>
                     );
                   })}

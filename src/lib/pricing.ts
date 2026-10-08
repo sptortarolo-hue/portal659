@@ -154,12 +154,13 @@ export async function resolveOrderPricing(opts: {
   const productById = new Map(products.map((p) => [p.id, p]));
   const variantById = new Map(variants.map((v) => [v.id, v]));
 
-  // Mapa product_id -> label -> { diferencia, total, modo } (desde
+  // Mapa product_id -> label -> { diferencia, total, promo, modo } (desde
   // modifier_groups.options JSONB). En modo "total" la opción vale su precio
   // final y el aporte = total − base (igual que el cliente). Si dos grupos
   // comparten etiqueta, gana la entrada total (más específica).
   // Tolerante a migración de price_mode sin aplicar (todo diferencia).
-  type ModEntry = { mod: number; total: number | null; isTotal: boolean };
+  // La promo vive en el JSONB: sin migración (ausente = sin promo).
+  type ModEntry = { mod: number; total: number | null; promo: number | null; isTotal: boolean };
   let modifierMap = new Map<string, Map<string, ModEntry>>();
   // Reglas por producto: grupo -> { required, max, min, labels } para validar
   // cantidades (caso heladería: "Gustos" min 2 / max 2 en el 1/4 kg).
@@ -168,7 +169,7 @@ export async function resolveOrderPricing(opts: {
   // Gustos pausados (available === false): se rechazan como no disponibles.
   let unavailableByProduct = new Map<string, Set<string>>();
   if (productIds.size) {
-    let modRows: { product_id: string; options: { label?: string; price_mod?: number; price_total?: number | null }[]; price_mode?: string | null; max_selections?: number }[] = [];
+    let modRows: { product_id: string; options: { label?: string; price_mod?: number; price_total?: number | null; promo?: number | null }[]; price_mode?: string | null; max_selections?: number }[] = [];
     try {
       modRows = await tx.query(
         `SELECT l.product_id, g.options, g.price_mode, g.max_selections
@@ -201,9 +202,12 @@ export async function resolveOrderPricing(opts: {
         const label = String(o?.label ?? "").trim();
         if (!label) continue;
         const t = Number(o?.price_total);
+        const p = Number(o?.promo);
+        const normal = rowTotal && Number.isFinite(t) && t >= 0 ? t : Number(o?.price_mod ?? 0) || 0;
         const entry: ModEntry = {
           mod: Number(o?.price_mod ?? 0) || 0,
           total: Number.isFinite(t) && t >= 0 ? t : null,
+          promo: Number.isFinite(p) && p >= 0 && p < normal ? p : null,
           isTotal: rowTotal,
         };
         const prev = inner.get(label);
@@ -347,6 +351,7 @@ export async function resolveOrderPricing(opts: {
     const labels = picked.map((p) => p.label);
 
     let modsPerUnit = 0;
+    let hasModPromo = false;
     if (labels.length > 0) {
       const modsForProduct = modifierMap.get(product.id);
       const unavailable = unavailableByProduct.get(product.id);
@@ -360,8 +365,10 @@ export async function resolveOrderPricing(opts: {
         if (entry == null) {
           throw new PricingError(`Modificador "${label}" no existe más en "${product.name}".`);
         }
-        // Modo total: aporte = total_opción − base (la base se ignora).
-        modsPerUnit += entry.isTotal && entry.total != null ? entry.total - modBase : entry.mod;
+        // Efectivo de la opción (promo o normal) y aporte según modo.
+        const effective = entry.promo ?? (entry.isTotal ? (entry.total ?? entry.mod) : entry.mod);
+        if (entry.promo != null) hasModPromo = true;
+        modsPerUnit += entry.isTotal ? effective - modBase : effective;
       }
     }
 
@@ -400,7 +407,10 @@ export async function resolveOrderPricing(opts: {
         : round2(round2(unitPrice + modsPerUnit) * qtySafe);
     subtotal += lineGross;
 
-    const hasPromo = variant ? variant.promo != null : product.promo_price != null;
+    // Una opción en promo marca el ítem en promo (sin cash, como el producto).
+    const hasPromo = variant
+      ? variant.promo != null
+      : product.promo_price != null || hasModPromo;
     staged.push({
       product,
       variant,

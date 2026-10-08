@@ -135,6 +135,8 @@ export type ModifierOption = {
   price_mod: number;
   /** Precio final de la opción (modo "total" del grupo). Ausente = solo diferencia. */
   price_total?: number | null;
+  /** Precio promocional de la opción (absoluto, misma base que el precio que reemplaza). Vacío = sin promo. */
+  promo?: number | null;
   /** Familia opcional para agrupar/filtrar (ej: "Cremas", "Chocolates"). Vive en el JSONB: sin migración. */
   category?: string;
   /** Gusto pausado (ej: se acabó el pistacho): se oculta sin borrarlo. Ausente = disponible. */

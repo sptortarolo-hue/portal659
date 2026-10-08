@@ -24,6 +24,7 @@ import { StaffManager } from "@/components/vendor/staff-manager";
 import { HoursEditor } from "@/components/dashboard/hours-editor";
 import { GalleryManager } from "@/components/dashboard/gallery-manager";
 import { PromosSection } from "@/components/dashboard/promos-section";
+import { CartaQrSection } from "@/components/dashboard/carta-qr-section";
 import { LocationPicker } from "./location-picker";
 import {
   EsteticaServicesManager,
@@ -720,6 +721,10 @@ export default function DashboardEstetica({
 
         <ConfigSection id="equipo" label="Equipo y usuarios" icon="👥">
           <StaffManager storeName={vendor?.store_name} showCouriers={false} />
+        </ConfigSection>
+
+        <ConfigSection id="carta" label="Carta y QR" icon="📱" status={vendor?.carta_visibility === "public" ? "ok" : undefined}>
+          <CartaQrSection vendor={vendor} saveVendor={saveVendor} setMsg={setMsg} />
         </ConfigSection>
 
         <ConfigSection id="promos" label="Promos" icon="🔗">

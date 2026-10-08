@@ -19,6 +19,7 @@ import { FiscalTabShortcut } from "@/components/dashboard/fiscal-config-section"
 import { HoursEditor } from "@/components/dashboard/hours-editor";
 import { GalleryManager } from "@/components/dashboard/gallery-manager";
 import { PromosSection } from "@/components/dashboard/promos-section";
+import { CartaQrSection } from "@/components/dashboard/carta-qr-section";
 import { LocationPicker } from "./location-picker";
 import { StaffManager } from "@/components/vendor/staff-manager";
 import type { Vendor, VendorGallery } from "@/types/database";
@@ -520,6 +521,10 @@ export default function DashboardGastro({
             🍽️ Ir al Menú
           </Button>
         </div>
+      </ConfigSection>
+
+      <ConfigSection id="carta" label="Carta y QR" icon="📱" status={vendor?.carta_visibility === "public" ? "ok" : undefined}>
+        <CartaQrSection vendor={vendor} saveVendor={saveVendor} setMsg={setMsg} />
       </ConfigSection>
 
       <ConfigSection id="promos" label="Promos" icon="🔗">

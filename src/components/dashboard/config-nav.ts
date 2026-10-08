@@ -8,6 +8,7 @@ import {
   MapPin,
   Phone,
   Printer,
+  QrCode,
   Receipt,
   Share,
   ShoppingBag,
@@ -30,7 +31,7 @@ export type ConfigSectionStatus = "ok" | "warn" | "off";
 
 export const CONFIG_SECTION_ICONS: Record<string, LucideIcon> = {
   perfil: Store,
-  ubicacion: MapPin,
+  carta: QrCode,  ubicacion: MapPin,
   contacto: Phone,
   pagos: CreditCard,
   preparacion: Timer,
@@ -50,6 +51,7 @@ export const CONFIG_SECTION_ICONS: Record<string, LucideIcon> = {
 
 export const CONFIG_SECTION_DESCS: Record<string, string> = {
   perfil: "Nombre, descripción, fotos y galería de tu vidriera.",
+  carta: "Tu carta de mesa: QR imprimible y quién puede verla.",
   ubicacion: "Dónde estás y cuándo abrís.",
   contacto: "Cómo te contactan tus clientes.",
   pagos: "Medios de pago, entrega, Mercado Pago y venta online.",
@@ -74,7 +76,7 @@ export const CONFIG_SECTION_GROUPS: Array<{
   sections: string[];
 }> = [
   { id: "negocio", label: "Local", sections: ["perfil", "ubicacion", "contacto"] },
-  { id: "ventas", label: "Ventas", sections: ["pagos", "menu", "catalogo", "promos"] },
+  { id: "ventas", label: "Ventas", sections: ["pagos", "menu", "catalogo", "carta", "promos"] },
   { id: "turnera", label: "Turnera", sections: ["turnera", "fichas", "packs"] },
   { id: "servicio", label: "Servicio", sections: ["servicios", "urgencia"] },
   { id: "operacion", label: "Operación", sections: ["preparacion", "equipo", "impresora", "alertas", "fiscal"] },
@@ -84,6 +86,7 @@ export const CONFIG_SECTION_FALLBACK_ICON: LucideIcon = Settings2;
 
 export const CONFIG_SECTION_LABELS: Record<string, string> = {
   perfil: "Perfil",
+  carta: "Carta y QR",
   ubicacion: "Ubicación y horarios",
   contacto: "Contacto y redes",
   pagos: "Pagos y entrega",
@@ -106,17 +109,17 @@ export const CONFIG_SECTION_LABELS: Record<string, string> = {
 export function sectionsForVertical(vertical: string | null | undefined): string[] {
   switch (vertical) {
     case "gastronomia":
-      return ["perfil", "ubicacion", "contacto", "pagos", "preparacion", "equipo", "impresora", "alertas", "fiscal", "menu", "promos"];
+      return ["perfil", "ubicacion", "contacto", "pagos", "preparacion", "equipo", "impresora", "alertas", "fiscal", "menu", "carta", "promos"];
     case "comercio":
-      return ["perfil", "ubicacion", "contacto", "pagos", "equipo", "impresora", "alertas", "fiscal", "catalogo", "promos"];
+      return ["perfil", "ubicacion", "contacto", "pagos", "equipo", "impresora", "alertas", "fiscal", "catalogo", "carta", "promos"];
     case "moda":
-      return ["perfil", "ubicacion", "contacto", "pagos", "equipo", "impresora", "alertas", "fiscal", "promos"];
+      return ["perfil", "ubicacion", "contacto", "pagos", "equipo", "impresora", "alertas", "fiscal", "carta", "promos"];
     case "estetica":
-      return ["perfil", "ubicacion", "contacto", "pagos", "turnera", "fichas", "packs", "equipo", "impresora", "alertas", "promos"];
+      return ["perfil", "ubicacion", "contacto", "pagos", "turnera", "fichas", "packs", "equipo", "impresora", "alertas", "carta", "promos"];
     case "servicio":
-      return ["perfil", "ubicacion", "contacto", "servicios", "urgencia", "equipo", "promos"];
+      return ["perfil", "ubicacion", "contacto", "servicios", "urgencia", "equipo", "carta", "promos"];
     default:
-      return ["perfil", "ubicacion", "contacto", "pagos", "promos"];
+      return ["perfil", "ubicacion", "contacto", "pagos", "carta", "promos"];
   }
 }
 
@@ -127,9 +130,12 @@ export function configSectionIcon(id: string): LucideIcon {
 /** Dot de estado desde el vendor (sin fetches). undefined = sin dot. */
 export function configSectionStatus(
   id: string,
-  vendor: Pick<Vendor, "printer_ip" | "print_mode" | "fiscal_cert" | "cuit" | "mp_user_id"> | null | undefined
+  vendor: Pick<Vendor, "printer_ip" | "print_mode" | "fiscal_cert" | "cuit" | "mp_user_id" | "carta_visibility"> | null | undefined
 ): ConfigSectionStatus | undefined {
   if (!vendor) return undefined;
+  if (id === "carta") {
+    return vendor.carta_visibility === "public" ? "ok" : undefined;
+  }
   if (id === "impresora") {
     return vendor.printer_ip || vendor.print_mode ? "ok" : "off";
   }

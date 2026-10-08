@@ -19,6 +19,7 @@ import { StripeConnectCard } from "@/components/dashboard/stripe-connect-card";
 import { VendorReviews } from "@/components/vendor/vendor-reviews";
 import { CustomersManager } from "@/components/dashboard/customers-manager";
 import { PromosSection } from "@/components/dashboard/promos-section";
+import { CartaQrSection } from "@/components/dashboard/carta-qr-section";
 import { PlanLock } from "@/components/vendor/plan-lock";
 import { QuoteManualModal } from "@/components/dashboard/quote-manual-modal";
 import { BookingManualModal } from "@/components/dashboard/booking-manual-modal";
@@ -1253,6 +1254,10 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
 
       <ConfigSection id="equipo" label="Equipo y usuarios" icon="👥">
         <StaffManager storeName={vendor?.store_name} showCouriers={false} />
+      </ConfigSection>
+
+      <ConfigSection id="carta" label="Carta y QR" icon="📱" status={vendor?.carta_visibility === "public" ? "ok" : undefined}>
+        <CartaQrSection vendor={vendor} saveVendor={saveVendor} setMsg={setMsg} />
       </ConfigSection>
 
       <ConfigSection id="promos" label="Promos" icon="🔗">

@@ -481,6 +481,8 @@ export type Vendor = {
   kitchen_strict_close?: boolean | null;
   /** Vista del catálogo online (comercio): lista o vidriera (grilla visual). */
   storefront_layout?: string | null;
+  /** Visibilidad de la carta de mesa (/carta/[slug]): "public" o "qr_only" (default). */
+  carta_visibility?: string | null;
   plan_id: string | null;
   plan_status: PlanStatus;
   plan_expires_at: string | null;

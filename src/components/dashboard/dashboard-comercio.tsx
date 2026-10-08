@@ -27,6 +27,7 @@ import { StaffManager } from "@/components/vendor/staff-manager";
 import { FiscalTabShortcut } from "@/components/dashboard/fiscal-config-section";
 import { HoursEditor } from "@/components/dashboard/hours-editor";
 import { PromosSection } from "@/components/dashboard/promos-section";
+import { CartaQrSection } from "@/components/dashboard/carta-qr-section";
 import { LocationPicker } from "./location-picker";
 import { ModifierLibrary } from "@/components/dashboard/modifier-editor";
 import type { Vendor, Product, ProductModifier } from "@/types/database";
@@ -703,6 +704,10 @@ export default function DashboardComercio({
 
       <ConfigSection id="catalogo" label="Catálogo" icon="🛍️">
         <ModifierLibrary products={offers.map((o) => ({ id: o.id, name: o.name }))} />
+      </ConfigSection>
+
+      <ConfigSection id="carta" label="Carta y QR" icon="📱" status={vendor?.carta_visibility === "public" ? "ok" : undefined}>
+        <CartaQrSection vendor={vendor} saveVendor={saveVendor} setMsg={setMsg} />
       </ConfigSection>
 
       <ConfigSection id="promos" label="Promos" icon="🔗">

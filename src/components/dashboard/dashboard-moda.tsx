@@ -25,6 +25,7 @@ import { ConfigSaveBar, ConfigSection, ConfigSections } from "@/components/dashb
 import { PushAlertCard } from "@/components/dashboard/push-alert-card";
 import { FiscalTabShortcut } from "@/components/dashboard/fiscal-config-section";
 import { PromosSection } from "@/components/dashboard/promos-section";
+import { CartaQrSection } from "@/components/dashboard/carta-qr-section";
 import type { Vendor, Product, ProductVariant, ProductImage } from "@/types/database";
 
 const PAYMENT_OPTIONS = [
@@ -691,6 +692,10 @@ export default function DashboardModa({
 
       <ConfigSection id="fiscal" label="Facturación" icon="🧾" status={vendor?.fiscal_cert ? "ok" : vendor?.cuit ? "warn" : "off"}>
       <FiscalTabShortcut />
+      </ConfigSection>
+
+      <ConfigSection id="carta" label="Carta y QR" icon="📱" status={vendor?.carta_visibility === "public" ? "ok" : undefined}>
+        <CartaQrSection vendor={vendor} saveVendor={saveVendor} setMsg={setMsg} />
       </ConfigSection>
 
       <ConfigSection id="promos" label="Promos" icon="🔗">

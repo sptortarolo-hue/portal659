@@ -328,11 +328,12 @@ export default async function TiendaPage({
     sections.push({ name: isCatalog ? "Catálogo" : "Menú", items: menuOffers });
   }
   // Carta solo-QR: el menú/catálogo solo se ve por QR (/carta). En el
-  // micrositio (incluido el preview, que muestra lo mismo que el público)
-  // se ocultan secciones, promos y packs: queda info, contacto y reseñas.
+  // micrositio público se ocultan secciones, promos y packs: queda info,
+  // contacto y reseñas. En preview se muestra todo para verificar (con
+  // aviso en el banner), porque el dueño arma la tienda ahí.
   // Tolerante a migración sin aplicar (undefined = público, como antes).
   const cartaQrOnly = (v.carta_visibility ?? "public") !== "public";
-  const menuHidden = cartaQrOnly;
+  const menuHidden = cartaQrOnly && !preview;
   if (menuHidden) {
     sections.length = 0;
     promos.length = 0;
@@ -588,7 +589,7 @@ export default async function TiendaPage({
 
   return (
     <main className="pb-28 overflow-x-clip">
-      {preview && <PreviewBanner />}
+      {preview && <PreviewBanner menuQrOnly={cartaQrOnly} catalog={isCatalog} />}
       {!preview && <VisitBeacon vendorId={vendor.id} />}
       {preview && <PreviewSessionSync vendorId={vendor.id} token={previewToken} />}
       <ScrollToMenu />

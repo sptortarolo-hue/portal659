@@ -47,7 +47,7 @@ export async function GET(request: Request) {
       `SELECT c.id, c.closed_at, c.since, c.orders_count, c.gross_total,
               c.discounts_total, c.net_total, c.by_method, c.cash_declared,
               c.cash_difference, c.notes, c.opening_amount, c.movements,
-              c.expected_cash, s.opened_at, p.full_name AS opened_by_name,
+              c.expected_cash, c.shift_id, s.opened_at, p.full_name AS opened_by_name,
               cb.full_name AS closed_by_name
        FROM cash_closings c
        LEFT JOIN cash_shifts s ON s.id = c.shift_id
@@ -70,6 +70,40 @@ export async function GET(request: Request) {
     );
   }
   rows = rows || [];
+
+  // Detalle de movimientos manuales por cierre (tolerante a migración sin
+  // aplicar o cierres legacy sin turno: quedan con lista vacía).
+  try {
+    const shiftIds = [...new Set(rows.map((r) => r.shift_id).filter(Boolean))];
+    if (shiftIds.length > 0) {
+      const mrows = await queryMany<Record<string, any>>(
+        `SELECT m.shift_id, m.kind, m.amount, m.reason, m.created_at,
+                p.full_name AS by_name
+         FROM cash_movements m
+         LEFT JOIN profiles p ON p.id = m.created_by
+         WHERE m.vendor_id = $1 AND m.shift_id = ANY($2)
+         ORDER BY m.created_at ASC`,
+        [gate.vendor.id, shiftIds]
+      );
+      const byShift = new Map<string, Record<string, any>[]>();
+      for (const m of mrows || []) {
+        const list = byShift.get(m.shift_id) || [];
+        list.push({
+          kind: m.kind,
+          amount: Number(m.amount) || 0,
+          reason: m.reason || "",
+          created_at: m.created_at,
+          by_name: m.by_name || null,
+        });
+        byShift.set(m.shift_id, list);
+      }
+      for (const r of rows) r.movement_list = byShift.get(r.shift_id) || [];
+    } else {
+      for (const r of rows) r.movement_list = [];
+    }
+  } catch {
+    for (const r of rows) r.movement_list = [];
+  }
 
   const byMethod: Record<string, { count: number; total: number }> = {};
   let gross = 0;
@@ -151,6 +185,19 @@ export async function GET(request: Request) {
       dif: diff == null ? "" : diff === 0 ? "Cuadra" : `${diff > 0 ? "Sobra " : "Falta "}${Math.abs(diff)}`,
     };
   });
+  const movementRows: Record<string, any>[] = [];
+  for (const r of rows) {
+    for (const m of (r.movement_list || []) as Record<string, any>[]) {
+      movementRows.push({
+        cierre: fmtDT(r.closed_at),
+        fecha: fmtDT(m.created_at),
+        tipo: m.kind === "retiro" ? "Retiro" : "Ingreso",
+        monto: Number(m.amount) || 0,
+        motivo: m.reason || "",
+        por: m.by_name || "—",
+      });
+    }
+  }
 
   if (format === "xlsx") {
     const wb = new ExcelJS.Workbook();
@@ -208,6 +255,16 @@ export async function GET(request: Request) {
       { header: "Contado", key: "contado", numFmt: moneyFmt },
       { header: "Dif.", key: "dif", width: 16 },
     ], detailRows);
+    if (movementRows.length > 0) {
+      table("Movimientos", [
+        { header: "Cierre", key: "cierre", width: 18 },
+        { header: "Fecha", key: "fecha", width: 18 },
+        { header: "Tipo", key: "tipo", width: 12 },
+        { header: "Monto", key: "monto", numFmt: moneyFmt },
+        { header: "Motivo", key: "motivo", width: 34 },
+        { header: "Por", key: "por", width: 22 },
+      ], movementRows);
+    }
     const buf = await wb.xlsx.writeBuffer();
     return new NextResponse(buf as unknown as BodyInit, {
       headers: {
@@ -249,6 +306,13 @@ export async function GET(request: Request) {
     "",
     ["Cierre", "Abierta por", "Pedidos", "Neto", "Esperado", "Contado", "Dif."].map(cell).join(";"),
     ...detailRows.map((r) => [r.cierre, r.abiertaPor, r.pedidos, r.neto, r.esperado, r.contado, r.dif].map(cell).join(";")),
+    ...(movementRows.length > 0
+      ? [
+          "",
+          ["Cierre", "Fecha", "Tipo", "Monto", "Motivo", "Por"].map(cell).join(";"),
+          ...movementRows.map((r) => [r.cierre, r.fecha, r.tipo, r.monto, r.motivo, r.por].map(cell).join(";")),
+        ]
+      : []),
   ];
   return new NextResponse(String.fromCharCode(0xFEFF) + lines.join("\r\n"), {
     headers: {

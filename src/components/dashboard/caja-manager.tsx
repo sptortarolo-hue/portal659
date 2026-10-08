@@ -125,6 +125,33 @@ export function CajaManager({ closeRequest = 0 }: { closeRequest?: number }) {
   // Switch "exigir caja abierta para cobrar en Mostrador/Mesas".
   const [requireShift, setRequireShift] = useState(false);
   const [requireSaving, setRequireSaving] = useState(false);
+  // Vista parcial X (snapshot sin cerrar)
+  const [showSnapshot, setShowSnapshot] = useState(false);
+  const [printingSnapshot, setPrintingSnapshot] = useState(false);
+
+  async function handlePrintSnapshot() {
+    setPrintingSnapshot(true);
+    try {
+      const res = await fetch("/api/print", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "cash_snapshot" }),
+      });
+      const d = await res.json().catch(() => null);
+      if (res.ok && d?.ok) {
+        setMsg(d.queued ? "Vista parcial encolada para imprimir." : "Vista parcial enviada a la impresora.");
+      } else if (d?.code === "plan_limit") {
+        setMsg("La impresión forma parte del plan Gestión integral.");
+      } else {
+        setMsg(d?.error || "No se pudo imprimir.");
+      }
+    } catch {
+      setMsg("No se pudo imprimir. Revisá tu conexión.");
+    } finally {
+      setPrintingSnapshot(false);
+    }
+  }
+
   // Reporte consolidado por rango (estilo ZZ)
   const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const todayStr = new Date().toISOString().slice(0, 10);
@@ -477,7 +504,17 @@ export function CajaManager({ closeRequest = 0 }: { closeRequest?: number }) {
       <div className="border border-border rounded-xl p-4 bg-card">
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-medium text-sm">{shift ? "Ventas del turno" : "Cierre actual"}</h3>
-          <span className="text-xs text-muted-foreground">{summary.ordersCount} pedidos</span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">{summary.ordersCount} pedidos</span>
+            <button
+              type="button"
+              onClick={() => setShowSnapshot(true)}
+              title="Vista parcial sin cerrar (X)"
+              className="text-xs font-medium text-primary underline"
+            >
+              👁 Vista parcial
+            </button>
+          </div>
         </div>
         {methods.length === 0 ? (
           <p className="text-sm text-muted-foreground">
@@ -725,6 +762,69 @@ export function CajaManager({ closeRequest = 0 }: { closeRequest?: number }) {
           </div>
         )}
       </div>
+
+      {showSnapshot && (
+        <div className="fixed inset-0 z-[70] bg-black/50 flex items-end sm:items-center justify-center sm:p-4" onClick={() => setShowSnapshot(false)}>
+          <div className="bg-card rounded-t-2xl sm:rounded-2xl p-5 w-full max-w-lg space-y-4 max-h-[92vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div>
+              <h3 className="font-display text-lg font-semibold">Vista parcial (X)</h3>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Foto del momento: no cierra la caja ni congela nada.
+              </p>
+            </div>
+            <div className="rounded-xl border border-border p-3 space-y-1.5 text-sm">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Período desde</span>
+                <span className="tabular-nums">{fmtDateTime(summary.since)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Pedidos</span>
+                <span className="tabular-nums">{summary.ordersCount}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Neto cobrado</span>
+                <span className="tabular-nums font-medium">{money(summary.netTotal)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Efectivo ventas</span>
+                <span className="tabular-nums">{money(summary.cashTotal)}</span>
+              </div>
+              {shift && (
+                <>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Fondo inicial</span>
+                    <span className="tabular-nums">{money(shift.opening_amount)}</span>
+                  </div>
+                  <div className="flex justify-between font-bold">
+                    <span>Esperado ahora</span>
+                    <span className="tabular-nums">{money(disponible)}</span>
+                  </div>
+                </>
+              )}
+            </div>
+            {methods.length > 0 && (
+              <div className="rounded-xl border border-border p-3 space-y-1.5 text-sm">
+                {methods.map(([m, d]) => (
+                  <div key={m} className="flex justify-between">
+                    <span className="text-muted-foreground">
+                      {CASH_METHOD_LABELS[m] || m} <span className="text-xs">({d.count})</span>
+                    </span>
+                    <span className="tabular-nums">{money(d.total)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="grid grid-cols-2 gap-2">
+              <Button type="button" variant="outline" onClick={() => setShowSnapshot(false)}>
+                Cerrar vista
+              </Button>
+              <Button type="button" onClick={handlePrintSnapshot} disabled={printingSnapshot}>
+                {printingSnapshot ? "Enviando..." : "🖨️ Imprimir X"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {movKind && (
         <div className="fixed inset-0 z-[70] bg-black/50 flex items-end sm:items-center justify-center p-4" onClick={() => !movSaving && setMovKind(null)}>

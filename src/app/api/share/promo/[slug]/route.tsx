@@ -1,7 +1,5 @@
 import { ImageResponse } from "next/og";
 import type { ReactElement } from "react";
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
 import { NextResponse } from "next/server";
 import { queryMany, queryOne } from "@/lib/db";
 import { getSiteUrl } from "@/lib/site-url";
@@ -10,28 +8,13 @@ import { discountOf, isValidPromo, promoMoney as money } from "@/lib/promo";
 
 export const runtime = "nodejs";
 
-const robotoBold = readFile(join(process.cwd(), "assets", "fonts", "Roboto-Bold.ttf")).catch(
-  () => null
-);
-
+// Sin fuentes custom: system-ui como la tarjeta de tienda (probada en prod).
+// La fuente Roboto local con weight 700 vs textos en 800 tumbaba el render
+// de satori y toda tarjeta promo caía al fallback. Ver historial.
 async function ogJpeg(element: ReactElement): Promise<Response> {
-  const fontData = await robotoBold;
   const res = new ImageResponse(element, {
     width: 1200,
     height: 630,
-    fonts: fontData
-      ? [
-          {
-            name: "Roboto",
-            data: fontData.buffer.slice(
-              fontData.byteOffset,
-              fontData.byteOffset + fontData.byteLength
-            ) as ArrayBuffer,
-            weight: 700,
-            style: "normal",
-          },
-        ]
-      : [],
   });
   const png = Buffer.from(await res.arrayBuffer());
   const sharp = (await import("sharp")).default;
@@ -128,7 +111,7 @@ export async function GET(
 
   const W = 1200;
   const H = 630;
-  const FONT = "Roboto, system-ui, sans-serif";
+  const FONT = "system-ui, sans-serif";
 
   function ribbon() {
     if (!isPreview) return null;
@@ -638,6 +621,7 @@ export async function GET(
   try {
     // 1) Modo manual con foto: manda la foto del comercio.
     if (mode === "manual" && manualImage) {
+      console.log("[share-promo] tarjeta manual", { slug });
       return await manualCard(manualImage);
     }
 
@@ -677,8 +661,17 @@ export async function GET(
     const withPhoto = picked.filter((_, i) => photoOk[i]);
     // Sin fotos accesibles: tarjeta de texto (nunca cae en silencio a la vieja).
     if (withPhoto.length === 0) {
+      console.log("[share-promo] tarjeta texto (sin fotos)", {
+        slug,
+        picked: picked.map((p) => p.id),
+      });
       return await textOnlyCard(picked, logoOk);
     }
+    console.log("[share-promo] tarjeta compuesta", {
+      slug,
+      picked: withPhoto.map((p) => p.id),
+      logoOk,
+    });
     return await composedCard(withPhoto, logoOk);
   } catch (err) {
     console.error("[share-promo] fallo render, usando fallback:", err);

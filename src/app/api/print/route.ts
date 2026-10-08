@@ -1,7 +1,8 @@
 import { query, queryOne, queryMany } from "@/lib/db";
 import { getVendorByRequest } from "@/lib/vendor-utils";
 import { NextResponse } from "next/server";
-import { dispatchPrint, type CashClosingPrintData, type FiscalPrintInfo, type PrinterVendor } from "@/lib/thermal-printer";
+import { dispatchPrint, type CashClosingPrintData, type CashSnapshotData, type FiscalPrintInfo, type PrinterVendor } from "@/lib/thermal-printer";
+import { computeCashClosing, computeShiftSummary, getOpenShift, lastClosingSince } from "@/lib/cash-closing";
 import { resolveVendorPlan } from "@/lib/plans";
 import type { Order, Plan, Vendor } from "@/types/database";
 
@@ -76,6 +77,46 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, error: "Cierre no encontrado" }, { status: 404 });
     }
     const result = await dispatchPrint({ vendor, type: "cash_close", extra: { closing } });
+    await recordLastPrint(vendor.id, result);
+    return printResponse(result);
+  }
+
+  // Vista parcial de caja (X): snapshot en vivo del turno/período, sin cerrar.
+  if (type === "cash_snapshot") {
+    if (!plan.can("pos")) {
+      return NextResponse.json({ ok: false, error: "La caja forma parte del plan Gestión integral", code: "plan_limit" }, { status: 403 });
+    }
+    const since = await lastClosingSince(vendor.id);
+    const summary = await computeCashClosing(vendor.id, since);
+    const shift = await getOpenShift(vendor.id);
+    let opening_amount: number | null = null;
+    let opened_at: string | null = null;
+    let opened_by_name: string | null = null;
+    let movements: { ingresos: number; retiros: number } | null = null;
+    let expected_cash: number | null = null;
+    if (shift) {
+      const ss = await computeShiftSummary(vendor.id, shift);
+      opening_amount = shift.opening_amount;
+      opened_at = shift.opened_at;
+      opened_by_name = shift.opened_by_name;
+      movements = { ingresos: ss.ingresosTotal, retiros: ss.retirosTotal };
+      expected_cash = ss.expectedCash;
+    }
+    const snapshot: CashSnapshotData = {
+      since,
+      now: new Date().toISOString(),
+      orders_count: summary.ordersCount,
+      gross_total: summary.grossTotal,
+      discounts_total: summary.discountsTotal,
+      net_total: summary.netTotal,
+      by_method: summary.byMethod,
+      opening_amount,
+      opened_at,
+      opened_by_name,
+      movements,
+      expected_cash,
+    };
+    const result = await dispatchPrint({ vendor, type: "cash_snapshot", extra: { snapshot } });
     await recordLastPrint(vendor.id, result);
     return printResponse(result);
   }

@@ -37,6 +37,7 @@ export type PrintJobType =
   | "test"
   | "precuenta"
   | "cash_close"
+  | "cash_snapshot"
   | "presupuesto"
   | "label";
 
@@ -1195,6 +1196,105 @@ async function composeCashClose(
   printer.cut();
 }
 
+/** Foto del turno en curso (cierre parcial X): mismos datos del pre-cierre
+ * en vivo, sin cerrar ni congelar nada. */
+export type CashSnapshotData = {
+  since: string;
+  now: string;
+  orders_count: number;
+  gross_total: number;
+  discounts_total: number;
+  net_total: number;
+  by_method: Record<string, { count: number; total: number }> | null;
+  opening_amount: number | null;
+  opened_at: string | null;
+  opened_by_name: string | null;
+  movements: { ingresos: number; retiros: number } | null;
+  expected_cash: number | null;
+};
+
+async function composeCashSnapshot(
+  printer: any,
+  vendor: PrinterVendor,
+  snap: CashSnapshotData
+): Promise<void> {
+  const width = vendor.paper_size === "58mm" ? 32 : 48;
+  const separator = separatorFor(width);
+
+  printer.alignCenter();
+  await composeStoreHeader(printer, vendor, width);
+  printer.println("VISTA PARCIAL DE CAJA (X)");
+  printer.println("(no cierra la caja, no congela nada)");
+  printer.println(separator);
+
+  printer.alignLeft();
+  printer.bold(true);
+  printer.println(`Desde: ${formatArgDate(new Date(snap.since))} ${formatArgTime(new Date(snap.since))}`);
+  printer.println(`Hasta: ${formatArgDate(new Date(snap.now))} ${formatArgTime(new Date(snap.now))}`);
+  printer.bold(false);
+  if (snap.opened_at != null) {
+    const opener = String(snap.opened_by_name || "").trim();
+    printer.println(`Apertura: ${formatArgDate(new Date(snap.opened_at))} ${formatArgTime(new Date(snap.opened_at))}${opener ? ` por ${opener}` : ""}`);
+    if (snap.opening_amount != null) {
+      printer.println(`Fondo inicial: $${Number(snap.opening_amount).toLocaleString("es-AR")}`);
+    }
+  }
+  printer.println(separator);
+
+  const ORDER = ["efectivo", "transferencia", "tarjeta", "mixto", "whatsapp", "mercadopago"];
+  const byMethod = snap.by_method || {};
+  const entries = Object.entries(byMethod).sort(
+    (a, b) => (ORDER.indexOf(a[0]) + 1 || 99) - (ORDER.indexOf(b[0]) + 1 || 99)
+  );
+  for (const [m, d] of entries) {
+    const label = CASH_METHOD_LABELS[m] || m;
+    const countStr = `(${d.count})`;
+    const totalStr = `$${Number(d.total).toLocaleString("es-AR")}`;
+    printer.println(`${padRight(label, width - countStr.length - totalStr.length - 1)}${countStr} ${padLeft(totalStr, totalStr.length)}`);
+  }
+  if (entries.length === 0) {
+    printer.println("Sin cobros en el periodo");
+  }
+
+  printer.println(separator);
+
+  printer.alignRight();
+  printer.println(`Pedidos: ${snap.orders_count}`);
+  printer.println(`Bruto: $${Number(snap.gross_total).toLocaleString("es-AR")}`);
+  if (Number(snap.discounts_total) > 0) {
+    printer.println(`Desc. efectivo: -$${Number(snap.discounts_total).toLocaleString("es-AR")}`);
+  }
+  printer.bold(true);
+  printer.setTextSize(1, 1);
+  printer.println(`NETO: $${Number(snap.net_total).toLocaleString("es-AR")}`);
+  printer.setTextSize(0, 0);
+  printer.bold(false);
+
+  const mov = snap.movements || null;
+  const ing = mov ? Number(mov.ingresos) || 0 : 0;
+  const ret = mov ? Number(mov.retiros) || 0 : 0;
+  if (ing > 0 || ret > 0 || snap.expected_cash != null) {
+    printer.alignLeft();
+    printer.println(separator);
+    if (ing > 0) printer.println(`Ingresos manuales: $${ing.toLocaleString("es-AR")}`);
+    if (ret > 0) printer.println(`Retiros manuales: $${ret.toLocaleString("es-AR")}`);
+    if (snap.expected_cash != null) {
+      printer.bold(true);
+      printer.println(`ESPERADO: $${Number(snap.expected_cash).toLocaleString("es-AR")}`);
+      printer.bold(false);
+    }
+  }
+
+  printer.alignLeft();
+  printer.println("");
+  {
+    const now = new Date();
+    printer.println(`Impreso el: ${formatArgDate(now)} ${formatArgTime(now)}`);
+  }
+  composeFooter(printer, width);
+  printer.cut();
+}
+
 export type LabelPrintData = {
   name: string;
   price: number;
@@ -1736,6 +1836,37 @@ export async function buildCashCloseBuffer(
   }
 }
 
+export async function printCashSnapshot(
+  vendor: PrinterVendor,
+  snap: CashSnapshotData
+): Promise<{ success: boolean; error?: string }> {
+  const res = await createPrinter(vendor);
+  if (!res.ok) return { success: false, error: res.error };
+  if (!vendor.printer_ip) return { success: false, error: "IP de impresora no configurada" };
+  try {
+    await composeCashSnapshot(res.printer, vendor, snap);
+    await res.printer.execute();
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: errorMsg(e) };
+  }
+}
+
+export async function buildCashSnapshotBuffer(
+  vendor: PrinterVendor,
+  snap: CashSnapshotData
+): Promise<BufferResult> {
+  const res = await createPrinter(vendor);
+  if (!res.ok) return { success: false, error: res.error };
+  try {
+    await composeCashSnapshot(res.printer, vendor, snap);
+    const buffer = (await res.printer.getBuffer()) as Buffer;
+    return { success: true, buffer };
+  } catch (e) {
+    return { success: false, error: errorMsg(e) };
+  }
+}
+
 type BridgeJob = {
   type: string;
   payload: string;
@@ -1810,6 +1941,8 @@ export async function dispatchPrint(params: {
     volumeDiscount?: number;
     /** Cierre de caja (Z) guardado, para imprimir tal cual. */
     closing?: CashClosingPrintData;
+    /** Vista parcial de caja (X): snapshot en vivo, sin cerrar. */
+    snapshot?: CashSnapshotData;
     /** Presupuesto de oficio (servicios): cliente + partidas + total + seña. */
     quote?: QuotePrintData;
     /** Etiqueta de góndola (nombre + precio + CODE128). */
@@ -1866,6 +1999,21 @@ export async function dispatchPrint(params: {
     }
     if (!vendor.printer_ip) return { ok: true, mode, skipped: true };
     const r = await printCashClose(vendor, closing);
+    return { ok: r.success, mode, error: r.error };
+  }
+
+  // Vista parcial de caja (X): foto del turno en curso, sin cerrar.
+  if (params.type === "cash_snapshot") {
+    const snapshot = params.extra?.snapshot;
+    if (!snapshot) return { ok: false, mode, error: "Snapshot requerido" };
+    if (mode === "app") {
+      const built = await buildCashSnapshotBuffer(vendor, snapshot);
+      if (!built.success) return { ok: false, mode, error: built.error };
+      const pushed = await pushToBridge(vendor.print_token, bridgeJob("cash_snapshot", built.buffer, vendor));
+      return { ok: pushed.ok, mode, offline: pushed.offline, error: pushed.error };
+    }
+    if (!vendor.printer_ip) return { ok: true, mode, skipped: true };
+    const r = await printCashSnapshot(vendor, snapshot);
     return { ok: r.success, mode, error: r.error };
   }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Fragment } from "react";
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { Button } from "@/components/ui/button";
@@ -166,17 +166,30 @@ function ReportePrintInner() {
           <tbody>
             {(data.closings || []).map((c: any) => {
               const diff = c.cash_difference != null ? Number(c.cash_difference) : null;
+              const movs = (c.movement_list || []) as any[];
               return (
-                <tr key={c.id} className="border-b border-neutral-100">
-                  <td className="py-1 pr-2">
-                    {fmtDateTime(c.closed_at)}
-                    {c.opened_by_name ? <span className="text-neutral-500"> · {c.opened_by_name}</span> : null}
-                  </td>
-                  <td className="py-1 pr-2 text-right">${Number(c.net_total).toLocaleString("es-AR")}</td>
-                  <td className="py-1 text-right">
-                    {diff == null ? "—" : diff === 0 ? "✓" : `${diff > 0 ? "+" : "−"}${money(Math.abs(diff))}`}
-                  </td>
-                </tr>
+                <Fragment key={c.id}>
+                  <tr key={c.id} className="border-b border-neutral-100">
+                    <td className="py-1 pr-2">
+                      {fmtDateTime(c.closed_at)}
+                      {c.opened_by_name ? <span className="text-neutral-500"> · {c.opened_by_name}</span> : null}
+                    </td>
+                    <td className="py-1 pr-2 text-right">${Number(c.net_total).toLocaleString("es-AR")}</td>
+                    <td className="py-1 text-right">
+                      {diff == null ? "—" : diff === 0 ? "✓" : `${diff > 0 ? "+" : "−"}${money(Math.abs(diff))}`}
+                    </td>
+                  </tr>
+                  {movs.map((m: any, i: number) => (
+                    <tr key={`${c.id}-m${i}`} className="border-b border-neutral-100 text-neutral-600">
+                      <td className="py-1 pr-2 pl-4">
+                        {m.kind === "retiro" ? "− Retiro" : "+ Ingreso"}: {m.reason || "—"}
+                        {m.by_name ? ` (${m.by_name})` : ""}
+                      </td>
+                      <td className="py-1 pr-2 text-right">${Number(m.amount).toLocaleString("es-AR")}</td>
+                      <td className="py-1 text-right">{fmtDateTime(m.created_at)}</td>
+                    </tr>
+                  ))}
+                </Fragment>
               );
             })}
           </tbody>

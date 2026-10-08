@@ -165,6 +165,15 @@ export async function PATCH(
     `UPDATE products SET ${setClauses.join(", ")} WHERE id = $1 AND vendor_id = $2 RETURNING *`,
     values
   );
+  // Oferta del día única por comercio: al destacar un producto se apaga la
+  // oferta anterior del mismo vendor (vale para todos los paneles, que usan
+  // este PATCH para el toggle Destacar/Quitar).
+  if (safeUpdate.featured_today === true && offer) {
+    await queryOne(
+      `UPDATE products SET featured_today = false WHERE vendor_id = $1 AND id <> $2`,
+      [vendor.id, params.id]
+    ).catch(() => {});
+  }
   if (manualDelta != null && manualDelta !== 0) {
     const { logStockMovement } = await import("@/lib/stock-ledger");
     await withTransaction(async (tx) => {

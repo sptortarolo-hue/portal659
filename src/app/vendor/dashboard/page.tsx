@@ -962,20 +962,25 @@ function VendorDashboardInner() {
     setShareOpen(true);
     try {
       // qrcode solo se carga al compartir (fuera del bundle inicial).
-      // El QR apunta directo a la carta (?menu=1) y marca la fuente ?from=qr.
+      // Carta solo-QR: se comparte la carta (/carta). Si es pública, el
+      // micrositio directo a la carta (?menu=1) y marca la fuente ?from=qr.
       const { default: QRCode } = await import("qrcode");
-      const url = `${window.location.origin}/tienda/${vendor.slug}?menu=1&from=qr`;
+      const cartaQrOnly = (vendor as any).carta_visibility !== "public";
+      const url = cartaQrOnly
+        ? `${window.location.origin}/carta/${vendor.slug}`
+        : `${window.location.origin}/tienda/${vendor.slug}?menu=1&from=qr`;
       setQrDataUrl(await QRCode.toDataURL(url, { width: 480, margin: 1 }));
     } catch { /* noop */ }
-  }, [vendor?.slug]);
+  }, [vendor?.slug, (vendor as any)?.carta_visibility]);
 
   const copyLink = useCallback(async () => {
     if (!vendor?.slug) return;
     try {
-      await navigator.clipboard.writeText(`${window.location.origin}/tienda/${vendor.slug}`);
+      const path = (vendor as any).carta_visibility !== "public" ? `/carta/${vendor.slug}` : `/tienda/${vendor.slug}`;
+      await navigator.clipboard.writeText(`${window.location.origin}${path}`);
       setCopied(true);
     } catch { /* noop */ }
-  }, [vendor?.slug]);
+  }, [vendor?.slug, (vendor as any)?.carta_visibility]);
 
   const openCrop = useCallback((target: "cover" | "logo" | "offer", src?: string) => {
     setCropTarget(target);
@@ -2230,19 +2235,25 @@ function VendorDashboardInner() {
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={() => setShareOpen(false)}>
           <div className="bg-card rounded-2xl p-6 max-w-sm w-full text-center" onClick={(e) => e.stopPropagation()}>
             <h3 className="font-display text-xl font-semibold mb-1">Compartí tu vidriera</h3>
-            <p className="text-sm text-muted-foreground mb-4">{isRetail ? "El QR lleva directo a tu catálogo (listo para imprimir y pegar en la vidriera o el vidrio)." : "El QR lleva directo a tu carta (listo para imprimir y pegar en la mesa o el vidrio)."}</p>
+            {(vendor as any).carta_visibility !== "public" ? (
+              <p className="text-sm text-muted-foreground mb-4">El QR lleva a tu carta de mesa (solo lectura, sin carrito).</p>
+            ) : (
+              <p className="text-sm text-muted-foreground mb-4">{isRetail ? "El QR lleva directo a tu catálogo (listo para imprimir y pegar en la vidriera o el vidrio)." : "El QR lleva directo a tu carta (listo para imprimir y pegar en la mesa o el vidrio)."}</p>
+            )}
             {qrDataUrl ? <img src={qrDataUrl} alt="QR" className="mx-auto w-48 h-48 mb-4" /> : <div className="mx-auto w-48 h-48 mb-4 bg-skeleton rounded-lg" />}
-            <p className="text-xs text-muted-foreground break-all mb-4">{window.location.origin}/tienda/{vendor.slug}</p>
+            <p className="text-xs text-muted-foreground break-all mb-4">{window.location.origin}{(vendor as any).carta_visibility !== "public" ? `/carta/${vendor.slug}` : `/tienda/${vendor.slug}`}</p>
             <div className="space-y-2">
               <a
                 href={`https://wa.me/?text=${encodeURIComponent(
-                  `Mirá el ${isRetail ? "catálogo" : "menú"} de ${vendor.store_name} en Portal 659 🛍️\n${window.location.origin}/tienda/${vendor.slug}?menu=1\n\nPedí directo por WhatsApp — 0% comisión`
+                  (vendor as any).carta_visibility !== "public"
+                    ? `Mirá la carta de ${vendor.store_name} en Portal 659 📋\n${window.location.origin}/carta/${vendor.slug}`
+                    : `Mirá el ${isRetail ? "catálogo" : "menú"} de ${vendor.store_name} en Portal 659 🛍️\n${window.location.origin}/tienda/${vendor.slug}?menu=1\n\nPedí directo por WhatsApp — 0% comisión`
                 )}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="block w-full rounded-xl bg-green-500 text-white text-sm font-medium py-2.5 hover:bg-green-600 transition-colors"
               >
-                📲 {isRetail ? "Compartir tienda" : "Compartir menú"}
+                📲 {(vendor as any).carta_visibility !== "public" ? "Compartir carta" : isRetail ? "Compartir tienda" : "Compartir menú"}
               </a>
               <div className="grid grid-cols-2 gap-2">
                 {qrDataUrl && (

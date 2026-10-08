@@ -629,7 +629,7 @@ export default async function TiendaPage({
                 <span className="font-bold text-primary">{v.store_name.charAt(0)}</span>
               </div>
             )}
-            {!isService && !isModa && (offers?.length || 0) > 0 && (
+            {!isService && !isModa && !menuHidden && (offers?.length || 0) > 0 && (
               <IrAComprarButton label={acceptsCart ? undefined : isCatalog ? "🛍️ Ver el catálogo" : "📋 Ver la carta"} />
             )}
           </div>
@@ -670,12 +670,12 @@ export default async function TiendaPage({
             </div>
             <div className="flex items-center gap-2 ml-auto shrink-0">
               <span className="hidden sm:inline-flex">
-                {!isService && !isModa && (offers?.length || 0) > 0 && (
+                {!isService && !isModa && !menuHidden && (offers?.length || 0) > 0 && (
                   <IrAComprarButton label={acceptsCart ? undefined : isCatalog ? "🛍️ Ver el catálogo" : "📋 Ver la carta"} />
                 )}
               </span>
               <FavoriteButton vendorId={v.id} />
-              <WhatsAppShareButton slug={v.slug} storeName={v.store_name} catalog={isCatalog} />
+              <WhatsAppShareButton slug={v.slug} storeName={v.store_name} catalog={isCatalog} menuHidden={menuHidden} />
               <VendorShareButton slug={v.slug} storeName={v.store_name} />
             </div>
           </div>

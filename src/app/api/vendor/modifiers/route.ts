@@ -11,6 +11,10 @@ function normalizeOptions(options: unknown): ModifierOption[] {
     .map((o: any) => ({
       label: String(o?.label ?? o?.name ?? "").trim(),
       price_mod: Number(o?.price_mod ?? o?.price ?? 0) || 0,
+      // Precio final de la opción (modo "total" del grupo). Vive en el JSONB.
+      ...(Number.isFinite(Number(o?.price_total)) && Number(o.price_total) >= 0
+        ? { price_total: Number(o.price_total) }
+        : {}),
       // Familia opcional (filtro en la hoja de gustos). Se guarda en el JSONB.
       ...(String(o?.category ?? "").trim() ? { category: String(o.category).trim().slice(0, 40) } : {}),
       // Gusto pausado (ej: se acabó el pistacho): se oculta sin borrarlo.
@@ -110,6 +114,15 @@ export async function POST(request: Request) {
   const req = required === true || is_variant === true;
   const maxN = Math.max(1, Number(max_selections) || 1);
   const minN = normalizeMin(min_selections, maxN, req);
+  // Modo "total" solo en selección única (ej. Tamaño). Con Máx > 1 no tiene
+  // sentido aritmético y se rechaza para no guardar estados inválidos.
+  if (body.price_mode === "total" && maxN !== 1) {
+    return NextResponse.json(
+      { error: "El precio final por opción solo vale en grupos de selección única (Máx = 1)" },
+      { status: 400 }
+    );
+  }
+  const priceMode = body.price_mode === "total" ? "total" : "diferencia";
 
   let cleanIds: string[] = [];
   if (Array.isArray(product_ids) && product_ids.length > 0) {
@@ -121,24 +134,40 @@ export async function POST(request: Request) {
   }
 
   const group = await withTransaction(async (tx) => {
-    // min_selections vive en la migración migrate-min-selections.sql. Si el
-    // comercio aún no la aplicó, reintentamos sin la columna (sin romper).
-    const insertWithMin = async () =>
-      tx.queryOne<Record<string, unknown>>(
-        `INSERT INTO modifier_groups (vendor_id, group_name, options, required, max_selections, min_selections, is_variant)
-         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-        [vendor.id, name, JSON.stringify(norm), req, maxN, minN, is_variant === true]
+    // price_mode y min_selections viven en migraciones que pueden faltar.
+    // Se reintenta sin cada columna (sin romper) siguiendo el patrón existente.
+    const insertWith = async (withMin: boolean, withMode: boolean) => {
+      const cols = ["vendor_id", "group_name", "options", "required", "max_selections"];
+      const vals: unknown[] = [vendor.id, name, JSON.stringify(norm), req, maxN];
+      if (withMin) {
+        cols.push("min_selections");
+        vals.push(minN);
+      }
+      if (withMode) {
+        cols.push("price_mode");
+        vals.push(priceMode);
+      }
+      cols.push("is_variant");
+      vals.push(is_variant === true);
+      return tx.queryOne<Record<string, unknown>>(
+        `INSERT INTO modifier_groups (${cols.join(", ")}) VALUES (${cols.map((_, i) => `$${i + 1}`).join(", ")}) RETURNING *`,
+        vals
       );
+    };
     let g: Record<string, unknown> | undefined;
     try {
-      g = await insertWithMin();
+      g = await insertWith(true, true);
     } catch (e) {
-      if (!/min_selections/i.test(String((e as Error)?.message || ""))) throw e;
-      g = await tx.queryOne<Record<string, unknown>>(
-        `INSERT INTO modifier_groups (vendor_id, group_name, options, required, max_selections, is_variant)
-         VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-        [vendor.id, name, JSON.stringify(norm), req, maxN, is_variant === true]
-      );
+      const msg = String((e as Error)?.message || "");
+      const noMin = /min_selections/i.test(msg);
+      const noMode = /price_mode/i.test(msg);
+      if (!noMin && !noMode) throw e;
+      try {
+        g = await insertWith(!noMin, !noMode);
+      } catch (e2) {
+        if (!/min_selections|price_mode/i.test(String((e2 as Error)?.message || ""))) throw e2;
+        g = await insertWith(false, false);
+      }
     }
     if (!g) throw new Error("No se pudo crear el grupo");
     for (let i = 0; i < cleanIds.length; i++) {

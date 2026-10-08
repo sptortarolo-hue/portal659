@@ -15,6 +15,8 @@ export type ModifierGroupRule = {
   max_selections?: number | null;
   /** NULL/ausente = legacy (≥1 si required, 0 si opcional). */
   min_selections?: number | null;
+  /** "diferencia" (+$X, default) o "total" (precio final por opción, solo max=1). */
+  price_mode?: string | null;
 };
 
 /** Umbral: grupos con más opciones se muestran como hoja con buscador. */
@@ -83,6 +85,50 @@ export function missingText(mod: ModifierGroupRule, selectedCount: number): stri
 /** Opciones visibles para elegir (excluye pausadas con available === false). */
 export function activeOptions(options: ModifierOption[]): ModifierOption[] {
   return (options || []).filter((o) => o?.available !== false);
+}
+
+/**
+ * Modo "total" del grupo: cada opción muestra su precio final y al elegirla
+ * el ítem pasa a valer ese total. Solo vale con max_selections = 1
+ * (el servidor lo enforcea; acá se chequea para display/cálculo).
+ */
+export function isTotalMode(mod: Pick<ModifierGroupRule, "price_mode" | "max_selections"> | null | undefined): boolean {
+  if (!mod || mod.price_mode !== "total") return false;
+  return Math.floor(Number(mod.max_selections)) === 1;
+}
+
+/** Precio final de la opción en modo total (null = sin total definido). */
+export function optionTotalPrice(o: ModifierOption | null | undefined): number | null {
+  const t = Number(o?.price_total);
+  return Number.isFinite(t) && t >= 0 ? t : null;
+}
+
+/**
+ * Aporte de la opción al total del ítem (regla canónica: lo que se guarda
+ * en `price_mod`). En modo total = total_opción − base_producto; si la
+ * opción no trae total, cae al delta cargado (compat).
+ */
+export function optionContribution(
+  o: ModifierOption,
+  basePrice: number,
+  totalMode: boolean
+): number {
+  if (totalMode) {
+    const t = optionTotalPrice(o);
+    if (t != null) return t - (Number(basePrice) || 0);
+  }
+  return Number(o?.price_mod) || 0;
+}
+
+/** Mínimo de los totales del grupo (para "desde $X"). Null si no hay totales. */
+export function minTotalPrice(options: ModifierOption[]): number | null {
+  let min: number | null = null;
+  for (const o of options || []) {
+    const t = optionTotalPrice(o);
+    if (t == null) continue;
+    if (min == null || t < min) min = t;
+  }
+  return min;
 }
 
 /** Familias presentes en las opciones (para chips de filtro). */

@@ -13,7 +13,10 @@ import { cartLineTotal } from "@/lib/order-line";
 export type CartModifier = {
   group: string;
   label: string;
+  /** Aporte al total del ítem (regla canónica). En modo total = total_opción − base. */
   price_mod: number;
+  /** Precio final de la opción (modo "total" del grupo). Solo display. */
+  price_total?: number | null;
 };
 
 export type CartItem = {

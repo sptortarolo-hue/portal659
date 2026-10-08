@@ -20,6 +20,8 @@ type GroupData = {
   /** NULL = legacy (obligatorio exige ≥1). Solo rige si required. */
   min_selections: number | null;
   is_variant: boolean;
+  /** "diferencia" (+$X, default) o "total" (precio final por opción, solo max=1). */
+  price_mode: "diferencia" | "total";
   product_ids: string[];
 };
 
@@ -50,6 +52,9 @@ function GroupForm({
     initial?.min_selections != null ? String(initial.min_selections) : ""
   );
   const [isVariant, setIsVariant] = useState(initial ? !!initial.is_variant : false);
+  const [priceMode, setPriceMode] = useState<"diferencia" | "total">(
+    initial?.price_mode === "total" ? "total" : "diferencia"
+  );
   const [selected, setSelected] = useState<Set<string>>(
     new Set(initial?.product_ids || [])
   );
@@ -86,10 +91,20 @@ function GroupForm({
 
   async function handleSubmit() {
     setError("");
+    const maxN = Math.max(1, Number(maxSel) || 1);
+    const useTotal = priceMode === "total" && maxN === 1;
+    if (priceMode === "total" && maxN !== 1) {
+      return setError("El precio final por opción solo vale con Máx = 1 (ej: Tamaño)");
+    }
     const clean = options
       .map((o) => ({
         label: o.label.trim(),
         price_mod: Number(o.price_mod) || 0,
+        // En modo total se guarda el precio final por opción; en diferencia
+        // se descarta (evita restos si se cambió de modo).
+        ...(useTotal && Number.isFinite(Number(o.price_total)) && Number(o.price_total) >= 0
+          ? { price_total: Number(o.price_total) }
+          : {}),
         ...(String(o.category ?? "").trim() ? { category: String(o.category).trim().slice(0, 40) } : {}),
         // El pausado (👁/🚫) tiene que sobrevivir al guardado: si se pierde
         // acá, el gusto vuelve a mostrarse en la venta (misma normalización
@@ -99,7 +114,6 @@ function GroupForm({
       .filter((o) => o.label !== "");
     if (!name.trim()) return setError("Indicá el nombre del grupo");
     if (clean.length === 0) return setError("Agregá al menos una opción");
-    const maxN = Math.max(1, Number(maxSel) || 1);
     const req = required || isVariant;
     // Mínimo: vacío = legacy (≥1 si obligatorio). Clampeado a 1..max.
     let minN: number | null = null;
@@ -116,6 +130,7 @@ function GroupForm({
         max_selections: maxN,
         min_selections: minN,
         is_variant: isVariant,
+        price_mode: useTotal ? "total" : "diferencia",
         product_ids: Array.from(selected),
       });
     } catch (e) {
@@ -188,6 +203,48 @@ function GroupForm({
           </p>
         )}
 
+        <div>
+          <Label className="text-xs text-muted-foreground">Mostrar precios como</Label>
+          <div className="grid grid-cols-2 gap-2 mt-1">
+            <button
+              type="button"
+              onClick={() => setPriceMode("diferencia")}
+              className={`rounded-xl border px-3 py-2 text-left text-sm transition ${
+                priceMode === "diferencia"
+                  ? "border-primary bg-primary/10 font-semibold"
+                  : "border-border text-muted-foreground hover:border-primary/50"
+              }`}
+            >
+              +$ diferencia
+              <span className="block text-xs font-normal mt-0.5">La opción suma (ej: +$800).</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (Math.max(1, Number(maxSel) || 1) !== 1) {
+                  setError("El precio final por opción solo vale con Máx = 1 (ej: Tamaño)");
+                  return;
+                }
+                setError("");
+                setPriceMode("total");
+              }}
+              className={`rounded-xl border px-3 py-2 text-left text-sm transition ${
+                priceMode === "total"
+                  ? "border-primary bg-primary/10 font-semibold"
+                  : "border-border text-muted-foreground hover:border-primary/50"
+              }`}
+            >
+              $ total
+              <span className="block text-xs font-normal mt-0.5">Cada opción vale su precio final.</span>
+            </button>
+          </div>
+          {priceMode === "total" && (
+            <p className="text-xs text-muted-foreground mt-1">
+              El producto muestra "desde $mínimo" y al elegir, el ítem vale ese total (la base se ignora).
+            </p>
+          )}
+        </div>
+
         <div className="space-y-1.5">
           {options.map((o, i) => (
             // Mobile: nombre full-width arriba, Familia/$/acciones abajo.
@@ -210,9 +267,16 @@ function GroupForm({
                 type="number"
                 step="0.01"
                 inputMode="decimal"
-                value={o.price_mod === 0 ? "" : String(o.price_mod)}
-                onChange={(e) => setOpt(i, { price_mod: Number(e.target.value) || 0 })}
-                placeholder="$"
+                value={priceMode === "total"
+                  ? (o.price_total != null ? String(o.price_total) : "")
+                  : (o.price_mod === 0 ? "" : String(o.price_mod))}
+                onChange={(e) =>
+                  priceMode === "total"
+                    ? setOpt(i, { price_total: e.target.value === "" ? undefined : Number(e.target.value) || 0 })
+                    : setOpt(i, { price_mod: Number(e.target.value) || 0 })
+                }
+                placeholder={priceMode === "total" ? "$ total" : "$"}
+                title={priceMode === "total" ? "Precio final eligiendo esta opción" : "Diferencia que suma la opción"}
                 className="flex-1 sm:flex-none sm:w-20 min-w-0"
               />
               <div className="flex gap-1 sm:gap-2 flex-shrink-0">
@@ -550,6 +614,9 @@ export function ModifierLibrary({ products, onChanged, enableHeladeriaKit = fals
                   {g.is_variant && (
                     <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary">Variante</span>
                   )}
+                  {(g as ModifierGroup).price_mode === "total" && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary">Precio final</span>
+                  )}
                   {g.required && (
                     <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">Obligatorio</span>
                   )}
@@ -566,14 +633,19 @@ export function ModifierLibrary({ products, onChanged, enableHeladeriaKit = fals
                 </div>
               </div>
               <div className="flex flex-wrap gap-1 mt-2">
-                {(g.options || []).map((o, i) => (
-                  <span key={i} className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] ${o.available === false ? "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" : "bg-muted text-muted-foreground"}`}>
-                    {o.available === false && <span title="Pausado (oculto en la venta)">🚫</span>}
-                    {o.label}
-                    {o.category ? <span className="opacity-70">· {o.category}</span> : null}
-                    {o.price_mod !== 0 && <span className="text-primary">{o.price_mod > 0 ? `+$${o.price_mod}` : `$${o.price_mod}`}</span>}
-                  </span>
-                ))}
+                {(g.options || []).map((o, i) => {
+                  const isTotal = (g as ModifierGroup).price_mode === "total" && o.price_total != null;
+                  return (
+                    <span key={i} className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] ${o.available === false ? "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" : "bg-muted text-muted-foreground"}`}>
+                      {o.available === false && <span title="Pausado (oculto en la venta)">🚫</span>}
+                      {o.label}
+                      {o.category ? <span className="opacity-70">· {o.category}</span> : null}
+                      {isTotal
+                        ? <span className="text-primary">${Number(o.price_total).toLocaleString("es-AR")}</span>
+                        : o.price_mod !== 0 && <span className="text-primary">{o.price_mod > 0 ? `+$${o.price_mod}` : `$${o.price_mod}`}</span>}
+                    </span>
+                  );
+                })}
               </div>
             </Card>
           ))}

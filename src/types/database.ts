@@ -107,6 +107,8 @@ export type ProductModifier = {
   position: number;
   /** Grupo "Variante": aparece primero y debe elegirse una opción. */
   is_variant?: boolean;
+  /** Modo de precio: "diferencia" (+$X, default) o "total" (precio final por opción, solo max=1). */
+  price_mode?: string | null;
   created_at: string;
 };
 
@@ -121,6 +123,8 @@ export type ModifierGroup = {
   /** Mínimo exigible (solo si required). NULL = legacy. Puede faltar si la migración aún no se aplicó. */
   min_selections?: number | null;
   is_variant: boolean;
+  /** Modo de precio: "diferencia" (+$X, default) o "total" (precio final por opción, solo max=1). */
+  price_mode?: string | null;
   created_at: string;
   product_ids?: string[];
   products_count?: number;
@@ -129,6 +133,8 @@ export type ModifierGroup = {
 export type ModifierOption = {
   label: string;
   price_mod: number;
+  /** Precio final de la opción (modo "total" del grupo). Ausente = solo diferencia. */
+  price_total?: number | null;
   /** Familia opcional para agrupar/filtrar (ej: "Cremas", "Chocolates"). Vive en el JSONB: sin migración. */
   category?: string;
   /** Gusto pausado (ej: se acabó el pistacho): se oculta sin borrarlo. Ausente = disponible. */

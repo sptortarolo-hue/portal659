@@ -10,8 +10,11 @@ import {
   effectiveMax,
   filterOptions,
   groupStatusText,
+  isTotalMode,
   missingCount,
   missingText,
+  optionContribution,
+  optionTotalPrice,
   toggleWithCap,
 } from "@/lib/modifier-select";
 
@@ -77,19 +80,34 @@ export function ModifierPicker({
   }
 
   function handleConfirm() {
+    // Regla canónica: lo guardado en price_mod es el APORTE al total.
+    // En modo total el aporte = total_opción − base (la base se ignora).
+    // price_total viaja solo para display (chips del carrito).
     const flat: CartModifier[] = [];
     for (const [group, opts] of Object.entries(selected)) {
+      const mod = modifiers.find((m) => m.group_name === group);
+      const total = isTotalMode(mod);
       for (const o of opts) {
-        flat.push({ group, label: o.label, price_mod: o.price_mod });
+        flat.push({
+          group,
+          label: o.label,
+          price_mod: optionContribution(o, basePrice, total),
+          ...(total && optionTotalPrice(o) != null ? { price_total: optionTotalPrice(o)! } : {}),
+        });
       }
     }
     const modTotal = flat.reduce((s, m) => s + m.price_mod, 0);
     onConfirm(flat, basePrice + modTotal, showQty ? Math.max(1, Math.min(maxQty, qty)) : undefined);
   }
 
-  const totalModPrice = Object.values(selected)
-    .flat()
-    .reduce((s, o) => s + o.price_mod, 0);
+  function contributionOf(groupName: string, o: ModifierOption): number {
+    const mod = modifiers.find((m) => m.group_name === groupName);
+    return optionContribution(o, basePrice, isTotalMode(mod));
+  }
+
+  const totalModPrice = Object.entries(selected)
+    .flatMap(([group, opts]) => opts.map((o) => contributionOf(group, o)))
+    .reduce((s, n) => s + n, 0);
 
   // Mínimo por grupo (min_selections si es obligatorio; legacy = ≥1 si required).
   const missingByGroup = useMemo(() => {
@@ -136,6 +154,8 @@ export function ModifierPicker({
             const isBig = bigGroups.has(mod.group_name);
             const status = groupStatusText(mod, groupSelected.length);
             const missing = missingByGroup[mod.group_name] || 0;
+            // Modo total: la opción muestra su precio final, no la diferencia.
+            const showTotal = isTotalMode(mod);
 
             if (!isBig) {
               return (
@@ -179,11 +199,17 @@ export function ModifierPicker({
                             </span>
                             {opt.label}
                           </span>
-                          {opt.price_mod > 0 && (
-                            <span className="text-muted-foreground">
-                              +${opt.price_mod.toLocaleString("es-AR")}
-                            </span>
-                          )}
+                          {showTotal
+                            ? optionTotalPrice(opt) != null && (
+                              <span className="font-medium">
+                                ${optionTotalPrice(opt)!.toLocaleString("es-AR")}
+                              </span>
+                            )
+                            : opt.price_mod > 0 && (
+                              <span className="text-muted-foreground">
+                                +${opt.price_mod.toLocaleString("es-AR")}
+                              </span>
+                            )}
                         </button>
                       );
                     })}
@@ -271,11 +297,17 @@ export function ModifierPicker({
                           </span>
                           <span className="truncate">{opt.label}</span>
                         </span>
-                        {opt.price_mod > 0 && (
-                          <span className="text-muted-foreground flex-shrink-0 ml-2">
-                            +${opt.price_mod.toLocaleString("es-AR")}
-                          </span>
-                        )}
+                        {showTotal
+                          ? optionTotalPrice(opt) != null && (
+                            <span className="font-medium flex-shrink-0 ml-2">
+                              ${optionTotalPrice(opt)!.toLocaleString("es-AR")}
+                            </span>
+                          )
+                          : opt.price_mod > 0 && (
+                            <span className="text-muted-foreground flex-shrink-0 ml-2">
+                              +${opt.price_mod.toLocaleString("es-AR")}
+                            </span>
+                          )}
                       </button>
                     );
                   })}

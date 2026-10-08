@@ -16,12 +16,14 @@
 export type EffectiveModifierRow = {
   id: string;
   group_name: string;
-  options: { label?: string; price_mod?: number; category?: string; available?: boolean }[];
+  options: { label?: string; price_mod?: number; price_total?: number | null; category?: string; available?: boolean }[];
   required: boolean;
   max_selections: number;
   /** Puede venir undefined si la migración de min aún no se aplicó (= legacy). */
   min_selections?: number | null;
   is_variant: boolean;
+  /** "diferencia" (default) o "total". Undefined si la migración aún no se aplicó (= diferencia). */
+  price_mode?: string | null;
   product_id: string;
   position: number;
 };
@@ -42,14 +44,14 @@ export async function queryEffectiveModifiers(
     WHERE l.product_id = ANY($1)
     ORDER BY g.is_variant DESC, l.position ASC`;
   const attempts = [
-    // Nivel 1: overrides por link + min del grupo.
+    // Nivel 1: overrides por link + min del grupo + modo de precio.
     `SELECT g.id, g.group_name, g.options, g.required,
             COALESCE(l.max_selections, g.max_selections) AS max_selections,
             COALESCE(l.min_selections, g.min_selections) AS min_selections,
-            g.is_variant, l.product_id, l.position ${from}`,
+            g.is_variant, g.price_mode, l.product_id, l.position ${from}`,
     // Nivel 2: sin overrides (migración de links pendiente).
     `SELECT g.id, g.group_name, g.options, g.required, g.max_selections, g.min_selections,
-            g.is_variant, l.product_id, l.position ${from}`,
+            g.is_variant, g.price_mode, l.product_id, l.position ${from}`,
     // Nivel 3: sin min (migración de min pendiente).
     `SELECT g.id, g.group_name, g.options, g.required, g.max_selections,
             g.is_variant, l.product_id, l.position ${from}`,

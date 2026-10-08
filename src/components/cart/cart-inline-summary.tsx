@@ -35,7 +35,9 @@ export function CartInlineSummary() {
                   {item.modifiers.map((m, mi) => (
                     <span key={mi}>
                       {m.label}
-                      {m.price_mod > 0 && ` (+$${m.price_mod.toLocaleString("es-AR")})`}
+                      {m.price_total != null
+                        ? ` ($${Number(m.price_total).toLocaleString("es-AR")})`
+                        : m.price_mod > 0 && ` (+$${m.price_mod.toLocaleString("es-AR")})`}
                       {mi < item.modifiers!.length - 1 ? " · " : ""}
                     </span>
                   ))}

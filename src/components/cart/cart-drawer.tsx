@@ -105,7 +105,9 @@ export function CartDrawer() {
                               className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground"
                             >
                               {m.group ? `${m.group}: ` : ""}{m.label}
-                              {m.price_mod > 0 && ` +$${m.price_mod.toLocaleString("es-AR")}`}
+                              {m.price_total != null
+                                ? ` $${Number(m.price_total).toLocaleString("es-AR")}`
+                                : m.price_mod > 0 && ` +$${m.price_mod.toLocaleString("es-AR")}`}
                             </span>
                           ))}
                         </div>

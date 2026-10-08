@@ -10,6 +10,10 @@ function normalizeOptions(options: unknown): ModifierOption[] {
     .map((o: any) => ({
       label: String(o?.label ?? o?.name ?? "").trim(),
       price_mod: Number(o?.price_mod ?? o?.price ?? 0) || 0,
+      // Precio final de la opción (modo "total" del grupo). Vive en el JSONB.
+      ...(Number.isFinite(Number(o?.price_total)) && Number(o.price_total) >= 0
+        ? { price_total: Number(o.price_total) }
+        : {}),
       // Familia opcional (filtro en la hoja de gustos). Se guarda en el JSONB.
       ...(String(o?.category ?? "").trim() ? { category: String(o.category).trim().slice(0, 40) } : {}),
       // Gusto pausado (ej: se acabó el pistacho): se oculta sin borrarlo.
@@ -26,14 +30,14 @@ export async function PATCH(
   if (!vendor) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
 
   const { id } = await params;
-  const existing = await queryOne<{ id: string }>(
-    `SELECT id FROM modifier_groups WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
+  const existing = await queryOne<{ id: string; max_selections: number }>(
+    `SELECT id, max_selections FROM modifier_groups WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
     [id, vendor.id]
   );
   if (!existing) return NextResponse.json({ error: "No encontrado" }, { status: 404 });
 
   const body = await request.json();
-  const { group_name, options, required, max_selections, min_selections, is_variant, product_ids } = body;
+  const { group_name, options, required, max_selections, min_selections, is_variant, product_ids, price_mode } = body;
 
   const update: Record<string, unknown> = {};
   if (typeof group_name === "string" && group_name.trim()) update.group_name = group_name.trim();
@@ -44,6 +48,17 @@ export async function PATCH(
   if (typeof required === "boolean") update.required = required;
   if (max_selections !== undefined) update.max_selections = Math.max(1, Number(max_selections) || 1);
   if (typeof is_variant === "boolean") update.is_variant = is_variant;
+  if (price_mode === "diferencia" || price_mode === "total") {
+    const effMax =
+      max_selections !== undefined ? Math.max(1, Number(max_selections) || 1) : Number(existing.max_selections) || 1;
+    if (price_mode === "total" && effMax !== 1) {
+      return NextResponse.json(
+        { error: "El precio final por opción solo vale en grupos de selección única (Máx = 1)" },
+        { status: 400 }
+      );
+    }
+    update.price_mode = price_mode;
+  }
   if (min_selections !== undefined) {
     // NULL/0 = legacy. Solo rige si el grupo es (o queda) obligatorio.
     const req = typeof required === "boolean" ? required : undefined;
@@ -64,10 +79,12 @@ export async function PATCH(
       try {
         await runUpdate(Object.keys(update));
       } catch (e) {
-        // Columna min_selections aún no migrada: reintentar sin ella.
-        if (!("min_selections" in update) || !/min_selections/i.test(String((e as Error)?.message || ""))) throw e;
-        const { min_selections: _drop, ...rest } = update;
-        if (Object.keys(rest).length > 0) await runUpdate(Object.keys(rest));
+        // Columnas aún no migradas (min_selections / price_mode): reintentar sin ellas.
+        const msg = String((e as Error)?.message || "");
+        const drop = ["min_selections", "price_mode"].filter((k) => k in update && new RegExp(k, "i").test(msg));
+        if (drop.length === 0) throw e;
+        const rest = Object.keys(update).filter((k) => !drop.includes(k));
+        if (rest.length > 0) await runUpdate(rest);
       }
     }
 

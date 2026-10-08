@@ -6,6 +6,7 @@ import { VariantSelector } from "./variant-selector";
 import { ProductImage } from "@/components/product-image";
 import { CashPrice } from "@/components/store/cash-price";
 import { cashAppliesToItem, normalizeCashPct } from "@/lib/cash-discount";
+import { activeOptions, isTotalMode, minTotalPrice } from "@/lib/modifier-select";
 
 type VendorBrief = {
   id: string;
@@ -77,6 +78,17 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
 
   const summary = hasVariants ? variantSummary(variants) : null;
 
+  // Grupos en modo total (ej. Tamaño): la tarjeta titula "Desde $mín",
+  // igual que con variantes. Sin promo (la promo manda en el display).
+  const modsTotalMin =
+    !hasVariants && product.promo_price == null
+      ? minTotalPrice(
+          (modifiers || [])
+            .filter((m) => isTotalMode(m))
+            .flatMap((m) => activeOptions(m.options || []))
+        )
+      : null;
+
   const totalStock = hasVariants
     ? variants.reduce((a, v) => a + (v.stock ?? 0), 0)
     : (product.stock ?? 0);
@@ -102,7 +114,9 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
     ? summary.min === summary.max
       ? `$${summary.min.toLocaleString("es-AR")}`
       : `Desde $${summary.min.toLocaleString("es-AR")}`
-    : `$${(product.promo_price ?? product.price).toLocaleString("es-AR")}`;
+    : modsTotalMin != null
+      ? `Desde $${modsTotalMin.toLocaleString("es-AR")}`
+      : `$${(product.promo_price ?? product.price).toLocaleString("es-AR")}`;
 
   const regularLabel = hasVariants && summary
     ? summary.baseMin !== summary.min

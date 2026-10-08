@@ -7,7 +7,7 @@ import {
   type DeliverySelection,
   type DeliveryZoneInfo,
 } from "@/lib/delivery";
-import { queryEffectiveModifiers, type EffectiveModifierRow } from "@/lib/modifier-rules";
+import { queryEffectiveModifiers, isMissingColumnError, type EffectiveModifierRow } from "@/lib/modifier-rules";
 import { cashAppliesToItem, cashPrice, normalizeCashPct } from "@/lib/cash-discount";
 import {
   applyVolumePricing,
@@ -154,8 +154,13 @@ export async function resolveOrderPricing(opts: {
   const productById = new Map(products.map((p) => [p.id, p]));
   const variantById = new Map(variants.map((v) => [v.id, v]));
 
-  // Mapa product_id -> label -> price_mod (desde modifier_groups.options JSONB).
-  let modifierMap = new Map<string, Map<string, number>>();
+  // Mapa product_id -> label -> { diferencia, total, modo } (desde
+  // modifier_groups.options JSONB). En modo "total" la opción vale su precio
+  // final y el aporte = total − base (igual que el cliente). Si dos grupos
+  // comparten etiqueta, gana la entrada total (más específica).
+  // Tolerante a migración de price_mode sin aplicar (todo diferencia).
+  type ModEntry = { mod: number; total: number | null; isTotal: boolean };
+  let modifierMap = new Map<string, Map<string, ModEntry>>();
   // Reglas por producto: grupo -> { required, max, min, labels } para validar
   // cantidades (caso heladería: "Gustos" min 2 / max 2 en el 1/4 kg).
   type GroupRule = { name: string; required: boolean; max: number; min: number | null; labels: Set<string> };
@@ -163,16 +168,30 @@ export async function resolveOrderPricing(opts: {
   // Gustos pausados (available === false): se rechazan como no disponibles.
   let unavailableByProduct = new Map<string, Set<string>>();
   if (productIds.size) {
-    const modRows = await tx.query<{ product_id: string; options: { label?: string; price_mod?: number }[] }>(
-      `SELECT l.product_id, g.options
-       FROM product_modifier_links l
-       JOIN modifier_groups g ON g.id = l.group_id
-       WHERE l.product_id = ANY($1)`,
-      [[...productIds]]
-    );
+    let modRows: { product_id: string; options: { label?: string; price_mod?: number; price_total?: number | null }[]; price_mode?: string | null; max_selections?: number }[] = [];
+    try {
+      modRows = await tx.query(
+        `SELECT l.product_id, g.options, g.price_mode, g.max_selections
+         FROM product_modifier_links l
+         JOIN modifier_groups g ON g.id = l.group_id
+         WHERE l.product_id = ANY($1)`,
+        [[...productIds]]
+      );
+    } catch (e) {
+      // Sin migración de price_mode: todo diferencia (comportamiento actual).
+      if (!isMissingColumnError(e)) throw e;
+      modRows = await tx.query(
+        `SELECT l.product_id, g.options
+         FROM product_modifier_links l
+         JOIN modifier_groups g ON g.id = l.group_id
+         WHERE l.product_id = ANY($1)`,
+        [[...productIds]]
+      );
+    }
     modifierMap = new Map();
     for (const row of modRows) {
       const opts = Array.isArray(row.options) ? row.options : [];
+      const rowTotal = row.price_mode === "total" && Math.floor(Number(row.max_selections)) === 1;
       let inner = modifierMap.get(row.product_id);
       if (!inner) {
         inner = new Map();
@@ -181,7 +200,15 @@ export async function resolveOrderPricing(opts: {
       for (const o of opts) {
         const label = String(o?.label ?? "").trim();
         if (!label) continue;
-        inner.set(label, Number(o?.price_mod ?? 0) || 0);
+        const t = Number(o?.price_total);
+        const entry: ModEntry = {
+          mod: Number(o?.price_mod ?? 0) || 0,
+          total: Number.isFinite(t) && t >= 0 ? t : null,
+          isTotal: rowTotal,
+        };
+        const prev = inner.get(label);
+        // Ante colisión de etiquetas entre grupos, gana la total (más específica).
+        if (!prev || (entry.isTotal && !prev.isTotal)) inner.set(label, entry);
       }
     }
     // Reglas de cantidad por grupo (efectivas: override por link si existe).
@@ -323,15 +350,18 @@ export async function resolveOrderPricing(opts: {
     if (labels.length > 0) {
       const modsForProduct = modifierMap.get(product.id);
       const unavailable = unavailableByProduct.get(product.id);
+      // Base por unidad para el aporte en modo total (pack: precio/paquete ÷ N).
+      const modBase = pack > 1 ? packPrice / pack : unitPrice;
       for (const label of labels) {
         if (unavailable?.has(label)) {
           throw new PricingError(`"${label}" no está disponible por el momento en "${product.name}".`);
         }
-        const mod = modsForProduct?.get(label);
-        if (mod == null) {
+        const entry = modsForProduct?.get(label);
+        if (entry == null) {
           throw new PricingError(`Modificador "${label}" no existe más en "${product.name}".`);
         }
-        modsPerUnit += mod;
+        // Modo total: aporte = total_opción − base (la base se ignora).
+        modsPerUnit += entry.isTotal && entry.total != null ? entry.total - modBase : entry.mod;
       }
     }
 

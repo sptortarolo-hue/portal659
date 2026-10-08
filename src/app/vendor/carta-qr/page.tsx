@@ -9,6 +9,7 @@ type VendorMini = {
   store_name: string | null;
   logo_url: string | null;
   image_url: string | null;
+  vertical?: string | null;
   carta_visibility?: string | null;
 };
 
@@ -72,6 +73,7 @@ export default function CartaQrPage() {
 
   const storeName = vendor?.store_name || "tu comercio";
   const visibility = vendor?.carta_visibility === "public" ? "public" : "qr_only";
+  const catalog = (vendor?.vertical ?? "gastronomia") !== "gastronomia";
 
   return (
     <main className="min-h-screen bg-muted/40">
@@ -133,14 +135,14 @@ export default function CartaQrPage() {
             <div>
             <p className="font-display text-2xl print:text-3xl font-bold tracking-tight">{storeName}</p>
             <p className="text-sm print:text-base mt-1 text-neutral-500">
-              Escaneá el código y mirá la carta
+              Escaneá el código y mirá {catalog ? "el catálogo" : "la carta"}
             </p>
           </div>
           {/* El QR en sí es una imagen plana (grilla de píxeles), no una foto
               de galería: <img> directo está bien acá (ProductImage es para
               uploads de productos/logos con retry/fallback). */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={qrDataUrl} alt={`QR de la carta de ${storeName}`} className="w-56 h-56 print:w-64 print:h-64" />
+          <img src={qrDataUrl} alt={`QR de ${catalog ? "el catálogo" : "la carta"} de ${storeName}`} className="w-56 h-56 print:w-64 print:h-64" />
           <div className="space-y-1">
             <p className="text-base print:text-lg font-semibold">Pedí sin esperar · 0% comisión</p>
             <p className="text-xs print:text-sm text-neutral-500 font-mono">
@@ -156,14 +158,14 @@ export default function CartaQrPage() {
         <div className="no-print max-w-2xl mx-auto px-4 pb-10 -mt-2">
           <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
             <div className="flex items-center justify-between gap-2 flex-wrap">
-              <p className="text-sm font-semibold">Visibilidad de la carta</p>
+              <p className="text-sm font-semibold">Visibilidad de {catalog ? "el catálogo" : "la carta"}</p>
               <a
                 href={`/carta/${vendor.slug}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-sm font-medium text-primary hover:underline"
               >
-                Ver carta →
+                Ver {catalog ? "catálogo" : "carta"} →
               </a>
             </div>
             <div className="grid grid-cols-2 gap-2">
@@ -195,8 +197,9 @@ export default function CartaQrPage() {
               </button>
             </div>
             <p className="text-xs text-muted-foreground">
-              La carta es solo lectura (sin carrito): el pedido lo levanta el mesero. Con Solo QR, el menú sale
-              de tu tienda pública y solo se ve escaneando.
+              {catalog
+                ? "El catálogo es solo lectura (sin carrito). Con Solo QR, los productos salen de tu tienda pública y solo se ven escaneando."
+                : "La carta es solo lectura (sin carrito): el pedido lo levanta el mesero. Con Solo QR, el menú sale de tu tienda pública y solo se ve escaneando."}
             </p>
             {notice && <p className="text-xs text-muted-foreground">{notice}</p>}
           </div>

@@ -45,7 +45,7 @@ const ImageCropModal = dynamic(
 );
 import { DEFAULT_ZONE } from "@/lib/config";
 import VendorSidebar from "@/components/vendor/vendor-sidebar";
-import { configSectionStatus as getConfigSectionStatus, sectionsForVertical, CONFIG_SECTION_GROUPS, CONFIG_SECTION_LABELS, configSectionIcon } from "@/components/dashboard/config-nav";
+import { configSectionStatus as getConfigSectionStatus, sectionsForVertical, CONFIG_SECTION_GROUPS, configSectionLabel, configSectionIcon } from "@/components/dashboard/config-nav";
 import { StatusDot } from "@/components/dashboard/config-sections";
 import { NotificationBell } from "@/components/nav/notification-bell";
 import { UserMenu } from "@/components/nav/user-menu";
@@ -198,7 +198,7 @@ function ConfigDesktopNav({
                     }`}
                   >
                     <Icon className="h-4 w-4 flex-shrink-0" />
-                    <span className="flex-1 truncate">{CONFIG_SECTION_LABELS[id] ?? id}</span>
+                    <span className="flex-1 truncate">{configSectionLabel(id, vendor?.vertical)}</span>
                     {st && <StatusDot status={st} />}
                   </button>
                 );
@@ -2236,7 +2236,7 @@ function VendorDashboardInner() {
           <div className="bg-card rounded-2xl p-6 max-w-sm w-full text-center" onClick={(e) => e.stopPropagation()}>
             <h3 className="font-display text-xl font-semibold mb-1">Compartí tu vidriera</h3>
             {(vendor as any).carta_visibility !== "public" ? (
-              <p className="text-sm text-muted-foreground mb-4">El QR lleva a tu carta de mesa (solo lectura, sin carrito).</p>
+              <p className="text-sm text-muted-foreground mb-4">El QR lleva a tu {isRetail ? "catálogo" : "carta de mesa"} (solo lectura, sin carrito).</p>
             ) : (
               <p className="text-sm text-muted-foreground mb-4">{isRetail ? "El QR lleva directo a tu catálogo (listo para imprimir y pegar en la vidriera o el vidrio)." : "El QR lleva directo a tu carta (listo para imprimir y pegar en la mesa o el vidrio)."}</p>
             )}
@@ -2246,14 +2246,14 @@ function VendorDashboardInner() {
               <a
                 href={`https://wa.me/?text=${encodeURIComponent(
                   (vendor as any).carta_visibility !== "public"
-                    ? `Mirá la carta de ${vendor.store_name} en Portal 659 📋\n${window.location.origin}/carta/${vendor.slug}`
+                    ? `Mirá ${isRetail ? "el catálogo" : "la carta"} de ${vendor.store_name} en Portal 659 ${isRetail ? "🛍️" : "📋"}\n${window.location.origin}/carta/${vendor.slug}`
                     : `Mirá el ${isRetail ? "catálogo" : "menú"} de ${vendor.store_name} en Portal 659 🛍️\n${window.location.origin}/tienda/${vendor.slug}?menu=1\n\nPedí directo por WhatsApp — 0% comisión`
                 )}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="block w-full rounded-xl bg-green-500 text-white text-sm font-medium py-2.5 hover:bg-green-600 transition-colors"
               >
-                📲 {(vendor as any).carta_visibility !== "public" ? "Compartir carta" : isRetail ? "Compartir tienda" : "Compartir menú"}
+                📲 {(vendor as any).carta_visibility !== "public" ? (isRetail ? "Compartir catálogo" : "Compartir carta") : isRetail ? "Compartir tienda" : "Compartir menú"}
               </a>
               <div className="grid grid-cols-2 gap-2">
                 {qrDataUrl && (

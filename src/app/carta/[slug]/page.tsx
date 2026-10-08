@@ -36,14 +36,16 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   if (!vendor) return {};
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://www.portal659.com.ar";
   const isPublic = (vendor as any).carta_visibility === "public";
+  const catalog = vendor.vertical === "moda" || vendor.vertical === "comercio";
+  const word = catalog ? "Catálogo" : "Carta";
   return {
-    title: `${vendor.store_name} — Carta | Portal 659`,
-    description: `Carta de ${vendor.store_name} (${vendor.category || verticalSeoName(vendor.vertical)}). Escaneaste el QR: mirá el menú y el mesero te toma el pedido.`,
+    title: `${vendor.store_name} — ${word} | Portal 659`,
+    description: `${word} de ${vendor.store_name} (${vendor.category || verticalSeoName(vendor.vertical)}). Escaneaste el QR: mirá ${catalog ? "los productos" : "el menú"}${catalog ? "" : " y el mesero te toma el pedido"}.`,
     ...(isPublic ? {} : { robots: { index: false, follow: false } }),
     alternates: { canonical: `/carta/${slug}` },
     openGraph: {
-      title: `${vendor.store_name} — Carta | Portal 659`,
-      description: `Carta de ${vendor.store_name}. El mesero te toma el pedido.`,
+      title: `${vendor.store_name} — ${word} | Portal 659`,
+      description: `${word} de ${vendor.store_name}.${catalog ? "" : " El mesero te toma el pedido."}`,
       url: `${siteUrl}/carta/${slug}`,
       ...(vendor.logo_url || vendor.image_url ? { images: [vendor.logo_url || vendor.image_url] } : {}),
     },
@@ -69,7 +71,7 @@ export default async function CartaPage({ params }: { params: Promise<{ slug: st
   const open = isStoreOpen({ hours: v.hours ?? null, open_override: v.open_override ?? null });
   const waNumber = (v.whatsapp || "").replace(/[^0-9]/g, "");
   const waUrl = waNumber
-    ? `https://wa.me/${waNumber}?text=${encodeURIComponent(`Hola ${v.store_name}! Te consulto por la carta. Vengo de Portal 659.`)}`
+    ? `https://wa.me/${waNumber}?text=${encodeURIComponent(`Hola ${v.store_name}! Te consulto por ${isCatalog ? "el catálogo" : "la carta"}. Vengo de Portal 659.`)}`
     : null;
   // Fallback si el local no cargó WhatsApp: volver al micrositio.
   const consultHref = waUrl ?? `/tienda/${v.slug}`;
@@ -122,7 +124,7 @@ export default async function CartaPage({ params }: { params: Promise<{ slug: st
             eager
           />
           <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">Carta</p>
+            <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">{isCatalog ? "Catálogo" : "Carta"}</p>
             <h1 className="font-display text-xl font-bold leading-tight truncate">{v.store_name}</h1>
             <div className="mt-1 flex items-center gap-2 flex-wrap">
               {open === true && <Badge className="bg-green-600 text-white hover:bg-green-600">Abierto ahora</Badge>}
@@ -305,7 +307,7 @@ export default async function CartaPage({ params }: { params: Promise<{ slug: st
         )}
 
         <footer className="mt-8 border-t border-border pt-4 text-center">
-          <p className="text-xs text-muted-foreground">Carta digital · el mesero te toma el pedido</p>
+          <p className="text-xs text-muted-foreground">{isCatalog ? "Catálogo digital" : "Carta digital · el mesero te toma el pedido"}</p>
           <p className="text-[10px] text-muted-foreground mt-1">Portal 659 — El centro comercial de tu barrio</p>
         </footer>
       </div>

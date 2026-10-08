@@ -127,6 +127,12 @@ export function configSectionIcon(id: string): LucideIcon {
   return CONFIG_SECTION_ICONS[id] ?? CONFIG_SECTION_FALLBACK_ICON;
 }
 
+/** Label por sección y vertical: fuera de gastronomía la carta se llama catálogo. */
+export function configSectionLabel(id: string, vertical?: string | null): string {
+  if (id === "carta" && vertical != null && vertical !== "gastronomia") return "Catálogo QR";
+  return CONFIG_SECTION_LABELS[id] ?? id;
+}
+
 /** Dot de estado desde el vendor (sin fetches). undefined = sin dot. */
 export function configSectionStatus(
   id: string,

@@ -1256,8 +1256,8 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
         <StaffManager storeName={vendor?.store_name} showCouriers={false} />
       </ConfigSection>
 
-      <ConfigSection id="carta" label="Carta y QR" icon="📱" status={vendor?.carta_visibility === "public" ? "ok" : undefined}>
-        <CartaQrSection vendor={vendor} saveVendor={saveVendor} setMsg={setMsg} />
+      <ConfigSection id="carta" label="Catálogo QR" icon="📱" status={vendor?.carta_visibility === "public" ? "ok" : undefined}>
+        <CartaQrSection vendor={vendor} saveVendor={saveVendor} setMsg={setMsg} catalog />
       </ConfigSection>
 
       <ConfigSection id="promos" label="Promos" icon="🔗">

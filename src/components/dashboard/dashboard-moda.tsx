@@ -694,8 +694,8 @@ export default function DashboardModa({
       <FiscalTabShortcut />
       </ConfigSection>
 
-      <ConfigSection id="carta" label="Carta y QR" icon="📱" status={vendor?.carta_visibility === "public" ? "ok" : undefined}>
-        <CartaQrSection vendor={vendor} saveVendor={saveVendor} setMsg={setMsg} />
+      <ConfigSection id="carta" label="Catálogo QR" icon="📱" status={vendor?.carta_visibility === "public" ? "ok" : undefined}>
+        <CartaQrSection vendor={vendor} saveVendor={saveVendor} setMsg={setMsg} catalog />
       </ConfigSection>
 
       <ConfigSection id="promos" label="Promos" icon="🔗">

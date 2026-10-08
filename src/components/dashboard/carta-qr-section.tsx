@@ -10,6 +10,8 @@ type Props = {
   vendor: Vendor | null;
   saveVendor: (data: Record<string, unknown>) => Promise<void>;
   setMsg: (m: string) => void;
+  /** Verticales no-gastronómicos: se habla de catálogo, no de carta. */
+  catalog?: boolean;
 };
 
 /**
@@ -18,7 +20,7 @@ type Props = {
  * acceso al cartel imprimible (/vendor/carta-qr).
  * Se monta en los 5 dashboards dentro de su <ConfigSections>.
  */
-export function CartaQrSection({ vendor, saveVendor, setMsg }: Props) {
+export function CartaQrSection({ vendor, saveVendor, setMsg, catalog = false }: Props) {
   const visibility = vendor?.carta_visibility === "public" ? "public" : "qr_only";
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -63,8 +65,8 @@ export function CartaQrSection({ vendor, saveVendor, setMsg }: Props) {
       await saveVendor({ carta_visibility: next });
       setMsg(
         next === "public"
-          ? "Carta pública: el menú se ve en tu tienda, buscar e indexa."
-          : "Carta solo-QR: el menú salió de tu tienda y buscar, solo se ve por QR."
+          ? `${catalog ? "Catálogo" : "Carta"} pública: el menú se ve en tu tienda, buscar e indexa.`
+          : `${catalog ? "Catálogo" : "Carta"} solo-QR: el menú salió de tu tienda y buscar, solo se ve por QR.`
       );
     } catch {
       setMsg("No se pudo guardar la visibilidad. Probá de nuevo.");
@@ -86,21 +88,22 @@ export function CartaQrSection({ vendor, saveVendor, setMsg }: Props) {
   if (!vendor) return null;
 
   return (
-    <CollapsibleSection id="carta-qr" icon="📱" title="Carta y QR">
+    <CollapsibleSection id="carta-qr" icon="📱" title={catalog ? "Catálogo QR" : "Carta y QR"}>
       <div className="space-y-4">
         <div className="flex items-start gap-4 flex-wrap">
           <div className="w-32 h-32 rounded-xl border border-border bg-white p-1.5 flex-shrink-0">
             {qrDataUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={qrDataUrl} alt={`QR de la carta de ${vendor.store_name}`} className="w-full h-full" />
+              <img src={qrDataUrl} alt={`QR de ${catalog ? "el catálogo" : "la carta"} de ${vendor.store_name}`} className="w-full h-full" />
             ) : (
               <div className="w-full h-full rounded-lg bg-skeleton animate-pulse" />
             )}
           </div>
           <div className="min-w-0 flex-1 space-y-2">
             <p className="text-sm text-muted-foreground">
-              Tu carta de mesa (solo lectura, sin carrito: el pedido lo levanta el mesero). Con Solo QR, el menú
-              sale de tu tienda pública y solo se ve escaneando.
+              {catalog
+                ? "Tu catálogo con QR (solo lectura, sin carrito). Con Solo QR, los productos salen de tu tienda pública y solo se ven escaneando."
+                : "Tu carta de mesa (solo lectura, sin carrito: el pedido lo levanta el mesero). Con Solo QR, el menú sale de tu tienda pública y solo se ve escaneando."}
             </p>
             <div className="flex items-center gap-2 flex-wrap">
               {cartaUrl && (
@@ -110,7 +113,7 @@ export function CartaQrSection({ vendor, saveVendor, setMsg }: Props) {
                   rel="noopener noreferrer"
                   className="text-sm font-medium text-primary hover:underline"
                 >
-                  Ver carta →
+                  Ver {catalog ? "catálogo" : "carta"} →
                 </Link>
               )}
               <Button size="sm" variant="outline" onClick={copyLink} disabled={!cartaUrl}>
@@ -142,8 +145,7 @@ export function CartaQrSection({ vendor, saveVendor, setMsg }: Props) {
               }`}
             >
               📱 Solo QR
-              <span className="block text-xs font-normal mt-0.5">El menú sale de tu tienda y buscar. Solo por QR.</span>
-            </button>
+              <span className="block text-xs font-normal mt-0.5">El menú sale de tu tienda y buscar. Solo por QR.</span>            </button>
             <button
               type="button"
               disabled={saving}

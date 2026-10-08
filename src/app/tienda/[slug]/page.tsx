@@ -746,7 +746,7 @@ export default async function TiendaPage({
           <div className="flex flex-wrap gap-3 mt-3">
             {(v as any).carta_visibility === "public" && (
               <a href={`/carta/${v.slug}`} className="text-sm text-primary font-medium hover:underline">
-                📋 Ver carta de mesa
+                {isCatalog ? "🛍️ Ver catálogo" : "📋 Ver carta de mesa"}
               </a>
             )}
             {v.phone && (

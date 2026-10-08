@@ -13,5 +13,13 @@ export async function GET(request: Request) {
     [days, limit, neighborhoods]
   );
 
-  return NextResponse.json({ items });
+  // Defensa sin migración: líneas manuales de mostrador ("Varios", ids
+  // "manual:...") y basura histórica nunca llegan a la sección, aunque la
+  // función SQL todavía sea la versión vieja.
+  const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+  const clean = ((items || []) as any[]).filter(
+    (it) => typeof it?.product_id === "string" && UUID_RE.test(it.product_id) && (it as any).manual !== true
+  );
+
+  return NextResponse.json({ items: clean });
 }

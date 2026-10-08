@@ -734,6 +734,11 @@ export default async function TiendaPage({
 
           {/* Links */}
           <div className="flex flex-wrap gap-3 mt-3">
+            {(v as any).carta_visibility === "public" && (
+              <a href={`/carta/${v.slug}`} className="text-sm text-primary font-medium hover:underline">
+                📋 Ver carta de mesa
+              </a>
+            )}
             {v.phone && (
               <a href={`tel:${v.phone}`} className="text-sm text-primary hover:underline">
                 Tel: {v.phone}

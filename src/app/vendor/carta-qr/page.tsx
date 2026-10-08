@@ -9,17 +9,46 @@ type VendorMini = {
   store_name: string | null;
   logo_url: string | null;
   image_url: string | null;
+  carta_visibility?: string | null;
 };
 
 /**
  * Cartel imprimible de la carta con QR (sticker de mesa / vidrio).
- * El QR apunta al micrositio directo a la carta (?menu=1&from=qr).
+ * El QR apunta a la carta de mesa (/carta/[slug]): solo lectura, sin
+ * carrito — el pedido lo levanta el mesero.
  */
 export default function CartaQrPage() {
   const [vendor, setVendor] = useState<VendorMini | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [size, setSize] = useState<"a5" | "a4">("a5");
   const [error, setError] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [notice, setNotice] = useState("");
+
+  function cartaUrl(slug: string) {
+    return `${window.location.origin}/carta/${slug}`;
+  }
+
+  async function setVisibility(next: "public" | "qr_only") {
+    if (!vendor || saving || (vendor.carta_visibility ?? "qr_only") === next) return;
+    setSaving(true);
+    setNotice("");
+    try {
+      const res = await fetch("/api/vendor/me", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ carta_visibility: next }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error || "No se pudo guardar");
+      setVendor({ ...vendor, carta_visibility: next });
+      setNotice(next === "public" ? "Carta pública: ya se linkea desde tu tienda." : "Carta solo-QR: solo entra quien escanea.");
+    } catch {
+      setNotice("No se pudo guardar. Probá de nuevo.");
+    } finally {
+      setSaving(false);
+    }
+  }
 
   useEffect(() => {
     (async () => {
@@ -36,12 +65,13 @@ export default function CartaQrPage() {
       }
       setVendor(v);
       const { default: QRCode } = await import("qrcode");
-      const url = `${window.location.origin}/tienda/${v.slug}?menu=1&from=qr`;
+      const url = cartaUrl(v.slug);
       setQrDataUrl(await QRCode.toDataURL(url, { width: 1200, margin: 1 }));
     })();
   }, []);
 
   const storeName = vendor?.store_name || "tu comercio";
+  const visibility = vendor?.carta_visibility === "public" ? "public" : "qr_only";
 
   return (
     <main className="min-h-screen bg-muted/40">
@@ -101,25 +131,76 @@ export default function CartaQrPage() {
               eager
             />
             <div>
-              <p className="font-display text-2xl print:text-3xl font-bold tracking-tight">{storeName}</p>
-              <p className="text-sm print:text-base mt-1 text-neutral-500">
-                Escaneá el código y mirá la carta
-              </p>
-            </div>
-            {/* El QR en sí es una imagen plana (grilla de píxeles), no una foto
-                de galería: <img> directo está bien acá (ProductImage es para
-                uploads de productos/logos con retry/fallback). */}
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={qrDataUrl} alt={`QR de la carta de ${storeName}`} className="w-56 h-56 print:w-64 print:h-64" />
-            <div className="space-y-1">
-              <p className="text-base print:text-lg font-semibold">Pedí sin esperar · 0% comisión</p>
-              <p className="text-xs print:text-sm text-neutral-500 font-mono">
-                portal659.com.ar/tienda/{vendor.slug}
-              </p>
-            </div>
-            <p className="text-[10px] text-neutral-400">Portal 659 — El centro comercial de tu barrio</p>
+            <p className="font-display text-2xl print:text-3xl font-bold tracking-tight">{storeName}</p>
+            <p className="text-sm print:text-base mt-1 text-neutral-500">
+              Escaneá el código y mirá la carta
+            </p>
           </div>
-        )}
+          {/* El QR en sí es una imagen plana (grilla de píxeles), no una foto
+              de galería: <img> directo está bien acá (ProductImage es para
+              uploads de productos/logos con retry/fallback). */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={qrDataUrl} alt={`QR de la carta de ${storeName}`} className="w-56 h-56 print:w-64 print:h-64" />
+          <div className="space-y-1">
+            <p className="text-base print:text-lg font-semibold">Pedí sin esperar · 0% comisión</p>
+            <p className="text-xs print:text-sm text-neutral-500 font-mono">
+              portal659.com.ar/carta/{vendor.slug}
+            </p>
+          </div>
+          <p className="text-[10px] text-neutral-400">Portal 659 — El centro comercial de tu barrio</p>
+        </div>
+      )}
+
+      {/* Visibilidad de la carta (no se imprime) */}
+      {vendor && (
+        <div className="no-print max-w-2xl mx-auto px-4 pb-10 -mt-2">
+          <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <p className="text-sm font-semibold">Visibilidad de la carta</p>
+              <a
+                href={`/carta/${vendor.slug}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm font-medium text-primary hover:underline"
+              >
+                Ver carta →
+              </a>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => setVisibility("qr_only")}
+                className={`rounded-xl border px-3 py-2 text-left text-sm transition ${
+                  visibility === "qr_only"
+                    ? "border-primary bg-primary/10 font-semibold"
+                    : "border-border text-muted-foreground hover:border-primary/50"
+                }`}
+              >
+                📱 Solo QR
+                <span className="block text-xs font-normal mt-0.5">Solo entra quien escanea. No indexa.</span>
+              </button>
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => setVisibility("public")}
+                className={`rounded-xl border px-3 py-2 text-left text-sm transition ${
+                  visibility === "public"
+                    ? "border-primary bg-primary/10 font-semibold"
+                    : "border-border text-muted-foreground hover:border-primary/50"
+                }`}
+              >
+                🌐 Pública
+                <span className="block text-xs font-normal mt-0.5">Se linkea desde tu tienda e indexa en Google.</span>
+              </button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              La carta es solo lectura (sin carrito): el pedido lo levanta el mesero. Funciona aunque tu tienda esté oculta.
+            </p>
+            {notice && <p className="text-xs text-muted-foreground">{notice}</p>}
+          </div>
+        </div>
+      )}
       </div>
 
       <style>{`

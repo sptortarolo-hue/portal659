@@ -387,6 +387,11 @@ export async function POST(request: Request) {
     if (food_cost_bad !== undefined) payload.food_cost_bad = b;
   }
   if (accepts_online_orders !== undefined) payload.accepts_online_orders = accepts_online_orders === true;
+  // Visibilidad de la carta QR (/carta/[slug]): "public" o "qr_only" (default).
+  if ((body as Record<string, unknown>).carta_visibility !== undefined) {
+    const cv = (body as Record<string, unknown>).carta_visibility;
+    payload.carta_visibility = cv === "public" ? "public" : "qr_only";
+  }
   if (kitchen_strict_close !== undefined) payload.kitchen_strict_close = kitchen_strict_close !== false;
   // Vista del catálogo online (comercio): lista o vidriera (grilla visual).
   if (storefront_layout !== undefined) payload.storefront_layout = storefront_layout === "vidriera" ? "vidriera" : "lista";
@@ -452,6 +457,7 @@ export async function POST(request: Request) {
         "google_review_url",
         "loyalty_every",
         "loyalty_pct",
+        "carta_visibility",
       ].filter((k) => k in payload && msg.includes(k));
       if (droppable.length > 0) {
         for (const k of droppable) delete payload[k];

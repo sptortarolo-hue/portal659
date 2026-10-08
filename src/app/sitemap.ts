@@ -35,5 +35,28 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     priority: 0.9,
   }));
 
-  return [...staticRoutes, ...storeRoutes];
+  // Cartas públicas (/carta/[slug] con carta_visibility='public').
+  // Tolerante a migración sin aplicar (columna inexistente → sin cartas).
+  let cartaRoutes: MetadataRoute.Sitemap = [];
+  try {
+    const cartas = await queryMany<{ slug: string; last_mod: string }>(
+      `SELECT v.slug,
+              GREATEST(v.created_at, COALESCE((
+                SELECT MAX(p.created_at) FROM products p WHERE p.vendor_id = v.id
+              ), v.created_at)) AS last_mod
+       FROM vendors v
+       WHERE v.visible = true AND v.carta_visibility = 'public'
+       ORDER BY last_mod DESC`
+    );
+    cartaRoutes = (cartas || []).map((v) => ({
+      url: `${base}/carta/${v.slug}`,
+      lastModified: v.last_mod,
+      changeFrequency: "daily",
+      priority: 0.7,
+    }));
+  } catch {
+    cartaRoutes = [];
+  }
+
+  return [...staticRoutes, ...storeRoutes, ...cartaRoutes];
 }

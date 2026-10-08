@@ -327,6 +327,16 @@ export default async function TiendaPage({
   } else if (menuOffers?.length) {
     sections.push({ name: isCatalog ? "Catálogo" : "Menú", items: menuOffers });
   }
+  // Carta solo-QR: el menú/catálogo solo se ve por QR (/carta). En el
+  // micrositio público se ocultan secciones, promos y packs (queda info,
+  // contacto y reseñas). En preview se sigue viendo todo para verificar.
+  // Tolerante a migración sin aplicar (undefined = público, como antes).
+  const cartaQrOnly = (v.carta_visibility ?? "public") !== "public";
+  const menuHidden = cartaQrOnly && !preview;
+  if (menuHidden) {
+    sections.length = 0;
+    promos.length = 0;
+  }
 
   // Precios por volumen (gastro + comercio): grupos + tramos para badges y espejo.
   // Tolerante a tabla sin migrar.
@@ -922,7 +932,7 @@ export default async function TiendaPage({
             )}
 
             {/* Packs de sesiones y giftcards (estética): compra online con MP */}
-            {isEstetica && (
+            {isEstetica && !menuHidden && (
               <div className="mt-6 mb-6 space-y-4">
                 {esteticaPacks.length > 0 && (
                   <>
@@ -977,7 +987,7 @@ export default async function TiendaPage({
               </details>
             )}
           </>
-        ) : noCart && sections.length === 0 ? (
+        ) : (noCart || menuHidden) && sections.length === 0 ? (
           <>
             {/* Solo contacto sin carta cargada: tarjeta de contacto directa */}
             <div className="border border-border rounded-2xl p-8 text-center bg-card mt-6 mb-6">
@@ -1173,7 +1183,7 @@ export default async function TiendaPage({
         )}
 
         {/* Packs para armar: un punto de entrada por pack (multi-producto) */}
-        {showVolume && acceptsCart && packGroups.length > 0 && (
+        {showVolume && acceptsCart && !menuHidden && packGroups.length > 0 && (
           <section id="packs" className="mt-6 mb-10 scroll-mt-[184px] sm:scroll-mt-24">
             <h3 className="font-display text-xl font-semibold mb-3">🧊 Armá tu pack</h3>
             <div className="space-y-2">

@@ -51,7 +51,7 @@ export const CONFIG_SECTION_ICONS: Record<string, LucideIcon> = {
 
 export const CONFIG_SECTION_DESCS: Record<string, string> = {
   perfil: "Nombre, descripción, fotos y galería de tu vidriera.",
-  carta: "Tu carta de mesa: QR imprimible y quién puede verla.",
+  carta: "Carta de mesa con QR: elegí si el menú también se ve en tu tienda pública.",
   ubicacion: "Dónde estás y cuándo abrís.",
   contacto: "Cómo te contactan tus clientes.",
   pagos: "Medios de pago, entrega, Mercado Pago y venta online.",

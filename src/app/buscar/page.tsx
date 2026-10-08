@@ -279,11 +279,11 @@ export default async function BuscarPage({
       [pattern, zone.neighborhoods]
     ),
     queryMany<Record<string, unknown>>(
-      `SELECT p.*, json_build_object('id', v.id, 'slug', v.slug, 'store_name', v.store_name, 'vertical', v.vertical, 'image_url', v.image_url) AS vendors
-       FROM products p
-       JOIN vendors v ON v.id = p.vendor_id
-       WHERE p.available = true AND p.neighborhood = ANY($2) AND v.visible = true AND (p.name ILIKE $1 OR p.description ILIKE $1 OR p.category ILIKE $1)
-       ORDER BY p.name`,
+       `SELECT p.*, json_build_object('id', v.id, 'slug', v.slug, 'store_name', v.store_name, 'vertical', v.vertical, 'image_url', v.image_url) AS vendors
+        FROM products p
+        JOIN vendors v ON v.id = p.vendor_id
+        WHERE p.available = true AND p.neighborhood = ANY($2) AND v.visible = true AND COALESCE(to_jsonb(v)->>'carta_visibility', 'public') = 'public' AND (p.name ILIKE $1 OR p.description ILIKE $1 OR p.category ILIKE $1)
+        ORDER BY p.name`,
       [pattern, zone.neighborhoods]
     ),
   ]) as unknown as [VendorRow[], ProductRow[]];

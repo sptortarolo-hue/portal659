@@ -42,7 +42,7 @@ export default function CartaQrPage() {
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error(data?.error || "No se pudo guardar");
       setVendor({ ...vendor, carta_visibility: next });
-      setNotice(next === "public" ? "Carta pública: ya se linkea desde tu tienda." : "Carta solo-QR: solo entra quien escanea.");
+      setNotice(next === "public" ? "Carta pública: el menú se ve en tu tienda." : "Carta solo-QR: el menú salió de tu tienda, solo se ve por QR.");
     } catch {
       setNotice("No se pudo guardar. Probá de nuevo.");
     } finally {
@@ -178,7 +178,7 @@ export default function CartaQrPage() {
                 }`}
               >
                 📱 Solo QR
-                <span className="block text-xs font-normal mt-0.5">Solo entra quien escanea. No indexa.</span>
+                <span className="block text-xs font-normal mt-0.5">El menú sale de tu tienda y buscar. Solo por QR.</span>
               </button>
               <button
                 type="button"
@@ -191,11 +191,12 @@ export default function CartaQrPage() {
                 }`}
               >
                 🌐 Pública
-                <span className="block text-xs font-normal mt-0.5">Se linkea desde tu tienda e indexa en Google.</span>
+                <span className="block text-xs font-normal mt-0.5">El menú se ve en tu tienda, buscar e indexa.</span>
               </button>
             </div>
             <p className="text-xs text-muted-foreground">
-              La carta es solo lectura (sin carrito): el pedido lo levanta el mesero. Funciona aunque tu tienda esté oculta.
+              La carta es solo lectura (sin carrito): el pedido lo levanta el mesero. Con Solo QR, el menú sale
+              de tu tienda pública y solo se ve escaneando.
             </p>
             {notice && <p className="text-xs text-muted-foreground">{notice}</p>}
           </div>

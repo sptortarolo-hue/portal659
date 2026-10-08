@@ -63,8 +63,8 @@ export function CartaQrSection({ vendor, saveVendor, setMsg }: Props) {
       await saveVendor({ carta_visibility: next });
       setMsg(
         next === "public"
-          ? "Carta pública: se linkea desde tu tienda e indexa en Google."
-          : "Carta solo-QR: solo entra quien escanea el código."
+          ? "Carta pública: el menú se ve en tu tienda, buscar e indexa."
+          : "Carta solo-QR: el menú salió de tu tienda y buscar, solo se ve por QR."
       );
     } catch {
       setMsg("No se pudo guardar la visibilidad. Probá de nuevo.");
@@ -99,8 +99,8 @@ export function CartaQrSection({ vendor, saveVendor, setMsg }: Props) {
           </div>
           <div className="min-w-0 flex-1 space-y-2">
             <p className="text-sm text-muted-foreground">
-              Tu carta de mesa (solo lectura, sin carrito: el pedido lo levanta el mesero). Funciona aunque tu
-              tienda esté oculta.
+              Tu carta de mesa (solo lectura, sin carrito: el pedido lo levanta el mesero). Con Solo QR, el menú
+              sale de tu tienda pública y solo se ve escaneando.
             </p>
             <div className="flex items-center gap-2 flex-wrap">
               {cartaUrl && (
@@ -142,7 +142,7 @@ export function CartaQrSection({ vendor, saveVendor, setMsg }: Props) {
               }`}
             >
               📱 Solo QR
-              <span className="block text-xs font-normal mt-0.5">Solo entra quien escanea. No indexa.</span>
+              <span className="block text-xs font-normal mt-0.5">El menú sale de tu tienda y buscar. Solo por QR.</span>
             </button>
             <button
               type="button"
@@ -155,7 +155,7 @@ export function CartaQrSection({ vendor, saveVendor, setMsg }: Props) {
               }`}
             >
               🌐 Pública
-              <span className="block text-xs font-normal mt-0.5">Se linkea desde tu tienda e indexa.</span>
+              <span className="block text-xs font-normal mt-0.5">El menú se ve en tu tienda, buscar e indexa.</span>
             </button>
           </div>
         </div>

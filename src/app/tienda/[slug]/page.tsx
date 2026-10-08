@@ -328,11 +328,11 @@ export default async function TiendaPage({
     sections.push({ name: isCatalog ? "Catálogo" : "Menú", items: menuOffers });
   }
   // Carta solo-QR: el menú/catálogo solo se ve por QR (/carta). En el
-  // micrositio público se ocultan secciones, promos y packs (queda info,
-  // contacto y reseñas). En preview se sigue viendo todo para verificar.
+  // micrositio (incluido el preview, que muestra lo mismo que el público)
+  // se ocultan secciones, promos y packs: queda info, contacto y reseñas.
   // Tolerante a migración sin aplicar (undefined = público, como antes).
   const cartaQrOnly = (v.carta_visibility ?? "public") !== "public";
-  const menuHidden = cartaQrOnly && !preview;
+  const menuHidden = cartaQrOnly;
   if (menuHidden) {
     sections.length = 0;
     promos.length = 0;

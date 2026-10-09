@@ -216,6 +216,16 @@ Portal 659: "El centro comercial de tu barrio". Hub multicommerce hiperlocal (Si
 
 ## Publicación en Google Play Store
 
+- **Portal 659** (TWA, `ar.portal659.app`): AAB listo en `portal659-twa/app-release-bundle.aab` (versionCode 1). Plan completo con textos y checklist en `docs/publicacion-play-store.md`.
+- **Portal Print** (`ar.portal659.print`): AAB listo en `android/android/app/build/outputs/bundle/release/app-release.aab` (versionCode 2). FGS corregido a `specialUse` (sin tope 6h). En Prueba cerrada de Play Console.
+- **Cuenta personal** → ambas requieren prueba cerrada (12 verificadores + 14 días) antes de Production. No se puede saltar.
+- **Políticas de privacidad**: Portal 659 → `https://www.portal659.com.ar/privacidad` · Portal Print → `https://www.portal659.com.ar/privacidad-print`
+- **Eliminación de cuenta**: `https://www.portal659.com.ar/eliminar-cuenta` (creada para Data Safety)
+- **assetlinks.json**: actualizar con SHA-256 del "App signing key certificate" de Play Console (no el del keystore local) antes de verificar Digital Asset Links.
+- **Keystores**: `C:\Users\IPS\portal659-keystore\portal659-release.keystore` (Portal 659) y `portal-print-release.keystore` (Portal Print). No versionados.
+
+## Publicación en Google Play Store
+
 - **Cuenta personal** → requiere **prueba cerrada** (12 verificadores + 14 días) antes de Production. No se puede saltar.
 - **Portal 659** (TWA, `ar.portal659.app`): AAB listo en `portal659-twa/app-release-bundle.aab`. Plan completo en `docs/publicacion-play-store.md`.
 - **Portal Print** (`ar.portal659.print`): AAB listo en `android/android/app/build/outputs/bundle/release/app-release.aab` (versionCode 2). FGS corregido a `specialUse` (sin tope 6h). Ya en prueba cerrada.

@@ -213,16 +213,6 @@ export function StoreHeader({
 
             {/* Botones de acción */}
             <div className="flex items-center gap-2 mt-4">
-              {mapsUrl && (
-                <a
-                  href={mapsUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 rounded-full bg-white text-gray-900 px-4 py-2 text-sm font-semibold hover:bg-gray-100 transition-colors"
-                >
-                  📍 Cómo llegar
-                </a>
-              )}
               {waNumber && (
                 <a
                   href={waUrl}
@@ -251,8 +241,40 @@ export function StoreHeader({
         </div>
       </div>
 
-      {/* Zona 2: Grid de info cards */}
+      {/* Zona 3 (arriba): Tags secundarios + descripción */}
       <div className="container mx-auto px-4 max-w-4xl -mt-6 relative z-10">
+        <div className="rounded-2xl border border-border bg-card p-4 shadow-lg">
+          {v.description && (
+            <p className="text-muted-foreground text-sm mb-3">{v.description}</p>
+          )}
+          <div className="flex flex-wrap gap-2">
+            {isGastro && acceptsCart && v.prep_time_min != null && Number(v.prep_time_min) > 0 && (
+              <span className="rounded-full bg-primary/10 text-primary px-3 py-1 text-xs font-medium">
+                ⏱️ {v.prep_time_min} min
+              </span>
+            )}
+            {v.neighborhood && (
+              <span className="rounded-full bg-muted px-3 py-1 text-xs text-muted-foreground capitalize">
+                📍 {v.neighborhood}
+              </span>
+            )}
+            {(v as any).carta_visibility === "public" && !isService && (
+              <a
+                href={`/carta/${v.slug}`}
+                className="rounded-full bg-primary/10 text-primary px-3 py-1 text-xs font-medium hover:bg-primary/20 transition-colors"
+              >
+                {isCatalog ? "Ver catálogo" : "Ver carta de mesa"}
+              </a>
+            )}
+            {!isService && !isModa && !menuHidden && offersCount > 0 && (
+              <IrAComprarButton label={acceptsCart ? undefined : isCatalog ? "Ver el catálogo" : "Ver la carta"} />
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Zona 2: Grid de info cards */}
+      <div className="container mx-auto px-4 max-w-4xl mt-3">
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           {/* Ubicación */}
           <div className="col-span-2 sm:col-span-1 rounded-2xl border border-border bg-card p-4 shadow-lg">
@@ -267,13 +289,23 @@ export function StoreHeader({
               <p className="text-xs text-muted-foreground mt-1 capitalize">{hood}</p>
             )}
             {mapsUrl && (
-              <button
-                type="button"
-                onClick={() => setShowMap(!showMap)}
-                className="text-xs text-primary font-medium hover:underline mt-2"
-              >
-                {showMap ? "Ocultar mapa" : "Ver mapa"}
-              </button>
+              <div className="flex items-center gap-2 mt-2">
+                <a
+                  href={mapsUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-primary font-medium hover:underline"
+                >
+                  Cómo llegar
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setShowMap(!showMap)}
+                  className="text-xs text-primary font-medium hover:underline"
+                >
+                  {showMap ? "Ocultar mapa" : "Ver mapa"}
+                </button>
+              </div>
             )}
             {showMap && mapsUrl && (
               <div className="mt-2 rounded-xl overflow-hidden border border-border">
@@ -418,37 +450,6 @@ export function StoreHeader({
         </div>
       </div>
 
-      {/* Zona 3: Tags secundarios + descripción */}
-      <div className="container mx-auto px-4 max-w-4xl mt-4">
-        <div className="rounded-2xl border border-border bg-card p-4 shadow-lg">
-          {v.description && (
-            <p className="text-muted-foreground text-sm mb-3">{v.description}</p>
-          )}
-          <div className="flex flex-wrap gap-2">
-            {isGastro && acceptsCart && v.prep_time_min != null && Number(v.prep_time_min) > 0 && (
-              <span className="rounded-full bg-primary/10 text-primary px-3 py-1 text-xs font-medium">
-                ⏱️ {v.prep_time_min} min
-              </span>
-            )}
-            {v.neighborhood && (
-              <span className="rounded-full bg-muted px-3 py-1 text-xs text-muted-foreground capitalize">
-                📍 {v.neighborhood}
-              </span>
-            )}
-            {(v as any).carta_visibility === "public" && !isService && (
-              <a
-                href={`/carta/${v.slug}`}
-                className="rounded-full bg-primary/10 text-primary px-3 py-1 text-xs font-medium hover:bg-primary/20 transition-colors"
-              >
-                {isCatalog ? "Ver catálogo" : "Ver carta de mesa"}
-              </a>
-            )}
-            {!isService && !isModa && !menuHidden && offersCount > 0 && (
-              <IrAComprarButton label={acceptsCart ? undefined : isCatalog ? "Ver el catálogo" : "Ver la carta"} />
-            )}
-          </div>
-        </div>
-      </div>
     </div>
   );
 }

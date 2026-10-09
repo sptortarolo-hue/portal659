@@ -31,4 +31,8 @@ export const config = {
   // menú, "¿tuviste un problema?" + forwarding al dueño). Default concierge.
   // No se borra código: el flujo de pedidos solo no se entra cuando está off.
   takeOrders: process.env.BOT_TAKE_ORDERS === "1",
+  // Timeout de no-respuesta: si hay una pregunta pendiente (persona 1/2, consulta
+  // o comprobante) sin contestar por más de esto, el bot avisa que va a ser
+  // atendido por una persona y deriva (push al dueño + pausa).
+  handoffTimeoutMin: Number(process.env.WA_HANDOFF_TIMEOUT_MIN || 5),
 };

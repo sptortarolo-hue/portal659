@@ -1,7 +1,8 @@
 import { config } from "./config.mjs";
-import { getState, setState, clearState } from "./state.mjs";
+import { getState, setState, clearState, forEachConversation } from "./state.mjs";
 import { getMenu, getMenuSync, matchProduct, matchAllProducts, normalizeForMatch, menuSummary } from "./menu.mjs";
 import { parseWithLlm, parseByRules, normalizeEs, extractFromText, bareName } from "./nlu.mjs";
+import { getClientByVendor, sendText, sendTyping, sendPaused } from "./relay.mjs";
 
 const DEFAULT_STATE = {
   step: "idle",
@@ -158,6 +159,10 @@ export async function handleInbound({ vendor, waId, body, waPhone }) {
     // compartido y las conversaciones nuevas arrancaban con el carrito de otra.
     if (!state.items || !Array.isArray(state.items) || state.items === DEFAULT_STATE.items) state.items = [];
     if (!Array.isArray(state.history) || state.history === DEFAULT_STATE.history) state.history = [];
+
+    // Hora de la última actividad del cliente: la usa el sweep de inactividad
+    // (pregunta pendiente sin contestar → "va a ser atendido por una persona").
+    state.touchedAt = Date.now();
 
     // Cancelación global (siempre disponible, incluso durante la pausa de
     // handoff — antes el check de pausa la bloqueaba y el bot callaba hasta
@@ -1048,6 +1053,7 @@ async function handleConcierge({ vendor, text, state, replies, waId }) {
     }
     if (RE_PERSON_NO.test(low)) {
       state.step = "idle";
+      state.personAskCount = 0;
       const recent = await latestOrderFor(vendor.id, state.customerPhone || waId);
       const link = recent?.trackUrl || shopUrl(vendor);
       replies.push(
@@ -1055,6 +1061,16 @@ async function handleConcierge({ vendor, text, state, replies, waId }) {
       );
       return;
     }
+    // Ignoró las opciones: la PRIMERA vez re-pregunta; a la SEGUNDA escala a
+    // una persona (la persona levanta el pedido por WhatsApp).
+    if (state.personAskCount >= 1) {
+      const r = await handoffHuman(vendor, waId, text, state);
+      replies.push(...(r.replies || []));
+      state.step = "idle";
+      state.personAskCount = 0;
+      return;
+    }
+    state.personAskCount = (state.personAskCount || 0) + 1;
     replies.push(`Respondé *1* para hablar con una persona o *2* para seguir conmigo.`);
     return;
   }
@@ -1108,6 +1124,70 @@ async function handoffHuman(vendor, waId, text, state) {
   await setState(vendor.id, waId, state);
   await notifyHandoff(vendor.id, waId, text);
   return { replies: [`Enseguida te atiende una persona de *${vendor.store_name}* 🙌`] };
+}
+
+// ———————————————————————————————————————————————————————————————————————————
+// Sweep de inactividad (lo llama index.mjs cada 60s): cliente que no contesta
+// lo que el bot le pide → "va a ser atendido por una persona" + push al dueño
+// + pausa. Patrón Omnifox/Twilio (inactivity → remind → escalate).
+//
+// NO interrumpe los eventos del pedido: el /send (aceptado, en camino, listo,
+// datos de pago) no mira pausedUntil — solo la conexión del relay y el kill
+// switch. Así el canal queda abierto y las notificaciones siguen llegando.
+// ———————————————————————————————————————————————————————————————————————————
+
+const SWEEP_WAITING_STEPS = new Set([
+  "concierge_askperson",   // la pregunta 1/2 pendiente
+  "concierge_feedback",    // esperando la consulta/sugerencia
+  "awaiting_receipt",      // esperando el comprobante de la transferencia
+]);
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const rand = (min, max) => Math.round(min + Math.random() * (max - min));
+// Delay humano (igual que index.mjs): simula lectura antes del aviso.
+const humanDelay = (len) => Math.min(config.replyDelayMaxMs, config.replyDelayMinMs + len * 4 + rand(200, 700));
+
+export async function sweepStaleConversations() {
+  const now = Date.now();
+  const TIMEOUT = config.handoffTimeoutMin * 60 * 1000;
+
+  await forEachConversation(async (vendorId, waId, state) => {
+    if (!state || !state.step) return;
+    // Anti-loop: ya derivado (pausa activa) → el scan no repite.
+    if (state.pausedUntil && state.pausedUntil > now) return;
+    // Solo estados esperando respuesta del cliente.
+    if (!SWEEP_WAITING_STEPS.has(state.step)) return;
+    const touched = Number(state.touchedAt) || 0;
+    if (!touched || now - touched < TIMEOUT) return;
+
+    // El vendor viene de la conexión del relay (si no está conectado, no hay
+    // nada que enviar y el push no tiene sentido sin el contexto del comercio).
+    const client = getClientByVendor(vendorId);
+    if (!client || !client.vendor || client.vendor.enabled === false) return;
+    const vendor = client.vendor;
+
+    // Rate limit de salida para el aviso al cliente (el push al dueño siempre va).
+    const lastUserMsg = Array.isArray(state.history)
+      ? [...state.history].reverse().find((h) => h.role === "user")?.text || ""
+      : "";
+
+    // Aviso al cliente (con pacing humano, como el resto del bot).
+    try {
+      await sleep(humanDelay(20));
+      sendTyping(client, waId);
+      sendText(client, waId, `Enseguida te atiende una persona de *${vendor.store_name}* 🙌`);
+      sendPaused(client, waId);
+    } catch { /* el push al dueño va igual */ }
+
+    // Push al dueño con contexto (teléfono + último mensaje) — la "nota interna".
+    await notifyHandoff(vendorId, waId, lastUserMsg || "(sin mensaje)");
+
+    // Pausa: el scan no repite (anti-loop) y la persona atiende tranquila.
+    state.pausedUntil = Date.now() + HANDOFF_PAUSE_MIN * 60 * 1000;
+    state.pauseNotified = true;
+    await setState(vendorId, waId, state).catch(() => {});
+    console.log(`[sweep] ${vendor.store_name} (${waId}) sin respuesta > ${config.handoffTimeoutMin} min — derivado a persona`);
+  });
 }
 
 async function notifyHandoff(vendorId, waId, text) {

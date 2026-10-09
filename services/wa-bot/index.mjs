@@ -2,7 +2,7 @@ import { createServer } from "node:http";
 import { WebSocketServer, WebSocket } from "ws";
 import { config } from "./src/config.mjs";
 import { vendorByToken } from "./src/db.mjs";
-import { handleInbound, handleInboundMedia, startAwaitingReceipt } from "./src/bot.mjs";
+import { handleInbound, handleInboundMedia, startAwaitingReceipt, sweepStaleConversations } from "./src/bot.mjs";
 import { getState } from "./src/state.mjs";
 import { llmStats } from "./src/nlu.mjs";
 import { addClient, removeClient, getClient, getClientByVendor, sendText, sendTyping, sendPaused, clientCount, forEachClient } from "./src/relay.mjs";
@@ -287,6 +287,13 @@ async function attach(ws, token) {
   });
   ws.on("error", () => removeClient(token, ws));
 }
+
+// Sweep de inactividad cada 60s: pregunta pendiente sin contestar (persona 1/2,
+// consulta, comprobante) > WA_HANDOFF_TIMEOUT_MIN → aviso al cliente + push al
+// dueño + pausa. Los eventos del pedido no se interrumpen (no miran la pausa).
+setInterval(() => {
+  sweepStaleConversations().catch((e) => console.error("[sweep] error:", e?.message || e));
+}, 60_000);
 
 // Heartbeat: distingue "relay vivo (aunque en silencio)" de "relay caído".
 // Envía ping cada 20s; gorilla/websocket del relay contesta pong automáticamente.

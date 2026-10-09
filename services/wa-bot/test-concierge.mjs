@@ -110,6 +110,29 @@ async function main() {
   if (!(r.replies || []).join(" ").includes("Enseguida te atiende una persona")) { console.log("!!! 'ayuda' no fue al humano"); ok = false; }
   else { console.log(">>> OK: 'ayuda' → handoff inmediato"); }
 
+  // 8. Sweep de inactividad: pregunta pendiente sin contestar > 5 min → el bot
+  // avisa "va a ser atendido por una persona" + push al dueño + pausa.
+  const { sweepStaleConversations, DEFAULT_STATE } = await import("./src/bot.mjs");
+  const { setState } = await import("./src/state.mjs");
+  r = await handleInbound({ vendor, waId: wa, body: "cancelar" });
+  r = await handleInbound({ vendor, waId: wa, body: "hola" });
+  r = await handleInbound({ vendor, waId: wa, body: "quería consultar sobre algo" }); // → pregunta persona
+  handoffNotified = false;
+  // Forzar staleness: touchedAt viejo (6 min) con la pregunta pendiente.
+  await setState(vendor.id, wa, { ...DEFAULT_STATE, step: "concierge_askperson", welcomed: true, touchedAt: Date.now() - 6 * 60 * 1000 });
+  // El sweep necesita el cliente del relay conectado: fake ws (readyState OPEN).
+  const { addClient } = await import("./src/relay.mjs");
+  addClient("fake-ws-token", { readyState: 1, send: () => true, ping: () => {} }, vendor);
+  await sweepStaleConversations();
+  await new Promise((res) => setTimeout(res, 50));
+  if (!handoffNotified) { console.log("!!! el sweep no notificó al dueño"); ok = false; }
+  else { console.log(">>> OK: sweep de inactividad → push al dueño (la persona atiende)"); }
+  // El estado quedó con pausa: el sweep NO repite (anti-loop).
+  handoffNotified = false;
+  await sweepStaleConversations();
+  if (handoffNotified) { console.log("!!! el sweep repitió el handoff (anti-loop roto)"); ok = false; }
+  else { console.log(">>> OK: el sweep no repite con la pausa activa"); }
+
   if (!ok) { console.error("\n=== HAY FALLOS (concierge) ==="); process.exit(1); }
   console.log("\n=== TODO OK (concierge v2) ===");
 }

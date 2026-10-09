@@ -50,6 +50,26 @@ export async function clearState(vendorId, waId) {
   }
 }
 
+/** Itera TODAS las conversaciones activas (no vencidas): fn(vendorId, waId, state).
+ *  Para el sweep de inactividad del cerebro (cliente que no contesta → persona).
+ *  Con Redis activo el scan no ve las keys (limitación aceptada del piloto:
+ *  el VPS corre redis=off, todo vive en memoria del proceso). */
+export async function forEachConversation(fn) {
+  const now = Date.now();
+  for (const [k, entry] of memory) {
+    if (entry.expireAt && now > entry.expireAt) {
+      memory.delete(k);
+      continue;
+    }
+    // key = wa:conv:<vendorId>:<waId>
+    const parts = k.split(":");
+    const vendorId = parts[2] || "";
+    const waId = parts[3] || "";
+    if (!vendorId || !waId) continue;
+    await fn(vendorId, waId, entry.state);
+  }
+}
+
 // ————— QR de vinculación (guardado en Postgres, TTL por antigüedad 90s) —————
 const QR_TTL_MS = 90 * 1000;
 

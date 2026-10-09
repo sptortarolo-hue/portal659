@@ -41,6 +41,15 @@ type VendorData = {
   verified: boolean;
   accepts_online_orders: boolean;
   carta_visibility: string;
+  services_list: string | null;
+  service_area: string | null;
+  free_estimate: boolean | null;
+  urgent_enabled: boolean | null;
+  quote_pref_enabled: boolean | null;
+  quote_days: string[] | null;
+  quote_slots: string[] | null;
+  bookings_enabled: boolean | null;
+  accepting_quotes: boolean | null;
 };
 
 type StoreHeaderProps = {
@@ -62,6 +71,8 @@ type StoreHeaderProps = {
   retailDeliveryOpen: boolean | null;
   retailDeliveryPaused: boolean;
   retailPauseMsg: string | null;
+  isEstetica: boolean;
+  urgentSurcharge: number | null;
 };
 
 export function StoreHeader({
@@ -83,6 +94,8 @@ export function StoreHeader({
   retailDeliveryOpen,
   retailDeliveryPaused,
   retailPauseMsg,
+  isEstetica,
+  urgentSurcharge,
 }: StoreHeaderProps) {
   const [showMap, setShowMap] = useState(false);
   const openNow = isStoreOpen(v as any);
@@ -127,6 +140,18 @@ export function StoreHeader({
     { label: "Instagram", url: v.instagram?.startsWith("http") ? v.instagram : `https://instagram.com/${v.instagram?.replace("@", "")}`, icon: "📷" },
     { label: "Facebook", url: v.facebook?.startsWith("http") ? v.facebook : `https://facebook.com/${v.facebook}`, icon: "📘" },
   ].filter((s) => s.url);
+
+  // Servicios: días y franjas de atención (mismo vocabulario que QuoteForm).
+  const DAY_LABELS: Record<string, string> = {
+    lun: "Lun", mar: "Mar", mie: "Mié", jue: "Jue", vie: "Vie", sab: "Sáb", dom: "Dom",
+  };
+  const attentionDays = Array.isArray(v.quote_days) && v.quote_pref_enabled !== false
+    ? v.quote_days.map((d: string) => DAY_LABELS[d] || d).filter(Boolean)
+    : [];
+  const attentionSlots = Array.isArray(v.quote_slots) && v.quote_pref_enabled !== false
+    ? v.quote_slots.map((s: string) => s.charAt(0).toUpperCase() + s.slice(1)).filter(Boolean)
+    : [];
+  const showUrgency = isService && !isEstetica && v.urgent_enabled === true;
 
   return (
     <div id="store-header" className="relative">
@@ -276,14 +301,19 @@ export function StoreHeader({
       {/* Zona 2: Grid de info cards */}
       <div className="container mx-auto px-4 max-w-4xl mt-3">
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          {/* Ubicación */}
+          {/* Ubicación (servicios: zona de cobertura si no hay dirección física) */}
           <div className="col-span-2 sm:col-span-1 rounded-2xl border border-border bg-card p-4 shadow-lg">
             <div className="flex items-center gap-2 mb-2">
               <span className="text-lg">📍</span>
-              <span className="font-semibold text-sm">Ubicación</span>
+              <span className="font-semibold text-sm">
+                {isService && !v.address ? "Zona de atención" : "Ubicación"}
+              </span>
             </div>
             {v.address && (
               <p className="text-sm text-muted-foreground line-clamp-2">{v.address}</p>
+            )}
+            {isService && !v.address && v.service_area && (
+              <p className="text-sm text-muted-foreground line-clamp-2">{v.service_area}</p>
             )}
             {hood && (
               <p className="text-xs text-muted-foreground mt-1 capitalize">{hood}</p>
@@ -335,45 +365,75 @@ export function StoreHeader({
             )}
           </div>
 
-          {/* Delivery */}
-          <div className="rounded-2xl border border-border bg-card p-4 shadow-lg">
-            <div className="flex items-center gap-2 mb-2">
-              <span className="text-lg">🛵</span>
-              <span className="font-semibold text-sm">Delivery</span>
-            </div>
-            <p className="text-sm font-medium">{deliveryLabel}</p>
-            {v.delivery_options !== "retiro" && (
-              <div className="mt-1 space-y-0.5">
-                <p className="text-xs text-muted-foreground">
-                  Envío: {deliveryFeeLabel}
-                  {freeDeliveryLabel && ` · ${freeDeliveryLabel}`}
+          {/* Servicios: atención en lugar de delivery (no tienen repartidor) */}
+          {isService ? (
+            <div className="rounded-2xl border border-border bg-card p-4 shadow-lg">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-lg">🔧</span>
+                <span className="font-semibold text-sm">Atención</span>
+              </div>
+              {v.service_area && (
+                <p className="text-sm font-medium line-clamp-2">{v.service_area}</p>
+              )}
+              {!isEstetica && v.free_estimate !== false && (
+                <p className="text-xs text-green-600 font-medium mt-1">Presupuesto sin cargo</p>
+              )}
+              {showUrgency && (
+                <p className="text-xs text-red-600 font-medium mt-1">
+                  🚨 Urgencias 24 h{urgentSurcharge != null ? ` (+${urgentSurcharge} %)` : ""}
                 </p>
-                {prepLabel && (
-                  <p className="text-xs text-muted-foreground">Tiempo: {prepLabel}</p>
-                )}
+              )}
+              {(attentionDays.length > 0 || attentionSlots.length > 0) && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  {attentionDays.length > 0 ? attentionDays.join(" · ") : ""}
+                  {attentionDays.length > 0 && attentionSlots.length > 0 ? " · " : ""}
+                  {attentionSlots.length > 0 ? attentionSlots.join(" y ") : ""}
+                </p>
+              )}
+              {v.bookings_enabled !== false && (
+                <p className="text-xs text-muted-foreground mt-1">📅 Con turno online</p>
+              )}
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-border bg-card p-4 shadow-lg">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-lg">🛵</span>
+                <span className="font-semibold text-sm">Delivery</span>
               </div>
-            )}
-            {v.delivery_area_text && (
-              <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{v.delivery_area_text}</p>
-            )}
-            {isCatalog && retailSlots.length > 0 && v.delivery_options !== "retiro" && (
-              <div className="mt-2">
-                <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                  retailDeliveryPaused
-                    ? "bg-amber-100 text-amber-800"
-                    : retailDeliveryOpen === false
-                      ? "bg-gray-100 text-gray-600"
-                      : "bg-green-100 text-green-700"
-                }`}>
-                  {retailDeliveryPaused
-                    ? `Pausado · sale ${retailSlots[0].label}`
-                    : retailDeliveryOpen === false
-                      ? `Próximo: ${retailSlots[0].label}`
-                      : `Llega ${retailSlots[0].label}`}
-                </span>
-              </div>
-            )}
-          </div>
+              <p className="text-sm font-medium">{deliveryLabel}</p>
+              {v.delivery_options !== "retiro" && (
+                <div className="mt-1 space-y-0.5">
+                  <p className="text-xs text-muted-foreground">
+                    Envío: {deliveryFeeLabel}
+                    {freeDeliveryLabel && ` · ${freeDeliveryLabel}`}
+                  </p>
+                  {prepLabel && (
+                    <p className="text-xs text-muted-foreground">Tiempo: {prepLabel}</p>
+                  )}
+                </div>
+              )}
+              {v.delivery_area_text && (
+                <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{v.delivery_area_text}</p>
+              )}
+              {isCatalog && retailSlots.length > 0 && v.delivery_options !== "retiro" && (
+                <div className="mt-2">
+                  <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                    retailDeliveryPaused
+                      ? "bg-amber-100 text-amber-800"
+                      : retailDeliveryOpen === false
+                        ? "bg-gray-100 text-gray-600"
+                        : "bg-green-100 text-green-700"
+                  }`}>
+                    {retailDeliveryPaused
+                      ? `Pausado · sale ${retailSlots[0].label}`
+                      : retailDeliveryOpen === false
+                        ? `Próximo: ${retailSlots[0].label}`
+                        : `Llega ${retailSlots[0].label}`}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Reseñas */}
           <div className="rounded-2xl border border-border bg-card p-4 shadow-lg">

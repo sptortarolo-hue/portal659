@@ -619,6 +619,8 @@ export default async function TiendaPage({
         retailDeliveryOpen={retailDeliveryOpen}
         retailDeliveryPaused={retailDeliveryPaused}
         retailPauseMsg={retailPauseMsg}
+        isEstetica={isEstetica}
+        urgentSurcharge={urgentSurcharge}
       />
 
       {/* Barra de marca fija (solo mobile): aparece al scrollear más allá del header */}

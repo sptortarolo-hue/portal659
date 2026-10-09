@@ -1918,7 +1918,7 @@ function VendorDashboardInner() {
               {mountedTabs.has("mesas") && (
                 <div className={tab === "mesas" ? "" : "hidden"}>
                   {effectivePlan.can("mesas") ? (
-                    <MemoMesas vendorId={vendor.id} />
+                    <MemoMesas vendorId={vendor.id} liveOrders={orders as any} />
                   ) : (
                     <PlanLock
                       title="Gestión de mesas"

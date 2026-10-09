@@ -139,9 +139,19 @@ const PAYMENT_LABELS: Record<string, string> = {
   mixto: "Mixto",
 };
 
-export function Mesas({ vendorId }: { vendorId?: string | null }) {
+export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; liveOrders?: Order[] }) {
   const [tables, setTables] = useState<Table[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
+  // Unión: snapshot propio (completitud al montar) + pedidos vivos del padre
+  // (SSE del dashboard). Los vivos pisan por id: modificar/cancelar desde
+  // Pedidos/Comanda se refleja en la cuenta sin recargar.
+  const allOrders = useMemo(() => {
+    if (!liveOrders || liveOrders.length === 0) return orders;
+    const map = new Map<string, Order>();
+    for (const o of orders) map.set(o.id, o);
+    for (const o of liveOrders) map.set(o.id, o as Order);
+    return Array.from(map.values());
+  }, [orders, liveOrders]);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
@@ -170,7 +180,7 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
     setMobileView("catalog");
   }
   const tableSubtotal = (id: string) =>
-    orders
+    allOrders
       .filter((o) => o.table_id === id && o.status !== "cancelled" && o.status !== "completed")
       .reduce((s, o) => s + Number(o.total), 0);
   const [renaming, setRenaming] = useState<string | null>(null);
@@ -691,18 +701,18 @@ export function Mesas({ vendorId }: { vendorId?: string | null }) {
   const openOrders = useMemo(
     () =>
       selected
-        ? orders.filter(
+        ? allOrders.filter(
             (o) => o.table_id === selected.id && o.status !== "cancelled" && o.status !== "completed"
           )
         : [],
-    [orders, selected]
+    [allOrders, selected]
   );
   const closedOrders = useMemo(
     () =>
       selected
-        ? orders.filter((o) => o.table_id === selected.id && o.status === "completed")
+        ? allOrders.filter((o) => o.table_id === selected.id && o.status === "completed")
         : [],
-    [orders, selected]
+    [allOrders, selected]
   );
 
   // Ledger offline de la mesa seleccionada (F2).

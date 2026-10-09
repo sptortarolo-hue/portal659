@@ -30,6 +30,7 @@ import { PromoSection } from "@/components/store/promo-section";
 import { PackSheetHost } from "@/components/store/pack-sheet";
 import { StoreGallery } from "@/components/store/store-gallery";
 import { WeeklyHours } from "@/components/store/weekly-hours";
+import { StoreHeader } from "@/components/store/store-header";
 import { StickyStoreBar } from "@/components/store/sticky-store-bar";
 import { VendorShareButton } from "@/components/store/vendor-share-button";
 import { PreviewBanner } from "@/components/store/preview-banner";
@@ -598,185 +599,32 @@ export default async function TiendaPage({
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
-      {/* Full-width cover */}
-      <div className="relative h-56 sm:h-72 w-full">
-        {v.image_url ? (
-          <ProductImage src={v.image_url} name={v.store_name} vertical={v.vertical} alt={v.store_name} className="w-full h-full object-cover" eager />
-        ) : (
-          <ProductImage src={null} name={v.store_name} vertical={v.vertical} alt={v.store_name} className="w-full h-full" iconClassName="h-24 w-24" />
-        )}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
-      </div>
+      {/* Store Header: hero con info superpuesta + grid de cards + tags */}
+      <StoreHeader
+        vendor={v}
+        planBadge={planBadge}
+        acceptsCart={acceptsCart}
+        isService={isService}
+        isModa={isModa}
+        isCatalog={isCatalog}
+        isGastro={isGastro}
+        menuHidden={menuHidden}
+        offersCount={offers?.length || 0}
+        avgRating={avgRating}
+        reviewCount={reviewCount}
+        storeBlurb={storeBlurb}
+        waUrl={waUrl}
+        waNumber={waNumber}
+        retailSlots={retailSlots}
+        retailDeliveryOpen={retailDeliveryOpen}
+        retailDeliveryPaused={retailDeliveryPaused}
+        retailPauseMsg={retailPauseMsg}
+      />
 
       {/* Barra de marca fija (solo mobile): aparece al scrollear más allá del header */}
       <StickyStoreBar logoUrl={v.logo_url} storeName={v.store_name} />
 
       <div className="container mx-auto px-4 max-w-4xl">
-        {/* Store info card */}
-        <div id="store-header" className="-mt-12 relative z-10 rounded-2xl border border-border bg-card p-6 shadow-lg">
-          {/* Mobile: fila logo (izq) + Ir a comprar al extremo opuesto (der), misma altura */}
-          <div className="flex sm:hidden items-center justify-between mb-3">
-            {v.logo_url ? (
-              <ProductImage
-                src={v.logo_url}
-                name={v.store_name}
-                vertical={v.vertical}
-                alt={`Logo de ${v.store_name}`}
-                className="h-12 w-12 rounded-full border-2 border-white shadow-md"
-                eager
-              />
-            ) : (
-              <div className="h-12 w-12 rounded-full bg-accent flex items-center justify-center">
-                <span className="font-bold text-primary">{v.store_name.charAt(0)}</span>
-              </div>
-            )}
-            {!isService && !isModa && !menuHidden && (offers?.length || 0) > 0 && (
-              <IrAComprarButton label={acceptsCart ? undefined : isCatalog ? "🛍️ Ver el catálogo" : "📋 Ver la carta"} />
-            )}
-          </div>
-
-          {/* Desktop: logo sigue arriba como siempre */}
-          {v.logo_url && (
-            <ProductImage
-              src={v.logo_url}
-              name={v.store_name}
-              vertical={v.vertical}
-              alt={`Logo de ${v.store_name}`}
-              className="hidden sm:block h-16 w-16 rounded-full border-2 border-white shadow-md mb-3"
-              eager
-            />
-          )}
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
-            <div className="flex items-center gap-2 flex-wrap min-w-0">
-              <h1 className="font-display text-3xl font-semibold">
-                {v.store_name}
-              </h1>
-              {planBadge && planBadge !== "Gratuito" && (
-                <Badge variant="secondary" className="rounded-full text-[10px]">
-                  {planBadge}
-                </Badge>
-              )}
-              {v.verified && (
-                <Badge className="rounded-full bg-blue-600/90 text-white text-[10px]">
-                  ✓ Verificado
-                </Badge>
-              )}
-              <Badge
-                className={`rounded-full text-[10px] ${
-                  acceptsCart ? "bg-green-100 text-green-700" : "bg-muted text-muted-foreground"
-                }`}
-              >
-                {acceptsCart ? "🛒 Pedí online" : "💬 Solo contacto"}
-              </Badge>
-            </div>
-            <div className="flex items-center gap-2 ml-auto shrink-0">
-              <span className="hidden sm:inline-flex">
-                {!isService && !isModa && !menuHidden && (offers?.length || 0) > 0 && (
-                  <IrAComprarButton label={acceptsCart ? undefined : isCatalog ? "🛍️ Ver el catálogo" : "📋 Ver la carta"} />
-                )}
-              </span>
-              <FavoriteButton vendorId={v.id} />
-              <WhatsAppShareButton slug={v.slug} storeName={v.store_name} catalog={isCatalog} menuHidden={menuHidden} isService={isService} />
-              <VendorShareButton slug={v.slug} storeName={v.store_name} />
-            </div>
-          </div>
-          {v.description ? (
-            <p className="text-muted-foreground mt-2">{v.description}</p>
-          ) : (
-            <p className="text-muted-foreground mt-2">{storeBlurb}</p>
-          )}
-
-          {/* Tags */}
-          <div className="flex flex-wrap gap-2 mt-4">
-            {(() => {
-              const openNow = isStoreOpen(v as any);
-              return openNow !== null ? (
-                <span className={`rounded-full px-3 py-1 text-sm font-medium ${
-                  openNow ? "bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400" : "bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400"
-                }`}>
-                  {openNow ? "🟢 Abierto ahora" : "🔴 Cerrado"}
-                </span>
-              ) : null;
-            })()}
-            {isGastro && acceptsCart && v.prep_time_min && (
-              <span className="rounded-full bg-primary/10 text-primary px-3 py-1 text-sm font-medium">
-                ⏱️ {v.prep_time_min} min
-              </span>
-            )}
-            {v.hours && (
-              <div className="w-full">
-                <WeeklyHours hours={v.hours} openNow={isStoreOpen(v as any)} />
-              </div>
-            )}
-            {v.address && (
-              <span className="rounded-full bg-muted px-3 py-1 text-sm text-muted-foreground">
-                📍 {v.address}
-              </span>
-            )}
-            {v.payment_methods && (
-              <span className="rounded-full bg-muted px-3 py-1 text-sm text-muted-foreground">
-                💳 {v.payment_methods}
-              </span>
-            )}
-            {v.delivery_options && v.delivery_options !== "ambos" && (
-              <span className="rounded-full bg-accent px-3 py-1 text-sm text-accent-foreground">
-                {v.delivery_options === "retiro" ? "🏠 Solo retiro" : "🛵 Solo delivery"}
-              </span>
-            )}
-            {isCatalog && retailSlots.length > 0 && v.delivery_options !== "retiro" && (
-              <span className={`rounded-full px-3 py-1 text-sm font-medium ${
-                retailDeliveryOpen === false
-                  ? "bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
-                  : "bg-primary/10 text-primary"
-              }`}>
-                {retailDeliveryPaused
-                  ? `⏸️ Reparto en pausa${retailPauseMsg ? ` · ${retailPauseMsg}` : ""} · tu pedido sale ${retailSlots[0].label}`
-                  : retailDeliveryOpen === false
-                    ? `😴 Reparto cerrado · próximo turno ${retailSlots[0].label}`
-                    : `🛵 Te lo llevamos ${retailSlots[0].label}`}
-              </span>
-            )}
-            {v.neighborhood && (
-              <span className="rounded-full bg-muted px-3 py-1 text-sm text-muted-foreground capitalize">
-                📍 {v.neighborhood}
-              </span>
-            )}
-          </div>
-
-          {/* Links */}
-          <div className="flex flex-wrap gap-3 mt-3">
-            {(v as any).carta_visibility === "public" && !isService && (
-              <a href={`/carta/${v.slug}`} className="text-sm text-primary font-medium hover:underline">
-                {isCatalog ? "🛍️ Ver catálogo" : "📋 Ver carta de mesa"}
-              </a>
-            )}
-            {v.phone && (
-              <a href={`tel:${v.phone}`} className="text-sm text-primary hover:underline">
-                Tel: {v.phone}
-              </a>
-            )}
-            {v.instagram && (
-              <a
-                href={v.instagram.startsWith("http") ? v.instagram : `https://instagram.com/${v.instagram.replace("@", "")}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-sm text-primary hover:underline"
-              >
-                Instagram
-              </a>
-            )}
-            {v.facebook && (
-              <a
-                href={v.facebook.startsWith("http") ? v.facebook : `https://facebook.com/${v.facebook}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-sm text-primary hover:underline"
-              >
-                Facebook
-              </a>
-            )}
-          </div>
-        </div>
 
         {/* Gallery */}
         {gallery && gallery.length > 0 && (

@@ -236,26 +236,8 @@ export function StoreHeader({
               )}
             </div>
 
-            {/* Botones de acción */}
+            {/* Acciones: favorito + compartir */}
             <div className="flex items-center gap-2 mt-4">
-              {waNumber && (
-                <a
-                  href={waUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 rounded-full bg-green-500 text-white px-4 py-2 text-sm font-semibold hover:bg-green-600 transition-colors"
-                >
-                  💬 WhatsApp
-                </a>
-              )}
-              {v.phone && (
-                <a
-                  href={`tel:${v.phone}`}
-                  className="inline-flex items-center gap-1.5 rounded-full bg-white/20 text-white px-4 py-2 text-sm font-semibold hover:bg-white/30 transition-colors"
-                >
-                  ☎ Llamar
-                </a>
-              )}
               <div className="flex items-center gap-2 ml-auto">
                 <FavoriteButton vendorId={v.id} />
                 <WhatsAppShareButton slug={v.slug} storeName={v.store_name} catalog={isCatalog} menuHidden={menuHidden} isService={isService} />
@@ -486,6 +468,16 @@ export function StoreHeader({
               <span className="font-semibold text-sm">Contacto</span>
             </div>
             <div className="flex flex-wrap gap-2">
+              {waNumber && (
+                <a
+                  href={waUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground hover:bg-accent transition-colors"
+                >
+                  💬 WhatsApp
+                </a>
+              )}
               {socials.map((s) => (
                 <a
                   key={s.label}

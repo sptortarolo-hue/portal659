@@ -595,7 +595,8 @@ export async function GET(
       diagList.map(async (p) => ({ id: p.id, photo: !!p.image_url, ok: await remoteOk(p.image_url) }))
     );
     return NextResponse.json({
-      code: "promo-og-v2",
+      code: "promo-og-v3-nofont",
+      uptimeSec: Math.round(process.uptime()),
       slug,
       visible: vendor.visible,
       mode,
@@ -618,14 +619,12 @@ export async function GET(
     });
   }
 
-  try {
-    // 1) Modo manual con foto: manda la foto del comercio.
-    if (mode === "manual" && manualImage) {
-      console.log("[share-promo] tarjeta manual", { slug });
-      return await manualCard(manualImage);
-    }
-
-    // 2) Composición con productos: selección del comercio o top-3 automático.
+  // Datos + validación de fotos, compartido por el render y el debug.
+  async function resolvePicked(): Promise<{
+    picked: PromoProduct[];
+    logoOk: boolean;
+    photoOk: boolean[];
+  }> {
     const all = await queryMany<PromoProduct>(
       `SELECT id, name, price, promo_price, promo_only, image_url FROM products
        WHERE vendor_id = (SELECT id FROM vendors WHERE slug = $1 LIMIT 1)
@@ -645,6 +644,59 @@ export async function GET(
       const rest = valid.filter((p) => !isValidPromo(p));
       picked = [...withOff, ...rest].slice(0, 3);
     }
+    const urls = [logoUrl, ...picked.map((p) => p.image_url)];
+    const checks = await Promise.all(urls.map((u) => remoteOk(u)));
+    return { picked, logoOk: checks[0], photoOk: checks.slice(1) };
+  }
+
+  // Render real expuesto como JSON: prueba la rama exacta que se serviría
+  // y devuelve el error de satori/sharp en el cuerpo (sin depender de logs).
+  if (new URL(request.url).searchParams.get("debug") === "render") {
+    let stage = "data";
+    try {
+      if (mode === "manual" && manualImage) {
+        const res = await manualCard(manualImage);
+        const buf = await res.arrayBuffer();
+        return NextResponse.json({ code: "promo-og-v3", render: "ok", branch: "manual", bytes: buf.byteLength });
+      }
+      const { picked, logoOk, photoOk } = await resolvePicked();
+      const withPhoto = picked.filter((_, i) => photoOk[i]);
+      let branch = "fallback-empty";
+      if (picked.length > 0 && withPhoto.length === 0) branch = "text";
+      else if (withPhoto.length > 0) branch = "composed";
+      stage = `render:${branch}`;
+      let res: Response;
+      if (branch === "fallback-empty") res = await manualCard(manualImage || vendor.image_url);
+      else if (branch === "text") res = await textOnlyCard(picked, logoOk);
+      else res = await composedCard(withPhoto, logoOk);
+      const buf = await res.arrayBuffer();
+      return NextResponse.json({ code: "promo-og-v3", render: "ok", branch, bytes: buf.byteLength });
+    } catch (e) {
+      const err = e instanceof Error ? e : new Error(String(e));
+      return NextResponse.json(
+        {
+          code: "promo-og-v3",
+          render: "error",
+          stage,
+          message: err.message,
+          stack: String(err.stack || "")
+            .split("\n")
+            .slice(0, 8),
+        },
+        { status: 500 }
+      );
+    }
+  }
+
+  try {
+    // 1) Modo manual con foto: manda la foto del comercio.
+    if (mode === "manual" && manualImage) {
+      console.log("[share-promo] tarjeta manual", { slug });
+      return await manualCard(manualImage);
+    }
+
+    // 2) Composición con productos: selección del comercio o top-3 automático.
+    const { picked, logoOk, photoOk } = await resolvePicked();
     if (picked.length === 0) {
       console.error("[share-promo] sin productos en promo, fallback", {
         slug,
@@ -654,10 +706,6 @@ export async function GET(
       return await manualCard(manualImage || vendor.image_url);
     }
 
-    const urls = [logoUrl, ...picked.map((p) => p.image_url)];
-    const checks = await Promise.all(urls.map((u) => remoteOk(u)));
-    const logoOk = checks[0];
-    const photoOk = checks.slice(1);
     const withPhoto = picked.filter((_, i) => photoOk[i]);
     // Sin fotos accesibles: tarjeta de texto (nunca cae en silencio a la vieja).
     if (withPhoto.length === 0) {

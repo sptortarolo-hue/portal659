@@ -25,6 +25,9 @@ import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -241,18 +244,132 @@ public class PortalPrintService extends Service {
         }
 
         printExecutor.execute(() -> {
-            try (Socket socket = new Socket()) {
-                socket.connect(new InetSocketAddress(ip, port), 5000);
-                socket.getOutputStream().write(data);
-                socket.getOutputStream().flush();
-                ack(jobId, true, null);
-            } catch (Exception e) {
-                ack(jobId, false, "TCP " + ip + ":" + port + " → " + e.getMessage());
+            PrintAttempt attempt = printWithAutoFix(ip, port, data);
+            if (attempt.ok) {
+                ack(jobId, true, null, attempt.usedIp, attempt.autoFixed);
+            } else {
+                ack(jobId, false, "TCP " + ip + ":" + port + " → " + attempt.error, attempt.usedIp, false);
             }
         });
     }
 
+    /** Resultado de un intento de impresión (con auto-fix de IP si aplicó). */
+    private static class PrintAttempt {
+        boolean ok;
+        String error;
+        String usedIp;
+        boolean autoFixed;
+    }
+
+    /**
+     * Imprime con auto-fix de DHCP: si la IP configurada está muerta
+     * (sin ruta o timeout — NO si rechaza, ahí hay algo vivo), barre la
+     * red y, con UNA sola candidata distinta, reintenta ahí y la persiste.
+     * Con 0 o varias candidatas falla con error accionable (usar Buscar).
+     */
+    private PrintAttempt printWithAutoFix(String ip, int port, byte[] data) {
+        PrintAttempt out = new PrintAttempt();
+        out.usedIp = ip;
+        Exception first = tcpWrite(ip, port, data);
+        if (first == null) {
+            out.ok = true;
+            return out;
+        }
+        if (!isDeadHost(first)) {
+            out.error = String.valueOf(first.getMessage());
+            return out;
+        }
+        String subnet = wifiSubnet();
+        List<String> candidates = subnet != null
+            ? LanScan.scan(Collections.singletonList(subnet), port, 250)
+            : Collections.<String>emptyList();
+        List<String> others = new ArrayList<>();
+        for (String c : candidates) {
+            if (!c.equals(ip)) others.add(c);
+        }
+        if (others.size() == 1) {
+            Exception retry = tcpWrite(others.get(0), port, data);
+            if (retry == null) {
+                out.ok = true;
+                out.usedIp = others.get(0);
+                out.autoFixed = true;
+                persistPrinterIp(usedIpOrSelf(out));
+                return out;
+            }
+            out.error = shortErr(first) + " | reintento en " + others.get(0) + ": " + shortErr(retry);
+            return out;
+        }
+        if (others.size() > 1) {
+            out.error = shortErr(first) + " | hay varias impresoras posibles: "
+                + joinHosts(others) + " (elegí en Buscar)";
+            return out;
+        }
+        out.error = shortErr(first);
+        return out;
+    }
+
+    private String usedIpOrSelf(PrintAttempt out) {
+        return out.usedIp;
+    }
+
+    private Exception tcpWrite(String ip, int port, byte[] data) {
+        try (Socket socket = new Socket()) {
+            socket.connect(new InetSocketAddress(ip, port), 5000);
+            socket.getOutputStream().write(data);
+            socket.getOutputStream().flush();
+            return null;
+        } catch (Exception e) {
+            return e;
+        }
+    }
+
+    private static boolean isDeadHost(Exception e) {
+        if (e == null) return false;
+        if (e instanceof java.net.NoRouteToHostException) return true;
+        if (e instanceof java.net.SocketTimeoutException) return true;
+        String m = String.valueOf(e.getMessage());
+        return m.contains("EHOSTUNREACH") || m.contains("No route to host") || m.contains("timed out");
+    }
+
+    private static String shortErr(Exception e) {
+        String m = String.valueOf(e == null ? null : e.getMessage());
+        return m.length() > 160 ? m.substring(0, 160) : m;
+    }
+
+    private static String joinHosts(List<String> hosts) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < hosts.size(); i++) {
+            if (i > 0) sb.append(", ");
+            sb.append(hosts.get(i));
+        }
+        return sb.toString();
+    }
+
+    /** Subred /24 del Wi-Fi actual (ej. "192.168.100"). Null si no hay Wi-Fi. */
+    private String wifiSubnet() {
+        try {
+            WifiManager wm = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+            if (wm == null || !wm.isWifiEnabled()) return null;
+            int ip = wm.getConnectionInfo().getIpAddress();
+            if (ip == 0) return null;
+            int a = ip & 0xFF, b = (ip >> 8) & 0xFF, c = (ip >> 16) & 0xFF;
+            return a + "." + b + "." + c;
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private void persistPrinterIp(String ip) {
+        try {
+            prefs().edit().putString(KEY_PRINTER_IP, ip).apply();
+        } catch (Exception ignored) {}
+    }
+
     private void ack(String jobId, boolean ok, String error) {
+        ack(jobId, ok, error, null, false);
+    }
+
+    private void ack(String jobId, boolean ok, String error, String usedIp, boolean autoFixed) {
         if (webSocket == null) return;
         try {
             JSONObject ack = new JSONObject();
@@ -260,6 +377,8 @@ public class PortalPrintService extends Service {
             ack.put("jobId", jobId);
             ack.put("ok", ok);
             if (error != null) ack.put("error", error);
+            if (usedIp != null) ack.put("printerIpUsed", usedIp);
+            if (autoFixed) ack.put("autoFixed", true);
             webSocket.send(ack.toString());
         } catch (Exception ignored) {}
     }
@@ -311,7 +430,7 @@ public class PortalPrintService extends Service {
 
     private void serveLocal(Socket sock) {
         try (Socket s = sock) {
-            s.setSoTimeout(10000);
+            s.setSoTimeout(30000);
             InputStream in = s.getInputStream();
             OutputStream out = s.getOutputStream();
             String head = readHttpHead(in);
@@ -324,7 +443,26 @@ public class PortalPrintService extends Service {
                 writeJson(out, 200, "{\"ok\":true,\"service\":\"portal-print\",\"local\":true,\"port\":" + LOCAL_PORT + "}");
                 return;
             }
-            if (!"POST".equals(method) || !"/local-print".equals(path)) {
+            // Buscar impresoras desde la web (mismo auth por token).
+            if ("GET".equals(method) && "/local-scan".equals(path)) {
+                if (!checkLocalToken(queryParam(rawPath, "token"))) {
+                    writeJson(out, 401, "{\"ok\":false,\"error\":\"token inválido\"}");
+                    return;
+                }
+                int scanPort = parsePort(queryParam(rawPath, "port"), 9100);
+                String subnet = wifiSubnet();
+                List<String> hosts = subnet != null
+                    ? LanScan.scan(Collections.singletonList(subnet), scanPort, 250)
+                    : Collections.<String>emptyList();
+                JSONObject r = new JSONObject();
+                try {
+                    r.put("ok", true);
+                    r.put("hosts", new org.json.JSONArray(hosts));
+                } catch (Exception ignored) {}
+                writeJson(out, 200, r.toString());
+                return;
+            }
+            if (!"POST".equals(method) || (!"/local-print".equals(path) && !"/local-config".equals(path))) {
                 writeJson(out, 404, "{\"ok\":false,\"error\":\"no encontrado\"}");
                 return;
             }
@@ -336,6 +474,10 @@ public class PortalPrintService extends Service {
             byte[] body = readFully(in, contentLength);
             if (body == null) {
                 writeJson(out, 400, "{\"ok\":false,\"error\":\"cuerpo incompleto\"}");
+                return;
+            }
+            if ("/local-config".equals(path)) {
+                writeJson(out, 200, handleLocalConfig(new String(body, StandardCharsets.UTF_8)));
                 return;
             }
             writeJson(out, 200, handleLocalPrint(new String(body, StandardCharsets.UTF_8)));
@@ -369,6 +511,54 @@ public class PortalPrintService extends Service {
             }
         }
         return -1;
+    }
+
+    private String queryParam(String rawPath, String name) {
+        int q = rawPath.indexOf('?');
+        if (q < 0 || q + 1 >= rawPath.length()) return "";
+        for (String pair : rawPath.substring(q + 1).split("&")) {
+            int eq = pair.indexOf('=');
+            String k = eq >= 0 ? pair.substring(0, eq) : pair;
+            if (k.equals(name)) return eq >= 0 ? pair.substring(eq + 1) : "";
+        }
+        return "";
+    }
+
+    private int parsePort(String raw, int def) {
+        try {
+            int p = Integer.parseInt(String.valueOf(raw).trim());
+            if (p >= 1 && p <= 65535) return p;
+        } catch (Exception ignored) {}
+        return def;
+    }
+
+    private boolean checkLocalToken(String token) {
+        String configured = cfg(KEY_TOKEN, "");
+        return !configured.isEmpty() && configured.equals(token == null ? "" : token);
+    }
+
+    /**
+     * Guarda la IP elegida desde la web (contrato /local-config).
+     * Body: { token, printerIp }. Sin cambiar nada más de la config.
+     */
+    private String handleLocalConfig(String bodyText) {
+        try {
+            JSONObject body = new JSONObject(bodyText);
+            if (!checkLocalToken(body.optString("token", ""))) {
+                return "{\"ok\":false,\"error\":\"token inválido\"}";
+            }
+            String ip = body.optString("printerIp", "").trim();
+            if (ip.isEmpty() || ip.length() > 64) {
+                return "{\"ok\":false,\"error\":\"IP inválida\"}";
+            }
+            persistPrinterIp(ip);
+            JSONObject ok = new JSONObject();
+            ok.put("ok", true);
+            ok.put("printerIp", ip);
+            return ok.toString();
+        } catch (Exception e) {
+            return "{\"ok\":false,\"error\":\"JSON inválido\"}";
+        }
     }
 
     private byte[] readFully(InputStream in, int n) throws Exception {
@@ -412,15 +602,20 @@ public class PortalPrintService extends Service {
                 ? body.optInt("printerPort", prefs().getInt(KEY_PRINTER_PORT, 9100))
                 : prefs().getInt(KEY_PRINTER_PORT, 9100);
             if (ip.isEmpty()) return "{\"ok\":false,\"error\":\"sin IP de impresora\"}";
-            try (Socket socket = new Socket()) {
-                socket.connect(new InetSocketAddress(ip, port), 5000);
-                socket.getOutputStream().write(data);
-                socket.getOutputStream().flush();
-                return "{\"ok\":true}";
-            } catch (Exception e) {
-                String msg = e.getMessage() != null ? e.getMessage().replace('"', '\'') : "error TCP";
-                return "{\"ok\":false,\"error\":\"TCP " + ip + ":" + port + " -> " + msg + "\"}";
+            PrintAttempt attempt = printWithAutoFix(ip, port, data);
+            if (attempt.ok) {
+                JSONObject ok = new JSONObject();
+                ok.put("ok", true);
+                if (attempt.autoFixed) {
+                    ok.put("autoFixed", true);
+                    ok.put("printerIpUsed", attempt.usedIp);
+                }
+                return ok.toString();
             }
+            JSONObject err = new JSONObject();
+            err.put("ok", false);
+            err.put("error", "TCP " + ip + ":" + port + " → " + attempt.error);
+            return err.toString();
         } catch (Exception e) {
             return "{\"ok\":false,\"error\":\"JSON inválido\"}";
         }

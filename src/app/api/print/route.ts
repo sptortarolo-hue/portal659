@@ -43,7 +43,10 @@ export async function POST(request: Request) {
   if (test) {
     const result = await dispatchPrint({ vendor, type: "test" });
     await recordLastPrint(vendor.id, result);
-    return printResponse(result);
+    return printResponse({
+    ...result,
+    ipFixed: await applyIpFix(vendor.id, vendor.printer_ip, result),
+  });
   }
 
   // Cierre de caja (Z): imprime el cierre guardado tal cual quedó en la DB.
@@ -80,7 +83,10 @@ export async function POST(request: Request) {
     }
     const result = await dispatchPrint({ vendor, type: "cash_close", extra: { closing } });
     await recordLastPrint(vendor.id, result);
-    return printResponse(result);
+    return printResponse({
+    ...result,
+    ipFixed: await applyIpFix(vendor.id, vendor.printer_ip, result),
+  });
   }
 
   // Vista parcial de caja (X): snapshot en vivo del turno/período, sin cerrar.
@@ -120,7 +126,10 @@ export async function POST(request: Request) {
     };
     const result = await dispatchPrint({ vendor, type: "cash_snapshot", extra: { snapshot } });
     await recordLastPrint(vendor.id, result);
-    return printResponse(result);
+    return printResponse({
+    ...result,
+    ipFixed: await applyIpFix(vendor.id, vendor.printer_ip, result),
+  });
   }
 
   // Presupuesto de oficio (servicios): imprime el cotizado guardado. Gatea por
@@ -178,7 +187,10 @@ export async function POST(request: Request) {
       },
     });
     await recordLastPrint(vendor.id, result);
-    return printResponse(result);
+    return printResponse({
+    ...result,
+    ipFixed: await applyIpFix(vendor.id, vendor.printer_ip, result),
+  });
   }
 
   // Precuenta de mesa: no es un pedido; solo ítems + total + nombre de mesa.
@@ -192,7 +204,10 @@ export async function POST(request: Request) {
       extra: { tableName, items, total: Number(total), cashPct, cashTotal, volumeDiscount: Number(body.volumeDiscount) || 0 },
     });
     await recordLastPrint(vendor.id, result);
-    return printResponse(result);
+    return printResponse({
+    ...result,
+    ipFixed: await applyIpFix(vendor.id, vendor.printer_ip, result),
+  });
   }
 
   // Etiqueta de góndola: por productId único o productIds[] (lote, máx 50).
@@ -402,15 +417,47 @@ export async function POST(request: Request) {
     },
   });
   await recordLastPrint(vendor.id, result);
-  return printResponse(result);
+  return printResponse({
+    ...result,
+    ipFixed: await applyIpFix(vendor.id, vendor.printer_ip, result),
+  });
 }
 
-function printResponse(result: { ok: boolean; mode: string; skipped?: boolean; offline?: boolean; error?: string }) {
+function printResponse(result: {
+  ok: boolean;
+  mode: string;
+  skipped?: boolean;
+  offline?: boolean;
+  error?: string;
+  ipFixed?: { from: string; to: string } | null;
+}) {
   const body: Record<string, unknown> = { ok: result.ok, mode: result.mode };
   if (result.skipped) body.reason = "Impresora no configurada";
   if (result.offline) body.offline = true;
+  if (result.ipFixed) body.ipFixed = result.ipFixed;
   body.error = result.error;
   return NextResponse.json(body);
+}
+
+/**
+ * Auto-fix de DHCP (cierre del loop): si la app/agente imprimió OK con una
+ * IP distinta a la configurada (una sola candidata en la red), se actualiza
+ * `vendors.printer_ip` para que el dashboard y los próximos trabajos usen la
+ * nueva. Sin migración (la columna existe). Solo con éxito + autoFixed.
+ */
+async function applyIpFix(
+  vendorId: string,
+  vendorIp: string | null | undefined,
+  result: { ok: boolean; autoFixed?: boolean; printerIpUsed?: string | null }
+): Promise<{ from: string; to: string } | null> {
+  const to = result.printerIpUsed;
+  if (!result.ok || !result.autoFixed || !to || to === (vendorIp || null)) return null;
+  try {
+    await query(`UPDATE vendors SET printer_ip = $1 WHERE id = $2`, [to, vendorId]);
+  } catch {
+    return null;
+  }
+  return { from: vendorIp || "(sin IP)", to };
 }
 
 async function recordLastPrint(

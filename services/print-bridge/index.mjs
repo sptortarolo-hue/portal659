@@ -126,7 +126,14 @@ const server = createServer(async (req, res) => {
     }
 
     const result = await withTokenLock(token, () => sendJob(client, item2job(job)));
-    writeJson(res, 200, { ok: result.ok, jobId: result.jobId, offline: false, error: result.error });
+    writeJson(res, 200, {
+      ok: result.ok,
+      jobId: result.jobId,
+      offline: false,
+      error: result.error,
+      ...(result.printerIpUsed ? { printerIpUsed: result.printerIpUsed } : {}),
+      ...(result.autoFixed ? { autoFixed: true } : {}),
+    });
     return;
   }
 
@@ -244,7 +251,14 @@ function sendJob(client, item) {
         return;
       }
       if (msg.jobId !== item.id) return;
-      finish({ ok: msg.ok === true, error: msg.ok ? undefined : msg.error, jobId: item.id });
+      finish({
+        ok: msg.ok === true,
+        error: msg.ok ? undefined : msg.error,
+        jobId: item.id,
+        // Auto-fix de DHCP del lado app/agente: la IP que realmente imprimió.
+        printerIpUsed: typeof msg.printerIpUsed === "string" ? msg.printerIpUsed : undefined,
+        autoFixed: msg.autoFixed === true,
+      });
     };
     // Si el cliente se cae a mitad del job, no lo marcamos como fallo de impresión:
     // queda en cola y se reintenta al reconectar.

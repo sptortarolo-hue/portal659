@@ -128,6 +128,32 @@ function deliverStatus(status) {
   updateTrayStatus(status);
 }
 
+/**
+ * Eventos del relay y del servidor local. El auto-fix de IP (DHCP) se
+ * persiste acá: la config en memoria + el archivo (es la fuente que leen
+ * getConfig y la ventana).
+ */
+function handleAgentEvent(payload) {
+  if (!payload || typeof payload !== "object") return;
+  if (payload.type === "printer-ip-fixed" && payload.ip) {
+    const ip = String(payload.ip).trim();
+    if (ip && config && ip !== config.printerIp) {
+      const saved = saveConfig({ ...config, printerIp: ip });
+      config = saved.config;
+    }
+    return;
+  }
+  if (payload.type === "status") {
+    deliverStatus(payload);
+    return;
+  }
+  if ((payload.type === "print" || payload.type === "error") && mainWindow && !mainWindow.isDestroyed()) {
+    try {
+      mainWindow.webContents.send(payload.type, payload);
+    } catch {}
+  }
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 460,
@@ -269,16 +295,7 @@ if (!gotLock) {
 
     relay = createRelay({
       getConfig: () => config,
-      onEvent: (payload) => {
-        if (!payload || typeof payload !== "object") return;
-        if (payload.type === "status") {
-          deliverStatus(payload);
-        } else if ((payload.type === "print" || payload.type === "error") && mainWindow && !mainWindow.isDestroyed()) {
-          try {
-            mainWindow.webContents.send(payload.type, payload);
-          } catch {}
-        }
-      },
+      onEvent: handleAgentEvent,
     });
     lastStatus = relay.getStatus();
 
@@ -286,14 +303,7 @@ if (!gotLock) {
     // contingencia sin pasar por el VPS. Solo-loopback, token del comercio.
     localServer = createLocalServer({
       getConfig: () => config,
-      onEvent: (payload) => {
-        if (!payload || typeof payload !== "object") return;
-        if ((payload.type === "print" || payload.type === "error") && mainWindow && !mainWindow.isDestroyed()) {
-          try {
-            mainWindow.webContents.send(payload.type, payload);
-          } catch {}
-        }
-      },
+      onEvent: handleAgentEvent,
     });
     localServer.start();
 

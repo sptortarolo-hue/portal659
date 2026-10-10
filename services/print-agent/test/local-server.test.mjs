@@ -6,6 +6,7 @@
 import assert from "node:assert/strict";
 import http from "node:http";
 import net from "node:net";
+import os from "node:os";
 import { createLocalServer } from "../src/local-server.js";
 
 const PORT = 18792;
@@ -121,4 +122,64 @@ console.log("ok - imprime bytes exactos por TCP y emite evento local");
 server.stop();
 server2.stop();
 capturer.close();
+
+// --- /local-scan + /local-config (Buscar desde la web) ---
+const server3Events = [];
+const server3 = createLocalServer({
+  getConfig: () => ({ serverUrl: "https://ejemplo.test", token: TOKEN, printerIp: "", printerPort: 9100 }),
+  onEvent: (e) => server3Events.push(e),
+  port: PORT + 2,
+});
+server3.start();
+await waitFor(() => server3.isListening());
+
+// Sin token → 401.
+r = await request(PORT + 2, "/local-scan?port=9100");
+assert.equal(r.status, 401);
+console.log("ok - scan sin token → 401");
+
+// Con token + impresora falsa en la IP LAN real → la encuentra (scan real).
+function lanIp() {
+  for (const list of Object.values(os.networkInterfaces() || {})) {
+    for (const nic of list || []) {
+      if (nic && nic.family === "IPv4" && !nic.internal) return nic.address;
+    }
+  }
+  return null;
+}
+const lan = lanIp();
+let capturer2 = null;
+if (!lan) {
+  console.log("skip - sin LAN para scan real");
+} else {
+  capturer2 = net.createServer((socket) => {
+    socket.on("data", () => {});
+    setTimeout(() => { try { socket.end(); } catch {} }, 50);
+  });
+  await new Promise((resolve, reject) => {
+    capturer2.on("error", reject);
+    capturer2.listen(0, lan, resolve);
+  });
+  const scanPort = capturer2.address().port;
+  r = await request(PORT + 2, `/local-scan?token=${TOKEN}&port=${scanPort}`);
+  assert.equal(r.status, 200);
+  assert.equal(r.json.ok, true);
+  assert.ok((r.json.hosts || []).includes(lan), `debe listar ${lan}`);
+  console.log("ok - scan encuentra la impresora falsa en la LAN");
+}
+
+// /local-config persiste vía evento (lo guarda main.js).
+r = await request(PORT + 2, "/local-config", { token: "mal" });
+assert.equal(r.status, 401);
+r = await request(PORT + 2, "/local-config", { token: TOKEN, printerIp: "192.168.100.20" });
+assert.equal(r.status, 200);
+assert.equal(r.json.ok, true);
+const fixEvent = server3Events.find((e) => e.type === "printer-ip-fixed");
+assert.ok(fixEvent && fixEvent.ip === "192.168.100.20", "debe emitir persistencia");
+r = await request(PORT + 2, "/local-config", { token: TOKEN, printerIp: "" });
+assert.equal(r.status, 400);
+console.log("ok - config valida, emite persistencia y rechaza IP vacía");
+
+server3.stop();
+if (capturer2) capturer2.close();
 console.log("todas las pruebas del servidor local pasaron");

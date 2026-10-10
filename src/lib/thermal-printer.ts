@@ -86,6 +86,9 @@ export type DispatchResult = {
   skipped?: boolean;
   offline?: boolean;
   error?: string;
+  /** Auto-fix de DHCP: la IP que realmente imprimió (puede diferir de la configurada). */
+  printerIpUsed?: string | null;
+  autoFixed?: boolean;
 };
 
 /** Datos de envío para los documentos impresos (zona autodeclarada). */
@@ -1892,7 +1895,7 @@ function bridgeJob(type: string, buffer: Buffer, vendor: PrinterVendor): BridgeJ
 async function pushToBridge(
   token: string | null | undefined,
   job: BridgeJob
-): Promise<{ ok: boolean; offline?: boolean; error?: string }> {
+): Promise<{ ok: boolean; offline?: boolean; error?: string; printerIpUsed?: string | null; autoFixed?: boolean }> {
   if (!token) {
     return { ok: false, error: "Falta el token del puente (regeneralo en la sección Impresora)" };
   }
@@ -1913,12 +1916,18 @@ async function pushToBridge(
     return { ok: false, error: `No se pudo contactar el relay: ${errorMsg(e)}` };
   }
   const data = (await res.json().catch(() => null)) as
-    | { ok?: boolean; offline?: boolean; error?: string }
+    | { ok?: boolean; offline?: boolean; error?: string; printerIpUsed?: string; autoFixed?: boolean }
     | null;
   if (!data) {
     return { ok: false, error: `El relay respondió ${res.status}` };
   }
-  return { ok: data.ok === true, offline: data.offline === true, error: data.error };
+  return {
+    ok: data.ok === true,
+    offline: data.offline === true,
+    error: data.error,
+    printerIpUsed: typeof data.printerIpUsed === "string" ? data.printerIpUsed : null,
+    autoFixed: data.autoFixed === true,
+  };
 }
 
 export async function dispatchPrint(params: {
@@ -1963,7 +1972,7 @@ export async function dispatchPrint(params: {
       const built = await buildTestBuffer(vendor);
       if (!built.success) return { ok: false, mode, error: built.error };
       const pushed = await pushToBridge(vendor.print_token, bridgeJob("test", built.buffer, vendor));
-      return { ok: pushed.ok, mode, offline: pushed.offline, error: pushed.error };
+      return { ok: pushed.ok, mode, offline: pushed.offline, error: pushed.error, printerIpUsed: pushed.printerIpUsed ?? null, autoFixed: pushed.autoFixed === true };
     }
     if (!vendor.printer_ip) return { ok: true, mode, skipped: true };
     const r = await printTest(vendor);
@@ -1984,7 +1993,7 @@ export async function dispatchPrint(params: {
       const built = await buildPrecuentaBuffer(vendor, tableName, items, total, cash, volume);
       if (!built.success) return { ok: false, mode, error: built.error };
       const pushed = await pushToBridge(vendor.print_token, bridgeJob("precuenta", built.buffer, vendor));
-      return { ok: pushed.ok, mode, offline: pushed.offline, error: pushed.error };
+      return { ok: pushed.ok, mode, offline: pushed.offline, error: pushed.error, printerIpUsed: pushed.printerIpUsed ?? null, autoFixed: pushed.autoFixed === true };
     }
     if (!vendor.printer_ip) return { ok: true, mode, skipped: true };
     const r = await printPrecuenta(vendor, tableName, items, total, cash, volume);
@@ -1999,7 +2008,7 @@ export async function dispatchPrint(params: {
       const built = await buildCashCloseBuffer(vendor, closing);
       if (!built.success) return { ok: false, mode, error: built.error };
       const pushed = await pushToBridge(vendor.print_token, bridgeJob("cash_close", built.buffer, vendor));
-      return { ok: pushed.ok, mode, offline: pushed.offline, error: pushed.error };
+      return { ok: pushed.ok, mode, offline: pushed.offline, error: pushed.error, printerIpUsed: pushed.printerIpUsed ?? null, autoFixed: pushed.autoFixed === true };
     }
     if (!vendor.printer_ip) return { ok: true, mode, skipped: true };
     const r = await printCashClose(vendor, closing);
@@ -2014,7 +2023,7 @@ export async function dispatchPrint(params: {
       const built = await buildCashSnapshotBuffer(vendor, snapshot);
       if (!built.success) return { ok: false, mode, error: built.error };
       const pushed = await pushToBridge(vendor.print_token, bridgeJob("cash_snapshot", built.buffer, vendor));
-      return { ok: pushed.ok, mode, offline: pushed.offline, error: pushed.error };
+      return { ok: pushed.ok, mode, offline: pushed.offline, error: pushed.error, printerIpUsed: pushed.printerIpUsed ?? null, autoFixed: pushed.autoFixed === true };
     }
     if (!vendor.printer_ip) return { ok: true, mode, skipped: true };
     const r = await printCashSnapshot(vendor, snapshot);
@@ -2029,7 +2038,7 @@ export async function dispatchPrint(params: {
       const built = await buildLabelBuffer(vendor, label);
       if (!built.success) return { ok: false, mode, error: built.error };
       const pushed = await pushToBridge(vendor.print_token, bridgeJob("label", built.buffer, vendor));
-      return { ok: pushed.ok, mode, offline: pushed.offline, error: pushed.error };
+      return { ok: pushed.ok, mode, offline: pushed.offline, error: pushed.error, printerIpUsed: pushed.printerIpUsed ?? null, autoFixed: pushed.autoFixed === true };
     }
     if (!vendor.printer_ip) return { ok: true, mode, skipped: true };
     const r = await printLabel(vendor, label);
@@ -2043,7 +2052,7 @@ export async function dispatchPrint(params: {
       const built = await buildPresupuestoBuffer(vendor, quote);
       if (!built.success) return { ok: false, mode, error: built.error };
       const pushed = await pushToBridge(vendor.print_token, bridgeJob("presupuesto", built.buffer, vendor));
-      return { ok: pushed.ok, mode, offline: pushed.offline, error: pushed.error };
+      return { ok: pushed.ok, mode, offline: pushed.offline, error: pushed.error, printerIpUsed: pushed.printerIpUsed ?? null, autoFixed: pushed.autoFixed === true };
     }
     if (!vendor.printer_ip) return { ok: true, mode, skipped: true };
     const r = await printPresupuesto(vendor, quote);

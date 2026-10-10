@@ -152,6 +152,63 @@ function writeToTcp(ip, port, buffer, timeoutMs = 5000) {
   });
 }
 
+/** ¿El fallo sugiere host muerto (vs. algo vivo que rechaza)? Solo en ese caso se barre la red. */
+function shouldAutoScan(error) {
+  if (!error) return false;
+  const text = typeof error === "string"
+    ? error
+    : [error.code, error.message, error.errno].filter(Boolean).join(" ");
+  if (/ECONNREFUSED|refused/i.test(text)) return false;
+  return /EHOSTUNREACH|No route to host|ETIMEDOUT|timed?\s?out|timeout/i.test(text);
+}
+
+/**
+ * Imprime con auto-fix de DHCP: si la IP configurada está muerta, barre la
+ * red y con UNA sola candidata distinta reintenta ahí. `saveIp` persiste la
+ * IP corregida (el llamador la guarda donde corresponda).
+ * Devuelve { ok, error, usedIp, autoFixed }. Sin dependencias nuevas.
+ */
+async function printWithAutoFix(ip, port, buffer, { saveIp } = {}) {
+  const first = await writeToTcp(ip, port, buffer);
+  if (first.ok) return { ok: true, usedIp: ip || null, autoFixed: false };
+  if (!shouldAutoScan(first.error)) {
+    return { ok: false, error: first.error, usedIp: ip || null, autoFixed: false };
+  }
+  let hosts = [];
+  try {
+    hosts = await discoverPrinters({ port: Number(port) || 9100 });
+  } catch {
+    hosts = [];
+  }
+  const others = (hosts || []).filter((h) => h && h !== ip);
+  if (others.length === 1) {
+    const retry = await writeToTcp(others[0], Number(port) || 9100, buffer);
+    if (retry.ok) {
+      if (typeof saveIp === "function") {
+        try {
+          await saveIp(others[0]);
+        } catch {}
+      }
+      return { ok: true, usedIp: others[0], autoFixed: true };
+    }
+    return {
+      ok: false,
+      error: `${first.error} | reintento en ${others[0]}: ${retry.error}`,
+      usedIp: ip || null,
+      autoFixed: false,
+    };
+  }
+  if (others.length > 1) {
+    return {
+      ok: false,
+      error: `${first.error} | hay varias impresoras posibles: ${others.join(", ")} (elegí en Buscar)`,
+      usedIp: ip || null,
+      autoFixed: false,
+    };
+  }
+  return { ok: false, error: first.error, usedIp: ip || null, autoFixed: false };
+}
+
 /** Ticket de prueba ESC/POS (init + texto centrado + fecha + corte). */
 function buildTestPayload() {
   const now = new Date().toLocaleString("es-AR");
@@ -239,21 +296,29 @@ function createRelay({ getConfig, onEvent } = {}) {
 
   function printToTcp(ip, port, dataBase64, jobId) {
     const data = Buffer.from(dataBase64 || "", "base64");
-    writeToTcp(ip, port, data).then(({ ok, error }) => {
+    printWithAutoFix(ip, Number(port) || 9100, data, {
+      saveIp: (newIp) => emit("printer-ip-fixed", { ip: newIp }),
+    }).then(({ ok, error, usedIp, autoFixed }) => {
       if (isOnline()) {
         try {
-          ws.send(JSON.stringify({ type: "ack", jobId, ok, error }));
+          const ack = { type: "ack", jobId, ok };
+          if (!ok && error) ack.error = error;
+          if (usedIp) ack.printerIpUsed = usedIp;
+          if (autoFixed) ack.autoFixed = true;
+          ws.send(JSON.stringify(ack));
         } catch {}
       }
       lastPrint = {
         ok,
         error: error || null,
-        bytes: data.length,
+        bytes: ok ? data.length : 0,
         ip: ip || null,
         port: Number(port) || 9100,
         test: false,
         at: Date.now(),
       };
+      if (usedIp) lastPrint.usedIp = usedIp;
+      if (autoFixed) lastPrint.autoFixed = true;
       emit("print", { ...lastPrint });
       emitStatus();
     });
@@ -522,6 +587,8 @@ module.exports = {
   buildWsUrl,
   buildTestPayload,
   writeToTcp,
+  printWithAutoFix,
+  shouldAutoScan,
   discoverPrinters,
   localSubnets,
   DEFAULT_SERVER_URL,

@@ -15,11 +15,13 @@
  * duplicaría producción en cocina).
  */
 import {
+  getFixedPrinterIp,
   getVendorSnapshot,
   idmapGet,
   printsList,
   printsPatch,
   printsRemove,
+  setFixedPrinterIp,
   type PrintJob,
 } from "./offline-db";
 import { buildContingencyBytes, bytesToBase64, type ContingencyDoc } from "./offline-print";
@@ -73,7 +75,6 @@ export function describePrintError(
 }
 
 export type LocalListener = { port: number; service: string };
-
 /**
  * Detecta listeners locales (agente PC :8792 / app Android :8793) en este
  * equipo. Funciona SIN internet (es localhost): sirve para el chequeo de
@@ -116,7 +117,7 @@ export async function getVendorPrintCtx(vendorId: string): Promise<VendorPrintCt
   };
 }
 
-type PostResult = { reached: boolean; ok: boolean; error?: string };
+type PostResult = { reached: boolean; ok: boolean; error?: string; data?: any };
 
 async function postLocal(port: number, body: Record<string, any>, timeoutMs: number): Promise<PostResult> {
   const ctrl = new AbortController();
@@ -128,9 +129,9 @@ async function postLocal(port: number, body: Record<string, any>, timeoutMs: num
       body: JSON.stringify(body),
       signal: ctrl.signal,
     });
-    const data = (await res.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
-    if (data?.ok === true) return { reached: true, ok: true };
-    return { reached: true, ok: false, error: String(data?.error || `listener ${port} rechazó`) };
+    const data = (await res.json().catch(() => null)) as any;
+    if (data?.ok === true) return { reached: true, ok: true, data };
+    return { reached: true, ok: false, error: String(data?.error || `listener ${port} rechazó`), data };
   } catch {
     return { reached: false, ok: false };
   } finally {
@@ -146,7 +147,11 @@ export async function tryLocalPrint(
   token: string,
   payloadB64: string,
   dest?: { ip?: string; port?: number }
-): Promise<{ ok: true; via: string } | { ok: false; error: string } | null> {
+): Promise<
+  | { ok: true; via: string; printerIpUsed?: string; autoFixed?: boolean }
+  | { ok: false; error: string }
+  | null
+> {
   let reachedAny = false;
   let lastError = "sin listener local";
   for (const port of LOCAL_PRINT_PORTS) {
@@ -162,7 +167,16 @@ export async function tryLocalPrint(
     );
     if (!r.reached) continue;
     reachedAny = true;
-    if (r.ok) return { ok: true, via: `127.0.0.1:${port}` };
+    if (r.ok) {
+      const used =
+        typeof r.data?.printerIpUsed === "string" && r.data.printerIpUsed ? r.data.printerIpUsed : undefined;
+      return {
+        ok: true,
+        via: `127.0.0.1:${port}`,
+        ...(used ? { printerIpUsed: used } : {}),
+        ...(r.data?.autoFixed === true ? { autoFixed: true as const } : {}),
+      };
+    }
     lastError = r.error || lastError;
   }
   if (!reachedAny) return null;
@@ -171,24 +185,35 @@ export async function tryLocalPrint(
 
 /**
  * Despacha un documento de contingencia: render + listener local.
- * Completa storeName/token/destino desde el snapshot del vendor.
+ * Completa storeName/token/destino desde el snapshot del vendor, prefiriendo
+ * la última IP que realmente imprimió (anti-envenenamiento DHCP: no manda la
+ * IP vieja del snapshot que pisaría la config ya corregida del listener).
  */
 export async function dispatchOfflinePrint(
   vendorId: string,
   doc: Omit<ContingencyDoc, "storeName"> & { storeName?: string }
-): Promise<{ printed: boolean; via?: string; error?: string }> {
+): Promise<{ printed: boolean; via?: string; error?: string; printerIpUsed?: string; autoFixed?: boolean }> {
   const ctx = await getVendorPrintCtx(vendorId).catch(() => null);
   if (!ctx?.token) return { printed: false, error: "sin token de impresión local" };
+  const fixedIp = await getFixedPrinterIp(vendorId).catch(() => null);
   const bytes = buildContingencyBytes({ ...doc, storeName: doc.storeName || ctx.storeName });
   const b64 = bytesToBase64(bytes);
   if (!b64) return { printed: false, error: "render vacío" };
   const r = await tryLocalPrint(ctx.token, b64, {
-    ...(ctx.ip ? { ip: ctx.ip } : {}),
+    ...(fixedIp || ctx.ip ? { ip: (fixedIp || ctx.ip) as string } : {}),
     port: ctx.port,
   });
   if (!r) return { printed: false, error: "sin listener local en este equipo" };
   if (!r.ok) return { printed: false, error: r.error };
-  return { printed: true, via: r.via };
+  if (r.autoFixed && r.printerIpUsed) {
+    await setFixedPrinterIp(vendorId, r.printerIpUsed).catch(() => {});
+  }
+  return {
+    printed: true,
+    via: r.via,
+    ...(r.printerIpUsed ? { printerIpUsed: r.printerIpUsed } : {}),
+    ...(r.autoFixed ? { autoFixed: true as const } : {}),
+  };
 }
 
 /** Marca impresos los trabajos de un localId (evita reimpresión al sincronizar). */
@@ -225,7 +250,7 @@ export async function flushPendingPrints(vendorId: string): Promise<FlushResult>
   try {
     jobs = await printsList(vendorId);
   } catch {
-    return out;
+  return out;
   }
   const idmap = await idmapGet(vendorId).catch(() => ({} as Record<string, { orderId: string }>));
   for (const job of jobs) {
@@ -285,4 +310,80 @@ export async function flushPendingPrints(vendorId: string): Promise<FlushResult>
     /* noop */
   }
   return out;
+}
+
+export type LocalScanResult = { port: number; service: string; hosts: string[] };
+
+/**
+ * Escanea la LAN desde los listeners locales (Buscar desde la web).
+ * Requiere el token del vendor (lo saca del snapshot). Funciona SIN
+ * internet. Devuelve por listener los hosts con el puerto abierto.
+ */
+export async function scanLocalPrinters(
+  vendorId: string,
+  port = 9100,
+  timeoutMs = 30000
+): Promise<{ listeners: LocalScanResult[]; error?: string }> {
+  const ctx = await getVendorPrintCtx(vendorId).catch(() => null);
+  const token = ctx?.token;
+  if (!token) return { listeners: [], error: "sin token de impresión local" };
+  const scanned = await Promise.all(
+    LOCAL_PRINT_PORTS.map(async (lp): Promise<LocalScanResult | null> => {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), timeoutMs);
+      try {
+        const res = await fetch(
+          `http://127.0.0.1:${lp}/local-scan?token=${encodeURIComponent(token)}&port=${port}`,
+          { signal: ctrl.signal }
+        );
+        const data = (await res.json().catch(() => null)) as { ok?: boolean; hosts?: string[] } | null;
+        if (data?.ok !== true) return null;
+        return {
+          port: lp,
+          service: lp === 8792 ? "agente PC" : "app Android",
+          hosts: Array.isArray(data.hosts) ? data.hosts.map(String) : [],
+        };
+      } catch {
+        return null;
+      } finally {
+        clearTimeout(t);
+      }
+    })
+  );
+  const listeners = scanned.filter((s): s is LocalScanResult => s !== null);
+  if (listeners.length === 0) {
+    return { listeners, error: "sin listener local en este equipo (abrí el agente o la app acá)" };
+  }
+  return { listeners };
+}
+
+/**
+ * Fija la IP elegida en el listener local (además del vendor). Así lo
+ * elegido en la web queda también en la app/agente de este equipo.
+ */
+export async function pushLocalPrinterIp(
+  vendorId: string,
+  listenerPort: number,
+  ip: string
+): Promise<{ ok: boolean; error?: string }> {
+  const ctx = await getVendorPrintCtx(vendorId).catch(() => null);
+  const token = ctx?.token;
+  if (!token) return { ok: false, error: "sin token de impresión local" };
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 8000);
+  try {
+    const res = await fetch(`http://127.0.0.1:${listenerPort}/local-config`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token, printerIp: ip }),
+      signal: ctrl.signal,
+    });
+    const data = (await res.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
+    if (data?.ok === true) return { ok: true };
+    return { ok: false, error: String(data?.error || "no se pudo guardar") };
+  } catch {
+    return { ok: false, error: "sin respuesta del listener local" };
+  } finally {
+    clearTimeout(t);
+  }
 }

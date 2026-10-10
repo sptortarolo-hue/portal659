@@ -326,6 +326,35 @@ export async function idmapSet(vendorId: string, localId: string, ref: SyncedRef
   }
 }
 
+// ----------------- IP corregida por auto-fix (anti-envenenamiento) ---
+
+/**
+ * Última IP que realmente imprimió (vía auto-fix DHCP). La PWA la prefiere
+ * sobre la del snapshot: evita mandar una IP vieja que pisa la config ya
+ * corregida del listener. Se limpia sola al fallar (se re-descubre).
+ */
+const fixedIpKey = (vendorId: string) => `vendor:${vendorId}:fixedIp`;
+
+export async function getFixedPrinterIp(vendorId: string): Promise<string | null> {
+  try {
+    const v = await kvGet<string>(fixedIpKey(vendorId));
+    return typeof v === "string" && v.trim() ? v.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function setFixedPrinterIp(vendorId: string, ip: string | null): Promise<void> {
+  try {
+    if (!ip) {
+      return;
+    }
+    await kvSet(fixedIpKey(vendorId), ip);
+  } catch {
+    /* noop */
+  }
+}
+
 // ------------------------------------------------------- Prints ---
 
 // ------------------------------------------------------- Prints ---

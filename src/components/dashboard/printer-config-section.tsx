@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { CollapsibleSection } from "@/components/ui/collapsible-section";
-import { dispatchOfflinePrint, probeLocalListeners, describePrintError, type LocalListener } from "@/lib/local-print";
+import { dispatchOfflinePrint, probeLocalListeners, pushLocalPrinterIp, scanLocalPrinters, describePrintError, type LocalListener, type LocalScanResult } from "@/lib/local-print";
 import type { Vendor } from "@/types/database";
 
 type Props = {
@@ -54,6 +54,9 @@ export function PrinterConfigSection({
   const [localListeners, setLocalListeners] = useState<LocalListener[] | null>(null);
   const [localProbing, setLocalProbing] = useState(false);
   const [localTesting, setLocalTesting] = useState(false);
+  // Buscar impresoras desde la web (usa el scan del listener local).
+  const [scanning, setScanning] = useState(false);
+  const [scanResults, setScanResults] = useState<LocalScanResult[] | null>(null);
 
   const probeLocal = async () => {
     setLocalProbing(true);
@@ -79,13 +82,56 @@ export function PrinterConfigSection({
       });
       setMsg(
         r.printed
-          ? `✅ Prueba local impresa (${r.via}): ticket provisorio sin validez fiscal`
+          ? r.autoFixed && r.printerIpUsed
+            ? `✅ Prueba local impresa (${r.via}; la impresora había cambiado de IP, ya se usa ${r.printerIpUsed})`
+            : `✅ Prueba local impresa (${r.via}): ticket provisorio sin validez fiscal`
           : `❌ No se pudo imprimir local: ${describePrintError(r.error || "sin listener")}`
       );
     } finally {
       setLocalTesting(false);
     }
     setTimeout(() => setMsg(""), 4000);
+  };
+
+  const scanNetwork = async () => {
+    if (!vendor?.id) {
+      setMsg("Sin comercio cargado");
+      return;
+    }
+    setScanning(true);
+    setScanResults(null);
+    try {
+      const r = await scanLocalPrinters(vendor.id, Number(printerPort) || 9100);
+      setScanResults(r.listeners);
+      const total = r.listeners.reduce((s, l) => s + l.hosts.length, 0);
+      if (r.listeners.length === 0) {
+        setMsg(`❌ ${r.error || "Sin listener local: abrí el agente o la app en este equipo"}`);
+      } else if (total === 0) {
+        setMsg("❌ No se encontró ninguna impresora: verificá Wi-Fi, IP y que esté prendida");
+      } else {
+        setMsg(`🔍 ${total} candidata${total === 1 ? "" : "s"}: tocá la IP para usarla`);
+      }
+    } finally {
+      setScanning(false);
+    }
+    setTimeout(() => setMsg(""), 5000);
+  };
+
+  const applyScannedIp = async (host: string, listenerPort: number) => {
+    if (!vendor?.id) return;
+    setPrinterIp(host);
+    try {
+      await saveVendor({ printer_ip: host });
+    } catch {
+      /* el guardado online puede fallar sin red: igual se fija local */
+    }
+    const r = await pushLocalPrinterIp(vendor.id, listenerPort, host);
+    setMsg(
+      r.ok
+        ? `✅ Impresora fijada en ${host} (vendor + equipo local)`
+        : `⚠️ IP guardada en el comercio, pero no llegó al equipo local: ${describePrintError(r.error)} (cargala a mano en la app/agente)`
+    );
+    setTimeout(() => setMsg(""), 5000);
   };
 
   useEffect(() => {
@@ -160,7 +206,12 @@ export function PrinterConfigSection({
     if (data.offline) {
       setMsg("❌ La app Portal Print no está conectada (abrí la app en tu celu)");
     } else if (data.ok) {
-      setMsg("✅ Impresión de prueba enviada");
+      if (data.ipFixed) {
+        setPrinterIp(data.ipFixed.to);
+        setMsg(`✅ Impresión de prueba enviada (la impresora había cambiado de IP: ${data.ipFixed.from} → ${data.ipFixed.to}, ya quedó actualizada)`);
+      } else {
+        setMsg("✅ Impresión de prueba enviada");
+      }
     } else {
       setMsg(`❌ ${describePrintError(data.error || data.reason || "Error al imprimir", { ip: printerIp || null, port: Number(printerPort) || 9100 })}`);
     }
@@ -267,7 +318,7 @@ export function PrinterConfigSection({
               </summary>
 
               <a
-                href="/downloads/portal-print.apk?v=2"
+                href="/downloads/portal-print.apk?v=3"
                 download="portal-print.apk"
                 className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-primary text-primary-foreground px-4 py-2.5 text-sm font-semibold hover:bg-primary/90 active:scale-[0.98] transition-all"
               >
@@ -300,7 +351,7 @@ export function PrinterConfigSection({
               </summary>
 
               <a
-                href="/uploads/downloads/portal-print-agent.zip?v=4"
+                href="/uploads/downloads/portal-print-agent.zip?v=5"
                 download="portal-print-agent.zip"
                 className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-fresh text-fresh-foreground px-4 py-2.5 text-sm font-semibold hover:bg-fresh/80 active:scale-[0.98] transition-all"
               >
@@ -514,6 +565,9 @@ export function PrinterConfigSection({
             <Button variant="outline" size="sm" type="button" onClick={testLocalPrint} disabled={localTesting}>
               {localTesting ? "Imprimiendo…" : "🧪 Probar impresión local"}
             </Button>
+            <Button variant="outline" size="sm" type="button" onClick={scanNetwork} disabled={scanning}>
+              {scanning ? "Buscando…" : "🔍 Buscar impresoras en la red"}
+            </Button>
           </div>
           {localListeners !== null && (
             <p className="mt-2 text-muted-foreground">
@@ -523,6 +577,33 @@ export function PrinterConfigSection({
                 <>🟢 Listener local: {localListeners.map((l) => `${l.service} (:${l.port})`).join(", ")}</>
               )}
             </p>
+          )}
+          {scanResults !== null && scanResults.length > 0 && (
+            <div className="mt-2 space-y-1.5">
+              {scanResults.map((l) => (
+                <div key={l.port}>
+                  <p className="text-[10px] font-semibold text-muted-foreground">
+                    Vía {l.service} (:{l.port}) — tocá la IP para usarla:
+                  </p>
+                  {l.hosts.length === 0 ? (
+                    <p className="text-[11px] text-muted-foreground">Sin impresoras en esta red.</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-1.5 mt-1">
+                      {l.hosts.map((h) => (
+                        <button
+                          key={`${l.port}-${h}`}
+                          type="button"
+                          onClick={() => applyScannedIp(h, l.port)}
+                          className="rounded-lg border border-primary/40 bg-primary/5 px-2.5 py-1 font-mono text-xs font-semibold text-primary hover:bg-primary/10 active:scale-[0.98]"
+                        >
+                          {h}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
           )}
           <p className="mt-1 text-[10px] text-muted-foreground/70">
             Cobertura: panel en PC con agente, o panel en Android con la app en el

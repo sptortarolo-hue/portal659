@@ -22,18 +22,13 @@ import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.Socket;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 
 @CapacitorPlugin(name = "PortalSocket")
 public class PortalSocketPlugin extends Plugin {
-
-  private static final int SCAN_HOSTS = 254;
 
   @PluginMethod
   public void print(PluginCall call) {
@@ -82,37 +77,18 @@ public class PortalSocketPlugin extends Plugin {
       return;
     }
 
-    ExecutorService pool = Executors.newFixedThreadPool(64);
-    List<String> found = Collections.synchronizedList(new ArrayList<>());
-    CountDownLatch latch = new CountDownLatch(SCAN_HOSTS);
-
-    for (int host = 1; host <= SCAN_HOSTS; host++) {
-      final String target = subnet + "." + host;
-      pool.execute(() -> {
-        try (Socket socket = new Socket()) {
-          socket.connect(new InetSocketAddress(target, port), timeoutMs);
-          found.add(target);
-        } catch (Exception ignored) {
-          // host no responde en ese puerto
-        } finally {
-          latch.countDown();
-        }
-      });
-    }
-
+    ExecutorService pool = Executors.newSingleThreadExecutor();
     pool.execute(() -> {
       try {
-        latch.await(15, TimeUnit.SECONDS);
-      } catch (InterruptedException ignored) {
-        // devolvemos lo que haya
+        List<String> hosts = LanScan.scan(Collections.singletonList(subnet), port, timeoutMs);
+        JSObject result = new JSObject();
+        result.put("hosts", new JSONArray(hosts));
+        call.resolve(result);
+      } catch (Exception e) {
+        call.reject("Búsqueda fallida: " + e.getMessage());
+      } finally {
+        pool.shutdown();
       }
-      List<String> sorted = new ArrayList<>(found);
-      Collections.sort(sorted);
-      JSONArray hosts = new JSONArray(sorted);
-      JSObject result = new JSObject();
-      result.put("hosts", hosts);
-      call.resolve(result);
-      pool.shutdown();
     });
   }
 

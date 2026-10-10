@@ -40,6 +40,19 @@ export function describePrintError(
   const msg = String(raw ?? "").trim();
   const where = ctx?.ip ? ` (${ctx.ip}${ctx?.port ? `:${ctx.port}` : ""})` : "";
   if (!msg) return "La impresora no respondió. Verificá que esté prendida y en el mismo Wi-Fi.";
+  // El celu y la impresora en subredes distintas (ej. celu 192.168.0.x vs
+  // impresora 192.168.100.x): el celu se conectó a otro Wi-Fi/router.
+  // Ni el auto-fix llega ahí (escanea su propia /24): hay que mover el celu.
+  const src24 = msg.match(/from\s+\/(\d{1,3}\.\d{1,3}\.\d{1,3})\.\d{1,3}/);
+  const dst24 =
+    (ctx?.ip || "").split(".").slice(0, 3).join(".") ||
+    (msg.match(/to\s+\/(\d{1,3}\.\d{1,3}\.\d{1,3})\.\d{1,3}/)?.[1] ?? "");
+  if (src24?.[1] && dst24 && src24[1] !== dst24) {
+    return (
+      `El celu está en otra red Wi-Fi (${src24[1]}.x) que la impresora (${dst24}.x): ` +
+      "conectalo al Wi-Fi del local, el mismo donde está la impresora. Después tocá Buscar si cambió la IP."
+    );
+  }
   if (/No route to host|EHOSTUNREACH/i.test(msg)) {
     return (
       `La impresora no responde en la red${where}: ` +

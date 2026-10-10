@@ -154,9 +154,9 @@ export function StoreHeader({
   const showUrgency = isService && !isEstetica && v.urgent_enabled === true;
 
   return (
-    <div id="store-header" className="relative">
+    <div className="relative">
       {/* Zona 1: Hero con info superpuesta */}
-      <div className="relative h-64 sm:h-80 w-full">
+      <div id="store-header" className="relative h-64 sm:h-80 w-full">
         {v.image_url ? (
           <ProductImage
             src={v.image_url}

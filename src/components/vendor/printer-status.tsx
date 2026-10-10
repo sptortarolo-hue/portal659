@@ -3,14 +3,18 @@
 import { useEffect, useState } from "react";
 import type { Vendor } from "@/types/database";
 
-type St = "ok" | "error" | "off" | "none";
+type St = "ok" | "warn" | "error" | "off" | "none";
 
 const DOT: Record<St, string> = {
   ok: "🟢",
+  warn: "🟠",
   error: "🟠",
   off: "🔴",
   none: "⚪",
 };
+
+/** Recencia máxima para considerar una desconexión como "reconectando" (vs. muerta). */
+const RECONNECT_WINDOW_MS = 3 * 60 * 1000;
 
 /**
  * Indicador de estado de impresora en el header del dashboard.
@@ -20,6 +24,9 @@ const DOT: Record<St, string> = {
  */
 export function PrinterStatus({ vendor, onOpenConfig }: { vendor: Vendor; onOpenConfig: () => void }) {
   const [state, setState] = useState<St>("none");
+  // Cola pendiente (modo app): para distinguir "reconectando" (ámbar) de
+  // "muerta" (rojo). La recencia se evalúa al momento del poll.
+  const [queued, setQueued] = useState(0);
 
   const mode = vendor.print_mode === "app" ? "app" : "server";
 
@@ -32,7 +39,25 @@ export function PrinterStatus({ vendor, onOpenConfig }: { vendor: Vendor; onOpen
         const data = await res.json();
         if (!mounted) return;
         if (mode === "app") {
-          setState(data?.agent?.online ? "ok" : "off");
+          const online = data?.agent?.online === true;
+          const q = Number(data?.agent?.queued) || 0;
+          const rawSeen = data?.agent?.lastSeen as number | string | null | undefined;
+          const seenMs =
+            typeof rawSeen === "number" && Number.isFinite(rawSeen)
+              ? rawSeen
+              : typeof rawSeen === "string" && rawSeen
+                ? new Date(rawSeen).getTime()
+                : NaN;
+          setQueued(q);
+          if (online) {
+            setState("ok");
+          } else if (q > 0 || (Number.isFinite(seenMs) && Date.now() - seenMs < RECONNECT_WINDOW_MS)) {
+            // Se la vio hace poco y/o hay trabajos esperando entrega:
+            // casi seguro vuelve sola (backoff), no es una muerte.
+            setState("warn");
+          } else {
+            setState("off");
+          }
         } else {
           const hasIp = !!data?.vendor?.printer_ip;
           if (!hasIp) setState("none");
@@ -55,11 +80,13 @@ export function PrinterStatus({ vendor, onOpenConfig }: { vendor: Vendor; onOpen
   const label =
     state === "ok"
       ? "Impresora"
-      : state === "error"
-        ? "Falla última"
-        : state === "off"
-          ? "Sin conexión"
-          : "Sin impresora";
+      : state === "warn"
+        ? `Reconectando${queued > 0 ? ` (${queued} en cola)` : ""}`
+        : state === "error"
+          ? "Falla última"
+          : state === "off"
+            ? "Sin conexión"
+            : "Sin impresora";
 
   return (
     <button
@@ -70,6 +97,9 @@ export function PrinterStatus({ vendor, onOpenConfig }: { vendor: Vendor; onOpen
     >
       <span>🖨️</span>
       <span>{DOT[state]}</span>
+      {state === "warn" && queued > 0 && (
+        <span className="text-[10px] font-bold tabular-nums">{queued}</span>
+      )}
     </button>
   );
 }

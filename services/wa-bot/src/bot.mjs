@@ -1042,11 +1042,11 @@ function hashStr(s) {
   return h;
 }
 
-/** Saludo del concierge con abierto/cerrado real (y el próximo horario si está
- *  cerrado) + variante anti-ban por chat. */
-async function conciergeGreeting(vendor, waId) {
+/** Respuesta automática del concierge con abierto/cerrado real + variante
+ *  anti-ban por chat. `full` = el blob completo (la primera vez); `false` = la
+ *  versión corta (dentro de la conversación: estado + menú + ayuda). */
+async function conciergeGreeting(vendor, waId, full = true) {
   let openLine = "";
-  let menuLine = "Pedí fácil desde el menú:";
   try {
     const r = await fetch(`${config.appUrl}/api/wa/menu?vendorId=${encodeURIComponent(vendor.id)}`, {
       headers: { Authorization: `Bearer ${config.waBotSecret}` },
@@ -1056,13 +1056,22 @@ async function conciergeGreeting(vendor, waId) {
     const isOpen = info?.vendor?.store_open;
     if (isOpen === true) {
       openLine = "Estamos abiertos ahora ✓";
-      menuLine = "Pedí fácil desde el menú:";
     } else if (isOpen === false) {
       const next = info?.vendor?.next_open_text;
       openLine = next ? `Estamos cerrados, volvemos a abrir a: ${next}` : "Estamos cerrados ahora";
-      menuLine = "De todas maneras podés ver todos nuestros productos en:";
     }
-  } catch { /* el saludo va sin la línea de horario */ }
+  } catch { /* la respuesta va sin la línea de horario */ }
+
+  if (!full) {
+    // Versión corta: el estado + el menú + ayuda (sin el header).
+    return [
+      ...(openLine ? [openLine] : []),
+      `📲 El menú online acá: ${shopUrl(vendor)}`,
+      `🙌 ¿Necesitás ayuda? Escribí *ayuda* y una persona de *${vendor.store_name}* te atiende enseguida.`,
+    ].join("\n\n");
+  }
+
+  const menuLine = openLine.startsWith("Estamos cerrados") ? "De todas maneras podés ver todos nuestros productos en:" : "Pedí fácil desde el menú:";
   const gi = hashStr(String(waId || vendor.id)) % CONCIERGE_GREETINGS.length;
   return CONCIERGE_GREETINGS[gi](vendor.store_name, openLine, menuLine, shopUrl(vendor));
 }
@@ -1092,14 +1101,8 @@ async function handleConcierge({ vendor, text, state, replies, waId }) {
     return;
   }
 
-  // Re-pedir menú / carta (siempre funciona): el link y el pie de ayuda.
-  if (RE_MENU.test(low)) {
-    replies.push(`📋 Menú online con fotos y precios:\n${shopUrl(vendor)}\n\n🙌 Si querés hablar con una persona, escribime *ayuda* en cualquier momento.`);
-    return;
-  }
-
-  // "ayuda" o un problema directo ("no me funciona", "falló") → una persona
-  // toma el hilo de una vez (sin pasar por la pregunta 1/2).
+  // 2) "ayuda" / hablar con una persona / un problema directo → una persona
+  //    toma el hilo de una vez. La ÚNICA escalada del bot.
   if (RE_AYUDA.test(low) || RE_PROBLEMA.test(low)) {
     const r = await handoffHuman(vendor, waId, text, state);
     replies.push(...(r.replies || []));
@@ -1107,73 +1110,20 @@ async function handleConcierge({ vendor, text, state, replies, waId }) {
     return;
   }
 
-  // El cliente responde a la pregunta "¿quieres que lo atienda una persona?".
-  // La pregunta se hace UNA sola vez: "2"/"no" → cierre; cualquier otra cosa →
-  // handoff directo (sin loop de re-preguntar).
-  if (state.step === "concierge_askperson") {
-    if (RE_PERSON_NO.test(low)) {
-      state.step = "idle";
-      const recent = await latestOrderFor(vendor.id, state.customerPhone || waId);
-      const link = recent?.trackUrl || shopUrl(vendor);
-      replies.push(
-        `Perfecto. Esperamos su pedido; si ya lo realizó, podrá seguirlo en el link.\n📦 ${link}`
-      );
-      return;
-    }
-    // "1"/"sí" o cualquier otra respuesta → una persona atiende de una vez.
-    const r = await handoffHuman(vendor, waId, text, state);
-    replies.push(...(r.replies || []));
-    state.step = "idle";
-    return;
-  }
-
-  // El saludo ("hola"/"buenas"...) SIEMPRE contesta con la bienvenida — ANTES
-  // del silencio del pedido. Con variantes de redacción (anti-ban).
-  if (RE_GREETING.test(low)) {
-    if (!state.welcomed) {
-      state.welcomed = true;
-      state.step = "idle";
-      replies.push(await conciergeGreeting(vendor, waId));
-      return;
-    }
-    // Re-saludo: el menú + ayuda (sin repetir el blob completo).
-    replies.push(`¡Hola de nuevo! 👋 El menú online acá:\n${shopUrl(vendor)}\n\n🙌 Si querés hablar con una persona, escribime *ayuda* en cualquier momento.`);
-    return;
-  }
-
-  // El pedido armado por la app/página web: el mensaje con productos del menú
-  // (o un pedido reciente en el teléfono) NO recibe respuesta. El cliente pidió
-  // online sin iniciar una conversación → el canal queda abierto para los
-  // eventos del pedido (aceptación, en camino, listo, datos de pago) que la app
-  // manda.
-  const products = await getMenu(vendor.id).catch(() => []);
-  const mentionsProduct = Array.isArray(products) && products.length > 0 && extractFromText(text, products).length > 0;
-  const hasOrder = await latestOrderFor(vendor.id, state.customerPhone || waId);
-  if (mentionsProduct || hasOrder) {
-    return;
-  }
-
-  // Intent con la IA (gratis, 1 llamada): "persona" → handoff directo ·
-  // "pedir" → el menú online. Sin IA o "chat" → la pregunta persona (como antes).
-  const intent = await classifyIntent(text).catch(() => null);
-  if (intent === "persona") {
-    const r = await handoffHuman(vendor, waId, text, state);
-    replies.push(...(r.replies || []));
-    state.step = "idle";
-    return;
-  }
-  if (intent === "pedir") {
+  // 3) AUTO-RESPONDER: TODO mensaje recibe respuesta (los inicios de chat
+  //    posibles: "hola", "tienen milanesa?", "te puedo hacer un pedido?",
+  //    "quiero saber si están abiertos"...). El estado abierto/cerrado responde
+  //    de paso las preguntas de horario; el menú es la puerta al pedido; y el
+  //    pie de ayuda siempre. Primera vez el blob completo; dentro de la
+  //    conversación, la versión corta.
+  if (!state.welcomed) {
     state.welcomed = true;
     state.step = "idle";
-    replies.push(`📲 Todo eso lo tenés en el menú online:\n${shopUrl(vendor)}\n\n🙌 Si querés hablar con una persona, escribime *ayuda* en cualquier momento.`);
+    replies.push(await conciergeGreeting(vendor, waId, true));
     return;
   }
-
-  // Cualquier otra cosa: ofrecer la persona (una sola pregunta: 1 sí / 2 no).
-  state.step = "concierge_askperson";
-  replies.push(
-    `«¿Querés que lo atienda una persona de *${vendor.store_name}*?»\n\n1️⃣ Sí\n2️⃣ No\n\n🙌 (Escribí *ayuda* en cualquier momento y te responde una persona.)`
-  );
+  replies.push(await conciergeGreeting(vendor, waId, false));
+  return;
 }
 
 async function handoffHuman(vendor, waId, text, state) {
@@ -1195,8 +1145,6 @@ async function handoffHuman(vendor, waId, text, state) {
 // ———————————————————————————————————————————————————————————————————————————
 
 const SWEEP_WAITING_STEPS = new Set([
-  "concierge_askperson",   // la pregunta 1/2 pendiente
-  "concierge_feedback",    // esperando la consulta/sugerencia
   "awaiting_receipt",      // esperando el comprobante de la transferencia
 ]);
 

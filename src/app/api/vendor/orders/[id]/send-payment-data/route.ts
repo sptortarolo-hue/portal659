@@ -26,18 +26,14 @@ export async function POST(
     payment_status: string;
     pickup_number: number | null;
     track_token: string | null;
-    is_preview: boolean | null;
   }>(
-    `SELECT id, customer_phone, total, payment_method, payment_status, pickup_number, track_token, is_preview
+    `SELECT id, customer_phone, total, payment_method, payment_status, pickup_number, track_token
      FROM orders WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
     [params.id, vendor.id]
   );
   if (!order) return NextResponse.json({ error: "Pedido no encontrado" }, { status: 404 });
   if (order.payment_method !== "transferencia") {
     return NextResponse.json({ error: "El pedido no es por transferencia" }, { status: 400 });
-  }
-  if (order.is_preview === true) {
-    return NextResponse.json({ error: "Pedido de prueba" }, { status: 400 });
   }
   if (!order.customer_phone || order.customer_phone.startsWith("lid:")) {
     return NextResponse.json({ error: "El pedido no tiene teléfono del cliente" }, { status: 400 });

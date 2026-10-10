@@ -573,14 +573,15 @@ export async function PATCH(
   // WhatsApp (bot): ACEPTADO automático al salir de "new" (simple, con link de
   // seguimiento — sin plata). Los datos de alias/monto van por el BOTÓN manual
   // del panel ("💳 Enviar datos de pago por WA"), no acá. Todo best-effort:
-  // sin el bot conectado el flow sigue igual que siempre.
+  // sin el bot conectado el flow sigue igual que siempre. Los pedidos de
+  // PRUEBA también envían (el teléfono lo carga el comercio en su demo —
+  // muestra la experiencia completa: aceptado/en camino/listo + seguimiento).
   const isAcceptEvent = status && currentOrder.status === "new" && status !== "cancelled";
   const isOnRoadEvent = status === "sent" && order.method === "delivery";
   const isReadyEvent = status === "ready" && order.method === "pickup";
   const hasRealPhone = typeof order.customer_phone === "string" && !!order.customer_phone && !(order.customer_phone as string).startsWith("lid:");
   if (
     (isAcceptEvent || isOnRoadEvent || isReadyEvent) &&
-    currentOrder.is_preview !== true &&
     !isCounterPickup &&
     hasRealPhone
   ) {

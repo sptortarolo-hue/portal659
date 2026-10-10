@@ -439,6 +439,12 @@ public class PortalPrintService extends Service {
             String method = requestLine.length > 0 ? requestLine[0] : "";
             String rawPath = requestLine.length > 1 ? requestLine[1] : "/";
             String path = rawPath.split("\\?")[0];
+            // Preflight CORS/PNA (los navegadores lo exigen antes de GET/POST
+            // cross-origin a red privada/loopback).
+            if ("OPTIONS".equals(method)) {
+                writePreflight(out);
+                return;
+            }
             if ("GET".equals(method) && "/local-status".equals(path)) {
                 writeJson(out, 200, "{\"ok\":true,\"service\":\"portal-print\",\"local\":true,\"port\":" + LOCAL_PORT + "}");
                 return;
@@ -574,10 +580,20 @@ public class PortalPrintService extends Service {
 
     private void writeJson(OutputStream out, int status, String json) throws Exception {
         byte[] body = json.getBytes(StandardCharsets.UTF_8);
+        // CORS + Private Network Access: la PWA (https) llama a este loopback
+        // por fetch; sin estos headers el navegador bloquea la respuesta.
         String head = "HTTP/1.1 " + status + " OK\r\nContent-Type: application/json\r\nContent-Length: "
-            + body.length + "\r\nConnection: close\r\n\r\n";
+            + body.length + "\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Private-Network: true\r\nConnection: close\r\n\r\n";
         out.write(head.getBytes(StandardCharsets.UTF_8));
         out.write(body);
+        out.flush();
+    }
+
+    private void writePreflight(OutputStream out) throws Exception {
+        String head = "HTTP/1.1 204 OK\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Private-Network: true\r\n"
+            + "Access-Control-Allow-Methods: GET, POST, OPTIONS\r\nAccess-Control-Allow-Headers: Content-Type\r\n"
+            + "Access-Control-Max-Age: 86400\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+        out.write(head.getBytes(StandardCharsets.UTF_8));
         out.flush();
     }
 

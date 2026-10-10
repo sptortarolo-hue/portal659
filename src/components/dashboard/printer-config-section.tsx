@@ -318,7 +318,7 @@ export function PrinterConfigSection({
               </summary>
 
               <a
-                href="/downloads/portal-print.apk?v=3"
+                href="/downloads/portal-print.apk?v=4"
                 download="portal-print.apk"
                 className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-primary text-primary-foreground px-4 py-2.5 text-sm font-semibold hover:bg-primary/90 active:scale-[0.98] transition-all"
               >
@@ -351,7 +351,7 @@ export function PrinterConfigSection({
               </summary>
 
               <a
-                href="/uploads/downloads/portal-print-agent.zip?v=5"
+                href="/uploads/downloads/portal-print-agent.zip?v=6"
                 download="portal-print-agent.zip"
                 className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-fresh text-fresh-foreground px-4 py-2.5 text-sm font-semibold hover:bg-fresh/80 active:scale-[0.98] transition-all"
               >

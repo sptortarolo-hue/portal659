@@ -12,7 +12,7 @@ import { createLocalServer } from "../src/local-server.js";
 const PORT = 18792;
 const TOKEN = "pp_local_test";
 
-function request(port, path, body) {
+function request(port, path, body, method) {
   return new Promise((resolve, reject) => {
     const text = body === undefined ? null : JSON.stringify(body);
     const req = http.request(
@@ -20,7 +20,7 @@ function request(port, path, body) {
         host: "127.0.0.1",
         port,
         path,
-        method: text === null ? "GET" : "POST",
+        method: method || (text === null ? "GET" : "POST"),
         headers: text === null ? {} : { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(text) },
       },
       (res) => {
@@ -31,7 +31,7 @@ function request(port, path, body) {
           try {
             json = JSON.parse(Buffer.concat(chunks).toString("utf8"));
           } catch {}
-          resolve({ status: res.statusCode, json });
+          resolve({ status: res.statusCode, json, headers: res.headers });
         });
       }
     );
@@ -65,7 +65,15 @@ await waitFor(() => server.isListening());
 let r = await request(PORT, "/local-status");
 assert.equal(r.status, 200);
 assert.equal(r.json.ok, true);
-console.log("ok - /local-status responde sin auth");
+assert.equal(r.headers["access-control-allow-origin"], "*");
+assert.equal(r.headers["access-control-allow-private-network"], "true");
+console.log("ok - /local-status responde sin auth y con headers CORS/PNA");
+
+r = await request(PORT, "/local-scan?token=x", undefined, "OPTIONS");
+assert.equal(r.status, 204);
+assert.equal(r.headers["access-control-allow-origin"], "*");
+assert.ok(String(r.headers["access-control-allow-methods"] || "").includes("POST"));
+console.log("ok - preflight OPTIONS responde 204 con CORS");
 
 r = await request(PORT, "/local-print", { payload: Buffer.from("hola").toString("base64") });
 assert.equal(r.status, 401);

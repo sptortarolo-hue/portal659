@@ -27,8 +27,25 @@ function json(res, status, body) {
   res.writeHead(status, {
     "Content-Type": "application/json",
     "Content-Length": Buffer.byteLength(text),
+    // CORS + Private Network Access: la PWA (https) llama a este loopback
+    // por fetch; sin estos headers el navegador bloquea la respuesta (y el
+    // preflight de los POST con JSON). Solo-loopback + token ya autentican.
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Private-Network": "true",
   });
   res.end(text);
+}
+
+function preflight(res) {
+  res.writeHead(204, {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Private-Network": "true",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Max-Age": "86400",
+    "Content-Length": 0,
+  });
+  res.end();
 }
 
 function createLocalServer({ getConfig, onEvent, port = LOCAL_PORT } = {}) {
@@ -141,6 +158,12 @@ function createLocalServer({ getConfig, onEvent, port = LOCAL_PORT } = {}) {
           url = { pathname: "/", searchParams: new URLSearchParams() };
         }
         const path = url.pathname;
+        // Preflight CORS/PNA (navegadores lo exigen antes de GET/POST
+        // cross-origin a red privada/loopback).
+        if (req.method === "OPTIONS") {
+          preflight(res);
+          return;
+        }
         if (req.method === "GET" && path === "/local-status") {
           json(res, 200, { ok: true, service: "portal-print-agent", local: true, port });
           return;

@@ -1063,39 +1063,45 @@ async function handleConcierge({ vendor, text, state, replies, waId }) {
     return;
   }
 
+  // El saludo ("hola"/"buenas"...) SIEMPRE contesta con la bienvenida — ANTES
+  // del silencio del pedido. Con pedidos recientes el silencio se tragaba el
+  // "hola" y nunca llegaba la bienvenida (el bug).
+  if (RE_GREETING.test(low)) {
+    if (!state.welcomed) {
+      state.welcomed = true;
+      state.step = "idle";
+      let openLine = "";
+      try {
+        const r = await fetch(`${config.appUrl}/api/wa/menu?vendorId=${encodeURIComponent(vendor.id)}`, {
+          headers: { Authorization: `Bearer ${config.waBotSecret}` },
+          signal: AbortSignal.timeout(8_000),
+        });
+        const info = r.ok ? await r.json().catch(() => null) : null;
+        const isOpen = info?.vendor?.store_open;
+        openLine = isOpen === true ? "Estamos abiertos ahora ✓" : isOpen === false ? "Estamos cerrados ahora" : "";
+      } catch { /* el saludo va sin la línea de horario */ }
+      replies.push([
+        `Hola 👋 Soy el asistente de *${vendor.store_name}*.`,
+        ...(openLine ? [openLine] : []),
+        `📲 Mirá el menú online:\n${shopUrl(vendor)}`,
+        `🙌 Si querés hablar con una persona, escribime *ayuda* en cualquier momento.`,
+      ].join("\n\n"));
+      return;
+    }
+    // Re-saludo: el menú + ayuda (sin repetir el blob completo).
+    replies.push(`¡Hola de nuevo! 👋 El menú online acá:\n${shopUrl(vendor)}\n\n🙌 Si querés hablar con una persona, escribime *ayuda* en cualquier momento.`);
+    return;
+  }
+
   // El pedido armado por la app/página web: el mensaje con productos del menú
   // (o un pedido reciente en el teléfono) NO recibe respuesta. El cliente pidió
   // online sin iniciar una conversación → el canal queda abierto para los
   // eventos del pedido (aceptación, en camino, listo, datos de pago) que la app
-  // manda. ANTES del saludo: si el primer texto ya era pedido, no responde.
+  // manda.
   const products = await getMenu(vendor.id).catch(() => []);
   const mentionsProduct = Array.isArray(products) && products.length > 0 && extractFromText(text, products).length > 0;
   const hasOrder = await latestOrderFor(vendor.id, state.customerPhone || waId);
   if (mentionsProduct || hasOrder) {
-    return;
-  }
-
-  // El primer mensaje de la conversación → saludo (abierto/cerrado) + menú
-  // online + el tope de "ayuda" para hablar con persona.
-  if (!state.welcomed) {
-    state.welcomed = true;
-    state.step = "idle";
-    let openLine = "";
-    try {
-      const r = await fetch(`${config.appUrl}/api/wa/menu?vendorId=${encodeURIComponent(vendor.id)}`, {
-        headers: { Authorization: `Bearer ${config.waBotSecret}` },
-        signal: AbortSignal.timeout(8_000),
-      });
-      const info = r.ok ? await r.json().catch(() => null) : null;
-      const isOpen = info?.vendor?.store_open;
-      openLine = isOpen === true ? "Estamos abiertos ahora ✓" : isOpen === false ? "Estamos cerrados ahora" : "";
-    } catch { /* el saludo va sin la línea de horario */ }
-    replies.push([
-      `Hola 👋 Soy el asistente de *${vendor.store_name}*.`,
-      ...(openLine ? [openLine] : []),
-      `📲 Mirá el menú online:\n${shopUrl(vendor)}`,
-      `🙌 Si querés hablar con una persona, escribime *ayuda* en cualquier momento.`,
-    ].join("\n\n"));
     return;
   }
 

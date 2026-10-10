@@ -553,10 +553,10 @@ export function PrinterConfigSection({
             📡 Impresión sin internet (contingencia)
           </summary>
           <p className="mt-2 text-muted-foreground">
-            Si se corta internet, el ticket provisorio (solo-texto, sin logo ni
-            factura) sale por el agente PC o la app Android <strong>de este mismo
-            equipo</strong> directo a la impresora. Requiere agente/app actualizados
-            y corriendo acá.
+            Quedan <strong>dos caminos activos</strong> a la vez: <strong>con internet</strong> imprime
+            por el servidor (ticket completo); <strong>sin internet</strong> sale directo desde{" "}
+            <strong>este mismo equipo</strong> por el agente PC o la app Android (ticket provisorio:
+            solo-texto, sin logo ni factura). Requiere agente/app actualizados y corriendo acá.
           </p>
           <div className="mt-2 flex flex-wrap gap-2">
             <Button variant="outline" size="sm" type="button" onClick={probeLocal} disabled={localProbing}>
@@ -574,7 +574,7 @@ export function PrinterConfigSection({
               {localListeners.length === 0 ? (
                 <>🔴 Sin listener local en este equipo (abrí el agente o la app acá).</>
               ) : (
-                <>🟢 Listener local: {localListeners.map((l) => `${l.service} (:${l.port})`).join(", ")}</>
+                <>🟢 Este equipo puede imprimir sin internet vía {localListeners.map((l) => `${l.service} (:${l.port})`).join(", ")}</>
               )}
             </p>
           )}
@@ -583,7 +583,7 @@ export function PrinterConfigSection({
               {scanResults.map((l) => (
                 <div key={l.port}>
                   <p className="text-[10px] font-semibold text-muted-foreground">
-                    Vía {l.service} (:{l.port}) — tocá la IP para usarla:
+                    Encontradas vía {l.service} — tocá la IP para usarla con y sin internet:
                   </p>
                   {l.hosts.length === 0 ? (
                     <p className="text-[11px] text-muted-foreground">Sin impresoras en esta red.</p>
@@ -606,8 +606,8 @@ export function PrinterConfigSection({
             </div>
           )}
           <p className="mt-1 text-[10px] text-muted-foreground/70">
-            Cobertura: panel en PC con agente, o panel en Android con la app en el
-            mismo equipo. iOS y equipos cruzados encolan para imprimir al reconectar.
+            Esto vale para este equipo: en otro equipo (u otro celu) hay que repetir
+            Detectar + Buscar ahí. iOS y equipos cruzados encolan para imprimir al reconectar.
           </p>
         </details>
 

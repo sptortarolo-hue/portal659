@@ -1023,6 +1023,14 @@ async function latestOrderFor(vendorId, phone) {
 const RE_APP_ORDER = /(quiero hacer un pedido)/i;
 const RE_APP_PAID  = /(ya pagu[eé] mi pedido|ya pague mi pedido)/i;
 const RE_APP_FAIL  = /(no se pudo cobrar)/i;
+// CTAs pre-armados del micrositio: los botones "Pedir por WhatsApp" del sitio
+// abren el chat con texto propio de la app ("… Vengo de Portal 659."), no son
+// palabras del cliente → el bot calla (el comercio los ve en su WhatsApp) y la
+// bienvenida queda reservada para el primer mensaje REAL del cliente.
+const RE_APP_ORIGIN = /vengo de portal 659/i;
+// El CTA "🚨 URGENTE - Necesito {store} lo antes posible.": el cliente que lo
+// toca quiere hablar YA con una persona → handoff directo (sin bienvenida).
+const RE_URGENTE = /urgente/i;
 
 // Variantes de saludo (anti-ban: el mismo texto idéntico a muchos números es
 // señal de spam). Se rota por hash del chat: un mismo cliente ve siempre el
@@ -1083,6 +1091,11 @@ async function handleConcierge({ vendor, text, state, replies, waId }) {
     return;
   }
 
+  // CTAs pre-armados del micrositio → SILENCIO (texto de la app, no del
+  // cliente; no consume la bienvenida: el primer mensaje propio recién
+  // entonces arranca el flujo de bienvenida → persona).
+  if (RE_APP_ORIGIN.test(low)) return;
+
   // 1) Comprobante pendiente (de un pedido web por transferencia): el texto
   //    sigue esperando la foto — no cambia con el modo conserje.
   if (state.step === "awaiting_receipt") {
@@ -1090,9 +1103,10 @@ async function handleConcierge({ vendor, text, state, replies, waId }) {
     return;
   }
 
-  // 2) "ayuda" / hablar con una persona / un problema directo → una persona
-  //    toma el hilo de una vez. La ÚNICA escalada del bot.
-  if (RE_AYUDA.test(low) || RE_PROBLEMA.test(low)) {
+  // 2) "ayuda" / hablar con una persona / un problema directo / el CTA
+  //    "🚨 URGENTE" → una persona toma el hilo de una vez. La ÚNICA escalada
+  //    del bot (el urgente la salta: el cliente quiere hablar YA).
+  if (RE_AYUDA.test(low) || RE_PROBLEMA.test(low) || RE_URGENTE.test(low)) {
     const r = await handoffHuman(vendor, waId, text, state);
     replies.push(...(r.replies || []));
     state.step = "idle";

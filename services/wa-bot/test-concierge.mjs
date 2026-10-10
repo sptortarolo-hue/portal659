@@ -99,7 +99,37 @@ async function main() {
   if ((r.replies || []).length !== 0) { console.log("!!! el retorno de MP recibió respuesta"); ok = false; }
   else { console.log(">>> OK: 'ya pagué mi pedido' → silencio"); }
 
+  // 6b. Los CTAs pre-armados del micrositio (los 4 botones del sitio con el
+  //     marcador "Vengo de Portal 659.") → SILENCIO (texto de la app, no del
+  //     cliente; además NO consumen la bienvenida).
+  const CTAS_APP = [
+    "Hola Che Sancho! Quiero hacer un pedido. Vengo de Portal 659.",
+    "Hola Che Sancho! Quiero consultar por tu servicio. Vengo de Portal 659.",
+    "Hola Che Sancho! Te consulto por la carta. Vengo de Portal 659.",
+    "Hola Che Sancho! Quiero el pack Masajes. Vengo de Portal 659.",
+  ];
+  for (const cta of CTAS_APP) {
+    r = await handleInbound({ vendor, waId: wa, body: "cancelar" });
+    handoffNotified = false;
+    r = await handleInbound({ vendor, waId: wa, body: cta });
+    if ((r.replies || []).length !== 0 || handoffNotified) { console.log(`!!! el CTA recibió respuesta/push: ${cta.slice(0, 40)}...`); ok = false; break; }
+    // No consume la bienvenida: el primer mensaje PROPIO recién entonces saluda.
+    r = await handleInbound({ vendor, waId: wa, body: "tienen milanesa?" });
+    const ctaNext = (r.replies || []).join(" ");
+    if (!ctaNext.includes("Che Sancho") || !ctaNext.includes("abiert")) { console.log("!!! el CTA consumió la bienvenida del mensaje propio"); ok = false; break; }
+    console.log(`>>> OK: CTA de la app → silencio y no consume la bienvenida ("${cta.slice(17, 45)}...")`);
+  }
+
+  // 6c. El CTA "🚨 URGENTE" → handoff directo (persona + push al comercio).
+  r = await handleInbound({ vendor, waId: wa, body: "cancelar" });
+  handoffNotified = false;
+  r = await handleInbound({ vendor, waId: wa, body: "🚨 URGENTE - Necesito Che Sancho lo antes posible." });
+  show("🚨 URGENTE (CTA del micrositio)", r);
+  if (!handoffNotified || !(r.replies || []).join(" ").includes("Enseguida te atiende una persona")) { console.log("!!! el URGENTE no derivó directo a persona"); ok = false; }
+  else { console.log(">>> OK: '🚨 URGENTE' → persona directo (sin bienvenida) + push al comercio"); }
+
   // 7. "no se pudo cobrar" (MP falló) → handoff al dueño.
+  r = await handleInbound({ vendor, waId: wa, body: "cancelar" });
   handoffNotified = false;
   r = await handleInbound({ vendor, waId: wa, body: "Hola Che Sancho! Intenté pagar online y no se pudo cobrar. ¿Coordinamos por acá?" });
   show("no se pudo cobrar", r);

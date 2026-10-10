@@ -104,7 +104,20 @@ async function main() {
   if (!no2.includes("Perfecto") || !no2.includes("Esperamos su pedido")) { console.log("!!! el '2' no cerró bien la oferta"); ok = false; }
   else { console.log(">>> OK: el '2' cierra con el mensaje y el link"); }
 
-  // 7. "ayuda" → handoff directo, ni preguntas.
+  // 6b. Pregunta persona + respuesta que NO es sí/no → handoff DIRECTO (sin loop).
+  r = await handleInbound({ vendor, waId: wa, body: "cancelar" });
+  handoffNotified = false;
+  r = await handleInbound({ vendor, waId: wa, body: "hola" });
+  r = await handleInbound({ vendor, waId: wa, body: "bueno, qué sé yo" }); // → pregunta persona
+  r = await handleInbound({ vendor, waId: wa, body: "qué sé yo, si de una" }); // no es "2"/no
+  show("respuesta rara → handoff directo", r);
+  const rare = (r.replies || []).join(" ");
+  if (!rare.includes("Enseguida te atiende una persona") || !handoffNotified) { console.log("!!! la respuesta sin sí/no no saltó a persona (debe ser directo, sin loop)"); ok = false; }
+  else { console.log(">>> OK: sin sí/no → salta directo a que atienda una persona (sin loop)"); }
+
+  // 7. "ayuda" → handoff directo, ni preguntas (limpio, sin pausa previa).
+  r = await handleInbound({ vendor, waId: wa, body: "cancelar" });
+  handoffNotified = false;
   r = await handleInbound({ vendor, waId: wa, body: "ayuda" });
   show("ayuda", r);
   if (!(r.replies || []).join(" ").includes("Enseguida te atiende una persona")) { console.log("!!! 'ayuda' no fue al humano"); ok = false; }

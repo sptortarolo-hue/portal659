@@ -1044,16 +1044,11 @@ async function handleConcierge({ vendor, text, state, replies, waId }) {
   }
 
   // El cliente responde a la pregunta "¿quieres que lo atienda una persona?".
+  // La pregunta se hace UNA sola vez: "2"/"no" → cierre; cualquier otra cosa →
+  // handoff directo (sin loop de re-preguntar).
   if (state.step === "concierge_askperson") {
-    if (RE_PERSON_SI.test(low)) {
-      const r = await handoffHuman(vendor, waId, text, state);
-      replies.push(...(r.replies || []));
-      state.step = "idle";
-      return;
-    }
     if (RE_PERSON_NO.test(low)) {
       state.step = "idle";
-      state.personAskCount = 0;
       const recent = await latestOrderFor(vendor.id, state.customerPhone || waId);
       const link = recent?.trackUrl || shopUrl(vendor);
       replies.push(
@@ -1061,17 +1056,10 @@ async function handleConcierge({ vendor, text, state, replies, waId }) {
       );
       return;
     }
-    // Ignoró las opciones: la PRIMERA vez re-pregunta; a la SEGUNDA escala a
-    // una persona (la persona levanta el pedido por WhatsApp).
-    if (state.personAskCount >= 1) {
-      const r = await handoffHuman(vendor, waId, text, state);
-      replies.push(...(r.replies || []));
-      state.step = "idle";
-      state.personAskCount = 0;
-      return;
-    }
-    state.personAskCount = (state.personAskCount || 0) + 1;
-    replies.push(`Respondé *1* para hablar con una persona o *2* para seguir conmigo.`);
+    // "1"/"sí" o cualquier otra respuesta → una persona atiende de una vez.
+    const r = await handoffHuman(vendor, waId, text, state);
+    replies.push(...(r.replies || []));
+    state.step = "idle";
     return;
   }
 

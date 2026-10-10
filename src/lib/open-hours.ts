@@ -294,3 +294,45 @@ export function todayWeekDay(timeZone: string = TZ_AR): number {
   const map: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
   return map[wd] ?? new Date().getDay();
 }
+
+const DAYS_LABEL_AR = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
+
+/**
+ * "volvemos a abrir a: {hora}" — el próximo horario de apertura del comercio,
+ * calculado de los horarios semanales (formato del editor). TZ explícito.
+ * Devuelve "hoy 20:00" / "mañana 09:00" / "lunes 09:00", o null si no hay
+ * horario interpretable (el caller muestra "Estamos cerrados ahora" sin hora).
+ */
+export function nextOpeningText(hoursStr: string | null | undefined, timeZone: string = TZ_AR): string | null {
+  if (!hoursStr) return null;
+  if (/\b24\s*(hs|horas|\/7)\b/i.test(hoursStr)) return null; // 24h nunca cierra
+  const weekly = parseWeeklyHours(hoursStr);
+  if (!weekly) return null;
+
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone, weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false,
+  }).formatToParts(new Date());
+  const wd = parts.find((p) => p.type === "weekday")?.value || "";
+  const h = parseInt(parts.find((p) => p.type === "hour")?.value || "0", 10) % 24;
+  const m = parseInt(parts.find((p) => p.type === "minute")?.value || "0", 10);
+  const dayMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+  const today = dayMap[wd] ?? 0;
+  const nowMin = h * 60 + m;
+
+  for (let offset = 0; offset < 7; offset++) {
+    const dayNum = (today + offset) % 7;
+    const entry = weekly.find((d) => d.dayIdx === dayNum);
+    if (!entry || entry.closed) continue;
+    // entry.text = "09:00–13:00 · 17:00–22:00" (o "Abierto 24 hs")
+    for (const range of entry.text.split("·")) {
+      const mm = range.trim().match(/^(\d{1,2}):(\d{2})\s*[–-]\s*\d{1,2}:\d{2}$/);
+      if (!mm) continue;
+      const openMin = parseInt(mm[1], 10) * 60 + parseInt(mm[2], 10);
+      if (offset === 0 && openMin <= nowMin) continue; // esa franja ya pasó hoy
+      if (offset === 0) return `hoy ${mm[1]}:${mm[2]}`;
+      if (offset === 1) return `mañana ${mm[1]}:${mm[2]}`;
+      return `${DAYS_LABEL_AR[dayNum]} ${mm[1]}:${mm[2]}`;
+    }
+  }
+  return null;
+}

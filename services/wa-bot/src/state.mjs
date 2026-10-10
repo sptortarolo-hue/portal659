@@ -70,6 +70,18 @@ export async function forEachConversation(fn) {
   }
 }
 
+/** Cuenta las conversaciones activas de un vendor (para el tablero del admin). */
+export function countByVendor(vendorId) {
+  let n = 0;
+  const now = Date.now();
+  for (const [k, entry] of memory) {
+    if (!k.includes(`:${vendorId}:`)) continue;
+    if (entry.expireAt && now > entry.expireAt) continue;
+    n++;
+  }
+  return n;
+}
+
 // ————— QR de vinculación (guardado en Postgres, TTL por antigüedad 90s) —————
 const QR_TTL_MS = 90 * 1000;
 

@@ -1,7 +1,7 @@
 import { config } from "./config.mjs";
 import { getState, setState, clearState, forEachConversation } from "./state.mjs";
 import { getMenu, getMenuSync, matchProduct, matchAllProducts, normalizeForMatch, menuSummary } from "./menu.mjs";
-import { parseWithLlm, parseByRules, normalizeEs, extractFromText, bareName } from "./nlu.mjs";
+import { parseWithLlm, parseByRules, normalizeEs, extractFromText, bareName, classifyIntent } from "./nlu.mjs";
 import { getClientByVendor, sendText, sendTyping, sendPaused } from "./relay.mjs";
 
 const DEFAULT_STATE = {
@@ -1018,11 +1018,75 @@ async function latestOrderFor(vendorId, phone) {
   }
 }
 
+// Mensajes PREDEFINIDOS del checkout (formato fijo del sitio — cero falsos
+// positivos): el pedido armado que la app manda por WA ya está en el sistema.
+const RE_APP_ORDER = /(quiero hacer un pedido)/i;
+const RE_APP_PAID  = /(ya pagu[eé] mi pedido|ya pague mi pedido)/i;
+const RE_APP_FAIL  = /(no se pudo cobrar)/i;
+
+// Variantes de saludo (anti-ban: el mismo texto idéntico a muchos números es
+// señal de spam). Se rota por hash del chat: un mismo cliente ve siempre el
+// mismo tono, pero dos clientes no reciben el texto idéntico.
+const CONCIERGE_GREETINGS = [
+  (store, openLine, menuLine, link) =>
+    `¡Hola! 👋 Soy el asistente de *${store}*.\n${openLine ? openLine + "\n\n" : ""}${menuLine} ${link}\n\n¿Necesitás ayuda? Escribí *ayuda* y una persona de *${store}* te toma el pedido o te responde lo que necesites enseguida 🙌`,
+  (store, openLine, menuLine, link) =>
+    `Hola 👋 Te escribe el asistente de *${store}*.\n${openLine ? openLine + "\n\n" : ""}${menuLine} ${link}\n\nSi necesitás ayuda, escribí *ayuda* y una persona de *${store}* te atiende enseguida 🙌`,
+  (store, openLine, menuLine, link) =>
+    `¡Hola! 👋 Bienvenido a *${store}*.\n${openLine ? openLine + "\n\n" : ""}${menuLine} ${link}\n\n¿Necesitás ayuda? Escribí *ayuda* y te responde una persona de *${store}* 🙌`,
+];
+
+function hashStr(s) {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return h;
+}
+
+/** Saludo del concierge con abierto/cerrado real (y el próximo horario si está
+ *  cerrado) + variante anti-ban por chat. */
+async function conciergeGreeting(vendor, waId) {
+  let openLine = "";
+  let menuLine = "Pedí fácil desde el menú:";
+  try {
+    const r = await fetch(`${config.appUrl}/api/wa/menu?vendorId=${encodeURIComponent(vendor.id)}`, {
+      headers: { Authorization: `Bearer ${config.waBotSecret}` },
+      signal: AbortSignal.timeout(8_000),
+    });
+    const info = r.ok ? await r.json().catch(() => null) : null;
+    const isOpen = info?.vendor?.store_open;
+    if (isOpen === true) {
+      openLine = "Estamos abiertos ahora ✓";
+      menuLine = "Pedí fácil desde el menú:";
+    } else if (isOpen === false) {
+      const next = info?.vendor?.next_open_text;
+      openLine = next ? `Estamos cerrados, volvemos a abrir a: ${next}` : "Estamos cerrados ahora";
+      menuLine = "De todas maneras podés ver todos nuestros productos en:";
+    }
+  } catch { /* el saludo va sin la línea de horario */ }
+  const gi = hashStr(String(waId || vendor.id)) % CONCIERGE_GREETINGS.length;
+  return CONCIERGE_GREETINGS[gi](vendor.store_name, openLine, menuLine, shopUrl(vendor));
+}
+
 async function handleConcierge({ vendor, text, state, replies, waId }) {
   const low = text.trim().toLowerCase();
 
-  // Comprobante pendiente (de un pedido web por transferencia): el texto sigue
-  // esperando la foto — no cambia con el modo conserje.
+  // 0) Mensajes PREDEFINIDOS del checkout → SILENCIO. El pedido armado que la
+  //    app manda por WA ya está en el sistema (el checkout lo creó server-side
+  //    ANTES de abrir WhatsApp): el bot no dice nada — ni bienvenida — y el
+  //    canal queda abierto para los eventos (aceptado/en camino/listo/pago).
+  //    El texto arranca con "Hola {store}" — sin este check el RE_GREETING lo
+  //    matcheaba y respondía la bienvenida (el bug).
+  if (RE_APP_ORDER.test(low) && /total\s*:/i.test(low)) return;
+  if (RE_APP_PAID.test(low)) return;
+  // MP falló → el dueño tiene que saberlo de una vez.
+  if (RE_APP_FAIL.test(low)) {
+    const r = await handoffHuman(vendor, waId, text, state);
+    replies.push(...(r.replies || []));
+    return;
+  }
+
+  // 1) Comprobante pendiente (de un pedido web por transferencia): el texto
+  //    sigue esperando la foto — no cambia con el modo conserje.
   if (state.step === "awaiting_receipt") {
     replies.push("Estoy esperando tu comprobante (foto o PDF). Si cambiás de idea, escribime *cancelar*.");
     return;
@@ -1064,28 +1128,12 @@ async function handleConcierge({ vendor, text, state, replies, waId }) {
   }
 
   // El saludo ("hola"/"buenas"...) SIEMPRE contesta con la bienvenida — ANTES
-  // del silencio del pedido. Con pedidos recientes el silencio se tragaba el
-  // "hola" y nunca llegaba la bienvenida (el bug).
+  // del silencio del pedido. Con variantes de redacción (anti-ban).
   if (RE_GREETING.test(low)) {
     if (!state.welcomed) {
       state.welcomed = true;
       state.step = "idle";
-      let openLine = "";
-      try {
-        const r = await fetch(`${config.appUrl}/api/wa/menu?vendorId=${encodeURIComponent(vendor.id)}`, {
-          headers: { Authorization: `Bearer ${config.waBotSecret}` },
-          signal: AbortSignal.timeout(8_000),
-        });
-        const info = r.ok ? await r.json().catch(() => null) : null;
-        const isOpen = info?.vendor?.store_open;
-        openLine = isOpen === true ? "Estamos abiertos ahora ✓" : isOpen === false ? "Estamos cerrados ahora" : "";
-      } catch { /* el saludo va sin la línea de horario */ }
-      replies.push([
-        `Hola 👋 Soy el asistente de *${vendor.store_name}*.`,
-        ...(openLine ? [openLine] : []),
-        `📲 Mirá el menú online:\n${shopUrl(vendor)}`,
-        `🙌 Si querés hablar con una persona, escribime *ayuda* en cualquier momento.`,
-      ].join("\n\n"));
+      replies.push(await conciergeGreeting(vendor, waId));
       return;
     }
     // Re-saludo: el menú + ayuda (sin repetir el blob completo).
@@ -1102,6 +1150,22 @@ async function handleConcierge({ vendor, text, state, replies, waId }) {
   const mentionsProduct = Array.isArray(products) && products.length > 0 && extractFromText(text, products).length > 0;
   const hasOrder = await latestOrderFor(vendor.id, state.customerPhone || waId);
   if (mentionsProduct || hasOrder) {
+    return;
+  }
+
+  // Intent con la IA (gratis, 1 llamada): "persona" → handoff directo ·
+  // "pedir" → el menú online. Sin IA o "chat" → la pregunta persona (como antes).
+  const intent = await classifyIntent(text).catch(() => null);
+  if (intent === "persona") {
+    const r = await handoffHuman(vendor, waId, text, state);
+    replies.push(...(r.replies || []));
+    state.step = "idle";
+    return;
+  }
+  if (intent === "pedir") {
+    state.welcomed = true;
+    state.step = "idle";
+    replies.push(`📲 Todo eso lo tenés en el menú online:\n${shopUrl(vendor)}\n\n🙌 Si querés hablar con una persona, escribime *ayuda* en cualquier momento.`);
     return;
   }
 
@@ -1159,7 +1223,6 @@ export async function sweepStaleConversations() {
     const client = getClientByVendor(vendorId);
     if (!client || !client.vendor || client.vendor.enabled === false) return;
     const vendor = client.vendor;
-
     // Rate limit de salida para el aviso al cliente (el push al dueño siempre va).
     const lastUserMsg = Array.isArray(state.history)
       ? [...state.history].reverse().find((h) => h.role === "user")?.text || ""

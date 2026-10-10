@@ -1,7 +1,7 @@
 ﻿import { NextResponse } from "next/server";
 import { queryOne, queryMany } from "@/lib/db";
 import { authWaBot } from "@/lib/wa-bot";
-import { isStoreOpen, openStatusText } from "@/lib/open-hours";
+import { isStoreOpen, openStatusText, nextOpeningText } from "@/lib/open-hours";
 
 /** Menú público de un vendor, listo para que el bot (NLU) lo consuma.
  *  Exige `WA_BOT_SECRET` (endpoint interno). Devuelve productos + modificadores
@@ -87,9 +87,17 @@ export async function GET(request: Request) {
   }
 
   const storeOpen = isStoreOpen(vendor);
+  const nextOpen = storeOpen === false ? nextOpeningText(vendor.hours) : null;
 
   return NextResponse.json({
-    vendor: { id: vendor.id, store_name: vendor.store_name, vertical: vendor.vertical, store_open: storeOpen, open_text: openStatusText(storeOpen) },
+    vendor: {
+      id: vendor.id,
+      store_name: vendor.store_name,
+      vertical: vendor.vertical,
+      store_open: storeOpen,
+      open_text: openStatusText(storeOpen),
+      next_open_text: nextOpen,
+    },
     products: products.map((p) => ({
       id: p.id,
       name: p.name,

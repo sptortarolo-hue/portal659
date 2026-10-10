@@ -3,11 +3,11 @@ import { WebSocketServer, WebSocket } from "ws";
 import { config } from "./src/config.mjs";
 import { vendorByToken } from "./src/db.mjs";
 import { handleInbound, handleInboundMedia, startAwaitingReceipt, sweepStaleConversations } from "./src/bot.mjs";
-import { getState } from "./src/state.mjs";
+import { getState, countByVendor } from "./src/state.mjs";
 import { llmStats } from "./src/nlu.mjs";
 import { addClient, removeClient, getClient, getClientByVendor, sendText, sendTyping, sendPaused, clientCount, forEachClient } from "./src/relay.mjs";
 import { saveQrToken, clearQrToken, setBotStatus } from "./src/state.mjs";
-import { countOutbound, markNewChat } from "./src/limits.mjs";
+import { countOutbound, markNewChat, limitsReport } from "./src/limits.mjs";
 
 // Telemetría de salud (anti-ban): contadores de proceso para /health y logs.
 const stats = { messages: 0, replies: 0, errors: 0, loggedOut: 0, limitsHit: 0 };
@@ -86,9 +86,11 @@ const server = createServer(async (req, res) => {
     // lote supera los caps, no mandar (handoff silencioso al dueño).
     try {
       const { hour, day } = await countOutbound(vendorId, 1).catch(() => ({ hour: 0, day: 0 }));
-      if (hour > config.maxMsgPerHour || day > config.maxMsgPerDay) {
+      const capH = isCooling(vendorId) ? limitsCap(config.maxMsgPerHour) : config.maxMsgPerHour;
+      const capD = isCooling(vendorId) ? limitsCap(config.maxMsgPerDay) : config.maxMsgPerDay;
+      if (hour > capH || day > capD) {
         stats.limitsHit++;
-        console.log(`[ban-risque] ${vendorId} salida h=${hour}/${config.maxMsgPerHour} d=${day}/${config.maxMsgPerDay} en /send — no se manda`);
+        console.log(`[ban-risque] ${vendorId} salida h=${hour}/${capH} d=${day}/${capD} en /send — no se manda`);
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({ ok: true, sent: false, reason: "limits" }));
         return;
@@ -112,6 +114,34 @@ const server = createServer(async (req, res) => {
     console.log(`[send] app → ${waId} (orderId ${orderId || "-"}${enFlujo ? ", en_flujo sin estado" : ""}): ${text.slice(0, 80)}`);
     res.writeHead(200, { "content-type": "application/json" });
     res.end(JSON.stringify({ ok: true, sent: true, enFlujo: enFlujo || undefined }));
+    return;
+  }
+
+  // ————— GET /bots: datos en vivo por comercio para el TABLERO del admin
+  // (estado de conexión, conversaciones activas, mensajes). Auth WA_BOT_SECRET.
+  if (url.pathname === "/bots" && req.method === "GET") {
+    const auth = req.headers.authorization || "";
+    if (config.waBotSecret && auth !== `Bearer ${config.waBotSecret}`) {
+      res.writeHead(403, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "no autorizado" }));
+      return;
+    }
+    const vendors = [];
+    for (const [, c] of clients) {
+      if (!c.vendor) continue;
+      const report = await limitsReport(c.vendor.id).catch(() => ({ sentHour: 0, sentDay: 0, newChatsHour: 0 }));
+      vendors.push({
+        vendorId: c.vendor.id,
+        storeName: c.vendor.store_name,
+        connected: c.ws.readyState === WebSocket.OPEN,
+        conversations: countByVendor(c.vendor.id),
+        sentHour: report.sentHour,
+        sentDay: report.sentDay,
+        newChatsHour: report.newChatsHour,
+      });
+    }
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ llm: { hasKey: !!config.llmApiKey, ...llmStats }, vendors }));
     return;
   }
 
@@ -144,6 +174,22 @@ server.on("upgrade", (req, socket, head) => {
 });
 
 const lastSeen = new Map(); // token -> última actividad (mensaje, qr o pong)
+
+// Modo enfriamiento anti-ban: tras un LoggedOut (señal de Meta — el número
+// quedó "caliente") el comercio baja el volumen 48h: sin mensajes proactivos
+// (el sweep se salta) y rate limits a la mitad.
+const COOLING_MS = 48 * 60 * 60 * 1000;
+const coolingUntil = new Map(); // vendorId -> timestamp hasta cuándo enfriado
+
+function isCooling(vendorId) {
+  const until = coolingUntil.get(String(vendorId));
+  if (!until) return false;
+  if (until < Date.now()) { coolingUntil.delete(String(vendorId)); return false; }
+  return true;
+}
+function limitsCap(base) {
+  return Math.ceil(base / 2); // enfriado: la mitad del tope
+}
 
 async function attach(ws, token) {
   let vendor = null;
@@ -201,6 +247,15 @@ async function attach(ws, token) {
       await setBotStatus(vendor.id, "unlinked").catch(() => {});
       stats.loggedOut++;
       console.log(`[ban-risque] ${vendor.store_name} (${vendor.id}) LOGGED_OUT ${stats.loggedOut}° — re-pareando`);
+      // Aviso a los admins: el número quedó "caliente" — la guía ANTES de re-vincular.
+      fetch(`${config.appUrl}/api/wa/bot-alert`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.waBotSecret}` },
+        body: JSON.stringify({ vendorId: vendor.id, storeName: vendor.store_name, kind: "logged_out" }),
+        signal: AbortSignal.timeout(10_000),
+      }).catch(() => {});
+      // Modo enfriamiento: 48h sin proactivos y caps a la mitad.
+      coolingUntil.set(vendor.id, Date.now() + COOLING_MS);
       return;
     }
     if (msg.type === "image" || msg.type === "file") {
@@ -241,9 +296,10 @@ async function attach(ws, token) {
     const prev = await getState(vendor.id, msg.wa_id).catch(() => null);
     if (!prev) {
       const { added, count } = await markNewChat(vendor.id, msg.wa_id).catch(() => ({ added: 0, count: 0 }));
-      if (added && count > config.maxNewChatsPerHour) {
+      const capNew = isCooling(vendor.id) ? limitsCap(config.maxNewChatsPerHour) : config.maxNewChatsPerHour;
+      if (added && count > capNew) {
         stats.limitsHit++;
-        console.log(`[ban-risque] ${vendor.store_name} (${vendor.id}) ${count} chats nuevos/hora > ${config.maxNewChatsPerHour} — handoff, responde el dueño`);
+        console.log(`[ban-risque] ${vendor.store_name} (${vendor.id}) ${count} chats nuevos/hora > ${capNew} — handoff, responde el dueño`);
         return;
       }
     }
@@ -259,9 +315,11 @@ async function attach(ws, token) {
     // Rate limit de salida: si este lote supera los caps de hora/día, no mandar
     // (el dueño atiende). El conteo se hace ANTES de enviar para no exceder.
     const { hour, day } = await countOutbound(vendor.id, replies.length).catch(() => ({ hour: 0, day: 0 }));
-    if (hour > config.maxMsgPerHour || day > config.maxMsgPerDay) {
+    const capH = isCooling(vendor.id) ? limitsCap(config.maxMsgPerHour) : config.maxMsgPerHour;
+    const capD = isCooling(vendor.id) ? limitsCap(config.maxMsgPerDay) : config.maxMsgPerDay;
+    if (hour > capH || day > capD) {
       stats.limitsHit++;
-      console.log(`[ban-risque] ${vendor.store_name} (${vendor.id}) salida h=${hour}/${config.maxMsgPerHour} d=${day}/${config.maxMsgPerDay} — handoff, responde el dueño`);
+      console.log(`[ban-risque] ${vendor.store_name} (${vendor.id}) salida h=${hour}/${capH} d=${day}/${capD} — handoff, responde el dueño`);
       return;
     }
 

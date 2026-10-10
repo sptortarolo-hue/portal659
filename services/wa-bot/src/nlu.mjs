@@ -156,6 +156,56 @@ async function probeModel(id) {
   }
 }
 
+// ———————————————————————————————————————————————————————————————————————————
+// Intent (el "estar atento"): clasificar si el cliente quiere una PERSONA
+// (asistencia/pedido con atención) o quiere PEDIR (la app) o es chat.
+// 1 llamada gratis por mensaje; sin IA → null (el caller cae a keywords).
+// ———————————————————————————————————————————————————————————————————————————
+
+const INTENT_SYSTEM = `Clasificás mensajes de WhatsApp de clientes de un comercio. Respondé SOLO una palabra, sin explicación:
+- "persona" — si el cliente necesita hablar con una persona, necesita ayuda, quiere pedir por WhatsApp con atención de alguien, o tiene un problema/queja.
+- "pedir" — si el cliente quiere pedir (menciona productos, platos o dice que va a pedir).
+- "chat" — saludo, agradecimiento, o cualquier otra cosa.`;
+
+export async function classifyIntent(message) {
+  if (!config.llmApiKey) return null;
+  const model = await resolveModel();
+  if (!model) return null;
+
+  try {
+    const res = await fetch(`${config.llmBaseUrl}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${config.llmApiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        temperature: 0,
+        max_tokens: 8,
+        messages: [
+          { role: "system", content: INTENT_SYSTEM },
+          { role: "user", content: String(message).slice(0, 500) },
+        ],
+      }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (res.status === 429 || res.status === 503 || res.status === 410 || res.status === 404) {
+      markCooldown(model);
+      return null; // cae al fallback de keywords al instante
+    }
+    if (!res.ok) return null;
+    const data = await res.json().catch(() => null);
+    const word = String(data?.choices?.[0]?.message?.content || "").trim().toLowerCase();
+    if (word.includes("persona")) return "persona";
+    if (word.includes("pedir")) return "pedir";
+    if (word.includes("chat")) return "chat";
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 const SYSTEM = `Sos un asistente de un comercio que toma pedidos por WhatsApp.
 Dado el mensaje del cliente y la lista de productos disponibles, devolvé SOLO un JSON válido (sin texto adicional) con esta forma:
 

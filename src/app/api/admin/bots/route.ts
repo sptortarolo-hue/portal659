@@ -31,17 +31,27 @@ export async function GET(request: Request) {
   ).catch(() => []);
 
   let llm: Record<string, unknown> | null = null;
+  let brainStats: Record<string, unknown> | null = null;
+  let limits: Record<string, unknown> | null = null;
+  let feed: Array<Record<string, unknown>> = [];
   const liveByVendor = new Map<string, any>();
   const wabotUrl = (process.env.WABOT_URL || "http://wabot:8792").replace(/\/$/, "");
+  const authHeaders = { Authorization: `Bearer ${process.env.WA_BOT_SECRET || ""}` };
   try {
-    const r = await fetch(`${wabotUrl}/bots`, {
-      headers: { Authorization: `Bearer ${process.env.WA_BOT_SECRET || ""}` },
-      signal: AbortSignal.timeout(8_000),
-    });
+    const [r, fr] = await Promise.all([
+      fetch(`${wabotUrl}/bots`, { headers: authHeaders, signal: AbortSignal.timeout(8_000) }),
+      fetch(`${wabotUrl}/feed?limit=120`, { headers: authHeaders, signal: AbortSignal.timeout(8_000) }).catch(() => null),
+    ]);
     if (r.ok) {
       const live = await r.json();
       llm = live.llm ?? null;
+      brainStats = live.stats ?? null;
+      limits = live.limits ?? null;
       for (const v of live.vendors || []) liveByVendor.set(String(v.vendorId), v);
+    }
+    if (fr?.ok) {
+      const fd = await fr.json().catch(() => null);
+      feed = Array.isArray(fd?.events) ? fd.events : [];
     }
   } catch {
     // Sin cerebro conectado: el tablero muestra solo el estado de la DB.
@@ -49,15 +59,25 @@ export async function GET(request: Request) {
 
   return NextResponse.json({
     llm,
+    stats: brainStats,
+    limits,
+    feed,
     bots: (rows || []).map((row) => {
-      const lv = liveByVendor.get(String(row.vendor_id));
+      const lv = liveByVendor.get(String(row.vendor_id)) || {};
       return {
         ...row,
-        connected: lv?.connected === true,
-        conversations: lv?.conversations ?? 0,
-        sentHour: lv?.sentHour ?? 0,
-        sentDay: lv?.sentDay ?? 0,
-        newChatsHour: lv?.newChatsHour ?? 0,
+        connected: lv.connected === true,
+        conversations: lv.conversations ?? 0,
+        sentHour: lv.sentHour ?? 0,
+        sentDay: lv.sentDay ?? 0,
+        newChatsHour: lv.newChatsHour ?? 0,
+        inboundHour: lv.inboundHour ?? 0,
+        inboundDay: lv.inboundDay ?? 0,
+        handoffsHour: lv.handoffsHour ?? 0,
+        handoffsDay: lv.handoffsDay ?? 0,
+        lastSeen: lv.lastSeen ?? null,
+        cooling: lv.cooling === true,
+        coolingUntil: lv.coolingUntil ?? null,
       };
     }),
   });

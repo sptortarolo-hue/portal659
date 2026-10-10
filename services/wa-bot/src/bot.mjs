@@ -1134,6 +1134,8 @@ async function handoffHuman(vendor, waId, text, state) {
   state.pausedUntil = Date.now() + HANDOFF_PAUSE_MIN * 60 * 1000;
   state.handoffCount = 0;
   await setState(vendor.id, waId, state);
+  const { bumpHandoff } = await import("./metrics.mjs");
+  bumpHandoff(vendor.id, vendor.store_name, waId, text);
   await notifyHandoff(vendor.id, waId, text);
   return { replies: [`Enseguida te atiende una persona de *${vendor.store_name}* 🙌`] };
 }

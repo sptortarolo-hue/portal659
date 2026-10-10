@@ -5,9 +5,10 @@ import { vendorByToken } from "./src/db.mjs";
 import { handleInbound, handleInboundMedia, startAwaitingReceipt, sweepStaleConversations } from "./src/bot.mjs";
 import { getState, countByVendor } from "./src/state.mjs";
 import { llmStats } from "./src/nlu.mjs";
-import { addClient, removeClient, getClient, getClientByVendor, sendText, sendTyping, sendPaused, clientCount, forEachClient } from "./src/relay.mjs";
+import { addClient, removeClient, getClient, getClientByVendor, sendText, sendTyping, sendPaused, clientCount, forEachClient, clientsList } from "./src/relay.mjs";
 import { saveQrToken, clearQrToken, setBotStatus } from "./src/state.mjs";
 import { countOutbound, markNewChat, limitsReport } from "./src/limits.mjs";
+import { bumpInbound, feedPush, feedList, metricsReport, touchLastSeen } from "./src/metrics.mjs";
 
 // Telemetría de salud (anti-ban): contadores de proceso para /health y logs.
 const stats = { messages: 0, replies: 0, errors: 0, loggedOut: 0, limitsHit: 0 };
@@ -91,6 +92,7 @@ const server = createServer(async (req, res) => {
       if (hour > capH || day > capD) {
         stats.limitsHit++;
         console.log(`[ban-risque] ${vendorId} salida h=${hour}/${capH} d=${day}/${capD} en /send — no se manda`);
+        feedPush({ vendorId, store: c.vendor?.store_name, kind: "limit", waId, text: `tope de salida (${hour}/${capH} por hora) — no se mandó el aviso de la app` });
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({ ok: true, sent: false, reason: "limits" }));
         return;
@@ -111,6 +113,7 @@ const server = createServer(async (req, res) => {
     sendText(c, waId, text);
     sendPaused(c, waId);
     stats.replies++;
+    feedPush({ vendorId, store: c.vendor?.store_name, kind: "send", waId, text });
     console.log(`[send] app → ${waId} (orderId ${orderId || "-"}${enFlujo ? ", en_flujo sin estado" : ""}): ${text.slice(0, 80)}`);
     res.writeHead(200, { "content-type": "application/json" });
     res.end(JSON.stringify({ ok: true, sent: true, enFlujo: enFlujo || undefined }));
@@ -118,7 +121,7 @@ const server = createServer(async (req, res) => {
   }
 
   // ————— GET /bots: datos en vivo por comercio para el TABLERO del admin
-  // (estado de conexión, conversaciones activas, mensajes). Auth WA_BOT_SECRET.
+  // (estado de conexión, conversaciones, mensajes, anti-ban). Auth WA_BOT_SECRET.
   if (url.pathname === "/bots" && req.method === "GET") {
     const auth = req.headers.authorization || "";
     if (config.waBotSecret && auth !== `Bearer ${config.waBotSecret}`) {
@@ -127,9 +130,11 @@ const server = createServer(async (req, res) => {
       return;
     }
     const vendors = [];
-    for (const [, c] of clients) {
+    for (const [, c] of clientsList()) {
       if (!c.vendor) continue;
       const report = await limitsReport(c.vendor.id).catch(() => ({ sentHour: 0, sentDay: 0, newChatsHour: 0 }));
+      const m = metricsReport(c.vendor.id);
+      const cooling = isCooling(c.vendor.id);
       vendors.push({
         vendorId: c.vendor.id,
         storeName: c.vendor.store_name,
@@ -138,10 +143,43 @@ const server = createServer(async (req, res) => {
         sentHour: report.sentHour,
         sentDay: report.sentDay,
         newChatsHour: report.newChatsHour,
+        inboundHour: m.inboundHour,
+        inboundDay: m.inboundDay,
+        handoffsHour: m.handoffsHour,
+        handoffsDay: m.handoffsDay,
+        lastSeen: m.lastSeen,
+        cooling,
+        coolingUntil: cooling ? new Date(coolingUntil.get(String(c.vendor.id))).toISOString() : null,
       });
     }
     res.writeHead(200, { "content-type": "application/json" });
-    res.end(JSON.stringify({ llm: { hasKey: !!config.llmApiKey, ...llmStats }, vendors }));
+    res.end(JSON.stringify({
+      llm: { hasKey: !!config.llmApiKey, ...llmStats },
+      stats,
+      limits: {
+        maxMsgPerHour: config.maxMsgPerHour,
+        maxMsgPerDay: config.maxMsgPerDay,
+        maxNewChatsPerHour: config.maxNewChatsPerHour,
+        replyDelayMinMs: config.replyDelayMinMs,
+        replyDelayMaxMs: config.replyDelayMaxMs,
+      },
+      vendors,
+    }));
+    return;
+  }
+
+  // ————— GET /feed: últimos eventos del bot (in/out/handoff/límites/alertas)
+  // para el feed en vivo del tablero. Auth WA_BOT_SECRET. —————
+  if (url.pathname === "/feed" && req.method === "GET") {
+    const auth = req.headers.authorization || "";
+    if (config.waBotSecret && auth !== `Bearer ${config.waBotSecret}`) {
+      res.writeHead(403, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "no autorizado" }));
+      return;
+    }
+    const limit = Number(new URL(req.url, `http://x`).searchParams.get("limit")) || 120;
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ events: feedList(limit) }));
     return;
   }
 
@@ -209,8 +247,10 @@ async function attach(ws, token) {
 
   addClient(token, ws, vendor);
   lastSeen.set(token, Date.now());
+  touchLastSeen(vendor.id);
   ws.on("pong", () => lastSeen.set(token, Date.now()));
   ws.send(JSON.stringify({ type: "hello", vendor_id: vendor.id, enabled: vendor.enabled !== false }));
+  feedPush({ vendorId: vendor.id, store: vendor.store_name, kind: "system", text: "relay conectado a la app" });
   console.log(`[relay] conectado ${vendor.store_name} (${vendor.id})`, { clients: clientCount() });
 
   ws.on("message", async (raw) => {
@@ -223,6 +263,7 @@ async function attach(ws, token) {
     // El relay manda el QR crudo (data del QR code) para escanearlo desde la web.
     if (msg.type === "qr" && msg.data) {
       lastSeen.set(token, Date.now());
+      touchLastSeen(vendor.id);
       await saveQrToken(vendor.id, msg.data).catch(() => {});
       return;
     }
@@ -233,6 +274,7 @@ async function attach(ws, token) {
     if (msg.type === "linked") {
       await clearQrToken(vendor.id).catch(() => {});
       await setBotStatus(vendor.id, "linked").catch(() => {});
+      feedPush({ vendorId: vendor.id, store: vendor.store_name, kind: "system", text: "WhatsApp vinculado ✓" });
       console.log(`[relay] vinculado ${vendor.store_name} (${vendor.id})`);
       return;
     }
@@ -240,12 +282,14 @@ async function attach(ws, token) {
       // El relay está esperando que escaneen el QR: sacar el "✅ vinculado"
       // del panel y volver a mostrar la sección del QR.
       await setBotStatus(vendor.id, "pairing").catch(() => {});
+      feedPush({ vendorId: vendor.id, store: vendor.store_name, kind: "system", text: "esperando escaneo del QR" });
       return;
     }
     if (msg.type === "logged_out") {
       await clearQrToken(vendor.id).catch(() => {});
       await setBotStatus(vendor.id, "unlinked").catch(() => {});
       stats.loggedOut++;
+      feedPush({ vendorId: vendor.id, store: vendor.store_name, kind: "alert", text: "🚨 Meta desconectó el bot (LoggedOut) — enfriamiento 48h activado" });
       console.log(`[ban-risque] ${vendor.store_name} (${vendor.id}) LOGGED_OUT ${stats.loggedOut}° — re-pareando`);
       // Aviso a los admins: el número quedó "caliente" — la guía ANTES de re-vincular.
       fetch(`${config.appUrl}/api/wa/bot-alert`, {
@@ -288,6 +332,7 @@ async function attach(ws, token) {
 
     lastSeen.set(token, Date.now());
     stats.messages++;
+    bumpInbound(vendor.id, vendor.store_name, msg.wa_id, msg.body);
     console.log(`[msg] de ${msg.wa_id}: ${msg.body}`);
 
     // Rate limit de chats nuevos: si es primer contacto y ya se superó el tope
@@ -299,6 +344,7 @@ async function attach(ws, token) {
       const capNew = isCooling(vendor.id) ? limitsCap(config.maxNewChatsPerHour) : config.maxNewChatsPerHour;
       if (added && count > capNew) {
         stats.limitsHit++;
+        feedPush({ vendorId: vendor.id, store: vendor.store_name, kind: "limit", waId: msg.wa_id, text: `${count} chats nuevos/hora > ${capNew} — no se responde, atiende el dueño` });
         console.log(`[ban-risque] ${vendor.store_name} (${vendor.id}) ${count} chats nuevos/hora > ${capNew} — handoff, responde el dueño`);
         return;
       }
@@ -306,6 +352,7 @@ async function attach(ws, token) {
 
     const result = await handleInbound({ vendor, waId: msg.wa_id, body: msg.body, waPhone: msg.wa_phone });
     if (result.handoff) {
+      feedPush({ vendorId: vendor.id, store: vendor.store_name, kind: "limit", waId: msg.wa_id, text: "bot apagado — no responde, atiende el dueño" });
       console.log(`[bot] handoff de ${msg.wa_id} (bot apagado) -> responde el dueño`);
       return;
     }
@@ -319,6 +366,7 @@ async function attach(ws, token) {
     const capD = isCooling(vendor.id) ? limitsCap(config.maxMsgPerDay) : config.maxMsgPerDay;
     if (hour > capH || day > capD) {
       stats.limitsHit++;
+      feedPush({ vendorId: vendor.id, store: vendor.store_name, kind: "limit", waId: msg.wa_id, text: `tope de salida (${hour}/${capH} por hora) — sin respuesta, atiende el dueño` });
       console.log(`[ban-risque] ${vendor.store_name} (${vendor.id}) salida h=${hour}/${capH} d=${day}/${capD} — handoff, responde el dueño`);
       return;
     }
@@ -333,6 +381,7 @@ async function attach(ws, token) {
       first = false;
       const sent = sendText(client, msg.wa_id, reply);
       stats.replies++;
+      feedPush({ vendorId: vendor.id, store: vendor.store_name, kind: "out", waId: msg.wa_id, text: reply });
       console.log(`[bot] reply a ${msg.wa_id} (${sent ? "enviado" : "SIN_CONEXION"}): ${reply}`);
     }
     sendPaused(client, msg.wa_id);
@@ -341,6 +390,7 @@ async function attach(ws, token) {
   ws.on("close", () => {
     removeClient(token, ws);
     lastSeen.delete(token);
+    feedPush({ vendorId: vendor.id, store: vendor.store_name, kind: "system", text: "relay desconectado de la app" });
     console.log(`[ws] relay desconectado ${vendor.store_name} (${vendor.id})`, { clients: clientCount() });
   });
   ws.on("error", () => removeClient(token, ws));

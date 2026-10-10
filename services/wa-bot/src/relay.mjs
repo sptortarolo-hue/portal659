@@ -32,6 +32,11 @@ export function forEachClient(fn) {
   for (const [token, c] of clients) fn(token, c);
 }
 
+/** Lista de clientes vivos para el tablero (token + vendor). */
+export function clientsList() {
+  return [...clients.entries()];
+}
+
 export function sendText(client, waId, text) {
   if (!client || client.ws.readyState !== WebSocket.OPEN) return false;
   client.ws.send(JSON.stringify({ type: "send", wa_id: waId, text }));

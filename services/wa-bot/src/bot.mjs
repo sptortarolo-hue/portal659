@@ -1042,10 +1042,9 @@ function hashStr(s) {
   return h;
 }
 
-/** Respuesta automática del concierge con abierto/cerrado real + variante
- *  anti-ban por chat. `full` = el blob completo (la primera vez); `false` = la
- *  versión corta (dentro de la conversación: estado + menú + ayuda). */
-async function conciergeGreeting(vendor, waId, full = true) {
+/** Bienvenida del concierge con abierto/cerrado real (y el próximo horario si
+ *  está cerrado) + variante anti-ban por chat. Sale UNA vez por conversación. */
+async function conciergeGreeting(vendor, waId) {
   let openLine = "";
   try {
     const r = await fetch(`${config.appUrl}/api/wa/menu?vendorId=${encodeURIComponent(vendor.id)}`, {
@@ -1060,17 +1059,7 @@ async function conciergeGreeting(vendor, waId, full = true) {
       const next = info?.vendor?.next_open_text;
       openLine = next ? `Estamos cerrados, volvemos a abrir a: ${next}` : "Estamos cerrados ahora";
     }
-  } catch { /* la respuesta va sin la línea de horario */ }
-
-  if (!full) {
-    // Versión corta: el estado + el menú + ayuda (sin el header).
-    return [
-      ...(openLine ? [openLine] : []),
-      `📲 El menú online acá: ${shopUrl(vendor)}`,
-      `🙌 ¿Necesitás ayuda? Escribí *ayuda* y una persona de *${vendor.store_name}* te atiende enseguida.`,
-    ].join("\n\n");
-  }
-
+  } catch { /* el saludo va sin la línea de horario */ }
   const menuLine = openLine.startsWith("Estamos cerrados") ? "De todas maneras podés ver todos nuestros productos en:" : "Pedí fácil desde el menú:";
   const gi = hashStr(String(waId || vendor.id)) % CONCIERGE_GREETINGS.length;
   return CONCIERGE_GREETINGS[gi](vendor.store_name, openLine, menuLine, shopUrl(vendor));
@@ -1110,19 +1099,20 @@ async function handleConcierge({ vendor, text, state, replies, waId }) {
     return;
   }
 
-  // 3) AUTO-RESPONDER: TODO mensaje recibe respuesta (los inicios de chat
-  //    posibles: "hola", "tienen milanesa?", "te puedo hacer un pedido?",
-  //    "quiero saber si están abiertos"...). El estado abierto/cerrado responde
-  //    de paso las preguntas de horario; el menú es la puerta al pedido; y el
-  //    pie de ayuda siempre. Primera vez el blob completo; dentro de la
-  //    conversación, la versión corta.
+  // 3) AUTO-RESPONDER: la bienvenida sale UNA vez por conversación (estado
+  //    abierto/cerrado + menú + pie de ayuda). Cualquier mensaje siguiente →
+  //    "Enseguida te atiende una persona" (handoff: aviso al cliente +
+  //    notificación al dueño + pausa de 30 min) y ahí sí, silencio: el loop
+  //    queda cortado y el hilo pasa a manos humanas.
   if (!state.welcomed) {
     state.welcomed = true;
     state.step = "idle";
-    replies.push(await conciergeGreeting(vendor, waId, true));
+    replies.push(await conciergeGreeting(vendor, waId));
     return;
   }
-  replies.push(await conciergeGreeting(vendor, waId, false));
+  const r = await handoffHuman(vendor, waId, text, state);
+  replies.push(...(r.replies || []));
+  state.step = "idle";
   return;
 }
 

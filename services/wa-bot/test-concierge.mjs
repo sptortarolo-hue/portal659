@@ -55,26 +55,38 @@ async function main() {
   if (!s.includes("Che Sancho") || !s.includes("abiert") || !s.includes("ayuda") || !s.includes("portal659.com.ar/tienda/")) { console.log("!!! saludo incompleto"); ok = false; }
   else { console.log(">>> OK: bienvenida con abierto + menú + ayuda"); }
 
-  // 2. "quiero saber si estan abierto" → respuesta (el auto-responder: el
-  //    estado abierto/cerrado responde la pregunta de paso).
+  // 2. Segundo mensaje (sin "ayuda") → "Enseguida te atiende una persona" +
+  //    push/notificación al comercio + pausa de 30 min.
+  handoffNotified = false;
   r = await handleInbound({ vendor, waId: wa, body: "quiero saber si estan abierto" });
-  show("quiero saber si estan abierto", r);
-  const ab = (r.replies || []).join(" ");
-  if ((r.replies || []).length === 0) { console.log("!!! el bot quedó en silencio (debe responder)"); ok = false; }
-  else if (!ab.includes("abiert") || !ab.includes("menú")) { console.log("!!! la respuesta no muestra el estado ni el menú"); ok = false; }
-  else { console.log(">>> OK: 'quiero saber si estan abierto' responde con el estado + menú"); }
+  show("2º mensaje: quiero saber si estan abierto", r);
+  const h2 = (r.replies || []).join(" ");
+  if (!handoffNotified || !h2.includes("Enseguida te atiende una persona")) { console.log("!!! el 2º mensaje no derivó a persona (con push al comercio)"); ok = false; }
+  else { console.log(">>> OK: 2º mensaje → aviso de persona + push al comercio"); }
 
-  // 3. "tienen milanesa?" → respuesta (el auto-responder, sin silencio).
+  // 3. Tercer mensaje → el aviso de pausa UNA vez ("el comercio te atiende en
+  //    un rato") y sin nueva notificación al comercio.
+  handoffNotified = false;
   r = await handleInbound({ vendor, waId: wa, body: "tienen milanesa?" });
-  show("tienen milanesa?", r);
-  if ((r.replies || []).length === 0) { console.log("!!! 'tienen milanesa?' quedó en silencio"); ok = false; }
-  else { console.log(">>> OK: 'tienen milanesa?' responde (el menú es la puerta al pedido)"); }
+  show("3º mensaje: tienen milanesa? (en pausa)", r);
+  const p3 = (r.replies || []).join(" ");
+  if (handoffNotified || p3.includes("Enseguida te atiende")) { console.log("!!! el bot volvió a derivar/notificar (loop)"); ok = false; }
+  else if ((r.replies || []).length > 1 || (!p3.includes("comercio") && p3 !== "")) { console.log("!!! el aviso de pausa se repite o es raro"); ok = false; }
+  else { console.log(">>> OK: aviso de pausa una vez, sin re-notificar al comercio"); }
 
-  // 4. "te puedo hacer un pedido?" → respuesta.
+  // 4. Cuarto mensaje → SILENCIO total (el loop quedó cortado).
   r = await handleInbound({ vendor, waId: wa, body: "te puedo hacer un pedido?" });
-  show("te puedo hacer un pedido?", r);
-  if ((r.replies || []).length === 0) { console.log("!!! 'te puedo hacer un pedido?' quedó en silencio"); ok = false; }
-  else { console.log(">>> OK: 'te puedo hacer un pedido?' responde"); }
+  show("4º mensaje: te puedo hacer un pedido? (silencio)", r);
+  if ((r.replies || []).length !== 0) { console.log("!!! el bot siguió contestando (loop)"); ok = false; }
+  else { console.log(">>> OK: silencio total en pausa (loop cortado)"); }
+
+  // 5. Conversación nueva (tras "cancelar" o 30 min de silencio) → bienvenida.
+  r = await handleInbound({ vendor, waId: wa, body: "cancelar" });
+  r = await handleInbound({ vendor, waId: wa, body: "te puedo hacer un pedido?" });
+  show("conversación nueva: te puedo hacer un pedido?", r);
+  const nw = (r.replies || []).join(" ");
+  if (!nw.includes("Che Sancho") || !nw.includes("abiert")) { console.log("!!! la conversación nueva no recibió la bienvenida"); ok = false; }
+  else { console.log(">>> OK: conversación nueva (tras 30 min de silencio) → bienvenida otra vez"); }
 
   // 5. El mensaje PREDEFINIDO del checkout → SILENCIO (el pedido ya está en el sistema).
   r = await handleInbound({ vendor, waId: wa, body: APP_ORDER_MSG });

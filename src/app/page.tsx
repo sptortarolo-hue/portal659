@@ -174,7 +174,7 @@ export default async function HomePage() {
       </section>
 
       {/* Abiertos ahora (cliente — zona horaria del usuario) */}
-      <OpenNowSection vendors={vendors || []} onlineByVendor={onlineByVendor} />
+      <OpenNowSection vendors={rankVendors(vendors || [], rankStats)} onlineByVendor={onlineByVendor} />
 
       {/* Oferta de hoy */}
       {featured.length > 0 && (

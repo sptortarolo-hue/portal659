@@ -90,4 +90,4 @@ Invoke-Step "Verificando MD5 remoto" {
 
 Write-Host ""
 Write-Host "OK: agente publicado." -ForegroundColor Green
-Write-Host "Falta: bumpear ?v= del link en src/components/dashboard/printer-config-section.tsx (hoy ?v=3) + push para que los locales descarguen el nuevo."
+Write-Host "Si cambiaste el link ?v= en printer-config-section.tsx, commitea + pushea para que los locales descarguen el nuevo."

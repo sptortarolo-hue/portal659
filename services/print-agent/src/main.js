@@ -8,7 +8,7 @@ const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, shell } = require(
 const { execFile } = require("node:child_process");
 const { existsSync, readFileSync, writeFileSync, mkdirSync } = require("node:fs");
 const { join, dirname } = require("node:path");
-const { createRelay, sanitizeAgentConfig, validateConnectionConfig } = require("./relay");
+const { createRelay, sanitizeAgentConfig, validateConnectionConfig, discoverPrinters } = require("./relay");
 const { createLocalServer } = require("./local-server");
 
 const APP_NAME = "Portal Print Agent";
@@ -225,6 +225,16 @@ function registerIpc() {
   ipcMain.handle("status:get", () => lastStatus || (relay ? relay.getStatus() : null));
   ipcMain.handle("relay:test", () => (relay ? relay.testPrint() : { ok: false, error: "Agente no inicializado" }));
   ipcMain.handle("relay:reconnect", () => (relay ? relay.reconnectNow() : null));
+  // Barrido LAN de impresoras (para cuando el DHCP cambia la IP).
+  ipcMain.handle("printer:discover", async (_e, opts) => {
+    try {
+      const port = Number(opts?.port) || Number(config?.printerPort) || 9100;
+      const hosts = await discoverPrinters({ port });
+      return { hosts };
+    } catch (e) {
+      return { hosts: [], error: e?.message || "falló la búsqueda" };
+    }
+  });
   ipcMain.handle("autostart:get", () => getAutostart());
   ipcMain.handle("autostart:set", (_e, enabled) => setAutostart(!!enabled));
   ipcMain.handle("app:getInfo", () => ({

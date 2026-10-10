@@ -15,7 +15,7 @@ import { toE164 } from "@/lib/phone";
 import { getCatalogSnapshot, saveCatalogSnapshot } from "@/lib/offline-db";
 import { enqueueOfflineAction, isNetworkError, newClientKey, nextProvisionalNumber } from "@/lib/offline-actions";
 import { checkOfflineAllowed, offlineDeniedMsg } from "@/lib/offline-plan";
-import { dispatchOfflinePrint, markPrintsDone } from "@/lib/local-print";
+import { describePrintError, dispatchOfflinePrint, markPrintsDone } from "@/lib/local-print";
 import { printsAdd } from "@/lib/offline-db";
 import { saveDraft, loadDraft, clearDraft } from "@/lib/draft";
 import type { ContingencyKind } from "@/lib/offline-print";
@@ -1346,15 +1346,16 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
 
     // /api/print responde 200 aunque el trabajo falle (ok:false en el body):
     // hay que leerlo, si no una comanda fallida pasa en silencio y sale
-    // solo el retiro. Devuelve el error o null si salió/omitió.
+    // solo el retiro. Devuelve el error o null si salió/omitió. Los errores
+    // técnicos se traducen a lenguaje operativo (P0 impresión).
     const checkPrintRes = async (p: Promise<Response>, docName: string): Promise<string | null> => {
       try {
         const r = await p;
         const d = await r.json().catch(() => ({} as any));
         if (d && (d.ok || d.skipped)) return null;
-        return `${docName} no salió: ${d?.error || "error de impresión"}`;
+        return `${docName} no salió: ${describePrintError(d?.error || "error de impresión")}`;
       } catch {
-        return `${docName} no salió: sin conexión con la impresora`;
+        return `${docName} no salió: ${describePrintError("Failed to fetch")}`;
       }
     };
     // Venta directa: ticket completo en todas las verticales (sin cartel

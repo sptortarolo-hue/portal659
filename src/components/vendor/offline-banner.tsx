@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useOnlineStatus, usePendingPrintsCount, usePendingSyncCount } from "@/hooks/use-online-status";
-import { flushPendingPrints } from "@/lib/local-print";
+import { flushPendingPrints, describePrintError } from "@/lib/local-print";
 import { ageLabel } from "@/lib/offline-plan";
 import { useToast } from "@/lib/toast";
 
@@ -35,7 +35,7 @@ export function OfflineBanner({
     try {
       const r = await flushPendingPrints(vendorId);
       if (r.printed > 0) addToast(`🖨️ ${r.printed} documento${r.printed === 1 ? "" : "s"} impreso${r.printed === 1 ? "" : "s"}`, "success");
-      if (r.failed > 0) addToast(`⚠️ ${r.failed} no salieron: ${r.errors[0] || "impresora no disponible"}`, "error");
+      if (r.failed > 0) addToast(`⚠️ ${r.failed} no salieron: ${describePrintError(r.errors[0] || "impresora no disponible")}`, "error");
       if (r.printed === 0 && r.failed === 0) addToast("Nada para imprimir (los pendientes aún no sincronizan)", "info");
     } finally {
       setFlushing(false);

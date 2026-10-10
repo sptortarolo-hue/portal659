@@ -26,6 +26,52 @@ import { buildContingencyBytes, bytesToBase64, type ContingencyDoc } from "./off
 
 export const LOCAL_PRINT_PORTS = [8792, 8793];
 
+/**
+ * Traduce errores técnicos de impresión a lenguaje operativo (P0).
+ * Los mensajes crudos (EHOSTUNREACH, timeouts TCP) no le dicen al comercio
+ * qué hacer; estos sí: IP/DHCP, Wi-Fi, papel, token.
+ */
+export function describePrintError(
+  raw: unknown,
+  ctx?: { ip?: string | null; port?: number | null }
+): string {
+  const msg = String(raw ?? "").trim();
+  const where = ctx?.ip ? ` (${ctx.ip}${ctx?.port ? `:${ctx.port}` : ""})` : "";
+  if (!msg) return "La impresora no respondió. Verificá que esté prendida y en el mismo Wi-Fi.";
+  if (/No route to host|EHOSTUNREACH/i.test(msg)) {
+    return (
+      `La impresora no responde en la red${where}: ` +
+      "verificá que esté prendida, conectada al mismo Wi-Fi y que la IP siga siendo la misma " +
+      "(el DHCP las cambia; en la app/agente usá Buscar para re-detectarla)."
+    );
+  }
+  if (/ECONNREFUSED|Connection refused/i.test(msg)) {
+    return (
+      `Algo responde en esa IP pero el puerto está cerrado${where}: ` +
+      "verificá que la IP sea la de la impresora térmica (puerto 9100) y no otro equipo."
+    );
+  }
+  if (/timed? ?out|ETIMEDOUT|abort/i.test(msg)) {
+    return (
+      `La impresora no contestó a tiempo${where}: ` +
+      "revisá señal de Wi-Fi, que esté en la misma red y con papel."
+    );
+  }
+  if (/token inválido|sin token|missing-token|agente sin token/i.test(msg)) {
+    return "Token inválido: copiá el token actual del dashboard (Configuración → Impresora) y pegalo en la app/agente.";
+  }
+  if (/sin IP de impresora|missing-printer-ip/i.test(msg)) {
+    return "Falta la IP de la impresora: cargala en la app/agente (o usá Buscar).";
+  }
+  if (/cola llena|máx 100/i.test(msg)) {
+    return "Cola de impresión llena: la app no está entregando (verificá IP/papel) o hay trabajos viejos atascados (vaciala).";
+  }
+  if (/failed to fetch|fetch failed|network ?error|load failed|offline/i.test(msg)) {
+    return "Se cortó la conexión con el servidor: el ticket quedó en cola; se imprime al reconectar (o usá Imprimir ahora).";
+  }
+  return msg.length > 220 ? msg.slice(0, 220) + "…" : msg;
+}
+
 export type LocalListener = { port: number; service: string };
 
 /**

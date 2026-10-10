@@ -3,6 +3,7 @@
  * Misma lógica que el antiguo agent.mjs, pero sin UI y sin tocar consola.
  */
 const net = require("node:net");
+const os = require("node:os");
 const { WebSocket } = require("ws");
 
 const DEFAULT_SERVER_URL = "https://www.portal659.com.ar";
@@ -521,6 +522,91 @@ module.exports = {
   buildWsUrl,
   buildTestPayload,
   writeToTcp,
+  discoverPrinters,
+  localSubnets,
   DEFAULT_SERVER_URL,
   CONNECT_TIMEOUT_MS,
 };
+
+/**
+ * Subredes /24 locales (IPv4 no internas): el barrido de impresoras las
+ * recorre buscando el puerto 9100 abierto.
+ */
+function localSubnets() {
+  const out = [];
+  const ifs = os.networkInterfaces();
+  for (const list of Object.values(ifs || {})) {
+    for (const nic of list || []) {
+      if (!nic || nic.family !== "IPv4" || nic.internal) continue;
+      const parts = String(nic.address || "").split(".").map(Number);
+      if (parts.length !== 4 || parts.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) continue;
+      out.push(`${parts[0]}.${parts[1]}.${parts[2]}`);
+    }
+  }
+  return [...new Set(out)].slice(0, 3);
+}
+
+/**
+ * Busca impresoras térmicas (TCP puerto abierto) en la red local.
+ * options: { port=9100, timeoutMs=250, subnets? } — `subnets` solo para
+ * tests (ej. ["127.0.0"]). Devuelve hosts ordenados. Sin dependencias.
+ */
+function discoverPrinters({ port = 9100, timeoutMs = 250, subnets } = {}) {
+  const destPort = Number.isFinite(Number(port)) && Number(port) > 0 && Number(port) < 65536
+    ? Math.trunc(Number(port))
+    : 9100;
+  const perHostMs = Math.max(100, Math.min(1000, Number(timeoutMs) || 250));
+  const nets = Array.isArray(subnets) && subnets.length > 0 ? subnets : localSubnets();
+  const CONCURRENCY = 64;
+  return new Promise((resolve) => {
+    const targets = [];
+    for (const n of nets) {
+      for (let h = 1; h <= 254; h++) targets.push(`${n}.${h}`);
+    }
+    const found = new Set();
+    let idx = 0;
+    let active = 0;
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      try {
+        resolve([...found].sort());
+      } catch {
+        resolve([]);
+      }
+    };
+    if (targets.length === 0) {
+      finish();
+      return;
+    }
+    const overall = setTimeout(finish, Math.max(3000, perHostMs * 6 + 4000));
+    const pump = () => {
+      if (done) return;
+      while (active < CONCURRENCY && idx < targets.length) {
+        const target = targets[idx++];
+        active++;
+        let settled = false;
+        const socket = net.connect({ host: target, port: destPort, timeout: perHostMs });
+        const settle = (ok) => {
+          if (settled) return;
+          settled = true;
+          active--;
+          if (ok) found.add(target);
+          try {
+            socket.destroy();
+          } catch {}
+          pump();
+        };
+        socket.on("connect", () => settle(true));
+        socket.on("error", () => settle(false));
+        socket.on("timeout", () => settle(false));
+      }
+      if (idx >= targets.length && active === 0) {
+        clearTimeout(overall);
+        finish();
+      }
+    };
+    pump();
+  });
+}

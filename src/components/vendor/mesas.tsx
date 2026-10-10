@@ -16,7 +16,7 @@ import type { VolumeResult } from "@/lib/volume-pricing";
 import { getCatalogSnapshot, getTablesSnapshot, saveCatalogSnapshot, saveTablesSnapshot, outboxList } from "@/lib/offline-db";
 import { enqueueOfflineAction, isNetworkError, newClientKey, nextProvisionalNumber } from "@/lib/offline-actions";
 import { checkOfflineAllowed, offlineDeniedMsg } from "@/lib/offline-plan";
-import { dispatchOfflinePrint, markPrintsDone } from "@/lib/local-print";
+import { describePrintError, dispatchOfflinePrint, markPrintsDone } from "@/lib/local-print";
 
 import { SYNC_COMPLETED_EVENT } from "@/lib/sync-engine";
 import { useCashShift } from "@/lib/use-cash-shift";
@@ -1486,7 +1486,7 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
       });
       const data = await res.json().catch(() => ({}));
       if (data.ok) setMsg("🖨️ Precuenta enviada a la impresora");
-      else setMsg(data.reason || data.error || "No se pudo imprimir la precuenta");
+      else setMsg(`⚠️ ${describePrintError(data.reason || data.error || "No se pudo imprimir la precuenta")}`);
     } catch {
       setMsg("Error de conexión al imprimir");
     } finally {

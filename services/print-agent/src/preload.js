@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld("api", {
   getInfo: () => ipcRenderer.invoke("app:getInfo"),
   testPrint: () => ipcRenderer.invoke("relay:test"),
   reconnect: () => ipcRenderer.invoke("relay:reconnect"),
+  discoverPrinters: (opts) => ipcRenderer.invoke("printer:discover", opts || {}),
   getAutostart: () => ipcRenderer.invoke("autostart:get"),
   setAutostart: (enabled) => ipcRenderer.invoke("autostart:set", enabled),
   onStatus: (cb) => ipcRenderer.on("status", (_e, data) => cb(data)),

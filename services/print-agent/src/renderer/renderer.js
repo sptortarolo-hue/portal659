@@ -223,6 +223,31 @@ $("btn-test").addEventListener("click", async () => {
   );
 });
 
+$("btn-discover").addEventListener("click", async () => {
+  if (!window.api?.discoverPrinters) {
+    setMsg("Actualizá el agente para buscar impresoras", "error");
+    return;
+  }
+  setMsg("Buscando impresoras en la red…");
+  try {
+    const res = await window.api.discoverPrinters({ port: Number(els.printerPort.value) || 9100 });
+    const hosts = Array.isArray(res?.hosts) ? res.hosts : [];
+    if (hosts.length === 0) {
+      setMsg("No se encontró nada: verificá el Wi-Fi y que la impresora esté prendida", "error");
+      return;
+    }
+    els.printerIp.value = hosts[0];
+    setMsg(
+      hosts.length === 1
+        ? `Impresora encontrada: ${hosts[0]} (tocá Guardar)`
+        : `Encontradas: ${hosts.join(", ")} — se cargó la primera (tocá Guardar)`,
+      "ok"
+    );
+  } catch (e) {
+    setMsg(`Búsqueda fallida: ${e?.message || e}`, "error");
+  }
+});
+
 $("btn-minimize").addEventListener("click", () => {
   // La ventana se minimiza a la bandeja: usamos el cierre suave.
   window.close();

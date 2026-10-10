@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { CollapsibleSection } from "@/components/ui/collapsible-section";
-import { dispatchOfflinePrint, probeLocalListeners, type LocalListener } from "@/lib/local-print";
+import { dispatchOfflinePrint, probeLocalListeners, describePrintError, type LocalListener } from "@/lib/local-print";
 import type { Vendor } from "@/types/database";
 
 type Props = {
@@ -80,7 +80,7 @@ export function PrinterConfigSection({
       setMsg(
         r.printed
           ? `✅ Prueba local impresa (${r.via}): ticket provisorio sin validez fiscal`
-          : `❌ No se pudo imprimir local: ${r.error || "sin listener"}`
+          : `❌ No se pudo imprimir local: ${describePrintError(r.error || "sin listener")}`
       );
     } finally {
       setLocalTesting(false);
@@ -162,7 +162,7 @@ export function PrinterConfigSection({
     } else if (data.ok) {
       setMsg("✅ Impresión de prueba enviada");
     } else {
-      setMsg(`❌ ${data.error || (data.reason ?? "Error al imprimir")}`);
+      setMsg(`❌ ${describePrintError(data.error || data.reason || "Error al imprimir", { ip: printerIp || null, port: Number(printerPort) || 9100 })}`);
     }
   };
 
@@ -372,7 +372,7 @@ export function PrinterConfigSection({
                 {lastPrint.ok === true
                   ? "✅ OK"
                   : lastPrint.ok === false
-                    ? `❌ ${lastPrint.error || "error"}`
+                    ? `❌ ${describePrintError(lastPrint.error || "error")}`
                     : ""}
               </p>
             )}

@@ -512,6 +512,41 @@ export function PrinterConfigSection({
           <p className="text-[10px] text-muted-foreground/50 mt-0.5">
             Impresora conectada a la red local (TCP)
           </p>
+          <div className="mt-1.5 flex flex-wrap items-center gap-2">
+            <Button variant="outline" size="sm" type="button" onClick={scanNetwork} disabled={scanning}>
+              {scanning ? "Buscando…" : "🔍 Buscar impresoras en la red"}
+            </Button>
+            {scanResults !== null && scanResults.length > 0 && (
+              <span className="text-[11px] text-muted-foreground">
+                {scanResults.reduce((s, l) => s + l.hosts.length, 0) === 0
+                  ? "Sin impresoras en esta red."
+                  : "Tocá la IP para usarla:"}
+              </span>
+            )}
+          </div>
+          {scanResults !== null && scanResults.length > 0 && (
+            <div className="mt-1.5 space-y-1.5">
+              {scanResults.map((l) => (
+                l.hosts.length > 0 && (
+                  <div key={l.port} className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-[10px] font-semibold text-muted-foreground">
+                      Vía {l.service}:
+                    </span>
+                    {l.hosts.map((h) => (
+                      <button
+                        key={`${l.port}-${h}`}
+                        type="button"
+                        onClick={() => applyScannedIp(h, l.port)}
+                        className="rounded-lg border border-primary/40 bg-primary/5 px-2.5 py-1 font-mono text-xs font-semibold text-primary hover:bg-primary/10 active:scale-[0.98]"
+                      >
+                        {h}
+                      </button>
+                    ))}
+                  </div>
+                )
+              ))}
+            </div>
+          )}
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
@@ -565,10 +600,11 @@ export function PrinterConfigSection({
             <Button variant="outline" size="sm" type="button" onClick={testLocalPrint} disabled={localTesting}>
               {localTesting ? "Imprimiendo…" : "🧪 Probar impresión local"}
             </Button>
-            <Button variant="outline" size="sm" type="button" onClick={scanNetwork} disabled={scanning}>
-              {scanning ? "Buscando…" : "🔍 Buscar impresoras en la red"}
-            </Button>
           </div>
+          <p className="mt-2 text-[11px] text-muted-foreground">
+            ¿Cambió la IP de la impresora? Usá <strong>🔍 Buscar impresoras en la red</strong> junto al
+            campo IP de arriba (funciona con y sin internet en este equipo).
+          </p>
           {localListeners !== null && (
             <p className="mt-2 text-muted-foreground">
               {localListeners.length === 0 ? (
@@ -577,33 +613,6 @@ export function PrinterConfigSection({
                 <>🟢 Este equipo puede imprimir sin internet vía {localListeners.map((l) => `${l.service} (:${l.port})`).join(", ")}</>
               )}
             </p>
-          )}
-          {scanResults !== null && scanResults.length > 0 && (
-            <div className="mt-2 space-y-1.5">
-              {scanResults.map((l) => (
-                <div key={l.port}>
-                  <p className="text-[10px] font-semibold text-muted-foreground">
-                    Encontradas vía {l.service} — tocá la IP para usarla con y sin internet:
-                  </p>
-                  {l.hosts.length === 0 ? (
-                    <p className="text-[11px] text-muted-foreground">Sin impresoras en esta red.</p>
-                  ) : (
-                    <div className="flex flex-wrap gap-1.5 mt-1">
-                      {l.hosts.map((h) => (
-                        <button
-                          key={`${l.port}-${h}`}
-                          type="button"
-                          onClick={() => applyScannedIp(h, l.port)}
-                          className="rounded-lg border border-primary/40 bg-primary/5 px-2.5 py-1 font-mono text-xs font-semibold text-primary hover:bg-primary/10 active:scale-[0.98]"
-                        >
-                          {h}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
           )}
           <p className="mt-1 text-[10px] text-muted-foreground/70">
             Esto vale para este equipo: en otro equipo (u otro celu) hay que repetir

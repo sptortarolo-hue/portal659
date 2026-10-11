@@ -759,16 +759,19 @@ export async function GET(
     }
 
     const withPhoto = items.filter((p) => !!p.image_url);
+    const source = selectedIds.length > 0 ? "selection" : "auto";
     // Sin fotos accesibles: tarjeta de texto (nunca cae en silencio a la vieja).
     if (withPhoto.length === 0) {
       console.log("[share-promo] tarjeta texto (sin fotos)", {
         slug,
+        source,
         picked: picked.map((p) => p.id),
       });
       return await textOnlyCard(picked, logoOk, logoSrc);
     }
     console.log("[share-promo] tarjeta compuesta", {
       slug,
+      source,
       picked: withPhoto.map((p) => p.id),
       logoOk,
       embedded: withPhoto.filter((p) => p.image_url?.startsWith("data:")).length,

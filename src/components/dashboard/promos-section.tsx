@@ -99,7 +99,7 @@ export function PromosSection({
     }
   }
 
-  async function saveSelection(next: string[], nextMode: "auto" | "manual") {
+  async function saveSelection(next: string[], nextMode: "auto" | "manual"): Promise<boolean> {
     setSelectError(null);
     setSavingSelection(true);
     try {
@@ -112,7 +112,10 @@ export function PromosSection({
         const data = await res.json();
         setUpdatedAt(data.updatedAt || null);
         setMode(data.mode === "manual" ? "manual" : "auto");
-      } else if (res.status === 503) {
+        if (Array.isArray(data.productIds)) setSelection(data.productIds);
+        return true;
+      }
+      if (res.status === 503) {
         setSelectError("Falta aplicar la migración migrate-promo-mode.sql en la DB.");
       } else {
         const data = await res.json().catch(() => null);
@@ -124,6 +127,9 @@ export function PromosSection({
     } finally {
       setSavingSelection(false);
     }
+    // El guardado falló: revertir al estado real del servidor (sin tildado falso).
+    await loadData(true);
+    return false;
   }
 
   async function toggleSelect(id: string) {

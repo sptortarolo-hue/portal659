@@ -124,6 +124,7 @@ export async function PATCH(request: Request) {
       updatedAt = legacy?.updated_at || null;
       savedMode = mode;
     }
+    console.log("[promo-selection] guardada", { vendor: vendor.id, productIds, mode: savedMode });
     return NextResponse.json({
       productIds,
       updatedAt,

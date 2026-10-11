@@ -10,7 +10,6 @@ import {
   Printer,
   QrCode,
   Receipt,
-  Share,
   ShoppingBag,
   Siren,
   Store,
@@ -46,7 +45,6 @@ export const CONFIG_SECTION_ICONS: Record<string, LucideIcon> = {
   packs: Gift,
   servicios: Wrench,
   urgencia: Siren,
-  promos: Share,
 };
 
 export const CONFIG_SECTION_DESCS: Record<string, string> = {
@@ -67,7 +65,6 @@ export const CONFIG_SECTION_DESCS: Record<string, string> = {
   packs: "Packs de sesiones, giftcards y comisiones.",
   servicios: "Qué ofrecés, zona y solicitudes online.",
   urgencia: "Emergencias 24hs y recargo.",
-  promos: "Compartí tus promos en grupos de WhatsApp.",
 };
 
 export const CONFIG_SECTION_GROUPS: Array<{
@@ -76,7 +73,7 @@ export const CONFIG_SECTION_GROUPS: Array<{
   sections: string[];
 }> = [
   { id: "negocio", label: "Local", sections: ["perfil", "ubicacion", "contacto"] },
-  { id: "ventas", label: "Ventas", sections: ["pagos", "menu", "catalogo", "carta", "promos"] },
+  { id: "ventas", label: "Ventas", sections: ["pagos", "menu", "catalogo", "carta"] },
   { id: "turnera", label: "Turnera", sections: ["turnera", "fichas", "packs"] },
   { id: "servicio", label: "Servicio", sections: ["servicios", "urgencia"] },
   { id: "operacion", label: "Operación", sections: ["preparacion", "equipo", "impresora", "alertas", "fiscal"] },
@@ -102,24 +99,23 @@ export const CONFIG_SECTION_LABELS: Record<string, string> = {
   packs: "Packs y regalos",
   servicios: "Servicios",
   urgencia: "Urgencia 24hs",
-  promos: "Promos",
 };
 
 /** Secciones disponibles por vertical (orden de la nav). */
 export function sectionsForVertical(vertical: string | null | undefined): string[] {
   switch (vertical) {
     case "gastronomia":
-      return ["perfil", "ubicacion", "contacto", "pagos", "preparacion", "equipo", "impresora", "alertas", "fiscal", "menu", "carta", "promos"];
+      return ["perfil", "ubicacion", "contacto", "pagos", "preparacion", "equipo", "impresora", "alertas", "fiscal", "menu", "carta"];
     case "comercio":
-      return ["perfil", "ubicacion", "contacto", "pagos", "equipo", "impresora", "alertas", "fiscal", "catalogo", "carta", "promos"];
+      return ["perfil", "ubicacion", "contacto", "pagos", "equipo", "impresora", "alertas", "fiscal", "catalogo", "carta"];
     case "moda":
-      return ["perfil", "ubicacion", "contacto", "pagos", "equipo", "impresora", "alertas", "fiscal", "carta", "promos"];
+      return ["perfil", "ubicacion", "contacto", "pagos", "equipo", "impresora", "alertas", "fiscal", "carta"];
     case "estetica":
-      return ["perfil", "ubicacion", "contacto", "pagos", "turnera", "fichas", "packs", "equipo", "impresora", "alertas", "carta", "promos"];
+      return ["perfil", "ubicacion", "contacto", "pagos", "turnera", "fichas", "packs", "equipo", "impresora", "alertas", "carta"];
     case "servicio":
-      return ["perfil", "ubicacion", "contacto", "servicios", "urgencia", "equipo", "carta", "promos"];
+      return ["perfil", "ubicacion", "contacto", "servicios", "urgencia", "equipo", "carta"];
     default:
-      return ["perfil", "ubicacion", "contacto", "pagos", "carta", "promos"];
+      return ["perfil", "ubicacion", "contacto", "pagos", "carta"];
   }
 }
 

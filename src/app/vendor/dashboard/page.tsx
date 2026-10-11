@@ -36,6 +36,7 @@ import {
   Boxes,
   Image,
   BookOpen,
+  Share,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 // Modal de recorte: solo se carga cuando se abre (fuera del bundle inicial).
@@ -83,6 +84,7 @@ import { ExpensesManager } from "@/components/dashboard/expenses-manager";
 import { FiscalConfigSection } from "@/components/dashboard/fiscal-config-section";
 import { InventoryTab } from "@/components/dashboard/inventory-tab";
 import { CustomersManager } from "@/components/dashboard/customers-manager";
+import { PromosSection } from "@/components/dashboard/promos-section";
 import { OpenToggle } from "@/components/vendor/open-toggle";
 import { DeliveryToggle } from "@/components/vendor/delivery-toggle";
 import { PrepTimeControl } from "@/components/vendor/prep-time-control";
@@ -155,7 +157,7 @@ type Offer = DBProduct;
 
 type MenuCategory = { id: string; name: string; position: number };
 
-  type DashTab = "hoy" | "config" | "menu" | "orders" | "pedidos" | "mostrador" | "history" | "comanda" | "analytics" | "pos" | "mesas" | "caja" | "gastos" | "clientes" | "reviews" | "recetas" | "fiscal" | "inventario" | "galeria";
+  type DashTab = "hoy" | "config" | "menu" | "orders" | "pedidos" | "mostrador" | "history" | "comanda" | "analytics" | "pos" | "mesas" | "caja" | "gastos" | "clientes" | "reviews" | "recetas" | "fiscal" | "inventario" | "galeria" | "promos";
 
 /**
  * Segunda columna de Configuración en desktop (estilo Fudo): la usan todas
@@ -363,7 +365,7 @@ function VendorDashboardInner() {
   // Borrador de UI (24h): pestaña, filtros y pedido abierto sobreviven a recargas.
   const dashDraftReady = useRef(false);
   const pendingOrderId = useRef<string | null>(null);
-  const VALID_TABS: DashTab[] = ["hoy", "config", "menu", "orders", "pedidos", "mostrador", "history", "comanda", "analytics", "pos", "mesas", "caja", "gastos", "clientes", "reviews", "recetas", "fiscal", "inventario"];
+  const VALID_TABS: DashTab[] = ["hoy", "config", "menu", "orders", "pedidos", "mostrador", "history", "comanda", "analytics", "pos", "mesas", "caja", "gastos", "clientes", "reviews", "recetas", "fiscal", "inventario", "promos"];
   useEffect(() => {
     if (dashDraftReady.current || !vendor?.id) return;
     dashDraftReady.current = true;
@@ -1035,7 +1037,7 @@ function VendorDashboardInner() {
   // comanda, caja con Z, histórico) sin config ni gestión. El Encargado
   // (staff admin) ve todo salvo usuarios/suscripción (eso lo bloquea el server).
   const isEmployee = staffRole === "staff" && staffLevel !== "admin";
-  const EMPLOYEE_FORBIDDEN: DashTab[] = ["config", "menu", "analytics", "clientes", "reviews", "recetas", "fiscal", "inventario", "galeria"];
+  const EMPLOYEE_FORBIDDEN: DashTab[] = ["config", "menu", "analytics", "clientes", "reviews", "recetas", "fiscal", "inventario", "galeria", "promos"];
   useEffect(() => {
     if (isEmployee && EMPLOYEE_FORBIDDEN.includes(tab)) setTab("hoy");
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1500,6 +1502,7 @@ function VendorDashboardInner() {
     : tab === "reviews" ? "Reseñas"
     : tab === "fiscal" ? "Facturación"
     : tab === "inventario" ? "Inventario"
+    : tab === "promos" ? "Promos"
     : "Configuración";
 
   const todayLabel = new Date().toLocaleDateString("es-AR", {
@@ -1730,7 +1733,7 @@ function VendorDashboardInner() {
         )}
 
         {/* Tab content */}
-        <div className={`flex-1 px-4 mt-4 pb-28 lg:pb-10 ${tab === "comanda" ? "w-full max-w-none" : `mx-auto w-full ${["orders", "pedidos", "mostrador", "history", "pos", "mesas", "caja", "gastos", "clientes", "analytics", "recetas", "inventario", "hoy", "menu"].includes(tab) ? "max-w-7xl" : "max-w-4xl"}`}`}>
+        <div className={`flex-1 px-4 mt-4 pb-28 lg:pb-10 ${tab === "comanda" ? "w-full max-w-none" : `mx-auto w-full ${["orders", "pedidos", "mostrador", "history", "pos", "mesas", "caja", "gastos", "clientes", "analytics", "recetas", "inventario", "hoy", "menu", "promos"].includes(tab) ? "max-w-7xl" : "max-w-4xl"}`}`}>
           <TabErrorBoundary tab={tab || "dashboard"}>
           {isService ? (
             <div className="space-y-4">
@@ -1963,6 +1966,22 @@ function VendorDashboardInner() {
                   )}
                 </div>
               )}
+              {mountedTabs.has("promos") && (
+                <div className={tab === "promos" ? "" : "hidden"}>
+                  <TabErrorBoundary tab="promos">
+                    {vendor.slug ? (
+                      <PromosSection
+                        vendorId={vendor.id}
+                        storeName={vendor.store_name}
+                        slug={vendor.slug}
+                        vertical={vendor.vertical}
+                      />
+                    ) : (
+                      <p className="text-sm text-muted-foreground">Tu local todavía no tiene link público.</p>
+                    )}
+                  </TabErrorBoundary>
+                </div>
+              )}
               {mountedTabs.has("fiscal") && (
                 <div className={tab === "fiscal" ? "" : "hidden"}>
                   {effectivePlan.can("fiscal") ? (
@@ -2105,7 +2124,7 @@ function VendorDashboardInner() {
             )}
               </>
             )}
-            <button onClick={() => setMoreOpen((v) => !v)} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors ${["config", "menu", "analytics", "history", "reviews", "recetas", "caja", "gastos", "clientes", "inventario", "pedidos", "mostrador"].includes(tab) ? "text-primary" : "text-muted-foreground"}`}>
+            <button onClick={() => setMoreOpen((v) => !v)} className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors ${["config", "menu", "analytics", "history", "reviews", "recetas", "caja", "gastos", "clientes", "inventario", "pedidos", "mostrador", "promos"].includes(tab) ? "text-primary" : "text-muted-foreground"}`}>
               <span className="text-lg">{moreOpen ? <X className="h-5 w-5" /> : <MoreHorizontal className="h-5 w-5" />}</span>Más
             </button>
           </div>
@@ -2128,6 +2147,11 @@ function VendorDashboardInner() {
                   {!isEmployee && (
                   <button onClick={() => { setTab("config"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "config" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
                     <Wrench className="h-5 w-5" />Configuración
+                  </button>
+                  )}
+                  {!isEmployee && (
+                  <button onClick={() => { setTab("promos"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "promos" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
+                    <Share className="h-5 w-5" />Promos
                   </button>
                   )}
                   {isEstetica && (
@@ -2191,6 +2215,11 @@ function VendorDashboardInner() {
                 <button onClick={() => { setTab("clientes"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "clientes" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
                   <Users className="h-5 w-5" />Clientes
                 </button>
+              )}
+              {!isEmployee && (
+              <button onClick={() => { setTab("promos"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "promos" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
+                <Share className="h-5 w-5" />Promos
+              </button>
               )}
               {(isGastro || isComercio || isModa) && !isEmployee && (
                 <button onClick={() => { setTab("fiscal"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "fiscal" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>

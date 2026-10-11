@@ -45,11 +45,30 @@ export async function GET(request: Request) {
         );
       }
     } catch {
-      const legacy = await queryOne<{ image_url: string }>(
-        `SELECT image_url FROM vendor_promo_images WHERE vendor_id = $1 LIMIT 1`,
-        [vendor.id]
-      );
-      promoImageUrl = legacy?.image_url || null;
+      // Sin columna mode: leer el resto igual (la selección no se pierde).
+      try {
+        const mid = await queryOne<{
+          image_url: string;
+          product_ids: unknown;
+          updated_at: string;
+        }>(
+          `SELECT image_url, product_ids, updated_at FROM vendor_promo_images WHERE vendor_id = $1 LIMIT 1`,
+          [vendor.id]
+        );
+        promoImageUrl = mid?.image_url || null;
+        updatedAt = mid?.updated_at || null;
+        if (Array.isArray(mid?.product_ids)) {
+          productIds = (mid.product_ids as unknown[]).filter(
+            (v): v is string => typeof v === "string"
+          );
+        }
+      } catch {
+        const legacy = await queryOne<{ image_url: string }>(
+          `SELECT image_url FROM vendor_promo_images WHERE vendor_id = $1 LIMIT 1`,
+          [vendor.id]
+        );
+        promoImageUrl = legacy?.image_url || null;
+      }
     }
   } catch {
     promoImageUrl = null;

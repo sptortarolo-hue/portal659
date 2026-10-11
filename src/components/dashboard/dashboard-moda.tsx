@@ -24,7 +24,6 @@ import { StaffManager } from "@/components/vendor/staff-manager";
 import { ConfigSaveBar, ConfigSection, ConfigSections } from "@/components/dashboard/config-sections";
 import { PushAlertCard } from "@/components/dashboard/push-alert-card";
 import { FiscalTabShortcut } from "@/components/dashboard/fiscal-config-section";
-import { PromosSection } from "@/components/dashboard/promos-section";
 import { CartaQrSection } from "@/components/dashboard/carta-qr-section";
 import type { Vendor, Product, ProductVariant, ProductImage } from "@/types/database";
 
@@ -698,16 +697,6 @@ export default function DashboardModa({
         <CartaQrSection vendor={vendor} saveVendor={saveVendor} setMsg={setMsg} catalog />
       </ConfigSection>
 
-      <ConfigSection id="promos" label="Promos" icon="🔗">
-        {vendor && (
-          <PromosSection
-            vendorId={vendor.id}
-            storeName={vendor.store_name}
-            slug={vendor.slug}
-            vertical={vendor.vertical}
-          />
-        )}
-      </ConfigSection>
       </ConfigSections>
 
       <LivePreview storeName={storeName} storePreview={storePreview} vendor={vendor} logoPreview={logoPreview} description={description} hours={hours} address={address} paymentMethods={paymentMethods} whatsapp={whatsapp} isService={false} />

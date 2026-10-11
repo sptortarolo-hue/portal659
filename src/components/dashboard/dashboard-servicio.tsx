@@ -18,7 +18,6 @@ import { MpConnectCard } from "@/components/dashboard/mp-connect-card";
 import { StripeConnectCard } from "@/components/dashboard/stripe-connect-card";
 import { VendorReviews } from "@/components/vendor/vendor-reviews";
 import { CustomersManager } from "@/components/dashboard/customers-manager";
-import { PromosSection } from "@/components/dashboard/promos-section";
 import { CartaQrSection } from "@/components/dashboard/carta-qr-section";
 import { PlanLock } from "@/components/vendor/plan-lock";
 import { QuoteManualModal } from "@/components/dashboard/quote-manual-modal";
@@ -1262,16 +1261,6 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
       </ConfigSection>
       )}
 
-      <ConfigSection id="promos" label="Promos" icon="🔗">
-        {vendor && vendor.slug && (
-          <PromosSection
-            vendorId={vendor.id}
-            storeName={vendor.store_name}
-            slug={vendor.slug}
-            vertical={vendor.vertical}
-          />
-        )}
-      </ConfigSection>
       </ConfigSections>
       <ConfigSaveBar saving={saving || uploading} onDiscard={() => { setMsg(""); reload(); }} />
       </form>

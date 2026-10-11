@@ -93,11 +93,25 @@ export async function GET(
         );
       }
     } catch {
-      const legacy = await queryOne<{ image_url: string }>(
-        `SELECT image_url FROM vendor_promo_images WHERE vendor_id = (SELECT id FROM vendors WHERE slug = $1 LIMIT 1) LIMIT 1`,
-        [slug]
-      );
-      manualImage = legacy?.image_url || null;
+      // Sin columna mode (migrate-promo-mode.sql sin aplicar): leer todo lo demás.
+      try {
+        const mid = await queryOne<{ image_url: string; product_ids: unknown; updated_at: string }>(
+          `SELECT image_url, product_ids, updated_at FROM vendor_promo_images WHERE vendor_id = (SELECT id FROM vendors WHERE slug = $1 LIMIT 1) LIMIT 1`,
+          [slug]
+        );
+        manualImage = mid?.image_url || null;
+        if (Array.isArray(mid?.product_ids)) {
+          selectedIds = (mid?.product_ids as unknown[]).filter(
+            (v): v is string => typeof v === "string"
+          );
+        }
+      } catch {
+        const legacy = await queryOne<{ image_url: string }>(
+          `SELECT image_url FROM vendor_promo_images WHERE vendor_id = (SELECT id FROM vendors WHERE slug = $1 LIMIT 1) LIMIT 1`,
+          [slug]
+        );
+        manualImage = legacy?.image_url || null;
+      }
     }
   } catch {
     try {

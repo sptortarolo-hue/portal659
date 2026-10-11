@@ -23,7 +23,6 @@ import { PrinterConfigSection } from "@/components/dashboard/printer-config-sect
 import { StaffManager } from "@/components/vendor/staff-manager";
 import { HoursEditor } from "@/components/dashboard/hours-editor";
 import { GalleryManager } from "@/components/dashboard/gallery-manager";
-import { PromosSection } from "@/components/dashboard/promos-section";
 import { CartaQrSection } from "@/components/dashboard/carta-qr-section";
 import { LocationPicker } from "./location-picker";
 import {
@@ -727,16 +726,6 @@ export default function DashboardEstetica({
           <CartaQrSection vendor={vendor} saveVendor={saveVendor} setMsg={setMsg} catalog />
         </ConfigSection>
 
-        <ConfigSection id="promos" label="Promos" icon="🔗">
-          {vendor && vendor.slug && (
-            <PromosSection
-              vendorId={vendor.id}
-              storeName={vendor.store_name}
-              slug={vendor.slug}
-              vertical={vendor.vertical}
-            />
-          )}
-        </ConfigSection>
       </ConfigSections>
       {msg && <p className="text-sm text-muted-foreground">{msg}</p>}
     </div>

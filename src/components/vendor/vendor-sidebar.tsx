@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { X, Package, ChefHat, ShoppingBag, LayoutGrid, UtensilsCrossed, Settings, BarChart3, History, Star, ExternalLink, LogOut, Home, Sparkles, Calculator, Bot, DollarSign, Receipt, Users, MessageSquare, CalendarDays, ClipboardList, Boxes, Image, BookOpen } from "lucide-react";
+import { X, Package, ChefHat, ShoppingBag, LayoutGrid, UtensilsCrossed, Settings, BarChart3, History, Star, ExternalLink, LogOut, Home, Sparkles, Calculator, Bot, DollarSign, Receipt, Users, MessageSquare, CalendarDays, ClipboardList, Boxes, Image, BookOpen, Share } from "lucide-react";
 import type { ConfigSectionStatus } from "@/components/dashboard/config-nav";
 
-type Tab = "hoy" | "config" | "menu" | "orders" | "pedidos" | "mostrador" | "history" | "comanda" | "analytics" | "pos" | "mesas" | "caja" | "gastos" | "clientes" | "reviews" | "recetas" | "fiscal" | "inventario" | "galeria";
+type Tab = "hoy" | "config" | "menu" | "orders" | "pedidos" | "mostrador" | "history" | "comanda" | "analytics" | "pos" | "mesas" | "caja" | "gastos" | "clientes" | "reviews" | "recetas" | "fiscal" | "inventario" | "galeria" | "promos";
 
 interface VendorSidebarProps {
   open: boolean;
@@ -57,6 +57,7 @@ const OPERACION_ITEMS: { tab: Tab; label: string; icon: typeof Package; show: (g
 
 const GESTION_ITEMS: { tab: Tab; label: string; icon: typeof UtensilsCrossed; show: (g: boolean, m: boolean, c: boolean) => boolean; suffix?: (count: number) => string }[] = [
   { tab: "menu", label: "Menú", icon: UtensilsCrossed, show: () => true, suffix: (c) => `${c}` },
+  { tab: "promos", label: "Promos", icon: Share, show: () => true },
   { tab: "recetas", label: "Preparación y Costo", icon: Calculator, show: (g) => g },
   { tab: "clientes", label: "Clientes", icon: Users, show: (g, m, c) => g || c || m },
   { tab: "gastos", label: "Gastos", icon: Receipt, show: (g, m, c) => g || c || m },
@@ -322,6 +323,12 @@ export default function VendorSidebar({
                     onClick={() => handleTab("clientes")}
                     icon={Users}
                     label="Clientes"
+                  />
+                  <NavButton
+                    active={currentTab === "promos"}
+                    onClick={() => handleTab("promos")}
+                    icon={Share}
+                    label="Promos"
                   />
                   {isEstetica && (
                     <NavButton

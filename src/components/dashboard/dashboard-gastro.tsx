@@ -18,7 +18,6 @@ import { PrinterConfigSection } from "@/components/dashboard/printer-config-sect
 import { FiscalTabShortcut } from "@/components/dashboard/fiscal-config-section";
 import { HoursEditor } from "@/components/dashboard/hours-editor";
 import { GalleryManager } from "@/components/dashboard/gallery-manager";
-import { PromosSection } from "@/components/dashboard/promos-section";
 import { CartaQrSection } from "@/components/dashboard/carta-qr-section";
 import { LocationPicker } from "./location-picker";
 import { StaffManager } from "@/components/vendor/staff-manager";
@@ -525,17 +524,6 @@ export default function DashboardGastro({
 
       <ConfigSection id="carta" label="Carta y QR" icon="📱" status={vendor?.carta_visibility === "public" ? "ok" : undefined}>
         <CartaQrSection vendor={vendor} saveVendor={saveVendor} setMsg={setMsg} />
-      </ConfigSection>
-
-      <ConfigSection id="promos" label="Promos" icon="🔗">
-        {vendor && vendor.slug && (
-          <PromosSection
-            vendorId={vendor.id}
-            storeName={vendor.store_name}
-            slug={vendor.slug}
-            vertical={vendor.vertical}
-          />
-        )}
       </ConfigSection>
 
       <ConfigSection id="perfil" label="Perfil" icon="🏪" badge={galleryCount > 0 ? String(galleryCount) : undefined}>

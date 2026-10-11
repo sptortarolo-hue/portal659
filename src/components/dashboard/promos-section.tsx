@@ -71,7 +71,7 @@ export function PromosSection({
   const [loading, setLoading] = useState(true);
   const [shareOpen, setShareOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [showPreview, setShowPreview] = useState(false);
+  const [showPreview, setShowPreview] = useState(true);
   const [savingSelection, setSavingSelection] = useState(false);
   const [selectError, setSelectError] = useState<string | null>(null);
 

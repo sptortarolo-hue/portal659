@@ -212,5 +212,9 @@ export async function POST(request: Request) {
     ).catch(() => {});
   }
 
+  // El catálogo cambió: mover el versionado de la tarjeta promo (?v=).
+  const { touchPromoVersion } = await import("@/lib/promo-server");
+  await touchPromoVersion(vendor.id);
+
   return NextResponse.json({ offer });
 }

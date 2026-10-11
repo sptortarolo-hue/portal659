@@ -62,10 +62,16 @@ export async function POST(request: Request) {
   const rows = await queryMany<{ id: string }>(
     `UPDATE products
        SET price = GREATEST(0, ${expr})
-     WHERE vendor_id = $1 AND id = ANY($3::uuid[])
-     RETURNING id`,
+      WHERE vendor_id = $1 AND id = ANY($3::uuid[])
+      RETURNING id`,
     [vendor.id, value, ids]
   );
+
+  // Los precios cambiaron: mover el versionado de la tarjeta promo (?v=).
+  if (rows.length > 0) {
+    const { touchPromoVersion } = await import("@/lib/promo-server");
+    await touchPromoVersion(vendor.id);
+  }
 
   return NextResponse.json({ ok: true, updated: rows.length });
 }

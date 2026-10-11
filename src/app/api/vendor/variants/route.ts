@@ -85,5 +85,9 @@ export async function PUT(request: Request) {
     }
   });
 
+  // Las variantes (precios/promos de moda) cambiaron: versionar la tarjeta.
+  const { touchPromoVersion } = await import("@/lib/promo-server");
+  await touchPromoVersion(vendor.id);
+
   return NextResponse.json({ ok: true });
 }

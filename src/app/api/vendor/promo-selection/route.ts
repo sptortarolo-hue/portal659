@@ -104,14 +104,30 @@ export async function PATCH(request: Request) {
         [vendor.id, JSON.stringify(ids)]
       );
     }
-    const row = await queryOne<SelectionRow>(
-      `SELECT product_ids, updated_at, mode FROM vendor_promo_images WHERE vendor_id = $1 LIMIT 1`,
-      [vendor.id]
-    ).catch(() => null);
+    let productIds = ids;
+    let updatedAt: string | null = null;
+    let savedMode = mode;
+    try {
+      const row = await queryOne<SelectionRow>(
+        `SELECT product_ids, updated_at, mode FROM vendor_promo_images WHERE vendor_id = $1 LIMIT 1`,
+        [vendor.id]
+      );
+      productIds = normalizeIds(row?.product_ids);
+      updatedAt = row?.updated_at || null;
+      savedMode = row?.mode === "manual" ? "manual" : mode;
+    } catch {
+      const legacy = await queryOne<Omit<SelectionRow, "mode">>(
+        `SELECT product_ids, updated_at FROM vendor_promo_images WHERE vendor_id = $1 LIMIT 1`,
+        [vendor.id]
+      ).catch(() => null);
+      productIds = normalizeIds(legacy?.product_ids);
+      updatedAt = legacy?.updated_at || null;
+      savedMode = mode;
+    }
     return NextResponse.json({
-      productIds: normalizeIds(row?.product_ids),
-      updatedAt: row?.updated_at || null,
-      mode: row?.mode === "manual" ? "manual" : mode,
+      productIds,
+      updatedAt,
+      mode: savedMode,
     });
   } catch {
     return NextResponse.json(

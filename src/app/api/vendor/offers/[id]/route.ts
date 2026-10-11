@@ -186,6 +186,10 @@ export async function PATCH(
     }).catch(() => {});
   }
 
+  // El catálogo cambió: mover el versionado de la tarjeta promo (?v=).
+  const { touchPromoVersion } = await import("@/lib/promo-server");
+  await touchPromoVersion(vendor.id);
+
   return NextResponse.json({ offer });
 }
 
@@ -203,6 +207,10 @@ export async function DELETE(
     `DELETE FROM products WHERE id = $1 AND vendor_id = $2 RETURNING id`,
     [params.id, vendor.id]
   );
+
+  // El catálogo cambió: mover el versionado de la tarjeta promo (?v=).
+  const { touchPromoVersion: touchOnDelete } = await import("@/lib/promo-server");
+  await touchOnDelete(vendor.id);
 
   return NextResponse.json({ ok: true });
 }

@@ -1072,6 +1072,12 @@ export async function POST(request: Request) {
       return { imported, updated, suppliers: suppliersUpserted.size, fudoGroupsLinked, ingredientsUpserted, recipesCreated, recipeLinesCreated, recipesSkipped };
     });
 
+    // El catálogo cambió: mover el versionado de la tarjeta promo (?v=).
+    if ((result.imported || 0) + (result.updated || 0) > 0) {
+      const { touchPromoVersion } = await import("@/lib/promo-server");
+      await touchPromoVersion(vendor.id);
+    }
+
     return NextResponse.json({
       action: "import",
       imported: result.imported,

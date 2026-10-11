@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Share, Upload, Eye, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { SharePromoModal } from "@/components/dashboard/share-promo-modal";
 import { ProductImage } from "@/components/product-image";
-import { discountOf, isValidPromo } from "@/lib/promo";
+import { discountOf, isValidPromo, promoContentHash } from "@/lib/promo";
 
 type PromoProduct = {
   id: string;
@@ -185,8 +185,15 @@ export function PromosSection({
   const hasPromos = products.length > 0;
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://www.portal659.com.ar";
   const promoUrl = `${siteUrl}/promo/${slug}`;
-  const ogImageUrl = updatedAt
-    ? `${siteUrl}/og/promo/${slug}.jpg?v=${encodeURIComponent(updatedAt)}`
+  const contentHash = useMemo(
+    () => promoContentHash(products, selection, mode, promoImage),
+    [products, selection, mode, promoImage]
+  );
+  const ogVersion = [contentHash, updatedAt ? String(updatedAt) : ""]
+    .filter(Boolean)
+    .join("-");
+  const ogImageUrl = ogVersion
+    ? `${siteUrl}/og/promo/${slug}.jpg?v=${encodeURIComponent(ogVersion)}`
     : `${siteUrl}/og/promo/${slug}.jpg`;
 
   if (loading) {

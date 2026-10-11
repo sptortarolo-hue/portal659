@@ -1,5 +1,6 @@
 import { getVendorByRequest } from "@/lib/vendor-utils";
 import { queryMany, queryOne } from "@/lib/db";
+import { promoContentHash } from "@/lib/promo";
 import { NextResponse } from "next/server";
 
 export async function GET(request: Request) {
@@ -54,11 +55,14 @@ export async function GET(request: Request) {
     promoImageUrl = null;
   }
 
+  const contentHash = promoContentHash(products || [], productIds, mode, promoImageUrl);
+
   return NextResponse.json({
     products: products || [],
     promoImage: promoImageUrl,
     selection: productIds,
     updatedAt,
     mode,
+    contentHash,
   });
 }

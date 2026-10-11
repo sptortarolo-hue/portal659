@@ -1,6 +1,6 @@
 import { queryOne, queryMany } from "@/lib/db";
 import { queryEffectiveModifiers } from "@/lib/modifier-rules";
-import { discountOf, isValidPromo } from "@/lib/promo";
+import { discountOf, isValidPromo, promoContentHash } from "@/lib/promo";
 import { resolveVendorPlan, vendorSellsOnline } from "@/lib/plans";
 import { notFound } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
@@ -53,11 +53,34 @@ export async function generateMetadata({
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://www.portal659.com.ar";
   let versionParam = "";
   try {
-    const row = await queryOne<{ updated_at: string }>(
-      `SELECT updated_at FROM vendor_promo_images WHERE vendor_id = $1 LIMIT 1`,
+    const row = await queryOne<{
+      image_url: string;
+      product_ids: unknown;
+      updated_at: string;
+      mode: unknown;
+    }>(
+      `SELECT image_url, product_ids, updated_at, mode FROM vendor_promo_images WHERE vendor_id = $1 LIMIT 1`,
       [vendor.id]
-    );
-    if (row?.updated_at) versionParam = `v=${encodeURIComponent(row.updated_at)}`;
+    ).catch(() => null);
+    const listed = await queryMany<{
+      id: string;
+      name: string;
+      price: number;
+      promo_price: number | null;
+      image_url: string | null;
+    }>(
+      `SELECT id, name, price, promo_price, image_url FROM products
+       WHERE vendor_id = $1 AND available = true
+         AND (promo_price IS NOT NULL OR promo_only = true)`,
+      [vendor.id]
+    ).catch(() => []);
+    const sel = Array.isArray(row?.product_ids)
+      ? (row.product_ids as unknown[]).filter((v): v is string => typeof v === "string")
+      : [];
+    const m = row?.mode === "manual" ? "manual" : "auto";
+    const hash = promoContentHash(listed || [], sel, m, row?.image_url || null);
+    const parts = [hash, row?.updated_at ? String(row.updated_at) : ""].filter(Boolean);
+    if (parts.length > 0) versionParam = `v=${encodeURIComponent(parts.join("-"))}`;
   } catch {
     versionParam = "";
   }

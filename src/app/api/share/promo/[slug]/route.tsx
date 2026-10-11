@@ -136,16 +136,55 @@ export async function GET(
 
   async function remoteOk(url: string | null): Promise<boolean> {
     if (!url) return true;
+    return (await probeImage(url)).ok;
+  }
+
+  async function probeImage(
+    url: string | null
+  ): Promise<{ ok: boolean; contentType: string | null; bytes: number }> {
+    if (!url) return { ok: true, contentType: null, bytes: 0 };
     try {
       const ctrl = new AbortController();
       const t = setTimeout(() => ctrl.abort(), 6000);
       const res = await fetch(url, { signal: ctrl.signal });
       clearTimeout(t);
-      if (!res.ok) return false;
-      await res.arrayBuffer().catch(() => null);
-      return true;
+      if (!res.ok) return { ok: false, contentType: null, bytes: 0 };
+      const buf = await res.arrayBuffer().catch(() => null);
+      return {
+        ok: true,
+        contentType: res.headers.get("content-type"),
+        bytes: buf ? buf.byteLength : 0,
+      };
     } catch {
-      return false;
+      return { ok: false, contentType: null, bytes: 0 };
+    }
+  }
+
+  // Descarga una foto y la devuelve como JPEG en data URI: resvg/satori no
+  // decodifica WebP/AVIF (los deja en blanco sin error), así que las fotos
+  // de productos/logo van normalizadas. Si falla, null (se usa la URL remota
+  // como antes cuando el fetch directo funciona).
+  async function fetchJpegDataUri(url: string | null, width: number): Promise<string | null> {
+    if (!url) return null;
+    try {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 8000);
+      const res = await fetch(url, { signal: ctrl.signal });
+      clearTimeout(t);
+      if (!res.ok) return null;
+      const buf = Buffer.from(await res.arrayBuffer());
+      if (buf.length === 0) return null;
+      const sharp = (await import("sharp")).default;
+      const out = await sharp(buf)
+        .rotate()
+        .resize({ width, withoutEnlargement: true })
+        .flatten({ background: "#ffffff" })
+        .jpeg({ quality: 82, mozjpeg: true })
+        .toBuffer();
+      return `data:image/jpeg;base64,${out.toString("base64")}`;
+    } catch (e) {
+      console.error("[share-promo] no se pudo normalizar foto, se usa remota", { url });
+      return null;
     }
   }
 
@@ -235,7 +274,7 @@ export async function GET(
 
   // Tarjeta compuesta con productos: fondo promo + titular de descuento +
   // foto(s) elegidas por el comercio + logo del local.
-  function composedCard(items: PromoProduct[], logoOk: boolean) {
+  function composedCard(items: PromoProduct[], logoOk: boolean, logoSrc: string | null) {
     const best = Math.max(...items.map(discountOf));
     const hasOff = best > 0;
     const hero = items[0];
@@ -343,9 +382,9 @@ export async function GET(
             )}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 22 }}>
-            {logoOk && logoUrl && (
+            {logoOk && logoSrc && (
               <img
-                src={logoUrl}
+                src={logoSrc}
                 width={76}
                 height={76}
                 style={{ borderRadius: 999, objectFit: "cover", border: "3px solid rgba(255,255,255,0.9)" }}
@@ -456,7 +495,7 @@ export async function GET(
 
   // Tarjeta de texto cuando hay promos pero sin fotos: titular de
   // descuento + producto + precios + logo sobre fondo promo.
-  function textOnlyCard(items: PromoProduct[], logoOk: boolean) {
+  function textOnlyCard(items: PromoProduct[], logoOk: boolean, logoSrc: string | null) {
     const best = Math.max(...items.map(discountOf));
     const hasOff = best > 0;
     const hero = items[0];
@@ -545,9 +584,9 @@ export async function GET(
           )}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 20 }}>
-          {logoOk && logoUrl && (
+          {logoOk && logoSrc && (
             <img
-              src={logoUrl}
+              src={logoSrc}
               width={68}
               height={68}
               style={{ borderRadius: 999, objectFit: "cover", border: "3px solid rgba(255,255,255,0.9)" }}
@@ -591,7 +630,10 @@ export async function GET(
     const diagList = diagPicked.length > 0 ? diagPicked : diagAuto;
     const diagValid = diagListed.filter(isValidPromo);
     const diagPhotos = await Promise.all(
-      diagList.map(async (p) => ({ id: p.id, photo: !!p.image_url, ok: await remoteOk(p.image_url) }))
+      diagList.map(async (p) => {
+        const probe = await probeImage(p.image_url);
+        return { id: p.id, photo: !!p.image_url, ok: probe.ok, contentType: probe.contentType, bytes: probe.bytes };
+      })
     );
     return NextResponse.json({
       code: "promo-og-v3-nofont",
@@ -618,10 +660,13 @@ export async function GET(
     });
   }
 
-  // Datos + validación de fotos, compartido por el render y el debug.
+  // Datos + validación de fotos + normalización a JPEG embebido,
+  // compartido por el render y el debug (mismo camino exacto).
   async function resolvePicked(): Promise<{
     picked: PromoProduct[];
+    items: PromoProduct[];
     logoOk: boolean;
+    logoSrc: string | null;
     photoOk: boolean[];
   }> {
     const all = await queryMany<PromoProduct>(
@@ -645,7 +690,15 @@ export async function GET(
     }
     const urls = [logoUrl, ...picked.map((p) => p.image_url)];
     const checks = await Promise.all(urls.map((u) => remoteOk(u)));
-    return { picked, logoOk: checks[0], photoOk: checks.slice(1) };
+    const logoOk = checks[0];
+    const photoOk = checks.slice(1);
+    const converted = await Promise.all(picked.map((p) => fetchJpegDataUri(p.image_url, 600)));
+    const logoSrc = (await fetchJpegDataUri(logoUrl, 256)) || (logoOk ? logoUrl : null);
+    const items = picked.map((p, i) => ({
+      ...p,
+      image_url: converted[i] ?? (photoOk[i] ? p.image_url : null),
+    }));
+    return { picked, items, logoOk, logoSrc, photoOk };
   }
 
   // Render real expuesto como JSON: prueba la rama exacta que se serviría
@@ -658,16 +711,16 @@ export async function GET(
         const buf = await res.arrayBuffer();
         return NextResponse.json({ code: "promo-og-v3", render: "ok", branch: "manual", bytes: buf.byteLength });
       }
-      const { picked, logoOk, photoOk } = await resolvePicked();
-      const withPhoto = picked.filter((_, i) => photoOk[i]);
+      const { picked, items, logoOk, logoSrc } = await resolvePicked();
+      const withPhoto = items.filter((p) => !!p.image_url);
       let branch = "fallback-empty";
       if (picked.length > 0 && withPhoto.length === 0) branch = "text";
       else if (withPhoto.length > 0) branch = "composed";
       stage = `render:${branch}`;
       let res: Response;
       if (branch === "fallback-empty") res = await manualCard(manualImage || vendor.image_url);
-      else if (branch === "text") res = await textOnlyCard(picked, logoOk);
-      else res = await composedCard(withPhoto, logoOk);
+      else if (branch === "text") res = await textOnlyCard(picked, logoOk, logoSrc);
+      else res = await composedCard(withPhoto, logoOk, logoSrc);
       const buf = await res.arrayBuffer();
       return NextResponse.json({ code: "promo-og-v3", render: "ok", branch, bytes: buf.byteLength });
     } catch (e) {
@@ -695,7 +748,7 @@ export async function GET(
     }
 
     // 2) Composición con productos: selección del comercio o top-3 automático.
-    const { picked, logoOk, photoOk } = await resolvePicked();
+    const { picked, items, logoOk, logoSrc } = await resolvePicked();
     if (picked.length === 0) {
       console.error("[share-promo] sin productos en promo, fallback", {
         slug,
@@ -705,21 +758,22 @@ export async function GET(
       return await manualCard(manualImage || vendor.image_url);
     }
 
-    const withPhoto = picked.filter((_, i) => photoOk[i]);
+    const withPhoto = items.filter((p) => !!p.image_url);
     // Sin fotos accesibles: tarjeta de texto (nunca cae en silencio a la vieja).
     if (withPhoto.length === 0) {
       console.log("[share-promo] tarjeta texto (sin fotos)", {
         slug,
         picked: picked.map((p) => p.id),
       });
-      return await textOnlyCard(picked, logoOk);
+      return await textOnlyCard(picked, logoOk, logoSrc);
     }
     console.log("[share-promo] tarjeta compuesta", {
       slug,
       picked: withPhoto.map((p) => p.id),
       logoOk,
+      embedded: withPhoto.filter((p) => p.image_url?.startsWith("data:")).length,
     });
-    return await composedCard(withPhoto, logoOk);
+    return await composedCard(withPhoto, logoOk, logoSrc);
   } catch (err) {
     console.error("[share-promo] fallo render, usando fallback:", err);
     return ogJpeg(

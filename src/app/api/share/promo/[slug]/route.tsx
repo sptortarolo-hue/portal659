@@ -392,10 +392,7 @@ export async function GET(
           >
             PROMO
           </div>
-          <div style={{ fontSize: 118, fontWeight: 800, color: "#ffffff", lineHeight: 1.05, marginTop: 8 }}>
-            {hasOff ? `-${best}%` : "PROMO"}
-          </div>
-          <div style={{ fontSize: 34, fontWeight: 700, color: "#ffffff", marginTop: 6, maxWidth: 560 }}>
+          <div style={{ fontSize: 40, fontWeight: 700, color: "#ffffff", marginTop: 10, maxWidth: 560 }}>
             {hero.name}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 14 }}>
@@ -434,20 +431,40 @@ export async function GET(
               </div>
             )}
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 22 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 24 }}>
             {logoOk && logoSrc && (
               <img
                 src={logoSrc}
-                width={76}
-                height={76}
-                style={{ borderRadius: 999, objectFit: "cover", border: "3px solid rgba(255,255,255,0.9)" }}
+                width={108}
+                height={108}
+                style={{ borderRadius: 999, objectFit: "cover", border: "4px solid rgba(255,255,255,0.9)" }}
               />
             )}
-            <div style={{ fontSize: 30, fontWeight: 700, color: "#ffffff" }}>{storeName}</div>
+            <div style={{ fontSize: 32, fontWeight: 700, color: "#ffffff" }}>{storeName}</div>
           </div>
           <div style={{ fontSize: 20, color: "rgba(255,255,255,0.85)", marginTop: 12 }}>
             {`${domain} · Pedí directo por WhatsApp`}
           </div>
+        </div>
+        <div
+          style={{
+            position: "absolute",
+            left: 545,
+            top: 230,
+            width: 170,
+            height: 170,
+            borderRadius: 999,
+            background: "#ffffff",
+            color: "#b91c1c",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: hasOff ? 62 : 30,
+            fontWeight: 800,
+            border: "6px solid rgba(185,28,28,0.25)",
+          }}
+        >
+          {hasOff ? `-${best}%` : "PROMO"}
         </div>
         <div
           style={{
@@ -471,27 +488,6 @@ export async function GET(
                   style={{ borderRadius: 36, objectFit: "cover", border: "6px solid rgba(255,255,255,0.9)" }}
                 />
               )}
-              {heroOff > 0 && (
-                <div
-                  style={{
-                    position: "absolute",
-                    top: 24,
-                    left: 24,
-                    width: 124,
-                    height: 124,
-                    borderRadius: 999,
-                    background: "#ffffff",
-                    color: "#b91c1c",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: 36,
-                    fontWeight: 800,
-                  }}
-                >
-                  -{heroOff}%
-                </div>
-              )}
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "row", alignItems: "center", gap: 20 }}>
@@ -503,27 +499,6 @@ export async function GET(
                     height={400}
                     style={{ borderRadius: 32, objectFit: "cover", border: "6px solid rgba(255,255,255,0.9)" }}
                   />
-                )}
-                {heroOff > 0 && (
-                  <div
-                    style={{
-                      position: "absolute",
-                      top: 20,
-                      left: 20,
-                      width: 112,
-                      height: 112,
-                      borderRadius: 999,
-                      background: "#ffffff",
-                      color: "#b91c1c",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontSize: 33,
-                      fontWeight: 800,
-                    }}
-                  >
-                    -{heroOff}%
-                  </div>
                 )}
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>

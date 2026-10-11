@@ -354,7 +354,7 @@ export async function GET(
             <div style={{ fontSize: 30, fontWeight: 700, color: "#ffffff" }}>{storeName}</div>
           </div>
           <div style={{ fontSize: 20, color: "rgba(255,255,255,0.85)", marginTop: 12 }}>
-            {domain} · Pedí directo por WhatsApp
+            {`${domain} · Pedí directo por WhatsApp`}
           </div>
         </div>
         <div
@@ -506,8 +506,7 @@ export async function GET(
           {hasOff ? `-${best}%` : "PROMO"}
         </div>
         <div style={{ fontSize: 34, fontWeight: 700, color: "#ffffff", marginTop: 6 }}>
-          {hero.name}
-          {extra}
+          {`${hero.name}${extra}`}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 14 }}>
           {heroOff > 0 ? (

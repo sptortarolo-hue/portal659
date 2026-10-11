@@ -1,5 +1,7 @@
 import { ImageResponse } from "next/og";
 import type { ReactElement } from "react";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { NextResponse } from "next/server";
 import { queryMany, queryOne } from "@/lib/db";
 import { getSiteUrl } from "@/lib/site-url";
@@ -134,46 +136,80 @@ export async function GET(
     );
   }
 
-  async function remoteOk(url: string | null): Promise<boolean> {
-    if (!url) return true;
-    return (await probeImage(url)).ok;
+  // Las fotos de /uploads viven en el disco local (UPLOAD_DIR): leerlas
+  // directo evita el hairpin VPS→Cloudflare→VPS que colgaba los renders.
+  function localUploadPath(url: string | null): string | null {
+    if (!url) return null;
+    try {
+      const site = getSiteUrl().replace(/\/$/, "");
+      let path: string | null = null;
+      if (url.startsWith(`${site}/uploads/`)) path = url.slice(site.length);
+      else if (url.startsWith("/uploads/")) path = url;
+      if (!path || path.includes("..")) return null;
+      const root = process.env.UPLOAD_DIR || join(process.cwd(), "uploads");
+      return join(root, path.replace(/^\/uploads\//, ""));
+    } catch {
+      return null;
+    }
+  }
+
+  // Descarga completa con timeout TOTAL (incluye el cuerpo: antes el abort
+  // solo cubría el inicio y una descarga trabada colgaba el pedido).
+  async function fetchBuffer(
+    url: string,
+    ms: number
+  ): Promise<{ buf: Buffer | null; contentType: string | null }> {
+    const local = localUploadPath(url);
+    if (local) {
+      try {
+        const buf = await readFile(local);
+        if (buf.length === 0) return { buf: null, contentType: null };
+        const ext = local.split(".").pop()?.toLowerCase() || "";
+        const contentType =
+          ext === "png"
+            ? "image/png"
+            : ext === "webp"
+              ? "image/webp"
+              : ext === "gif"
+                ? "image/gif"
+                : ext === "avif"
+                  ? "image/avif"
+                  : "image/jpeg";
+        return { buf, contentType };
+      } catch {
+        /* cae a remoto */
+      }
+    }
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(ms) });
+      if (!res.ok) return { buf: null, contentType: null };
+      const buf = Buffer.from(await res.arrayBuffer());
+      if (buf.length === 0) return { buf: null, contentType: null };
+      return { buf, contentType: res.headers.get("content-type") };
+    } catch {
+      return { buf: null, contentType: null };
+    }
   }
 
   async function probeImage(
     url: string | null
   ): Promise<{ ok: boolean; contentType: string | null; bytes: number }> {
     if (!url) return { ok: true, contentType: null, bytes: 0 };
-    try {
-      const ctrl = new AbortController();
-      const t = setTimeout(() => ctrl.abort(), 6000);
-      const res = await fetch(url, { signal: ctrl.signal });
-      clearTimeout(t);
-      if (!res.ok) return { ok: false, contentType: null, bytes: 0 };
-      const buf = await res.arrayBuffer().catch(() => null);
-      return {
-        ok: true,
-        contentType: res.headers.get("content-type"),
-        bytes: buf ? buf.byteLength : 0,
-      };
-    } catch {
-      return { ok: false, contentType: null, bytes: 0 };
-    }
+    const { buf, contentType } = await fetchBuffer(url, 8000);
+    if (!buf) return { ok: false, contentType: null, bytes: 0 };
+    return { ok: true, contentType, bytes: buf.length };
   }
 
-  // Descarga una foto y la devuelve como JPEG en data URI: resvg/satori no
-  // decodifica WebP/AVIF (los deja en blanco sin error), así que las fotos
-  // de productos/logo van normalizadas. Si falla, null (se usa la URL remota
-  // como antes cuando el fetch directo funciona).
-  async function fetchJpegDataUri(url: string | null, width: number): Promise<string | null> {
+  // Devuelve la URL a usar en el render: la remota tal cual si ya es
+  // JPEG/PNG (resvg los decodifica bien), o JPEG embebido en data URI si
+  // es WebP/AVIF/GIF (resvg los deja en blanco sin error). Null si inusable.
+  async function resolvePhoto(url: string | null, width: number): Promise<string | null> {
     if (!url) return null;
+    const { buf, contentType } = await fetchBuffer(url, 8000);
+    if (!buf) return null;
+    const ct = (contentType || "").toLowerCase();
+    if (ct.includes("jpeg") || ct.includes("jpg") || ct.includes("png")) return url;
     try {
-      const ctrl = new AbortController();
-      const t = setTimeout(() => ctrl.abort(), 8000);
-      const res = await fetch(url, { signal: ctrl.signal });
-      clearTimeout(t);
-      if (!res.ok) return null;
-      const buf = Buffer.from(await res.arrayBuffer());
-      if (buf.length === 0) return null;
       const sharp = (await import("sharp")).default;
       const out = await sharp(buf)
         .rotate()
@@ -183,7 +219,7 @@ export async function GET(
         .toBuffer();
       return `data:image/jpeg;base64,${out.toString("base64")}`;
     } catch (e) {
-      console.error("[share-promo] no se pudo normalizar foto, se usa remota", { url });
+      console.error("[share-promo] no se pudo normalizar foto", { url });
       return null;
     }
   }
@@ -191,10 +227,13 @@ export async function GET(
   // Tarjeta con foto manual del comercio (o banner): fondo foto + degradé,
   // píldora PROMO de texto (sin emoji: satori no trae fuente de emojis local).
   async function manualCard(banner: string | null) {
-    const [bannerOk, logoOk] = await Promise.all([remoteOk(banner), remoteOk(logoUrl)]);
+    const [bannerSrc, logoSrc] = await Promise.all([
+      resolvePhoto(banner, 1200),
+      resolvePhoto(logoUrl, 256),
+    ]);
     const legend = vendorDescription || `Pedí por WhatsApp — Portal 659 · 0% comisión`;
-    const backgroundImage = bannerOk && banner
-      ? `url(${banner})`
+    const backgroundImage = bannerSrc
+      ? `url(${bannerSrc})`
       : `linear-gradient(135deg, #7f1d1d 0%, #b91c1c 55%, #ea580c 100%)`;
     return ogJpeg(
       <div
@@ -238,9 +277,9 @@ export async function GET(
           PROMO
         </div>
         <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 24 }}>
-          {logoOk && logoUrl && (
+          {logoSrc && (
             <img
-              src={logoUrl}
+              src={logoSrc}
               width={160}
               height={160}
               style={{ borderRadius: 999, objectFit: "cover", border: "4px solid rgba(255,255,255,0.9)" }}
@@ -667,7 +706,6 @@ export async function GET(
     items: PromoProduct[];
     logoOk: boolean;
     logoSrc: string | null;
-    photoOk: boolean[];
   }> {
     const all = await queryMany<PromoProduct>(
       `SELECT id, name, price, promo_price, promo_only, image_url FROM products
@@ -688,17 +726,13 @@ export async function GET(
       const rest = valid.filter((p) => !isValidPromo(p));
       picked = [...withOff, ...rest].slice(0, 3);
     }
-    const urls = [logoUrl, ...picked.map((p) => p.image_url)];
-    const checks = await Promise.all(urls.map((u) => remoteOk(u)));
-    const logoOk = checks[0];
-    const photoOk = checks.slice(1);
-    const converted = await Promise.all(picked.map((p) => fetchJpegDataUri(p.image_url, 600)));
-    const logoSrc = (await fetchJpegDataUri(logoUrl, 256)) || (logoOk ? logoUrl : null);
-    const items = picked.map((p, i) => ({
-      ...p,
-      image_url: converted[i] ?? (photoOk[i] ? p.image_url : null),
-    }));
-    return { picked, items, logoOk, logoSrc, photoOk };
+    const [logoSrc, ...resolved] = await Promise.all([
+      resolvePhoto(logoUrl, 256),
+      ...picked.map((p) => resolvePhoto(p.image_url, 600)),
+    ]);
+    const logoOk = !!logoSrc;
+    const items = picked.map((p, i) => ({ ...p, image_url: resolved[i] }));
+    return { picked, items, logoOk, logoSrc };
   }
 
   // Render real expuesto como JSON: prueba la rama exacta que se serviría

@@ -64,15 +64,16 @@ async function main() {
   if (!handoffNotified || !h2.includes("Enseguida te atiende una persona")) { console.log("!!! el 2º mensaje no derivó a persona (con push al comercio)"); ok = false; }
   else { console.log(">>> OK: 2º mensaje → aviso de persona + push al comercio"); }
 
-  // 3. Tercer mensaje → el aviso de pausa UNA vez ("el comercio te atiende en
-  //    un rato") y sin nueva notificación al comercio.
+  // 3. Tercer mensaje → SILENCIO (en pausa no hay segundo aviso: el único
+  //    "te atiende una persona" salió en el handoff) y sin nueva notificación
+  //    al comercio.
   handoffNotified = false;
   r = await handleInbound({ vendor, waId: wa, body: "tienen milanesa?" });
   show("3º mensaje: tienen milanesa? (en pausa)", r);
   const p3 = (r.replies || []).join(" ");
-  if (handoffNotified || p3.includes("Enseguida te atiende")) { console.log("!!! el bot volvió a derivar/notificar (loop)"); ok = false; }
-  else if ((r.replies || []).length > 1 || (!p3.includes("comercio") && p3 !== "")) { console.log("!!! el aviso de pausa se repite o es raro"); ok = false; }
-  else { console.log(">>> OK: aviso de pausa una vez, sin re-notificar al comercio"); }
+  if (handoffNotified || p3.includes("Enseguida te atiende") || p3.includes("El comercio te va a atender")) { console.log("!!! el bot volvió a derivar o avisó de nuevo (segundo mensaje)"); ok = false; }
+  else if ((r.replies || []).length !== 0) { console.log("!!! en pausa el bot no debe contestar nada"); ok = false; }
+  else { console.log(">>> OK: en pausa silencio total, sin segundo aviso"); }
 
   // 4. Cuarto mensaje → SILENCIO total (el loop quedó cortado).
   r = await handleInbound({ vendor, waId: wa, body: "te puedo hacer un pedido?" });

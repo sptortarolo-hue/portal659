@@ -173,14 +173,10 @@ export async function handleInbound({ vendor, waId, body, waPhone }) {
       return { replies: ["Ok, cancelé todo. Cuando quieras retomamos. 👍"] };
     }
 
-// Pausa por handoff reciente: el dueño atiende, el bot calla. Se avisa UNA
-// vez (antes el silencio total hacía que el cliente pensara que se colgó).
+// Pausa por handoff reciente: el dueño atiende, el bot calla. El aviso al
+// cliente ("una persona te va a atender") sale UNA sola vez — en el handoff
+// mismo — nunca acá: durante la pausa es silencio total.
 if (state.pausedUntil && state.pausedUntil > Date.now()) {
-  if (!state.pauseNotified) {
-    state.pauseNotified = true;
-    await setState(vendor.id, waId, state).catch(() => {});
-    return { replies: ["El comercio te va a atender por acá en un rato 🙌"] };
-  }
   return { replies: [] };
 }
 
@@ -1195,7 +1191,6 @@ export async function sweepStaleConversations() {
 
     // Pausa: el scan no repite (anti-loop) y la persona atiende tranquila.
     state.pausedUntil = Date.now() + HANDOFF_PAUSE_MIN * 60 * 1000;
-    state.pauseNotified = true;
     await setState(vendorId, waId, state).catch(() => {});
     console.log(`[sweep] ${vendor.store_name} (${waId}) sin respuesta > ${config.handoffTimeoutMin} min — derivado a persona`);
   });

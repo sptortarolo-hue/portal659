@@ -448,26 +448,6 @@ export async function GET(
         </div>
         <div
           style={{
-            position: "absolute",
-            left: 545,
-            top: 230,
-            width: 170,
-            height: 170,
-            borderRadius: 999,
-            background: "#ffffff",
-            color: "#b91c1c",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: hasOff ? 62 : 30,
-            fontWeight: 800,
-            border: "6px solid rgba(185,28,28,0.25)",
-          }}
-        >
-          {hasOff ? `-${best}%` : "PROMO"}
-        </div>
-        <div
-          style={{
             position: "relative",
             width: 540,
             display: "flex",
@@ -516,6 +496,26 @@ export async function GET(
               </div>
             </div>
           )}
+        </div>
+        <div
+          style={{
+            position: "absolute",
+            left: 505,
+            top: 175,
+            width: 170,
+            height: 170,
+            borderRadius: 999,
+            background: "#ffffff",
+            color: "#b91c1c",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: hasOff ? 62 : 30,
+            fontWeight: 800,
+            border: "6px solid rgba(185,28,28,0.25)",
+          }}
+        >
+          {hasOff ? `-${best}%` : "PROMO"}
         </div>
       </div>
     );

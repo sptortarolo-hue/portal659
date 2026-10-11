@@ -18,6 +18,40 @@ type PromoProduct = {
   category: string | null;
 };
 
+function PreviewImg({ src }: { src: string }) {
+  const [state, setState] = useState<"loading" | "ok" | "error">("loading");
+  useEffect(() => {
+    setState("loading");
+  }, [src]);
+  return (
+    <>
+      {state === "loading" && (
+        <p className="text-xs text-gray-400 px-4 text-center">Cargando imagen…</p>
+      )}
+      {state === "error" && (
+        <div className="px-4 text-center space-y-1">
+          <p className="text-xs text-red-600 font-medium">No se pudo cargar la imagen.</p>
+          <a
+            href={src}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs text-primary underline break-all"
+          >
+            Abrir directo
+          </a>
+        </div>
+      )}
+      <img
+        src={src}
+        alt="Preview OG"
+        onLoad={() => setState("ok")}
+        onError={() => setState("error")}
+        className={`w-full h-full object-cover ${state === "ok" ? "" : "hidden"}`}
+      />
+    </>
+  );
+}
+
 export function PromosSection({
   vendorId,
   storeName,
@@ -237,12 +271,8 @@ export function PromosSection({
                 </Button>
               </div>
               <div className="bg-white rounded-lg border p-3 max-w-sm">
-                <div className="aspect-[1200/630] rounded overflow-hidden mb-2">
-                  <img
-                    src={ogImageUrl}
-                    alt="Preview OG"
-                    className="w-full h-full object-cover"
-                  />
+                <div className="aspect-[1200/630] rounded overflow-hidden mb-2 bg-gray-100 flex items-center justify-center">
+                  <PreviewImg key={ogImageUrl} src={ogImageUrl} />
                 </div>
                 <p className="font-bold text-sm">🔥 Promos en {storeName} — Portal 659</p>
                 <p className="text-xs text-gray-600">

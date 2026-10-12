@@ -24,6 +24,7 @@ import { StaffManager } from "@/components/vendor/staff-manager";
 import { ConfigSaveBar, ConfigSection, ConfigSections } from "@/components/dashboard/config-sections";
 import { PushAlertCard } from "@/components/dashboard/push-alert-card";
 import { FiscalTabShortcut } from "@/components/dashboard/fiscal-config-section";
+import { GiftcardsManager } from "@/components/dashboard/giftcards-manager";
 import { CartaQrSection } from "@/components/dashboard/carta-qr-section";
 import type { Vendor, Product, ProductVariant, ProductImage } from "@/types/database";
 
@@ -710,6 +711,10 @@ export default function DashboardModa({
 
       <ConfigSection id="fiscal" label="Facturación" icon="🧾" status={vendor?.fiscal_cert ? "ok" : vendor?.cuit ? "warn" : "off"}>
       <FiscalTabShortcut />
+      </ConfigSection>
+
+      <ConfigSection id="giftcards" label="Gift Cards" icon="🎁">
+        <GiftcardsManager codeHint="MOD-XXXXXX" showDenominations />
       </ConfigSection>
 
       <ConfigSection id="carta" label="Catálogo QR" icon="📱" status={vendor?.carta_visibility === "public" ? "ok" : undefined}>

@@ -428,6 +428,23 @@ export default async function TiendaPage({
   let esteticaLocations: { id: string; name: string; address: string | null }[] = [];
   let esteticaPacks: { id: string; name: string; sessions_total: number | null; price: number | null }[] = [];
   let esteticaMpConnected = false;
+  // Giftcards retail (comercio/moda): montos fijos + MP conectado.
+  const isRetailGift = v.vertical === "moda" || v.vertical === "comercio";
+  let retailGiftDens: number[] = [];
+  let retailMpConnected = false;
+  if (isRetailGift) {
+    try {
+      const drows = await queryMany<{ amount: number }>(
+        `SELECT amount FROM giftcard_denominations WHERE vendor_id = $1 AND active IS DISTINCT FROM false ORDER BY amount ASC`,
+        [v.id]
+      ).catch(() => null);
+      retailGiftDens = (drows || []).map((d: any) => Math.round(Number(d.amount)) || 0).filter((n) => n > 0);
+    } catch { retailGiftDens = []; }
+    try {
+      const { isMpEnabled } = await import("@/lib/mp-oauth");
+      retailMpConnected = isMpEnabled() && (v as any).mp_user_id != null;
+    } catch { retailMpConnected = false; }
+  }
   if (isEstetica) {
     try {
       const srows = await queryMany<any>(
@@ -808,6 +825,19 @@ export default async function TiendaPage({
                 <h2 className="font-display text-2xl font-semibold">🎁 Giftcards</h2>
                 <div className="grid sm:grid-cols-2 gap-3">
                   <GiftcardBuyCard vendorId={v.id} mpConnected={esteticaMpConnected} waUrl={waUrl} />
+                </div>
+              </div>
+            )}
+
+            {/* Giftcards retail (comercio/moda): montos fijos + compra online */}
+            {isRetailGift && !menuHidden && (retailGiftDens.length > 0 || retailMpConnected) && (
+              <div className="mt-6 mb-6 space-y-4">
+                <h2 className="font-display text-2xl font-semibold">🎁 Gift Cards</h2>
+                <p className="text-sm text-muted-foreground -mt-2">
+                  Regalá saldo para usar en el local. Elegís el monto, pagás online y pasamos el código por WhatsApp.
+                </p>
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <GiftcardBuyCard vendorId={v.id} mpConnected={retailMpConnected} waUrl={waUrl} denominations={retailGiftDens} allowOpenAmount={false} />
                 </div>
               </div>
             )}

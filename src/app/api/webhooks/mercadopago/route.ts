@@ -364,15 +364,48 @@ export async function POST(request: Request) {
           if (gVendorId && gAmount > 0 && gPhone) {
             try {
               const { randomBytes } = await import("crypto");
+              const { giftCodePrefix } = await import("@/lib/giftcards");
+              // Idempotencia: un payment.id emite una sola giftcard aunque
+              // MP re-notifique (mismo patrón que la rama de fiado).
+              const mpId = String(payment.id ?? "");
+              if (mpId) {
+                const dup = await queryOne<{ id: string }>(
+                  `SELECT id FROM giftcards WHERE mp_payment_id = $1 LIMIT 1`,
+                  [`mp:${mpId}`]
+                ).catch(() => null);
+                if (dup) return NextResponse.json({ ok: true, dedup: true });
+              }
+              const vvert = await queryOne<{ vertical: string | null }>(
+                `SELECT vertical FROM vendors WHERE id = $1 LIMIT 1`,
+                [gVendorId]
+              ).catch(() => null);
+              const prefix = giftCodePrefix(vvert?.vertical);
+              // Tolerante a migración sin aplicar (sin mp_payment_id no hay
+              // idempotencia, pero la emisión no se rompe).
+              let hasMpCol = true;
+              try {
+                const chk = await queryOne<{ exists: boolean }>(
+                  `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'giftcards' AND column_name = 'mp_payment_id') AS exists`
+                );
+                hasMpCol = chk?.exists === true;
+              } catch {
+                hasMpCol = false;
+              }
               let card: { code: string } | undefined;
               for (let i = 0; i < 5 && !card; i++) {
                 try {
-                  const code = `EST-${randomBytes(3).toString("hex").toUpperCase()}`;
-                  card = (await queryOne<{ code: string }>(
-                    `INSERT INTO giftcards (vendor_id, code, amount, balance, customer_name, customer_phone)
-                     VALUES ($1, $2, $3, $3, $4, $5) RETURNING code`,
-                    [gVendorId, code, gAmount, gName || null, gPhone]
-                  )) || undefined;
+                  const code = `${prefix}-${randomBytes(3).toString("hex").toUpperCase()}`;
+                  card = hasMpCol
+                    ? (await queryOne<{ code: string }>(
+                        `INSERT INTO giftcards (vendor_id, code, amount, balance, customer_name, customer_phone, mp_payment_id)
+                         VALUES ($1, $2, $3, $3, $4, $5, $6) RETURNING code`,
+                        [gVendorId, code, gAmount, gName || null, gPhone, mpId ? `mp:${mpId}` : null]
+                      )) || undefined
+                    : (await queryOne<{ code: string }>(
+                        `INSERT INTO giftcards (vendor_id, code, amount, balance, customer_name, customer_phone)
+                         VALUES ($1, $2, $3, $3, $4, $5) RETURNING code`,
+                        [gVendorId, code, gAmount, gName || null, gPhone]
+                      )) || undefined;
                 } catch (e) {
                   if (!/duplicate|unique/i.test((e as Error)?.message || "")) throw e;
                 }

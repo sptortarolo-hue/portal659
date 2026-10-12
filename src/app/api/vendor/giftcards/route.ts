@@ -1,13 +1,13 @@
 import { gateRequest, gateError } from "@/lib/subscription-gate";
 import { queryMany, queryOne } from "@/lib/db";
-import { randomBytes } from "crypto";
 import { NextResponse } from "next/server";
+import { canSellGiftcards, newGiftCode, normalizeGiftAmount } from "@/lib/giftcards";
 
 /**
- * Giftcards del centro de estética (v1: emisión + canje manual en panel).
+ * Giftcards (estética, comercio, moda): emisión + canje manual en panel.
  * - GET: lista (con saldo). ?code= busca una puntual.
  * - POST { action: "sell", amount, customer_name?, customer_phone?, expires_at? }:
- *   emite código EST-XXXXXX con saldo = monto (se cobra por caja/MP aparte).
+ *   emite código con saldo = monto (se cobra por caja/MP aparte).
  * - POST { action: "redeem", code, amount, note? }: descuenta saldo con
  *   historial (409 si no alcanza). En 0 queda 'redeemed'.
  * - POST { action: "void", id }: anula.
@@ -15,7 +15,7 @@ import { NextResponse } from "next/server";
 export async function GET(request: Request) {
   const gate = await gateRequest(request);
   if (!gate.ok) return gateError(gate);
-  if (gate.vendor.vertical !== "estetica") return NextResponse.json({ giftcards: [] });
+  if (!canSellGiftcards(gate.vendor.vertical)) return NextResponse.json({ giftcards: [] });
   try {
     const { searchParams } = new URL(request.url);
     const code = (searchParams.get("code") || "").trim().toUpperCase();
@@ -34,23 +34,23 @@ export async function GET(request: Request) {
   }
 }
 
-function newCode(): string {
-  return `EST-${randomBytes(3).toString("hex").toUpperCase()}`;
+function newCode(vertical: string | null | undefined): string {
+  return newGiftCode(vertical);
 }
 
 export async function POST(request: Request) {
   const gate = await gateRequest(request);
   if (!gate.ok) return gateError(gate);
-  if (gate.vendor.vertical !== "estetica") {
-    return NextResponse.json({ error: "Solo disponible para estética" }, { status: 403 });
+  if (!canSellGiftcards(gate.vendor.vertical)) {
+    return NextResponse.json({ error: "Giftcards no disponibles para este rubro" }, { status: 403 });
   }
   const body = await request.json().catch(() => ({}));
   const action = String(body.action || "");
 
   try {
     if (action === "sell") {
-      const amount = Math.round(Number(body.amount) || 0);
-      if (!amount || amount <= 0) {
+      const amount = normalizeGiftAmount(body.amount);
+      if (!amount) {
         return NextResponse.json({ error: "El monto debe ser mayor a 0" }, { status: 400 });
       }
       const expiresRaw = typeof body.expires_at === "string" ? body.expires_at.trim() : "";
@@ -64,7 +64,7 @@ export async function POST(request: Request) {
              VALUES ($1, $2, $3, $3, $4, $5, $6) RETURNING *`,
             [
               gate.vendor.id,
-              newCode(),
+              newCode(gate.vendor.vertical),
               amount,
               String(body.customer_name || "").trim().slice(0, 120) || null,
               String(body.customer_phone || "").trim().slice(0, 40) || null,

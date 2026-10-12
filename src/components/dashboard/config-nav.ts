@@ -43,6 +43,7 @@ export const CONFIG_SECTION_ICONS: Record<string, LucideIcon> = {
   turnera: CalendarDays,
   fichas: ClipboardList,
   packs: Gift,
+  giftcards: Gift,
   servicios: Wrench,
   urgencia: Siren,
 };
@@ -63,6 +64,7 @@ export const CONFIG_SECTION_DESCS: Record<string, string> = {
   turnera: "Servicios, profesionales, sedes y turnera online.",
   fichas: "Modelos de ficha por servicio.",
   packs: "Packs de sesiones, giftcards y comisiones.",
+  giftcards: "Tarjetas de regalo: montos, emisión y canjes.",
   servicios: "Qué ofrecés, zona y solicitudes online.",
   urgencia: "Emergencias 24hs y recargo.",
 };
@@ -73,7 +75,7 @@ export const CONFIG_SECTION_GROUPS: Array<{
   sections: string[];
 }> = [
   { id: "negocio", label: "Local", sections: ["perfil", "ubicacion", "contacto"] },
-  { id: "ventas", label: "Ventas", sections: ["pagos", "menu", "catalogo", "carta"] },
+  { id: "ventas", label: "Ventas", sections: ["pagos", "menu", "catalogo", "carta", "giftcards"] },
   { id: "turnera", label: "Turnera", sections: ["turnera", "fichas", "packs"] },
   { id: "servicio", label: "Servicio", sections: ["servicios", "urgencia"] },
   { id: "operacion", label: "Operación", sections: ["preparacion", "equipo", "impresora", "alertas", "fiscal"] },
@@ -97,6 +99,7 @@ export const CONFIG_SECTION_LABELS: Record<string, string> = {
   turnera: "Turnera",
   fichas: "Fichas",
   packs: "Packs y regalos",
+  giftcards: "Gift Cards",
   servicios: "Servicios",
   urgencia: "Urgencia 24hs",
 };
@@ -107,9 +110,9 @@ export function sectionsForVertical(vertical: string | null | undefined): string
     case "gastronomia":
       return ["perfil", "ubicacion", "contacto", "pagos", "preparacion", "equipo", "impresora", "alertas", "fiscal", "menu", "carta"];
     case "comercio":
-      return ["perfil", "ubicacion", "contacto", "pagos", "equipo", "impresora", "alertas", "fiscal", "catalogo", "carta"];
+      return ["perfil", "ubicacion", "contacto", "pagos", "equipo", "impresora", "alertas", "fiscal", "catalogo", "giftcards", "carta"];
     case "moda":
-      return ["perfil", "ubicacion", "contacto", "pagos", "equipo", "impresora", "alertas", "fiscal", "carta"];
+      return ["perfil", "ubicacion", "contacto", "pagos", "equipo", "impresora", "alertas", "fiscal", "giftcards", "carta"];
     case "estetica":
       return ["perfil", "ubicacion", "contacto", "pagos", "turnera", "fichas", "packs", "equipo", "impresora", "alertas", "carta"];
     case "servicio":

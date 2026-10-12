@@ -144,11 +144,19 @@ export function GiftcardBuyCard({
   vendorId,
   mpConnected,
   waUrl,
+  denominations = [],
+  allowOpenAmount = true,
 }: {
   vendorId: string;
   mpConnected: boolean;
   waUrl: string;
+  /** Montos fijos del local (comercio/moda). Vacío = monto abierto (estética). */
+  denominations?: number[];
+  /** Permite monto abierto cuando no hay lista (solo estética legacy). */
+  allowOpenAmount?: boolean;
 }) {
+  const hasFixed = (denominations || []).length > 0;
+  const canBuyOnline = mpConnected && (hasFixed || allowOpenAmount !== false);
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState("");
   const [name, setName] = useState("");
@@ -158,7 +166,7 @@ export function GiftcardBuyCard({
 
   async function buy() {
     if (!(Number(amount) >= 1000) || !name.trim() || !phone.trim()) {
-      setError("Monto mínimo $1.000 + tu nombre y WhatsApp");
+      setError(hasFixed ? "Elegí un monto + tu nombre y WhatsApp" : "Monto mínimo $1.000 + tu nombre y WhatsApp");
       return;
     }
     setLoading(true);
@@ -190,21 +198,43 @@ export function GiftcardBuyCard({
       </p>
       {!open ? (
         <div className="flex gap-2">
-          {mpConnected ? (
+          {canBuyOnline ? (
             <Button size="sm" className="flex-1" onClick={() => setOpen(true)}>Comprar giftcard</Button>
           ) : null}
           <a href={waUrl} target="_blank" rel="noopener noreferrer" className="flex-1">
-            <Button size="sm" variant={mpConnected ? "outline" : "default"} className="w-full">
+            <Button size="sm" variant={canBuyOnline ? "outline" : "default"} className="w-full">
               Pedir por WhatsApp
             </Button>
           </a>
         </div>
       ) : (
         <div className="space-y-2">
-          <div>
-            <Label className="text-xs">Monto ($, mínimo 1.000)</Label>
-            <Input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="numeric" placeholder="Ej: 20000" className="mt-1 h-9 text-sm" />
-          </div>
+          {hasFixed ? (
+            <div>
+              <Label className="text-xs">Monto</Label>
+              <div className="flex flex-wrap gap-1.5 mt-1">
+                {(denominations || []).map((d) => (
+                  <button
+                    key={d}
+                    type="button"
+                    onClick={() => setAmount(String(d))}
+                    className={`rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
+                      Number(amount) === d
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border hover:border-primary/50"
+                    }`}
+                  >
+                    ${Number(d).toLocaleString("es-AR")}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div>
+              <Label className="text-xs">Monto ($, mínimo 1.000)</Label>
+              <Input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="numeric" placeholder="Ej: 20000" className="mt-1 h-9 text-sm" />
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-2">
             <div>
               <Label className="text-xs">Tu nombre</Label>

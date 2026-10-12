@@ -1,4 +1,5 @@
-import { query, queryOne } from "@/lib/db";
+import { query, queryMany, queryOne } from "@/lib/db";
+import { canSellGiftcards } from "@/lib/giftcards";
 import { getSiteUrl } from "@/lib/site-url";
 import { getVendorMpToken, isMpEnabled, type VendorMpRow } from "@/lib/mp-oauth";
 import { toE164 } from "@/lib/phone";
@@ -6,10 +7,12 @@ import { NextResponse } from "next/server";
 import { withRateLimit } from "@/lib/api-wrapper";
 
 /**
- * Compra online de giftcard (estética) con Mercado Pago.
+ * Compra online de giftcard (estética, comercio, moda) con Mercado Pago.
  * La plata cae en la cuenta MP del comercio; el webhook emite el código
- * EST-XXXXXX con saldo (rama portal659_giftcard_) y le avisa al comercio
- * para que se lo pase a la clienta por WhatsApp.
+ * con saldo (rama portal659_giftcard_) y le avisa al comercio
+ * para que se lo pase al cliente por WhatsApp.
+ * Comercio/moda venden por montos fijos (giftcard_denominations);
+ * estética legacy mantiene monto abierto.
  */
 export const POST = withRateLimit(async (request: Request) => {
   if (!isMpEnabled()) {
@@ -44,8 +47,29 @@ export const POST = withRateLimit(async (request: Request) => {
      FROM vendors WHERE id = $1 LIMIT 1`,
     [vendorId]
   ).catch(() => undefined);
-  if (!vendor || vendor.vertical !== "estetica") {
+  if (!vendor || !canSellGiftcards(vendor.vertical)) {
     return NextResponse.json({ error: "Comercio no encontrado" }, { status: 404 });
+  }
+
+  // Montos fijos (comercio/moda): el monto debe estar en la lista del local.
+  // Estética legacy sin lista mantiene monto abierto.
+  try {
+    const dens = await queryMany<{ amount: number }>(
+      `SELECT amount FROM giftcard_denominations WHERE vendor_id = $1 AND active IS DISTINCT FROM false ORDER BY amount ASC`,
+      [vendorId]
+    ).catch(() => null);
+    if (dens && dens.length > 0) {
+      const ok = dens.some((d) => Math.round(Number(d.amount)) === cents);
+      if (!ok) {
+        return NextResponse.json({ error: "Elegí uno de los montos ofrecidos" }, { status: 400 });
+      }
+    } else if (vendor.vertical !== "estetica") {
+      return NextResponse.json({ error: "Este comercio todavía no definió montos de giftcard" }, { status: 400 });
+    }
+  } catch {
+    if (vendor.vertical !== "estetica") {
+      return NextResponse.json({ error: "Este comercio todavía no definió montos de giftcard" }, { status: 400 });
+    }
   }
 
   const mpToken = await getVendorMpToken(vendor);

@@ -30,6 +30,8 @@ export type VendorDeliveryConfig = {
   deliveryPauseReason: string | null;
   /** Días especiales {"YYYY-MM-DD": {open?, close?}}. */
   deliveryExtraDays: Record<string, DeliveryExtraDay> | null;
+  /** Se coordina el horario por WhatsApp (se ocultan horarios/turnos). */
+  deliveryCoordinar: boolean;
 };
 
 export async function fetchVendorDelivery(vendorId: string): Promise<VendorDeliveryConfig> {
@@ -47,6 +49,7 @@ export async function fetchVendorDelivery(vendorId: string): Promise<VendorDeliv
     deliveryPausedUntil: null,
     deliveryPauseReason: null,
     deliveryExtraDays: null,
+    deliveryCoordinar: false,
   };
   try {
     // Tolerante a migraciones sin aplicar: se reintenta sacando columnas
@@ -56,7 +59,7 @@ export async function fetchVendorDelivery(vendorId: string): Promise<VendorDeliv
       `SELECT delivery_mode, delivery_fee, free_delivery_min, delivery_area_text,
               delivery_hours, delivery_prep_min, hours, open_override,
               delivery_override, delivery_paused_until, delivery_pause_reason,
-              delivery_extra_days
+              delivery_extra_days, delivery_coordinar
        FROM vendors WHERE id = $1 LIMIT 1`,
       `SELECT delivery_mode, delivery_fee, free_delivery_min, delivery_area_text,
               delivery_hours, delivery_prep_min, hours, open_override
@@ -124,6 +127,8 @@ export async function fetchVendorDelivery(vendorId: string): Promise<VendorDeliv
         typeof v.delivery_extra_days === "object"
           ? (v.delivery_extra_days as Record<string, DeliveryExtraDay>)
           : null,
+      deliveryCoordinar:
+        "delivery_coordinar" in v && v.delivery_coordinar === true,
     };
   } catch {
     return fallback;

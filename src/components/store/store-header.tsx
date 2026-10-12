@@ -71,6 +71,7 @@ type StoreHeaderProps = {
   retailDeliveryOpen: boolean | null;
   retailDeliveryPaused: boolean;
   retailPauseMsg: string | null;
+  deliveryCoordinar?: boolean;
   isEstetica: boolean;
   urgentSurcharge: number | null;
 };
@@ -94,6 +95,7 @@ export function StoreHeader({
   retailDeliveryOpen,
   retailDeliveryPaused,
   retailPauseMsg,
+  deliveryCoordinar = false,
   isEstetica,
   urgentSurcharge,
 }: StoreHeaderProps) {
@@ -397,7 +399,13 @@ export function StoreHeader({
               {v.delivery_area_text && (
                 <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{v.delivery_area_text}</p>
               )}
-              {isCatalog && retailSlots.length > 0 && v.delivery_options !== "retiro" && (
+              {isCatalog && v.delivery_options !== "retiro" && (deliveryCoordinar ? (
+                <div className="mt-2">
+                  <span className="rounded-full px-2 py-0.5 text-xs font-medium bg-muted text-muted-foreground">
+                    🤝 Coordinamos por WhatsApp
+                  </span>
+                </div>
+              ) : retailSlots.length > 0 && (
                 <div className="mt-2">
                   <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
                     retailDeliveryPaused
@@ -413,7 +421,7 @@ export function StoreHeader({
                         : `Llega ${retailSlots[0].label}`}
                   </span>
                 </div>
-              )}
+              ))}
             </div>
           )}
 

@@ -40,6 +40,7 @@ export default function CheckoutPage() {
   const [deliverySlots, setDeliverySlots] = useState<{ id: string; label: string; range: string; isToday: boolean; isTomorrow: boolean }[]>([]);
   const [deliveryOpen, setDeliveryOpen] = useState<boolean | null>(null);
   const [deliveryPaused, setDeliveryPaused] = useState(false);
+  const [deliveryCoordinar, setDeliveryCoordinar] = useState(false);
   const [pauseClientMsg, setPauseClientMsg] = useState<string | null>(null);
   const [slotId, setSlotId] = useState("");
   const [doneTrackToken, setDoneTrackToken] = useState<string | null>(null);
@@ -138,7 +139,7 @@ export default function CheckoutPage() {
   // elige entre los próximos 3; default el primero (el server lo valida y,
   // si viene vacío/trucho, auto-asigna el próximo).
   const isRetailVendor = vendor?.vertical === "moda" || vendor?.vertical === "comercio";
-  const showSlots = isRetailVendor && method === "delivery" && deliverySlots.length > 0;
+  const showSlots = isRetailVendor && method === "delivery" && deliverySlots.length > 0 && !deliveryCoordinar;
   const activeSlotId = slotId || deliverySlots[0]?.id || "";
   const activeSlotLabel = deliverySlots.find((s) => s.id === activeSlotId)?.label || "";
 
@@ -262,6 +263,7 @@ export default function CheckoutPage() {
       .then((r) => r.json())
       .then((d) => {
         if (Array.isArray(d.slots)) setDeliverySlots(d.slots.slice(0, 3));
+        setDeliveryCoordinar(d.deliveryCoordinar === true);
         setDeliveryOpen(typeof d.deliveryOpen === "boolean" ? d.deliveryOpen : null);
         setDeliveryPaused(d.deliveryPaused === true);
         setPauseClientMsg(typeof d.pauseClientMsg === "string" && d.pauseClientMsg ? d.pauseClientMsg : null);
@@ -631,7 +633,7 @@ export default function CheckoutPage() {
       const waWindowId = typeof data.deliveryWindow === "string" && data.deliveryWindow ? data.deliveryWindow : activeSlotId;
       const waWindowLabel = deliverySlots.find((s) => s.id === waWindowId)?.label || "";
       const waDeliveryLine = method === "delivery"
-        ? `Envío: ${deliveryLabel({ fee: waFee, zoneName: waZone, outOfArea: waOutOfArea, freeShipping: !waOutOfArea && deliveryFreeShip })}${waOutOfArea ? " ⚠️" : ""}${waWindowLabel ? ` · Te lo llevamos ${waWindowLabel} 📦` : ""}`
+        ? `Envío: ${deliveryLabel({ fee: waFee, zoneName: waZone, outOfArea: waOutOfArea, freeShipping: !waOutOfArea && deliveryFreeShip })}${waOutOfArea ? " ⚠️" : ""}${waWindowLabel ? ` · Te lo llevamos ${waWindowLabel} 📦` : ""}${deliveryCoordinar ? " · Coordinamos por WhatsApp 🤝" : ""}`
         : undefined;
       const waCashDiscount = typeof data.cashDiscount === "number" ? data.cashDiscount : 0;
       const waCashPct = typeof data.cashPct === "number" ? data.cashPct : 0;
@@ -983,6 +985,11 @@ export default function CheckoutPage() {
                   ))}
                 </div>
               </div>
+            )}
+            {isRetailVendor && method === "delivery" && deliveryCoordinar && (
+              <p className="text-xs leading-relaxed rounded-lg bg-muted/40 border border-border px-2.5 py-2">
+                🤝 Coordinamos por WhatsApp el horario de entrega.
+              </p>
             )}
           </div>
         )}

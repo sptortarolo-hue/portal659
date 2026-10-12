@@ -125,6 +125,7 @@ export async function POST(request: Request) {
     cash_discount_pct,
     kitchen_strict_close,
     storefront_layout,
+    delivery_coordinar,
     require_open_shift,
     reservation_lead_min,
     reservation_tolerance_min,
@@ -395,6 +396,8 @@ export async function POST(request: Request) {
   if (kitchen_strict_close !== undefined) payload.kitchen_strict_close = kitchen_strict_close !== false;
   // Vista del catálogo online (comercio): lista o vidriera (grilla visual).
   if (storefront_layout !== undefined) payload.storefront_layout = storefront_layout === "vidriera" ? "vidriera" : "lista";
+  // Se coordina el horario por WhatsApp (se ocultan horarios/turnos).
+  if (delivery_coordinar !== undefined) payload.delivery_coordinar = delivery_coordinar === true;
   if (cash_discount_pct !== undefined) {
     if (cash_discount_pct === null || cash_discount_pct === "") {
       payload.cash_discount_pct = null;
@@ -447,6 +450,7 @@ export async function POST(request: Request) {
         "delivery_pause_reason",
         "delivery_extra_days",
         "storefront_layout",
+        "delivery_coordinar",
         "require_open_shift",
         "reservation_lead_min",
         "reservation_tolerance_min",

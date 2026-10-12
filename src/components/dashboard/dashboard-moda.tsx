@@ -111,6 +111,7 @@ export default function DashboardModa({
     vendor?.payment_methods ? vendor.payment_methods.split(", ").map((s: string) => s.trim()).filter(Boolean) : []
   );
   const [deliveryOptions, setDeliveryOptions] = useState(vendor?.delivery_options || "ambos");
+  const [coordinar, setCoordinar] = useState(vendor?.delivery_coordinar === true);
   const [onlineOrders, setOnlineOrders] = useState(vendor?.accepts_online_orders !== false);
   const [cashDiscount, setCashDiscount] = useState(
     vendor?.cash_discount_pct != null ? String(vendor.cash_discount_pct) : ""
@@ -140,6 +141,7 @@ export default function DashboardModa({
       vendor.payment_methods ? vendor.payment_methods.split(", ").map((s: string) => s.trim()).filter(Boolean) : []
     );
     setDeliveryOptions(vendor.delivery_options || "ambos");
+    setCoordinar(vendor.delivery_coordinar === true);
     setOnlineOrders(vendor.accepts_online_orders !== false);
     setCashDiscount(vendor.cash_discount_pct != null ? String(vendor.cash_discount_pct) : "");
     setStorePreview(vendor.image_url || null);
@@ -632,6 +634,23 @@ export default function DashboardModa({
             <DeliveryFeeConfig vendor={vendor} saveVendor={saveVendor} />
           )}
           {deliveryOptions !== "retiro" && (
+            <div className="flex items-center justify-between gap-3 rounded-xl border border-border px-3 py-2.5">
+              <div>
+                <Label className="text-sm">🤝 Se coordina</Label>
+                <p className="text-xs text-muted-foreground">
+                  El horario de entrega se arregla por WhatsApp. La zona y la tarifa siguen visibles.
+                </p>
+              </div>
+              <Switch
+                checked={coordinar}
+                onCheckedChange={async (v) => {
+                  setCoordinar(v);
+                  await saveVendor({ delivery_coordinar: v });
+                }}
+              />
+            </div>
+          )}
+          {deliveryOptions !== "retiro" && !coordinar && (
             <DeliveryScheduleConfig vendor={vendor} saveVendor={saveVendor} />
           )}
           {paymentMethods.includes("Efectivo") && (

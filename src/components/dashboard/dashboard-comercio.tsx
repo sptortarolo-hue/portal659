@@ -131,6 +131,7 @@ export default function DashboardComercio({
   );
   const [deliveryOptions, setDeliveryOptions] = useState(vendor?.delivery_options || "ambos");
   const [onlineOrders, setOnlineOrders] = useState(vendor?.accepts_online_orders !== false);
+  const [coordinar, setCoordinar] = useState(vendor?.delivery_coordinar === true);
   const [storefrontLayout, setStorefrontLayout] = useState(
     vendor?.storefront_layout === "vidriera" ? "vidriera" : "lista"
   );
@@ -161,6 +162,7 @@ export default function DashboardComercio({
     );
     setDeliveryOptions(vendor.delivery_options || "ambos");
       setOnlineOrders(vendor.accepts_online_orders !== false);
+      setCoordinar(vendor.delivery_coordinar === true);
       setStorefrontLayout(vendor.storefront_layout === "vidriera" ? "vidriera" : "lista");
     setCashDiscount(vendor.cash_discount_pct != null ? String(vendor.cash_discount_pct) : "");
   }, [vendor]);
@@ -559,6 +561,23 @@ export default function DashboardComercio({
             <DeliveryFeeConfig vendor={vendor} saveVendor={saveVendor} />
           )}
           {deliveryOptions !== "retiro" && (
+            <div className="flex items-center justify-between gap-3 rounded-xl border border-border px-3 py-2.5">
+              <div>
+                <Label className="text-sm">🤝 Se coordina</Label>
+                <p className="text-xs text-muted-foreground">
+                  El horario de entrega se arregla por WhatsApp. La zona y la tarifa siguen visibles.
+                </p>
+              </div>
+              <Switch
+                checked={coordinar}
+                onCheckedChange={async (v) => {
+                  setCoordinar(v);
+                  await saveVendor({ delivery_coordinar: v });
+                }}
+              />
+            </div>
+          )}
+          {deliveryOptions !== "retiro" && !coordinar && (
             <DeliveryScheduleConfig vendor={vendor} saveVendor={saveVendor} />
           )}
         </div>

@@ -739,6 +739,16 @@ export async function POST(request: Request) {
               `SELECT email FROM profiles WHERE id = $1 LIMIT 1`,
               [vendor.user_id]
             );
+            let mpCoordinar = false;
+            try {
+              const vrow = await queryOne<{ delivery_coordinar: boolean | null }>(
+                `SELECT delivery_coordinar FROM vendors WHERE id = $1 LIMIT 1`,
+                [vendorId]
+              );
+              mpCoordinar = vrow?.delivery_coordinar === true;
+            } catch {
+              mpCoordinar = false;
+            }
             if (profile?.email && order) {
               const emailContent = newOrderVendorEmail({
                 storeName: vendor.store_name || "Tu comercio",
@@ -751,6 +761,7 @@ export async function POST(request: Request) {
                 method: isPickup ? "pickup" : "delivery",
                 address: customerAddress,
                 deliveryWindow: mpWindow ? formatDeliveryWindow(mpWindow) : null,
+                deliveryCoordinar: mpCoordinar,
               });
               await sendEmail({ to: profile.email, ...emailContent });
             }

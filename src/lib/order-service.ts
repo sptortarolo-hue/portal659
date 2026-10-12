@@ -265,11 +265,12 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
   // slots; si manda uno inválido/vacío (o viene de un canal sin UI, ej. bot),
   // se auto-asigna el próximo. Fuera de horario NO se bloquea: el pedido
   // entra con el próximo turno (el checkout ya lo avisó con cartel amable).
+  // Con "Se coordina" no hay turnos: el horario se arregla por WhatsApp.
   let resolvedWindow: string | null = null;
   {
     const vertical = String((vendorRow as any)?.vertical || "");
     const isRetail = vertical === "moda" || vertical === "comercio";
-    if (vendorRow && isRetail && !isPickupOrder) {
+    if (vendorRow && isRetail && !isPickupOrder && !deliveryCfg.deliveryCoordinar) {
       try {
         const { nextDeliverySlots, isValidDeliveryWindow } = await import(
           "@/lib/delivery-schedule"
@@ -522,6 +523,7 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
         method: method || null,
         address: customerAddress,
         deliveryWindow: resolvedWindow ? formatDeliveryWindow(resolvedWindow) : null,
+        deliveryCoordinar: deliveryCfg.deliveryCoordinar === true,
       });
       Promise.resolve()
         .then(() => sendEmail({ to: userProfile.email, ...emailContent }))

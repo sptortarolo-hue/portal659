@@ -43,6 +43,7 @@ type TrackOrder = {
     prep_time_min: number | null;
     lat: number | null;
     lng: number | null;
+    delivery_coordinar?: boolean | null;
   } | null;
 };
 
@@ -175,6 +176,11 @@ export default function SeguimientoPedidoPage() {
         {isRetail && order.method === "delivery" && order.delivery_window && !isDone && (
           <p className="rounded-xl bg-primary/5 border border-primary/15 px-3 py-2 text-xs font-medium text-primary mb-2">
             📦 Te lo llevamos {formatDeliveryWindow(order.delivery_window)}
+          </p>
+        )}
+        {isRetail && order.method === "delivery" && !order.delivery_window && !isDone && vendor?.delivery_coordinar === true && (
+          <p className="rounded-xl bg-muted/40 border border-border px-3 py-2 text-xs font-medium text-muted-foreground mb-2">
+            🤝 Coordinamos por WhatsApp el horario de entrega.
           </p>
         )}
 

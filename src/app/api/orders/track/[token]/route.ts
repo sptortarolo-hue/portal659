@@ -43,7 +43,9 @@ export const GET = withRateLimit(
                 'vertical', v.vertical,
                 'prep_time_min', v.prep_time_min,
                 'lat', v.lat,
-                'lng', v.lng
+                'lng', v.lng,
+                'delivery_coordinar', CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'vendors' AND column_name = 'delivery_coordinar')
+                  THEN v.delivery_coordinar ELSE false END
               ) AS vendors
        FROM orders o
        LEFT JOIN vendors v ON v.id = o.vendor_id

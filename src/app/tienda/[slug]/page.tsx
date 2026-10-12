@@ -615,10 +615,11 @@ export default async function TiendaPage({
         storeBlurb={storeBlurb}
         waUrl={waUrl}
         waNumber={waNumber}
-        retailSlots={retailSlots}
-        retailDeliveryOpen={retailDeliveryOpen}
-        retailDeliveryPaused={retailDeliveryPaused}
-        retailPauseMsg={retailPauseMsg}
+          retailSlots={retailSlots}
+          retailDeliveryOpen={retailDeliveryOpen}
+          retailDeliveryPaused={retailDeliveryPaused}
+          retailPauseMsg={retailPauseMsg}
+          deliveryCoordinar={(v as any).delivery_coordinar === true}
         isEstetica={isEstetica}
         urgentSurcharge={urgentSurcharge}
       />

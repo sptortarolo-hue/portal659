@@ -597,6 +597,8 @@ async function composeComanda(printer: any, vendor: PrinterVendor, order: Order)
   const ticketWindow = order.method === "delivery" ? formatDeliveryWindow((order as any)?.delivery_window) : null;
   if (ticketWindow) {
     printer.println(`Entrega: ${ticketWindow}`);
+  } else if (order.method === "delivery" && (vendor as any)?.delivery_coordinar === true) {
+    printer.println("Horario: se coordina por WhatsApp");
   }
   if (order.method === "delivery" && deliveryPrintInfo(order).outOfArea) {
     printer.bold(true);

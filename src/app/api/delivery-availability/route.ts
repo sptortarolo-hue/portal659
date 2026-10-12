@@ -60,6 +60,7 @@ export async function GET(request: Request) {
       deliveryPauseReason: cfg.deliveryPauseReason,
       pauseClientMsg: paused ? deliveryPauseClientMessage(cfg.deliveryPauseReason) : null,
       deliveryForced: cfg.deliveryOverride === true,
+      deliveryCoordinar: cfg.deliveryCoordinar === true,
     });
   } catch {
     return NextResponse.json({ error: "No se pudo cargar la disponibilidad" }, { status: 500 });

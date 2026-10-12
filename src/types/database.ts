@@ -400,6 +400,8 @@ export type Vendor = {
   delivery_prep_min?: number | null;
   /** Override de reparto: null=horario, true=forzar abierto, false=pausado. */
   delivery_override?: boolean | null;
+  /** Se coordina el horario por WhatsApp (se ocultan horarios/turnos). */
+  delivery_coordinar?: boolean | null;
   /** Auto-resume de la pausa (NULL = manual). */
   delivery_paused_until?: string | null;
   delivery_pause_reason?: string | null;

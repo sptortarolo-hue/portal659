@@ -110,8 +110,10 @@ export function newOrderVendorEmail(params: {
   address?: string | null;
   /** Turno de entrega prometido ("mañana 09:00–13:00"), retail delivery. */
   deliveryWindow?: string | null;
+  /** Sin turno porque el horario se coordina por WhatsApp. */
+  deliveryCoordinar?: boolean;
 }): { subject: string; html: string } {
-  const { storeName, orderNumber, customerName, customerPhone, paymentLabel, items, total, method, address, deliveryWindow } = params;
+  const { storeName, orderNumber, customerName, customerPhone, paymentLabel, items, total, method, address, deliveryWindow, deliveryCoordinar } = params;
   const numTxt = orderNumber ? `#${orderNumber}` : "nuevo";
   const itemRows = items
     .map((i) => {
@@ -135,7 +137,7 @@ export function newOrderVendorEmail(params: {
         </table>
         <p style="font-size:14px">
           Cliente: <strong>${customerName}</strong> (${customerPhone})<br>
-          Entrega: ${method === "pickup" ? "Retiro en el local" : `Envío${address ? ` — ${address}` : ""}`}${method !== "pickup" && deliveryWindow ? ` · Turno: ${deliveryWindow}` : ""}<br>
+          Entrega: ${method === "pickup" ? "Retiro en el local" : `Envío${address ? ` — ${address}` : ""}`}${method !== "pickup" && deliveryWindow ? ` · Turno: ${deliveryWindow}` : ""}${method !== "pickup" && !deliveryWindow && deliveryCoordinar ? ` · Se coordina por WhatsApp` : ""}<br>
           Pago: ${paymentLabel}
         </p>
         <p style="margin-top:16px">

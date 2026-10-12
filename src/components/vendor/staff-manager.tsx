@@ -39,6 +39,9 @@ export function StaffManager({ storeName, showCouriers = true }: { storeName?: s
   const [phone, setPhone] = useState("");
   const [saving, setSaving] = useState(false);
   const [regenerating, setRegenerating] = useState<string | null>(null);
+  // Renombre de repartidor (display_name: lo que se ve en el detalle del envío).
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [renameName, setRenameName] = useState("");
   // Form de usuario del local.
   const [uName, setUName] = useState("");
   const [uUser, setUUser] = useState("");
@@ -114,11 +117,31 @@ export function StaffManager({ storeName, showCouriers = true }: { storeName?: s
   }
 
   async function revoke(s: StaffItem) {
-    if (!confirm(`¿Quitar a ${s.full_name || s.phone || "este repartidor"}? Perderá el acceso.`)) return;
+    if (!confirm(`¿Quitar a ${s.full_name || s.display_name || s.phone || "este repartidor"}? Perderá el acceso.`)) return;
     await fetch(`/api/vendor/staff?id=${encodeURIComponent(s.id)}`, { method: "DELETE" });
     setStaff((prev) => prev.filter((x) => x.id !== s.id));
     setMsg("✅ Repartidor desvinculado");
     setTimeout(() => setMsg(""), 3000);
+  }
+
+  async function saveCourierName(s: StaffItem) {
+    if (renameName.trim().length < 2) {
+      setMsg("❌ El nombre debe tener al menos 2 caracteres");
+      return;
+    }
+    const res = await fetch("/api/vendor/staff", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "set_courier_name", id: s.id, name: renameName.trim() }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (data.ok) {
+      setMsg("✅ Nombre actualizado");
+      setRenaming(null);
+      setRenameName("");
+      await load();
+    } else setMsg(`❌ ${data.error || "No se pudo actualizar"}`);
+    setTimeout(() => setMsg(""), 4000);
   }
 
   async function addUser() {
@@ -335,13 +358,42 @@ export function StaffManager({ storeName, showCouriers = true }: { storeName?: s
             {couriers.map((s) => (
               <div key={s.id} className="rounded-lg border p-2.5 space-y-1.5">
                 <div className="flex items-center justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium truncate">
-                      {s.full_name || s.phone || "Repartidor"}
-                      {s.status === "active" && <span className="ml-2 text-[10px] text-green-600 font-semibold">✓ activo</span>}
-                      {s.status === "pending" && <span className="ml-2 text-[10px] text-amber-600 font-semibold">⏳ sin vincular</span>}
-                      {s.status === "revoked" && <span className="ml-2 text-[10px] text-red-600 font-semibold">✕ revocado</span>}
-                    </p>
+                  <div className="min-w-0 flex-1">
+                    {renaming === s.id ? (
+                      <div className="flex items-center gap-1.5">
+                        <Input
+                          value={renameName}
+                          onChange={(e) => setRenameName(e.target.value)}
+                          placeholder="Nombre"
+                          maxLength={40}
+                          className="h-8 text-xs"
+                          autoFocus
+                        />
+                        <button
+                          type="button"
+                          className="text-xs text-green-600 font-bold flex-shrink-0"
+                          onClick={() => saveCourierName(s)}
+                          title="Guardar nombre"
+                        >
+                          ✓
+                        </button>
+                        <button
+                          type="button"
+                          className="text-xs text-muted-foreground font-bold flex-shrink-0"
+                          onClick={() => setRenaming(null)}
+                          title="Cancelar"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ) : (
+                      <p className="text-sm font-medium truncate">
+                        {s.full_name || s.display_name || s.phone || "Repartidor"}
+                        {s.status === "active" && <span className="ml-2 text-[10px] text-green-600 font-semibold">✓ activo</span>}
+                        {s.status === "pending" && <span className="ml-2 text-[10px] text-amber-600 font-semibold">⏳ sin vincular</span>}
+                        {s.status === "revoked" && <span className="ml-2 text-[10px] text-red-600 font-semibold">✕ revocado</span>}
+                      </p>
+                    )}
                     <p className="text-[10px] text-muted-foreground truncate">{s.phone}</p>
                   </div>
                   <div className="flex items-center gap-1 flex-shrink-0">
@@ -368,6 +420,17 @@ export function StaffManager({ storeName, showCouriers = true }: { storeName?: s
                           title="Enviar por WhatsApp"
                         >
                           📲
+                        </button>
+                        <button
+                          type="button"
+                          className="text-xs text-muted-foreground font-medium"
+                          onClick={() => {
+                            setRenameName(s.display_name || s.full_name || "");
+                            setRenaming(s.id);
+                          }}
+                          title="Cambiar nombre (se ve en el detalle del envío)"
+                        >
+                          ✏️
                         </button>
                         <button
                           type="button"

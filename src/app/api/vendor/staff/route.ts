@@ -237,16 +237,56 @@ export async function POST(request: Request) {
     }
 
     const code = generateLinkCode();
-    const row = await queryOne<{ id: string; invite_code: string; phone: string }>(
-      `INSERT INTO vendor_staff (vendor_id, role, invite_code, phone, status)
-       VALUES ($1, 'delivery', $2, $3, 'pending')
-       RETURNING id, invite_code, phone`,
-      [vendor.id, code, phone]
-    );
+    // El nombre se guarda en display_name (columna de migrate-vendor-users):
+    // así el detalle del envío muestra el nombre en vez del teléfono.
+    let row: { id: string; invite_code: string; phone: string } | undefined;
+    const displayName = name.trim().slice(0, 40) || null;
+    try {
+      row = await queryOne<{ id: string; invite_code: string; phone: string }>(
+        `INSERT INTO vendor_staff (vendor_id, role, invite_code, phone, display_name, status)
+         VALUES ($1, 'delivery', $2, $3, $4, 'pending')
+         RETURNING id, invite_code, phone`,
+        [vendor.id, code, phone, displayName]
+      );
+    } catch (e) {
+      if (!missingMigration(e)) throw e;
+      row = await queryOne<{ id: string; invite_code: string; phone: string }>(
+        `INSERT INTO vendor_staff (vendor_id, role, invite_code, phone, status)
+         VALUES ($1, 'delivery', $2, $3, 'pending')
+         RETURNING id, invite_code, phone`,
+        [vendor.id, code, phone]
+      );
+    }
 
     // Perfil opcional: nombre para mostrarlo mientras no se vincule.
     // (el profile real se crea cuando el repartidor elige contraseña)
     return NextResponse.json({ ok: true, staff: { id: row?.id, invite_code: row?.invite_code, phone: row?.phone, status: "pending" }, name });
+  }
+
+  // Renombrar repartidor (display_name; no toca profiles.full_name porque el
+  // perfil puede ser compartido con otro comercio). Dueño + Encargado.
+  if (action === "set_courier_name") {
+    const id = String(body.id ?? "");
+    const name = String(body.name ?? "").trim().slice(0, 40);
+    if (!id) return NextResponse.json({ error: "Falta id" }, { status: 400 });
+    if (name.length < 2) return NextResponse.json({ error: "Ingresá el nombre" }, { status: 400 });
+    const target = await queryOne<{ id: string }>(
+      `SELECT id FROM vendor_staff WHERE id = $1 AND vendor_id = $2 AND role = 'delivery' LIMIT 1`,
+      [id, vendor.id]
+    );
+    if (!target) return NextResponse.json({ error: "Repartidor no encontrado" }, { status: 404 });
+    try {
+      await query(`UPDATE vendor_staff SET display_name = $1 WHERE id = $2`, [name, id]);
+    } catch (e) {
+      if (missingMigration(e)) {
+        return NextResponse.json(
+          { error: "Falta aplicar la migración migrate-vendor-users.sql en la base de datos", code: "migration_missing" },
+          { status: 503 }
+        );
+      }
+      throw e;
+    }
+    return NextResponse.json({ ok: true });
   }
 
   if (action === "regenerate") {

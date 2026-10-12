@@ -8,10 +8,12 @@ export type DeliveryStaffRow = {
   phone: string | null;
   status: string;
   profile_id: string | null;
+  /** Nombre puesto por el comercio (detalle muestra esto, no el teléfono). */
+  display_name: string | null;
 };
 
 function displayName(s: DeliveryStaffRow): string {
-  return s.full_name?.trim() || s.phone?.trim() || "Repartidor";
+  return s.full_name?.trim() || s.display_name?.trim() || s.phone?.trim() || "Repartidor";
 }
 
 /**

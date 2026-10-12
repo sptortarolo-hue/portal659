@@ -160,7 +160,7 @@ export function CourierAssignBox({
               .filter((s) => s.status !== "revoked")
               .map((s) => (
                 <option key={s.id} value={s.id} disabled={!s.profile_id || s.status !== "active"}>
-                  {(s.full_name || s.phone || "Repartidor") + (s.status === "active" && s.profile_id ? "" : " — aún no se vinculó")}
+                  {(s.full_name || s.display_name || s.phone || "Repartidor") + (s.status === "active" && s.profile_id ? "" : " — aún no se vinculó")}
                 </option>
               ))}
           </select>

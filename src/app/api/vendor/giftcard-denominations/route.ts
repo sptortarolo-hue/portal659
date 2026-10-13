@@ -41,10 +41,20 @@ export async function POST(request: Request) {
     if (action === "delete") {
       const id = String(body.id || "");
       if (!id) return NextResponse.json({ error: "Falta el id" }, { status: 400 });
+      // Desactiva el producto del catálogo (sin borrar historial).
       await queryOne(`DELETE FROM giftcard_denominations WHERE id = $1 AND vendor_id = $2`, [
         id,
         gate.vendor.id,
       ]);
+      const den = await queryOne<{ amount: number }>(
+        `SELECT amount FROM giftcard_denominations WHERE id = $1 LIMIT 1`
+      ).catch(() => null);
+      if (den) {
+        await queryOne(
+          `UPDATE products SET available = false WHERE vendor_id = $1 AND sku = $2`,
+          [gate.vendor.id, `GC-${den.amount}`]
+        ).catch(() => null);
+      }
       return NextResponse.json({ ok: true });
     }
     if (action === "toggle") {
@@ -67,7 +77,21 @@ export async function POST(request: Request) {
          RETURNING id, amount, active`,
         [gate.vendor.id, amount]
       );
-      return NextResponse.json({ denomination: row });
+      // Producto del catálogo: se compra como cualquier producto (local/web,
+      // sin MP intermedio). La venta manual sigue libre; la online exige monto.
+      const product = await queryOne<{ id: string }>(
+        `INSERT INTO products (vendor_id, name, description, price, currency, category, available, stock, stock_control, featured_today, requires_prep, has_variants, cash_discount_excluded, unit, sku, pack_size)
+         VALUES ($1, $2, $3, $4, 'ARS', 'Giftcards', true, 0, false, false, false, false, false, 'unidad', $5, NULL)
+         RETURNING id`,
+        [
+          gate.vendor.id,
+          `Giftcard $${amount.toLocaleString("es-AR")}`,
+          `Tarjeta de regalo de ${amount.toLocaleString("es-AR")} para gastar en el local.`,
+          amount,
+          `GC-${amount}`,
+        ]
+      ).catch(() => null);
+      return NextResponse.json({ denomination: row, product });
     } catch (e) {
       if (/duplicate|unique/i.test((e as Error)?.message || "")) {
         return NextResponse.json({ error: "Ese monto ya está en la lista" }, { status: 409 });

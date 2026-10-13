@@ -430,20 +430,27 @@ export default async function TiendaPage({
   let esteticaMpConnected = false;
   // Giftcards retail (comercio/moda): montos fijos + MP conectado.
   const isRetailGift = v.vertical === "moda" || v.vertical === "comercio";
-  let retailGiftDens: number[] = [];
-  let retailMpConnected = false;
+  let retailGiftCards: { id: string; name: string; price: number; image_url: string | null }[] = [];
   if (isRetailGift) {
     try {
-      const drows = await queryMany<{ amount: number }>(
-        `SELECT amount FROM giftcard_denominations WHERE vendor_id = $1 AND active IS DISTINCT FROM false ORDER BY amount ASC`,
+      // Las giftcards son productos reales (sku GC-<monto>): se agregan al
+      // carrito y se cobran con el método del local (sin MP aparte).
+      const rows = await queryMany<{ id: string; name: string; price: number; image_url: string | null }>(
+        `SELECT p.id, p.name, p.price, p.image_url
+         FROM giftcard_denominations gd
+         JOIN products p ON p.vendor_id = gd.vendor_id AND p.sku = 'GC-' || gd.amount
+         WHERE gd.vendor_id = $1 AND gd.active IS DISTINCT FROM false AND p.available = true
+         ORDER BY gd.amount ASC`,
         [v.id]
       ).catch(() => null);
-      retailGiftDens = (drows || []).map((d: any) => Math.round(Number(d.amount)) || 0).filter((n) => n > 0);
-    } catch { retailGiftDens = []; }
-    try {
-      const { isMpEnabled } = await import("@/lib/mp-oauth");
-      retailMpConnected = isMpEnabled() && (v as any).mp_user_id != null;
-    } catch { retailMpConnected = false; }
+      retailGiftCards = (rows || []).map((g: any) => ({
+        id: String(g.id),
+        name: String(g.name),
+        price: Number(g.price),
+        promo_price: null,
+        image_url: g.image_url != null ? String(g.image_url) : null,
+      }));
+    } catch { retailGiftCards = []; }
   }
   if (isEstetica) {
     try {
@@ -829,15 +836,38 @@ export default async function TiendaPage({
               </div>
             )}
 
-            {/* Giftcards retail (comercio/moda): montos fijos + compra online */}
-            {isRetailGift && !menuHidden && (retailGiftDens.length > 0 || retailMpConnected) && (
+            {/* Giftcards retail (comercio/moda): se agregan al carrito como cualquier producto */}
+            {isRetailGift && !menuHidden && retailGiftCards.length > 0 && (
               <div className="mt-6 mb-6 space-y-4">
                 <h2 className="font-display text-2xl font-semibold">🎁 Gift Cards</h2>
                 <p className="text-sm text-muted-foreground -mt-2">
-                  Regalá saldo para usar en el local. Elegís el monto, pagás online y pasamos el código por WhatsApp.
+                  Regalá saldo para usar en el local. Elegís el monto y se agrega al pedido como cualquier producto.
                 </p>
-                <div className="grid sm:grid-cols-2 gap-3">
-                  <GiftcardBuyCard vendorId={v.id} mpConnected={retailMpConnected} waUrl={waUrl} denominations={retailGiftDens} allowOpenAmount={false} />
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  {retailGiftCards.map((g) =>
+                    useCards ? (
+                      <ProductCard
+                        key={g.id}
+                        product={g}
+                        variants={[]}
+                        images={[]}
+                        vendor={vendorBrief}
+                        modifiers={[]}
+                        acceptsCart={acceptsCart}
+                        consultHref={waUrl}
+                      />
+                    ) : (
+                    <GastroProductRow
+                      key={g.id}
+                      product={{ ...g, promo_price: null }}
+                      vendor={vendorBrief}
+                      modifiers={[]}
+                      acceptsCart={acceptsCart}
+                      consultHref={waUrl}
+                      images={[]}
+                    />
+                    )
+                  )}
                 </div>
               </div>
             )}

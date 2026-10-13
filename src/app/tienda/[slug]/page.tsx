@@ -455,6 +455,12 @@ export default async function TiendaPage({
       image_url: g.image_url != null ? String(g.image_url) : null,
     }));
   }
+  // DEBUG temporal (quitar tras diagnosticar): expone el gate en los logs.
+  // La condición es idéntica a la del JSX de abajo (sin cambio de lógica).
+  const showGiftSection = isRetailGift && !menuHidden && retailGiftCards.length > 0;
+  try {
+    console.log("[tienda-gc-gate]", JSON.stringify({ slug, isRetailGift, menuHidden, giftLen: retailGiftCards.length, showGiftSection }));
+  } catch { /* noop */ }
   if (isEstetica) {
     try {
       const srows = await queryMany<any>(
@@ -841,7 +847,7 @@ export default async function TiendaPage({
             )}
 
             {/* Tarjeta de regalo (comercio/moda): una sola, se elige el monto */}
-            {isRetailGift && !menuHidden && retailGiftCards.length > 0 && (
+            {showGiftSection && (
               <div className="mt-6 mb-6">
                 <h2 className="font-display text-2xl font-semibold mb-1">🎁 Tarjeta de regalo</h2>
                 <p className="text-sm text-muted-foreground mb-3">

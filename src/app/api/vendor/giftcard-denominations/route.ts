@@ -31,11 +31,16 @@ export async function GET(request: Request) {
       if (d.active === false) continue;
       const damt = Math.round(Number(d.amount)) || 0;
       if (!(damt > 0)) continue;
-      const exists = await queryOne<{ id: string }>(
-        `SELECT id FROM products
-         WHERE vendor_id = $1 AND (sku = $2 OR (sku IS NULL AND lower(category) = 'giftcards' AND price = $3)) LIMIT 1`,
+      // sku '' cuenta como faltante (filas creadas a mano sin sku).
+      const exists = await queryOne<{ id: string; sku: string | null }>(
+        `SELECT id, sku FROM products
+         WHERE vendor_id = $1 AND (sku = $2 OR (COALESCE(sku, '') = '' AND lower(category) = 'giftcards' AND price = $3)) LIMIT 1`,
         [gate.vendor.id, `GC-${damt}`, damt]
       ).catch(() => null);
+      if (exists && !exists.sku) {
+        // Backfill: la fila existe pero sin sku → se completa (evita duplicados).
+        await queryOne(`UPDATE products SET sku = $2 WHERE id = $1`, [exists.id, `GC-${damt}`]).catch(() => null);
+      }
       if (!exists) {
         // Insert mínimo (columnas núcleo) y sku aparte por si la columna falta.
         const created = await queryOne<{ id: string }>(
@@ -92,7 +97,7 @@ export async function POST(request: Request) {
         // Fallback sin sku: por categoría + precio exacto.
         await queryOne(
           `UPDATE products SET available = false
-           WHERE vendor_id = $1 AND lower(category) = 'giftcards' AND price = $2 AND sku IS NULL`,
+           WHERE vendor_id = $1 AND lower(category) = 'giftcards' AND price = $2 AND COALESCE(sku, '') = ''`,
           [gate.vendor.id, denamt]
         ).catch(() => null);
       }

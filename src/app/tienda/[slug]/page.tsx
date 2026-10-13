@@ -162,10 +162,6 @@ export default async function TiendaPage({
     String(p?.category || "").trim().toLowerCase() === "giftcards";
   const giftProducts = (offersAll || []).filter(isGiftProduct);
   const offers = (offersAll || []).filter((p: any) => !isGiftProduct(p));
-  // DEBUG temporal giftcards (quitar tras diagnosticar prueba-baxar).
-  try {
-    console.log("[tienda-gc]", JSON.stringify({ slug, vertical: (vendor as any)?.vertical, offersAll: (offersAll || []).length, gift: giftProducts.length, giftRows: giftProducts.map((g: any) => ({ id: String(g.id), name: String(g.name), category: g.category ?? null, sku: (g as any)?.sku ?? null, available: g.available ?? null })) }));
-  } catch { /* noop */ }
 
   const planRows = await queryMany<any>(
     `SELECT * FROM plans ORDER BY sort ASC`
@@ -455,12 +451,8 @@ export default async function TiendaPage({
       image_url: g.image_url != null ? String(g.image_url) : null,
     }));
   }
-  // DEBUG temporal (quitar tras diagnosticar): expone el gate en los logs.
-  // La condición es idéntica a la del JSX de abajo (sin cambio de lógica).
+  // Gate de la sección Tarjeta de regalo (comercio/moda con menú visible).
   const showGiftSection = isRetailGift && !menuHidden && retailGiftCards.length > 0;
-  try {
-    console.log("[tienda-gc-gate]", JSON.stringify({ slug, isRetailGift, menuHidden, giftLen: retailGiftCards.length, showGiftSection }));
-  } catch { /* noop */ }
   if (isEstetica) {
     try {
       const srows = await queryMany<any>(
@@ -846,22 +838,6 @@ export default async function TiendaPage({
               </div>
             )}
 
-            {/* Tarjeta de regalo (comercio/moda): una sola, se elige el monto */}
-            {showGiftSection && (
-              <div className="mt-6 mb-6">
-                <h2 className="font-display text-2xl font-semibold mb-1">🎁 Tarjeta de regalo</h2>
-                <p className="text-sm text-muted-foreground mb-3">
-                  Regalá saldo para usar en el local. Elegís el monto y se agrega al pedido como cualquier producto.
-                </p>
-                <GiftCardPicker
-                  cards={retailGiftCards}
-                  vendor={vendorBrief}
-                  acceptsCart={acceptsCart}
-                  waUrl={waUrl}
-                />
-              </div>
-            )}
-
             {/* Consultanos (estética): al final, colapsado salvo sin servicios */}
             {isEstetica && v.accepting_quotes && !serviceQuotaFull && (
               <details
@@ -1082,6 +1058,24 @@ export default async function TiendaPage({
               </>
             )}
           </>
+        )}
+
+        {/* Tarjeta de regalo (comercio/moda): una sola, se elige el monto.
+            Fuera del ternario de servicio: vale para todos los verticales
+            con venta (el gate filtra por vertical y menú visible). */}
+        {showGiftSection && (
+          <div className="mt-6 mb-6">
+            <h2 className="font-display text-2xl font-semibold mb-1">🎁 Tarjeta de regalo</h2>
+            <p className="text-sm text-muted-foreground mb-3">
+              Regalá saldo para usar en el local. Elegís el monto y se agrega al pedido como cualquier producto.
+            </p>
+            <GiftCardPicker
+              cards={retailGiftCards}
+              vendor={vendorBrief}
+              acceptsCart={acceptsCart}
+              waUrl={waUrl}
+            />
+          </div>
         )}
 
         {/* Packs para armar: un punto de entrada por pack (multi-producto) */}

@@ -358,10 +358,28 @@ export async function POST(request: Request) {
       movedStock = await adjustStockForItems(tx, finalItems.filter((i) => i.unit !== "kg" && !i.manual && (i.product_id || i.variant_id)), "decrement");
     }
 
-    // Canje de giftcard en mostrador (dentro de la tx: sobre el total
-    // Sancho abajo del INSERT; si falla, rollback de todo — sin venta ni consumo).
+    // Canje de giftcard en mostrador: DENTRO de la tx y ANTES del INSERT,
+    // sobre el total recién calculado (si falla se hace rollback de todo:
+    // sin venta ni consumo). Espeja order-service.ts (canal online): el
+    // descuento queda persistido en giftcard_code/giftcard_discount.
     let giftcardApplied = 0;
+    let giftcardCodeFinal: string | null = null;
     const giftcardCodeBody = typeof body?.giftcardCode === "string" ? body.giftcardCode.trim() : "";
+    if (giftcardCodeBody && !previewOrder) {
+      const { consumeGiftcard } = await import("@/lib/giftcards");
+      const applied = await consumeGiftcard(tx, {
+        vendorId: gate.vendor.id,
+        code: giftcardCodeBody,
+        maxAmount: finalTotal,
+        note: "Venta de mostrador",
+      });
+      if (!applied) {
+        throw new PricingError("Giftcard sin saldo, vencida o no válida");
+      }
+      giftcardApplied = applied.applied;
+      giftcardCodeFinal = applied.code;
+      finalTotal = Math.max(0, round2(finalTotal - giftcardApplied));
+    }
 
     const pickupNumber = await nextOrderNumber(tx, gate.vendor.id);
     // payment_status: tolerante a migración sin aplicar.
@@ -412,7 +430,7 @@ export async function POST(request: Request) {
       ...(caps.ordersClientKey ? [clientKey] : []),
       ...(caps.ordersOccurredAt ? [occurredAt] : []),
       ...(hasZoneCols ? [deliveryResolved.zoneId, deliveryResolved.zoneName, deliveryResolved.outOfArea, deliveryResolved.fee] : []),
-      ...(hasGiftcardCols ? [giftcardCodeBody || null, giftcardApplied] : []),
+      ...(hasGiftcardCols ? [giftcardCodeFinal, giftcardApplied] : []),
     ];
     const placeholders = vals.map((_, i) => `$${i + 1}`).join(", ");
     const order = await tx.queryOne<Record<string, any>>(
@@ -460,26 +478,6 @@ export async function POST(request: Request) {
       }
     }
     resolvedVolumeApplied = volumeApplied;
-
-    // Canje de giftcard (solo dentro de la tx: sobre el total calculado, y si
-    // falla se hace rollback de todo — sin pedido ni consumo).
-    if (giftcardCodeBody && !previewOrder) {
-      try {
-        const { consumeGiftcard } = await import("@/lib/giftcards");
-        const applied = await consumeGiftcard(tx, {
-          vendorId: gate.vendor.id,
-          code: giftcardCodeBody,
-          maxAmount: finalTotal,
-          note: "Venta de mostrador",
-        });
-        if (applied) {
-          giftcardApplied = applied.applied;
-          finalTotal = Math.max(0, round2(finalTotal - giftcardApplied));
-        }
-      } catch {
-        // sin giftcard: se cobra completo igual.
-      }
-    }
 
     return order ?? null;
   });

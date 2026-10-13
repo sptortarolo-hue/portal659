@@ -6,6 +6,8 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { DropdownMenu } from "@/components/ui/dropdown-menu";
 import { ProductImage } from "@/components/product-image";
+import { isGiftProductRow } from "@/lib/gift-card-share";
+import { GiftcardManageButton } from "@/components/dashboard/giftcard-manage-button";
 
 type Offer = {
   id: string;
@@ -26,6 +28,8 @@ type Offer = {
   cash_discount_excluded?: boolean;
   /** Solo sale en la sección Promo (no figura en el menú). */
   promo_only?: boolean;
+  /** SKU (las giftcards van por sku GC-<monto> o categoría). */
+  sku?: string | null;
 };
 
 type CostInfo = { cost: number | null; pct: number | null; status: "ok" | "warn" | "bad" | "none" };
@@ -88,7 +92,7 @@ export function ProductsTable({
     return sortDir === "asc" ? cmp : -cmp;
   });
 
-  const allIds = sortedOffers.map((o) => o.id);
+  const allIds = sortedOffers.filter((o) => !isGiftProductRow(o)).map((o) => o.id);
   const allSelected = allIds.length > 0 && allIds.every((id) => selected.has(id));
 
   const SortIcon = ({ col }: { col: "name" | "category" | "stock" }) =>
@@ -143,6 +147,49 @@ export function ProductsTable({
             const cost = costByProduct?.[offer.id];
             const lowStock =
               offer.stock_control && offer.stock !== null && offer.stock <= (offer.stock_low_threshold ?? 5);
+            // Tarjetas de regalo: fila informativa, se gestionan en la
+            // pestaña Tarjetas (sin edición ni acciones de catálogo).
+            const isGift = isGiftProductRow(offer);
+            if (isGift) {
+              return (
+                <tr key={offer.id} className="border-b border-border last:border-0 bg-violet-50/40">
+                  <td className="px-3 py-2" />
+                  <td className="px-3 py-2">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <ProductImage
+                        src={offer.image_url}
+                        name={offer.name}
+                        alt={offer.name}
+                        className="h-10 w-10 rounded-lg flex-shrink-0"
+                      />
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-medium truncate">{offer.name}</span>
+                          <Badge className="bg-violet-100 text-violet-700 text-[10px] px-1.5 py-0">🎁 Tarjeta</Badge>
+                          {!offer.available && (
+                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                              Pausada
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-3 py-2 text-muted-foreground truncate">{offer.category || "—"}</td>
+                  <td className="px-3 py-2 tabular-nums whitespace-nowrap">
+                    ${Number(offer.price).toLocaleString("es-AR")}
+                  </td>
+                  <td className="px-3 py-2 text-muted-foreground">—</td>
+                  <td className="px-3 py-2 text-muted-foreground">—</td>
+                  <td className="px-3 py-2 text-muted-foreground text-xs">
+                    {offer.available ? "En venta" : "Pausada"}
+                  </td>
+                  <td className="px-3 py-2">
+                    <GiftcardManageButton label="Tarjetas" />
+                  </td>
+                </tr>
+              );
+            }
             return (
               <tr
                 key={offer.id}

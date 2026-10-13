@@ -411,6 +411,12 @@ function VendorDashboardInner() {
     window.addEventListener("portal:go-caja", handler);
     return () => window.removeEventListener("portal:go-caja", handler);
   }, [handleTabChange]);
+  // Atajo Catálogo → pestaña Tarjetas (las filas giftcard se gestionan ahí).
+  useEffect(() => {
+    const handler = () => handleTabChange("tarjetas");
+    window.addEventListener("portal:go-tarjetas", handler);
+    return () => window.removeEventListener("portal:go-tarjetas", handler);
+  }, [handleTabChange]);
   // Pedido de cierre desde la pill del header: va a Caja y auto-abre el
   // pre-cierre (el tab monta lazy: el contador llega como prop).
   const [cashCloseReq, setCashCloseReq] = useState(0);

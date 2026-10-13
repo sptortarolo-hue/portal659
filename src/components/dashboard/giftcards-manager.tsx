@@ -18,7 +18,7 @@ type Giftcard = {
   created_at: string;
 };
 
-type Denomination = { id: string; amount: number; active: boolean };
+type Denomination = { id: string; amount: number; active: boolean; image_url?: string | null; description?: string | null };
 
 /**
  * Giftcards compartidas (estética, comercio, moda): emisión con saldo +
@@ -58,6 +58,70 @@ export function GiftcardsManager({
   const [denMissing, setDenMissing] = useState(false);
   const [newDen, setNewDen] = useState("");
   const [denSaving, setDenSaving] = useState(false);
+  // Personalizar por monto: foto + descripción de la tarjeta.
+  const [customId, setCustomId] = useState<string | null>(null);
+  const [customDesc, setCustomDesc] = useState("");
+  const [customBusy, setCustomBusy] = useState(false);
+
+  async function uploadDenPhoto(file: File): Promise<string | null> {
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("folder", "offers");
+      const res = await fetch("/api/vendor/upload", { method: "POST", body: fd });
+      const data = await res.json().catch(() => ({}));
+      return typeof data.url === "string" && data.url ? data.url : null;
+    } catch {
+      return null;
+    }
+  }
+
+  async function saveCustomPhoto(d: Denomination, file: File) {
+    setCustomBusy(true);
+    try {
+      const url = await uploadDenPhoto(file);
+      if (!url) {
+        setMsg("No se pudo subir la foto");
+        return;
+      }
+      const res = await fetch("/api/vendor/giftcard-denominations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "customize", id: d.id, image_url: url }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (data.error) {
+        setMsg(data.error);
+        return;
+      }
+      await loadDens();
+      onChanged?.();
+    } finally {
+      setCustomBusy(false);
+    }
+  }
+
+  async function saveCustomDesc(d: Denomination) {
+    setCustomBusy(true);
+    try {
+      const res = await fetch("/api/vendor/giftcard-denominations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "customize", id: d.id, description: customDesc }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (data.error) {
+        setMsg(data.error);
+        return;
+      }
+      setCustomId(null);
+      setCustomDesc("");
+      await loadDens();
+      onChanged?.();
+    } finally {
+      setCustomBusy(false);
+    }
+  }
   // Ficha expandible por tarjeta: historial + reenvío por WhatsApp.
   const [openId, setOpenId] = useState<string | null>(null);
   const [movesById, setMovesById] = useState<Record<string, any[]>>({});
@@ -398,20 +462,69 @@ export function GiftcardsManager({
           ) : (
             <>
               {dens.length > 0 && (
-                <div className="flex flex-wrap gap-1.5">
+                <div className="space-y-1.5">
                   {dens.map((d) => (
-                    <span
-                      key={d.id}
-                      className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium ${d.active ? "border-border bg-muted" : "border-dashed opacity-50"}`}
-                    >
-                      ${Number(d.amount).toLocaleString("es-AR")}
-                      <button type="button" onClick={() => toggleDen(d)} className="underline" title={d.active ? "Pausar" : "Activar"}>
-                        {d.active ? "pausar" : "activar"}
-                      </button>
-                      <button type="button" onClick={() => deleteDen(d.id)} className="text-red-600" title="Borrar">
-                        ✕
-                      </button>
-                    </span>
+                    <div key={d.id} className="rounded-lg border border-border px-2.5 py-2">
+                      <div className="flex items-center gap-2">
+                        {d.image_url ? (
+                          <img src={d.image_url} alt="" className="h-9 w-9 rounded-md object-cover flex-shrink-0" />
+                        ) : (
+                          <div className="h-9 w-9 rounded-md bg-violet-100 flex items-center justify-center flex-shrink-0 text-base">🎁</div>
+                        )}
+                        <span
+                          className={`flex-1 min-w-0 text-xs font-medium ${d.active ? "" : "opacity-50"}`}
+                        >
+                          ${Number(d.amount).toLocaleString("es-AR")}
+                          {!d.active && " (pausado)"}
+                        </span>
+                        <button type="button" onClick={() => toggleDen(d)} className="underline text-xs" title={d.active ? "Pausar" : "Activar"}>
+                          {d.active ? "pausar" : "activar"}
+                        </button>
+                        <button type="button" onClick={() => deleteDen(d.id)} className="text-red-600 text-xs" title="Borrar">
+                          ✕
+                        </button>
+                      </div>
+                      <div className="mt-1.5 flex items-center gap-2">
+                        <label className="text-[11px] text-primary underline cursor-pointer">
+                          {d.image_url ? "Cambiar foto" : "Agregar foto"}
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            disabled={customBusy}
+                            onChange={(e) => {
+                              const f = e.target.files?.[0];
+                              e.target.value = "";
+                              if (f) saveCustomPhoto(d, f);
+                            }}
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          className="text-[11px] text-primary underline"
+                          onClick={() => {
+                            setCustomId(customId === d.id ? null : d.id);
+                            setCustomDesc(d.description || "");
+                          }}
+                        >
+                          {customId === d.id ? "Cerrar texto" : d.description ? "Editar texto" : "Agregar texto"}
+                        </button>
+                      </div>
+                      {customId === d.id && (
+                        <div className="mt-1.5 flex gap-1.5">
+                          <Input
+                            value={customDesc}
+                            onChange={(e) => setCustomDesc(e.target.value)}
+                            placeholder="Texto de la tarjeta (opcional)"
+                            className="h-8 text-xs flex-1"
+                            maxLength={500}
+                          />
+                          <Button size="sm" className="h-8 text-xs" onClick={() => saveCustomDesc(d)} disabled={customBusy}>
+                            Guardar
+                          </Button>
+                        </div>
+                      )}
+                    </div>
                   ))}
                 </div>
               )}

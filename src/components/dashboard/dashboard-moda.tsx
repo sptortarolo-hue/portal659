@@ -10,6 +10,8 @@ import { Badge } from "@/components/ui/badge";
 import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import { DropdownMenu } from "@/components/ui/dropdown-menu";
 import { Switch } from "@/components/ui/switch";
+import { isGiftProductRow } from "@/lib/gift-card-share";
+import { GiftcardManageButton } from "@/components/dashboard/giftcard-manage-button";
 import { QuantityInput } from "@/components/ui/quantity-input";
 import { ChipToggle } from "@/components/ui/chip-toggle";
 import { RadioCards } from "@/components/ui/radio-cards";
@@ -755,6 +757,40 @@ onAdd={async (name) => { const r = await apiJson("/api/vendor/categories", { met
             offers.map((offer) => {
               const prodVariants = variantsByProduct()[offer.id] || [];
               const prodImages = imagesByProduct()[offer.id] || [];
+              // Tarjetas de regalo: tarjeta informativa, se gestionan en la
+              // pestaña Tarjetas (sin edición ni acciones de catálogo).
+              const isGift = isGiftProductRow(offer);
+              if (isGift) {
+                return (
+                  <div key={offer.id}>
+                    <Card className="p-3 border-violet-200 bg-violet-50/40">
+                      <div className="flex items-center gap-3">
+                        {offer.image_url ? (
+                          <img src={offer.image_url} alt={offer.name} className="h-12 w-12 rounded-lg object-cover flex-shrink-0" />
+                        ) : (
+                          <div className="h-12 w-12 rounded-lg bg-violet-100 flex items-center justify-center flex-shrink-0 text-xl">🎁</div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-medium text-sm truncate">{offer.name}</span>
+                            <Badge className="bg-violet-100 text-violet-700 text-[10px] px-1.5 py-0">🎁 Tarjeta</Badge>
+                            {!offer.available && (
+                              <Badge variant="secondary" className="text-[10px] px-1.5 py-0">Pausada</Badge>
+                            )}
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            ${Number(offer.price).toLocaleString("es-AR")}
+                            {offer.available ? " · En venta" : " · Pausada"}
+                          </p>
+                        </div>
+                        <div className="flex-shrink-0">
+                          <GiftcardManageButton label="Tarjetas" />
+                        </div>
+                      </div>
+                    </Card>
+                  </div>
+                );
+              }
               return (
                 <div key={offer.id}>
                 <Card className="p-3">

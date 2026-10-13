@@ -13,6 +13,22 @@ export async function PATCH(
   }
 
   const body = await request.json();
+  // Tarjetas de regalo: se gestionan en la pestaña Tarjetas (montos, foto,
+  // pausar, borrar). El catálogo no las toca: precio/categoría/sku van
+  // atados a la denominación y romperlos desarma la venta.
+  const current = await queryOne<{ sku: string | null; category: string | null }>(
+    `SELECT sku, category FROM products WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
+    [params.id, vendor.id]
+  ).catch(() => null);
+  const isGift =
+    String(current?.sku || "").startsWith("GC-") ||
+    String(current?.category || "").trim().toLowerCase() === "giftcards";
+  if (isGift) {
+    return NextResponse.json(
+      { error: "Las tarjetas de regalo se gestionan en la pestaña Tarjetas" },
+      { status: 409 }
+    );
+  }
   const allowedFields = [
     "name", "description", "price", "category", "image_url",
     "available", "featured_today", "stock", "promo_price",
@@ -201,6 +217,23 @@ export async function DELETE(
   const { vendor } = await getVendorByRequest(request);
   if (!vendor) {
     return NextResponse.json({ error: "No autorizado" }, { status: 403 });
+  }
+
+  // Tarjetas: se borran desde la pestaña Tarjetas (borra montos + producto
+  // juntos para no dejar huérfanos).
+  const current = await queryOne<{ sku: string | null; category: string | null }>(
+    `SELECT sku, category FROM products WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
+    [params.id, vendor.id]
+  ).catch(() => null);
+  if (
+    current &&
+    (String(current.sku || "").startsWith("GC-") ||
+      String(current.category || "").trim().toLowerCase() === "giftcards")
+  ) {
+    return NextResponse.json(
+      { error: "Las tarjetas de regalo se borran desde la pestaña Tarjetas" },
+      { status: 409 }
+    );
   }
 
   await queryOne(

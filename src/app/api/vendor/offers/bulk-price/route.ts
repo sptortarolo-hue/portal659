@@ -59,13 +59,27 @@ export async function POST(request: Request) {
           ? "price + $2"
           : "$2";
 
-  const rows = await queryMany<{ id: string }>(
-    `UPDATE products
-       SET price = GREATEST(0, ${expr})
-      WHERE vendor_id = $1 AND id = ANY($3::uuid[])
-      RETURNING id`,
-    [vendor.id, value, ids]
-  );
+  // Las tarjetas van atadas a su monto: la operación masiva no las toca.
+  // Tolerante a DBs sin columna sku (migración sin aplicar): reintenta legacy.
+  let rows: { id: string }[];
+  try {
+    rows = await queryMany<{ id: string }>(
+      `UPDATE products
+          SET price = GREATEST(0, ${expr})
+         WHERE vendor_id = $1 AND id = ANY($3::uuid[])
+           AND NOT (COALESCE(sku, '') LIKE 'GC-%' OR lower(COALESCE(category, '')) = 'giftcards')
+         RETURNING id`,
+      [vendor.id, value, ids]
+    );
+  } catch {
+    rows = await queryMany<{ id: string }>(
+      `UPDATE products
+          SET price = GREATEST(0, ${expr})
+         WHERE vendor_id = $1 AND id = ANY($3::uuid[])
+         RETURNING id`,
+      [vendor.id, value, ids]
+    );
+  }
 
   // Los precios cambiaron: mover el versionado de la tarjeta promo (?v=).
   if (rows.length > 0) {

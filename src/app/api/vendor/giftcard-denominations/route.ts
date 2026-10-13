@@ -59,8 +59,26 @@ export async function GET(request: Request) {
         }
       }
     }
-    // Devolver montos como número (no "10000.00") para la UI.
+    // Devolver montos como número (no "10000.00") para la UI, con foto y
+    // descripción del producto para personalizar la tarjeta.
     const clean = (rows || []).map((d) => ({ ...d, amount: Math.round(Number(d.amount)) || 0 }));
+    try {
+      const skus = clean.map((d: any) => `GC-${d.amount}`);
+      const prods = skus.length
+        ? await queryMany<{ sku: string; image_url: string | null; description: string | null }>(
+            `SELECT sku, image_url, description FROM products WHERE vendor_id = $1 AND sku = ANY($2)`,
+            [gate.vendor.id, skus]
+          )
+        : [];
+      const bySku = new Map((prods || []).map((p) => [String(p.sku), p]));
+      for (const d of clean as any[]) {
+        const p = bySku.get(`GC-${d.amount}`);
+        d.image_url = p?.image_url != null ? String(p.image_url) : null;
+        d.description = p?.description != null ? String(p.description) : null;
+      }
+    } catch {
+      /* sin columnas: montos igual */
+    }
     return NextResponse.json({ denominations: clean });
   } catch {
     return NextResponse.json({ denominations: [], migrationMissing: true }, { status: 503 });
@@ -79,29 +97,110 @@ export async function POST(request: Request) {
     if (action === "delete") {
       const id = String(body.id || "");
       if (!id) return NextResponse.json({ error: "Falta el id" }, { status: 400 });
-      // Guardamos el monto antes de borrar para apagar el producto.
+      // Monto antes de borrar (para ubicar el producto del catálogo).
       const den = await queryOne<{ amount: number }>(
         `SELECT amount FROM giftcard_denominations WHERE id = $1 AND vendor_id = $2`,
         [id, gate.vendor.id]
       ).catch(() => null);
+      if (!den) return NextResponse.json({ error: "No encontrado" }, { status: 404 });
+      const denamt = Math.round(Number(den.amount)) || 0;
       await queryOne(`DELETE FROM giftcard_denominations WHERE id = $1 AND vendor_id = $2`, [
         id,
         gate.vendor.id,
       ]).catch(() => null);
-      if (den) {
-        const denamt = Math.round(Number(den.amount)) || 0;
-        await queryOne(
-          `UPDATE products SET available = false WHERE vendor_id = $1 AND sku = $2`,
-          [gate.vendor.id, `GC-${denamt}`]
-        ).catch(() => null);
-        // Fallback sin sku: por categoría + precio exacto.
-        await queryOne(
-          `UPDATE products SET available = false
-           WHERE vendor_id = $1 AND lower(category) = 'giftcards' AND price = $2 AND COALESCE(sku, '') = ''`,
-          [gate.vendor.id, denamt]
+      // Borrado real del producto del catálogo, salvo con historial (pedidos
+      // que lo incluyeron o códigos emitidos): ahí se apaga para no romper
+      // nada (ante la duda, no se borra: fail-closed).
+      let productDeleted = false;
+      if (denamt > 0) {
+        // Todos los productos de ese monto (incluye duplicados viejos): si
+        // no quedó ninguno a la venta, el monto desaparece del micrositio.
+        // Tolerante a DBs sin columna sku: reintenta solo por categoría+precio.
+        let prods = await queryMany<{ id: string }>(
+          `SELECT id FROM products WHERE vendor_id = $1 AND (sku = $2 OR (lower(category) = 'giftcards' AND price = $3))`,
+          [gate.vendor.id, `GC-${denamt}`, denamt]
+        ).catch(() => [] as { id: string }[]);
+        if (prods.length === 0) {
+          prods = await queryMany<{ id: string }>(
+            `SELECT id FROM products WHERE vendor_id = $1 AND lower(category) = 'giftcards' AND price = $2`,
+            [gate.vendor.id, denamt]
+          ).catch(() => [] as { id: string }[]);
+        }
+        for (const prod of prods) {
+          let hasHistory = true;
+          try {
+            const used = await queryOne<{ e: boolean }>(
+              `SELECT EXISTS (
+                 SELECT 1 FROM orders o, LATERAL jsonb_array_elements(o.items::jsonb) AS i
+                 WHERE o.vendor_id = $1 AND i->>'product_id' = $2
+               ) AS e`,
+              [gate.vendor.id, prod.id]
+            );
+            const issued = await queryOne<{ e: boolean }>(
+              `SELECT EXISTS (SELECT 1 FROM giftcards WHERE vendor_id = $1 AND product_id = $2) AS e`,
+              [gate.vendor.id, prod.id]
+            );
+            hasHistory = used?.e === true || issued?.e === true;
+          } catch {
+            hasHistory = true;
+          }
+          if (!hasHistory) {
+            await queryOne(`DELETE FROM products WHERE id = $1 AND vendor_id = $2`, [
+              prod.id,
+              gate.vendor.id,
+            ]).catch(() => null);
+            productDeleted = true;
+          } else {
+            await queryOne(`UPDATE products SET available = false WHERE id = $1 AND vendor_id = $2`, [
+              prod.id,
+              gate.vendor.id,
+            ]).catch(() => null);
+          }
+        }
+      }
+      return NextResponse.json({ ok: true, productDeleted });
+    }
+    if (action === "customize") {
+      // Personalizar la tarjeta del monto: foto + descripción. Precio,
+      // categoría y sku van atados a la denominación y no se tocan.
+      const id = String(body.id || "");
+      if (!id) return NextResponse.json({ error: "Falta el id" }, { status: 400 });
+      const den = await queryOne<{ id: string; amount: number }>(
+        `SELECT id, amount FROM giftcard_denominations WHERE id = $1 AND vendor_id = $2`,
+        [id, gate.vendor.id]
+      ).catch(() => null);
+      if (!den) return NextResponse.json({ error: "No encontrado" }, { status: 404 });
+      const damt = Math.round(Number(den.amount)) || 0;
+      const imageUrl =
+        typeof body.image_url === "string" && body.image_url.trim() !== ""
+          ? body.image_url.trim().slice(0, 500)
+          : null;
+      const description =
+        typeof body.description === "string" && body.description.trim() !== ""
+          ? body.description.trim().slice(0, 500)
+          : null;
+      let prod = await queryOne<{ id: string }>(
+        `SELECT id FROM products WHERE vendor_id = $1 AND (sku = $2 OR (lower(category) = 'giftcards' AND price = $3)) LIMIT 1`,
+        [gate.vendor.id, `GC-${damt}`, damt]
+      ).catch(() => null);
+      if (!prod) {
+        prod = await queryOne<{ id: string }>(
+          `SELECT id FROM products WHERE vendor_id = $1 AND lower(category) = 'giftcards' AND price = $2 LIMIT 1`,
+          [gate.vendor.id, damt]
         ).catch(() => null);
       }
-      return NextResponse.json({ ok: true });
+      if (!prod) {
+        return NextResponse.json(
+          { error: "Sin producto: reabrí la pestaña Tarjetas para regenerarlo" },
+          { status: 404 }
+        );
+      }
+      const updated = await queryOne<{ id: string; image_url: string | null; description: string | null }>(
+        `UPDATE products SET image_url = $3, description = $4 WHERE id = $1 AND vendor_id = $2
+         RETURNING id, image_url, description`,
+        [prod.id, gate.vendor.id, imageUrl, description]
+      );
+      return NextResponse.json({ denomination: { id: den.id, amount: damt }, product: updated });
     }
     if (action === "toggle") {
       const id = String(body.id || "");

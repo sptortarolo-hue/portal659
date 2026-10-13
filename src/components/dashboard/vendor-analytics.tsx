@@ -56,7 +56,7 @@ type AnalyticsData = {
   byChannel?: Record<string, { count: number; revenue: number }>;
   byMethod?: Record<string, { count: number; revenue: number }>;
   byPay?: Record<string, { count: number; revenue: number }>;
-  discounts?: { cash: number; volume: number };
+  discounts?: { cash: number; volume: number; giftcard?: number };
   hourly?: { hour: string; count: number; revenue: number }[];
   topHours?: { hour: string; count: number; revenue: number }[];
   byDayOfWeek?: { day: string; count: number; revenue: number }[];
@@ -158,8 +158,8 @@ export function VendorAnalytics() {
   const periodLabel = isGest ? `últimos ${activeRange} días` : `últimos ${analyticsDays} días`;
 
   const { summary = {} as AnalyticsSummary, topProducts = [], ordersByDay = [], recentReviews = [], lowStock = [], activeOrders = [] } = data;
-  const showDiscounts = (data.discounts?.cash || 0) > 0 || (data.discounts?.volume || 0) > 0;
-  const discountTotal = (data.discounts?.cash || 0) + (data.discounts?.volume || 0);
+  const showDiscounts = (data.discounts?.cash || 0) > 0 || (data.discounts?.volume || 0) > 0 || (data.discounts?.giftcard || 0) > 0;
+  const discountTotal = (data.discounts?.cash || 0) + (data.discounts?.volume || 0) + (data.discounts?.giftcard || 0);
   const topRevenueTotal = topProducts.reduce((s, p) => s + p.revenue, 0);
   const catRevenueTotal = (data.byCategory || []).reduce((s, c) => s + c.revenue, 0);
   const dowRevenueTotal = (data.byDayOfWeek || []).reduce((s, d) => s + d.revenue, 0);
@@ -320,6 +320,12 @@ export function VendorAnalytics() {
                       <span className="text-muted-foreground">Por volumen</span>
                       <span className="font-medium">-${(data.discounts?.volume || 0).toLocaleString("es-AR")}</span>
                     </div>
+                    {(data.discounts?.giftcard || 0) > 0 && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">🎁 Giftcards</span>
+                        <span className="font-medium">-${(data.discounts?.giftcard || 0).toLocaleString("es-AR")}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between text-sm border-t border-border pt-2">
                       <span className="text-muted-foreground">Total</span>
                       <span className="font-bold">-${discountTotal.toLocaleString("es-AR")}</span>

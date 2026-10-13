@@ -43,10 +43,10 @@ type OrderRow = Record<string, any>;
 async function fetchReportOrders(vendorId: string, sinceISO: string): Promise<OrderRow[]> {
   // Tolerante a migraciones sin aplicar (mismo patrón que analytics).
   const cols = await queryMany<{ column_name: string }>(
-    `SELECT column_name FROM information_schema.columns WHERE table_name = 'orders' AND column_name IN ('payment_method', 'cash_discount', 'volume_discount')`
+    `SELECT column_name FROM information_schema.columns WHERE table_name = 'orders' AND column_name IN ('payment_method', 'cash_discount', 'volume_discount', 'giftcard_discount')`
   );
   const have = new Set((cols || []).map((r) => r.column_name));
-  const extra = ["payment_method", "cash_discount", "volume_discount"]
+  const extra = ["payment_method", "cash_discount", "volume_discount", "giftcard_discount"]
     .filter((c) => have.has(c))
     .map((c) => `, ${c}`)
     .join("");
@@ -61,6 +61,7 @@ function summarize(orders: OrderRow[]) {
   const revenue = completed.reduce((s, o) => s + Number(o.total), 0);
   const cash = completed.reduce((s, o) => s + (Number(o.cash_discount) || 0), 0);
   const volume = completed.reduce((s, o) => s + (Number(o.volume_discount) || 0), 0);
+  const giftcard = completed.reduce((s, o) => s + (Number((o as any).giftcard_discount) || 0), 0);
   return {
     completed,
     revenue: r0(revenue),
@@ -69,6 +70,7 @@ function summarize(orders: OrderRow[]) {
     cancelled: orders.filter((o) => o.status === "cancelled").length,
     cash: r0(cash),
     volume: r0(volume),
+    giftcard: r0(giftcard),
   };
 }
 
@@ -128,19 +130,20 @@ export async function GET(request: Request) {
   };
 
   // ---- Series y agregados compartidos (solo completados, como el dashboard)
-  const byDayMap = new Map<string, { count: number; revenue: number; cash: number; volume: number }>();
+  const byDayMap = new Map<string, { count: number; revenue: number; cash: number; volume: number; giftcard: number }>();
   for (const o of sum.completed) {
     const k = dayKey(o.created_at);
-    const e = byDayMap.get(k) || { count: 0, revenue: 0, cash: 0, volume: 0 };
+    const e = byDayMap.get(k) || { count: 0, revenue: 0, cash: 0, volume: 0, giftcard: 0 };
     e.count++;
     e.revenue += Number(o.total);
     e.cash += Number(o.cash_discount) || 0;
     e.volume += Number(o.volume_discount) || 0;
+    e.giftcard += Number((o as any).giftcard_discount) || 0;
     byDayMap.set(k, e);
   }
   const byDay = [...byDayMap.entries()]
     .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([date, d]) => ({ date, label: dayLabel(date), count: d.count, revenue: r0(d.revenue), cash: r0(d.cash), volume: r0(d.volume) }));
+    .map(([date, d]) => ({ date, label: dayLabel(date), count: d.count, revenue: r0(d.revenue), cash: r0(d.cash), volume: r0(d.volume), giftcard: r0(d.giftcard) }));
 
   const tally = (keyFn: (o: OrderRow) => string, labels?: Record<string, string>) => {
     const m = new Map<string, { count: number; revenue: number }>();
@@ -169,6 +172,7 @@ export async function GET(request: Request) {
       cancelled: sum.cancelled,
       cashDiscount: sum.cash,
       volumeDiscount: sum.volume,
+      giftcardDiscount: sum.giftcard,
       revenueDelta: pctDelta(sum.revenue, prev.revenue),
       ordersDelta: pctDelta(sum.orders, prev.orders),
       ticketDelta: pctDelta(sum.ticket, prev.ticket),
@@ -235,6 +239,7 @@ export async function GET(request: Request) {
       ticket: sum.ticket,
       cashDiscount: sum.cash,
       volumeDiscount: sum.volume,
+      giftcardDiscount: sum.giftcard,
     };
     payload.byPay = byPay;
     payload.daily = byDay;
@@ -312,6 +317,7 @@ export async function GET(request: Request) {
       push("Cancelados", s.cancelled);
       push("Desc. efectivo", s.cashDiscount);
       push("Desc. volumen", s.volumeDiscount);
+      if (Number(s.giftcardDiscount) > 0) push("🎁 Giftcards", s.giftcardDiscount);
       table("Resumen números", [{ header: "Concepto", key: "k" }, { header: "Valor", key: "v", numFmt: moneyFmt }], sumRows);
       table("Por día", [
         { header: "Fecha", key: "label", width: 12 },
@@ -370,6 +376,7 @@ export async function GET(request: Request) {
       push("Ticket promedio", s.ticket);
       push("Desc. efectivo", s.cashDiscount);
       push("Desc. volumen", s.volumeDiscount);
+      if (Number(s.giftcardDiscount) > 0) push("🎁 Giftcards", s.giftcardDiscount);
       table("Resumen números", [{ header: "Concepto", key: "k" }, { header: "Valor", key: "v", numFmt: moneyFmt }], sumRows);
       table("Medios de cobro", [
         { header: "Medio", key: "label", width: 24 },
@@ -381,6 +388,7 @@ export async function GET(request: Request) {
         { header: "Facturación", key: "revenue", numFmt: moneyFmt },
         { header: "Desc. efectivo", key: "cash", numFmt: moneyFmt },
         { header: "Desc. volumen", key: "volume", numFmt: moneyFmt },
+        { header: "🎁 Giftcards", key: "giftcard", numFmt: moneyFmt },
       ], payload.daily);
     }
     if (tipo === "clientes") {
@@ -429,6 +437,7 @@ export async function GET(request: Request) {
     csvTable(["Concepto", "Valor"], [
       { k: "Facturación", v: s.revenue }, { k: "Pedidos", v: s.orders }, { k: "Ticket promedio", v: s.ticket },
       { k: "Cancelados", v: s.cancelled }, { k: "Desc. efectivo", v: s.cashDiscount }, { k: "Desc. volumen", v: s.volumeDiscount },
+      ...(Number(s.giftcardDiscount) > 0 ? [{ k: "🎁 Giftcards", v: s.giftcardDiscount }] : []),
     ], ["k", "v"]);
     csvTable(["Fecha", "Pedidos", "Facturación"], payload.byDay, ["label", "count", "revenue"]);
     csvTable(["Canal", "Pedidos", "Facturación"], payload.byChannel, ["label", "count", "revenue"]);
@@ -450,9 +459,10 @@ export async function GET(request: Request) {
     csvTable(["Concepto", "Valor"], [
       { k: "Facturación", v: s.revenue }, { k: "Cobros", v: s.orders }, { k: "Ticket promedio", v: s.ticket },
       { k: "Desc. efectivo", v: s.cashDiscount }, { k: "Desc. volumen", v: s.volumeDiscount },
+      ...(Number(s.giftcardDiscount) > 0 ? [{ k: "🎁 Giftcards", v: s.giftcardDiscount }] : []),
     ], ["k", "v"]);
     csvTable(["Medio de cobro", "Cobros", "Facturación"], payload.byPay, ["label", "count", "revenue"]);
-    csvTable(["Fecha", "Facturación", "Desc. efectivo", "Desc. volumen"], payload.daily, ["label", "revenue", "cash", "volume"]);
+    csvTable(["Fecha", "Facturación", "Desc. efectivo", "Desc. volumen", "🎁 Giftcards"], payload.daily, ["label", "revenue", "cash", "volume", "giftcard"]);
   }
   if (tipo === "clientes") {
     const s = payload.summary;

@@ -572,6 +572,7 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
         address: customerAddress,
         deliveryWindow: resolvedWindow ? formatDeliveryWindow(resolvedWindow) : null,
         deliveryCoordinar: deliveryCfg.deliveryCoordinar === true,
+        giftcard: giftcardApplied > 0 ? { code: giftcardCodeFinal, discount: giftcardApplied } : null,
       });
       Promise.resolve()
         .then(() => sendEmail({ to: userProfile.email, ...emailContent }))

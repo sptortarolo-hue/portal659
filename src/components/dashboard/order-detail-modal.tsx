@@ -807,6 +807,12 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
                 <span className="text-sm font-semibold">Total</span>
                 <span className="text-lg font-bold text-primary">${Number(order.total).toLocaleString("es-AR")}</span>
               </div>
+              {Number((order as any)?.giftcard_discount) > 0 && (
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>🎁 Giftcard{((order as any)?.giftcard_code) ? ` (${(order as any).giftcard_code})` : ""}</span>
+                  <span>−${Number((order as any).giftcard_discount).toLocaleString("es-AR")}</span>
+                </div>
+              )}
             </div>
           )}
 

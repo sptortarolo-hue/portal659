@@ -117,6 +117,13 @@ function lineKey(productId: string, variantId: string | undefined, modifiers?: C
   return `${productId}|${variantId || ""}|${(modifiers || []).map((m) => m.label).sort().join(",")}`;
 }
 
+/** YYYY-MM-DD (o con hora) → DD/MM/AAAA para mostrar vigencia de giftcard. */
+function fmtVence(iso: string | null | undefined): string {
+  const d = String(iso || "").slice(0, 10);
+  const m = d.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : d;
+}
+
 type MostradorOrder = {
   id: string;
   total: number;
@@ -156,6 +163,7 @@ export function Mostrador({ vendorId }: { vendorId?: string | null }) {
   const [giftcardCodeValue, setGiftcardCodeValue] = useState("");
   const [giftcardBusy, setGiftcardBusy] = useState(false);
   const [giftcardErr, setGiftcardErr] = useState("");
+  const [giftcardExpires, setGiftcardExpires] = useState<string | null>(null);
   const [method, setMethod] = useState<"pickup" | "delivery" | "direct">("pickup");
   const [customerPhone, setCustomerPhone] = useState("");
   const [customerAddress, setCustomerAddress] = useState("");
@@ -2243,13 +2251,16 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
                         if (data.ok) {
                           const balance = Number(data.balance);
                           setGiftcardAmount(Math.min(balance, netSubtotal - activeCashDiscount));
+                          setGiftcardExpires(typeof data.expires_at === "string" ? data.expires_at : null);
                         } else {
                           setGiftcardErr(data.error || "Código no válido");
                           setGiftcardAmount(0);
+                          setGiftcardExpires(null);
                         }
                       } catch {
                         setGiftcardErr("Error de conexión");
                         setGiftcardAmount(0);
+                        setGiftcardExpires(null);
                       } finally {
                         setGiftcardBusy(false);
                       }
@@ -2260,7 +2271,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
                 </div>
                 {giftcardErr && <p className="text-[11px] text-red-600">{giftcardErr}</p>}
                 {giftcardAmount > 0 && (
-                  <p className="text-[11px] text-muted-foreground">Saldo: ${(giftcardAmount).toLocaleString("es-AR")}</p>
+                  <p className="text-[11px] text-muted-foreground">Saldo: ${(giftcardAmount).toLocaleString("es-AR")}{giftcardExpires ? ` · Vence ${fmtVence(giftcardExpires)}` : " · Sin vencimiento"}</p>
                 )}
               </div>
             )}

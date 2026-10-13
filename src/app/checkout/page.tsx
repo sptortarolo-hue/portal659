@@ -16,6 +16,13 @@ import { checkArgPhone, toE164 } from "@/lib/phone";
 import { OrderSummaryModal } from "@/components/cart/order-summary-modal";
 import { readPreviewSession } from "@/components/store/preview-session-sync";
 
+/** YYYY-MM-DD (o con hora) → DD/MM/AAAA para mostrar vigencia. */
+function fmtVence(iso: string | null | undefined): string {
+  const d = String(iso || "").slice(0, 10);
+  const m = d.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : d;
+}
+
 export default function CheckoutPage() {
   const router = useRouter();
   const { vendor, items, total, clear } = useCart();
@@ -38,7 +45,7 @@ export default function CheckoutPage() {
   // saldo y lo descuenta del total. MP va por su propia ruta (ya cobró todo).
   const [showGiftcard, setShowGiftcard] = useState(false);
   const [giftcardCode, setGiftcardCode] = useState("");
-  const [giftcardLookup, setGiftcardLookup] = useState<{ loading: boolean; error: string; balance: number | null }>({ loading: false, error: "", balance: null });
+  const [giftcardLookup, setGiftcardLookup] = useState<{ loading: boolean; error: string; balance: number | null; expiresAt: string | null }>({ loading: false, error: "", balance: null, expiresAt: null });
   const [showSummary, setShowSummary] = useState(false);  const [pendingOrder, setPendingOrder] = useState<{ orderId: string; message: string; waNumber: string; trackToken?: string } | null>(null);
   const [prefillInfo, setPrefillInfo] = useState<{ found: boolean; name?: string | null } | null>(null);
   // Turnos de reparto retail (moda/comercio): próximos 3 slots del comercio.
@@ -1035,7 +1042,7 @@ export default function CheckoutPage() {
               <div className="space-y-2">
                 <Input
                   value={giftcardCode}
-                  onChange={(e) => { setGiftcardCode(e.target.value.toUpperCase()); setGiftcardLookup({ loading: false, error: "", balance: null }); }}
+                  onChange={(e) => { setGiftcardCode(e.target.value.toUpperCase()); setGiftcardLookup({ loading: false, error: "", balance: null, expiresAt: null }); }}
                   placeholder="Código (ej: ABC-123456)"
                   className="h-10 text-sm font-mono"
                 />
@@ -1046,17 +1053,17 @@ export default function CheckoutPage() {
                   onClick={async () => {
                     const code = giftcardCode.trim();
                     if (!code || !v) return;
-                    setGiftcardLookup({ loading: true, error: "", balance: null });
+                    setGiftcardLookup({ loading: true, error: "", balance: null, expiresAt: null });
                     try {
                       const res = await fetch(`/api/giftcards/validate?vendorId=${encodeURIComponent(v.id)}&code=${encodeURIComponent(code)}`);
                       const data = await res.json();
                       if (data.ok) {
-                        setGiftcardLookup({ loading: false, error: "", balance: Number(data.balance) });
+                        setGiftcardLookup({ loading: false, error: "", balance: Number(data.balance), expiresAt: typeof data.expires_at === "string" ? data.expires_at : null });
                       } else {
-                        setGiftcardLookup({ loading: false, error: data.error || "Código no válido", balance: null });
+                        setGiftcardLookup({ loading: false, error: data.error || "Código no válido", balance: null, expiresAt: null });
                       }
                     } catch {
-                      setGiftcardLookup({ loading: false, error: "Error de conexión", balance: null });
+                      setGiftcardLookup({ loading: false, error: "Error de conexión", balance: null, expiresAt: null });
                     }
                   }}
                   disabled={giftcardLookup.loading || !giftcardCode.trim()}
@@ -1070,6 +1077,9 @@ export default function CheckoutPage() {
                 {giftcardLookup.balance != null && (
                   <div className="rounded-lg bg-green-50 border border-green-200 px-2.5 py-2 text-xs text-green-800">
                     Saldo disponible: <strong>${Number(giftcardLookup.balance).toLocaleString("es-AR")}</strong>
+                    <span className="block mt-0.5 text-green-700">
+                      {giftcardLookup.expiresAt ? `Válida hasta el ${fmtVence(giftcardLookup.expiresAt)}` : "Sin vencimiento"}
+                    </span>
                     {giftcardDiscount > 0 && (
                       <span className="block mt-0.5">Se descuenta <strong>${giftcardDiscount.toLocaleString("es-AR")}</strong> del total</span>
                     )}

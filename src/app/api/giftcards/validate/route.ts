@@ -30,7 +30,7 @@ export const GET = withRateLimit(async (request: Request) => {
     if (balance <= 0) {
       return NextResponse.json({ error: "La tarjeta no tiene saldo" }, { status: 409 });
     }
-    return NextResponse.json({ ok: true, code: card.code, balance });
+    return NextResponse.json({ ok: true, code: card.code, balance, expires_at: card.expires_at ?? null });
   } catch {
     return NextResponse.json({ error: "No se pudo validar" }, { status: 500 });
   }

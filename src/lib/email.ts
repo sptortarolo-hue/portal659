@@ -64,7 +64,7 @@ export function invoiceEmail(params: {
   };
 }
 
-export function orderConfirmationEmail(vendorName: string, items: any[], total: number): { subject: string; html: string } {
+export function orderConfirmationEmail(vendorName: string, items: any[], total: number, giftcard?: { code: string | null; discount: number } | null): { subject: string; html: string } {
   const itemRows = items
     .map((i) => {
       // Pack-aware (i.pack_size + price = paquete): la línea nunca se computa
@@ -75,6 +75,9 @@ export function orderConfirmationEmail(vendorName: string, items: any[], total: 
       return `<tr><td style="padding:8px;border-bottom:1px solid #eee">${qtyLabel} ${i.name}</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:right">$${lineTotal.toLocaleString("es-AR")}</td></tr>`;
     })
     .join("");
+  const giftRow = giftcard && Number(giftcard.discount) > 0
+    ? `<tr><td style="padding:8px;border-bottom:1px solid #eee">🎁 Giftcard${giftcard.code ? ` (${giftcard.code})` : ""}</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:right">−$${Number(giftcard.discount).toLocaleString("es-AR")}</td></tr>`
+    : "";
 
   return {
     subject: `Pedido confirmado en ${vendorName}`,
@@ -84,6 +87,7 @@ export function orderConfirmationEmail(vendorName: string, items: any[], total: 
         <p>Estamos preparando tu pedido en <strong>${vendorName}</strong>.</p>
         <table style="width:100%;border-collapse:collapse;margin:20px 0">
           ${itemRows}
+          ${giftRow}
           <tr><td style="padding:8px;font-weight:bold;border-top:2px solid #4f46e5">Total</td><td style="padding:8px;font-weight:bold;text-align:right;border-top:2px solid #4f46e5">$${total.toLocaleString("es-AR")}</td></tr>
         </table>
         <p style="color:#666;font-size:14px">Te vamos a avisar cuando tu pedido esté listo.</p>
@@ -112,8 +116,10 @@ export function newOrderVendorEmail(params: {
   deliveryWindow?: string | null;
   /** Sin turno porque el horario se coordina por WhatsApp. */
   deliveryCoordinar?: boolean;
+  /** Canje de giftcard aplicado al pedido (opcional). */
+  giftcard?: { code: string | null; discount: number } | null;
 }): { subject: string; html: string } {
-  const { storeName, orderNumber, customerName, customerPhone, paymentLabel, items, total, method, address, deliveryWindow, deliveryCoordinar } = params;
+  const { storeName, orderNumber, customerName, customerPhone, paymentLabel, items, total, method, address, deliveryWindow, deliveryCoordinar, giftcard } = params;
   const numTxt = orderNumber ? `#${orderNumber}` : "nuevo";
   const itemRows = items
     .map((i) => {
@@ -124,6 +130,9 @@ export function newOrderVendorEmail(params: {
       return `<tr><td style="padding:8px;border-bottom:1px solid #eee">${qtyLabel} ${i.name}</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:right">$${lineTotal.toLocaleString("es-AR")}</td></tr>`;
     })
     .join("");
+  const giftRow = giftcard && Number(giftcard.discount) > 0
+    ? `<tr><td style="padding:8px;border-bottom:1px solid #eee">🎁 Giftcard${giftcard.code ? ` (${giftcard.code})` : ""}</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:right">−$${Number(giftcard.discount).toLocaleString("es-AR")}</td></tr>`
+    : "";
 
   return {
     subject: `🔔 Pedido ${numTxt} en ${storeName} — $${Number(total).toLocaleString("es-AR")}`,
@@ -133,6 +142,7 @@ export function newOrderVendorEmail(params: {
         <p><strong>${storeName}</strong> · Pedido ${numTxt}</p>
         <table style="width:100%;border-collapse:collapse;margin:20px 0">
           ${itemRows}
+          ${giftRow}
           <tr><td style="padding:8px;font-weight:bold;border-top:2px solid #4f46e5">Total</td><td style="padding:8px;font-weight:bold;text-align:right;border-top:2px solid #4f46e5">$${Number(total).toLocaleString("es-AR")}</td></tr>
         </table>
         <p style="font-size:14px">

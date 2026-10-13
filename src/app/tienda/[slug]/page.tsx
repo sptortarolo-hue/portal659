@@ -566,6 +566,7 @@ export default async function TiendaPage({
     id: v.id,
     slug: v.slug,
     storeName: v.store_name,
+    logoUrl: (v as any).logo_url != null ? String((v as any).logo_url) : null,
     whatsapp: v.whatsapp || "",
     vertical: v.vertical,
     deliveryFee: v.delivery_fee != null ? Number(v.delivery_fee) : null,

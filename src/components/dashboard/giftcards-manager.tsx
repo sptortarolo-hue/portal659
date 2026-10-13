@@ -19,6 +19,13 @@ type Giftcard = {
 
 type Denomination = { id: string; amount: number; active: boolean };
 
+/** YYYY-MM-DD (o con hora) → DD/MM/AAAA para mostrar vigencia. */
+function fmtVence(iso: string | null | undefined): string {
+  const d = String(iso || "").slice(0, 10);
+  const m = d.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : d;
+}
+
 /**
  * Giftcards compartidas (estética, comercio, moda): emisión con saldo +
  * canje manual con historial + montos fijos para la venta online.
@@ -41,6 +48,7 @@ export function GiftcardsManager({
   const [missing, setMissing] = useState(false);
   const [amount, setAmount] = useState("");
   const [buyer, setBuyer] = useState("");
+  const [expires, setExpires] = useState("");
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
   const [lastCode, setLastCode] = useState<string | null>(null);
@@ -99,7 +107,7 @@ export function GiftcardsManager({
       const res = await fetch("/api/vendor/giftcards", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "sell", amount: Number(amount), customer_name: buyer.trim() || undefined }),
+        body: JSON.stringify({ action: "sell", amount: Number(amount), customer_name: buyer.trim() || undefined, expires_at: expires || undefined }),
       });
       const data = await res.json();
       if (data.error) {
@@ -109,6 +117,7 @@ export function GiftcardsManager({
       setLastCode(String(data.giftcard?.code || ""));
       setAmount("");
       setBuyer("");
+      setExpires("");
       await load();
       onChanged?.();
     } catch {
@@ -230,6 +239,9 @@ export function GiftcardsManager({
   const statusLabel = (c: Giftcard) =>
     c.status === "redeemed" ? "Agotada" : c.status === "void" ? "Anulada" : "Activa";
 
+  const venceLabel = (c: Giftcard) =>
+    c.expires_at ? ` · Vence ${fmtVence(c.expires_at)}` : " · Sin vencimiento";
+
   return (
     <Card className="p-4 space-y-3">
       <div>
@@ -248,7 +260,7 @@ export function GiftcardsManager({
                 <span className="block font-mono font-bold truncate">{c.code}</span>
                 <span className="block text-muted-foreground">
                   Saldo ${Number(c.balance || 0).toLocaleString("es-AR")} de ${Number(c.amount || 0).toLocaleString("es-AR")}
-                  {c.customer_name ? ` · ${c.customer_name}` : ""} · {statusLabel(c)}
+                  {c.customer_name ? ` · ${c.customer_name}` : ""} · {statusLabel(c)}{venceLabel(c)}
                 </span>
               </span>
               {c.status === "active" && (
@@ -265,6 +277,10 @@ export function GiftcardsManager({
         <div className="grid grid-cols-2 gap-2">
           <Input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" placeholder="Monto $" className="h-9 text-sm" />
           <Input value={buyer} onChange={(e) => setBuyer(e.target.value)} placeholder="Para quién (opcional)" className="h-9 text-sm" />
+        </div>
+        <div>
+          <label className="text-[11px] text-muted-foreground">Vence (opcional)</label>
+          <Input value={expires} onChange={(e) => setExpires(e.target.value)} type="date" className="h-9 text-sm mt-0.5" />
         </div>
         <Button size="sm" className="w-full" onClick={sell} disabled={saving}>
           {saving ? "Generando..." : "🎁 Emitir giftcard"}

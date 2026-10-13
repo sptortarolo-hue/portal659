@@ -59,10 +59,10 @@ export async function GET(request: Request) {
   // Columnas de cobro/descuentos (tolerante a migraciones sin aplicar: sin
   // ellas, byPay/discounts quedan vacíos en vez de romper el reporte).
   const payCols = await queryMany<{ column_name: string }>(
-    `SELECT column_name FROM information_schema.columns WHERE table_name = 'orders' AND column_name IN ('payment_method', 'cash_discount', 'volume_discount')`
+    `SELECT column_name FROM information_schema.columns WHERE table_name = 'orders' AND column_name IN ('payment_method', 'cash_discount', 'volume_discount', 'giftcard_discount')`
   );
   const havePayCol = new Set((payCols || []).map((r) => r.column_name));
-  const extraOrderCols = ["payment_method", "cash_discount", "volume_discount"]
+  const extraOrderCols = ["payment_method", "cash_discount", "volume_discount", "giftcard_discount"]
     .filter((c) => havePayCol.has(c))
     .map((c) => `, ${c}`)
     .join("");
@@ -220,6 +220,7 @@ export async function GET(request: Request) {
   const byPay: Record<string, { count: number; revenue: number }> = {};
   let cashDiscountTotal = 0;
   let volumeDiscountTotal = 0;
+  let giftcardDiscountTotal = 0;
   for (const o of completedOrders) {
     const m = (o as any).payment_method || "whatsapp";
     if (!byPay[m]) byPay[m] = { count: 0, revenue: 0 };
@@ -227,6 +228,7 @@ export async function GET(request: Request) {
     byPay[m].revenue += Number(o.total);
     cashDiscountTotal += Number((o as any).cash_discount) || 0;
     volumeDiscountTotal += Number((o as any).volume_discount) || 0;
+    giftcardDiscountTotal += Number((o as any).giftcard_discount) || 0;
   }
 
   const topProducts = Object.values(productSales)
@@ -344,7 +346,7 @@ export async function GET(request: Request) {
     byChannel,
     byMethod,
     byPay,
-    discounts: { cash: Math.round(cashDiscountTotal), volume: Math.round(volumeDiscountTotal) },
+    discounts: { cash: Math.round(cashDiscountTotal), volume: Math.round(volumeDiscountTotal), giftcard: Math.round(giftcardDiscountTotal) },
     insights,
     ...advanced,
   });

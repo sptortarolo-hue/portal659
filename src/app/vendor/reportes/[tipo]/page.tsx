@@ -144,6 +144,9 @@ export default function ReportePage() {
                   <Stat label="Cancelados" value={String(data.summary.cancelled)} />
                   <Stat label="Desc. efectivo" value={fmtARS(data.summary.cashDiscount)} />
                   <Stat label="Desc. volumen" value={fmtARS(data.summary.volumeDiscount)} />
+                  {(data.summary.giftcardDiscount || 0) > 0 && (
+                    <Stat label="🎁 Giftcards" value={fmtARS(data.summary.giftcardDiscount)} />
+                  )}
                 </div>
                 <SalesEvolution data={data.byDay} range={data.meta.range} periodLabel={`del ${data.meta.since} al ${data.meta.until}`} />
                 <div className="grid sm:grid-cols-3 gap-4">
@@ -209,13 +212,16 @@ export default function ReportePage() {
                   <Stat label="Ticket promedio" value={fmtARS(data.summary.ticket)} />
                   <Stat label="Desc. efectivo" value={fmtARS(data.summary.cashDiscount)} />
                   <Stat label="Desc. volumen" value={fmtARS(data.summary.volumeDiscount)} />
+                  {(data.summary.giftcardDiscount || 0) > 0 && (
+                    <Stat label="🎁 Giftcards" value={fmtARS(data.summary.giftcardDiscount)} />
+                  )}
                 </div>
                 <ShareDonut title="Medios de cobro" entries={data.byPay} />
                 <div>
                   <h3 className="font-bold text-sm mb-2">Detalle por día</h3>
                   <DataTable
-                    head={["Fecha", "Facturación", "Desc. efectivo", "Desc. volumen"]}
-                    rows={(data.daily || []).map((d: any) => [d.label, fmtARS(d.revenue), fmtARS(d.cash), fmtARS(d.volume)])}
+                    head={["Fecha", "Facturación", "Desc. efectivo", "Desc. volumen", "🎁 Giftcards"]}
+                    rows={(data.daily || []).map((d: any) => [d.label, fmtARS(d.revenue), fmtARS(d.cash), fmtARS(d.volume), fmtARS(d.giftcard || 0)])}
                   />
                 </div>
               </div>

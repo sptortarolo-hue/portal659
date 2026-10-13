@@ -23,6 +23,29 @@ export async function GET(request: Request) {
        WHERE vendor_id = $1 ORDER BY amount ASC`,
       [gate.vendor.id]
     );
+    // Reconciliación: cada monto activo crea su producto si falta (montos
+    // creados antes del deploy o fallida la creación por columnas faltantes).
+    for (const d of rows || []) {
+      if (d.active === false) continue;
+      const exists = await queryOne<{ id: string }>(
+        `SELECT id FROM products WHERE vendor_id = $1 AND sku = $2 LIMIT 1`,
+        [gate.vendor.id, `GC-${d.amount}`]
+      ).catch(() => null);
+      if (!exists) {
+        await queryOne(
+          `INSERT INTO products (vendor_id, name, description, price, currency, category, available, stock, stock_control, featured_today, requires_prep, has_variants, cash_discount_excluded, unit, sku, pack_size)
+           VALUES ($1, $2, $3, $4, 'ARS', 'Giftcards', true, 0, false, false, false, false, false, 'unidad', $5, NULL)
+           RETURNING id`,
+          [
+            gate.vendor.id,
+            `Giftcard $${d.amount.toLocaleString("es-AR")}`,
+            `Tarjeta de regalo de ${d.amount.toLocaleString("es-AR")} para gastar en el local.`,
+            d.amount,
+            `GC-${d.amount}`,
+          ]
+        ).catch(() => null);
+      }
+    }
     return NextResponse.json({ denominations: rows || [] });
   } catch {
     return NextResponse.json({ denominations: [], migrationMissing: true }, { status: 503 });

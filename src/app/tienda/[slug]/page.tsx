@@ -162,6 +162,10 @@ export default async function TiendaPage({
     String(p?.category || "").trim().toLowerCase() === "giftcards";
   const giftProducts = (offersAll || []).filter(isGiftProduct);
   const offers = (offersAll || []).filter((p: any) => !isGiftProduct(p));
+  // DEBUG temporal giftcards (quitar tras diagnosticar prueba-baxar).
+  try {
+    console.log("[tienda-gc]", JSON.stringify({ slug, vertical: (vendor as any)?.vertical, offersAll: (offersAll || []).length, gift: giftProducts.length, giftRows: giftProducts.map((g: any) => ({ id: String(g.id), name: String(g.name), category: g.category ?? null, sku: (g as any)?.sku ?? null, available: g.available ?? null })) }));
+  } catch { /* noop */ }
 
   const planRows = await queryMany<any>(
     `SELECT * FROM plans ORDER BY sort ASC`

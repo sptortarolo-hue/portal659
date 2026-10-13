@@ -25,12 +25,16 @@ export async function GET(request: Request) {
     );
     // Reconciliación: cada monto activo crea su producto si falta (montos
     // creados antes del deploy o columnas que aún no están migradas).
+    // OJO: pg devuelve numeric como string ("10000.00"): normalizar a
+    // entero antes de armar el sku, si no se crean duplicados GC-10000.00.
     for (const d of rows || []) {
       if (d.active === false) continue;
+      const damt = Math.round(Number(d.amount)) || 0;
+      if (!(damt > 0)) continue;
       const exists = await queryOne<{ id: string }>(
         `SELECT id FROM products
          WHERE vendor_id = $1 AND (sku = $2 OR (sku IS NULL AND lower(category) = 'giftcards' AND price = $3)) LIMIT 1`,
-        [gate.vendor.id, `GC-${d.amount}`, d.amount]
+        [gate.vendor.id, `GC-${damt}`, damt]
       ).catch(() => null);
       if (!exists) {
         // Insert mínimo (columnas núcleo) y sku aparte por si la columna falta.
@@ -40,17 +44,19 @@ export async function GET(request: Request) {
            RETURNING id`,
           [
             gate.vendor.id,
-            `Giftcard $${d.amount.toLocaleString("es-AR")}`,
-            `Tarjeta de regalo de ${d.amount.toLocaleString("es-AR")} para gastar en el local.`,
-            d.amount,
+            `Giftcard $${damt.toLocaleString("es-AR")}`,
+            `Tarjeta de regalo de ${damt.toLocaleString("es-AR")} para gastar en el local.`,
+            damt,
           ]
         ).catch(() => null);
         if (created) {
-          await queryOne(`UPDATE products SET sku = $2 WHERE id = $1`, [created.id, `GC-${d.amount}`]).catch(() => null);
+          await queryOne(`UPDATE products SET sku = $2 WHERE id = $1`, [created.id, `GC-${damt}`]).catch(() => null);
         }
       }
     }
-    return NextResponse.json({ denominations: rows || [] });
+    // Devolver montos como número (no "10000.00") para la UI.
+    const clean = (rows || []).map((d) => ({ ...d, amount: Math.round(Number(d.amount)) || 0 }));
+    return NextResponse.json({ denominations: clean });
   } catch {
     return NextResponse.json({ denominations: [], migrationMissing: true }, { status: 503 });
   }
@@ -78,15 +84,16 @@ export async function POST(request: Request) {
         gate.vendor.id,
       ]).catch(() => null);
       if (den) {
+        const denamt = Math.round(Number(den.amount)) || 0;
         await queryOne(
           `UPDATE products SET available = false WHERE vendor_id = $1 AND sku = $2`,
-          [gate.vendor.id, `GC-${den.amount}`]
+          [gate.vendor.id, `GC-${denamt}`]
         ).catch(() => null);
         // Fallback sin sku: por categoría + precio exacto.
         await queryOne(
           `UPDATE products SET available = false
            WHERE vendor_id = $1 AND lower(category) = 'giftcards' AND price = $2 AND sku IS NULL`,
-          [gate.vendor.id, den.amount]
+          [gate.vendor.id, denamt]
         ).catch(() => null);
       }
       return NextResponse.json({ ok: true });
@@ -100,11 +107,12 @@ export async function POST(request: Request) {
       );
       if (!updated) return NextResponse.json({ error: "No encontrado" }, { status: 404 });
       // El producto del catálogo prende/apaga con el monto.
+      const updamt = Math.round(Number(updated.amount)) || 0;
       await queryOne(
         `UPDATE products SET available = $3 WHERE vendor_id = $1 AND sku = $2`,
-        [gate.vendor.id, `GC-${updated.amount}`, updated.active]
+        [gate.vendor.id, `GC-${updamt}`, updated.active]
       ).catch(() => null);
-      return NextResponse.json({ denomination: updated });
+      return NextResponse.json({ denomination: { ...updated, amount: updamt } });
     }
     // add (default)
     const amount = normalizeGiftAmount(body.amount);

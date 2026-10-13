@@ -233,7 +233,7 @@ export function GiftcardsManager({
   return (
     <Card className="p-4 space-y-3">
       <div>
-        <p className="font-medium text-sm">🎁 Gift Cards</p>
+        <p className="font-medium text-sm">🎁 Tarjetas de regalo</p>
         <p className="text-xs text-muted-foreground">
           Emitís un código con saldo (lo cobrás por caja o MP aparte) y lo canjeás en pedidos o en el local.
         </p>
@@ -288,9 +288,9 @@ export function GiftcardsManager({
       </div>
       {showDenominations && (
         <div className="border-t border-border pt-3 space-y-2">
-          <p className="text-xs font-medium">Montos para la venta online</p>
+          <p className="text-xs font-medium">Montos para ofrecer</p>
           <p className="text-xs text-muted-foreground">
-            Solo estos montos se pueden comprar online. Sin lista, la compra online queda pausada.
+            Estos montos aparecen como tarjetas en tu catálogo (se venden como productos, sin MP aparte).
           </p>
           {denMissing ? (
             <p className="text-xs text-muted-foreground">

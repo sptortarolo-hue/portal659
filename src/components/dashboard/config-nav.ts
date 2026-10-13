@@ -99,7 +99,7 @@ export const CONFIG_SECTION_LABELS: Record<string, string> = {
   turnera: "Turnera",
   fichas: "Fichas",
   packs: "Packs y regalos",
-  giftcards: "Gift Cards",
+  giftcards: "Tarjetas de regalo",
   servicios: "Servicios",
   urgencia: "Urgencia 24hs",
 };

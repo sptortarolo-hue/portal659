@@ -19,6 +19,7 @@ import { StickyWhatsApp } from "@/components/store/sticky-whatsapp";
 import { VariantSelector } from "@/components/store/variant-selector";
 import { ProductCard } from "@/components/store/product-card";
 import { GastroProductRow } from "@/components/store/gastro-product-row";
+import { GiftCardPicker } from "@/components/store/giftcard-picker";
 import { WhatsAppShareButton } from "@/components/store/whatsapp-share-button";
 import { ScrollToMenu } from "@/components/store/scroll-to-menu";
 import { ScrollToProduct } from "@/components/store/scroll-to-product";
@@ -836,39 +837,19 @@ export default async function TiendaPage({
               </div>
             )}
 
-            {/* Giftcards retail (comercio/moda): se agregan al carrito como cualquier producto */}
+            {/* Tarjeta de regalo (comercio/moda): una sola, se elige el monto */}
             {isRetailGift && !menuHidden && retailGiftCards.length > 0 && (
-              <div className="mt-6 mb-6 space-y-4">
-                <h2 className="font-display text-2xl font-semibold">🎁 Gift Cards</h2>
-                <p className="text-sm text-muted-foreground -mt-2">
+              <div className="mt-6 mb-6">
+                <h2 className="font-display text-2xl font-semibold mb-1">🎁 Tarjeta de regalo</h2>
+                <p className="text-sm text-muted-foreground mb-3">
                   Regalá saldo para usar en el local. Elegís el monto y se agrega al pedido como cualquier producto.
                 </p>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                  {retailGiftCards.map((g) =>
-                    useCards ? (
-                      <ProductCard
-                        key={g.id}
-                        product={g}
-                        variants={[]}
-                        images={[]}
-                        vendor={vendorBrief}
-                        modifiers={[]}
-                        acceptsCart={acceptsCart}
-                        consultHref={waUrl}
-                      />
-                    ) : (
-                    <GastroProductRow
-                      key={g.id}
-                      product={{ ...g, promo_price: null }}
-                      vendor={vendorBrief}
-                      modifiers={[]}
-                      acceptsCart={acceptsCart}
-                      consultHref={waUrl}
-                      images={[]}
-                    />
-                    )
-                  )}
-                </div>
+                <GiftCardPicker
+                  cards={retailGiftCards}
+                  vendor={vendorBrief}
+                  acceptsCart={acceptsCart}
+                  waUrl={waUrl}
+                />
               </div>
             )}
 

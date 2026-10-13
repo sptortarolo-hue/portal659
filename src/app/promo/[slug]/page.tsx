@@ -1,11 +1,11 @@
 import { queryOne, queryMany } from "@/lib/db";
 import { queryEffectiveModifiers } from "@/lib/modifier-rules";
-import { discountOf, promoContentHash } from "@/lib/promo";
+import { discountOf, isValidPromo, promoContentHash } from "@/lib/promo";
 import { resolveVendorPlan, vendorSellsOnline } from "@/lib/plans";
 import { notFound } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
-import { GastroProductRow } from "@/components/store/gastro-product-row";
-import { ProductCard } from "@/components/store/product-card";
+import { ProductImage } from "@/components/product-image";
+import { AddToCartButton } from "@/components/offers/add-to-cart-button";
 import { StickyWhatsApp } from "@/components/store/sticky-whatsapp";
 import { canPreviewVendor, getPreviewActor, isServingPreview } from "@/lib/preview";
 import type { Metadata } from "next";
@@ -180,51 +180,7 @@ export default async function PromoPage({
     modifiersByProduct[mod.product_id].push(mod);
   }
 
-  // Variantes (moda: color × talle) y galería para la ficha de producto.
-  const variantProductIds = (promos || []).filter((o: any) => o.has_variants).map((o: any) => o.id);
-  let allVariants: any[] = [];
-  if (variantProductIds.length > 0) {
-    try {
-      allVariants = await queryMany<any>(
-        `SELECT * FROM product_variants WHERE product_id = ANY($1) ORDER BY position ASC`,
-        [variantProductIds]
-      );
-    } catch {
-      allVariants = [];
-    }
-  }
-  const variantsByProduct: Record<string, any[]> = {};
-  for (const x of allVariants || []) {
-    if (!variantsByProduct[x.product_id]) variantsByProduct[x.product_id] = [];
-    variantsByProduct[x.product_id].push(x);
-  }
 
-  let allProductImages: any[] = [];
-  if (promoIds.length > 0) {
-    try {
-      allProductImages = await queryMany<any>(
-        `SELECT * FROM product_images WHERE product_id = ANY($1) ORDER BY position ASC`,
-        [promoIds]
-      );
-    } catch {
-      allProductImages = [];
-    }
-  }
-  const imagesByProduct: Record<string, any[]> = {};
-  for (const img of allProductImages || []) {
-    if (!imagesByProduct[img.product_id]) imagesByProduct[img.product_id] = [];
-    imagesByProduct[img.product_id].push(img);
-  }
-
-  // Brief mínimo para las fichas del store (sin cash/volumen: la landing
-  // mantiene paridad de precios con lo que cobraba antes).
-  const vendorBrief = {
-    id: v.id,
-    slug,
-    storeName: v.store_name,
-    whatsapp: v.whatsapp || "",
-    vertical: v.vertical,
-  };
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-red-50 to-white">
@@ -241,57 +197,84 @@ export default async function PromoPage({
           <div className="text-center py-12">
             <p className="text-gray-500">No hay promos activas en este momento.</p>
           </div>
-        ) : isModa ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {promos.map((o: any) => {
-              const pct = discountOf(o);
-              return (
-                <div
-                  key={o.id}
-                  className="rounded-2xl border-2 border-red-200 bg-white p-2 shadow-sm"
-                >
-                  <div className="flex items-center gap-1.5 px-1 pb-1.5">
-                    <span className="text-[10px] font-bold text-white bg-red-500 rounded-full px-2 py-0.5 whitespace-nowrap">
-                      {pct > 0 ? `−${pct}%` : "PROMO"}
-                    </span>
-                    <span className="text-[10px] text-muted-foreground">Tocá para ver detalle</span>
-                  </div>
-                  <ProductCard
-                    product={o}
-                    variants={variantsByProduct[o.id] || []}
-                    images={imagesByProduct[o.id] || []}
-                    vendor={vendorBrief}
-                    modifiers={modifiersByProduct[o.id] || []}
-                    acceptsCart={acceptsCart}
-                    consultHref={consultHref}
-                  />
-                </div>
-              );
-            })}
-          </div>
         ) : (
-          <div className="grid gap-3">
+          <div className="grid gap-4">
             {promos.map((o: any) => {
+              const hasOff = isValidPromo(o);
               const pct = discountOf(o);
+              const salePrice = hasOff ? Number(o.promo_price) : Number(o.price);
               return (
                 <div
                   key={o.id}
-                  className="rounded-2xl border-2 border-red-200 bg-white p-2 shadow-sm"
+                  className="rounded-2xl border-2 border-red-200 bg-white p-3 sm:p-4 flex items-center gap-3 sm:gap-4 shadow-sm"
                 >
-                  <div className="flex items-center gap-1.5 px-1 pb-1.5">
-                    <span className="text-[10px] font-bold text-white bg-red-500 rounded-full px-2 py-0.5 whitespace-nowrap">
-                      {pct > 0 ? `−${pct}%` : "PROMO"}
-                    </span>
-                    <span className="text-[10px] text-muted-foreground">Tocá para ver detalle</span>
+                  <div className="h-20 w-20 sm:h-24 sm:w-24 rounded-xl overflow-hidden flex-shrink-0 bg-gray-100">
+                    <ProductImage
+                      src={o.image_url || null}
+                      name={o.name}
+                      category={o.category}
+                      vertical={v.vertical}
+                      alt={o.name}
+                      className="w-full h-full object-cover"
+                    />
                   </div>
-                  <GastroProductRow
-                    product={o}
-                    vendor={vendorBrief}
-                    modifiers={modifiersByProduct[o.id] || []}
-                    acceptsCart={acceptsCart}
-                    consultHref={consultHref}
-                    images={imagesByProduct[o.id] || []}
-                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-start gap-2">
+                      <p className="font-bold leading-snug line-clamp-2 flex-1">{o.name}</p>
+                      {pct > 0 && (
+                        <span className="text-xs font-bold text-white bg-red-500 rounded-full px-2 py-0.5 whitespace-nowrap flex-shrink-0">
+                          −{pct}%
+                        </span>
+                      )}
+                    </div>
+                    {o.description && (
+                      <p className="text-sm text-gray-500 mt-1 line-clamp-1">{o.description}</p>
+                    )}
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-2">
+                      {hasOff ? (
+                        <>
+                          <span className="text-sm text-gray-400 line-through tabular-nums">
+                            ${Number(o.price).toLocaleString("es-AR")}
+                          </span>
+                          <span className="font-bold text-red-600 tabular-nums">
+                            ${Number(o.promo_price).toLocaleString("es-AR")}
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="font-bold text-red-600 tabular-nums">
+                            ${Number(o.price).toLocaleString("es-AR")}
+                          </span>
+                          <span className="text-[10px] font-bold text-white bg-red-500 rounded-full px-2 py-0.5 whitespace-nowrap">
+                            PROMO
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex-shrink-0">
+                    {acceptsCart ? (
+                      <AddToCartButton
+                        offerId={o.id}
+                        name={o.name}
+                        price={salePrice}
+                        vendor={v}
+                        modifiers={modifiersByProduct[o.id] || []}
+                        cashExcluded={!!o.cash_discount_excluded}
+                        origPrice={Number(o.price)}
+                        hasPromo={hasOff}
+                      />
+                    ) : (
+                      <a
+                        href={consultHref}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="rounded-md px-3 py-1.5 text-sm font-medium text-center bg-primary text-primary-foreground hover:bg-primary/90"
+                      >
+                        Consultar
+                      </a>
+                    )}
+                  </div>
                 </div>
               );
             })}

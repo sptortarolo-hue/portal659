@@ -781,6 +781,8 @@ export default async function TiendaPage({
                     items={promos}
                     vendor={vendorBrief}
                     modifiersByProduct={modifiersByProduct}
+                    variantsByProduct={variantsByProduct}
+                    imagesByProduct={imagesByProduct}
                     acceptsCart={acceptsCart}
                     consultHref={waUrl}
                   />
@@ -920,6 +922,8 @@ export default async function TiendaPage({
                 items={promos}
                 vendor={vendorBrief}
                 modifiersByProduct={modifiersByProduct}
+                variantsByProduct={variantsByProduct}
+                imagesByProduct={imagesByProduct}
                 acceptsCart={acceptsCart}
                 consultHref={waUrl}
               />

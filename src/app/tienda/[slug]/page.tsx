@@ -150,10 +150,18 @@ export default async function TiendaPage({
   // En preview con token compartible se propaga a sessionStorage para el checkout.
   const previewToken = preview && previewParam && previewParam !== "1" ? previewParam : null;
 
-  const offers = await queryMany<any>(
+  const offersAll = await queryMany<any>(
     `SELECT * FROM products WHERE vendor_id = $1 AND available = true ORDER BY featured_today DESC, name ASC`,
     [vendor.id]
   );
+  // Giftcards (comercio/moda): son productos reales pero NO van en el
+  // catálogo — salen como una sola tarjeta en su propia sección.
+  // Se detectan por sku GC-... o categoría "Giftcards".
+  const isGiftProduct = (p: any) =>
+    String(p?.sku || "").startsWith("GC-") ||
+    String(p?.category || "").trim().toLowerCase() === "giftcards";
+  const giftProducts = (offersAll || []).filter(isGiftProduct);
+  const offers = (offersAll || []).filter((p: any) => !isGiftProduct(p));
 
   const planRows = await queryMany<any>(
     `SELECT * FROM plans ORDER BY sort ASC`
@@ -433,25 +441,15 @@ export default async function TiendaPage({
   const isRetailGift = v.vertical === "moda" || v.vertical === "comercio";
   let retailGiftCards: { id: string; name: string; price: number; image_url: string | null }[] = [];
   if (isRetailGift) {
-    try {
-      // Las giftcards son productos reales (sku GC-<monto>): se agregan al
-      // carrito y se cobran con el método del local (sin MP aparte).
-      const rows = await queryMany<{ id: string; name: string; price: number; image_url: string | null }>(
-        `SELECT p.id, p.name, p.price, p.image_url
-         FROM giftcard_denominations gd
-         JOIN products p ON p.vendor_id = gd.vendor_id AND p.sku = 'GC-' || gd.amount
-         WHERE gd.vendor_id = $1 AND gd.active IS DISTINCT FROM false AND p.available = true
-         ORDER BY gd.amount ASC`,
-        [v.id]
-      ).catch(() => null);
-      retailGiftCards = (rows || []).map((g: any) => ({
-        id: String(g.id),
-        name: String(g.name),
-        price: Number(g.price),
-        promo_price: null,
-        image_url: g.image_url != null ? String(g.image_url) : null,
-      }));
-    } catch { retailGiftCards = []; }
+    // Las giftcards son los productos marcados isGiftProduct (se excluyeron
+    // del catálogo): cada uno = un monto de la tarjeta de regalo.
+    retailGiftCards = giftProducts.map((g: any) => ({
+      id: String(g.id),
+      name: String(g.name),
+      price: Number(g.price),
+      promo_price: null,
+      image_url: g.image_url != null ? String(g.image_url) : null,
+    }));
   }
   if (isEstetica) {
     try {

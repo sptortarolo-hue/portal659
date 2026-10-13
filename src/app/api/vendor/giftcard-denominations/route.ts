@@ -24,26 +24,30 @@ export async function GET(request: Request) {
       [gate.vendor.id]
     );
     // Reconciliación: cada monto activo crea su producto si falta (montos
-    // creados antes del deploy o fallida la creación por columnas faltantes).
+    // creados antes del deploy o columnas que aún no están migradas).
     for (const d of rows || []) {
       if (d.active === false) continue;
       const exists = await queryOne<{ id: string }>(
-        `SELECT id FROM products WHERE vendor_id = $1 AND sku = $2 LIMIT 1`,
-        [gate.vendor.id, `GC-${d.amount}`]
+        `SELECT id FROM products
+         WHERE vendor_id = $1 AND (sku = $2 OR (sku IS NULL AND lower(category) = 'giftcards' AND price = $3)) LIMIT 1`,
+        [gate.vendor.id, `GC-${d.amount}`, d.amount]
       ).catch(() => null);
       if (!exists) {
-        await queryOne(
-          `INSERT INTO products (vendor_id, name, description, price, currency, category, available, stock, stock_control, featured_today, requires_prep, has_variants, cash_discount_excluded, unit, sku, pack_size)
-           VALUES ($1, $2, $3, $4, 'ARS', 'Giftcards', true, 0, false, false, false, false, false, 'unidad', $5, NULL)
+        // Insert mínimo (columnas núcleo) y sku aparte por si la columna falta.
+        const created = await queryOne<{ id: string }>(
+          `INSERT INTO products (vendor_id, name, description, price, currency, category, available, stock, stock_control, featured_today, requires_prep, has_variants)
+           VALUES ($1, $2, $3, $4, 'ARS', 'Giftcards', true, 0, false, false, false, false)
            RETURNING id`,
           [
             gate.vendor.id,
             `Giftcard $${d.amount.toLocaleString("es-AR")}`,
             `Tarjeta de regalo de ${d.amount.toLocaleString("es-AR")} para gastar en el local.`,
             d.amount,
-            `GC-${d.amount}`,
           ]
         ).catch(() => null);
+        if (created) {
+          await queryOne(`UPDATE products SET sku = $2 WHERE id = $1`, [created.id, `GC-${d.amount}`]).catch(() => null);
+        }
       }
     }
     return NextResponse.json({ denominations: rows || [] });
@@ -64,18 +68,25 @@ export async function POST(request: Request) {
     if (action === "delete") {
       const id = String(body.id || "");
       if (!id) return NextResponse.json({ error: "Falta el id" }, { status: 400 });
-      // Desactiva el producto del catálogo (sin borrar historial).
+      // Guardamos el monto antes de borrar para apagar el producto.
+      const den = await queryOne<{ amount: number }>(
+        `SELECT amount FROM giftcard_denominations WHERE id = $1 AND vendor_id = $2`,
+        [id, gate.vendor.id]
+      ).catch(() => null);
       await queryOne(`DELETE FROM giftcard_denominations WHERE id = $1 AND vendor_id = $2`, [
         id,
         gate.vendor.id,
-      ]);
-      const den = await queryOne<{ amount: number }>(
-        `SELECT amount FROM giftcard_denominations WHERE id = $1 LIMIT 1`
-      ).catch(() => null);
+      ]).catch(() => null);
       if (den) {
         await queryOne(
           `UPDATE products SET available = false WHERE vendor_id = $1 AND sku = $2`,
           [gate.vendor.id, `GC-${den.amount}`]
+        ).catch(() => null);
+        // Fallback sin sku: por categoría + precio exacto.
+        await queryOne(
+          `UPDATE products SET available = false
+           WHERE vendor_id = $1 AND lower(category) = 'giftcards' AND price = $2 AND sku IS NULL`,
+          [gate.vendor.id, den.amount]
         ).catch(() => null);
       }
       return NextResponse.json({ ok: true });
@@ -83,11 +94,16 @@ export async function POST(request: Request) {
     if (action === "toggle") {
       const id = String(body.id || "");
       if (!id) return NextResponse.json({ error: "Falta el id" }, { status: 400 });
-      const updated = await queryOne<{ id: string; active: boolean }>(
-        `UPDATE giftcard_denominations SET active = $3 WHERE id = $1 AND vendor_id = $2 RETURNING id, active`,
+      const updated = await queryOne<{ id: string; active: boolean; amount: number }>(
+        `UPDATE giftcard_denominations SET active = $3 WHERE id = $1 AND vendor_id = $2 RETURNING id, active, amount`,
         [id, gate.vendor.id, body.active !== false]
       );
       if (!updated) return NextResponse.json({ error: "No encontrado" }, { status: 404 });
+      // El producto del catálogo prende/apaga con el monto.
+      await queryOne(
+        `UPDATE products SET available = $3 WHERE vendor_id = $1 AND sku = $2`,
+        [gate.vendor.id, `GC-${updated.amount}`, updated.active]
+      ).catch(() => null);
       return NextResponse.json({ denomination: updated });
     }
     // add (default)
@@ -101,19 +117,21 @@ export async function POST(request: Request) {
         [gate.vendor.id, amount]
       );
       // Producto del catálogo: se compra como cualquier producto (local/web,
-      // sin MP intermedio). La venta manual sigue libre; la online exige monto.
+      // sin MP intermedio). Insert mínimo + sku aparte (si falta la columna).
       const product = await queryOne<{ id: string }>(
-        `INSERT INTO products (vendor_id, name, description, price, currency, category, available, stock, stock_control, featured_today, requires_prep, has_variants, cash_discount_excluded, unit, sku, pack_size)
-         VALUES ($1, $2, $3, $4, 'ARS', 'Giftcards', true, 0, false, false, false, false, false, 'unidad', $5, NULL)
+        `INSERT INTO products (vendor_id, name, description, price, currency, category, available, stock, stock_control, featured_today, requires_prep, has_variants)
+         VALUES ($1, $2, $3, $4, 'ARS', 'Giftcards', true, 0, false, false, false, false)
          RETURNING id`,
         [
           gate.vendor.id,
           `Giftcard $${amount.toLocaleString("es-AR")}`,
           `Tarjeta de regalo de ${amount.toLocaleString("es-AR")} para gastar en el local.`,
           amount,
-          `GC-${amount}`,
         ]
       ).catch(() => null);
+      if (product) {
+        await queryOne(`UPDATE products SET sku = $2 WHERE id = $1`, [product.id, `GC-${amount}`]).catch(() => null);
+      }
       return NextResponse.json({ denomination: row, product });
     } catch (e) {
       if (/duplicate|unique/i.test((e as Error)?.message || "")) {

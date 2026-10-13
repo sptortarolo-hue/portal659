@@ -35,6 +35,10 @@ type Props = {
   modifiers?: any[];
   acceptsCart?: boolean;
   consultHref?: string;
+  /** Apertura externa (sección Promo): monta con la ficha ya abierta. */
+  autoOpen?: boolean;
+  /** Avisar al cerrar (el padre desmonta). */
+  onClose?: () => void;
 };
 
 function variantSummary(vars: any[]) {
@@ -49,7 +53,7 @@ function variantSummary(vars: any[]) {
   return { min, max, baseMin, best };
 }
 
-export function ProductCard({ product, variants = [], images = [], vendor, modifiers, acceptsCart = true, consultHref }: Props) {
+export function ProductCard({ product, variants = [], images = [], vendor, modifiers, acceptsCart = true, consultHref, autoOpen = false, onClose }: Props) {
   const [open, setOpen] = useState(false);
   const [activeImg, setActiveImg] = useState(0);
   // Cantidad para productos simples (los de variantes la manejan en VariantSelector).
@@ -94,7 +98,18 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
     setOpen(false);
     setActiveImg(0);
     setQty(1);
+    onClose?.();
   }
+
+  // Apertura externa: monta con la ficha ya abierta (estado inicial limpio).
+  useEffect(() => {
+    if (autoOpen) {
+      setQty(1);
+      setActiveImg(0);
+      setOpen(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const lowStock = stockControl && !outStock && totalStock <= (hasVariants ? 5 : (product.stock_low_threshold ?? 5));
 
   const bestDiscount = hasVariants
@@ -156,9 +171,9 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
   // el historial al abrir y la cerramos al cerrar la ficha.
   useEffect(() => {
     if (!open) return;
-    const onPop = () => { setOpen(false); setActiveImg(0); };
+    const onPop = () => { closeSheet(); };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") { setOpen(false); setActiveImg(0); }
+      if (e.key === "Escape") { closeSheet(); }
       else if (e.key === "ArrowLeft") { setActiveImg((i) => Math.max(0, i - 1)); }
       else if (e.key === "ArrowRight") { setActiveImg((i) => Math.min(imgs.length - 1, i + 1)); }
     };
@@ -259,7 +274,7 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
 
       {open && (
         <div className="fixed inset-0 z-50">
-          <div className="absolute inset-0 bg-black/60" onClick={() => { setOpen(false); setActiveImg(0); }} />
+          <div className="absolute inset-0 bg-black/60" onClick={() => { closeSheet(); }} />
           <div
             ref={sheetRef}
             className="absolute inset-x-0 bottom-0 max-h-[90vh] overflow-y-auto rounded-t-2xl bg-card sm:inset-0 sm:m-auto sm:max-w-md sm:h-fit sm:rounded-2xl"
@@ -269,7 +284,7 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
               <p className="font-display font-semibold line-clamp-1 flex-1 min-w-0">{product.name}</p>
               <button
                 type="button"
-                onClick={() => { setOpen(false); setActiveImg(0); }}
+                onClick={() => { closeSheet(); }}
                 className="h-8 w-8 shrink-0 rounded-full bg-muted flex items-center justify-center text-foreground hover:bg-accent"
               >
                 ✕

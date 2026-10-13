@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { AddToCartButton } from "@/components/offers/add-to-cart-button";
 import { ProductImage } from "@/components/product-image";
@@ -68,6 +68,10 @@ type Props = {
   consultHref?: string;
   /** Fotos extra (además de la portada) para pasarlas in situ en la ficha. */
   images?: { image_url: string }[];
+  /** Apertura externa (sección Promo): monta con la ficha ya abierta. */
+  autoOpen?: boolean;
+  /** Avisar al cerrar (el padre desmonta). */
+  onClose?: () => void;
 };
 
 /**
@@ -77,8 +81,12 @@ type Props = {
  * y "Agregar al pedido" que cierra la ficha y vuelve al menú.
  * Desktop: fila actual con botón directo (sin modal).
  */
-export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart = true, consultHref, images = [] }: Props) {
+export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart = true, consultHref, images = [], autoOpen = false, onClose }: Props) {
   const [open, setOpen] = useState(false);
+  const close = useCallback(() => {
+    setOpen(false);
+    onClose?.();
+  }, [onClose]);
   const { addItem, items } = useCart();
   const { addToast } = useToast();
   // Fotos in situ en la ficha (swipe + dots + flechas desktop), igual que
@@ -99,7 +107,7 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "Escape") close();
       else if (gallery.length > 1 && e.key === "ArrowLeft") setSheetImg((i) => (i - 1 + gallery.length) % gallery.length);
       else if (gallery.length > 1 && e.key === "ArrowRight") setSheetImg((i) => (i + 1) % gallery.length);
     };
@@ -136,7 +144,7 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
   // el historial al abrir y la cerramos al cerrar la ficha.
   useEffect(() => {
     if (!open) return;
-    const onPop = () => setOpen(false);
+    const onPop = () => close();
     window.addEventListener("popstate", onPop);
     history.pushState({ portal659Sheet: true }, "", window.location.href);
     return () => {
@@ -248,6 +256,12 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
     setOpen(true);
   }
 
+  // Apertura externa: mismo reset que tocar la fila.
+  useEffect(() => {
+    if (autoOpen) openSheet();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   function handleAdd() {
     if (isKg && !kgOk) return;
     const flat: CartModifier[] = [];
@@ -296,7 +310,7 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
       const top = [...(volGroup.tiers || [])].sort((a, b) => a.minQty - b.minQty).pop();
       if (top && before < top.minQty) openPack(volGroup.id);
     }
-    setOpen(false); // cierra la ficha y vuelve al menú
+    close(); // cierra la ficha y vuelve al menú
     setQty(pack);
   }
 
@@ -548,7 +562,7 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
 
       {/* Ficha: fullscreen en mobile, modal centrado en desktop (igual contenido) */}
       {open && (
-        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center" onClick={() => setOpen(false)}>
+        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center" onClick={() => close()}>
           <div className="hidden sm:block absolute inset-0 bg-black/60" aria-hidden />
           <div
             className="relative bg-background flex flex-col w-full h-full sm:h-fit sm:max-h-[90vh] sm:max-w-md sm:m-4 sm:rounded-2xl sm:border sm:border-border overflow-hidden"
@@ -556,7 +570,7 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
           >
           <header className="flex items-center gap-2 border-b border-border px-3 py-3">
             <button
-              onClick={() => setOpen(false)}
+              onClick={() => close()}
               className="shrink-0 h-8 w-8 rounded-full hover:bg-muted flex items-center justify-center text-muted-foreground"
               aria-label="Volver al menú"
             >
@@ -616,7 +630,7 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
                 <button
                   type="button"
                   onClick={() => {
-                    setOpen(false);
+                    close();
                     openPack(volGroup.id);
                   }}
                   className={`w-full rounded-xl border px-3 py-2 text-xs font-semibold text-left ${volColor ? `${volColor.soft} ${volColor.border} ${volColor.strong}` : ""}`}

@@ -573,6 +573,10 @@ async function composeComanda(printer: any, vendor: PrinterVendor, order: Order)
   if (ticketCash > 0) {
     printer.println(`Desc. efectivo (${ticketCashPct}%): -$${ticketCash.toLocaleString("es-AR")}`);
   }
+  const ticketGift = Number((order as any)?.giftcard_discount) || 0;
+  if (ticketGift > 0) {
+    printer.println(`Giftcard ${((order as any)?.giftcard_code || "")}: -$${ticketGift.toLocaleString("es-AR")}`);
+  }
   const ticketVol = Number((order as any)?.volume_discount) || 0;
   if (ticketVol > 0) {
     printer.println(`Desc. volumen: -$${ticketVol.toLocaleString("es-AR")}`);

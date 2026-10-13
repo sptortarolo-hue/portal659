@@ -396,32 +396,38 @@ export default function MisPedidosPage() {
           </>
         }
       >
-        <div className="space-y-3">
-          <p className="text-sm text-muted-foreground">
-            Se reemplazará tu carrito actual con los items de este pedido.
-          </p>
-          {reorderConfirm && (
-            <div className="space-y-1.5">
-              {reorderConfirm.order.items.map((item, i) => (
-                <div key={i} className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">
-                    {(item as any).unit === "kg"
-                      ? `${Number(item.qty).toLocaleString("es-AR", { maximumFractionDigits: 3 })}kg ${item.name}`
-                      : `${item.qty}x ${item.name}`}
-                  </span>
-                  <span className="font-medium tabular-nums">
-                    ${orderLineTotal(item).toLocaleString("es-AR")}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-          <div className="border-t border-border pt-2 flex justify-between font-bold text-sm">
-            <span>Total</span>
-            <span>${reorderConfirm ? Number(reorderConfirm.order.total).toLocaleString("es-AR") : "0"}</span>
+      <div className="space-y-3">
+        <p className="text-sm text-muted-foreground">
+          Se reemplazará tu carrito actual con los items de este pedido.
+        </p>
+        {reorderConfirm && (
+          <div className="space-y-1.5">
+            {reorderConfirm.order.items.map((item, i) => (
+              <div key={i} className="flex justify-between text-sm">
+                <span className="text-muted-foreground">
+                  {(item as any).unit === "kg"
+                    ? `${Number(item.qty).toLocaleString("es-AR", { maximumFractionDigits: 3 })}kg ${item.name}`
+                    : `${item.qty}x ${item.name}`}
+                </span>
+                <span className="font-medium tabular-nums">
+                  ${orderLineTotal(item).toLocaleString("es-AR")}
+                </span>
+              </div>
+            ))}
+            {Number((reorderConfirm.order as any)?.giftcard_discount) > 0 && (
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>🎁 Giftcard</span>
+                <span>−${Number((reorderConfirm.order as any).giftcard_discount).toLocaleString("es-AR")}</span>
+              </div>
+            )}
           </div>
+        )}
+        <div className="border-t border-border pt-2 flex justify-between font-bold text-sm">
+          <span>Total</span>
+          <span>${reorderConfirm ? Number(reorderConfirm.order.total).toLocaleString("es-AR") : "0"}</span>
         </div>
-      </Modal>
+      </div>
+    </Modal>
     </main>
   );
 }

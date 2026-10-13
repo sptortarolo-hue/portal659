@@ -186,24 +186,31 @@ export default function SeguimientoPedidoPage() {
 
         <OrderTimeline status={order.status} method={order.method} isRetail={isRetail} />
 
-        <div className="mt-3 space-y-1">
-          {order.items.map((item, i) => (
-            <div key={i} className="flex justify-between text-xs">
-              <span className="text-muted-foreground">
-                {(item as any).unit === "kg"
-                  ? `${Number(item.qty).toLocaleString("es-AR", { maximumFractionDigits: 3 })}kg ${item.name}`
-                  : `${item.qty}x ${item.name}`}
-                {item.modifiers && item.modifiers.length > 0 && (
-                  <span className="text-muted-foreground/50"> ({item.modifiers.join(", ")})</span>
-                )}
-              </span>
-              <span className="font-medium tabular-nums">${orderLineTotal(item).toLocaleString("es-AR")}</span>
-            </div>
-          ))}
-        </div>
+      <div className="mt-3 space-y-1">
+        {order.items.map((item, i) => (
+          <div key={i} className="flex justify-between text-xs">
+            <span className="text-muted-foreground">
+              {(item as any).unit === "kg"
+                ? `${Number(item.qty).toLocaleString("es-AR", { maximumFractionDigits: 3 })}kg ${item.name}`
+                : `${item.qty}x ${item.name}`}
+              {item.modifiers && item.modifiers.length > 0 && (
+                <span className="text-muted-foreground/50"> ({item.modifiers.join(", ")})</span>
+              )}
+            </span>
+            <span className="font-medium tabular-nums">${orderLineTotal(item).toLocaleString("es-AR")}</span>
+          </div>
+        ))}
+      </div>
 
-        <div className="flex items-center justify-between mt-3 pt-2 border-t border-border">
-          <span className="font-bold text-sm">${Number(order.total).toLocaleString("es-AR")}</span>
+      {Number((order as any).giftcard_discount) > 0 && (
+        <div className="flex items-center justify-between text-xs text-muted-foreground mt-2">
+          <span>🎁 Giftcard</span>
+          <span className="tabular-nums">−${Number((order as any).giftcard_discount).toLocaleString("es-AR")}</span>
+        </div>
+      )}
+
+      <div className="flex items-center justify-between mt-3 pt-2 border-t border-border">
+        <span className="font-bold text-sm">${Number(order.total).toLocaleString("es-AR")}</span>
           {phone && !isDone && (
             <a
               href={`https://wa.me/${phone.replace(/[^0-9]/g, "")}?text=${encodeURIComponent(`Hola! Quiero consultar por mi pedido ${order.pickup_number != null ? `Nro. ${order.pickup_number}` : `#${order.id.slice(0, 8)}`}`)}`}

@@ -29,6 +29,7 @@ export const POST = withRateLimit(async (request: Request) => {
     deliveryWindow,
     isPreview,
     previewToken,
+    giftcardCode,
   } = body;
 
   try {
@@ -49,6 +50,7 @@ export const POST = withRateLimit(async (request: Request) => {
       deliveryWindow: typeof deliveryWindow === "string" ? deliveryWindow : null,
       isPreview: isPreview === true,
       previewToken: typeof previewToken === "string" ? previewToken : null,
+      giftcardCode: typeof giftcardCode === "string" && giftcardCode.trim() !== "" ? giftcardCode.trim() : null,
     });
 
     return NextResponse.json({
@@ -64,6 +66,7 @@ export const POST = withRateLimit(async (request: Request) => {
       deliveryZoneName: result.deliveryZoneName,
       deliveryOutOfArea: result.deliveryOutOfArea,
       deliveryWindow: result.deliveryWindow,
+      giftcard_discount: result.giftcard_discount || 0,
     });
   } catch (e) {
     if (e instanceof InvalidPhoneError) {

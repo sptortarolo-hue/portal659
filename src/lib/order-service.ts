@@ -50,6 +50,8 @@ export type CreateOrderInput = {
   isPreview?: boolean | null;
   /** Token del link ?preview= (valida contra vendors.preview_token). */
   previewToken?: string | null;
+  /** Código de giftcard a canjear (checkout online, solo efectivo/transferencia). */
+  giftcardCode?: string | null;
 };
 
 export type CreateOrderResult = {
@@ -69,6 +71,8 @@ export type CreateOrderResult = {
   deliveryOutOfArea: boolean;
   /** Turno de entrega prometido (id de slot, retail delivery). */
   deliveryWindow: string | null;
+  /** Canje de giftcard aplicado (0 = sin canje). */
+  giftcard_discount?: number;
 };
 
 /** Negocio: el comercio no acepta pedidos online (plan sin carrito). → 403 */
@@ -129,6 +133,8 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
     deliveryZoneId,
     deliveryOutOfArea,
     deliveryWindow,
+    giftcardCode,
+    previewToken,
   } = input;
 
   if (!vendorId || !customerName || !customerPhone || !items) {
@@ -147,6 +153,8 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
         return false;
       }
     })());
+  // Nota: arriba resolví el preview token; abajo lo uso en canje (sin tocar
+  // el destructure que ya trae isPreview).
 
   // Teléfono del cliente: celular argentino válido (WhatsApp), normalizado a
   // E.164 sin "+" (549...). Misma validación que el registro de usuarios —
@@ -338,6 +346,23 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
      ) AS exists`
   );
   const hasPreviewCol = previewCol?.exists === true;
+  // Canje de giftcard (tolerante a migración sin aplicar).
+  const giftcardCol = await queryOne<{ exists: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1 FROM information_schema.columns
+       WHERE table_name = 'orders' AND column_name = 'giftcard_discount'
+     ) AS exists`
+  ).catch(() => null);
+  const hasGiftcardCols = giftcardCol?.exists === true;
+
+  // Canje de giftcard (checkout online, efectivo/transferencia): se consume
+  // DENTRO de la tx principal, sobre el total recién calculado (si falla se
+  // hace rollback de todo: sin pedido ni consumo). MP va por propia ruta.
+  let giftcardApplied = 0;
+  let giftcardCodeFinal: string | null = null;
+  const wantsGiftcard =
+    typeof giftcardCode === "string" && giftcardCode.trim() !== "" && !isPreview &&
+    paymentMethodNorm !== "mercadopago";
 
   try {
     await withTransaction(async (tx) => {
@@ -371,6 +396,24 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
       resolvedZoneName = pricing.deliveryZoneName;
       resolvedOutOfArea = pricing.deliveryOutOfArea;
 
+      // Canje de giftcard (efectivo/transferencia): sobre el total recién
+      // calculado, dentro de la misma tx (si falla se hace rollback de todo).
+      if (wantsGiftcard) {
+        const { consumeGiftcard } = await import("@/lib/giftcards");
+        const applied = await consumeGiftcard(tx, {
+          vendorId,
+          code: giftcardCode!.trim().toUpperCase(),
+          maxAmount: pricing.total,
+          note: `Pedido online`,
+        });
+        if (!applied) {
+          throw new Error("Giftcard sin saldo, vencida o no válida");
+        }
+        giftcardApplied = applied.applied;
+        giftcardCodeFinal = applied.code;
+        resolvedTotal = Math.max(0, Math.round((pricing.total - giftcardApplied) * 100) / 100);
+      }
+
       const movedStock: StockMove[] = isPreview
         ? []
         : await adjustStockForItems(tx, resolvedItems.filter((i) => (i as any).unit !== "kg"), "decrement");
@@ -396,9 +439,13 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
       const previewCols = hasPreviewCol ? ", is_preview" : "";
       const previewVals = hasPreviewCol ? `, $${nextParam++}` : "";
       const previewParams: unknown[] = hasPreviewCol ? [isPreview] : [];
+      // Canje de giftcard (migración de giftcards).
+      const giftcardCols = hasGiftcardCols ? ", giftcard_code, giftcard_discount" : "";
+      const giftcardVals = hasGiftcardCols ? `, $${nextParam++}, $${nextParam++}` : "";
+      const giftcardParams: unknown[] = hasGiftcardCols ? [giftcardCodeFinal, giftcardApplied] : [];
       const rows = await tx.query<{ id: string }>(
-        `INSERT INTO orders (vendor_id, customer_id, customer_name, customer_phone, customer_address, method, payment_method, items, total, status, notes, device_id, payment_status, pickup_number, cash_pct, cash_discount, track_token${volumeCols}${zoneCols}${windowCols}${previewCols})
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'new', $10, $11, $12, $13, $14, $15, $16${volumeVals}${zoneVals}${windowVals}${previewVals})
+        `INSERT INTO orders (vendor_id, customer_id, customer_name, customer_phone, customer_address, method, payment_method, items, total, status, notes, device_id, payment_status, pickup_number, cash_pct, cash_discount, track_token${volumeCols}${zoneCols}${windowCols}${previewCols}${giftcardCols})
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'new', $10, $11, $12, $13, $14, $15, $16${volumeVals}${zoneVals}${windowVals}${previewVals}${giftcardVals})
          RETURNING id`,
         [
           vendorId,
@@ -421,6 +468,7 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
           ...zoneParams,
           ...windowParams,
           ...previewParams,
+          ...giftcardParams,
         ]
       );
       orderId = rows[0]?.id;
@@ -531,5 +579,5 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
     }
   }
 
-  return { orderId, total: resolvedTotal, items: resolvedItems, pickupNumber, cashDiscount: resolvedCashDiscount, cashPct: resolvedCashPct, volumeDiscount: resolvedVolumeDiscount, volumeApplied: resolvedVolumeApplied, trackToken, deliveryFee: resolvedDeliveryFee, deliveryZoneName: resolvedZoneName, deliveryOutOfArea: resolvedOutOfArea, deliveryWindow: resolvedWindow };
+  return { orderId, total: resolvedTotal, items: resolvedItems, pickupNumber, cashDiscount: resolvedCashDiscount, cashPct: resolvedCashPct, volumeDiscount: resolvedVolumeDiscount, volumeApplied: resolvedVolumeApplied, trackToken, deliveryFee: resolvedDeliveryFee, deliveryZoneName: resolvedZoneName, deliveryOutOfArea: resolvedOutOfArea, deliveryWindow: resolvedWindow, giftcard_discount: giftcardApplied };
 }

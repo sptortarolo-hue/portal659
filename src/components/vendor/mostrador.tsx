@@ -149,6 +149,13 @@ export function Mostrador({ vendorId }: { vendorId?: string | null }) {
   const [items, setItems] = useState<LineItem[]>([]);
   const [payment, setPayment] = useState("efectivo");
   const [customerName, setCustomerName] = useState("");
+  // Canje de giftcard en mostrador (pagos en el acto): se valida y se
+  // descuenta del total en vivo; si no nada cambia.
+  const [giftcardOpen, setGiftcardOpen] = useState(false);
+  const [giftcardAmount, setGiftcardAmount] = useState(0);
+  const [giftcardCodeValue, setGiftcardCodeValue] = useState("");
+  const [giftcardBusy, setGiftcardBusy] = useState(false);
+  const [giftcardErr, setGiftcardErr] = useState("");
   const [method, setMethod] = useState<"pickup" | "delivery" | "direct">("pickup");
   const [customerPhone, setCustomerPhone] = useState("");
   const [customerAddress, setCustomerAddress] = useState("");
@@ -356,7 +363,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
   });
   const posDeliveryFee = method === "delivery" ? posResolvedDelivery.fee : 0;
   const posOutOfAreaFlag = method === "delivery" && posResolvedDelivery.outOfArea;
-  const payableTotal = Math.max(0, Math.round((netSubtotal - activeCashDiscount + posDeliveryFee) * 100) / 100);
+  const payableTotal = Math.max(0, Math.round((netSubtotal - activeCashDiscount + posDeliveryFee - giftcardAmount) * 100) / 100);
 
   // Chips de categoría agrupados por clave normalizada (trim+lowercase):
   // "Pizzas", "pizzas" o " Pizzas" forman un solo chip (igual que el micrositio).
@@ -1150,6 +1157,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
       deliveryZoneId: isDelivery && posZonesMode && !posOutOfAreaFlag && posActiveZoneId ? posActiveZoneId : undefined,
       deliveryOutOfArea: isDelivery ? posOutOfAreaFlag : false,
       deliveryManualFee: isDelivery && posOutOfAreaFlag && Number(posManualFee) > 0 ? Number(posManualFee) : undefined,
+      giftcardCode: giftcardAmount > 0 && giftcardCodeValue.trim() ? giftcardCodeValue.trim() : undefined,
       notes: notes.trim() || null,
       client_key: newClientKey(),
       occurred_at: new Date().toISOString(),
@@ -2175,6 +2183,12 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
               <span className="tabular-nums flex-shrink-0">−${volumeDiscount.toLocaleString("es-AR")}</span>
             </div>
           )}
+          {giftcardAmount > 0 && (
+            <div className="flex items-center justify-between text-xs font-medium text-primary">
+              <span className="truncate">🎁 Giftcard{giftcardCodeValue ? ` (${giftcardCodeValue})` : ""}</span>
+              <span className="tabular-nums flex-shrink-0">−${giftcardAmount.toLocaleString("es-AR")}</span>
+            </div>
+          )}
           {method === "delivery" && (
             <>
               <div className="flex items-center justify-between text-xs text-muted-foreground">
@@ -2193,6 +2207,64 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
               </div>
             </>
           )}
+          <div className="pt-1">
+            <button
+              type="button"
+              onClick={() => setGiftcardOpen((v) => !v)}
+              className="flex w-full items-center justify-between gap-2 text-xs font-medium text-primary"
+            >
+              🎁 Giftcard
+              <span className="text-muted-foreground text-[10px]">{giftcardOpen ? "▲" : "▼"}</span>
+            </button>
+            {giftcardOpen && (
+              <div className="mt-2 space-y-2">
+                <div className="flex gap-1.5">
+                  <input
+                    type="text"
+                    value={giftcardCodeValue}
+                    onChange={(e) => { setGiftcardCodeValue(e.target.value.toUpperCase()); setGiftcardErr(""); }}
+                    placeholder="Código (ej: ABC-123456)"
+                    className="flex-1 h-9 min-w-0 rounded-lg border border-input bg-background px-2.5 text-sm font-mono"
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-9"
+                    disabled={giftcardBusy || !giftcardCodeValue.trim()}
+                    onClick={async () => {
+                      const code = giftcardCodeValue.trim();
+                      if (!code || !vendorId) return;
+                      setGiftcardBusy(true);
+                      setGiftcardErr("");
+                      try {
+                        const res = await fetch(`/api/giftcards/validate?vendorId=${encodeURIComponent(vendorId)}&code=${encodeURIComponent(code)}`);
+                        const data = await res.json();
+                        if (data.ok) {
+                          const balance = Number(data.balance);
+                          setGiftcardAmount(Math.min(balance, netSubtotal - activeCashDiscount));
+                        } else {
+                          setGiftcardErr(data.error || "Código no válido");
+                          setGiftcardAmount(0);
+                        }
+                      } catch {
+                        setGiftcardErr("Error de conexión");
+                        setGiftcardAmount(0);
+                      } finally {
+                        setGiftcardBusy(false);
+                      }
+                    }}
+                  >
+                    {giftcardBusy ? "..." : "Aplicar"}
+                  </Button>
+                </div>
+                {giftcardErr && <p className="text-[11px] text-red-600">{giftcardErr}</p>}
+                {giftcardAmount > 0 && (
+                  <p className="text-[11px] text-muted-foreground">Saldo: ${(giftcardAmount).toLocaleString("es-AR")}</p>
+                )}
+              </div>
+            )}
+          </div>
           <div className="flex items-center justify-between">
             <span className="text-sm font-semibold">Total</span>
             <span className="font-display font-bold text-lg tabular-nums">${payableTotal.toLocaleString("es-AR")}</span>

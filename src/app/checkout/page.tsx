@@ -34,6 +34,11 @@ export default function CheckoutPage() {
   const [error, setError] = useState("");
   const [mpConfigured, setMpConfigured] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
+  // Canje de giftcard (efectivo/transferencia/Coordinar-por-WA): valida el
+  // saldo y lo descuenta del total. MP va por su propia ruta (ya cobró todo).
+  const [showGiftcard, setShowGiftcard] = useState(false);
+  const [giftcardCode, setGiftcardCode] = useState("");
+  const [giftcardLookup, setGiftcardLookup] = useState<{ loading: boolean; error: string; balance: number | null }>({ loading: false, error: "", balance: null });
   const [showSummary, setShowSummary] = useState(false);  const [pendingOrder, setPendingOrder] = useState<{ orderId: string; message: string; waNumber: string; trackToken?: string } | null>(null);
   const [prefillInfo, setPrefillInfo] = useState<{ found: boolean; name?: string | null } | null>(null);
   // Turnos de reparto retail (moda/comercio): próximos 3 slots del comercio.
@@ -169,7 +174,8 @@ export default function CheckoutPage() {
     });
     cashDiscount = Math.round(cashDiscount * 100) / 100;
   }
-  const displayTotal = grandTotal - vol.volumeDiscount - cashDiscount;
+  const giftcardDiscount = giftcardLookup.balance != null ? Math.min(giftcardLookup.balance, grandTotal - vol.volumeDiscount - cashDiscount) : 0;
+  const displayTotal = Math.max(0, grandTotal - vol.volumeDiscount - cashDiscount - giftcardDiscount);
   const volumeLabel = vol.applied.length > 0
     ? vol.applied.map((a) => `${a.groupName} (${a.label})`).join(" · ")
     : "";
@@ -603,6 +609,7 @@ export default function CheckoutPage() {
           deliveryZoneId: method === "delivery" && zonesMode && !deliveryOutOfArea ? activeZoneId || null : null,
           deliveryOutOfArea: method === "delivery" && deliveryOutOfArea,
           deliveryWindow: method === "delivery" && showSlots && activeSlotId ? activeSlotId : null,
+          giftcardCode: giftcardLookup.balance != null ? giftcardCode.trim() : undefined,
           items: items.map((i) => ({
             offerId: i.offerId,
             variantId: i.variantId,
@@ -786,6 +793,12 @@ export default function CheckoutPage() {
             <div className="flex justify-between text-sm font-medium text-emerald-700">
               <span>Desc. volumen{volumeLabel ? ` (${volumeLabel})` : ""}</span>
               <span>−${vol.volumeDiscount.toLocaleString("es-AR")}</span>
+            </div>
+          )}
+          {giftcardDiscount > 0 && (
+            <div className="flex justify-between text-sm font-medium text-violet-700">
+              <span>Giftcard</span>
+              <span>−${giftcardDiscount.toLocaleString("es-AR")}</span>
             </div>
           )}
           <div className="flex justify-between font-bold text-lg">
@@ -1007,6 +1020,64 @@ export default function CheckoutPage() {
           />
           <p className="text-[10px] text-muted-foreground/50 mt-0.5">{notes.length}/200</p>
         </div>
+
+        {/* Gift Card: canjea en efectivo/transferencia/coordinar (MP cobra aparte). */}
+          <div className="animate-fade-in-up rounded-xl border border-border bg-muted/30 p-3 space-y-2">
+            <button
+              type="button"
+              onClick={() => setShowGiftcard((v) => !v)}
+              className="flex w-full items-center justify-between gap-2 text-sm font-medium text-primary"
+            >
+              🎁 ¿Tenés giftcard?
+              <span className="text-muted-foreground text-xs">{showGiftcard ? "▲" : "▼"}</span>
+            </button>
+            {showGiftcard && (
+              <div className="space-y-2">
+                <Input
+                  value={giftcardCode}
+                  onChange={(e) => { setGiftcardCode(e.target.value.toUpperCase()); setGiftcardLookup({ loading: false, error: "", balance: null }); }}
+                  placeholder="Código (ej: ABC-123456)"
+                  className="h-10 text-sm font-mono"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={async () => {
+                    const code = giftcardCode.trim();
+                    if (!code || !v) return;
+                    setGiftcardLookup({ loading: true, error: "", balance: null });
+                    try {
+                      const res = await fetch(`/api/giftcards/validate?vendorId=${encodeURIComponent(v.id)}&code=${encodeURIComponent(code)}`);
+                      const data = await res.json();
+                      if (data.ok) {
+                        setGiftcardLookup({ loading: false, error: "", balance: Number(data.balance) });
+                      } else {
+                        setGiftcardLookup({ loading: false, error: data.error || "Código no válido", balance: null });
+                      }
+                    } catch {
+                      setGiftcardLookup({ loading: false, error: "Error de conexión", balance: null });
+                    }
+                  }}
+                  disabled={giftcardLookup.loading || !giftcardCode.trim()}
+                  className="w-full"
+                >
+                  {giftcardLookup.loading ? "Validando..." : "Aplicar giftcard"}
+                </Button>
+                {giftcardLookup.error && (
+                  <p className="text-xs text-red-600">{giftcardLookup.error}</p>
+                )}
+                {giftcardLookup.balance != null && (
+                  <div className="rounded-lg bg-green-50 border border-green-200 px-2.5 py-2 text-xs text-green-800">
+                    Saldo disponible: <strong>${Number(giftcardLookup.balance).toLocaleString("es-AR")}</strong>
+                    {giftcardDiscount > 0 && (
+                      <span className="block mt-0.5">Se descuenta <strong>${giftcardDiscount.toLocaleString("es-AR")}</strong> del total</span>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
 
         {/* Payment method */}
         <div>

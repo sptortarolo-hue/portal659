@@ -25,9 +25,14 @@ export const GET = withRateLimit(
               o.pickup_number,
               o.estimated_minutes,
               o.created_at,
+              CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'giftcard_discount')
+                THEN COALESCE(o.giftcard_discount, 0) ELSE 0 END AS giftcard_discount,
               -- Turno de entrega retail (tolerante a migración sin aplicar).
               CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'delivery_window')
                 THEN o.delivery_window ELSE NULL END AS delivery_window,
+              -- Canje de giftcard (tolerante a migración sin aplicar).
+              CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'giftcard_discount')
+                THEN COALESCE(o.giftcard_discount, 0) ELSE 0 END AS giftcard_discount,
               -- Punto vivo del repartidor (tolerante a migración sin aplicar).
               CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'courier_lat')
                 THEN o.courier_lat ELSE NULL END AS courier_lat,

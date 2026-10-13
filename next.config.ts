@@ -36,6 +36,7 @@ const nextConfig: NextConfig = {
       // (?preview=token) pasa intacta al destino.
       { source: "/og/tienda/:slug.jpg", destination: "/api/share/tienda/:slug" },
       { source: "/og/promo/:slug.jpg", destination: "/api/share/promo/:slug" },
+      { source: "/og/giftcard/:code.jpg", destination: "/api/share/giftcard/:code" },
     ];
   },
 };

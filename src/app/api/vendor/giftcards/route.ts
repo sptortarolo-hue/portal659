@@ -1,5 +1,5 @@
 import { gateRequest, gateError } from "@/lib/subscription-gate";
-import { queryMany, queryOne } from "@/lib/db";
+import { queryMany, queryOne, withTransaction } from "@/lib/db";
 import { NextResponse } from "next/server";
 import { canSellGiftcards, newGiftCode, normalizeGiftAmount } from "@/lib/giftcards";
 
@@ -8,6 +8,9 @@ import { canSellGiftcards, newGiftCode, normalizeGiftAmount } from "@/lib/giftca
  * - GET: lista (con saldo). ?code= busca una puntual.
  * - POST { action: "sell", amount, customer_name?, customer_phone?, expires_at? }:
  *   emite código con saldo = monto (se cobra por caja/MP aparte).
+ * - POST { action: "issue_order", order_id }: emite los códigos de las
+ *   giftcards vendidas en ese pedido (1 por unidad, idempotente).
+ * - POST { action: "mark_sent", id }: marca la tarjeta como enviada.
  * - POST { action: "redeem", code, amount, note? }: descuenta saldo con
  *   historial (409 si no alcanza). En 0 queda 'redeemed'.
  * - POST { action: "void", id }: anula.
@@ -19,6 +22,20 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const code = (searchParams.get("code") || "").trim().toUpperCase();
+    const orderId = (searchParams.get("orderId") || "").trim();
+    if (orderId) {
+      // Códigos emitidos por una venta (detalle del pedido). Tolerante a
+      // migración sin aplicar: sin la columna no hay vínculo posible.
+      const has = await queryOne<{ e: boolean }>(
+        `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'giftcards' AND column_name = 'order_id') AS e`
+      ).catch(() => null);
+      if (!has?.e) return NextResponse.json({ giftcards: [] });
+      const rows = await queryMany<Record<string, unknown>>(
+        `SELECT * FROM giftcards WHERE vendor_id = $1 AND order_id = $2 ORDER BY created_at DESC`,
+        [gate.vendor.id, orderId]
+      );
+      return NextResponse.json({ giftcards: rows || [] });
+    }
     const rows = code
       ? await queryMany<Record<string, unknown>>(
           `SELECT * FROM giftcards WHERE vendor_id = $1 AND code = $2 LIMIT 1`,
@@ -123,6 +140,47 @@ export async function POST(request: Request) {
         `UPDATE giftcards SET status = 'void' WHERE id = $1 AND vendor_id = $2 RETURNING *`,
         [id, gate.vendor.id]
       );
+      if (!updated) return NextResponse.json({ error: "No encontrada" }, { status: 404 });
+      return NextResponse.json({ giftcard: updated });
+    }
+
+    if (action === "issue_order") {
+      const orderId = String(body.order_id || body.orderId || "");
+      if (!orderId) return NextResponse.json({ error: "Falta el pedido" }, { status: 400 });
+      const order = await queryOne<{
+        id: string; items: unknown; customer_name: string | null; customer_phone: string | null;
+        is_preview: boolean | null; pickup_number: number | null; status: string;
+      }>(
+        `SELECT id, items, customer_name, customer_phone, is_preview, pickup_number, status
+         FROM orders WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
+        [orderId, gate.vendor.id]
+      );
+      if (!order) return NextResponse.json({ error: "Pedido no encontrado" }, { status: 404 });
+      if (order.status === "cancelled") {
+        return NextResponse.json({ error: "El pedido está cancelado" }, { status: 400 });
+      }
+      const { issueGiftcardsForOrder } = await import("@/lib/giftcards");
+      const issued = await withTransaction((tx) =>
+        issueGiftcardsForOrder(tx, {
+          vendorId: gate.vendor.id,
+          orderId: order.id,
+          items: (Array.isArray(order.items) ? order.items : []) as any[],
+          customerName: order.customer_name,
+          customerPhone: order.customer_phone,
+          isPreview: order.is_preview === true,
+          note: `Pedido #${order.pickup_number ?? order.id.slice(0, 8)}`,
+        })
+      );
+      return NextResponse.json({ issued });
+    }
+
+    if (action === "mark_sent") {
+      const id = String(body.id || "");
+      if (!id) return NextResponse.json({ error: "Falta el id" }, { status: 400 });
+      const updated = await queryOne<Record<string, unknown>>(
+        `UPDATE giftcards SET sent_at = now() WHERE id = $1 AND vendor_id = $2 RETURNING *`,
+        [id, gate.vendor.id]
+      ).catch(() => null);
       if (!updated) return NextResponse.json({ error: "No encontrada" }, { status: 404 });
       return NextResponse.json({ giftcard: updated });
     }

@@ -18,6 +18,7 @@ import {
   CONDITION_META,
 } from "@/lib/order-utils";
 import { buildModifiedOrderMessage, buildTransferInstructionsMessage } from "@/lib/whatsapp-message";
+import { isGiftProductRow, buildGiftcardWaText, giftcardCardUrl, giftcardWaLink, fmtVence } from "@/lib/gift-card-share";
 import { formatDeliveryWindow } from "@/lib/delivery-schedule";
 import { CourierAssignBox } from "@/components/dashboard/courier-assign-box";
 import { FiscalBillButton } from "@/components/dashboard/fiscal-bill-button";
@@ -89,6 +90,68 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
   // cliente por el bot manualmente; el comprobante vuelve por el chat del bot.
   const [payBusy, setPayBusy] = useState(false);
   const [payMsg, setPayMsg] = useState("");
+
+  // Tarjetas de regalo de esta venta (F2/F3): emitidas + envío por WhatsApp.
+  const [issued, setIssued] = useState<any[]>([]);
+  const [issuing, setIssuing] = useState(false);
+  const [issueMsg, setIssueMsg] = useState("");
+  const hasGiftItems = (order.items || []).some((i) => {
+    const p = (offers || []).find((o) => o.id === (i as OrderItem).product_id);
+    return isGiftProductRow(p ? { sku: (p as any).sku, category: (p as any).category } : null);
+  });
+  useEffect(() => {
+    if (!hasGiftItems) {
+      setIssued([]);
+      return;
+    }
+    fetch(`/api/vendor/giftcards?orderId=${encodeURIComponent(order.id)}`)
+      .then((r) => r.json())
+      .then((d) => setIssued(Array.isArray(d.giftcards) ? d.giftcards : []))
+      .catch(() => {});
+  }, [order.id, hasGiftItems]);
+  async function emitOrderGiftcards() {
+    setIssuing(true);
+    setIssueMsg("");
+    try {
+      const res = await fetch("/api/vendor/giftcards", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "issue_order", order_id: order.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (data.error) {
+        setIssueMsg(data.error);
+        return;
+      }
+      const list = Array.isArray(data.issued) ? data.issued : [];
+      if (list.length === 0) setIssueMsg("No había tarjetas pendientes de emitir en esta venta.");
+      const r = await fetch(`/api/vendor/giftcards?orderId=${encodeURIComponent(order.id)}`)
+        .then((x) => x.json())
+        .catch(() => ({}));
+      setIssued(Array.isArray((r as any).giftcards) ? (r as any).giftcards : list);
+    } catch {
+      setIssueMsg("Error de conexión");
+    } finally {
+      setIssuing(false);
+    }
+  }
+  function sendCardWA(c: any) {
+    const text = buildGiftcardWaText({
+      storeName: vendorName || "el local",
+      amount: Math.round(Number(c.amount) || 0),
+      code: String(c.code || ""),
+      expiresAt: typeof c.expires_at === "string" ? c.expires_at : null,
+      cardUrl: giftcardCardUrl(window.location.origin, String(c.code || "")),
+    });
+    fetch("/api/vendor/giftcards", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "mark_sent", id: c.id }),
+    }).catch(() => {});
+    const rawPhone = String(order.customer_phone || "");
+    const digits = rawPhone.startsWith("lid:") ? "" : rawPhone.replace(/[^0-9]/g, "");
+    window.open(giftcardWaLink(digits, text), "_blank");
+  }
 
   // Tildado de empaque (retail, estado Empaquetando): mismo array kitchen_done
   // que la comanda gastro. Solo lectura + tildado (la edición sigue en Nuevo).
@@ -813,6 +876,43 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
                   <span>−${Number((order as any).giftcard_discount).toLocaleString("es-AR")}</span>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Tarjetas de regalo de esta venta (emisión + envío WhatsApp) */}
+          {!editing && hasGiftItems && (order as any)?.is_preview !== true && order.status !== "cancelled" && (
+            <div className="border-t border-border pt-3 space-y-2">
+              <p className="text-xs font-medium">🎁 Tarjetas de regalo de esta venta</p>
+              {issued.length > 0 ? (
+                <div className="space-y-1.5">
+                  {issued.map((c: any) => (
+                    <div key={String(c.id || c.code)} className="flex items-center gap-2 rounded-lg bg-muted px-2.5 py-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-mono font-bold text-xs truncate">{String(c.code)}</p>
+                        <p className="text-[11px] text-muted-foreground">
+                          ${Math.round(Number(c.amount) || 0).toLocaleString("es-AR")}
+                          {" · "}
+                          {String(c.status) === "active" ? "Activa" : String(c.status) === "redeemed" ? "Agotada" : "Anulada"}
+                          {c.expires_at ? ` · Vence ${fmtVence(String(c.expires_at))}` : ""}
+                        </p>
+                      </div>
+                      {String(c.status) === "active" && (
+                        <Button type="button" size="sm" variant="outline" onClick={() => sendCardWA(c)}>
+                          Enviar WA
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Todavía no se emitieron códigos para esta venta.
+                </p>
+              )}
+              <Button type="button" size="sm" variant="outline" className="w-full" onClick={emitOrderGiftcards} disabled={issuing}>
+                {issuing ? "Emitiendo..." : "Emitir tarjetas pendientes"}
+              </Button>
+              {issueMsg && <p className="text-xs text-muted-foreground">{issueMsg}</p>}
             </div>
           )}
 

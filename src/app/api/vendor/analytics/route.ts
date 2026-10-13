@@ -231,6 +231,23 @@ export async function GET(request: Request) {
     giftcardDiscountTotal += Number((o as any).giftcard_discount) || 0;
   }
 
+  // Tarjetas vendidas por pedido (emisión automática F2): plata cobrada por
+  // anticipado. Línea separada (criterio Square): no infla product sales,
+  // pero es caja real del período. Tolerante a migración sin aplicar.
+  let giftcardSold = 0;
+  let giftcardSoldCount = 0;
+  try {
+    const gs = await queryOne<{ s: string; c: string }>(
+      `SELECT COALESCE(SUM(amount), 0) AS s, COUNT(*) AS c FROM giftcards
+       WHERE vendor_id = $1 AND order_id IS NOT NULL AND created_at >= $2`,
+      [vendorId, since]
+    );
+    giftcardSold = Math.round(Number(gs?.s) || 0);
+    giftcardSoldCount = Number(gs?.c) || 0;
+  } catch {
+    /* sin tabla/columna: queda en 0 */
+  }
+
   const topProducts = Object.values(productSales)
     .sort((a, b) => b.revenue - a.revenue)
     .slice(0, 10);
@@ -347,6 +364,7 @@ export async function GET(request: Request) {
     byMethod,
     byPay,
     discounts: { cash: Math.round(cashDiscountTotal), volume: Math.round(volumeDiscountTotal), giftcard: Math.round(giftcardDiscountTotal) },
+    giftcardSales: { amount: giftcardSold, count: giftcardSoldCount },
     insights,
     ...advanced,
   });

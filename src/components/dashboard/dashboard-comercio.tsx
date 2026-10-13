@@ -25,7 +25,6 @@ import { MpConnectCard } from "@/components/dashboard/mp-connect-card";
 import { PrinterConfigSection } from "@/components/dashboard/printer-config-section";
 import { StaffManager } from "@/components/vendor/staff-manager";
 import { FiscalTabShortcut } from "@/components/dashboard/fiscal-config-section";
-import { GiftcardsManager } from "@/components/dashboard/giftcards-manager";
 import { HoursEditor } from "@/components/dashboard/hours-editor";
 import { CartaQrSection } from "@/components/dashboard/carta-qr-section";
 import { LocationPicker } from "./location-picker";
@@ -603,10 +602,6 @@ export default function DashboardComercio({
 
       <ConfigSection id="fiscal" label="Facturación" icon="🧾" status={vendor?.fiscal_cert ? "ok" : vendor?.cuit ? "warn" : "off"}>
       <FiscalTabShortcut />
-      </ConfigSection>
-
-      <ConfigSection id="giftcards" label="Gift Cards" icon="🎁">
-        <GiftcardsManager codeHint="COM-XXXXXX" showDenominations />
       </ConfigSection>
 
       <ConfigSection id="catalogo" label="Catálogo" icon="🛍️" badge={String(offers.length)}>

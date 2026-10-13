@@ -147,6 +147,9 @@ export default function ReportePage() {
                   {(data.summary.giftcardDiscount || 0) > 0 && (
                     <Stat label="🎁 Giftcards" value={fmtARS(data.summary.giftcardDiscount)} />
                   )}
+                  {(data.summary.giftcardSold || 0) > 0 && (
+                    <Stat label="🎁 Tarjetas vendidas" value={fmtARS(data.summary.giftcardSold)} />
+                  )}
                 </div>
                 <SalesEvolution data={data.byDay} range={data.meta.range} periodLabel={`del ${data.meta.since} al ${data.meta.until}`} />
                 <div className="grid sm:grid-cols-3 gap-4">
@@ -214,6 +217,9 @@ export default function ReportePage() {
                   <Stat label="Desc. volumen" value={fmtARS(data.summary.volumeDiscount)} />
                   {(data.summary.giftcardDiscount || 0) > 0 && (
                     <Stat label="🎁 Giftcards" value={fmtARS(data.summary.giftcardDiscount)} />
+                  )}
+                  {(data.summary.giftcardSold || 0) > 0 && (
+                    <Stat label="🎁 Tarjetas vendidas" value={fmtARS(data.summary.giftcardSold)} />
                   )}
                 </div>
                 <ShareDonut title="Medios de cobro" entries={data.byPay} />

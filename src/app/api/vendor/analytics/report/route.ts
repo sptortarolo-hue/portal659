@@ -115,6 +115,22 @@ export async function GET(request: Request) {
   const previous = orders.filter((o) => new Date(o.created_at) < since);
   const sum = summarize(current);
   const prev = summarize(previous);
+  const reportVendorId = vendor.id;
+  // Tarjetas vendidas por pedido en cada ventana (emisión F2). Tolerante a
+  // migración sin aplicar.
+  async function giftcardSoldTotal(fromISO: string): Promise<{ amount: number; count: number }> {
+    try {
+      const r = await queryOne<{ s: string; c: string }>(
+        `SELECT COALESCE(SUM(amount), 0) AS s, COUNT(*) AS c FROM giftcards
+         WHERE vendor_id = $1 AND order_id IS NOT NULL AND created_at >= $2`,
+        [reportVendorId, fromISO]
+      );
+      return { amount: Math.round(Number(r?.s) || 0), count: Number(r?.c) || 0 };
+    } catch {
+      return { amount: 0, count: 0 };
+    }
+  }
+  const soldCur = await giftcardSoldTotal(since.toISOString());
   const pctDelta = (cur: number, prv: number) =>
     prv > 0 ? Math.round(((cur - prv) / prv) * 100) : null;
 
@@ -173,6 +189,8 @@ export async function GET(request: Request) {
       cashDiscount: sum.cash,
       volumeDiscount: sum.volume,
       giftcardDiscount: sum.giftcard,
+      giftcardSold: soldCur.amount,
+      giftcardSoldCount: soldCur.count,
       revenueDelta: pctDelta(sum.revenue, prev.revenue),
       ordersDelta: pctDelta(sum.orders, prev.orders),
       ticketDelta: pctDelta(sum.ticket, prev.ticket),
@@ -240,6 +258,8 @@ export async function GET(request: Request) {
       cashDiscount: sum.cash,
       volumeDiscount: sum.volume,
       giftcardDiscount: sum.giftcard,
+      giftcardSold: soldCur.amount,
+      giftcardSoldCount: soldCur.count,
     };
     payload.byPay = byPay;
     payload.daily = byDay;
@@ -318,6 +338,7 @@ export async function GET(request: Request) {
       push("Desc. efectivo", s.cashDiscount);
       push("Desc. volumen", s.volumeDiscount);
       if (Number(s.giftcardDiscount) > 0) push("🎁 Giftcards", s.giftcardDiscount);
+      if (Number(s.giftcardSold) > 0) push("🎁 Tarjetas vendidas", s.giftcardSold);
       table("Resumen números", [{ header: "Concepto", key: "k" }, { header: "Valor", key: "v", numFmt: moneyFmt }], sumRows);
       table("Por día", [
         { header: "Fecha", key: "label", width: 12 },
@@ -377,6 +398,7 @@ export async function GET(request: Request) {
       push("Desc. efectivo", s.cashDiscount);
       push("Desc. volumen", s.volumeDiscount);
       if (Number(s.giftcardDiscount) > 0) push("🎁 Giftcards", s.giftcardDiscount);
+      if (Number(s.giftcardSold) > 0) push("🎁 Tarjetas vendidas", s.giftcardSold);
       table("Resumen números", [{ header: "Concepto", key: "k" }, { header: "Valor", key: "v", numFmt: moneyFmt }], sumRows);
       table("Medios de cobro", [
         { header: "Medio", key: "label", width: 24 },
@@ -438,6 +460,7 @@ export async function GET(request: Request) {
       { k: "Facturación", v: s.revenue }, { k: "Pedidos", v: s.orders }, { k: "Ticket promedio", v: s.ticket },
       { k: "Cancelados", v: s.cancelled }, { k: "Desc. efectivo", v: s.cashDiscount }, { k: "Desc. volumen", v: s.volumeDiscount },
       ...(Number(s.giftcardDiscount) > 0 ? [{ k: "🎁 Giftcards", v: s.giftcardDiscount }] : []),
+      ...(Number(s.giftcardSold) > 0 ? [{ k: "🎁 Tarjetas vendidas", v: s.giftcardSold }] : []),
     ], ["k", "v"]);
     csvTable(["Fecha", "Pedidos", "Facturación"], payload.byDay, ["label", "count", "revenue"]);
     csvTable(["Canal", "Pedidos", "Facturación"], payload.byChannel, ["label", "count", "revenue"]);
@@ -460,6 +483,7 @@ export async function GET(request: Request) {
       { k: "Facturación", v: s.revenue }, { k: "Cobros", v: s.orders }, { k: "Ticket promedio", v: s.ticket },
       { k: "Desc. efectivo", v: s.cashDiscount }, { k: "Desc. volumen", v: s.volumeDiscount },
       ...(Number(s.giftcardDiscount) > 0 ? [{ k: "🎁 Giftcards", v: s.giftcardDiscount }] : []),
+      ...(Number(s.giftcardSold) > 0 ? [{ k: "🎁 Tarjetas vendidas", v: s.giftcardSold }] : []),
     ], ["k", "v"]);
     csvTable(["Medio de cobro", "Cobros", "Facturación"], payload.byPay, ["label", "count", "revenue"]);
     csvTable(["Fecha", "Facturación", "Desc. efectivo", "Desc. volumen", "🎁 Giftcards"], payload.daily, ["label", "revenue", "cash", "volume", "giftcard"]);

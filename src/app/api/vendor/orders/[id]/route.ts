@@ -147,8 +147,8 @@ export async function PATCH(
     return NextResponse.json({ error: "Estado de pago inválido" }, { status: 400 });
   }
 
-  const currentOrder = await queryOne<{ status: string; payment_status: string; payment_method: string; channel: string; method: string; items: OrderItem[] | null; customer_phone: string | null; total: number; is_preview: boolean | null; kitchen_done: boolean[] | null }>(
-    `SELECT status, payment_status, payment_method, channel, method, items, customer_phone, total, is_preview,
+  const currentOrder = await queryOne<{ status: string; payment_status: string; payment_method: string; channel: string; method: string; items: OrderItem[] | null; customer_name: string | null; customer_phone: string | null; total: number; is_preview: boolean | null; kitchen_done: boolean[] | null }>(
+    `SELECT status, payment_status, payment_method, channel, method, items, customer_name, customer_phone, total, is_preview,
       -- Tolerante a migración de progreso de cocina sin aplicar.
       CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'kitchen_done')
         THEN kitchen_done ELSE '[]'::jsonb END AS kitchen_done
@@ -505,6 +505,43 @@ export async function PATCH(
         }
       }
 
+      // Venta cancelada: los códigos emitidos por este pedido se anulan
+      // (si ya se canjearon, quedan como están: el saldo usado no vuelve).
+      if (status === "cancelled" && currentOrder.is_preview !== true) {
+        try {
+          const { voidGiftcardsForOrder } = await import("@/lib/giftcards");
+          await voidGiftcardsForOrder(tx, { vendorId: vendor.id, orderId: params.id, note: "venta cancelada" });
+        } catch {
+          /* best-effort */
+        }
+      }
+
+      // Emisión automática de giftcards vendidas (F2): al completar el pedido
+      // o al marcarlo cobrado (cubre transferencia/efectivo online). Solo en
+      // transición (no re-emite lo ya emitido: idempotente por unidad).
+      // Preview nunca emite. Best-effort + log: la venta queda igual y se
+      // puede emitir a mano desde el detalle.
+      const justCompleted = status === "completed" && currentOrder.status !== "completed";
+      const justPaid = payment_status === "paid" && currentOrder.payment_status !== "paid";
+      if ((justCompleted || justPaid) && currentOrder.is_preview !== true) {
+        try {
+          const { issueGiftcardsForOrder } = await import("@/lib/giftcards");
+          const patchedItems = ((orderRows[0].items as OrderItem[] | null) ?? currentOrder.items) || [];
+          await issueGiftcardsForOrder(tx, {
+            vendorId: vendor.id,
+            orderId: params.id,
+            items: patchedItems as any[],
+            customerName: ((orderRows[0].customer_name as string | null) ?? currentOrder.customer_name) as string | null,
+            customerPhone: ((orderRows[0].customer_phone as string | null) ?? currentOrder.customer_phone) as string | null,
+            isPreview: false,
+            note: `Pedido #${(orderRows[0].pickup_number as number | null) ?? params.id.slice(0, 8)}`,
+          });
+        } catch (e) {
+          const { logApiError } = await import("@/lib/api-error");
+          logApiError("orders-patch/giftcard-issue", e);
+        }
+      }
+
       return orderRows[0];
     });
   } catch (e) {
@@ -653,6 +690,15 @@ export async function DELETE(
       const returnedStock: StockMove[] = await adjustStockForItems(tx, (order.items || []).filter((i) => (i as OrderItem)?.unit !== "kg"), "increment");
       for (const m of returnedStock) {
         await logStockMovement(tx, { vendorId: vendor.id, product_id: m.product_id, variant_id: m.variant_id, qty_delta: m.qty, reason: "devolucion", ref_order: params.id });
+      }
+    }
+    // Códigos emitidos por la venta: se anulan antes de borrar el pedido.
+    if (order.is_preview !== true) {
+      try {
+        const { voidGiftcardsForOrder } = await import("@/lib/giftcards");
+        await voidGiftcardsForOrder(tx, { vendorId: vendor.id, orderId: params.id, note: "venta borrada" });
+      } catch {
+        /* best-effort */
       }
     }
     await tx.queryVoid(`DELETE FROM orders WHERE id = $1 AND vendor_id = $2`, [params.id, vendor.id]);

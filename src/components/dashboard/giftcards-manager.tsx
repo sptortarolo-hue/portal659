@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
+import { fmtVence, buildGiftcardWaText, giftcardCardUrl, giftcardWaLink } from "@/lib/gift-card-share";
 
 type Giftcard = {
   id: string;
@@ -19,13 +20,6 @@ type Giftcard = {
 
 type Denomination = { id: string; amount: number; active: boolean };
 
-/** YYYY-MM-DD (o con hora) → DD/MM/AAAA para mostrar vigencia. */
-function fmtVence(iso: string | null | undefined): string {
-  const d = String(iso || "").slice(0, 10);
-  const m = d.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  return m ? `${m[3]}/${m[2]}/${m[1]}` : d;
-}
-
 /**
  * Giftcards compartidas (estética, comercio, moda): emisión con saldo +
  * canje manual con historial + montos fijos para la venta online.
@@ -37,11 +31,13 @@ export function GiftcardsManager({
   codeHint = "EST-XXXXXX",
   redeemHint = "Detalle (ej: pedido, turno)",
   showDenominations = false,
+  storeName = "el local",
 }: {
   onChanged?: () => void;
   codeHint?: string;
   redeemHint?: string;
   showDenominations?: boolean;
+  storeName?: string;
 }) {
   const [cards, setCards] = useState<Giftcard[]>([]);
   const [loading, setLoading] = useState(true);
@@ -62,6 +58,50 @@ export function GiftcardsManager({
   const [denMissing, setDenMissing] = useState(false);
   const [newDen, setNewDen] = useState("");
   const [denSaving, setDenSaving] = useState(false);
+  // Ficha expandible por tarjeta: historial + reenvío por WhatsApp.
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [movesById, setMovesById] = useState<Record<string, any[]>>({});
+  const [movesBusy, setMovesBusy] = useState(false);
+
+  async function toggleCard(c: Giftcard) {
+    if (openId === c.id) {
+      setOpenId(null);
+      return;
+    }
+    setOpenId(c.id);
+    if (movesById[c.id]) return;
+    setMovesBusy(true);
+    try {
+      const res = await fetch(`/api/vendor/giftcard-moves?giftcardId=${encodeURIComponent(c.id)}`);
+      const data = await res.json();
+      if (Array.isArray(data.moves)) {
+        setMovesById((prev) => ({ ...prev, [c.id]: data.moves }));
+      }
+    } catch {
+      /* noop */
+    } finally {
+      setMovesBusy(false);
+    }
+  }
+
+  async function resendCard(c: Giftcard) {
+    const text = buildGiftcardWaText({
+      storeName,
+      amount: Math.round(Number(c.amount) || 0),
+      code: String(c.code || ""),
+      expiresAt: c.expires_at,
+      cardUrl: giftcardCardUrl(window.location.origin, String(c.code || "")),
+    });
+    fetch("/api/vendor/giftcards", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "mark_sent", id: c.id }),
+    })
+      .then(() => load())
+      .catch(() => {});
+    const digits = String(c.customer_phone || "").replace(/[^0-9]/g, "");
+    window.open(giftcardWaLink(digits, text), "_blank");
+  }
 
   async function load() {
     setLoading(true);
@@ -254,22 +294,65 @@ export function GiftcardsManager({
         <p className="text-xs text-muted-foreground">Cargando...</p>
       ) : cards.length > 0 && (
         <div className="space-y-1.5 max-h-56 overflow-y-auto">
-          {cards.map((c) => (
-            <div key={c.id} className="flex items-center gap-2 rounded-lg bg-muted px-2.5 py-2 text-xs">
-              <span className="flex-1 min-w-0">
-                <span className="block font-mono font-bold truncate">{c.code}</span>
-                <span className="block text-muted-foreground">
-                  Saldo ${Number(c.balance || 0).toLocaleString("es-AR")} de ${Number(c.amount || 0).toLocaleString("es-AR")}
-                  {c.customer_name ? ` · ${c.customer_name}` : ""} · {statusLabel(c)}{venceLabel(c)}
-                </span>
-              </span>
-              {c.status === "active" && (
-                <button type="button" onClick={() => voidCard(c.id)} className="text-red-600 hover:text-red-700 flex-shrink-0" title="Anular">
-                  ✕
+          {cards.map((c) => {
+            const open = openId === c.id;
+            const moves = movesById[c.id] || [];
+            return (
+              <div key={c.id} className="rounded-lg bg-muted px-2.5 py-2 text-xs">
+                <button
+                  type="button"
+                  onClick={() => toggleCard(c)}
+                  className="w-full flex items-center gap-2 text-left"
+                >
+                  <span className="flex-1 min-w-0">
+                    <span className="block font-mono font-bold truncate">{c.code}</span>
+                    <span className="block text-muted-foreground">
+                      Saldo ${Number(c.balance || 0).toLocaleString("es-AR")} de ${Number(c.amount || 0).toLocaleString("es-AR")}
+                      {c.customer_name ? ` · ${c.customer_name}` : ""} · {statusLabel(c)}{venceLabel(c)}
+                      {(c as any).sent_at ? " · Enviada ✓" : " · Sin enviar"}
+                    </span>
+                  </span>
+                  <span className="text-muted-foreground flex-shrink-0">{open ? "▲" : "▼"}</span>
+                  {c.status === "active" && (
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      onClick={(e) => { e.stopPropagation(); voidCard(c.id); }}
+                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); voidCard(c.id); } }}
+                      className="text-red-600 hover:text-red-700 flex-shrink-0"
+                      title="Anular"
+                    >
+                      ✕
+                    </span>
+                  )}
                 </button>
-              )}
-            </div>
-          ))}
+                {open && (
+                  <div className="mt-2 space-y-1.5 border-t border-border/60 pt-2">
+                    {movesBusy && moves.length === 0 ? (
+                      <p className="text-muted-foreground">Cargando historial...</p>
+                    ) : moves.length > 0 ? (
+                      moves.map((m: any) => (
+                        <div key={String(m.id)} className="flex items-center justify-between gap-2">
+                          <span className="text-muted-foreground">
+                            {String(m.kind) === "issue" ? "Emitida" : String(m.kind) === "redeem" ? "Canje" : "Ajuste"}
+                            {m.note ? ` · ${String(m.note)}` : ""}
+                          </span>
+                          <span className="tabular-nums font-medium">
+                            {String(m.kind) === "redeem" ? "−" : "+"}${Math.round(Number(m.amount) || 0).toLocaleString("es-AR")}
+                          </span>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-muted-foreground">Sin movimientos todavía.</p>
+                    )}
+                    <Button type="button" size="sm" variant="outline" className="w-full" onClick={() => resendCard(c)}>
+                      Enviar por WhatsApp
+                    </Button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
       <div className="border-t border-border pt-3 space-y-2">

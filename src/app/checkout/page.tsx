@@ -13,15 +13,9 @@ import { cashAppliesToItem, cashPrice, normalizeCashPct } from "@/lib/cash-disco
 import { cartLineTotal } from "@/lib/order-line";
 import { mirrorVolume } from "@/lib/volume-mirror";
 import { checkArgPhone, toE164 } from "@/lib/phone";
+import { fmtVence } from "@/lib/gift-card-share";
 import { OrderSummaryModal } from "@/components/cart/order-summary-modal";
 import { readPreviewSession } from "@/components/store/preview-session-sync";
-
-/** YYYY-MM-DD (o con hora) → DD/MM/AAAA para mostrar vigencia. */
-function fmtVence(iso: string | null | undefined): string {
-  const d = String(iso || "").slice(0, 10);
-  const m = d.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  return m ? `${m[3]}/${m[2]}/${m[1]}` : d;
-}
 
 export default function CheckoutPage() {
   const router = useRouter();

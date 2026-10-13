@@ -20,6 +20,7 @@ import { printsAdd } from "@/lib/offline-db";
 import { saveDraft, loadDraft, clearDraft } from "@/lib/draft";
 import type { ContingencyKind } from "@/lib/offline-print";
 import { useCashShift } from "@/lib/use-cash-shift";
+import { fmtVence, buildGiftcardWaText, giftcardCardUrl, giftcardWaLink } from "@/lib/gift-card-share";
 
 const OFFLINE_PAYMENT_LABELS: Record<string, string> = {
   efectivo: "Efectivo",
@@ -117,13 +118,6 @@ function lineKey(productId: string, variantId: string | undefined, modifiers?: C
   return `${productId}|${variantId || ""}|${(modifiers || []).map((m) => m.label).sort().join(",")}`;
 }
 
-/** YYYY-MM-DD (o con hora) → DD/MM/AAAA para mostrar vigencia de giftcard. */
-function fmtVence(iso: string | null | undefined): string {
-  const d = String(iso || "").slice(0, 10);
-  const m = d.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  return m ? `${m[3]}/${m[2]}/${m[1]}` : d;
-}
-
 type MostradorOrder = {
   id: string;
   total: number;
@@ -164,6 +158,10 @@ export function Mostrador({ vendorId }: { vendorId?: string | null }) {
   const [giftcardBusy, setGiftcardBusy] = useState(false);
   const [giftcardErr, setGiftcardErr] = useState("");
   const [giftcardExpires, setGiftcardExpires] = useState<string | null>(null);
+  // Códigos emitidos al cobrar (venta de giftcards): se muestran con botón
+  // de envío por WhatsApp. Se limpian al iniciar el próximo cobro.
+  const [issuedCodes, setIssuedCodes] = useState<{ id: string; code: string; amount: number }[]>([]);
+  const [storeBrand, setStoreBrand] = useState<{ name: string; logo: string | null } | null>(null);
   const [method, setMethod] = useState<"pickup" | "delivery" | "direct">("pickup");
   const [customerPhone, setCustomerPhone] = useState("");
   const [customerAddress, setCustomerAddress] = useState("");
@@ -1195,6 +1193,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
 
     setSaving(true);
     setMsg("");
+    setIssuedCodes([]);
 
     // Camino offline (F2): sin red → encolar + UI optimista con número
     // provisorio. El sync engine (F3) lo envía al reconectar.
@@ -1511,6 +1510,16 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
     setRecent((prev) =>
       [{ id: data.orderId, total: Number(data.order?.total ?? total), payment_method: data.order?.payment_method ?? payment, paid_at: data.order?.paid_at ?? new Date().toISOString(), status: data.order?.status ?? (direct ? "completed" : "preparing"), created_at: data.order?.created_at ?? new Date().toISOString(), pickup_number: data.order?.pickup_number ?? null, method: data.order?.method ?? (direct ? "pickup" : method) }, ...prev].slice(0, 20)
     );
+    // Códigos de giftcards emitidos en esta venta (F2) + marca para el mensaje.
+    if (Array.isArray((data as any)?.giftcardIssued) && (data as any).giftcardIssued.length > 0) {
+      setIssuedCodes(
+        (data as any).giftcardIssued
+          .filter((g: any) => g && g.code)
+          .map((g: any) => ({ id: String(g.id || ""), code: String(g.code), amount: Math.round(Number(g.amount) || 0) }))
+      );
+      const st = (data as any)?.store;
+      if (st && st.name) setStoreBrand({ name: String(st.name), logo: st.logo != null ? String(st.logo) : null });
+    }
   }
 
   // El cliente no quiere esperar más en el mostrador: convertir el pedido a domicilio.
@@ -2306,6 +2315,43 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
           >
             {msg}
           </p>
+        )}
+        {issuedCodes.length > 0 && (
+          <div className="rounded-xl border border-violet-200 bg-violet-50 p-3 space-y-2">
+            <p className="text-sm font-semibold">🎁 Tarjetas generadas ({issuedCodes.length})</p>
+            {issuedCodes.map((c) => (
+              <div key={c.id || c.code} className="flex items-center gap-2 rounded-lg bg-white px-2.5 py-2">
+                <div className="flex-1 min-w-0">
+                  <p className="font-mono font-bold text-sm">{c.code}</p>
+                  <p className="text-xs text-muted-foreground">${c.amount.toLocaleString("es-AR")} de saldo</p>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => {
+                    const text = buildGiftcardWaText({
+                      storeName: storeBrand?.name || "el local",
+                      amount: c.amount,
+                      code: c.code,
+                      expiresAt: null,
+                      cardUrl: giftcardCardUrl(window.location.origin, c.code),
+                    });
+                    fetch("/api/vendor/giftcards", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ action: "mark_sent", id: c.id }),
+                    }).catch(() => {});
+                    window.open(giftcardWaLink(toE164(customerPhone) || "", text), "_blank");
+                  }}
+                >
+                  Enviar WA
+                </Button>
+              </div>
+            ))}
+            <p className="text-[11px] text-muted-foreground">
+              Se abre WhatsApp con el mensaje listo + link a la tarjeta diseñada.
+            </p>
+          </div>
         )}
         {shiftBlocked && (
           <div className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">

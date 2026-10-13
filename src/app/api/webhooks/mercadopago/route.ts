@@ -670,6 +670,7 @@ export async function POST(request: Request) {
           mpZoneCols = false;
         }
         let order: any = null;
+        let mpIssued: { id: string; code: string; amount: number }[] = [];
         await withTransaction(async (tx) => {
           const cols = `vendor_id, customer_name, customer_phone, customer_address, method, items, total, status, pickup_number, payment_method, payment_status, track_token, mp_payment_id${mpZoneCols ? ", delivery_zone_id, delivery_zone_name, delivery_out_of_area, delivery_fee" : ""}${mpWindowCol ? ", delivery_window" : ""}`;
           const vals: unknown[] = [
@@ -749,6 +750,24 @@ export async function POST(request: Request) {
             // best-effort: ver nota arriba (se loguea para no perderlo en silencio)
             logApiError("mp-webhook/stock", e);
           }
+
+          // Emisión automática de giftcards vendidas (F2): el pago ya está
+          // aprobado (pedidos MP nunca son preview). Idempotente: los
+          // reintentos del webhook no duplican códigos.
+          try {
+            const { issueGiftcardsForOrder } = await import("@/lib/giftcards");
+            mpIssued = await issueGiftcardsForOrder(tx, {
+              vendorId,
+              orderId: String(order?.id || ""),
+              items: (orderItems || []) as any[],
+              customerName,
+              customerPhone,
+              isPreview: false,
+              note: `Venta online MP${pickupNumber ? ` #${pickupNumber}` : ""}`,
+            });
+          } catch (e) {
+            logApiError("mp-webhook/giftcard-issue", e);
+          }
         });
 
         const vendor = await queryOne<{ user_id: string; store_name: string }>(
@@ -758,7 +777,10 @@ export async function POST(request: Request) {
 
         if (vendor?.user_id) {
           const title = "¡Pago aprobado! Nuevo pedido";
-          const body = `Nuevo pedido pagado de $${Number(payment.transaction_amount).toLocaleString("es-AR")} vía Mercado Pago${pickupNumber ? ` · Pedido #${pickupNumber}` : ""}`;
+          const giftTxt = mpIssued.length > 0
+            ? ` · 🎁 ${mpIssued.length} tarjeta(s): ${mpIssued.map((g) => g.code).join(", ")}`
+            : "";
+          const body = `Nuevo pedido pagado de $${Number(payment.transaction_amount).toLocaleString("es-AR")} vía Mercado Pago${pickupNumber ? ` · Pedido #${pickupNumber}` : ""}${giftTxt}`;
           await query(
             `INSERT INTO notifications (user_id, title, body, type, link)
              VALUES ($1, $2, $3, 'payment', '/vendor/dashboard')`,

@@ -258,6 +258,7 @@ export async function POST(request: Request) {
     }
   }
   let order: Record<string, any> | null = null;
+  let giftcardIssued: { id: string; code: string; amount: number }[] = [];
   let resolvedVolumeApplied: ResolvedPricing["volumeApplied"] = [];
   try {
     order = await withTransaction(async (tx) => {
@@ -438,6 +439,27 @@ export async function POST(request: Request) {
       vals
     );
 
+    // Emisión automática de giftcards vendidas (F2): al cobrar en el acto
+    // (fiado queda pendiente → se emiten al cubrirse o a mano desde el
+    // detalle). Idempotente por (pedido, producto, unidad); preview nunca.
+    if (order?.id && !previewOrder && payment !== "fiado") {
+      try {
+        const { issueGiftcardsForOrder } = await import("@/lib/giftcards");
+        giftcardIssued = await issueGiftcardsForOrder(tx, {
+          vendorId: gate.vendor.id,
+          orderId: String(order.id),
+          items: (finalItems || []) as any[],
+          customerName: customerName?.trim() || null,
+          customerPhone: customerPhoneClean || null,
+          isPreview: false,
+          note: `Venta mostrador #${pickupNumber ?? order.id.slice(0, 8)}`,
+        });
+      } catch (e) {
+        const { logApiError } = await import("@/lib/api-error");
+        logApiError("pos/order-giftcard-issue", e);
+      }
+    }
+
     // Kardex: la venta de mostrador mueve stock (lo que adjust descontó).
     if (!previewOrder && order?.id) {
       for (const m of movedStock) {
@@ -505,5 +527,5 @@ export async function POST(request: Request) {
     throw e;
   }
 
-  return NextResponse.json({ ok: true, orderId: order?.id, order, volumeDiscount: (order as any)?.volume_discount ?? 0, volumeApplied: resolvedVolumeApplied });
+  return NextResponse.json({ ok: true, orderId: order?.id, order, volumeDiscount: (order as any)?.volume_discount ?? 0, volumeApplied: resolvedVolumeApplied, giftcardIssued, store: { name: gate.vendor.store_name, logo: ((gate.vendor as any)?.logo_url ?? null) as string | null } });
 }

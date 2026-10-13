@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { X, Package, ChefHat, ShoppingBag, LayoutGrid, UtensilsCrossed, Settings, BarChart3, History, Star, ExternalLink, LogOut, Home, Sparkles, Calculator, Bot, DollarSign, Receipt, Users, MessageSquare, CalendarDays, ClipboardList, Boxes, Image, BookOpen, Share } from "lucide-react";
+import { X, Package, ChefHat, ShoppingBag, LayoutGrid, UtensilsCrossed, Settings, BarChart3, History, Star, ExternalLink, LogOut, Home, Sparkles, Calculator, Bot, DollarSign, Receipt, Users, MessageSquare, CalendarDays, ClipboardList, Boxes, Image, BookOpen, Share, Gift } from "lucide-react";
 import type { ConfigSectionStatus } from "@/components/dashboard/config-nav";
 
-type Tab = "hoy" | "config" | "menu" | "orders" | "pedidos" | "mostrador" | "history" | "comanda" | "analytics" | "pos" | "mesas" | "caja" | "gastos" | "clientes" | "reviews" | "recetas" | "fiscal" | "inventario" | "galeria" | "promos";
+type Tab = "hoy" | "config" | "menu" | "orders" | "pedidos" | "mostrador" | "history" | "comanda" | "analytics" | "pos" | "mesas" | "caja" | "gastos" | "clientes" | "reviews" | "recetas" | "fiscal" | "inventario" | "galeria" | "promos" | "tarjetas";
 
 interface VendorSidebarProps {
   open: boolean;
@@ -61,6 +61,7 @@ const GESTION_ITEMS: { tab: Tab; label: string; icon: typeof UtensilsCrossed; sh
   { tab: "recetas", label: "Preparación y Costo", icon: Calculator, show: (g) => g },
   { tab: "clientes", label: "Clientes", icon: Users, show: (g, m, c) => g || c || m },
   { tab: "gastos", label: "Gastos", icon: Receipt, show: (g, m, c) => g || c || m },
+  { tab: "tarjetas", label: "Tarjetas", icon: Gift, show: (g, m, c) => c || m },
   { tab: "config", label: "Configuración", icon: Settings, show: () => true },
 ];
 
@@ -330,6 +331,14 @@ export default function VendorSidebar({
                     icon={Share}
                     label="Promos"
                   />
+                  {isEstetica && (
+                    <NavButton
+                      active={currentTab === "tarjetas"}
+                      onClick={() => handleTab("tarjetas")}
+                      icon={Gift}
+                      label="Tarjetas"
+                    />
+                  )}
                   {isEstetica && (
                     <NavButton
                       active={currentTab === "menu"}

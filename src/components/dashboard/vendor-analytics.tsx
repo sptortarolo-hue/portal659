@@ -57,6 +57,7 @@ type AnalyticsData = {
   byMethod?: Record<string, { count: number; revenue: number }>;
   byPay?: Record<string, { count: number; revenue: number }>;
   discounts?: { cash: number; volume: number; giftcard?: number };
+  giftcardSales?: { amount: number; count: number };
   hourly?: { hour: string; count: number; revenue: number }[];
   topHours?: { hour: string; count: number; revenue: number }[];
   byDayOfWeek?: { day: string; count: number; revenue: number }[];
@@ -329,6 +330,21 @@ export function VendorAnalytics() {
                     <div className="flex justify-between text-sm border-t border-border pt-2">
                       <span className="text-muted-foreground">Total</span>
                       <span className="font-bold">-${discountTotal.toLocaleString("es-AR")}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {(data.giftcardSales?.amount || 0) > 0 && (
+                <div className="border border-border rounded-xl p-4 bg-card">
+                  <h3 className="font-medium text-sm mb-3">🎁 Tarjetas vendidas</h3>
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Cobrado por anticipado</span>
+                      <span className="font-medium">+${(data.giftcardSales?.amount || 0).toLocaleString("es-AR")}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Códigos emitidos</span>
+                      <span className="font-medium">{data.giftcardSales?.count || 0}</span>
                     </div>
                   </div>
                 </div>

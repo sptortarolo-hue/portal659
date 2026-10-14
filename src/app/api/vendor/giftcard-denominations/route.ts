@@ -171,14 +171,30 @@ export async function POST(request: Request) {
       ).catch(() => null);
       if (!den) return NextResponse.json({ error: "No encontrado" }, { status: 404 });
       const damt = Math.round(Number(den.amount)) || 0;
-      const imageUrl =
-        typeof body.image_url === "string" && body.image_url.trim() !== ""
-          ? body.image_url.trim().slice(0, 500)
-          : null;
-      const description =
-        typeof body.description === "string" && body.description.trim() !== ""
-          ? body.description.trim().slice(0, 500)
-          : null;
+      // Personalización parcial: solo se tocan las claves presentes en el
+      // body (image_url "" limpia la foto sin tocar el texto y viceversa).
+      // Precio/categoría/sku van atados a la denominación y no se tocan.
+      const sets: string[] = [];
+      const svals: unknown[] = [];
+      if ("image_url" in body) {
+        const imageUrl =
+          typeof body.image_url === "string" && body.image_url.trim() !== ""
+            ? body.image_url.trim().slice(0, 500)
+            : null;
+        sets.push(`image_url = $${svals.length + 1}`);
+        svals.push(imageUrl);
+      }
+      if ("description" in body) {
+        const description =
+          typeof body.description === "string" && body.description.trim() !== ""
+            ? body.description.trim().slice(0, 500)
+            : null;
+        sets.push(`description = $${svals.length + 1}`);
+        svals.push(description);
+      }
+      if (sets.length === 0) {
+        return NextResponse.json({ error: "Nada para personalizar" }, { status: 400 });
+      }
       let prod = await queryOne<{ id: string }>(
         `SELECT id FROM products WHERE vendor_id = $1 AND (sku = $2 OR (lower(category) = 'giftcards' AND price = $3)) LIMIT 1`,
         [gate.vendor.id, `GC-${damt}`, damt]
@@ -196,9 +212,9 @@ export async function POST(request: Request) {
         );
       }
       const updated = await queryOne<{ id: string; image_url: string | null; description: string | null }>(
-        `UPDATE products SET image_url = $3, description = $4 WHERE id = $1 AND vendor_id = $2
+        `UPDATE products SET ${sets.join(", ")} WHERE id = $${svals.length + 1} AND vendor_id = $${svals.length + 2}
          RETURNING id, image_url, description`,
-        [prod.id, gate.vendor.id, imageUrl, description]
+        [...svals, prod.id, gate.vendor.id]
       );
       return NextResponse.json({ denomination: { id: den.id, amount: damt }, product: updated });
     }

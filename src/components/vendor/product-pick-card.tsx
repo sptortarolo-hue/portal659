@@ -1,6 +1,7 @@
 "use client";
 
 import { ProductImage } from "@/components/product-image";
+import { isGiftProductRow } from "@/lib/gift-card-share";
 
 export type PickProduct = {
   id: string;
@@ -11,6 +12,8 @@ export type PickProduct = {
   available?: boolean;
   category?: string | null;
   vertical?: string | null;
+  /** SKU (las giftcards van por sku GC-<monto> o categoría). */
+  sku?: string | null;
   /** Venta en packs (ej: 6). El precio es del paquete. */
   pack_size?: number | null;
   /** Unidad de venta: "kg" = precio por kilo (balanza). */
@@ -30,6 +33,7 @@ export function ProductPickCard({
   onAdd: () => void;
 }) {
   const p = product;
+  const isGift = isGiftProductRow(p);
   return (
     <button
       type="button"
@@ -46,6 +50,11 @@ export function ProductPickCard({
           className="w-full h-full"
           iconClassName="h-10 w-10"
         />
+        {isGift && (
+          <span className="absolute bottom-2 left-2 rounded-full bg-violet-600 text-white text-[9px] font-bold px-2 py-0.5">
+            🎁 Tarjeta
+          </span>
+        )}
         {p.available === false && (
           <span className="absolute top-2 left-2 rounded-full bg-red-500 text-white text-[9px] font-bold px-2 py-0.5">
             Agotado

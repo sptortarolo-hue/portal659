@@ -100,7 +100,6 @@ export function GiftcardsManager({
       setCustomBusy(false);
     }
   }
-
   async function saveCustomDesc(d: Denomination) {
     setCustomBusy(true);
     try {
@@ -116,6 +115,27 @@ export function GiftcardsManager({
       }
       setCustomId(null);
       setCustomDesc("");
+      await loadDens();
+      onChanged?.();
+    } finally {
+      setCustomBusy(false);
+    }
+  }
+
+  async function clearCustomPhoto(d: Denomination) {
+    if (!window.confirm("¿Quitar la foto de la tarjeta?")) return;
+    setCustomBusy(true);
+    try {
+      const res = await fetch("/api/vendor/giftcard-denominations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "customize", id: d.id, image_url: "" }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (data.error) {
+        setMsg(data.error);
+        return;
+      }
       await loadDens();
       onChanged?.();
     } finally {
@@ -484,7 +504,7 @@ export function GiftcardsManager({
                           ✕
                         </button>
                       </div>
-                      <div className="mt-1.5 flex items-center gap-2">
+                      <div className="mt-1.5 flex items-center gap-2 flex-wrap">
                         <label className="text-[11px] text-primary underline cursor-pointer">
                           {d.image_url ? "Cambiar foto" : "Agregar foto"}
                           <input
@@ -499,6 +519,16 @@ export function GiftcardsManager({
                             }}
                           />
                         </label>
+                        {d.image_url && (
+                          <button
+                            type="button"
+                            className="text-[11px] text-red-600 underline"
+                            disabled={customBusy}
+                            onClick={() => clearCustomPhoto(d)}
+                          >
+                            Quitar foto
+                          </button>
+                        )}
                         <button
                           type="button"
                           className="text-[11px] text-primary underline"

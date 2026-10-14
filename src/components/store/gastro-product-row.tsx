@@ -340,8 +340,8 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
           </div>
         )}
         <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <p className="font-semibold leading-tight">{product.name}</p>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
+            <p className="font-semibold leading-tight truncate min-w-0 flex-1">{product.name}</p>
             {product.featured_today && <Badge className="bg-sun text-ink hover:bg-sun">Hoy</Badge>}
             {promoPct > 0 ? (
               <span className="text-[10px] font-bold text-white bg-red-500 rounded-full px-2 py-0.5 whitespace-nowrap flex-shrink-0">
@@ -447,7 +447,7 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
         </div>
       )}
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-1.5 min-w-0">
+        <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 min-w-0">
           <p className="font-semibold leading-tight truncate min-w-0 flex-1">{product.name}</p>
           {product.featured_today && <Badge className="bg-sun text-ink text-[10px] px-1.5 flex-shrink-0">Hoy</Badge>}
           {pack > 1 && <Badge className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] px-1.5 whitespace-nowrap flex-shrink-0">De a {pack}</Badge>}

@@ -230,12 +230,16 @@ export default async function PromoPage({
           </div>
         )}
 
-        <div className="mt-8 text-center">
+        <div className="mt-8 rounded-2xl border-2 border-primary/20 bg-card p-5 text-center shadow-sm">
+          <p className="font-display text-lg font-semibold">¿Buscás algo más?</p>
+          <p className="text-sm text-muted-foreground mt-1 mb-4">
+            Mirá todo el catálogo de {v.store_name} — hay mucho más que promos.
+          </p>
           <a
             href={`/tienda/${slug}`}
-            className="text-sm text-gray-500 hover:text-gray-700 underline"
+            className="inline-flex items-center gap-2 rounded-full bg-primary text-primary-foreground px-8 py-3 text-sm font-semibold hover:bg-primary/90 transition-all active:scale-95"
           >
-            Ver menú completo
+            🛍️ Ver menú completo
           </a>
         </div>
       </div>

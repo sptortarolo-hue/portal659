@@ -296,7 +296,9 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
   const canModify = order.status === "new" && !isTerminal;
   const STEP_ORDER = flowSteps(isRetail);
   const statusIdx = STEP_ORDER.indexOf(order.status as OrderStatus);
-  const nextStatus = nextStatusFor(order.status as OrderStatus, order.method, isRetail, order.channel, orderNeedsKitchen(order));
+  // Pedido solo-tarjetas: de aceptado va directo a listo (nada que empaquetar).
+  const giftOnly = order.is_gift_only === true;
+  const nextStatus = nextStatusFor(order.status as OrderStatus, order.method, isRetail, order.channel, orderNeedsKitchen(order), giftOnly);
 
   const customerPhone = order.customer_phone?.replace(/\D/g, "");
   // Mostrador y mesa son ventas presenciales: sin WhatsApp del cliente.
@@ -897,9 +899,24 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
                         </p>
                       </div>
                       {String(c.status) === "active" && (
-                        <Button type="button" size="sm" variant="outline" onClick={() => sendCardWA(c)}>
-                          Enviar WA
-                        </Button>
+                        <div className="flex gap-1 flex-shrink-0">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            title="Copiar código (para tarjeta física)"
+                            onClick={() => {
+                              try {
+                                navigator.clipboard?.writeText(String(c.code || ""));
+                              } catch { /* noop */ }
+                            }}
+                          >
+                            Copiar
+                          </Button>
+                          <Button type="button" size="sm" variant="outline" onClick={() => sendCardWA(c)}>
+                            Enviar WA
+                          </Button>
+                        </div>
                       )}
                     </div>
                   ))}

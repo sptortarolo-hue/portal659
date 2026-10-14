@@ -39,6 +39,8 @@ type AddToCartButtonProps = {
   packPrice?: number;
   /** Foto miniatura para el carrito (moda). Opcional, no rompe gastro. */
   image?: string | null;
+  /** Tarjeta de regalo: el ítem viaja marcado para entrega digital. */
+  isGift?: boolean;
   /** Cantidad a agregar (grilla/vidriera). Default 1. Con pack se ignora (manda el pack). */
   qty?: number;
   /** Callback tras agregar (la ficha de grilla se cierra y vuelve al catálogo). */
@@ -62,6 +64,7 @@ export function AddToCartButton({
   packPrice,
   image,
   qty,
+  isGift,
   onAdded,
   showPickerQty,
   pickerMaxQty,
@@ -88,6 +91,7 @@ export function AddToCartButton({
         packSize: hasPack ? packSize : undefined,
         packPrice: packPrice && hasPack ? packPrice : undefined,
         image: image ?? null,
+        isGift: isGift === true ? true : undefined,
       });
       if (switched) {
         addToast("Se limpió el carrito anterior (solo podés pedir de un local a la vez)");
@@ -118,7 +122,7 @@ export function AddToCartButton({
       setTimeout(() => setAdded(false), 1500);
       onAdded?.();
     },
-    [addItem, items, vendor, offerId, name, price, cashExcluded, origPrice, hasPromo, packSize, packPrice, image, qty, onAdded, addToast, modifiers]
+    [addItem, items, vendor, offerId, name, price, cashExcluded, origPrice, hasPromo, packSize, packPrice, image, qty, isGift, onAdded, addToast, modifiers]
   );
 
   const handleClick = useCallback(() => {

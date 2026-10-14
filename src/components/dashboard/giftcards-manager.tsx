@@ -429,9 +429,24 @@ export function GiftcardsManager({
                     ) : (
                       <p className="text-muted-foreground">Sin movimientos todavía.</p>
                     )}
-                    <Button type="button" size="sm" variant="outline" className="w-full" onClick={() => resendCard(c)}>
-                      Enviar por WhatsApp
-                    </Button>
+                    <div className="flex gap-1.5">
+                      <Button type="button" size="sm" variant="outline" className="flex-1" onClick={() => resendCard(c)}>
+                        Enviar por WhatsApp
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        title="Copiar código (para tarjeta física)"
+                        onClick={() => {
+                          try {
+                            navigator.clipboard?.writeText(String(c.code || ""));
+                          } catch { /* noop */ }
+                        }}
+                      >
+                        Copiar
+                      </Button>
+                    </div>
                   </div>
                 )}
               </div>

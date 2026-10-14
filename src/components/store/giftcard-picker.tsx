@@ -88,7 +88,7 @@ export function GiftCardPicker({
             Pedir por WhatsApp
           </a>
         ) : selected ? (
-          <AddToCartButton offerId={selected.id} name={selected.name} price={selected.price} vendor={vendor} modifiers={[]} image={selected.image_url ?? null} />
+          <AddToCartButton offerId={selected.id} name={selected.name} price={selected.price} vendor={vendor} modifiers={[]} image={selected.image_url ?? null} isGift />
         ) : null}
         <p className="text-[10px] text-muted-foreground text-center">
           El local te pasa el código por WhatsApp al cobrar.

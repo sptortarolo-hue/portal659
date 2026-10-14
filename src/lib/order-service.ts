@@ -123,7 +123,7 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
     customerName,
     customerPhone,
     customerAddress,
-    method,
+    method: methodIn,
     paymentMethod,
     customerId,
     items,
@@ -173,6 +173,34 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
     customerPhoneE164 = normalized;
   }
 
+  // Giftcards 100% digitales: sin retiro ni delivery — se entregan por
+  // WhatsApp al teléfono del comprador (validado arriba, siempre exigido).
+  // Se fuerza pickup (sin fee ni turnos) aunque manden otro método.
+  let method = methodIn;
+  let giftDigital = false;
+  try {
+    let grows = await queryMany<{ id: string }>(
+      `SELECT id FROM products WHERE vendor_id = $1 AND (sku LIKE 'GC-%' OR lower(category) = 'giftcards')`,
+      [vendorId]
+    ).catch(() => [] as { id: string }[]);
+    if (grows.length === 0) {
+      grows = await queryMany<{ id: string }>(
+        `SELECT id FROM products WHERE vendor_id = $1 AND lower(category) = 'giftcards'`,
+        [vendorId]
+      ).catch(() => [] as { id: string }[]);
+    }
+    const gset = new Set((grows || []).map((r) => String(r.id)));
+    const pids = ((items as any[]) || [])
+      .map((i) => String(i?.product_id ?? i?.offerId ?? ""))
+      .filter(Boolean);
+    if (pids.length > 0 && pids.every((p) => gset.has(p))) {
+      method = "pickup";
+      giftDigital = true;
+    }
+  } catch {
+    /* sin match: flow normal */
+  }
+
   const paymentMethodNorm = paymentMethod || "whatsapp";
   const notesFinal =
     source === "wa-bot" && notes ? `[Bot WA] ${notes}` : source === "wa-bot" ? "[Bot WA]" : notes || null;
@@ -208,12 +236,13 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
     }
 
     // Método de entrega habilitado por el comercio ("ambos" | "retiro" | "domicilio").
+    // Giftcards digitales: no usan entrega física, van por WhatsApp.
     const deliveryOptions = ((vendorRow as any).delivery_options as string | null) || "ambos";
     const wantsDelivery = method !== "pickup";
-    if (deliveryOptions === "retiro" && wantsDelivery) {
+    if (!giftDigital && deliveryOptions === "retiro" && wantsDelivery) {
       throw new DeliveryMethodError("Este comercio solo trabaja con retiro en el local.");
     }
-    if (deliveryOptions === "domicilio" && !wantsDelivery) {
+    if (!giftDigital && deliveryOptions === "domicilio" && !wantsDelivery) {
       throw new DeliveryMethodError("Este comercio solo entrega a domicilio.");
     }
 

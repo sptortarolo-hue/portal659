@@ -2328,6 +2328,19 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
                 <Button
                   type="button"
                   size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    try {
+                      navigator.clipboard?.writeText(c.code);
+                    } catch { /* noop */ }
+                  }}
+                  title="Copiar para escribir en la tarjeta física"
+                >
+                  Copiar
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
                   onClick={() => {
                     const text = buildGiftcardWaText({
                       storeName: storeBrand?.name || "el local",

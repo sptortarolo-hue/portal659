@@ -52,8 +52,9 @@ export default function CheckoutPage() {
   const [doneTrackToken, setDoneTrackToken] = useState<string | null>(null);
   // Snapshot del nombre del comercio al confirmar: confirmSend limpia el
   // carrito (vendor=null) y la página de éxito debe seguir mostrándolo.
-  const [doneVendorName, setDoneVendorName] = useState<string | null>(null);
-  const [doneIsPreview, setDoneIsPreview] = useState(false);
+const [doneVendorName, setDoneVendorName] = useState<string | null>(null);
+const [doneIsPreview, setDoneIsPreview] = useState(false);
+const [doneIsGift, setDoneIsGift] = useState(false);
   // Vuelta de Mercado Pago (back_urls: /checkout?payment=success|pending|failure&vendor=<slug>).
   // El pedido lo crea el webhook de forma asíncrona; el token de seguimiento
   // se obtiene con un poll corto a /api/orders/latest-token.
@@ -287,6 +288,9 @@ export default function CheckoutPage() {
       .catch(() => {});
   }, [vendor?.id]);
 
+  // Compra 100% giftcards: no hay retiro ni delivery — entrega digital por
+  // WhatsApp al teléfono del comprador (se pide abajo si falta).
+  const isGiftOnly = items.length > 0 && items.every((i) => (i as any).isGift === true);
   // Si el comercio no ofrece el método elegido, forzar el habilitado.
   // Va ANTES de cualquier return temprano: todos los hooks deben correr en
   // todos los renders (si no, React tira "fewer hooks" y cae el boundary).
@@ -295,6 +299,11 @@ export default function CheckoutPage() {
     if (opts === "retiro" && method === "delivery") setMethod("pickup");
     if (opts === "domicilio" && method === "pickup") setMethod("delivery");
   }, [vendor?.deliveryOptions, method]);
+  // Compra solo-giftcards: no hay entrega física — se fuerza retiro (sin
+  // costo ni turnos) y la entrega real es digital por WhatsApp.
+  useEffect(() => {
+    if (isGiftOnly && method === "delivery") setMethod("pickup");
+  }, [isGiftOnly, method]);
 
   if (mpReturn) {
     const s = mpReturn;
@@ -391,6 +400,11 @@ export default function CheckoutPage() {
         <p className="text-muted-foreground mb-4">
           Se abrió WhatsApp con tu pedido para{" "}
           <span className="font-medium">{doneVendorName || "el local"}</span>.
+          {doneIsGift && (
+            <span className="block mt-1 text-sm font-medium text-violet-700">
+              🎁 Son solo tarjetas: te llegan por WhatsApp al confirmar el pago, sin retiro ni envío.
+            </span>
+          )}
           {doneIsPreview && (
             <span className="block mt-1 text-xs font-semibold text-amber-700">
               🧪 Fue un pedido de prueba.
@@ -667,6 +681,7 @@ export default function CheckoutPage() {
         customerName: name,
         customerPhone: cleanPhone,
         method,
+        isGiftOrder: isGiftOnly,
         address: method === "delivery" ? fullAddress || undefined : undefined,
         paymentMethod,
           notes: notes.trim() || undefined,
@@ -695,6 +710,7 @@ export default function CheckoutPage() {
     setLoading(true);
     setDoneVendorName(v?.storeName || null);
     setDoneIsPreview(isPreview);
+    setDoneIsGift(isGiftOnly);
     window.open(
       `https://wa.me/${pendingOrder.waNumber}?text=${encodeURIComponent(pendingOrder.message)}`,
       "_blank"
@@ -852,6 +868,9 @@ export default function CheckoutPage() {
             {phoneMsg && (
               <p className={`text-xs mt-1 ${phoneOk ? "text-green-600" : "text-red-500"}`}>{phoneMsg}</p>
             )}
+            {isGiftOnly && (
+              <p className="text-[11px] text-violet-700 mt-1">🎁 Acá te llegan las tarjetas por WhatsApp.</p>
+            )}
           </div>
         </div>
 
@@ -863,6 +882,14 @@ export default function CheckoutPage() {
         )}
 
         {/* Delivery method */}
+        {isGiftOnly ? (
+          <div className="rounded-xl border border-violet-200 bg-violet-50 px-3 py-2.5 text-xs text-violet-900">
+            <p className="font-semibold">📲 Entrega digital por WhatsApp — sin costo</p>
+            <p className="mt-0.5 text-violet-800">
+              No hay retiro ni envío: al confirmar el pago te mandamos los códigos a tu WhatsApp.
+            </p>
+          </div>
+        ) : (
         <div>
           <Label>
             {allowDelivery && allowPickup
@@ -900,6 +927,7 @@ export default function CheckoutPage() {
             )}
           </div>
         </div>
+        )}
         {method === "delivery" && (
           <div className="animate-fade-in-up space-y-3">
             {zonesMode ? (

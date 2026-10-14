@@ -38,6 +38,8 @@ export type CartItem = {
   hasPromo?: boolean;
   /** Pack (ej: 6): qty es siempre múltiplo de esto y el stepper va de a N. */
   packSize?: number;
+  /** Tarjeta de regalo: compra 100% digital, se entrega por WhatsApp. */
+  isGift?: boolean;
   /** Unidad de venta: "kg" = fraccionado por peso (qty decimal). */
   unit?: string;
   /**

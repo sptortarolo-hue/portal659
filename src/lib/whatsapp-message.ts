@@ -97,6 +97,8 @@ export function buildComandaWhatsApp(params: {
   volumeLabel?: string;
   /** Línea de envío ya compuesta (ej: "Envío (Garibaldi): $800" / "⚠️ Envío a convenir"). */
   deliveryLine?: string;
+  /** Pedido 100% giftcards: entrega digital por WhatsApp (sin retiro ni envío). */
+  isGiftOrder?: boolean;
 }): string {
   const sep = "------------------------------";
   const id = params.orderId ? params.orderId.slice(0, 8) : "--------";
@@ -104,7 +106,9 @@ export function buildComandaWhatsApp(params: {
   const dateStr = now.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" });
   const timeStr = now.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
 
-  const methodStr = params.method === "delivery" ? "*Delivery*" : "*Retiro en local*";
+  const methodStr = params.isGiftOrder
+    ? "📲 *Entrega digital (WhatsApp)*"
+    : params.method === "delivery" ? "*Delivery*" : "*Retiro en local*";
   const paymentStr =
     params.paymentMethod === "efectivo" ? "Efectivo" :
     params.paymentMethod === "transferencia" ? "Transferencia" :

@@ -2360,6 +2360,7 @@ function VendorDashboardInner() {
         <OrderDetailModal
           order={selectedOrder}
           vendorName={vendor?.store_name || ""}
+          vendorLogoUrl={(vendor as any)?.logo_url ?? null}
           isRetail={orderFlowRetail}
           onClose={() => setSelectedOrder(null)}
           onAction={(order, status) => updateOrderStatus(order, status)}

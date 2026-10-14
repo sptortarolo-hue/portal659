@@ -18,7 +18,8 @@ import {
   CONDITION_META,
 } from "@/lib/order-utils";
 import { buildModifiedOrderMessage, buildTransferInstructionsMessage } from "@/lib/whatsapp-message";
-import { isGiftProductRow, buildGiftcardWaText, giftcardCardUrl, giftcardWaLink, fmtVence } from "@/lib/gift-card-share";
+import { isGiftProductRow, fmtVence } from "@/lib/gift-card-share";
+import { GiftcardSendModal, type SendModalCard } from "@/components/dashboard/giftcard-send-modal";
 import { formatDeliveryWindow } from "@/lib/delivery-schedule";
 import { CourierAssignBox } from "@/components/dashboard/courier-assign-box";
 import { FiscalBillButton } from "@/components/dashboard/fiscal-bill-button";
@@ -54,6 +55,7 @@ function getActionButtonLabel(next: OrderStatus, order: Order, isRetail: boolean
 type Props = {
   order: Order;
   vendorName: string;
+  vendorLogoUrl?: string | null;
   onClose: () => void;
   onAction: (order: Order, status: OrderStatus) => void;
   onModify?: (orderId: string, items: OrderItem[], modificationNotes: string) => Promise<{ ok: boolean; error?: string }>;
@@ -71,7 +73,7 @@ type Props = {
   onAssigned?: (order: Order) => void;
 };
 
-export default function OrderDetailModal({ order, vendorName, onClose, onAction, onModify, offers = [], canPrint = true, transfer, blockUnpaid = false, onMarkPaid, isRetail = false, onApartadoChanged, onPacked, onAssigned }: Props) {
+export default function OrderDetailModal({ order, vendorName, vendorLogoUrl, onClose, onAction, onModify, offers = [], canPrint = true, transfer, blockUnpaid = false, onMarkPaid, isRetail = false, onApartadoChanged, onPacked, onAssigned }: Props) {
   const [editing, setEditing] = useState(false);
   const [editItems, setEditItems] = useState<OrderItem[]>([]);
   const [modNotes, setModNotes] = useState("");
@@ -128,30 +130,25 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
       const r = await fetch(`/api/vendor/giftcards?orderId=${encodeURIComponent(order.id)}`)
         .then((x) => x.json())
         .catch(() => ({}));
-      setIssued(Array.isArray((r as any).giftcards) ? (r as any).giftcards : list);
+      const full = Array.isArray((r as any).giftcards) ? (r as any).giftcards : list;
+      setIssued(full);
+      // Con una sola tarjeta nueva se abre directo el modal de envío.
+      if (list.length === 1) {
+        const c = list[0] as any;
+        setSendModal({
+          id: String(c.id || ""),
+          code: String(c.code || ""),
+          amount: Math.round(Number(c.amount) || 0),
+          expires_at: typeof c.expires_at === "string" ? c.expires_at : null,
+        });
+      }
     } catch {
       setIssueMsg("Error de conexión");
     } finally {
       setIssuing(false);
     }
   }
-  function sendCardWA(c: any) {
-    const text = buildGiftcardWaText({
-      storeName: vendorName || "el local",
-      amount: Math.round(Number(c.amount) || 0),
-      code: String(c.code || ""),
-      expiresAt: typeof c.expires_at === "string" ? c.expires_at : null,
-      cardUrl: giftcardCardUrl(window.location.origin, String(c.code || "")),
-    });
-    fetch("/api/vendor/giftcards", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "mark_sent", id: c.id }),
-    }).catch(() => {});
-    const rawPhone = String(order.customer_phone || "");
-    const digits = rawPhone.startsWith("lid:") ? "" : rawPhone.replace(/[^0-9]/g, "");
-    window.open(giftcardWaLink(digits, text), "_blank");
-  }
+  const [sendModal, setSendModal] = useState<SendModalCard | null>(null);
 
   // Tildado de empaque (retail, estado Empaquetando): mismo array kitchen_done
   // que la comanda gastro. Solo lectura + tildado (la edición sigue en Nuevo).
@@ -899,24 +896,22 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
                         </p>
                       </div>
                       {String(c.status) === "active" && (
-                        <div className="flex gap-1 flex-shrink-0">
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="ghost"
-                            title="Copiar código (para tarjeta física)"
-                            onClick={() => {
-                              try {
-                                navigator.clipboard?.writeText(String(c.code || ""));
-                              } catch { /* noop */ }
-                            }}
-                          >
-                            Copiar
-                          </Button>
-                          <Button type="button" size="sm" variant="outline" onClick={() => sendCardWA(c)}>
-                            Enviar WA
-                          </Button>
-                        </div>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() =>
+                            setSendModal({
+                              id: String(c.id || ""),
+                              code: String(c.code || ""),
+                              amount: Math.round(Number(c.amount) || 0),
+                              expires_at: typeof c.expires_at === "string" ? c.expires_at : null,
+                              customer_phone: typeof c.customer_phone === "string" ? c.customer_phone : null,
+                            })
+                          }
+                        >
+                          Ver
+                        </Button>
                       )}
                     </div>
                   ))}
@@ -927,10 +922,19 @@ export default function OrderDetailModal({ order, vendorName, onClose, onAction,
                 </p>
               )}
               <Button type="button" size="sm" variant="outline" className="w-full" onClick={emitOrderGiftcards} disabled={issuing}>
-                {issuing ? "Emitiendo..." : "Emitir tarjetas pendientes"}
+                {issuing ? "Emitiendo..." : "🎁 Generar giftcard"}
               </Button>
               {issueMsg && <p className="text-xs text-muted-foreground">{issueMsg}</p>}
             </div>
+          )}
+          {sendModal && (
+            <GiftcardSendModal
+              card={sendModal}
+              storeName={vendorName || "el local"}
+              logoUrl={vendorLogoUrl ?? null}
+              fallbackPhone={String(order.customer_phone || "")}
+              onClose={() => setSendModal(null)}
+            />
           )}
 
           {/* Actions */}

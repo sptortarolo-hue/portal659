@@ -397,7 +397,8 @@ export function OrdersKanban({
   const handleNextStatus = useCallback(
     async (order: Order) => {
       const needsKitchen = (order.items || []).some((i) => i?.requires_prep !== false);
-      const next = nextStatusFor(order.status, order.method, isRetail, order.channel, needsKitchen);
+      const giftOnly = (order as Order).is_gift_only === true;
+      const next = nextStatusFor(order.status, order.method, isRetail, order.channel, needsKitchen, giftOnly);
       if (!next) return;
       // Apartado con saldo pendiente: no debería entrar al circuito sin
       // cobrar (el camino correcto es "Marcar saldo cobrado" en el detalle).

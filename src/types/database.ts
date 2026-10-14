@@ -636,6 +636,8 @@ export type Order = {
   payment_status?: "paid" | "pending";
   pickup_number?: number | null;
   track_token?: string | null;
+  /** Todos los ítems son tarjetas de regalo: el flow salta Empaquetando. */
+  is_gift_only?: boolean;
   /** Costo de envío del pedido (si aplica). */
   delivery_cost?: number | null;
   /** Zona de reparto elegida (id). NULL = flat / fuera de zona / retiro. */

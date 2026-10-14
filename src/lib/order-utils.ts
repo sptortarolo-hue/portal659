@@ -206,6 +206,8 @@ export function flowSteps(isRetail: boolean): OrderStatus[] {
  * - Mostrador/mesa CON cocina: flow normal (`new` → `preparing` → ...).
  * - Retail (moda/comercio, app): `new` → `preparing` directo al aceptar
  *   ("confirmed" quedó como estado legacy: solo pedidos viejos en vuelo).
+ * - Pedido solo-tarjetas (giftcard): no hay nada que empaquetar — `new`
+ *   salta a `ready` ("Listo") directo al aceptar, en cualquier canal.
  * - Gastro/app: `new` → `preparing`.
  * `null` en estados terminales.
  */
@@ -214,7 +216,8 @@ export function nextStatusFor(
   method?: "delivery" | "pickup",
   isRetail: boolean = false,
   channel?: Order["channel"],
-  needsKitchen: boolean = true
+  needsKitchen: boolean = true,
+  giftOnly: boolean = false
 ): OrderStatus | null {
   if (status === "ready" && method === "pickup") return "completed";
   if (
@@ -225,7 +228,7 @@ export function nextStatusFor(
     return "ready";
   switch (status) {
     case "new":
-      return "preparing";
+      return giftOnly ? "ready" : "preparing";
     case "confirmed":
       // Legacy retail: pedidos aceptados con el flow viejo drenan a empaquetando.
       return "preparing";

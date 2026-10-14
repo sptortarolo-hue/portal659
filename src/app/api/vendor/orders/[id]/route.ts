@@ -250,26 +250,48 @@ export async function PATCH(
   // - Gastronomía con elaboración: tildado de cocina en el KDS.
   // - Retail (moda/comercio/estética): tildado de empaque en el detalle (todos
   //   los ítems, sin distinción de requires_prep). Pedidos sin cocina no pasan.
+  // - Pedido solo-tarjetas: no hay nada que empaquetar — se exime (el salto
+  //   new → ready directo lo necesita, si no choca con 409).
   if (status === "ready" && fullVendor?.kitchen_strict_close !== false) {
-    const vertical = fullVendor?.vertical ?? null;
-    const isGastro = vertical === null || vertical === "gastronomia";
-    const isRetail = vertical === "moda" || vertical === "comercio" || vertical === "estetica";
-    const needsKitchen = (currentOrder.items || []).some(
-      (i) => (i as OrderItem)?.requires_prep !== false
-    );
-    if ((isGastro && needsKitchen) || isRetail) {
-      const itemsLen = (currentOrder.items || []).length;
-      const rawDone = Array.isArray(currentOrder.kitchen_done) ? currentOrder.kitchen_done : [];
-      const pending = itemsLen - rawDone.filter(Boolean).length;
-      // Si el pedido trae ítems legacy con `done` embebido, también cuentan.
-      const legacyDone = (currentOrder.items || []).filter(
-        (it, idx) => idx >= rawDone.length && (it as { done?: boolean })?.done === true
-      ).length;
-      if (pending - legacyDone > 0) {
-        return NextResponse.json(
-          { error: isRetail ? `Faltan ${pending - legacyDone} productos por tildar en el empaque` : `Faltan ${pending - legacyDone} ítems por tildar en cocina`, code: "kitchen_incomplete" },
-          { status: 409 }
-        );
+    let giftOnlyOrder = false;
+    try {
+      let grows = await queryMany<{ id: string }>(
+        `SELECT id FROM products WHERE vendor_id = $1 AND (sku LIKE 'GC-%' OR lower(category) = 'giftcards')`,
+        [vendor.id]
+      ).catch(() => [] as { id: string }[]);
+      if (grows.length === 0) {
+        grows = await queryMany<{ id: string }>(
+          `SELECT id FROM products WHERE vendor_id = $1 AND lower(category) = 'giftcards'`,
+          [vendor.id]
+        ).catch(() => [] as { id: string }[]);
+      }
+      const gset = new Set((grows || []).map((r) => String(r.id)));
+      const pids = ((currentOrder.items || []) as any[]).map((i) => String(i?.product_id || ""));
+      giftOnlyOrder = pids.length > 0 && pids.every((p) => p !== "" && gset.has(p));
+    } catch {
+      giftOnlyOrder = false;
+    }
+    if (!giftOnlyOrder) {
+      const vertical = fullVendor?.vertical ?? null;
+      const isGastro = vertical === null || vertical === "gastronomia";
+      const isRetail = vertical === "moda" || vertical === "comercio" || vertical === "estetica";
+      const needsKitchen = (currentOrder.items || []).some(
+        (i) => (i as OrderItem)?.requires_prep !== false
+      );
+      if ((isGastro && needsKitchen) || isRetail) {
+        const itemsLen = (currentOrder.items || []).length;
+        const rawDone = Array.isArray(currentOrder.kitchen_done) ? currentOrder.kitchen_done : [];
+        const pending = itemsLen - rawDone.filter(Boolean).length;
+        // Si el pedido trae ítems legacy con `done` embebido, también cuentan.
+        const legacyDone = (currentOrder.items || []).filter(
+          (it, idx) => idx >= rawDone.length && (it as { done?: boolean })?.done === true
+        ).length;
+        if (pending - legacyDone > 0) {
+          return NextResponse.json(
+            { error: isRetail ? `Faltan ${pending - legacyDone} productos por tildar en el empaque` : `Faltan ${pending - legacyDone} ítems por tildar en cocina`, code: "kitchen_incomplete" },
+            { status: 409 }
+          );
+        }
       }
     }
   }

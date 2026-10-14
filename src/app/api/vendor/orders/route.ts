@@ -16,5 +16,36 @@ export async function GET(request: Request) {
     [vendor.id]
   );
 
-  return NextResponse.json({ orders });
+  // Flag giftcard-only por pedido (el flow salta Empaquetando): 1 query de
+  // productos gift + match en JS. Tolerante a DBs sin columna sku.
+  let giftIds = new Set<string>();
+  try {
+    const grows = await queryMany<{ id: string }>(
+      `SELECT id FROM products WHERE vendor_id = $1 AND (sku LIKE 'GC-%' OR lower(category) = 'giftcards')`,
+      [vendor.id]
+    );
+    giftIds = new Set((grows || []).map((r) => String(r.id)));
+  } catch {
+    try {
+      const grows = await queryMany<{ id: string }>(
+        `SELECT id FROM products WHERE vendor_id = $1 AND lower(category) = 'giftcards'`,
+        [vendor.id]
+      );
+      giftIds = new Set((grows || []).map((r) => String(r.id)));
+    } catch {
+      giftIds = new Set();
+    }
+  }
+  const withFlags = (orders || []).map((o) => {
+    const items = (o as any).items;
+    const isGiftOnly =
+      Array.isArray(items) &&
+      items.length > 0 &&
+      items.every(
+        (i: any) => i && typeof i.product_id === "string" && i.product_id !== "" && giftIds.has(i.product_id)
+      );
+    return { ...o, is_gift_only: isGiftOnly };
+  });
+
+  return NextResponse.json({ orders: withFlags });
 }

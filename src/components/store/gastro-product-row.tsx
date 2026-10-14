@@ -155,6 +155,13 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
 
   const basePrice = product.promo_price != null ? Number(product.promo_price) : Number(product.price);
   const hasPromo = product.promo_price != null;
+  // Badge rojo de promo (también lo usa la página /promo): % real de descuento.
+  const listPriceNum = Number(product.price) || 0;
+  const promoNum = product.promo_price != null ? Number(product.promo_price) : null;
+  const promoPct =
+    promoNum != null && listPriceNum > 0 && promoNum < listPriceNum
+      ? Math.round((1 - promoNum / listPriceNum) * 100)
+      : 0;
   const cashExcluded = hasPromo && !!product.cash_discount_excluded;
   // Por peso: precio por kilo, cantidad decimal que indica el cliente.
   const isKg = (product as any).unit === "kg";
@@ -336,6 +343,15 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
           <div className="flex items-center gap-2">
             <p className="font-semibold leading-tight">{product.name}</p>
             {product.featured_today && <Badge className="bg-sun text-ink hover:bg-sun">Hoy</Badge>}
+            {promoPct > 0 ? (
+              <span className="text-[10px] font-bold text-white bg-red-500 rounded-full px-2 py-0.5 whitespace-nowrap flex-shrink-0">
+                −{promoPct}%
+              </span>
+            ) : (product as any).promo_only ? (
+              <span className="text-[10px] font-bold text-white bg-red-500 rounded-full px-2 py-0.5 whitespace-nowrap flex-shrink-0">
+                PROMO
+              </span>
+            ) : null}
             {pack > 1 && <Badge className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] whitespace-nowrap">De a {pack}</Badge>}
           {outStock && <Badge variant="secondary" className="bg-red-100 text-red-700 text-[10px]">Sin stock</Badge>}
           {volBadge && acceptsCart && !outStock && volGroup && (

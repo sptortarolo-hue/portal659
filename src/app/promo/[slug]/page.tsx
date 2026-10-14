@@ -1,11 +1,10 @@
 import { queryOne, queryMany } from "@/lib/db";
 import { queryEffectiveModifiers } from "@/lib/modifier-rules";
-import { discountOf, isValidPromo, promoContentHash } from "@/lib/promo";
+import { discountOf, promoContentHash } from "@/lib/promo";
 import { resolveVendorPlan, vendorSellsOnline } from "@/lib/plans";
 import { notFound } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
-import { ProductImage } from "@/components/product-image";
-import { AddToCartButton } from "@/components/offers/add-to-cart-button";
+import { GastroProductRow } from "@/components/store/gastro-product-row";
 import { StickyWhatsApp } from "@/components/store/sticky-whatsapp";
 import { canPreviewVendor, getPreviewActor, isServingPreview } from "@/lib/preview";
 import type { Metadata } from "next";
@@ -130,6 +129,8 @@ export default async function PromoPage({
 
   if (!vendor) notFound();
 
+  // La ficha necesita la fila completa (categoría, descripción, unidad,
+  // pack, variantes, stock y flags de cash); el listado filtra promos.
   const offers = await queryMany<any>(
     `SELECT * FROM products WHERE vendor_id = $1 AND available = true AND (promo_price IS NOT NULL OR promo_only = true) ORDER BY promo_price ASC`,
     [vendor.id]
@@ -154,6 +155,22 @@ export default async function PromoPage({
 
   const planRows = await queryMany<any>(`SELECT * FROM plans ORDER BY sort ASC`);
   const acceptsCart = vendorSellsOnline(vendor as any, planRows || []);
+
+  // Brief mínimo para la ficha (misma fórmula de cash que el micrositio).
+  const vendorBrief = {
+    id: v.id,
+    slug: v.slug,
+    storeName: v.store_name,
+    whatsapp: v.whatsapp || "",
+    vertical: v.vertical,
+    cashDiscountPct:
+      String(v.payment_methods || "")
+        .split(",")
+        .map((s: string) => s.trim())
+        .includes("Efectivo") && Number(v.cash_discount_pct) > 0
+        ? Number(v.cash_discount_pct)
+        : null,
+  };
 
   const promoIds = promos.map((o: any) => o.id);
   let allModifiers: any[] = [];
@@ -198,86 +215,18 @@ export default async function PromoPage({
             <p className="text-gray-500">No hay promos activas en este momento.</p>
           </div>
         ) : (
-          <div className="grid gap-4">
-            {promos.map((o: any) => {
-              const hasOff = isValidPromo(o);
-              const pct = discountOf(o);
-              const salePrice = hasOff ? Number(o.promo_price) : Number(o.price);
-              return (
-                <div
-                  key={o.id}
-                  className="rounded-2xl border-2 border-red-200 bg-white p-3 sm:p-4 flex items-center gap-3 sm:gap-4 shadow-sm"
-                >
-                  <div className="h-20 w-20 sm:h-24 sm:w-24 rounded-xl overflow-hidden flex-shrink-0 bg-gray-100">
-                    <ProductImage
-                      src={o.image_url || null}
-                      name={o.name}
-                      category={o.category}
-                      vertical={v.vertical}
-                      alt={o.name}
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-start gap-2">
-                      <p className="font-bold leading-snug line-clamp-2 flex-1">{o.name}</p>
-                      {pct > 0 && (
-                        <span className="text-xs font-bold text-white bg-red-500 rounded-full px-2 py-0.5 whitespace-nowrap flex-shrink-0">
-                          −{pct}%
-                        </span>
-                      )}
-                    </div>
-                    {o.description && (
-                      <p className="text-sm text-gray-500 mt-1 line-clamp-1">{o.description}</p>
-                    )}
-                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-2">
-                      {hasOff ? (
-                        <>
-                          <span className="text-sm text-gray-400 line-through tabular-nums">
-                            ${Number(o.price).toLocaleString("es-AR")}
-                          </span>
-                          <span className="font-bold text-red-600 tabular-nums">
-                            ${Number(o.promo_price).toLocaleString("es-AR")}
-                          </span>
-                        </>
-                      ) : (
-                        <>
-                          <span className="font-bold text-red-600 tabular-nums">
-                            ${Number(o.price).toLocaleString("es-AR")}
-                          </span>
-                          <span className="text-[10px] font-bold text-white bg-red-500 rounded-full px-2 py-0.5 whitespace-nowrap">
-                            PROMO
-                          </span>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex-shrink-0">
-                    {acceptsCart ? (
-                      <AddToCartButton
-                        offerId={o.id}
-                        name={o.name}
-                        price={salePrice}
-                        vendor={v}
-                        modifiers={modifiersByProduct[o.id] || []}
-                        cashExcluded={!!o.cash_discount_excluded}
-                        origPrice={Number(o.price)}
-                        hasPromo={hasOff}
-                      />
-                    ) : (
-                      <a
-                        href={consultHref}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="rounded-md px-3 py-1.5 text-sm font-medium text-center bg-primary text-primary-foreground hover:bg-primary/90"
-                      >
-                        Consultar
-                      </a>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+          <div className="grid gap-3">
+            {promos.map((o: any) => (
+              <GastroProductRow
+                key={o.id}
+                product={o}
+                vendor={vendorBrief}
+                modifiers={modifiersByProduct[o.id] || []}
+                acceptsCart={acceptsCart}
+                consultHref={consultHref}
+                images={[]}
+              />
+            ))}
           </div>
         )}
 

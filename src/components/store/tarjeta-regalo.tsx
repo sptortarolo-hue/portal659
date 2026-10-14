@@ -4,8 +4,11 @@ import { fmtVence } from "@/lib/gift-card-share";
 /**
  * Tarjeta de regalo con diseño propio: logo + nombre del comercio, valor
  * protagonista, código y vigencia. Server-safe (sin hooks): se usa en el
- * micrositio, la ficha pública /g/[code], el panel y la imagen para
- * WhatsApp (versión satori en /api/share/giftcard/[code]).
+ * micrositio (sin código: aún no existe hasta cobrar), la ficha pública
+ * /g/[code], el panel y la imagen para WhatsApp (versión satori en
+ * /api/share/giftcard/[code]).
+ * photoUrl (opcional): foto del monto como fondo con degradado encima;
+ * sin foto va el gradiente violeta.
  */
 export function TarjetaRegalo({
   storeName,
@@ -15,31 +18,56 @@ export function TarjetaRegalo({
   expiresAt,
   vertical,
   compact = false,
+  photoUrl,
 }: {
   storeName: string;
   logoUrl?: string | null;
   amount: number;
-  code: string;
+  code?: string | null;
   expiresAt?: string | null;
   vertical?: string | null;
   compact?: boolean;
+  photoUrl?: string | null;
 }) {
   const vence = fmtVence(expiresAt);
+  const codeClean = String(code || "").trim().toUpperCase();
   return (
     <div
       className={`relative overflow-hidden rounded-3xl text-white shadow-lg ${
         compact ? "max-w-xs" : "max-w-sm"
       } w-full bg-gradient-to-br from-violet-950 via-purple-900 to-fuchsia-800`}
     >
-      {/* brillos decorativos */}
-      <div
-        aria-hidden
-        className="absolute inset-0 opacity-30"
-        style={{
-          backgroundImage:
-            "radial-gradient(circle at 85% 15%, rgba(255,255,255,0.35) 0 60px, transparent 62px), radial-gradient(circle at 10% 90%, rgba(255,255,255,0.18) 0 90px, transparent 92px)",
-        }}
-      />
+      {photoUrl ? (
+        <>
+          <ProductImage
+            key={photoUrl}
+            src={photoUrl}
+            name={storeName}
+            vertical={vertical}
+            alt=""
+            className="absolute inset-0 h-full w-full"
+          />
+          {/* degradado para legibilidad sobre la foto */}
+          <div
+            aria-hidden
+            className="absolute inset-0"
+            style={{
+              background:
+                "linear-gradient(to top, rgba(24,10,46,0.94) 0%, rgba(76,29,149,0.72) 55%, rgba(24,10,46,0.45) 100%)",
+            }}
+          />
+        </>
+      ) : (
+        /* brillos decorativos */
+        <div
+          aria-hidden
+          className="absolute inset-0 opacity-30"
+          style={{
+            backgroundImage:
+              "radial-gradient(circle at 85% 15%, rgba(255,255,255,0.35) 0 60px, transparent 62px), radial-gradient(circle at 10% 90%, rgba(255,255,255,0.18) 0 90px, transparent 92px)",
+          }}
+        />
+      )}
       <div className={`relative ${compact ? "p-4" : "p-5"} space-y-3`}>
         <div className="flex items-center gap-3">
           <div className="h-12 w-12 rounded-full overflow-hidden bg-white/95 shadow flex-shrink-0">
@@ -68,19 +96,19 @@ export function TarjetaRegalo({
           </p>
           <p className="text-xs text-white/70 mt-1">de saldo para usar en el local</p>
         </div>
-        <div className="rounded-xl bg-black/25 px-3 py-2.5 text-center">
-          <p className="font-mono font-bold tracking-widest text-base">
-            {String(code || "").trim().toUpperCase()}
-          </p>
-          <p className="text-[11px] text-white/70 mt-0.5">
-            {vence ? `Válida hasta el ${vence}` : "Sin vencimiento"}
-          </p>
-        </div>
-        {!compact && (
+        {codeClean ? (
+          <div className="rounded-xl bg-black/25 px-3 py-2.5 text-center">
+            <p className="font-mono font-bold tracking-widest text-base">{codeClean}</p>
+            <p className="text-[11px] text-white/70 mt-0.5">
+              {vence ? `Válida hasta el ${vence}` : "Sin vencimiento"}
+            </p>
+          </div>
+        ) : null}
+        {!compact && codeClean ? (
           <p className="text-[11px] text-white/60 text-center">
             Presentá este código al pagar en {storeName}. No es canjeable por efectivo.
           </p>
-        )}
+        ) : null}
       </div>
     </div>
   );

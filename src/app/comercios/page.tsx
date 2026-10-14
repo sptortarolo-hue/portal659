@@ -167,7 +167,7 @@ export default async function ComerciosLanding() {
   const [plans, vendorsRaw] = await Promise.all([
     queryMany<Plan>(`SELECT * FROM plans ORDER BY sort ASC`),
     queryMany<Vendor>(
-      `SELECT * FROM vendors WHERE visible = true AND neighborhood = ANY($1) ORDER BY featured DESC NULLS LAST, created_at DESC LIMIT 6`,
+      `SELECT * FROM vendors WHERE visible = true AND neighborhood = ANY($1) ORDER BY featured DESC NULLS LAST, created_at DESC LIMIT 9`,
       [zone.neighborhoods]
     ),
   ]);

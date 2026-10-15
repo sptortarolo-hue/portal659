@@ -227,8 +227,9 @@ export async function POST(request: Request) {
 
   const now = new Date().toISOString();
 
-  // Número de pedido diario universal (mostrador/delivery): además de
+  // Número de pedido universal (mostrador/delivery): además de
   // referenciarlo a la caja, el pedido queda con su número de oraculo en tickets.
+  // Diario en gastronomía, correlativo continuo en el resto (ver order-number.ts).
   // En sesión de prueba todo nace marcado como prueba.
   const previewOrder = gate.previewSession === true;
   const customerE164 = toE164(customerPhoneClean);

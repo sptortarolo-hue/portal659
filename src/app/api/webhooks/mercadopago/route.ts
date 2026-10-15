@@ -555,18 +555,13 @@ export async function POST(request: Request) {
             ? metadata.customer_name.trim()
             : payment.payer?.first_name || "Cliente MP";
 
-        // Número de retiro correlativo por día (solo si es retiro en local).
+        // Número correlativo (solo si es retiro en local): misma regla central
+        // que el resto de los canales (diaria en gastronomía, continua en
+        // retail), con lock anti-carrera y medianoche argentina.
         let pickupNumber: number | null = null;
         if (isPickup) {
-          const todayStart = new Date();
-          todayStart.setHours(0, 0, 0, 0);
-          const lastRow = await queryOne<{ n: number }>(
-            `SELECT COALESCE(MAX(pickup_number), 0)::int AS n
-             FROM orders
-             WHERE vendor_id = $1 AND pickup_number IS NOT NULL AND created_at >= $2`,
-            [vendorId, todayStart.toISOString()]
-          );
-          pickupNumber = (lastRow?.n ?? 0) + 1;
+          const { nextOrderNumber } = await import("@/lib/order-number");
+          pickupNumber = await withTransaction((tx) => nextOrderNumber(tx, vendorId));
         }
 
         const items = payment.additional_info?.items || [];

@@ -52,6 +52,25 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Faltan productos o total" }, { status: 400 });
   }
 
+  // Descuento manual por cuenta ($ o % con motivo). Se valida acá; el monto
+  // se calcula al resolver (base = neto mercadería) y se recalcula al mergear.
+  type ManualDiscountIn = { kind: "amount" | "percent"; value: number; reason: string | null };
+  let manualIn: ManualDiscountIn | null = null;
+  const mdRaw = (body as any)?.manualDiscount;
+  if (mdRaw != null && typeof mdRaw === "object") {
+    const kind = mdRaw.kind === "percent" ? "percent" : mdRaw.kind === "amount" ? "amount" : null;
+    const value = Number(mdRaw.value);
+    const reason = String(mdRaw.reason || "").trim().slice(0, 120) || null;
+    if (kind && Number.isFinite(value) && value > 0) {
+      if (kind === "percent" && value > 100) {
+        return NextResponse.json({ error: "El porcentaje no puede superar el 100%" }, { status: 400 });
+      }
+      manualIn = { kind, value, reason };
+    } else {
+      return NextResponse.json({ error: "Descuento manual inválido" }, { status: 400 });
+    }
+  }
+
   // Idempotencia del sync offline (Fase 0): la consumición mergea en la
   // cuenta abierta, así que un reintento sin clave duplicaría ítems. Con
   // client_key el reintento devuelve la cuenta ya guardada (dedup:true).
@@ -137,7 +156,8 @@ export async function POST(request: Request) {
     // combinados por pack aplican también en mesa, incluso sumando varias
     // consumiciones. Líneas manuales o sin uuid van al precio declarado.
     const round2 = (n: number) => Math.round(n * 100) / 100;
-    async function resolveTableItems(raw: typeof normalizedItems): Promise<{ items: Record<string, any>[]; total: number; volumeDiscount: number }> {
+    type ResolvedTable = { items: Record<string, any>[]; total: number; volumeDiscount: number; manualDiscount: number; manualKind: string | null; manualReason: string | null };
+    async function resolveTableItems(raw: typeof normalizedItems, md: ManualDiscountIn | null): Promise<ResolvedTable> {
       const priced: IncomingOrderItem[] = [];
       const pricedPrep: boolean[] = [];
       const passthrough: typeof normalizedItems = [];
@@ -150,8 +170,21 @@ export async function POST(request: Request) {
         pricedPrep.push(i.requires_prep !== false);
       }
       const manualTotal = round2(passthrough.reduce((s, i) => s + (Number(i.price) || 0) * (Number(i.qty) || 1), 0));
+      // Descuento manual sobre el neto de mercadería (capado a la base).
+      const manualFor = (base: number, pricingTotal: number, items: Record<string, any>[], vol: number): ResolvedTable => {
+        const b = Math.max(0, round2(base));
+        const amount = !md ? 0 : md.kind === "percent" ? Math.min(b, round2((b * md.value) / 100)) : Math.min(b, round2(md.value));
+        return {
+          items,
+          total: Math.max(0, round2(pricingTotal + manualTotal - amount)),
+          volumeDiscount: vol,
+          manualDiscount: amount,
+          manualKind: md ? md.kind : null,
+          manualReason: md ? md.reason : null,
+        };
+      };
       if (priced.length === 0) {
-        return { items: passthrough as unknown as Record<string, any>[], total: manualTotal, volumeDiscount: 0 };
+        return manualFor(manualTotal, 0, passthrough as unknown as Record<string, any>[], 0);
       }
       let pricing;
       try {
@@ -170,11 +203,12 @@ export async function POST(request: Request) {
       pricing.items.forEach((it, idx) => {
         (it as any).requires_prep = pricedPrep[idx] !== false;
       });
-      return {
-        items: [...(pricing.items as unknown as Record<string, any>[]), ...passthrough] as Record<string, any>[],
-        total: round2(pricing.total + manualTotal),
-        volumeDiscount: pricing.volumeDiscount,
-      };
+      return manualFor(
+        pricing.subtotal - pricing.volumeDiscount + manualTotal,
+        pricing.total,
+        [...(pricing.items as unknown as Record<string, any>[]), ...passthrough] as Record<string, any>[],
+        pricing.volumeDiscount
+      );
     }
 
     // Columna de volumen (tolerante a migración sin aplicar).
@@ -191,6 +225,20 @@ export async function POST(request: Request) {
       hasVolumeCol = false;
     }
 
+    // Columnas de descuento manual (tolerante a migración sin aplicar).
+    let hasManualCol = false;
+    try {
+      const mc = await tx.queryOne<{ exists: boolean }>(
+        `SELECT EXISTS (
+           SELECT 1 FROM information_schema.columns
+           WHERE table_name = 'orders' AND column_name = 'manual_discount'
+         ) AS exists`
+      );
+      hasManualCol = mc?.exists === true;
+    } catch {
+      hasManualCol = false;
+    }
+
     // Acumular en la cuenta abierta de la mesa: si ya existe una orden "new"
     // (pedido de mesa sin cerrar), le sumamos ítems y total (una sola cuenta en
     // vez de un pedido suelto por cada "Agregar consumición").
@@ -200,18 +248,44 @@ export async function POST(request: Request) {
        ORDER BY created_at ASC LIMIT 1`,
       [gate.vendor.id, table.id]
     );
+    // Descuento manual ya guardado en la cuenta (si el request no trae uno
+    // nuevo, se conserva y se recalcula sobre la cuenta mergeada).
+    let storedManual: ManualDiscountIn | null = null;
+    if (hasManualCol && openOrder) {
+      try {
+        const sm = await tx.queryOne<{ manual_discount_kind: unknown; manual_discount_value: unknown; manual_discount_reason: unknown }>(
+          `SELECT manual_discount_kind, manual_discount_value, manual_discount_reason FROM orders WHERE id = $1`,
+          [openOrder.id]
+        );
+        const sk = sm?.manual_discount_kind === "percent" ? "percent" : sm?.manual_discount_kind === "amount" ? "amount" : null;
+        const sv = Number(sm?.manual_discount_value);
+        if (sk && Number.isFinite(sv) && sv > 0) {
+          storedManual = {
+            kind: sk,
+            value: sv,
+            reason: sm?.manual_discount_reason != null ? String(sm.manual_discount_reason) : null,
+          };
+        }
+      } catch {
+        storedManual = null;
+      }
+    }
 
     if (openOrder) {
       const existing = Array.isArray(openOrder.items) ? (openOrder.items as any[]) : [];
       const mergedRaw = [...existing, ...normalizedItems] as typeof normalizedItems;
-      const resolved = await resolveTableItems(mergedRaw);
+      const resolved = await resolveTableItems(mergedRaw, manualIn ?? storedManual);
       const order = await tx.queryOne<Record<string, any>>(
-        hasVolumeCol
-          ? `UPDATE orders SET items = $1, total = $2, volume_discount = $3 WHERE id = $4 RETURNING *`
-          : `UPDATE orders SET items = $1, total = $2 WHERE id = $3 RETURNING *`,
-        hasVolumeCol
-          ? [JSON.stringify(resolved.items), resolved.total, resolved.volumeDiscount, openOrder.id]
-          : [JSON.stringify(resolved.items), resolved.total, openOrder.id]
+        hasVolumeCol && hasManualCol
+          ? `UPDATE orders SET items = $1, total = $2, volume_discount = $3, manual_discount = $4, manual_discount_kind = $5, manual_discount_reason = $6, manual_discount_value = $7 WHERE id = $8 RETURNING *`
+          : hasVolumeCol
+            ? `UPDATE orders SET items = $1, total = $2, volume_discount = $3 WHERE id = $4 RETURNING *`
+            : `UPDATE orders SET items = $1, total = $2 WHERE id = $3 RETURNING *`,
+        hasVolumeCol && hasManualCol
+          ? [JSON.stringify(resolved.items), resolved.total, resolved.volumeDiscount, resolved.manualDiscount, resolved.manualKind, resolved.manualReason, (manualIn ?? storedManual)?.value ?? null, openOrder.id]
+          : hasVolumeCol
+            ? [JSON.stringify(resolved.items), resolved.total, resolved.volumeDiscount, openOrder.id]
+            : [JSON.stringify(resolved.items), resolved.total, openOrder.id]
       );
       // La cuenta abierta conserva su occurred_at original (momento en que
       // se abrió la mesa); la consumición queda registrada en el sync log.
@@ -227,7 +301,7 @@ export async function POST(request: Request) {
 
     // En sesión de prueba todo nace marcado como prueba.
     const previewOrder = gate.previewSession === true;
-    const resolved = await resolveTableItems(normalizedItems);
+    const resolved = await resolveTableItems(normalizedItems, manualIn);
     const syncCols = [
       ...(caps.ordersClientKey ? ["client_key"] : []),
       ...(caps.ordersOccurredAt ? ["occurred_at"] : []),
@@ -237,6 +311,7 @@ export async function POST(request: Request) {
       "method", "payment_method", "items", "total", "status", "channel",
       "table_id", "notes", "pickup_number", "is_preview",
       ...(hasVolumeCol ? ["volume_discount"] : []),
+      ...(hasManualCol ? ["manual_discount", "manual_discount_kind", "manual_discount_reason", "manual_discount_value"] : []),
       ...syncCols,
     ];
     const vals: unknown[] = [
@@ -256,6 +331,7 @@ export async function POST(request: Request) {
       await nextOrderNumber(tx, gate.vendor.id),
       previewOrder,
       ...(hasVolumeCol ? [resolved.volumeDiscount] : []),
+      ...(hasManualCol ? [resolved.manualDiscount, resolved.manualKind, resolved.manualReason, manualIn?.value ?? null] : []),
       ...(caps.ordersClientKey ? [clientKey] : []),
       ...(caps.ordersOccurredAt ? [occurredAt] : []),
     ];

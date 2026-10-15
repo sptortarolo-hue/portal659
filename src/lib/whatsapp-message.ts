@@ -34,6 +34,8 @@ export function buildOrderMessage(params: {
   cashPct?: number | null;
   volumeDiscount?: number | null;
   volumeLabel?: string;
+  manualDiscount?: number | null;
+  manualReason?: string;
   /** Línea de envío ya compuesta (ej: "Envío (Garibaldi): $800" / "Envío: a convenir"). */
   deliveryLine?: string;
 }): string {
@@ -61,6 +63,10 @@ export function buildOrderMessage(params: {
     ? `\nDesc. volumen${params.volumeLabel ? ` (${params.volumeLabel})` : ""}: -$${Number(params.volumeDiscount).toLocaleString("es-AR")}`
     : "";
 
+  const manualLine = Number(params.manualDiscount) > 0
+    ? `\nDesc. manual${params.manualReason ? ` (${params.manualReason})` : ""}: -$${Number(params.manualDiscount).toLocaleString("es-AR")}`
+    : "";
+
   return [
     `Hola ${params.vendorName}! Quiero hacer un pedido:`,
     "",
@@ -75,6 +81,7 @@ export function buildOrderMessage(params: {
     paymentLine,
     cashLine,
     volumeLine,
+    manualLine,
   ].filter(Boolean).join("\n");
 }
 
@@ -95,6 +102,8 @@ export function buildComandaWhatsApp(params: {
   cashPct?: number | null;
   volumeDiscount?: number | null;
   volumeLabel?: string;
+  manualDiscount?: number | null;
+  manualReason?: string;
   /** Línea de envío ya compuesta (ej: "Envío (Garibaldi): $800" / "⚠️ Envío a convenir"). */
   deliveryLine?: string;
   /** Pedido 100% giftcards: entrega digital por WhatsApp (sin retiro ni envío). */
@@ -133,6 +142,9 @@ export function buildComandaWhatsApp(params: {
   const volumeLine = Number(params.volumeDiscount) > 0
     ? `Desc. volumen${params.volumeLabel ? ` (${params.volumeLabel})` : ""}: -$${Number(params.volumeDiscount).toLocaleString("es-AR")}`
     : "";
+  const manualLine = Number(params.manualDiscount) > 0
+    ? `Desc. manual${params.manualReason ? ` (${params.manualReason})` : ""}: -$${Number(params.manualDiscount).toLocaleString("es-AR")}`
+    : "";
 
   return [
     `*${params.vendorName}*`,
@@ -146,6 +158,7 @@ export function buildComandaWhatsApp(params: {
     sep,
     cashLine,
     volumeLine,
+    manualLine,
     params.deliveryLine ? params.deliveryLine : "",
     `TOTAL: *$${params.total.toLocaleString("es-AR")}*`,
     "",

@@ -144,6 +144,7 @@ export default function ReportePage() {
                   <Stat label="Cancelados" value={String(data.summary.cancelled)} />
                   <Stat label="Desc. efectivo" value={fmtARS(data.summary.cashDiscount)} />
                   <Stat label="Desc. volumen" value={fmtARS(data.summary.volumeDiscount)} />
+                  <Stat label="Desc. manual" value={fmtARS(data.summary.manualDiscount)} />
                   {(data.summary.giftcardDiscount || 0) > 0 && (
                     <Stat label="🎁 Giftcards" value={fmtARS(data.summary.giftcardDiscount)} />
                   )}
@@ -215,6 +216,7 @@ export default function ReportePage() {
                   <Stat label="Ticket promedio" value={fmtARS(data.summary.ticket)} />
                   <Stat label="Desc. efectivo" value={fmtARS(data.summary.cashDiscount)} />
                   <Stat label="Desc. volumen" value={fmtARS(data.summary.volumeDiscount)} />
+                  <Stat label="Desc. manual" value={fmtARS(data.summary.manualDiscount)} />
                   {(data.summary.giftcardDiscount || 0) > 0 && (
                     <Stat label="🎁 Giftcards" value={fmtARS(data.summary.giftcardDiscount)} />
                   )}
@@ -226,8 +228,8 @@ export default function ReportePage() {
                 <div>
                   <h3 className="font-bold text-sm mb-2">Detalle por día</h3>
                   <DataTable
-                    head={["Fecha", "Facturación", "Desc. efectivo", "Desc. volumen", "🎁 Giftcards"]}
-                    rows={(data.daily || []).map((d: any) => [d.label, fmtARS(d.revenue), fmtARS(d.cash), fmtARS(d.volume), fmtARS(d.giftcard || 0)])}
+                    head={["Fecha", "Facturación", "Desc. efectivo", "Desc. volumen", "Desc. manual", "🎁 Giftcards"]}
+                    rows={(data.daily || []).map((d: any) => [d.label, fmtARS(d.revenue), fmtARS(d.cash), fmtARS(d.volume), fmtARS(d.manual), fmtARS(d.giftcard || 0)])}
                   />
                 </div>
               </div>

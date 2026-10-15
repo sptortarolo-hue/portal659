@@ -581,6 +581,11 @@ async function composeComanda(printer: any, vendor: PrinterVendor, order: Order)
   if (ticketVol > 0) {
     printer.println(`Desc. volumen: -$${ticketVol.toLocaleString("es-AR")}`);
   }
+  const ticketManual = Number((order as any)?.manual_discount) || 0;
+  if (ticketManual > 0) {
+    const ticketManualReason = String((order as any)?.manual_discount_reason || "").trim();
+    printer.println(`Desc. manual${ticketManualReason ? ` (${ticketManualReason})` : ""}: -$${ticketManual.toLocaleString("es-AR")}`);
+  }
   const ticketShip = deliveryFeeLine(order);
   if (ticketShip) {
     printer.println(ticketShip);
@@ -905,6 +910,11 @@ async function composeReceipt(
     if (receiptVol > 0) {
       printer.println(`Desc. volumen: -$${receiptVol.toLocaleString("es-AR")}`);
     }
+    const receiptManual = Number((order as any)?.manual_discount) || 0;
+    if (receiptManual > 0) {
+      const receiptManualReason = String((order as any)?.manual_discount_reason || "").trim();
+      printer.println(`Desc. manual${receiptManualReason ? ` (${receiptManualReason})` : ""}: -$${receiptManual.toLocaleString("es-AR")}`);
+    }
     const receiptShip = deliveryFeeLine(order);
     if (receiptShip) {
       printer.println(receiptShip);
@@ -1043,7 +1053,8 @@ async function composePrecuenta(
   items: { name: string; price: number; qty: number; modifiers?: string[] }[],
   total: number,
   cash?: { pct: number; total: number } | null,
-  volume?: { amount: number } | null
+  volume?: { amount: number } | null,
+  manual?: { amount: number } | null
 ): Promise<void> {
   const width = vendor.paper_size === "58mm" ? 32 : 48;
   const separator = separatorFor(width);
@@ -1077,6 +1088,9 @@ async function composePrecuenta(
   printer.alignRight();
   if (volume && volume.amount > 0) {
     printer.println(`Desc. volumen: -$${volume.amount.toLocaleString("es-AR")}`);
+  }
+  if (manual && manual.amount > 0) {
+    printer.println(`Desc. manual: -$${manual.amount.toLocaleString("es-AR")}`);
   }
   printer.bold(true);
   printer.setTextSize(1, 1);
@@ -1690,13 +1704,14 @@ export async function printPrecuenta(
   items: { name: string; price: number; qty: number; modifiers?: string[] }[],
   total: number,
   cash?: { pct: number; total: number } | null,
-  volume?: { amount: number } | null
+  volume?: { amount: number } | null,
+  manual?: { amount: number } | null
 ): Promise<{ success: boolean; error?: string }> {
   const res = await createPrinter(vendor);
   if (!res.ok) return { success: false, error: res.error };
   if (!vendor.printer_ip) return { success: false, error: "IP de impresora no configurada" };
   try {
-    await composePrecuenta(res.printer, vendor, tableName, items, total, cash, volume);
+    await composePrecuenta(res.printer, vendor, tableName, items, total, cash, volume, manual);
     await res.printer.execute();
     return { success: true };
   } catch (e) {
@@ -1710,12 +1725,13 @@ export async function buildPrecuentaBuffer(
   items: { name: string; price: number; qty: number; modifiers?: string[] }[],
   total: number,
   cash?: { pct: number; total: number } | null,
-  volume?: { amount: number } | null
+  volume?: { amount: number } | null,
+  manual?: { amount: number } | null
 ): Promise<BufferResult> {
   const res = await createPrinter(vendor);
   if (!res.ok) return { success: false, error: res.error };
   try {
-    await composePrecuenta(res.printer, vendor, tableName, items, total, cash, volume);
+    await composePrecuenta(res.printer, vendor, tableName, items, total, cash, volume, manual);
     const buffer = (await res.printer.getBuffer()) as Buffer;
     return { success: true, buffer };
   } catch (e) {
@@ -1958,6 +1974,8 @@ export async function dispatchPrint(params: {
     cashTotal?: number;
     /** Descuento por pack en precuenta (se imprime como línea propia). */
     volumeDiscount?: number;
+    /** Descuento manual en precuenta (se imprime como línea propia). */
+    manualDiscount?: number;
     /** Cierre de caja (Z) guardado, para imprimir tal cual. */
     closing?: CashClosingPrintData;
     /** Vista parcial de caja (X): snapshot en vivo, sin cerrar. */
@@ -1995,14 +2013,16 @@ export async function dispatchPrint(params: {
     const cash = cashPct > 0 && cashTotal > 0 && cashTotal < total ? { pct: cashPct, total: cashTotal } : null;
     const volumeAmount = Number(params.extra?.volumeDiscount) || 0;
     const volume = volumeAmount > 0 ? { amount: volumeAmount } : null;
+    const manualAmount = Number(params.extra?.manualDiscount) || 0;
+    const manual = manualAmount > 0 ? { amount: manualAmount } : null;
     if (mode === "app") {
-      const built = await buildPrecuentaBuffer(vendor, tableName, items, total, cash, volume);
+      const built = await buildPrecuentaBuffer(vendor, tableName, items, total, cash, volume, manual);
       if (!built.success) return { ok: false, mode, error: built.error };
       const pushed = await pushToBridge(vendor.print_token, bridgeJob("precuenta", built.buffer, vendor));
-      return { ok: pushed.ok, mode, offline: pushed.offline, error: pushed.error, printerIpUsed: pushed.printerIpUsed ?? null, autoFixed: pushed.autoFixed === true };
+      return { ok: pushed.ok, mode, offline: pushed.offline, error: pushed.error };
     }
     if (!vendor.printer_ip) return { ok: true, mode, skipped: true };
-    const r = await printPrecuenta(vendor, tableName, items, total, cash, volume);
+    const r = await printPrecuenta(vendor, tableName, items, total, cash, volume, manual);
     return { ok: r.success, mode, error: r.error };
   }
 

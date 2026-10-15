@@ -162,6 +162,17 @@ export function Mostrador({ vendorId }: { vendorId?: string | null }) {
   // de envío por WhatsApp. Se limpian al iniciar el próximo cobro.
   const [issuedCodes, setIssuedCodes] = useState<{ id: string; code: string; amount: number }[]>([]);
   const [storeBrand, setStoreBrand] = useState<{ name: string; logo: string | null } | null>(null);
+  // Descuento manual por venta ($ o % con motivo). Lo calcula el servidor
+  // (fuente de verdad); acá se espeja en vivo sobre el neto de mercadería.
+  const [discountOpen, setDiscountOpen] = useState(false);
+  const [discountKind, setDiscountKind] = useState<"amount" | "percent">("amount");
+  const [discountValue, setDiscountValue] = useState("");
+  const [discountReason, setDiscountReason] = useState("");
+  function clearManualDiscount() {
+    setDiscountValue("");
+    setDiscountReason("");
+    setDiscountKind("amount");
+  }
   const [method, setMethod] = useState<"pickup" | "delivery" | "direct">("pickup");
   const [customerPhone, setCustomerPhone] = useState("");
   const [customerAddress, setCustomerAddress] = useState("");
@@ -369,7 +380,17 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
   });
   const posDeliveryFee = method === "delivery" ? posResolvedDelivery.fee : 0;
   const posOutOfAreaFlag = method === "delivery" && posResolvedDelivery.outOfArea;
-  const payableTotal = Math.max(0, Math.round((netSubtotal - activeCashDiscount + posDeliveryFee - giftcardAmount) * 100) / 100);
+  // Descuento manual en vivo (espejo; el servidor recalcula y manda): $ o %
+  // sobre el neto de mercadería, capado a la base. No aplica al fiado.
+  const discountBase = Math.max(0, netSubtotal);
+  const discountValNum = Number(discountValue) || 0;
+  const manualDiscountAmount =
+    payment !== "fiado" && discountValNum > 0
+      ? discountKind === "percent"
+        ? Math.min(discountBase, Math.round((discountBase * Math.min(discountValNum, 100)) * 100) / 10000)
+        : Math.min(discountBase, Math.round(discountValNum * 100) / 100)
+      : 0;
+  const payableTotal = Math.max(0, Math.round((netSubtotal - activeCashDiscount + posDeliveryFee - giftcardAmount - manualDiscountAmount) * 100) / 100);
 
   // Chips de categoría agrupados por clave normalizada (trim+lowercase):
   // "Pizzas", "pizzas" o " Pizzas" forman un solo chip (igual que el micrositio).
@@ -877,6 +898,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
     withFiscal: boolean; fiscalReceptorTipo: "cf" | "dni" | "cuit";
     fiscalReceptorNro: string; fiscalReceptorNombre: string;
     fiscalReceptorCond: string; posManualFee: string; sheetOpen: boolean;
+    discountKind: "amount" | "percent"; discountValue: string; discountReason: string;
   };
   // Restaurar una sola vez al montar (si hay borrador con ítems).
   useEffect(() => {
@@ -902,6 +924,9 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
         setFiscalReceptorCond(d.fiscalReceptorCond || "6");
         setPosManualFee(d.posManualFee || "");
         if (d.sheetOpen === true) setSheetOpen(true);
+        if (d.discountKind === "percent" || d.discountKind === "amount") setDiscountKind(d.discountKind);
+        setDiscountValue(d.discountValue || "");
+        setDiscountReason(d.discountReason || "");
         setRestored(true);
       }
     } catch { /* borrador corrupto: se ignora */ }
@@ -918,11 +943,11 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
         items, customerName, customerPhone, customerAddress, posReferences,
         payment, method, notes, withFiscal, fiscalReceptorTipo,
         fiscalReceptorNro, fiscalReceptorNombre, fiscalReceptorCond, posManualFee,
-        sheetOpen,
+        sheetOpen, discountKind, discountValue, discountReason,
       } satisfies SaleDraft);
     }, 400);
     return () => clearTimeout(t);
-  }, [items, customerName, customerPhone, customerAddress, posReferences, payment, method, notes, withFiscal, fiscalReceptorTipo, fiscalReceptorNro, fiscalReceptorNombre, fiscalReceptorCond, posManualFee, sheetOpen, vendorId]);
+  }, [items, customerName, customerPhone, customerAddress, posReferences, payment, method, notes, withFiscal, fiscalReceptorTipo, fiscalReceptorNro, fiscalReceptorNombre, fiscalReceptorCond, posManualFee, sheetOpen, discountKind, discountValue, discountReason, vendorId]);
   function discardDraft() {
     clearDraft(vendorId, "mostrador");
     setItems([]);
@@ -935,6 +960,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
     setPosManualFee("");
     setWithFiscal(false);
     setRestored(false);
+    clearManualDiscount();
   }
   function addManualLine() {
     const name = manualName.trim() || "Varios";
@@ -1164,6 +1190,9 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
       deliveryOutOfArea: isDelivery ? posOutOfAreaFlag : false,
       deliveryManualFee: isDelivery && posOutOfAreaFlag && Number(posManualFee) > 0 ? Number(posManualFee) : undefined,
       giftcardCode: giftcardAmount > 0 && giftcardCodeValue.trim() ? giftcardCodeValue.trim() : undefined,
+      manualDiscount: manualDiscountAmount > 0 && payment !== "fiado"
+        ? { kind: discountKind, value: Number(discountValue), reason: discountReason.trim() || undefined }
+        : undefined,
       notes: notes.trim() || null,
       client_key: newClientKey(),
       occurred_at: new Date().toISOString(),
@@ -1183,6 +1212,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
       setManualName("");
       setManualPrice("");
       setClientOpen(false);
+      clearManualDiscount();
       setFiscalReceptorTipo("cf");
       setFiscalReceptorNro("");
       setFiscalReceptorNombre("");
@@ -2206,6 +2236,12 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
               <span className="tabular-nums flex-shrink-0">−${giftcardAmount.toLocaleString("es-AR")}</span>
             </div>
           )}
+          {manualDiscountAmount > 0 && (
+            <div className="flex items-center justify-between text-xs font-medium text-orange-700 dark:text-orange-400">
+              <span className="truncate">🏷️ Desc. manual{discountReason.trim() ? ` · ${discountReason.trim()}` : ""}</span>
+              <span className="tabular-nums flex-shrink-0">−${manualDiscountAmount.toLocaleString("es-AR")}</span>
+            </div>
+          )}
           {method === "delivery" && (
             <>
               <div className="flex items-center justify-between text-xs text-muted-foreground">
@@ -2281,6 +2317,64 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
                 {giftcardErr && <p className="text-[11px] text-red-600">{giftcardErr}</p>}
                 {giftcardAmount > 0 && (
                   <p className="text-[11px] text-muted-foreground">Saldo: ${(giftcardAmount).toLocaleString("es-AR")}{giftcardExpires ? ` · Vence ${fmtVence(giftcardExpires)}` : " · Sin vencimiento"}</p>
+                )}
+              </div>
+            )}
+          </div>
+          <div className="pt-1">
+            <button
+              type="button"
+              onClick={() => setDiscountOpen((v) => !v)}
+              className="flex w-full items-center justify-between gap-2 text-xs font-medium text-orange-700 dark:text-orange-400"
+            >
+              🏷️ Descuento
+              <span className="text-muted-foreground text-[10px]">{discountOpen ? "▲" : "▼"}</span>
+            </button>
+            {discountOpen && (
+              <div className="mt-2 space-y-2">
+                <div className="flex gap-1.5">
+                  <div className="flex rounded-lg border border-input overflow-hidden flex-shrink-0">
+                    {(["amount", "percent"] as const).map((k) => (
+                      <button
+                        key={k}
+                        type="button"
+                        onClick={() => setDiscountKind(k)}
+                        className={`h-9 px-3 text-xs font-semibold ${discountKind === k ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+                      >
+                        {k === "amount" ? "$" : "%"}
+                      </button>
+                    ))}
+                  </div>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    min="0"
+                    value={discountValue}
+                    onChange={(e) => setDiscountValue(e.target.value)}
+                    placeholder={discountKind === "percent" ? "%" : "$"}
+                    className="flex-1 min-w-0 h-9 px-3 text-xs rounded-lg border border-input bg-background tabular-nums"
+                  />
+                  {(discountValue || discountReason) && (
+                    <button
+                      type="button"
+                      onClick={clearManualDiscount}
+                      title="Quitar descuento"
+                      className="h-9 px-2.5 rounded-lg bg-muted hover:bg-accent text-xs font-medium text-muted-foreground flex-shrink-0"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+                <input
+                  type="text"
+                  value={discountReason}
+                  onChange={(e) => setDiscountReason(e.target.value)}
+                  placeholder="Motivo (ej: cliente frecuente)"
+                  maxLength={120}
+                  className="w-full h-9 px-3 text-xs rounded-lg border border-input bg-background"
+                />
+                {payment === "fiado" && discountValNum > 0 && (
+                  <p className="text-[11px] text-amber-700">📓 El descuento manual no aplica al fiado.</p>
                 )}
               </div>
             )}

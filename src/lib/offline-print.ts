@@ -37,6 +37,8 @@ export type ContingencyDoc = {
   cashTotal?: number | null;
   /** Descuento por pack aplicado (precuenta de mesa). */
   volumeDiscount?: number | null;
+  /** Descuento manual aplicado (precuenta de mesa). */
+  manualDiscount?: number | null;
   createdAt?: number;
   /** 48 = 80mm, 32 = 58mm. */
   width?: 48 | 32;
@@ -181,6 +183,9 @@ export function buildContingencyBytes(doc: ContingencyDoc): Uint8Array {
   p.bold(true).doubleSize(width > 32);
   if ((doc.volumeDiscount ?? 0) > 0) {
     p.text(`Desc. volumen: -${money(doc.volumeDiscount as number)}`);
+  }
+  if ((doc.manualDiscount ?? 0) > 0) {
+    p.text(`Desc. manual: -${money(doc.manualDiscount as number)}`);
   }
   p.text(`TOTAL: ${money(doc.total)}`);
   p.doubleSize(false).bold(false);

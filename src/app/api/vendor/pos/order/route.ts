@@ -123,6 +123,28 @@ export async function POST(request: Request) {
     }
   }
 
+  // Descuento manual por venta ($ o % con motivo). Se valida y se calcula
+  // acá; el monto final se resta dentro de la tx (base = neto mercadería).
+  type ManualDiscountIn = { kind: "amount" | "percent"; value: number; reason: string | null };
+  let manualIn: ManualDiscountIn | null = null;
+  const mdRaw = (body as any)?.manualDiscount;
+  if (mdRaw != null && typeof mdRaw === "object") {
+    const kind = mdRaw.kind === "percent" ? "percent" : mdRaw.kind === "amount" ? "amount" : null;
+    const value = Number(mdRaw.value);
+    const reason = String(mdRaw.reason || "").trim().slice(0, 120) || null;
+    if (kind && Number.isFinite(value) && value > 0) {
+      if (kind === "percent" && value > 100) {
+        return NextResponse.json({ error: "El porcentaje no puede superar el 100%" }, { status: 400 });
+      }
+      manualIn = { kind, value, reason };
+    } else {
+      return NextResponse.json({ error: "Descuento manual inválido" }, { status: 400 });
+    }
+  }
+  if (manualIn && payment === "fiado") {
+    return NextResponse.json({ error: "El descuento manual no aplica al fiado" }, { status: 400 });
+  }
+
   // Los ids "manual:..." del mostrador NO son uuids: se limpian al
   // normalizar para que no contaminen "Lo más pedido" (el flag `manual`,
   // el nombre y el precio se conservan para ticket/totales).
@@ -187,6 +209,20 @@ export async function POST(request: Request) {
     hasVolumeCol = vc?.exists === true;
   } catch {
     hasVolumeCol = false;
+  }
+
+  // Columnas de descuento manual (tolerante a migración sin aplicar).
+  let hasManualCol = false;
+  try {
+    const mc = await queryOne<{ exists: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1 FROM information_schema.columns
+         WHERE table_name = 'orders' AND column_name = 'manual_discount'
+       ) AS exists`
+    );
+    hasManualCol = mc?.exists === true;
+  } catch {
+    hasManualCol = false;
   }
 
   const now = new Date().toISOString();
@@ -260,6 +296,7 @@ export async function POST(request: Request) {
   let order: Record<string, any> | null = null;
   let giftcardIssued: { id: string; code: string; amount: number }[] = [];
   let resolvedVolumeApplied: ResolvedPricing["volumeApplied"] = [];
+  let resolvedManualDiscount = 0;
   try {
     order = await withTransaction(async (tx) => {
     // Stock: la venta de mostrador descuenta igual que el canal app (la
@@ -277,6 +314,15 @@ export async function POST(request: Request) {
     let cashPct = 0;
     let volumeDiscount = 0;
     let volumeApplied: ResolvedPricing["volumeApplied"] = [];
+    let manualDiscountAmount = 0;
+    // Descuento manual: % o $ sobre el neto de mercadería (subtotal con
+    // volumen + manuales, sin envío). Capado a la base; el total nunca es < 0.
+    const manualAmountFor = (base: number): number => {
+      if (!manualIn) return 0;
+      const b = Math.max(0, round2(base));
+      if (manualIn.kind === "percent") return Math.min(b, round2((b * manualIn.value) / 100));
+      return Math.min(b, round2(manualIn.value));
+    };
     let deliveryResolved = { fee: 0, zoneId: null as string | null, zoneName: null as string | null, outOfArea: false, freeShipping: false };
     if (pricedInput.length > 0) {
       const pricing = await resolveOrderPricing({
@@ -304,7 +350,8 @@ export async function POST(request: Request) {
             ).cashDiscount
           : 0;
       finalItems = [...pricing.items, ...(passthrough as unknown as OrderItem[])];
-      finalTotal = Math.max(0, round2(pricing.total + manualTotal - cashManual));
+      manualDiscountAmount = manualAmountFor(pricing.subtotal - pricing.volumeDiscount + manualTotal);
+      finalTotal = Math.max(0, round2(pricing.total + manualTotal - cashManual - manualDiscountAmount));
       cashDiscount = round2(pricing.cashDiscount + cashManual);
       cashPct = pricing.cashPct;
       volumeDiscount = pricing.volumeDiscount;
@@ -338,7 +385,8 @@ export async function POST(request: Request) {
           : 0;
       cashPct = payment === "efectivo" ? normalizeCashPct((gate.vendor as any)?.cash_discount_pct) : 0;
       finalItems = [...passthrough];
-      finalTotal = Math.max(0, round2(manualTotal - cashDiscount + deliveryResolved.fee));
+      manualDiscountAmount = manualAmountFor(manualTotal);
+      finalTotal = Math.max(0, round2(manualTotal - cashDiscount + deliveryResolved.fee - manualDiscountAmount));
     }
 
     // Pedidos CON cocina o delivery nacen en "preparing" y entran al flow
@@ -399,6 +447,7 @@ export async function POST(request: Request) {
       "paid_at", "notes", "pickup_number", "is_preview", "cash_pct",
       "cash_discount",
       ...(hasVolumeCol ? ["volume_discount"] : []),
+      ...(hasManualCol ? ["manual_discount", "manual_discount_kind", "manual_discount_reason", "manual_discount_value"] : []),
       ...(direct && hasClosedAt ? ["closed_at"] : []),
       ...(direct && hasDirectCol ? ["is_direct"] : []),
       ...(hasPayStatus ? ["payment_status"] : []),
@@ -425,6 +474,7 @@ export async function POST(request: Request) {
       cashPct,
       cashDiscount,
       ...(hasVolumeCol ? [volumeDiscount] : []),
+      ...(hasManualCol ? [manualDiscountAmount, manualIn ? manualIn.kind : null, manualIn ? manualIn.reason : null, manualIn ? manualIn.value : null] : []),
       ...(direct && hasClosedAt ? [now] : []),
       ...(direct && hasDirectCol ? [true] : []),
       ...(hasPayStatus ? [payment === "fiado" ? "pending" : "paid"] : []),
@@ -500,6 +550,7 @@ export async function POST(request: Request) {
       }
     }
     resolvedVolumeApplied = volumeApplied;
+    resolvedManualDiscount = manualDiscountAmount;
 
     return order ?? null;
   });
@@ -527,5 +578,5 @@ export async function POST(request: Request) {
     throw e;
   }
 
-  return NextResponse.json({ ok: true, orderId: order?.id, order, volumeDiscount: (order as any)?.volume_discount ?? 0, volumeApplied: resolvedVolumeApplied, giftcardIssued, store: { name: gate.vendor.store_name, logo: ((gate.vendor as any)?.logo_url ?? null) as string | null } });
+  return NextResponse.json({ ok: true, orderId: order?.id, order, volumeDiscount: (order as any)?.volume_discount ?? 0, volumeApplied: resolvedVolumeApplied, manualDiscount: resolvedManualDiscount, giftcardIssued, store: { name: gate.vendor.store_name, logo: ((gate.vendor as any)?.logo_url ?? null) as string | null } });
 }

@@ -1,7 +1,7 @@
 import { gateRequest, gateError } from "@/lib/subscription-gate";
 import { queryOne, queryMany, withTransaction } from "@/lib/db";
 import { cashDiscountForItems, normalizeCashPct } from "@/lib/cash-discount";
-import { resolveOrderPricing, PricingError, type IncomingOrderItem } from "@/lib/pricing";
+import { resolveOrderPricing, PricingError, type IncomingOrderItem, type ResolvedPricing } from "@/lib/pricing";
 import { getOpenShift } from "@/lib/cash-closing";
 import {
   claimSyncKey,
@@ -42,6 +42,25 @@ export async function POST(
   const paymentMethod = ["efectivo", "transferencia", "tarjeta", "mixto", "whatsapp"].includes(body?.paymentMethod)
     ? body.paymentMethod
     : "efectivo";
+
+  // Descuento manual al cobrar ($ o % con motivo). Si no viene, se conserva
+  // el ya guardado en cada cuenta (recalculado sobre la cuenta final).
+  type ManualDiscountIn = { kind: "amount" | "percent"; value: number; reason: string | null };
+  let closeManualIn: ManualDiscountIn | null = null;
+  const mdRaw = (body as any)?.manualDiscount;
+  if (mdRaw != null && typeof mdRaw === "object") {
+    const kind = mdRaw.kind === "percent" ? "percent" : mdRaw.kind === "amount" ? "amount" : null;
+    const value = Number(mdRaw.value);
+    const reason = String(mdRaw.reason || "").trim().slice(0, 120) || null;
+    if (kind && Number.isFinite(value) && value > 0) {
+      if (kind === "percent" && value > 100) {
+        return NextResponse.json({ error: "El porcentaje no puede superar el 100%" }, { status: 400 });
+      }
+      closeManualIn = { kind, value, reason };
+    } else {
+      return NextResponse.json({ error: "Descuento manual inválido" }, { status: 400 });
+    }
+  }
 
   // Idempotencia del sync offline (Fase 0) + gate causal: el cierre solo es
   // válido si las consumiciones previas ya están sincronizadas. El cliente
@@ -121,7 +140,10 @@ export async function POST(
   const cashPct = paymentMethod === "efectivo" ? normalizeCashPct((gate.vendor as any).cash_discount_pct) : 0;
   let cashDiscountTotal = 0;
   let volumeDiscountTotal = 0;
-  const perOrder = new Map<string, { cashPct: number; cashDiscount: number; total: number; items: unknown[]; volumeDiscount: number }>();
+  let manualDiscountTotal = 0;
+  type ManualApplied = { amount: number; kind: string | null; reason: string | null; value: number | null };
+  const perOrder = new Map<string, { cashPct: number; cashDiscount: number; total: number; items: unknown[]; volumeDiscount: number; manual: ManualApplied }>();
+  const noManual: ManualApplied = { amount: 0, kind: null, reason: null, value: null };
 
   let hasVolumeCol = false;
   try {
@@ -136,6 +158,44 @@ export async function POST(
     hasVolumeCol = false;
   }
 
+  let hasManualCol = false;
+  try {
+    const mc = await queryOne<{ exists: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1 FROM information_schema.columns
+         WHERE table_name = 'orders' AND column_name = 'manual_discount'
+       ) AS exists`
+    );
+    hasManualCol = mc?.exists === true;
+  } catch {
+    hasManualCol = false;
+  }
+  // Descuento manual guardado por cuenta (para conservarlo si el cierre no
+  // trae uno nuevo). Tolerante a migración sin aplicar.
+  const storedManual = new Map<string, ManualDiscountIn & { amount: number }>();
+  if (hasManualCol && list.length > 0) {
+    try {
+      const mrows = await queryMany<{ id: string; manual_discount: unknown; manual_discount_kind: unknown; manual_discount_value: unknown; manual_discount_reason: unknown }>(
+        `SELECT id, manual_discount, manual_discount_kind, manual_discount_value, manual_discount_reason FROM orders WHERE id = ANY($1)`,
+        [list.map((o) => o.id)]
+      );
+      for (const m of mrows || []) {
+        const sk = m?.manual_discount_kind === "percent" ? "percent" : m?.manual_discount_kind === "amount" ? "amount" : null;
+        const sv = Number(m?.manual_discount_value);
+        if (sk && Number.isFinite(sv) && sv > 0) {
+          storedManual.set(String(m.id), {
+            kind: sk,
+            value: sv,
+            reason: m?.manual_discount_reason != null ? String(m.manual_discount_reason) : null,
+            amount: Number(m?.manual_discount) || 0,
+          });
+        }
+      }
+    } catch {
+      /* sin columnas: sin descuento guardado */
+    }
+  }
+
   const isUuid = (s: unknown): s is string =>
     typeof s === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
   const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -146,9 +206,24 @@ export async function POST(
   };
 
   // Legacy (cash sobre lo guardado) para la cuenta que no re-resuelva.
+  // Conserva el descuento manual ya guardado; si el cierre trae uno nuevo se
+  // aplica sobre el total guardado (caso raro: pricing falló igual).
   async function legacyCash(orderId: string, stored: any[], storedTotal: number): Promise<void> {
+    const sm = storedManual.get(orderId);
+    const md = closeManualIn ?? sm ?? null;
+    const mdNew = md !== null && md !== sm;
+    const base = Math.max(0, storedTotal);
+    const mdAmount = !mdNew || !md ? 0 : md.kind === "percent" ? Math.min(base, round2((base * md.value) / 100)) : Math.min(base, round2(md.value));
+    const keptManual: ManualApplied = mdNew && md
+      ? { amount: mdAmount, kind: md.kind, reason: md.reason, value: md.value }
+      : sm ? { amount: sm.amount, kind: sm.kind, reason: sm.reason, value: sm.value } : noManual;
+    const keptTotal = mdNew ? Math.max(0, round2(storedTotal - mdAmount)) : storedTotal;
     if (cashPct <= 0) {
-      perOrder.set(orderId, { cashPct: 0, cashDiscount: 0, total: storedTotal, items: stored, volumeDiscount: 0 });
+      perOrder.set(orderId, {
+        cashPct: 0, cashDiscount: 0, total: keptTotal, items: stored, volumeDiscount: 0,
+        manual: keptManual,
+      });
+      if (keptManual.amount > 0) manualDiscountTotal += keptManual.amount;
       return;
     }
     const ids = new Set<string>();
@@ -175,11 +250,24 @@ export async function POST(
       }),
       cashPct
     );
-    const newTotal = Math.max(0, Math.round((storedTotal - cashDiscount) * 100) / 100);
-    perOrder.set(orderId, { cashPct, cashDiscount, total: newTotal, items: stored, volumeDiscount: 0 });
+    const newTotal = Math.max(0, Math.round((keptTotal - cashDiscount) * 100) / 100);
+    perOrder.set(orderId, {
+      cashPct, cashDiscount, total: newTotal, items: stored, volumeDiscount: 0,
+      manual: keptManual,
+    });
     cashDiscountTotal += cashDiscount;
+    if (keptManual.amount > 0) manualDiscountTotal += keptManual.amount;
   }
 
+  type ResolvedOne = {
+    o: Record<string, any>;
+    pricing: ResolvedPricing;
+    manualTotal: number;
+    cashManual: number;
+    items: Record<string, any>[];
+    pricedPrep: boolean[];
+  };
+  const resolvedList: ResolvedOne[] = [];
   for (const o of list) {
     const stored: any[] = Array.isArray(o.items) ? o.items : [];
     const storedTotal = Number(o.total) || 0;
@@ -221,16 +309,46 @@ export async function POST(
             ).cashDiscount
           : 0;
       const items = [...(pricing.items as unknown as Record<string, any>[]), ...passthrough];
-      const total = Math.max(0, round2(pricing.total + manualTotal - cashManual));
-      const cashDiscount = round2(pricing.cashDiscount + cashManual);
-      perOrder.set(o.id, { cashPct: pricing.cashPct, cashDiscount, total, items, volumeDiscount: pricing.volumeDiscount });
-      cashDiscountTotal += cashDiscount;
-      volumeDiscountTotal += pricing.volumeDiscount;
+      resolvedList.push({ o, pricing, manualTotal, cashManual, items, pricedPrep });
     } catch (e) {
       if (!(e instanceof PricingError)) throw e;
       await legacyCash(o.id, stored, storedTotal);
     }
   }
+
+  // Descuento manual: el del cierre se prorratea entre las cuentas según su
+  // base (un monto fijo no se multiplica por cuenta); si no vino, cada cuenta
+  // conserva el suyo recalculado sobre su base final.
+  const bases = resolvedList.map((r) => Math.max(0, round2(r.pricing.subtotal - r.pricing.volumeDiscount + r.manualTotal)));
+  const totalBase = round2(bases.reduce((s, b) => s + b, 0));
+  let remaining = closeManualIn?.kind === "amount" ? round2(closeManualIn.value) : 0;
+  resolvedList.forEach((r, idx) => {
+    const isLast = idx === resolvedList.length - 1;
+    const base = bases[idx];
+    const md = closeManualIn ?? storedManual.get(r.o.id) ?? null;
+    let mdAmount = 0;
+    if (md) {
+      if (closeManualIn && md.kind === "amount") {
+        mdAmount = isLast
+          ? Math.max(0, Math.min(base, remaining))
+          : totalBase > 0 ? Math.min(base, round2((closeManualIn.value * base) / totalBase)) : 0;
+        remaining = round2(remaining - mdAmount);
+      } else if (md.kind === "percent") {
+        mdAmount = Math.min(base, round2((base * md.value) / 100));
+      } else {
+        mdAmount = Math.min(base, round2(md.value));
+      }
+    }
+    const total = Math.max(0, round2(r.pricing.total + r.manualTotal - r.cashManual - mdAmount));
+    const cashDiscount = round2(r.pricing.cashDiscount + r.cashManual);
+    const manual: ManualApplied = md
+      ? { amount: mdAmount, kind: md.kind, reason: md.reason, value: md.value }
+      : noManual;
+    perOrder.set(r.o.id, { cashPct: r.pricing.cashPct, cashDiscount, total, items: r.items, volumeDiscount: r.pricing.volumeDiscount, manual });
+    cashDiscountTotal += cashDiscount;
+    volumeDiscountTotal += r.pricing.volumeDiscount;
+    manualDiscountTotal += mdAmount;
+  });
 
   // Total a cobrar: suma de las cuentas re-resueltas.
   const total = [...perOrder.values()].reduce((s, d) => s + d.total, 0);
@@ -238,10 +356,15 @@ export async function POST(
 
   await withTransaction(async (tx) => {
     // Descuento por orden primero (items re-resueltos + cash_pct/cash_discount/
-    // volume_discount + total real cobrado), después el cierre: todo en la
-    // misma transacción.
+    // volume_discount/manual_discount + total real cobrado), después el cierre:
+    // todo en la misma transacción.
     for (const [orderId, d] of perOrder) {
-      if (hasVolumeCol) {
+      if (hasVolumeCol && hasManualCol) {
+        await tx.query(
+          `UPDATE orders SET cash_pct = $1, cash_discount = $2, total = $3, items = $4, volume_discount = $5, manual_discount = $6, manual_discount_kind = $7, manual_discount_reason = $8, manual_discount_value = $9 WHERE id = $10`,
+          [d.cashPct, d.cashDiscount, d.total, JSON.stringify(d.items), d.volumeDiscount, d.manual.amount, d.manual.kind, d.manual.reason, d.manual.value, orderId]
+        );
+      } else if (hasVolumeCol) {
         await tx.query(
           `UPDATE orders SET cash_pct = $1, cash_discount = $2, total = $3, items = $4, volume_discount = $5 WHERE id = $6`,
           [d.cashPct, d.cashDiscount, d.total, JSON.stringify(d.items), d.volumeDiscount, orderId]
@@ -278,6 +401,7 @@ export async function POST(
     cashDiscount: cashDiscountTotal > 0 ? Math.round(cashDiscountTotal * 100) / 100 : 0,
     cashPct: cashPct || 0,
     volumeDiscount: volumeDiscountTotal > 0 ? Math.round(volumeDiscountTotal * 100) / 100 : 0,
+    manualDiscount: manualDiscountTotal > 0 ? Math.round(manualDiscountTotal * 100) / 100 : 0,
     ordersClosed: list.length,
     paymentMethod,
   };

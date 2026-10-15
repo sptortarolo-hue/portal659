@@ -418,6 +418,18 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
   // Cargo manual ("Varios"): línea sin producto (igual que en Mostrador).
   const [manualName, setManualName] = useState("");
   const [manualPrice, setManualPrice] = useState("");
+  // Descuento manual por cuenta ($ o % con motivo). Vive en la UI hasta
+  // cargarse/cobrarse (el servidor lo persiste y recalcula); al cambiar de
+  // mesa se limpia.
+  const [discountKind, setDiscountKind] = useState<"amount" | "percent">("amount");
+  const [discountValue, setDiscountValue] = useState("");
+  const [discountReason, setDiscountReason] = useState("");
+  const [discountOpen, setDiscountOpen] = useState(false);
+  function clearTableDiscount() {
+    setDiscountValue("");
+    setDiscountReason("");
+    setDiscountKind("amount");
+  }
   function addManualLine() {
     const name = manualName.trim() || "Varios";
     const price = Math.round(Number(manualPrice) * 100) / 100;
@@ -1150,6 +1162,7 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
       items: cart.map((i) => ({ ...i, modifiers: (i.modifiers || []).map((m) => m.label) })),
       total: cart.reduce((s, i) => s + i.price * i.qty, 0),
       paymentMethod: payment,
+      manualDiscount: tableManualPayload,
       client_key: newClientKey(),
       occurred_at: new Date().toISOString(),
     };
@@ -1210,6 +1223,7 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
       ]);
       setTables((prev) => prev.map((x) => (x.id === tableId ? { ...x, status: "ocupada" } : x)));
       setCart([]);
+      clearTableDiscount();
       setMsg(`📡 Consumición P-${prov} guardada en ${tableName}, se envía al reconectar`);
       setTimeout(() => setMsg(""), 2500);
     };
@@ -1240,6 +1254,7 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
         setTables((prev) => prev.map((x) => (x.id === selected.id ? { ...x, status: "ocupada" } : x)));
       }
       setCart([]);
+      clearTableDiscount();
       await load();
       setMsg(`Consumición cargada en ${selected.name}`);
     } else setMsg(data.error || "No se pudo cargar");
@@ -1261,6 +1276,7 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
             items: cart.map((i) => ({ ...i, modifiers: (i.modifiers || []).map((m) => m.label) })),
             total: cart.reduce((s, i) => s + i.price * i.qty, 0),
             paymentMethod: payment,
+            manualDiscount: tableManualPayload,
             client_key: newClientKey(),
             occurred_at: new Date().toISOString(),
           }
@@ -1271,6 +1287,7 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
     ];
     const payload = {
       paymentMethod: payment,
+      manualDiscount: tableManualPayload,
       client_key: newClientKey(),
       occurred_at: new Date().toISOString(),
       expected_keys,
@@ -1295,7 +1312,7 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
       (payload as any).__provisional = prov;
       (payload as any).__closeTotal = Math.max(
         0,
-        Math.round((mesaNet - (payment === "efectivo" ? mesaCash.cashDiscount : 0)) * 100) / 100
+        Math.round(mesaPayTotal * 100) / 100
       );
       if (cartPayload) {
         const cartProv = nextProvisionalNumber(vendorId);
@@ -1367,7 +1384,7 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
       res = await fetch(`/api/vendor/tables/${tableId}/close`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ paymentMethod: payment }),
+        body: JSON.stringify({ paymentMethod: payment, manualDiscount: tableManualPayload }),
       });
     } catch (e) {
       if (isNetworkError(e)) {
@@ -1389,6 +1406,9 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
         (Number(data.volumeDiscount) > 0
           ? ` (desc. pack −$${Number(data.volumeDiscount).toLocaleString("es-AR")})`
           : "") +
+        (Number(data.manualDiscount) > 0
+          ? ` (desc. manual −$${Number(data.manualDiscount).toLocaleString("es-AR")})`
+          : "") +
         (Number(data.cashDiscount) > 0
           ? ` (desc. efectivo −$${Number(data.cashDiscount).toLocaleString("es-AR")})`
           : "")
@@ -1398,10 +1418,115 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
   }
 
   const cartCount = cart.reduce((s, i) => s + i.qty, 0);
-  // Neto con volumen (el espejo matchea lo que el servidor cobra al cerrar).
-  const mesaNet = Math.max(0, Math.round((mesaGross - mesaVolumeDiscount) * 100) / 100);
+  // Descuento manual ya guardado en las cuentas abiertas (la cuenta lo trae
+  // en su total; acá se resta del bruto reconstruido para no duplicar).
+  const storedManualTotal = useMemo(
+    () => openOrders.reduce((s, o) => s + (Number((o as any).manual_discount) || 0), 0),
+    [openOrders]
+  );
+  const storedManualReason = useMemo(() => {
+    const rs = [...new Set(openOrders.map((o) => String((o as any).manual_discount_reason || "")).filter(Boolean))];
+    return rs.length === 1 ? rs[0] : "";
+  }, [openOrders]);
+  // Neto con volumen y manual guardado (el espejo matchea lo que el servidor
+  // cobra al cerrar).
+  const mesaNet = Math.max(0, Math.round((mesaGross - mesaVolumeDiscount - storedManualTotal) * 100) / 100);
+  // Descuento manual nuevo en vivo (espejo; el servidor recalcula y manda):
+  // $ o % sobre el neto, capado a la base.
+  const uiDiscountVal = Number(discountValue) || 0;
+  const uiManualAmount =
+    uiDiscountVal > 0
+      ? discountKind === "percent"
+        ? Math.min(mesaNet, Math.round(mesaNet * Math.min(uiDiscountVal, 100)) / 100)
+        : Math.min(mesaNet, Math.round(uiDiscountVal * 100) / 100)
+      : 0;
   // Con efectivo se cobra el neto con descuento; con otros medios, el neto.
-  const mesaPayTotal = Math.max(0, Math.round((mesaNet - (payment === "efectivo" ? mesaCash.cashDiscount : 0)) * 100) / 100);
+  const mesaPayTotal = Math.max(0, Math.round((mesaNet - uiManualAmount - (payment === "efectivo" ? mesaCash.cashDiscount : 0)) * 100) / 100);
+  /** Payload de descuento manual para consumición/cierre (undefined = sin descuento). */
+  const tableManualPayload = uiManualAmount > 0
+    ? { kind: discountKind, value: Number(discountValue), reason: discountReason.trim() || undefined }
+    : undefined;
+
+  // Al cambiar de mesa se limpia el descuento tipeado (cada cuenta tiene el suyo).
+  useEffect(() => {
+    clearTableDiscount();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected?.id]);
+
+  // Editor de descuento manual (se renderiza en desktop y mobile).
+  const discountEditor = (
+    <div>
+      <button
+        type="button"
+        onClick={() => setDiscountOpen((v) => !v)}
+        className="flex w-full items-center justify-between gap-2 text-[11px] font-medium text-orange-700 dark:text-orange-400"
+      >
+        🏷️ Descuento
+        <span className="text-muted-foreground text-[10px]">{discountOpen ? "▲" : "▼"}</span>
+      </button>
+      {discountOpen && (
+        <div className="mt-1.5 space-y-1.5">
+          <div className="flex gap-1.5">
+            <div className="flex rounded-lg border border-input overflow-hidden flex-shrink-0">
+              {(["amount", "percent"] as const).map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => setDiscountKind(k)}
+                  className={`h-8 px-2.5 text-[11px] font-semibold ${discountKind === k ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+                >
+                  {k === "amount" ? "$" : "%"}
+                </button>
+              ))}
+            </div>
+            <input
+              type="number"
+              inputMode="decimal"
+              min="0"
+              value={discountValue}
+              onChange={(e) => setDiscountValue(e.target.value)}
+              placeholder={discountKind === "percent" ? "%" : "$"}
+              className="flex-1 min-w-0 h-8 px-2 text-[11px] rounded-lg border border-input bg-background tabular-nums"
+            />
+            {(discountValue || discountReason) && (
+              <button
+                type="button"
+                onClick={clearTableDiscount}
+                title="Quitar descuento"
+                className="h-8 px-2 rounded-lg bg-muted hover:bg-accent text-[11px] font-medium text-muted-foreground flex-shrink-0"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+          <input
+            type="text"
+            value={discountReason}
+            onChange={(e) => setDiscountReason(e.target.value)}
+            placeholder="Motivo (ej: cliente frecuente)"
+            maxLength={120}
+            className="w-full h-8 px-2 text-[11px] rounded-lg border border-input bg-background"
+          />
+        </div>
+      )}
+    </div>
+  );
+
+  // Líneas de descuento manual (guardado + nuevo). Se renderizan en desktop y mobile.
+  const discountLines = (
+    <>
+      {storedManualTotal > 0 && (
+        <p className="text-[11px] font-medium text-orange-700 dark:text-orange-400 flex-shrink-0">
+          🏷️ Desc. manual{storedManualReason ? ` · ${storedManualReason}` : ""}: −${storedManualTotal.toLocaleString("es-AR")}
+        </p>
+      )}
+      {uiManualAmount > 0 && (
+        <p className="text-[11px] font-medium text-orange-700 dark:text-orange-400 flex-shrink-0">
+          🏷️ Desc. manual{discountReason.trim() ? ` · ${discountReason.trim()}` : ""}: −${uiManualAmount.toLocaleString("es-AR")}
+        </p>
+      )}
+    </>
+  );
 
   // Precuenta de la mesa (ticket térmico, sin cerrar): incluye lo ya cargado
   // más el carrito pendiente. No cierra ni cobra.
@@ -1426,12 +1551,13 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
           kind: "PRECUENTA",
           tableName,
           items: contItems,
-          total: mesaNet,
+          total: Math.max(0, mesaNet - uiManualAmount),
           paymentLabel: PAYMENT_LABELS[payment] ?? payment,
           cashPct: mesaCash.cashDiscount > 0 ? mesaCash.cashPct : 0,
           cashTotal:
             mesaCash.cashDiscount > 0 ? mesaPayTotal : 0,
           volumeDiscount: mesaVolumeDiscount,
+          manualDiscount: storedManualTotal + uiManualAmount,
           createdAt: Date.now(),
         });
         setMsg(
@@ -1470,20 +1596,21 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
     ];
     setPrintingTicket(true);
     try {
-      const res = await fetch("/api/print", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type: "precuenta",
-          tableName: selected.name,
-          items,
-          total: mesaNet,
-          // Info de efectivo para el ticket: "Efectivo (-X%): $Y".
-          cashPct: mesaCash.cashDiscount > 0 ? mesaCash.cashPct : 0,
-          cashTotal: mesaCash.cashDiscount > 0 ? mesaPayTotal : 0,
-          volumeDiscount: mesaVolumeDiscount,
-        }),
-      });
+    const res = await fetch("/api/print", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "precuenta",
+        tableName: selected.name,
+        items,
+        total: Math.max(0, mesaNet - uiManualAmount),
+        // Info de efectivo para el ticket: "Efectivo (-X%): $Y".
+        cashPct: mesaCash.cashDiscount > 0 ? mesaCash.cashPct : 0,
+        cashTotal: mesaCash.cashDiscount > 0 ? mesaPayTotal : 0,
+        volumeDiscount: mesaVolumeDiscount,
+        manualDiscount: storedManualTotal + uiManualAmount,
+      }),
+    });
       const data = await res.json().catch(() => ({}));
       if (data.ok) setMsg("🖨️ Precuenta enviada a la impresora");
       else setMsg(`⚠️ ${describePrintError(data.reason || data.error || "No se pudo imprimir la precuenta")}`);
@@ -1973,6 +2100,8 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
                     🎁 Desc. pack{mesaVolumeLabel ? ` · ${mesaVolumeLabel}` : ""}: −${mesaVolumeDiscount.toLocaleString("es-AR")}
                   </p>
                 )}
+                {discountLines}
+                <div className="flex-shrink-0">{discountEditor}</div>
                 <div className="flex items-center justify-between text-sm flex-shrink-0">
                   <span>Total mesa</span>
                   <b className="tabular-nums">${mesaPayTotal.toLocaleString("es-AR")}</b>
@@ -2194,6 +2323,8 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
                       🎁 Desc. pack{mesaVolumeLabel ? ` · ${mesaVolumeLabel}` : ""}: −${mesaVolumeDiscount.toLocaleString("es-AR")}
                     </p>
                   )}
+                  {discountLines}
+                  {discountEditor}
                   <div className="flex items-center justify-between text-sm">
                     <span>Total a cobrar</span>
                     <b className="tabular-nums">${mesaPayTotal.toLocaleString("es-AR")}</b>

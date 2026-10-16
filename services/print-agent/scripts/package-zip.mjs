@@ -9,7 +9,7 @@
  * Uso: node scripts/package-zip.mjs   (desde services/print-agent)
  */
 import { execFileSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, statSync, createReadStream } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, statSync, createReadStream, openSync, readSync, closeSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -58,12 +58,37 @@ async function main() {
   cpSync(SRC, STAGING, { recursive: true });
   trimLocales();
 
-  // bsdtar crea .zip con -a (extensión .zip => compresor zip).
-  // OJO: bsdtar interpreta "C:\..." del -f como host remoto ("C:"); por eso
+  // bsdtar de Windows crea .zip con -a (extensión .zip => compresor zip).
+  // OJO 1: hay que llamar al bsdtar del sistema por ruta absoluta: si `tar`
+  // se resuelve por PATH puede caer en el GNU tar de Git-for-Windows, que
+  // genera un TAR sin comprimir (empieza con el nombre de la carpeta y
+  // termina en ceros) aunque el archivo se llame .zip.
+  // OJO 2: bsdtar interpreta "C:\..." del -f como host remoto ("C:"); por eso
   // se corre con cwd=dist y rutas relativas (mismo layout: carpeta superior
   // "Portal Print Agent/").
-  execFileSync("tar", ["-a", "-c", "-f", "portal-print-agent.zip", "Portal Print Agent"], {
+  const tarBin =
+    process.platform === "win32"
+      ? join(process.env.SystemRoot || "C:\\Windows", "System32", "tar.exe")
+      : "tar";
+  execFileSync(tarBin, ["-a", "-c", "-f", "portal-print-agent.zip", "Portal Print Agent"], {
     stdio: "inherit",
+    cwd: join(ROOT, "dist"),
+  });
+
+  // Validación: el .zip tiene que abrir (firma PK + listado legible).
+  // Si tar generó un TAR plano, esto falla ANTES de publicar basura.
+  const fd = openSync(OUT, "r");
+  try {
+    const magic = Buffer.alloc(2);
+    if (readSync(fd, magic, 0, 2, 0) !== 2 || magic.toString("latin1") !== "PK") {
+      console.error("El archivo generado no es un ZIP válido (firma PK ausente).");
+      process.exit(1);
+    }
+  } finally {
+    closeSync(fd);
+  }
+  execFileSync(tarBin, ["-tf", "portal-print-agent.zip"], {
+    stdio: "ignore",
     cwd: join(ROOT, "dist"),
   });
 

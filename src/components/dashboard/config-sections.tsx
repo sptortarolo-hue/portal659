@@ -83,6 +83,14 @@ type Props = {
   children: ReactNode;
 };
 
+/**
+ * Flag sincrónico de reset de entrada al tab Config. El padre lo marca en el
+ * handler de navegación (mismo tick, antes del re-render) junto con el
+ * evento "portal:config-enter". El efecto controlado lo consume: cierra el
+ * detalle mobile y no auto-abre, haya cambiado el id o no.
+ */
+export const configEnterState = { suppressNextAutoOpen: false };
+
 function SectionIcon({ id, fallback, className }: { id: string; fallback: string; className?: string }) {
   const Icon = configSectionIcon(id);
   return <Icon className={className} aria-hidden />;
@@ -185,6 +193,8 @@ export function ConfigSections({
   defsRef.current = defs;
   const onActiveChangeRef = useRef(onActiveChange);
   onActiveChangeRef.current = onActiveChange;
+  const controlledRef = useRef(controlledId);
+  controlledRef.current = controlledId;
 
   /**
    * Sincroniza el detalle mobile con el historial del browser: cada apertura
@@ -212,10 +222,15 @@ export function ConfigSections({
       setMobileOpen(true);
       pushCfgState(id, replace);
     }
-    try {
-      localStorage.setItem(storageKey, id);
-    } catch {
-      /* noop */
+    // La impresora nunca se persiste como "última sección": es un atajo
+    // operativo (header), no un punto de entrada. Entrar a Configuración
+    // siempre arranca en el menú (mobile) / Perfil (desktop).
+    if (id !== "impresora") {
+      try {
+        localStorage.setItem(storageKey, id);
+      } catch {
+        /* noop */
+      }
     }
     const mapped = openEvents.find((o) => o.sectionId === id);
     if (mapped) window.dispatchEvent(new Event(mapped.event));
@@ -268,11 +283,37 @@ export function ConfigSections({
 
   // En modo controlado, si el padre cambia la sección (sidebar/drawer en
   // mobile), se abre el detalle para no dejar al usuario en el menú.
+  // Excepción: reset de entrada ("portal:config-enter") — el padre marca el
+  // flag ANTES del re-render, así el auto-open no lo reabre (gane o no el id).
   const lastActiveRef = useRef(activeId);
   useEffect(() => {
+    const h = () => {
+      // Reset de entrada al tab: siempre menú (mobile). En modo no
+      // controlado además se vuelve a la primera sección.
+      if (controlledRef.current === undefined) {
+        setInnerId(defaultId ?? defsRef.current[0]?.id ?? "");
+      }
+      setMobileOpen(false);
+    };
+    window.addEventListener("portal:config-enter", h);
+    return () => window.removeEventListener("portal:config-enter", h);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
     if (controlledId === undefined) return;
-    if (lastActiveRef.current === activeId) return;
+    if (lastActiveRef.current === activeId) {
+      if (configEnterState.suppressNextAutoOpen) {
+        configEnterState.suppressNextAutoOpen = false;
+        setMobileOpen(false);
+      }
+      return;
+    }
     lastActiveRef.current = activeId;
+    if (configEnterState.suppressNextAutoOpen) {
+      configEnterState.suppressNextAutoOpen = false;
+      setMobileOpen(false);
+      return;
+    }
     if (isMobileView()) {
       setMobileOpen(true);
       pushCfgState(activeId);

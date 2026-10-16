@@ -48,7 +48,7 @@ const ImageCropModal = dynamic(
 import { DEFAULT_ZONE } from "@/lib/config";
 import VendorSidebar from "@/components/vendor/vendor-sidebar";
 import { configSectionStatus as getConfigSectionStatus, sectionsForVertical, CONFIG_SECTION_GROUPS, configSectionLabel, configSectionIcon } from "@/components/dashboard/config-nav";
-import { StatusDot } from "@/components/dashboard/config-sections";
+import { StatusDot, configEnterState } from "@/components/dashboard/config-sections";
 import { NotificationBell } from "@/components/nav/notification-bell";
 import { UserMenu } from "@/components/nav/user-menu";
 import { DashboardHome } from "@/components/dashboard/dashboard-home";
@@ -279,7 +279,8 @@ function VendorDashboardInner() {
   useEffect(() => {
     try {
       const saved = localStorage.getItem(`portal659-config-${vendor?.vertical || "gastro"}`);
-      if (saved) setConfigSection(saved);
+      // "impresora" legacy nunca se restaura (era el bug: quedaba pegada).
+      if (saved && saved !== "impresora") setConfigSection(saved);
     } catch {
       /* sin storage: default */
     }
@@ -289,6 +290,8 @@ function VendorDashboardInner() {
     (id: string) => {
       setConfigSection(id);
       setTab("config");
+      // La impresora no se persiste (ver ConfigSections.activate).
+      if (id === "impresora") return;
       try {
         localStorage.setItem(`portal659-config-${vendor?.vertical || "gastro"}`, id);
       } catch {
@@ -297,6 +300,27 @@ function VendorDashboardInner() {
     },
     [vendor?.vertical]
   );
+  // Entrar a Configuración arranca siempre en el menú (mobile, drill-down
+  // cerrado) / Perfil (desktop). Corre en el handler (sincrónico, antes del
+  // re-render) para que el auto-open del shell no lo reabra. Las entradas
+  // con sección explícita (sidebar de Config, atajo 🖨️) usan
+  // handleConfigSection y no pasan por acá.
+  const enterConfigTab = useCallback(() => {
+    configEnterState.suppressNextAutoOpen = true;
+    setConfigSection("perfil");
+    try {
+      localStorage.setItem(`portal659-config-${vendor?.vertical || "gastro"}`, "perfil");
+      const url = new URL(window.location.href);
+      if (url.searchParams.has("seccion")) {
+        url.searchParams.delete("seccion");
+        window.history.replaceState(window.history.state, "", url.toString());
+      }
+    } catch {
+      /* noop */
+    }
+    window.dispatchEvent(new Event("portal:config-enter"));
+    setTab("config");
+  }, [vendor?.vertical]);
   // Las pestañas pesadas (fetch propio: comanda, mostrador, mesas, analytics,
   // reviews) se montan recién cuando el usuario las abre por primera vez.
   // Así el arranque del dashboard hace ~12 requests en vez de ~20 y el pool
@@ -403,7 +427,10 @@ function VendorDashboardInner() {
 
   // Callbacks estables para el hook de teclado y los tabs memoizados.
   const { addToast } = useToast();
-  const handleTabChange = useCallback((t: DashTab) => setTab(t), []);
+  const handleTabChange = useCallback((t: DashTab) => {
+    if (t === "config") { enterConfigTab(); return; }
+    setTab(t);
+  }, [enterConfigTab]);
   const openOrderDetail = useCallback((o: Order) => setSelectedOrder(o), []);
   // Atajo Mostrador/Mesas → pestaña Caja (banner "abrí la caja").
   useEffect(() => {
@@ -1613,7 +1640,7 @@ function VendorDashboardInner() {
                 )}
                 {(isGastro || ((isComercio || isModa) && effectivePlan.can("printer"))) && (
                   <PrinterStatus vendor={vendor} onOpenConfig={() => {
-                    setTab("config");
+                    handleConfigSection("impresora");
                     window.dispatchEvent(new Event("portal:open-printer-config"));
                     window.setTimeout(() => {
                       document.getElementById("printer-config")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -1660,7 +1687,7 @@ function VendorDashboardInner() {
               )}
               {(isGastro || ((isComercio || isModa) && effectivePlan.can("printer"))) && (
                 <PrinterStatus vendor={vendor} onOpenConfig={() => {
-                  setTab("config");
+                  handleConfigSection("impresora");
                   window.dispatchEvent(new Event("portal:open-printer-config"));
                   window.setTimeout(() => {
                     document.getElementById("printer-config")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -2164,7 +2191,7 @@ function VendorDashboardInner() {
                     </button>
                   )}
                   {!isEmployee && (
-                  <button onClick={() => { setTab("config"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "config" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
+                  <button onClick={() => { enterConfigTab(); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "config" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
                     <Wrench className="h-5 w-5" />Configuración
                   </button>
                   )}
@@ -2261,7 +2288,7 @@ function VendorDashboardInner() {
                 </button>
               )}
               {!isEmployee && (
-              <button onClick={() => { setTab("config"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "config" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
+              <button onClick={() => { enterConfigTab(); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "config" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
                 <Wrench className="h-5 w-5" />Configuración
               </button>
               )}

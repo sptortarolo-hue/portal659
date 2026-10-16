@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { CollapsibleSection } from "@/components/ui/collapsible-section";
-import { dispatchOfflinePrint, probeLocalListeners, pushLocalPrinterIp, scanLocalPrinters, describePrintError, type LocalListener, type LocalScanResult } from "@/lib/local-print";
+import { dispatchOfflinePrint, probeLocalListeners, pushLocalPrinterIp, pushLocalUsbName, listLocalUsbPrinters, scanLocalPrinters, describePrintError, type LocalListener, type LocalScanResult, type UsbScanResult } from "@/lib/local-print";
 import type { Vendor } from "@/types/database";
 
 type Props = {
@@ -30,8 +30,8 @@ export function PrinterConfigSection({
 }: Props) {
   const [printerIp, setPrinterIp] = useState(vendor?.printer_ip || "");
   const [printerPort, setPrinterPort] = useState(String(vendor?.printer_port || 9100));
-  const [printMode, setPrintMode] = useState<"server" | "app">(
-    vendor?.print_mode === "app" ? "app" : "server"
+  const [printMode, setPrintMode] = useState<"server" | "app" | "usb">(
+    vendor?.print_mode === "app" ? "app" : vendor?.print_mode === "usb" ? "usb" : "server"
   );
   const [agentOnline, setAgentOnline] = useState(false);
   const [bridgeConfigured, setBridgeConfigured] = useState(false);
@@ -57,6 +57,49 @@ export function PrinterConfigSection({
   // Buscar impresoras desde la web (usa el scan del listener local).
   const [scanning, setScanning] = useState(false);
   const [scanResults, setScanResults] = useState<LocalScanResult[] | null>(null);
+  // Cola USB de este equipo (tercer modo: por-equipo, vive en el agente).
+  const [usbQueues, setUsbQueues] = useState<UsbScanResult[] | null>(null);
+  const [usbLoading, setUsbLoading] = useState(false);
+  const [usbApplying, setUsbApplying] = useState<string | null>(null);
+
+  const listUsbQueues = async () => {
+    if (!vendor?.id) {
+      setMsg("Sin comercio cargado");
+      return;
+    }
+    setUsbLoading(true);
+    try {
+      const r = await listLocalUsbPrinters(vendor.id);
+      setUsbQueues(r.listeners);
+      const total = r.listeners.reduce((s, l) => s + l.printers.length, 0);
+      if (r.listeners.length === 0) {
+        setMsg(`❌ ${r.error || "Sin agente actualizado en este equipo"}`);
+      } else if (total === 0) {
+        setMsg("❌ Sin colas USB: enchufá la impresora a esta PC e instalala en Windows");
+      } else {
+        setMsg(`🔌 ${total} cola${total === 1 ? "" : "s"} USB: tocá la tuya para usarla en este equipo`);
+      }
+    } finally {
+      setUsbLoading(false);
+    }
+    setTimeout(() => setMsg(""), 5000);
+  };
+
+  const applyUsbQueue = async (name: string, listenerPort: number) => {
+    if (!vendor?.id) return;
+    setUsbApplying(`${listenerPort}-${name}`);
+    try {
+      const r = await pushLocalUsbName(vendor.id, listenerPort, name);
+      setMsg(
+        r.ok
+          ? `✅ USB fijada en "${name}" (solo en este equipo)`
+          : `❌ ${describePrintError(r.error)}`
+      );
+    } finally {
+      setUsbApplying(null);
+    }
+    setTimeout(() => setMsg(""), 5000);
+  };
 
   const probeLocal = async () => {
     setLocalProbing(true);
@@ -143,12 +186,12 @@ export function PrinterConfigSection({
   useEffect(() => {
     setPrinterIp(vendor?.printer_ip || "");
     setPrinterPort(String(vendor?.printer_port || 9100));
-    setPrintMode(vendor?.print_mode === "app" ? "app" : "server");
+    setPrintMode(vendor?.print_mode === "app" ? "app" : vendor?.print_mode === "usb" ? "usb" : "server");
     setPrintToken(vendor?.print_token || null);
   }, [vendor]);
 
   useEffect(() => {
-    if (printMode !== "app") return;
+    if (printMode !== "app" && printMode !== "usb") return;
     let mounted = true;
     const poll = async () => {
       try {
@@ -175,10 +218,10 @@ export function PrinterConfigSection({
     };
   }, [printMode]);
 
-  const changePrintMode = async (mode: "server" | "app") => {
+  const changePrintMode = async (mode: "server" | "app" | "usb") => {
     setPrintMode(mode);
     await saveVendor({ print_mode: mode });
-    if (mode === "app") {
+    if (mode === "app" || mode === "usb") {
       const res = await fetch("/api/vendor/print/status");
       const data = await res.json().catch(() => null);
       setPrintToken(data?.vendor?.print_token || printToken);
@@ -190,7 +233,7 @@ export function PrinterConfigSection({
     const data = await res.json().catch(() => ({ error: "Error de red" }));
     if (data.token) {
       setPrintToken(data.token);
-      setMsg("✅ Token regenerado — pegá el nuevo token en la app Portal Print");
+      setMsg("✅ Token regenerado — pegá el nuevo token en la app o el agente");
     } else {
       setMsg(`❌ ${data.error || "No se pudo regenerar el token"}`);
     }
@@ -204,9 +247,15 @@ export function PrinterConfigSection({
     });
     const data = await res.json().catch(() => ({ error: "Respuesta inválida del servidor" }));
     if (data.offline) {
-      setMsg("❌ La app Portal Print no está conectada (abrí la app en tu celu)");
+      setMsg(
+        printMode === "usb"
+          ? "❌ El agente PC no está conectado (abrilo en la PC con la impresora)"
+          : "❌ La app Portal Print no está conectada (abrí la app en tu celu)"
+      );
     } else if (data.ok) {
-      if (data.ipFixed) {
+      if (data.usbUsed) {
+        setMsg(`✅ Impresión de prueba enviada (cola "${data.usbUsed}")`);
+      } else if (data.ipFixed) {
         setPrinterIp(data.ipFixed.to);
         setMsg(`✅ Impresión de prueba enviada (la impresora había cambiado de IP: ${data.ipFixed.from} → ${data.ipFixed.to}, ya quedó actualizada)`);
       } else {
@@ -255,11 +304,11 @@ export function PrinterConfigSection({
       <div className="space-y-3">
         <div>
           <Label>Cómo imprime</Label>
-          <div className="grid grid-cols-2 gap-2 mt-1">
+          <div className="grid grid-cols-3 gap-2 mt-1">
             <button
               type="button"
               onClick={() => changePrintMode("app")}
-              className={`rounded-lg border-2 px-3 py-2 text-sm font-medium text-left transition-colors ${
+              className={`rounded-lg border-2 px-2 py-2 text-sm font-medium text-left transition-colors ${
                 printMode === "app"
                   ? "border-primary bg-primary/5 text-primary"
                   : "border-border bg-card text-muted-foreground hover:border-primary/30"
@@ -267,13 +316,27 @@ export function PrinterConfigSection({
             >
               📱 App en tu celu
               <p className="text-[10px] font-normal mt-1 opacity-80">
-                Impresora en la red local (recomendado)
+                Por Wi-Fi, sin cables
+              </p>
+            </button>
+            <button
+              type="button"
+              onClick={() => changePrintMode("usb")}
+              className={`rounded-lg border-2 px-2 py-2 text-sm font-medium text-left transition-colors ${
+                printMode === "usb"
+                  ? "border-primary bg-primary/5 text-primary"
+                  : "border-border bg-card text-muted-foreground hover:border-primary/30"
+              }`}
+            >
+              🔌 USB por cable
+              <p className="text-[10px] font-normal mt-1 opacity-80">
+                Enchufada a la PC
               </p>
             </button>
             <button
               type="button"
               onClick={() => changePrintMode("server")}
-              className={`rounded-lg border-2 px-3 py-2 text-sm font-medium text-left transition-colors ${
+              className={`rounded-lg border-2 px-2 py-2 text-sm font-medium text-left transition-colors ${
                 printMode === "server"
                   ? "border-primary bg-primary/5 text-primary"
                   : "border-border bg-card text-muted-foreground hover:border-primary/30"
@@ -281,18 +344,20 @@ export function PrinterConfigSection({
             >
               🖥️ Servidor (TCP)
               <p className="text-[10px] font-normal mt-1 opacity-80">
-                El VPS imprime directo a la impresora
+                El VPS imprime directo
               </p>
             </button>
           </div>
           <p className="text-[10px] text-muted-foreground/60 mt-1">
             {printMode === "app"
               ? "La app Portal Print (en tu celular, mismo Wi-Fi que la impresora) recibe el ticket y lo imprime. No hace falta abrir puertos ni IP pública."
-              : "El servidor envía el ticket por TCP directo. Requiere alcanzar la impresora desde el VPS (VPN o puerto reenviado)."}
+              : printMode === "usb"
+                ? "La impresora va enchufada por USB a la PC del local y el agente la imprime (mismo ticket que por red). Esa PC tiene que estar prendida."
+                : "El servidor envía el ticket por TCP directo. Requiere alcanzar la impresora desde el VPS (VPN o puerto reenviado)."}
           </p>
         </div>
 
-        {printMode === "app" && (
+        {(printMode === "app" || printMode === "usb") && (
           <>
             <div className="flex items-start justify-between rounded-lg border p-3">
               <div className="flex items-center gap-2">
@@ -301,17 +366,22 @@ export function PrinterConfigSection({
                 </span>
                 <div>
                   <p className="text-sm font-medium">
-                    {agentOnline ? "App conectada" : "App no conectada"}
+                    {agentOnline
+                      ? printMode === "usb" ? "Agente conectado" : "App conectada"
+                      : printMode === "usb" ? "Agente no conectado" : "App no conectada"}
                   </p>
                   <p className="text-[10px] text-muted-foreground">
                     {agentOnline
                       ? "Impresión automática activa: los pedidos confirmados salen solos"
-                      : "Instalá y conectá la app abajo"}
+                      : printMode === "usb"
+                        ? "Instalá y conectá el agente de abajo (en la PC con la impresora)"
+                        : "Instalá y conectá la app abajo"}
                   </p>
                 </div>
               </div>
             </div>
 
+            {printMode === "app" && (
             <details className="rounded-lg border px-3 py-2 text-xs">
               <summary className="cursor-pointer font-medium">
                 📱 Configurar la app Portal Print
@@ -344,6 +414,7 @@ export function PrinterConfigSection({
                 </li>
               </ol>
             </details>
+            )}
 
             <details className="rounded-lg border px-3 py-2 text-xs">
               <summary className="cursor-pointer font-medium">
@@ -351,7 +422,7 @@ export function PrinterConfigSection({
               </summary>
 
               <a
-                href="/uploads/downloads/portal-print-agent.zip?v=6"
+                href="/uploads/downloads/portal-print-agent.zip?v=7"
                 download="portal-print-agent.zip"
                 className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-fresh text-fresh-foreground px-4 py-2.5 text-sm font-semibold hover:bg-fresh/80 active:scale-[0.98] transition-all"
               >
@@ -364,11 +435,23 @@ export function PrinterConfigSection({
               </p>
 
               <ol className="mt-2 space-y-1 list-decimal pl-4 text-muted-foreground">
-                <li>La impresora debe estar en la <strong>misma red</strong> que la PC.</li>
-                <li>Descargá el <strong>.zip</strong> y <strong>extraelo</strong> en una carpeta.</li>
-                <li>Abrí <strong>Portal Print Agent.exe</strong> (doble clic).</li>
-                <li>Pegá el <strong>token</strong> de abajo, la <strong>IP de la impresora</strong> y tocá <strong>Guardar</strong>.</li>
-                <li>Usá <strong>Probar impresora</strong> para verificar y activá <strong>«Arrancar al encender la PC»</strong>.</li>
+                {printMode === "usb" ? (
+                  <>
+                    <li>Enchufá la impresora por <strong>USB a esta PC</strong> e instalala en Windows (aparece como cola de impresión).</li>
+                    <li>Descargá el <strong>.zip</strong> y <strong>extraelo</strong> en una carpeta.</li>
+                    <li>Abrí <strong>Portal Print Agent.exe</strong> (doble clic).</li>
+                    <li>Pegá el <strong>token</strong> de abajo, elegí <strong>USB por cable</strong> y la <strong>cola USB</strong>, y tocá <strong>Guardar</strong>.</li>
+                    <li>Usá <strong>Probar impresora</strong> para verificar y activá <strong>«Arrancar al encender la PC»</strong>.</li>
+                  </>
+                ) : (
+                  <>
+                    <li>La impresora debe estar en la <strong>misma red</strong> que la PC.</li>
+                    <li>Descargá el <strong>.zip</strong> y <strong>extraelo</strong> en una carpeta.</li>
+                    <li>Abrí <strong>Portal Print Agent.exe</strong> (doble clic).</li>
+                    <li>Pegá el <strong>token</strong> de abajo, la <strong>IP de la impresora</strong> y tocá <strong>Guardar</strong>.</li>
+                    <li>Usá <strong>Probar impresora</strong> para verificar y activá <strong>«Arrancar al encender la PC»</strong>.</li>
+                  </>
+                )}
               </ol>
 
               <p className="mt-2 rounded-lg bg-muted p-2 text-[11px] text-muted-foreground">
@@ -385,7 +468,7 @@ export function PrinterConfigSection({
             {printToken && (
               <div className="rounded-lg border p-3 space-y-2">
                 <div className="flex items-center justify-between">
-                  <Label>Token de la app</Label>
+                    <Label>{printMode === "usb" ? "Token del agente" : "Token de la app"}</Label>
                   <button
                     type="button"
                     className="text-xs text-primary font-medium"
@@ -407,6 +490,59 @@ export function PrinterConfigSection({
                 >
                   Regenerar token
                 </button>
+              </div>
+            )}
+
+            {printMode === "usb" && (
+              <div className="rounded-lg border p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label>Cola USB de este equipo</Label>
+                  <button
+                    type="button"
+                    className="text-xs text-primary font-medium"
+                    onClick={listUsbQueues}
+                    disabled={usbLoading}
+                  >
+                    {usbLoading ? "Buscando…" : "Actualizar lista"}
+                  </button>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Se guarda <strong>solo en esta PC</strong> (en el agente), no en el comercio:
+                  cada equipo elige su cola. Requiere el agente v2.1+.
+                </p>
+                {usbQueues !== null && usbQueues.length === 0 && (
+                  <p className="text-[11px] text-amber-600">
+                    Sin colas USB acá: enchufá la impresora a esta PC o{" "}
+                    <button type="button" className="underline" onClick={probeLocal}>
+                      detectá el agente
+                    </button>
+                    .
+                  </p>
+                )}
+                {usbQueues !== null && usbQueues.length > 0 && (
+                  <div className="space-y-1.5">
+                    {usbQueues.map((l) => (
+                      <div key={l.port}>
+                        <p className="text-[10px] font-semibold text-muted-foreground">
+                          Vía {l.service}:
+                        </p>
+                        <div className="mt-1 flex flex-wrap gap-1.5">
+                          {l.printers.map((p) => (
+                            <button
+                              key={`${l.port}-${p.name}`}
+                              type="button"
+                              onClick={() => applyUsbQueue(p.name, l.port)}
+                              disabled={usbApplying === `${l.port}-${p.name}`}
+                              className="rounded-lg border border-primary/40 bg-primary/5 px-2.5 py-1 font-mono text-xs font-semibold text-primary hover:bg-primary/10 active:scale-[0.98] disabled:opacity-50"
+                            >
+                              {usbApplying === `${l.port}-${p.name}` ? "Guardando…" : p.name}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
@@ -500,6 +636,7 @@ export function PrinterConfigSection({
             />
           </div>
         </div>
+        {printMode !== "usb" && (
         <div>
           <Label>IP de la impresora</Label>
           <Input
@@ -548,7 +685,9 @@ export function PrinterConfigSection({
             </div>
           )}
         </div>
+        )}
         <div className="grid grid-cols-2 gap-3">
+          {printMode !== "usb" && (
           <div>
             <Label>Puerto</Label>
             <Input
@@ -559,6 +698,7 @@ export function PrinterConfigSection({
               className="mt-1"
             />
           </div>
+          )}
           <div>
             <Label>Tamaño papel</Label>
             <div className="flex gap-2 mt-1">

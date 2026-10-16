@@ -227,6 +227,11 @@ public class PortalPrintService extends Service {
 
     private void dispatchJob(String jobId, JSONObject job) {
         if (job == null) { ack(jobId, false, "job inválido"); return; }
+        // Tercer modo USB: solo el agente PC sabe imprimir a cola Windows.
+        if ("usb".equals(job.optString("backend", ""))) {
+            ack(jobId, false, "USB por cable solo funciona con el agente PC (este equipo recibe por red)");
+            return;
+        }
         String payload = job.optString("payload", "");
         String ip = job.has("printerIp") && !job.isNull("printerIp") && !job.optString("printerIp").isEmpty()
             ? job.optString("printerIp")
@@ -612,6 +617,9 @@ public class PortalPrintService extends Service {
                 return "{\"ok\":false,\"error\":\"payload inválido\"}";
             }
             if (data.length == 0) return "{\"ok\":false,\"error\":\"payload vacío\"}";
+            if ("usb".equals(body.optString("backend", ""))) {
+                return "{\"ok\":false,\"error\":\"USB por cable solo funciona con el agente PC\"}";
+            }
             String ip = body.optString("printerIp", "");
             if (ip.isEmpty()) ip = cfg(KEY_PRINTER_IP, "");
             int port = body.has("printerPort")

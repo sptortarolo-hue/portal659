@@ -8,6 +8,11 @@ const els = {
   lastPrint: $("last-print"),
   printerIp: $("printerIp"),
   printerPort: $("printerPort"),
+  backendTcp: $("backendTcp"),
+  backendUsb: $("backendUsb"),
+  tcpBlock: $("tcp-block"),
+  usbBlock: $("usb-block"),
+  printerUsb: $("printerUsb"),
   token: $("token"),
   serverUrl: $("serverUrl"),
   autostart: $("autostart"),
@@ -108,7 +113,7 @@ function renderStatus(status) {
 function renderLastPrint(p) {
   if (!p) return;
   const time = p.at ? new Date(p.at).toLocaleTimeString("es-AR") : "";
-  const target = p.ip ? ` a ${p.ip}:${p.port || 9100}` : "";
+  const target = p.usb ? ` a "${p.usb}"` : p.ip ? ` a ${p.ip}:${p.port || 9100}` : "";
   if (p.test) {
     els.lastPrint.textContent = p.ok
       ? `Prueba enviada correctamente${target} (${time}).`
@@ -128,12 +133,39 @@ function renderAppInfo(info) {
   }
 }
 
+function currentBackend() {
+  return els.backendUsb && els.backendUsb.checked ? "usb" : "tcp";
+}
+
+function toggleBackendBlocks() {
+  const usb = currentBackend() === "usb";
+  if (els.tcpBlock) els.tcpBlock.classList.toggle("hidden", usb);
+  if (els.usbBlock) els.usbBlock.classList.toggle("hidden", !usb);
+}
+
+function ensureUsbOption(name) {
+  if (!name || !els.printerUsb) return;
+  const exists = [...els.printerUsb.options].some((o) => o.value === name);
+  if (!exists) {
+    const opt = document.createElement("option");
+    opt.value = name;
+    opt.textContent = name;
+    els.printerUsb.appendChild(opt);
+  }
+  els.printerUsb.value = name;
+}
+
 function populateForm(config) {
   const safe = config || {};
   els.token.value = safe.token || "";
   els.printerIp.value = safe.printerIp || "";
   els.printerPort.value = String(safe.printerPort || 9100);
   els.serverUrl.value = safe.serverUrl || "https://www.portal659.com.ar";
+  const usb = safe.printerBackend === "usb";
+  if (els.backendUsb) els.backendUsb.checked = usb;
+  if (els.backendTcp) els.backendTcp.checked = !usb;
+  ensureUsbOption(safe.printerUsbName || "");
+  toggleBackendBlocks();
 }
 
 function getForm() {
@@ -141,6 +173,8 @@ function getForm() {
     token: els.token.value.trim(),
     printerIp: els.printerIp.value.trim(),
     printerPort: Number(els.printerPort.value) || 9100,
+    printerBackend: currentBackend(),
+    printerUsbName: els.printerUsb ? els.printerUsb.value.trim() : "",
     serverUrl: els.serverUrl.value.trim(),
   };
 }
@@ -216,12 +250,47 @@ $("btn-test").addEventListener("click", async () => {
   if (!window.api) return;
   setMsg("Enviando prueba…");
   const res = await window.api.testPrint();
-  const target = res?.ip ? ` a ${res.ip}:${res.port || 9100}` : "";
+  const target = res?.usb ? ` a "${res.usb}"` : res?.ip ? ` a ${res.ip}:${res.port || 9100}` : "";
   setMsg(
     res?.ok ? `Prueba enviada${target}.` : `Falló${target}: ${res?.error || "sin conexión"}.`,
     res?.ok ? "ok" : "error"
   );
 });
+
+$("btn-usb-refresh").addEventListener("click", async () => {
+  if (!window.api?.listUsbPrinters) {
+    setMsg("Actualizá el agente para listar impresoras USB", "error");
+    return;
+  }
+  setMsg("Listando impresoras USB de este equipo…");
+  try {
+    const res = await window.api.listUsbPrinters();
+    const printers = Array.isArray(res?.printers) ? res.printers : [];
+    els.printerUsb.innerHTML = "";
+    if (printers.length === 0) {
+      setMsg(res?.ok ? "Sin colas USB: enchufá la impresora e instalala en Windows" : `Falló: ${res?.error || "sin respuesta"}`, "error");
+      ensureUsbOption("");
+      return;
+    }
+    for (const p of printers) {
+      const opt = document.createElement("option");
+      opt.value = p.name;
+      opt.textContent = p.status ? `${p.name} (${p.status})` : p.name;
+      els.printerUsb.appendChild(opt);
+    }
+    setMsg(
+      printers.length === 1
+        ? `USB encontrada: ${printers[0].name} (tocá Guardar)`
+        : `${printers.length} colas USB (elegí una y tocá Guardar)`,
+      "ok"
+    );
+  } catch (e) {
+    setMsg(`Búsqueda USB fallida: ${e?.message || e}`, "error");
+  }
+});
+
+if (els.backendTcp) els.backendTcp.addEventListener("change", toggleBackendBlocks);
+if (els.backendUsb) els.backendUsb.addEventListener("change", toggleBackendBlocks);
 
 $("btn-discover").addEventListener("click", async () => {
   if (!window.api?.discoverPrinters) {

@@ -133,6 +133,7 @@ const server = createServer(async (req, res) => {
       error: result.error,
       ...(result.printerIpUsed ? { printerIpUsed: result.printerIpUsed } : {}),
       ...(result.autoFixed ? { autoFixed: true } : {}),
+      ...(result.usbUsed ? { usbUsed: result.usbUsed } : {}),
     });
     return;
   }
@@ -258,6 +259,8 @@ function sendJob(client, item) {
         // Auto-fix de DHCP del lado app/agente: la IP que realmente imprimió.
         printerIpUsed: typeof msg.printerIpUsed === "string" ? msg.printerIpUsed : undefined,
         autoFixed: msg.autoFixed === true,
+        // Tercer modo USB: la cola de Windows que realmente imprimió.
+        usbUsed: typeof msg.usbUsed === "string" ? msg.usbUsed : undefined,
       });
     };
     // Si el cliente se cae a mitad del job, no lo marcamos como fallo de impresión:

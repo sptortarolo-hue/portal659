@@ -430,11 +430,13 @@ function printResponse(result: {
   offline?: boolean;
   error?: string;
   ipFixed?: { from: string; to: string } | null;
+  usbUsed?: string | null;
 }) {
   const body: Record<string, unknown> = { ok: result.ok, mode: result.mode };
   if (result.skipped) body.reason = "Impresora no configurada";
   if (result.offline) body.offline = true;
   if (result.ipFixed) body.ipFixed = result.ipFixed;
+  if (result.usbUsed) body.usbUsed = result.usbUsed;
   body.error = result.error;
   return NextResponse.json(body);
 }

@@ -31,16 +31,32 @@
 
       <section class="section">
         <h2>Impresora</h2>
-        <label class="field">
-          <span>IP de la impresora</span>
-          <input id="printerIp" type="text" placeholder="192.168.1.100" />
-        </label>
-        <label class="field">
-          <span>Puerto</span>
-          <input id="printerPort" type="number" placeholder="9100" />
-        </label>
+        <div class="backend-row">
+          <label class="backend-pill"><input type="radio" name="backend" id="backendTcp" value="tcp" /> Red (TCP)</label>
+          <label class="backend-pill"><input type="radio" name="backend" id="backendUsb" value="usb" /> USB por cable</label>
+        </div>
+        <div id="tcp-block">
+          <label class="field">
+            <span>IP de la impresora</span>
+            <input id="printerIp" type="text" placeholder="192.168.1.100" />
+          </label>
+          <label class="field">
+            <span>Puerto</span>
+            <input id="printerPort" type="number" placeholder="9100" />
+          </label>
+          <button id="btn-discover" class="btn btn-outline" type="button" title="Busca impresoras en la red local (útil si cambió la IP)">🔍 Buscar</button>
+        </div>
+        <div id="usb-block" class="hidden">
+          <label class="field">
+            <span>Cola USB de este equipo</span>
+            <div class="usb-row">
+              <select id="printerUsb"></select>
+              <button id="btn-usb-refresh" class="btn btn-outline" type="button" title="Listar las impresoras USB de esta PC">↻</button>
+            </div>
+          </label>
+          <p class="hint">La impresora tiene que estar enchufada por USB a <strong>esta PC</strong> e instalada en Windows. Si la prueba sale en blanco, creá una 2ª cola con el driver "Generic / Text Only" al mismo puerto USB y elegila acá.</p>
+        </div>
         <button id="btn-test" class="btn btn-outline">Probar impresora</button>
-        <button id="btn-discover" class="btn btn-outline" type="button" title="Busca impresoras en la red local (útil si cambió la IP)">🔍 Buscar</button>
       </section>
 
       <section class="section">

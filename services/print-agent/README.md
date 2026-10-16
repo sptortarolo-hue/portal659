@@ -1,8 +1,9 @@
 # Portal Print Agent (PC — Windows)
 
 Programa que recibe los tickets del portal y los manda a la impresora térmica ESC/POS
-directamente por la red local (TCP 9100). Es el equivalente en PC de la app Android
-"Portal Print": ambos se conectan al mismo relay con el mismo token.
+por la red local (TCP 9100) **o por USB con el tercer modo "USB por cable"**
+(cola de Windows, spooler RAW — mismo ticket que por red). Es el equivalente en PC
+de la app Android "Portal Print": ambos se conectan al mismo relay con el mismo token.
 
 Es una app de escritorio (Electron) con **ventana de configuración** y **bandeja del sistema**.
 
@@ -12,7 +13,9 @@ Es una app de escritorio (Electron) con **ventana de configuración** y **bandej
    sección **Impresora → 💻 Descargar para PC (Windows)**.
 2. **Extraé** el .zip en una carpeta (clic derecho → "Extraer todo").
 3. Abrí `Portal Print Agent.exe` (doble clic).
-4. En la ventana pegá el **token** (del dashboard) y la **IP de la impresora**, y tocá **Guardar**.
+4. En la ventana pegá el **token** (del dashboard), elegí **Red (TCP)** con la
+   **IP de la impresora** o **USB por cable** con la **cola USB** (botón ↻ para listar),
+   y tocá **Guardar**.
 5. Tocá **Probar impresora** para verificar.
 6. Activá **"Arrancar al encender la PC"** si querés que empiece solo al iniciar Windows.
 
@@ -36,7 +39,7 @@ Es una app de escritorio (Electron) con **ventana de configuración** y **bandej
 - Requiere `npm install` (devDeps: electron + electron-builder; dep: ws).
 - Correr en dev: `npm run start:electron`.
 - Test unitario de validación/estado: `npm test`.
-- La ventana muestra la versión instalada (`v2.0.0`), el servidor intentado, el último error y el reintento pendiente.
+- La ventana muestra la versión instalada (`v2.1.0`), el servidor intentado, el último error y el reintento pendiente.
 - Icono: `scripts/make-ico.mjs` genera `assets/icon.ico` desde `assets/icon-512.png`.
 - Test E2E (relay real + agente headless + capturador TCP): `node test/e2e.mjs`.
 

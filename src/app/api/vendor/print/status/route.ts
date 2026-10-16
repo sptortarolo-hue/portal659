@@ -40,7 +40,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "No autorizado" }, { status: 403 });
   }
 
-  if (vendor.print_mode === "app" && !vendor.print_token) {
+  if ((vendor.print_mode === "app" || vendor.print_mode === "usb") && !vendor.print_token) {
     const token = generatePrintToken();
     await query(`UPDATE vendors SET print_token = $1 WHERE id = $2`, [token, vendor.id]);
     vendor.print_token = token;

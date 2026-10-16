@@ -82,13 +82,15 @@ export type CashClosingPrintData = {
 
 export type DispatchResult = {
   ok: boolean;
-  mode: "server" | "app";
+  mode: "server" | "app" | "usb";
   skipped?: boolean;
   offline?: boolean;
   error?: string;
   /** Auto-fix de DHCP: la IP que realmente imprimió (puede diferir de la configurada). */
   printerIpUsed?: string | null;
   autoFixed?: boolean;
+  /** Modo usb: la cola de Windows que realmente imprimió. */
+  usbUsed?: string | null;
 };
 
 /** Datos de envío para los documentos impresos (zona autodeclarada). */
@@ -1902,22 +1904,26 @@ type BridgeJob = {
   printerIp: string | null;
   printerPort: number;
   width: number;
+  /** Tercer modo: 'usb' = el agente imprime en la cola USB local (spooler RAW). */
+  backend?: "tcp" | "usb";
 };
 
 function bridgeJob(type: string, buffer: Buffer, vendor: PrinterVendor): BridgeJob {
+  const usb = (vendor as { print_mode?: string | null }).print_mode === "usb";
   return {
     type,
     payload: buffer.toString("base64"),
     printerIp: vendor.printer_ip,
     printerPort: vendor.printer_port || 9100,
     width: vendor.paper_size === "58mm" ? 32 : 48,
+    ...(usb ? { backend: "usb" as const } : {}),
   };
 }
 
 async function pushToBridge(
   token: string | null | undefined,
   job: BridgeJob
-): Promise<{ ok: boolean; offline?: boolean; error?: string; printerIpUsed?: string | null; autoFixed?: boolean }> {
+): Promise<{ ok: boolean; offline?: boolean; error?: string; printerIpUsed?: string | null; autoFixed?: boolean; usbUsed?: string | null }> {
   if (!token) {
     return { ok: false, error: "Falta el token del puente (regeneralo en la sección Impresora)" };
   }
@@ -1938,7 +1944,7 @@ async function pushToBridge(
     return { ok: false, error: `No se pudo contactar el relay: ${errorMsg(e)}` };
   }
   const data = (await res.json().catch(() => null)) as
-    | { ok?: boolean; offline?: boolean; error?: string; printerIpUsed?: string; autoFixed?: boolean }
+    | { ok?: boolean; offline?: boolean; error?: string; printerIpUsed?: string; autoFixed?: boolean; usbUsed?: string }
     | null;
   if (!data) {
     return { ok: false, error: `El relay respondió ${res.status}` };
@@ -1949,6 +1955,7 @@ async function pushToBridge(
     error: data.error,
     printerIpUsed: typeof data.printerIpUsed === "string" ? data.printerIpUsed : null,
     autoFixed: data.autoFixed === true,
+    usbUsed: typeof data.usbUsed === "string" ? data.usbUsed : null,
   };
 }
 
@@ -1989,10 +1996,11 @@ export async function dispatchPrint(params: {
   };
 }): Promise<DispatchResult> {
   const { vendor } = params;
-  const mode: "server" | "app" = vendor.print_mode === "app" ? "app" : "server";
+  const mode: "server" | "app" | "usb" =
+    vendor.print_mode === "app" ? "app" : vendor.print_mode === "usb" ? "usb" : "server";
 
   if (params.type === "test") {
-    if (mode === "app") {
+    if (mode === "app" || mode === "usb") {
       const built = await buildTestBuffer(vendor);
       if (!built.success) return { ok: false, mode, error: built.error };
       const pushed = await pushToBridge(vendor.print_token, bridgeJob("test", built.buffer, vendor));
@@ -2015,7 +2023,7 @@ export async function dispatchPrint(params: {
     const volume = volumeAmount > 0 ? { amount: volumeAmount } : null;
     const manualAmount = Number(params.extra?.manualDiscount) || 0;
     const manual = manualAmount > 0 ? { amount: manualAmount } : null;
-    if (mode === "app") {
+    if (mode === "app" || mode === "usb") {
       const built = await buildPrecuentaBuffer(vendor, tableName, items, total, cash, volume, manual);
       if (!built.success) return { ok: false, mode, error: built.error };
       const pushed = await pushToBridge(vendor.print_token, bridgeJob("precuenta", built.buffer, vendor));
@@ -2030,7 +2038,7 @@ export async function dispatchPrint(params: {
   if (params.type === "cash_close") {
     const closing = params.extra?.closing;
     if (!closing) return { ok: false, mode, error: "Cierre requerido" };
-    if (mode === "app") {
+    if (mode === "app" || mode === "usb") {
       const built = await buildCashCloseBuffer(vendor, closing);
       if (!built.success) return { ok: false, mode, error: built.error };
       const pushed = await pushToBridge(vendor.print_token, bridgeJob("cash_close", built.buffer, vendor));
@@ -2045,7 +2053,7 @@ export async function dispatchPrint(params: {
   if (params.type === "cash_snapshot") {
     const snapshot = params.extra?.snapshot;
     if (!snapshot) return { ok: false, mode, error: "Snapshot requerido" };
-    if (mode === "app") {
+    if (mode === "app" || mode === "usb") {
       const built = await buildCashSnapshotBuffer(vendor, snapshot);
       if (!built.success) return { ok: false, mode, error: built.error };
       const pushed = await pushToBridge(vendor.print_token, bridgeJob("cash_snapshot", built.buffer, vendor));
@@ -2060,7 +2068,7 @@ export async function dispatchPrint(params: {
   if (params.type === "label") {
     const label = params.extra?.label;
     if (!label || !label.code) return { ok: false, mode, error: "Etiqueta sin código" };
-    if (mode === "app") {
+    if (mode === "app" || mode === "usb") {
       const built = await buildLabelBuffer(vendor, label);
       if (!built.success) return { ok: false, mode, error: built.error };
       const pushed = await pushToBridge(vendor.print_token, bridgeJob("label", built.buffer, vendor));
@@ -2074,7 +2082,7 @@ export async function dispatchPrint(params: {
   // Presupuesto de oficio: no es un pedido; imprime el cotizado guardado.
   if (params.type === "presupuesto") {    const quote = params.extra?.quote;
     if (!quote) return { ok: false, mode, error: "Presupuesto requerido" };
-    if (mode === "app") {
+    if (mode === "app" || mode === "usb") {
       const built = await buildPresupuestoBuffer(vendor, quote);
       if (!built.success) return { ok: false, mode, error: built.error };
       const pushed = await pushToBridge(vendor.print_token, bridgeJob("presupuesto", built.buffer, vendor));
@@ -2088,7 +2096,7 @@ export async function dispatchPrint(params: {
   if (!params.order) return { ok: false, mode, error: "orderId requerido" };
   const order = params.order;
 
-  if (mode === "app") {
+  if (mode === "app" || mode === "usb") {
     let built: BufferResult;
     if (params.type === "ticket") built = await buildReceiptBuffer(vendor, order, params.extra);
     else if (params.type === "retiro") built = await buildRetiroReceiptBuffer(vendor, order);

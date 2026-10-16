@@ -78,6 +78,18 @@ export function describePrintError(
   if (/sin IP de impresora|missing-printer-ip/i.test(msg)) {
     return "Falta la IP de la impresora: cargala en la app/agente (o usá Buscar).";
   }
+  if (/Sin cola USB|no existe o el spooler|missing-printer-usb/i.test(msg)) {
+    return "Esa cola USB no existe en este equipo: elegila de la lista (no escribas el nombre a mano).";
+  }
+  if (/Generic \/ Text Only/i.test(msg)) {
+    return msg.length > 260 ? msg.slice(0, 260) + "…" : msg;
+  }
+  if (/solo disponible en Windows/i.test(msg)) {
+    return "USB por cable solo funciona desde una PC con Windows (con el agente instalado).";
+  }
+  if (/cola colgada|spooler/i.test(msg)) {
+    return "El spooler de Windows se trabó: cancelá los trabajos pendientes (Configuración → Impresoras) y probá de nuevo.";
+  }
   if (/cola llena|máx 100/i.test(msg)) {
     return "Cola de impresión llena: la app no está entregando (verificá IP/papel) o hay trabajos viejos atascados (vaciala).";
   }
@@ -87,7 +99,16 @@ export function describePrintError(
   return msg.length > 220 ? msg.slice(0, 220) + "…" : msg;
 }
 
-export type LocalListener = { port: number; service: string };
+export type LocalListener = {
+  port: number;
+  service: string;
+  /** Tercer modo: qué backend tiene configurado el agente de este equipo. */
+  backend?: "tcp" | "usb";
+  /** Cola USB configurada en el agente (si backend usb). */
+  usbName?: string | null;
+};
+
+export type UsbPrinterEntry = { name: string; status?: string | null };
 /**
  * Detecta listeners locales (agente PC :8792 / app Android :8793) en este
  * equipo. Funciona SIN internet (es localhost): sirve para el chequeo de
@@ -100,8 +121,20 @@ export async function probeLocalListeners(timeoutMs = 2500): Promise<LocalListen
     const t = setTimeout(() => ctrl.abort(), timeoutMs);
     try {
       const res = await fetch(`http://127.0.0.1:${port}/local-status`, { signal: ctrl.signal });
-      const data = (await res.json().catch(() => null)) as { ok?: boolean; service?: string } | null;
-      if (data?.ok === true) out.push({ port, service: String(data.service || "local") });
+      const data = (await res.json().catch(() => null)) as {
+        ok?: boolean;
+        service?: string;
+        backend?: string;
+        usbName?: string | null;
+      } | null;
+      if (data?.ok === true) {
+        out.push({
+          port,
+          service: String(data.service || "local"),
+          ...(data.backend === "usb" || data.backend === "tcp" ? { backend: data.backend } : {}),
+          ...(typeof data.usbName === "string" && data.usbName ? { usbName: data.usbName } : {}),
+        });
+      }
     } catch {
       /* sin listener en este puerto */
     } finally {
@@ -159,9 +192,9 @@ async function postLocal(port: number, body: Record<string, any>, timeoutMs: num
 export async function tryLocalPrint(
   token: string,
   payloadB64: string,
-  dest?: { ip?: string; port?: number }
+  dest?: { ip?: string; port?: number; backend?: "tcp" | "usb"; usbName?: string }
 ): Promise<
-  | { ok: true; via: string; printerIpUsed?: string; autoFixed?: boolean }
+  | { ok: true; via: string; printerIpUsed?: string; autoFixed?: boolean; usbUsed?: string }
   | { ok: false; error: string }
   | null
 > {
@@ -175,6 +208,8 @@ export async function tryLocalPrint(
         payload: payloadB64,
         ...(dest?.ip ? { printerIp: dest.ip } : {}),
         ...(dest?.port ? { printerPort: dest.port } : {}),
+        ...(dest?.backend ? { backend: dest.backend } : {}),
+        ...(dest?.usbName ? { printerUsbName: dest.usbName } : {}),
       },
       4000
     );
@@ -183,11 +218,14 @@ export async function tryLocalPrint(
     if (r.ok) {
       const used =
         typeof r.data?.printerIpUsed === "string" && r.data.printerIpUsed ? r.data.printerIpUsed : undefined;
+      const usbUsed =
+        typeof r.data?.usbUsed === "string" && r.data.usbUsed ? r.data.usbUsed : undefined;
       return {
         ok: true,
         via: `127.0.0.1:${port}`,
         ...(used ? { printerIpUsed: used } : {}),
         ...(r.data?.autoFixed === true ? { autoFixed: true as const } : {}),
+        ...(usbUsed ? { usbUsed } : {}),
       };
     }
     lastError = r.error || lastError;
@@ -204,17 +242,28 @@ export async function tryLocalPrint(
  */
 export async function dispatchOfflinePrint(
   vendorId: string,
-  doc: Omit<ContingencyDoc, "storeName"> & { storeName?: string }
-): Promise<{ printed: boolean; via?: string; error?: string; printerIpUsed?: string; autoFixed?: boolean }> {
+  doc: Omit<ContingencyDoc, "storeName"> & { storeName?: string },
+  via?: { backend?: "tcp" | "usb"; usbName?: string }
+): Promise<{
+  printed: boolean;
+  via?: string;
+  error?: string;
+  printerIpUsed?: string;
+  autoFixed?: boolean;
+  usbUsed?: string;
+}> {
   const ctx = await getVendorPrintCtx(vendorId).catch(() => null);
   if (!ctx?.token) return { printed: false, error: "sin token de impresión local" };
   const fixedIp = await getFixedPrinterIp(vendorId).catch(() => null);
   const bytes = buildContingencyBytes({ ...doc, storeName: doc.storeName || ctx.storeName });
   const b64 = bytesToBase64(bytes);
   if (!b64) return { printed: false, error: "render vacío" };
+  const usb = via?.backend === "usb";
+  const destIp = !usb && (fixedIp || ctx.ip) ? { ip: (fixedIp || ctx.ip) as string } : {};
   const r = await tryLocalPrint(ctx.token, b64, {
-    ...(fixedIp || ctx.ip ? { ip: (fixedIp || ctx.ip) as string } : {}),
+    ...destIp,
     port: ctx.port,
+    ...(usb ? { backend: "usb" as const, ...(via?.usbName ? { usbName: via.usbName } : {}) } : {}),
   });
   if (!r) return { printed: false, error: "sin listener local en este equipo" };
   if (!r.ok) return { printed: false, error: r.error };
@@ -226,6 +275,7 @@ export async function dispatchOfflinePrint(
     via: r.via,
     ...(r.printerIpUsed ? { printerIpUsed: r.printerIpUsed } : {}),
     ...(r.autoFixed ? { autoFixed: true as const } : {}),
+    ...(r.usbUsed ? { usbUsed: r.usbUsed } : {}),
   };
 }
 
@@ -368,6 +418,84 @@ export async function scanLocalPrinters(
     return { listeners, error: "sin listener local en este equipo (abrí el agente o la app acá)" };
   }
   return { listeners };
+}
+
+export type UsbScanResult = { port: number; service: string; printers: UsbPrinterEntry[] };
+
+/**
+ * Lista las colas USB de este equipo (tercer modo). Requiere el token del
+ * vendor. Funciona SIN internet. Solo el agente PC (:8792) responde; la
+ * app Android (:8793) no tiene colas USB.
+ */
+export async function listLocalUsbPrinters(
+  vendorId: string,
+  timeoutMs = 15000
+): Promise<{ listeners: UsbScanResult[]; error?: string }> {
+  const ctx = await getVendorPrintCtx(vendorId).catch(() => null);
+  const token = ctx?.token;
+  if (!token) return { listeners: [], error: "sin token de impresión local" };
+  const scanned = await Promise.all(
+    LOCAL_PRINT_PORTS.map(async (lp): Promise<UsbScanResult | null> => {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), timeoutMs);
+      try {
+        const res = await fetch(`http://127.0.0.1:${lp}/local-printers?token=${encodeURIComponent(token)}`, {
+          signal: ctrl.signal,
+        });
+        const data = (await res.json().catch(() => null)) as {
+          ok?: boolean;
+          printers?: UsbPrinterEntry[];
+          error?: string;
+        } | null;
+        if (data?.ok !== true) return null;
+        return {
+          port: lp,
+          service: lp === 8792 ? "agente PC" : "app Android",
+          printers: Array.isArray(data.printers) ? data.printers : [],
+        };
+      } catch {
+        return null;
+      } finally {
+        clearTimeout(t);
+      }
+    })
+  );
+  const listeners = scanned.filter((s): s is UsbScanResult => s !== null);
+  if (listeners.length === 0) {
+    return { listeners, error: "sin agente actualizado en este equipo (instalá la v2.1+ del agente PC)" };
+  }
+  return { listeners };
+}
+
+/**
+ * Fija la cola USB elegida en el agente de este equipo (por-equipo: NO viaja
+ * al vendor, cada PC guarda la suya). Requiere agente v2.1+.
+ */
+export async function pushLocalUsbName(
+  vendorId: string,
+  listenerPort: number,
+  usbName: string
+): Promise<{ ok: boolean; error?: string }> {
+  const ctx = await getVendorPrintCtx(vendorId).catch(() => null);
+  const token = ctx?.token;
+  if (!token) return { ok: false, error: "sin token de impresión local" };
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 8000);
+  try {
+    const res = await fetch(`http://127.0.0.1:${listenerPort}/local-config`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token, backend: "usb", printerUsbName: usbName }),
+      signal: ctrl.signal,
+    });
+    const data = (await res.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
+    if (data?.ok === true) return { ok: true };
+    return { ok: false, error: String(data?.error || "no se pudo guardar") };
+  } catch {
+    return { ok: false, error: "sin respuesta del listener local" };
+  } finally {
+    clearTimeout(t);
+  }
 }
 
 /**

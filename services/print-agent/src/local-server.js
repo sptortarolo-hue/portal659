@@ -6,17 +6,21 @@
  * desde HTTPS) y ningún otro equipo de la red llega a este puerto.
  *
  * Contrato (el mismo que implementa la app Android en :8793):
- *   POST /local-print { token, payload, printerIp?, printerPort? }
+ *   POST /local-print { token, payload, printerIp?, printerPort?, backend?, printerUsbName? }
  *     token: el del comercio (mismo del relay). Sin match → 401.
  *     payload: bytes ESC/POS en base64 (los renderiza la PWA: ticket de
  *       contingencia, solo-texto, provisorio — ver src/lib/offline-print.ts).
- *     → { ok: true } | { ok: false, error }
- *   GET /local-status → { ok: true, service, local, port } (diagnóstico).
+ *     backend 'usb' (o config local usb sin backend explícito): escribe en
+ *       la cola USB de Windows de ESTA PC (spooler RAW). Sin backend usa TCP.
+ *     → { ok: true, usbUsed? } | { ok: false, error }
+ *   GET /local-status → { ok: true, service, local, port, backend, usbName } (diagnóstico).
  *   GET /local-scan?token=...&port=9100 → { ok, hosts } (Buscar desde web).
- *   POST /local-config { token, printerIp } → { ok } (fija IP desde web).
+ *   GET /local-printers?token=... → { ok, printers: [{name, status}] } (colas USB).
+ *   POST /local-config { token, printerIp } | { token, backend:'usb', printerUsbName } → { ok }.
  */
 const http = require("node:http");
 const { sanitizeAgentConfig, printWithAutoFix, discoverPrinters } = require("./relay");
+const { listUsbPrinters, writeUsbRaw } = require("./usb-print");
 
 const LOCAL_HOST = "127.0.0.1";
 const LOCAL_PORT = 8792;
@@ -113,6 +117,39 @@ function createLocalServer({ getConfig, onEvent, port = LOCAL_PORT } = {}) {
         reply(400, { ok: false, error: "payload vacío" });
         return;
       }
+      // Tercer modo USB: el body manda solo si el comercio lo usa; si no
+      // trae backend, vale la config local del agente (nunca se pisa la
+      // cola USB con una IP vieja del snapshot del vendor).
+      const backend =
+        body?.backend === "usb" || body?.backend === "tcp"
+          ? body.backend
+          : config.printerBackend || "tcp";
+      if (backend === "usb") {
+        const usbName = String(body?.printerUsbName ?? "").trim() || config.printerUsbName;
+        if (!usbName) {
+          reply(200, { ok: false, error: "Sin cola USB configurada en el agente de este equipo" });
+          return;
+        }
+        writeUsbRaw(usbName, data).then(({ ok, error, bytes }) => {
+          emit("print", {
+            ok,
+            error: error || null,
+            bytes: ok ? bytes || data.length : 0,
+            ip: null,
+            port: null,
+            usb: usbName,
+            test: false,
+            local: true,
+            at: Date.now(),
+          });
+          if (ok) {
+            reply(200, { ok: true, usbUsed: usbName });
+          } else {
+            reply(200, { ok: false, error: error || "no se pudo imprimir" });
+          }
+        });
+        return;
+      }
       const ip = String(body.printerIp ?? "").trim() || config.printerIp;
       const rawPort = Number(body.printerPort);
       const destPort = Number.isFinite(rawPort) && rawPort > 0 ? Math.trunc(rawPort) : config.printerPort;
@@ -165,7 +202,31 @@ function createLocalServer({ getConfig, onEvent, port = LOCAL_PORT } = {}) {
           return;
         }
         if (req.method === "GET" && path === "/local-status") {
-          json(res, 200, { ok: true, service: "portal-print-agent", local: true, port });
+          const cfg = sanitizeAgentConfig(readConfig());
+          json(res, 200, {
+            ok: true,
+            service: "portal-print-agent",
+            local: true,
+            port,
+            backend: cfg.printerBackend || "tcp",
+            usbName: cfg.printerUsbName || null,
+          });
+          return;
+        }
+        // Listar colas USB de ESTE equipo (para el tercer modo, desde la web).
+        if (req.method === "GET" && path === "/local-printers") {
+          const auth = checkToken(url.searchParams.get("token"));
+          if (!auth.ok) {
+            json(res, 401, { ok: false, error: auth.error });
+            return;
+          }
+          listUsbPrinters()
+            .then((r) =>
+              r.ok
+                ? json(res, 200, { ok: true, printers: r.printers || [] })
+                : json(res, 200, { ok: false, printers: [], error: r.error })
+            )
+            .catch((e) => json(res, 200, { ok: false, printers: [], error: e?.message || null }));
           return;
         }
         // Buscar impresoras desde la web (mismo auth por token).
@@ -186,12 +247,23 @@ function createLocalServer({ getConfig, onEvent, port = LOCAL_PORT } = {}) {
           handlePrint(req, res);
           return;
         }
-        // Fijar IP desde la web (la persiste main.js vía evento).
+        // Fijar IP o cola USB desde la web (la persiste main.js vía evento).
         if (req.method === "POST" && path === "/local-config") {
           readJsonBody(req, res, (body) => {
             const auth = checkToken(body?.token);
             if (!auth.ok) {
               json(res, 401, { ok: false, error: auth.error });
+              return;
+            }
+            // Cola USB del tercer modo (por-equipo, no viaja al vendor).
+            if (body?.backend === "usb" || typeof body?.printerUsbName === "string") {
+              const usbName = String(body?.printerUsbName ?? "").trim();
+              if (!usbName || usbName.length > 260) {
+                json(res, 400, { ok: false, error: "Cola USB inválida" });
+                return;
+              }
+              emit("printer-usb-fixed", { usbName, fromWeb: true });
+              json(res, 200, { ok: true, printerUsbName: usbName, backend: "usb" });
               return;
             }
             const ip = String(body?.printerIp ?? "").trim();

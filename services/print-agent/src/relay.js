@@ -5,6 +5,7 @@
 const net = require("node:net");
 const os = require("node:os");
 const { WebSocket } = require("ws");
+const { writeUsbRaw } = require("./usb-print");
 
 const DEFAULT_SERVER_URL = "https://www.portal659.com.ar";
 const CONNECT_TIMEOUT_MS = 10000;
@@ -16,8 +17,12 @@ function sanitizeAgentConfig(value) {
   const printerIp = String(input.printerIp ?? "").trim();
   const rawPort = Number(input.printerPort);
   const printerPort = Number.isFinite(rawPort) ? Math.trunc(rawPort) : 9100;
+  // Tercer modo: 'usb' = cola USB de Windows (spooler RAW) de esta PC.
+  const rawBackend = String(input.printerBackend ?? input.backend ?? "tcp").trim().toLowerCase();
+  const printerBackend = rawBackend === "usb" ? "usb" : "tcp";
+  const printerUsbName = String(input.printerUsbName ?? "").trim();
 
-  return { serverUrl, token, printerIp, printerPort };
+  return { serverUrl, token, printerIp, printerPort, printerBackend, printerUsbName };
 }
 
 function describeServerEndpoint(serverUrl) {
@@ -100,7 +105,21 @@ function validateConnectionConfig(value) {
       message: "El puerto debe ser un número entero entre 1 y 65535.",
     });
   }
-  if (!config.printerIp) {
+  if (config.printerBackend === "usb") {
+    if (!config.printerUsbName) {
+      warnings.push({
+        field: "printerUsbName",
+        code: "missing-printer-usb",
+        message: "Falta la cola USB. El agente puede conectarse, pero no podrá imprimir.",
+      });
+    } else if (config.printerUsbName.length > 260) {
+      errors.push({
+        field: "printerUsbName",
+        code: "invalid-printer-usb",
+        message: "El nombre de la cola USB es inválido.",
+      });
+    }
+  } else if (!config.printerIp) {
     warnings.push({
       field: "printerIp",
       code: "missing-printer-ip",
@@ -126,8 +145,13 @@ function buildWsUrl(value) {
 
 function validatePrinterConfig(value) {
   const validation = validateConnectionConfig(value);
-  const printerErrors = validation.errors.filter((error) => error.field === "printerIp" || error.field === "printerPort");
-  return { config: validation.config, errors: printerErrors, warnings: validation.warnings };
+  const usb = validation.config.printerBackend === "usb";
+  const fields = usb ? ["printerUsbName", "printerBackend"] : ["printerIp", "printerPort"];
+  const printerErrors = validation.errors.filter((error) => fields.includes(error.field));
+  const warnings = validation.warnings.filter((w) =>
+    usb ? w.field === "printerUsbName" : w.field === "printerIp"
+  );
+  return { config: validation.config, errors: printerErrors, warnings };
 }
 
 /** Escribe un buffer a la impresora TCP y resuelve { ok, error }. */
@@ -324,9 +348,57 @@ function createRelay({ getConfig, onEvent } = {}) {
     });
   }
 
+  /** Destino USB: escribe bytes crudos en la cola de Windows (spooler RAW). */
+  function printToUsb(usbName, dataBase64, jobId) {
+    const data = Buffer.from(dataBase64 || "", "base64");
+    writeUsbRaw(usbName, data).then(({ ok, error, bytes }) => {
+      if (isOnline()) {
+        try {
+          const ack = { type: "ack", jobId, ok };
+          if (!ok && error) ack.error = error;
+          if (ok && usbName) ack.usbUsed = usbName;
+          ws.send(JSON.stringify(ack));
+        } catch {}
+      }
+      lastPrint = {
+        ok,
+        error: error || null,
+        bytes: ok ? bytes || data.length : 0,
+        ip: null,
+        port: null,
+        usb: usbName || null,
+        test: false,
+        at: Date.now(),
+      };
+      emit("print", { ...lastPrint });
+      emitStatus();
+    });
+  }
+
   function handleJob(msg) {
     const config = sanitizeAgentConfig(readConfig());
     const job = msg.job ?? {};
+    // El job manda solo si el comercio usa el tercer modo; si no trae
+    // backend, vale la config local del agente (TCP o USB).
+    const backend =
+      job.backend === "usb" || job.backend === "tcp"
+        ? job.backend
+        : config.printerBackend || "tcp";
+    if (backend === "usb") {
+      const usbName =
+        String(job.printerUsbName || "").trim() || config.printerUsbName;
+      if (!usbName) {
+        emit("error", { message: "Job USB sin cola configurada en el agente" });
+        if (isOnline()) {
+          try {
+            ws.send(JSON.stringify({ type: "ack", jobId: msg.jobId, ok: false, error: "sin cola USB" }));
+          } catch {}
+        }
+        return;
+      }
+      printToUsb(usbName, job.payload, msg.jobId);
+      return;
+    }
     const ip = job.printerIp || config.printerIp;
     const port = job.printerPort ?? config.printerPort;
     if (!ip) {
@@ -541,6 +613,7 @@ function createRelay({ getConfig, onEvent } = {}) {
           bytes: 0,
           ip: validation.config.printerIp || null,
           port: validation.config.printerPort,
+          usb: validation.config.printerUsbName || null,
           test: true,
           at: Date.now(),
         };
@@ -550,6 +623,45 @@ function createRelay({ getConfig, onEvent } = {}) {
       }
 
       const testBuffer = buildTestPayload();
+      if (validation.config.printerBackend === "usb") {
+        const usbName = validation.config.printerUsbName;
+        if (!usbName) {
+          lastPrint = {
+            ok: false,
+            error: "Sin cola USB configurada: elegila de la lista de este equipo.",
+            code: "missing-printer-usb",
+            bytes: 0,
+            ip: null,
+            port: null,
+            usb: null,
+            test: true,
+            at: Date.now(),
+          };
+          emit("print", { ...lastPrint });
+          emitStatus();
+          return { ok: false, error: lastPrint.error, code: lastPrint.code };
+        }
+        const res = await writeUsbRaw(usbName, testBuffer);
+        lastPrint = {
+          ok: res.ok,
+          error: res.error || null,
+          code: res.ok ? null : "printer-usb-failed",
+          bytes: res.ok ? res.bytes || testBuffer.length : 0,
+          ip: null,
+          port: null,
+          usb: usbName,
+          test: true,
+          at: Date.now(),
+        };
+        emit("print", { ...lastPrint });
+        emitStatus();
+        return {
+          ok: res.ok,
+          error: res.error || null,
+          code: lastPrint.code,
+          usb: usbName,
+        };
+      }
       const res = await writeToTcp(
         validation.config.printerIp,
         validation.config.printerPort,
@@ -563,6 +675,7 @@ function createRelay({ getConfig, onEvent } = {}) {
         bytes: res.ok ? testBuffer.length : 0,
         ip: validation.config.printerIp,
         port: validation.config.printerPort,
+        usb: null,
         test: true,
         at: Date.now(),
       };

@@ -339,7 +339,8 @@ export async function POST(request: Request) {
   if (printer_port !== undefined) payload.printer_port = printer_port || 9100;
   if (paper_size !== undefined) payload.paper_size = paper_size || "80mm";
   if (auto_print !== undefined) payload.auto_print = auto_print === true;
-  if (print_mode !== undefined) payload.print_mode = print_mode === "app" ? "app" : "server";
+  if (print_mode !== undefined)
+    payload.print_mode = print_mode === "app" ? "app" : print_mode === "usb" ? "usb" : "server";
   if (transfer_alias !== undefined) payload.transfer_alias = transfer_alias || null;
   if (transfer_cbu !== undefined) payload.transfer_cbu = transfer_cbu || null;
   if (transfer_holder !== undefined) payload.transfer_holder = transfer_holder || null;

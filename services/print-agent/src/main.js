@@ -10,6 +10,7 @@ const { existsSync, readFileSync, writeFileSync, mkdirSync } = require("node:fs"
 const { join, dirname } = require("node:path");
 const { createRelay, sanitizeAgentConfig, validateConnectionConfig, discoverPrinters } = require("./relay");
 const { createLocalServer } = require("./local-server");
+const { listUsbPrinters } = require("./usb-print");
 
 const APP_NAME = "Portal Print Agent";
 const RUN_KEY = "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run";
@@ -30,7 +31,14 @@ function configPath() {
 }
 
 function defaultConfig() {
-  return { serverUrl: "https://www.portal659.com.ar", token: "", printerIp: "", printerPort: 9100 };
+  return {
+    serverUrl: "https://www.portal659.com.ar",
+    token: "",
+    printerIp: "",
+    printerPort: 9100,
+    printerBackend: "tcp",
+    printerUsbName: "",
+  };
 }
 
 function legacyConfigPaths() {
@@ -139,6 +147,16 @@ function handleAgentEvent(payload) {
     const ip = String(payload.ip).trim();
     if (ip && config && ip !== config.printerIp) {
       const saved = saveConfig({ ...config, printerIp: ip });
+      config = saved.config;
+    }
+    return;
+  }
+  // Tercer modo USB: la cola elegida (desde la ventana o desde la web por
+  // /local-config) se persiste en la config local de ESTA PC.
+  if (payload.type === "printer-usb-fixed" && payload.usbName) {
+    const usbName = String(payload.usbName).trim();
+    if (usbName && config && (usbName !== config.printerUsbName || config.printerBackend !== "usb")) {
+      const saved = saveConfig({ ...config, printerUsbName: usbName, printerBackend: "usb" });
       config = saved.config;
     }
     return;
@@ -259,6 +277,14 @@ function registerIpc() {
       return { hosts };
     } catch (e) {
       return { hosts: [], error: e?.message || "falló la búsqueda" };
+    }
+  });
+  // Colas USB de este equipo (tercer modo).
+  ipcMain.handle("printer:list-usb", async () => {
+    try {
+      return await listUsbPrinters();
+    } catch (e) {
+      return { ok: false, error: e?.message || "falló la búsqueda USB" };
     }
   });
   ipcMain.handle("autostart:get", () => getAutostart());

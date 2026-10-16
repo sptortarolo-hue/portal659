@@ -452,7 +452,7 @@ export type Vendor = {
   printer_port: number | null;
   paper_size: string | null;
   auto_print: boolean;
-  print_mode?: "server" | "app" | null;
+  print_mode?: "server" | "app" | "usb" | null;
   /** Stripe Connect (cobros a la cuenta del comercio). § stripe-connect.ts */
   stripe_account_id?: string | null;
   stripe_connected_at?: string | null;

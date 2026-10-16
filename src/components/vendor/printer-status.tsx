@@ -18,7 +18,7 @@ const RECONNECT_WINDOW_MS = 3 * 60 * 1000;
 
 /**
  * Indicador de estado de impresora en el header del dashboard.
- * - Modo app (relay): verde si la app Portal Print está conectada.
+ * - Modo app/usb (relay): verde si la app/agente está conectado.
  * - Modo server (TCP): verde si hay IP configurada y la última impresión fue ok.
  * Al tocarlo lleva a la sección Impresora del Config.
  */
@@ -28,7 +28,7 @@ export function PrinterStatus({ vendor, onOpenConfig }: { vendor: Vendor; onOpen
   // "muerta" (rojo). La recencia se evalúa al momento del poll.
   const [queued, setQueued] = useState(0);
 
-  const mode = vendor.print_mode === "app" ? "app" : "server";
+  const mode = vendor.print_mode === "app" ? "app" : vendor.print_mode === "usb" ? "usb" : "server";
 
   useEffect(() => {
     let mounted = true;
@@ -38,7 +38,7 @@ export function PrinterStatus({ vendor, onOpenConfig }: { vendor: Vendor; onOpen
         if (!res.ok) return;
         const data = await res.json();
         if (!mounted) return;
-        if (mode === "app") {
+        if (mode === "app" || mode === "usb") {
           const online = data?.agent?.online === true;
           const q = Number(data?.agent?.queued) || 0;
           const rawSeen = data?.agent?.lastSeen as number | string | null | undefined;

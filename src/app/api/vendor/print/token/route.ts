@@ -18,7 +18,9 @@ export async function POST(request: Request) {
 
   const token = generatePrintToken();
   await query(
-    `UPDATE vendors SET print_token = $1, print_mode = 'app' WHERE id = $2`,
+    `UPDATE vendors SET print_token = $1,
+       print_mode = CASE WHEN print_mode = 'usb' THEN 'usb' ELSE 'app' END
+     WHERE id = $2`,
     [token, vendor.id]
   );
 

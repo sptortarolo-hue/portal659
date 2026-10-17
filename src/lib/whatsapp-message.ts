@@ -224,9 +224,11 @@ export function buildTransferInstructionsMessage(params: {
   blocked?: boolean;
 }): string {
   const id = params.orderId.slice(0, 8);
-  const credentials = params.cbu
-    ? `*Alias:* ${params.alias}\n*CBU:* ${params.cbu}`
-    : `*Alias:* ${params.alias}`;
+  // Datos de pago presentes: alias y/o CBU (puede cargar solo uno).
+  const credentials = [
+    params.alias ? `*Alias:* ${params.alias}` : "",
+    params.cbu ? `*CBU:* ${params.cbu}` : "",
+  ].filter((l) => l !== "").join("\n");
   const closing = params.blocked
     ? "Después *enviame el comprobante por este chat* y apenas lo confirmemos arrancamos tu pedido. 🙌"
     : "Después *enviame el comprobante por este chat*. 🙌";

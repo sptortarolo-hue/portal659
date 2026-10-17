@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { queryOne } from "@/lib/db";
 import { getSiteUrl } from "@/lib/site-url";
@@ -7,13 +8,11 @@ import { fmtVence } from "@/lib/gift-card-share";
 /**
  * Ficha pública de una tarjeta de regalo: la ve quien recibe el link por
  * WhatsApp (el código es la autorización). Muestra diseño + saldo +
- * vigencia + cómo canjear. Nunca se indexa (layout con noindex).
+ * vigencia + cómo canjear. Nunca se indexa (robots explícito).
+ * La preview de WhatsApp sale de /og/giftcard/[code].jpg (og:image), que
+ * dibuja la tarjeta según monto/código/vigencia del comercio.
  */
-export default async function GiftcardPage({ params }: { params: Promise<{ code: string }> }) {
-  const { code } = await params;
-  const clean = String(code || "").trim().toUpperCase();
-  if (!clean) notFound();
-
+async function loadGiftcard(clean: string) {
   const card = await queryOne<{
     id: string;
     code: string;
@@ -27,8 +26,7 @@ export default async function GiftcardPage({ params }: { params: Promise<{ code:
      FROM giftcards WHERE code = $1 LIMIT 1`,
     [clean]
   ).catch(() => null);
-  if (!card) notFound();
-
+  if (!card) return null;
   const vendor = await queryOne<{
     store_name: string;
     slug: string | null;
@@ -39,6 +37,55 @@ export default async function GiftcardPage({ params }: { params: Promise<{ code:
     `SELECT store_name, slug, logo_url, vertical, whatsapp FROM vendors WHERE id = $1 LIMIT 1`,
     [card.vendor_id]
   ).catch(() => null);
+  return { card, vendor: vendor ?? null };
+}
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ code: string }>;
+}): Promise<Metadata> {
+  const { code } = await params;
+  const clean = String(code || "").trim().toUpperCase();
+  const data = clean ? await loadGiftcard(clean) : null;
+  const siteUrl = getSiteUrl();
+  const amount = Math.round(Number(data?.card.amount) || 0);
+  const storeName = data?.vendor?.store_name || "el comercio";
+  const expRaw = String(data?.card.expires_at || "").slice(0, 10);
+  const vence = /^(\d{4})-(\d{2})-(\d{2})$/.test(expRaw) ? fmtVence(expRaw) : null;
+  const title = `🎁 Tarjeta de regalo de ${storeName} — $${amount.toLocaleString("es-AR")}`;
+  const description = data?.card
+    ? `Código ${clean} · ${vence ? `Válida hasta el ${vence}` : "Sin vencimiento"}`
+    : `Código ${clean}`;
+  const ogImage = `${siteUrl}/og/giftcard/${encodeURIComponent(clean)}.jpg`;
+  return {
+    title,
+    description,
+    robots: { index: false, follow: false },
+    openGraph: {
+      title,
+      description,
+      type: "website",
+      images: [{ url: ogImage, width: 1200, height: 630, alt: title }],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+      images: [ogImage],
+    },
+  };
+}
+
+export default async function GiftcardPage({ params }: { params: Promise<{ code: string }> }) {
+  const { code } = await params;
+  const clean = String(code || "").trim().toUpperCase();
+  if (!clean) notFound();
+
+  const loaded = await loadGiftcard(clean);
+  if (!loaded) notFound();
+  const card = loaded.card;
+  const vendor = loaded.vendor;
 
   const siteUrl = getSiteUrl();
   const balance = Math.round(Number(card.balance) || 0);

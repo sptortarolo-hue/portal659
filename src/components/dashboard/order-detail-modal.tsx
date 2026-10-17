@@ -52,6 +52,19 @@ function getActionButtonLabel(next: OrderStatus, order: Order, isRetail: boolean
   return labels[next] || next;
 }
 
+/**
+ * Estado del bot de WhatsApp del comercio ("linked" = app Portal Wa Link
+ * conectada + bot habilitado): define si el envío de datos de pago va por bot
+ * o por WhatsApp manual. Cache a nivel módulo: una consulta por sesión.
+ */
+type BotState = "unknown" | "linked" | "unlinked";
+let waBotStateCache: BotState | undefined;
+
+function setWaBotState(next: Exclude<BotState, "unknown">) {
+  waBotStateCache = next;
+  return next;
+}
+
 type Props = {
   order: Order;
   vendorName: string;
@@ -90,8 +103,12 @@ export default function OrderDetailModal({ order, vendorName, vendorLogoUrl, onC
   const [apError, setApError] = useState("");
   // "💳 Enviar datos de pago por WA": el comercio manda el alias/CBU/monto al
   // cliente por el bot manualmente; el comprobante vuelve por el chat del bot.
+  // Un solo botón: con el bot vinculado sale por bot; sin bot (o si el bot se
+  // cae al apretar) se abre el WhatsApp del comercio con los datos listos.
   const [payBusy, setPayBusy] = useState(false);
   const [payMsg, setPayMsg] = useState("");
+  const [botFailed, setBotFailed] = useState(false);
+  const [botState, setBotState] = useState<BotState>(() => waBotStateCache ?? "unknown");
 
   // Tarjetas de regalo de esta venta (F2/F3): emitidas + envío por WhatsApp.
   const [issued, setIssued] = useState<any[]>([]);
@@ -218,6 +235,7 @@ export default function OrderDetailModal({ order, vendorName, vendorLogoUrl, onC
     setMpLink(null);
     setApError("");
     setPayMsg("");
+    setBotFailed(false);
   }, [order.id]);
 
   const ap = apartadoInfo(order);
@@ -237,7 +255,11 @@ export default function OrderDetailModal({ order, vendorName, vendorLogoUrl, onC
         return;
       }
       if (data.sent === true) setPayMsg("✅ Datos de pago enviados por WhatsApp.");
-      else if (data.reason === "sin_relay") setPayMsg("No se envió: el bot del comercio no está conectado (el teléfono con la app Portal Wa Link está apagado).");
+      else if (data.reason === "sin_relay") {
+        // Bot caído a mitad de sesión: el bloque conmuta al WA manual.
+        setBotFailed(true);
+        setPayMsg("El bot no pudo enviarlo — mandalo con tu WhatsApp (botón de abajo).");
+      }
       else if (data.reason === "ya_enviado") setPayMsg("Ya se enviaron los datos de pago de este pedido (esa ventana ya está esperando el comprobante).");
       else setPayMsg(`No se envió${data.reason ? ` (${data.reason})` : ""}.`);
     } catch {
@@ -320,8 +342,39 @@ export default function OrderDetailModal({ order, vendorName, vendorLogoUrl, onC
       })
     : null;
 
-  const contextualWa = isCounterChannel ? null : buildContextualWhatsApp(order, vendorName, transfer, () => transferInstructions, isRetail);
+  const contextualWaRaw = isCounterChannel ? null : buildContextualWhatsApp(order, vendorName, transfer, () => transferInstructions, isRetail);
+  // La variante "transfer" (💸 Datos de pago) vive en el bloque ámbar de pago
+  // (bot o manual): acá abajo duplicaría. Las demás variantes sí se muestran.
+  const contextualWa = contextualWaRaw?.variant === "transfer" ? null : contextualWaRaw;
   const isBlockedByPayment = blockUnpaid && isTransferAppPending;
+
+  // Estado del bot (una sola vez por sesión): decide botón de bot vs WA manual.
+  // "unknown" (fetch falla) = modo manual: el link wa.me funciona siempre.
+  useEffect(() => {
+    if (!isTransferAppPending || waBotStateCache) return;
+    let cancelled = false;
+    fetch("/api/vendor/wa-status")
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then((d) => {
+        if (cancelled) return;
+        setBotState(setWaBotState(d?.linked ? "linked" : "unlinked"));
+      })
+      .catch(() => {
+        if (!cancelled) setBotState("unknown");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isTransferAppPending]);
+
+  // El bloque de pago muestra UNA sola vía: bot vinculado → bot; sin bot (o
+  // bot que se cayera al apretar) → WhatsApp manual del comercio.
+  const useBotSend = botState === "linked" && !botFailed;
+  const transferHasData = !!(transfer?.alias || transfer?.cbu);
+  const manualPayUrl =
+    isTransferAppPending && isCounterChannel === false && customerPhone && transferHasData && transferInstructions
+      ? `https://wa.me/${customerPhone}?text=${encodeURIComponent(transferInstructions)}`
+      : null;
 
   const startEditing = useCallback(() => {
     setEditItems(JSON.parse(JSON.stringify(order.items || [])));
@@ -975,15 +1028,42 @@ export default function OrderDetailModal({ order, vendorName, vendorLogoUrl, onC
                       )}
                     </div>
                   )}
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="w-full border-primary/40 text-primary hover:bg-primary/10"
-                    disabled={payBusy}
-                    onClick={handleSendPaymentData}
-                  >
-                    {payBusy ? "Enviando..." : "💳 Enviar datos de pago por WhatsApp"}
-                  </Button>
+                  {useBotSend ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full border-primary/40 text-primary hover:bg-primary/10"
+                      disabled={payBusy}
+                      onClick={handleSendPaymentData}
+                    >
+                      {payBusy ? "Enviando..." : "💳 Enviar datos de pago por WhatsApp"}
+                    </Button>
+                  ) : manualPayUrl && !isCounterChannel ? (
+                    <>
+                      <a href={manualPayUrl} target="_blank" rel="noopener noreferrer" className="block">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="w-full border-primary/40 text-primary hover:bg-primary/10"
+                        >
+                          💳 Enviar datos de pago por WhatsApp
+                        </Button>
+                      </a>
+                      <p className="text-center text-[10px] text-muted-foreground">
+                        {botFailed
+                          ? "El bot no pudo enviarlo — se abre tu WhatsApp con los datos listos."
+                          : "El bot no está conectado — se abre tu WhatsApp con los datos listos."}
+                      </p>
+                    </>
+                  ) : !customerPhone || isCounterChannel ? (
+                    <p className="text-center text-[10px] text-muted-foreground">
+                      El pedido no tiene teléfono del cliente — coordinale el pago por la vía que uses de siempre.
+                    </p>
+                  ) : (
+                    <p className="text-center text-[10px] text-muted-foreground">
+                      Cargá tu alias o CBU en Configuración → Cobros para mandarle los datos de pago al cliente.
+                    </p>
+                  )}
                   {payMsg && <p className="text-center text-[10px] text-muted-foreground">{payMsg}</p>}
                   {onMarkPaid && (
                     <Button

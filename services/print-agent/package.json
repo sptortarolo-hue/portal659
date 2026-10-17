@@ -1,7 +1,7 @@
 {
   "name": "portal-print-agent",
   "private": true,
-  "version": "2.2.0",
+  "version": "2.2.1",
   "description": "Agente de impresión para PC (relé WebSocket → impresora TCP ESC/POS o cola USB local) con ventana de configuración",
   "author": "Portal 659",
   "main": "src/main.js",

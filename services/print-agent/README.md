@@ -18,7 +18,7 @@ Es una app de escritorio (Electron) con **ventana de configuración** y **bandej
    y tocá **Guardar**.
 5. Tocá **Probar impresora** para verificar.
 
-### Auto-fallback USB (v2.2.0)
+### Auto-fallback USB (v2.2.0, fix interop v2.2.1)
 
 Si el driver de la impresora rechaza los bytes RAW (pasa con varios drivers POS),
 el agente lo arregla solo: prueba otras colas del **mismo puerto USB** y, si ninguna
@@ -27,6 +27,10 @@ sobre el puerto que ya tiene la impresora — el puerto se lee de la cola origin
 que no depende de elegir bien en el asistente). La cola que funciona queda fijada en
 la config del agente y los próximos tickets van directo. Solo si falta permiso para
 crear la cola avisa con la guía manual.
+
+> v2.2.1 corrige un bug de interop (`StartDocPrinter` bindeaba a la versión ANSI con
+> struct Unicode → `ERR:startdoc` en TODAS las colas, incluso las genéricas). Además
+> los errores ahora incluyen el código Win32 real (permisos, datatype, etc.).
 6. Activá **"Arrancar al encender la PC"** si querés que empiece solo al iniciar Windows.
 
 - Al cerrar la ventana, el agente **sigue imprimiendo** desde la bandeja del sistema (ícono
@@ -49,7 +53,7 @@ crear la cola avisa con la guía manual.
 - Requiere `npm install` (devDeps: electron + electron-builder; dep: ws).
 - Correr en dev: `npm run start:electron`.
 - Test unitario de validación/estado: `npm test`.
-- La ventana muestra la versión instalada (`v2.2.0`), el servidor intentado, el último error y el reintento pendiente.
+- La ventana muestra la versión instalada (`v2.2.1`), el servidor intentado, el último error y el reintento pendiente.
 - Icono: `scripts/make-ico.mjs` genera `assets/icon.ico` desde `assets/icon-512.png`.
 - Test E2E (relay real + agente headless + capturador TCP): `node test/e2e.mjs`.
 

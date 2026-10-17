@@ -119,7 +119,7 @@ public class PortalRawPrint {
   public static extern bool OpenPrinter(string pPrinterName, out IntPtr phPrinter, IntPtr pDefault);
   [DllImport("winspool.Drv", SetLastError = true)]
   public static extern bool ClosePrinter(IntPtr hPrinter);
-  [DllImport("winspool.Drv", SetLastError = true)]
+  [DllImport("winspool.Drv", EntryPoint = "StartDocPrinterW", SetLastError = true, CharSet = CharSet.Unicode)]
   public static extern int StartDocPrinter(IntPtr hPrinter, int level, [In] ref DOC_INFO_1 pDocInfo);
   [DllImport("winspool.Drv", SetLastError = true)]
   public static extern bool EndDocPrinter(IntPtr hPrinter);
@@ -131,26 +131,31 @@ public class PortalRawPrint {
   public static extern bool WritePrinter(IntPtr hPrinter, byte[] pBytes, int dwCount, out int dwWritten);
 }
 "@;
+# Reporta el paso fallido + GetLastError real (llamar inmediato tras el P/Invoke).
+function Portal-Err([string]$step) {
+  $code = [Runtime.InteropServices.Marshal]::GetLastWin32Error();
+  Write-Output ("ERR:" + $step + ":" + $code);
+}
 $printer = $env:PORTAL_PRINTER;
 $bin = $env:PORTAL_BIN;
-if ([string]::IsNullOrWhiteSpace($printer)) { Write-Output "ERR:open:0"; exit 0 }
-if (-not (Test-Path -LiteralPath $bin)) { Write-Output "ERR:read:0"; exit 0 }
+if ([string]::IsNullOrWhiteSpace($printer)) { Portal-Err "open"; exit 0 }
+if (-not (Test-Path -LiteralPath $bin)) { Portal-Err "read"; exit 0 }
 $h = [IntPtr]::Zero;
-if (-not [PortalRawPrint]::OpenPrinter($printer, [ref]$h, [IntPtr]::Zero)) { Write-Output "ERR:open:1"; exit 0 }
+if (-not [PortalRawPrint]::OpenPrinter($printer, [ref]$h, [IntPtr]::Zero)) { Portal-Err "open"; exit 0 }
 try {
   $doc = New-Object PortalRawPrint+DOC_INFO_1;
   $doc.pDocName = "Portal 659";
   $doc.pOutputFile = $null;
   $doc.pDatatype = "RAW";
   $job = [PortalRawPrint]::StartDocPrinter($h, 1, [ref]$doc);
-  if ($job -le 0) { Write-Output "ERR:startdoc:1"; exit 0 }
+  if ($job -le 0) { Portal-Err "startdoc"; exit 0 }
   try {
-    if (-not [PortalRawPrint]::StartPagePrinter($h)) { Write-Output "ERR:startpage:1"; exit 0 }
+    if (-not [PortalRawPrint]::StartPagePrinter($h)) { Portal-Err "startpage"; exit 0 }
     try {
       $bytes = [IO.File]::ReadAllBytes($bin);
       $written = 0;
       $ok = [PortalRawPrint]::WritePrinter($h, $bytes, $bytes.Length, [ref]$written);
-      if (-not $ok -or $written -ne $bytes.Length) { Write-Output "ERR:write:1"; exit 0 }
+      if (-not $ok -or $written -ne $bytes.Length) { Portal-Err "write"; exit 0 }
     } finally {
       [void][PortalRawPrint]::EndPagePrinter($h);
     }
@@ -163,24 +168,41 @@ try {
 }
 `.trim();
 
-/** Traduce el `ERR:<paso>` del script a lenguaje operativo. */
-function mapUsbError(step, printerName) {
+/** Códigos Win32 comunes del spooler, para precisar el mensaje. */
+const WIN32_HINTS = {
+  5: "sin permisos sobre la impresora en Windows",
+  87: "parámetro inválido",
+  1801: "el nombre de la cola no existe en este equipo",
+  2000: "el tipo de datos no es aceptado por esa cola",
+};
+
+/** Traduce el `ERR:<paso>:<código>` del script a lenguaje operativo. */
+function mapUsbError(step, printerName, win32Code) {
   const name = printerName ? ` "${printerName}"` : "";
+  const codeHint = win32Code
+    ? ` (código Windows ${win32Code}${WIN32_HINTS[win32Code] ? `: ${WIN32_HINTS[win32Code]}` : ""})`
+    : "";
   switch (step) {
     case "open":
-      return `La cola${name} no existe o el spooler no responde: elegila de la lista de este equipo (no escribas el nombre a mano).`;
+      return `La cola${name} no existe o el spooler no responde: elegila de la lista de este equipo (no escribas el nombre a mano).${codeHint}`;
     case "read":
       return "No se pudo leer el ticket a imprimir (archivo temporal). Probá de nuevo.";
     case "startdoc":
     case "startpage":
+      if (win32Code === 5) {
+        return (
+          `Windows negó el permiso de impresión${name}: usá el agente con el mismo usuario ` +
+          `que instaló la impresora, o revisá los permisos de la cola${codeHint}`
+        );
+      }
       return (
         `La impresora${name} rechazó el trabajo RAW: el driver filtra los bytes. ` +
-        `Creá una 2ª cola con el driver "Generic / Text Only" al mismo puerto USB y elegila en el agente.`
+        `Creá una 2ª cola con el driver "Generic / Text Only" al mismo puerto USB y elegila en el agente.${codeHint}`
       );
     case "write":
-      return `No se pudo enviar a${name}: verificá cable USB, papel y que esté prendida.`;
+      return `No se pudo enviar a${name}: verificá cable USB, papel y que esté prendida.${codeHint}`;
     default:
-      return `No se pudo imprimir en${name || " la impresora USB"}.`;
+      return `No se pudo imprimir en${name || " la impresora USB"}.${codeHint}`;
   }
 }
 
@@ -218,9 +240,15 @@ async function writeUsbRaw(
     if (res.timedOut) {
       return { ok: false, error: "El spooler tardó demasiado (cola colgada: cancelá los trabajos en Windows y probá de nuevo)", code: "timeout" };
     }
-    const errMatch = out.match(/ERR:([a-z]+)/);
+    const errMatch = out.match(/ERR:([a-z]+)(?::(\d+))?/);
     const step = errMatch ? errMatch[1] : "";
-    return { ok: false, error: mapUsbError(step, name), code: step || null };
+    const code = errMatch && errMatch[2] ? Number(errMatch[2]) : null;
+    return {
+      ok: false,
+      error: mapUsbError(step, name, code),
+      code: step || null,
+      ...(code ? { win32: code } : {}),
+    };
   } finally {
     try {
       await unlink(binPath);

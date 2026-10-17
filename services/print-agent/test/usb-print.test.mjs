@@ -14,6 +14,7 @@ import {
   mapUsbError,
   parsePrinterListJson,
   parseQueueDetails,
+  RAW_CS,
   writeUsbRaw,
   writeUsbRawAuto,
 } from "../src/usb-print.js";
@@ -101,7 +102,19 @@ import { createLocalServer } from "../src/local-server.js";
   const r = await writeUsbRaw("XP-80", Buffer.from([0x1b, 0x40]), { run: fakeRun, platform: "win32" });
   assert.equal(r.ok, false);
   assert.match(r.error, /Generic \/ Text Only/);
-  console.log("ok - writeUsbRaw ERR:startdoc sugiere Generic/Text Only");
+  assert.match(r.error, /código Windows 1/);
+  assert.equal(r.win32, 1);
+  console.log("ok - writeUsbRaw ERR:startdoc sugiere Generic/Text Only + código Win32");
+}
+{
+  // Regresión del bug de interop: sin EntryPoint explícito, StartDocPrinter
+  // bindea a la versión ANSI y el struct Unicode (LPWStr) hace que "RAW"
+  // llegue corrupto → falla en TODAS las colas, incluso las genéricas.
+  assert.match(RAW_CS, /EntryPoint = "StartDocPrinterW"/);
+  assert.match(RAW_CS, /EntryPoint = "OpenPrinterW"/);
+  assert.doesNotMatch(RAW_CS, /extern int StartDocPrinter[^\n]*CharSet = CharSet\.Unicode[\s\S]*?StartDocPrinterW[\s\S]/);
+  assert.match(RAW_CS, /GetLastWin32Error/);
+  console.log("ok - RAW_CS bindea StartDocPrinterW (Unicode) y captura GetLastError");
 }
 {
   const fakeRun = async () => ({ code: 1, stdout: "", stderr: "", timedOut: true });

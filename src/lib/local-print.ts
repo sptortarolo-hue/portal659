@@ -81,6 +81,12 @@ export function describePrintError(
   if (/Sin cola USB|no existe o el spooler|missing-printer-usb/i.test(msg)) {
     return "Esa cola USB no existe en este equipo: elegila de la lista (no escribas el nombre a mano).";
   }
+  if (/No se pudo arreglar automático/i.test(msg)) {
+    return (
+      "El driver de la impresora no acepta el ticket y el agente no pudo arreglarlo solo: " +
+      'creá una 2ª cola con el driver "Generic / Text Only" al mismo puerto USB y elegila en el agente.'
+    );
+  }
   if (/Generic \/ Text Only/i.test(msg)) {
     return msg.length > 260 ? msg.slice(0, 260) + "…" : msg;
   }
@@ -211,7 +217,8 @@ export async function tryLocalPrint(
         ...(dest?.backend ? { backend: dest.backend } : {}),
         ...(dest?.usbName ? { printerUsbName: dest.usbName } : {}),
       },
-      4000
+      // USB puede hacer fallback automático (listar + crear cola): 8s.
+      8000
     );
     if (!r.reached) continue;
     reachedAny = true;

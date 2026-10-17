@@ -5,7 +5,7 @@
 const net = require("node:net");
 const os = require("node:os");
 const { WebSocket } = require("ws");
-const { writeUsbRaw } = require("./usb-print");
+const { writeUsbRawAuto } = require("./usb-print");
 
 const DEFAULT_SERVER_URL = "https://www.portal659.com.ar";
 const CONNECT_TIMEOUT_MS = 10000;
@@ -348,15 +348,21 @@ function createRelay({ getConfig, onEvent } = {}) {
     });
   }
 
-  /** Destino USB: escribe bytes crudos en la cola de Windows (spooler RAW). */
+  /** Destino USB: escribe bytes crudos en la cola de Windows (spooler RAW),
+   * con auto-fallback si el driver rechaza el RAW (busca/crea cola genérica
+   * en el mismo puerto USB y fija la que sirve, como el auto-fix de IP). */
   function printToUsb(usbName, dataBase64, jobId) {
     const data = Buffer.from(dataBase64 || "", "base64");
-    writeUsbRaw(usbName, data).then(({ ok, error, bytes }) => {
+    writeUsbRawAuto(usbName, data).then(({ ok, error, bytes, usbUsed, autoFixed }) => {
+      if (ok && autoFixed && usbUsed && usbUsed !== usbName) {
+        emit("printer-usb-fixed", { usbName: usbUsed, auto: true });
+      }
       if (isOnline()) {
         try {
           const ack = { type: "ack", jobId, ok };
           if (!ok && error) ack.error = error;
-          if (ok && usbName) ack.usbUsed = usbName;
+          if (ok && (usbUsed || usbName)) ack.usbUsed = usbUsed || usbName;
+          if (ok && autoFixed) ack.autoFixed = true;
           ws.send(JSON.stringify(ack));
         } catch {}
       }
@@ -366,7 +372,8 @@ function createRelay({ getConfig, onEvent } = {}) {
         bytes: ok ? bytes || data.length : 0,
         ip: null,
         port: null,
-        usb: usbName || null,
+        usb: (ok && usbUsed) || usbName || null,
+        autoFixed: !!autoFixed,
         test: false,
         at: Date.now(),
       };
@@ -641,7 +648,7 @@ function createRelay({ getConfig, onEvent } = {}) {
           emitStatus();
           return { ok: false, error: lastPrint.error, code: lastPrint.code };
         }
-        const res = await writeUsbRaw(usbName, testBuffer);
+        const res = await writeUsbRawAuto(usbName, testBuffer);
         lastPrint = {
           ok: res.ok,
           error: res.error || null,
@@ -649,17 +656,22 @@ function createRelay({ getConfig, onEvent } = {}) {
           bytes: res.ok ? res.bytes || testBuffer.length : 0,
           ip: null,
           port: null,
-          usb: usbName,
+          usb: (res.ok && res.usbUsed) || usbName,
+          autoFixed: !!res.autoFixed,
           test: true,
           at: Date.now(),
         };
+        if (res.ok && res.autoFixed && res.usbUsed && res.usbUsed !== usbName) {
+          emit("printer-usb-fixed", { usbName: res.usbUsed, auto: true });
+        }
         emit("print", { ...lastPrint });
         emitStatus();
         return {
           ok: res.ok,
           error: res.error || null,
           code: lastPrint.code,
-          usb: usbName,
+          usb: lastPrint.usb,
+          autoFixed: !!res.autoFixed,
         };
       }
       const res = await writeToTcp(

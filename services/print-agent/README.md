@@ -17,6 +17,16 @@ Es una app de escritorio (Electron) con **ventana de configuración** y **bandej
    **IP de la impresora** o **USB por cable** con la **cola USB** (botón ↻ para listar),
    y tocá **Guardar**.
 5. Tocá **Probar impresora** para verificar.
+
+### Auto-fallback USB (v2.2.0)
+
+Si el driver de la impresora rechaza los bytes RAW (pasa con varios drivers POS),
+el agente lo arregla solo: prueba otras colas del **mismo puerto USB** y, si ninguna
+sirve, crea la cola genérica **`Portal659 (USBxxx)`** (driver inbox "Generic / Text Only"
+sobre el puerto que ya tiene la impresora — el puerto se lee de la cola original, así
+que no depende de elegir bien en el asistente). La cola que funciona queda fijada en
+la config del agente y los próximos tickets van directo. Solo si falta permiso para
+crear la cola avisa con la guía manual.
 6. Activá **"Arrancar al encender la PC"** si querés que empiece solo al iniciar Windows.
 
 - Al cerrar la ventana, el agente **sigue imprimiendo** desde la bandeja del sistema (ícono
@@ -39,7 +49,7 @@ Es una app de escritorio (Electron) con **ventana de configuración** y **bandej
 - Requiere `npm install` (devDeps: electron + electron-builder; dep: ws).
 - Correr en dev: `npm run start:electron`.
 - Test unitario de validación/estado: `npm test`.
-- La ventana muestra la versión instalada (`v2.1.0`), el servidor intentado, el último error y el reintento pendiente.
+- La ventana muestra la versión instalada (`v2.2.0`), el servidor intentado, el último error y el reintento pendiente.
 - Icono: `scripts/make-ico.mjs` genera `assets/icon.ico` desde `assets/icon-512.png`.
 - Test E2E (relay real + agente headless + capturador TCP): `node test/e2e.mjs`.
 

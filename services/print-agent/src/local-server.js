@@ -20,7 +20,7 @@
  */
 const http = require("node:http");
 const { sanitizeAgentConfig, printWithAutoFix, discoverPrinters } = require("./relay");
-const { listUsbPrinters, writeUsbRaw } = require("./usb-print");
+const { listUsbPrinters, writeUsbRawAuto } = require("./usb-print");
 
 const LOCAL_HOST = "127.0.0.1";
 const LOCAL_PORT = 8792;
@@ -130,20 +130,28 @@ function createLocalServer({ getConfig, onEvent, port = LOCAL_PORT } = {}) {
           reply(200, { ok: false, error: "Sin cola USB configurada en el agente de este equipo" });
           return;
         }
-        writeUsbRaw(usbName, data).then(({ ok, error, bytes }) => {
+        writeUsbRawAuto(usbName, data).then(({ ok, error, bytes, usbUsed, autoFixed }) => {
+          if (ok && autoFixed && usbUsed && usbUsed !== usbName) {
+            emit("printer-usb-fixed", { usbName: usbUsed, auto: true });
+          }
           emit("print", {
             ok,
             error: error || null,
             bytes: ok ? bytes || data.length : 0,
             ip: null,
             port: null,
-            usb: usbName,
+            usb: (ok && usbUsed) || usbName,
+            autoFixed: !!autoFixed,
             test: false,
             local: true,
             at: Date.now(),
           });
           if (ok) {
-            reply(200, { ok: true, usbUsed: usbName });
+            reply(200, {
+              ok: true,
+              usbUsed: usbUsed || usbName,
+              ...(autoFixed ? { autoFixed: true } : {}),
+            });
           } else {
             reply(200, { ok: false, error: error || "no se pudo imprimir" });
           }

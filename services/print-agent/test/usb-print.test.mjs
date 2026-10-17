@@ -9,10 +9,13 @@ import assert from "node:assert/strict";
 import http from "node:http";
 import { sanitizeAgentConfig, validateConnectionConfig } from "../src/relay.js";
 import {
+  autoQueueName,
   listUsbPrinters,
   mapUsbError,
   parsePrinterListJson,
+  parseQueueDetails,
   writeUsbRaw,
+  writeUsbRawAuto,
 } from "../src/usb-print.js";
 import { createLocalServer } from "../src/local-server.js";
 
@@ -124,6 +127,106 @@ import { createLocalServer } from "../src/local-server.js";
     assert.equal(l.ok, false);
     console.log("ok - fuera de Windows responde error operativo (sin romper)");
   }
+}
+
+// --- writeUsbRawAuto: auto-fallback ante driver que rechaza RAW ---
+function makeRun(behavior) {
+  let calls = 0;
+  const run = async (args, opts) => {
+    calls++;
+    const script = String(args[args.length - 1] || "");
+    if (script.includes("Add-Printer")) {
+      behavior.created = { port: opts?.env?.PORTAL_PORT, name: opts?.env?.PORTAL_NEWNAME };
+      return behavior.createOk
+        ? { code: 0, stdout: "OK\n", stderr: "", timedOut: false }
+        : { code: 0, stdout: "ERR:acceso denegado\n", stderr: "", timedOut: false };
+    }
+    if (script.includes("Get-Printer |")) {
+      // PowerShell devuelve propiedades capitalizadas: Name/DriverName/PortName.
+      const ps = (behavior.queues || []).map((q) => ({
+        Name: q.name,
+        DriverName: q.driver,
+        PortName: q.port,
+      }));
+      return { code: 0, stdout: JSON.stringify(ps), stderr: "", timedOut: false };
+    }
+    if (script.includes("PortalRawPrint")) {
+      const q = opts?.env?.PORTAL_PRINTER;
+      if (q === behavior.failQueue) {
+        return { code: 0, stdout: `ERR:${behavior.failStep || "startdoc"}:1\n`, stderr: "", timedOut: false };
+      }
+      return { code: 0, stdout: `OK:${behavior.bytes ?? 10}\n`, stderr: "", timedOut: false };
+    }
+    return { code: 0, stdout: "", stderr: "", timedOut: false };
+  };
+  run.calls = () => calls;
+  return run;
+}
+
+{
+  const r = await writeUsbRawAuto("Q1", Buffer.from([1]), {
+    run: makeRun({ queues: [] }),
+    platform: "win32",
+  });
+  assert.equal(r.ok, true);
+  assert.equal(r.usbUsed, "Q1");
+  assert.equal(r.autoFixed, false);
+  console.log("ok - auto: cola que funciona sale directo sin fallback");
+}
+{
+  const run = makeRun({
+    failQueue: "POS-58",
+    queues: [
+      { name: "POS-58", driver: "POS-58 Series", port: "USB001" },
+      { name: "GT", driver: "Generic / Text Only", port: "USB001" },
+    ],
+  });
+  const r = await writeUsbRawAuto("POS-58", Buffer.from([1]), { run, platform: "win32" });
+  assert.equal(r.ok, true);
+  assert.equal(r.usbUsed, "GT", "debe preferir la cola genérica del mismo puerto");
+  assert.equal(r.autoFixed, true);
+  assert.equal(run.calls(), 3, "fallo + listar + reintento en GT");
+  console.log("ok - auto: hermana genérica en el mismo puerto se usa sola");
+}
+{
+  const behavior = {
+    failQueue: "POS-58",
+    createOk: true,
+    queues: [{ name: "POS-58", driver: "POS-58 Series", port: "USB001" }],
+  };
+  const r = await writeUsbRawAuto("POS-58", Buffer.from([1]), {
+    run: makeRun(behavior),
+    platform: "win32",
+  });
+  assert.equal(r.ok, true);
+  assert.equal(r.usbUsed, autoQueueName("USB001"));
+  assert.equal(r.autoFixed, true);
+  assert.equal(behavior.created.port, "USB001");
+  console.log("ok - auto: crea Portal659 (USBxxx) y usa la recién creada");
+}
+{
+  const r = await writeUsbRawAuto("POS-58", Buffer.from([1]), {
+    run: makeRun({ failQueue: "POS-58", createOk: false, queues: [{ name: "POS-58", driver: "POS", port: "USB001" }] }),
+    platform: "win32",
+  });
+  assert.equal(r.ok, false);
+  assert.match(r.error, /No se pudo arreglar automático/);
+  assert.match(r.error, /acceso denegado/);
+  console.log("ok - auto: si la creación falla, explica con el motivo y la guía manual");
+}
+{
+  const run = makeRun({ failQueue: "POS-58", failStep: "write" });
+  const r = await writeUsbRawAuto("POS-58", Buffer.from([1]), { run, platform: "win32" });
+  assert.equal(r.ok, false);
+  assert.match(r.error, /cable USB/);
+  assert.equal(run.calls(), 1, "papel/cable no dispara fallback");
+  console.log("ok - auto: error de papel/cable no intenta fallback");
+}
+{
+  const qs = parseQueueDetails('[{"Name":"POS-58","DriverName":"POS-58 Series","PortName":"USB001"},{"Name":"PDF","DriverName":"Microsoft Print To PDF","PortName":"PORTPROMPT:"}]');
+  assert.equal(qs.length, 2);
+  assert.deepEqual(qs[0], { name: "POS-58", driver: "POS-58 Series", port: "USB001" });
+  console.log("ok - parseQueueDetails lee name/driver/port");
 }
 
 // --- local-server: endpoints USB ---

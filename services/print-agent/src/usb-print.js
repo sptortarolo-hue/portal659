@@ -216,10 +216,11 @@ async function writeUsbRaw(
     const okMatch = out.match(/OK:(\d+)/);
     if (res.code === 0 && okMatch) return { ok: true, bytes: Number(okMatch[1]) || data.length };
     if (res.timedOut) {
-      return { ok: false, error: "El spooler tardó demasiado (cola colgada: cancelá los trabajos en Windows y probá de nuevo)" };
+      return { ok: false, error: "El spooler tardó demasiado (cola colgada: cancelá los trabajos en Windows y probá de nuevo)", code: "timeout" };
     }
     const errMatch = out.match(/ERR:([a-z]+)/);
-    return { ok: false, error: mapUsbError(errMatch ? errMatch[1] : "", name) };
+    const step = errMatch ? errMatch[1] : "";
+    return { ok: false, error: mapUsbError(step, name), code: step || null };
   } finally {
     try {
       await unlink(binPath);
@@ -227,12 +228,167 @@ async function writeUsbRaw(
   }
 }
 
+// ---------------------------------------------------------------------------
+// Auto-fallback (tercer modo): algunos drivers POS rechazan el tipo RAW.
+// En vez de pedirle al comercio que cree a mano una 2ª cola "Generic / Text
+// Only", el agente busca otra cola en el MISMO puerto USB que acepte RAW y,
+// si no existe, la crea solo (driver inbox de Windows + puerto ya existente).
+// Si sale, queda fijada en la config (printer-usb-fixed) y no se repite el
+// trabajo en los próximos tickets. Mismo patrón que el auto-fix de IP.
+// ---------------------------------------------------------------------------
+
+const LIST_DETAILS_PS =
+  "Get-Printer | Select-Object Name,DriverName,PortName | ConvertTo-Json -Compress";
+
+/** Cola genérica que crea el agente, determinística por puerto USB. */
+function autoQueueName(port) {
+  return `Portal659 (${String(port || "").trim()})`;
+}
+
+const QUEUE_CREATE_PS = `
+$ErrorActionPreference = "Stop"
+$port = $env:PORTAL_PORT
+$newName = $env:PORTAL_NEWNAME
+try {
+  if ([string]::IsNullOrWhiteSpace($port)) { throw "sin puerto" }
+  $existing = Get-Printer -Name $newName -ErrorAction SilentlyContinue
+  if ($existing) { Write-Output "OK"; exit 0 }
+  $drv = "Generic / Text Only"
+  $staged = Get-PrinterDriver -Name $drv -ErrorAction SilentlyContinue
+  if (-not $staged) { Add-PrinterDriver -Name $drv | Out-Null }
+  Add-Printer -Name $newName -DriverName $drv -PortName $port | Out-Null
+  Write-Output "OK"
+} catch {
+  $msg = $_.Exception.Message -replace "[\r\n]+", " "
+  if ($msg.Length -gt 160) { $msg = $msg.Substring(0, 160) }
+  Write-Output ("ERR:" + $msg)
+}
+`.trim();
+
+function parseQueueDetails(text) {
+  const raw = String(text || "").trim();
+  if (!raw) return [];
+  let data;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    return [];
+  }
+  const arr = Array.isArray(data) ? data : [data];
+  const out = [];
+  for (const item of arr) {
+    if (!item || typeof item !== "object") continue;
+    const name = String(item.Name ?? "").trim();
+    if (!name) continue;
+    out.push({
+      name,
+      driver: String(item.DriverName ?? "").trim(),
+      port: String(item.PortName ?? "").trim(),
+    });
+  }
+  return out;
+}
+
+/** Lista las colas con driver y puerto (para armar candidatos de fallback). */
+async function listQueueDetails({ run = defaultRun, platform = process.platform } = {}) {
+  if (!isWindows(platform)) return { ok: false, error: "USB solo disponible en Windows" };
+  const res = await run(
+    ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", LIST_DETAILS_PS],
+    { timeoutMs: LIST_TIMEOUT_MS }
+  );
+  const queues = res.code === 0 ? parseQueueDetails(res.stdout) : [];
+  if (res.code !== 0 && queues.length === 0) {
+    return { ok: false, error: mapListError(res) };
+  }
+  return { ok: true, queues };
+}
+
+/**
+ * Crea (o reutiliza) la cola genérica "Portal659 (USBxxx)" sobre un puerto
+ * USB existente. Driver "Generic / Text Only" (inbox de Windows). Puede
+ * requerir permisos: si falla devuelve el motivo para guiar a mano.
+ */
+async function ensureGenericQueue(port, { run = defaultRun, platform = process.platform } = {}) {
+  if (!isWindows(platform)) return { ok: false, error: "USB solo disponible en Windows" };
+  const cleanPort = String(port || "").trim();
+  if (!cleanPort || cleanPort.length > 32) {
+    return { ok: false, error: "puerto USB inválido" };
+  }
+  const newName = autoQueueName(cleanPort);
+  const res = await run(
+    ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", QUEUE_CREATE_PS],
+    { timeoutMs: 30000, env: { PORTAL_PORT: cleanPort, PORTAL_NEWNAME: newName } }
+  );
+  const out = String(res.stdout || "");
+  if (/^\s*OK\s*$/m.test(out)) return { ok: true, name: newName };
+  const m = out.match(/ERR:(.*)/s);
+  return {
+    ok: false,
+    name: newName,
+    error: m ? m[1].trim() : "no se pudo crear la cola genérica automática",
+  };
+}
+
+/**
+ * Escribe bytes ESC/POS con auto-fallback: si la cola configurada rechaza el
+ * RAW (driver filtra), prueba otras colas del mismo puerto USB y, si ninguna
+ * sirve, crea la genérica. Devuelve { ok, bytes?, usbUsed?, autoFixed?, error?, code? }.
+ */
+async function writeUsbRawAuto(
+  printerName,
+  buffer,
+  { run = defaultRun, platform = process.platform, timeoutMs = WRITE_TIMEOUT_MS, createQueue = true } = {}
+) {
+  const first = await writeUsbRaw(printerName, buffer, { run, platform, timeoutMs });
+  if (first.ok) return { ...first, usbUsed: printerName, autoFixed: false };
+  // Solo el rechazo del driver vale la pena auto-arreglar; papel/cable/cola
+  // inexistente no se resuelven cambiando de cola.
+  if (first.code !== "startdoc" && first.code !== "startpage") return first;
+
+  const details = await listQueueDetails({ run, platform });
+  if (!details.ok) {
+    return { ok: false, error: `${first.error} (no se pudieron listar colas para el fallback)`, code: first.code };
+  }
+  const orig = details.queues.find((q) => q.name === printerName);
+  if (!orig || !orig.port) {
+    return first;
+  }
+  const siblings = details.queues.filter((q) => q.name !== printerName && q.port === orig.port);
+  const generic = siblings.filter((q) => /generic|text only/i.test(q.driver || ""));
+  const candidates = [...generic, ...siblings.filter((q) => !generic.includes(q))].slice(0, 2);
+  for (const c of candidates) {
+    const r = await writeUsbRaw(c.name, buffer, { run, platform, timeoutMs });
+    if (r.ok) return { ok: true, bytes: r.bytes, usbUsed: c.name, autoFixed: true };
+  }
+  if (createQueue) {
+    const created = await ensureGenericQueue(orig.port, { run, platform });
+    if (created.ok) {
+      const r = await writeUsbRaw(created.name, buffer, { run, platform, timeoutMs });
+      if (r.ok) return { ok: true, bytes: r.bytes, usbUsed: created.name, autoFixed: true };
+      return { ok: false, error: r.error, code: r.code || first.code };
+    }
+    return {
+      ok: false,
+      error: `${first.error} No se pudo arreglar automático (${created.error}): creá una 2ª cola con el driver "Generic / Text Only" al mismo puerto USB y elegila en el agente.`,
+      code: first.code,
+    };
+  }
+  return first;
+}
+
 module.exports = {
   listUsbPrinters,
   writeUsbRaw,
+  writeUsbRawAuto,
   parsePrinterListJson,
+  parseQueueDetails,
+  listQueueDetails,
+  ensureGenericQueue,
+  autoQueueName,
   mapUsbError,
   RAW_CS,
+  LIST_DETAILS_PS,
+  QUEUE_CREATE_PS,
   POWERSHELL,
   MAX_NAME_LEN,
 };

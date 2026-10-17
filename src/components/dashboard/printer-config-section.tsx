@@ -508,7 +508,8 @@ export function PrinterConfigSection({
                 </div>
                 <p className="text-[11px] text-muted-foreground">
                   Se guarda <strong>solo en esta PC</strong> (en el agente), no en el comercio:
-                  cada equipo elige su cola. Requiere el agente v2.1+.
+                  cada equipo elige su cola. Requiere el agente v2.2+. Si el driver rechaza el
+                  ticket, el agente crea y usa solo una cola genérica (Portal659 (USBxxx)).
                 </p>
                 {usbQueues !== null && usbQueues.length === 0 && (
                   <p className="text-[11px] text-amber-600">

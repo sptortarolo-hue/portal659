@@ -2023,6 +2023,11 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
       </button>
       {showAdvanced && (
         <div className="space-y-2">
+          {!fiscalReady && (
+            <p className="text-[11px] text-muted-foreground/70">
+              🧾 Factura C: requiere plan Gestión y completar la configuración en Config → Facturación.
+            </p>
+          )}
           <div className="flex items-center gap-1.5">
             <input
               type="text"

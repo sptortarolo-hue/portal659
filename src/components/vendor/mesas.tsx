@@ -2198,6 +2198,11 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
                     </button>
                   ))}
                 </div>
+                {!fiscalReady && (
+                  <p className="text-[11px] text-muted-foreground/70 flex-shrink-0">
+                    🧾 Factura C: completá la configuración en Config → Facturación para facturar acá.
+                  </p>
+                )}
                 {fiscalReady && (
                   <div className="space-y-1.5 flex-shrink-0">
                     <FiscalSaleFields
@@ -2437,6 +2442,11 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
                       </button>
                     ))}
                   </div>
+                  {!fiscalReady && (
+                    <p className="text-[11px] text-muted-foreground/70">
+                      🧾 Factura C: completá la configuración en Config → Facturación para facturar acá.
+                    </p>
+                  )}
                   {fiscalReady && (
                     <FiscalSaleFields
                       withFiscal={withFiscal}

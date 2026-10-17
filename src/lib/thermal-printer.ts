@@ -5,6 +5,7 @@ import type { Order, OrderItem } from "@/types/database";
 import { orderLineTotal } from "@/lib/order-line";
 import { CASH_METHOD_LABELS } from "@/lib/cash-methods";
 import { formatDeliveryWindow } from "@/lib/delivery-schedule";
+import { code128BarWidths } from "@/lib/code128";
 
 let ThermalPrinter: any = null;
 let PrinterTypes: any = null;
@@ -503,7 +504,7 @@ async function createPrinter(vendor: PrinterVendor): Promise<{ ok: true; printer
 }
 
 function separatorFor(width: number): string {
-  return width >= 48 ? "========================================" : "================================";
+  return width >= 48 ? "========================================" : "==============================";
 }
 
 function composeFooter(printer: any, width: number): void {
@@ -543,7 +544,7 @@ async function composeComanda(printer: any, vendor: PrinterVendor, order: Order)
     printer.setTextSize(0, 0);
     printer.alignLeft();
   }
-  printer.println("----------------------------------------");
+  printer.println(separatorFor(width));
 
   const comandaZone = order.method === "delivery" ? deliveryPrintInfo(order).zoneName : "";
   const methodStr = order.method === "delivery"
@@ -555,7 +556,7 @@ async function composeComanda(printer: any, vendor: PrinterVendor, order: Order)
     order.payment_method === "mercadopago" ? "Mercado Pago (pago)" :
     "Coordinar";
   printer.println(`${methodStr}  |  ${paymentStr}`);
-  printer.println("----------------------------------------");
+  printer.println(separatorFor(width));
 
   const separator = separatorFor(width);
   printer.println(separator);
@@ -834,11 +835,24 @@ async function composeFiscalBlock(
   printer.println(`CAE: ${fiscal.cae}`);
   printer.println(`Vto. CAE: ${vto}`);
   if (fiscal.qrUrl) {
+    // Bitmap primero (funciona en cualquier térmica); hardware y texto de reserva.
+    let printedQr = false;
     try {
-      printer.printQR(fiscal.qrUrl, { cellSize: 4, correction: "M", model: 2 });
-      printer.println("");
-    } catch {
-      printer.println("QR: ver en arca.gob.ar/fe/qr");
+      const png = await renderQrImage(fiscal.qrUrl, 240);
+      if (png) {
+        printer.alignCenter();
+        await printer.printImageBuffer(png);
+        printer.println("");
+        printedQr = true;
+      }
+    } catch {}
+    if (!printedQr) {
+      try {
+        printer.printQR(fiscal.qrUrl, { cellSize: 4, correction: "M", model: 2 });
+        printer.println("");
+      } catch {
+        printer.println("QR: ver en arca.gob.ar/fe/qr");
+      }
     }
   }
   printer.println("Verificá en arca.gob.ar/fe/qr");
@@ -1408,6 +1422,72 @@ async function renderLabelHeader(
 }
 
 /**
+ * CODE128 como bitmap (raster GS v 0): independiente del firmware de la
+ * impresora. El comando por hardware (printer.code128 / GS k) depende de que
+ * la térmica lo implemente y las POS-58 baratas suelen no hacerlo — salen
+ * solo los números. Devuelve PNG b/n listo para printImageBuffer, o null si
+ * el código no entra (→ fallback hardware/texto).
+ */
+async function renderCode128Image(code: string, widthPx: number): Promise<Buffer | null> {
+  const widths = code128BarWidths(code);
+  if (!widths) return null;
+  const key = `code|${code}|${widthPx}`;
+  const cached = headerImageCache.get(key);
+  if (cached) return cached;
+  try {
+    const totalModules = widths.reduce((s, w) => s + w, 0);
+    // Módulo más grande que entra dejando zona de silencio de 10 módulos por lado.
+    let m = 0;
+    for (const cand of [3, 2, 1]) {
+      if ((totalModules + 20) * cand <= widthPx) {
+        m = cand;
+        break;
+      }
+    }
+    if (m === 0) return null;
+    const H = 80;
+    const PI = await loadPureImage();
+    const sharp = await loadSharp();
+    const canvas = PI.make(widthPx, H);
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "white";
+    ctx.fillRect(0, 0, widthPx, H);
+    ctx.fillStyle = "black";
+    const totalPx = totalModules * m;
+    let x = Math.round((widthPx - totalPx) / 2);
+    let isBar = true;
+    for (const w of widths) {
+      if (isBar && w > 0) ctx.fillRect(x, 0, w * m, H);
+      x += w * m;
+      isBar = !isBar;
+    }
+    const raw = await encodePng(PI, canvas);
+    const png = await sharp(raw).grayscale().threshold(150).png().toBuffer();
+    if (headerImageCache.size >= 200) headerImageCache.clear();
+    headerImageCache.set(key, png);
+    return png;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * QR como bitmap (qrcode lib + binarizado): independiente del firmware.
+ * Se usa en la rama apilada de 58mm; printQR (GS ( k) también es por
+ * hardware y las POS-58 baratas suelen no implementarlo.
+ */
+async function renderQrImage(url: string, sizePx: number): Promise<Buffer | null> {
+  try {
+    const QRCode = (await import("qrcode")).default;
+    const qrBuf: Buffer = await QRCode.toBuffer(url, { width: sizePx, margin: 2 });
+    const sharp = await loadSharp();
+    return await sharp(qrBuf).grayscale().threshold(150).png().toBuffer();
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Etiqueta de góndola estilo supermercado:
  *  - Encabezado: nombre (2 líneas) a la izquierda + logo a la derecha (bitmap).
  *  - Precio grande ($X /kg si unit='kg'); promo: ANTES + precio promo + AHORRÁS.
@@ -1484,10 +1564,22 @@ async function composeLabel(
   }
 
   if (code) {
+    // Bitmap primero (funciona en cualquier térmica); hardware y texto de reserva.
+    let printedBars = false;
     try {
-      printer.code128(code, { width: "MEDIUM", height: 64, text: 2 });
-    } catch {
-      printer.println(code);
+      const img = await renderCode128Image(code, width >= 48 ? 576 : 384);
+      if (img) {
+        printer.alignCenter();
+        await printer.printImageBuffer(img);
+        printedBars = true;
+      }
+    } catch {}
+    if (!printedBars) {
+      try {
+        printer.code128(code, { width: "MEDIUM", height: 64, text: 2 });
+      } catch {
+        printer.println(code);
+      }
     }
     printer.println(code);
   }

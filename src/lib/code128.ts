@@ -40,8 +40,8 @@ const STOP = 106;
 const STOP_WIDTHS = [2, 3, 3, 1, 1, 1, 2];
 
 export type Code128Encoding = {
-  set: "B" | "C";
-  /** Valores de símbolos: start + datos + checksum (sin stop). */
+  set: "B" | "C" | "BC";
+  /** Valores de símbolos: start + datos (+ switches) + checksum (sin stop). */
   values: number[];
   /** Anchos bar/espacio alternados (arranca en barra) en módulos,
    * incluyendo start, checksum y stop. */
@@ -61,23 +61,31 @@ function sanitize(text: string): string {
 /**
  * Codifica `text` a valores CODE128. Null si queda vacío.
  * Checksum = (start + Σ i·valor) mod 103 con i arrancando en 1.
+ * Dígitos impares largos (ej. EAN13): primer dígito en B + switch a C
+ * (valor 99) — el dato escaneado es idéntico y la barra queda al doble
+ * de grosor que codificar todo en B.
  */
-export function code128Values(text: string): { set: "B" | "C"; values: number[] } | null {
+export function code128Values(text: string): { set: "B" | "C" | "BC"; values: number[] } | null {
   const clean = sanitize(text).trim();
   if (!clean) return null;
   const digitsOnly = /^\d+$/.test(clean);
-  let set: "B" | "C" = "B";
-  let data: string = clean;
+  let set: "B" | "C" | "BC" = "B";
+  const values: number[] = [];
   if (digitsOnly && clean.length >= 4 && clean.length % 2 === 0) {
     set = "C";
-  }
-  const values: number[] = [set === "C" ? START_C : START_B];
-  if (set === "C") {
-    for (let i = 0; i < data.length; i += 2) {
-      values.push(Number(data.slice(i, i + 2)));
+    values.push(START_C);
+    for (let i = 0; i < clean.length; i += 2) {
+      values.push(Number(clean.slice(i, i + 2)));
+    }
+  } else if (digitsOnly && clean.length >= 5) {
+    set = "BC";
+    values.push(START_B, clean.charCodeAt(0) - 32, 99);
+    for (let i = 1; i < clean.length; i += 2) {
+      values.push(Number(clean.slice(i, i + 2)));
     }
   } else {
-    for (const ch of data) {
+    values.push(START_B);
+    for (const ch of clean) {
       values.push(ch.charCodeAt(0) - 32);
     }
   }

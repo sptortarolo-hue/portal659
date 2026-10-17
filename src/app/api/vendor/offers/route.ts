@@ -1,5 +1,5 @@
 import { getVendorByRequest, resolveCategoryName } from "@/lib/vendor-utils";
-import { queryMany, queryOne } from "@/lib/db";
+import { queryMany, queryOne, withTransaction } from "@/lib/db";
 import { getSiteUrl } from "@/lib/site-url";
 import { queryEffectiveModifiers } from "@/lib/modifier-rules";
 import { resolveVendorPlan } from "@/lib/plans";
@@ -46,7 +46,38 @@ export async function GET(request: Request) {
     modifiersByProduct[pid].push(mod);
   }
 
-  return NextResponse.json({ offers, modifiersByProduct });
+  // Combo artículo: componentes por producto (foto, precio y descripción del
+  // componente viajan con el pedido y el combo, no se recalculan).
+  // Tolerante a DB sin la tabla (migración sin aplicar).
+  const comboItemsByProduct: Record<string, { product_id: string; name: string; price: number; qty: number; image_url: string | null }[]> = {};
+  try {
+    const crows = await queryMany<{ combo_product_id: string; member_product_id: string; qty: number; position: number }>(
+      `SELECT combo_product_id, member_product_id, qty, position FROM combo_items WHERE vendor_id = $1 ORDER BY position ASC`,
+      [vendor.id]
+    );
+    const mrows = await queryMany<{ id: string; name: string; price: number; image_url: string | null }>(
+      `SELECT id, name, price, image_url FROM products WHERE vendor_id = $1`,
+      [vendor.id]
+    );
+    const prodById = new Map((mrows || []).map((p) => [String(p.id), p]));
+    for (const c of crows || []) {
+      const cp = String(c.combo_product_id);
+      const m = prodById.get(String(c.member_product_id));
+      if (!m) continue;
+      if (!comboItemsByProduct[cp]) comboItemsByProduct[cp] = [];
+      comboItemsByProduct[cp].push({
+        product_id: String(c.member_product_id),
+        name: String(m.name),
+        price: Number(m.price),
+        qty: Math.max(1, Math.round(Number(c.qty) || 1)),
+        image_url: m.image_url != null ? String(m.image_url) : null,
+      });
+    }
+  } catch {
+    /* sin tabla: map vacío */
+  }
+
+  return NextResponse.json({ offers, modifiersByProduct, comboItemsByProduct });
 }
 
 export async function POST(request: Request) {
@@ -66,6 +97,12 @@ export async function POST(request: Request) {
   const requires_prep = body.requires_prep !== false;
   const has_variants = body.has_variants === true;
   const cash_discount_excluded = body.cash_discount_excluded === true;
+  const is_combo = body.is_combo === true;
+  const combo_items = Array.isArray(body.combo_items)
+    ? body.combo_items
+        .filter((x: any) => x && typeof x.product_id === "string")
+        .map((x: any) => ({ product_id: String(x.product_id), qty: Math.max(1, Math.round(Number(x.qty) || 1)) }))
+    : [];
 
   if (!name || !price) {
     return NextResponse.json({ error: "El nombre y el precio son obligatorios" }, { status: 400 });
@@ -149,12 +186,49 @@ export async function POST(request: Request) {
     }
   }
 
+  // Plan: el combo cuenta como un producto (no se excluye del tope).
+  // Guardas del combo: componentes del mismo vendor, disponibles, sin
+  // auto-referencia ni combos anidados. Tolerante a DB sin la tabla.
+  if (is_combo) {
+    if (combo_items.length === 0) {
+      return NextResponse.json(
+        { error: "Un combo necesita al menos un producto componente" },
+        { status: 400 }
+      );
+    }
+    try {
+      const members = await queryMany<{ id: string; is_combo: boolean }>(
+        `SELECT p.id, EXISTS (SELECT 1 FROM combo_items ci WHERE ci.combo_product_id = p.id) AS is_combo
+         FROM products p WHERE p.vendor_id = $1 AND p.id = ANY($2)`,
+        [vendor.id, combo_items.map((c: { product_id: string; qty: number }) => c.product_id)]
+      );
+      const mset = new Set((members || []).map((m) => String(m.id)));
+      const missing = combo_items.find((c: { product_id: string; qty: number }) => !mset.has(c.product_id));
+      if (missing) {
+        return NextResponse.json(
+          { error: "Algún componente no existe o no es de tu local" },
+          { status: 400 }
+        );
+      }
+      if (members.some((m) => m.is_combo)) {
+        return NextResponse.json(
+          { error: "No se permiten combos dentro de combos" },
+          { status: 400 }
+        );
+      }
+    } catch {
+      /* sin tabla combo_items: se guardan igual, la FK falla si no existe */
+    }
+  }
+
   const extraCols: string[] = [];
   const extraVals: unknown[] = [];
   if (packSize != null) { extraCols.push("pack_size"); extraVals.push(packSize); }
   if (sizeGuide != null) { extraCols.push("size_guide"); extraVals.push(sizeGuide); }
   if (unit != null) { extraCols.push("unit"); extraVals.push(unit); }
   if (sku != null) { extraCols.push("sku"); extraVals.push(sku); }
+  // Marca el combo en la descripción (el flag real vive en combo_items).
+  // No se agrega columna extra: se deriva de combo_items en runtime.
   // Costo de compra manual (inventario): tolerante a migración sin aplicar.
   const hasCostLast = await queryOne<{ exists: boolean }>(
     `SELECT EXISTS (
@@ -216,5 +290,25 @@ export async function POST(request: Request) {
   const { touchPromoVersion } = await import("@/lib/promo-server");
   await touchPromoVersion(vendor.id);
 
-  return NextResponse.json({ offer });
+  // Combo: persistir líneas en la misma transacción (tolerante a DB sin tabla).
+  if (is_combo) {
+    try {
+      await withTransaction(async (tx) => {
+        await tx.queryVoid(`DELETE FROM combo_items WHERE combo_product_id = $1`, [(offer as any).id]);
+        for (let i = 0; i < combo_items.length; i++) {
+          const c = combo_items[i];
+          await tx.queryVoid(
+            `INSERT INTO combo_items (vendor_id, combo_product_id, member_product_id, qty, position)
+             VALUES ($1, $2, $3, $4, $5)
+             ON CONFLICT (combo_product_id, member_product_id) DO UPDATE SET qty = EXCLUDED.qty, position = EXCLUDED.position`,
+            [vendor.id, (offer as any).id, c.product_id, c.qty, i]
+          );
+        }
+      });
+    } catch {
+      /* sin tabla: el combo queda como producto normal */
+    }
+  }
+
+  return NextResponse.json({ offer, is_combo });
 }

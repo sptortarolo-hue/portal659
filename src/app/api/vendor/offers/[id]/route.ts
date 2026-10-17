@@ -241,9 +241,34 @@ export async function DELETE(
     [params.id, vendor.id]
   );
 
-  // El catálogo cambió: mover el versionado de la tarjeta promo (?v=).
-  const { touchPromoVersion: touchOnDelete } = await import("@/lib/promo-server");
-  await touchOnDelete(vendor.id);
-
-  return NextResponse.json({ ok: true });
+  const body = await request.json();
+  // Combo: si vienen líneas, se reemplazan en la misma transacción.
+  // Tolerante a DB sin la tabla (migración sin aplicar).
+  if (Array.isArray(body.combo_items)) {
+    const incoming = body.combo_items
+      .filter((x: any) => x && typeof x.product_id === "string")
+      .map((x: any) => ({ product_id: String(x.product_id), qty: Math.max(1, Math.round(Number(x.qty) || 1)) }));
+    try {
+      const cur = await queryOne<{ id: string }>(
+        `SELECT id FROM products WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
+        [params.id, vendor.id]
+      );
+      if (cur) {
+        await withTransaction(async (tx) => {
+          await tx.queryVoid(`DELETE FROM combo_items WHERE combo_product_id = $1`, [params.id]);
+          for (let i = 0; i < incoming.length; i++) {
+            const c = incoming[i];
+            await tx.queryVoid(
+              `INSERT INTO combo_items (vendor_id, combo_product_id, member_product_id, qty, position)
+               VALUES ($1, $2, $3, $4, $5)
+               ON CONFLICT (combo_product_id, member_product_id) DO UPDATE SET qty = EXCLUDED.qty, position = EXCLUDED.position`,
+              [vendor.id, params.id, c.product_id, c.qty, i]
+            );
+          }
+        });
+      }
+    } catch {
+      /* sin tabla: se ignora */
+    }
+  }
 }

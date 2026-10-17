@@ -210,9 +210,56 @@ export async function POST(request: Request) {
   });
   }
 
-  // Etiqueta de góndola: por productId único o productIds[] (lote, máx 50).
-  // Valida dueño + trae nombre/precio/promo/SKU/unit de cada producto.
+  // Etiqueta de góndola: dos modos.
+  //  - rows[] (editor moda/comercio): filtra tal cual el editor los define
+  //    (nombre con color/talle, precio, código). La etiqueta es material del
+  //    propio local, no es prubea de precio — no se re-valida contra la DB.
+  //  - productId | productIds[]: lote desde el catálogo (hasta 50), usa sku.
   if (type === "label") {
+    const rawRows = Array.isArray(body.rows) ? body.rows.slice(0, 50) : null;
+    let rowsPrint: { name: string; price: number; oldPrice: number | null; unit: string | null; code: string }[] = [];
+    if (rawRows && rawRows.length > 0) {
+      rowsPrint = rawRows
+        .map((r: Record<string, unknown>) => {
+          const name = String(r?.name ?? "").trim();
+          const price = Number(r?.price) || 0;
+          const oldPrice = r?.oldPrice != null && Number.isFinite(Number(r.oldPrice)) && Number(r.oldPrice) > price ? Number(r.oldPrice) : null;
+          const code = String(r?.code ?? "").trim() || "";
+          return { name, price, oldPrice, unit: null, code };
+        })
+        .filter((r: { name: string; price: number }) => r.name);
+      const copies = Math.min(50, Math.max(1, Math.floor(Number(body.copies) || 1)));
+      if (rowsPrint.length === 0) {
+        return NextResponse.json({ ok: false, error: "Faltan etiquetas por imprimir" }, { status: 400 });
+      }
+      let printed = 0;
+      let lastResult: { ok: boolean; error?: string } = { ok: false };
+      for (const p of rowsPrint) {
+        const result = await dispatchPrint({
+          vendor,
+          type: "label",
+          extra: {
+            label: {
+              name: p.name || "Producto",
+              price: p.price || 0,
+              oldPrice: p.oldPrice,
+              unit: null,
+              code: p.code || `P-${Math.random().toString(36).slice(2, 12).toUpperCase()}`,
+              copies,
+            },
+          },
+        });
+        await recordLastPrint(vendor.id, result);
+        lastResult = result;
+        if (result.ok) printed++;
+      }
+      return NextResponse.json({
+        ok: lastResult.ok,
+        printed,
+        total: rowsPrint.length,
+        ...(lastResult.ok ? {} : { error: lastResult.error || "Fallo de impresión" }),
+      });
+    }
     const singleId = typeof body.productId === "string" && body.productId ? body.productId : null;
     const idsList = Array.isArray(body.productIds)
       ? body.productIds

@@ -74,6 +74,8 @@ type ProductVariant = {
   price: number;
   promo: number | null;
   stock: number;
+  /** Código interno (SKU): el escáner de mostrador agrega la línea de esta variante. */
+  sku?: string | null;
 };
 
 /** Tamaño del pack (1 = venta por unidad). */
@@ -541,21 +543,44 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
+    const matchVariantSku = (vv: ProductVariant) => {
+      const s = String((vv as ProductVariant).sku || "").toLowerCase();
+      return s === q || s.includes(q);
+    };
     return products.filter(
       (p) =>
-        (!q || p.name.toLowerCase().includes(q) || ((p as any).sku || "").toLowerCase() === q || ((p as any).sku || "").toLowerCase().includes(q)) &&
+        (!q || p.name.toLowerCase().includes(q) || ((p as any).sku || "").toLowerCase() === q || ((p as any).sku || "").toLowerCase().includes(q) || (variantsMap[p.id] || []).some(matchVariantSku)) &&
         (!activeCat || normCat(p.category) === activeCat)
     );
   }, [products, query, activeCat]);
 
-  // Enter en el buscador: SKU exacto agrega directo; si el filtro por
-  // nombre deja un único producto, también se agrega (carga rápida).
+  // Enter en el buscador: SKU exacto agrega directo (producto o variante);
+  // si el filtro por nombre deja un único producto, también se agrega (carga rápida).
+  function findVariantBySku(val: string): { p: Product; v: ProductVariant } | null {
+    const low = String(val).trim().toLowerCase();
+    if (!low) return null;
+    for (const p of products) {
+      if (p.available === false) continue;
+      const vs = variantsMap[p.id] || [];
+      const v = vs.find((vv) => String((vv as ProductVariant).sku || "").toLowerCase() === low);
+      if (v) return { p, v };
+    }
+    return null;
+  }
   function submitCodeSearch() {
     const q = query.trim().toLowerCase();
     if (!q) return;
     const hit = products.find((p) => ((p as any).sku || "").toLowerCase() === q && p.available !== false);
     if (hit) {
       add(hit);
+      setQuery("");
+      setMsg("");
+      searchRef.current?.focus();
+      return;
+    }
+    const vHit = findVariantBySku(q);
+    if (vHit) {
+      chooseVariant(vHit.p, vHit.v);
       setQuery("");
       setMsg("");
       searchRef.current?.focus();
@@ -777,21 +802,28 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
         } catch {
           break;
         }
-        const val = String(codes?.[0]?.rawValue || "").trim();
-        if (val && !seen.has(val)) {
-          seen.add(val);
-          const hit = products.find(
-            (p) => ((p as any).sku || "").toLowerCase() === val.toLowerCase() && p.available !== false
-          );
-          if (hit) {
-            add(hit);
-            setQuery("");
-            setMsg(`Agregado por código: ${hit.name}`);
-            await stopScan();
-            return;
-          } else {
-            setQuery(val);
-            setMsg(`Código ${val}: no está en el catálogo`);
+          const val = String(codes?.[0]?.rawValue || "").trim();
+          if (val && !seen.has(val)) {
+            seen.add(val);
+            const hit = products.find(
+              (p) => ((p as any).sku || "").toLowerCase() === val.toLowerCase() && p.available !== false
+            );
+            const vHit = !hit ? findVariantBySku(val) : null;
+            if (hit) {
+              add(hit);
+              setQuery("");
+              setMsg(`Agregado por código: ${hit.name}`);
+              await stopScan();
+              return;
+            } else if (vHit) {
+              chooseVariant(vHit.p, vHit.v);
+              setQuery("");
+              setMsg(`Agregado por código: ${vHit.p.name}`);
+              await stopScan();
+              return;
+            } else {
+              setQuery(val);
+              setMsg(`Código ${val}: no está en el catálogo`);
             await stopScan();
             return;
           }

@@ -321,6 +321,104 @@ export function OfferForm({
   const comboOutOfRange =
     offIsCombo && comboSaleSum > 0 && (comboPriceNum <= 0 || comboPriceNum > comboSaleSum);
 
+  // Editor de combos: toggle + líneas + sumatorias (se renderiza solo si el
+  // padre pasa los handlers; si no, el toggle queda inerte).
+  const comboEditor = offIsCombo ? (
+    <div className="space-y-3 rounded-xl border border-violet-200 bg-violet-50/40 p-3">
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-semibold">🧩 Componentes del combo</span>
+        <span className="text-[11px] text-muted-foreground">
+          {offComboItems.length} línea{offComboItems.length === 1 ? "" : "s"}
+        </span>
+      </div>
+      <div className="space-y-1.5">
+        {(offComboItems || []).map((c, idx) => (
+          <div key={`${c.product_id}-${idx}`} className="flex items-center gap-2 rounded-lg bg-white px-2 py-1.5">
+            <span className="flex-1 min-w-0 text-xs truncate">
+              {c.name}
+              <span className="text-muted-foreground"> · ${Number(c.price).toLocaleString("es-AR")} c/u</span>
+            </span>
+            <button
+              type="button"
+              className="h-6 w-6 flex items-center justify-center rounded border border-border text-muted-foreground hover:text-foreground"
+              onClick={() => {
+                const next = [...(offComboItems || [])];
+                next[idx] = { ...next[idx], qty: Math.max(1, next[idx].qty - 1) };
+                setOffComboItems?.(next);
+              }}
+            >
+              −
+            </button>
+            <span className="w-8 text-center text-sm font-medium tabular-nums">{c.qty}</span>
+            <button
+              type="button"
+              className="h-6 w-6 flex items-center justify-center rounded border border-border text-muted-foreground hover:text-foreground"
+              onClick={() => {
+                const next = [...(offComboItems || [])];
+                next[idx] = { ...next[idx], qty: next[idx].qty + 1 };
+                setOffComboItems?.(next);
+              }}
+            >
+              +
+            </button>
+            <button
+              type="button"
+              className="text-red-600 text-xs px-1"
+              onClick={() => {
+                const next = [...(offComboItems || [])].filter((_, i) => i !== idx);
+                setOffComboItems?.(next);
+              }}
+            >
+              ✕
+            </button>
+          </div>
+        ))}
+        {(offComboItems || []).length === 0 && (
+          <p className="text-xs text-muted-foreground text-center py-2">Sin componentes todavía.</p>
+        )}
+      </div>
+      <div>
+        <select
+          className="w-full h-9 rounded-lg border border-input bg-background px-2 text-xs"
+          defaultValue=""
+          onChange={(e) => {
+            const id = e.target.value;
+            e.target.value = "";
+            if (!id) return;
+            const p = (offAllProducts || []).find((x) => x.id === id);
+            if (!p) return;
+            if ((offComboItems || []).some((c) => c.product_id === id)) return;
+            const next = [...(offComboItems || []), { product_id: id, name: p.name, price: p.price, qty: 1, image_url: p.image_url ?? null }];
+            setOffComboItems?.(next);
+          }}
+        >
+          <option value="" disabled>
+            + Agregar componente…
+          </option>
+          {(offAllProducts || [])
+            .filter((p) => p.available !== false)
+            .sort((a, b) => a.name.localeCompare(b.name, "es"))
+            .map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name} — ${Number(p.price).toLocaleString("es-AR")}
+              </option>
+            ))}
+        </select>
+      </div>
+      {comboSaleSum > 0 && (
+        <div className="flex items-center justify-between text-xs border-t border-violet-200 pt-2">
+          <span className="text-muted-foreground">Valor de venta de los componentes</span>
+          <span className="font-medium tabular-nums">${comboSaleSum.toLocaleString("es-AR")}</span>
+        </div>
+      )}
+      {comboOutOfRange && (
+        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
+          ⚠️ El precio del combo debería estar entre $1 y ${comboSaleSum.toLocaleString("es-AR")} (suma de los componentes).
+        </p>
+      )}
+    </div>
+  ) : null;
+
   // Lookup de código de barras (Open Food Facts + caché propia): sugiere
   // nombre/marca/foto sin pisar lo cargado.
   type LookupHit = { code: string; name: string; brand: string | null; image_url: string | null; source: string };
@@ -382,6 +480,22 @@ export function OfferForm({
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div><Label>Nombre</Label><Input value={offName} onChange={(e) => setOffName(e.target.value)} required onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }} /></div>
           <div><Label>Precio ($)</Label><Input type="number" step="0.01" value={offPrice} onChange={(e) => setOffPrice(e.target.value)} required onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }} /></div>
+        </div>
+        {offIsCombo !== undefined && setOffIsCombo && (
+          <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2">
+            <input
+              type="checkbox"
+              checked={offIsCombo}
+              onChange={(e) => setOffIsCombo(e.target.checked)}
+              className="h-4 w-4 accent-primary"
+              id="off-is-combo"
+            />
+            <label htmlFor="off-is-combo" className="text-sm font-medium cursor-pointer select-none">
+              🧩 Es un combo (varios productos juntos)
+            </label>
+          </div>
+        )}
+        {offIsCombo && comboEditor}
         {showCost && setOffCost && (
           <div>
             <Label>{costLabel}</Label>
@@ -391,7 +505,6 @@ export function OfferForm({
             </p>
           </div>
         )}
-        </div>
         {showStock && setOffPromoPrice && (
           <div><Label>Precio promo ($)</Label><Input type="number" step="0.01" value={offPromoPrice} onChange={(e) => setOffPromoPrice(e.target.value)} placeholder="Precio de oferta" /></div>
         )}

@@ -56,10 +56,43 @@ export async function PUT(request: Request) {
     price: Number(v.price || 0),
     promo: v.promo !== undefined && v.promo !== null && v.promo !== "" ? Number(v.promo) : null,
     stock: Number(v.stock || 0),
-    sku: v.sku ? String(v.sku) : null,
+    sku: String(v.sku ?? "").trim() ? String(v.sku).trim().slice(0, 64) : null,
     cost_last: v.cost_last != null && v.cost_last !== "" && Number.isFinite(Number(v.cost_last)) && Number(v.cost_last) >= 0 ? Number(v.cost_last) : null,
     position: i,
   }));
+
+  // Códigos (SKU) únicos en TODO el local: el escáner de mostrador no puede
+  // haber ambigüedad contra variantes de otros productos ni contra la base del
+  // producto (products.sku).
+  const skusNorm = rows
+    .map((r) => r.sku)
+    .filter((s): s is string => !!s)
+    .map((s) => s.toLowerCase());
+  const rowDups = skusNorm.length !== new Set(skusNorm).size;
+  if (rowDups) {
+    return NextResponse.json({ error: "Hay dos variantes con el mismo código" }, { status: 400 });
+  }
+  const mySkus = skusNorm;
+  const foreign = await queryMany<{ table_name: string; code: string }>(
+    `SELECT 'variante' AS table_name, LOWER(sku) AS code FROM product_variants pv
+       JOIN products p ON p.id = pv.product_id AND p.vendor_id = $1
+      WHERE pv.product_id != $2 AND pv.sku IS NOT NULL
+      UNION ALL
+      SELECT 'producto' AS table_name, LOWER(sku) AS code FROM products p2
+       WHERE p2.vendor_id = $1 AND p2.id != $2 AND p2.sku IS NOT NULL`,
+    [vendor.id, product_id]
+  ).catch(() => []);
+  if (foreign.length > 0) {
+    const foreignSet = new Set(foreign.map((f) => f.code));
+    const clash = mySkus.find((s) => foreignSet.has(s));
+    if (clash) {
+      const owner = foreign.find((f) => f.code === clash);
+      return NextResponse.json(
+        { error: owner?.table_name === "producto" ? `El código ya lo usa otro producto del local` : `El código ya lo usa una variante de otro producto` },
+        { status: 400 }
+      );
+    }
+  }
 
   // Transacción atómica: si un INSERT falla en el medio, no quedan variantes
   // parciales (antes iba DELETE + INSERT sueltos y un fallo corrompía el menú).

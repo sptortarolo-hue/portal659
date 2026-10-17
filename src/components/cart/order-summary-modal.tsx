@@ -27,6 +27,7 @@ type OrderSummaryModalProps = {
   deliveryWindowLabel?: string;
   paymentMethod?: string;
   loading?: boolean;
+  error?: string;
   cashDiscount?: number;
   cashPct?: number;
   volumeDiscount?: number;
@@ -46,6 +47,7 @@ export function OrderSummaryModal({
   deliveryWindowLabel,
   paymentMethod,
   loading,
+  error,
   cashDiscount = 0,
   cashPct = 0,
   volumeDiscount = 0,
@@ -82,6 +84,11 @@ export function OrderSummaryModal({
       }
     >
       <div className="space-y-4">
+        {error && (
+          <p className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-sm font-medium text-red-700">
+            {error}
+          </p>
+        )}
         <p className="text-sm text-muted-foreground">
           Tu pedido para <span className="font-medium text-foreground">{vendorName}</span>
         </p>

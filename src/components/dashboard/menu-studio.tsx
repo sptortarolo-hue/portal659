@@ -79,6 +79,8 @@ type Props = {
   vendorId?: string | null;
   /** Todas las fotos extra (portada + extras del micrositio). Solo lectura para precarga. */
   productImages?: { product_id: string; image_url: string; color?: string | null }[];
+  /** Componentes de combos por producto (linear del editor combos). */
+  comboItemsByProduct?: Record<string, { product_id: string; name: string; price: number; qty: number; image_url?: string | null }[]>;
   /** Muestra el Kit heladería en la solapa Opciones (solo gastronomía). */
   enableHeladeriaKit?: boolean;
   /** Logo del comercio (vista previa de etiquetas de góndola). */
@@ -221,6 +223,7 @@ export function MenuStudio({
   vendorLogo = null,
   vendorName = null,
   productImages = [],
+  comboItemsByProduct = {},
 }: Props) {
   // Galería simple: portada + hasta 3 extras (sin color, a diferencia de moda).
   const MAX_EXTRA_IMAGES = 3;
@@ -267,6 +270,15 @@ export function MenuStudio({
   const [offSku, setOffSku] = useState("");
   // Foto remota sugerida por lookup (se descarga al guardar).
   const [offRemotePhoto, setOffRemotePhoto] = useState<string | null>(null);
+  // Combos: líneas de componentes (solo cuando isCombo). El estado vive acá;
+  // el editor se renderiza en OfferForm (shared) y propaga cambios acá.
+  const [offIsCombo, setOffIsCombo] = useState(false);
+  const [offComboItems, setOffComboItems] = useState<
+    { product_id: string; name: string; price: number; qty: number; image_url?: string | null }[]
+  >([]);
+  const [offAllProducts, setOffAllProducts] = useState<
+    { id: string; name: string; price: number; image_url?: string | null; available?: boolean }[]
+  >([]);
 
   // Drawer (desktop).
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -362,6 +374,24 @@ export function MenuStudio({
     setOffUnit("unidad");
     setOffSku("");
     setOffRemotePhoto(null);
+    setOffIsCombo(false);
+    setOffComboItems([]);
+    setOffAllProducts([]);
+    // Carga productos del local para el picker de componentes del combo.
+    try {
+      fetch("/api/vendor/offers")
+        .then((r) => r.json())
+        .then((d) => {
+          if (Array.isArray(d?.offers)) {
+            setOffAllProducts(
+              d.offers
+                .filter((o: any) => o && o.id && o.available !== false)
+                .map((o: any) => ({ id: String(o.id), name: String(o.name), price: Number(o.price) || 0, image_url: o.image_url != null ? String(o.image_url) : null, available: o.available !== false }))
+            );
+          }
+        })
+        .catch(() => {});
+    } catch { /* noop */ }
     setOffCost("");
     setGalleryUrls([]);
   }
@@ -435,6 +465,20 @@ export function MenuStudio({
     setOffSku((offer as any).sku ? String((offer as any).sku) : "");
     setOffCost((offer as any).cost_last != null ? String((offer as any).cost_last) : "");
     setOffRemotePhoto(null);
+    // Combos: carga líneas si las hay (tolerante a DB sin la tabla).
+    const comboRows = (comboItemsByProduct as any)?.[offer.id] || [];
+    setOffIsCombo(Array.isArray(comboRows) && comboRows.length > 0);
+    setOffComboItems(
+      Array.isArray(comboRows)
+        ? comboRows.map((c: any) => ({
+            product_id: String(c.product_id),
+            name: String(c.name),
+            price: Number(c.price) || 0,
+            qty: Math.max(1, Math.round(Number(c.qty) || 1)),
+            image_url: c.image_url != null ? String(c.image_url) : null,
+          }))
+        : []
+    );
     setShowForm(true);
     setMsg("");
   }
@@ -550,6 +594,8 @@ export function MenuStudio({
       unit: isComercio ? offUnit : undefined,
       sku: isComercio && offSku.trim() ? offSku.trim() : null,
       cost_last: canEditCost && offCost.trim() !== "" && Number.isFinite(Number(offCost)) ? Math.round(Number(offCost) * 100) / 100 : undefined,
+      is_combo: offIsCombo,
+      combo_items: offIsCombo ? offComboItems.map((c) => ({ product_id: c.product_id, qty: c.qty })) : [],
     };
 
     const res = editingId

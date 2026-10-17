@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, Fragment } from "react";
+import { useState, useEffect, useMemo, useRef, Fragment } from "react";
 import { useRouter } from "next/navigation";
 import { useCart } from "@/lib/cart";
 import { Button } from "@/components/ui/button";
@@ -40,7 +40,9 @@ export default function CheckoutPage() {
   const [showGiftcard, setShowGiftcard] = useState(false);
   const [giftcardCode, setGiftcardCode] = useState("");
   const [giftcardLookup, setGiftcardLookup] = useState<{ loading: boolean; error: string; balance: number | null; expiresAt: string | null }>({ loading: false, error: "", balance: null, expiresAt: null });
-  const [showSummary, setShowSummary] = useState(false);  const [pendingOrder, setPendingOrder] = useState<{ orderId: string; message: string; waNumber: string; trackToken?: string } | null>(null);
+  const [showSummary, setShowSummary] = useState(false);
+  // Guard anti doble-tap: evita crear dos pedidos al tocar "Enviar" rápido.
+  const sendingRef = useRef(false);
   const [prefillInfo, setPrefillInfo] = useState<{ found: boolean; name?: string | null } | null>(null);
   // Turnos de reparto retail (moda/comercio): próximos 3 slots del comercio.
   const [deliverySlots, setDeliverySlots] = useState<{ id: string; label: string; range: string; isToday: boolean; isTomorrow: boolean }[]>([]);
@@ -592,7 +594,7 @@ const [doneIsGift, setDoneIsGift] = useState(false);
     }
   }
 
-  async function handleSubmit(e: React.FormEvent) {
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name || !phone) return;
 
@@ -602,30 +604,62 @@ const [doneIsGift, setDoneIsGift] = useState(false);
       return;
     }
 
+    // El pedido se crea recién al tocar "Enviar por WhatsApp" (confirmSend):
+    // acá solo revisamos y abrimos el resumen.
+    setError("");
+    setShowSummary(true);
+  }
+
+  async function confirmSend() {
+    if (sendingRef.current) return;
+    sendingRef.current = true;
     setLoading(true);
     setError("");
 
-    try {
-      const cleanPhone = e164;
+    // Snapshot de todo lo que el POST y el mensaje necesitan: clear() vacía el
+    // carrito y vendor queda en null.
+    const vendorSnap = v;
+    const itemsSnap = items;
+    const methodSnap = method;
+    const paymentSnap = paymentMethod;
+    const nameSnap = name;
+    const notesSnap = notes;
+    const giftcardSnap = giftcardCode;
+    const giftcardBalanceSnap = giftcardLookup.balance;
+    const previewSnap = isPreview;
+    const giftOnlySnap = isGiftOnly;
+    const phoneSnap = toE164(phone);
 
+    if (!phoneSnap) {
+      setError("Ingresá tu celular con código de área (ej: 11 5555 1234)");
+      setLoading(false);
+      sendingRef.current = false;
+      return;
+    }
+
+    // Popup síncrono: si esperamos el fetch antes de abrirlo, el navegador lo
+    // bloquea por no ser parte del gesto del usuario.
+    const popup = window.open("", "_blank");
+
+    try {
       const res = await fetch("/api/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          vendorId: v.id,
-          customerName: name,
-          customerPhone: cleanPhone,
-          customerAddress: method === "delivery" ? fullAddress || null : null,
-          method,
-          paymentMethod,
+          vendorId: vendorSnap?.id,
+          customerName: nameSnap,
+          customerPhone: phoneSnap,
+          customerAddress: methodSnap === "delivery" ? fullAddress || null : null,
+          method: methodSnap,
+          paymentMethod: paymentSnap,
           customerId: userId || null,
-          isPreview,
+          isPreview: previewSnap,
           previewToken: previewCtx?.token ?? null,
-          deliveryZoneId: method === "delivery" && zonesMode && !deliveryOutOfArea ? activeZoneId || null : null,
-          deliveryOutOfArea: method === "delivery" && deliveryOutOfArea,
-          deliveryWindow: method === "delivery" && showSlots && activeSlotId ? activeSlotId : null,
-          giftcardCode: giftcardLookup.balance != null ? giftcardCode.trim() : undefined,
-          items: items.map((i) => ({
+          deliveryZoneId: methodSnap === "delivery" && zonesMode && !deliveryOutOfArea ? activeZoneId || null : null,
+          deliveryOutOfArea: methodSnap === "delivery" && deliveryOutOfArea,
+          deliveryWindow: methodSnap === "delivery" && showSlots && activeSlotId ? activeSlotId : null,
+          giftcardCode: giftcardBalanceSnap != null ? giftcardSnap.trim() : undefined,
+          items: itemsSnap.map((i) => ({
             offerId: i.offerId,
             variantId: i.variantId,
             name: i.name,
@@ -635,13 +669,14 @@ const [doneIsGift, setDoneIsGift] = useState(false);
             unit: (i as any).unit,
           })),
           total: displayTotal,
-          notes: notes.trim() || null,
+          notes: notesSnap.trim() || null,
         }),
       });
 
       const data = await res.json();
 
       if (!res.ok || data.error) {
+        popup?.close();
         setError(data.error || "Error al crear el pedido");
         setLoading(false);
         return;
@@ -654,7 +689,7 @@ const [doneIsGift, setDoneIsGift] = useState(false);
       // Turno prometido: el que resolvió el server gana (pudo auto-asignar).
       const waWindowId = typeof data.deliveryWindow === "string" && data.deliveryWindow ? data.deliveryWindow : activeSlotId;
       const waWindowLabel = deliverySlots.find((s) => s.id === waWindowId)?.label || "";
-      const waDeliveryLine = method === "delivery"
+      const waDeliveryLine = methodSnap === "delivery"
         ? `Envío: ${deliveryLabel({ fee: waFee, zoneName: waZone, outOfArea: waOutOfArea, freeShipping: !waOutOfArea && deliveryFreeShip })}${waOutOfArea ? " ⚠️" : ""}${waWindowLabel ? ` · Te lo llevamos ${waWindowLabel} 📦` : ""}${deliveryCoordinar ? " · Coordinamos por WhatsApp 🤝" : ""}`
         : undefined;
       const waCashDiscount = typeof data.cashDiscount === "number" ? data.cashDiscount : 0;
@@ -663,13 +698,13 @@ const [doneIsGift, setDoneIsGift] = useState(false);
       const waVolumeLabel = Array.isArray(data.volumeApplied) && data.volumeApplied.length > 0
         ? data.volumeApplied.map((a: any) => `${a.groupName} (${a.label})`).join(" · ")
         : volumeLabel;
-      const previewPrefix = isPreview ? "🧪 [PRUEBA] " : "";
+      const previewPrefix = previewSnap ? "🧪 [PRUEBA] " : "";
       const baseUrl = (process.env.NEXT_PUBLIC_SITE_URL || window.location.origin).replace(/\/$/, "");
       const trackUrl = data.trackToken ? `${baseUrl}/seguimiento/${data.trackToken}` : undefined;
       const registerUrl = data.trackToken ? `${baseUrl}/registro?next=/perfil` : undefined;
       const waMessage = buildComandaWhatsApp({
-        vendorName: v.storeName,
-        items: items.map((i) => ({
+        vendorName: vendorSnap?.storeName || "",
+        items: itemsSnap.map((i) => ({
           name: i.name,
           price: i.price + (i.modifiers || []).reduce((s, m) => s + m.price_mod, 0),
           qty: i.qty,
@@ -678,49 +713,45 @@ const [doneIsGift, setDoneIsGift] = useState(false);
           unit: (i as any).unit,
         })),
         total: waTotal,
-        customerName: name,
-        customerPhone: cleanPhone,
-        method,
-        isGiftOrder: isGiftOnly,
-        address: method === "delivery" ? fullAddress || undefined : undefined,
-        paymentMethod,
-          notes: notes.trim() || undefined,
-          trackUrl,
-          registerUrl,
-          cashDiscount: waCashDiscount,
-          cashPct: waCashPct,
-          volumeDiscount: waVolumeDiscount,
-          volumeLabel: waVolumeLabel || undefined,
-          deliveryLine: waDeliveryLine,
-        });
-      const message = previewPrefix + waMessage;
+        customerName: nameSnap,
+        customerPhone: phoneSnap,
+        method: methodSnap,
+        isGiftOrder: giftOnlySnap,
+        address: methodSnap === "delivery" ? fullAddress || undefined : undefined,
+        paymentMethod: paymentSnap,
+        notes: notesSnap.trim() || undefined,
+        trackUrl,
+        registerUrl,
+        cashDiscount: waCashDiscount,
+        cashPct: waCashPct,
+        volumeDiscount: waVolumeDiscount,
+        volumeLabel: waVolumeLabel || undefined,
+        deliveryLine: waDeliveryLine,
+      });
 
-      const waNumber = (v.whatsapp || "").replace(/[^0-9]/g, "");
-      setPendingOrder({ orderId: data.orderId || "", message, waNumber, trackToken: data.trackToken });
-      setShowSummary(true);
+      const waNumber = (vendorSnap?.whatsapp || "").replace(/[^0-9]/g, "");
+      const waUrl = `https://wa.me/${waNumber}?text=${encodeURIComponent(previewPrefix + waMessage)}`;
+      if (popup && !popup.closed) {
+        popup.location.href = waUrl;
+      } else {
+        window.open(waUrl, "_blank");
+      }
+
+      clear();
+      setDoneVendorName(vendorSnap?.storeName || null);
+      setDoneIsPreview(previewSnap);
+      setDoneIsGift(giftOnlySnap);
+      setDoneTrackToken(data.trackToken || null);
+      setShowSummary(false);
+      setDone(true);
       setLoading(false);
     } catch {
-      setLoading(false);
+      popup?.close();
       setError("Ocurrió un error al enviar el pedido. Probá de nuevo.");
+      setLoading(false);
+    } finally {
+      sendingRef.current = false;
     }
-  }
-
-  function confirmSend() {
-    if (!pendingOrder) return;
-    setLoading(true);
-    setDoneVendorName(v?.storeName || null);
-    setDoneIsPreview(isPreview);
-    setDoneIsGift(isGiftOnly);
-    window.open(
-      `https://wa.me/${pendingOrder.waNumber}?text=${encodeURIComponent(pendingOrder.message)}`,
-      "_blank"
-    );
-    clear();
-    setDoneTrackToken(pendingOrder.trackToken || null);
-    setShowSummary(false);
-    setPendingOrder(null);
-    setDone(true);
-    setLoading(false);
   }
 
   return (
@@ -1219,6 +1250,7 @@ const [doneIsGift, setDoneIsGift] = useState(false);
         deliveryWindowLabel={method === "delivery" && activeSlotLabel ? activeSlotLabel : undefined}
         paymentMethod={paymentMethod}
         loading={loading}
+        error={error}
       />
     </main>
   );

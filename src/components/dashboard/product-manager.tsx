@@ -34,6 +34,10 @@ type OfferRow = {
   requires_prep?: boolean;
   cash_discount_excluded?: boolean;
   has_variants?: boolean;
+  /** Código interno (SKU): escáner de mostrador + etiquetas. */
+  sku?: string | null;
+  /** Formato de pack del producto (1 = por unidad). */
+  pack_size?: number | null;
 };
 
 type Props = {
@@ -99,6 +103,7 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
   // aunque el switch no se muestre (así no entran al flow de cocina del POS).
   const [offRequiresPrep, setOffRequiresPrep] = useState(showPrep);
   const [offCashExcluded, setOffCashExcluded] = useState(false);
+  const [offSku, setOffSku] = useState("");
 
   // Moda: variantes (color × talle) + galería.
   const [offHasVariants, setOffHasVariants] = useState(false);
@@ -166,6 +171,7 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
     setOffStockLowThreshold(5);
     setOffRequiresPrep(showPrep);
     setOffCashExcluded(false);
+    setOffSku("");
     setOffHasVariants(false);
     setVariantRows([]);
     setGalleryUrls([]);
@@ -190,6 +196,7 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
     // Sin switch visible (retail): al guardar queda en false, nunca cocina.
     setOffRequiresPrep(showPrep ? offer.requires_prep !== false : false);
     setOffCashExcluded(!!offer.cash_discount_excluded);
+    setOffSku((offer as { sku?: string | null }).sku ?? "");
     setOffHasVariants(!!offer.has_variants);
     setVariantRows(
       existing.map((v) => ({
@@ -212,21 +219,21 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
     offCategory: string; offPreview: string | null; offStock: number;
     offStockControl: boolean; offPromoPrice: string; offCost: string;
     offStockLowThreshold: number; offRequiresPrep: boolean; offCashExcluded: boolean;
-    offHasVariants: boolean; offSizeGuide: string; variantRows: VariantRow[];
+    offHasVariants: boolean; offSizeGuide: string; offSku: string; variantRows: VariantRow[];
     hadFile: boolean;
   };
   const [photoNotice, setPhotoNotice] = useState(false);
   const productDraft = useFormDraft<ProductDraft>({
     vendorId,
     key: "product-manager",
-    watch: [showForm, editingId, offName, offDesc, offPrice, offCategory, offPreview, offStock, offStockControl, offPromoPrice, offCost, offStockLowThreshold, offRequiresPrep, offCashExcluded, offHasVariants, offSizeGuide, variantRows],
+    watch: [showForm, editingId, offName, offDesc, offPrice, offCategory, offPreview, offStock, offStockControl, offPromoPrice, offCost, offStockLowThreshold, offRequiresPrep, offCashExcluded, offHasVariants, offSizeGuide, offSku, variantRows],
     snapshot: () => {
       if (!showForm) return null;
       if (!editingId && !offName.trim() && !offPrice && !offDesc.trim()) return null;
       return {
         editingId, offName, offDesc, offPrice, offCategory, offPreview, offStock,
         offStockControl, offPromoPrice, offCost, offStockLowThreshold, offRequiresPrep,
-        offCashExcluded, offHasVariants, offSizeGuide, variantRows,
+        offCashExcluded, offHasVariants, offSizeGuide, offSku, variantRows,
         hadFile: offFile != null,
       };
     },
@@ -248,6 +255,7 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
       setOffCashExcluded(d.offCashExcluded === true);
       setOffHasVariants(d.offHasVariants === true);
       setOffSizeGuide(d.offSizeGuide || "");
+      setOffSku(typeof d.offSku === "string" ? d.offSku : "");
       if (Array.isArray(d.variantRows)) setVariantRows(d.variantRows);
       setPhotoNotice(d.hadFile === true);
     },
@@ -264,6 +272,71 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
 
   function updateVariantRow(i: number, field: keyof VariantRow, value: string | number) {
     setVariantRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, [field]: value } : r)));
+  }
+
+  /** Generador de códigos del comercio: prefijo por iniciales del +secuencia
+    * libre contra TODO lo ya usado (productos y variantes de otros productos).
+    * Rellena el SKU del producto si falta y las variantes sin código. */
+  function generateSkus() {
+    const used = new Set<string>();
+    for (const o of offers) {
+      const s = String(o.sku || "").trim().toLowerCase();
+      if (s) used.add(s);
+    }
+    for (const v of variants || []) {
+      if (editingId && v.product_id === editingId) continue;
+      const s = String(v.sku || "").trim().slice(0, 64);
+      if (s) used.add(s.toLowerCase());
+    }
+    const base = (offName.trim().replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ]/g, "").slice(0, 3).toUpperCase()) || "PRD";
+    const usedNums = new Set<number>();
+    for (const s of used) {
+      const m = s.match(/(\d{1,6})$/);
+      if (m) usedNums.add(parseInt(m[1], 10));
+    }
+    let n = 1;
+    while (used.has(`${base}-${String(n).padStart(4, "0")}`.toLowerCase()) || usedNums.has(n)) n++;
+    const prodCode = `${base}-${String(n).padStart(4, "0")}`;
+    if (!offSku.trim()) setOffSku(prodCode);
+    if (offHasVariants) {
+      setVariantRows((prev) => prev.map((r, idx) => (r.sku.trim() ? r : { ...r, sku: `${prodCode}-${idx + 1}` })));
+    }
+    setMsg("Códigos generados (los guardás al guardar el producto)");
+  }
+
+  /** Etiquetas térmicas: una por variante (mods en el nombre) o una del producto.
+    * Los códigos los define el editor — la API imprime tal cual está. */
+  async function printLabels() {
+    const dims = (color: string, talle: string) => {
+      const parts = [color, talle].filter((s) => String(s || "").trim());
+      return parts.length ? ` (${parts.join(" · ")})` : "";
+    };
+    const rows = offHasVariants && variantRows.length > 0
+      ? variantRows.map((r) => ({
+          name: `${offName.trim()}${dims(r.color, r.talle)}`,
+          price: Number(r.promo) > 0 ? Number(r.promo) : Number(r.price),
+          oldPrice: Number(r.promo) > 0 ? Number(r.price) : null,
+          code: r.sku.trim() || undefined,
+        }))
+      : [
+          {
+            name: offName.trim(),
+            price: Number(offPromoPrice) > 0 ? Number(offPromoPrice) : Number(offPrice),
+            oldPrice: Number(offPromoPrice) > 0 ? Number(offPrice) : null,
+            code: offSku.trim() || undefined,
+          },
+        ];
+    try {
+      const res = await fetch("/api/print", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "label", rows }),
+      });
+      const data = await res.json().catch(() => ({}));
+      setMsg(res.ok ? (data.printed === 0 ? "Ninguna etiqueta se imprimió (revisá la impresora)" : `${data.printed} etiqueta(s) mandadas a imprimir`) : data.error || "No se pudieron imprimir las etiquetas");
+    } catch {
+      setMsg("No se pudieron imprimir las etiquetas (revisá la impresora)");
+    }
   }
 
   async function handleGalleryUpload(files: FileList | null) {
@@ -346,6 +419,7 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
           cash_discount_excluded: offCashExcluded,
           has_variants: offHasVariants,
           size_guide: offSizeGuide.trim() || null,
+          sku: offSku.trim() || undefined,
           cost_last: canEditCost && offCost.trim() !== "" && Number.isFinite(Number(offCost)) ? Math.round(Number(offCost) * 100) / 100 : undefined,
         }
       : {
@@ -461,6 +535,16 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
           <div><Label>Precio ($)</Label><Input type="number" step="0.01" value={offPrice} onChange={(e) => setOffPrice(e.target.value)} required /></div>
         </div>
         <div><Label>Precio promo ($)</Label><Input type="number" step="0.01" value={offPromoPrice} onChange={(e) => setOffPromoPrice(e.target.value)} placeholder="Vacío si no está en oferta" /></div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <Label>Código (SKU)</Label>
+            <Input value={offSku} onChange={(e) => setOffSku(e.target.value)} placeholder="Ej: REM-0001" />
+          </div>
+          <div className="flex items-end gap-1.5">
+            <Button type="button" variant="outline" size="sm" onClick={generateSkus} title="Rellena el código del producto y los que falten en las variantes">⚡ Códigos</Button>
+            <Button type="button" variant="ghost" size="sm" onClick={printLabels} title="Etiquetas térmicas de góndola (una por variante)">🖨️ Etiquetas</Button>
+          </div>
+        </div>
         <div><Label>Categoría</Label><select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={offCategory} onChange={(e) => setOffCategory(e.target.value)}>{categories.length === 0 && <option value="ropa">ropa</option>}{categories.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}</select></div>
         <div className="flex items-center gap-2">
           <Switch checked={offHasVariants} onCheckedChange={setOffHasVariants} />

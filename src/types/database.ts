@@ -344,6 +344,8 @@ export type Product = {
   cash_discount_excluded?: boolean;
   /** Se vende de a N unidades (ej: 6). El precio es del paquete. NULL = por unidad. */
   pack_size?: number | null;
+  /** Código interno del producto (SKU/código de barras). Etiquetas + escáner de mostrador. */
+  sku?: string | null;
   /** Guía de talles por producto (moda): una línea por talle — "M: Pecho 96 cm". NULL = sin guía. */
   size_guide?: string | null;
   created_at: string;

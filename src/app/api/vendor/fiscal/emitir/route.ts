@@ -39,8 +39,18 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json().catch(() => ({}));
-  const orderId = String(body.orderId || "");
-  if (!orderId) return NextResponse.json({ error: "orderId requerido" }, { status: 400 });
+  // Mostrador: un pedido. Mesas: la cuenta cierra N consumiciones → UNA
+  // Factura C por el total sumado, adjunta al pedido principal (el más
+  // nuevo). Idempotencia por el UNIQUE (vendor_id, order_id) de invoices.
+  const orderIdRaw = String(body.orderId || "");
+  const orderIds: string[] = Array.isArray(body.orderIds)
+    ? [...new Set((body.orderIds as unknown[]).map((x) => String(x)).filter(Boolean))].slice(0, 50)
+    : orderIdRaw
+      ? [orderIdRaw]
+      : [];
+  if (orderIds.length === 0) {
+    return NextResponse.json({ error: "orderId requerido" }, { status: 400 });
+  }
 
   // Receptor: consumidor final por default; con documento (DNI/CUIT) la
   // factura sale a nombre (RG 5700/2025: CF solo se identifica desde $10M).
@@ -63,15 +73,23 @@ export async function POST(request: Request) {
       ? body.receptorNombre.trim().slice(0, 120)
       : null;
 
-  const order = await queryOne<Order>(
-    `SELECT * FROM orders WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
-    [orderId, vendor.id]
+  const orders = await queryMany<Order>(
+    `SELECT * FROM orders WHERE id = ANY($1::uuid[]) AND vendor_id = $2`,
+    [orderIds, vendor.id]
   );
-  if (!order) return NextResponse.json({ error: "Pedido no encontrado" }, { status: 404 });
-  if (order.status === "cancelled") {
-    return NextResponse.json({ error: "No se puede facturar un pedido cancelado" }, { status: 400 });
+  if (orders.length !== orderIds.length) {
+    return NextResponse.json({ error: "Pedido no encontrado" }, { status: 404 });
   }
-  const total = Number(order.total);
+  for (const o of orders) {
+    if (o.status === "cancelled") {
+      return NextResponse.json({ error: "No se puede facturar un pedido cancelado" }, { status: 400 });
+    }
+  }
+  const principal = [...orders]
+    .sort((a, b) => (String((a as any).created_at) < String((b as any).created_at) ? -1 : 1))
+    .slice(-1)[0];
+  const orderId = principal.id;
+  const total = Math.round(orders.reduce((s, o) => s + (Number(o.total) || 0), 0) * 100) / 100;
   if (!Number.isFinite(total) || total <= 0) {
     return NextResponse.json({ error: "Total inválido para facturar" }, { status: 400 });
   }
@@ -116,7 +134,7 @@ export async function POST(request: Request) {
   const flog = (stage: string, extra?: string) =>
     console.log(`[fiscal] vendor=${vendor.id} order=${orderId} env=${env} stage=${stage} +${Date.now() - t0}ms${extra ? ` ${extra}` : ""}`);
   try {
-    flog("start", `ptoVta=${ptoVta} total=${total}`);
+    flog("start", `ptoVta=${ptoVta} total=${total} pedidos=${orders.length}`);
     const r = await emitirFacturaC(
       { env, cuit, certPem, keyPem },
       ptoVta,

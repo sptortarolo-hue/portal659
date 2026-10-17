@@ -413,6 +413,22 @@ export async function POST(request: Request) {
         : resolvedType === "ticket" && isRetailVendor
           ? { docTitle: "COMPROBANTE", retail: true }
           : {}),
+      // Cierre de mesa fiscal: ítems/total de la CUENTA agregada (el pedido
+      // individual es solo portador de la factura).
+      ...(resolvedType === "ticket" && Array.isArray(items) && items.length > 0
+        ? {
+            items: (items as any[]).slice(0, 60).map((it) => ({
+              name: String(it?.name || "Ítem"),
+              price: Number(it?.price) || 0,
+              qty: Number(it?.qty) || 1,
+              ...(Array.isArray(it?.modifiers) && it.modifiers.length > 0
+                ? { modifiers: it.modifiers.map(String) }
+                : {}),
+              ...(it?.unit ? { unit: String(it.unit) } : {}),
+            })),
+            total: Number(total),
+          }
+        : {}),
       ...(await fiadoBalanceExtra(vendor.id, order)),
     },
   });

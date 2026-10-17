@@ -20,6 +20,7 @@ import { describePrintError, dispatchOfflinePrint, markPrintsDone } from "@/lib/
 
 import { SYNC_COMPLETED_EVENT } from "@/lib/sync-engine";
 import { useCashShift } from "@/lib/use-cash-shift";
+import { FiscalSaleFields } from "@/components/vendor/fiscal-receptor";
 import { FloorPlan, type FloorDecor, type FloorTable } from "@/components/vendor/floor-plan";
 import {
   DEFAULT_DURATION_MIN,
@@ -518,6 +519,24 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
   const [printingTicket, setPrintingTicket] = useState(false);
   // % descuento en efectivo del comercio (0 = sin descuento).
   const [cashPct, setCashPct] = useState(0);
+  // Fiscal ARCA (plan Gestión + config completa): check por cierre de mesa.
+  // Una sola Factura C por la cuenta (total de la mesa), igual que Mostrador.
+  const [fiscalReady, setFiscalReady] = useState(false);
+  const [withFiscal, setWithFiscal] = useState(false);
+  const [fiscalReceptorTipo, setFiscalReceptorTipo] = useState<"cf" | "dni" | "cuit">("cf");
+  const [fiscalReceptorNro, setFiscalReceptorNro] = useState("");
+  const [fiscalReceptorNombre, setFiscalReceptorNombre] = useState("");
+  const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");
+
+  // La fiscal se configura en Config (otro tab, mismo árbol montado): el
+  // check se rechequea al abrir la cuenta, sin recargar la página.
+  useEffect(() => {
+    if (!selected?.id) return;
+    fetch("/api/vendor/fiscal/config")
+      .then((r) => r.json())
+      .then((d) => setFiscalReady(d?.ready === true))
+      .catch(() => {});
+  }, [selected?.id]);
   // Ledger offline (F2): consumiciones y cierres guardados sin red,
   // pendientes de sync. Se rehidratan del outbox al montar.
   const [localAdds, setLocalAdds] = useState<LocalAdd[]>([]);
@@ -1363,8 +1382,16 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
       ]);
       setSelected(null);
       setCart([]);
-      setMsg(`📡 ${tableName} cobrada ($${closeTotal.toLocaleString("es-AR")}, estimado) — se sincroniza al reconectar`);
-      setTimeout(() => setMsg(""), 3000);
+      setWithFiscal(false);
+      setFiscalReceptorTipo("cf");
+      setFiscalReceptorNro("");
+      setFiscalReceptorNombre("");
+      setFiscalReceptorCond("6");
+      setMsg(
+        `📡 ${tableName} cobrada ($${closeTotal.toLocaleString("es-AR")}, estimado) — se sincroniza al reconectar` +
+        (fiscalReady && withFiscal ? " · 🧾 sin factura (offline)" : "")
+      );
+      setTimeout(() => setMsg(""), 4000);
     };
 
     if (typeof navigator !== "undefined" && !navigator.onLine) {
@@ -1401,7 +1428,7 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
       setSelected(null);
       setCart([]);
       await load();
-      setMsg(
+      const baseMsg =
         `Mesa cobrada: $${Number(data.total).toLocaleString("es-AR")}` +
         (Number(data.volumeDiscount) > 0
           ? ` (desc. pack −$${Number(data.volumeDiscount).toLocaleString("es-AR")})`
@@ -1411,10 +1438,86 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
           : "") +
         (Number(data.cashDiscount) > 0
           ? ` (desc. efectivo −$${Number(data.cashDiscount).toLocaleString("es-AR")})`
-          : "")
-      );
+          : "");
+      // Reset fiscal por venta (no se arrastra a la próxima mesa).
+      setWithFiscal(false);
+      setFiscalReceptorTipo("cf");
+      setFiscalReceptorNro("");
+      setFiscalReceptorNombre("");
+      setFiscalReceptorCond("6");
+
+      // Factura C de la cuenta: una sola por cierre, total de la mesa.
+      // Idéntico al flujo de Mostrador; offline no factura (ARCA pide red).
+      const useFiscal = fiscalReady && withFiscal && typeof navigator !== "undefined" && navigator.onLine;
+      const fiscalOrderIds: string[] = Array.isArray(data.orderIds) ? data.orderIds.map(String) : [];
+      if (useFiscal && fiscalOrderIds.length > 0 && data.principalOrderId) {
+        const checkPrintRes = async (p: Promise<Response>, docName: string): Promise<string | null> => {
+          try {
+            const r = await p;
+            const d = await r.json().catch(() => ({} as any));
+            if (d && (d.ok || d.skipped)) return null;
+            return `${docName} no salió: ${describePrintError(d?.error || "error de impresión")}`;
+          } catch {
+            return `${docName} no salió: ${describePrintError("Failed to fetch")}`;
+          }
+        };
+        setMsg(`${baseMsg} · 🧾 Facturando en ARCA…`);
+        try {
+          const fres = await fetch("/api/vendor/fiscal/emitir", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              orderIds: fiscalOrderIds,
+              ...(fiscalReceptorTipo === "cf"
+                ? {}
+                : {
+                    receptorDocTipo: fiscalReceptorTipo === "cuit" ? 80 : 96,
+                    receptorDocNro: fiscalReceptorNro.replace(/\D/g, ""),
+                    receptorNombre: fiscalReceptorNombre.trim() || undefined,
+                    receptorCondIva: fiscalReceptorTipo === "cuit" ? Number(fiscalReceptorCond) || 6 : 5,
+                  }),
+            }),
+            signal: AbortSignal.timeout(60000),
+          });
+          const fdata = await fres.json().catch(() => ({}));
+          if (fres.ok && fdata.invoice) {
+            const inv = fdata.invoice;
+            const fiscalMsg =
+              `${baseMsg} · 🧾 Factura C ${String(inv.punto_venta).padStart(4, "0")}-${String(inv.cbte_nro).padStart(8, "0")} (CAE …${String(inv.cae).slice(-4)})`;
+            const ticketErr = await checkPrintRes(
+              fetch("/api/print", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  orderId: String(data.principalOrderId || inv.order_id || ""),
+                  type: "ticket",
+                  tableName,
+                  items: Array.isArray(data.fiscalItems) ? data.fiscalItems : [],
+                  total: Number(data.total),
+                }),
+              }),
+              "El ticket fiscal"
+            );
+            setMsg(!ticketErr ? `${fiscalMsg} · 🖨️ Impreso ✓` : `${fiscalMsg} · ⚠️ ${ticketErr}`);
+            setTimeout(() => setMsg(""), 10000);
+          } else if (fdata.error) {
+            const hint = fdata.hint ? ` 💡 ${fdata.hint}` : "";
+            setMsg(`${baseMsg} · ⚠️ Cobrado sin fiscal: ${fdata.error}${hint}`);
+            setTimeout(() => setMsg(""), 10000);
+          } else {
+            setMsg(`${baseMsg} · ⚠️ Cobrado sin fiscal confirmado: ARCA tardó demasiado (reintentá desde Config → Fiscal)`);
+            setTimeout(() => setMsg(""), 10000);
+          }
+        } catch {
+          setMsg(`${baseMsg} · ⚠️ Cobrado sin fiscal confirmado: sin conexión (reintentá desde Config → Fiscal)`);
+          setTimeout(() => setMsg(""), 10000);
+        }
+      } else {
+        setMsg(baseMsg);
+        setTimeout(() => setMsg(""), 3000);
+      }
     } else setMsg(data.error || "No se pudo cerrar la mesa");
-    setTimeout(() => setMsg(""), 3000);
+    if (!data.ok) setTimeout(() => setMsg(""), 3000);
   }
 
   const cartCount = cart.reduce((s, i) => s + i.qty, 0);
@@ -2095,6 +2198,22 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
                     </button>
                   ))}
                 </div>
+                {fiscalReady && (
+                  <div className="space-y-1.5 flex-shrink-0">
+                    <FiscalSaleFields
+                      withFiscal={withFiscal}
+                      onWithFiscal={setWithFiscal}
+                      receptor={{ tipo: fiscalReceptorTipo, nro: fiscalReceptorNro, nombre: fiscalReceptorNombre, cond: fiscalReceptorCond }}
+                      onReceptor={(r) => {
+                        setFiscalReceptorTipo(r.tipo);
+                        setFiscalReceptorNro(r.nro);
+                        setFiscalReceptorNombre(r.nombre);
+                        setFiscalReceptorCond(r.cond);
+                      }}
+                      payableTotal={mesaPayTotal}
+                    />
+                  </div>
+                )}
                 {mesaVolumeDiscount > 0 && (
                   <p className="text-[11px] font-medium text-violet-700 dark:text-violet-400 flex-shrink-0">
                     🎁 Desc. pack{mesaVolumeLabel ? ` · ${mesaVolumeLabel}` : ""}: −${mesaVolumeDiscount.toLocaleString("es-AR")}
@@ -2318,6 +2437,20 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
                       </button>
                     ))}
                   </div>
+                  {fiscalReady && (
+                    <FiscalSaleFields
+                      withFiscal={withFiscal}
+                      onWithFiscal={setWithFiscal}
+                      receptor={{ tipo: fiscalReceptorTipo, nro: fiscalReceptorNro, nombre: fiscalReceptorNombre, cond: fiscalReceptorCond }}
+                      onReceptor={(r) => {
+                        setFiscalReceptorTipo(r.tipo);
+                        setFiscalReceptorNro(r.nro);
+                        setFiscalReceptorNombre(r.nombre);
+                        setFiscalReceptorCond(r.cond);
+                      }}
+                      payableTotal={mesaPayTotal}
+                    />
+                  )}
                   {mesaVolumeDiscount > 0 && (
                     <p className="text-[11px] font-medium text-violet-700 dark:text-violet-400">
                       🎁 Desc. pack{mesaVolumeLabel ? ` · ${mesaVolumeLabel}` : ""}: −${mesaVolumeDiscount.toLocaleString("es-AR")}

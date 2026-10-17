@@ -29,6 +29,7 @@ const OFFLINE_PAYMENT_LABELS: Record<string, string> = {
   mixto: "Mixto",
 };
 import { SYNC_COMPLETED_EVENT } from "@/lib/sync-engine";
+import { FiscalSaleFields } from "@/components/vendor/fiscal-receptor";
 
 type ModifierOption = { label: string; price_mod: number };
 type ProductModifier = {
@@ -279,6 +280,16 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
       .then((d) => setFiscalReady(d?.ready === true))
       .catch(() => {});
   }, []);
+
+  // Rechequeo al abrir el sheet: la fiscal se configura en Config (otro tab,
+  // mismo árbol montado) — sin esto el check no aparece sin recargar la página.
+  useEffect(() => {
+    if (!sheetOpen) return;
+    fetch("/api/vendor/fiscal/config")
+      .then((r) => r.json())
+      .then((d) => setFiscalReady(d?.ready === true))
+      .catch(() => {});
+  }, [sheetOpen]);
 
   const total = useMemo(() => items.reduce((s, i) => s + i.price * i.qty, 0), [items]);
 
@@ -2052,76 +2063,18 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
             </p>
           )}
           {fiscalReady && (
-            <button
-              type="button"
-              onClick={() => setWithFiscal((v) => !v)}
-              className={`flex w-full items-center gap-2 rounded-xl border px-3 py-2 text-left text-xs font-medium transition-colors ${
-                withFiscal
-                  ? "border-primary bg-primary/5 text-primary"
-                  : "border-border text-muted-foreground"
-              }`}
-              aria-pressed={withFiscal}
-            >
-              <span
-                className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md border-2 text-[12px] font-bold ${
-                  withFiscal ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/40 text-transparent"
-                }`}
-                aria-hidden
-              >
-                ✓
-              </span>
-              🧾 Con comprobante fiscal (Factura C)
-            </button>
-          )}
-          {fiscalReady && withFiscal && (
-            <div className="space-y-1.5 rounded-xl border border-border p-2.5">
-              <div className="flex gap-1.5">
-                <select
-                  value={fiscalReceptorTipo}
-                  onChange={(e) => setFiscalReceptorTipo(e.target.value as "cf" | "dni" | "cuit")}
-                  className="h-9 rounded-lg border border-input bg-background px-2 text-xs"
-                  aria-label="Receptor del comprobante"
-                >
-                  <option value="cf">Consumidor final</option>
-                  <option value="dni">DNI</option>
-                  <option value="cuit">CUIT</option>
-                </select>
-                {fiscalReceptorTipo !== "cf" && (
-                  <input
-                    value={fiscalReceptorNro}
-                    onChange={(e) => setFiscalReceptorNro(e.target.value)}
-                    placeholder={fiscalReceptorTipo === "cuit" ? "CUIT (11 dígitos)" : "DNI (7-8 dígitos)"}
-                    inputMode="numeric"
-                    className="h-9 min-w-0 flex-1 rounded-lg border border-input bg-background px-2 text-xs"
-                  />
-                )}
-              </div>
-              {fiscalReceptorTipo === "cuit" && (
-                <div className="flex gap-1.5">
-                  <input
-                    value={fiscalReceptorNombre}
-                    onChange={(e) => setFiscalReceptorNombre(e.target.value)}
-                    placeholder="Razón social (opcional)"
-                    className="h-9 min-w-0 flex-1 rounded-lg border border-input bg-background px-2 text-xs"
-                  />
-                  <select
-                    value={fiscalReceptorCond}
-                    onChange={(e) => setFiscalReceptorCond(e.target.value)}
-                    className="h-9 rounded-lg border border-input bg-background px-2 text-xs"
-                    aria-label="Condición IVA del receptor"
-                  >
-                    <option value="6">Monotributo</option>
-                    <option value="1">Resp. Inscripto</option>
-                    <option value="4">Exento</option>
-                  </select>
-                </div>
-              )}
-              {fiscalReceptorTipo === "cf" && payableTotal >= 10000000 && (
-                <p className="text-[11px] text-amber-700">
-                  ⚠️ ARCA exige identificar al comprador desde $10.000.000: cargá DNI o CUIT.
-                </p>
-              )}
-            </div>
+            <FiscalSaleFields
+              withFiscal={withFiscal}
+              onWithFiscal={setWithFiscal}
+              receptor={{ tipo: fiscalReceptorTipo, nro: fiscalReceptorNro, nombre: fiscalReceptorNombre, cond: fiscalReceptorCond }}
+              onReceptor={(r) => {
+                setFiscalReceptorTipo(r.tipo);
+                setFiscalReceptorNro(r.nro);
+                setFiscalReceptorNombre(r.nombre);
+                setFiscalReceptorCond(r.cond);
+              }}
+              payableTotal={payableTotal}
+            />
           )}
         </div>
       )}

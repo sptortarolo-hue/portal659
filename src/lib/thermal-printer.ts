@@ -644,6 +644,14 @@ export type ReceiptExtra = {
   fiadoBalance?: number;
   /** Factura electrónica ARCA (se imprime bloque fiscal con CAE + QR). */
   fiscal?: FiscalPrintInfo | null;
+  /**
+   * Cierre de mesa fiscal: los ítems y el total vienen de la CUENTA (varias
+   * consumiciones sumadas por close), no del pedido individual que se usa
+   * solo como portador de la factura. Presentes → pisan los del pedido y se
+   * omiten los descuentos derivados del pedido (ya netos en el total).
+   */
+  items?: { name: string; price: number; qty: number; modifiers?: string[]; unit?: string }[];
+  total?: number;
 };
 
 /** Datos fiscales para el ticket impreso (Factura C). */
@@ -907,7 +915,12 @@ async function composeReceipt(
   printer.println(`${dateStr} ${timeStr}`);
   printer.println(separator);
 
-  for (const item of order.items) {
+  // Cierre de mesa fiscal: los ítems/total vienen de la cuenta agregada.
+  const hasItemOverride = Array.isArray(extra?.items) && extra.items.length > 0;
+  const receiptItems: any[] = hasItemOverride
+    ? (extra!.items as any[])
+    : (order.items as any[]);
+  for (const item of receiptItems) {
     const itemLines = formatItemLine(item, width);
     for (const line of itemLines) {
       printer.println(line);
@@ -917,27 +930,30 @@ async function composeReceipt(
   printer.println(separator);
 
   printer.alignRight();
-    const receiptCash = Number((order as any)?.cash_discount) || 0;
+    const receiptCash = hasItemOverride ? 0 : Number((order as any)?.cash_discount) || 0;
     const receiptCashPct = Number((order as any)?.cash_pct) || 0;
     if (receiptCash > 0) {
       printer.println(`Desc. efectivo (${receiptCashPct}%): -$${receiptCash.toLocaleString("es-AR")}`);
     }
-    const receiptVol = Number((order as any)?.volume_discount) || 0;
+    const receiptVol = hasItemOverride ? 0 : Number((order as any)?.volume_discount) || 0;
     if (receiptVol > 0) {
       printer.println(`Desc. volumen: -$${receiptVol.toLocaleString("es-AR")}`);
     }
-    const receiptManual = Number((order as any)?.manual_discount) || 0;
+    const receiptManual = hasItemOverride ? 0 : Number((order as any)?.manual_discount) || 0;
     if (receiptManual > 0) {
       const receiptManualReason = String((order as any)?.manual_discount_reason || "").trim();
       printer.println(`Desc. manual${receiptManualReason ? ` (${receiptManualReason})` : ""}: -$${receiptManual.toLocaleString("es-AR")}`);
     }
-    const receiptShip = deliveryFeeLine(order);
+    const receiptShip = hasItemOverride ? null : deliveryFeeLine(order);
     if (receiptShip) {
       printer.println(receiptShip);
     }
   printer.bold(true);
   printer.setTextSize(1, 1);
-  printer.println(`TOTAL: $${Number(order.total).toLocaleString("es-AR")}`);
+  const receiptTotal = hasItemOverride && extra?.total != null
+    ? Number(extra.total)
+    : Number(order.total);
+  printer.println(`TOTAL: $${receiptTotal.toLocaleString("es-AR")}`);
   printer.setTextSize(0, 0);
   printer.bold(false);
 

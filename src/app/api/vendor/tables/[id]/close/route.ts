@@ -404,6 +404,32 @@ export async function POST(
     manualDiscount: manualDiscountTotal > 0 ? Math.round(manualDiscountTotal * 100) / 100 : 0,
     ordersClosed: list.length,
     paymentMethod,
+    // Factura C de la cuenta (check "con fiscal" en Mesas): pedidos cerrados
+    // en ESTE cierre, principal (el más nuevo, donde se adjunta la factura,
+    // UNIQUE vendor+order) e ítems agregados de toda la mesa.
+    orderIds: list.map((o) => o.id),
+    principalOrderId:
+      [...list]
+        .sort((a, b) => (String((a as any).created_at) < String((b as any).created_at) ? -1 : 1))
+        .slice(-1)[0]?.id ?? null,
+    fiscalItems: (() => {
+      const map = new Map<string, { name: string; qty: number; price: number; modifiers?: string[] }>();
+      for (const d of perOrder.values()) {
+        for (const raw of d.items as any[]) {
+          const name = String(raw?.name ?? "").trim() || "Ítem";
+          const qty = Number(raw?.qty) || 1;
+          const price = Number(raw?.price) || 0;
+          const mods = Array.isArray(raw?.modifiers)
+            ? raw.modifiers.map((m: any) => String(typeof m === "string" ? m : m?.label ?? "")).filter(Boolean).sort()
+            : [];
+          const key = `${name}|${price}|${mods.join(",")}`;
+          const prev = map.get(key);
+          if (prev) prev.qty = Math.round((prev.qty + qty) * 1000) / 1000;
+          else map.set(key, { name, qty, price, ...(mods.length > 0 ? { modifiers: mods } : {}) });
+        }
+      }
+      return [...map.values()].slice(0, 60);
+    })(),
   };
   if (clientKey) {
     try {

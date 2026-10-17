@@ -204,6 +204,13 @@ type OfferFormProps = {
   /** Foto remota sugerida por lookup (se descarga al guardar). */
   remotePhoto?: string | null;
   onRemotePhoto?: (url: string | null) => void;
+  // Combos: lineas de componentes (solo cuando isCombo). El editor vive
+  // dentro del form; los cambios se propagan al estado del padre.
+  offIsCombo?: boolean;
+  setOffIsCombo?: (v: boolean) => void;
+  offComboItems?: { product_id: string; name: string; price: number; qty: number; image_url?: string | null }[];
+  setOffComboItems?: (v: { product_id: string; name: string; price: number; qty: number; image_url?: string | null }[]) => void;
+  offAllProducts?: { id: string; name: string; price: number; image_url?: string | null; available?: boolean }[];
   /** Sustantivo del ítem en el título del form (default "plato"). */
   noun?: string;
   onSubmit: () => void;
@@ -235,6 +242,9 @@ export function OfferForm({
   showSku = false,
   offSku = "", setOffSku,
   remotePhoto = null, onRemotePhoto,
+  offIsCombo = false, setOffIsCombo,
+  offComboItems = [], setOffComboItems,
+  offAllProducts = [],
   noun = "plato",
   onClose,
 }: OfferFormProps) {
@@ -300,6 +310,16 @@ export function OfferForm({
     await stopSkuScan();
   }
   useEffect(() => () => { scanSkuStopRef.current = true; }, []);
+
+  // Combos: costo y valor de venta de los componentes (sumatorias en vivo).
+  const comboCostSum = 0;
+  const comboSaleSum = (offComboItems || []).reduce(
+    (s, c) => s + (Number(c.qty) || 0) * (Number(c.price) || 0),
+    0
+  );
+  const comboPriceNum = Number(offPrice) || 0;
+  const comboOutOfRange =
+    offIsCombo && comboSaleSum > 0 && (comboPriceNum <= 0 || comboPriceNum > comboSaleSum);
 
   // Lookup de código de barras (Open Food Facts + caché propia): sugiere
   // nombre/marca/foto sin pisar lo cargado.

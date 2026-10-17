@@ -408,6 +408,7 @@ export async function POST(request: Request) {
     extra: {
       tableName,
       subLabel,
+      fiscal,
       ...(resolvedType === "ticket" && isDirectOrder
         ? { docTitle: "TICKET", direct: true }
         : resolvedType === "ticket" && isRetailVendor

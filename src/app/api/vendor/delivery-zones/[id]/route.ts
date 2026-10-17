@@ -20,8 +20,8 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
   const sets: string[] = [];
   const vals: unknown[] = [];
   const push = (col: string, v: unknown) => {
-    vals.push(v);
     sets.push(`${col} = $${vals.length + 1}`);
+    vals.push(v);
   };
 
   if (body?.name !== undefined) {
@@ -48,9 +48,9 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
   if (sets.length === 0) return NextResponse.json({ error: "Nada para actualizar" }, { status: 400 });
 
   const updated = await queryOne<Record<string, unknown>>(
-    `UPDATE delivery_zones SET ${sets.join(", ")} WHERE id = $1 AND vendor_id = $2
+    `UPDATE delivery_zones SET ${sets.join(", ")} WHERE id = $${vals.length + 1} AND vendor_id = $${vals.length + 2}
      RETURNING id, name, description, fee, position, active, created_at`,
-    [params.id, vendor.id, ...vals]
+    [...vals, params.id, vendor.id]
   );
   if (!updated) return NextResponse.json({ error: "Zona no encontrada" }, { status: 404 });
   return NextResponse.json({ zone: updated });

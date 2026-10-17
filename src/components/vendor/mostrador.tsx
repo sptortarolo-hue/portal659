@@ -298,6 +298,8 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
   // Grupos de volumen del comercio (espejo visual; el servidor recalcula y
   // manda al cobrar). Sin grupos no hay nada que espejar.
   const [volumeGroups, setVolumeGroups] = useState<CartVolumeGroup[]>([]);
+  // Combos: id de producto → componentes (badge 🧩 y desglose en la línea).
+  const [comboMap, setComboMap] = useState<Record<string, { name: string; qty: number }[]>>({});
 
   // Líneas en formato carrito para el espejo de volumen (listUnit/promoUnit
   // pack-level como en el micrositio, para matchear al servidor).
@@ -436,6 +438,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
             setIsRetail(snap.vertical === "comercio" || snap.vertical === "moda" || snap.vertical === "estetica");
             setModifiersMap((snap.modifiersByProduct || {}) as any);
             if (snap.variantsMap) setVariantsMap(snap.variantsMap as any);
+            if (snap.combos) setComboMap(snap.combos as any);
             setProducts(((snap.products || []) as any[]).filter((o: any) => o.available !== false));
           }
         } catch { /* sin snapshot: espera a la red */ }
@@ -510,6 +513,8 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
         const today = new Date().toDateString();
         const modsMap = off.modifiersByProduct || {};
         setModifiersMap(modsMap);
+        const comboData = (off.comboItemsByProduct || {}) as Record<string, { name: string; qty: number }[]>;
+        setComboMap(comboData);
         const mapped = (off.offers || [])
           .filter((o: any) => o.available !== false)
           .map((o: any) => ({ ...o, modifiers: modsMap[o.id] || [] }));
@@ -522,12 +527,13 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
         );
         // Snapshot para operar offline (fire-and-forget).
         const vid = vendorId || (me?.vendor?.id as string | undefined) || null;
-        if (vid) {
+          if (vid) {
           saveCatalogSnapshot(vid, {
             products: mapped,
             categories: [],
             modifiersByProduct: modsMap,
             variantsMap: vmap as unknown as Record<string, Record<string, any>[]>,
+            combos: comboData,
             cashPct: pct,
             vertical,
           }).catch(() => {});
@@ -1004,6 +1010,11 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
     setWithFiscal(false);
     setRestored(false);
     clearManualDiscount();
+    setGiftcardAmount(0);
+    setGiftcardCodeValue("");
+    setGiftcardExpires(null);
+    setGiftcardErr("");
+    setGiftcardOpen(false);
   }
   function addManualLine() {
     const name = manualName.trim() || "Varios";
@@ -1256,6 +1267,12 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
       setManualPrice("");
       setClientOpen(false);
       clearManualDiscount();
+      // Canje de giftcard: consumida al cobrar, el renglón vuelve a cero.
+      setGiftcardAmount(0);
+      setGiftcardCodeValue("");
+      setGiftcardExpires(null);
+      setGiftcardErr("");
+      setGiftcardOpen(false);
       setFiscalReceptorTipo("cf");
       setFiscalReceptorNro("");
       setFiscalReceptorNombre("");
@@ -1820,6 +1837,8 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
             key={p.id}
             product={p}
             hasModifiers={(modifiersMap[p.id] || []).length > 0}
+            isCombo={(comboMap[p.id] || []).length > 0}
+            comboMembers={comboMap[p.id]}
             onAdd={() => add(p)}
           />
         ))}
@@ -1984,6 +2003,11 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
               {i.name}
               {i.unit === "kg" && (
                 <span className="ml-1 rounded bg-muted px-1 text-[10px] text-muted-foreground">$/kg</span>
+              )}
+              {i.unit !== "kg" && (comboMap[i.product_id] || []).length > 0 && (
+                <span className="block text-[10px] text-violet-700 break-words">
+                  🧩 {(comboMap[i.product_id] || []).map((c) => (c.qty > 1 ? `${c.qty}× ${c.name}` : c.name)).join(" + ")}
+                </span>
               )}
               {(i.modifiers || []).length > 0 && (
                 <span className="block text-[10px] text-muted-foreground truncate">

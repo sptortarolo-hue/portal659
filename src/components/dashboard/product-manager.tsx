@@ -71,6 +71,8 @@ type VariantRow = {
   sku: string;
 };
 
+type ComboRow = { product_id: string; name: string; price: number; qty: number; image_url?: string | null };
+
 // Galería moda: 1 portada (image_url) + hasta 7 extras (product_images).
 const MAX_EXTRA_IMAGES = 7;
 
@@ -104,6 +106,11 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
   const [offRequiresPrep, setOffRequiresPrep] = useState(showPrep);
   const [offCashExcluded, setOffCashExcluded] = useState(false);
   const [offSku, setOffSku] = useState("");
+  // Combos (OfferForm): mismo wiring que MenuStudio (solo rama con OfferForm:
+  // estética y resto; la ficha de moda usa su form propio con variantes).
+  const [offIsCombo, setOffIsCombo] = useState(false);
+  const [offComboItems, setOffComboItems] = useState<ComboRow[]>([]);
+  const [comboItemsByProduct, setComboItemsByProduct] = useState<Record<string, ComboRow[]>>({});
 
   // Moda: variantes (color × talle) + galería.
   const [offHasVariants, setOffHasVariants] = useState(false);
@@ -118,6 +125,7 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
       fetch("/api/vendor/categories").then((r) => r.json()).catch(() => ({ categories: [] })),
     ]);
     if (o.offers) setOffers(o.offers);
+    if (o.comboItemsByProduct) setComboItemsByProduct(o.comboItemsByProduct);
     if (c.categories) setCategories(c.categories);
     if (showCosts) {
       // 403 si el plan no incluye preparación: se ignora y no se muestran chips.
@@ -176,6 +184,8 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
     setVariantRows([]);
     setGalleryUrls([]);
     setOffSizeGuide("");
+    setOffIsCombo(false);
+    setOffComboItems([]);
   }
 
   function startEdit(offer: OfferRow) {
@@ -210,6 +220,10 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
     );
     setGalleryUrls(imgs.map((img) => ({ url: img.url, color: img.color ?? null })));
     setOffSizeGuide((offer as { size_guide?: string | null }).size_guide ?? "");
+    // Combos: carga líneas si las hay (del GET offers comboItemsByProduct).
+    const comboRows = comboItemsByProduct?.[offer.id] || [];
+    setOffIsCombo(Array.isArray(comboRows) && comboRows.length > 0);
+    setOffComboItems(Array.isArray(comboRows) ? comboRows : []);
     setShowForm(true);
   }
 
@@ -435,6 +449,8 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
           requires_prep: offRequiresPrep,
           cash_discount_excluded: offCashExcluded,
           cost_last: canEditCost && offCost.trim() !== "" && Number.isFinite(Number(offCost)) ? Math.round(Number(offCost) * 100) / 100 : undefined,
+          is_combo: offIsCombo,
+          combo_items: offIsCombo ? offComboItems.map((c) => ({ product_id: c.product_id, qty: c.qty })) : [],
         };
 
     const res = editingId
@@ -691,6 +707,14 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
         showCost={canEditCost}
         offCost={offCost} setOffCost={setOffCost}
         costLabel={showCosts ? "Costo compra ($)" : "Costo ($)"}
+        // Combos (estética y resto con OfferForm): picker de componentes.
+        offIsCombo={offIsCombo}
+        setOffIsCombo={setOffIsCombo}
+        offComboItems={offComboItems}
+        setOffComboItems={setOffComboItems}
+        offAllProducts={offers
+          .filter((o) => o.available !== false)
+          .map((o) => ({ id: o.id, name: o.name, price: Number(o.price) || 0, image_url: o.image_url ?? null }))}
         noun={noun.toLowerCase()}
       />
       {editingId && <ProductModifiersBlock productId={editingId} productName={offName} />}

@@ -36,6 +36,8 @@ export type CatalogSnapshot = {
   modifiersByProduct: Record<string, Record<string, any>[]>;
   /** Variantes por producto (moda). Opcional: snapshots viejos no la traen. */
   variantsMap?: Record<string, Record<string, any>[]>;
+  /** Componentes por combo (badge/desglose en Mostrador). Tolerante a falta. */
+  combos?: Record<string, Record<string, any>[]>;
   cashPct: number;
   vertical: string | null;
   cachedAt: number;

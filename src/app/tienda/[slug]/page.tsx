@@ -28,6 +28,7 @@ import { CategoryNav } from "@/components/store/category-nav";
 import { VolumeProgress } from "@/components/store/volume-progress";
 import { PackCard } from "@/components/store/pack-card";
 import { PromoSection } from "@/components/store/promo-section";
+import { ComboSection } from "@/components/store/combo-section";
 import { PackSheetHost } from "@/components/store/pack-sheet";
 import { StoreGallery } from "@/components/store/store-gallery";
 import { WeeklyHours } from "@/components/store/weekly-hours";
@@ -162,6 +163,36 @@ export default async function TiendaPage({
     String(p?.category || "").trim().toLowerCase() === "giftcards";
   const giftProducts = (offersAll || []).filter(isGiftProduct);
   const offers = (offersAll || []).filter((p: any) => !isGiftProduct(p));
+
+  // Combos: filas de combo_items del local + datos de cada miembro para el
+  // desglose "Incluye". Tolerante a migración sin aplicar (tabla inexistente).
+  let comboRows: any[] = [];
+  try {
+    comboRows = await queryMany<any>(
+      `SELECT ci.combo_product_id, ci.member_product_id, ci.qty,
+              p.name AS member_name, p.price AS member_price, p.image_url AS member_image
+         FROM combo_items ci
+         JOIN products p ON p.id = ci.member_product_id
+        WHERE ci.vendor_id = $1
+        ORDER BY ci.combo_product_id, ci.position`,
+      [vendor.id]
+    );
+  } catch {
+    comboRows = [];
+  }
+  const comboMembersByCombo: Record<string, { product_id: string; qty: number; name: string; price: number }[]> = {};
+  for (const r of comboRows || []) {
+    if (!comboMembersByCombo[r.combo_product_id]) comboMembersByCombo[r.combo_product_id] = [];
+    comboMembersByCombo[r.combo_product_id].push({
+      product_id: r.member_product_id,
+      qty: r.qty || 1,
+      name: r.member_name,
+      price: Number(r.member_price) || 0,
+    });
+  }
+  const isComboOffer = (o: any) => (comboMembersByCombo?.[o.id] || []).length > 0;
+  const comboOffers = (offers || []).filter((o: any) => isComboOffer(o));
+  const offersNoCombos = (offers || []).filter((o: any) => !isComboOffer(o));
 
   const planRows = await queryMany<any>(
     `SELECT * FROM plans ORDER BY sort ASC`
@@ -316,10 +347,11 @@ export default async function TiendaPage({
   const sections: Section[] = [];
   // Solo-promo: sale en la sección Promo, no en el menú (tolerante a
   // migración sin aplicar: promo_only llega undefined y no excluye).
-  const menuOffers = (offers || []).filter((o: any) => o.promo_only !== true);
+  // Los combos tienen su propia sección: no se duplican en el menú ni promo.
+  const menuOffers = (offersNoCombos || []).filter((o: any) => o.promo_only !== true);
   // Promo (criterio OR): precio promo o marcado promo_only. Descuentos
   // reales primero, promo_only sin descuento después.
-  const promos = (offers || [])
+  const promos = (offersNoCombos || [])
     .filter((o: any) => o.promo_price != null || o.promo_only === true)
     .sort((a: any, b: any) => discountOf(b) - discountOf(a));
   // Packs multi-producto (para CTA + sección). Se calcula tras volumeGroups.
@@ -787,6 +819,18 @@ export default async function TiendaPage({
                     consultHref={waUrl}
                   />
                 )}
+                {comboOffers.length > 0 && (
+                  <ComboSection
+                    items={comboOffers}
+                    membersByCombo={comboMembersByCombo}
+                    vendor={vendorBrief}
+                    modifiersByProduct={modifiersByProduct}
+                    variantsByProduct={variantsByProduct}
+                    imagesByProduct={imagesByProduct}
+                    acceptsCart={acceptsCart}
+                    consultHref={waUrl}
+                  />
+                )}
                 {sections.map((s, i) => (
                   <section key={s.name} id={`seccion-${i}`} className="mb-10">
                     <h3 className="font-display text-xl font-semibold mb-4 border-b border-border pb-2">
@@ -920,6 +964,18 @@ export default async function TiendaPage({
             {promos.length > 0 && (
               <PromoSection
                 items={promos}
+                vendor={vendorBrief}
+                modifiersByProduct={modifiersByProduct}
+                variantsByProduct={variantsByProduct}
+                imagesByProduct={imagesByProduct}
+                acceptsCart={acceptsCart}
+                consultHref={waUrl}
+              />
+            )}
+            {comboOffers.length > 0 && (
+              <ComboSection
+                items={comboOffers}
+                membersByCombo={comboMembersByCombo}
                 vendor={vendorBrief}
                 modifiersByProduct={modifiersByProduct}
                 variantsByProduct={variantsByProduct}

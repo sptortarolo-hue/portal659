@@ -465,12 +465,21 @@ export async function POST(request: Request) {
       // individual es solo portador de la factura).
       ...(resolvedType === "ticket" && Array.isArray(items) && items.length > 0
         ? {
-            items: (items as any[]).slice(0, 60).map((it) => ({
+          items: (items as any[]).slice(0, 60).map((it) => ({
               name: String(it?.name || "Ítem"),
               price: Number(it?.price) || 0,
               qty: Number(it?.qty) || 1,
               ...(Array.isArray(it?.modifiers) && it.modifiers.length > 0
                 ? { modifiers: it.modifiers.map(String) }
+                : {}),
+              ...(Array.isArray(it?.combo_members) && it.combo_members.length > 0
+                ? {
+                    combo_members: it.combo_members.slice(0, 12).map((m: any) => ({
+                      product_id: String(m?.product_id || ""),
+                      name: String(m?.name || "?"),
+                      qty: Number(m?.qty) || 1,
+                    })),
+                  }
                 : {}),
               ...(it?.unit ? { unit: String(it.unit) } : {}),
             })),

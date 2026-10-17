@@ -272,6 +272,8 @@ function VendorDashboardInner() {
   const [canDeposits, setCanDeposits] = useState(false);
   const [variants, setVariants] = useState<ProductVariant[]>([]);
   const [productImages, setProductImages] = useState<ProductImage[]>([]);
+  // Componentes de combos por producto (MenuStudio: editor + solapa Combos).
+  const [comboItemsByProduct, setComboItemsByProduct] = useState<Record<string, { product_id: string; name: string; price: number; qty: number; image_url?: string | null }[]>>({});
   const [tab, setTab] = useState<DashTab>("hoy");
   // Sección activa de Config (sidebar única): se persiste por vertical con
   // la misma key que usa el shell (ConfigSections) en cada dashboard.
@@ -589,6 +591,7 @@ function VendorDashboardInner() {
       if (me.staffLevel) setStaffLevel(me.staffLevel);
       if (me.userId) setUserId(me.userId);
       if (off.offers) setOffers(off.offers);
+      if (off.comboItemsByProduct) setComboItemsByProduct(off.comboItemsByProduct);
       if (ord.orders) setOrders(ord.orders);
       if (cats.categories) setCategories(cats.categories);
       if (mods.modifiers) setModifiers(mods.modifiers);
@@ -1905,6 +1908,7 @@ function VendorDashboardInner() {
                     vendorLogo={vendor?.logo_url || null}
                     vendorName={vendor?.store_name || null}
                     productImages={productImages}
+                    comboItemsByProduct={comboItemsByProduct}
                   />
                   </TabErrorBoundary>
                 ) : (

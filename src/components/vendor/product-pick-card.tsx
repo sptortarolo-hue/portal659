@@ -27,10 +27,16 @@ export function ProductPickCard({
   product,
   hasModifiers,
   onAdd,
+  isCombo = false,
+  comboMembers,
 }: {
   product: PickProduct;
   hasModifiers: boolean;
   onAdd: () => void;
+  /** El producto es combo (badge + desglose "Incluye"). */
+  isCombo?: boolean;
+  /** Componentes del combo (del GET offers comboItemsByProduct). */
+  comboMembers?: { name: string; qty: number }[];
 }) {
   const p = product;
   const isGift = isGiftProductRow(p);
@@ -53,6 +59,16 @@ export function ProductPickCard({
         {isGift && (
           <span className="absolute bottom-2 left-2 rounded-full bg-violet-600 text-white text-[9px] font-bold px-2 py-0.5">
             🎁 Tarjeta
+          </span>
+        )}
+        {isCombo && !isGift && (
+          <span className="absolute bottom-2 left-2 rounded-full bg-violet-500 text-white text-[9px] font-bold px-2 py-0.5">
+            🧩 Combo
+          </span>
+        )}
+        {isCombo && comboMembers && comboMembers.length > 0 && (
+          <span className="block text-[10px] text-violet-700 break-words mt-0.5">
+            {(comboMembers.map((c) => (c.qty > 1 ? `${c.qty}× ${c.name}` : c.name)).join(" + ")).slice(0, 90)}
           </span>
         )}
         {p.available === false && (

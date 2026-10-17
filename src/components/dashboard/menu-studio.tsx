@@ -89,7 +89,7 @@ type Props = {
   vendorName?: string | null;
 };
 
-type View = "productos" | "categorias" | "opciones" | "volumen";
+type View = "productos" | "categorias" | "opciones" | "volumen" | "combos";
 
 /**
  * Vista previa de la etiqueta de góndola (estilo supermercado): nombre
@@ -178,6 +178,7 @@ const VIEWS: { id: View; icon: string; label: string }[] = [
   { id: "categorias", icon: "🗂️", label: "Categorías" },
   { id: "opciones", icon: "⚙️", label: "Opciones" },
   { id: "volumen", icon: "📦", label: "Precios por volumen" },
+  { id: "combos", icon: "🧩", label: "Combos" },
 ];
 
 type BulkOp = "pct_up" | "pct_down" | "add" | "set";
@@ -550,6 +551,14 @@ export function MenuStudio({
     if (isDesktop()) setDrawerOpen(true);
   }
 
+  /** Nuevo combo: mismo form con el toggle 🧩 ya prendido. */
+  function openNewCombo() {
+    resetForm();
+    setOffIsCombo(true);
+    setShowForm(true);
+    if (isDesktop()) setDrawerOpen(true);
+  }
+
   function closeEditor() {
     setDrawerOpen(false);
     resetForm();
@@ -874,6 +883,12 @@ export function MenuStudio({
       costLabel={showCosts ? "Costo compra ($)" : "Costo ($)"}
       remotePhoto={offRemotePhoto}
       onRemotePhoto={setOffRemotePhoto}
+      // Combos: el editor vive en OfferForm; acá solo el estado.
+      offIsCombo={offIsCombo}
+      setOffIsCombo={setOffIsCombo}
+      offComboItems={offComboItems}
+      setOffComboItems={setOffComboItems}
+      offAllProducts={offAllProducts}
       onClose={closeEditor}
     />
   );
@@ -1017,7 +1032,9 @@ export function MenuStudio({
                 ? ` (${offers.length})`
                 : v.id === "categorias"
                   ? ` (${categories.length})`
-                  : ""}
+                  : v.id === "combos"
+                    ? ` (${offers.filter((o) => (comboItemsByProduct?.[o.id] || []).length > 0).length})`
+                    : ""}
             </button>
           ))}
         </div>
@@ -1190,6 +1207,88 @@ export function MenuStudio({
           products={offers.map((o) => ({ id: o.id, name: o.name, category: o.category, price: Number(o.price) || 0 }))}
           categories={categories}
         />
+      )}
+
+      {view === "combos" && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <p className="text-sm text-muted-foreground flex-1 min-w-[240px]">
+              Varios productos juntos por un precio. La ficha del micrositio muestra qué incluye y el stock se descuenta por componente al vender.
+            </p>
+            <Button size="sm" onClick={() => { if (editingId || showForm) closeEditor(); openNewCombo(); }}>
+              + Nuevo combo
+            </Button>
+          </div>
+          {msg && <p className="text-sm text-green-700">{msg}</p>}
+          {(() => {
+            const combos = offers.filter((o) => (comboItemsByProduct?.[o.id] || []).length > 0);
+            if (combos.length === 0) {
+              return (
+                <div className="rounded-xl border border-border bg-card p-6 text-center">
+                  <p className="text-sm text-muted-foreground">
+                    Todavía no cargaste combos. Armá uno con tus productos y poné un precio entre la suma de costos y la de venta.
+                  </p>
+                </div>
+              );
+            }
+            return (
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {combos.map((o) => {
+                  const members = comboItemsByProduct?.[o.id] || [];
+                  const sumaVenta = members.reduce((s, m) => s + (Number(m.price) || 0) * (Number(m.qty) || 1), 0);
+                  const price = Number(o.promo_price ?? o.price) || 0;
+                  const oldPrice = o.promo_price != null ? Number(o.price) : null;
+                  const hasPromo = oldPrice != null && Math.round(oldPrice * 100) !== Math.round(price * 100);
+                  return (
+                    <div key={o.id} className="rounded-xl border border-border bg-card p-3 flex gap-3">
+                      {o.image_url ? (
+                        <ProductImage src={o.image_url} name={o.name} alt={o.name} className="h-20 w-20 rounded-lg object-cover flex-shrink-0" />
+                      ) : (
+                        <div className="h-20 w-20 rounded-lg bg-muted text-2xl flex items-center justify-center flex-shrink-0">🧩</div>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium text-sm line-clamp-2 break-words">{o.name}</p>
+                        <p className="text-sm tabular-nums">
+                          <span className="font-bold">${price.toLocaleString("es-AR", { maximumFractionDigits: 2 })}</span>
+                          {hasPromo && <span className="ml-1 text-xs text-muted-foreground line-through">${(Number(o.price) || 0).toLocaleString("es-AR")}</span>}
+                          <span className="ml-2 text-xs text-muted-foreground">Σ venta: ${sumaVenta.toLocaleString("es-AR", { maximumFractionDigits: 2 })}</span>
+                        </p>
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {members.slice(0, 5).map((m, i) => (
+                            <span key={`${m.product_id}-${i}`} className="rounded-full border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground truncate max-w-[130px]">
+                              {(Number(m.qty) || 1) > 1 ? `${m.qty}× ` : ""}{m.name}
+                            </span>
+                          ))}
+                          {members.length > 5 && (
+                            <span className="rounded-full border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                              +{members.length - 5}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 mt-2">
+                          <button
+                            type="button"
+                            onClick={() => openEdit(o)}
+                            className="text-xs font-medium text-primary hover:underline"
+                          >
+                            ✏️ Editar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => toggleAvailable(o)}
+                            className="text-xs text-muted-foreground hover:text-foreground"
+                          >
+                            {o.available !== false ? "⏸ Pausar" : "▶ Activar"}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
+        </div>
       )}
 
       <MenuImportModal

@@ -472,6 +472,36 @@ function formatItemLine(item: OrderItem, width: number): string[] {
     }
   }
 
+  // Snapshot de combo: sub-líneas "└ 2× Coca 3L" (vuelven envueltas igual
+  // que los gustos; si no hay snapshot la línea sale como siempre).
+  const comboMembers = (item as any).combo_members as
+    | { name?: string; qty?: number }[]
+    | undefined;
+  if (Array.isArray(comboMembers) && comboMembers.length > 0) {
+    const maxw = Math.max(10, width - 5);
+    let cur = "";
+    const flush = () => {
+      if (cur) {
+        lines.push(`   └ ${cur}`);
+        cur = "";
+      }
+    };
+    for (const m of comboMembers) {
+      const piece = `${Number(m?.qty) || 1}× ${String(m?.name || "?")}`;
+      const part = cur ? ` + ${piece}` : piece;
+      if (part.length > maxw && cur) {
+        lines.push(`   └ ${cur}`);
+        cur = piece;
+      } else {
+        cur += part;
+      }
+      if (cur.length > maxw) {
+        flush();
+      }
+    }
+    flush();
+  }
+
   return lines;
 }
 
@@ -650,7 +680,15 @@ export type ReceiptExtra = {
    * solo como portador de la factura. Presentes → pisan los del pedido y se
    * omiten los descuentos derivados del pedido (ya netos en el total).
    */
-  items?: { name: string; price: number; qty: number; modifiers?: string[]; unit?: string }[];
+  items?: {
+    name: string;
+    price: number;
+    qty: number;
+    modifiers?: string[];
+    unit?: string;
+    /** Componentes de combo (sub-líneas en el ticket). */
+    combo_members?: { product_id?: string; name?: string; qty?: number }[];
+  }[];
   total?: number;
 };
 

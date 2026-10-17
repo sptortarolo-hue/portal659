@@ -701,11 +701,6 @@ function formatFiscalDate(input: string): string {
   return input;
 }
 
-/**
- * Encabezado fiscal del ticket (tras logo/nombre), estilo factura argentina:
- * letra C en recuadro + ORIGINAL + FACTURA Nº en tamaño normal + fecha,
- * CUIT y condición IVA. En 58mm (32) fecha y CUIT van en líneas separadas.
- */
 async function composeFiscalHeader(
   printer: any,
   width: number,
@@ -713,48 +708,26 @@ async function composeFiscalHeader(
 ): Promise<void> {
   const nro = `${String(fiscal.puntoVenta).padStart(4, "0")}-${String(fiscal.cbteNro).padStart(8, "0")}`;
   const title = fiscal.docLabel || "FACTURA C";
+  const fecha = fiscal.fechaEmision ? formatFiscalDate(fiscal.fechaEmision) : null;
+  const cond = condIvaLabel(fiscal.condIva);
+  const receptor =
+    fiscal.receptorDocTipo && fiscal.receptorDocTipo !== 99 && fiscal.receptorDocNro && fiscal.receptorDocNro !== "0"
+      ? `${fiscal.receptorDocTipo === 80 ? "CUIT" : fiscal.receptorDocTipo === 86 ? "CUIL" : fiscal.receptorDocTipo === 96 ? "DNI" : `Doc ${fiscal.receptorDocTipo}`}: ${fiscal.receptorDocNro}${fiscal.receptorNombre ? ` · ${fiscal.receptorNombre}` : ""}`
+      : "Consumidor final";
+
   printer.alignCenter();
   printer.println(separatorFor(width));
   printer.bold(true);
-  printer.println("+-----+");
-  printer.println("|  C  |");
-  printer.println("+-----+");
-  printer.println("ORIGINAL");
-  // Título en doble alto solo si entra (NOTA DE CRÉDITO C no entra en 58mm).
-  if (title.length * 2 <= width) {
-    printer.setTextSize(2, 2);
-    printer.println(title);
-    printer.setTextSize(0, 0);
-  } else {
-    printer.println(title);
-  }
-  printer.bold(false);
-  printer.bold(true);
+  printer.println(`${title} — ORIGINAL`);
   printer.println(`Nº ${nro}`);
   printer.bold(false);
   if (fiscal.asocLabel) {
     printer.println(`Anula a: ${fiscal.asocLabel}`);
   }
-  const fecha = fiscal.fechaEmision ? formatFiscalDate(fiscal.fechaEmision) : null;
-  if (width > 32 && fecha) {
-    printer.println(`Fecha: ${fecha} · CUIT: ${fiscal.cuit}`);
-  } else {
-    if (fecha) printer.println(`Fecha: ${fecha}`);
-    printer.println(`CUIT: ${fiscal.cuit}`);
-  }
-  const cond = condIvaLabel(fiscal.condIva);
-  if (cond) printer.println(cond);
-  // Receptor: identificado (DNI/CUIT + nombre) o consumidor final.
-  if (fiscal.receptorDocTipo && fiscal.receptorDocTipo !== 99 && fiscal.receptorDocNro && fiscal.receptorDocNro !== "0") {
-    const docName =
-      fiscal.receptorDocTipo === 80 ? "CUIT" :
-      fiscal.receptorDocTipo === 86 ? "CUIL" :
-      fiscal.receptorDocTipo === 96 ? "DNI" : `Doc ${fiscal.receptorDocTipo}`;
-    printer.println(`${docName}: ${fiscal.receptorDocNro}`);
-    if (fiscal.receptorNombre) printer.println(fiscal.receptorNombre.slice(0, width));
-  } else {
-    printer.println("A consumidor final");
-  }
+  const fechaCuit = [fecha, fiscal.cuit ? `CUIT: ${fiscal.cuit}` : null].filter(Boolean).join(" · ");
+  if (fechaCuit) printer.println(fechaCuit);
+  const condReceptor = [cond, receptor].filter(Boolean).join(" · ");
+  if (condReceptor) printer.println(condReceptor.slice(0, width));
 }
 
 const fiscalQrCache = new Map<string, Buffer>();
@@ -814,7 +787,6 @@ async function renderFiscalSideQr(
   }
 }
 
-/** Pie fiscal del ticket: receptor + CAE + QR ARCA sutil. Nunca rompe la impresión. */
 async function composeFiscalBlock(
   printer: any,
   width: number,
@@ -822,14 +794,10 @@ async function composeFiscalBlock(
 ): Promise<void> {
   const separator = separatorFor(width);
   const vto = formatFiscalDate(fiscal.caeVto);
-  // 80mm: QR a la izquierda + texto a la derecha en un solo bitmap
-  // (ahorra ~3 líneas). 58mm: apilado sutil con QR chico.
   if (width > 32 && fiscal.qrUrl) {
     const bitmap = await renderFiscalSideQr(fiscal, fiscal.cae, vto);
     if (bitmap) {
       printer.alignCenter();
-      printer.println(separator);
-      printer.println("A consumidor final");
       printer.println(separator);
       await printer.printImageBuffer(bitmap);
       printer.alignLeft();
@@ -838,15 +806,11 @@ async function composeFiscalBlock(
   }
   printer.alignCenter();
   printer.println(separator);
-  printer.println("A consumidor final");
-  printer.println(separator);
-  printer.println(`CAE: ${fiscal.cae}`);
-  printer.println(`Vto. CAE: ${vto}`);
+  printer.println(`CAE: ${fiscal.cae} · Vto: ${vto}`);
   if (fiscal.qrUrl) {
-    // Bitmap primero (funciona en cualquier térmica); hardware y texto de reserva.
     let printedQr = false;
     try {
-      const png = await renderQrImage(fiscal.qrUrl, 240);
+      const png = await renderQrImage(fiscal.qrUrl, 200);
       if (png) {
         printer.alignCenter();
         await printer.printImageBuffer(png);
@@ -859,11 +823,11 @@ async function composeFiscalBlock(
         printer.printQR(fiscal.qrUrl, { cellSize: 4, correction: "M", model: 2 });
         printer.println("");
       } catch {
-        printer.println("QR: ver en arca.gob.ar/fe/qr");
+        printer.println("QR: arca.gob.ar/fe/qr");
       }
     }
   }
-  printer.println("Verificá en arca.gob.ar/fe/qr");
+  printer.println("arca.gob.ar/fe/qr");
   printer.alignLeft();
 }
 
@@ -994,6 +958,8 @@ async function composeReceipt(
 
   if (extra?.fiscal) {
     await composeFiscalBlock(printer, width, extra.fiscal);
+    printer.cut();
+    return;
   }
 
   printer.println("");

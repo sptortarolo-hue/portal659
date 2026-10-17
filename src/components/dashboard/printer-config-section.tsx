@@ -422,6 +422,19 @@ export function PrinterConfigSection({
               </summary>
 
               <a
+                href="https://drive.google.com/file/d/1IDhmOZDj5YuWXXZlgkMuFx0aYokTw2_A/view?usp=sharing"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-blue-600 text-white px-4 py-2.5 text-sm font-semibold hover:bg-blue-700 active:scale-[0.98] transition-all"
+              >
+                ⬇️ Descargar drivers de impresora
+              </a>
+              <p className="text-[10px] text-muted-foreground/70 mt-1.5">
+                <strong>1.</strong> Descargá e instalá los drivers para conectar la impresora a la PC.
+                <strong>2.</strong> Después descargá el agente para conectarlo con el programa.
+              </p>
+
+              <a
                 href="/uploads/downloads/portal-print-agent.zip?v=7"
                 download="portal-print-agent.zip"
                 className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-fresh text-fresh-foreground px-4 py-2.5 text-sm font-semibold hover:bg-fresh/80 active:scale-[0.98] transition-all"

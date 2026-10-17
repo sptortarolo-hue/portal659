@@ -54,6 +54,9 @@ type VariantRow = {
   product_id: string;
   price: number;
   promo: number | null;
+  /** Dimensiones de moda (para saltear los labels sintéticos del checkout). */
+  color?: string | null;
+  talle?: string | null;
 };
 
 export type ResolvedPricing = {
@@ -134,7 +137,7 @@ export async function resolveOrderPricing(opts: {
   // Traigo variantes (necesitan su product_id para consultar el producto).
   const variants: VariantRow[] = variantIds.size
     ? await tx.query<VariantRow>(
-        `SELECT pv.id, pv.product_id, pv.price, pv.promo
+        `SELECT pv.id, pv.product_id, pv.price, pv.promo, pv.color, pv.talle
          FROM product_variants pv
          INNER JOIN products p ON p.id = pv.product_id
          WHERE pv.id = ANY($1) AND p.vendor_id = $2`,
@@ -384,6 +387,18 @@ export async function resolveOrderPricing(opts: {
       : [];
     const labels = picked.map((p) => p.label);
 
+    // Labels sintéticos de variante (Color/Talle del selector online): el precio
+    // ya vive en la variante, así que no se precian ni se validan contra los
+    // grupos reales del producto (antes un producto sin grupos Color/Talle
+    // propios 400eaba en todo checkout con variantes). Se tolera también el
+    // formato legacy de strings que no reconoce el valor exacto del talle/color.
+    const variantDimGroups = new Set(["color", "talle"]);
+    const variantDimLabels = variant
+      ? [variant.color, variant.talle]
+          .filter(Boolean)
+          .map((s) => String(s).toLowerCase())
+      : [];
+
     let modsPerUnit = 0;
     let hasModPromo = false;
     if (labels.length > 0) {
@@ -391,7 +406,15 @@ export async function resolveOrderPricing(opts: {
       const unavailable = unavailableByProduct.get(product.id);
       // Base por unidad para el aporte en modo total (pack: precio/paquete ÷ N).
       const modBase = pack > 1 ? packPrice / pack : unitPrice;
-      for (const label of labels) {
+      for (const p of picked) {
+        const label = p.label;
+        if (
+          variant &&
+          (variantDimGroups.has((p.group || "").toLowerCase()) ||
+            variantDimLabels.includes(label.toLowerCase()))
+        ) {
+          continue;
+        }
         if (unavailable?.has(label)) {
           throw new PricingError(`"${label}" no está disponible por el momento en "${product.name}".`);
         }

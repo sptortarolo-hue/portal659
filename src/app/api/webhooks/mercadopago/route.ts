@@ -1,6 +1,6 @@
 import { query, queryOne, queryMany, withTransaction } from "@/lib/db";
 import { logApiError } from "@/lib/api-error";
-import { adjustStockForItems } from "@/lib/stock";
+import { adjustStockForItems, OutOfStockError } from "@/lib/stock";
 import { sendPushToUser } from "@/lib/push";
 import { sendEmail, newOrderVendorEmail } from "@/lib/email";
 import { formatDeliveryWindow } from "@/lib/delivery-schedule";
@@ -742,13 +742,18 @@ export async function POST(request: Request) {
               });
             }
           } catch (e) {
-            // best-effort: ver nota arriba (se loguea para no perderlo en silencio)
-            logApiError("mp-webhook/stock", e);
+            // Sin stock: el pedido entra igual (best-effort de diseño — el
+            // pago ya fue aprobado por MP). Un error SQL real NO se traga:
+            // la tx ya está abortada y el catch-and-continue solo cambia
+            // el punto de falla; re-lanzar = rollback limpio = MP reintenta.
+            if (!(e instanceof OutOfStockError)) throw e;
           }
 
           // Emisión automática de giftcards vendidas (F2): el pago ya está
           // aprobado (pedidos MP nunca son preview). Idempotente: los
-          // reintentos del webhook no duplican códigos.
+          // reintentos del webhook no duplican códigos. Sin try/catch: un
+          // fallo genuino acá deja la tx abortada, se loguea rompiendo igual
+          // en el COMMIT (mejor rollback limpio + reintento de MP).
           try {
             const { issueGiftcardsForOrder } = await import("@/lib/giftcards");
             mpIssued = await issueGiftcardsForOrder(tx, {
@@ -762,6 +767,7 @@ export async function POST(request: Request) {
             });
           } catch (e) {
             logApiError("mp-webhook/giftcard-issue", e);
+            throw e;
           }
         });
 

@@ -1,4 +1,4 @@
-import type { Tx } from "@/lib/db";
+import { hasTable, type Tx } from "@/lib/db";
 import type { OrderItem } from "@/types/database";
 import {
   normalizeDeliveryMode,
@@ -157,8 +157,11 @@ export async function resolveOrderPricing(opts: {
     : [];
 
   // Componentes de combos: se adjuntan al ProductRow como snapshot (para
-  // stock/kardex y desglose del ticket). Tolerante a DB sin la tabla.
-  try {
+  // stock/kardex y desglose del ticket). Guard con to_regclass (nunca lanza):
+  // un try/catch NO basta acá — si la tabla no existe el SELECT aborta la
+  // transacción y toda query posterior muere con 25P02 (el cobro de
+  // mostrador dejó de andar por exactamente esto, 17/10/2026).
+  if (await hasTable(tx, "combo_items")) {
     const crows = await tx.query<{ combo_product_id: string; member_product_id: string; qty: number }>(
       `SELECT combo_product_id, member_product_id, qty FROM combo_items WHERE vendor_id = $1 AND combo_product_id = ANY($2)`,
       [vendorId, [...productIds]]
@@ -184,8 +187,6 @@ export async function resolveOrderPricing(opts: {
         (p as any).combo_members = members;
       }
     }
-  } catch {
-    /* sin tabla: los combos se tratan como productos normales */
   }
 
   const productById = new Map(products.map((p) => [p.id, p]));
@@ -512,81 +513,85 @@ export async function resolveOrderPricing(opts: {
   // el drift de decimales con packs).
   const volumeNetLine = new Map<number, number>();
   const volumeNoCash = new Set<number>();
-  try {
-    const gRows = await tx.query<{
-      id: string;
-      name: string;
-      product_ids: string[];
-      combine_promo: boolean;
-      combine_cash: boolean;
-      extras_mode: string;
-    }>(
-      `SELECT id, name, product_ids, combine_promo, combine_cash, extras_mode
-       FROM volume_groups WHERE vendor_id = $1 AND active = true ORDER BY position ASC, created_at ASC`,
-      [vendorId]
-    );
-    if (gRows.length > 0) {
-      const tRows = await tx.query<{ group_id: string; min_qty: number; kind: string; value: number }>(
-        `SELECT group_id, min_qty, kind, value FROM volume_tiers WHERE group_id = ANY($1)`,
-        [gRows.map((g) => g.id)]
+  if (await hasTable(tx, "volume_groups")) {
+    try {
+      const gRows = await tx.query<{
+        id: string;
+        name: string;
+        product_ids: string[];
+        combine_promo: boolean;
+        combine_cash: boolean;
+        extras_mode: string;
+      }>(
+        `SELECT id, name, product_ids, combine_promo, combine_cash, extras_mode
+         FROM volume_groups WHERE vendor_id = $1 AND active = true ORDER BY position ASC, created_at ASC`,
+        [vendorId]
       );
-      const tiersByGroup = new Map<string, { minQty: number; kind: "fixed_total" | "percent_off"; value: number }[]>();
-      for (const t of tRows) {
-        if (t.kind !== "fixed_total" && t.kind !== "percent_off") continue;
-        const arr = tiersByGroup.get(t.group_id) || [];
-        arr.push({ minQty: Number(t.min_qty), kind: t.kind, value: Number(t.value) });
-        tiersByGroup.set(t.group_id, arr);
+      if (gRows.length > 0) {
+        const tRows = await tx.query<{ group_id: string; min_qty: number; kind: string; value: number }>(
+          `SELECT group_id, min_qty, kind, value FROM volume_tiers WHERE group_id = ANY($1)`,
+          [gRows.map((g) => g.id)]
+        );
+        const tiersByGroup = new Map<string, { minQty: number; kind: "fixed_total" | "percent_off"; value: number }[]>();
+        for (const t of tRows) {
+          if (t.kind !== "fixed_total" && t.kind !== "percent_off") continue;
+          const arr = tiersByGroup.get(t.group_id) || [];
+          arr.push({ minQty: Number(t.min_qty), kind: t.kind, value: Number(t.value) });
+          tiersByGroup.set(t.group_id, arr);
+        }
+        const volGroups: VolumeGroupInput[] = gRows
+          .map((g) => ({
+            id: g.id,
+            name: g.name,
+            productIds: Array.isArray(g.product_ids) ? g.product_ids.map(String) : [],
+            active: true,
+            combinePromo: g.combine_promo === true,
+            combineCash: g.combine_cash === true,
+            extrasIncluded: g.extras_mode === "included",
+            tiers: tiersByGroup.get(g.id) || [],
+          }))
+          .filter((g) => g.productIds.length > 0 && g.tiers.length > 0);
+        if (volGroups.length > 0) {
+          const volLines: VolumeLineInput[] = staged.map((s) => {
+            const rawList = Number(s.variant ? s.variant.price : s.product.price);
+            const rawPromo = s.variant
+              ? s.variant.promo != null ? Number(s.variant.promo) : null
+              : s.product.promo_price != null ? Number(s.product.promo_price) : null;
+            // Con pack el volumen trabaja con la unidad FULL PRECISION (sin
+            // redondeo intermedio): es lo que hace que 11500/6 × 6 = 11500.
+            const listUnit = s.pack > 1 ? rawList / s.pack : rawList;
+            const promoUnit = s.pack > 1 && rawPromo != null ? rawPromo / s.pack : rawPromo;
+            return {
+              offerId: s.product.id,
+              qty: s.qtySafe,
+              listUnit,
+              promoUnit,
+              modsUnit: s.modsPerUnit,
+              refUnit: s.lineGross / s.qtySafe,
+              hasPromo: s.hasPromo,
+              excluded: s.product.cash_discount_excluded,
+            };
+          });
+          const vol = applyVolumePricing(volLines, volGroups);
+          volumeDiscount = vol.volumeDiscount;
+          volumeApplied = vol.applied.map((a) => ({ groupName: a.groupName, label: a.label, qty: a.qty }));
+          vol.lines.forEach((l, i) => {
+            if (l.netTotal !== l.grossTotal) {
+              volumeNetLine.set(i, l.netTotal);
+            }
+            if (!l.cashEligible) volumeNoCash.add(i);
+          });
+        }
       }
-      const volGroups: VolumeGroupInput[] = gRows
-        .map((g) => ({
-          id: g.id,
-          name: g.name,
-          productIds: Array.isArray(g.product_ids) ? g.product_ids.map(String) : [],
-          active: true,
-          combinePromo: g.combine_promo === true,
-          combineCash: g.combine_cash === true,
-          extrasIncluded: g.extras_mode === "included",
-          tiers: tiersByGroup.get(g.id) || [],
-        }))
-        .filter((g) => g.productIds.length > 0 && g.tiers.length > 0);
-      if (volGroups.length > 0) {
-        const volLines: VolumeLineInput[] = staged.map((s) => {
-          const rawList = Number(s.variant ? s.variant.price : s.product.price);
-          const rawPromo = s.variant
-            ? s.variant.promo != null ? Number(s.variant.promo) : null
-            : s.product.promo_price != null ? Number(s.product.promo_price) : null;
-          // Con pack el volumen trabaja con la unidad FULL PRECISION (sin
-          // redondeo intermedio): es lo que hace que 11500/6 × 6 = 11500.
-          const listUnit = s.pack > 1 ? rawList / s.pack : rawList;
-          const promoUnit = s.pack > 1 && rawPromo != null ? rawPromo / s.pack : rawPromo;
-          return {
-            offerId: s.product.id,
-            qty: s.qtySafe,
-            listUnit,
-            promoUnit,
-            modsUnit: s.modsPerUnit,
-            refUnit: s.lineGross / s.qtySafe,
-            hasPromo: s.hasPromo,
-            excluded: s.product.cash_discount_excluded,
-          };
-        });
-        const vol = applyVolumePricing(volLines, volGroups);
-        volumeDiscount = vol.volumeDiscount;
-        volumeApplied = vol.applied.map((a) => ({ groupName: a.groupName, label: a.label, qty: a.qty }));
-        vol.lines.forEach((l, i) => {
-          if (l.netTotal !== l.grossTotal) {
-            volumeNetLine.set(i, l.netTotal);
-          }
-          if (!l.cashEligible) volumeNoCash.add(i);
-        });
-      }
+    } catch {
+      // Datos inesperados: se sigue sin volumen (la tabla existe — se chequeó
+      // con hasTable —, así que este catch solo cubre datos corruptos y el
+      // rollback de la tx es limpio: el error se propaga, no se envenena).
+      volumeDiscount = 0;
+      volumeApplied = [];
+      volumeNetLine.clear();
+      volumeNoCash.clear();
     }
-  } catch {
-    // Tabla sin migrar: se sigue sin volumen.
-    volumeDiscount = 0;
-    volumeApplied = [];
-    volumeNetLine.clear();
-    volumeNoCash.clear();
   }
 
   // Descuento en efectivo: % sobre la NETO DE LA LÍNEA elegible (pack-native,

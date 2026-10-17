@@ -63,6 +63,41 @@ export type Tx = {
   queryVoid: (sql: string, params?: unknown[]) => Promise<void>;
 };
 
+/**
+ * ¿Existe la tabla? Chequeo con to_regclass que nunca lanza: seguro de
+ * correr DENTRO de una transacción (un SELECT sobre tabla inexistente
+ * aborta la tx y toda query posterior falla con 25P02 — "transaction is
+ * aborted"; el catch de JS se traga el error pero no des-envenena la tx).
+ * Patrón correcto: preguntar primero, consultar después.
+ * Acepta cualquier querier de solo lectura (Tx, PricingQuerier, pool).
+ */
+export async function hasTable(
+  tx: { query: <T extends QueryResultRow>(sql: string, params?: unknown[]) => Promise<T[]> },
+  name: string
+): Promise<boolean> {
+  const rows = await tx.query<{ ok: boolean }>(
+    `SELECT to_regclass($1) IS NOT NULL AS ok`,
+    [`public.${name}`]
+  );
+  return rows[0]?.ok === true;
+}
+
+/** ¿Existe la columna? information_schema nunca lanza; seguro dentro de tx. */
+export async function hasColumn(
+  tx: { query: <T extends QueryResultRow>(sql: string, params?: unknown[]) => Promise<T[]> },
+  table: string,
+  column: string
+): Promise<boolean> {
+  const rows = await tx.query<{ e: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1 FROM information_schema.columns
+       WHERE table_schema = 'public' AND table_name = $1 AND column_name = $2
+     ) AS e`,
+    [table, column]
+  );
+  return rows[0]?.e === true;
+}
+
 /** Transacción: ejecuta callback y hace rollback si falla. */
 export async function withTransaction<T>(
   callback: (tx: Tx) => Promise<T>

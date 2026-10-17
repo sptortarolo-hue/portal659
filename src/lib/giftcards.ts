@@ -1,10 +1,17 @@
 import { randomBytes } from "crypto";
-import type { Tx } from "@/lib/db";
+import { hasTable, hasColumn, type Tx } from "@/lib/db";
 
 /**
  * Giftcards compartidas (estética, comercio, moda). Sin gate de plan
  * (igual que estética hoy): solo importan vertical + MP conectado.
  * Tablas agnósticas al vertical (vendor_id); solo cambia el prefijo.
+ *
+ * ⚠️ Tolerancia a migración sin aplicar: SIEMPRE con guard previo
+ * (hasTable/hasColumn — queries que nunca lanzan). Un try/catch o
+ * .catch() sobre una query fallida DENTRO de una transacción la envenena
+ * (25P02 "transaction is aborted" en toda query posterior): el error de
+ * JS se traga, pero la tx queda abortada. Preguntar primero, consultar
+ * después.
  */
 
 export const GIFT_VERTICALS = ["estetica", "comercio", "moda"] as const;
@@ -42,6 +49,7 @@ export async function consumeGiftcard(
   const code = String(opts.code || "").trim().toUpperCase();
   const cap = Math.round(Number(opts.maxAmount) || 0);
   if (!opts.vendorId || !code || !(cap > 0)) return null;
+  if (!(await hasTable(tx, "giftcards"))) return null;
   const row = await tx.queryOne<{ id: string; code: string; applied: number }>(
     `WITH c AS (
        SELECT id, code, LEAST(balance, $3) AS applied FROM giftcards
@@ -59,10 +67,12 @@ export async function consumeGiftcard(
   if (!row) return null;
   const applied = Math.round(Number(row.applied) || 0);
   if (!(applied > 0)) return null;
-  await tx.queryVoid(
-    `INSERT INTO giftcard_moves (giftcard_id, kind, amount, note) VALUES ($1, 'redeem', $2, $3)`,
-    [row.id, applied, opts.note != null ? String(opts.note).slice(0, 200) : null]
-  ).catch(() => undefined);
+  if (await hasTable(tx, "giftcard_moves")) {
+    await tx.queryVoid(
+      `INSERT INTO giftcard_moves (giftcard_id, kind, amount, note) VALUES ($1, 'redeem', $2, $3)`,
+      [row.id, applied, opts.note != null ? String(opts.note).slice(0, 200) : null]
+    );
+  }
   return { id: row.id, code: row.code, applied };
 }
 
@@ -100,22 +110,22 @@ export async function issueGiftcardsForOrder(
     (i) => i && typeof i.product_id === "string" && i.product_id
   );
   if (items.length === 0) return out;
+  if (!(await hasTable(tx, "giftcards"))) return out;
 
-  const vendor = await tx
-    .queryOne<{ vertical: string | null }>(`SELECT vertical FROM vendors WHERE id = $1 LIMIT 1`, [opts.vendorId])
-    .catch(() => null);
+  const vendor = await tx.queryOne<{ vertical: string | null }>(
+    `SELECT vertical FROM vendors WHERE id = $1 LIMIT 1`,
+    [opts.vendorId]
+  );
   const vertical = vendor?.vertical ?? null;
 
   // Productos giftcard del comercio (monto = precio del producto).
   const ids = [...new Set(items.map((i) => String(i.product_id)))];
-  const pros = await tx
-    .query<{ id: string; price: number }>(
-      `SELECT id, price FROM products
-       WHERE vendor_id = $1 AND id = ANY($2)
-         AND (sku LIKE 'GC-%' OR lower(category) = 'giftcards')`,
-      [opts.vendorId, ids]
-    )
-    .catch(() => [] as { id: string; price: number }[]);
+  const pros = await tx.query<{ id: string; price: number }>(
+    `SELECT id, price FROM products
+     WHERE vendor_id = $1 AND id = ANY($2)
+       AND (sku LIKE 'GC-%' OR lower(category) = 'giftcards')`,
+    [opts.vendorId, ids]
+  );
   const priceById = new Map(
     (pros || []).map((p) => [String(p.id), Math.round(Number(p.price)) || 0])
   );
@@ -129,6 +139,21 @@ export async function issueGiftcardsForOrder(
         )
         .catch(() => null)
     )?.e === true;
+
+  // ¿El CHECK de kind acepta 'issue'? (migrate-giftcard-issue.sql). Chequeo
+  // con pg_constraint + to_regclass: nunca lanza y no envenena la tx.
+  // Si la tabla no existe (sin migrar), to_regclass da NULL → 0 filas → false.
+  const issueKindOk =
+    (
+      await tx.queryOne<{ ok: boolean }>(
+        `SELECT EXISTS (
+           SELECT 1 FROM pg_constraint c
+           WHERE c.conrelid = to_regclass('public.giftcard_moves')
+             AND c.contype = 'c'
+             AND pg_get_constraintdef(c.oid) LIKE '%issue%'
+         ) AS ok`
+      )
+    )?.ok === true;
 
   const buyer = String(opts.customerName || "").trim().slice(0, 120) || null;
   const phone = String(opts.customerPhone || "").trim().slice(0, 40) || null;
@@ -192,23 +217,21 @@ export async function issueGiftcardsForOrder(
         }
       }
       if (!created) continue;
-      // Historial de emisión (tolerante al CHECK viejo sin 'issue').
-      const moveNote = note || `Venta (pedido ${opts.orderId.slice(0, 8)})`;
-      await tx
-        .queryVoid(`INSERT INTO giftcard_moves (giftcard_id, kind, amount, note) VALUES ($1, 'issue', $2, $3)`, [
-          created.id,
-          created.amount,
-          moveNote,
-        ])
-        .catch(async () => {
-          await tx
-            .queryVoid(`INSERT INTO giftcard_moves (giftcard_id, kind, amount, note) VALUES ($1, 'adjust', $2, $3)`, [
-              created!.id,
-              created!.amount,
-              `emisión: ${moveNote}`,
-            ])
-            .catch(() => undefined);
-        });
+      // Historial de emisión (kind 'issue' solo si el CHECK ya lo acepta;
+      // si no, 'adjust' — y sin insertar nada si la tabla no existe: un
+      // .catch() acá envenenaría la tx igual).
+      if (await hasTable(tx, "giftcard_moves")) {
+        const moveNote = note || `Venta (pedido ${opts.orderId.slice(0, 8)})`;
+        await tx.queryVoid(
+          `INSERT INTO giftcard_moves (giftcard_id, kind, amount, note) VALUES ($1, $2, $3, $4)`,
+          [
+            created.id,
+            issueKindOk ? "issue" : "adjust",
+            created.amount,
+            issueKindOk ? moveNote : `emisión: ${moveNote}`,
+          ]
+        );
+      }
       out.push(created);
     }
   }
@@ -224,21 +247,24 @@ export async function voidGiftcardsForOrder(
   opts: { vendorId: string; orderId: string; note?: string | null }
 ): Promise<number> {
   if (!opts.vendorId || !opts.orderId) return 0;
-  const rows = await tx
-    .query<{ id: string }>(
-      `UPDATE giftcards SET status = 'void'
-       WHERE vendor_id = $1 AND order_id = $2 AND status = 'active'
-       RETURNING id`
-    ,[opts.vendorId, opts.orderId])
-    .catch(() => [] as { id: string }[]);
-  const note = String(opts.note || "venta cancelada").slice(0, 200);
-  for (const r of rows || []) {
-    await tx
-      .queryVoid(`INSERT INTO giftcard_moves (giftcard_id, kind, amount, note) VALUES ($1, 'adjust', 0, $2)`, [
-        String(r.id),
-        note,
-      ])
-      .catch(() => undefined);
+  // Guard previo (nunca envenena): sin tabla o sin la columna order_id
+  // (migrate-giftcard-issue.sql pendiente) no hay códigos vinculados que
+  // anular — la venta cancela igual.
+  if (!(await hasTable(tx, "giftcards"))) return 0;
+  if (!(await hasColumn(tx, "giftcards", "order_id"))) return 0;
+  const rows = await tx.query<{ id: string }>(
+    `UPDATE giftcards SET status = 'void'
+     WHERE vendor_id = $1 AND order_id = $2 AND status = 'active'
+     RETURNING id`
+    , [opts.vendorId, opts.orderId]);
+  if (await hasTable(tx, "giftcard_moves")) {
+    const note = String(opts.note || "venta cancelada").slice(0, 200);
+    for (const r of rows || []) {
+      await tx.queryVoid(
+        `INSERT INTO giftcard_moves (giftcard_id, kind, amount, note) VALUES ($1, 'adjust', 0, $2)`,
+        [String(r.id), note]
+      );
+    }
   }
   return (rows || []).length;
 }

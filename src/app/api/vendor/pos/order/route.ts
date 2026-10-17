@@ -1,5 +1,5 @@
 import { gateRequest, gateError } from "@/lib/subscription-gate";
-import { queryMany, queryOne, withTransaction } from "@/lib/db";
+import { hasTable, queryMany, queryOne, withTransaction } from "@/lib/db";
 import { fetchVendorDelivery } from "@/lib/delivery-server";
 import { resolveDeliveryFee, type DeliverySelection } from "@/lib/delivery";
 import { nextOrderNumber } from "@/lib/order-number";
@@ -494,21 +494,19 @@ export async function POST(request: Request) {
     // (fiado queda pendiente → se emiten al cubrirse o a mano desde el
     // detalle). Idempotente por (pedido, producto, unidad); preview nunca.
     if (order?.id && !previewOrder && payment !== "fiado") {
-      try {
-        const { issueGiftcardsForOrder } = await import("@/lib/giftcards");
-        giftcardIssued = await issueGiftcardsForOrder(tx, {
-          vendorId: gate.vendor.id,
-          orderId: String(order.id),
-          items: (finalItems || []) as any[],
-          customerName: customerName?.trim() || null,
-          customerPhone: customerPhoneClean || null,
-          isPreview: false,
-          note: `Venta mostrador #${pickupNumber ?? order.id.slice(0, 8)}`,
-        });
-      } catch (e) {
-        const { logApiError } = await import("@/lib/api-error");
-        logApiError("pos/order-giftcard-issue", e);
-      }
+      const { issueGiftcardsForOrder } = await import("@/lib/giftcards");
+      // Sin try/catch-and-continue: un fallo acá se re-lanza para rollback
+      // limpio de la venta (un catch que sigue usando la tx la envenena:
+      // 25P02 en toda query posterior).
+      giftcardIssued = await issueGiftcardsForOrder(tx, {
+        vendorId: gate.vendor.id,
+        orderId: String(order.id),
+        items: (finalItems || []) as any[],
+        customerName: customerName?.trim() || null,
+        customerPhone: customerPhoneClean || null,
+        isPreview: false,
+        note: `Venta mostrador #${pickupNumber ?? order.id.slice(0, 8)}`,
+      });
     }
 
     // Kardex: la venta de mostrador mueve stock (lo que adjust descontó).
@@ -538,17 +536,14 @@ export async function POST(request: Request) {
       });
     }
 
-    // Fiado: cargo en cuenta corriente (tolerante a migración sin aplicar).
-    if (payment === "fiado" && order?.id && fiadoPhone && !previewOrder) {
-      try {
-        await tx.queryVoid(
-          `INSERT INTO account_moves (vendor_id, customer_phone, kind, amount, ref_order)
-           VALUES ($1, $2, 'charge', $3, $4)`,
-          [gate.vendor.id, fiadoPhone, finalTotal, order.id]
-        );
-      } catch {
-        /* sin tabla: la venta igual queda */
-      }
+    // Fiado: cargo en cuenta corriente (tolerante a migración: sin tabla no
+    // se inserta — un catch-and-continue envenenaría la tx y mataría la venta).
+    if (payment === "fiado" && order?.id && fiadoPhone && !previewOrder && (await hasTable(tx, "account_moves"))) {
+      await tx.queryVoid(
+        `INSERT INTO account_moves (vendor_id, customer_phone, kind, amount, ref_order)
+         VALUES ($1, $2, 'charge', $3, $4)`,
+        [gate.vendor.id, fiadoPhone, finalTotal, order.id]
+      );
     }
     resolvedVolumeApplied = volumeApplied;
     resolvedManualDiscount = manualDiscountAmount;

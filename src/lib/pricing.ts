@@ -24,6 +24,8 @@ export type IncomingOrderItem = {
   qty?: number | null;
   /** Labels de modificadores (los strings que vienen del carrito). */
   modifiers?: unknown;
+  /** Componentes si el ítem es un combo (snapshot al pedir). */
+  combo_members?: { product_id: string; name?: string; qty: number }[];
 };
 
 /** Error de negocio al recomputar pedido (producto deshabilitado, modificador inválido, carrito vacío). */
@@ -150,6 +152,38 @@ export async function resolveOrderPricing(opts: {
         [vendorId, [...productIds]]
       )
     : [];
+
+  // Componentes de combos: se adjuntan al ProductRow como snapshot (para
+  // stock/kardex y desglose del ticket). Tolerante a DB sin la tabla.
+  try {
+    const crows = await tx.query<{ combo_product_id: string; member_product_id: string; qty: number }>(
+      `SELECT combo_product_id, member_product_id, qty FROM combo_items WHERE vendor_id = $1 AND combo_product_id = ANY($2)`,
+      [vendorId, [...productIds]]
+    );
+    const mrows = crows.length > 0
+      ? await tx.query<{ id: string; name: string; price: number }>(
+          `SELECT id, name, price FROM products WHERE vendor_id = $1 AND id = ANY($2)`,
+          [vendorId, [...new Set(crows.map((c) => c.member_product_id))]]
+        )
+      : [];
+    const mById = new Map(mrows.map((m) => [m.id, m]));
+    const byCombo = new Map<string, { product_id: string; name: string; qty: number }[]>();
+    for (const c of crows) {
+      const cp = String(c.combo_product_id);
+      const m = mById.get(String(c.member_product_id));
+      if (!m) continue;
+      if (!byCombo.has(cp)) byCombo.set(cp, []);
+      byCombo.get(cp)!.push({ product_id: String(c.member_product_id), name: String(m.name), qty: Math.max(1, Math.round(Number(c.qty) || 1)) });
+    }
+    for (const p of products) {
+      const members = byCombo.get(String(p.id));
+      if (members && members.length > 0) {
+        (p as any).combo_members = members;
+      }
+    }
+  } catch {
+    /* sin tabla: los combos se tratan como productos normales */
+  }
 
   const productById = new Map(products.map((p) => [p.id, p]));
   const variantById = new Map(variants.map((v) => [v.id, v]));
@@ -437,6 +471,9 @@ export async function resolveOrderPricing(opts: {
       modifiers: labels.length ? labels : undefined,
       pack_size: pack > 1 ? pack : undefined,
       unit: isKg ? "kg" : undefined,
+      // Combo: snapshot de componentes (para stock/kardex y desglose). El
+      // combo en sí no tiene stock propio: los componentes sí.
+      combo_members: (product as any).combo_members || undefined,
     });
   }
 

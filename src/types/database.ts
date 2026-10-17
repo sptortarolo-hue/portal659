@@ -720,6 +720,8 @@ export type OrderItem = {
   unit?: string;
   /** Línea manual de mostrador ("Varios"): sin producto, sin stock, fuera de estadísticas. */
   manual?: boolean;
+  /** Componentes si el ítem es un combo (snapshot al pedir, para stock/kardex). */
+  combo_members?: { product_id: string; name?: string; qty: number }[];
   /** Tilde de cocina (KDS acumulativo). true = ítem ya elaborado. */
   done?: boolean;
 };

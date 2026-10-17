@@ -56,6 +56,44 @@ export async function adjustStockForItems(
       continue;
     }
 
+    // Combo: descontar/reponer stock de cada componente (el combo en sí no
+    // tiene stock propio; los componentes sí). Movimiento del kardex por
+    // componente. Tolerante a DB sin la tabla (migración sin aplicar): el
+    // combo se trata como un producto normal (no-op si no controla stock).
+    const comboMembers = Array.isArray((item as any).combo_members)
+      ? ((item as any).combo_members as { product_id: string; qty: number }[])
+      : null;
+    if (comboMembers && comboMembers.length > 0) {
+      for (const m of comboMembers) {
+        if (!m || !m.product_id) continue;
+        const mqty = Math.max(1, Math.round(Number(m.qty) || 1)) * qty;
+        if (direction === "increment") {
+          const rows = await tx.query<{ id: string }>(
+            `UPDATE products SET stock = stock + $1 WHERE id = $2 AND stock_control = true RETURNING id`,
+            [mqty, m.product_id]
+          );
+          if (rows.length > 0) moved.push({ product_id: m.product_id, qty: mqty });
+        } else {
+          const rows = await tx.query<{ id: string }>(
+            `UPDATE products SET stock = stock - $1
+             WHERE id = $2 AND stock_control = true AND COALESCE(stock, 0) >= $1
+             RETURNING id`,
+            [mqty, m.product_id]
+          );
+          if (rows.length === 0) {
+            const p = await tx.queryOne<{ stock_control: boolean }>(
+              `SELECT stock_control FROM products WHERE id = $1 LIMIT 1`,
+              [m.product_id]
+            );
+            if (p?.stock_control) throw new OutOfStockError(item.name);
+          } else {
+            moved.push({ product_id: m.product_id, qty: mqty });
+          }
+        }
+      }
+      continue;
+    }
+
     if (item.product_id) {
       if (direction === "increment") {
         const rows = await tx.query<{ id: string }>(

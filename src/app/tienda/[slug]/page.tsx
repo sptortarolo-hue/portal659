@@ -337,10 +337,10 @@ export default async function TiendaPage({
       retailDeliveryOpen = null;
     }
   }
-  // Precios por volumen (packs combinables): gastronomía y comercios de
-  // barrio. El servidor los calcula sin gate vertical; acá se decide si el
-  // micrositio los muestra (badges, PackCards, PackSheet).
-  const showVolume = isGastro || isComercio;
+  // Precios por volumen (packs combinables): gastronomía, comercios de
+  // barrio y moda. El servidor los calcula sin gate vertical; acá se decide
+  // si el micrositio los muestra (badges, PackCards, PackSheet).
+  const showVolume = isGastro || isComercio || isModa;
 
   const norm = (s: string | null) => (s || "").toLowerCase().trim();
   type Section = { name: string; items: any[] };
@@ -955,8 +955,8 @@ export default async function TiendaPage({
                 className="flex items-center justify-between gap-3 rounded-2xl bg-emerald-50 border border-emerald-200 px-4 py-3 mb-4 hover:shadow-md active:scale-[0.99] transition-all"
               >
                 <span className="min-w-0">
-                  <span className="block font-semibold text-sm text-emerald-900">🧊 Armá tu pack a precio conveniente</span>
-                  <span className="block text-xs text-emerald-700 mt-0.5">Elegí tus gustos entre los combinables</span>
+                  <span className="block font-semibold text-sm text-emerald-900">{isModa ? "📦 Llevá más, pagá menos" : "🧊 Armá tu pack a precio conveniente"}</span>
+                  <span className="block text-xs text-emerald-700 mt-0.5">{isModa ? "Combinando prendas y accesorios del pack" : "Elegí tus gustos entre los combinables"}</span>
                 </span>
                 <span aria-hidden="true" className="text-emerald-700 font-bold flex-shrink-0">↓</span>
               </a>
@@ -1141,7 +1141,7 @@ export default async function TiendaPage({
         {/* Packs para armar: un punto de entrada por pack (multi-producto) */}
         {showVolume && acceptsCart && !menuHidden && packGroups.length > 0 && (
           <section id="packs" className="mt-6 mb-10 scroll-mt-[184px] sm:scroll-mt-24">
-            <h3 className="font-display text-xl font-semibold mb-3">🧊 Armá tu pack</h3>
+            <h3 className="font-display text-xl font-semibold mb-3">{isModa ? "📦 Packs combinables" : "🧊 Armá tu pack"}</h3>
             <div className="space-y-2">
               {packGroups.map((g: any) => (
                 <PackCard key={g.id} group={g} />

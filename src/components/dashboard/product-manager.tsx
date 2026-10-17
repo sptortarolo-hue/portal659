@@ -10,7 +10,10 @@ import { Switch } from "@/components/ui/switch";
 import { QuantityInput } from "@/components/ui/quantity-input";
 import { Badge } from "@/components/ui/badge";
 import { OfferForm, OfferList, useFormDraft } from "@/components/dashboard/shared";
+import { CollapsibleSection } from "@/components/ui/collapsible-section";
+import { VolumeEditor } from "@/components/dashboard/volume-editor";
 import { clearDraft } from "@/lib/draft";
+import { isGiftProductRow } from "@/lib/gift-card-share";
 import { ProductModifiersBlock } from "@/components/dashboard/modifier-editor";
 import { SIZE_GUIDE_TEMPLATES, templateToText } from "@/lib/size-guides";
 import type { ProductVariant, ProductImage } from "@/types/database";
@@ -750,6 +753,24 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
           showBuyCost={canEditCost}
           emptyText={`Todavía no cargaste ${isModa || isComercio ? "productos" : "platos"}.`}
         />
+      )}
+
+      {/* Precios por volumen (moda): packs "llevá 3 y pagá…" combinando prendas
+          o accesorios. Montado al abrir la sección (igual que el tab de
+          MenuStudio: no fetchea hasta que se usa). */}
+      {isModa && (
+        <CollapsibleSection
+          icon="📦"
+          title="Precios por volumen (packs de 2 a 99)"
+          defaultOpen={false}
+        >
+          <VolumeEditor
+            products={offers
+              .filter((o) => !isGiftProductRow(o))
+              .map((o) => ({ id: o.id, name: o.name, category: o.category, price: Number(o.price) || 0 }))}
+            categories={categories}
+          />
+        </CollapsibleSection>
       )}
     </div>
   );

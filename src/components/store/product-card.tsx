@@ -7,6 +7,7 @@ import { ProductImage } from "@/components/product-image";
 import { CashPrice } from "@/components/store/cash-price";
 import { FromPrice } from "@/components/store/from-price";
 import { cashAppliesToItem, normalizeCashPct } from "@/lib/cash-discount";
+import { volumeBadgeText } from "@/lib/volume-pricing";
 import { activeOptions, isTotalMode, totalPriceRange } from "@/lib/modifier-select";
 
 type VendorBrief = {
@@ -21,6 +22,17 @@ type VendorBrief = {
   deliveryMode?: "flat" | "zones" | null;
   deliveryAreaText?: string | null;
   deliveryZones?: { id: string; name: string; description: string | null; fee: number }[];
+  /** Grupos de precios por volumen (moda/comercio): badge "Llevá N y pagá $X". */
+  volumeGroups?: {
+    id: string;
+    name: string;
+    productIds: string[];
+    combinePromo: boolean;
+    combineCash: boolean;
+    extrasIncluded: boolean;
+    tiers: { minQty: number; kind: "fixed_total" | "percent_off"; value: number }[];
+    memberNames?: string[];
+  }[];
 };
 
 function isRetailVertical(vertical: string | null | undefined): boolean {
@@ -82,6 +94,22 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
   const cover = imgs[activeImg]?.image_url || imgs[0]?.image_url || null;
 
   const summary = hasVariants ? variantSummary(variants) : null;
+
+  // Badge de precio por volumen ("📦 Llevá 3 y pagá $X" / pack combinable).
+  const volBadge = volumeBadgeText(
+    (vendor.volumeGroups || []).map((g) => ({
+      id: g.id,
+      name: g.name,
+      productIds: g.productIds || [],
+      active: true,
+      combinePromo: !!g.combinePromo,
+      combineCash: !!g.combineCash,
+      extrasIncluded: !!g.extrasIncluded,
+      tiers: (g.tiers || []) as never,
+    })),
+    String(product.id)
+  );
+
 
   // Grupos en modo total (ej. Tamaño): rango para el "desde" refinado.
   // Sin promo (la promo manda en el display).
@@ -269,6 +297,7 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
               {regularLabel && <span className="text-[10px] text-muted-foreground line-through">{regularLabel}</span>}
             </div>
           )}
+          {volBadge && <span className="mt-0.5 w-fit max-w-full truncate text-[10px] font-medium rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.5">{volBadge}</span>}
         </div>
       </div>
 
@@ -376,6 +405,7 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
                     )}
                   </div>
                 )}
+                {volBadge && <span className="mt-1 w-fit max-w-full text-[11px] font-medium rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5">{volBadge}</span>}
               </div>
 
               {product.description && (

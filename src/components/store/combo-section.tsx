@@ -70,7 +70,7 @@ export function ComboSection({
               key={o.id}
               type="button"
               onClick={() => setSelectedId(o.id)}
-              className="w-full text-left rounded-2xl border-2 border-violet-200 bg-violet-50 p-3 flex items-center gap-3 active:scale-[0.99] transition-transform cursor-pointer"
+              className="w-full text-left rounded-2xl border-2 border-violet-200 bg-violet-50 dark:border-violet-900 dark:bg-violet-950/50 p-3 flex items-center gap-3 active:scale-[0.99] transition-transform cursor-pointer"
             >
               <div className="h-20 w-20 rounded-xl overflow-hidden flex-shrink-0 bg-white">
                 <ProductImage
@@ -90,7 +90,7 @@ export function ComboSection({
                   </span>
                 </div>
                 {incluye && (
-                  <p className="text-xs text-violet-900/80 mt-0.5 line-clamp-2 break-words">
+                  <p className="text-xs text-violet-900 dark:text-violet-300 mt-0.5 line-clamp-2 break-words">
                     <span className="font-semibold">Incluye:</span> {incluye}
                   </p>
                 )}
@@ -100,7 +100,7 @@ export function ComboSection({
                       <span className="text-xs text-muted-foreground line-through tabular-nums">{fmt(o.price)}</span>
                       <span className="font-bold text-primary tabular-nums">{fmt(o.promo_price!)}</span>
                       {incluyeSum > 0 && Number(o.promo_price) < incluyeSum && (
-                        <span className="text-[11px] font-semibold text-emerald-700">Ahorrás {fmt(incluyeSum - Number(o.promo_price))}</span>
+                        <span className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-400">Ahorrás {fmt(incluyeSum - Number(o.promo_price))}</span>
                       )}
                     </>
                   ) : (
@@ -109,7 +109,7 @@ export function ComboSection({
                       {incluyeSum > 0 && Number(o.price) < incluyeSum && (
                         <>
                           <span className="text-xs text-muted-foreground line-through tabular-nums">{fmt(incluyeSum)}</span>
-                          <span className="text-[11px] font-semibold text-emerald-700">Ahorrás {fmt(incluyeSum - Number(o.price))}</span>
+                          <span className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-400">Ahorrás {fmt(incluyeSum - Number(o.price))}</span>
                         </>
                       )}
                     </>
@@ -124,7 +124,7 @@ export function ComboSection({
               href={consultHref}
               target="_blank"
               rel="noopener noreferrer"
-              className="rounded-2xl border-2 border-violet-200 bg-violet-50 p-3 flex items-center gap-3 active:scale-[0.99] transition-transform"
+              className="rounded-2xl border-2 border-violet-200 bg-violet-50 dark:border-violet-900 dark:bg-violet-950/50 p-3 flex items-center gap-3 active:scale-[0.99] transition-transform"
             >
               <div className="h-20 w-20 rounded-xl overflow-hidden flex-shrink-0 bg-white">
                 <ProductImage
@@ -138,7 +138,7 @@ export function ComboSection({
               </div>
               <div className="min-w-0 flex-1">
                 <p className="font-bold leading-snug line-clamp-2">{o.name}</p>
-                <p className="text-xs text-violet-900/80 mt-0.5">
+                <p className="text-xs text-violet-900 dark:text-violet-300 mt-0.5">
                   <span className="text-[11px] font-bold text-white bg-violet-500 rounded-full px-2 py-0.5 mr-1">🧩 COMBO</span>
                   {incluye ? <><span className="font-semibold">Incluye:</span> {incluye} · </> : null}
                   <span className="font-bold tabular-nums">{fmt(o.price)}</span>

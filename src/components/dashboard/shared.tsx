@@ -324,7 +324,7 @@ export function OfferForm({
   // Editor de combos: toggle + líneas + sumatorias (se renderiza solo si el
   // padre pasa los handlers; si no, el toggle queda inerte).
   const comboEditor = offIsCombo ? (
-    <div className="space-y-3 rounded-xl border border-violet-200 bg-violet-50/40 p-3">
+    <div className="space-y-3 rounded-xl border border-violet-200 bg-violet-50/40 dark:border-violet-900 dark:bg-violet-950/40 p-3">
       <div className="flex items-center justify-between">
         <span className="text-sm font-semibold">🧩 Componentes del combo</span>
         <span className="text-[11px] text-muted-foreground">
@@ -333,7 +333,7 @@ export function OfferForm({
       </div>
       <div className="space-y-1.5">
         {(offComboItems || []).map((c, idx) => (
-          <div key={`${c.product_id}-${idx}`} className="flex items-center gap-2 rounded-lg bg-white px-2 py-1.5">
+          <div key={`${c.product_id}-${idx}`} className="flex items-center gap-2 rounded-lg bg-background px-2 py-1.5">
             <span className="flex-1 min-w-0 text-xs truncate">
               {c.name}
               <span className="text-muted-foreground"> · ${Number(c.price).toLocaleString("es-AR")} c/u</span>
@@ -406,13 +406,13 @@ export function OfferForm({
         </select>
       </div>
       {comboSaleSum > 0 && (
-        <div className="flex items-center justify-between text-xs border-t border-violet-200 pt-2">
+        <div className="flex items-center justify-between text-xs border-t border-violet-200 dark:border-violet-900 pt-2">
           <span className="text-muted-foreground">Valor de venta de los componentes</span>
           <span className="font-medium tabular-nums">${comboSaleSum.toLocaleString("es-AR")}</span>
         </div>
       )}
       {comboOutOfRange && (
-        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
+        <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 dark:text-amber-300 dark:bg-amber-950/60 dark:border-amber-900 rounded-lg px-2.5 py-1.5">
           ⚠️ El precio del combo debería estar entre $1 y ${comboSaleSum.toLocaleString("es-AR")} (suma de los componentes).
         </p>
       )}

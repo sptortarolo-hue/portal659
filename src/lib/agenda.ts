@@ -195,3 +195,130 @@ export function addDaysISO(dateISO: string, delta: number): string {
   d.setDate(d.getDate() + delta);
   return d.toISOString().slice(0, 10);
 }
+
+/** ISO "YYYY-MM-DD" local (mediodía) — evita corrimientos por UTC. */
+function toISODateLocal(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+// ---------------------------------------------------------------------------
+// Vista Mes (calendario): grilla lunes→domingo con conteos por día.
+// ---------------------------------------------------------------------------
+
+/** Abreviaturas de días, lunes primero (consistente con el resto del panel). */
+export const MONTH_WEEKDAYS = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
+
+/** Primer día del mes de un ISO (devuelve "YYYY-MM-01"). */
+export function startOfMonthISO(dateISO: string): string {
+  const d = new Date(`${dateISO}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return dateISO;
+  return toISODateLocal(d).slice(0, 8) + "01";
+}
+
+/** Suma/resta meses a un ISO, anclando al día 1 (seguro contra desborde de mes). */
+export function addMonthsISO(dateISO: string, delta: number): string {
+  const d = new Date(`${startOfMonthISO(dateISO)}T12:00:00`);
+  d.setMonth(d.getMonth() + delta);
+  return toISODateLocal(d).slice(0, 8) + "01";
+}
+
+/** Etiqueta del mes, ej. "Octubre 2026". */
+export function monthLabel(dateISO: string): string {
+  const d = new Date(`${startOfMonthISO(dateISO)}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return dateISO;
+  const s = d.toLocaleDateString("es-AR", { month: "long", year: "numeric" });
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+export type MonthStatusCounts = {
+  pending: number;
+  confirmed: number;
+  noshow: number;
+  cancelled: number;
+  other: number;
+};
+
+export type MonthCell = {
+  iso: string;
+  day: number;
+  inMonth: boolean;
+  isToday: boolean;
+  count: number;
+  byStatus: MonthStatusCounts;
+  /** Turnos del día, ordenados por hora (ya filtrados por profesional). */
+  items: AgendaBooking[];
+};
+
+/**
+ * Grilla de 42 celdas (6 filas × 7) del mes que contiene `anchorISO`,
+ * empezando el lunes. Los turnos se agrupan por `booking_date` "YYYY-MM-DD"
+ * (los que no tienen fecha válida se ignoran acá) y, si se pasa `staffId`,
+ * sólo se cuentan los de ese profesional.
+ */
+export function buildMonthGrid(
+  anchorISO: string,
+  bookings: AgendaBooking[],
+  opts: { staffId?: string | null } = {}
+): MonthCell[] {
+  const firstISO = startOfMonthISO(anchorISO);
+  const firstDate = new Date(`${firstISO}T12:00:00`);
+  if (Number.isNaN(firstDate.getTime())) return [];
+
+  const offset = (firstDate.getDay() + 6) % 7; // 0 = lunes
+  const gridStart = new Date(firstDate);
+  gridStart.setDate(gridStart.getDate() - offset);
+
+  const today = toISODateLocal(new Date());
+  const monthIdx = firstDate.getMonth();
+  const year = firstDate.getFullYear();
+  const staffId = opts.staffId && opts.staffId !== "all" ? opts.staffId : null;
+
+  const byDate = new Map<string, AgendaBooking[]>();
+  for (const b of bookings) {
+    const iso = String(b.booking_date || "").slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) continue;
+    if (staffId && (b.staff_id || "") !== staffId) continue;
+    const arr = byDate.get(iso) || [];
+    arr.push(b);
+    byDate.set(iso, arr);
+  }
+
+  const cells: MonthCell[] = [];
+  const cur = new Date(gridStart);
+  for (let i = 0; i < 42; i++) {
+    const iso = toISODateLocal(cur);
+    const items = (byDate.get(iso) || [])
+      .slice()
+      .sort((a, b) => (bookingStartMinutes(a) ?? 0) - (bookingStartMinutes(b) ?? 0));
+    const byStatus: MonthStatusCounts = { pending: 0, confirmed: 0, noshow: 0, cancelled: 0, other: 0 };
+    for (const b of items) {
+      switch (String(b.status || "")) {
+        case "pending":
+          byStatus.pending++;
+          break;
+        case "confirmed":
+          byStatus.confirmed++;
+          break;
+        case "noshow":
+          byStatus.noshow++;
+          break;
+        case "cancelled":
+          byStatus.cancelled++;
+          break;
+        default:
+          byStatus.other++;
+      }
+    }
+    cells.push({
+      iso,
+      day: cur.getDate(),
+      inMonth: cur.getMonth() === monthIdx && cur.getFullYear() === year,
+      isToday: iso === today,
+      count: items.length,
+      byStatus,
+      items,
+    });
+    cur.setDate(cur.getDate() + 1);
+  }
+  return cells;
+}

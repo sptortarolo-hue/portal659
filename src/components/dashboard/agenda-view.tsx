@@ -4,9 +4,9 @@ import { useMemo, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import {
   HOUR_HEIGHT,
-  MIN_BLOCK_PX,
-  PX_PER_MIN,
+  MONTH_WEEKDAYS,
   addDaysISO,
+  addMonthsISO,
   agendaWindow,
   arNowMinutes,
   blockHeight,
@@ -14,15 +14,19 @@ import {
   bookingDurationMinutes,
   bookingStartMinutes,
   buildDayColumns,
+  buildMonthGrid,
   formatDayLabel,
   minutesToLabel,
+  monthLabel,
+  startOfMonthISO,
   statusTone,
   type AgendaBooking,
   type AgendaStaff,
+  type MonthCell,
 } from "@/lib/agenda";
 import { arToday } from "@/lib/booking-schedule";
 
-export type AgendaViewMode = "day" | "list";
+export type AgendaViewMode = "day" | "month" | "list";
 
 type Props = {
   /** Turnos ya filtrados por estado (el panel maneja el chip de estado). */
@@ -33,6 +37,10 @@ type Props = {
   view: AgendaViewMode;
   onView: (v: AgendaViewMode) => void;
   onOpenBooking: (id: string) => void;
+  /** Abre la vista Día en esa fecha (drill-down desde el Mes). */
+  onDaySelect: (iso: string) => void;
+  /** Alta de turno precargando fecha y profesional (celda vacía del Mes). */
+  onCreateBooking?: (iso: string, staffId?: string) => void;
   /** Contenido de la vista Lista (la lista agrupada que arma el panel). */
   listContent: ReactNode;
 };
@@ -89,15 +97,15 @@ function AgendaDay({
   bookings,
   staff,
   dateISO,
+  staffFilter,
   onOpenBooking,
 }: {
   bookings: AgendaBooking[];
   staff: AgendaStaff[];
   dateISO: string;
+  staffFilter: string;
   onOpenBooking: (id: string) => void;
 }) {
-  const [staffFilter, setStaffFilter] = useState<string>("all");
-
   const dayBookings = useMemo(() => {
     const base = bookings.filter((b) => String(b.booking_date || "").slice(0, 10) === dateISO && bookingStartMinutes(b) != null);
     return staffFilter === "all" ? base : base.filter((b) => (b.staff_id || "") === staffFilter);
@@ -119,22 +127,6 @@ function AgendaDay({
 
   return (
     <div className="space-y-2">
-      {staff.length > 1 && (
-        <div className="flex items-center gap-2">
-          <label className="text-xs text-muted-foreground">Profesional</label>
-          <select
-            value={staffFilter}
-            onChange={(e) => setStaffFilter(e.target.value)}
-            className="h-8 flex-1 max-w-56 rounded-md border border-input bg-background px-2 text-sm"
-          >
-            <option value="all">Todos</option>
-            {staff.map((s) => (
-              <option key={s.id} value={s.id}>{s.name}</option>
-            ))}
-          </select>
-        </div>
-      )}
-
       <div className="overflow-x-auto -mx-1 px-1">
         <div className="min-w-max">
           {/* Encabezado: riel vacío + columnas por profesional */}
@@ -208,6 +200,139 @@ function AgendaDay({
   );
 }
 
+/** Puntos de estado del Mes (mismo criterio de color que `statusTone`). */
+const MONTH_DOTS: { key: keyof MonthCell["byStatus"]; className: string; label: string }[] = [
+  { key: "pending", className: "bg-amber-400", label: "pendientes" },
+  { key: "confirmed", className: "bg-emerald-500", label: "confirmados" },
+  { key: "noshow", className: "bg-orange-400", label: "ausentes" },
+  { key: "cancelled", className: "bg-muted-foreground/50", label: "cancelados" },
+];
+
+function StatusDots({ byStatus }: { byStatus: MonthCell["byStatus"] }) {
+  return (
+    <span className="flex items-center gap-0.5">
+      {MONTH_DOTS.map((d) =>
+        byStatus[d.key] > 0 ? (
+          <span
+            key={d.key}
+            className={`h-1.5 w-1.5 rounded-full ${d.className}`}
+            title={`${byStatus[d.key]} ${d.label}`}
+          />
+        ) : null
+      )}
+    </span>
+  );
+}
+
+function AgendaMonth({
+  bookings,
+  dateISO,
+  staffFilter,
+  onDaySelect,
+  onCreateBooking,
+}: {
+  bookings: AgendaBooking[];
+  dateISO: string;
+  staffFilter: string;
+  onDaySelect: (iso: string) => void;
+  onCreateBooking?: (iso: string, staffId?: string) => void;
+}) {
+  const cells = useMemo(
+    () => buildMonthGrid(dateISO, bookings, { staffId: staffFilter }),
+    [dateISO, bookings, staffFilter]
+  );
+  const totalMonth = cells.reduce((acc, c) => (c.inMonth ? acc + c.count : acc), 0);
+  const noDate = bookings.filter(
+    (b) => !/^\d{4}-\d{2}-\d{2}$/.test(String(b.booking_date || "").slice(0, 10))
+  ).length;
+
+  return (
+    <div className="space-y-2">
+      <div className="grid grid-cols-7 gap-px overflow-hidden rounded-lg border border-border bg-border">
+        {MONTH_WEEKDAYS.map((d) => (
+          <div key={d} className="bg-muted/50 px-1 py-1 text-center text-[10px] font-medium text-muted-foreground">
+            {d}
+          </div>
+        ))}
+        {cells.map((cell) => (
+          <button
+            key={cell.iso}
+            type="button"
+            onClick={() =>
+              cell.count > 0 ? onDaySelect(cell.iso) : onCreateBooking?.(cell.iso, staffFilter)
+            }
+            className={`flex min-h-[60px] flex-col gap-1 p-1.5 text-left transition-colors md:min-h-[104px] ${
+              cell.inMonth ? "bg-card hover:bg-muted/60" : "bg-muted/30 text-muted-foreground hover:bg-muted/50"
+            }`}
+            title={
+              cell.count > 0
+                ? `${cell.count} turno(s) — abrir el día`
+                : onCreateBooking
+                  ? "Agendar turno"
+                  : undefined
+            }
+          >
+            <span className="flex items-center justify-between gap-1">
+              <span
+                className={`flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-semibold tabular-nums ${
+                  cell.isToday ? "bg-primary text-primary-foreground" : ""
+                }`}
+              >
+                {cell.day}
+              </span>
+              {cell.count > 0 && (
+                <span className="rounded-full bg-primary/10 px-1.5 text-[10px] font-semibold text-primary tabular-nums">
+                  {cell.count}
+                </span>
+              )}
+            </span>
+
+            {cell.count > 0 && (
+              <span className="md:hidden">
+                <StatusDots byStatus={cell.byStatus} />
+              </span>
+            )}
+
+            {cell.count > 0 && (
+              <span className="hidden min-w-0 flex-col gap-0.5 overflow-hidden md:flex">
+                {cell.items.slice(0, 3).map((b) => (
+                  <span key={b.id} className="flex min-w-0 items-center gap-1 text-[10px] leading-tight">
+                    <span className="tabular-nums text-muted-foreground">{shortTime(b)}</span>
+                    <span className="truncate">{String(b.customer_name || "Sin nombre")}</span>
+                  </span>
+                ))}
+                {cell.count > 3 && (
+                  <span className="text-[10px] font-medium text-muted-foreground">+{cell.count - 3} más</span>
+                )}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-muted-foreground">
+          {MONTH_DOTS.map((d) => (
+            <span key={d.key} className="flex items-center gap-1">
+              <span className={`h-1.5 w-1.5 rounded-full ${d.className}`} />
+              {d.label}
+            </span>
+          ))}
+        </div>
+        <p className="text-[11px] text-muted-foreground">
+          {totalMonth > 0 ? `${totalMonth} turno(s) este mes` : "Sin turnos este mes"} · tocá un día con turnos para ver el detalle
+        </p>
+      </div>
+
+      {noDate > 0 && (
+        <p className="text-[11px] text-muted-foreground">
+          {noDate} turno(s) sin fecha — miralos en la vista Lista.
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function AgendaView({
   bookings,
   staff,
@@ -216,9 +341,12 @@ export function AgendaView({
   view,
   onView,
   onOpenBooking,
+  onDaySelect,
+  onCreateBooking,
   listContent,
 }: Props) {
   const today = arToday();
+  const [staffFilter, setStaffFilter] = useState<string>("all");
 
   return (
     <div className="space-y-3">
@@ -226,8 +354,15 @@ export function AgendaView({
         <div className="inline-flex rounded-md border border-border overflow-hidden">
           <button
             type="button"
+            onClick={() => onView("month")}
+            className={`px-3 h-8 text-xs font-medium ${view === "month" ? "bg-primary text-primary-foreground" : "bg-card hover:bg-muted"}`}
+          >
+            🗓️ Mes
+          </button>
+          <button
+            type="button"
             onClick={() => onView("day")}
-            className={`px-3 h-8 text-xs font-medium ${view === "day" ? "bg-primary text-primary-foreground" : "bg-card hover:bg-muted"}`}
+            className={`px-3 h-8 text-xs font-medium border-l border-border ${view === "day" ? "bg-primary text-primary-foreground" : "bg-card hover:bg-muted"}`}
           >
             📅 Día
           </button>
@@ -258,9 +393,48 @@ export function AgendaView({
             )}
           </div>
         )}
+
+        {view === "month" && (
+          <div className="flex items-center gap-1.5">
+            <Button size="sm" variant="outline" className="h-8 w-8 p-0" onClick={() => onDate(addMonthsISO(dateISO, -1))} aria-label="Mes anterior">
+              ‹
+            </Button>
+            <span className="inline-flex h-8 items-center px-1 text-sm font-medium whitespace-nowrap">
+              {monthLabel(dateISO)}
+            </span>
+            <Button size="sm" variant="outline" className="h-8 w-8 p-0" onClick={() => onDate(addMonthsISO(dateISO, 1))} aria-label="Mes siguiente">
+              ›
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8"
+              onClick={() => onDate(today)}
+              disabled={startOfMonthISO(dateISO) === startOfMonthISO(today)}
+            >
+              Hoy
+            </Button>
+          </div>
+        )}
       </div>
 
-      {view === "day" ? (
+      {staff.length > 1 && (
+        <div className="flex items-center gap-2">
+          <label className="text-xs text-muted-foreground">Profesional</label>
+          <select
+            value={staffFilter}
+            onChange={(e) => setStaffFilter(e.target.value)}
+            className="h-8 flex-1 max-w-56 rounded-md border border-input bg-background px-2 text-sm"
+          >
+            <option value="all">Todos</option>
+            {staff.map((s) => (
+              <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {view === "day" && (
         <>
           <div className="flex items-center justify-between gap-2">
             <p className="text-sm font-medium">{formatDayLabel(dateISO)}</p>
@@ -273,11 +447,27 @@ export function AgendaView({
               />
             </label>
           </div>
-          <AgendaDay bookings={bookings} staff={staff} dateISO={dateISO} onOpenBooking={onOpenBooking} />
+          <AgendaDay
+            bookings={bookings}
+            staff={staff}
+            dateISO={dateISO}
+            staffFilter={staffFilter}
+            onOpenBooking={onOpenBooking}
+          />
         </>
-      ) : (
-        listContent
       )}
+
+      {view === "month" && (
+        <AgendaMonth
+          bookings={bookings}
+          dateISO={dateISO}
+          staffFilter={staffFilter}
+          onDaySelect={onDaySelect}
+          onCreateBooking={onCreateBooking}
+        />
+      )}
+
+      {view === "list" && listContent}
     </div>
   );
 }

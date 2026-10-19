@@ -399,8 +399,8 @@ export default function DashboardServicio({
     if (agendaViewInit.current || !vendor?.id) return;
     agendaViewInit.current = true;
     const d = loadDraft<{ view?: string }>(vendor.id, "agenda");
-    if (d?.view === "day" || d?.view === "list") setAgendaView(d.view);
-    else setAgendaView(vendor.vertical === "estetica" ? "day" : "list");
+    if (d?.view === "day" || d?.view === "list" || d?.view === "month") setAgendaView(d.view);
+    else setAgendaView(vendor.vertical === "estetica" ? "month" : "list");
   }, [vendor?.id, vendor?.vertical]);
   useEffect(() => {
     if (!agendaViewInit.current || !vendor?.id) return;
@@ -1436,6 +1436,18 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
             view={agendaView}
             onView={setAgendaView}
             onOpenBooking={(id) => setSelectedBookingId(id)}
+            onDaySelect={(iso) => { setAgendaDate(iso); setAgendaView("day"); }}
+            onCreateBooking={(iso, staffId) => {
+              setRebook({
+                customerName: "",
+                customerPhone: "",
+                serviceId: "",
+                staffId: staffId && staffId !== "all" ? staffId : "",
+                durationMin: 60,
+                date: iso,
+              });
+              setBookingModalOpen(true);
+            }}
             listContent={
               filteredBookings.length === 0 ? (
                 <p className="text-sm text-muted-foreground text-center py-4">

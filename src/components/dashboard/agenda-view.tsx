@@ -26,7 +26,7 @@ import {
 } from "@/lib/agenda";
 import { arToday } from "@/lib/booking-schedule";
 
-export type AgendaViewMode = "day" | "month" | "list";
+export type AgendaViewMode = "day" | "month" | "plan" | "list";
 
 type Props = {
   /** Turnos ya filtrados por estado (el panel maneja el chip de estado). */
@@ -43,6 +43,8 @@ type Props = {
   onCreateBooking?: (iso: string, staffId?: string) => void;
   /** Contenido de la vista Lista (la lista agrupada que arma el panel). */
   listContent: ReactNode;
+  /** Contenido de la vista Planificar (grilla semanal; solo estética). */
+  planContent?: ReactNode;
 };
 
 function shortTime(b: AgendaBooking): string {
@@ -344,6 +346,7 @@ export function AgendaView({
   onDaySelect,
   onCreateBooking,
   listContent,
+  planContent,
 }: Props) {
   const today = arToday();
   const [staffFilter, setStaffFilter] = useState<string>("all");
@@ -373,6 +376,15 @@ export function AgendaView({
           >
             ☰ Lista
           </button>
+          {planContent != null && (
+            <button
+              type="button"
+              onClick={() => onView("plan")}
+              className={`px-3 h-8 text-xs font-medium border-l border-border ${view === "plan" ? "bg-primary text-primary-foreground" : "bg-card hover:bg-muted"}`}
+            >
+              ✏️ Planificar
+            </button>
+          )}
         </div>
 
         {view === "day" && (
@@ -418,7 +430,7 @@ export function AgendaView({
         )}
       </div>
 
-      {staff.length > 1 && (
+      {(view === "day" || view === "month") && staff.length > 1 && (
         <div className="flex items-center gap-2">
           <label className="text-xs text-muted-foreground">Profesional</label>
           <select
@@ -468,6 +480,8 @@ export function AgendaView({
       )}
 
       {view === "list" && listContent}
+
+      {view === "plan" && planContent}
     </div>
   );
 }

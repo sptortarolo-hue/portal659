@@ -206,3 +206,135 @@ export function validateDayRangesInput(raw: unknown):
 }
 
 export const SLOT_STEP_MIN = 30;
+
+// ---------------------------------------------------------------------------
+// Semana (lunes→domingo) — usado por el picker del cliente y el planner.
+// ---------------------------------------------------------------------------
+
+function toISODateLocal(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/** Suma/resta días a un ISO "YYYY-MM-DD" (mediodía, seguro contra TZ). */
+export function shiftISODate(dateISO: string, delta: number): string {
+  const d = new Date(`${dateISO}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return dateISO;
+  d.setDate(d.getDate() + delta);
+  return toISODateLocal(d);
+}
+
+/** Lunes de la semana que contiene `dateISO`. */
+export function startOfWeekISO(dateISO: string): string {
+  const d = new Date(`${dateISO}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return dateISO;
+  const offset = (d.getDay() + 6) % 7; // 0 = lunes
+  d.setDate(d.getDate() - offset);
+  return toISODateLocal(d);
+}
+
+/** Los 7 ISO (lun→dom) de la semana que arranca en `startISO`. */
+export function weekDatesISO(startISO: string): string[] {
+  return Array.from({ length: 7 }, (_, i) => shiftISODate(startISO, i));
+}
+
+/** "dd/mm" corto para chips/encabezados. */
+export function fmtDateShort(dateISO: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateISO);
+  return m ? `${m[3]}/${m[2]}` : dateISO;
+}
+
+// ---------------------------------------------------------------------------
+// Grilla de slots (bloques de 30 min) — planner del panel.
+// La grilla representa la VENTANA de disponibilidad del profesional; la
+// duración del servicio manda al ofrecer horarios (lo resuelve el server).
+// ---------------------------------------------------------------------------
+
+export const PLANNER_START_MIN = 7 * 60;
+export const PLANNER_END_MIN = 22 * 60;
+
+function snapDown(min: number): number {
+  return Math.max(0, Math.floor(min / SLOT_STEP_MIN) * SLOT_STEP_MIN);
+}
+function snapUp(min: number): number {
+  return Math.min(24 * 60, Math.ceil(min / SLOT_STEP_MIN) * SLOT_STEP_MIN);
+}
+
+/** availability jsonb → { dia: Set(minutos de inicio marcados, paso 30) }.
+ *  Las franjas con bordes fuera de :00/:30 se ajustan hacia afuera. */
+export function availabilityToSlotMap(raw: unknown): Record<string, Set<number>> {
+  const av = parseAvailability(raw) ?? {};
+  const out: Record<string, Set<number>> = {};
+  for (const day of WEEKDAY_ORDER) {
+    const set = new Set<number>();
+    for (const [o, c] of av[day] || []) {
+      for (let t = snapDown(o); t + SLOT_STEP_MIN <= snapUp(c); t += SLOT_STEP_MIN) set.add(t);
+    }
+    out[day] = set;
+  }
+  return out;
+}
+
+/** { dia: Set(minutos) } → availability jsonb (franjas contiguas, máx 6/día). */
+export function slotMapToAvailability(map: Record<string, Set<number>>): Record<string, [string, string][]> {
+  const out: Record<string, [string, string][]> = {};
+  for (const day of WEEKDAY_ORDER) {
+    const mins = [...(map[day] || new Set<number>())].filter((m) => Number.isFinite(m)).sort((a, b) => a - b);
+    const ranges: [string, string][] = [];
+    let start: number | null = null;
+    let prev: number | null = null;
+    for (const m of mins) {
+      if (start == null || prev == null) {
+        start = m;
+        prev = m;
+        continue;
+      }
+      if (m === prev + SLOT_STEP_MIN) {
+        prev = m;
+        continue;
+      }
+      ranges.push([fmtMinutes(start), fmtMinutes(prev + SLOT_STEP_MIN)]);
+      start = m;
+      prev = m;
+    }
+    if (start != null && prev != null) ranges.push([fmtMinutes(start), fmtMinutes(prev + SLOT_STEP_MIN)]);
+    out[day] = ranges.slice(0, 6);
+  }
+  return out;
+}
+
+/** Ventana de la grilla (07–22 por defecto, expandida si hay franjas fuera). */
+export function plannerWindow(map: Record<string, Set<number>>): { start: number; end: number } {
+  let start = PLANNER_START_MIN;
+  let end = PLANNER_END_MIN;
+  for (const day of WEEKDAY_ORDER) {
+    for (const m of map[day] || []) {
+      if (m < start) start = Math.max(0, m);
+      if (m + SLOT_STEP_MIN > end) end = Math.min(24 * 60, m + SLOT_STEP_MIN);
+    }
+  }
+  return { start, end };
+}
+
+/** Horario del local (texto) → mapa de slots (prefill del planner). */
+export function hoursTextToSlotMap(hours: string | null): Record<string, Set<number>> {
+  const out: Record<string, Set<number>> = {};
+  const monday = "2024-01-01"; // lunes de referencia
+  for (let i = 0; i < 7; i++) {
+    const iso = shiftISODate(monday, i);
+    const key = dayKeyForISO(iso) || "lun";
+    const set = new Set<number>();
+    for (const [o, c] of shiftsFromHoursText(hours, iso) || []) {
+      for (let t = snapDown(o); t + SLOT_STEP_MIN <= snapUp(c); t += SLOT_STEP_MIN) set.add(t);
+    }
+    out[key] = set;
+  }
+  return out;
+}
+
+/** Etiqueta del rango que ocuparía un turno: "10:00–11:30". */
+export function slotRangeLabel(time: string, durationMin: number | null | undefined): string | null {
+  const t = toMinutes(time);
+  const dur = Number(durationMin);
+  if (t == null || !Number.isFinite(dur) || dur <= 0) return null;
+  return `${time}–${fmtMinutes(Math.min(24 * 60, t + dur))}`;
+}

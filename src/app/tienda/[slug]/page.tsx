@@ -772,6 +772,7 @@ export default async function TiendaPage({
                   staffOptions={esteticaStaff.length > 0 ? esteticaStaff : undefined}
                   locationOptions={esteticaLocations.length > 0 ? esteticaLocations : undefined}
                   cancelPolicy={typeof v.cancel_policy_text === "string" && v.cancel_policy_text.trim() ? v.cancel_policy_text.trim() : null}
+                  scheduleMode={typeof v.booking_schedule_mode === "string" ? v.booking_schedule_mode : null}
                 />
               )}
               {isEstetica && esteticaStaff.some((t) => t.photo_url || t.bio) && (
@@ -799,6 +800,7 @@ export default async function TiendaPage({
                   staffOptions={isEstetica && esteticaStaff.length > 0 ? esteticaStaff : undefined}
                   locationOptions={isEstetica && esteticaLocations.length > 0 ? esteticaLocations : undefined}
                   cancelPolicy={isEstetica && typeof v.cancel_policy_text === "string" && v.cancel_policy_text.trim() ? v.cancel_policy_text.trim() : null}
+                  scheduleMode={isEstetica && typeof v.booking_schedule_mode === "string" ? v.booking_schedule_mode : null}
                 />
               )}
             </div>

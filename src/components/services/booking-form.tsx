@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { TimeSelect24 } from "@/components/ui/time-select-24";
+import { WeekSlotPicker } from "@/components/services/week-slot-picker";
 import { readPreviewSession } from "@/components/store/preview-session-sync";
 
 type Props = {
@@ -20,9 +21,11 @@ type Props = {
   locationOptions?: { id: string; name: string; address?: string | null }[];
   /** Política de cancelación visible antes de reservar. */
   cancelPolicy?: string | null;
+  /** "hours" (default) | "grid" = agenda por semana (grilla del cliente). */
+  scheduleMode?: string | null;
 };
 
-export function BookingForm({ vendorId, vendorName, services, serviceOptions, staffOptions, locationOptions, cancelPolicy }: Props) {
+export function BookingForm({ vendorId, vendorName, services, serviceOptions, staffOptions, locationOptions, cancelPolicy, scheduleMode }: Props) {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [productName, setProductName] = useState("");
@@ -70,7 +73,12 @@ export function BookingForm({ vendorId, vendorName, services, serviceOptions, st
 
   const useCatalog = !!serviceOptions && serviceOptions.length > 0;
   const chosenService = useCatalog ? serviceOptions.find((s) => s.id === serviceId) : undefined;
-  const useSlots = useCatalog && !!serviceId && !!bookingDate;
+  const useWeekPicker = useCatalog && scheduleMode === "grid";
+  const useSlots = useCatalog && !!serviceId && !!bookingDate && !useWeekPicker;
+  const handlePickSlot = useCallback((date: string, time: string) => {
+    setBookingDate(date);
+    setBookingTime(time);
+  }, []);
 
   useEffect(() => {
     if (!useSlots) {
@@ -340,16 +348,31 @@ export function BookingForm({ vendorId, vendorName, services, serviceOptions, st
           </select>
         </div>
       )}
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <Label htmlFor="b-date">Fecha *</Label>
-          <Input id="b-date" type="date" value={bookingDate} onChange={e => setBookingDate(e.target.value)} required />
+      {useWeekPicker ? (
+        serviceId ? (
+          <WeekSlotPicker
+            vendorId={vendorId}
+            serviceId={serviceId}
+            staffId={staffId || null}
+            durationMin={chosenService?.duration_min ?? null}
+            value={{ date: bookingDate, time: bookingTime }}
+            onPick={handlePickSlot}
+          />
+        ) : (
+          <p className="text-xs text-muted-foreground">Elegí un servicio para ver los horarios disponibles.</p>
+        )
+      ) : (
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <Label htmlFor="b-date">Fecha *</Label>
+            <Input id="b-date" type="date" value={bookingDate} onChange={e => setBookingDate(e.target.value)} required />
+          </div>
+          <div>
+            <Label htmlFor="b-time">Horario *</Label>
+            <TimeSelect24 value={bookingTime} onChange={setBookingTime} aria-label="Horario" />
+          </div>
         </div>
-        <div>
-          <Label htmlFor="b-time">Horario *</Label>
-          <TimeSelect24 value={bookingTime} onChange={setBookingTime} aria-label="Horario" />
-        </div>
-      </div>
+      )}
       {useSlots && (
         <div>
           <Label>Huecos disponibles{slotsLoading ? " (cargando...)" : ""}</Label>

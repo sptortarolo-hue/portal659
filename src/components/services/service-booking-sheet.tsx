@@ -80,6 +80,7 @@ export function EsteticaServicesSection({
   staffOptions,
   locationOptions,
   cancelPolicy,
+  scheduleMode,
 }: {
   services: EsteticaServiceCard[];
   vendorId: string;
@@ -87,6 +88,7 @@ export function EsteticaServicesSection({
   staffOptions?: { id: string; name: string }[];
   locationOptions?: { id: string; name: string; address?: string | null }[];
   cancelPolicy?: string | null;
+  scheduleMode?: string | null;
 }) {
   const [picked, setPicked] = useState<EsteticaServiceCard | null>(null);
   if (services.length === 0) return null;
@@ -124,6 +126,7 @@ export function EsteticaServicesSection({
           staffOptions={staffOptions}
           locationOptions={locationOptions}
           cancelPolicy={cancelPolicy}
+          scheduleMode={scheduleMode}
           onClose={() => setPicked(null)}
         />
       )}
@@ -138,6 +141,7 @@ export function ServiceBookingSheet({
   staffOptions,
   locationOptions,
   cancelPolicy,
+  scheduleMode,
   onClose,
 }: {
   service: EsteticaServiceCard;
@@ -147,6 +151,7 @@ export function ServiceBookingSheet({
   staffOptions?: { id: string; name: string }[];
   locationOptions?: { id: string; name: string; address?: string | null }[];
   cancelPolicy?: string | null;
+  scheduleMode?: string | null;
   onClose: () => void;
 }) {
   const [step, setStep] = useState<"detail" | "book">("detail");
@@ -305,6 +310,7 @@ export function ServiceBookingSheet({
                 staffOptions={staffOptions}
                 locationOptions={locationOptions}
                 cancelPolicy={cancelPolicy}
+                scheduleMode={scheduleMode}
               />
             </div>
           )}

@@ -27,6 +27,7 @@ import { StaffManager } from "@/components/vendor/staff-manager";
 import { arToday } from "@/lib/booking-schedule";
 import { loadDraft, saveDraft } from "@/lib/draft";
 import { AgendaView, type AgendaViewMode } from "@/components/dashboard/agenda-view";
+import { EsteticaWeekPlanner } from "@/components/dashboard/estetica-week-planner";
 import { BookingCard, type BookingCardProps } from "@/components/dashboard/booking-card";
 import { Modal } from "@/components/ui/modal";
 import type { Vendor, Product, ProductModifier, Booking, VendorGallery } from "@/types/database";
@@ -399,7 +400,7 @@ export default function DashboardServicio({
     if (agendaViewInit.current || !vendor?.id) return;
     agendaViewInit.current = true;
     const d = loadDraft<{ view?: string }>(vendor.id, "agenda");
-    if (d?.view === "day" || d?.view === "list" || d?.view === "month") setAgendaView(d.view);
+    if (d?.view === "day" || d?.view === "list" || d?.view === "month" || d?.view === "plan") setAgendaView(d.view);
     else setAgendaView(vendor.vertical === "estetica" ? "month" : "list");
   }, [vendor?.id, vendor?.vertical]);
   useEffect(() => {
@@ -1478,6 +1479,11 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
                   ))}
                 </div>
               )
+            }
+            planContent={
+              isEstetica ? (
+                <EsteticaWeekPlanner vendor={vendor} saveVendor={saveVendor} setMsg={setMsg} />
+              ) : undefined
             }
           />
         </div>

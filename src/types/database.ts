@@ -441,6 +441,8 @@ export type Vendor = {
   cancel_policy_text?: string | null;
   /** Anticipación mínima para cancelar (horas; default 24). */
   cancel_hours?: number | null;
+  /** Agenda de la turnera: 'hours' (horario del local) | 'grid' (planificación por profesional). */
+  booking_schedule_mode?: string | null;
   /** Recordatorios por WhatsApp (NULL = activados; false = solo push). */
   wa_reminders?: boolean | null;
   /** Link a reseñas de Google del local (para pedir opinión post-visita). */

@@ -665,7 +665,7 @@ const [doneIsGift, setDoneIsGift] = useState(false);
             name: i.name,
             price: i.price + (i.modifiers || []).reduce((s, m) => s + m.price_mod, 0),
             qty: i.qty,
-            modifiers: (i.modifiers || []).map((m) => m.label),
+            modifiers: (i.modifiers || []).map((m) => ({ label: m.label, group: m.group })),
             unit: (i as any).unit,
           })),
           total: displayTotal,

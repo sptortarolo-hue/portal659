@@ -435,6 +435,7 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
                     image={cover}
                     sizeGuide={product.size_guide ?? null}
                     allowQty
+                    modifiers={modifiers}
                     onAdded={closeSheet}
                     onColorChange={(c) => {
                       // Fotos por color: al elegir color, la foto principal pasa

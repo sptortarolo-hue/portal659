@@ -6,8 +6,10 @@ import type { CartModifier } from "@/lib/cart";
 import { useToast } from "@/lib/toast";
 import { CashPrice } from "@/components/store/cash-price";
 import { cashAppliesToItem, normalizeCashPct } from "@/lib/cash-discount";
+import { selectionHasPromo } from "@/lib/modifier-select";
+import { ModifierPicker } from "@/components/offers/modifier-picker";
 import { parseGuideLine } from "@/lib/size-guides";
-import type { ProductVariant } from "@/types/database";
+import type { ProductModifier, ProductVariant } from "@/types/database";
 
 type Props = {
   productId: string;
@@ -35,13 +37,15 @@ type Props = {
   sizeGuide?: string | null;
   /** Stepper de cantidad (moda). Gastro con variantes sigue agregando de a 1. */
   allowQty?: boolean;
+  /** Opciones combinables (agregados del comercio): conviven con color/talle. */
+  modifiers?: ProductModifier[];
   /** Al cambiar de color (la ficha cambia la foto principal a la de ese color). */
   onColorChange?: (color: string) => void;
   /** Callback tras agregar (la ficha de grilla se cierra y vuelve al catálogo). */
   onAdded?: () => void;
 };
 
-export function VariantSelector({ productId, name, variants, vendor, stockControl = true, cashExcluded = false, image, sizeGuide, allowQty = false, onColorChange, onAdded }: Props) {
+export function VariantSelector({ productId, name, variants, vendor, stockControl = true, cashExcluded = false, image, sizeGuide, allowQty = false, modifiers, onColorChange, onAdded }: Props) {
   const { addItem } = useCart();
   const { addToast } = useToast();
   const [color, setColor] = useState<string | null>(null);
@@ -49,6 +53,7 @@ export function VariantSelector({ productId, name, variants, vendor, stockContro
   const [qty, setQty] = useState(1);
   const [added, setAdded] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
+  const [showPicker, setShowPicker] = useState(false);
 
   const slowStock = stockControl && variants.some((v) => (v.stock ?? 0) > 0 && (v.stock ?? 0) <= 5);
 
@@ -76,22 +81,39 @@ export function VariantSelector({ productId, name, variants, vendor, stockContro
   // Al cambiar color/talle, la cantidad vuelve a 1 (puede no haber stock del anterior).
   useEffect(() => { setQty(1); }, [color, talle]);
 
-  function handleAdd() {
-    if (!current || outOfStock) return;
-    const n = allowQty ? Math.min(qty, maxQty) : 1;
+  // Mods sintéticos de la variante (Color/Talle). price_mod 0: el precio ya
+  // está definido en el producto según variante. Conviven con los agregados.
+  function variantMods(c: ProductVariant): CartModifier[] {
     const mods: CartModifier[] = [];
-    if (current.color) mods.push({ group: "Color", label: current.color, price_mod: 0 });
-    if (current.talle) mods.push({ group: "Talle", label: current.talle, price_mod: 0 });
-    // price_mod 0: el precio ya está definido en el producto según variante.
+    if (c.color) mods.push({ group: "Color", label: c.color, price_mod: 0 });
+    if (c.talle) mods.push({ group: "Talle", label: c.talle, price_mod: 0 });
+    return mods;
+  }
+
+  function doAdd(c: ProductVariant, mods: CartModifier[], n: number) {
+    if (!c || outOfStock) return;
+    // Promo de la línea: por variante o por opción en promo (igual que gastro).
+    const promoLine = c.promo != null || selectionHasPromo(modifiers, mods);
     const switched = addItem(
       { id: vendor.id, slug: vendor.slug, storeName: vendor.storeName, whatsapp: vendor.whatsapp, vertical: vendor.vertical, deliveryFee: vendor.deliveryFee ?? null, freeDeliveryMin: vendor.freeDeliveryMin ?? null, cashDiscountPct: vendor.cashDiscountPct ?? null, deliveryMode: vendor.deliveryMode ?? null, deliveryAreaText: vendor.deliveryAreaText ?? null, deliveryZones: vendor.deliveryZones },
-      { offerId: productId, variantId: current.id, name, price: price!, qty: n, modifiers: mods, cashExcluded: current.promo != null && cashExcluded, image: image ?? null }
+      { offerId: productId, variantId: c.id, name, price: price!, qty: n, modifiers: mods, hasPromo: promoLine, cashExcluded: promoLine && cashExcluded, image: image ?? null }
     );
-    addToast(n > 1 ? `${name} (${current.color} / ${current.talle}) × ${n} agregado al carrito` : `${name} (${current.color} / ${current.talle}) agregado al carrito`);
+    addToast(n > 1 ? `${name} (${c.color} / ${c.talle}) × ${n} agregado al carrito` : `${name} (${c.color} / ${c.talle}) agregado al carrito`);
     setAdded(true);
     setTimeout(() => setAdded(false), 1500);
     onAdded?.();
     if (switched) addToast("Se limpió el carrito anterior (solo podés pedir de un local a la vez)");
+  }
+
+  function handleAdd() {
+    if (!current || outOfStock) return;
+    if (modifiers && modifiers.length > 0) {
+      // Opciones combinables: el picker de agregados se abre sobre la variante
+      // elegida y su confirm agrega todo junto (color/talle + opciones).
+      setShowPicker(true);
+      return;
+    }
+    doAdd(current, variantMods(current), allowQty ? Math.min(qty, maxQty) : 1);
   }
 
   const guideLines = sizeGuide
@@ -243,6 +265,22 @@ export function VariantSelector({ productId, name, variants, vendor, stockContro
         {added ? "✓ Agregado" : outOfStock || totalStock <= 0 ? "Sin stock" : allowQty && qty > 1 ? `Agregar ${qty} al carrito` : "Agregar al carrito"}
       </button>
       {slowStock && <p className="text-xs text-amber-700 font-medium">¡Quedan pocas unidades!</p>}
+
+      {showPicker && current && modifiers && modifiers.length > 0 && (
+        <ModifierPicker
+          modifiers={modifiers}
+          productName={name}
+          basePrice={price!}
+          showQty={allowQty}
+          maxQty={maxQty}
+          initialQty={qty}
+          onConfirm={(selected, _finalPrice, pickerQty) => {
+            doAdd(current, [...variantMods(current), ...selected], pickerQty ?? (allowQty ? Math.min(qty, maxQty) : 1));
+            setShowPicker(false);
+          }}
+          onCancel={() => setShowPicker(false)}
+        />
+      )}
 
       {guideOpen && guideLines.length > 0 && (
         <div className="fixed inset-0 z-50">

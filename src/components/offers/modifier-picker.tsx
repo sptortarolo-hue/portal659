@@ -29,6 +29,8 @@ type ModifierPickerProps = {
   showQty?: boolean;
   /** Tope del stepper (stock si hay control). Default 99. */
   maxQty?: number;
+  /** Cantidad inicial del stepper (la ficha de variantes ya la eligió). */
+  initialQty?: number;
 };
 
 export function ModifierPicker({
@@ -39,9 +41,10 @@ export function ModifierPicker({
   onCancel,
   showQty = false,
   maxQty = 99,
+  initialQty,
 }: ModifierPickerProps) {
   const [selected, setSelected] = useState<Record<string, ModifierOption[]>>({});
-  const [qty, setQty] = useState(1);
+  const [qty, setQty] = useState(() => Math.max(1, Math.floor(Number(initialQty) || 1)));
   // Estado solo del modo hoja (grupos grandes): búsqueda + categoría + hint.
   const [queries, setQueries] = useState<Record<string, string>>({});
   const [cats, setCats] = useState<Record<string, string | null>>({});

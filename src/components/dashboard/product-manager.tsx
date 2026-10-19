@@ -673,7 +673,12 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
     </Card>
   );
 
-  const offerFormNode = isModa ? modaFormNode : (
+  const offerFormNode = isModa ? (
+    <div className="space-y-3">
+      {modaFormNode}
+      {editingId && <ProductModifiersBlock productId={editingId} productName={offName} />}
+    </div>
+  ) : (
     <div className="space-y-3">
       {productDraft.restored && (
         <div className="flex items-center justify-between gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2">

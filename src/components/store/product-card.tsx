@@ -75,6 +75,12 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
   const cardTouchX = useRef<number | null>(null);
 
   const hasVariants = variants.length > 0;
+  // Pack (moda, sin variantes): el precio del catálogo es del PAQUETE y solo
+  // se vende en múltiplos. Con variantes el pricing no permite pack.
+  const pack =
+    !hasVariants && Number.isInteger(Number((product as any).pack_size)) && Number((product as any).pack_size) >= 2
+      ? Math.floor(Number((product as any).pack_size))
+      : 1;
   // Galería = portada primero + extras (dedup por URL). Antes, con que hubiera
   // 1 extra, la portada se caía de la vista.
   const imgs = (() => {
@@ -406,6 +412,7 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
                   </div>
                 )}
                 {volBadge && <span className="mt-1 w-fit max-w-full text-[11px] font-medium rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5">{volBadge}</span>}
+                {pack > 1 && <span className="mt-1 w-fit max-w-full text-[11px] font-medium rounded-md bg-violet-50 text-violet-700 border border-violet-200 px-2 py-0.5">📦 Pack x{pack}</span>}
               </div>
 
               {product.description && (
@@ -446,7 +453,7 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
                   />
                 ) : (
                   <div className="space-y-3">
-                    {(modifiers?.length ?? 0) === 0 && (
+                    {(modifiers?.length ?? 0) === 0 && pack === 1 && (
                       <div className="flex items-center gap-3">
                       <span className="text-xs font-medium text-muted-foreground">Cantidad</span>
                       <div className="flex items-center rounded-lg border border-border overflow-hidden">
@@ -472,13 +479,26 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
                       </div>
                       </div>
                     )}
+                    {pack > 1 && (modifiers?.length ?? 0) === 0 && (
+                      <p className="text-xs text-muted-foreground">Se agrega de a 1 pack ({pack} unidades). Tocá Agregar de nuevo para llevar más packs.</p>
+                    )}
                     <AddToCartButton
                       offerId={product.id}
                       name={product.name}
-                      price={product.promo_price ? Number(product.promo_price) : Number(product.price)}
+                      price={
+                        pack > 1
+                          ? Math.round((Number(product.promo_price ?? product.price) / pack) * 100) / 100
+                          : product.promo_price
+                            ? Number(product.promo_price)
+                            : Number(product.price)
+                      }
                       vendor={vendor}
                       modifiers={modifiers}
                       cashExcluded={product.promo_price != null && !!product.cash_discount_excluded}
+                      hasPromo={product.promo_price != null}
+                      origPrice={pack > 1 ? Number(product.price) : undefined}
+                      packSize={pack > 1 ? pack : undefined}
+                      packPrice={pack > 1 ? Number(product.promo_price ?? product.price) : undefined}
                       image={cover}
                       qty={qty}
                       onAdded={closeSheet}

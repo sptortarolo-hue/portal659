@@ -109,6 +109,8 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
   const [offRequiresPrep, setOffRequiresPrep] = useState(showPrep);
   const [offCashExcluded, setOffCashExcluded] = useState(false);
   const [offSku, setOffSku] = useState("");
+  // "Se vende de a N" (pack, moda): precio del PAQUETE. Solo sin variantes.
+  const [offPackSize, setOffPackSize] = useState("");
   // Combos (OfferForm): mismo wiring que MenuStudio (solo rama con OfferForm:
   // estética y resto; la ficha de moda usa su form propio con variantes).
   const [offIsCombo, setOffIsCombo] = useState(false);
@@ -183,6 +185,7 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
     setOffRequiresPrep(showPrep);
     setOffCashExcluded(false);
     setOffSku("");
+    setOffPackSize("");
     setOffHasVariants(false);
     setVariantRows([]);
     setGalleryUrls([]);
@@ -210,6 +213,7 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
     setOffRequiresPrep(showPrep ? offer.requires_prep !== false : false);
     setOffCashExcluded(!!offer.cash_discount_excluded);
     setOffSku((offer as { sku?: string | null }).sku ?? "");
+    setOffPackSize(Number(offer.pack_size) >= 2 ? String(offer.pack_size) : "");
     setOffHasVariants(!!offer.has_variants);
     setVariantRows(
       existing.map((v) => ({
@@ -236,21 +240,21 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
     offCategory: string; offPreview: string | null; offStock: number;
     offStockControl: boolean; offPromoPrice: string; offCost: string;
     offStockLowThreshold: number; offRequiresPrep: boolean; offCashExcluded: boolean;
-    offHasVariants: boolean; offSizeGuide: string; offSku: string; variantRows: VariantRow[];
+    offHasVariants: boolean; offSizeGuide: string; offSku: string; offPackSize: string; variantRows: VariantRow[];
     hadFile: boolean;
   };
   const [photoNotice, setPhotoNotice] = useState(false);
   const productDraft = useFormDraft<ProductDraft>({
     vendorId,
     key: "product-manager",
-    watch: [showForm, editingId, offName, offDesc, offPrice, offCategory, offPreview, offStock, offStockControl, offPromoPrice, offCost, offStockLowThreshold, offRequiresPrep, offCashExcluded, offHasVariants, offSizeGuide, offSku, variantRows],
+    watch: [showForm, editingId, offName, offDesc, offPrice, offCategory, offPreview, offStock, offStockControl, offPromoPrice, offCost, offStockLowThreshold, offRequiresPrep, offCashExcluded, offHasVariants, offSizeGuide, offSku, offPackSize, variantRows],
     snapshot: () => {
       if (!showForm) return null;
       if (!editingId && !offName.trim() && !offPrice && !offDesc.trim()) return null;
       return {
         editingId, offName, offDesc, offPrice, offCategory, offPreview, offStock,
         offStockControl, offPromoPrice, offCost, offStockLowThreshold, offRequiresPrep,
-        offCashExcluded, offHasVariants, offSizeGuide, offSku, variantRows,
+        offCashExcluded, offHasVariants, offSizeGuide, offSku, offPackSize, variantRows,
         hadFile: offFile != null,
       };
     },
@@ -273,6 +277,7 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
       setOffHasVariants(d.offHasVariants === true);
       setOffSizeGuide(d.offSizeGuide || "");
       setOffSku(typeof d.offSku === "string" ? d.offSku : "");
+      setOffPackSize(typeof d.offPackSize === "string" ? d.offPackSize : "");
       if (Array.isArray(d.variantRows)) setVariantRows(d.variantRows);
       setPhotoNotice(d.hadFile === true);
     },
@@ -437,6 +442,7 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
           has_variants: offHasVariants,
           size_guide: offSizeGuide.trim() || null,
           sku: offSku.trim() || undefined,
+          pack_size: !offHasVariants && offPackSize ? Math.floor(Number(offPackSize)) : null,
           cost_last: canEditCost && offCost.trim() !== "" && Number.isFinite(Number(offCost)) ? Math.round(Number(offCost) * 100) / 100 : undefined,
         }
       : {
@@ -554,6 +560,23 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
           <div><Label>Precio ($)</Label><Input type="number" step="0.01" value={offPrice} onChange={(e) => setOffPrice(e.target.value)} required /></div>
         </div>
         <div><Label>Precio promo ($)</Label><Input type="number" step="0.01" value={offPromoPrice} onChange={(e) => setOffPromoPrice(e.target.value)} placeholder="Vacío si no está en oferta" /></div>
+        {!offHasVariants && (
+          <div>
+            <Label>Se vende de a… (pack)</Label>
+            <Input
+              type="number"
+              min={2}
+              step={1}
+              inputMode="numeric"
+              value={offPackSize}
+              onChange={(e) => setOffPackSize(e.target.value)}
+              placeholder="Ej: 3 boxers (vacío = por unidad)"
+            />
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Con pack, el precio cargado es <strong>por paquete</strong> y solo se vende en múltiplos de {offPackSize || "N"}.
+            </p>
+          </div>
+        )}
         <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2">
           <input
             type="checkbox"

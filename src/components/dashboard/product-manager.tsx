@@ -656,6 +656,11 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
             <p className="text-xs text-muted-foreground mt-0.5">
               Con pack, el precio cargado es <strong>por paquete</strong> y solo se vende en múltiplos de {offPackSize || "N"}.
             </p>
+            {Number(offPackSize) >= 2 && (
+              <p className="text-[11px] text-violet-600 dark:text-violet-400 mt-0.5">
+                💡 ¿Querés que el cliente mezcle colores/talles dentro del pack? Usá la vista <strong>📦 Precios por volumen</strong>.
+              </p>
+            )}
           </div>
         )}
         <div className="grid grid-cols-2 gap-3">

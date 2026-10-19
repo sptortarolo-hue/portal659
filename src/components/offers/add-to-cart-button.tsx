@@ -133,6 +133,10 @@ export function AddToCartButton({
     }
   }, [modifiers, doAdd]);
 
+  // Pack: se agrega el paquete completo por click (el stepper del picker
+  // confundiría "6 sandwiches" con "6 packs" — siempre manda 1 pack).
+  const hasPack = packSize != null && packSize >= 2;
+
   return (
     <>
       <button
@@ -157,7 +161,7 @@ export function AddToCartButton({
             setShowPicker(false);
           }}
           onCancel={() => setShowPicker(false)}
-          showQty={showPickerQty}
+          showQty={showPickerQty && !hasPack}
           maxQty={pickerMaxQty}
         />
       )}

@@ -9,14 +9,15 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { QuantityInput } from "@/components/ui/quantity-input";
 import { Badge } from "@/components/ui/badge";
-import { OfferForm, OfferList, OfferComboEditor, useFormDraft } from "@/components/dashboard/shared";
-import { CollapsibleSection } from "@/components/ui/collapsible-section";
+import { OfferForm, OfferList, CategoryManager, apiJson, useFormDraft } from "@/components/dashboard/shared";
 import { VolumeEditor } from "@/components/dashboard/volume-editor";
 import { clearDraft } from "@/lib/draft";
 import { isGiftProductRow } from "@/lib/gift-card-share";
-import { ProductModifiersBlock } from "@/components/dashboard/modifier-editor";
+import { ModifierLibrary, ProductModifiersBlock } from "@/components/dashboard/modifier-editor";
+import { ProductImage } from "@/components/product-image";
 import { SIZE_GUIDE_TEMPLATES, templateToText } from "@/lib/size-guides";
-import type { ProductVariant, ProductImage } from "@/types/database";
+import type { ProductVariant } from "@/types/database";
+import type { ProductImage as ProductImageRow } from "@/types/database";
 
 
 type MenuCategory = { id: string; name: string; position: number };
@@ -58,7 +59,7 @@ type Props = {
   /** Variantes de todos los productos (solo moda). */
   variants?: ProductVariant[];
   /** Galería de todos los productos (solo moda). */
-  productImages?: ProductImage[];
+  productImages?: ProductImageRow[];
   onCrop?: (target: "offer", src?: string) => void;
   onChanged?: () => void;
 };
@@ -79,6 +80,17 @@ type ComboRow = { product_id: string; name: string; price: number; qty: number; 
 // Galería moda: 1 portada (image_url) + hasta 7 extras (product_images).
 const MAX_EXTRA_IMAGES = 7;
 
+/** Vistas del catálogo moda: mismo patrón que MenuStudio (tab-bar + manager
+  * dedicado por vista). Solo moda: el resto de verticales con este panel
+  * (estética) sigue con el layout actual. */
+const PM_VIEWS: { id: string; icon: string; label: string }[] = [
+  { id: "productos", icon: "🛍️", label: "Productos" },
+  { id: "categorias", icon: "🗂️", label: "Categorías" },
+  { id: "opciones", icon: "⚙️", label: "Opciones" },
+  { id: "volumen", icon: "📦", label: "Precios por volumen" },
+  { id: "combos", icon: "🧩", label: "Combos" },
+];
+
 /** Gestión completa de platos/productos (listado + ficha inline + modificadores), sin ir a Configuración. */
 export function ProductManager({ isModa = false, isComercio = false, showStock = true, showPrep = false, showCosts = false, canEditCost = false, vendorId = null, variants, productImages, onCrop, onChanged }: Props) {
   // Wording por vertical: gastro habla de "platos", retail de "productos".
@@ -92,6 +104,8 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
+  // Vista activa del catálogo (solo moda usa el tab-bar).
+  const [view, setView] = useState<string>("productos");
   const [offName, setOffName] = useState("");
   const [offDesc, setOffDesc] = useState("");
   const [offPrice, setOffPrice] = useState("");
@@ -116,6 +130,9 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
   const [offIsCombo, setOffIsCombo] = useState(false);
   const [offComboItems, setOffComboItems] = useState<ComboRow[]>([]);
   const [comboItemsByProduct, setComboItemsByProduct] = useState<Record<string, ComboRow[]>>({});
+  // Moda: los combos se cargan desde la vista Combos con el form genérico
+  // (OfferForm, igual que las demás verticales) — no desde el form de variantes.
+  const [comboFormMode, setComboFormMode] = useState(false);
 
   // Moda: variantes (color × talle) + galería.
   const [offHasVariants, setOffHasVariants] = useState(false);
@@ -174,7 +191,7 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
     setOffName("");
     setOffDesc("");
     setOffPrice("");
-    setOffCategory(isModa ? "ropa" : "otras");
+    setOffCategory(isModa ? categories?.[0]?.name || "ropa" : "otras");
     setOffFile(null);
     setOffPreview(null);
     setOffStock(0);
@@ -192,6 +209,7 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
     setOffSizeGuide("");
     setOffIsCombo(false);
     setOffComboItems([]);
+    setComboFormMode(false);
   }
 
   function startEdit(offer: OfferRow) {
@@ -228,8 +246,11 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
     setGalleryUrls(imgs.map((img) => ({ url: img.url, color: img.color ?? null })));
     setOffSizeGuide((offer as { size_guide?: string | null }).size_guide ?? "");
     // Combos: carga líneas si las hay (del GET offers comboItemsByProduct).
+    // Un combo se edita con el form genérico (OfferForm), no con el de variantes.
     const comboRows = comboItemsByProduct?.[offer.id] || [];
-    setOffIsCombo(Array.isArray(comboRows) && comboRows.length > 0);
+    const isComboRow = Array.isArray(comboRows) && comboRows.length > 0;
+    setOffIsCombo(isComboRow);
+    if (isModa) setComboFormMode(isComboRow);
     setOffComboItems(Array.isArray(comboRows) ? comboRows : []);
     setShowForm(true);
   }
@@ -443,6 +464,11 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
           size_guide: offSizeGuide.trim() || null,
           sku: offSku.trim() || undefined,
           pack_size: !offHasVariants && offPackSize ? Math.floor(Number(offPackSize)) : null,
+          // Combos (se arman desde la vista Combos con el form genérico):
+          // sin is_combo el POST no persiste las líneas (el flag se deriva en
+          // runtime de combo_items).
+          is_combo: offIsCombo && !offHasVariants,
+          combo_items: offIsCombo && !offHasVariants ? offComboItems.map((c) => ({ product_id: c.product_id, qty: c.qty })) : [],
           cost_last: canEditCost && offCost.trim() !== "" && Number.isFinite(Number(offCost)) ? Math.round(Number(offCost) * 100) / 100 : undefined,
         }
       : {
@@ -536,6 +562,61 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
     load(); onChanged?.();
   }
 
+  // --- Categorías (misma lógica que MenuStudio) ---------------------------
+  async function addCategory(name: string) {
+    const r = await apiJson("/api/vendor/categories", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    if (!r.ok) setMsg(r.error || "No se pudo crear la categoría");
+    load();
+  }
+
+  async function renameCategory(id: string, name: string) {
+    const r = await apiJson(`/api/vendor/categories/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    if (!r.ok) setMsg(r.error || "No se pudo renombrar");
+    load();
+  }
+
+  async function deleteCategory(cat: MenuCategory) {
+    const r = await apiJson(`/api/vendor/categories/${cat.id}`, { method: "DELETE" });
+    if (!r.ok) setMsg(r.error || "No se pudo eliminar");
+    load();
+  }
+
+  async function moveCategory(cat: MenuCategory, dir: -1 | 1) {
+    const idx = categories.findIndex((c) => c.id === cat.id);
+    const target = idx + dir;
+    if (target < 0 || target >= categories.length) return;
+    const reordered = [...categories];
+    const [moved] = reordered.splice(idx, 1);
+    reordered.splice(target, 0, moved);
+    await Promise.all(
+      reordered.map((c, i) =>
+        apiJson(`/api/vendor/categories/${c.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ position: i }),
+        })
+      )
+    );
+    load();
+  }
+
+  /** Nuevo combo moda: mismo form que las demás verticales (OfferForm),
+    * con el toggle 🧩 ya prendido. Se crea desde la vista Combos. */
+  function openNewCombo() {
+    resetForm();
+    setComboFormMode(true);
+    setOffIsCombo(true);
+    setShowForm(true);
+  }
+
   const modaFormNode = (
     <Card className="p-4 mb-4">
       <div className="flex items-center justify-between mb-3">
@@ -576,28 +657,6 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
               Con pack, el precio cargado es <strong>por paquete</strong> y solo se vende en múltiplos de {offPackSize || "N"}.
             </p>
           </div>
-        )}
-        <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2">
-          <input
-            type="checkbox"
-            checked={offIsCombo}
-            onChange={(e) => setOffIsCombo(e.target.checked)}
-            className="h-4 w-4 accent-primary"
-            id="moda-is-combo"
-          />
-          <label htmlFor="moda-is-combo" className="text-sm font-medium cursor-pointer select-none">
-            🧩 Es un combo (varios productos juntos)
-          </label>
-        </div>
-        {offIsCombo && (
-          <OfferComboEditor
-            items={offComboItems}
-            onItems={setOffComboItems}
-            products={offers
-              .filter((o) => o.available !== false)
-              .map((o) => ({ id: o.id, name: o.name, price: Number(o.price) || 0, image_url: o.image_url ?? null }))}
-            price={offPrice}
-          />
         )}
         <div className="grid grid-cols-2 gap-3">
           <div>
@@ -718,7 +777,11 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
     </Card>
   );
 
-  const offerFormNode = isModa ? (
+  // El form genérico (OfferForm) lo usan estética/servicio siempre, y moda
+  // solo para combos (se abren desde la vista Combos, igual que las demás
+  // verticales). El form de variante de moda queda para productos normales.
+  const useModaForm = isModa && !comboFormMode;
+  const offerFormNode = useModaForm ? (
     <div className="space-y-3">
       {modaFormNode}
       {editingId && <ProductModifiersBlock productId={editingId} productName={offName} />}
@@ -778,49 +841,209 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="font-display text-xl font-semibold">{isModa || isComercio ? "Catálogo" : "Menú y catálogo"}</h2>
-        <Button size="sm" onClick={() => { if (editingId || showForm) resetForm(); else setShowForm(true); }}>
-          {editingId || showForm ? "Cancelar" : `+ ${noun}`}
-        </Button>
+        {(!isModa || view === "productos") && (
+          <Button size="sm" onClick={() => { if (editingId || showForm) resetForm(); else setShowForm(true); }}>
+            {editingId || showForm ? "Cancelar" : `+ ${noun}`}
+          </Button>
+        )}
       </div>
+
+      {isModa && (
+        <div className="flex rounded-xl border border-border overflow-x-auto max-w-full text-sm font-medium">
+          {PM_VIEWS.map((v) => (
+            <button
+              key={v.id}
+              type="button"
+              onClick={() => setView(v.id)}
+              className={`px-3 sm:px-4 py-2 whitespace-nowrap text-xs sm:text-sm transition-colors ${
+                view === v.id
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:bg-muted/60"
+              }`}
+            >
+              {v.icon} {v.label}
+              {v.id === "productos"
+                ? ` (${offers.length})`
+                : v.id === "categorias"
+                  ? ` (${categories.length})`
+                  : v.id === "combos"
+                    ? ` (${offers.filter((o) => (comboItemsByProduct?.[o.id] || []).length > 0).length})`
+                    : ""}
+            </button>
+          ))}
+        </div>
+      )}
 
       {msg && <p className="text-sm text-green-600">{msg}</p>}
 
-      {showForm && !editingId && offerFormNode}
+      {isModa ? (
+        <>
+          {view === "productos" && (
+            <>
+              {showForm && !editingId && offerFormNode}
+              {loading ? (
+                <div className="space-y-2">{[...Array(4)].map((_, i) => <div key={i} className="h-16 rounded-xl bg-muted animate-pulse" />)}</div>
+              ) : (
+                <OfferList
+                  offers={offers}
+                  onEdit={startEdit}
+                  onToggleFeatured={toggleFeatured}
+                  onToggleAvailable={toggleAvailable}
+                  onDelete={deleteOffer}
+                  editingId={editingId}
+                  editForm={editingId ? offerFormNode : undefined}
+                  onEditModifiers={(offer) => startEdit(offer)}
+                  costByProduct={showCosts ? costByProduct : undefined}
+                  showBuyCost={canEditCost}
+                  emptyText={`Todavía no cargaste productos.`}
+                />
+              )}
+            </>
+          )}
 
-      {loading ? (
-        <div className="space-y-2">{[...Array(4)].map((_, i) => <div key={i} className="h-16 rounded-xl bg-muted animate-pulse" />)}</div>
+          {view === "categorias" && (
+            <>
+              <CategoryManager
+                defaultOpen
+                categories={categories}
+                onAdd={addCategory}
+                onRename={renameCategory}
+                onDelete={deleteCategory}
+                onMove={moveCategory}
+              />
+              <p className="text-xs text-muted-foreground">
+                Las categorías ordenan el catálogo del micrositio. Usá ↑↓ para cambiar el orden.
+              </p>
+            </>
+          )}
+
+          {view === "opciones" && (
+            <ModifierLibrary
+              products={offers.map((o) => ({ id: o.id, name: o.name }))}
+              onChanged={load}
+              isModa={isModa}
+              isComercio={isComercio}
+            />
+          )}
+
+          {view === "volumen" && (
+            <>
+              <VolumeEditor
+                products={offers
+                  .filter((o) => !isGiftProductRow(o))
+                  .map((o) => ({ id: o.id, name: o.name, category: o.category, price: Number(o.price) || 0 }))}
+                categories={categories}
+              />
+              <p className="text-xs text-muted-foreground">
+                Packs "llevá N y pagá X" combinando prendas o accesorios. Se aplican en el checkout.
+              </p>
+            </>
+          )}
+
+          {view === "combos" && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <p className="text-sm text-muted-foreground flex-1 min-w-[240px]">
+                  Varios productos juntos por un precio. La ficha del micrositio muestra qué incluye y el stock se descuenta por componente al vender.
+                </p>
+                <Button size="sm" onClick={openNewCombo}>
+                  + Nuevo combo
+                </Button>
+              </div>
+              {showForm && !editingId && offerFormNode}
+              {editingId && comboFormMode && offerFormNode}
+              {(() => {
+                const combos = offers.filter((o) => (comboItemsByProduct?.[o.id] || []).length > 0);
+                if (combos.length === 0) {
+                  return (
+                    <div className="rounded-xl border border-border bg-card p-6 text-center">
+                      <p className="text-sm text-muted-foreground">
+                        Todavía no cargaste combos. Armá uno con tus productos y poné un precio entre la suma de costos y la de venta.
+                      </p>
+                    </div>
+                  );
+                }
+                return (
+                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                    {combos.map((o) => {
+                      const members = comboItemsByProduct?.[o.id] || [];
+                      const sumaVenta = members.reduce((s, m) => s + (Number(m.price) || 0) * (Number(m.qty) || 1), 0);
+                      const price = Number(o.promo_price ?? o.price) || 0;
+                      const oldPrice = o.promo_price != null ? Number(o.price) : null;
+                      const hasPromo = oldPrice != null && Math.round(oldPrice * 100) !== Math.round(price * 100);
+                      return (
+                        <div key={o.id} className="rounded-xl border border-border bg-card p-3 flex gap-3">
+                          {o.image_url ? (
+                            <ProductImage src={o.image_url} name={o.name} alt={o.name} className="h-20 w-20 rounded-lg object-cover flex-shrink-0" />
+                          ) : (
+                            <div className="h-20 w-20 rounded-lg bg-muted text-2xl flex items-center justify-center flex-shrink-0">🧩</div>
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <p className="font-medium text-sm line-clamp-2 break-words">{o.name}</p>
+                            <p className="text-sm tabular-nums">
+                              <span className="font-bold">${price.toLocaleString("es-AR", { maximumFractionDigits: 2 })}</span>
+                              {hasPromo && <span className="ml-1 text-xs text-muted-foreground line-through">${(Number(o.price) || 0).toLocaleString("es-AR")}</span>}
+                              <span className="ml-2 text-xs text-muted-foreground">Σ venta: ${sumaVenta.toLocaleString("es-AR", { maximumFractionDigits: 2 })}</span>
+                            </p>
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {members.slice(0, 5).map((m, i) => (
+                                <span key={`${m.product_id}-${i}`} className="rounded-full border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground truncate max-w-[130px]">
+                                  {(Number(m.qty) || 1) > 1 ? `${m.qty}× ` : ""}{m.name}
+                                </span>
+                              ))}
+                              {members.length > 5 && (
+                                <span className="rounded-full border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                                  +{members.length - 5}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2 mt-2">
+                              <button
+                                type="button"
+                                onClick={() => startEdit(o)}
+                                className="text-xs font-medium text-primary hover:underline"
+                              >
+                                ✏️ Editar
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => toggleAvailable(o)}
+                                className="text-xs text-muted-foreground hover:text-foreground"
+                              >
+                                {o.available !== false ? "⏸ Pausar" : "▶ Activar"}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+        </>
       ) : (
-        <OfferList
-          offers={offers}
-          onEdit={startEdit}
-          onToggleFeatured={toggleFeatured}
-          onToggleAvailable={toggleAvailable}
-          onDelete={deleteOffer}
-          editingId={editingId}
-          editForm={editingId ? offerFormNode : undefined}
-          onEditModifiers={(offer) => startEdit(offer)}
-          costByProduct={showCosts ? costByProduct : undefined}
-          showBuyCost={canEditCost}
-          emptyText={`Todavía no cargaste ${isModa || isComercio ? "productos" : "platos"}.`}
-        />
-      )}
-
-      {/* Precios por volumen (moda): packs "llevá 3 y pagá…" combinando prendas
-          o accesorios. Montado al abrir la sección (igual que el tab de
-          MenuStudio: no fetchea hasta que se usa). */}
-      {isModa && (
-        <CollapsibleSection
-          icon="📦"
-          title="Precios por volumen (packs de 2 a 99)"
-          defaultOpen={false}
-        >
-          <VolumeEditor
-            products={offers
-              .filter((o) => !isGiftProductRow(o))
-              .map((o) => ({ id: o.id, name: o.name, category: o.category, price: Number(o.price) || 0 }))}
-            categories={categories}
-          />
-        </CollapsibleSection>
+        <>
+          {showForm && !editingId && offerFormNode}
+          {loading ? (
+            <div className="space-y-2">{[...Array(4)].map((_, i) => <div key={i} className="h-16 rounded-xl bg-muted animate-pulse" />)}</div>
+          ) : (
+            <OfferList
+              offers={offers}
+              onEdit={startEdit}
+              onToggleFeatured={toggleFeatured}
+              onToggleAvailable={toggleAvailable}
+              onDelete={deleteOffer}
+              editingId={editingId}
+              editForm={editingId ? offerFormNode : undefined}
+              onEditModifiers={(offer) => startEdit(offer)}
+              costByProduct={showCosts ? costByProduct : undefined}
+              showBuyCost={canEditCost}
+              emptyText={`Todavía no cargaste ${isComercio ? "productos" : "platos"}.`}
+            />
+          )}
+        </>
       )}
     </div>
   );

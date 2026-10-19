@@ -23,6 +23,7 @@ import { useCashShift } from "@/lib/use-cash-shift";
 import { fmtVence, buildGiftcardWaText, giftcardCardUrl, giftcardWaLink } from "@/lib/gift-card-share";
 import { ComboBuilderSheet } from "@/components/store/combo-builder";
 import type { ComboMemberRow } from "@/lib/combo";
+import { dimSuffix } from "@/lib/variant-utils";
 
 const OFFLINE_PAYMENT_LABELS: Record<string, string> = {
   efectivo: "Efectivo",
@@ -910,7 +911,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
   }
 
   function addLine(p: Product, v: ProductVariant | null, qty: number, unitPrice: number, modifiers?: CartModifier[], comboMembers?: ComboMemberRow[]) {
-    const name = v ? `${p.name} (${v.color} · ${v.talle})` : p.name;
+    const name = v ? `${p.name}${dimSuffix(v.color, v.talle)}` : p.name;
     const sig = comboMembersSignature(comboMembers);
     const key = lineKey(p.id, v?.id, modifiers, sig);
     // Por peso arranca en 0: el peso se carga con balanza o tipeo.
@@ -2771,7 +2772,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
       {pickerProduct && (
         <ModifierPicker
           modifiers={modifiersMap[pickerProduct.id] || []}
-          productName={pendingVariant ? `${pickerProduct.name} (${pendingVariant.color} · ${pendingVariant.talle})` : pickerProduct.name}
+          productName={pendingVariant ? `${pickerProduct.name}${dimSuffix(pendingVariant.color, pendingVariant.talle)}` : pickerProduct.name}
           basePrice={pendingVariant ? Number(pendingVariant.promo ?? pendingVariant.price) : unitPriceOf(pickerProduct)}
           onConfirm={handleModConfirm}
           onCancel={() => { setPickerProduct(null); setPendingVariant(null); }}
@@ -2808,7 +2809,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
               <h3 className="font-display text-base font-semibold">{variantPicker.name}</h3>
               <button onClick={() => setVariantPicker(null)} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground" aria-label="Cerrar">✕</button>
             </div>
-            <p className="text-xs text-muted-foreground mb-3">Elegí color y talle</p>
+            <p className="text-xs text-muted-foreground mb-3">Elegí la variante</p>
             <div className="space-y-1.5 max-h-72 overflow-y-auto">
               {(variantsMap[variantPicker.id] || []).map((v) => {
                 const stock = Math.max(0, Math.floor(Number(v.stock ?? 0)));
@@ -2821,7 +2822,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
                     className="w-full flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm text-left hover:border-primary disabled:opacity-40"
                   >
                     <span className="flex-1 min-w-0">
-                      <span className="font-medium">{v.color} · {v.talle}</span>
+                      <span className="font-medium">{dimSuffix(v.color, v.talle).trim() || "Único"}</span>
                       <span className="block text-[11px] text-muted-foreground">
                         {stock <= 0 ? "Sin stock" : stock <= 5 ? `¡Quedan ${stock}!` : `Stock: ${stock}`}
                       </span>

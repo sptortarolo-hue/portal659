@@ -9,6 +9,7 @@ import { cashAppliesToItem, normalizeCashPct } from "@/lib/cash-discount";
 import { selectionHasPromo } from "@/lib/modifier-select";
 import { ModifierPicker } from "@/components/offers/modifier-picker";
 import { parseGuideLine } from "@/lib/size-guides";
+import { variantMatches, dimSuffix } from "@/lib/variant-utils";
 import type { ProductModifier, ProductVariant } from "@/types/database";
 
 type Props = {
@@ -63,7 +64,9 @@ export function VariantSelector({ productId, name, variants, vendor, stockContro
   const withColor = color ? variants.filter((v) => v.color === color) : variants;
   const availableTalles = Array.from(new Set(withColor.map((v) => v.talle).filter(Boolean))).sort();
 
-  const current = variants.find((v) => v.color === color && v.talle === talle) || null;
+  // Variantes de una sola dimensión (cartera sin talles, o talles sin color):
+  // el valor ausente matchea "" (no null) — las filas guardan "" en DB.
+  const current = variants.find((v) => variantMatches(v, color ?? "", talle ?? "")) || null;
   const outOfStock = stockControl && current != null && (current.stock ?? 0) <= 0;
 
   const price = current ? (current.promo != null ? current.promo : current.price) : null;
@@ -80,6 +83,13 @@ export function VariantSelector({ productId, name, variants, vendor, stockContro
 
   // Al cambiar color/talle, la cantidad vuelve a 1 (puede no haber stock del anterior).
   useEffect(() => { setQty(1); }, [color, talle]);
+
+  // Una sola dimensión (o un único valor): queda elegida al abrir la ficha.
+  useEffect(() => {
+    if (colors.length === 0 && talles.length === 1) setTalle(talles[0]);
+    if (colors.length === 1 && talles.length === 0) setColor(colors[0]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [talles, colors]);
 
   // Mods sintéticos de la variante (Color/Talle). price_mod 0: el precio ya
   // está definido en el producto según variante. Conviven con los agregados.
@@ -98,7 +108,7 @@ export function VariantSelector({ productId, name, variants, vendor, stockContro
       { id: vendor.id, slug: vendor.slug, storeName: vendor.storeName, whatsapp: vendor.whatsapp, vertical: vendor.vertical, deliveryFee: vendor.deliveryFee ?? null, freeDeliveryMin: vendor.freeDeliveryMin ?? null, cashDiscountPct: vendor.cashDiscountPct ?? null, deliveryMode: vendor.deliveryMode ?? null, deliveryAreaText: vendor.deliveryAreaText ?? null, deliveryZones: vendor.deliveryZones },
       { offerId: productId, variantId: c.id, name, price: price!, qty: n, modifiers: mods, hasPromo: promoLine, cashExcluded: promoLine && cashExcluded, image: image ?? null }
     );
-    addToast(n > 1 ? `${name} (${c.color} / ${c.talle}) × ${n} agregado al carrito` : `${name} (${c.color} / ${c.talle}) agregado al carrito`);
+    addToast(n > 1 ? `${name}${dimSuffix(c.color, c.talle)} agregado × ${n} al carrito` : `${name}${dimSuffix(c.color, c.talle)} agregado al carrito`);
     setAdded(true);
     setTimeout(() => setAdded(false), 1500);
     onAdded?.();

@@ -431,6 +431,24 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
       setMsg("Completá nombre y precio");
       return;
     }
+    if (isModa && offHasVariants && variantRows.length > 0) {
+      // Una sola dimensión OK (solo colores, o solo talles) pero con valor.
+      const emptyAll = variantRows.filter((r) => !r.color.trim() && !r.talle.trim());
+      if (emptyAll.length > 0) {
+        setMsg("Cada variante necesita al menos un color o un talle (rellená o borrá la fila vacía)");
+        return;
+      }
+      const seen = new Set<string>();
+      for (const r of variantRows) {
+        const key = `${r.color.trim().toLowerCase()}|${r.talle.trim().toLowerCase()}`;
+        if (seen.has(key)) {
+          const label = [r.color.trim(), r.talle.trim()].filter(Boolean).join(" · ");
+          setMsg(`Tenés dos variantes iguales (${label || "sin datos"}): borrá la repetida`);
+          return;
+        }
+        seen.add(key);
+      }
+    }
     setSaving(true);
     setMsg("");
 
@@ -676,7 +694,7 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
         <div><Label>Categoría</Label><select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={offCategory} onChange={(e) => setOffCategory(e.target.value)}>{categories.length === 0 && <option value="ropa">ropa</option>}{categories.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}</select></div>
         <div className="flex items-center gap-2">
           <Switch checked={offHasVariants} onCheckedChange={setOffHasVariants} />
-          <span className="text-sm text-muted-foreground">Usar variantes (color × talle)</span>
+          <span className="text-sm text-muted-foreground">Usar variantes (color y/o talle)</span>
         </div>
         {!offHasVariants && (
           <div className="grid grid-cols-2 gap-3">
@@ -688,7 +706,7 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
         {offHasVariants && (
           <div className="border border-border rounded-lg p-3 space-y-2">
             <div className="flex items-center justify-between">
-              <Label className="text-sm">Variantes (color × talle)</Label>
+              <Label className="text-sm">Variantes (color y/o talle)</Label>
               <Button type="button" size="sm" variant="outline" onClick={addVariantRow}>+ Fila</Button>
             </div>
             <div className="hidden sm:grid sm:grid-cols-7 gap-2 text-xs font-medium text-muted-foreground px-1">
@@ -714,7 +732,8 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
           </div>
         )}
 
-        <div><Label>Guía de talles (opcional)</Label>
+        {(!offHasVariants || variantRows.some((r) => r.talle.trim())) && (
+          <div><Label>Guía de talles (opcional)</Label>
           <Textarea value={offSizeGuide} onChange={(e) => setOffSizeGuide(e.target.value)} placeholder={"Una línea por talle:\nM: Pecho 96 cm · Largo 69 cm"} className="h-20" />
           <div className="flex items-center gap-2 mt-1">
             <span className="text-xs text-muted-foreground">Plantilla:</span>
@@ -732,6 +751,7 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
           </div>
           <p className="text-xs text-muted-foreground mt-0.5">Se muestra en la ficha del producto con el selector de talles.</p>
         </div>
+        )}
 
         <div><Label>Fotos extra ({galleryUrls.length}/{MAX_EXTRA_IMAGES}) — frente, espalda/en modelo, detalle de tela, escala</Label>
           <Input type="file" accept="image/*" multiple disabled={galleryUrls.length >= MAX_EXTRA_IMAGES} onChange={(e) => handleGalleryUpload(e.target.files)} />

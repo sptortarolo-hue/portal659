@@ -65,7 +65,7 @@ export function resolveComboMembers(opts: {
       const list = missing.map((n) => `"${n}"`).join(", ");
       return {
         ok: false,
-        error: `Para el combo "${opts.comboName}" falta elegir talle y color de ${list}.`,
+        error: `Para el combo "${opts.comboName}" falta elegir la variante de ${list}.`,
       };
     }
     return { ok: true, members: defs.map((d) => ({ product_id: d.product_id, name: d.name, qty: d.qty })) };
@@ -78,7 +78,7 @@ export function resolveComboMembers(opts: {
       const list = missing.map((n) => `"${n}"`).join(", ");
       return {
         ok: false,
-        error: `Para el combo "${opts.comboName}" falta elegir talle y color de ${list}.`,
+        error: `Para el combo "${opts.comboName}" falta elegir la variante de ${list}.`,
       };
     }
     return { ok: true, members: defs.map((d) => ({ product_id: d.product_id, name: d.name, qty: d.qty })) };
@@ -101,7 +101,7 @@ export function resolveComboMembers(opts: {
     const vid = r.variant_id;
     if (def.hasVariants) {
       if (!isUuid(vid)) {
-        return { ok: false, error: `Elegí talle y color de "${def.name}" para el combo "${opts.comboName}".` };
+        return { ok: false, error: `Elegí la variante de "${def.name}" para el combo "${opts.comboName}".` };
       }
       const v = (variantsByProduct.get(pid) || []).find((vv) => vv.id === vid);
       if (!v) {
@@ -124,7 +124,7 @@ export function resolveComboMembers(opts: {
   for (const d of defs) {
     const got = sums.get(d.product_id) || 0;
     if (d.hasVariants && got === 0) {
-      return { ok: false, error: `Elegí talle y color de "${d.name}" para el combo "${opts.comboName}".` };
+      return { ok: false, error: `Elegí la variante de "${d.name}" para el combo "${opts.comboName}".` };
     }
     if (got !== d.qty) {
       return {

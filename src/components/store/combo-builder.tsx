@@ -7,6 +7,7 @@ import { useCart, type CartVendor } from "@/lib/cart";
 import { useToast } from "@/lib/toast";
 import type { ProductModifier } from "@/types/database";
 import type { ComboMemberRow } from "@/lib/combo";
+import { variantMatches, dimEq, dimSuffix } from "@/lib/variant-utils";
 
 /**
  * Armado de combo por unidad (moda/retail): cada pieza del combo que se vende
@@ -55,7 +56,14 @@ export function ComboBuilderSheet({
     const init: Record<string, Pick[]> = {};
     for (const m of members || []) {
       const vs = (variantsBy?.[m.product_id] || []) as VariantLike[];
-      if (vs.length > 0) init[m.product_id] = Array.from({ length: Math.max(1, Math.floor(Number(m.qty) || 1)) }, () => ({ color: "", talle: "" }));
+      if (vs.length === 0) continue;
+      // Variante de una sola dimensión (única con stock): el slot nace resuelto.
+      const cols = [...new Set(vs.filter((v) => Number(v.stock ?? 0) > 0 && String(v.color ?? "").trim() !== "").map((v) => String(v.color).trim()))];
+      const talls = [...new Set(vs.filter((v) => Number(v.stock ?? 0) > 0 && String(v.talle ?? "").trim() !== "").map((v) => String(v.talle).trim()))];
+      let prefill: Pick = { color: "", talle: "" };
+      if (cols.length === 1 && talls.length === 0) prefill = { color: cols[0], talle: "" };
+      else if (talls.length === 1 && cols.length === 0) prefill = { color: "", talle: talls[0] };
+      init[m.product_id] = Array.from({ length: Math.max(1, Math.floor(Number(m.qty) || 1)) }, () => ({ ...prefill }));
     }
     return init;
   });
@@ -66,11 +74,14 @@ export function ComboBuilderSheet({
     combo.promo_price != null && Number(combo.promo_price) > 0 ? Number(combo.promo_price) : Number(combo.price || 0);
 
   const chooseable = (members || []).filter((m) => (variantsBy?.[m.product_id] || []).length > 0);
+  const pickOk = (pid: string, p: Pick | undefined) => {
+    if (!p) return false;
+    const vs = (variantsBy?.[pid] || []) as VariantLike[];
+    return vs.some((v) => variantMatches(v, p.color, p.talle));
+  };
   const complete =
     chooseable.length === 0 ||
-    chooseable.every((m) =>
-      (picks[m.product_id] || []).every((p) => p && p.color !== "" && p.talle !== "")
-    );
+    chooseable.every((m) => (picks[m.product_id] || []).every((p) => pickOk(m.product_id, p)));
 
   const setPick = (pid: string, i: number, next: { color?: string; talle?: string }) =>
     setPicks((prev) => {
@@ -82,28 +93,28 @@ export function ComboBuilderSheet({
   const colorsOf = (pid: string) => {
     const seen = new Map<string, number>();
     for (const v of (variantsBy?.[pid] || []) as VariantLike[]) {
-      if (v.color == null) continue;
+      const c = String(v.color ?? "").trim();
+      if (c === "") continue;
       const stock = Number.isFinite(Number(v.stock)) ? Number(v.stock) : 1;
       if (stock <= 0) continue;
-      seen.set(v.color, (seen.get(v.color) || 0) + stock);
+      seen.set(c, (seen.get(c) || 0) + stock);
     }
     return [...seen.keys()];
   };
   const tallsOf = (pid: string, color: string) => {
     const seen = new Map<string, number>();
     for (const v of (variantsBy?.[pid] || []) as VariantLike[]) {
-      if (v.color !== color || v.talle == null) continue;
+      if (!dimEq(v.color, color)) continue;
+      const t = String(v.talle ?? "").trim();
+      if (t === "") continue;
       const stock = Number.isFinite(Number(v.stock)) ? Number(v.stock) : 1;
       if (stock <= 0) continue;
-      seen.set(v.talle, (seen.get(v.talle) || 0) + stock);
+      seen.set(t, (seen.get(t) || 0) + stock);
     }
     return [...seen.keys()];
   };
   const stockFor = (pid: string, pick: Pick | undefined): number | null => {
-    if (!pick || !pick.color || !pick.talle) return null;
-    const hit = ((variantsBy?.[pid] || []) as VariantLike[]).find(
-      (v) => v.color === pick.color && v.talle === pick.talle
-    );
+    const hit = ((variantsBy?.[pid] || []) as VariantLike[]).find((v) => pickOk(pid, pick) && variantMatches(v, pick!.color, pick!.talle));
     if (!hit) return null;
     return Number.isFinite(Number(hit.stock)) ? Math.max(0, Math.floor(Number(hit.stock))) : null;
   };
@@ -117,14 +128,14 @@ export function ComboBuilderSheet({
         continue;
       }
       for (const p of picks[m.product_id] || []) {
-        const v = vs.find((vv) => vv.color === p.color && vv.talle === p.talle);
+        const v = vs.find((vv) => variantMatches(vv, p.color, p.talle));
         if (!v) continue;
         out.push({
           product_id: m.product_id,
           variant_id: v.id,
           color: v.color || null,
           talle: v.talle || null,
-          name: `${m.name} (${[v.color, v.talle].filter(Boolean).join(" · ")})`,
+          name: `${m.name}${dimSuffix(v.color, v.talle)}`,
           qty: 1,
         });
       }
@@ -224,20 +235,28 @@ export function ComboBuilderSheet({
                               })()}
                             </div>
                             <div className="mt-1.5 flex flex-wrap gap-1.5">
-                              <Chips
-                                items={colorsOf(m.product_id)}
-                                value={p?.color || ""}
-                                onValue={(c) => setPick(m.product_id, i, { color: c, talle: tallsOf(m.product_id, c).length === 1 ? tallsOf(m.product_id, c)[0] : "" })}
-                                emptyLabel="Color"
-                              />
+                              {colorsOf(m.product_id).length > 0 && (
+                                <Chips
+                                  items={colorsOf(m.product_id)}
+                                  value={p?.color || ""}
+                                  onValue={(c) => setPick(m.product_id, i, { color: c, talle: tallsOf(m.product_id, c).length === 1 ? tallsOf(m.product_id, c)[0] : "" })}
+                                  emptyLabel="Color"
+                                />
+                              )}
                             </div>
                             <div className="mt-1.5 flex flex-wrap gap-1.5">
-                              <Chips
-                                items={tallsOf(m.product_id, p?.color || "")}
-                                value={p?.talle || ""}
-                                onValue={(t) => setPick(m.product_id, i, { talle: t })}
-                                emptyLabel="Talle"
-                              />
+                              {tallsOf(m.product_id, p?.color || "").length > 0 ? (
+                                <Chips
+                                  items={tallsOf(m.product_id, p?.color || "")}
+                                  value={p?.talle || ""}
+                                  onValue={(t) => setPick(m.product_id, i, { talle: t })}
+                                  emptyLabel="Talle"
+                                />
+                              ) : (
+                                colorsOf(m.product_id).length === 0 && (
+                                  <Chips items={["Único"]} value="Único" onValue={() => {}} emptyLabel="" />
+                                )
+                              )}
                             </div>
                           </div>
                         ))}
@@ -262,7 +281,7 @@ export function ComboBuilderSheet({
                   : "bg-muted text-muted-foreground cursor-not-allowed"
               }`}
             >
-              {added ? "✓ Agregado" : complete ? "Agregar combo" : "Completá talle y color de cada pieza"}
+              {added ? "✓ Agregado" : complete ? "Agregar combo" : "Elegí la variante de cada pieza"}
             </button>
           </div>
         </div>

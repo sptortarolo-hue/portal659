@@ -153,7 +153,7 @@ async function processAction(
       if (!orderId) return { done: false, dead: "PATCH sin pedido" };
       const body: Record<string, any> =
         a.type === "order_status"
-          ? { status: p.status }
+          ? { status: p.status, ...(p.cancel_reason ? { cancel_reason: p.cancel_reason } : {}) }
           : a.type === "order_cancel"
             ? { status: "cancelled" }
             : { payment_status: "paid" };

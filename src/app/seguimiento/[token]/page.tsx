@@ -186,6 +186,12 @@ export default function SeguimientoPedidoPage() {
 
         <OrderTimeline status={order.status} method={order.method} isRetail={isRetail} />
 
+        {(order as any).cancel_reason && (
+          <p className="mt-2 rounded-xl bg-red-50 border border-red-100 px-3 py-2 text-xs text-red-600">
+            🚫 Motivo de la cancelación: {(order as any).cancel_reason}
+          </p>
+        )}
+
       <div className="mt-3 space-y-1">
         {order.items.map((item, i) => (
           <div key={i} className="flex justify-between text-xs">

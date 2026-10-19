@@ -192,6 +192,9 @@ function OrderCard({
         {(order.items || []).length > 2 && (
           <p className="text-[10px] text-muted-foreground/50">+{order.items.length - 2} mas</p>
         )}
+        {order.status === "cancelled" && order.cancel_reason && (
+          <p className="text-[10px] font-medium text-red-500 truncate">🚫 {order.cancel_reason}</p>
+        )}
       </div>
 
       <div className="flex items-center justify-between text-[10px] text-muted-foreground">

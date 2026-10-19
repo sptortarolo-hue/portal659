@@ -38,10 +38,13 @@ export async function enqueueOrderPatch(opts: {
   orderId: string;
   kind: PatchKind;
   status?: OrderStatus;
+  /** Motivo de cancelación (viaja al payload del PATCH). */
+  reason?: string;
 }): Promise<{ queued: boolean }> {
-  const { vendorId, orderId, kind, status } = opts;
+  const { vendorId, orderId, kind, status, reason } = opts;
   const local = isLocalOrderId(orderId);
   const payload: Record<string, any> = kind === "order_status" ? { status } : {};
+  if (kind === "order_status" && reason) payload.cancel_reason = reason;
   if (local) {
     await enqueueOfflineAction({
       vendorId,

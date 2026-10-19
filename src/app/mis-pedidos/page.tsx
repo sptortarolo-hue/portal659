@@ -146,6 +146,12 @@ function OrderCard({ order, onReorder }: { order: Order & { track_token?: string
         </div>
       )}
 
+      {order.status === "cancelled" && (order as any).cancel_reason && (
+        <div className="mt-2 bg-red-50 border border-red-100 rounded-lg px-3 py-1.5">
+          <p className="text-[10px] text-red-600">🚫 Motivo de la cancelación: {(order as any).cancel_reason}</p>
+        </div>
+      )}
+
       {order.status === "completed" && vendor?.slug && (
         <Button
           size="sm"

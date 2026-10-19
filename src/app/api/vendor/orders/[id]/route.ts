@@ -30,10 +30,12 @@ function customerNotificationText(
   isRetail: boolean,
   storeName: string | undefined,
   total: number,
-  pickupNumber: number | null
+  pickupNumber: number | null,
+  cancelReason?: string | null
 ): { title: string; body: string } | null {
   const totalStr = `$${Number(total).toLocaleString("es-AR")}`;
   const numStr = pickupNumber != null ? ` Nro. ${pickupNumber}` : "";
+  const reasonStr = cancelReason ? ` El motivo: ${cancelReason}.` : "";
   if (!isRetail) {
     const label = STATUS_LABELS[status];
     if (!label) return null;
@@ -51,14 +53,14 @@ function customerNotificationText(
     case "completed":
       return { title: `¡Tu pedido${numStr} fue entregado!`, body: `Gracias por comprarle a ${storeName}` };
     case "cancelled":
-      return { title: `Tu pedido${numStr} fue cancelado`, body: `${storeName} canceló tu pedido${numStr} de ${totalStr}` };
+      return { title: `Tu pedido${numStr} fue cancelado`, body: `${storeName} canceló tu pedido${numStr} de ${totalStr}.${reasonStr}` };
     default:
       return null;
   }
 }
 
 const RETURN_COLUMNS =
-  "customer_phone, customer_name, customer_address, total, payment_method, payment_status, notes, modification_notes, method, items, pickup_number, transfer_proof_url, track_token, CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'kitchen_done') THEN kitchen_done ELSE '[]'::jsonb END AS kitchen_done, CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'delivery_zone_id') THEN delivery_zone_id ELSE NULL END AS delivery_zone_id, CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'delivery_zone_name') THEN delivery_zone_name ELSE NULL END AS delivery_zone_name, CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'delivery_out_of_area') THEN delivery_out_of_area ELSE false END AS delivery_out_of_area, CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'delivery_fee') THEN delivery_fee ELSE 0 END AS delivery_fee";
+  "customer_phone, customer_name, customer_address, total, payment_method, payment_status, notes, modification_notes, method, items, pickup_number, transfer_proof_url, track_token, CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'cancel_reason') THEN cancel_reason ELSE NULL END AS cancel_reason, CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'cancelled_by') THEN cancelled_by ELSE NULL END AS cancelled_by, CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'kitchen_done') THEN kitchen_done ELSE '[]'::jsonb END AS kitchen_done, CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'delivery_zone_id') THEN delivery_zone_id ELSE NULL END AS delivery_zone_id, CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'delivery_zone_name') THEN delivery_zone_name ELSE NULL END AS delivery_zone_name, CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'delivery_out_of_area') THEN delivery_out_of_area ELSE false END AS delivery_out_of_area, CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'delivery_fee') THEN delivery_fee ELSE 0 END AS delivery_fee";
 
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   const params = await context.params;
@@ -103,6 +105,12 @@ export async function PATCH(
 
   const body = await request.json();
   const { status, estimated_minutes, modification_notes, payment_status } = body;
+  // Motivo de la cancelación (M4.1): viaja al cliente en el push y queda en
+  // el detalle/seguimiento. Máx 200 char, ignorado si no cancela.
+  const cancel_reason =
+    status === "cancelled" && typeof body.cancel_reason === "string" && body.cancel_reason.trim()
+      ? body.cancel_reason.trim().slice(0, 200)
+      : undefined;
   const rawItems = body.items; // validado/recomputado server-side si viene
   const method = body.method;
   const customer_phone = body.customer_phone;
@@ -318,6 +326,25 @@ export async function PATCH(
       }
       if (status) updateData.status = status;
       if (status === "completed" || status === "cancelled") updateData.closed_at = new Date().toISOString();
+      // Cancelación: motivo electivo + quién lo hizo (para distinguir de un
+      // auto-cancel por vencimiento de transferencia, M4.2). Tolerante a
+      // migración sin aplicar: sin las columnas, cancela como siempre.
+      if (status === "cancelled") {
+        try {
+          const cc = await tx.query<{ exists: boolean }>(
+            `SELECT EXISTS (
+               SELECT 1 FROM information_schema.columns
+               WHERE table_name = 'orders' AND column_name = 'cancelled_by'
+             ) AS exists`
+          );
+          if (cc[0]?.exists === true) {
+            if (cancel_reason) updateData.cancel_reason = cancel_reason;
+            updateData.cancelled_by = fullVendor?.store_name || "el comercio";
+          }
+        } catch {
+          /* sin columnas: cancela igual */
+        }
+      }
       // Corte de privacidad del punto vivo: al entregar/cancelar se borra la
       // última posición (tolerante a migración sin aplicar).
       if (status === "completed" || status === "cancelled") {
@@ -592,7 +619,8 @@ export async function PATCH(
     isRetailVendor({ vertical: fullVendor?.vertical ?? null }) || fullVendor?.vertical === "estetica",
     fullVendor?.store_name,
     Number(order.total),
-    order.pickup_number as number | null
+    order.pickup_number as number | null,
+    status === "cancelled" ? cancel_reason ?? null : null
   );
 
   if (order && pushText && order.customer_phone && !isCounterPickup) {

@@ -70,7 +70,7 @@ type Props = {
   vendorName: string;
   vendorLogoUrl?: string | null;
   onClose: () => void;
-  onAction: (order: Order, status: OrderStatus) => void;
+  onAction: (order: Order, status: OrderStatus, reason?: string) => void;
   onModify?: (orderId: string, items: OrderItem[], modificationNotes: string) => Promise<{ ok: boolean; error?: string }>;
   offers?: DBProduct[];
   canPrint?: boolean;
@@ -108,6 +108,11 @@ export default function OrderDetailModal({ order, vendorName, vendorLogoUrl, onC
   const [payBusy, setPayBusy] = useState(false);
   const [payMsg, setPayMsg] = useState("");
   const [botFailed, setBotFailed] = useState(false);
+  // Cancelación con motivo (M4.1): primer toque muestra opciones rápidas;
+  // el motivo viaja al pedido y le llega al cliente en el push/WhatsApp.
+  const CANCEL_REASONS = ["No hay stock", "A pedido del cliente", "Se agotó el producto", "Cerramos por hoy"];
+  const [cancelStep, setCancelStep] = useState(false);
+  const [cancelReason, setCancelReason] = useState("");
   const [botState, setBotState] = useState<BotState>(() => waBotStateCache ?? "unknown");
 
   // Tarjetas de regalo de esta venta (F2/F3): emitidas + envío por WhatsApp.
@@ -707,6 +712,13 @@ export default function OrderDetailModal({ order, vendorName, vendorLogoUrl, onC
           {isCancelled && (
             <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-center">
               <p className="text-xs text-red-600 font-medium">Pedido cancelado</p>
+              {((order as any).cancel_reason || (order as any).cancelled_by) && (
+                <p className="text-[11px] text-red-500 mt-0.5">
+                  {((order as any).cancel_reason ? `Motivo: ${(order as any).cancel_reason}` : "")}
+                  {((order as any).cancel_reason && (order as any).cancelled_by) ? " · " : ""}
+                  {((order as any).cancelled_by ? `por ${(order as any).cancelled_by}` : "")}
+                </p>
+              )}
             </div>
           )}
 
@@ -1194,14 +1206,55 @@ export default function OrderDetailModal({ order, vendorName, vendorLogoUrl, onC
                   </Button>
                 </a>
               )}
-              <Button
-                variant="outline"
-                className="w-full text-red-600 border-red-200 hover:bg-red-50"
-                onClick={() => { onAction(order, "cancelled"); onClose(); }}
-              >
-                {/* En moda, cancelar antes de empaquetar = rechazar (sin stock, etc.) */}
-                {isRetail && (order.status === "new" || order.status === "confirmed") ? "Rechazar pedido" : "Cancelar pedido"}
-              </Button>
+              {!cancelStep ? (
+                <Button
+                  variant="outline"
+                  className="w-full text-red-600 border-red-200 hover:bg-red-50"
+                  onClick={() => { setCancelStep(true); setCancelReason(""); }}
+                >
+                  {/* En moda, cancelar antes de empaquetar = rechazar (sin stock, etc.) */}
+                  {isRetail && (order.status === "new" || order.status === "confirmed") ? "Rechazar pedido" : "Cancelar pedido"}
+                </Button>
+              ) : (
+                <div className="w-full border border-red-200 bg-red-50 rounded-xl p-3 space-y-2">
+                  <p className="text-xs font-semibold text-red-700">
+                    {isRetail && (order.status === "new" || order.status === "confirmed") ? "¿Por qué lo rechazás?" : "¿Por qué lo cancelás?"}
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {CANCEL_REASONS.map((r) => (
+                      <button
+                        key={r}
+                        type="button"
+                        onClick={() => setCancelReason(r)}
+                        className={`text-[11px] px-2 py-1 rounded-full border transition-colors ${cancelReason === r ? "bg-red-600 text-white border-red-600" : "bg-white text-red-700 border-red-200 hover:bg-red-100"}`}
+                      >
+                        {r}
+                      </button>
+                    ))}
+                  </div>
+                  <input
+                    className="w-full text-xs border border-red-200 rounded-lg px-2 py-1.5 bg-white"
+                    placeholder="Otros cambios (opcional)"
+                    maxLength={200}
+                    value={cancelReason}
+                    onChange={(e) => setCancelReason(e.target.value)}
+                  />
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      className="flex-1 bg-red-600 hover:bg-red-700 text-white"
+                      disabled={cancelReason.trim().length === 0}
+                      onClick={() => { onAction(order, "cancelled", cancelReason.trim()); onClose(); }}
+                    >
+                      {isRetail && (order.status === "new" || order.status === "confirmed") ? "Rechazar" : "Confirmar"}
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => setCancelStep(false)}>
+                      Volver
+                    </Button>
+                  </div>
+                  <p className="text-[10px] text-red-500/80">El motivo le llega al cliente con la notificación.</p>
+                </div>
+              )}
             </div>
           )}
 

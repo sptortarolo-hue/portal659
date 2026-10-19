@@ -881,7 +881,7 @@ function VendorDashboardInner() {
     else { setVendor(result.vendor); setMsg("Guardado"); }
   }, []);
 
-  async function updateOrderStatus(order: Order, status: Order["status"]) {
+  async function updateOrderStatus(order: Order, status: Order["status"], reason?: string) {
     // Offline (F5): pedido local o sin red → se encola la transición con
     // optimista local (el sync la aplica con dependencia del create).
     if (
@@ -889,7 +889,7 @@ function VendorDashboardInner() {
       (isLocalOrderId(order.id) || (typeof navigator !== "undefined" && !navigator.onLine))
     ) {
       try {
-        await enqueueOrderPatch({ vendorId: vendor.id, orderId: order.id, kind: "order_status", status });
+        await enqueueOrderPatch({ vendorId: vendor.id, orderId: order.id, kind: "order_status", status, reason });
       } catch {
         setMsg("Sin conexión: no se pudo encolar el cambio");
         return;
@@ -902,6 +902,7 @@ function VendorDashboardInner() {
     }
     try {
       const payload: Record<string, unknown> = { status };
+      if (status === "cancelled" && reason && reason.trim()) payload.cancel_reason = reason.trim();
       // Gastronomía estima minutos de cocina desde la demora configurada (sin hardcodeo);
       // retail (moda/comercio/estética) no maneja tiempos en minutos.
       if (status === "preparing" && !orderFlowRetail) {
@@ -2409,7 +2410,7 @@ function VendorDashboardInner() {
           vendorLogoUrl={(vendor as any)?.logo_url ?? null}
           isRetail={orderFlowRetail}
           onClose={() => setSelectedOrder(null)}
-          onAction={(order, status) => updateOrderStatus(order, status)}
+          onAction={(order, status, reason) => updateOrderStatus(order, status, reason)}
           onModify={modifyOrder}
           offers={offers}
           canPrint={effectivePlan.can("printer")}

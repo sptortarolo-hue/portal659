@@ -645,6 +645,10 @@ export type Order = {
   payment_status?: "paid" | "pending";
   pickup_number?: number | null;
   track_token?: string | null;
+  /** Motivo electivo de la cancelación (migrated cancel-reason). */
+  cancel_reason?: string | null;
+  /** Quién canceló (comercio / Sistema — M4.2). */
+  cancelled_by?: string | null;
   /** Todos los ítems son tarjetas de regalo: el flow salta Empaquetando. */
   is_gift_only?: boolean;
   /** Costo de envío del pedido (si aplica). */

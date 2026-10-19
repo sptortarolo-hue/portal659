@@ -154,6 +154,127 @@ type SharedProps = {
   uploading: boolean;
 };
 
+/** Línea de componente de combo (mismo shape que envía la API). */
+export type OfferComboItem = { product_id: string; name: string; price: number; qty: number; image_url?: string | null };
+
+/** Editor de combos: líneas de componentes con stepper de cantidad, borrado y
+ * alta desde un desplegable del catálogo. Lo usan el OfferForm (gastro,
+ * comercio, estética) y el editor propio de moda. El toggle vive en el form. */
+export function OfferComboEditor({
+  items,
+  onItems,
+  products,
+  price,
+}: {
+  items: OfferComboItem[];
+  onItems?: (v: OfferComboItem[]) => void;
+  products?: { id: string; name: string; price: number; image_url?: string | null; available?: boolean }[];
+  /** Precio tipeado del combo (avisa si queda fuera de rango). */
+  price?: string | number;
+}) {
+  const saleSum = (items || []).reduce(
+    (s, c) => s + (Number(c.qty) || 0) * (Number(c.price) || 0),
+    0
+  );
+  const outOfRange =
+    saleSum > 0 && ((Number(price) || 0) <= 0 || (Number(price) || 0) > saleSum);
+  return (
+    <div className="space-y-3 rounded-xl border border-violet-200 bg-violet-50/40 dark:border-violet-900 dark:bg-violet-950/40 p-3">
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-semibold">🧩 Componentes del combo</span>
+        <span className="text-[11px] text-muted-foreground">
+          {(items || []).length} línea{(items || []).length === 1 ? "" : "s"}
+        </span>
+      </div>
+      <div className="space-y-1.5">
+        {(items || []).map((c, idx) => (
+          <div key={`${c.product_id}-${idx}`} className="flex items-center gap-2 rounded-lg bg-background px-2 py-1.5">
+            <span className="flex-1 min-w-0 text-xs truncate">
+              {c.name}
+              <span className="text-muted-foreground"> · ${Number(c.price).toLocaleString("es-AR")} c/u</span>
+            </span>
+            <button
+              type="button"
+              className="h-6 w-6 flex items-center justify-center rounded border border-border text-muted-foreground hover:text-foreground"
+              onClick={() => {
+                const next = [...(items || [])];
+                next[idx] = { ...next[idx], qty: Math.max(1, next[idx].qty - 1) };
+                onItems?.(next);
+              }}
+            >
+              −
+            </button>
+            <span className="w-8 text-center text-sm font-medium tabular-nums">{c.qty}</span>
+            <button
+              type="button"
+              className="h-6 w-6 flex items-center justify-center rounded border border-border text-muted-foreground hover:text-foreground"
+              onClick={() => {
+                const next = [...(items || [])];
+                next[idx] = { ...next[idx], qty: next[idx].qty + 1 };
+                onItems?.(next);
+              }}
+            >
+              +
+            </button>
+            <button
+              type="button"
+              className="text-red-600 text-xs px-1"
+              onClick={() => {
+                const next = [...(items || [])].filter((_, i) => i !== idx);
+                onItems?.(next);
+              }}
+            >
+              ✕
+            </button>
+          </div>
+        ))}
+        {(items || []).length === 0 && (
+          <p className="text-xs text-muted-foreground text-center py-2">Sin componentes todavía.</p>
+        )}
+      </div>
+      <div>
+        <select
+          className="w-full h-9 rounded-lg border border-input bg-background px-2 text-xs"
+          defaultValue=""
+          onChange={(e) => {
+            const id = e.target.value;
+            e.target.value = "";
+            if (!id) return;
+            const p = (products || []).find((x) => x.id === id);
+            if (!p) return;
+            if ((items || []).some((c) => c.product_id === id)) return;
+            const next = [...(items || []), { product_id: id, name: p.name, price: p.price, qty: 1, image_url: p.image_url ?? null }];
+            onItems?.(next);
+          }}
+        >
+          <option value="" disabled>
+            + Agregar componente…
+          </option>
+          {(products || [])
+            .filter((p) => p.available !== false)
+            .sort((a, b) => a.name.localeCompare(b.name, "es"))
+            .map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name} — ${Number(p.price).toLocaleString("es-AR")}
+              </option>
+            ))}
+        </select>
+      </div>
+      {saleSum > 0 && (
+        <div className="flex items-center justify-between text-xs border-t border-violet-200 dark:border-violet-900 pt-2">
+          <span className="text-muted-foreground">Valor de venta de los componentes</span>
+          <span className="font-medium tabular-nums">${saleSum.toLocaleString("es-AR")}</span>
+        </div>
+      )}
+      {outOfRange && (
+        <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 dark:text-amber-300 dark:bg-amber-950/60 dark:border-amber-900 rounded-lg px-2.5 py-1.5">
+          ⚠️ El precio del combo debería estar entre $1 y ${saleSum.toLocaleString("es-AR")} (suma de los componentes).
+        </p>
+      )}
+    </div>
+  );
+}
+
 type OfferFormProps = {
   categories: MenuCategory[];
   editingId: string | null;
@@ -311,112 +432,14 @@ export function OfferForm({
   }
   useEffect(() => () => { scanSkuStopRef.current = true; }, []);
 
-  // Combos: costo y valor de venta de los componentes (sumatorias en vivo).
-  const comboCostSum = 0;
-  const comboSaleSum = (offComboItems || []).reduce(
-    (s, c) => s + (Number(c.qty) || 0) * (Number(c.price) || 0),
-    0
-  );
-  const comboPriceNum = Number(offPrice) || 0;
-  const comboOutOfRange =
-    offIsCombo && comboSaleSum > 0 && (comboPriceNum <= 0 || comboPriceNum > comboSaleSum);
-
-  // Editor de combos: toggle + líneas + sumatorias (se renderiza solo si el
-  // padre pasa los handlers; si no, el toggle queda inerte).
-  const comboEditor = offIsCombo ? (
-    <div className="space-y-3 rounded-xl border border-violet-200 bg-violet-50/40 dark:border-violet-900 dark:bg-violet-950/40 p-3">
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-semibold">🧩 Componentes del combo</span>
-        <span className="text-[11px] text-muted-foreground">
-          {offComboItems.length} línea{offComboItems.length === 1 ? "" : "s"}
-        </span>
-      </div>
-      <div className="space-y-1.5">
-        {(offComboItems || []).map((c, idx) => (
-          <div key={`${c.product_id}-${idx}`} className="flex items-center gap-2 rounded-lg bg-background px-2 py-1.5">
-            <span className="flex-1 min-w-0 text-xs truncate">
-              {c.name}
-              <span className="text-muted-foreground"> · ${Number(c.price).toLocaleString("es-AR")} c/u</span>
-            </span>
-            <button
-              type="button"
-              className="h-6 w-6 flex items-center justify-center rounded border border-border text-muted-foreground hover:text-foreground"
-              onClick={() => {
-                const next = [...(offComboItems || [])];
-                next[idx] = { ...next[idx], qty: Math.max(1, next[idx].qty - 1) };
-                setOffComboItems?.(next);
-              }}
-            >
-              −
-            </button>
-            <span className="w-8 text-center text-sm font-medium tabular-nums">{c.qty}</span>
-            <button
-              type="button"
-              className="h-6 w-6 flex items-center justify-center rounded border border-border text-muted-foreground hover:text-foreground"
-              onClick={() => {
-                const next = [...(offComboItems || [])];
-                next[idx] = { ...next[idx], qty: next[idx].qty + 1 };
-                setOffComboItems?.(next);
-              }}
-            >
-              +
-            </button>
-            <button
-              type="button"
-              className="text-red-600 text-xs px-1"
-              onClick={() => {
-                const next = [...(offComboItems || [])].filter((_, i) => i !== idx);
-                setOffComboItems?.(next);
-              }}
-            >
-              ✕
-            </button>
-          </div>
-        ))}
-        {(offComboItems || []).length === 0 && (
-          <p className="text-xs text-muted-foreground text-center py-2">Sin componentes todavía.</p>
-        )}
-      </div>
-      <div>
-        <select
-          className="w-full h-9 rounded-lg border border-input bg-background px-2 text-xs"
-          defaultValue=""
-          onChange={(e) => {
-            const id = e.target.value;
-            e.target.value = "";
-            if (!id) return;
-            const p = (offAllProducts || []).find((x) => x.id === id);
-            if (!p) return;
-            if ((offComboItems || []).some((c) => c.product_id === id)) return;
-            const next = [...(offComboItems || []), { product_id: id, name: p.name, price: p.price, qty: 1, image_url: p.image_url ?? null }];
-            setOffComboItems?.(next);
-          }}
-        >
-          <option value="" disabled>
-            + Agregar componente…
-          </option>
-          {(offAllProducts || [])
-            .filter((p) => p.available !== false)
-            .sort((a, b) => a.name.localeCompare(b.name, "es"))
-            .map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name} — ${Number(p.price).toLocaleString("es-AR")}
-              </option>
-            ))}
-        </select>
-      </div>
-      {comboSaleSum > 0 && (
-        <div className="flex items-center justify-between text-xs border-t border-violet-200 dark:border-violet-900 pt-2">
-          <span className="text-muted-foreground">Valor de venta de los componentes</span>
-          <span className="font-medium tabular-nums">${comboSaleSum.toLocaleString("es-AR")}</span>
-        </div>
-      )}
-      {comboOutOfRange && (
-        <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 dark:text-amber-300 dark:bg-amber-950/60 dark:border-amber-900 rounded-lg px-2.5 py-1.5">
-          ⚠️ El precio del combo debería estar entre $1 y ${comboSaleSum.toLocaleString("es-AR")} (suma de los componentes).
-        </p>
-      )}
-    </div>
+  // Combos: el editor vive en OfferComboEditor (compartido con el editor moda).
+  const comboEditor = offIsCombo && setOffComboItems ? (
+    <OfferComboEditor
+      items={offComboItems}
+      onItems={setOffComboItems}
+      products={offAllProducts}
+      price={offPrice}
+    />
   ) : null;
 
   // Lookup de código de barras (Open Food Facts + caché propia): sugiere

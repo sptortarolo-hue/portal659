@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { QuantityInput } from "@/components/ui/quantity-input";
 import { Badge } from "@/components/ui/badge";
-import { OfferForm, OfferList, useFormDraft } from "@/components/dashboard/shared";
+import { OfferForm, OfferList, OfferComboEditor, useFormDraft } from "@/components/dashboard/shared";
 import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import { VolumeEditor } from "@/components/dashboard/volume-editor";
 import { clearDraft } from "@/lib/draft";
@@ -554,6 +554,28 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
           <div><Label>Precio ($)</Label><Input type="number" step="0.01" value={offPrice} onChange={(e) => setOffPrice(e.target.value)} required /></div>
         </div>
         <div><Label>Precio promo ($)</Label><Input type="number" step="0.01" value={offPromoPrice} onChange={(e) => setOffPromoPrice(e.target.value)} placeholder="Vacío si no está en oferta" /></div>
+        <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2">
+          <input
+            type="checkbox"
+            checked={offIsCombo}
+            onChange={(e) => setOffIsCombo(e.target.checked)}
+            className="h-4 w-4 accent-primary"
+            id="moda-is-combo"
+          />
+          <label htmlFor="moda-is-combo" className="text-sm font-medium cursor-pointer select-none">
+            🧩 Es un combo (varios productos juntos)
+          </label>
+        </div>
+        {offIsCombo && (
+          <OfferComboEditor
+            items={offComboItems}
+            onItems={setOffComboItems}
+            products={offers
+              .filter((o) => o.available !== false)
+              .map((o) => ({ id: o.id, name: o.name, price: Number(o.price) || 0, image_url: o.image_url ?? null }))}
+            price={offPrice}
+          />
+        )}
         <div className="grid grid-cols-2 gap-3">
           <div>
             <Label>Código (SKU)</Label>

@@ -39,6 +39,11 @@ Checklist de verificación de la vertical moda (indumentaria) en producción, co
 - [ ] Comprar pack: cantidad 2 → total = precio-del-pack × 2.
 - [ ] Regla de volumen aplicando en el checkout cuando llega al umbral.
 - [ ] Comprar combo: al confirmar, **el stock de los componentes descuenta** (verificar stock en el panel).
+- [ ] **Combo armable (M5)**: combo con componente que tiene variantes → al tocarlo se abre el armado (
+  una casilla por pieza: chips color → talle). Confirmar y revisar que el carrito muestre el desglose 🧩
+  por pieza ("Lisa (Blanca · M)") y que el stock de la **variante** elegida descuenta.
+- [ ] Mismo combo con otro armado (distinta variante) → entra como **línea separada** del carrito.
+- [ ] Intentar pedir más unidades de las definidas (bcc editando) → error claro en el checkout.
 - [ ] **Apartado**: elegir apartado → pagar seña por MP → pedido queda apartado con saldo restante visible (seguimiento / mis-pedidos).
 - [ ] Flow retail del pedido: Empaquetando → Listo → (si delivery) Enviado con franja; notificaciones al cliente en cada paso.
 - [ ] WhatsApp de seguimiento muestra estado y franja correctos.
@@ -57,6 +62,8 @@ Checklist de verificación de la vertical moda (indumentaria) en producción, co
 
 **Mostrador (POS)**
 - [ ] Vender producto con variantes: picker de color/talle en el mostrador.
+- [ ] **Combo armable en mostrador**: tocar un combo con componente variantable → el mismo armado del
+  micrositio; la línea lleva el desglose 🧩 y el ticket subraya cada pieza.
 - [ ] Escanear SKU de una variante (si hay escáner; si no, saltear).
 - [ ] Venta directa → ticket impreso (o confirmación en pantalla si no hay impresora).
 - [ ] Caja: abrir turno → vender → cerrar Z con arqueo.
@@ -64,6 +71,9 @@ Checklist de verificación de la vertical moda (indumentaria) en producción, co
 ## Fase 4 — Bordes
 
 - [ ] Cancelar pedido con variante (estaba "nuevo") → **el stock de la variante se repone**.
+- [ ] Cancelar pedido de **combo armado** → repone el stock de las variantes de las piezas.
+- [ ] Combo pedido por un canal viejo (MP webhook / bot) con componente variantable → rechazado con
+  mensaje claro ("falta elegir talle y color de …"); si el combo no pide variantes, entra normal.
 - [ ] Editar combo (quitar componente y guardar) → pedidos ya hechos no rompen; ficha queda correcta.
 - [ ] Producto con mods + promo al mismo tiempo: precio correcto en checkout y mostrador (con `cash_discount_excluded` correspondiente).
 - [ ] Bajar el plan (admin, a gratuito) → Mostrador/Caja vuelven a lock y el tope vuelve aplicar.

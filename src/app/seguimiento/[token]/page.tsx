@@ -214,6 +214,14 @@ export default function SeguimientoPedidoPage() {
           <span className="tabular-nums">−${Number((order as any).giftcard_discount).toLocaleString("es-AR")}</span>
         </div>
       )}
+      {order.payment_method === "efectivo" && Number((order as any).cash_amount) > 0 && (
+        <div className="flex items-center justify-between text-xs font-medium text-green-700 mt-2">
+          <span>💵 Abonás con ${Number((order as any).cash_amount).toLocaleString("es-AR")}</span>
+          <span className="tabular-nums">
+            vuelto ${Math.max(0, Math.round((Number((order as any).cash_amount) - Number(order.total)) * 100) / 100).toLocaleString("es-AR")}
+          </span>
+        </div>
+      )}
 
       <div className="flex items-center justify-between mt-3 pt-2 border-t border-border">
         <span className="font-bold text-sm">${Number(order.total).toLocaleString("es-AR")}</span>

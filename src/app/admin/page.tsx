@@ -14,6 +14,8 @@ type AdminStats = {
   totalRevenue: number;
   avgRating: number | null;
   totalUsers: number;
+  ordersByDay: Array<{ date: string; pedidos: number }>;
+  ordersByVertical: Array<{ vertical: string; pedidos: number }>;
 };
 
 type Order = {
@@ -22,14 +24,7 @@ type Order = {
   total: number;
   status: string;
   vendor_id: string;
-  vendors?: { store_name: string } | null;
-};
-
-type Vendor = {
-  id: string;
-  store_name: string;
-  vertical: string;
-  verified: boolean;
+  store_name?: string;
 };
 
 const VERTICAL_COLORS: Record<string, string> = {
@@ -68,7 +63,6 @@ async function fetchJson(url: string, ms = 8000): Promise<any | null> {
 export default function AdminDashboard() {
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
-  const [vendors, setVendors] = useState<Vendor[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [shareCopied, setShareCopied] = useState(false);
@@ -98,7 +92,6 @@ export default function AdminDashboard() {
           totalUsers: usersData?.total || 0,
         });
         setOrders(adminData.orders || []);
-        setVendors(adminData.vendors || []);
       } else {
         setError(true);
       }
@@ -111,36 +104,11 @@ export default function AdminDashboard() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  const ordersByDay = (() => {
-    const map: Record<string, number> = {};
-    const now = new Date();
-    for (let i = 29; i >= 0; i--) {
-      const d = new Date(now);
-      d.setDate(d.getDate() - i);
-      const key = d.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" });
-      map[key] = 0;
-    }
-    orders.forEach((o) => {
-      const d = new Date(o.created_at);
-      const key = d.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" });
-      if (key in map) map[key]++;
-    });
-    return Object.entries(map).map(([date, count]) => ({ date, pedidos: count }));
-  })();
-
-  const ordersByVertical = (() => {
-    const map: Record<string, number> = {};
-    vendors.forEach((v) => {
-      const count = orders.filter((o) => {
-        const vendor = vendors.find((v2) => v2.id === o.vendor_id);
-        return vendor?.vertical === v.vertical;
-      }).length;
-      if (count > 0) map[v.vertical] = (map[v.vertical] || 0) + count;
-    });
-    return Object.entries(map)
-      .map(([name, value]) => ({ name: VERTICALS.find((v) => v.slug === name)?.name || name, value }))
-      .filter((d) => d.value > 0);
-  })();
+  const ordersByDay = stats?.ordersByDay ?? [];
+  const ordersByVertical = (stats?.ordersByVertical ?? []).map((d) => ({
+    name: VERTICALS.find((v) => v.slug === d.vertical)?.name || d.vertical,
+    value: d.pedidos,
+  }));
 
   if (loading) {
     return (
@@ -259,7 +227,7 @@ export default function AdminDashboard() {
                   <td className="px-3 py-2 text-xs">
                     {new Date(o.created_at).toLocaleDateString("es-AR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
                   </td>
-                  <td className="px-3 py-2">{o.vendors?.store_name || "-"}</td>
+                  <td className="px-3 py-2">{o.store_name || "-"}</td>
                   <td className="px-3 py-2">
                     <span className="text-xs px-2 py-0.5 rounded-full bg-muted">
                       {ORDER_STATUS_LABELS[o.status] || o.status}

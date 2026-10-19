@@ -135,6 +135,8 @@ export default function DashboardEstetica({
   const [cashDiscount, setCashDiscount] = useState(
     vendor?.cash_discount_pct != null ? String(vendor.cash_discount_pct) : ""
   );
+  // "¿Con cuánto abonás?" (efectivo + delivery): pedido del dato al cliente.
+  const [cashAsk, setCashAsk] = useState(vendor?.cash_ask_amount !== false);
   const [deliveryOptions, setDeliveryOptions] = useState(vendor?.delivery_options || "ambos");
   const [onlineOrders, setOnlineOrders] = useState(vendor?.accepts_online_orders !== false);
   // Turnera.
@@ -196,6 +198,7 @@ export default function DashboardEstetica({
         : []
     );
     setCashDiscount(vendor.cash_discount_pct != null ? String(vendor.cash_discount_pct) : "");
+    setCashAsk(vendor.cash_ask_amount !== false);
     setDeliveryOptions(vendor.delivery_options || "ambos");
     setOnlineOrders(vendor.accepts_online_orders !== false);
     setBookingsEnabled(vendor.bookings_enabled !== false);
@@ -505,6 +508,25 @@ export default function DashboardEstetica({
                 <p className="text-xs text-muted-foreground mt-1">
                   Se muestra junto a cada precio y se descuenta solo al pagar en efectivo.
                 </p>
+              </div>
+            )}
+            {paymentMethods.includes("Efectivo") && (
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-border px-3 py-2.5">
+                <div>
+                  <Label className="text-sm">💵 Pedir "¿Con cuánto abonás?"</Label>
+                  <p className="text-xs text-muted-foreground">
+                    {cashAsk
+                      ? "En delivery con efectivo, el cliente indica con cuánto paga: sabés el vuelto antes de salir."
+                      : "No se le pregunta al cliente con cuánto paga."}
+                  </p>
+                </div>
+                <Switch
+                  checked={cashAsk}
+                  onCheckedChange={async (v) => {
+                    setCashAsk(v);
+                    await saveVendor({ cash_ask_amount: v });
+                  }}
+                />
               </div>
             )}
             <MpConnectCard

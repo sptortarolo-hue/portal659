@@ -26,6 +26,9 @@ type OrderSummaryModalProps = {
   /** "mañana 09:00–13:00": turno de entrega retail elegido. */
   deliveryWindowLabel?: string;
   paymentMethod?: string;
+  /** "¿Con cuánto abonás?" (efectivo + delivery): monto y vuelto estimado. */
+  cashAmount?: number;
+  cashChange?: number;
   loading?: boolean;
   error?: string;
   cashDiscount?: number;
@@ -46,6 +49,8 @@ export function OrderSummaryModal({
   address,
   deliveryWindowLabel,
   paymentMethod,
+  cashAmount,
+  cashChange,
   loading,
   error,
   cashDiscount = 0,
@@ -150,6 +155,12 @@ export function OrderSummaryModal({
             <p>📦 Te lo llevamos {deliveryWindowLabel}</p>
           )}
           <p>💳 {paymentLabel}</p>
+          {paymentMethod === "efectivo" && cashAmount != null && cashAmount > 0 && (
+            <p className="font-medium text-green-700">
+              💵 Abonás con ${cashAmount.toLocaleString("es-AR")}
+              {cashChange != null && cashChange > 0 ? ` · tu cambio: $${cashChange.toLocaleString("es-AR")}` : " (exacto)"}
+            </p>
+          )}
         </div>
       </div>
     </Modal>

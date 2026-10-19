@@ -31,15 +31,25 @@ function customerNotificationText(
   storeName: string | undefined,
   total: number,
   pickupNumber: number | null,
-  cancelReason?: string | null
+  cancelReason?: string | null,
+  cashAmount?: number | null
 ): { title: string; body: string } | null {
   const totalStr = `$${Number(total).toLocaleString("es-AR")}`;
   const numStr = pickupNumber != null ? ` Nro. ${pickupNumber}` : "";
   const reasonStr = cancelReason ? ` El motivo: ${cancelReason}.` : "";
+  // "¿Con cuánto abonás?" (efectivo + delivery): el push avisa lo que tiene
+  // que preparar el cliente.
+  const abonaStr =
+    status === "sent" && Number(cashAmount) > 0
+      ? ` Abonás con $${Number(cashAmount).toLocaleString("es-AR")} (tu cambio: $${Math.max(0, Math.round((Number(cashAmount) - Number(total)) * 100) / 100).toLocaleString("es-AR")})`
+      : "";
   if (!isRetail) {
     const label = STATUS_LABELS[status];
     if (!label) return null;
-    return { title: `Tu pedido${numStr} fue ${label}`, body: `${storeName} ${label} tu pedido${numStr} de ${totalStr}` };
+    return {
+      title: `Tu pedido${numStr} fue ${label}`,
+      body: `${storeName} ${label} tu pedido${numStr} de ${totalStr}${abonaStr}`,
+    };
   }
   switch (status) {
     case "confirmed":
@@ -49,7 +59,7 @@ function customerNotificationText(
     case "ready":
       return { title: `¡Tu pedido${numStr} está listo!`, body: `${storeName} ya tiene listo tu pedido${numStr} de ${totalStr}. Si elegiste retiro, ya podés pasar a buscarlo` };
     case "sent":
-      return { title: `¡Tu pedido${numStr} va en camino!`, body: `${storeName} despachó tu pedido${numStr} de ${totalStr}` };
+      return { title: `¡Tu pedido${numStr} va en camino!`, body: `${storeName} despachó tu pedido${numStr} de ${totalStr}.${abonaStr}` };
     case "completed":
       return { title: `¡Tu pedido${numStr} fue entregado!`, body: `Gracias por comprarle a ${storeName}` };
     case "cancelled":
@@ -155,11 +165,14 @@ export async function PATCH(
     return NextResponse.json({ error: "Estado de pago inválido" }, { status: 400 });
   }
 
-  const currentOrder = await queryOne<{ status: string; payment_status: string; payment_method: string; channel: string; method: string; items: OrderItem[] | null; customer_name: string | null; customer_phone: string | null; total: number; is_preview: boolean | null; kitchen_done: boolean[] | null }>(
+  const currentOrder = await queryOne<{ status: string; payment_status: string; payment_method: string; channel: string; method: string; items: OrderItem[] | null; customer_name: string | null; customer_phone: string | null; total: number; is_preview: boolean | null; kitchen_done: boolean[] | null; cash_amount: number | null }>(
     `SELECT status, payment_status, payment_method, channel, method, items, customer_name, customer_phone, total, is_preview,
       -- Tolerante a migración de progreso de cocina sin aplicar.
       CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'kitchen_done')
-        THEN kitchen_done ELSE '[]'::jsonb END AS kitchen_done
+        THEN kitchen_done ELSE '[]'::jsonb END AS kitchen_done,
+      -- "¿Con cuánto abonás?" (efectivo + delivery). Tolerante a migración.
+      CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'cash_amount')
+        THEN cash_amount ELSE NULL END AS cash_amount
       FROM orders WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
     [params.id, vendor.id]
   );
@@ -620,7 +633,12 @@ export async function PATCH(
     fullVendor?.store_name,
     Number(order.total),
     order.pickup_number as number | null,
-    status === "cancelled" ? cancel_reason ?? null : null
+    status === "cancelled" ? cancel_reason ?? null : null,
+    status === "sent" &&
+      (currentOrder as any)?.payment_method === "efectivo" &&
+      Number((currentOrder as any)?.cash_amount) > 0
+      ? Number((currentOrder as any).cash_amount)
+      : null
   );
 
   if (order && pushText && order.customer_phone && !isCounterPickup) {

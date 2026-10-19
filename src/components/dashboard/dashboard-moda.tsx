@@ -118,6 +118,8 @@ export default function DashboardModa({
   const [cashDiscount, setCashDiscount] = useState(
     vendor?.cash_discount_pct != null ? String(vendor.cash_discount_pct) : ""
   );
+  // "¿Con cuánto abonás?" (efectivo + delivery): pedido del dato al cliente.
+  const [cashAsk, setCashAsk] = useState(vendor?.cash_ask_amount !== false);
   const [storePreview, setStorePreview] = useState<string | null>(vendor?.image_url || null);
   const [logoPreview, setLogoPreview] = useState<string | null>(vendor?.logo_url || null);
   const [storeFile, setStoreFile] = useState<File | null>(null);
@@ -146,6 +148,7 @@ export default function DashboardModa({
     setCoordinar(vendor.delivery_coordinar === true);
     setOnlineOrders(vendor.accepts_online_orders !== false);
     setCashDiscount(vendor.cash_discount_pct != null ? String(vendor.cash_discount_pct) : "");
+    setCashAsk(vendor.cash_ask_amount !== false);
     setStorePreview(vendor.image_url || null);
     setLogoPreview(vendor.logo_url || null);
   }, [vendor]);
@@ -671,6 +674,25 @@ export default function DashboardModa({
               <p className="text-xs text-muted-foreground mt-1">
                 Se muestra junto a cada precio y se descuenta solo al pagar en efectivo.
               </p>
+            </div>
+          )}
+          {paymentMethods.includes("Efectivo") && (
+            <div className="flex items-center justify-between gap-3 rounded-xl border border-border px-3 py-2.5">
+              <div>
+                <Label className="text-sm">💵 Pedir "¿Con cuánto abonás?"</Label>
+                <p className="text-xs text-muted-foreground">
+                  {cashAsk
+                    ? "En delivery con efectivo, el cliente indica con cuánto paga: sabés el vuelto antes de salir."
+                    : "No se le pregunta al cliente con cuánto paga."}
+                </p>
+              </div>
+              <Switch
+                checked={cashAsk}
+                onCheckedChange={async (v) => {
+                  setCashAsk(v);
+                  await saveVendor({ cash_ask_amount: v });
+                }}
+              />
             </div>
           )}
           <div className="flex items-center justify-between gap-3 rounded-xl border border-border px-3 py-2.5">

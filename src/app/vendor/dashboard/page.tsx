@@ -1432,6 +1432,11 @@ function VendorDashboardInner() {
                             <AlertTriangle className="h-2.5 w-2.5" /> Pago pendiente
                           </span>
                         )}
+                        {order.payment_method === "efectivo" && Number((order as any).cash_amount) > 0 && (
+                          <span className="inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-green-100 text-green-700 border-green-200">
+                            💵 Abona ${Number((order as any).cash_amount).toLocaleString("es-AR")}
+                          </span>
+                        )}
                         {(() => {
                           const ap = apartadoInfo(order);
                           if (!ap.isApartado || !ap.active) return null;

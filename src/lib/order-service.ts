@@ -52,6 +52,8 @@ export type CreateOrderInput = {
   previewToken?: string | null;
   /** Código de giftcard a canjear (checkout online, solo efectivo/transferencia). */
   giftcardCode?: string | null;
+  /** "¿Con cuánto abonás?" (efectivo + delivery): monto que dice llevar el cliente. */
+  cashAmount?: number | null;
 };
 
 export type CreateOrderResult = {
@@ -101,6 +103,14 @@ export class OrderLimitError extends Error {
   }
 }
 
+/** Negocio: falta el "¿con cuánto abonás?" o es menor al total (efectivo + delivery). → 400 */
+export class CashAmountError extends Error {
+  constructor(message = "Indicá con cuánto abonás (tiene que ser igual o mayor al total).") {
+    super(message);
+    this.name = "CashAmountError";
+  }
+}
+
 /** Negocio: el método elegido (retiro/delivery) no está habilitado por el comercio. → 400 */
 export class DeliveryMethodError extends Error {
   constructor(message = "El comercio no ofrece ese método de entrega.") {
@@ -135,6 +145,7 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
     deliveryWindow,
     giftcardCode,
     previewToken,
+    cashAmount,
   } = input;
 
   if (!vendorId || !customerName || !customerPhone || !items) {
@@ -206,7 +217,7 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
     source === "wa-bot" && notes ? `[Bot WA] ${notes}` : source === "wa-bot" ? "[Bot WA]" : notes || null;
 
   const vendorRow = await queryOne<Record<string, unknown>>(
-    `SELECT vertical, plan_id, plan_status, plan_expires_at, trial_ends_at, hours, open_override, delivery_fee, free_delivery_min, cash_discount_pct, accepts_online_orders, delivery_options, transfer_expiry_hours FROM vendors WHERE id = $1 LIMIT 1`,
+    `SELECT vertical, plan_id, plan_status, plan_expires_at, trial_ends_at, hours, open_override, delivery_fee, free_delivery_min, cash_discount_pct, accepts_online_orders, delivery_options, transfer_expiry_hours, cash_ask_amount FROM vendors WHERE id = $1 LIMIT 1`,
     [vendorId]
   );
 
@@ -399,6 +410,24 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
       ? new Date(Date.now() + expiryHours * 3_600_000).toISOString()
       : null;
 
+  // "¿Con cuánto abonás?" (migrate-order-cash-amount.sql, tolerante sin aplicar).
+  const cashAmountCol = await queryOne<{ exists: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1 FROM information_schema.columns
+       WHERE table_name = 'orders' AND column_name = 'cash_amount'
+     ) AS exists`
+  ).catch(() => null);
+  const hasCashAmountCol = cashAmountCol?.exists === true;
+  // Se pide solo en efectivo + delivery, si el comercio no lo apagó. En pruebas
+  // (preview) no se exige para no trabar el recorrido, pero se guarda igual.
+  const cashAmountRequired =
+    paymentMethodNorm === "efectivo" && method === "delivery" && !isPreview &&
+    (vendorRow ? (vendorRow as any).cash_ask_amount !== false : false);
+  const cashAmountFinal =
+    typeof cashAmount === "number" && Number.isFinite(cashAmount) && cashAmount > 0
+      ? Math.round(cashAmount * 100) / 100
+      : null;
+
   // Canje de giftcard (checkout online, efectivo/transferencia): se consume
   // DENTRO de la tx principal, sobre el total recién calculado (si falla se
   // hace rollback de todo: sin pedido ni consumo). MP va por propia ruta.
@@ -458,6 +487,13 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
         resolvedTotal = Math.max(0, Math.round((pricing.total - giftcardApplied) * 100) / 100);
       }
 
+      // "¿Con cuánto abonás?": validado contra el total final (con descuento
+      // de efectivo, envío y giftcard ya aplicados). El vuelto no se guarda:
+      // se calcula donde se muestra (cash_amount - total).
+      if (cashAmountRequired && (!cashAmountFinal || cashAmountFinal < resolvedTotal)) {
+        throw new CashAmountError();
+      }
+
       const movedStock: StockMove[] = isPreview
         ? []
         : await adjustStockForItems(tx, resolvedItems.filter((i) => (i as any).unit !== "kg"), "decrement");
@@ -491,9 +527,13 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
       const deadlineCols = transferDeadlineAt ? ", transfer_deadline_at" : "";
       const deadlineVals = transferDeadlineAt ? `, $${nextParam++}` : "";
       const deadlineParams: unknown[] = transferDeadlineAt ? [transferDeadlineAt] : [];
+      // "¿Con cuánto abonás?" (efectivo + delivery).
+      const cashAmountCols = hasCashAmountCol ? ", cash_amount" : "";
+      const cashAmountVals = hasCashAmountCol ? `, $${nextParam++}` : "";
+      const cashAmountParams: unknown[] = hasCashAmountCol ? [cashAmountFinal] : [];
       const rows = await tx.query<{ id: string }>(
-        `INSERT INTO orders (vendor_id, customer_id, customer_name, customer_phone, customer_address, method, payment_method, items, total, status, notes, device_id, payment_status, pickup_number, cash_pct, cash_discount, track_token${volumeCols}${zoneCols}${windowCols}${previewCols}${giftcardCols}${deadlineCols})
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'new', $10, $11, $12, $13, $14, $15, $16${volumeVals}${zoneVals}${windowVals}${previewVals}${giftcardVals}${deadlineVals})
+        `INSERT INTO orders (vendor_id, customer_id, customer_name, customer_phone, customer_address, method, payment_method, items, total, status, notes, device_id, payment_status, pickup_number, cash_pct, cash_discount, track_token${volumeCols}${zoneCols}${windowCols}${previewCols}${giftcardCols}${deadlineCols}${cashAmountCols})
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'new', $10, $11, $12, $13, $14, $15, $16${volumeVals}${zoneVals}${windowVals}${previewVals}${giftcardVals}${deadlineVals}${cashAmountVals})
          RETURNING id`,
         [
           vendorId,
@@ -518,6 +558,7 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
           ...previewParams,
           ...giftcardParams,
           ...deadlineParams,
+          ...cashAmountParams,
         ]
       );
       orderId = rows[0]?.id;
@@ -553,12 +594,16 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
       if (vendor?.user_id) {
         const paymentLabel =
           paymentMethod === "efectivo" ? "💵 Efectivo" : paymentMethod === "transferencia" ? "🏦 Transferencia" : "📱 Coordinar";
+        const abonaLabel =
+          paymentMethod === "efectivo" && cashAmountFinal
+            ? ` · abona $${cashAmountFinal.toLocaleString("es-AR")} (vuelto $${Math.max(0, Math.round((cashAmountFinal - resolvedTotal) * 100) / 100).toLocaleString("es-AR")})`
+            : "";
         await tx.queryVoid(
           `INSERT INTO notifications (user_id, title, body, type, link) VALUES ($1, $2, $3, $4, $5)`,
           [
             vendor.user_id,
             "Nuevo pedido recibido",
-            `${isPreview ? "🧪 [PRUEBA] " : ""}Nro. ${pickupNumber} · ${customerName} hizo un pedido de ${resolvedItemsCount} producto${resolvedItemsCount > 1 ? "s" : ""} por $${resolvedTotal.toLocaleString("es-AR")} · ${paymentLabel}`,
+            `${isPreview ? "🧪 [PRUEBA] " : ""}Nro. ${pickupNumber} · ${customerName} hizo un pedido de ${resolvedItemsCount} producto${resolvedItemsCount > 1 ? "s" : ""} por $${resolvedTotal.toLocaleString("es-AR")} · ${paymentLabel}${abonaLabel}`,
             "order",
             "/vendor/dashboard",
           ]
@@ -590,9 +635,13 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
         : paymentMethodNorm === "transferencia"
           ? "🏦 Transferencia"
           : "📱 Coordinar";
+    const abonaLabel =
+      paymentMethodNorm === "efectivo" && cashAmountFinal
+        ? ` · abona $${cashAmountFinal.toLocaleString("es-AR")} (vuelto $${Math.max(0, Math.round((cashAmountFinal - resolvedTotal) * 100) / 100).toLocaleString("es-AR")})`
+        : "";
     void sendPushToUser(vendor.user_id, {
       title: `${isPreview ? "🧪 " : "🛎️ "}Pedido nuevo #${pickupNumber} · $${resolvedTotal.toLocaleString("es-AR")}`,
-      body: `${customerName} · ${resolvedItemsCount} producto${resolvedItemsCount !== 1 ? "s" : ""} · ${paymentLabel}`,
+      body: `${customerName} · ${resolvedItemsCount} producto${resolvedItemsCount !== 1 ? "s" : ""} · ${paymentLabel}${abonaLabel}`,
       link: "/vendor/dashboard",
       // Tag único por pedido: no colapsa con otros y renotify hace que
       // cada pedido suene/vibre aunque haya notificaciones visibles.

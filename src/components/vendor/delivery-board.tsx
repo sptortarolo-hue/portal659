@@ -17,6 +17,9 @@ type DeliveryOrder = {
   assigned_to: string | null;
   delivery_zone_name?: string | null;
   delivery_out_of_area?: boolean | null;
+  payment_method?: string | null;
+  /** "¿Con cuánto abonás?" (efectivo): el repartidor necesita saber el vuelto. */
+  cash_amount?: number | null;
 };
 
 /**
@@ -406,6 +409,11 @@ function DeliveryCard({
       </p>
 
       {o.customer_address && <p className="text-xs mb-2">📍 {o.customer_address}</p>}
+      {o.payment_method === "efectivo" && Number(o.cash_amount) > 0 && (
+        <p className="text-xs mb-2 font-semibold text-green-700">
+          💵 Efectivo · abona ${Number(o.cash_amount).toLocaleString("es-AR")} (llevá ${Math.max(0, Math.round((Number(o.cash_amount) - Number(o.total)) * 100) / 100).toLocaleString("es-AR")} de cambio)
+        </p>
+      )}
       {(o.delivery_zone_name || o.delivery_out_of_area) && (
         <p className="text-xs mb-2 font-semibold">
           {o.delivery_out_of_area ? (

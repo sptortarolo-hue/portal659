@@ -30,6 +30,10 @@ export default function CheckoutPage() {
   const [notes, setNotes] = useState("");
   const [method, setMethod] = useState<"delivery" | "pickup">("delivery");
   const [paymentMethod, setPaymentMethod] = useState<"whatsapp" | "efectivo" | "transferencia">("whatsapp");
+  // "¿Con cuánto abonás?" (efectivo + delivery): el comercio sabe cuánto
+  // vuelto llevar el repartidor. El toggle `cash_ask_amount` lo apaga.
+  const [cashAmount, setCashAmount] = useState("");
+  const [cashAskAmount, setCashAskAmount] = useState(true);
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState("");
@@ -266,7 +270,10 @@ const [doneIsGift, setDoneIsGift] = useState(false);
     if (!vendor?.id) return;
     fetch(`/api/payments?vendorId=${encodeURIComponent(vendor.id)}`)
       .then(r => r.json())
-      .then(d => setMpConfigured(d.configured))
+      .then(d => {
+        setMpConfigured(d.configured);
+        if (typeof d.cashAskAmount === "boolean") setCashAskAmount(d.cashAskAmount);
+      })
       .catch(() => setMpConfigured(false));
     // Turnos de reparto (retail): el server calcula hoy+próximos en TZ AR.
     fetch(`/api/delivery-availability?vendorId=${encodeURIComponent(vendor.id)}`)
@@ -293,6 +300,13 @@ const [doneIsGift, setDoneIsGift] = useState(false);
   // Compra 100% giftcards: no hay retiro ni delivery — entrega digital por
   // WhatsApp al teléfono del comprador (se pide abajo si falta).
   const isGiftOnly = items.length > 0 && items.every((i) => (i as any).isGift === true);
+  // "¿Con cuánto abonás?" (efectivo + delivery, salvo que el comercio lo apague):
+  // el vuelto se calcula en vivo contra el total final (con descuentos y envío).
+  const cashAskVisible = paymentMethod === "efectivo" && method === "delivery" && cashAskAmount && !isGiftOnly;
+  const cashAmountNum = Math.round((parseFloat(cashAmount.replace(",", ".")) || 0) * 100) / 100;
+  const cashAskValid = !cashAskVisible || (cashAmountNum > 0 && cashAmountNum >= displayTotal);
+  const cashChange = cashAskVisible && cashAmountNum > 0 ? Math.max(0, Math.round((cashAmountNum - displayTotal) * 100) / 100) : 0;
+  const cashBillOptions = [1000, 2000, 5000, 10000, 20000, 50000].filter((b) => b >= displayTotal).slice(0, 4);
   // Si el comercio no ofrece el método elegido, forzar el habilitado.
   // Va ANTES de cualquier return temprano: todos los hooks deben correr en
   // todos los renders (si no, React tira "fewer hooks" y cae el boundary).
@@ -606,6 +620,17 @@ const [doneIsGift, setDoneIsGift] = useState(false);
       return;
     }
 
+    // "¿Con cuánto abonás?": obligatorio en efectivo + delivery (si el
+    // comercio lo pide). El vuelto se lo lleva calculado el repartidor.
+    if (!cashAskValid) {
+      setError(
+        cashAmountNum > 0
+          ? "El monto con el que abonás tiene que ser igual o mayor al total del pedido."
+          : "Elegí con cuánto vas a abonar en efectivo (el repartidor lleva el cambio)."
+      );
+      return;
+    }
+
     // El pedido se crea recién al tocar "Enviar por WhatsApp" (confirmSend):
     // acá solo revisamos y abrimos el resumen.
     setError("");
@@ -638,6 +663,16 @@ const [doneIsGift, setDoneIsGift] = useState(false);
       sendingRef.current = false;
       return;
     }
+    if (!cashAskValid) {
+      setError(
+        cashAmountNum > 0
+          ? "El monto con el que abonás tiene que ser igual o mayor al total del pedido."
+          : "Elegí con cuánto vas a abonar en efectivo (el repartidor lleva el cambio)."
+      );
+      setLoading(false);
+      sendingRef.current = false;
+      return;
+    }
 
     // Popup síncrono: si esperamos el fetch antes de abrirlo, el navegador lo
     // bloquea por no ser parte del gesto del usuario.
@@ -661,6 +696,7 @@ const [doneIsGift, setDoneIsGift] = useState(false);
           deliveryOutOfArea: methodSnap === "delivery" && deliveryOutOfArea,
           deliveryWindow: methodSnap === "delivery" && showSlots && activeSlotId ? activeSlotId : null,
           giftcardCode: giftcardBalanceSnap != null ? giftcardSnap.trim() : undefined,
+          cashAmount: cashAskVisible && cashAmountNum > 0 ? cashAmountNum : null,
           items: itemsSnap.map((i) => ({
             offerId: i.offerId,
             variantId: i.variantId,
@@ -723,6 +759,7 @@ const [doneIsGift, setDoneIsGift] = useState(false);
         isGiftOrder: giftOnlySnap,
         address: methodSnap === "delivery" ? fullAddress || undefined : undefined,
         paymentMethod: paymentSnap,
+        cashAmount: cashAskVisible && cashAmountNum > 0 ? cashAmountNum : undefined,
         notes: notesSnap.trim() || undefined,
         trackUrl,
         registerUrl,
@@ -1191,6 +1228,58 @@ const [doneIsGift, setDoneIsGift] = useState(false);
           </div>
         </div>
 
+        {/* ¿Con cuánto abonás? (efectivo + delivery): el repartidor lleva el cambio justo. */}
+        {cashAskVisible && (
+          <div className="rounded-2xl border border-green-200 bg-green-50/60 p-4 animate-fade-in-up space-y-2">
+            <Label htmlFor="cash-amount">¿Con cuánto abonás? 💵</Label>
+            <p className="text-xs text-muted-foreground -mt-1">
+              Así el repartidor te lleva el cambio justo.
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              <button
+                type="button"
+                onClick={() => setCashAmount(String(displayTotal))}
+                className="rounded-full border border-green-300 bg-white px-3 py-1 text-xs font-medium text-green-800 hover:bg-green-100 transition-colors"
+              >
+                Exacto (${displayTotal.toLocaleString("es-AR")})
+              </button>
+              {cashBillOptions.map((b) => (
+                <button
+                  key={b}
+                  type="button"
+                  onClick={() => setCashAmount(String(b))}
+                  className="rounded-full border border-green-300 bg-white px-3 py-1 text-xs font-medium text-green-800 hover:bg-green-100 transition-colors"
+                >
+                  ${b.toLocaleString("es-AR")}
+                </button>
+              ))}
+            </div>
+            <Input
+              id="cash-amount"
+              type="number"
+              inputMode="decimal"
+              min={0}
+              step="any"
+              value={cashAmount}
+              onChange={(e) => setCashAmount(e.target.value)}
+              placeholder={`Monto con el que pagás (total: $${displayTotal.toLocaleString("es-AR")})`}
+              className={cashAmount && cashAmountNum < displayTotal ? "border-red-300" : ""}
+              required
+            />
+            {cashAmountNum > 0 && (
+              cashAmountNum < displayTotal ? (
+                <p className="text-xs text-red-600">
+                  Tiene que ser igual o mayor al total (${displayTotal.toLocaleString("es-AR")}). Si no tenés cambio, pagá con Mercado Pago o coordiná por WhatsApp.
+                </p>
+              ) : (
+                <p className="text-xs font-semibold text-green-700">
+                  Tu cambio: ${cashChange.toLocaleString("es-AR")}
+                </p>
+              )
+            )}
+          </div>
+        )}
+
         {/* Transfer info */}
         {paymentMethod === "transferencia" && (
           <div className="rounded-2xl border border-fresh bg-fresh/30 p-5 animate-fade-in-up">
@@ -1253,6 +1342,8 @@ const [doneIsGift, setDoneIsGift] = useState(false);
         address={method === "delivery" ? fullAddress || undefined : undefined}
         deliveryWindowLabel={method === "delivery" && activeSlotLabel ? activeSlotLabel : undefined}
         paymentMethod={paymentMethod}
+        cashAmount={cashAskVisible && cashAmountNum > 0 ? cashAmountNum : undefined}
+        cashChange={cashAskVisible && cashAmountNum > 0 ? cashChange : undefined}
         loading={loading}
         error={error}
       />

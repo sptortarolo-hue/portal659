@@ -3,6 +3,7 @@ import { getDeviceId } from "@/lib/device";
 import { withRateLimit } from "@/lib/api-wrapper";
 import {
   createOrder,
+  CashAmountError,
   DeliveryMethodError,
   InvalidPhoneError,
   OrderForbiddenError,
@@ -30,6 +31,7 @@ export const POST = withRateLimit(async (request: Request) => {
     isPreview,
     previewToken,
     giftcardCode,
+    cashAmount,
   } = body;
 
   try {
@@ -51,6 +53,7 @@ export const POST = withRateLimit(async (request: Request) => {
       isPreview: isPreview === true,
       previewToken: typeof previewToken === "string" ? previewToken : null,
       giftcardCode: typeof giftcardCode === "string" && giftcardCode.trim() !== "" ? giftcardCode.trim() : null,
+      cashAmount: typeof cashAmount === "number" && Number.isFinite(cashAmount) ? cashAmount : null,
     });
 
     return NextResponse.json({
@@ -82,6 +85,9 @@ export const POST = withRateLimit(async (request: Request) => {
       return NextResponse.json({ error: e.message }, { status: 429 });
     }
     if (e instanceof DeliveryMethodError) {
+      return NextResponse.json({ error: e.message }, { status: 400 });
+    }
+    if (e instanceof CashAmountError) {
       return NextResponse.json({ error: e.message }, { status: 400 });
     }
     if (e instanceof OutOfStockError) {

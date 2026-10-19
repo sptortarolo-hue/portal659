@@ -493,6 +493,8 @@ export type Vendor = {
   require_open_shift?: boolean | null;
   /** % de descuento en efectivo (NULL/0 = sin descuento). Requiere Efectivo en payment_methods. */
   cash_discount_pct?: number | null;
+  /** Pedir "¿Con cuánto abonás?" en efectivo + delivery (NULL/true = se pide). */
+  cash_ask_amount?: boolean | null;
   /** Cierre estricto de cocina: true = Listo exige tildar todo (default). */
   kitchen_strict_close?: boolean | null;
   /** Vista del catálogo online (comercio): lista o vidriera (grilla visual). */

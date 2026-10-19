@@ -260,15 +260,29 @@ async function debtPreference(body: any, request: Request) {
   }
 }
 
-// El checkout le pregunta "¿puedo cobrar online?" por un comercio dado.
-export async function GET(request: Request) {  // Sin OK de MP el checkout nunca ofrece pago online.
-  if (!isMpEnabled()) {
-    return NextResponse.json({ configured: false, reason: "mp_disabled" });
-  }
-
+// El checkout le pregunta "¿puedo cobrar online?" + config de pago por comercio.
+export async function GET(request: Request) {
   const vendorId = new URL(request.url).searchParams.get("vendorId");
   if (!vendorId) {
     return NextResponse.json({ configured: false, reason: "vendorId requerido" }, { status: 400 });
+  }
+
+  // Toggle "¿Con cuánto abonás?" (efectivo + delivery): se informa siempre,
+  // independiente de si MP está habilitado.
+  let cashAskAmount = true;
+  try {
+    const v = await queryOne<{ cash_ask_amount: boolean | null }>(
+      `SELECT cash_ask_amount FROM vendors WHERE id = $1 LIMIT 1`,
+      [vendorId]
+    );
+    cashAskAmount = v?.cash_ask_amount !== false;
+  } catch {
+    /* migración sin aplicar: default activado */
+  }
+
+  // Sin OK de MP el checkout nunca ofrece pago online.
+  if (!isMpEnabled()) {
+    return NextResponse.json({ configured: false, reason: "mp_disabled", cashAskAmount });
   }
 
   const vendor = await queryOne<{ mp_user_id: number | null }>(
@@ -279,5 +293,6 @@ export async function GET(request: Request) {  // Sin OK de MP el checkout nunca
   return NextResponse.json({
     configured: !!vendor?.mp_user_id,
     publicKey: null,
+    cashAskAmount,
   });
 }

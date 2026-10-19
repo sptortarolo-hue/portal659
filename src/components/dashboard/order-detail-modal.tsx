@@ -939,6 +939,16 @@ export default function OrderDetailModal({ order, vendorName, vendorLogoUrl, onC
                 <span className="text-sm font-semibold">Total</span>
                 <span className="text-lg font-bold text-primary">${Number(order.total).toLocaleString("es-AR")}</span>
               </div>
+              {order.payment_method === "efectivo" && Number((order as any)?.cash_amount) > 0 && (
+                <div className="flex items-center justify-between rounded-lg bg-green-50 border border-green-200 px-2.5 py-1.5">
+                  <span className="text-xs font-semibold text-green-800">
+                    💵 Abona ${Number((order as any).cash_amount).toLocaleString("es-AR")}
+                  </span>
+                  <span className="text-xs font-bold text-green-700">
+                    Vuelto: ${Math.max(0, Math.round((Number((order as any).cash_amount) - Number(order.total)) * 100) / 100).toLocaleString("es-AR")}
+                  </span>
+                </div>
+              )}
               {Number((order as any)?.giftcard_discount) > 0 && (
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
                   <span>🎁 Giftcard{((order as any)?.giftcard_code) ? ` (${(order as any).giftcard_code})` : ""}</span>

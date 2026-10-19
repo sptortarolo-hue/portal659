@@ -331,8 +331,16 @@ export function buildClientWhatsAppMessage(
         return `Hola ${order.customer_name}! Tu pedido #${orderId} de ${vendorName} ya está listo para retirar. Pasalo a buscar cuando quieras!`;
       }
       return `Hola ${order.customer_name}! Tu pedido #${orderId} de ${vendorName} está casi listo, saliendo para tu domicilio.`;
-    case "sent":
+    case "sent": {
+      // Efectivo con "¿con cuánto abonás?": el cliente prepara el monto y el
+      // repartidor el vuelto.
+      const abona = Number((order as any)?.cash_amount) || 0;
+      if (order.method === "delivery" && order.payment_method === "efectivo" && abona > 0) {
+        const change = Math.max(0, Math.round((abona - Number(order.total)) * 100) / 100);
+        return `Hola ${order.customer_name}! Tu pedido #${orderId} de ${vendorName} ya salió para entregar. Total: $${Number(order.total).toLocaleString("es-AR")} — abonás con $${abona.toLocaleString("es-AR")} (tu cambio: $${change.toLocaleString("es-AR")}). ¡Gracias por tu compra!`;
+      }
       return `Hola ${order.customer_name}! Tu pedido #${orderId} de ${vendorName} ya salió para entregar. Gracias por tu compra!`;
+    }
     case "completed":
       return `Hola ${order.customer_name}! Tu pedido #${orderId} de ${vendorName} fue entregado. Gracias por elegirnos!`;
     default:

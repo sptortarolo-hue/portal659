@@ -133,6 +133,7 @@ export async function POST(request: Request) {
     floor_bg_url,
     booking_schedule_mode,
     ficha_reminder_enabled,
+    cash_ask_amount,
   } = body;
 
   // Limpia y valida delivery_extra_days. Devuelve el objeto podado o false
@@ -427,6 +428,8 @@ export async function POST(request: Request) {
   if (ficha_reminder_enabled !== undefined) {
     payload.ficha_reminder_enabled = ficha_reminder_enabled !== false;
   }
+  // "¿Con cuánto abonás?" (efectivo + delivery): pedir el dato al cliente.
+  if (cash_ask_amount !== undefined) payload.cash_ask_amount = cash_ask_amount === true;
 
   if (existing) {
     let vendor: Record<string, unknown> | undefined;
@@ -483,6 +486,7 @@ export async function POST(request: Request) {
         "transfer_expiry_hours",
         "booking_schedule_mode",
         "ficha_reminder_enabled",
+        "cash_ask_amount",
       ].filter((k) => k in payload && msg.includes(k));
       if (droppable.length > 0) {
         for (const k of droppable) delete payload[k];

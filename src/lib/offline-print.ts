@@ -37,6 +37,8 @@ export type ContingencyDoc = {
   /** Info de efectivo para precuenta/ticket: % y total a abonar. */
   cashPct?: number | null;
   cashTotal?: number | null;
+  /** "¿Con cuánto abonás?" (efectivo + delivery): monto y vuelto estimado. */
+  cashAmount?: number | null;
   /** Descuento por pack aplicado (precuenta de mesa). */
   volumeDiscount?: number | null;
   /** Descuento manual aplicado (precuenta de mesa). */
@@ -200,6 +202,10 @@ export function buildContingencyBytes(doc: ContingencyDoc): Uint8Array {
   if (doc.paymentLabel) p.text(`Pago: ${doc.paymentLabel}`);
   if ((doc.cashPct ?? 0) > 0 && (doc.cashTotal ?? 0) > 0) {
     p.text(`Efectivo (-${doc.cashPct}%): ${money(doc.cashTotal as number)}`);
+  }
+  if (Number(doc.cashAmount) > 0) {
+    p.text(`Abona con: ${money(Number(doc.cashAmount))}`);
+    p.text(`Vuelto: ${money(Math.max(0, Number(doc.cashAmount) - doc.total))}`);
   }
   p.rule(width);
   p.align(1).text("Portal 659 - ticket offline");

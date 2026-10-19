@@ -12,7 +12,7 @@ export async function GET(request: Request) {
   }
 
   try {
-    const [vendors, orders, reviews, products, stats] = await Promise.all([
+    const [vendors, orders, reviews, products, stats, ordersByDay, ordersByVertical] = await Promise.all([
     queryMany(
       `SELECT * FROM vendors ORDER BY created_at DESC`
     ),
@@ -47,7 +47,39 @@ export async function GET(request: Request) {
             FROM orders WHERE status = 'completed' AND is_preview = false) AS total_revenue,
          (SELECT ROUND(AVG(rating)::numeric, 1) FROM reviews) AS avg_rating`
     ),
+    // Pedidos por día (30d) y por vertical: agregados server-side en TZ AR.
+    // El cliente NO puede derivarlos del subset LIMIT 100 de arriba.
+    queryMany<Record<string, unknown>>(
+      `SELECT to_char(ds.day AT TIME ZONE 'America/Argentina/Buenos_Aires', 'DD/MM') AS date,
+              count(o.id) AS pedidos
+         FROM generate_series((CURRENT_DATE - 29) AT TIME ZONE 'America/Argentina/Buenos_Aires',
+                             CURRENT_DATE AT TIME ZONE 'America/Argentina/Buenos_Aires',
+                             interval '1 day') AS ds(day)
+         LEFT JOIN orders o
+           ON o.created_at AT TIME ZONE 'America/Argentina/Buenos_Aires'
+              >= ds.day
+          AND o.created_at AT TIME ZONE 'America/Argentina/Buenos_Aires'
+              <  ds.day + interval '1 day'
+          AND o.is_preview = false
+        GROUP BY ds.day ORDER BY ds.day`
+    ),
+    queryMany<Record<string, unknown>>(
+      `SELECT COALESCE(v.vertical, 'gastronomia') AS vertical, count(*) AS pedidos
+         FROM orders o
+         JOIN vendors v ON v.id = o.vendor_id
+        WHERE o.is_preview = false
+        GROUP BY v.vertical ORDER BY pedidos DESC`
+    ),
   ]);
+
+  const ordersByDayOut = (ordersByDay as Array<{ date: string; pedidos: string | number }>).map((r) => ({
+    date: String(r.date ?? ""),
+    pedidos: Number(r.pedidos ?? 0),
+  }));
+  const ordersByVerticalOut = (ordersByVertical as Array<{ vertical: string; pedidos: string | number }>).map((r) => ({
+    vertical: String(r.vertical ?? "gastronomia"),
+    pedidos: Number(r.pedidos ?? 0),
+  }));
 
   return NextResponse.json({
     vendors,
@@ -59,7 +91,12 @@ export async function GET(request: Request) {
       totalProducts: Number(stats?.total_products ?? 0),
       totalReviews: Number(stats?.total_reviews ?? 0),
       totalRevenue: Number(stats?.total_revenue ?? 0),     // solo pedidos entregados
-      avgRating: Number(stats?.total_revenue ?? 0) && Number(stats?.avg_rating ?? 0),
+      avgRating: Number(stats?.avg_rating ?? 0),
+      // Agregados reales (30d por día y por vertical) calculados en el server:
+      // el cliente NO puede derivarlos del subset LIMIT 100 de `orders`
+      // (con muchos pedidos, ese subset solo cubre los últimos días).
+      ordersByDay: ordersByDayOut,
+      ordersByVertical: ordersByVerticalOut,
     },
   });
   } catch (e) {

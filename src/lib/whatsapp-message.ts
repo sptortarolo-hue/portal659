@@ -47,6 +47,8 @@ export function buildOrderMessage(params: {
   manualReason?: string;
   /** Línea de envío ya compuesta (ej: "Envío (Garibaldi): $800" / "Envío: a convenir"). */
   deliveryLine?: string;
+  /** Monto con el que el cliente dice abonar (efectivo + delivery). */
+  cashAmount?: number | null;
 }): string {
   const lines = params.items.map((i) => {
     const modStr = i.modifiers && i.modifiers.length > 0
@@ -58,7 +60,9 @@ export function buildOrderMessage(params: {
   const paymentLine = params.paymentMethod === "transferencia"
     ? "\n💰 Transferencia: CBU/Alias te lo paso por WhatsApp"
     : params.paymentMethod === "efectivo"
-    ? "\n💵 Pago en efectivo al recibir"
+    ? Number(params.cashAmount) > 0
+      ? `\n💵 Pago en efectivo al recibir (abona $${Number(params.cashAmount).toLocaleString("es-AR")} — vuelto $${Math.max(0, Math.round((Number(params.cashAmount) - params.total) * 100) / 100).toLocaleString("es-AR")})`
+      : "\n💵 Pago en efectivo al recibir"
     : "";
 
   const notesLine = params.notes ? `\n📝 Notas: ${params.notes}` : "";
@@ -117,6 +121,8 @@ export function buildComandaWhatsApp(params: {
   deliveryLine?: string;
   /** Pedido 100% giftcards: entrega digital por WhatsApp (sin retiro ni envío). */
   isGiftOrder?: boolean;
+  /** Monto con el que el cliente dice abonar (efectivo + delivery). */
+  cashAmount?: number | null;
 }): string {
   const sep = "------------------------------";
   const id = params.orderId ? params.orderId.slice(0, 8) : "--------";
@@ -131,6 +137,11 @@ export function buildComandaWhatsApp(params: {
     params.paymentMethod === "efectivo" ? "Efectivo" :
     params.paymentMethod === "transferencia" ? "Transferencia" :
     "Coordinar";
+  // "¿Con cuánto abonás?": el comercio ve de cuánto es el vuelto a preparar.
+  const abonaStr =
+    params.paymentMethod === "efectivo" && Number(params.cashAmount) > 0
+      ? ` (abona $${Number(params.cashAmount).toLocaleString("es-AR")} — vuelto $${Math.max(0, Math.round((Number(params.cashAmount) - params.total) * 100) / 100).toLocaleString("es-AR")})`
+      : "";
 
   const itemLines: string[] = [];
   for (const i of params.items) {
@@ -161,7 +172,7 @@ export function buildComandaWhatsApp(params: {
     `*PEDIDO #${id}*`,
     `${dateStr} ${timeStr}`,
     sep,
-    `${methodStr}  |  ${paymentStr}`,
+    `${methodStr}  |  ${paymentStr}${abonaStr}`,
     sep,
     ...itemLines,
     sep,

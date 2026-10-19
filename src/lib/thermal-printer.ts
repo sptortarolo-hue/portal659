@@ -585,7 +585,12 @@ async function composeComanda(printer: any, vendor: PrinterVendor, order: Order)
     order.payment_method === "transferencia" ? "Transferencia" :
     order.payment_method === "mercadopago" ? "Mercado Pago (pago)" :
     "Coordinar";
-  printer.println(`${methodStr}  |  ${paymentStr}`);
+  // "¿Con cuánto abonás?": cocina/caja ven de cuánto es el vuelto.
+  const abonaStr =
+    order.payment_method === "efectivo" && Number((order as any)?.cash_amount) > 0
+      ? ` (abona $${Number((order as any).cash_amount).toLocaleString("es-AR")})`
+      : "";
+  printer.println(`${methodStr}  |  ${paymentStr}${abonaStr}`);
   printer.println(separatorFor(width));
 
   const separator = separatorFor(width);
@@ -971,6 +976,15 @@ async function composeReceipt(
   printer.bold(!!order.paid_at);
   printer.println(`Pago: ${paymentStr} — ${paidStr}`);
   printer.bold(false);
+  // "¿Con cuánto abonás?": el que cobra sabe cuánto vuelto dar.
+  const receiptAbona = Number((order as any)?.cash_amount) || 0;
+  if (order.payment_method === "efectivo" && receiptAbona > 0) {
+    printer.println(`Abona con: $${receiptAbona.toLocaleString("es-AR")}`);
+    const receiptChange = Math.max(0, Math.round((receiptAbona - receiptTotal) * 100) / 100);
+    printer.bold(true);
+    printer.println(`Vuelto: $${receiptChange.toLocaleString("es-AR")}`);
+    printer.bold(false);
+  }
   // Fiado: saldo de la cuenta para que el cliente sepa cuánto debe.
   if (order.payment_method === "fiado" && extra?.fiadoBalance != null && Number(extra.fiadoBalance) > 0) {
     printer.println(`Saldo cta. cte.: $${Number(extra.fiadoBalance).toLocaleString("es-AR")}`);
@@ -1030,8 +1044,9 @@ async function composeRetiroReceipt(printer: any, vendor: PrinterVendor, order: 
 }
 
 /**
- * Comprobante del repartidor (delivery): solo datos del envío, letra doble.
- * Sin logo, sin datos del negocio, sin pie de portal, sin ítems ni total.
+ * Comprobante del repartidor (delivery): datos del envío, letra doble.
+ * Sin logo, sin datos del negocio, sin pie de portal, sin ítems. Con total y
+ * "abona con" (efectivo): el repartidor sale con el vuelto preparado.
  */
 async function composeDespacho(printer: any, order: Order): Promise<void> {
   printer.alignCenter();
@@ -1077,6 +1092,18 @@ async function composeDespacho(printer: any, order: Order): Promise<void> {
     }
     printer.println("");
   }
+
+  // Total + vuelto: el repartidor necesita saber cuánto cambio llevar.
+  const despachoTotal = Number(order.total) || 0;
+  printer.bold(true);
+  printer.println(`TOTAL: $${despachoTotal.toLocaleString("es-AR")}`);
+  const despachoAbona = order.payment_method === "efectivo" ? Number((order as any)?.cash_amount) || 0 : 0;
+  if (despachoAbona > 0) {
+    const despachoChange = Math.max(0, Math.round((despachoAbona - despachoTotal) * 100) / 100);
+    printer.println(`ABONA CON: $${despachoAbona.toLocaleString("es-AR")}`);
+    printer.println(`VUELTO: $${despachoChange.toLocaleString("es-AR")}`);
+  }
+  printer.bold(false);
 
   printer.setTextSize(0, 0);
   printer.cut();

@@ -3,7 +3,7 @@ import { gateRequest } from "@/lib/subscription-gate";
 import { queryMany, queryOne, withTransaction } from "@/lib/db";
 import { ensureServiceCustomer } from "@/lib/customers";
 import { toE164 } from "@/lib/phone";
-import { fitsInRanges, shiftsFromHoursText, staffRangesForDate } from "@/lib/booking-schedule";
+import { computeBookingWarnings, computeStartsEnds, resolveBookingRefs, toMinutes } from "@/lib/vendor-booking";
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 
@@ -66,12 +66,6 @@ export async function GET(request: Request) {
   return NextResponse.json({ bookings: bookings || [] });
 }
 
-const toMinutes = (t: string): number | null => {
-  const m = /^(\d{1,2}):(\d{2})/.exec(String(t || "").trim());
-  if (!m) return null;
-  return Number(m[1]) * 60 + Number(m[2]);
-};
-
 /**
  * Crear turno MANUAL desde el panel (no cuenta para el tope gratuito:
  * origin='vendor'). Nace confirmado (entra a recordatorios y a historial).
@@ -94,157 +88,32 @@ export async function POST(request: Request) {
   if (!customerName || !customerPhone || !/^\d{4}-\d{2}-\d{2}$/.test(bookingDate) || toMinutes(bookingTime) == null) {
     return NextResponse.json({ error: "Faltan cliente, teléfono o fecha/hora válida" }, { status: 400 });
   }
-  // Servicio/profesional (estética): duración + buffer + staff. Todo tolerante
-  // a migración sin aplicar.
-  let durationMin = Math.min(480, Math.max(15, Math.floor(Number(body.duration_min) || 60)));
-  let bufferMin = 0;
-  let staffId: string | null = typeof body.staff_id === "string" && body.staff_id ? body.staff_id : null;
-  let serviceId: string | null = typeof body.service_id === "string" && body.service_id ? body.service_id : null;
-  let serviceName: string | null = null;
-  let servicePrice: number | null = null;
-  let serviceCommission: number | null = null;
-  let staffCommission: number | null = null;
-  try {
-    if (serviceId) {
-      const svc = await queryOne<{ name: string; duration_min: number | null; buffer_min: number | null; price: number | null; commission_pct: number | null }>(
-        `SELECT name, duration_min, buffer_min, price, commission_pct FROM services WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
-        [serviceId, gate.vendor.id]
-      ).catch(() =>
-        queryOne<{ name: string; duration_min: number | null; buffer_min: number | null; price: number | null; commission_pct: number | null }>(
-          `SELECT name, duration_min, buffer_min FROM services WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
-          [serviceId, gate.vendor.id]
-        )
-      );
-      if (svc) {
-        serviceName = svc.name;
-        if (Number(svc.duration_min) > 0) durationMin = Math.min(480, Math.max(15, Math.floor(Number(svc.duration_min))));
-        if (Number(svc.buffer_min) > 0) bufferMin = Math.min(120, Math.max(0, Math.floor(Number(svc.buffer_min))));
-        if (svc.price != null && Number(svc.price) >= 0) servicePrice = Number(svc.price);
-        if (svc.commission_pct != null && Number(svc.commission_pct) >= 0) serviceCommission = Number(svc.commission_pct);
-      } else {
-        serviceId = null;
-      }
-    }
-    if (staffId) {
-      const st = await queryOne<{ id: string; commission_pct: number | null }>(
-        `SELECT id, commission_pct FROM estetica_staff WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
-        [staffId, gate.vendor.id]
-      ).catch(() =>
-        queryOne<{ id: string; commission_pct: number | null }>(
-          `SELECT id FROM estetica_staff WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
-          [staffId, gate.vendor.id]
-        )
-      );
-      if (!st) {
-        staffId = null;
-      } else if (st.commission_pct != null && Number(st.commission_pct) >= 0) {
-        staffCommission = Number(st.commission_pct);
-      }
-    }
-  } catch {
-    staffId = null;
-    serviceId = null;
-  }
-  const snapshotCommission = serviceCommission ?? staffCommission;
-  // Sede (multi-sede light): se valida; NULL = sin preferencia.
-  let locationId: string | null = typeof body.location_id === "string" && body.location_id ? body.location_id : null;
-  if (locationId) {
-    try {
-      const loc = await queryOne<{ id: string }>(
-        `SELECT id FROM estetica_locations WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
-        [locationId, gate.vendor.id]
-      );
-      if (!loc) locationId = null;
-    } catch {
-      locationId = null;
-    }
-  }
+  // Servicio/profesional/sede (estética): resuelve duración, buffer, precios y
+  // comisiones. Todo tolerante a migración sin aplicar.
+  const refs = await resolveBookingRefs(gate.vendor.id, {
+    serviceId: body.service_id,
+    staffId: body.staff_id,
+    locationId: body.location_id,
+    durationMin: body.duration_min,
+  });
+  const durationMin = refs.durationMin;
+  const bufferMin = refs.bufferMin;
+  const staffId = refs.staffId;
+  const serviceId = refs.serviceId;
+  const serviceName = refs.serviceName;
+  const servicePrice = refs.servicePrice;
+  const snapshotCommission = refs.snapshotCommission;
+  const locationId = refs.locationId;
 
-  // Aviso de solape (no bloquea): turnos no cancelados del mismo día que se pisan.
-  // Con profesional elegido solo avisa su agenda.
-  let overlapWarning: string | null = null;
-  try {
-    const sameDay = await queryMany<{ booking_time: string; duration_min: number | null; customer_name: string | null; staff_id: string | null }>(
-      `SELECT booking_time::text AS booking_time, duration_min, customer_name, staff_id::text AS staff_id
-       FROM bookings WHERE vendor_id = $1 AND booking_date = $2 AND status IN ('pending', 'confirmed')`,
-      [gate.vendor.id, bookingDate]
-    );
-    const start = toMinutes(bookingTime)!;
-    const end = start + durationMin + bufferMin;
-    const clash = (sameDay || []).find((b) => {
-      if (staffId && b.staff_id && b.staff_id !== staffId) return false;
-      const bs = toMinutes(b.booking_time);
-      if (bs == null) return false;
-      const be = bs + (Number(b.duration_min) || 60);
-      return start < be && bs < end;
-    });
-    if (clash) {
-      overlapWarning = `Se pisa con el turno de ${clash.customer_name || "otro cliente"} (${String(clash.booking_time).slice(0, 5)})`;
-    }
-  } catch { /* sin tabla: sin chequeo */ }
+  const { overlapWarning, blockWarning, scheduleWarning } = await computeBookingWarnings(gate.vendor.id, {
+    dateISO: bookingDate,
+    time: bookingTime,
+    durationMin,
+    bufferMin,
+    staffId,
+  });
 
-  // Día bloqueado (feriado/vacaciones): avisa sin bloquear (el comercio decide).
-  let blockWarning: string | null = null;
-  try {
-    const blocks = await queryMany<{ staff_id: string | null; reason: string | null }>(
-      `SELECT staff_id::text AS staff_id, reason FROM estetica_blocks
-       WHERE vendor_id = $1 AND block_date = $2::date LIMIT 20`,
-      [gate.vendor.id, bookingDate]
-    ).catch(() => []);
-    const hit = (blocks || []).find((b) => !b.staff_id || (staffId && b.staff_id === staffId));
-    if (hit) {
-      blockWarning = `Ese día está bloqueado${hit.reason ? `: ${hit.reason}` : ""}`;
-    }
-  } catch { /* sin tabla: sin aviso */ }
-
-  // Agenda planificada (modo grid): avisa si el horario cae fuera de la
-  // disponibilidad del profesional, sin bloquear (el comercio decide).
-  let scheduleWarning: string | null = null;
-  try {
-    const vmode = await queryOne<{ booking_schedule_mode: string | null; hours: string | null }>(
-      `SELECT booking_schedule_mode, hours FROM vendors WHERE id = $1 LIMIT 1`,
-      [gate.vendor.id]
-    ).catch(() => null);
-    if (String(vmode?.booking_schedule_mode || "hours") === "grid") {
-      const startM = toMinutes(bookingTime)!;
-      const endM = startM + durationMin + bufferMin;
-      const staffRows = staffId
-        ? await queryMany<{ id: string; availability: unknown }>(
-            `SELECT id::text AS id, availability FROM estetica_staff
-             WHERE vendor_id = $1 AND id = $2 AND COALESCE(active, true) = true`,
-            [gate.vendor.id, staffId]
-          ).catch(() => [])
-        : await queryMany<{ id: string; availability: unknown }>(
-            `SELECT id::text AS id, availability FROM estetica_staff
-             WHERE vendor_id = $1 AND COALESCE(active, true) = true`,
-            [gate.vendor.id]
-          ).catch(() => []);
-      const overrides = await queryMany<{ staff_id: string; ranges: unknown }>(
-        `SELECT staff_id::text AS staff_id, ranges FROM staff_schedule_days
-         WHERE vendor_id = $1 AND day = $2::date`,
-        [gate.vendor.id, bookingDate]
-      ).catch(() => []);
-      const overrideMap = new Map<string, unknown>((overrides || []).map((o) => [String(o.staff_id), o.ranges]));
-      const lanes = (staffRows && staffRows.length > 0
-        ? staffRows.map((s) => {
-            const key = String(s.id);
-            return staffRangesForDate({
-              mode: "grid",
-              hoursText: vmode?.hours ?? null,
-              availability: s.availability,
-              overrideRanges: overrideMap.has(key) ? overrideMap.get(key) : undefined,
-              dateISO: bookingDate,
-            });
-          })
-        : [shiftsFromHoursText(vmode?.hours ?? null, bookingDate)]);
-      const fits = lanes.some((ranges) => (ranges == null ? true : fitsInRanges(ranges, startM, endM)));
-      if (!fits) scheduleWarning = "Ese horario está fuera de la agenda del profesional";
-    }
-  } catch { /* sin agenda: sin aviso */ }
-
-  const startsAt = `${bookingDate}T${String(bookingTime).slice(0, 5)}:00`;
-  const endMin = toMinutes(bookingTime)! + durationMin + bufferMin;
-  const endsAt = `${bookingDate}T${String(Math.floor(endMin / 60)).padStart(2, "0")}:${String(endMin % 60).padStart(2, "0")}:00`;
+  const { startsAt, endsAt } = computeStartsEnds(bookingDate, bookingTime, durationMin, bufferMin);
   // Sesión de prueba compartida: el turno no cuenta en CRM/topes.
   const isPreview = gate.previewSession === true;
 

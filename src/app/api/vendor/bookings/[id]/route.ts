@@ -1,11 +1,27 @@
 import { getVendorByRequest } from "@/lib/vendor-utils";
 import { notifyServiceClient } from "@/lib/service-notify";
-import { addServiceJob, decrementCustomerFromOrder } from "@/lib/customers";
+import { addServiceJob, decrementCustomerFromOrder, ensureServiceCustomer } from "@/lib/customers";
 import { isPreviewRow } from "@/lib/preview-flag";
 import { queryOne, query, withTransaction } from "@/lib/db";
+import { toE164 } from "@/lib/phone";
+import { computeBookingWarnings, computeStartsEnds, isISODate, resolveBookingRefs, toMinutes } from "@/lib/vendor-booking";
 import { NextResponse } from "next/server";
 
 const VALID_STATUS = ["pending", "confirmed", "cancelled", "noshow"];
+
+/** Campos que el panel puede editar de un turno existente. */
+const EDIT_FIELDS = [
+  "booking_date",
+  "booking_time",
+  "duration_min",
+  "notes",
+  "customer_name",
+  "customer_phone",
+  "service_id",
+  "staff_id",
+  "location_id",
+  "product_name",
+] as const;
 
 function todayAR(): string {
   return new Intl.DateTimeFormat("en-CA", {
@@ -80,11 +96,84 @@ export async function PATCH(
     body?.products_used != null && String(body.products_used).trim() !== ""
       ? String(body.products_used).trim().slice(0, 500)
       : null;
-  if (!hasStatus && !wantProducts) {
-    return NextResponse.json({ error: "Estado inválido" }, { status: 400 });
+  // Edición de campos del turno (reprogramar / cambiar servicio, profesional,
+  // sede, cliente o notas). Puede combinarse con el cambio de estado.
+  const wantsEdit = EDIT_FIELDS.some((k) => (body as Record<string, unknown>)[k] !== undefined);
+  if (!hasStatus && !wantProducts && !wantsEdit) {
+    return NextResponse.json({ error: "Nada para actualizar" }, { status: 400 });
+  }
+
+  // Fila completa del turno (tolerante: solo trae las columnas existentes).
+  let cur: Record<string, any> | null = null;
+  if (wantsEdit) {
+    cur = (await queryOne<Record<string, any>>(`SELECT * FROM bookings WHERE id = $1 LIMIT 1`, [id])) ?? null;
+    if (!cur) return NextResponse.json({ error: "No encontrado" }, { status: 404 });
+  }
+
+  // Valores finales de la edición (lo no enviado conserva lo actual).
+  let edit: {
+    name: string;
+    phone: string;
+    date: string;
+    time: string;
+    durationMin: number;
+    bufferMin: number;
+    notes: string | null;
+    productName: string | null;
+    serviceId: string | null;
+    staffId: string | null;
+    locationId: string | null;
+    servicePrice: number | null;
+    snapshotCommission: number | null;
+    startsAt: string | null;
+    endsAt: string | null;
+    changedWhen: boolean;
+  } | null = null;
+  if (wantsEdit && cur) {
+    const name = body.customer_name !== undefined ? String(body.customer_name).trim() : String(cur.customer_name || "");
+    const phone = body.customer_phone !== undefined ? toE164(String(body.customer_phone)) : String(cur.customer_phone || "");
+    const date = body.booking_date !== undefined ? String(body.booking_date).trim() : String(cur.booking_date || "");
+    const time = (body.booking_time !== undefined ? String(body.booking_time).trim() : String(cur.booking_time || "")).slice(0, 5);
+    const notes = body.notes !== undefined ? String(body.notes).trim().slice(0, 2000) || null : (cur.notes ?? null);
+    if (!name || !phone || !isISODate(date) || toMinutes(time) == null) {
+      return NextResponse.json({ error: "Faltan cliente, teléfono o fecha/hora válida" }, { status: 400 });
+    }
+    const refs = await resolveBookingRefs(vendor.id, {
+      serviceId: body.service_id !== undefined ? body.service_id : (cur.service_id ?? null),
+      staffId: body.staff_id !== undefined ? body.staff_id : (cur.staff_id ?? null),
+      locationId: body.location_id !== undefined ? body.location_id : (cur.location_id ?? null),
+      durationMin: body.duration_min !== undefined ? body.duration_min : (cur.duration_min ?? 60),
+    });
+    const productName =
+      body.product_name !== undefined
+        ? String(body.product_name).trim() || null
+        : body.service_id !== undefined
+          ? refs.serviceName
+          : (cur.product_name ?? null);
+    const { startsAt, endsAt } = computeStartsEnds(date, time, refs.durationMin, refs.bufferMin);
+    edit = {
+      name,
+      phone,
+      date,
+      time,
+      durationMin: refs.durationMin,
+      bufferMin: refs.bufferMin,
+      notes,
+      productName,
+      serviceId: refs.serviceId,
+      staffId: refs.staffId,
+      locationId: refs.locationId,
+      servicePrice: refs.servicePrice,
+      snapshotCommission: refs.snapshotCommission,
+      startsAt,
+      endsAt,
+      changedWhen:
+        date !== String(cur.booking_date || "") ||
+        time !== String(cur.booking_time || "").slice(0, 5),
+    };
   }
   // Ausente solo si la fecha ya pasó (regla Fresha).
-  if (status === "noshow" && existing.booking_date > todayAR()) {
+  if (status === "noshow" && (edit?.date ?? existing.booking_date) > todayAR()) {
     return NextResponse.json({ error: "Solo se puede marcar ausente un turno pasado" }, { status: 400 });
   }
 
@@ -134,6 +223,34 @@ export async function PATCH(
           throw new Error("Falta aplicar la migración migrate-estetica-products-used.sql en la base");
         }
       }
+      if (edit) {
+        // Campos base (siempre existen).
+        await tx.queryVoid(
+          `UPDATE bookings SET customer_name = $1, customer_phone = $2, booking_date = $3, booking_time = $4, notes = $5, product_name = $6 WHERE id = $7`,
+          [edit.name, edit.phone, edit.date, edit.time, edit.notes, edit.productName, id]
+        );
+        // Duración (migración manual): tolerante.
+        await tx
+          .queryVoid(`UPDATE bookings SET duration_min = $1 WHERE id = $2`, [edit.durationMin, id])
+          .catch(() => {});
+        // Servicio/profesional/sede + timestamps (migración estética): tolerante.
+        if (edit.startsAt && edit.endsAt) {
+          await tx
+            .queryVoid(
+              `UPDATE bookings SET staff_id = $1, service_id = $2, location_id = $3, starts_at = $4::timestamptz, ends_at = $5::timestamptz WHERE id = $6`,
+              [edit.staffId, edit.serviceId, edit.locationId, edit.startsAt, edit.endsAt, id]
+            )
+            .catch(() => {});
+        }
+        // Snapshot de precio/comisión (migración comisiones): tolerante.
+        await tx
+          .queryVoid(`UPDATE bookings SET service_price = $1, commission_pct = $2 WHERE id = $3`, [
+            edit.servicePrice,
+            edit.snapshotCommission,
+            id,
+          ])
+          .catch(() => {});
+      }
       if (willCount && !wasCounted) {
         await addServiceJob(tx, vendor.id, {
           phone: existing.customer_phone || "",
@@ -143,6 +260,10 @@ export async function PATCH(
         await decrementCustomerFromOrder(tx, vendor.id, {
           phone: existing.customer_phone || "",
         });
+      }
+      // El cliente al vuelo (manual) mantiene su ficha al cambiar nombre/teléfono.
+      if (edit && !isPreviewBooking) {
+        await ensureServiceCustomer(tx, vendor.id, { phone: edit.phone, name: edit.name });
       }
     });
   } catch (e) {
@@ -192,7 +313,35 @@ export async function PATCH(
     });
   }
 
-  return NextResponse.json({ booking, waitlistCount, consequence });
+  // Reprogramación: avisa al cliente (best-effort) si cambió fecha u hora.
+  if (edit?.changedWhen && status !== "cancelled") {
+    await notifyServiceClient(edit.phone, {
+      title: "Turno reprogramado 🗓️",
+      body: `Tu turno ahora es el ${edit.date} a las ${edit.time}. Si no te queda bien, escribinos por WhatsApp.`,
+    });
+  }
+
+  // Avisos de solape / día bloqueado / fuera de agenda (no bloquean, igual que
+  // al crear). Excluye el propio turno al buscar solape.
+  const warnings = edit
+    ? await computeBookingWarnings(vendor.id, {
+        dateISO: edit.date,
+        time: edit.time,
+        durationMin: edit.durationMin,
+        bufferMin: edit.bufferMin,
+        staffId: edit.staffId,
+        excludeId: id,
+      })
+    : { overlapWarning: null, blockWarning: null, scheduleWarning: null };
+
+  return NextResponse.json({
+    booking,
+    waitlistCount,
+    consequence,
+    warning: warnings.overlapWarning,
+    blockWarning: warnings.blockWarning,
+    scheduleWarning: warnings.scheduleWarning,
+  });
 }
 
 /**

@@ -393,6 +393,7 @@ export default function DashboardServicio({
   const [agendaView, setAgendaView] = useState<AgendaViewMode>("day");
   const [agendaDate, setAgendaDate] = useState<string>(() => arToday());
   const [selectedBookingId, setSelectedBookingId] = useState<string | null>(null);
+  const [editingBooking, setEditingBooking] = useState<any | null>(null);
   const agendaViewInit = useRef(false);
   useEffect(() => {
     if (agendaViewInit.current || !vendor?.id) return;
@@ -971,6 +972,10 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
   const bookingCardProps: Omit<BookingCardProps, "booking"> = {
     formAlerts,
     onNavigate,
+    onEditBooking: (b: any) => {
+      setSelectedBookingId(null);
+      setEditingBooking(b);
+    },
     editingProductsId,
     setEditingProductsId,
     productsText,
@@ -1879,6 +1884,23 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
             setBookingModalOpen(false);
             setRebook(null);
             setMsg(warning || "Turno agendado (no cuenta para el tope mensual)");
+            onQuotesChanged?.();
+            reload();
+          }}
+        />
+      )}
+
+      {editingBooking && (
+        <BookingManualModal
+          key={`edit-${editingBooking.id}`}
+          booking={editingBooking}
+          onClose={() => setEditingBooking(null)}
+          serviceOptions={isEstetica ? catalogServices : undefined}
+          staffOptions={isEstetica ? catalogStaff : undefined}
+          locationOptions={isEstetica ? catalogLocations : undefined}
+          onCreated={(warning) => {
+            setEditingBooking(null);
+            setMsg(warning || "Turno actualizado");
             onQuotesChanged?.();
             reload();
           }}

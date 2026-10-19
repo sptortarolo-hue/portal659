@@ -21,6 +21,7 @@ export function BookingManualModal({
   initialDurationMin,
   initialNotes,
   initialLocationId,
+  booking,
 }: {
   initialDate?: string;
   onClose: () => void;
@@ -35,17 +36,38 @@ export function BookingManualModal({
   initialDurationMin?: number;
   initialNotes?: string;
   initialLocationId?: string;
+  /** Turno existente → modo edición (PATCH en vez de POST). */
+  booking?: any | null;
 }) {
-  const [customerName, setCustomerName] = useState(initialCustomerName || "");
-  const [customerPhone, setCustomerPhone] = useState(initialCustomerPhone || "");
-  const [serviceName, setServiceName] = useState("");
-  const [serviceId, setServiceId] = useState(initialServiceId || "");
-  const [staffId, setStaffId] = useState(initialStaffId || "");
-  const [locationId, setLocationId] = useState(initialLocationId || "");
-  const [bookingDate, setBookingDate] = useState(initialDate || new Date().toISOString().slice(0, 10));
-  const [bookingTime, setBookingTime] = useState("");
-  const [duration, setDuration] = useState(String(initialDurationMin || 60));
-  const [notes, setNotes] = useState(initialNotes || "");
+  const editing = !!booking;
+  const [customerName, setCustomerName] = useState(
+    editing ? String(booking.customer_name || "") : initialCustomerName || ""
+  );
+  const [customerPhone, setCustomerPhone] = useState(
+    editing ? String(booking.customer_phone || "") : initialCustomerPhone || ""
+  );
+  const [serviceName, setServiceName] = useState(editing ? String(booking.product_name || "") : "");
+  const [serviceId, setServiceId] = useState(
+    editing ? String(booking.service_id || "") : initialServiceId || ""
+  );
+  const [staffId, setStaffId] = useState(
+    editing ? String(booking.staff_id || "") : initialStaffId || ""
+  );
+  const [locationId, setLocationId] = useState(
+    editing ? String(booking.location_id || "") : initialLocationId || ""
+  );
+  const [bookingDate, setBookingDate] = useState(
+    editing
+      ? String(booking.booking_date || "").slice(0, 10)
+      : initialDate || new Date().toISOString().slice(0, 10)
+  );
+  const [bookingTime, setBookingTime] = useState(
+    editing ? String(booking.booking_time || "").slice(0, 5) : ""
+  );
+  const [duration, setDuration] = useState(
+    String((editing ? booking.duration_min : initialDurationMin) || 60)
+  );
+  const [notes, setNotes] = useState(editing ? String(booking.notes || "") : initialNotes || "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -57,8 +79,9 @@ export function BookingManualModal({
     }
     setSaving(true);
     try {
-      const res = await fetch("/api/vendor/bookings", {
-        method: "POST",
+      const url = editing ? `/api/vendor/bookings/${booking.id}` : "/api/vendor/bookings";
+      const res = await fetch(url, {
+        method: editing ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           customer_name: customerName.trim(),
@@ -74,10 +97,11 @@ export function BookingManualModal({
         }),
       });
       const data = await res.json();
-      if (!res.ok || data.error) throw new Error(data.error || "No se pudo crear");
-      const warns = [data.warning, data.blockWarning].filter(Boolean);
-      onCreated(warns.length > 0 ? warns.join(" · ") : null);    } catch (e) {
-      setError(e instanceof Error ? e.message : "No se pudo crear");
+      if (!res.ok || data.error) throw new Error(data.error || "No se pudo guardar");
+      const warns = [data.warning, data.blockWarning, data.scheduleWarning].filter(Boolean);
+      onCreated(warns.length > 0 ? warns.join(" · ") : null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo guardar");
     } finally {
       setSaving(false);
     }
@@ -90,9 +114,13 @@ export function BookingManualModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="p-5 pb-3 shrink-0">
-          <h3 className="font-display text-lg font-semibold">＋ Nuevo turno</h3>
+          <h3 className="font-display text-lg font-semibold">{editing ? "✏️ Editar turno" : "＋ Nuevo turno"}</h3>
           <p className="text-xs text-muted-foreground">
-            {initialCustomerName ? `Repitiendo el turno de ${initialCustomerName}. Elegí la nueva fecha.` : "Nace confirmado (entra a recordatorios). No cuenta para el tope."}
+            {editing
+              ? "Cambiá la fecha, el horario o los datos. Se avisa al cliente si cambia el horario."
+              : initialCustomerName
+                ? `Repitiendo el turno de ${initialCustomerName}. Elegí la nueva fecha.`
+                : "Nace confirmado (entra a recordatorios). No cuenta para el tope."}
           </p>
         </div>
         <div className="overflow-y-auto px-5 pb-3 space-y-3 flex-1 min-h-0">
@@ -180,7 +208,7 @@ export function BookingManualModal({
         <div className="border-t border-border px-5 py-3 shrink-0 bg-card flex gap-2">
           <Button variant="outline" className="flex-1" onClick={onClose}>Cancelar</Button>
           <Button className="flex-1" disabled={saving} onClick={submit}>
-            {saving ? "Guardando..." : "Agendar turno"}
+            {saving ? "Guardando..." : editing ? "Guardar cambios" : "Agendar turno"}
           </Button>
         </div>
       </div>

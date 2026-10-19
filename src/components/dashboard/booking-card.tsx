@@ -31,6 +31,7 @@ export type BookingCardProps = {
   booking: any;
   formAlerts: Record<string, { template: string; session_no: number; labels: string[] }[]>;
   onNavigate?: (section: "orders" | "pos" | "caja" | "config" | "pedidos" | "clientes") => void;
+  onEditBooking?: (booking: any) => void;
   editingProductsId: string | null;
   setEditingProductsId: (id: string | null) => void;
   productsText: string;
@@ -64,6 +65,7 @@ export function BookingCard({
   booking,
   formAlerts,
   onNavigate,
+  onEditBooking,
   editingProductsId,
   setEditingProductsId,
   productsText,
@@ -243,6 +245,17 @@ export function BookingCard({
             onClick={() => onNavigate?.("clientes")}
           >
             📋 Ficha
+          </Button>
+        )}
+        {(booking.status === "pending" || booking.status === "confirmed") && onEditBooking && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 text-xs"
+            title="Editar fecha, horario, profesional o datos del turno"
+            onClick={() => onEditBooking(booking)}
+          >
+            ✏️ Editar
           </Button>
         )}
         {(booking.status === "pending" || booking.status === "confirmed") && (

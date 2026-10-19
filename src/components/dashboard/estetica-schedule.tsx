@@ -1,25 +1,20 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { TimeSelect24 } from "@/components/ui/time-select-24";
 import {
   DAY_LABEL,
-  SLOT_STEP_MIN,
   WEEKDAY_ORDER,
-  fmtMinutes,
   parseAvailability,
   shiftsFromHoursText,
   type Range,
 } from "@/lib/booking-schedule";
 import type { Vendor } from "@/types/database";
-
-const START = 7 * 60;
-const END = 23 * 60;
-const CELLS = (END - START) / SLOT_STEP_MIN;
 
 // Lunes de referencia (2024-01-01 fue lunes) para pedirle al parser del
 // horario del local las franjas de cada día de la semana.
@@ -31,27 +26,62 @@ function isoForWeekday(dayKey: string): string {
   return d.toISOString().slice(0, 10);
 }
 
-function rangesToCells(ranges: Range[]): boolean[] {
-  const cells = new Array(CELLS).fill(false);
-  for (const [o, c] of ranges) {
-    for (let i = 0; i < CELLS; i++) {
-      const t = START + i * SLOT_STEP_MIN;
-      if (t >= o && t < c) cells[i] = true;
-    }
-  }
-  return cells;
+const FULL_DAY_NAMES: Record<string, string> = {
+  lun: "Lunes",
+  mar: "Martes",
+  mie: "Miércoles",
+  jue: "Jueves",
+  vie: "Viernes",
+  sab: "Sábado",
+  dom: "Domingo",
+};
+
+type Shift = { open: string; close: string };
+type DayCfg = { closed: boolean; shifts: Shift[] };
+
+function minsToHHMM(mins: number): string {
+  return `${String(Math.floor(mins / 60)).padStart(2, "0")}:${String(mins % 60).padStart(2, "0")}`;
 }
 
-function cellsToRanges(cells: boolean[]): [string, string][] {
-  const out: [string, string][] = [];
-  let start: number | null = null;
-  for (let i = 0; i <= CELLS; i++) {
-    const on = i < CELLS && cells[i];
-    if (on && start === null) start = START + i * SLOT_STEP_MIN;
-    if (!on && start !== null) {
-      out.push([fmtMinutes(start), fmtMinutes(START + i * SLOT_STEP_MIN)]);
-      start = null;
-    }
+// Máximo de franjas por día (mañana + tarde/noche), igual que el horario del local.
+const MAX_SHIFTS = 2;
+
+function rangesToShifts(ranges: Range[] | null | undefined): Shift[] {
+  return (ranges || [])
+    .slice(0, MAX_SHIFTS)
+    .map(([o, c]) => ({ open: minsToHHMM(o), close: minsToHHMM(c) }));
+}
+
+/** availability jsonb → config de los 7 días. Días ausentes/vacíos = cerrado. */
+function availabilityToCfg(raw: unknown): Record<string, DayCfg> {
+  const av = parseAvailability(raw);
+  const out: Record<string, DayCfg> = {};
+  for (const d of WEEKDAY_ORDER) {
+    const shifts = rangesToShifts(av?.[d]);
+    out[d] = { closed: shifts.length === 0, shifts: shifts.length ? shifts : [{ open: "09:00", close: "18:00" }] };
+  }
+  return out;
+}
+
+/** Horario del local (vendors.hours) → config de los 7 días (para prefill/copiar). */
+function localCfgFromHours(hours: string | null | undefined): Record<string, DayCfg> {
+  const out: Record<string, DayCfg> = {};
+  for (const d of WEEKDAY_ORDER) {
+    const shifts = rangesToShifts(shiftsFromHoursText(hours || null, isoForWeekday(d)));
+    out[d] = { closed: shifts.length === 0, shifts: shifts.length ? shifts : [{ open: "09:00", close: "18:00" }] };
+  }
+  return out;
+}
+
+/** config de los 7 días → availability jsonb (cerrado = []). */
+function cfgToAvailability(cfg: Record<string, DayCfg>): Record<string, [string, string][]> {
+  const out: Record<string, [string, string][]> = {};
+  for (const d of WEEKDAY_ORDER) {
+    const day = cfg[d];
+    out[d] =
+      day && !day.closed
+        ? day.shifts.filter((s) => s.open && s.close).map((s) => [s.open, s.close] as [string, string])
+        : [];
   }
   return out;
 }
@@ -76,7 +106,7 @@ export function EsteticaScheduleSection({
   const [mode, setMode] = useState<string>((vendor as any)?.booking_schedule_mode === "grid" ? "grid" : "hours");
   const [staff, setStaff] = useState<StaffRow[]>([]);
   const [staffId, setStaffId] = useState("");
-  const [grid, setGrid] = useState<Record<string, boolean[]>>({});
+  const [cfg, setCfg] = useState<Record<string, DayCfg>>(() => availabilityToCfg(null));
   const [days, setDays] = useState<ScheduleDay[]>([]);
   const [missing, setMissing] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -119,25 +149,13 @@ export function EsteticaScheduleSection({
     setMode((vendor as any)?.booking_schedule_mode === "grid" ? "grid" : "hours");
   }, [vendor]);
 
-  // Celdas del profesional elegido.
+  // Config del profesional elegido. Sin grilla guardada aún (availability null)
+  // se prellenará con el horario del local para editar en vez de armar de cero.
   useEffect(() => {
     const st = staff.find((s) => s.id === staffId);
     const av = parseAvailability(st?.availability);
-    const next: Record<string, boolean[]> = {};
-    for (const d of WEEKDAY_ORDER) {
-      next[d] = rangesToCells(av?.[d] || []);
-    }
-    setGrid(next);
-  }, [staffId, staff]);
-
-  // Horario del local por día (para "copiar").
-  const localByDay = useMemo(() => {
-    const out: Record<string, Range[]> = {};
-    for (const d of WEEKDAY_ORDER) {
-      out[d] = shiftsFromHoursText(vendor?.hours || null, isoForWeekday(d)) || [];
-    }
-    return out;
-  }, [vendor?.hours]);
+    setCfg(av ? availabilityToCfg(st?.availability) : localCfgFromHours(vendor?.hours || null));
+  }, [staffId, staff, vendor?.hours]);
 
   if (missing) {
     return (
@@ -159,20 +177,45 @@ export function EsteticaScheduleSection({
     }
   }
 
-  function toggleCell(day: string, i: number) {
-    setGrid((prev) => {
-      const cells = [...(prev[day] || new Array(CELLS).fill(false))];
-      cells[i] = !cells[i];
-      return { ...prev, [day]: cells };
+  function setDay(day: string, patch: Partial<DayCfg>) {
+    setCfg((prev) => ({ ...prev, [day]: { ...prev[day], ...patch } }));
+  }
+
+  function toggleDay(day: string) {
+    setCfg((prev) => ({ ...prev, [day]: { ...prev[day], closed: !prev[day].closed } }));
+  }
+
+  function updateShift(day: string, idx: number, patch: Partial<Shift>) {
+    setCfg((prev) => {
+      const d = prev[day];
+      return { ...prev, [day]: { ...d, shifts: d.shifts.map((s, i) => (i === idx ? { ...s, ...patch } : s)) } };
     });
   }
 
-  function copyLocal() {
-    setGrid(() => {
-      const next: Record<string, boolean[]> = {};
-      for (const d of WEEKDAY_ORDER) next[d] = rangesToCells(localByDay[d] || []);
+  function addShift(day: string) {
+    setCfg((prev) => {
+      const d = prev[day];
+      if (d.shifts.length >= MAX_SHIFTS) return prev;
+      return { ...prev, [day]: { ...d, shifts: [...d.shifts, { open: "17:00", close: "21:00" }] } };
+    });
+  }
+
+  function removeShift(day: string) {
+    setCfg((prev) => ({ ...prev, [day]: { ...prev[day], shifts: prev[day].shifts.slice(0, 1) } }));
+  }
+
+  function copyToAll(day: string) {
+    setCfg((prev) => {
+      const src = prev[day];
+      const next: Record<string, DayCfg> = {};
+      for (const d of WEEKDAY_ORDER) next[d] = { closed: src.closed, shifts: src.shifts.map((s) => ({ ...s })) };
       return next;
     });
+    setLocalMsg("Día copiado a toda la semana (no olvides guardar)");
+  }
+
+  function copyLocal() {
+    setCfg(localCfgFromHours(vendor?.hours || null));
     setLocalMsg("Horario del local copiado (no olvides guardar)");
   }
 
@@ -181,8 +224,7 @@ export function EsteticaScheduleSection({
     setBusy(true);
     setLocalMsg("");
     try {
-      const availability: Record<string, [string, string][]> = {};
-      for (const d of WEEKDAY_ORDER) availability[d] = cellsToRanges(grid[d] || []);
+      const availability = cfgToAvailability(cfg);
       const res = await fetch(`/api/vendor/estetica-staff/${staffId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -239,7 +281,7 @@ export function EsteticaScheduleSection({
       <div>
         <p className="font-medium text-sm">🗓️ Agenda de turnos</p>
         <p className="text-xs text-muted-foreground">
-          Seguí el horario del local o planificá por semana las horas de cada profesional (lo no marcado queda bloqueado).
+          Seguí el horario del local o planificá por semana las franjas de cada profesional (lo no marcado queda bloqueado).
         </p>
       </div>
       <div className="flex flex-col gap-1.5">
@@ -257,7 +299,7 @@ export function EsteticaScheduleSection({
           className={`text-left rounded-lg border px-3 py-2 text-sm ${mode === "grid" ? "border-primary bg-primary/10" : "border-border"}`}
         >
           <span className="font-medium">Agenda por semana</span>
-          <span className="block text-xs text-muted-foreground">Marcá las horas de cada profesional; el resto queda bloqueado.</span>
+          <span className="block text-xs text-muted-foreground">Marcá las franjas de cada profesional; el resto queda bloqueado.</span>
         </button>
       </div>
 
@@ -282,46 +324,77 @@ export function EsteticaScheduleSection({
                 <Button size="sm" variant="outline" onClick={copyLocal}>Copiar horario del local</Button>
               </div>
 
-              <div className="overflow-x-auto -mx-1 px-1">
-                <table className="border-separate border-spacing-0.5 text-[10px]">
-                  <thead>
-                    <tr>
-                      <th className="sticky left-0 bg-card px-1 text-muted-foreground font-normal"></th>
-                      {WEEKDAY_ORDER.map((d) => (
-                        <th key={d} className="px-0.5 text-muted-foreground font-medium">{DAY_LABEL[d]}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {Array.from({ length: CELLS }).map((_, i) => {
-                      const t = START + i * SLOT_STEP_MIN;
-                      const showLabel = t % 60 === 0;
-                      return (
-                        <tr key={i}>
-                          <td className="sticky left-0 bg-card pr-1 text-right text-muted-foreground whitespace-nowrap">
-                            {showLabel ? fmtMinutes(t) : ""}
-                          </td>
-                          {WEEKDAY_ORDER.map((d) => {
-                            const on = grid[d]?.[i];
-                            return (
-                              <td key={d} className="p-0">
+              <div className="space-y-2">
+                {WEEKDAY_ORDER.map((d) => {
+                  const day = cfg[d];
+                  if (!day) return null;
+                  return (
+                    <div key={d} className="rounded-xl border border-border bg-card p-3 space-y-2.5">
+                      <div className="flex items-center gap-2">
+                        <Switch checked={!day.closed} onCheckedChange={() => toggleDay(d)} aria-label={`${FULL_DAY_NAMES[d]} abierto`} />
+                        <span className="text-sm font-medium flex-1">{FULL_DAY_NAMES[d]}</span>
+                        <button
+                          type="button"
+                          className="text-[11px] text-muted-foreground hover:text-primary font-medium"
+                          onClick={() => copyToAll(d)}
+                          title="Copiar a toda la semana"
+                        >
+                          ⧉ Copiar
+                        </button>
+                        <span className={`text-[11px] ${day.closed ? "text-muted-foreground" : "text-primary font-medium"}`}>
+                          {day.closed ? "Cerrado" : "Abierto"}
+                        </span>
+                      </div>
+
+                      {!day.closed && (
+                        <div className="space-y-2">
+                          {day.shifts.map((shift, sIdx) => (
+                            <div key={sIdx} className="flex items-center gap-1.5 w-full">
+                              {day.shifts.length === 2 && (
+                                <span className="text-[10px] text-muted-foreground w-12 flex-shrink-0 text-right">
+                                  {sIdx === 0 ? "Mañana" : "Tarde"}
+                                </span>
+                              )}
+                              <TimeSelect24
+                                value={shift.open}
+                                onChange={(v) => updateShift(d, sIdx, { open: v })}
+                                aria-label={`${FULL_DAY_NAMES[d]} apertura`}
+                              />
+                              <span className="text-muted-foreground flex-shrink-0 text-xs">a</span>
+                              <TimeSelect24
+                                value={shift.close}
+                                onChange={(v) => updateShift(d, sIdx, { close: v })}
+                                aria-label={`${FULL_DAY_NAMES[d]} cierre`}
+                              />
+                              {day.shifts.length === 2 && (
                                 <button
                                   type="button"
-                                  onClick={() => toggleCell(d, i)}
-                                  className={`w-6 h-4 rounded-sm ${on ? "bg-primary" : "bg-muted hover:bg-muted-foreground/20"}`}
-                                  aria-label={`${DAY_LABEL[d]} ${fmtMinutes(t)}`}
-                                />
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                                  onClick={() => removeShift(d)}
+                                  className="h-9 w-9 rounded-md text-lg text-muted-foreground hover:text-red-600 hover:bg-red-50 flex items-center justify-center flex-shrink-0"
+                                  aria-label="Quitar franja"
+                                >
+                                  ×
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                          {day.shifts.length < MAX_SHIFTS && (
+                            <button
+                              type="button"
+                              className="text-[11px] text-primary font-medium"
+                              onClick={() => addShift(d)}
+                            >
+                              + Agregar franja (tarde/noche)
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
               <p className="text-[11px] text-muted-foreground">
-                Toca las casillas para habilitar/bloquear cada media hora. Los días sin marcar quedan cerrados.
+                Los días apagados o sin franja quedan cerrados (no se pueden reservar).
               </p>
               <Button size="sm" className="w-full" onClick={saveGrid} disabled={busy}>
                 {busy ? "Guardando..." : "Guardar agenda del profesional"}

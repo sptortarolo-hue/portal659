@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { buildComandaWhatsApp } from "@/lib/whatsapp-message";
 import { deliveryLabel, normalizeDeliveryMode, resolveDeliveryFee } from "@/lib/delivery";
 import { cashAppliesToItem, cashPrice, normalizeCashPct } from "@/lib/cash-discount";
+import { cashBillSuggestions } from "@/lib/cash-bills";
 import { cartLineTotal } from "@/lib/order-line";
 import { mirrorVolume } from "@/lib/volume-mirror";
 import { checkArgPhone, toE164 } from "@/lib/phone";
@@ -306,7 +307,9 @@ const [doneIsGift, setDoneIsGift] = useState(false);
   const cashAmountNum = Math.round((parseFloat(cashAmount.replace(",", ".")) || 0) * 100) / 100;
   const cashAskValid = !cashAskVisible || (cashAmountNum > 0 && cashAmountNum >= displayTotal);
   const cashChange = cashAskVisible && cashAmountNum > 0 ? Math.max(0, Math.round((cashAmountNum - displayTotal) * 100) / 100) : 0;
-  const cashBillOptions = [1000, 2000, 5000, 10000, 20000, 50000].filter((b) => b >= displayTotal).slice(0, 4);
+  // Sugerencias con billetes reales (1-2 billetes, montos "redondos"): el monto
+  // exacto va aparte como chip "Exacto" y el cliente siempre puede tipear otro.
+  const cashBillOptions = cashBillSuggestions(displayTotal);
   // Si el comercio no ofrece el método elegido, forzar el habilitado.
   // Va ANTES de cualquier return temprano: todos los hooks deben correr en
   // todos los renders (si no, React tira "fewer hooks" y cae el boundary).

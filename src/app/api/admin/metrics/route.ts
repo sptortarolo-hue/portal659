@@ -48,6 +48,11 @@ export async function GET(request: Request) {
     const activeW = useVisible ? "w.visible = true" : "w.verified = true";
     // Visitas: tolerante a migración pendiente (sin tabla → ceros).
     const useVisits = await hasTable("store_visits");
+    // Consultas/tupera de servicios: tolerante a migración SIN aplicar (sin
+    // tabla → vacías; con tabla → filtrarlas como los pedidos para que las
+    // pruebas no cuenten). `quotes.is_preview` llegó en migrate-service-preview.
+    const useQuotes = await hasTable("quotes");
+    const quotePreviewFilter = useQuotes && (await hasColumn("quotes", "is_preview")) ? "is_preview = false" : "true";
     const visitsJoin = useVisits
       ? `LEFT JOIN (
            SELECT vendor_id,
@@ -74,6 +79,7 @@ export async function GET(request: Request) {
                   COALESCE(o.orders_total, 0) AS orders_total,
                   COALESCE(o.completed_total, 0) AS completed_total,
                   COALESCE(o.completed_30d, 0) AS completed_30d,
+                  COALESCE(o.app_completed_30d, 0) AS app_completed_30d,
                   COALESCE(o.revenue_total, 0) AS revenue_total,
                   COALESCE(q.quotes_total, 0) AS quotes_total,
                   ${visitsSelect}
@@ -84,15 +90,17 @@ export async function GET(request: Request) {
                     count(*) FILTER (WHERE is_preview = false) AS orders_total,
                     count(*) FILTER (WHERE is_preview = false AND status = 'completed') AS completed_total,
                     count(*) FILTER (WHERE is_preview = false AND status = 'completed' AND created_at >= now() - interval '30 days') AS completed_30d,
+                    count(*) FILTER (WHERE is_preview = false AND status = 'completed' AND channel = 'app' AND created_at >= now() - interval '30 days') AS app_completed_30d,
                     COALESCE(sum(total) FILTER (WHERE is_preview = false AND status = 'completed'), 0) AS revenue_total
              FROM orders
              GROUP BY vendor_id
            ) o ON o.vendor_id = v.id
-           LEFT JOIN (
+           ${useQuotes ? `LEFT JOIN (
              SELECT vendor_id, count(*) AS quotes_total
              FROM quotes
+             WHERE ${quotePreviewFilter}
              GROUP BY vendor_id
-           ) q ON q.vendor_id = v.id
+           ) q ON q.vendor_id = v.id` : ""}
            ${visitsJoin}
            WHERE ${activeV}
            ORDER BY orders_total DESC, revenue_total DESC`
@@ -121,13 +129,24 @@ export async function GET(request: Request) {
            WHERE o.is_preview = false AND ${activeW}
            GROUP BY o.channel ORDER BY n DESC`
         ),
+        // Planes por estado real (schema: plan_status gratuito|trial|active|
+        // expired|cancelled): "pagado hoy" = plan pago CON status active. Un
+        // plan vencido/cancelado ya no cuenta como pago; trial va aparte.
         queryMany<Record<string, unknown>>(
           `SELECT
-             count(*) FILTER (WHERE plan_id IS NULL
-               OR plan_id IN (SELECT id FROM plans WHERE slug = 'gratuito')) AS free_vendors,
-             count(*) AS total_vendors
-           FROM vendors v
-           WHERE ${activeV}`
+              count(*) FILTER (WHERE v.plan_id IS NULL
+                OR v.plan_id IN (SELECT id FROM plans WHERE slug = 'gratuito')) AS free_vendors,
+              count(*) FILTER (WHERE v.plan_status = 'trial'
+                AND v.plan_id NOT IN (SELECT id FROM plans WHERE slug = 'gratuito')) AS trial_vendors,
+              count(*) FILTER (WHERE v.plan_status = 'active'
+                AND v.plan_id IS NOT NULL
+                AND v.plan_id NOT IN (SELECT id FROM plans WHERE slug = 'gratuito')) AS paid_vendors,
+              count(*) FILTER (WHERE v.plan_status IN ('expired', 'cancelled')
+                AND v.plan_id IS NOT NULL
+                AND v.plan_id NOT IN (SELECT id FROM plans WHERE slug = 'gratuito')) AS lapsed_vendors,
+              count(*) AS total_vendors
+            FROM vendors v
+            WHERE ${activeV}`
         ),
         queryMany<Record<string, unknown>>(
           // La columna es price_monthly (no existe `price`): alias para el cliente.
@@ -135,12 +154,14 @@ export async function GET(request: Request) {
         ),
         queryMany<Record<string, unknown>>(
           `SELECT
-             count(*) FILTER (WHERE o.is_preview = false) AS total,
-             count(*) FILTER (WHERE o.is_preview = false AND o.created_at >= now() - interval '7 days') AS last7,
-             count(*) FILTER (WHERE o.is_preview = false AND o.created_at >= now() - interval '30 days') AS last30,
-             count(*) FILTER (WHERE o.is_preview = false AND o.status = 'completed' AND o.created_at >= now() - interval '30 days') AS completed30
-           FROM orders o JOIN vendors w ON w.id = o.vendor_id
-           WHERE ${activeW}`
+              count(*) FILTER (WHERE o.is_preview = false) AS total,
+              count(*) FILTER (WHERE o.is_preview = false AND o.created_at >= now() - interval '7 days') AS last7,
+              count(*) FILTER (WHERE o.is_preview = false AND o.created_at >= now() - interval '30 days') AS last30,
+              count(*) FILTER (WHERE o.is_preview = false AND o.channel = 'app' AND o.created_at >= now() - interval '30 days') AS app30,
+              count(*) FILTER (WHERE o.is_preview = false AND o.status = 'completed' AND o.created_at >= now() - interval '30 days') AS completed30,
+              count(*) FILTER (WHERE o.is_preview = false AND o.status = 'completed' AND o.channel = 'app' AND o.created_at >= now() - interval '30 days') AS app_completed30
+            FROM orders o JOIN vendors w ON w.id = o.vendor_id
+            WHERE ${activeW}`
         ),
       ]);
 
@@ -148,7 +169,9 @@ export async function GET(request: Request) {
     // que el cliente pueda formatear sin guards.
     const perVendor = (perVendorRaw as any[]).map((r) => {
       const visitors = num(r.visitors_30d);
-      const completed30 = num(r.completed_30d);
+      // Conversión visita → compra: SOLO pedidos de la app (canal con
+      // visitante real); mostrador/mesas/directas quedan fuera del funnel.
+      const appCompleted30 = num(r.app_completed_30d);
       return {
         store_name: String(r.store_name ?? ""),
         vertical: String(r.vertical ?? ""),
@@ -156,13 +179,14 @@ export async function GET(request: Request) {
         orders_30d: num(r.orders_30d),
         orders_total: num(r.orders_total),
         completed_total: num(r.completed_total),
-        completed_30d: completed30,
+        completed_30d: num(r.completed_30d),
+        app_completed_30d: appCompleted30,
         revenue_total: num(r.revenue_total),
         quotes_total: num(r.quotes_total),
         visits_30d: num(r.visits_30d),
         visitors_30d: visitors,
-        // % de visitantes únicos que completaron compra (30d).
-        conv_rate: visitors > 0 ? Math.round((completed30 / visitors) * 1000) / 10 : 0,
+        // % de visitantes únicos que completaron compra en la app (30d).
+        conv_rate: visitors > 0 ? Math.round((appCompleted30 / visitors) * 1000) / 10 : 0,
       };
     });
     const perVertical = (perVerticalRaw as any[]).map((r) => ({
@@ -184,24 +208,33 @@ export async function GET(request: Request) {
     const paidRows = (plansAgg[0] || {}) as Record<string, unknown>;
     const totalVendors = num(paidRows.total_vendors);
     const freeVendors = num(paidRows.free_vendors);
-    // paid = total − free: robusto a futuros slugs (oficios, etc.).
-    const paidVendors = Math.max(0, totalVendors - freeVendors);
-    const paidPct = totalVendors > 0 ? Math.round((paidVendors / totalVendors) * 100) : 0;
+    const trialVendors = num(paidRows.trial_vendors);
+    const paidActiveVendors = num(paidRows.paid_vendors);
+    const lapsedVendors = num(paidRows.lapsed_vendors);
+    // Plan pago activo = status 'active' en franja pago (vencidos separados).
+    const paidPct = totalVendors > 0 ? Math.round((paidActiveVendors / totalVendors) * 100) : 0;
 
     const t = (totals[0] || {}) as Record<string, unknown>;
     const totalOrders = num(t.total);
     const last30 = num(t.last30);
+    const last30App = num(t.app30);
     const completed30 = num(t.completed30);
+    const completed30App = num(t.app_completed30);
     const whatsappOrders = byPayment.find((r) => r.payment_method === "whatsapp")?.n || 0;
     const whatsappPct = totalOrders > 0 ? Math.round((whatsappOrders / totalOrders) * 100) : 0;
 
     const totalRevenue = perVendor.reduce((s, r) => s + r.revenue_total, 0);
     const activeVendors30d = perVendor.filter((r) => r.orders_30d > 0).length;
     const visits30d = perVendor.reduce((s, r) => s + r.visits_30d, 0);
+    // Únicos por comercio: la misma persona que mira 3 tiendas suma 3 (es la
+    // unidad de negocio; los únicos "global" no se pueden derivar sin la
+    // tabla completa por device — queda clarito en el label del panel).
     const visitors30d = perVendor.reduce((s, r) => s + r.visitors_30d, 0);
-    // Funnel global 30d: visitantes únicos → pedidos → compras completadas.
-    const orderRate = visitors30d > 0 ? Math.round((last30 / visitors30d) * 1000) / 10 : 0;
-    const funnelRate = visitors30d > 0 ? Math.round((completed30 / visitors30d) * 1000) / 10 : 0;
+    // Funnel global 30d con pedidos del canal app únicamente: el visitante
+    // (persona real del micrositio) y la compra (check-out web / bot) viven
+    // en el mismo canal; mostrador/mesas/directas no cuentan acá.
+    const orderRate = visitors30d > 0 ? Math.round((last30App / visitors30d) * 1000) / 10 : 0;
+    const funnelRate = visitors30d > 0 ? Math.round((completed30App / visitors30d) * 1000) / 10 : 0;
 
     return NextResponse.json({
       summary: {
@@ -211,7 +244,9 @@ export async function GET(request: Request) {
         totalRevenue: Math.round(totalRevenue),
         totalVendors,
         freeVendors,
-        paidVendors,
+        paidVendors: paidActiveVendors,
+        trialVendors,
+        lapsedVendors,
         paidPct,
         whatsappPct,
         activeVendors30d,

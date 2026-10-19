@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, AreaChart, Area, CartesianGrid, Legend } from "recharts";
 
 type Metrics = {
   summary: {
@@ -12,6 +12,8 @@ type Metrics = {
     totalVendors: number;
     freeVendors: number;
     paidVendors: number;
+    trialVendors: number;
+    lapsedVendors: number;
     paidPct: number;
     whatsappPct: number;
     activeVendors30d: number;
@@ -20,7 +22,7 @@ type Metrics = {
     orderRate: number;
     funnelRate: number;
   };
-  perVendor: Array<{ store_name: string; vertical: string; neighborhood: string; orders_30d: number; orders_total: number; completed_total: number; completed_30d: number; revenue_total: number; quotes_total: number; visits_30d: number; visitors_30d: number; conv_rate: number }>;
+  perVendor: Array<{ store_name: string; vertical: string; neighborhood: string; orders_30d: number; orders_total: number; completed_total: number; completed_30d: number; app_completed_30d: number; revenue_total: number; quotes_total: number; visits_30d: number; visitors_30d: number; conv_rate: number }>;
   perVertical: Array<{ vertical: string; vendors: number; orders_total: number; completed_total: number; revenue_total: number }>;
   byPayment: Array<{ payment_method: string; n: number }>;
   byChannel: Array<{ channel: string; n: number }>;
@@ -37,8 +39,19 @@ const VERTICAL_COLORS: Record<string, string> = {
   mascotas: "#14b8a6",
 };
 
+type Traffic = {
+  ready: boolean;
+  daily: Array<{ day: string; views: number; visitors: number }>;
+  topPaths: Array<{ path: string; views: number; uniques: number }>;
+  topSearches: Array<{ value: string; n: number }>;
+  waTotal: number;
+  storeOpenTotal: number;
+  waByVendor: Array<{ store_name: string; n: number }>;
+};
+
 export default function MetricasPage() {
   const [data, setData] = useState<Metrics | null>(null);
+  const [traffic, setTraffic] = useState<Traffic | null>(null);
   const [error, setError] = useState("");
 
   const load = useCallback(() => {
@@ -58,6 +71,13 @@ export default function MetricasPage() {
         });
       })
       .catch(() => setError("No se pudieron cargar las métricas"));
+    // Tráfico e interacción (independiente de las métricas de venta).
+    fetch("/api/admin/traffic")
+      .then(async (r) => {
+        const d = await r.json().catch(() => null);
+        if (r.ok && d && !d.error) setTraffic(d);
+      })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -91,7 +111,10 @@ export default function MetricasPage() {
     <div className="space-y-6">
       <div>
         <h1 className="font-display text-2xl font-semibold">Métricas de lanzamiento</h1>
-        <p className="text-sm text-muted-foreground">Solo comercios visibles en el portal (sin pruebas). Visitas desde la activación del tracking.</p>
+        <p className="text-sm text-muted-foreground">
+          Solo comercios visibles en el portal (sin pruebas). El funnel de visitas compara
+          únicamente pedidos del canal app (mostrador/mesas/directas no entran a ese %).
+        </p>
       </div>
 
       {/* Summary cards */}
@@ -103,11 +126,13 @@ export default function MetricasPage() {
           { label: "Ingresos (entregados)", value: money(s.totalRevenue) },
           { label: "Comercios con pedidos (30d)", value: fmt(s.activeVendors30d) },
           { label: "Vía WhatsApp", value: `${s.whatsappPct}%` },
-          { label: "Free → plan pago", value: `${s.paidPct}%` },
-          { label: "Comercios en plan pago", value: `${s.paidVendors}/${s.totalVendors}` },
-          { label: "Visitas únicas (30d)", value: fmt(s.visitors30d) },
-          { label: "Piden tras visitar", value: `${s.orderRate}%` },
-          { label: "Completan compra", value: `${s.funnelRate}%` },
+          { label: "Free → plan pago activo", value: `${s.paidPct}%` },
+          { label: "Plan pago activo", value: `${s.paidVendors}` },
+          { label: "En prueba (trial)", value: fmt(s.trialVendors ?? 0) },
+          { label: "Vencidos/cancelados con plan", value: fmt(s.lapsedVendors ?? 0) },
+          { label: "Únicos por comercio (30d)", value: fmt(s.visitors30d) },
+          { label: "Piden tras visitar (app)", value: `${s.orderRate}%` },
+          { label: "Completan compra (app)", value: `${s.funnelRate}%` },
         ].map((c) => (
           <div key={c.label} className="bg-card border border-border rounded-2xl p-4">
             <div className="text-xl font-bold tabular-nums">{c.value}</div>
@@ -174,6 +199,101 @@ export default function MetricasPage() {
           </table>
         </div>
       </div>
+
+      {/* Traffic & interaction */}
+      {traffic && (
+        <div className="bg-card border border-border rounded-2xl p-5">
+          <div className="flex items-baseline justify-between gap-3 mb-3">
+            <h2 className="font-display text-lg font-semibold">Tráfico e interacción (30d)</h2>
+            <span className="text-[11px] text-muted-foreground">
+              Clicks WhatsApp: {fmt(traffic.waTotal)} · Apertura de tiendas: {fmt(traffic.storeOpenTotal)}
+            </span>
+          </div>
+          {!traffic.ready ? (
+            <p className="text-sm text-muted-foreground">
+              Falta aplicar <code className="text-xs">migrate-portal-analytics.sql</code> en la base para el tracking de páginas/búsquedas/clicks.
+            </p>
+          ) : (
+            <div className="space-y-5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1.5">Vistas de página por día (línea baja = visitantes únicos)</p>
+                  <div className="h-44">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={traffic.daily.map((d) => ({ ...d, label: d.day.slice(5) }))} margin={{ top: 4, right: 8, bottom: 0, left: -12 }}>
+                        <defs>
+                          <linearGradient id="tv" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#6366f1" stopOpacity={0.35} />
+                            <stop offset="100%" stopColor="#6366f1" stopOpacity={0.02} />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#8884" vertical={false} />
+                        <XAxis dataKey="label" tick={{ fontSize: 10 }} interval="preserveStartEnd" minTickGap={24} />
+                        <YAxis allowDecimals={false} tick={{ fontSize: 10 }} />
+                        <Tooltip />
+                        <Area type="monotone" dataKey="views" stroke="#6366f1" fill="url(#tv)" name="Vistas" />
+                        <Area type="monotone" dataKey="visitors" stroke="#10b981" fill="none" name="Únicos" />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1.5">Tap WhatsApp (eligen escribir) por comercio</p>
+                  <table className="w-full text-sm">
+                    <tbody>
+                      {traffic.waByVendor.length === 0 && (
+                        <tr><td className="py-2 text-muted-foreground">Sin clicks todavía</td></tr>
+                      )}
+                      {traffic.waByVendor.map((r) => (
+                        <tr key={r.store_name} className="border-b border-border last:border-0">
+                          <td className="py-1.5">{r.store_name}</td>
+                          <td className="py-1.5 text-right tabular-nums">{fmt(r.n)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1.5">Páginas más vistas</p>
+                  <table className="w-full text-sm">
+                    <tbody>
+                      {traffic.topPaths.map((r) => (
+                        <tr key={r.path} className="border-b border-border last:border-0">
+                          <td className="py-1.5 font-mono text-xs truncate max-w-[12rem]">{r.path}</td>
+                          <td className="py-1.5 text-right tabular-nums">{fmt(r.views)}</td>
+                          <td className="py-1.5 text-right text-muted-foreground tabular-nums text-xs">{fmt(r.uniques)} únicos</td>
+                        </tr>
+                      ))}
+                      {traffic.topPaths.length === 0 && (
+                        <tr><td className="py-2 text-muted-foreground">Sin datos</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1.5">Búsquedas (término y rubros desde el buscador)</p>
+                  <table className="w-full text-sm">
+                    <tbody>
+                      {traffic.topSearches.map((r) => (
+                        <tr key={r.value} className="border-b border-border last:border-0">
+                          <td className="py-1.5 truncate max-w-[14rem]">{r.value.startsWith("vertical:") ? `🏷️ ${r.value.slice(9)}` : `🔍 ${r.value}`}</td>
+                          <td className="py-1.5 text-right tabular-nums">{fmt(r.n)}</td>
+                        </tr>
+                      ))}
+                      {traffic.topSearches.length === 0 && (
+                        <tr><td className="py-2 text-muted-foreground">Sin búsquedas</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Per vendor */}
       <div className="bg-card border border-border rounded-2xl p-5">

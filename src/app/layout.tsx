@@ -15,6 +15,7 @@ import { ThemeColorSync } from "@/components/ui/theme-color-sync";
 import { ScrollToTop } from "@/components/ui/scroll-to-top";
 import { BottomNav } from "@/components/nav/bottom-nav";
 import { OnboardingOverlay } from "@/components/onboarding/onboarding-overlay";
+import { AnalyticsBeacon } from "@/components/analytics/analytics-beacon";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -124,6 +125,7 @@ export default function RootLayout({
             <ToastProvider>
               <ServiceWorkerRegistration />
               <PushSubscribe />
+              <AnalyticsBeacon />
               <OnboardingOverlay />
               <Navigation />
               <ErrorBoundary>

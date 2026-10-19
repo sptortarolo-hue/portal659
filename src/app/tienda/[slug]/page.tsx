@@ -647,7 +647,7 @@ export default async function TiendaPage({
   ];
 
   return (
-    <main className="pb-28 overflow-x-clip">
+    <main className="pb-28 overflow-x-clip" data-vendor-id={vendor.id}>
       {preview && <PreviewBanner menuQrOnly={cartaQrOnly} catalog={isCatalog} />}
       {!preview && <VisitBeacon vendorId={vendor.id} />}
       {preview && <PreviewSessionSync vendorId={vendor.id} token={previewToken} />}

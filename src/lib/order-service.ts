@@ -206,7 +206,7 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
     source === "wa-bot" && notes ? `[Bot WA] ${notes}` : source === "wa-bot" ? "[Bot WA]" : notes || null;
 
   const vendorRow = await queryOne<Record<string, unknown>>(
-    `SELECT vertical, plan_id, plan_status, plan_expires_at, trial_ends_at, hours, open_override, delivery_fee, free_delivery_min, cash_discount_pct, accepts_online_orders, delivery_options FROM vendors WHERE id = $1 LIMIT 1`,
+    `SELECT vertical, plan_id, plan_status, plan_expires_at, trial_ends_at, hours, open_override, delivery_fee, free_delivery_min, cash_discount_pct, accepts_online_orders, delivery_options, transfer_expiry_hours FROM vendors WHERE id = $1 LIMIT 1`,
     [vendorId]
   );
 
@@ -384,6 +384,21 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
   ).catch(() => null);
   const hasGiftcardCols = giftcardCol?.exists === true;
 
+  // Vencimiento de transferencias (tolerante a migración sin aplicar): el
+  // pedido nace con deadline si el comercio tiene el vencimiento activo.
+  const deadlineCol = await queryOne<{ exists: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1 FROM information_schema.columns
+       WHERE table_name = 'orders' AND column_name = 'transfer_deadline_at'
+     ) AS exists`
+  ).catch(() => null);
+  const hasDeadlineCol = deadlineCol?.exists === true;
+  const expiryHours = Number((vendorRow as any)?.transfer_expiry_hours) || 0;
+  const transferDeadlineAt =
+    hasDeadlineCol && !isPreview && paymentMethodNorm === "transferencia" && expiryHours > 0 && expiryHours <= 168
+      ? new Date(Date.now() + expiryHours * 3_600_000).toISOString()
+      : null;
+
   // Canje de giftcard (checkout online, efectivo/transferencia): se consume
   // DENTRO de la tx principal, sobre el total recién calculado (si falla se
   // hace rollback de todo: sin pedido ni consumo). MP va por propia ruta.
@@ -472,9 +487,13 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
       const giftcardCols = hasGiftcardCols ? ", giftcard_code, giftcard_discount" : "";
       const giftcardVals = hasGiftcardCols ? `, $${nextParam++}, $${nextParam++}` : "";
       const giftcardParams: unknown[] = hasGiftcardCols ? [giftcardCodeFinal, giftcardApplied] : [];
+      // Vencimiento de transferencia ("Pago vencido", M4.2).
+      const deadlineCols = transferDeadlineAt ? ", transfer_deadline_at" : "";
+      const deadlineVals = transferDeadlineAt ? `, $${nextParam++}` : "";
+      const deadlineParams: unknown[] = transferDeadlineAt ? [transferDeadlineAt] : [];
       const rows = await tx.query<{ id: string }>(
-        `INSERT INTO orders (vendor_id, customer_id, customer_name, customer_phone, customer_address, method, payment_method, items, total, status, notes, device_id, payment_status, pickup_number, cash_pct, cash_discount, track_token${volumeCols}${zoneCols}${windowCols}${previewCols}${giftcardCols})
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'new', $10, $11, $12, $13, $14, $15, $16${volumeVals}${zoneVals}${windowVals}${previewVals}${giftcardVals})
+        `INSERT INTO orders (vendor_id, customer_id, customer_name, customer_phone, customer_address, method, payment_method, items, total, status, notes, device_id, payment_status, pickup_number, cash_pct, cash_discount, track_token${volumeCols}${zoneCols}${windowCols}${previewCols}${giftcardCols}${deadlineCols})
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'new', $10, $11, $12, $13, $14, $15, $16${volumeVals}${zoneVals}${windowVals}${previewVals}${giftcardVals}${deadlineVals})
          RETURNING id`,
         [
           vendorId,
@@ -498,6 +517,7 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
           ...windowParams,
           ...previewParams,
           ...giftcardParams,
+          ...deadlineParams,
         ]
       );
       orderId = rows[0]?.id;

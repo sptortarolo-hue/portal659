@@ -479,6 +479,8 @@ export type Vendor = {
   transfer_cbu?: string | null;
   transfer_holder?: string | null;
   transfer_qr_url?: string | null;
+  /** Horas de vida de una transferencia sin confirmar (M4.2). NULL = sin vencimiento. */
+  transfer_expiry_hours?: number | null;
   block_unpaid_orders?: boolean;
   /** Umbrales del semáforo food-cost (NULL = defaults 30/35). */
   food_cost_warn?: number | null;
@@ -645,6 +647,8 @@ export type Order = {
   payment_status?: "paid" | "pending";
   pickup_number?: number | null;
   track_token?: string | null;
+  /** Vence la transferencia (M4.2): null = sin vencimiento configurado. */
+  transfer_deadline_at?: string | null;
   /** Motivo electivo de la cancelación (migrated cancel-reason). */
   cancel_reason?: string | null;
   /** Quién canceló (comercio / Sistema — M4.2). */

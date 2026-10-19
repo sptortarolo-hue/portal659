@@ -690,6 +690,7 @@ export default function DashboardModa({
               }}
             />
           </div>
+          <TransferExpiryCard vendor={vendor} saveVendor={saveVendor} />
         </div>
       </ConfigSection>
 
@@ -842,13 +843,53 @@ onAdd={async (name) => { const r = await apiJson("/api/vendor/categories", { met
                     {offerFormNode}
                   </div>
                 )}
-              </div>
-              );
-            })
-          )}
-        </div>
-      </CollapsibleSection>
+               </div>
+               );
+             })
+           )}
+         </div>
+       </CollapsibleSection>
+     </div>
+     </>
+   );
+ }
+
+/** Vencimiento de transferencias (M4.2): si el cliente no confirma el pago a
+ * tiempo, el pedido se cancela solo y el stock vuelve. NULL = desactivado. */
+const EXPIRY_OPTIONS = [
+  { v: 0, label: "Desactivado" },
+  { v: 2, label: "2 horas" },
+  { v: 6, label: "6 horas" },
+  { v: 12, label: "12 horas" },
+  { v: 24, label: "24 horas" },
+  { v: 48, label: "48 horas" },
+];
+
+function TransferExpiryCard({ vendor, saveVendor }: { vendor: any; saveVendor: (data: Record<string, unknown>) => Promise<void> }) {
+  const current = Number(vendor?.transfer_expiry_hours) || 0;
+  return (
+    <div className="rounded-xl border border-border px-3 py-2.5">
+      <Label className="text-sm">Transferencia: vencimiento del pago</Label>
+      <p className="text-xs text-muted-foreground mt-0.5">
+        Si el cliente no confirma la transferencia en el tiempo elegido, el pedido se cancela solo, el stock vuelve y el cliente recibe un aviso. Un aviso te llega 1 hora antes. (Se aplica a los pedidos con transferencia pendiente desde que lo activás.)
+      </p>
+      <div className="flex flex-wrap gap-1.5 mt-2">
+        {EXPIRY_OPTIONS.map((o) => (
+          <button
+            key={o.v}
+            type="button"
+            disabled={!vendor?.id}
+            onClick={async () => { await saveVendor({ transfer_expiry_hours: o.v === 0 ? null : o.v }); }}
+            className={`text-[11px] px-2.5 py-1 rounded-full border transition-colors ${
+              current === o.v
+                ? "bg-primary text-primary-foreground border-primary"
+                : "bg-background text-muted-foreground border-border hover:bg-muted/60"
+            }`}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
     </div>
-    </>
   );
 }

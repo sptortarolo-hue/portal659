@@ -110,6 +110,7 @@ export async function POST(request: Request) {
     transfer_alias,
     transfer_cbu,
     transfer_holder,
+    transfer_expiry_hours,
     block_unpaid_orders,
     open_override,
     prep_time_min,
@@ -346,6 +347,11 @@ export async function POST(request: Request) {
   if (transfer_alias !== undefined) payload.transfer_alias = transfer_alias || null;
   if (transfer_cbu !== undefined) payload.transfer_cbu = transfer_cbu || null;
   if (transfer_holder !== undefined) payload.transfer_holder = transfer_holder || null;
+  // Vencimiento de transferencias: NULL = desactivado; 1..168 horas sanizadas.
+  if (transfer_expiry_hours !== undefined) {
+    const h = Number(transfer_expiry_hours);
+    payload.transfer_expiry_hours = h > 0 && h <= 168 ? Math.floor(h) : null;
+  }
   if (block_unpaid_orders !== undefined) payload.block_unpaid_orders = block_unpaid_orders === true;
   // Exigir turno de caja abierto para cobrar en Mostrador/Mesas.
   if (require_open_shift !== undefined) payload.require_open_shift = require_open_shift === true;
@@ -474,6 +480,7 @@ export async function POST(request: Request) {
         "loyalty_every",
         "loyalty_pct",
         "carta_visibility",
+        "transfer_expiry_hours",
         "booking_schedule_mode",
         "ficha_reminder_enabled",
       ].filter((k) => k in payload && msg.includes(k));

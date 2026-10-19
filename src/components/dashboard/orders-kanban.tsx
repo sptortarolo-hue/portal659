@@ -134,6 +134,12 @@ function OrderCard({
                 <AlertTriangle className="h-2.5 w-2.5" /> Pago pendiente
               </span>
             )}
+            {order.payment_method === "transferencia" && order.channel === "app" && order.payment_status === "pending" &&
+              !!order.transfer_deadline_at && new Date(order.transfer_deadline_at).getTime() <= Date.now() && (
+              <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-red-100 text-red-700 border-red-200">
+                ⏰ Pago vencido
+              </span>
+            )}
             {order.transfer_proof_url && (
               <span className="inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-sky-100 text-sky-700 border-sky-200">
                 🧾 comprobante

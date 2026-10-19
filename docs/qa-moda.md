@@ -80,6 +80,23 @@ Checklist de verificación de la vertical moda (indumentaria) en producción, co
 
 ---
 
+## Fase 5 — Cancelación con motivo (M4.1) y "Pago vencido" (M4.2)
+
+**M4.1 — motivo**
+- [ ] Rechazar un pedido (moda) → pide motivo (presets: Sin stock / A pedido del cliente / Se agotó / Cerramos + texto libre); el motivo **obligatorio**.
+- [ ] El cliente recibe push con el motivo; en **mis-pedidos** y **seguimiento** se ve "Motivo de la cancelación: …".
+- [ ] Kanban de cancelados muestra `🚫 motivo`; el detalle del pedido también.
+- [ ] Requiere migración `migrate-cancel-reason.sql` en el VPS (sin migrar: cancela igual, sin motivo visible).
+
+**M4.2 — vencimiento de transferencias**
+- [ ] Config (moda) → "Transferencia: vencimiento del pago" → elegir 2h.
+- [ ] Pedido online con transferencia pendiente → al vencer se cancela solo; el stock se repone; giftcard emitida se anula.
+- [ ] ~1h antes de vencer llega al comercio: "⏳ Transferencia por vencer" (un aviso por pedido).
+- [ ] El kanban muestra badge rojo "⏰ Pago vencido" en el pendiente vencido (hasta que el cron lo cancele).
+- [ ] Marcar cobrado antes de vencer lo congela (no se cancela).
+- [ ] El cliente recibe "pago no llegó en el tiempo acordado" en push/in-app.
+- [ ] Requiere migración `migrate-transfer-expiry.sql` + cron line (deploy la auto-escribe al pushear).
+
 ## Notas / desvíos encontrados
 
 | # | Fase | Qué pasó | Fix/commit |

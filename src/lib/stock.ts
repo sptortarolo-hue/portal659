@@ -60,13 +60,40 @@ export async function adjustStockForItems(
     // tiene stock propio; los componentes sí). Movimiento del kardex por
     // componente. Tolerante a DB sin la tabla (migración sin aplicar): el
     // combo se trata como un producto normal (no-op si no controla stock).
+    // Con armado por unidad cada componente lleva variant_id: se toca la
+    // VARIANTE (no el producto).
     const comboMembers = Array.isArray((item as any).combo_members)
-      ? ((item as any).combo_members as { product_id: string; qty: number }[])
+      ? ((item as any).combo_members as {
+          product_id: string;
+          qty: number;
+          variant_id?: string | null;
+          color?: string | null;
+          talle?: string | null;
+          name?: string;
+        }[])
       : null;
     if (comboMembers && comboMembers.length > 0) {
       for (const m of comboMembers) {
         if (!m || !m.product_id) continue;
         const mqty = Math.max(1, Math.round(Number(m.qty) || 1)) * qty;
+        const memberName = m.name || item.name;
+        if (m.variant_id) {
+          if (direction === "increment") {
+            const rows = await tx.query<{ id: string }>(
+              `UPDATE product_variants SET stock = stock + $1 WHERE id = $2 RETURNING id`,
+              [mqty, m.variant_id]
+            );
+            if (rows.length > 0) moved.push({ variant_id: m.variant_id, qty: mqty });
+          } else {
+            const rows = await tx.query<{ id: string }>(
+              `UPDATE product_variants SET stock = stock - $1 WHERE id = $2 AND stock >= $1 RETURNING id`,
+              [mqty, m.variant_id]
+            );
+            if (rows.length === 0) throw new OutOfStockError(memberName);
+            moved.push({ variant_id: m.variant_id, qty: mqty });
+          }
+          continue;
+        }
         if (direction === "increment") {
           const rows = await tx.query<{ id: string }>(
             `UPDATE products SET stock = stock + $1 WHERE id = $2 AND stock_control = true RETURNING id`,
@@ -85,7 +112,7 @@ export async function adjustStockForItems(
               `SELECT stock_control FROM products WHERE id = $1 LIMIT 1`,
               [m.product_id]
             );
-            if (p?.stock_control) throw new OutOfStockError(item.name);
+            if (p?.stock_control) throw new OutOfStockError(memberName);
           } else {
             moved.push({ product_id: m.product_id, qty: mqty });
           }

@@ -266,6 +266,9 @@ export function OfferComboEditor({
           <span className="font-medium tabular-nums">${saleSum.toLocaleString("es-AR")}</span>
         </div>
       )}
+      <p className="text-[11px] text-muted-foreground">
+        💡 Si un componente se vende por talle/color, el comprador lo elige al armar el combo (micrositio y mostrador).
+      </p>
       {outOfRange && (
         <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 dark:text-amber-300 dark:bg-amber-950/60 dark:border-amber-900 rounded-lg px-2.5 py-1.5">
           ⚠️ El precio del combo debería estar entre $1 y ${saleSum.toLocaleString("es-AR")} (suma de los componentes).

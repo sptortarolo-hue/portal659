@@ -567,10 +567,27 @@ export async function POST(request: Request) {
         const items = payment.additional_info?.items || [];
         const customerE164 = toE164(customerPhone);
         const trackToken = crypto.randomBytes(20).toString("hex");
-        const orderItems = items.map((i: any) => ({
+        // Snapshot de combos por unidad: viaja en metadata.stock_items (mismo
+        // orden que additional_info.items). Se cuelga al ítem para que el
+        // pedido persista el armado (desglose y stock por variante).
+        let mpComboByIndex: (({ product_id: string; name?: string; qty: number; variant_id?: string; color?: string; talle?: string }[] | null)[]) | null = null;
+        try {
+          const rawStock = (metadata as Record<string, unknown>).stock_items;
+          const parsed = typeof rawStock === "string" ? JSON.parse(rawStock) : null;
+          if (Array.isArray(parsed) && parsed.length === items.length) {
+            const combos = parsed.map((s: any) =>
+              Array.isArray(s?.combo_members) ? (s.combo_members as any[]).filter(Boolean) : null
+            );
+            if (combos.some(Boolean)) mpComboByIndex = combos;
+          }
+        } catch {
+          mpComboByIndex = null;
+        }
+        const orderItems = items.map((i: any, idx: number) => ({
           name: i.title,
           price: Number(i.unit_price),
           qty: Number(i.quantity),
+          ...(mpComboByIndex?.[idx] ? { combo_members: mpComboByIndex[idx] } : {}),
         }));
         // Zona de envío (metadata del checkout): se valida contra el comercio.
         // Zona inexistente/inactiva → fuera de zona (entra a convenir).

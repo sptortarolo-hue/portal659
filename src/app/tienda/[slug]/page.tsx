@@ -193,6 +193,8 @@ export default async function TiendaPage({
   const isComboOffer = (o: any) => (comboMembersByCombo?.[o.id] || []).length > 0;
   const comboOffers = (offers || []).filter((o: any) => isComboOffer(o));
   const offersNoCombos = (offers || []).filter((o: any) => !isComboOffer(o));
+  /** IDs de productos que son componente de algún combo (para traer sus variantes). */
+  const comboMemberIds = [...new Set((comboRows || []).map((r: any) => String(r.member_product_id)))];
 
   const planRows = await queryMany<any>(
     `SELECT * FROM plans ORDER BY sort ASC`
@@ -241,8 +243,13 @@ export default async function TiendaPage({
     }
   }
 
-  // Variantes (solo si algún producto las tiene — moda / indumentaria)
-  const variantProductIds = offers?.filter((o: any) => o.has_variants).map((o: any) => o.id) || [];
+  // Variantes (solo si algún producto las tiene — moda / indumentaria).
+  // Combo: un componente puede venderse por variante (armo por unidad), así
+  // que también se cargan las de los productos miembros de combos.
+  const variantProductSet = new Set<string>(
+    [...(offers?.filter((o: any) => o.has_variants).map((o: any) => o.id) || []), ...comboMemberIds]
+  );
+  const variantProductIds = [...variantProductSet];
   let allVariants: any[] = [];
   if (variantProductIds.length > 0) {
     try {

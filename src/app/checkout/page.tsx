@@ -527,6 +527,7 @@ const [doneIsGift, setDoneIsGift] = useState(false);
           name: i.name,
           price: Math.round((lineNet / packs) * 100) / 100,
           qty: packs,
+          combo_members: (i as any).comboMembers,
         };
       }
       const modTotal = (i.modifiers || []).reduce((s, m) => s + m.price_mod, 0);
@@ -542,6 +543,7 @@ const [doneIsGift, setDoneIsGift] = useState(false);
         price: isKg ? Math.round(lineNet * 100) / 100 : unit,
         qty: isKg ? 1 : i.qty,
         unit: isKg ? "kg" : undefined,
+        combo_members: (i as any).comboMembers,
       };
     });
     const mpTotal = mpItems.reduce((s, it) => s + it.price * it.qty, 0) + deliveryFee;
@@ -667,6 +669,7 @@ const [doneIsGift, setDoneIsGift] = useState(false);
             qty: i.qty,
             modifiers: (i.modifiers || []).map((m) => ({ label: m.label, group: m.group })),
             unit: (i as any).unit,
+            combo_members: (i as any).comboMembers,
           })),
           total: displayTotal,
           notes: notesSnap.trim() || null,
@@ -711,6 +714,7 @@ const [doneIsGift, setDoneIsGift] = useState(false);
           modifiers: (i.modifiers || []).map((m) => m.label),
           lineTotal: cartLineTotal(i),
           unit: (i as any).unit,
+          combo_members: (i as any).comboMembers,
         })),
         total: waTotal,
         customerName: nameSnap,

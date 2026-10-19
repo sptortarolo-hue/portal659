@@ -7,6 +7,8 @@ type WaItem = {
   lineTotal?: number;
   /** Unidad de venta: "kg" = fraccionado por peso. */
   unit?: string;
+  /** Componentes de combo ya con variante ("1× Lisa (Blanca · M)"). */
+  combo_members?: { name?: string; qty?: number }[] | null;
 };
 
 function itemTotal(i: WaItem): number {
@@ -18,6 +20,13 @@ function qtyLabel(i: WaItem): string {
   return (i as any).unit === "kg"
     ? `${Number(i.qty).toLocaleString("es-AR", { maximumFractionDigits: 3 })}kg`
     : `${i.qty}x`;
+}
+
+function comboSuffix(i: WaItem): string {
+  const cb = Array.isArray(i.combo_members) ? i.combo_members : null;
+  if (!cb || cb.length === 0) return "";
+  const list = cb.map((m) => (Number(m.qty) || 1) > 1 ? `${m.qty}× ${m.name}` : m.name).join(" + ");
+  return `\n     🧩 ${list}`;
 }
 
 export function buildOrderMessage(params: {
@@ -43,7 +52,7 @@ export function buildOrderMessage(params: {
     const modStr = i.modifiers && i.modifiers.length > 0
       ? ` (${i.modifiers.join(", ")})`
       : "";
-    return `- ${qtyLabel(i)} ${i.name}${modStr} ($${itemTotal(i).toLocaleString("es-AR")})`;
+    return `- ${qtyLabel(i)} ${i.name}${modStr} ($${itemTotal(i).toLocaleString("es-AR")})${comboSuffix(i)}`;
   });
 
   const paymentLine = params.paymentMethod === "transferencia"
@@ -128,7 +137,7 @@ export function buildComandaWhatsApp(params: {
     const modStr = i.modifiers && i.modifiers.length > 0
       ? `\n  (${i.modifiers.join(", ")})`
       : "";
-    itemLines.push(`${qtyLabel(i)} ${i.name}${modStr}  $${itemTotal(i).toLocaleString("es-AR")}`);
+    itemLines.push(`${qtyLabel(i)} ${i.name}${modStr}  $${itemTotal(i).toLocaleString("es-AR")}${comboSuffix(i)}`);
   }
 
   const notesLine = params.notes ? `\nNotas: ${params.notes}` : "";
@@ -189,7 +198,7 @@ export function buildModifiedOrderMessage(params: {
     const modStr = i.modifiers && i.modifiers.length > 0
       ? ` (${i.modifiers.join(", ")})`
       : "";
-    return `${qtyLabel(i)} ${i.name}${modStr}  $${itemTotal(i).toLocaleString("es-AR")}`;
+    return `${qtyLabel(i)} ${i.name}${modStr}  $${itemTotal(i).toLocaleString("es-AR")}${comboSuffix(i)}`;
   });
 
   const modLine = params.modificationNotes

@@ -150,7 +150,7 @@ export async function POST(request: Request) {
   // el nombre y el precio se conservan para ticket/totales).
   const isUuid = (s: unknown): s is string =>
     typeof s === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
-  const normalizedItems: { product_id?: any; variant_id?: any; name: any; price: number; qty: number; modifiers?: any; requires_prep: boolean; pack_size?: number; unit?: string; manual?: boolean }[] = items.map((i: any) => ({
+  const normalizedItems: { product_id?: any; variant_id?: any; name: any; price: number; qty: number; modifiers?: any; requires_prep: boolean; pack_size?: number; unit?: string; manual?: boolean; combo_members?: any[] }[] = items.map((i: any) => ({
     product_id: isUuid(i.product_id) ? i.product_id : undefined,
     variant_id: isUuid(i.variant_id) ? i.variant_id : undefined,
     name: i.name,
@@ -160,6 +160,8 @@ export async function POST(request: Request) {
     requires_prep: i.requires_prep !== false,
     unit: i.unit === "kg" ? "kg" : undefined,
     manual: i.manual === true ? true : undefined,
+    // Armado por unidad de combos: el server lo valida (pricing).
+    combo_members: Array.isArray(i.combo_members) ? i.combo_members.slice(0, 60) : undefined,
   }));
 
   // Packs y precios por volumen: se resuelven server-side con la misma
@@ -181,6 +183,7 @@ export async function POST(request: Request) {
       variantId: (i.variant_id as string) || undefined,
       qty: i.qty,
       modifiers: i.modifiers,
+      combo_members: i.combo_members,
     });
     pricedPrep.push(i.requires_prep !== false);
   }

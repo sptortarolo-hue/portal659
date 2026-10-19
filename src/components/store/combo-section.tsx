@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { GastroProductRow } from "@/components/store/gastro-product-row";
 import { ProductCard } from "@/components/store/product-card";
+import { ComboBuilderSheet } from "@/components/store/combo-builder";
 import { ProductImage } from "@/components/product-image";
 import type { CartVendor } from "@/lib/cart";
 import type { ProductModifier } from "@/types/database";
@@ -16,7 +17,6 @@ export type ComboItem = {
   image_url?: string | null;
   category?: string | null;
 };
-
 /**
  * Sección Combos del micrositio: armarlo en el panel, se venden acá como
  * un producto más (precio combo fijado por el local). La tarjeta muestra el
@@ -44,8 +44,17 @@ export function ComboSection({
   consultHref: string;
 }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [buildingId, setBuildingId] = useState<string | null>(null);
   const selected = (items || []).find((o) => o.id === selectedId) ?? null;
+  const building = (items || []).find((o) => o.id === buildingId) ?? null;
   const isModa = vendor.vertical === "moda";
+
+  /** Armado por unidad: si ALGÚN componente del combo se vende por variante,
+   * la venta abre el armado (en vez de la ficha común). */
+  const hasVariantMembers = (comboId: string) =>
+    (membersByCombo?.[comboId] || []).some(
+      (m) => (variantsByProduct?.[m.product_id] || []).length > 0
+    );
 
   if (!items || items.length === 0) return null;
   const fmt = (n: number) => `$${Number(n).toLocaleString("es-AR")}`;
@@ -69,7 +78,12 @@ export function ComboSection({
             <button
               key={o.id}
               type="button"
-              onClick={() => setSelectedId(o.id)}
+              onClick={() => {
+                // Si el combo tiene piezas por variante → armado por unidad;
+                // si no, la ficha normal (foto, descripción, cantidad, agregar).
+                if (hasVariantMembers(o.id)) setBuildingId(o.id);
+                else setSelectedId(o.id);
+              }}
               className="w-full text-left rounded-2xl border-2 border-violet-200 bg-violet-50 dark:border-violet-900 dark:bg-violet-950/50 p-3 flex items-center gap-3 active:scale-[0.99] transition-transform cursor-pointer"
             >
               <div className="h-20 w-20 rounded-xl overflow-hidden flex-shrink-0 bg-white">
@@ -149,7 +163,28 @@ export function ComboSection({
         })}
       </div>
 
-      {selected && (
+      {building && (
+        <ComboBuilderSheet
+          key={building.id}
+          combo={{
+            id: building.id,
+            name: building.name,
+            description: building.description ?? null,
+            image_url: building.image_url ?? null,
+            price: Number(building.price),
+            promo_price: building.promo_price != null ? Number(building.promo_price) : null,
+            category: building.category ?? null,
+          }}
+          members={(membersByCombo?.[building.id] || []).map((m) => ({ product_id: m.product_id, name: m.name, qty: m.qty }))}
+          variantsBy={(variantsByProduct || {}) as any}
+          mode="cart"
+          vendor={vendor}
+          mods={modifiersByProduct?.[building.id] || []}
+          onClose={() => setBuildingId(null)}
+        />
+      )}
+
+      {selected && !buildingId && (
         <div key={selected.id} className="h-0 overflow-hidden">
           {isModa ? (
             <ProductCard

@@ -21,6 +21,8 @@ import { saveDraft, loadDraft, clearDraft } from "@/lib/draft";
 import type { ContingencyKind } from "@/lib/offline-print";
 import { useCashShift } from "@/lib/use-cash-shift";
 import { fmtVence, buildGiftcardWaText, giftcardCardUrl, giftcardWaLink } from "@/lib/gift-card-share";
+import { ComboBuilderSheet } from "@/components/store/combo-builder";
+import type { ComboMemberRow } from "@/lib/combo";
 
 const OFFLINE_PAYMENT_LABELS: Record<string, string> = {
   efectivo: "Efectivo",
@@ -113,12 +115,24 @@ type LineItem = {
   unit?: string;
   /** Línea manual de mostrador ("Varios"): sin producto ni stock. */
   manual?: boolean;
+  /** Componentes elegidos si la línea es un combo (armado por unidad). */
+  comboMembers?: ComboMemberRow[];
+  /** Firma del armado (JSON de [product, variante, qty]): dos armados
+    distintos del mismo combo son líneas separadas. */
+  _sig?: string;
 };
 
+/** Firma de las piezas del choosed combo (coincide con comboMembersKey del carrito). */
+function comboMembersSignature(m?: { product_id: string; variant_id?: string | null; qty: number }[] | null): string | undefined {
+  if (!m || !Array.isArray(m) || m.length === 0) return undefined;
+  return JSON.stringify(m.map((x) => [String(x.product_id), String(x.variant_id || ""), Number(x.qty) || 1]));
+}
+
 /** Key de línea: producto + variante + modificadores (dos talles del mismo
-  producto son líneas distintas). */
-function lineKey(productId: string, variantId: string | undefined, modifiers?: CartModifier[]): string {
-  return `${productId}|${variantId || ""}|${(modifiers || []).map((m) => m.label).sort().join(",")}`;
+  producto son líneas distintas). Con combo armado por unidad, además va la
+  firma de las piezas (mismo combo con otro armado = otra línea). */
+function lineKey(productId: string, variantId: string | undefined, modifiers?: CartModifier[], membersSig?: string): string {
+  return `${productId}|${variantId || ""}|${(modifiers || []).map((m) => m.label).sort().join(",")}${membersSig ? `|${membersSig}` : ""}`;
 }
 
 type MostradorOrder = {
@@ -204,6 +218,8 @@ export function Mostrador({ vendorId }: { vendorId?: string | null }) {
   const [pendingVariant, setPendingVariant] = useState<ProductVariant | null>(null);
   // Producto con variantes tocado: hay que elegir color × talle.
   const [variantPicker, setVariantPicker] = useState<Product | null>(null);
+  // Combo armado por unidad tocado: primero se eligen las piezas.
+  const [comboPicker, setComboPicker] = useState<Product | null>(null);
   const [variantsMap, setVariantsMap] = useState<Record<string, ProductVariant[]>>({});
   const [convertOrderId, setConvertOrderId] = useState<string | null>(null);
   const [convertPhone, setConvertPhone] = useState("");
@@ -299,7 +315,8 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
   // manda al cobrar). Sin grupos no hay nada que espejar.
   const [volumeGroups, setVolumeGroups] = useState<CartVolumeGroup[]>([]);
   // Combos: id de producto → componentes (badge 🧩 y desglose en la línea).
-  const [comboMap, setComboMap] = useState<Record<string, { name: string; qty: number }[]>>({});
+  // Con armado por unidad el product_id permite buscar variantes del componente.
+  const [comboMap, setComboMap] = useState<Record<string, { product_id: string; name: string; qty: number; price?: number; image_url?: string | null }[]>>({});
 
   // Líneas en formato carrito para el espejo de volumen (listUnit/promoUnit
   // pack-level como en el micrositio, para matchear al servidor).
@@ -513,7 +530,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
         const today = new Date().toDateString();
         const modsMap = off.modifiersByProduct || {};
         setModifiersMap(modsMap);
-        const comboData = (off.comboItemsByProduct || {}) as Record<string, { name: string; qty: number }[]>;
+        const comboData = (off.comboItemsByProduct || {}) as Record<string, { product_id: string; name: string; qty: number; price?: number; image_url?: string | null }[]>;
         setComboMap(comboData);
         const mapped = (off.offers || [])
           .filter((o: any) => o.available !== false)
@@ -736,7 +753,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
       const created = { ...data.offer, modifiers: [] } as Product;
       setProducts((prev) => [...prev, created]);
       if (qcReplaceKey) {
-        setItems((prev) => prev.filter((l) => lineKey(l.product_id, l.variant_id, l.modifiers) !== qcReplaceKey));
+        setItems((prev) => prev.filter((l) => lineKey(l.product_id, l.variant_id, l.modifiers, l._sig) !== qcReplaceKey));
       }
       if (qcFromManual) {
         // La línea manual nunca se agregó: se limpia el borrador.
@@ -848,11 +865,19 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
     // existente para repesar (patrón Loyverse/Odoo).
     if ((p as any).unit === "kg") {
       const key = lineKey(p.id, undefined, []);
-      const exists = items.some((i) => lineKey(i.product_id, i.variant_id, i.modifiers) === key);
+      const exists = items.some((i) => lineKey(i.product_id, i.variant_id, i.modifiers, i._sig) === key);
       if (exists) {
         gotoKgLine(p.id, key);
         return;
       }
+    }
+    // Combo con componentes por variante: primero se arma (elegir talle y
+    // color de cada pieza). Sin variantes entre los componentes, sigue el
+    // camino de siempre (opciones del combo → línea).
+    const comboMembers = comboMap[p.id] || [];
+    if (comboMembers.length > 0 && comboMembers.some((m) => (variantsMap[m.product_id] || []).length > 0)) {
+      setComboPicker(p);
+      return;
     }
     // Moda: primero se elige color × talle (el precio y el stock son por combinación).
     const variants = variantsMap[p.id] || [];
@@ -884,15 +909,16 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
     addLine(p, v, 1, Number(v.promo ?? v.price), []);
   }
 
-  function addLine(p: Product, v: ProductVariant | null, qty: number, unitPrice: number, modifiers?: CartModifier[]) {
+  function addLine(p: Product, v: ProductVariant | null, qty: number, unitPrice: number, modifiers?: CartModifier[], comboMembers?: ComboMemberRow[]) {
     const name = v ? `${p.name} (${v.color} · ${v.talle})` : p.name;
-    const key = lineKey(p.id, v?.id, modifiers);
+    const sig = comboMembersSignature(comboMembers);
+    const key = lineKey(p.id, v?.id, modifiers, sig);
     // Por peso arranca en 0: el peso se carga con balanza o tipeo.
     const startQty = (p as any).unit === "kg" ? 0 : qty;
     // Capado a stock de la variante en cliente (el servidor valida igual).
     const maxStock = v ? Math.max(0, Math.floor(Number(v.stock ?? 0))) : null;
     setItems((prev) => {
-      const found = prev.find((i) => lineKey(i.product_id, i.variant_id, i.modifiers) === key);
+      const found = prev.find((i) => lineKey(i.product_id, i.variant_id, i.modifiers, i._sig) === key);
       if (found) {
         if (maxStock != null && found.qty + startQty > maxStock) return prev;
         return prev.map((i) => (i === found ? { ...i, qty: i.qty + startQty } : i));
@@ -905,6 +931,8 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
         cashExcluded: p.cash_discount_excluded === true,
         packSize: packOf(p),
         unit: (p as any).unit === "kg" ? "kg" : undefined,
+        comboMembers: sig ? comboMembers : undefined,
+        _sig: sig,
       }];
     });
     // Producto por peso: enfocar su input de kilos recién agregado.
@@ -924,14 +952,14 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
   function changeQty(key: string, delta: number) {
     setItems((prev) =>
       prev
-        .map((i) => (lineKey(i.product_id, i.variant_id, i.modifiers) === key ? { ...i, qty: i.qty + delta * (i.packSize || 1) } : i))
+        .map((i) => (lineKey(i.product_id, i.variant_id, i.modifiers, i._sig) === key ? { ...i, qty: i.qty + delta * (i.packSize || 1) } : i))
         .filter((i) => i.qty > 0)
     );
   }
 
   // Quitar una línea (las de peso no tienen stepper −).
   function removeLine(key: string) {
-    setItems((prev) => prev.filter((i) => lineKey(i.product_id, i.variant_id, i.modifiers) !== key));
+    setItems((prev) => prev.filter((i) => lineKey(i.product_id, i.variant_id, i.modifiers, i._sig) !== key));
   }
 
   // Monto manual ("Varios"): línea sin producto ni stock, fuera de estadísticas.
@@ -1025,7 +1053,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
     }
     const key = lineKey(`manual:${name}`, undefined, undefined);
     setItems((prev) => {
-      const found = prev.find((i) => lineKey(i.product_id, i.variant_id, i.modifiers) === key);
+      const found = prev.find((i) => lineKey(i.product_id, i.variant_id, i.modifiers, i._sig) === key);
       if (found) return prev.map((i) => (i === found ? { ...i, qty: i.qty + 1 } : i));
       return [...prev, {
         product_id: `manual:${name}`, name, price, qty: 1,
@@ -1059,7 +1087,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
     if (!Number.isFinite(kg) || kg <= 0 || kg > 1000) return;
     const rounded = Math.round(kg * 1000) / 1000;
     setItems((prev) =>
-      prev.map((i) => (lineKey(i.product_id, i.variant_id, i.modifiers) === key ? { ...i, qty: rounded } : i))
+      prev.map((i) => (lineKey(i.product_id, i.variant_id, i.modifiers, i._sig) === key ? { ...i, qty: rounded } : i))
     );
   }
 
@@ -1351,6 +1379,9 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
           qty: Number(i.qty) || 1,
           name: String(i.name || ""),
           modifiers: Array.isArray(i.modifiers) ? i.modifiers.map((m: any) => String(m)) : [],
+          combo_members: Array.isArray(i.comboMembers)
+            ? (i.comboMembers as ComboMemberRow[]).map((mm) => (mm.qty > 1 ? `${mm.qty}× ${mm.name}` : mm.name))
+            : undefined,
         }));
         const r = await dispatchOfflinePrint(vendorId, {
           kind: d.doc,
@@ -1991,10 +2022,10 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
         {items.length === 0 && <p className="text-xs text-muted-foreground text-center py-6">Tocá productos para armar el pedido</p>}
         {items.map((i) => (
           <div
-            key={lineKey(i.product_id, i.variant_id, i.modifiers)}
+            key={lineKey(i.product_id, i.variant_id, i.modifiers, i._sig)}
             {...(i.unit === "kg" ? { id: `kgline-${i.product_id}` } : {})}
             className={`flex items-center gap-2 text-sm rounded-lg transition-colors ${
-              i.unit === "kg" && flashKgKey === lineKey(i.product_id, i.variant_id, i.modifiers)
+              i.unit === "kg" && flashKgKey === lineKey(i.product_id, i.variant_id, i.modifiers, i._sig)
                 ? "bg-primary/10 outline outline-2 outline-primary/40"
                 : ""
             }`}
@@ -2004,9 +2035,11 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
               {i.unit === "kg" && (
                 <span className="ml-1 rounded bg-muted px-1 text-[10px] text-muted-foreground">$/kg</span>
               )}
-              {i.unit !== "kg" && (comboMap[i.product_id] || []).length > 0 && (
+              {i.unit !== "kg" && ((i.comboMembers || []).length > 0 || (comboMap[i.product_id] || []).length > 0) && (
                 <span className="block text-[10px] text-violet-700 break-words">
-                  🧩 {(comboMap[i.product_id] || []).map((c) => (c.qty > 1 ? `${c.qty}× ${c.name}` : c.name)).join(" + ")}
+                  🧩 {((i.comboMembers || []).length > 0
+                    ? (i.comboMembers || []).map((mm) => (mm.qty > 1 ? `${mm.qty}× ${mm.name}` : mm.name)).join(" + ")
+                    : (comboMap[i.product_id] || []).map((c) => (c.qty > 1 ? `${c.qty}× ${c.name}` : c.name)).join(" + "))}
                 </span>
               )}
               {(i.modifiers || []).length > 0 && (
@@ -2023,9 +2056,9 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
                   min="0"
                   step="0.001"
                   value={i.qty}
-                  onChange={(e) => setLineKg(lineKey(i.product_id, i.variant_id, i.modifiers), Number(e.target.value))}
+                  onChange={(e) => setLineKg(lineKey(i.product_id, i.variant_id, i.modifiers, i._sig), Number(e.target.value))}
                   ref={(el) => {
-                    const k = lineKey(i.product_id, i.variant_id, i.modifiers);
+                    const k = lineKey(i.product_id, i.variant_id, i.modifiers, i._sig);
                     if (focusKgKey === k && el) {
                       el.focus();
                       el.select();
@@ -2038,7 +2071,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
                 <span className="text-[10px] text-muted-foreground">kg</span>
                 <button
                   type="button"
-                  onClick={() => readScaleInto(lineKey(i.product_id, i.variant_id, i.modifiers))}
+                  onClick={() => readScaleInto(lineKey(i.product_id, i.variant_id, i.modifiers, i._sig))}
                   disabled={scaleReading}
                   className="h-9 px-2 rounded-md bg-primary/10 text-primary hover:bg-primary/20 text-xs font-semibold whitespace-nowrap"
                   title="Leer peso de la balanza (Chrome en PC)"
@@ -2047,7 +2080,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
                 </button>
                 <button
                   type="button"
-                  onClick={() => removeLine(lineKey(i.product_id, i.variant_id, i.modifiers))}
+                  onClick={() => removeLine(lineKey(i.product_id, i.variant_id, i.modifiers, i._sig))}
                   className="h-9 w-7 rounded-md text-muted-foreground hover:text-red-600 hover:bg-red-50 text-sm"
                   title={`Quitar ${i.name}`}
                   aria-label={`Quitar ${i.name}`}
@@ -2057,9 +2090,9 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
               </div>
             ) : (
               <div className="flex items-center gap-1">
-                <button onClick={() => changeQty(lineKey(i.product_id, i.variant_id, i.modifiers), -1)} className="h-6 w-6 rounded-md bg-muted hover:bg-accent">−</button>
+                <button onClick={() => changeQty(lineKey(i.product_id, i.variant_id, i.modifiers, i._sig), -1)} className="h-6 w-6 rounded-md bg-muted hover:bg-accent">−</button>
                 <span className="w-5 text-center tabular-nums">{i.qty}</span>
-                <button onClick={() => changeQty(lineKey(i.product_id, i.variant_id, i.modifiers), 1)} className="h-6 w-6 rounded-md bg-muted hover:bg-accent">+</button>
+                <button onClick={() => changeQty(lineKey(i.product_id, i.variant_id, i.modifiers, i._sig), 1)} className="h-6 w-6 rounded-md bg-muted hover:bg-accent">+</button>
               </div>
             )}
             <span className="w-16 text-right tabular-nums">${(Math.round(i.price * i.qty * 100) / 100).toLocaleString("es-AR")}</span>
@@ -2742,6 +2775,29 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
           basePrice={pendingVariant ? Number(pendingVariant.promo ?? pendingVariant.price) : unitPriceOf(pickerProduct)}
           onConfirm={handleModConfirm}
           onCancel={() => { setPickerProduct(null); setPendingVariant(null); }}
+        />
+      )}
+
+      {comboPicker && (
+        <ComboBuilderSheet
+          combo={{
+            id: comboPicker.id,
+            name: comboPicker.name,
+            description: (comboPicker as any).description ?? null,
+            image_url: (comboPicker as any).image_url ?? null,
+            price: Number(comboPicker.price),
+            promo_price: comboPicker.promo_price != null ? Number(comboPicker.promo_price) : null,
+            category: comboPicker.category ?? null,
+          }}
+          members={(comboMap[comboPicker.id] || []).map((m) => ({ product_id: m.product_id, name: m.name, qty: m.qty }))}
+          variantsBy={variantsMap as any}
+          mode="line"
+          mods={modifiersMap[comboPicker.id] || []}
+          onConfirm={({ members: rows, mods: pickedMods }) => {
+            addLine(comboPicker, null, 1, unitPriceOf(comboPicker), pickedMods.length > 0 ? (pickedMods as CartModifier[]) : undefined, rows);
+            setComboPicker(null);
+          }}
+          onClose={() => setComboPicker(null)}
         />
       )}
 

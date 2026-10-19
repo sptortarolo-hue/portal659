@@ -48,7 +48,15 @@ export type CartItem = {
    * redondeadas (11500/6=1916,67 → 6×1916,67 = 11500,02 ≠ 11500).
    */
   packPrice?: number;
+  /** Componentes elegidos si el ítem es un combo (armado por unidad). */
+  comboMembers?: { product_id: string; name: string; qty: number; variant_id?: string | null; color?: string | null; talle?: string | null }[];
 };
+
+/** Firma de las piezas del combo: dos armados distintos del mismo combo NO se fusionan. */
+function comboMembersKey(m?: { product_id: string; variant_id?: string | null; qty: number }[] | null): string {
+  if (!m || !Array.isArray(m) || m.length === 0) return "";
+  return JSON.stringify(m.map((x) => [String(x.product_id), String(x.variant_id || ""), Number(x.qty) || 1]));
+}
 
 /** Grupo de volumen (espejo visual; el servidor recalcula y manda). */
 export type CartVolumeGroup = {
@@ -178,15 +186,14 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       if (reset) switched = true;
       const base = reset ? [] : prev.items;
       const modifierKey = JSON.stringify(item.modifiers || []);
-      const existing = base.find(
-        (i) => i.offerId === item.offerId && JSON.stringify(i.modifiers || []) === modifierKey
-      );
+      const membersKey = comboMembersKey(item.comboMembers);
+      const sameLine = (i: CartItem) =>
+        i.offerId === item.offerId &&
+        JSON.stringify(i.modifiers || []) === modifierKey &&
+        comboMembersKey(i.comboMembers) === membersKey;
+      const existing = base.find(sameLine);
       const items = existing
-        ? base.map((i) =>
-            i.offerId === item.offerId && JSON.stringify(i.modifiers || []) === modifierKey
-              ? { ...i, qty: i.qty + (Number(item.qty) || 1) }
-              : i
-          )
+        ? base.map((i) => (sameLine(i) ? { ...i, qty: i.qty + (Number(item.qty) || 1) } : i))
         : [...base, item];
       // Mismo comercio: merge para no perder campos que un botón parcial no
       // conoce (ej: deliveryZones). Lo nuevo gana, lo viejo sobrevive.

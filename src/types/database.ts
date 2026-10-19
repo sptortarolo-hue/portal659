@@ -729,8 +729,11 @@ export type OrderItem = {
   unit?: string;
   /** Línea manual de mostrador ("Varios"): sin producto, sin stock, fuera de estadísticas. */
   manual?: boolean;
-  /** Componentes si el ítem es un combo (snapshot al pedir, para stock/kardex). */
-  combo_members?: { product_id: string; name?: string; qty: number }[];
+  /**
+   * Componentes si el ítem es un combo (snapshot al pedir, para stock/kardex).
+   * Con armado por unidad cada entrada lleva su variante (color/talle).
+   */
+  combo_members?: { product_id: string; name?: string; qty: number; variant_id?: string | null; color?: string | null; talle?: string | null }[];
   /** Tilde de cocina (KDS acumulativo). true = ítem ya elaborado. */
   done?: boolean;
 };

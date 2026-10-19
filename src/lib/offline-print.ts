@@ -20,6 +20,8 @@ export type ContingencyItem = {
   name: string;
   /** Modificadores ya como labels (ej. ["sin cebolla"]) o string unido. */
   modifiers?: string[] | string | null;
+  /** Componentes del combo ya como "1× Remera Lisa (Blanca · M)". */
+  combo_members?: string[] | null;
 };
 
 export type ContingencyDoc = {
@@ -176,6 +178,12 @@ export function buildContingencyBytes(doc: ContingencyDoc): Uint8Array {
       : item.modifiers || "";
     if (mods) {
       for (const line of wrap(`(${mods})`, width - 3)) p.text(`   ${line}`);
+    }
+    if (Array.isArray((item as any).combo_members) && (item as any).combo_members.length > 0) {
+      const list = ((item as any).combo_members as string[]).filter(Boolean).join(", ");
+      if (list) {
+        for (const line of wrap(`[${list}]`, width - 3)) p.text(`   ${line}`);
+      }
     }
   }
   p.rule(width);

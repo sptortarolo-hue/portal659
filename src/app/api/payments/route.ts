@@ -102,6 +102,8 @@ export async function POST(request: Request) {
         // Turno de entrega retail (el webhook lo valida y persiste).
         delivery_window: typeof deliveryWindow === "string" ? deliveryWindow.slice(0, 60) : "",
         // JSON string: referencias para descontar stock al aprobarse el pago.
+        // Con combo por unidad cada entrada lleva sus piezas (combo_members):
+        // el webhook las descuenta por variante y las persiste en el pedido.
         stock_items: JSON.stringify(
           items.map((i: any) => ({
             variant_id: typeof i.variantId === "string" ? i.variantId : null,
@@ -109,6 +111,7 @@ export async function POST(request: Request) {
             qty: Number(i.qty) || 1,
             name: i.name,
             unit: i.unit === "kg" ? "kg" : undefined,
+            combo_members: Array.isArray(i.combo_members) && i.combo_members.length > 0 ? i.combo_members : undefined,
           }))
         ),
       },

@@ -754,6 +754,11 @@ export default function OrderDetailModal({ order, vendorName, vendorLogoUrl, onC
                           ({item.modifiers.join(", ")})
                         </p>
                       )}
+                      {Array.isArray((item as any).combo_members) && (item as any).combo_members.length > 0 && (
+                        <p className="text-[10px] text-muted-foreground/70 pl-5">
+                          🧩 {(item as any).combo_members.map((m: any) => (Number(m.qty) || 1) > 1 ? `${m.qty}× ${m.name}` : m.name).join(" + ")}
+                        </p>
+                      )}
                     </div>
                     <span className="text-sm font-medium whitespace-nowrap shrink-0">
                       ${orderLineTotal(item).toLocaleString("es-AR")}

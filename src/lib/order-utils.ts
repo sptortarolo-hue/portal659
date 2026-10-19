@@ -368,7 +368,11 @@ export function buildOrderWhatsAppMessage(params: {
     const modStr = i.modifiers && i.modifiers.length > 0
       ? ` (${i.modifiers.join(", ")})`
       : "";
-    return `- ${(i as any).unit === "kg" ? `${Number(i.qty).toLocaleString("es-AR", { maximumFractionDigits: 3 })}kg` : `${i.qty}x`} ${i.name}${modStr} ($${(i.price * i.qty).toLocaleString("es-AR")})`;
+    const combo = (i as any).combo_members as { name?: string; qty?: number }[] | undefined;
+    const comboStr = combo && combo.length > 0
+      ? `\n   🧩 ${combo.map((m) => (Number(m.qty) || 1) > 1 ? `${m.qty}× ${m.name}` : m.name).join(" + ")}`
+      : "";
+    return `- ${(i as any).unit === "kg" ? `${Number(i.qty).toLocaleString("es-AR", { maximumFractionDigits: 3 })}kg` : `${i.qty}x`} ${i.name}${modStr} ($${(i.price * i.qty).toLocaleString("es-AR")})${comboStr}`;
   });
 
   const paymentLine = params.paymentMethod === "transferencia"

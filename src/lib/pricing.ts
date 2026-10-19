@@ -14,6 +14,8 @@ import {
   type VolumeGroupInput,
   type VolumeLineInput,
 } from "@/lib/volume-pricing";
+import { resolveComboMembers, type ComboDefRow, type ComboVariantRow } from "@/lib/combo-server";
+import type { ComboMemberRow } from "@/lib/combo";
 
 /** Interfaz mínima: sirve la Tx de withTransaction o un wrapper de queryMany. */
 export type PricingQuerier = Pick<Tx, "query">;
@@ -24,8 +26,13 @@ export type IncomingOrderItem = {
   qty?: number | null;
   /** Labels de modificadores (los strings que vienen del carrito). */
   modifiers?: unknown;
-  /** Componentes si el ítem es un combo (snapshot al pedir). */
-  combo_members?: { product_id: string; name?: string; qty: number }[];
+  /**
+   * Componentes si el ítem es un combo. Con armado por unidad, el cliente
+   * manda las PIEZAS elegidas ({product_id, variant_id, qty}); sin armado
+   *    queda el snapshot de combo_items como siempre (server adjudica).
+   * La validación server-side corre en el staged (PricingError).
+   */
+  combo_members?: unknown;
 };
 
 /** Error de negocio al recomputar pedido (producto deshabilitado, modificador inválido, carrito vacío). */
@@ -181,10 +188,29 @@ export async function resolveOrderPricing(opts: {
       if (!byCombo.has(cp)) byCombo.set(cp, []);
       byCombo.get(cp)!.push({ product_id: String(c.member_product_id), name: String(m.name), qty: Math.max(1, Math.round(Number(c.qty) || 1)) });
     }
+    // Variantes de los componentes (armado por unidad): solo si algún combo
+    // tiene componentes que se venden por variante. Mapea member → variantes
+    // del MISMO vendor (para validar y para saber si la pieza exige elección).
+    const memberIds = [...new Set(crows.map((c) => String(c.member_product_id)))];
+    let mvRows: { id: string; product_id: string; color: string | null; talle: string | null }[] = [];
+    if (memberIds.length > 0) {
+      try {
+        mvRows = await tx.query(
+          `SELECT pv.id, pv.product_id, pv.color, pv.talle
+           FROM product_variants pv INNER JOIN products p ON p.id = pv.product_id
+           WHERE p.vendor_id = $1 AND pv.product_id = ANY($2)`,
+          [vendorId, memberIds]
+        );
+      } catch {
+        mvRows = [];
+      }
+    }
     for (const p of products) {
       const members = byCombo.get(String(p.id));
       if (members && members.length > 0) {
         (p as any).combo_members = members;
+        (p as any)._comboDefs = members;
+        (p as any)._comboVariants = mvRows.filter((v) => members.some((m) => m.product_id === v.product_id));
       }
     }
   }
@@ -481,6 +507,24 @@ export async function resolveOrderPricing(opts: {
       pack,
     });
 
+    // Combo: snapshot de componentes. Con armado por unidad el cliente manda
+    // las piezas elegidas (variantes); el server las valida SIEMPRE (nunca
+    // confiar en lo que llega: ni pertenece ni cuadre = PricingError).
+    let comboMembersOut: ComboMemberRow[] | undefined;
+    const comboDefs = (product as any)._comboDefs as ComboDefRow[] | undefined;
+    if (Array.isArray(comboDefs) && comboDefs.length > 0) {
+      const sel = Array.isArray(it.combo_members) || it.combo_members != null;
+      const res = resolveComboMembers({
+        defs: comboDefs,
+        variantRows: ((product as any)._comboVariants || []) as ComboVariantRow[],
+        comboName: product.name,
+        selections: it.combo_members,
+        sent: sel,
+      });
+      if (!res.ok) throw new PricingError(res.error);
+      comboMembersOut = res.members;
+    }
+
     outItems.push({
       product_id: it.offerId ? String(it.offerId) : product.id,
       variant_id: variant ? variant.id : undefined,
@@ -496,8 +540,9 @@ export async function resolveOrderPricing(opts: {
       pack_size: pack > 1 ? pack : undefined,
       unit: isKg ? "kg" : undefined,
       // Combo: snapshot de componentes (para stock/kardex y desglose). El
-      // combo en sí no tiene stock propio: los componentes sí.
-      combo_members: (product as any).combo_members || undefined,
+      // combo en sí no tiene stock propio: los componentes sí. Con armado
+      // por unidad cada entrada lleva su variante (color/talle incluidos).
+      combo_members: comboMembersOut,
     });
   }
 

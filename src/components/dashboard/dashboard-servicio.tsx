@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { LivePreview } from "@/components/dashboard/shared";
 import { HoursEditor } from "@/components/dashboard/hours-editor";
 import { GalleryManager } from "@/components/dashboard/gallery-manager";
@@ -25,6 +25,10 @@ import { BookingManualModal } from "@/components/dashboard/booking-manual-modal"
 import { EsteticaWaitlistManager, type WaitEntry } from "@/components/dashboard/estetica-managers";
 import { StaffManager } from "@/components/vendor/staff-manager";
 import { arToday } from "@/lib/booking-schedule";
+import { loadDraft, saveDraft } from "@/lib/draft";
+import { AgendaView, type AgendaViewMode } from "@/components/dashboard/agenda-view";
+import { BookingCard, type BookingCardProps } from "@/components/dashboard/booking-card";
+import { Modal } from "@/components/ui/modal";
 import type { Vendor, Product, ProductModifier, Booking, VendorGallery } from "@/types/database";
 
 type Props = {
@@ -385,6 +389,23 @@ export default function DashboardServicio({
   const [catalogStaff, setCatalogStaff] = useState<{ id: string; name: string }[]>([]);
   const [catalogLocations, setCatalogLocations] = useState<{ id: string; name: string }[]>([]);
 
+  // Agenda de turnos: vista (Día calendario / Lista), fecha y detalle abierto.
+  const [agendaView, setAgendaView] = useState<AgendaViewMode>("day");
+  const [agendaDate, setAgendaDate] = useState<string>(() => arToday());
+  const [selectedBookingId, setSelectedBookingId] = useState<string | null>(null);
+  const agendaViewInit = useRef(false);
+  useEffect(() => {
+    if (agendaViewInit.current || !vendor?.id) return;
+    agendaViewInit.current = true;
+    const d = loadDraft<{ view?: string }>(vendor.id, "agenda");
+    if (d?.view === "day" || d?.view === "list") setAgendaView(d.view);
+    else setAgendaView(vendor.vertical === "estetica" ? "day" : "list");
+  }, [vendor?.id, vendor?.vertical]);
+  useEffect(() => {
+    if (!agendaViewInit.current || !vendor?.id) return;
+    saveDraft(vendor.id, "agenda", { view: agendaView });
+  }, [agendaView, vendor?.id]);
+
 const PREF_DAY_LABELS: Record<string, string> = {
   lun: "Lun", mar: "Mar", mie: "Mié", jue: "Jue", vie: "Vie", sab: "Sáb", dom: "Dom",
 };
@@ -563,6 +584,10 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
   }
 
   const sortedDates = Object.keys(groupedBookings).sort((a, b) => a.localeCompare(b));
+
+  const selectedBooking = selectedBookingId
+    ? (bookings as any[]).find((b: any) => b.id === selectedBookingId) || null
+    : null;
 
   async function handleSaveAll() {
     await doSaveVendor();
@@ -941,6 +966,31 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
 
   const filteredQuotes =
     quoteFilter === "all" ? quotes : quotes.filter((q) => q.status === quoteFilter);
+
+  // Props compartidas por la tarjeta de turno (lista y modal de detalle).
+  const bookingCardProps: Omit<BookingCardProps, "booking"> = {
+    formAlerts,
+    onNavigate,
+    editingProductsId,
+    setEditingProductsId,
+    productsText,
+    setProductsText,
+    productsBusy,
+    handleSaveProducts,
+    handleUpdateBookingStatus,
+    setRebook,
+    setBookingModalOpen,
+    confirmLinkBusy,
+    handleConfirmLink,
+    canDeposits,
+    vendor,
+    stripeBookingLink,
+    stripeBookingBusy,
+    handleBookingStripeDepositLink,
+    mpBookingLink,
+    mpBookingBusy,
+    handleBookingMpDepositLink,
+  };
 
   return (
     <div className="space-y-4">
@@ -1373,274 +1423,46 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
             ))}
           </div>
 
-          {filteredBookings.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-4">
-              {bookingFilter === "all"
-                ? "Todavía no recibiste turnos."
-                : `No hay turnos ${BOOKING_STATUS_LABELS[bookingFilter]?.toLowerCase()}.`}
-            </p>
-          ) : (
-            <div className="space-y-4">
-              {sortedDates.map((date) => (
-                <div key={date}>
-                  <p className="text-xs font-medium text-muted-foreground mb-2">
-                    {date === "Sin fecha"
-                      ? "Sin fecha"
-                      : new Date(date + "T12:00:00").toLocaleDateString("es-AR", {
-                          weekday: "long",
-                          year: "numeric",
-                          month: "long",
-                          day: "numeric",
-                        })}
-                  </p>
-                  <div className="space-y-2">
-                    {groupedBookings[date].map((booking: any) => (
-                      <Card key={booking.id} className="p-3">
-                        <div className="flex items-start justify-between gap-2 mb-2">
-                          <div className="min-w-0">
-                            <p className="font-medium text-sm truncate">
-                              {booking.customer_name || "Sin nombre"}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              {booking.booking_time || "Sin horario"}
-                              {(booking.product_label || booking.product_name) && ` · ${booking.product_label || booking.product_name}`}
-                              {(booking.service_label || booking.staff_label) && ` · ${[booking.service_label, booking.staff_label].filter(Boolean).join(" · ")}`}
-                              {booking.location_label && ` · 📍 ${booking.location_label}`}
-                              {(booking as any).deposit_status === "paid" ? " · seña pagada ✅" : ""}
-                            </p>
-                            {booking.customer_phone && (
-                              <a
-                                href={waLinkFor(booking.customer_phone) || undefined}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-xs text-green-600 font-medium hover:underline"
-                              >
-                                📲 {booking.customer_phone}
-                              </a>
-                            )}
-                          </div>
-                          {(booking as any).is_preview && (
-                            <span className="flex-shrink-0 rounded-full bg-violet-100 text-violet-700 px-1.5 py-0.5 text-[10px] font-semibold">
-                              🧪 PRUEBA
-                            </span>
-                          )}
-                          <Badge className={`flex-shrink-0 ${BOOKING_STATUS_COLORS[booking.status] || ""}`}>
-                            {BOOKING_STATUS_LABELS[booking.status] || booking.status}
-                          </Badge>
-                        </div>
-                        {booking.notes && (
-                          <p className="text-xs text-muted-foreground mb-2 italic">
-                            &quot;{booking.notes}&quot;
-                          </p>
-                        )}
-                        {(() => {
-                          const alerts = (booking.customer_phone && formAlerts[String(booking.customer_phone)]) || [];
-                          if (alerts.length === 0) return null;
-                          const labels = [...new Set(alerts.flatMap((a: { labels: string[] }) => a.labels))];
-                          return (
-                            <button
-                              type="button"
-                              onClick={() => onNavigate?.("clientes")}
-                              title="Ver ficha de la clienta"
-                              className="block w-full text-left text-xs mb-2 rounded-lg bg-red-50 border border-red-200 px-2.5 py-1.5 text-red-800 hover:bg-red-100"
-                            >
-                              🚨 {labels.join(" · ")} — ver ficha →
-                            </button>
-                          );
-                        })()}
-                        {(booking as any).products_used && editingProductsId !== booking.id && (
-                          <p className="text-xs text-muted-foreground mb-2">
-                            🧴 <span className="italic">{String((booking as any).products_used)}</span>
-                          </p>
-                        )}
-                        {editingProductsId === booking.id ? (
-                          <div className="mb-2 space-y-1.5">
-                            <Label className="text-[11px] text-muted-foreground">🧴 Productos utilizados (quedan en la ficha)</Label>
-                            <Textarea
-                              value={productsText}
-                              onChange={(e) => setProductsText(e.target.value)}
-                              placeholder="Ej: Tinte Koleston 7/0 + oxidante 20v"
-                              rows={2}
-                              className="text-xs"
-                            />
-                            <div className="flex gap-2">
-                              <Button size="sm" className="h-7 text-xs" disabled={productsBusy} onClick={() => handleSaveProducts(booking.id)}>
-                                {productsBusy ? "Guardando..." : "Guardar"}
-                              </Button>
-                              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setEditingProductsId(null)}>
-                                Cerrar
-                              </Button>
-                            </div>
-                          </div>
-                        ) : (
-                          booking.status === "confirmed" && (
-                            <button
-                              type="button"
-                              onClick={() => { setEditingProductsId(booking.id); setProductsText(String((booking as any).products_used || "")); }}
-                              className="text-[11px] text-muted-foreground hover:text-foreground hover:underline mb-2"
-                            >
-                              {(booking as any).products_used ? "✏️ Editar productos" : "＋ Anotar productos usados"}
-                            </button>
-                          )
-                        )}
-                        <div className="flex gap-2">
-                          {booking.status === "pending" && (
-                            <>
-                              <Button
-                                size="sm"
-                                className="h-7 text-xs"
-                                onClick={() => handleUpdateBookingStatus(booking.id, "confirmed")}
-                              >
-                                Confirmar
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-7 text-xs text-red-600"
-                                onClick={() => handleUpdateBookingStatus(booking.id, "cancelled")}
-                              >
-                                Cancelar
-                              </Button>
-                            </>
-                          )}
-                          {booking.status === "confirmed" && (
-                            <>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-7 text-xs text-red-600"
-                                onClick={() => handleUpdateBookingStatus(booking.id, "cancelled")}
-                              >
-                                Cancelar
-                              </Button>
-                              {booking.booking_date <= new Date().toISOString().slice(0, 10) && (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="h-7 text-xs text-amber-600"
-                                  title="El cliente no vino (queda en su historial)"
-                                  onClick={() => handleUpdateBookingStatus(booking.id, "noshow")}
-                                >
-                                  No vino
-                                </Button>
-                              )}
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-7 text-xs"
-                                title="Agendar el próximo turno con los mismos datos"
-                                onClick={() => {
-                                  setRebook({
-                                    customerName: String(booking.customer_name || ""),
-                                    customerPhone: String(booking.customer_phone || ""),
-                                    serviceId: typeof booking.service_id === "string" ? booking.service_id : "",
-                                    staffId: typeof booking.staff_id === "string" ? booking.staff_id : "",
-                                    durationMin: Number(booking.duration_min) || 60,
-                                  });
-                                  setBookingModalOpen(true);
-                                }}
-                              >
-                                🔁 Repetir
-                              </Button>
-                            </>
-                          )}
-                          {(booking.status === "pending" || booking.status === "confirmed") && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-7 text-xs"
-                              title="Abrir la ficha de la clienta"
-                              onClick={() => onNavigate?.("clientes")}
-                            >
-                              📋 Ficha
-                            </Button>
-                          )}
-                          {(booking.status === "pending" || booking.status === "confirmed") && (
-                            <>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-7 text-xs"
-                                title="Link para que la clienta confirme o cancele sola"
-                                disabled={confirmLinkBusy === booking.id}
-                                onClick={() => handleConfirmLink(booking.id, typeof (booking as any).confirm_token === "string" ? (booking as any).confirm_token : null)}
-                              >
-                                {confirmLinkBusy === booking.id ? "Generando..." : "🔗 Link"}
-                              </Button>
-                              {typeof (booking as any).confirm_token === "string" && (booking as any).confirm_token && booking.customer_phone && (
-                                <a
-                                  href={`https://wa.me/${String(booking.customer_phone).replace(/[^0-9]/g, "")}?text=${encodeURIComponent(`Hola! Te paso el link de tu turno del ${booking.booking_date} ${String(booking.booking_time).slice(0, 5)}: ${typeof window !== "undefined" ? window.location.origin : ""}/turno/${(booking as any).confirm_token} — confirmalo cuando puedas 👆`)}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="inline-flex items-center h-7 px-2 rounded-md border border-input text-xs font-medium text-green-600 hover:bg-muted"
-                                >
-                                  📲 Enviar
-                                </a>
-                              )}
-                            </>
-                          )}
-                          {canDeposits && vendor?.stripe_account_id && Number((booking as any).deposit_amount) > 0 && (booking as any).deposit_status !== "paid" && (booking.status === "pending" || booking.status === "confirmed") && (
-                            <div className="w-full">
-                              {(booking as any).deposit_status === "paid" ? null : stripeBookingLink[booking.id] ? (
-                                <div className="flex items-center gap-2">
-                                  <Input value={stripeBookingLink[booking.id]} readOnly className="h-7 text-[11px] flex-1" onFocus={(e) => e.target.select()} />
-                                  <a
-                                    href={`https://wa.me/?text=${encodeURIComponent(`Hola, te paso el link para la seña del turno ($${Number((booking as any).deposit_amount).toLocaleString("es-AR")}): ${stripeBookingLink[booking.id]}`)}`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-xs font-medium text-green-600 hover:underline whitespace-nowrap"
-                                  >
-                                    📲 Enviar
-                                  </a>
-                                </div>
-                              ) : (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="h-7 text-xs"
-                                  disabled={stripeBookingBusy === booking.id}
-                                  onClick={() => handleBookingStripeDepositLink(booking.id)}
-                                >
-                                  {stripeBookingBusy === booking.id ? "Generando..." : `💳 Link seña $${Number((booking as any).deposit_amount).toLocaleString("es-AR")}`}
-                                </Button>
-                              )}
-                            </div>
-                          )}
-                          {canDeposits && vendor?.mp_user_id && Number((booking as any).deposit_amount) > 0 && (booking as any).deposit_status !== "paid" && (booking.status === "pending" || booking.status === "confirmed") && (
-                            <div className="w-full">
-                              {mpBookingLink[booking.id] ? (
-                                <div className="flex items-center gap-2">
-                                  <Input value={mpBookingLink[booking.id]} readOnly className="h-7 text-[11px] flex-1" onFocus={(e) => e.target.select()} />
-                                  <a
-                                    href={`https://wa.me/?text=${encodeURIComponent(`Hola, te paso el link para la seña del turno ($${Number((booking as any).deposit_amount).toLocaleString("es-AR")}): ${mpBookingLink[booking.id]}`)}`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-xs font-medium text-green-600 hover:underline whitespace-nowrap"
-                                  >
-                                    📲 Enviar
-                                  </a>
-                                </div>
-                              ) : (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="h-7 text-xs"
-                                  disabled={mpBookingBusy === booking.id}
-                                  onClick={() => handleBookingMpDepositLink(booking.id)}
-                                >
-                                  {mpBookingBusy === booking.id ? "Generando..." : `🔗 Link MP $${Number((booking as any).deposit_amount).toLocaleString("es-AR")}`}
-                                </Button>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      </Card>
-                    ))}
-                  </div>
+          <AgendaView
+            bookings={filteredBookings as any[]}
+            staff={catalogStaff}
+            dateISO={agendaDate}
+            onDate={setAgendaDate}
+            view={agendaView}
+            onView={setAgendaView}
+            onOpenBooking={(id) => setSelectedBookingId(id)}
+            listContent={
+              filteredBookings.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  {bookingFilter === "all"
+                    ? "Todavía no recibiste turnos."
+                    : `No hay turnos ${BOOKING_STATUS_LABELS[bookingFilter]?.toLowerCase()}.`}
+                </p>
+              ) : (
+                <div className="space-y-4">
+                  {sortedDates.map((date) => (
+                    <div key={date}>
+                      <p className="text-xs font-medium text-muted-foreground mb-2">
+                        {date === "Sin fecha"
+                          ? "Sin fecha"
+                          : new Date(date + "T12:00:00").toLocaleDateString("es-AR", {
+                              weekday: "long",
+                              year: "numeric",
+                              month: "long",
+                              day: "numeric",
+                            })}
+                      </p>
+                      <div className="space-y-2">
+                        {groupedBookings[date].map((booking: any) => (
+                          <BookingCard key={booking.id} booking={booking} {...bookingCardProps} />
+                        ))}
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          )}
+              )
+            }
+          />
         </div>
       </CollapsibleSection>
       </>
@@ -2061,6 +1883,16 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
             reload();
           }}
         />
+      )}
+
+      {selectedBooking && (
+        <Modal
+          open={!!selectedBooking}
+          onClose={() => setSelectedBookingId(null)}
+          title={`Turno · ${selectedBooking.customer_name || "Sin nombre"}`}
+        >
+          <BookingCard booking={selectedBooking} {...bookingCardProps} />
+        </Modal>
       )}
     </div>
   );

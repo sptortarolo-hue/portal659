@@ -537,6 +537,13 @@ export type Booking = {
   origin?: QuoteOrigin;
   duration_min?: number | null;
   quote_id?: string | null;
+  /** Estética: profesional, servicio y sede del turno (opcionales). */
+  staff_id?: string | null;
+  service_id?: string | null;
+  location_id?: string | null;
+  /** Inicio/fin como timestamp (para la grilla del calendario). */
+  starts_at?: string | null;
+  ends_at?: string | null;
   /** Turno de prueba (modo preview). true = no cuenta en topes/métricas/CRM. */
   is_preview?: boolean;
   created_at: string;

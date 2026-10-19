@@ -24,6 +24,7 @@ import { QuoteManualModal } from "@/components/dashboard/quote-manual-modal";
 import { BookingManualModal } from "@/components/dashboard/booking-manual-modal";
 import { EsteticaWaitlistManager, type WaitEntry } from "@/components/dashboard/estetica-managers";
 import { StaffManager } from "@/components/vendor/staff-manager";
+import { arToday } from "@/lib/booking-schedule";
 import type { Vendor, Product, ProductModifier, Booking, VendorGallery } from "@/types/database";
 
 type Props = {
@@ -1313,6 +1314,49 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
               }}
             />
           )}
+          {(() => {
+            const tomorrow = arToday(1);
+            const tmr = bookings.filter((b: any) => b.status === "confirmed" && b.booking_date === tomorrow);
+            if (tmr.length === 0) return null;
+            return (
+              <Card className="p-3 space-y-2 border-primary/30">
+                <p className="font-medium text-sm">🗓️ Turnos de mañana ({tmr.length})</p>
+                <p className="text-xs text-muted-foreground">
+                  Mandá el recordatorio por WhatsApp a cada clienta con un toque.
+                </p>
+                <div className="space-y-1.5">
+                  {tmr.map((b: any) => {
+                    const time = String(b.booking_time || "").slice(0, 5);
+                    const first = String(b.customer_name || "").split(" ")[0] || "";
+                    const msg = `Hola ${first}! Te recuerdo tu turno de mañana ${time}${b.service_label ? ` (${b.service_label})` : ""}. ¿Confirmás?`;
+                    const wa = b.customer_phone
+                      ? `https://wa.me/${String(b.customer_phone).replace(/[^0-9]/g, "")}?text=${encodeURIComponent(msg)}`
+                      : null;
+                    return (
+                      <div key={b.id} className="flex items-center gap-2 text-xs rounded-lg bg-muted px-2.5 py-2">
+                        <span className="flex-1 min-w-0 truncate">
+                          <strong>{time}</strong> · {b.customer_name || "Sin nombre"}
+                          {b.service_label ? <span className="text-muted-foreground"> · {b.service_label}</span> : null}
+                        </span>
+                        {wa ? (
+                          <a
+                            href={wa}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex-shrink-0 rounded-md bg-green-600 text-white px-2 py-1 font-medium"
+                          >
+                            💬 Recordar
+                          </a>
+                        ) : (
+                          <span className="flex-shrink-0 text-muted-foreground">sin teléfono</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </Card>
+            );
+          })()}
           <div className="flex gap-1 flex-wrap">
             {(["all", "pending", "confirmed", "cancelled", "noshow"] as const).map((status) => (
               <Button

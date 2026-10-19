@@ -54,6 +54,7 @@ type DueBooking = {
   confirm_token?: string | null;
   service_id?: string | null;
   wa_reminders?: boolean | null;
+  ficha_reminder_enabled?: boolean | null;
 };
 
 /** Ficha pendiente con require_before: crea borrador y devuelve link, o null. */
@@ -133,6 +134,7 @@ export async function GET(request: Request) {
   let tokenSel = "";
   let svcSel = "";
   let waSel = "";
+  let fichaSel = "";
   fichaCapable = false;
   try {
     const col = await queryOne<{ exists: boolean }>(
@@ -155,6 +157,12 @@ export async function GET(request: Request) {
       );
       if (wr?.exists === true) waSel = ", v.wa_reminders";
     } catch { /* opt-out no disponible: se asume activado */ }
+    try {
+      const fr = await queryOne<{ exists: boolean }>(
+        `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'vendors' AND column_name = 'ficha_reminder_enabled') AS exists`
+      );
+      if (fr?.exists === true) fichaSel = ", v.ficha_reminder_enabled";
+    } catch { /* interruptor no disponible: se asume activado */ }
     fichaCapable = !!svc?.exists && !!tpl?.exists && !!ent?.exists;
   } catch { /* sin link */ }
 
@@ -172,28 +180,26 @@ export async function GET(request: Request) {
   const due24 = await queryMany<DueBooking>(
     `SELECT b.id, b.vendor_id, b.customer_name, b.customer_phone, b.product_name,
             b.booking_date::text AS booking_date, b.booking_time::text AS booking_time,
-            v.store_name, v.user_id${waSel}${tokenSel}${svcSel}
+            v.store_name, v.user_id${waSel}${fichaSel}${tokenSel}${svcSel}
      FROM bookings b JOIN vendors v ON v.id = b.vendor_id
      WHERE b.status = 'confirmed' AND b.booking_date = $1${previewFilter}
        AND NOT EXISTS (SELECT 1 FROM service_reminder_log l WHERE l.booking_id = b.id AND l.kind = 't24')`,
     [tomorrowAR]
   ).catch(() => []);
+  // Push al local agrupado: un solo aviso por comercio con la cantidad.
+  const vendorAgg = new Map<string, { userId: string | null; count: number }>();
   for (const b of due24 || []) {
     const when = `${b.booking_date} ${String(b.booking_time || "").slice(0, 5)}`;
     const title = "⏰ Turno mañana";
-    const bodyVendor = `${b.customer_name || "Cliente"} · mañana ${when}${b.product_name ? ` · ${b.product_name}` : ""}`;
     const bodyClient = `Te recordamos tu turno de mañana ${when} en ${b.store_name}.`;
-    // Ficha exigida pendiente: borrador + link (una sola vez por el log t24).
-    const fichaUrl = await fichaLinkFor(b);
+    // Ficha exigida pendiente (si el interruptor global lo permite): borrador
+    // + link. Con ficha_reminder_enabled = false no se adjunta.
+    const fichaUrl = b.ficha_reminder_enabled === false ? null : await fichaLinkFor(b);
     try {
       if (b.user_id) {
-        await query(
-          `INSERT INTO notifications (user_id, title, body, type, link) VALUES ($1, $2, $3, 'booking', '/vendor/dashboard')`,
-          [b.user_id, title, bodyVendor]
-        );
-        try {
-          await sendPushToUser(b.user_id, { title, body: bodyVendor, link: "/vendor/dashboard" });
-        } catch { /* best-effort */ }
+        const agg = vendorAgg.get(b.vendor_id) || { userId: b.user_id, count: 0 };
+        agg.count++;
+        vendorAgg.set(b.vendor_id, agg);
       }
       await notifyServiceClient(b.customer_phone, {
         title,
@@ -221,6 +227,23 @@ export async function GET(request: Request) {
       }
       sent.t24++;
     } catch { /* sigue con el próximo */ }
+  }
+
+  // Push único al local: "mañana tenés N turnos", con acceso directo a la
+  // vista para mandar los recordatorios por WhatsApp a cada clienta.
+  for (const [, agg] of vendorAgg) {
+    if (!agg.userId) continue;
+    const title = "🗓️ Turnos de mañana";
+    const body = `Tenés ${agg.count} turno${agg.count === 1 ? "" : "s"} mañana. Recordá a cada clienta por WhatsApp.`;
+    try {
+      await query(
+        `INSERT INTO notifications (user_id, title, body, type, link) VALUES ($1, $2, $3, 'booking', '/vendor/dashboard?tab=turnos')`,
+        [agg.userId, title, body]
+      );
+      try {
+        await sendPushToUser(agg.userId, { title, body, link: "/vendor/dashboard?tab=turnos" });
+      } catch { /* best-effort */ }
+    } catch { /* sigue */ }
   }
 
   // --- T-2h: hoy en ventana, solo cliente ---

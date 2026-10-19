@@ -130,6 +130,8 @@ export async function POST(request: Request) {
     reservation_lead_min,
     reservation_tolerance_min,
     floor_bg_url,
+    booking_schedule_mode,
+    ficha_reminder_enabled,
   } = body;
 
   // Limpia y valida delivery_extra_days. Devuelve el objeto podado o false
@@ -410,6 +412,15 @@ export async function POST(request: Request) {
       payload.cash_discount_pct = pct;
     }
   }
+  // Agenda de la turnera (estética): 'hours' (horario del local) o 'grid'
+  // (disponibilidad por profesional). Interruptor global de ficha por
+  // recordatorio. Ambos tolerantes a migración sin aplicar.
+  if (booking_schedule_mode !== undefined) {
+    payload.booking_schedule_mode = booking_schedule_mode === "grid" ? "grid" : "hours";
+  }
+  if (ficha_reminder_enabled !== undefined) {
+    payload.ficha_reminder_enabled = ficha_reminder_enabled !== false;
+  }
 
   if (existing) {
     let vendor: Record<string, unknown> | undefined;
@@ -463,6 +474,8 @@ export async function POST(request: Request) {
         "loyalty_every",
         "loyalty_pct",
         "carta_visibility",
+        "booking_schedule_mode",
+        "ficha_reminder_enabled",
       ].filter((k) => k in payload && msg.includes(k));
       if (droppable.length > 0) {
         for (const k of droppable) delete payload[k];

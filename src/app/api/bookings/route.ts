@@ -4,6 +4,7 @@ import { getSiteUrl } from "@/lib/site-url";
 import { getServiceQuota, ServiceQuotaError } from "@/lib/service-quota";
 import { isPreviewTokenForVendor } from "@/lib/preview-flag";
 import { toE164 } from "@/lib/phone";
+import { fitsInRanges, shiftsFromHoursText, staffRangesForDate } from "@/lib/booking-schedule";
 import { NextResponse } from "next/server";
 import { withRateLimit } from "@/lib/api-wrapper";
 import crypto from "crypto";
@@ -198,6 +199,63 @@ export const POST = withRateLimit(async (request: Request) => {
 
   const startMin = toMinutes(String(bookingTime))!;
   const endMin = startMin + durationMin + bufferMin;
+
+  // Agenda planificada (modo `grid`): el horario debe entrar en la
+  // disponibilidad del profesional (o de alguno, si no se eligió). 409 si no.
+  // Tolerante: sin migración, modo default 'hours' y no gatea. Un carril sin
+  // agenda parseable no bloquea (null = sin restricción).
+  try {
+    const vmode = await queryOne<{ booking_schedule_mode: string | null; hours: string | null }>(
+      `SELECT booking_schedule_mode, hours FROM vendors WHERE id = $1 LIMIT 1`,
+      [vendorId]
+    ).catch(() => null);
+    if (String(vmode?.booking_schedule_mode || "hours") === "grid") {
+      const staffRows = staffId
+        ? await queryMany<{ id: string; availability: unknown }>(
+            `SELECT id::text AS id, availability FROM estetica_staff
+             WHERE vendor_id = $1 AND id = $2 AND COALESCE(active, true) = true`,
+            [vendorId, staffId]
+          ).catch(() => [])
+        : await queryMany<{ id: string; availability: unknown }>(
+            `SELECT id::text AS id, availability FROM estetica_staff
+             WHERE vendor_id = $1 AND COALESCE(active, true) = true`,
+            [vendorId]
+          ).catch(() => []);
+      const overrides = await queryMany<{ staff_id: string; ranges: unknown }>(
+        `SELECT staff_id::text AS staff_id, ranges FROM staff_schedule_days
+         WHERE vendor_id = $1 AND day = $2::date`,
+        [vendorId, bookingDate]
+      ).catch(() => []);
+      const overrideMap = new Map<string, unknown>((overrides || []).map((o) => [String(o.staff_id), o.ranges]));
+      const lanes: { staffId: string | null; ranges: unknown }[] =
+        staffRows && staffRows.length > 0
+          ? staffRows.map((s) => {
+              const key = String(s.id);
+              return {
+                staffId: key,
+                ranges: staffRangesForDate({
+                  mode: "grid",
+                  hoursText: vmode?.hours ?? null,
+                  availability: s.availability,
+                  overrideRanges: overrideMap.has(key) ? overrideMap.get(key) : undefined,
+                  dateISO: bookingDate,
+                }),
+              };
+            })
+          : [{ staffId: null, ranges: shiftsFromHoursText(vmode?.hours ?? null, bookingDate) }];
+      const fits = lanes.some((lane) => {
+        const ranges = lane.ranges as { length: number } | null;
+        if (ranges == null) return true; // sin agenda parseable: no bloquea
+        return fitsInRanges(ranges as never, startMin, endMin);
+      });
+      if (!fits) {
+        return NextResponse.json(
+          { error: "Ese horario está fuera de la disponibilidad. Elegí otro horario." },
+          { status: 409 }
+        );
+      }
+    }
+  } catch { /* sin agenda (migración pendiente): se sigue */ }
 
   // Control de solape (bloquea): turnos no cancelados del mismo día que se
   // pisan. Con profesional elegido solo bloquea su agenda; sin profesional,

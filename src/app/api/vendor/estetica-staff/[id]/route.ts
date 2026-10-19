@@ -1,5 +1,6 @@
 import { gateRequest } from "@/lib/subscription-gate";
 import { queryOne } from "@/lib/db";
+import { validateAvailabilityInput } from "@/lib/booking-schedule";
 import { NextResponse } from "next/server";
 
 /** Editar / activar / borrar un profesional del centro de estética. */
@@ -71,6 +72,18 @@ export async function PATCH(
     }
     sets.push(`commission_pct = $${idx++}`);
     vals.push(n);
+  }
+  // Grilla semanal de disponibilidad (modo agenda): null = seguir horario del local.
+  if (body.availability !== undefined) {
+    if (body.availability === null) {
+      sets.push(`availability = $${idx++}`);
+      vals.push(null);
+    } else {
+      const v = validateAvailabilityInput(body.availability);
+      if (!v.ok) return NextResponse.json({ error: v.error }, { status: 400 });
+      sets.push(`availability = $${idx++}`);
+      vals.push(JSON.stringify(v.value));
+    }
   }
   if (sets.length === 0) return NextResponse.json({ error: "Sin cambios" }, { status: 400 });
 

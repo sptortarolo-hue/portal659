@@ -36,6 +36,7 @@ import {
   EsteticaBlocksManager,
 } from "@/components/dashboard/estetica-managers";
 import { FormTemplateManager } from "@/components/dashboard/form-template-manager";
+import { EsteticaScheduleSection } from "@/components/dashboard/estetica-schedule";
 import type { Vendor, Product, ProductModifier } from "@/types/database";
 
 const VERTICAL_OPTIONS = [
@@ -171,6 +172,9 @@ export default function DashboardEstetica({
   const [depositDefault, setDepositDefault] = useState(
     vendor?.deposit_default_pct != null ? String(vendor.deposit_default_pct) : ""
   );
+  const [fichaReminder, setFichaReminder] = useState<boolean>(
+    (vendor as any)?.ficha_reminder_enabled !== false
+  );
 
   useEffect(() => {
     if (!vendor) return;
@@ -214,6 +218,7 @@ export default function DashboardEstetica({
     setLoyaltyEvery((vendor as any)?.loyalty_every != null ? String((vendor as any).loyalty_every) : "");
     setLoyaltyPct((vendor as any)?.loyalty_pct != null ? String((vendor as any).loyalty_pct) : "");
     setDepositDefault(vendor.deposit_default_pct != null ? String(vendor.deposit_default_pct) : "");
+    setFichaReminder((vendor as any)?.ficha_reminder_enabled !== false);
     setStorePreview(vendor.image_url || null);
     setLogoPreview(vendor.logo_url || null);
   }, [vendor]);
@@ -561,6 +566,7 @@ export default function DashboardEstetica({
             <EsteticaStaffManager />
             <EsteticaLocationsManager />
             <EsteticaBlocksManager />
+            <EsteticaScheduleSection vendor={vendor} saveVendor={saveVendor} setMsg={setMsg} />
             <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2">
               <div>
                 <p className="text-sm font-medium">Turnera pública</p>
@@ -655,7 +661,29 @@ export default function DashboardEstetica({
         </ConfigSection>
 
         <ConfigSection id="fichas" label="Fichas" icon="📋">
-          <FormTemplateManager />
+          <div className="space-y-3">
+            <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2">
+              <div>
+                <p className="text-sm font-medium">Enviar la ficha por recordatorio</p>
+                <p className="text-xs text-muted-foreground">
+                  Adjunta el link de la ficha en el recordatorio (T-24) de los modelos marcados "antes del turno"
+                </p>
+              </div>
+              <Switch
+                checked={fichaReminder}
+                onCheckedChange={async (v) => {
+                  setFichaReminder(v);
+                  try {
+                    await saveVendor({ ficha_reminder_enabled: v });
+                    setMsg(v ? "Se enviará la ficha" : "No se enviará la ficha");
+                  } catch {
+                    setMsg("Error al guardar");
+                  }
+                }}
+              />
+            </div>
+            <FormTemplateManager />
+          </div>
         </ConfigSection>
 
         <ConfigSection id="packs" label="Packs y regalos" icon="🎁">

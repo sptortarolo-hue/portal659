@@ -1,50 +1,26 @@
 import { queryMany, queryOne } from "@/lib/db";
 import { NextResponse } from "next/server";
 import { withRateLimit } from "@/lib/api-wrapper";
+import {
+  SLOT_STEP_MIN,
+  fmtMinutes,
+  shiftsFromHoursText,
+  staffRangesForDate,
+  toMinutes,
+  type Range,
+} from "@/lib/booking-schedule";
 
 const TZ_AR = "America/Argentina/Buenos_Aires";
-const STEP_MIN = 30;
-
-const DAY_KEYS = ["dom", "lun", "mar", "mie", "jue", "vie", "sab"];
-
-const toMinutes = (t: string): number | null => {
-  const m = /^(\d{1,2}):(\d{2})/.exec(String(t || "").trim());
-  if (!m) return null;
-  const h = Number(m[1]);
-  const mm = Number(m[2]);
-  if (h > 24 || mm > 59) return null;
-  return h * 60 + mm;
-};
-
-const fmt = (mins: number): string =>
-  `${String(Math.floor(mins / 60)).padStart(2, "0")}:${String(mins % 60).padStart(2, "0")}`;
-
-/**
- * Franjas [open,close] en minutos del día pedido, parseadas del formato del
- * editor ("lun: 09:00-13:00 y 17:00-22:00, ..."). NULL si no se puede parsear.
- */
-function shiftsForDate(hours: string | null, dateISO: string): [number, number][] | null {
-  if (!hours) return null;
-  const d = new Date(dateISO + "T12:00:00");
-  if (Number.isNaN(d.getTime())) return null;
-  const key = DAY_KEYS[d.getDay()];
-  // Segmento del día: "lun: ..." hasta la próxima coma+día o fin.
-  const seg = new RegExp(`(?:^|,)\\s*${key}\\s*:\\s*([^,]+)`, "i").exec(hours);
-  if (!seg) return null;
-  const text = seg[1].trim().toLowerCase();
-  if (/cerrado/.test(text)) return [];
-  const times = [...text.matchAll(/(\d{1,2}):(\d{2})/g)].map((m) => Number(m[1]) * 60 + Number(m[2]));
-  const out: [number, number][] = [];
-  for (let i = 0; i + 1 < times.length; i += 2) {
-    if (times[i + 1] > times[i]) out.push([times[i], times[i + 1]]);
-  }
-  return out;
-}
 
 /**
  * Huecos disponibles de turnera para un día (estética + servicios).
  * GET /api/slot-availability?vendorId=&serviceId=&staffId=&date=YYYY-MM-DD
  * → { slots: [{time, available}], estimated, closed }.
+ *
+ * Modo `hours` (default): usa el horario del local.
+ * Modo `grid`: disponibilidad por profesional (semanal recurrente + ajustes
+ *   por fecha); lo no marcado queda bloqueado. Sin profesional elegido, el
+ *   hueco es libre si algún profesional lo tiene disponible y sin solape.
  * El POST /api/bookings sigue siendo la autoridad (409 ante carrera).
  */
 export const GET = withRateLimit(async (request: Request) => {
@@ -60,11 +36,16 @@ export const GET = withRateLimit(async (request: Request) => {
   const vendor = await queryOne<{
     hours: string | null;
     open_override: boolean | null;
-  }>(`SELECT hours, open_override FROM vendors WHERE id = $1 LIMIT 1`, [vendorId]).catch(() => null);
+    booking_schedule_mode: string | null;
+  }>(
+    `SELECT hours, open_override, booking_schedule_mode FROM vendors WHERE id = $1 LIMIT 1`,
+    [vendorId]
+  ).catch(() => null);
   if (!vendor) return NextResponse.json({ slots: [], estimated: true, closed: false });
   if (vendor.open_override === false) {
     return NextResponse.json({ slots: [], estimated: false, closed: true });
   }
+  const mode = String(vendor.booking_schedule_mode || "hours");
 
   // Días bloqueados (feriados/vacaciones): staff NULL = todo el centro.
   // Sin tabla (migración pendiente): se ignora.
@@ -115,28 +96,63 @@ export const GET = withRateLimit(async (request: Request) => {
   } catch {
     rows = [];
   }
-
-  const busy: [number, number][] = [];
+  const dayStartMs = new Date(`${date}T00:00:00`).getTime();
+  const busy: { staff_id: string | null; start: number; end: number }[] = [];
   for (const b of rows) {
-    if (staffId && b.staff_id && b.staff_id !== staffId) continue;
     if (b.starts_at && b.ends_at) {
-      const dayStart = new Date(`${date}T00:00:00`).getTime();
       const bs = new Date(b.starts_at).getTime();
       const be = new Date(b.ends_at).getTime();
       if (!Number.isNaN(bs) && !Number.isNaN(be)) {
-        busy.push([(bs - dayStart) / 60000, (be - dayStart) / 60000]);
+        busy.push({ staff_id: b.staff_id, start: (bs - dayStartMs) / 60000, end: (be - dayStartMs) / 60000 });
         continue;
       }
     }
     const bs = toMinutes(b.booking_time);
     if (bs == null) continue;
-    busy.push([bs, bs + (Number(b.duration_min) || 60)]);
+    busy.push({ staff_id: b.staff_id, start: bs, end: bs + (Number(b.duration_min) || 60) });
   }
 
-  const shifts = vendor.open_override === true ? [[9 * 60, 20 * 60] as [number, number]] : shiftsForDate(vendor.hours, date);
-  // Sin horario parseable: día completo estimado (el POST valida igual).
-  const ranges = shifts === null ? [[9 * 60, 20 * 60] as [number, number]] : shifts;
-  const estimated = shifts === null && vendor.open_override !== true;
+  // Carriles de disponibilidad: en grid, uno por profesional; si no, uno solo.
+  type Lane = { staffId: string | null; ranges: Range[] | null };
+  let lanes: Lane[];
+  if (mode === "grid" && vendor.open_override !== true) {
+    const staffRows = await queryMany<{ id: string; availability: unknown }>(
+      `SELECT id::text AS id, availability FROM estetica_staff
+       WHERE vendor_id = $1 AND COALESCE(active, true) = true`,
+      [vendorId]
+    ).catch(() => []);
+    const overrides = await queryMany<{ staff_id: string; ranges: unknown }>(
+      `SELECT staff_id::text AS staff_id, ranges FROM staff_schedule_days
+       WHERE vendor_id = $1 AND day = $2::date`,
+      [vendorId, date]
+    ).catch(() => []);
+    const overrideMap = new Map<string, unknown>((overrides || []).map((o) => [String(o.staff_id), o.ranges]));
+    const list = staffId ? (staffRows || []).filter((s) => String(s.id) === staffId) : staffRows || [];
+    lanes = list.map((s) => {
+      const key = String(s.id);
+      return {
+        staffId: key,
+        ranges: staffRangesForDate({
+          mode,
+          hoursText: vendor.hours,
+          availability: s.availability,
+          overrideRanges: overrideMap.has(key) ? overrideMap.get(key) : undefined,
+          dateISO: date,
+        }),
+      };
+    });
+  } else {
+    const shifts = vendor.open_override === true ? ([[9 * 60, 20 * 60]] as Range[]) : shiftsFromHoursText(vendor.hours, date);
+    lanes = [{ staffId: staffId || null, ranges: shifts }];
+  }
+
+  // Filas/columnas estimadas si alguna fuente no se pudo parsear.
+  const estimated = lanes.length === 0 ? false : lanes.some((l) => l.ranges === null);
+  const effective = lanes.map((l) => ({
+    staffId: l.staffId,
+    ranges: l.ranges ?? ([[9 * 60, 20 * 60]] as Range[]),
+  }));
+  const closed = effective.length === 0 || effective.every((e) => e.ranges.length === 0);
 
   // Hoy: solo desde ahora + 30 min.
   let minStart = 0;
@@ -153,13 +169,30 @@ export const GET = withRateLimit(async (request: Request) => {
     }
   } catch { /* sin filtro */ }
 
-  const slots: { time: string; available: boolean }[] = [];
-  for (const [open, close] of ranges) {
-    for (let t = open; t + need <= close && slots.length < 48; t += STEP_MIN) {
-      if (t < minStart) continue;
-      const free = !busy.some(([bs, be]) => t < be && bs < t + need);
-      slots.push({ time: fmt(t), available: free });
+  const busyBlocks = (laneStaffId: string | null, start: number, end: number): boolean =>
+    busy.some((b) => {
+      const applies = !laneStaffId ? true : b.staff_id == null || b.staff_id === laneStaffId;
+      if (!applies) return false;
+      return start < b.end && b.start < end;
+    });
+
+  // Unión por horario: el hueco existe si algún carril lo ofrece y está libre.
+  const map = new Map<string, boolean>();
+  for (const lane of effective) {
+    for (const [open, close] of lane.ranges) {
+      for (let t = open; t + need <= close && map.size < 60; t += SLOT_STEP_MIN) {
+        if (t < minStart) continue;
+        const time = fmtMinutes(t);
+        const free = !busyBlocks(lane.staffId, t, t + need);
+        const prev = map.get(time);
+        map.set(time, prev === undefined ? free : prev || free);
+      }
     }
   }
-  return NextResponse.json({ slots, estimated, closed: ranges.length === 0 });
+  const slots = [...map.entries()]
+    .map(([time, available]) => ({ time, available }))
+    .sort((a, b) => a.time.localeCompare(b.time))
+    .slice(0, 48);
+
+  return NextResponse.json({ slots, estimated, closed });
 }, { maxRequests: 20 });

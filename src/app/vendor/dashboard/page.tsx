@@ -397,13 +397,28 @@ function VendorDashboardInner() {
   useEffect(() => {
     if (dashDraftReady.current || !vendor?.id) return;
     dashDraftReady.current = true;
+    // Deep-link ?tab= (push del recordatorio "Turnos de mañana"): gana sobre
+    // el borrador. "turnos" = la agenda del vertical de servicios/estética.
+    let deepTab: string | null = null;
+    try {
+      const raw = new URLSearchParams(window.location.search).get("tab");
+      if (raw) {
+        deepTab = raw === "turnos" ? "pos" : raw;
+        const url = new URL(window.location.href);
+        url.searchParams.delete("tab");
+        window.history.replaceState(window.history.state, "", url.toString());
+      }
+    } catch { /* noop */ }
     try {
       const d = loadDraft<{ tab?: string; orderSearch?: string; orderStatusFilter?: string; selectedOrderId?: string | null }>(vendor.id, "dashboard");
-      if (!d) return;
-      if (d.tab && (VALID_TABS as string[]).includes(d.tab)) setTab(d.tab as DashTab);
-      if (typeof d.orderSearch === "string") setOrderSearch(d.orderSearch);
-      if (typeof d.orderStatusFilter === "string") setOrderStatusFilter(d.orderStatusFilter);
-      if (d.selectedOrderId) pendingOrderId.current = d.selectedOrderId;
+      const isTabValid = (t?: string | null) => !!t && (VALID_TABS as string[]).includes(t);
+      const chosen = isTabValid(deepTab) ? deepTab : isTabValid(d?.tab) ? d!.tab : null;
+      if (chosen) setTab(chosen as DashTab);
+      if (d) {
+        if (typeof d.orderSearch === "string") setOrderSearch(d.orderSearch);
+        if (typeof d.orderStatusFilter === "string") setOrderStatusFilter(d.orderStatusFilter);
+        if (d.selectedOrderId) pendingOrderId.current = d.selectedOrderId;
+      }
     } catch { /* borrador corrupto: se ignora */ }
   }, [vendor?.id]);
   useEffect(() => {

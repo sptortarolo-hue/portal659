@@ -242,7 +242,7 @@ function ServicioHistorial({
   const doneBookings = (bookings || []).filter((b: any) => {
     if (b.status === "cancelled") return true;
     if (b.status !== "confirmed" || !b.booking_date) return false;
-    return b.booking_date < new Date().toISOString().slice(0, 10);
+    return String(b.booking_date).slice(0, 10) < new Date().toISOString().slice(0, 10);
   });
   if (doneQuotes.length === 0 && doneBookings.length === 0) {
     return (
@@ -579,7 +579,7 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
 
   const groupedBookings: Record<string, any[]> = {};
   for (const b of filteredBookings) {
-    const date = b.booking_date || "Sin fecha";
+    const date = String(b.booking_date || "").slice(0, 10) || "Sin fecha";
     if (!groupedBookings[date]) groupedBookings[date] = [];
     groupedBookings[date].push(b);
   }

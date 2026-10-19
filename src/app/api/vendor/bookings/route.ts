@@ -63,7 +63,17 @@ export async function GET(request: Request) {
       );
     }
   }
-  return NextResponse.json({ bookings: bookings || [] });
+  // Normaliza booking_date a "YYYY-MM-DD" (pg devuelve `date` como Date → el
+  // JSON lo serializa como ISO con hora y rompía agrupado/formato en el panel).
+  const normalized = (bookings || []).map((b: any) => ({
+    ...b,
+    booking_date: b?.booking_date
+      ? b.booking_date instanceof Date
+        ? b.booking_date.toISOString().slice(0, 10)
+        : String(b.booking_date).slice(0, 10)
+      : b?.booking_date,
+  }));
+  return NextResponse.json({ bookings: normalized });
 }
 
 /**

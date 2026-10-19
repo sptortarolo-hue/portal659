@@ -32,6 +32,15 @@ function todayAR(): string {
   }).format(new Date());
 }
 
+/** Normaliza un valor de fecha (string o Date de pg) a "YYYY-MM-DD". */
+function toISODate(v: unknown): string {
+  if (v == null) return "";
+  if (v instanceof Date) {
+    return `${v.getFullYear()}-${String(v.getMonth() + 1).padStart(2, "0")}-${String(v.getDate()).padStart(2, "0")}`;
+  }
+  return String(v).slice(0, 10);
+}
+
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -130,11 +139,11 @@ export async function PATCH(
     changedWhen: boolean;
   } | null = null;
   if (wantsEdit && cur) {
-    const name = body.customer_name !== undefined ? String(body.customer_name).trim() : String(cur.customer_name || "");
-    const phone = body.customer_phone !== undefined ? toE164(String(body.customer_phone)) : String(cur.customer_phone || "");
-    const date = body.booking_date !== undefined ? String(body.booking_date).trim() : String(cur.booking_date || "");
-    const time = (body.booking_time !== undefined ? String(body.booking_time).trim() : String(cur.booking_time || "")).slice(0, 5);
-    const notes = body.notes !== undefined ? String(body.notes).trim().slice(0, 2000) || null : (cur.notes ?? null);
+    const name = body.customer_name !== undefined ? String(body.customer_name ?? "").trim() : String(cur.customer_name || "");
+    const phone = body.customer_phone !== undefined ? toE164(String(body.customer_phone ?? "")) : String(cur.customer_phone || "");
+    const date = body.booking_date !== undefined ? String(body.booking_date ?? "").trim() : toISODate(cur.booking_date);
+    const time = (body.booking_time !== undefined ? String(body.booking_time ?? "").trim() : String(cur.booking_time || "")).slice(0, 5);
+    const notes = body.notes !== undefined ? String(body.notes ?? "").trim().slice(0, 2000) || null : (cur.notes ?? null);
     if (!name || !phone || !isISODate(date) || toMinutes(time) == null) {
       return NextResponse.json({ error: "Faltan cliente, teléfono o fecha/hora válida" }, { status: 400 });
     }
@@ -146,7 +155,7 @@ export async function PATCH(
     });
     const productName =
       body.product_name !== undefined
-        ? String(body.product_name).trim() || null
+        ? String(body.product_name ?? "").trim() || null
         : body.service_id !== undefined
           ? refs.serviceName
           : (cur.product_name ?? null);
@@ -167,9 +176,7 @@ export async function PATCH(
       snapshotCommission: refs.snapshotCommission,
       startsAt,
       endsAt,
-      changedWhen:
-        date !== String(cur.booking_date || "") ||
-        time !== String(cur.booking_time || "").slice(0, 5),
+      changedWhen: date !== toISODate(cur.booking_date) || time !== String(cur.booking_time || "").slice(0, 5),
     };
   }
   // Ausente solo si la fecha ya pasó (regla Fresha).

@@ -99,7 +99,7 @@ function AgendaDay({
   const [staffFilter, setStaffFilter] = useState<string>("all");
 
   const dayBookings = useMemo(() => {
-    const base = bookings.filter((b) => (b.booking_date || "") === dateISO && bookingStartMinutes(b) != null);
+    const base = bookings.filter((b) => String(b.booking_date || "").slice(0, 10) === dateISO && bookingStartMinutes(b) != null);
     return staffFilter === "all" ? base : base.filter((b) => (b.staff_id || "") === staffFilter);
   }, [bookings, dateISO, staffFilter]);
 

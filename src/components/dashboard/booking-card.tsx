@@ -86,6 +86,16 @@ export function BookingCard({
   mpBookingBusy,
   handleBookingMpDepositLink,
 }: BookingCardProps) {
+  // Defensa contra datos basura ("null"/"undefined" de ediciones viejas).
+  const nz = (v: unknown): string => {
+    const s = v == null ? "" : String(v);
+    return s === "null" || s === "undefined" ? "" : s;
+  };
+  const dateOnly = String(booking.booking_date || "").slice(0, 10);
+  const productLabel = nz(booking.product_label || booking.product_name);
+  const serviceStaffLabel = [nz(booking.service_label), nz(booking.staff_label)].filter(Boolean).join(" · ");
+  const notesText = nz(booking.notes);
+
   return (
     <Card className="p-3">
       <div className="flex items-start justify-between gap-2 mb-2">
@@ -95,8 +105,8 @@ export function BookingCard({
           </p>
           <p className="text-xs text-muted-foreground">
             {booking.booking_time || "Sin horario"}
-            {(booking.product_label || booking.product_name) && ` · ${booking.product_label || booking.product_name}`}
-            {(booking.service_label || booking.staff_label) && ` · ${[booking.service_label, booking.staff_label].filter(Boolean).join(" · ")}`}
+            {productLabel && ` · ${productLabel}`}
+            {serviceStaffLabel && ` · ${serviceStaffLabel}`}
             {booking.location_label && ` · 📍 ${booking.location_label}`}
             {(booking as any).deposit_status === "paid" ? " · seña pagada ✅" : ""}
           </p>
@@ -120,9 +130,9 @@ export function BookingCard({
           {BOOKING_STATUS_LABELS[booking.status] || booking.status}
         </Badge>
       </div>
-      {booking.notes && (
+      {notesText && (
         <p className="text-xs text-muted-foreground mb-2 italic">
-          &quot;{booking.notes}&quot;
+          &quot;{notesText}&quot;
         </p>
       )}
       {(() => {
@@ -205,7 +215,7 @@ export function BookingCard({
             >
               Cancelar
             </Button>
-            {booking.booking_date <= new Date().toISOString().slice(0, 10) && (
+            {dateOnly <= new Date().toISOString().slice(0, 10) && (
               <Button
                 size="sm"
                 variant="outline"

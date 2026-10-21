@@ -39,6 +39,9 @@ function isRetailVertical(vertical: string | null | undefined): boolean {
   return vertical === "moda" || vertical === "comercio";
 }
 
+/** Vidriera: pesos enteros sin decimales ($12.000, no $12.000,50). */
+const ars0 = (n: number | null | undefined) => `$${Math.round(Number(n) || 0).toLocaleString("es-AR")}`;
+
 type Props = {
   product: any;
   variants?: any[];
@@ -171,17 +174,17 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
   const modsSingle = modsRange && modsRange.max === modsRange.min ? modsRange.min : null;
 
   const priceLabel = hasVariants && summary
-    ? `$${summary.min.toLocaleString("es-AR")}`
+    ? ars0(summary.min)
     : modsSingle != null
-      ? `$${modsSingle.toLocaleString("es-AR")}`
-      : `$${(product.promo_price ?? product.price).toLocaleString("es-AR")}`;
+      ? ars0(modsSingle)
+      : ars0(product.promo_price ?? product.price);
 
   const regularLabel = hasVariants && summary
     ? summary.baseMin !== summary.min
-      ? `De $${summary.baseMin.toLocaleString("es-AR")}`
+      ? `De ${ars0(summary.baseMin)}`
       : null
     : product.promo_price
-      ? `De $${Number(product.price).toLocaleString("es-AR")}`
+      ? `De ${ars0(product.price)}`
       : null;
 
   // Al abrir un producto CON variantes/opciones: la foto ocupa casi todo el

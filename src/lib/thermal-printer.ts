@@ -40,8 +40,24 @@ export type PrintJobType =
   | "cash_close"
   | "cash_snapshot"
   | "presupuesto"
-  | "label";
+  | "label"
+  | "shipment_label";
 
+/** Oblea de envío extendido (Portal 659 Envíos) para impresión térmica. */
+export type ShipmentLabelData = {
+  code: string;
+  /** URL de tracking (se imprime como QR). */
+  trackUrl: string;
+  customer_name: string | null;
+  customer_phone: string | null;
+  customer_address: string | null;
+  zone_name: string | null;
+  store_name: string | null;
+  /** Copias: 1 = solo paquete, 2 = paquete + copia logística. */
+  copies?: number;
+}
+
+/** Datos del presupuesto de oficio para impresión térmica. */
 /** Datos del presupuesto de oficio para impresión térmica. */
 export type QuotePrintData = {
   customer_name: string;
@@ -1975,6 +1991,98 @@ export async function buildPresupuestoBuffer(
   }
 }
 
+/**
+ * Oblea de envío extendido (Portal 659 Envíos) en térmica (contingencia de la
+ * oblea A4): código grande + QR al tracking + destino + zona. Copia logística
+ * opcional (copies=2, separada por corte).
+ */
+async function composeShipmentLabel(
+  printer: any,
+  label: ShipmentLabelData
+): Promise<void> {
+  const copies = Math.min(5, Math.max(1, Math.floor(Number(label.copies) || 1)));
+
+  for (let c = 0; c < copies; c++) {
+    if (c > 0) {
+      printer.cut();
+      printer.newLine();
+    }
+
+    printer.alignCenter();
+    printer.bold(true);
+    printlnWrapped(printer, "PORTAL 659 ENVÍOS", 48);
+    printer.bold(false);
+
+    printer.setTextSize(2, 2);
+    printer.bold(true);
+    printer.println(String(label.code || "").toUpperCase().slice(0, 24));
+    printer.setTextSize(0, 0);
+    printer.bold(false);
+
+    printer.println("Zona: " + (label.zone_name || "Zona extendida"));
+    printlnWrapped(printer, "Para: " + (label.customer_name || "Consumidor final") + (label.customer_phone ? " · " + label.customer_phone : ""), 48);
+    if (label.customer_address) {
+      printlnWrapped(printer, "Dirección: " + label.customer_address, 48);
+    }
+    if (label.store_name) {
+      printlnWrapped(printer, "Retira: " + label.store_name, 48);
+    }
+
+    printer.newLine();
+    const qr = await renderQrImage(label.trackUrl, 320);
+    if (qr) {
+      await printer.printImageBuffer(qr);
+      printer.newLine();
+    }
+    printlnWrapped(printer, "Seguimiento: " + label.trackUrl, 48);
+    if (c === 1) {
+      printer.alignCenter();
+      printer.bold(true);
+      printer.println("--- COPIA LOGISTICA ---");
+      printer.bold(false);
+    }
+  }
+  printer.cut();
+}
+
+function printlnWrapped(printer: any, text: string, width: number): void {
+  const t = String(text || "");
+  for (let i = 0; i < t.length; i += width) {
+    printer.println(t.slice(i, i + width));
+  }
+}
+
+export async function printShipmentLabel(
+  vendor: PrinterVendor,
+  label: ShipmentLabelData
+): Promise<{ success: boolean; error?: string }> {
+  const res = await createPrinter(vendor);
+  if (!res.ok) return { success: false, error: res.error };
+  if (!vendor.printer_ip) return { success: false, error: "IP de impresora no configurada" };
+  try {
+    await composeShipmentLabel(res.printer, label);
+    await res.printer.execute();
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: errorMsg(e) };
+  }
+}
+
+export async function buildShipmentLabelBuffer(
+  vendor: PrinterVendor,
+  label: ShipmentLabelData
+): Promise<BufferResult> {
+  const res = await createPrinter(vendor);
+  if (!res.ok) return { success: false, error: res.error };
+  try {
+    await composeShipmentLabel(res.printer, label);
+    const buffer = (await res.printer.getBuffer()) as Buffer;
+    return { success: true, buffer };
+  } catch (e) {
+    return { success: false, error: errorMsg(e) };
+  }
+}
+
 export async function printCashClose(
   vendor: PrinterVendor,
   closing: CashClosingPrintData
@@ -2130,6 +2238,8 @@ export async function dispatchPrint(params: {
     quote?: QuotePrintData;
     /** Etiqueta de góndola (nombre + precio + CODE128). */
     label?: LabelPrintData;
+    /** Oblea de envío extendido (Portal 659 Envíos): código + QR + destino. */
+    shipmentLabel?: ShipmentLabelData;
     /** Factura electrónica ARCA (bloque fiscal con CAE + QR en ticket). */
     fiscal?: FiscalPrintInfo | null;
   };
@@ -2218,8 +2328,24 @@ export async function dispatchPrint(params: {
     return { ok: r.success, mode, error: r.error };
   }
 
+  // Oblea de envío extendido: no es un pedido; imprime el Código + QR + destino.
+  if (params.type === "shipment_label") {
+    const label = params.extra?.shipmentLabel;
+    if (!label || !label.code || !label.trackUrl) return { ok: false, mode, error: "Oblea sin código ni tracking" };
+    if (mode === "app" || mode === "usb") {
+      const built = await buildShipmentLabelBuffer(vendor, label);
+      if (!built.success) return { ok: false, mode, error: built.error };
+      const pushed = await pushToBridge(vendor.print_token, bridgeJob("shipment_label", built.buffer, vendor));
+      return { ok: pushed.ok, mode, offline: pushed.offline, error: pushed.error, printerIpUsed: pushed.printerIpUsed ?? null, autoFixed: pushed.autoFixed === true };
+    }
+    if (!vendor.printer_ip) return { ok: true, mode, skipped: true };
+    const r = await printShipmentLabel(vendor, label);
+    return { ok: r.success, mode, error: r.error };
+  }
+
   // Presupuesto de oficio: no es un pedido; imprime el cotizado guardado.
-  if (params.type === "presupuesto") {    const quote = params.extra?.quote;
+  if (params.type === "presupuesto") {
+    const quote = params.extra?.quote;
     if (!quote) return { ok: false, mode, error: "Presupuesto requerido" };
     if (mode === "app" || mode === "usb") {
       const built = await buildPresupuestoBuffer(vendor, quote);

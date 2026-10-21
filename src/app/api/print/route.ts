@@ -2,8 +2,10 @@ import { query, queryOne, queryMany } from "@/lib/db";
 import { getVendorByRequest } from "@/lib/vendor-utils";
 import { NextResponse } from "next/server";
 import { dispatchPrint, type CashClosingPrintData, type CashSnapshotData, type FiscalPrintInfo, type PrinterVendor } from "@/lib/thermal-printer";
+import { getSiteUrl } from "@/lib/site-url";
 import { computeCashClosing, computeShiftSummary, getOpenShift, lastClosingSince } from "@/lib/cash-closing";
 import { resolveVendorPlan } from "@/lib/plans";
+import { formatShipmentCode } from "@/lib/shipping";
 import type { Order, Plan, Vendor } from "@/types/database";
 
 export async function POST(request: Request) {
@@ -33,7 +35,9 @@ export async function POST(request: Request) {
 
   const plans = await queryMany<Plan>(`SELECT * FROM plans`);
   const plan = resolveVendorPlan(vendor, plans || []);
-  if (!plan.can("printer")) {
+  // La oblea de envío extendido es operación del Portal (logística partner): no
+  // se gatea por plan — acompañar el envío es obligación del plataforma.
+  if (!plan.can("printer") && type !== "shipment_label") {
     return NextResponse.json(
       { ok: false, error: "Impresión exclusiva del plan Gestión integral", code: "plan_limit" },
       { status: 403 }
@@ -326,6 +330,56 @@ export async function POST(request: Request) {
       total: toPrint.length,
       sinCodigo,
       ...(lastResult.ok ? {} : { error: lastResult.error || "No se pudo imprimir" }),
+    });
+  }
+
+  // Oblea de envío extendido (Portal 659 Envíos): imprime el encargo guardado.
+  // Tolera migración sin aplicar con 503 explícito (nunca error silencioso).
+  if (type === "shipment_label") {
+    const shipmentId = typeof body.shipmentId === "string" && body.shipmentId ? body.shipmentId : null;
+    if (!shipmentId) {
+      return NextResponse.json({ ok: false, error: "shipmentId requerido" }, { status: 400 });
+    }
+    let row: Record<string, unknown> | undefined = undefined;
+    try {
+      row = await queryOne<Record<string, unknown>>(
+        `SELECT s.code, s.shipping_zone_name, o.customer_name, o.customer_phone, o.customer_address
+         FROM shipments s
+         JOIN orders o ON o.id = s.order_id
+         WHERE s.id = $1 AND s.vendor_id = $2
+         LIMIT 1`,
+        [shipmentId, vendor.id]
+      );
+    } catch {
+      return NextResponse.json(
+        { ok: false, error: "Falta aplicar la migración de envíos (migrate-portal-shipments.sql)" },
+        { status: 503 }
+      );
+    }
+    if (!row) {
+      return NextResponse.json({ ok: false, error: "Envío no encontrado" }, { status: 404 });
+    }
+    const code = formatShipmentCode(String(row.code));
+    const result = await dispatchPrint({
+      vendor,
+      type: "shipment_label",
+      extra: {
+        shipmentLabel: {
+          code,
+          trackUrl: `${getSiteUrl(request)}/envio/${encodeURIComponent(code)}`,
+          customer_name: row.customer_name != null ? String(row.customer_name) : null,
+          customer_phone: row.customer_phone != null ? String(row.customer_phone) : null,
+          customer_address: row.customer_address != null ? String(row.customer_address) : null,
+          zone_name: row.shipping_zone_name != null ? String(row.shipping_zone_name) : null,
+          store_name: vendor.store_name || null,
+          copies: Math.min(5, Math.max(1, Math.floor(Number(body.copies) || 1))),
+        },
+      },
+    });
+    await recordLastPrint(vendor.id, result);
+    return printResponse({
+      ...result,
+      ipFixed: await applyIpFix(vendor.id, vendor.printer_ip, result),
     });
   }
 

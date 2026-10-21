@@ -20,6 +20,7 @@ import {
   TransferConfig,
   DeliveryFeeConfig,
   DeliveryScheduleConfig,
+  PortalShipConfig,
 } from "@/components/dashboard/shared";
 import { MpConnectCard } from "@/components/dashboard/mp-connect-card";
 import { PrinterConfigSection } from "@/components/dashboard/printer-config-section";
@@ -579,6 +580,9 @@ export default function DashboardComercio({
               onChange={setDeliveryOptions}
             />
           </div>
+          {deliveryOptions !== "retiro" && (
+            <PortalShipConfig vendor={vendor} saveVendor={saveVendor} />
+          )}
           {deliveryOptions !== "retiro" && (
             <DeliveryFeeConfig vendor={vendor} saveVendor={saveVendor} />
           )}

@@ -591,14 +591,35 @@ export async function POST(request: Request) {
         }));
         // Zona de envío (metadata del checkout): se valida contra el comercio.
         // Zona inexistente/inactiva → fuera de zona (entra a convenir).
+        // Zona extendida del catálogo (Portal 659 Envíos) → shipping_zone_id.
         let mpZoneId: string | null = null;
         let mpZoneName: string | null = null;
         let mpOutOfArea = false;
+        let mpShipId: string | null = null;
+        let mpShipName: string | null = null;
         if (!isPickup) {
           try {
             const { fetchVendorDelivery } = await import("@/lib/delivery-server");
             const dcfg = await fetchVendorDelivery(vendorId);
             const rawZone = typeof metadata.delivery_zone_id === "string" ? metadata.delivery_zone_id : "";
+            const rawShip = typeof metadata.shipping_zone_id === "string" ? metadata.shipping_zone_id : "";
+            const resolveShipZone = async (): Promise<boolean> => {
+              // true = zona extendida válida asignada.
+              if (!rawShip) return false;
+              try {
+                const { fetchVendorShipZones } = await import("@/lib/shipping-server");
+                const ext = await fetchVendorShipZones(vendorId);
+                const ez = ext.find((zz) => zz.id === rawShip);
+                if (ez) {
+                  mpShipId = ez.id;
+                  mpShipName = ez.name;
+                  return true;
+                }
+              } catch {
+                /* sin migración: ignora */
+              }
+              return false;
+            };
             if (metadata.delivery_out_of_area === "1" || metadata.delivery_out_of_area === 1) {
               mpOutOfArea = true;
             } else if (dcfg.mode === "zones" && rawZone) {
@@ -606,9 +627,12 @@ export async function POST(request: Request) {
               if (z) {
                 mpZoneId = z.id;
                 mpZoneName = z.name;
-              } else {
+              } else if (!(await resolveShipZone())) {
                 mpOutOfArea = true;
               }
+            } else if (!(await resolveShipZone())) {
+              // Sin zona regular válida ni extendida válida: se guarda sin
+              // zona (o fuera de zona si el flujo web así lo pedía).
             }
           } catch {
             /* sin config: se guarda sin zona */
@@ -681,10 +705,23 @@ export async function POST(request: Request) {
         } catch {
           mpZoneCols = false;
         }
+        // Columnas de zona extendida (tolerante a migración sin aplicar).
+        let mpShipCols = false;
+        try {
+          const sc = await queryOne<{ exists: boolean }>(
+            `SELECT EXISTS (
+               SELECT 1 FROM information_schema.columns
+               WHERE table_name = 'orders' AND column_name = 'shipping_zone_id'
+             ) AS exists`
+          );
+          mpShipCols = sc?.exists === true;
+        } catch {
+          mpShipCols = false;
+        }
         let order: any = null;
         let mpIssued: { id: string; code: string; amount: number }[] = [];
         await withTransaction(async (tx) => {
-          const cols = `vendor_id, customer_name, customer_phone, customer_address, method, items, total, status, pickup_number, payment_method, payment_status, track_token, mp_payment_id${mpZoneCols ? ", delivery_zone_id, delivery_zone_name, delivery_out_of_area, delivery_fee" : ""}${mpWindowCol ? ", delivery_window" : ""}`;
+          const cols = `vendor_id, customer_name, customer_phone, customer_address, method, items, total, status, pickup_number, payment_method, payment_status, track_token, mp_payment_id${mpZoneCols ? ", delivery_zone_id, delivery_zone_name, delivery_out_of_area, delivery_fee" : ""}${mpShipCols ? ", shipping_zone_id, shipping_zone_name" : ""}${mpWindowCol ? ", delivery_window" : ""}`;
           const vals: unknown[] = [
             vendorId,
             customerName,
@@ -700,6 +737,7 @@ export async function POST(request: Request) {
             trackToken,
             String(payment.id ?? ""),
             ...(mpZoneCols ? [mpZoneId, mpZoneName, mpOutOfArea, mpFee] : []),
+            ...(mpShipCols ? [mpShipId, mpShipName] : []),
             ...(mpWindowCol ? [mpWindow] : []),
           ];
           const placeholders = vals.map((_, i) => `$${i + 1}`).join(", ");

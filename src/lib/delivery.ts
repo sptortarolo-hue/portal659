@@ -34,7 +34,14 @@ export type DeliverySelection =
    * provisorio es el base; en mostrador el comerciante (autoridad)
    * puede fijar un monto manual.
    */
-  | { kind: "out_of_area"; manualFee?: number | null };
+  | { kind: "out_of_area"; manualFee?: number | null }
+  /**
+   * Zona extendida del catálogo del portal (Portal 659 Envíos): fuera del
+   * radio barrial, la entrega la hace una logística partner. Precio plano
+   * del catálogo; NUNCA recibe envío gratis por monto (el costo real va
+   * a la logística).
+   */
+  | { kind: "extends_zone"; zoneId: string };
 
 export type ResolvedDelivery = {
   /** Fee a cobrar (0 si gratis/retiro). */
@@ -63,6 +70,8 @@ export function resolveDeliveryFee(opts: {
   freeMin?: number | null;
   /** Zonas activas del comercio (modo zones). */
   zones?: DeliveryZoneInfo[];
+  /** Zonas extendidas del catálogo del portal (Portal 659 Envíos). */
+  extendedZones?: DeliveryZoneInfo[];
   selection: DeliverySelection;
   /** Subtotal neto (post-volumen, pre-cash): es lo que cuenta para gratis-desde. */
   netSubtotal?: number | null;
@@ -80,6 +89,28 @@ export function resolveDeliveryFee(opts: {
 
   if (sel.kind === "pickup") {
     return { fee: 0, zoneId: null, zoneName: null, outOfArea: false, freeShipping: false };
+  }
+
+  // Zona extendida (Portal 659 Envíos): precio plano del catálogo. Nunca
+  // aplica gratis-desde. Zona inactiva/inexistente → cae fuera de zona.
+  if (sel.kind === "extends_zone") {
+    const z = (opts.extendedZones || []).find((zz) => String(zz.id) === String(sel.zoneId));
+    if (!z) {
+      return {
+        fee: base,
+        zoneId: null,
+        zoneName: null,
+        outOfArea: true,
+        freeShipping: false,
+      };
+    }
+    return {
+      fee: Math.round(num(z.fee) * 100) / 100,
+      zoneId: String(z.id),
+      zoneName: z.name,
+      outOfArea: false,
+      freeShipping: false,
+    };
   }
 
   // Fuera del área: entra a convenir. Nunca aplica gratis-desde (el costo

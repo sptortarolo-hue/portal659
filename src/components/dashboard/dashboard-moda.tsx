@@ -15,7 +15,7 @@ import { GiftcardManageButton } from "@/components/dashboard/giftcard-manage-but
 import { QuantityInput } from "@/components/ui/quantity-input";
 import { ChipToggle } from "@/components/ui/chip-toggle";
 import { RadioCards } from "@/components/ui/radio-cards";
-import { LivePreview, CategoryManager, apiJson, TransferConfig, DeliveryFeeConfig, DeliveryScheduleConfig } from "@/components/dashboard/shared";
+import { LivePreview, CategoryManager, apiJson, TransferConfig, DeliveryFeeConfig, DeliveryScheduleConfig, PortalShipConfig } from "@/components/dashboard/shared";
 import { MpConnectCard } from "@/components/dashboard/mp-connect-card";
 import { HoursEditor } from "@/components/dashboard/hours-editor";
 import { GalleryManager } from "@/components/dashboard/gallery-manager";
@@ -635,6 +635,9 @@ export default function DashboardModa({
             mpConnectedAt={vendor?.mp_connected_at ?? null}
           />
           <div><Label className="mb-2 block">Entrega</Label><RadioCards options={DELIVERY_OPTIONS} value={deliveryOptions} onChange={setDeliveryOptions} /></div>
+          {deliveryOptions !== "retiro" && (
+            <PortalShipConfig vendor={vendor} saveVendor={saveVendor} />
+          )}
           {deliveryOptions !== "retiro" && (
             <DeliveryFeeConfig vendor={vendor} saveVendor={saveVendor} />
           )}

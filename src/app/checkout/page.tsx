@@ -28,6 +28,8 @@ export default function CheckoutPage() {
   const [references, setReferences] = useState("");
   const [inArea, setInArea] = useState(true);
   const [zoneId, setZoneId] = useState("");
+  // Zona extendida del catálogo del portal (Portal 659 Envíos): "none" = no.
+  const [shipZoneId, setShipZoneId] = useState("none");
   const [notes, setNotes] = useState("");
   const [method, setMethod] = useState<"delivery" | "pickup">("delivery");
   const [paymentMethod, setPaymentMethod] = useState<"whatsapp" | "efectivo" | "transferencia">("whatsapp");
@@ -120,6 +122,11 @@ const [doneIsGift, setDoneIsGift] = useState(false);
   // Envío por zona (espejo visual; el servidor recalcula y manda).
   const vendorZones = Array.isArray(vendor?.deliveryZones) ? vendor.deliveryZones : [];
   const zonesMode = normalizeDeliveryMode(vendor?.deliveryMode) === "zones" && vendorZones.length > 0;
+  // Zonas extendidas del catálogo del portal (Portal 659 Envíos).
+  const vendorShipZones = Array.isArray((vendor as any)?.shipZones) ? (vendor as any).shipZones : [];
+  const shipActive =
+    method === "delivery" && shipZoneId !== "none" && shipZoneId !== "" &&
+    vendorShipZones.some((z: any) => String(z.id) === String(shipZoneId));
   // Sin área cargada, la pregunta dentro/fuera no tiene referencia: no se
   // muestra y se asume dentro (tarifa única automática, cero fricción).
   const hasArea = !!vendor?.deliveryAreaText?.trim();
@@ -129,18 +136,21 @@ const [doneIsGift, setDoneIsGift] = useState(false);
   const deliverySel =
     method !== "delivery"
       ? ({ kind: "pickup" } as const)
-      : zonesMode
-        ? activeZoneId
-          ? ({ kind: "zone", zoneId: activeZoneId } as const)
-          : ({ kind: "out_of_area" } as const)
-        : inAreaEffective
-          ? ({ kind: "in_area" } as const)
-          : ({ kind: "out_of_area" } as const);
+      : shipActive
+        ? ({ kind: "extends_zone", zoneId: String(shipZoneId) } as const)
+        : zonesMode
+          ? activeZoneId
+            ? ({ kind: "zone", zoneId: activeZoneId } as const)
+            : ({ kind: "out_of_area" } as const)
+          : inAreaEffective
+            ? ({ kind: "in_area" } as const)
+            : ({ kind: "out_of_area" } as const);
   const resolvedDelivery = resolveDeliveryFee({
     mode: normalizeDeliveryMode(vendor?.deliveryMode),
     baseFee: vendor?.deliveryFee,
     freeMin: vendor?.freeDeliveryMin,
     zones: vendorZones,
+    extendedZones: vendorShipZones.map((z: any) => ({ id: String(z.id), name: String(z.name ?? ""), fee: Number(z.price) || 0 })),
     selection: deliverySel,
     netSubtotal,
   });
@@ -148,6 +158,7 @@ const [doneIsGift, setDoneIsGift] = useState(false);
   const deliveryOutOfArea = method === "delivery" && resolvedDelivery.outOfArea;
   const deliveryFreeShip = method === "delivery" && resolvedDelivery.freeShipping;
   const deliveryZoneName = resolvedDelivery.zoneName;
+  const shipZoneInfo = shipActive ? vendorShipZones.find((z: any) => String(z.id) === String(shipZoneId)) : null;
   const grandTotal = total + deliveryFee;
   // Turno de entrega retail (solo moda/comercio a domicilio): el cliente
   // elige entre los próximos 3; default el primero (el server lo valida y,
@@ -576,8 +587,9 @@ const [doneIsGift, setDoneIsGift] = useState(false);
         customerPhone: cleanPhone,
         customerAddress: method === "delivery" ? fullAddress || null : null,
         method,
-        deliveryZoneId: method === "delivery" && zonesMode && !deliveryOutOfArea ? activeZoneId || null : null,
-        deliveryOutOfArea: method === "delivery" && deliveryOutOfArea,
+        deliveryZoneId: method === "delivery" && zonesMode && !deliveryOutOfArea && !shipActive ? activeZoneId || null : null,
+        deliveryOutOfArea: method === "delivery" && deliveryOutOfArea && !shipActive,
+        shippingZoneId: method === "delivery" && shipActive ? shipZoneId : null,
         deliveryWindow: method === "delivery" && showSlots && activeSlotId ? activeSlotId : null,
       }),
     });
@@ -659,6 +671,11 @@ const [doneIsGift, setDoneIsGift] = useState(false);
     const previewSnap = isPreview;
     const giftOnlySnap = isGiftOnly;
     const phoneSnap = toE164(phone);
+    // Zona extendida elegida (Portal 659 Envíos): capturar antes de clear().
+    const shipZoneSnap = shipZoneId;
+    const shipActiveSnap =
+      methodSnap === "delivery" && shipZoneId !== "none" && shipZoneId !== "" &&
+      vendorShipZones.some((z: any) => String(z.id) === String(shipZoneId));
 
     if (!phoneSnap) {
       setError("Ingresá tu celular con código de área (ej: 11 5555 1234)");
@@ -695,8 +712,9 @@ const [doneIsGift, setDoneIsGift] = useState(false);
           customerId: userId || null,
           isPreview: previewSnap,
           previewToken: previewCtx?.token ?? null,
-          deliveryZoneId: methodSnap === "delivery" && zonesMode && !deliveryOutOfArea ? activeZoneId || null : null,
-          deliveryOutOfArea: methodSnap === "delivery" && deliveryOutOfArea,
+          deliveryZoneId: methodSnap === "delivery" && zonesMode && !deliveryOutOfArea && !shipActiveSnap ? activeZoneId || null : null,
+          deliveryOutOfArea: methodSnap === "delivery" && deliveryOutOfArea && !shipActiveSnap,
+          shippingZoneId: methodSnap === "delivery" && shipActiveSnap ? shipZoneSnap : null,
           deliveryWindow: methodSnap === "delivery" && showSlots && activeSlotId ? activeSlotId : null,
           giftcardCode: giftcardBalanceSnap != null ? giftcardSnap.trim() : undefined,
           cashAmount: cashAskVisible && cashAmountNum > 0 ? cashAmountNum : null,
@@ -1048,6 +1066,32 @@ const [doneIsGift, setDoneIsGift] = useState(false);
                 </div>
               </div>
             ) : null}
+            {vendorShipZones.length > 0 && (
+              <div>
+                <Label htmlFor="shipzone">🚚 ¿Vivís fuera del barrio?</Label>
+                <select
+                  id="shipzone"
+                  value={shipZoneId}
+                  onChange={(e) => setShipZoneId(e.target.value)}
+                  className="mt-1 w-full h-10 px-3 text-sm rounded-xl border border-input bg-background"
+                >
+                  <option value="none">No — quiero reparto del local</option>
+                  {vendorShipZones.map((z: any) => (
+                    <option key={String(z.id)} value={String(z.id)}>
+                      {z.name} — ${Number(z.price).toLocaleString("es-AR")}
+                      {Number(z.etaDays) > 0 ? ` · llega en ${z.etaDays} ${Number(z.etaDays) === 1 ? "día" : "días"}` : ""}
+                      {z.description ? ` (${z.description}` : ""}
+                    </option>
+                  ))}
+                </select>
+                {shipZoneInfo && (
+                  <p className="text-[11px] text-muted-foreground mt-1">
+                    📦 Enviado {shipZoneInfo.carrierName ? `por ${shipZoneInfo.carrierName} ` : "por la logística del portal "}
+                    con seguimiento: seguís tu paquete desde el link del pedido.
+                  </p>
+                )}
+              </div>
+            )}
             <div>
               <Label htmlFor="address">Dirección</Label>
               <Input

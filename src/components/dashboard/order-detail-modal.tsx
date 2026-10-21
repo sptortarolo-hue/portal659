@@ -22,6 +22,7 @@ import { isGiftProductRow, fmtVence } from "@/lib/gift-card-share";
 import { GiftcardSendModal, type SendModalCard } from "@/components/dashboard/giftcard-send-modal";
 import { formatDeliveryWindow } from "@/lib/delivery-schedule";
 import { CourierAssignBox } from "@/components/dashboard/courier-assign-box";
+import { ShipmentBox } from "@/components/dashboard/shipment-box";
 import { FiscalBillButton } from "@/components/dashboard/fiscal-bill-button";
 import { orderLineTotal, derivedUnitPrice } from "@/lib/order-line";
 import type { Order, OrderStatus, OrderItem, Product as DBProduct } from "@/types/database";
@@ -588,6 +589,7 @@ export default function OrderDetailModal({ order, vendorName, vendorLogoUrl, onC
               </p>
             )}
             {order.method === "delivery" && <CourierAssignBox order={order} vendorName={vendorName} onAssigned={onAssigned} />}
+            <ShipmentBox order={order} onChanged={onAssigned} />
           </div>
 
           {/* Apartado / seña */}

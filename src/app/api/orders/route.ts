@@ -27,6 +27,7 @@ export const POST = withRateLimit(async (request: Request) => {
     notes,
     deliveryZoneId,
     deliveryOutOfArea,
+    shippingZoneId,
     deliveryWindow,
     isPreview,
     previewToken,
@@ -49,6 +50,7 @@ export const POST = withRateLimit(async (request: Request) => {
       source: "web",
       deliveryZoneId: typeof deliveryZoneId === "string" ? deliveryZoneId : null,
       deliveryOutOfArea: deliveryOutOfArea === true,
+      shippingZoneId: typeof shippingZoneId === "string" ? shippingZoneId : null,
       deliveryWindow: typeof deliveryWindow === "string" ? deliveryWindow : null,
       isPreview: isPreview === true,
       previewToken: typeof previewToken === "string" ? previewToken : null,
@@ -68,6 +70,7 @@ export const POST = withRateLimit(async (request: Request) => {
       deliveryFee: result.deliveryFee,
       deliveryZoneName: result.deliveryZoneName,
       deliveryOutOfArea: result.deliveryOutOfArea,
+      shippingZoneName: result.shippingZoneName,
       deliveryWindow: result.deliveryWindow,
       giftcard_discount: result.giftcard_discount || 0,
     });

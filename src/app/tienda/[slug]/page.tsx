@@ -467,6 +467,32 @@ export default async function TiendaPage({
     }
   }
 
+  // Zonas extendidas del catálogo del portal (Portal 659 Envíos). Tolerante
+  // a migración sin aplicar: sin ellas, el checkout no las muestra.
+  let shipZones: { id: string; name: string; description: string | null; price: number; etaDays: number; carrierName: string | null }[] = [];
+  try {
+    const srows = await queryMany<any>(
+      `SELECT sz.id, sz.name, sz.description, sz.eta_days, c.name AS carrier_name,
+              COALESCE(vsz.fee_override, sz.price) AS price
+       FROM vendor_ship_zones vsz
+       JOIN shipping_zones sz ON sz.id = vsz.shipping_zone_id
+       LEFT JOIN carriers c ON c.id = sz.carrier_id
+       WHERE vsz.vendor_id = $1 AND vsz.active = true AND sz.active = true
+       ORDER BY sz.position ASC, sz.created_at ASC`,
+      [v.id]
+    );
+    shipZones = (srows || []).map((z: any) => ({
+      id: String(z.id),
+      name: String(z.name ?? ""),
+      description: z.description != null ? String(z.description) : null,
+      price: Number(z.price) || 0,
+      etaDays: Number(z.eta_days) || 0,
+      carrierName: z.carrier_name != null ? String(z.carrier_name) : null,
+    }));
+  } catch {
+    shipZones = [];
+  }
+
   const isService = v.vertical === "servicio" || v.vertical === "estetica";
   const isEstetica = v.vertical === "estetica";
   // Catálogo de servicios + profesionales (estética): turnera por servicio
@@ -616,6 +642,7 @@ export default async function TiendaPage({
     deliveryMode: ((v as any).delivery_mode === "zones" ? "zones" : "flat") as "flat" | "zones",
     deliveryAreaText: (v as any).delivery_area_text != null ? String((v as any).delivery_area_text) : null,
     deliveryZones,
+    shipZones,
     cashDiscountPct:
       String(v.payment_methods || "")
         .split(",")

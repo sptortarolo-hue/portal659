@@ -1499,3 +1499,169 @@ export function DeliveryScheduleConfig({
     </div>
   );
 }
+
+/**
+ * Portal 659 Envíos: opt-in del comercio a zonas extendidas del catálogo del
+ * portal (fuera del radio barrial, la entrega la hace una logística partner).
+ * Precio plano por zona (con override opcional nunca por debajo del catálogo).
+ */
+type CatalogShipZone = {
+  id: string;
+  name: string;
+  description: string | null;
+  price: number;
+  etaDays: number;
+  carrierName: string | null;
+  vendorActive: boolean;
+  feeOverride: number | null;
+};
+
+export function PortalShipConfig({}: {
+  vendor: any;
+  saveVendor: (data: Record<string, unknown>) => Promise<void>;
+}) {
+  const [catZones, setCatZones] = useState<CatalogShipZone[]>([]);
+  const [ready, setReady] = useState<boolean | null>(null);
+  const [msg, setMsg] = useState("");
+
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch("/api/vendor/ship-zones");
+      if (res.status === 404 || res.status === 401) {
+        setReady(null);
+        return;
+      }
+      if (res.status === 503) {
+        setReady(false);
+        return;
+      }
+      const data = await res.json().catch(() => ({}));
+      setCatZones(Array.isArray(data?.zones) ? data.zones : []);
+      setReady(true);
+    } catch {
+      setReady(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  async function toggleZone(z: CatalogShipZone, active: boolean) {
+    setMsg("");
+    try {
+      const res = await fetch("/api/vendor/ship-zones", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ zoneId: z.id, active }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) setMsg(j?.error || "No se pudo actualizar");
+      else await load();
+    } catch {
+      setMsg("Error de red");
+    }
+  }
+
+  async function saveOverride(z: CatalogShipZone, raw: string) {
+    const feeOverride = raw === "" ? null : Number(raw);
+    setMsg("");
+    try {
+      const res = await fetch("/api/vendor/ship-zones", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          zoneId: z.id,
+          active: z.vendorActive,
+          feeOverride,
+        }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setMsg(j?.error || "No se pudo actualizar");
+        return;
+      }
+      if (
+        feeOverride != null &&
+        Number.isFinite(feeOverride) &&
+        feeOverride < Number(z.price)
+      ) {
+        setMsg(`El precio no puede ser menor al costo del portal ($${Number(z.price).toLocaleString("es-AR")})`);
+      }
+      await load();
+    } catch {
+      setMsg("Error de red");
+    }
+  }
+
+  const activeCount = catZones.filter((z) => z.vendorActive).length;
+
+  return (
+    <div className="rounded-xl border border-border p-3 space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <p className="text-sm font-semibold">🚚 Envíos lejanos (Portal 659)</p>
+          <p className="text-xs text-muted-foreground">
+            Sumá zonas fuera de tu radio: la logística partner de Portal 659 retira en tu local y entrega con seguimiento. El comprador la elige en tu tienda.
+          </p>
+        </div>
+        {ready && (
+          <span className="text-[11px] font-medium text-muted-foreground whitespace-nowrap">
+            {activeCount}/{catZones.length || 0}
+          </span>
+        )}
+      </div>
+      {ready === false ? (
+        <p className="text-xs text-amber-700">
+          ⚠️ Falta aplicar la migración de envíos en la base (avisale al admin).
+        </p>
+      ) : ready === true && catZones.length === 0 ? (
+        <p className="text-xs text-muted-foreground">
+          Aún no hay zonas cargadas por el equipo de Portal 659.
+        </p>
+      ) : (
+        <div className="space-y-1.5">
+          {catZones.map((z) => (
+            <div key={z.id} className="flex items-center gap-2 rounded-lg border border-border bg-background px-2 py-1.5">
+              <Switch
+                checked={z.vendorActive}
+                onCheckedChange={(v) => toggleZone(z, v)}
+              />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-semibold truncate">{z.name}</p>
+                <p className="text-[11px] text-muted-foreground truncate">
+                  ${Number(z.feeOverride ?? z.price).toLocaleString("es-AR")}
+                  {z.etaDays > 0 ? ` · llega en ${z.etaDays} ${z.etaDays === 1 ? "día" : "días"}` : ""}
+                  {z.carrierName ? ` · entrega ${z.carrierName}` : ""}
+                  {z.description ? ` · ${z.description}` : ""}
+                </p>
+              </div>
+              <div className="flex items-center gap-1 text-xs font-bold tabular-nums">
+                $<input
+                  className="h-7 w-16 rounded-md border border-input bg-transparent px-1 text-right text-xs"
+                  type="number"
+                  inputMode="decimal"
+                  min={Number(z.price)}
+                  placeholder={String(z.price)}
+                  defaultValue={z.feeOverride != null ? String(z.feeOverride) : ""}
+                  key={`${z.id}-${z.feeOverride}`}
+                  onBlur={(e) => {
+                    const raw = e.target.value.trim();
+                    const asNum = raw === "" ? null : Number(raw);
+                    if (asNum !== z.feeOverride) {
+                      saveOverride(z, raw);
+                    }
+                  }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {msg && <p className="text-xs text-amber-700">{msg}</p>}
+      <p className="text-[11px] text-muted-foreground">
+        El mínimo es el precio del catálogo (cubre la logística). Podés cobrar más si querés ganar por envío.
+      </p>
+    </div>
+  );
+}

@@ -113,10 +113,12 @@ export async function resolveOrderPricing(opts: {
   /** Modo de envío del comercio ('flat' default). Zonas activas (modo zones). */
   deliveryMode?: DeliveryMode | string | null;
   deliveryZones?: DeliveryZoneInfo[] | null;
+  /** Zonas extendidas del catálogo del portal (Portal 659 Envíos). */
+  extendedZones?: DeliveryZoneInfo[] | null;
   /**
    * Selección de zona. Default: pickup → retiro; delivery → dentro del
    * área (flat) o provisorio base (zones sin zona elegida). El canal web
-   * manda in_area | zone | out_of_area (sin monto manual).
+   * manda in_area | zone | out_of_area | extends_zone (sin monto manual).
    */
   deliverySelection?: DeliverySelection | null;
   /** Solo rutas vendor (mostrador): permite monto manual fuera de zona. */
@@ -666,6 +668,7 @@ export async function resolveOrderPricing(opts: {
     baseFee: opts.deliveryFee,
     freeMin: opts.freeDeliveryMin,
     zones: opts.deliveryZones || [],
+    extendedZones: opts.extendedZones || [],
     selection,
     netSubtotal,
     allowManual: opts.deliveryAllowManual === true,

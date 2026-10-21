@@ -9,6 +9,7 @@ import { isStoreOpen } from "@/lib/open-hours";
 import { PricingError, resolveOrderPricing, IncomingOrderItem } from "@/lib/pricing";
 import { nextOrderNumber } from "@/lib/order-number";
 import { fetchVendorDelivery } from "@/lib/delivery-server";
+import { fetchVendorShipZones } from "@/lib/shipping-server";
 import type { DeliverySelection } from "@/lib/delivery";
 import { toE164 } from "@/lib/phone";
 import { upsertCustomerFromOrder } from "@/lib/customers";
@@ -44,6 +45,8 @@ export type CreateOrderInput = {
   deliveryZoneId?: string | null;
   /** true = fuera del área habitual: entra a convenir (canal web). */
   deliveryOutOfArea?: boolean | null;
+  /** Zona extendida del catálogo del portal elegida (Portal 659 Envíos). */
+  shippingZoneId?: string | null;
   /** Turno de entrega elegido (id de slot "YYYY-MM-DD|HH:MM-HH:MM", retail). */
   deliveryWindow?: string | null;
   /** Pedido de prueba (preview): no cuenta en topes ni descuenta stock/CRM. */
@@ -71,6 +74,8 @@ export type CreateOrderResult = {
   deliveryFee: number;
   deliveryZoneName: string | null;
   deliveryOutOfArea: boolean;
+  /** Zona extendida del catálogo (nombre para el resumen/ticket). */
+  shippingZoneName: string | null;
   /** Turno de entrega prometido (id de slot, retail delivery). */
   deliveryWindow: string | null;
   /** Canje de giftcard aplicado (0 = sin canje). */
@@ -142,6 +147,7 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
     source,
     deliveryZoneId,
     deliveryOutOfArea,
+    shippingZoneId,
     deliveryWindow,
     giftcardCode,
     previewToken,
@@ -293,6 +299,7 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
   let resolvedDeliveryFee = 0;
   let resolvedZoneName: string | null = null;
   let resolvedOutOfArea = false;
+  let resolvedShipName: string | null = null;
 
   // Token público del link de seguimiento (/seguimiento/[token]). Se genera
   // acá y viaja en el mensaje de WhatsApp del pedido.
@@ -301,13 +308,24 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
   // Config de envío por zona (tolerante a migración sin aplicar: default flat).
   const deliveryCfg = await fetchVendorDelivery(vendorId);
   const isPickupOrder = method === "pickup";
+  // Zonas extendidas del catálogo (migración portal-shipments: sin aplicar → []).
+  const extZones = await fetchVendorShipZones(vendorId);
+  const extZoneSelected =
+    !isPickupOrder &&
+    typeof shippingZoneId === "string" &&
+    shippingZoneId !== "" &&
+    extZones.some((z) => String(z.id) === String(shippingZoneId))
+      ? String(shippingZoneId)
+      : null;
   const deliverySelection: DeliverySelection = isPickupOrder
     ? { kind: "pickup" }
-    : deliveryOutOfArea === true
-      ? { kind: "out_of_area" }
-      : deliveryCfg.mode === "zones" && deliveryZoneId
-        ? { kind: "zone", zoneId: String(deliveryZoneId) }
-        : { kind: "in_area" };
+    : extZoneSelected
+      ? { kind: "extends_zone", zoneId: extZoneSelected }
+      : deliveryOutOfArea === true
+        ? { kind: "out_of_area" }
+        : deliveryCfg.mode === "zones" && deliveryZoneId
+          ? { kind: "zone", zoneId: String(deliveryZoneId) }
+          : { kind: "in_area" };
 
   // Turno de entrega (retail delivery): el cliente elige entre los próximos
   // slots; si manda uno inválido/vacío (o viene de un canal sin UI, ej. bot),
@@ -366,6 +384,16 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
      ) AS exists`
   );
   const hasZoneCols = zoneCol?.exists === true;
+
+  // Tolerante a migración portal-shipments sin aplicar: sin columnas, el
+  // pedido se guarda igual (sin zona extendida; el flujo sigue como hoy).
+  const shipCol = await queryOne<{ exists: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1 FROM information_schema.columns
+       WHERE table_name = 'orders' AND column_name = 'shipping_zone_id'
+     ) AS exists`
+  ).catch(() => null);
+  const hasShipCols = shipCol?.exists === true;
 
   // Tolerante a migración de franjas sin aplicar: si la columna no existe,
   // el pedido se guarda igual (sin turno prometido).
@@ -451,6 +479,9 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
         freeDeliveryMin: (vendorRow as any)?.free_delivery_min ?? deliveryCfg.freeMin,
         deliveryMode: deliveryCfg.mode,
         deliveryZones: deliveryCfg.zones,
+        // Zonas extendidas del catálogo: la selección kind "extends_zone" se
+        // resuelve contra estas (fee = precio del catálogo, sin gratis-desde).
+        extendedZones: extZones.map((z) => ({ id: z.id, name: z.name, fee: z.price, description: null })),
         deliverySelection,
         // Descuento en efectivo: corre con la misma fórmula que el checkout
         // muestra en pantalla (antes no se aplicaba server-side: el cliente
@@ -468,6 +499,9 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
       resolvedDeliveryFee = pricing.deliveryFee;
       resolvedZoneName = pricing.deliveryZoneName;
       resolvedOutOfArea = pricing.deliveryOutOfArea;
+      resolvedShipName = extZoneSelected
+        ? extZones.find((z) => z.id === extZoneSelected)?.name ?? null
+        : null;
 
       // Canje de giftcard (efectivo/transferencia): sobre el total recién
       // calculado, dentro de la misma tx (si falla se hace rollback de todo).
@@ -511,6 +545,10 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
       const zoneParams: unknown[] = hasZoneCols
         ? [pricing.deliveryZoneId, pricing.deliveryZoneName, pricing.deliveryOutOfArea, pricing.deliveryFee]
         : [];
+      // Zonas extendidas del catálogo (migración portal-shipments).
+      const shipCols = hasShipCols ? ", shipping_zone_id, shipping_zone_name" : "";
+      const shipVals = hasShipCols ? `, $${nextParam++}, $${nextParam++}` : "";
+      const shipParams: unknown[] = hasShipCols ? [extZoneSelected, resolvedShipName] : [];
       // Turno de entrega prometido (migración de franjas).
       const windowCols = hasWindowCol ? ", delivery_window" : "";
       const windowVals = hasWindowCol ? `, $${nextParam++}` : "";
@@ -532,8 +570,8 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
       const cashAmountVals = hasCashAmountCol ? `, $${nextParam++}` : "";
       const cashAmountParams: unknown[] = hasCashAmountCol ? [cashAmountFinal] : [];
       const rows = await tx.query<{ id: string }>(
-        `INSERT INTO orders (vendor_id, customer_id, customer_name, customer_phone, customer_address, method, payment_method, items, total, status, notes, device_id, payment_status, pickup_number, cash_pct, cash_discount, track_token${volumeCols}${zoneCols}${windowCols}${previewCols}${giftcardCols}${deadlineCols}${cashAmountCols})
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'new', $10, $11, $12, $13, $14, $15, $16${volumeVals}${zoneVals}${windowVals}${previewVals}${giftcardVals}${deadlineVals}${cashAmountVals})
+        `INSERT INTO orders (vendor_id, customer_id, customer_name, customer_phone, customer_address, method, payment_method, items, total, status, notes, device_id, payment_status, pickup_number, cash_pct, cash_discount, track_token${volumeCols}${zoneCols}${shipCols}${windowCols}${previewCols}${giftcardCols}${deadlineCols}${cashAmountCols})
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'new', $10, $11, $12, $13, $14, $15, $16${volumeVals}${zoneVals}${shipVals}${windowVals}${previewVals}${giftcardVals}${deadlineVals}${cashAmountVals})
          RETURNING id`,
         [
           vendorId,
@@ -554,6 +592,7 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
           trackToken,
           ...volumeParams,
           ...zoneParams,
+          ...shipParams,
           ...windowParams,
           ...previewParams,
           ...giftcardParams,
@@ -678,5 +717,5 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
     }
   }
 
-  return { orderId, total: resolvedTotal, items: resolvedItems, pickupNumber, cashDiscount: resolvedCashDiscount, cashPct: resolvedCashPct, volumeDiscount: resolvedVolumeDiscount, volumeApplied: resolvedVolumeApplied, trackToken, deliveryFee: resolvedDeliveryFee, deliveryZoneName: resolvedZoneName, deliveryOutOfArea: resolvedOutOfArea, deliveryWindow: resolvedWindow, giftcard_discount: giftcardApplied };
+  return { orderId, total: resolvedTotal, items: resolvedItems, pickupNumber, cashDiscount: resolvedCashDiscount, cashPct: resolvedCashPct, volumeDiscount: resolvedVolumeDiscount, volumeApplied: resolvedVolumeApplied, trackToken, deliveryFee: resolvedDeliveryFee, deliveryZoneName: resolvedZoneName, deliveryOutOfArea: resolvedOutOfArea, shippingZoneName: resolvedShipName, deliveryWindow: resolvedWindow, giftcard_discount: giftcardApplied };
 }

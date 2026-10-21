@@ -653,7 +653,7 @@ export type Order = {
   track_token?: string | null;
   /** Vence la transferencia (M4.2): null = sin vencimiento configurado. */
   transfer_deadline_at?: string | null;
-  /** Motivo electivo de la cancelación (migrated cancel-reason). */
+  /** Motivo electivo de la cancelación (migración cancel-reason). */
   cancel_reason?: string | null;
   /** Quién canceló (comercio / Sistema — M4.2). */
   cancelled_by?: string | null;
@@ -711,6 +711,12 @@ export type Order = {
   closed_at?: string | null;
   /** Progreso de cocina por ítem (array paralelo a `items`). true = tildado. */
   kitchen_done?: boolean[] | null;
+  /** Zona extendida del catálogo del portal elegida (Portal 659 Envíos). */
+  shipping_zone_id?: string | null;
+  /** Nombre denormalizado de la zona extendida (historial). */
+  shipping_zone_name?: string | null;
+  /** Envío activo del pedido (via join, si lo consultan con shipment). */
+  shipment?: Shipment | null;
 };
 
 export type DeliveryZone = {
@@ -721,6 +727,71 @@ export type DeliveryZone = {
   fee: number;
   position: number;
   active: boolean;
+  created_at: string;
+};
+
+/** Logística partner (Portal 659 Envíos). Alta/moderación en /admin/logisticas. */
+export type Carrier = {
+  id: string;
+  name: string;
+  phone?: string | null;
+  email?: string | null;
+  notes?: string | null;
+  active: boolean;
+  created_at: string;
+};
+
+/** Zona extendida del catálogo del portal (precio plano, sin geocoding). */
+export type ShippingZone = {
+  id: string;
+  name: string;
+  description: string | null;
+  price: number;
+  eta_days: number;
+  carrier_id?: string | null;
+  active: boolean;
+  position: number;
+  created_at: string;
+};
+
+/** Opt-in del comercio a una zona extendida (migración portal-shipments). */
+export type VendorShipZone = {
+  id: string;
+  vendor_id: string;
+  shipping_zone_id: string;
+  fee_override?: number | null;
+  active: boolean;
+  created_at: string;
+};
+
+/** Encargo de envío a logística partner (1 por pedido delivery zonificado). */
+export type Shipment = {
+  id: string;
+  order_id: string;
+  vendor_id: string;
+  carrier_id?: string | null;
+  shipping_zone_id?: string | null;
+  shipping_zone_name?: string | null;
+  /** Código público de la oblea/QR: ENV-XXXXXX. */
+  code: string;
+  status: "requested" | "picked_up" | "in_transit" | "delivered" | "failed_attempt" | "returned" | "cancelled";
+  note?: string | null;
+  failed_reason?: string | null;
+  pod_photo_url?: string | null;
+  requested_at: string;
+  picked_up_at?: string | null;
+  delivered_at?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+/** Evento del tracking (pública vía /envio/[code] — sin datos del comprador). */
+export type ShipmentEvent = {
+  id: string;
+  shipment_id: string;
+  status: string;
+  note?: string | null;
+  photo_url?: string | null;
   created_at: string;
 };
 

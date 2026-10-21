@@ -20,6 +20,9 @@ type DeliveryOrder = {
   payment_method?: string | null;
   /** "¿Con cuánto abonás?" (efectivo): el repartidor necesita saber el vuelto. */
   cash_amount?: number | null;
+  /** Zona extendida (Portal 659 Envíos): lo lleva la logística partner, nunca
+      el repartidor propio — el tablero lo filtra. */
+  shipping_zone_id?: string | null;
 };
 
 /**
@@ -188,7 +191,9 @@ export function DeliveryBoard({ vendorId, userId }: { vendorId: string; userId: 
       if (data.orders) {
         setOrders(
           (data.orders as DeliveryOrder[])
-            .filter((o) => o.method === "delivery" && (o.status === "ready" || o.status === "sent"))
+            // Zona extendida (Portal 659 Envíos): la lleva la logística partner,
+            // no el repartidor propio — fuera del pool de claim.
+            .filter((o) => o.method === "delivery" && !o.shipping_zone_id && (o.status === "ready" || o.status === "sent"))
             .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
         );
       }

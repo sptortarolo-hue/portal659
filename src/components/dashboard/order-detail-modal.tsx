@@ -588,7 +588,12 @@ export default function OrderDetailModal({ order, vendorName, vendorLogoUrl, onC
                 📦 Turno de entrega: {formatDeliveryWindow((order as any).delivery_window)}
               </p>
             )}
-            {order.method === "delivery" && <CourierAssignBox order={order} vendorName={vendorName} onAssigned={onAssigned} />}
+            {/* Zona extendida = entrega por logística partner: canales
+                excluyentes. Sin box de repartidor propio; ShipmentBox (abajo)
+                muestra el bloque violeta de Portal 659 Envíos. */}
+            {order.method === "delivery" && !(order as any).shipping_zone_id && (
+              <CourierAssignBox order={order} vendorName={vendorName} onAssigned={onAssigned} />
+            )}
             <ShipmentBox order={order} onChanged={onAssigned} />
           </div>
 

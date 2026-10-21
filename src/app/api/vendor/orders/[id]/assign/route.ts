@@ -27,11 +27,19 @@ export async function POST(
     return NextResponse.json({ error: "Solo el comercio puede asignar repartidores" }, { status: 403 });
   }
 
-  const order = await queryOne<{ id: string; assigned_to: string | null; status: string; pickup_number: number | null }>(
-    `SELECT id, assigned_to, status, pickup_number FROM orders WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
+  const order = await queryOne<{ id: string; assigned_to: string | null; status: string; pickup_number: number | null; shipping_zone_id: string | null }>(
+    `SELECT id, assigned_to, status, pickup_number, shipping_zone_id FROM orders WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
     [params.id, vendor.id]
   );
   if (!order) return NextResponse.json({ error: "Pedido no encontrado" }, { status: 404 });
+  // Zona extendida (Portal 659 Envíos): la entrega la lleva la logística
+  // partner — el repartidor propio ni la reclama ni el dueño la asigna.
+  if (order.shipping_zone_id && action !== "release") {
+    return NextResponse.json(
+      { error: "Este envío lo lleva la logística partner (Portal 659 Envíos)" },
+      { status: 409 }
+    );
+  }
 
   if (action === "claim") {
     if (!["ready", "sent"].includes(order.status)) {

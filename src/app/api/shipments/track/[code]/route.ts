@@ -7,8 +7,11 @@ export const dynamic = "force-dynamic";
 
 /**
  * Tracking público del envío por código de oblea (ENV-XXXXXX).
- * Solo timeline + comercio destino: nunca datos del comprador (privacidad:
- * el código viaja impreso en el paquete, cualquiera que lo vea escanea).
+ * Timeline + comercio destino. Datos del destinatario (nombre/dirección/
+ * teléfono) solo con el paquete en reparto: quien los ve ya tiene el paquete
+ * físico en la mano (la oblea lleva la misma info impresa) y esos son los
+ * datos que la hoja del repartidor usa para entregar. Nunca el DNI del
+ * certificado ni datos fuera de esos estados.
  */
 export const GET = withRateLimit(
   async (_request: Request, context: { params: Promise<{ code: string }> }) => {
@@ -24,9 +27,11 @@ export const GET = withRateLimit(
       shipment = await queryOne<Record<string, unknown>>(
         `SELECT s.code, s.status, s.shipping_zone_name, s.requested_at, s.picked_up_at,
                 s.delivered_at, s.created_at,
+                o.customer_name, o.customer_phone, o.customer_address,
                 v.store_name, v.slug, v.location AS store_address
          FROM shipments s
          JOIN vendors v ON v.id = s.vendor_id
+         JOIN orders o ON o.id = s.order_id
          WHERE UPPER(s.code) = $1
          ORDER BY s.created_at DESC
          LIMIT 1`,
@@ -60,13 +65,18 @@ export const GET = withRateLimit(
       createdAt: e.created_at,
     }));
 
+    const statusKey = String(shipment.status);
+    // Datos para la hoja del repartidor: solo con el paquete en reparto.
+    const courierActionable =
+      statusKey === "picked_up" || statusKey === "in_transit" || statusKey === "failed_attempt";
+
     return NextResponse.json({
       shipment: {
         code: formatShipmentCode(String(shipment.code)),
-        status: String(shipment.status),
+        status: statusKey,
         statusLabel:
-          SHIPMENT_STATUS_LABELS[String(shipment.status) as keyof typeof SHIPMENT_STATUS_LABELS] ||
-          String(shipment.status),
+          SHIPMENT_STATUS_LABELS[statusKey as keyof typeof SHIPMENT_STATUS_LABELS] ||
+          statusKey,
         zoneName: shipment.shipping_zone_name != null ? String(shipment.shipping_zone_name) : null,
         requestedAt: shipment.requested_at,
         pickedUpAt: shipment.picked_up_at,
@@ -75,6 +85,9 @@ export const GET = withRateLimit(
         storeName: shipment.store_name != null ? String(shipment.store_name) : null,
         storeSlug: shipment.slug != null ? String(shipment.slug) : null,
         storeAddress: shipment.store_address != null ? String(shipment.store_address) : null,
+        customerName: courierActionable && shipment.customer_name != null ? String(shipment.customer_name) : null,
+        customerPhone: courierActionable && shipment.customer_phone != null ? String(shipment.customer_phone) : null,
+        customerAddress: courierActionable && shipment.customer_address != null ? String(shipment.customer_address) : null,
       },
       timeline,
     });

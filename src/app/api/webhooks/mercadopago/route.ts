@@ -644,8 +644,19 @@ export async function POST(request: Request) {
         const mpFee = !isPickup ? Math.max(0, Math.round(((Number(payment.transaction_amount) || 0) - mpItemsSum) * 100) / 100) : 0;
         // Turno de entrega retail (metadata del checkout): se valida contra
         // los próximos slots; si viene vacío/trucho se auto-asigna el próximo.
+        // Zona extendida (Portal 659 Envíos): el horario lo maneja la
+        // logística (eta del carrier) — no se promete el turno del local.
         let mpWindow: string | null = null;
-        if (!isPickup) {
+        let mpExtZone = false;
+        try {
+          const { fetchVendorShipZones } = await import("@/lib/shipping-server");
+          const ezones = await fetchVendorShipZones(vendorId);
+          const rawShip = typeof metadata.shipping_zone_id === "string" ? metadata.shipping_zone_id : "";
+          mpExtZone = !isPickup && rawShip !== "" && ezones.some((z) => String(z.id) === rawShip);
+        } catch {
+          mpExtZone = false;
+        }
+        if (!isPickup && !mpExtZone) {
           try {
             const { nextDeliverySlots, isValidDeliveryWindow } = await import(
               "@/lib/delivery-schedule"

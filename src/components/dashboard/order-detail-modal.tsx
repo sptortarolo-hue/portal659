@@ -324,6 +324,11 @@ export default function OrderDetailModal({ order, vendorName, vendorLogoUrl, onC
   // Pedido solo-tarjetas: de aceptado va directo a listo (nada que empaquetar).
   const giftOnly = order.is_gift_only === true;
   const nextStatus = nextStatusFor(order.status as OrderStatus, order.method, isRetail, order.channel, orderNeedsKitchen(order), giftOnly);
+  // Envío por logística partner: los pasos "enviado/entregado" los maneja el
+  // operador desde su panel; acá solo se coachearon Aceptar/Empaquetar/Listo.
+  const hasCarrierShipment = !!(order as any).shipment;
+  const logisticsOwnsNext =
+    hasCarrierShipment && (nextStatus === "sent" || nextStatus === "completed");
 
   const customerPhone = order.customer_phone?.replace(/\D/g, "");
   // Mostrador y mesa son ventas presenciales: sin WhatsApp del cliente.
@@ -1134,6 +1139,11 @@ export default function OrderDetailModal({ order, vendorName, vendorLogoUrl, onC
                       </svg>
                       {getActionButtonLabel(nextStatus, order, isRetail)} — esperando pago
                     </button>
+                  </div>
+                ) : logisticsOwnsNext ? (
+                  // La logística maneja enviado/entregado: sin botones propios.
+                  <div className="w-full h-10 rounded-xl font-bold text-sm border border-border text-muted-foreground bg-muted/50 flex items-center justify-center gap-2">
+                    🚚 {order.status === "ready" ? "Esperando colecta" : "En manos de la logística"}
                   </div>
                 ) : nextStatus === "sent" && order.method === "delivery" ? (
                   // Delivery: dos acciones (marcar enviado o marcar + imprimir comprobante del repartidor).

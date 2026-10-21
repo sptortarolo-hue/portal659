@@ -28,6 +28,11 @@ type ShipmentRow = {
   podPhotoUrl?: string | null;
   failedReason?: string | null;
   waUrl?: string | null;
+  deliveredToName?: string | null;
+  deliveredDni?: string | null;
+  deliveredLat?: number | null;
+  deliveredLng?: number | null;
+  deliveredGeoOk?: boolean;
 };
 
 export function ShipmentBox({
@@ -53,6 +58,11 @@ export function ShipmentBox({
       podPhotoUrl: s.podPhotoUrl ?? s.pod_photo_url ?? null,
       failedReason: s.failedReason ?? s.failed_reason ?? null,
       waUrl: s.waUrl ?? s.wa_url ?? null,
+      deliveredToName: s.deliveredToName ?? s.delivered_to_name ?? null,
+      deliveredDni: s.deliveredDni ?? s.delivered_dni ?? null,
+      deliveredLat: s.deliveredLat ?? s.delivered_lat ?? null,
+      deliveredLng: s.deliveredLng ?? s.delivered_lng ?? null,
+      deliveredGeoOk: s.deliveredGeoOk === true,
     };
   });
   const [busy, setBusy] = useState(false);
@@ -78,6 +88,11 @@ export function ShipmentBox({
           podPhotoUrl: found.podPhotoUrl ?? null,
           failedReason: found.failedReason ?? null,
           waUrl: found.waUrl ?? null,
+          deliveredToName: found.deliveredToName ?? null,
+          deliveredDni: found.deliveredDni ?? null,
+          deliveredLat: found.deliveredLat ?? null,
+          deliveredLng: found.deliveredLng ?? null,
+          deliveredGeoOk: found.deliveredGeoOk === true,
         });
       } else if (list.length > 0) {
         setShipment(null);
@@ -154,6 +169,13 @@ export function ShipmentBox({
           </p>
           {shipment.failedReason && (
             <p className="text-[11px] font-semibold text-red-700">❌ {shipment.failedReason}</p>
+          )}
+          {shipment.status === "delivered" && shipment.deliveredDni && (
+            <p className="text-[11px] text-emerald-800">
+              📝 Entregado a: <b>{shipment.deliveredToName || "—"}</b> · DNI {shipment.deliveredDni}
+              {shipment.deliveredLat != null && shipment.deliveredLng != null ? " · 📍 con GPS" : " · sin GPS"}
+              {shipment.podPhotoUrl ? " · 📷 POD" : ""}
+            </p>
           )}
           <div className="flex flex-wrap gap-2 pt-0.5">
             {isReady ? (

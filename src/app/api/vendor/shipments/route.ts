@@ -21,6 +21,8 @@ export async function GET(request: Request) {
     const rows = await queryMany<Record<string, unknown>>(
       `SELECT s.id, s.order_id, s.code, s.status, s.note, s.failed_reason, s.pod_photo_url,
               s.shipping_zone_name, s.requested_at, s.picked_up_at, s.delivered_at, s.created_at,
+              s.dest_lat, s.dest_lng,
+              s.delivered_to_name, s.delivered_dni, s.delivered_lat, s.delivered_lng, s.delivered_geo_ok,
               o.pickup_number AS order_number, o.total, o.customer_name, o.customer_phone,
               o.customer_address, o.method, o.status AS order_status, o.delivery_window,
               v.store_name, v.location AS store_address,
@@ -58,10 +60,18 @@ export async function GET(request: Request) {
         note: r.note != null ? String(r.note) : null,
         failedReason: r.failed_reason != null ? String(r.failed_reason) : null,
         podPhotoUrl: r.pod_photo_url != null ? String(r.pod_photo_url) : null,
+        destLat: r.dest_lat != null ? Number(r.dest_lat) : null,
+        destLng: r.dest_lng != null ? Number(r.dest_lng) : null,
         shippingZoneName: r.shipping_zone_name != null ? String(r.shipping_zone_name) : null,
         requestedAt: r.requested_at,
         deliveredAt: r.delivered_at,
         createdAt: r.created_at,
+        // Certificado de entrega (quién + DNI + GPS al entregar).
+        deliveredToName: r.delivered_to_name != null ? String(r.delivered_to_name) : null,
+        deliveredDni: r.delivered_dni != null ? String(r.delivered_dni) : null,
+        deliveredLat: r.delivered_lat != null ? Number(r.delivered_lat) : null,
+        deliveredLng: r.delivered_lng != null ? Number(r.delivered_lng) : null,
+        deliveredGeoOk: r.delivered_geo_ok === true,
         waUrl:
           r.carrier_phone != null ? buildCarrierWaUrl(String(r.carrier_phone), waText) : null,
         order: {

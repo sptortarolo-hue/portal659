@@ -343,7 +343,9 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
   {
     const vertical = String((vendorRow as any)?.vertical || "");
     const isRetail = vertical === "moda" || vertical === "comercio";
-    if (vendorRow && isRetail && !isPickupOrder && !deliveryCfg.deliveryCoordinar) {
+    // Con zona extendida (Portal 659 Envíos) el horario lo maneja la
+    // logística (eta del carrier): no se promete el turno del local.
+    if (vendorRow && isRetail && !isPickupOrder && !extZoneSelected && !deliveryCfg.deliveryCoordinar) {
       try {
         const { nextDeliverySlots, isValidDeliveryWindow } = await import(
           "@/lib/delivery-schedule"

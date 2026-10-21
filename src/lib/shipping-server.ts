@@ -148,7 +148,8 @@ export async function attachShipments(
       (await queryMany<Record<string, unknown>>(
         `SELECT DISTINCT ON (order_id)
                 s.order_id, s.id, s.code, s.status, s.note, s.failed_reason, s.pod_photo_url,
-                s.shipping_zone_name
+                s.shipping_zone_name, s.dest_lat, s.dest_lng,
+                s.delivered_to_name, s.delivered_dni, s.delivered_lat, s.delivered_lng, s.delivered_geo_ok
          FROM shipments s
          WHERE s.vendor_id = $1 AND s.order_id = ANY($2::uuid[])
          ORDER BY s.order_id, s.created_at DESC`,
@@ -171,6 +172,12 @@ export async function attachShipments(
       shippingZoneName: r.shipping_zone_name != null ? String(r.shipping_zone_name) : null,
       podPhotoUrl: r.pod_photo_url != null ? String(r.pod_photo_url) : null,
       failedReason: r.failed_reason != null ? String(r.failed_reason) : null,
+      // Certificado de entrega (visible cuando delivered).
+      deliveredToName: r.delivered_to_name != null ? String(r.delivered_to_name) : null,
+      deliveredDni: r.delivered_dni != null ? String(r.delivered_dni) : null,
+      deliveredLat: r.delivered_lat != null ? Number(r.delivered_lat) : null,
+      deliveredLng: r.delivered_lng != null ? Number(r.delivered_lng) : null,
+      deliveredGeoOk: r.delivered_geo_ok === true,
     };
   }
 }

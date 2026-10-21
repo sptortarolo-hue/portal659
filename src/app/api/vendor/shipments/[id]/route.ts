@@ -25,6 +25,7 @@ export async function GET(
     shipment = await queryOne<Record<string, unknown>>(
       `SELECT s.id, s.order_id, s.code, s.status, s.note, s.failed_reason, s.pod_photo_url,
               s.shipping_zone_name, s.requested_at, s.picked_up_at, s.delivered_at, s.created_at,
+              s.delivered_to_name, s.delivered_dni, s.delivered_lat, s.delivered_lng, s.delivered_geo_ok,
               o.pickup_number AS order_number, o.total, o.customer_name, o.customer_phone,
               o.customer_address, o.items, o.status AS order_status
        FROM shipments s

@@ -1648,13 +1648,16 @@ function VendorDashboardInner() {
               </button>
 
               {/* Switcher de tiendas (multi-comercio): en impersonación admin
-                  lista los comercios del dueño impersonado (cookie admin-as). */}
+                  lista los comercios del dueño impersonado (cookie admin-as).
+                  Mobile: vive en la fila 2 (acá ocupa y pateaba "Compartir"). */}
               {!previewSession && (
-                <StoreSwitcher
-                  stores={ownerStores}
-                  activeId={vendor?.id ?? null}
-                  impersonating={!!impersonatingId}
-                />
+                <span className="hidden sm:inline-flex">
+                  <StoreSwitcher
+                    stores={ownerStores}
+                    activeId={vendor?.id ?? null}
+                    impersonating={!!impersonatingId}
+                  />
+                </span>
               )}
 
               {/* Título de sección + contexto */}
@@ -1714,6 +1717,13 @@ function VendorDashboardInner() {
 
             {/* Fila 2: controles operativos — solo mobile (empleado: solo caja) */}
             <div className="flex sm:hidden items-center gap-2 overflow-x-auto pt-2">
+              {!previewSession && (
+                <StoreSwitcher
+                  stores={ownerStores}
+                  activeId={vendor?.id ?? null}
+                  impersonating={!!impersonatingId}
+                />
+              )}
               {!isEmployee && (
                 <>
               <OpenToggle vendor={vendor} onSaved={(v) => setVendor(v)} />

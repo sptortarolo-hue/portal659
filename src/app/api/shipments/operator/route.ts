@@ -54,9 +54,9 @@ export async function GET(request: Request) {
   const rows = await queryMany<Record<string, unknown>>(
     `SELECT s.id, s.order_id, s.code, s.status, s.note, s.failed_reason, s.pod_photo_url,
             s.shipping_zone_name, s.requested_at, s.picked_up_at, s.delivered_at, s.created_at,
-            o.order_number, o.total, o.customer_name, o.customer_phone, o.customer_address,
+            o.total, o.customer_name, o.customer_phone, o.customer_address,
             o.items, o.status AS order_status,
-            v.store_name, v.slug AS store_slug, v.address AS store_address
+            v.store_name, v.slug AS store_slug, v.location AS store_address
      FROM shipments s
      JOIN orders o ON o.id = s.order_id
      JOIN vendors v ON v.id = s.vendor_id
@@ -157,16 +157,15 @@ export async function POST(request: Request) {
 
   try {
     await withTransaction(async (tx) => {
+      // SQL única (los $5/$6 con CASE aplican timestamps solo cuando toca —
+      // antes el ternario armaba una SQL corta pero mandaba 6 params → bind
+      // 500 en in_transit/failed_attempt).
       await tx.queryVoid(
-        status === "picked_up" || status === "delivered" || current.carrier_id === null
-          ? `UPDATE shipments SET status = $2, carrier_id = COALESCE(carrier_id, $3),
-                failed_reason = $4,
-                picked_up_at = CASE WHEN $5 THEN now() ELSE picked_up_at END,
-                delivered_at = CASE WHEN $6 THEN now() ELSE delivered_at END
-              WHERE id = $1`
-          : `UPDATE shipments SET status = $2, carrier_id = COALESCE(carrier_id, $3),
-                failed_reason = $4
-              WHERE id = $1`,
+        `UPDATE shipments SET status = $2, carrier_id = COALESCE(carrier_id, $3),
+              failed_reason = $4,
+              picked_up_at = CASE WHEN $5 THEN now() ELSE picked_up_at END,
+              delivered_at = CASE WHEN $6 THEN now() ELSE delivered_at END
+            WHERE id = $1`,
         [
           shipmentId,
           status,
@@ -198,8 +197,9 @@ export async function POST(request: Request) {
   }
 
   // Estado del pedido sincronizado (tolerante, ver helper). Devuelve el
-  // resultado para que el operador sepa si hubo mapeo.
-  const sync = await syncOrderForShipmentStatus(shipmentId, status);
+  // resultado para que el operador sepa si hubo mapeo. OJO: el helper pide
+  // el ORDER id (antes pasábamos el shipment id y el sync nunca aplicaba).
+  const sync = await syncOrderForShipmentStatus(current.order_id, status);
 
   // Push + email al comercio del estado (idempotente por shipment/evento).
   try {

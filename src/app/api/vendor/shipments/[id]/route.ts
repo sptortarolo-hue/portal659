@@ -1,6 +1,7 @@
 import { getVendorByRequest } from "@/lib/vendor-utils";
 import { queryMany, queryOne } from "@/lib/db";
 import { NextResponse } from "next/server";
+import { formatShipmentCode } from "@/lib/shipping";
 
 export const dynamic = "force-dynamic";
 
@@ -24,7 +25,7 @@ export async function GET(
     shipment = await queryOne<Record<string, unknown>>(
       `SELECT s.id, s.order_id, s.code, s.status, s.note, s.failed_reason, s.pod_photo_url,
               s.shipping_zone_name, s.requested_at, s.picked_up_at, s.delivered_at, s.created_at,
-              o.order_number, o.total, o.customer_name, o.customer_phone,
+              o.pickup_number AS order_number, o.total, o.customer_name, o.customer_phone,
               o.customer_address, o.items, o.status AS order_status
        FROM shipments s
        JOIN orders o ON o.id = s.order_id
@@ -48,6 +49,8 @@ export async function GET(
   }
 
   if (!shipment) return NextResponse.json({ error: "Envío no encontrado" }, { status: 404 });
+  // Código con formato de oblea (ENV-XXXXXX) para mostrar y armar el link/QR.
+  shipment.code = formatShipmentCode(String(shipment.code));
   return NextResponse.json({ shipment, events: events || [] });
 }
 

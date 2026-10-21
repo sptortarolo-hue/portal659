@@ -137,9 +137,9 @@ export async function fetchShipmentWithOrder(opts: {
     return await queryOne<Record<string, unknown>>(
       `SELECT s.id, s.order_id, s.vendor_id, s.carrier_id, s.code, s.status, s.note, s.failed_reason,
               s.shipping_zone_name, s.requested_at, s.picked_up_at, s.delivered_at, s.created_at,
-              o.order_number, o.total, o.customer_name, o.customer_phone, o.customer_address,
+              o.pickup_number AS order_number, o.total, o.customer_name, o.customer_phone, o.customer_address,
               o.method, o.status AS order_status,
-              v.store_name, v.slug AS store_slug, v.address AS store_address
+              v.store_name, v.slug AS store_slug, v.location AS store_address
        FROM shipments s
        JOIN orders o ON o.id = s.order_id
        JOIN vendors v ON v.id = s.vendor_id

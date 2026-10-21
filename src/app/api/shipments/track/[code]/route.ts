@@ -14,6 +14,9 @@ export const GET = withRateLimit(
   async (_request: Request, context: { params: Promise<{ code: string }> }) => {
     const { code } = await context.params;
     const clean = formatShipmentCode(String(code || "").trim());
+    // En DB el código vive SIN el prefijo "ENV-" (se formatea para la oblea).
+    // Aceptamos ambos formatos en la query para no romper links viejos/QRs.
+    const raw = clean.replace(/^ENV-/i, "");
 
     let shipment: Record<string, unknown> | undefined;
     let events: Array<Record<string, unknown>> = [];
@@ -21,13 +24,13 @@ export const GET = withRateLimit(
       shipment = await queryOne<Record<string, unknown>>(
         `SELECT s.code, s.status, s.shipping_zone_name, s.requested_at, s.picked_up_at,
                 s.delivered_at, s.created_at,
-                v.store_name, v.slug, v.address AS store_address
+                v.store_name, v.slug, v.location AS store_address
          FROM shipments s
          JOIN vendors v ON v.id = s.vendor_id
          WHERE UPPER(s.code) = $1
          ORDER BY s.created_at DESC
          LIMIT 1`,
-        [clean]
+        [raw]
       );
       if (shipment) {
         events = await queryMany<Record<string, unknown>>(
@@ -37,7 +40,7 @@ export const GET = withRateLimit(
              ORDER BY created_at DESC LIMIT 1
            )
            ORDER BY created_at ASC`,
-          [clean]
+          [raw]
         );
       }
     } catch {

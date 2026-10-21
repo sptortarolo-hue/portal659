@@ -17,7 +17,7 @@ export default function LogisticasAdminPage() {
   const [operators, setOperators] = useState<any[]>([]);
   const [error, setError] = useState("");
   const [msg, setMsg] = useState("");
-  const [tab, setTab] = useState<"carriers" | "zones" | "operators">("carriers");
+  const [tab, setTab] = useState<"carriers" | "zones" | "operators" | "settlement">("carriers");
   const [busy, setBusy] = useState(false);
 
   // Forms.
@@ -35,6 +35,34 @@ export default function LogisticasAdminPage() {
   const [oEmail, setOEmail] = useState("");
   const [oCarrier, setOCarrier] = useState("");
   const [oName, setOName] = useState("");
+
+  // Liquidación.
+  const [liCarrier, setLiCarrier] = useState("all");
+  const [liFrom, setLiFrom] = useState(() => `${new Date().toISOString().slice(0, 7)}-01`);
+  const [liTo, setLiTo] = useState(() => new Date().toISOString().slice(0, 10));
+  const [liSummary, setLiSummary] = useState<any | null>(null);
+  const [liError, setLiError] = useState("");
+
+  const loadSettlement = useCallback(async () => {
+    setLiError("");
+    try {
+      const qs = new URLSearchParams({ carrierId: liCarrier, from: liFrom, to: liTo });
+      const res = await fetch(`/api/admin/shipments/settlement?${qs.toString()}`);
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setLiSummary(null);
+        setLiError(j.error || "No se pudo calcular");
+        return;
+      }
+      setLiSummary(j);
+    } catch {
+      setLiError("Error de red");
+    }
+  }, [liCarrier, liFrom, liTo]);
+
+  useEffect(() => {
+    if (tab === "settlement") loadSettlement();
+  }, [tab, loadSettlement]);
 
   const load = useCallback(async () => {
     try {
@@ -129,11 +157,12 @@ export default function LogisticasAdminPage() {
           <h1 className="text-lg font-bold">🚚 Portal 659 Envíos</h1>
         </div>
 
-        <div className="grid grid-cols-3 gap-1.5">
+        <div className="grid grid-cols-4 gap-1.5">
           {[
             { k: "carriers", l: "🤝 Logísticas" },
             { k: "zones", l: "🗺️ Zonas" },
             { k: "operators", l: "👤 Operadores" },
+            { k: "settlement", l: "🧾 Liquidación" },
           ].map((t) => (
             <button
               key={t.k}
@@ -315,6 +344,86 @@ export default function LogisticasAdminPage() {
                   <Switch checked={o.active} onCheckedChange={(v) => save("/api/admin/ship-zones", "PATCH", { kind: "operator", id: o.id, active: v }, "Actualizado")} />
                 </div>
               ))
+            )}
+          </div>
+        )}
+        {/* Liquidación */}
+        {tab === "settlement" && (
+          <div className="space-y-3">
+            <div className="rounded-xl border border-border bg-background p-3 space-y-2">
+              <div className="grid grid-cols-3 gap-2">
+                <select
+                  className="w-full h-9 rounded-md border border-input bg-background px-2 text-sm"
+                  value={liCarrier}
+                  onChange={(e) => setLiCarrier(e.target.value)}
+                >
+                  <option value="all">Todas las logísticas</option>
+                  {carriers.map((c: any) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+                <Input className="h-9 text-sm" type="date" value={liFrom} onChange={(e) => setLiFrom(e.target.value)} />
+                <Input className="h-9 text-sm" type="date" value={liTo} onChange={(e) => setLiTo(e.target.value)} />
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                El monto es lo cobrado al comprador como envío. La tarifa que le pagás a la logística (por envío
+                entregado, acordada aparte) sale de este listado a fin de mes.
+              </p>
+            </div>
+
+            {liError && (
+              <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">{liError}</div>
+            )}
+
+            {liSummary && (
+              <>
+                <div className="rounded-xl border border-border bg-background p-3 space-y-1.5">
+                  <p className="text-sm font-semibold">
+                    {liSummary.rows?.length || 0} envíos
+                    {liSummary.rows?.length ? ` · ${liSummary.carrier === "all" ? "todas las logísticas" : ""}` : ""}
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {Object.entries((liSummary.totals || {}) as Record<string, unknown>)
+                      .filter(([k]) => !["envios"].includes(k))
+                      .map(([k, v]) => (
+                        <span key={k} className="inline-block rounded-full border border-border bg-muted/50 px-2 py-0.5 text-[11px]">
+                          {k}: <strong>{String(v)}</strong>
+                        </span>
+                      ))}
+                  </div>
+                </div>
+
+                {liSummary.rows?.length > 0 && (
+                  <div className="rounded-xl border border-border bg-background divide-y divide-border">
+                    {liSummary.rows.map((r: any) => (
+                      <div key={r.code} className="px-3 py-2 flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium truncate">{r.code} · {r.comercio}</p>
+                          <p className="text-[11px] text-muted-foreground truncate">
+                            {r.fecha} · {r.carrier} · {r.zona} · {r.estado}{r.pod === "Sí" ? " · 📷 POD" : ""}
+                          </p>
+                        </div>
+                        <span className="text-sm font-semibold shrink-0">${r.fee}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="flex gap-2">
+                  <a
+                    className="inline-flex h-9 items-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+                    href={`/api/admin/shipments/settlement?carrierId=${encodeURIComponent(liCarrier)}&from=${encodeURIComponent(liFrom)}&to=${encodeURIComponent(liTo)}&format=xlsx`}
+                  >
+                    ⬇ Descargar XLSX
+                  </a>
+                  <a
+                    className="inline-flex h-9 items-center rounded-md border border-border bg-background px-4 text-sm font-medium hover:bg-muted/50"
+                    href={`/api/admin/shipments/settlement?carrierId=${encodeURIComponent(liCarrier)}&from=${encodeURIComponent(liFrom)}&to=${encodeURIComponent(liTo)}&format=csv`}
+                  >
+                    ⬇ CSV
+                  </a>
+                </div>
+              </>
             )}
           </div>
         )}

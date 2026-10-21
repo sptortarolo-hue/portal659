@@ -1,5 +1,6 @@
 import { getVendorByRequest } from "@/lib/vendor-utils";
 import { queryMany, queryOne } from "@/lib/db";
+import { attachShipments } from "@/lib/shipping-server";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -84,9 +85,12 @@ export async function GET(request: Request) {
       params
     ),
   ]);
+  const withShip = (orders || []) as Array<Record<string, unknown> & { id: string }>;
+  // Envío extendido embebido (detalle desde Histórico también lo muestra).
+  await attachShipments(withShip, vendor.id).catch(() => undefined);
 
   return NextResponse.json({
-    orders: orders || [],
+    orders: withShip,
     total: totalRow?.c || 0,
     page,
     pageSize,

@@ -17,6 +17,7 @@ import { AlertTriangle, ChevronRight, Banknote, MessageSquare, CheckCircle, Truc
 import { apartadoInfo } from "@/lib/apartado";
 import { formatDeliveryWindow } from "@/lib/delivery-schedule";
 import { useDeliveryStaff } from "@/components/vendor/use-delivery-staff";
+import { SHIPMENT_STATUS_LABELS } from "@/lib/shipping";
 
 type OrdersKanbanProps = {
   orders: Order[];
@@ -103,6 +104,20 @@ function OrderCard({
                 📦 {formatDeliveryWindow((order as any).delivery_window)}
               </span>
             )}
+            {/* Envío extendido: la logística partner lleva el pedido — pill
+                con estados del encargo visible en TODAS las columnas. */}
+            {order.method === "delivery" && (order as any).shipping_zone_id && (order as any).shipment && (() => {
+              const s = (order as any).shipment;
+              return (
+                <span
+                  className="inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-violet-100 text-violet-700 border-violet-200"
+                  title="Portal 659 Envíos (logística partner)"
+                >
+                  🚚 <span className="truncate">{s.code} · {s.statusLabel || SHIPMENT_STATUS_LABELS[s.status as keyof typeof SHIPMENT_STATUS_LABELS] || s.status}</span>
+                  {s.podPhotoUrl ? " 📷" : ""}
+                </span>
+              );
+            })()}
             {order.method === "delivery" && (order as any).assigned_to && (
               <span
                 className="inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-emerald-100 text-emerald-700 border-emerald-200 max-w-full"

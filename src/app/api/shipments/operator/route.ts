@@ -10,6 +10,10 @@ import {
   SHIPMENT_STATUS_LABELS,
   type ShipmentStatus,
 } from "@/lib/shipping";
+import { phoneVariantsAR } from "@/lib/phone";
+import { sendPushToUser } from "@/lib/push";
+import { getSiteUrl } from "@/lib/site-url";
+import { sendEmail, reviewRequestEmail } from "@/lib/email";
 
 export const dynamic = "force-dynamic";
 
@@ -120,15 +124,29 @@ export async function POST(request: Request) {
   }
 
   // Valida el encargo + transición.
-  let current: { status: string; order_id: string; carrier_id: string | null; vendor_id: string } | undefined;
+  let current:
+    | {
+        status: string;
+        order_id: string;
+        code: string;
+        carrier_id: string | null;
+        vendor_id: string;
+        is_preview: boolean | null;
+      }
+    | undefined;
   try {
     const row = await queryOne<{
       status: string;
       order_id: string;
+      code: string;
       carrier_id: string | null;
       vendor_id: string;
+      is_preview: boolean | null;
     }>(
-      `SELECT status, order_id, carrier_id, vendor_id FROM shipments WHERE id = $1 LIMIT 1`,
+      `SELECT s.status, s.order_id, s.code, s.carrier_id, s.vendor_id,
+              o.is_preview
+       FROM shipments s JOIN orders o ON o.id = s.order_id
+       WHERE s.id = $1 LIMIT 1`,
       [shipmentId]
     );
     current = row ?? undefined;
@@ -157,14 +175,15 @@ export async function POST(request: Request) {
 
   try {
     await withTransaction(async (tx) => {
-      // SQL única (los $5/$6 con CASE aplican timestamps solo cuando toca —
-      // antes el ternario armaba una SQL corta pero mandaba 6 params → bind
-      // 500 en in_transit/failed_attempt).
+      // SQL única (los $5/$6/$7 con CASE/COALESCE aplican timestamps y POD
+      // solo cuando toca — antes el ternario armaba una SQL corta pero mandaba
+      // 6 params → bind 500 en in_transit/failed_attempt).
       await tx.queryVoid(
         `UPDATE shipments SET status = $2, carrier_id = COALESCE(carrier_id, $3),
               failed_reason = $4,
               picked_up_at = CASE WHEN $5 THEN now() ELSE picked_up_at END,
-              delivered_at = CASE WHEN $6 THEN now() ELSE delivered_at END
+              delivered_at = CASE WHEN $6 THEN now() ELSE delivered_at END,
+              pod_photo_url = COALESCE($7, pod_photo_url)
             WHERE id = $1`,
         [
           shipmentId,
@@ -175,6 +194,7 @@ export async function POST(request: Request) {
             : null,
           status === "picked_up",
           status === "delivered",
+          photoUrl,
         ]
       );
       await tx.queryVoid(
@@ -201,25 +221,126 @@ export async function POST(request: Request) {
   // el ORDER id (antes pasábamos el shipment id y el sync nunca aplicaba).
   const sync = await syncOrderForShipmentStatus(current.order_id, status);
 
-  // Push + email al comercio del estado (idempotente por shipment/evento).
+  // Push + email al comercio y/o al comprador según el evento (best-effort:
+  // nunca bloquea la operación del operador).
   try {
-    if (sync.applied && current.vendor_id) {
-      const vendorRow = await queryOne<{ user_id: string | null; store_name: string | null }>(
-        `SELECT user_id, store_name FROM vendors WHERE id = $1 LIMIT 1`,
-        [current.vendor_id]
+    const vendorRow = current.vendor_id
+      ? await queryOne<{ user_id: string | null; store_name: string | null; store_slug: string | null }>(
+          `SELECT user_id, store_name, slug AS store_slug FROM vendors WHERE id = $1 LIMIT 1`,
+          [current.vendor_id]
+        )
+      : undefined;
+    const codePub = formatShipmentCode(current.code);
+
+    // Al comercio: cuando cambia el estado del pedido (mapeo) o cuando el
+    // reparto falla (no llega push de mapeo, pero el dueño tiene que saber).
+    if (
+      vendorRow?.user_id &&
+      (sync.applied || status === "failed_attempt") &&
+      current.is_preview !== true
+    ) {
+      await sendPushToUser(vendorRow.user_id, {
+        title: `🚚 ${vendorRow.store_name || "Envío"}: ${SHIPMENT_STATUS_LABELS[status as ShipmentStatus] || status}`,
+        body:
+          status === "failed_attempt"
+            ? note || "La logística no pudo entregar (sin exitosa). Reintentan mañana."
+            : "Portal 659 Envíos actualizó el estado del encargo.",
+        link: "/vendor/dashboard",
+      });
+    }
+
+    // Al comprador: cada evento del reparto (por teléfono del pedido →
+    // perfil; link de seguimiento público /envio/CODE). Los envíos de prueba
+    // no notifican ni mandan mails.
+    if (current.order_id && current.is_preview !== true) {
+      const orderInfo = await queryOne<{
+        id: string;
+        customer_phone: string | null;
+        customer_name: string | null;
+      }>(
+        `SELECT id, customer_phone, customer_name
+         FROM orders WHERE id = $1 LIMIT 1`,
+        [current.order_id]
       );
-      if (vendorRow?.user_id) {
-        const { sendPushToUser } = await import("@/lib/push");
-        await sendPushToUser(vendorRow.user_id, {
-          title: `🚚 ${vendorRow.store_name || "Envío"}: ${SHIPMENT_STATUS_LABELS[status as ShipmentStatus] || status}`,
-          body: note || "Portal 659 Envíos actualizó el estado del encargo.",
-          link: "/vendor/dashboard",
-        });
+      if (orderInfo && (orderInfo.customer_phone || "").trim()) {
+        const buyerText = buyerShipmentText(
+          status,
+          codePub,
+          vendorRow?.store_name || null
+        );
+        if (buyerText) {
+          const variants = phoneVariantsAR(orderInfo.customer_phone || "");
+          const buyer = variants
+            ? await queryOne<{ id: string; email: string | null }>(
+                `SELECT id, email FROM profiles
+                 WHERE phone = ANY($1::text[]) OR whatsapp = ANY($1::text[])
+                 ORDER BY id LIMIT 1`,
+                [variants]
+              )
+            : undefined;
+          if (buyer) {
+            await queryOne(
+              `INSERT INTO notifications (user_id, title, body, type, link)
+               VALUES ($1, $2, $3, 'order', $4)`,
+              [buyer.id, buyerText.title, buyerText.body, buyerText.link]
+            );
+            await sendPushToUser(buyer.id, buyerText);
+            // Entregado → mail de reseña (mismo patrón que el PATCH de pedidos).
+            if (status === "delivered" && buyer.email && vendorRow?.store_slug) {
+              try {
+                const reviewUrl = `${getSiteUrl()}/tienda/${vendorRow.store_slug}`;
+                const reviewMail = reviewRequestEmail(vendorRow.store_name || "tu pedido", reviewUrl);
+                await sendEmail({ to: buyer.email, subject: reviewMail.subject, html: reviewMail.html });
+              } catch {
+                /* email best-effort */
+              }
+            }
+          }
+        }
       }
     }
   } catch {
-    // Push best-effort: nunca bloquea la operación.
+    // Notifications best-effort.
   }
 
   return NextResponse.json({ ok: true, status, statusLabel: SHIPMENT_STATUS_LABELS[status as ShipmentStatus] || status, orderSynced: sync.applied });
+}
+
+/** Textos de aviso al comprador por evento de reparto (null = sin aviso). */
+function buyerShipmentText(
+  status: string,
+  code: string,
+  storeName: string | null
+): { title: string; body: string; link: string } | null {
+  const link = `/envio/${encodeURIComponent(code)}`;
+  const tienda = storeName ? ` de ${storeName}` : "";
+  switch (status) {
+    case "picked_up":
+    case "in_transit":
+      return {
+        title: `🚚 Tu pedido${tienda} salió`,
+        body: `El paquete ${code} ya está en camino. Seguimiento: ${getSiteUrl().replace(/^https?:\/\//, "")}${link}`,
+        link,
+      };
+    case "delivered":
+      return {
+        title: `✅ Entregado: tu pedido${tienda}`,
+        body: `Recibiste el paquete ${code}. ¿Todo ok? Dejanos tu reseña.`,
+        link,
+      };
+    case "failed_attempt":
+      return {
+        title: `⚠️ No pudimos entregar tu pedido${tienda}`,
+        body: `El paquete ${code} volvió al depósito. Coordinamos el reintento con el comercio.`,
+        link,
+      };
+    case "returned":
+      return {
+        title: `↩️ Devuelto al comercio`,
+        body: `El pedido ${code} no llegó a entregarse y volvió al comercio.`,
+        link,
+      };
+    default:
+      return null; // requested/cancelled: sin push al comprador.
+  }
 }

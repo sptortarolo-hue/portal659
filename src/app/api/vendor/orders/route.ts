@@ -1,5 +1,6 @@
 import { getVendorByRequest } from "@/lib/vendor-utils";
 import { queryMany } from "@/lib/db";
+import { attachShipments } from "@/lib/shipping-server";
 import { NextResponse } from "next/server";
 
 export async function GET(request: Request) {
@@ -46,6 +47,8 @@ export async function GET(request: Request) {
       );
     return { ...o, is_gift_only: isGiftOnly };
   });
+  // Envío extendido embebido (bloque violeta del detalle disponible al abrir).
+  await attachShipments(withFlags, vendor.id).catch(() => undefined);
 
   return NextResponse.json({ orders: withFlags });
 }

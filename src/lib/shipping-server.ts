@@ -7,7 +7,7 @@
  */
 import { queryMany, queryOne, withTransaction } from "@/lib/db";
 import type { ShippingZoneInfo } from "@/lib/shipping";
-import { orderStatusForShipmentEvent } from "@/lib/shipping";
+import { orderStatusForShipmentEvent, SHIPMENT_STATUS_LABELS, type ShipmentStatus } from "@/lib/shipping";
 
 export type VendorShipZoneFull = ShippingZoneInfo & {
   carrierId: string | null;
@@ -81,8 +81,8 @@ export async function syncOrderForShipmentStatus(
          VALUES ($1, $2)`,
         [orderId, target]
       );
-      return { applied: true, orderStatus: target };
-    });
+    return { applied: true, orderStatus: target };
+  });
   } catch {
     return { applied: false };
   }
@@ -127,9 +127,62 @@ export async function fetchShipmentEvents(shipmentId: string) {
   }
 }
 
+/**
+ * Envíos embebidos por pedido (row mutada in-place): el panel del comercio
+ * abre el detalle con `order.shipment` disponible en el primer render
+ * (antes dependía de un segundo fetch a /api/vendor/shipments y el bloque
+ * violeta "parpadeaba"/desaparecía entre polls). 200 pedidos máx = lista del
+ * tablero; tolerante a migración sin aplicar.
+ */
+export async function attachShipments(
+  // Cualquier fila del panel (el spread del caller destruye el tipo exacto);
+  // mutamos in-place con campos camelCase.
+  orders: Array<any>,
+  vendorId: string
+): Promise<void> {
+  if (!Array.isArray(orders) || orders.length === 0) return;
+  const orderIds = orders.map((o) => o.id).slice(0, 400);
+  let rows: Array<Record<string, unknown>> = [];
+  try {
+    rows =
+      (await queryMany<Record<string, unknown>>(
+        `SELECT DISTINCT ON (order_id)
+                s.order_id, s.id, s.code, s.status, s.note, s.failed_reason, s.pod_photo_url,
+                s.shipping_zone_name
+         FROM shipments s
+         WHERE s.vendor_id = $1 AND s.order_id = ANY($2::uuid[])
+         ORDER BY s.order_id, s.created_at DESC`,
+        [vendorId, orderIds]
+      )) || [];
+  } catch {
+    return; // Migración sin aplicar: los pedidos quedan sin `shipment` (como hoy).
+  }
+  const byOrder = new Map<string, Record<string, unknown>>();
+  for (const r of rows) byOrder.set(String(r.order_id), r);
+  for (const o of orders) {
+    const r = byOrder.get(String(o.id));
+    if (!r) continue;
+    const status = String(r.status);
+    o.shipment = {
+      id: String(r.id),
+      code: formatCode(String(r.code)),
+      status,
+      statusLabel: SHIPMENT_STATUS_LABELS[status as ShipmentStatus] || status,
+      shippingZoneName: r.shipping_zone_name != null ? String(r.shipping_zone_name) : null,
+      podPhotoUrl: r.pod_photo_url != null ? String(r.pod_photo_url) : null,
+      failedReason: r.failed_reason != null ? String(r.failed_reason) : null,
+    };
+  }
+}
+
+/** ENV-XXXXXX para el comprador (misma regla client-safe del lib shipping). */
+function formatCode(code: string): string {
+  const s = (code || "").toUpperCase();
+  return s.startsWith("ENV-") ? s : `ENV-${s}`;
+}
+
 /** Encargo con pedido asociado (para panel operador y tracking). */
-export async function fetchShipmentWithOrder(opts: {
-  shipmentId?: string;
+export async function fetchShipmentWithOrder(opts: {  shipmentId?: string;
   code?: string;
   carrierId?: string | null;
 }): Promise<Record<string, unknown> | undefined> {

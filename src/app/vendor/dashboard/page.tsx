@@ -2450,6 +2450,11 @@ function VendorDashboardInner() {
             setSelectedOrder((prev) => (prev && prev.id === updated.id ? { ...prev, ...updated } as Order : prev));
           }}
           onAssigned={(updated) => {
+            // ShipmentBox avisa el alta del envío SIN pedido actualizado (el
+            // POST /api/vendor/shipments no toca la orden). Crash garantizado
+            // en updated.id si se delegaba entero: guard para no-args y solo
+            // la ruta de repartidor (que sí manda el pedido) actualiza.
+            if (!updated || typeof updated.id !== "string") return;
             setOrders((prev) => prev.map((o) => (o.id === updated.id ? { ...o, ...updated } : o)));
             setSelectedOrder((prev) => (prev && prev.id === updated.id ? { ...prev, ...updated } as Order : prev));
           }}

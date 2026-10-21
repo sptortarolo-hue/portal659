@@ -127,7 +127,7 @@ export function StoreSwitcher({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted transition-colors flex-shrink-0 max-w-[130px] sm:max-w-[160px]"
+        className="inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted transition-colors flex-shrink-0 max-w-[104px] sm:max-w-[160px]"
         title="Cambiar de comercio"
         aria-label="Cambiar de comercio"
       >

@@ -1648,23 +1648,21 @@ function VendorDashboardInner() {
               </button>
 
               {/* Switcher de tiendas (multi-comercio): en impersonación admin
-                  lista los comercios del dueño impersonado (cookie admin-as).
-                  Mobile: vive en la fila 2 (acá ocupa y pateaba "Compartir"). */}
+                  lista los comercios del dueño impersonado (cookie admin-as). */}
               {!previewSession && (
-                <span className="hidden sm:inline-flex">
-                  <StoreSwitcher
-                    stores={ownerStores}
-                    activeId={vendor?.id ?? null}
-                    impersonating={!!impersonatingId}
-                  />
-                </span>
+                <StoreSwitcher
+                  stores={ownerStores}
+                  activeId={vendor?.id ?? null}
+                  impersonating={!!impersonatingId}
+                />
               )}
 
-              {/* Título de sección + contexto */}
-              <div className="flex-1 min-w-[104px] sm:min-w-0">
+              {/* Título de sección + contexto (mobile sin fecha: gana espacio) */}
+              <div className="flex-1 min-w-0">
                 <h1 className="text-sm font-semibold truncate leading-tight">{tabTitle}</h1>
                 <p className="text-[11px] text-muted-foreground leading-tight truncate">
-                  {vendor.store_name} · {todayLabel}
+                  {vendor.store_name}
+                  <span className="hidden sm:inline"> · {todayLabel}</span>
                 </p>
               </div>
 
@@ -1717,13 +1715,6 @@ function VendorDashboardInner() {
 
             {/* Fila 2: controles operativos — solo mobile (empleado: solo caja) */}
             <div className="flex sm:hidden items-center gap-2 overflow-x-auto pt-2">
-              {!previewSession && (
-                <StoreSwitcher
-                  stores={ownerStores}
-                  activeId={vendor?.id ?? null}
-                  impersonating={!!impersonatingId}
-                />
-              )}
               {!isEmployee && (
                 <>
               <OpenToggle vendor={vendor} onSaved={(v) => setVendor(v)} />

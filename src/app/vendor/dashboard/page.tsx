@@ -92,6 +92,7 @@ import { DeliveryToggle } from "@/components/vendor/delivery-toggle";
 import { PrepTimeControl } from "@/components/vendor/prep-time-control";
 import { PrinterStatus } from "@/components/vendor/printer-status";
 import { CashShiftPill } from "@/components/vendor/cash-shift-pill";
+import { StoreSwitcher, type OwnerStore } from "@/components/vendor/store-switcher";
 import { OfflineBanner } from "@/components/vendor/offline-banner";
 import { OfflineConflicts } from "@/components/vendor/offline-conflicts";
 import { usePendingSyncCount } from "@/hooks/use-online-status";
@@ -259,6 +260,8 @@ function VendorDashboardInner() {
   const [staffLevel, setStaffLevel] = useState<"admin" | "empleado" | null>(null);
   const [previewSession, setPreviewSession] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
+  // Multi-tienda: comercios propios para el switcher del header.
+  const [ownerStores, setOwnerStores] = useState<OwnerStore[]>([]);
   const [offers, setOffers] = useState<Offer[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [categories, setCategories] = useState<MenuCategory[]>([]);
@@ -602,6 +605,7 @@ function VendorDashboardInner() {
           /* noop */
         }
       }
+      if (Array.isArray(me.vendors)) setOwnerStores(me.vendors);
       if (me.staffRole) setStaffRole(me.staffRole);
       if (me.staffLevel) setStaffLevel(me.staffLevel);
       if (me.userId) setUserId(me.userId);
@@ -1642,6 +1646,16 @@ function VendorDashboardInner() {
               >
                 <Menu className="h-5 w-5" />
               </button>
+
+              {/* Switcher de tiendas (multi-comercio): en impersonación admin
+                  lista los comercios del dueño impersonado (cookie admin-as). */}
+              {!previewSession && (
+                <StoreSwitcher
+                  stores={ownerStores}
+                  activeId={vendor?.id ?? null}
+                  impersonating={!!impersonatingId}
+                />
+              )}
 
               {/* Título de sección + contexto */}
               <div className="flex-1 min-w-[104px] sm:min-w-0">

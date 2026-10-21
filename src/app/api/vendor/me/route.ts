@@ -1,5 +1,5 @@
 import { getAuthUser } from "@/lib/auth";
-import { query, queryOne } from "@/lib/db";
+import { query, queryMany, queryOne } from "@/lib/db";
 import { getVendorByRequest, seedDefaultCategories } from "@/lib/vendor-utils";
 import { NextResponse } from "next/server";
 
@@ -40,7 +40,46 @@ export async function GET(request: Request) {
     [resolved.id]
   );
 
-  return NextResponse.json({ vendor, staffRole, staffLevel, userId: user.id, preview: previewSession });
+  // Multi-tienda: lista para el switcher. Dueño → sus comercios; admin-as
+  // (impersonación) → los comercios del DUEÑO impersonado; staff → [] (el
+  // login del equipo es por local). De paso marca `impersonating` para que
+  // el switcher llame a select/stores con `as: true` (cookie admin-as).
+  let listOwnerUserId: string | null = resolved.user_id ?? null;
+  if (staffRole === "delivery" || staffRole === "staff") listOwnerUserId = null;
+  const cookieHeader = request.headers.get("cookie") || "";
+  let adminAsId: string | null = null;
+  for (const part of cookieHeader.split(";")) {
+    const [k, ...rest] = part.trim().split("=");
+    if (k === "portal659-admin-as") adminAsId = rest.join("=").trim() || null;
+  }
+  const impersonating = !!adminAsId && !!user.is_admin && staffRole === null;
+
+  const ownedVendors = listOwnerUserId
+    ? await queryMany<{
+        id: string;
+        slug: string | null;
+        store_name: string;
+        logo_url: string | null;
+        image_url: string | null;
+        vertical: string | null;
+        plan_id: string | null;
+        plan_status: string | null;
+      }>(
+        `SELECT id, slug, store_name, logo_url, image_url, vertical, plan_id, plan_status
+         FROM vendors WHERE user_id = $1 ORDER BY created_at ASC LIMIT 20`,
+        [listOwnerUserId]
+      )
+    : [];
+
+  return NextResponse.json({
+    vendor,
+    vendors: ownedVendors,
+    impersonating,
+    staffRole,
+    staffLevel,
+    userId: user.id,
+    preview: previewSession,
+  });
 }
 
 export async function POST(request: Request) {
@@ -190,7 +229,19 @@ export async function POST(request: Request) {
     ? normalizedVertical
     : "gastronomia";
 
-  const { vendor: existing } = await getVendorByRequest(request);
+  const { vendor: resolvedExisting } = await getVendorByRequest(request);
+
+  // Multi-tienda: si por algún motivo (cookie inválida, race) el usuario NO
+  // resuelve vendor pero es dueño de otro comercio, actualizar ESE y no
+  // crear un duplicado. Crear uno nuevo es exclusivamente POST /api/vendor/stores.
+  let existing = resolvedExisting as { id: string } | null;
+  if (!existing) {
+    const ownedAny = await queryOne<{ id: string }>(
+      `SELECT id FROM vendors WHERE user_id = $1 ORDER BY created_at ASC LIMIT 1`,
+      [user.id]
+    );
+    existing = ownedAny ?? null;
+  }
 
   const existingSlug = existing
     ? (await queryOne<{ slug: string }>(`SELECT slug FROM vendors WHERE id = $1 LIMIT 1`, [existing.id]))?.slug

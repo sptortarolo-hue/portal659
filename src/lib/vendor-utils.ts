@@ -12,6 +12,9 @@ const COMERCIO_CATEGORIES = [
 
 const ADMIN_AS_COOKIE = "portal659-admin-as";
 
+/** Selector de tienda del dueño (multi-comercio): cookie con el vendor id activo. */
+const VENDOR_COOKIE = "portal659-vendor-id";
+
 function getCookie(request: Request, name: string): string | null {
   const header = request.headers.get("cookie");
   if (!header) return null;
@@ -22,7 +25,7 @@ function getCookie(request: Request, name: string): string | null {
   return null;
 }
 
-export { ADMIN_AS_COOKIE };
+export { ADMIN_AS_COOKIE, VENDOR_COOKIE };
 
 export type StaffRole = "owner" | "delivery" | "staff" | null;
 
@@ -70,11 +73,21 @@ export async function getVendorByRequest(request: Request): Promise<{
     return { userId: user.id, vendor: vendor ?? null, staffRole: null, staffLevel: null, previewSession: false };
   }
 
-  const vendor = await queryOne<{ id: string; user_id: string }>(
-    `SELECT id, user_id FROM vendors WHERE user_id = $1 LIMIT 1`,
+  // Dueño: puede tener N comercios (multi-tienda). La cookie
+  // `portal659-vendor-id` elige cuál; sin cookie (o inválida) gana el primero
+  // (created_at) — determinista, mismo orden que la lista del switcher.
+  const owned = await queryMany<{ id: string; user_id: string }>(
+    `SELECT id, user_id FROM vendors WHERE user_id = $1 ORDER BY created_at ASC LIMIT 20`,
     [user.id]
   );
-  if (vendor) return { userId: user.id, vendor, staffRole: null, staffLevel: null, previewSession: false };
+  if (owned && owned.length > 0) {
+    if (owned.length === 1) {
+      return { userId: user.id, vendor: owned[0], staffRole: null, staffLevel: null, previewSession: false };
+    }
+    const wantId = getCookie(request, VENDOR_COOKIE);
+    const chosen = wantId ? owned.find((v) => v.id === wantId) : null;
+    return { userId: user.id, vendor: chosen ?? owned[0], staffRole: null, staffLevel: null, previewSession: false };
+  }
 
   // No es dueño: ¿staff vinculado y activo? (repartidor o usuario del
   // local). Tolerante a migración sin aplicar (sin columnas nuevas cae al
@@ -115,6 +128,27 @@ export async function getVendorByRequest(request: Request): Promise<{
   }
 
   return { userId: user.id, vendor: null, staffRole: null, staffLevel: null, previewSession: false };
+}
+
+/**
+ * Resuelve el comercio activo para rutas que hoy resuelven por user_id
+ * (suscripciones, etc.) con soporte multi-tienda: gana el `override`
+ * (vendorId del body validado como propio), luego la cookie
+ * `portal659-vendor-id`, y por defecto el primero (created_at) del dueño.
+ */
+export async function resolveOwnedVendorId(
+  userId: string,
+  request: Request,
+  override?: unknown
+): Promise<string | null> {
+  const rows = await queryMany<{ id: string }>(
+    `SELECT id FROM vendors WHERE user_id = $1 ORDER BY created_at ASC LIMIT 20`,
+    [userId]
+  );
+  if (!rows || rows.length === 0) return null;
+  const want = typeof override === "string" && override ? override : getCookie(request, VENDOR_COOKIE);
+  const match = want ? rows.find((v) => v.id === want) : null;
+  return (match ? match.id : null) ?? rows[0].id;
 }
 
 /**

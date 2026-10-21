@@ -1,4 +1,5 @@
 import { getUserId } from "@/lib/auth-utils";
+import { resolveOwnedVendorId } from "@/lib/vendor-utils";
 import { queryMany, queryOne } from "@/lib/db";
 import { activePromo } from "@/lib/plans";
 import { isMpEnabled } from "@/lib/mp-oauth";
@@ -18,6 +19,11 @@ export async function POST(request: Request) {
     ? body.planSlug
     : null;
 
+  // Multi-tienda: el vendor del pago (override body.vendorId validado como
+  // propio, luego la cookie `portal659-vendor-id`, luego el primero del dueño).
+  const ownedVendorId = await resolveOwnedVendorId(userId, request, body?.vendorId);
+  if (!ownedVendorId) return NextResponse.json({ error: "No tenés un local" }, { status: 403 });
+
   const vendor = await queryOne<{
     id: string;
     vertical: string;
@@ -31,8 +37,8 @@ export async function POST(request: Request) {
     trial_ends_at: string | null;
     visible: boolean | null;
   }>(
-    `SELECT id, vertical, whatsapp, transfer_cbu, transfer_alias, transfer_qr_url, plan_id, plan_status, plan_expires_at, trial_ends_at, visible FROM vendors WHERE user_id = $1 LIMIT 1`,
-    [userId]
+    `SELECT id, vertical, whatsapp, transfer_cbu, transfer_alias, transfer_qr_url, plan_id, plan_status, plan_expires_at, trial_ends_at, visible FROM vendors WHERE id = $1 AND user_id = $2 LIMIT 1`,
+    [ownedVendorId, userId]
   );
 
   if (!vendor) return NextResponse.json({ error: "No tenés un local" }, { status: 403 });

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
-import { query, queryOne } from "@/lib/db";
+import { query, queryMany, queryOne } from "@/lib/db";
 import { getDeviceId } from "@/lib/device";
 import { mergeDeviceFavorites } from "@/lib/device-merge";
 
@@ -20,17 +20,30 @@ export async function GET(request: Request) {
     [user.id]
   );
 
-  const vendor = await queryOne<{
+  const owned = await queryMany<{
     id: string;
-    slug: string;
+    slug: string | null;
     store_name: string;
     logo_url: string | null;
     image_url: string | null;
     vertical: string | null;
+    plan_id: string | null;
+    plan_status: string | null;
   }>(
-    `SELECT id, slug, store_name, logo_url, image_url, vertical FROM vendors WHERE user_id = $1 LIMIT 1`,
+    `SELECT id, slug, store_name, logo_url, image_url, vertical, plan_id, plan_status
+     FROM vendors WHERE user_id = $1 ORDER BY created_at ASC LIMIT 20`,
     [user.id]
   );
+  // Multi-tienda: activo = cookie `portal659-vendor-id` (validada como
+  // propia) o el primero del dueño. Igual que getVendorByRequest.
+  const cookieHeader = request.headers.get("cookie") || "";
+  let wantVendorId: string | null = null;
+  for (const part of cookieHeader.split(";")) {
+    const [k, ...rest] = part.trim().split("=");
+    if (k === "portal659-vendor-id") wantVendorId = rest.join("=").trim() || null;
+  }
+  const active =
+    (wantVendorId ? owned.find((v) => v.id === wantVendorId) : null) ?? owned[0] ?? null;
 
   // Staff: si no es dueño pero está vinculado activo a un comercio
   // (repartidor o usuario del local). Tolerante a migración sin aplicar.
@@ -87,7 +100,8 @@ export async function GET(request: Request) {
       is_admin: user.is_admin,
       role: user.role,
     },
-    vendor: vendor || null,
+    vendor: active,
+    vendors: owned,
     staff: staff || null,
   });
 }

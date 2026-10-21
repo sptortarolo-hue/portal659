@@ -1,4 +1,5 @@
 import { getUserId } from "@/lib/auth-utils";
+import { resolveOwnedVendorId } from "@/lib/vendor-utils";
 import { query, queryOne } from "@/lib/db";
 import { NextResponse } from "next/server";
 
@@ -8,7 +9,13 @@ export async function POST(request: Request) {
   const userId = await getUserId(request);
   if (!userId) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
 
-  const { planSlug } = await request.json();
+  const body = await request.json();
+  const planSlug = body?.planSlug;
+
+  // Multi-tienda: override body.vendorId validado como propio, luego la
+  // cookie `portal659-vendor-id`, luego el primero del dueño.
+  const ownedVendorId = await resolveOwnedVendorId(userId, request, body?.vendorId);
+  if (!ownedVendorId) return NextResponse.json({ error: "No tenés un local" }, { status: 403 });
 
   const vendor = await queryOne<{
     id: string;
@@ -19,8 +26,8 @@ export async function POST(request: Request) {
     trial_ends_at: string | null;
     visible: boolean | null;
   }>(
-    `SELECT id, vertical, plan_id, plan_status, plan_expires_at, trial_ends_at, visible FROM vendors WHERE user_id = $1 LIMIT 1`,
-    [userId]
+    `SELECT id, vertical, plan_id, plan_status, plan_expires_at, trial_ends_at, visible FROM vendors WHERE id = $1 AND user_id = $2 LIMIT 1`,
+    [ownedVendorId, userId]
   );
 
   if (!vendor) return NextResponse.json({ error: "No tenés un local" }, { status: 403 });

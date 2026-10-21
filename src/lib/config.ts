@@ -83,10 +83,24 @@ export const VERTICALS = [
   },
   {
     slug: "estetica",
-    name: "Estética y Belleza",
-    description: "Uñas, pestañas, cejas, masajes y cuidado personal",
-    emoji: "💅",
+    name: "Peluquería y Estética",
+    description: "Peluquerías, barberías, estéticas, uñas, pestañas, cejas y masajes",
+    emoji: "💇",
     color: "vert-estetica",
     hex: "#f472b6",
   },
 ] as const;
+
+const GENERIC_CATEGORIES = new Set(["otro", "otra", "otros", "otras"]);
+
+/** Rubro visible y capitalizado ("peluquería" → "Peluquería"), o null si es genérico/vacío. */
+export function rubroLabel(category?: string | null): string | null {
+  const c = (category || "").trim();
+  if (!c || GENERIC_CATEGORIES.has(c.toLowerCase())) return null;
+  return c.charAt(0).toUpperCase() + c.slice(1);
+}
+
+/** Nombre visible del vertical, para usar como fallback del rubro. */
+export function verticalDisplayName(vertical?: string | null): string {
+  return VERTICALS.find((v) => v.slug === vertical)?.name || "Comercio";
+}

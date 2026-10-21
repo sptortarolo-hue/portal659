@@ -34,7 +34,7 @@ const VERTICAL_SEO_NAME: Record<string, string> = {
   comercio: "Kioscos, almacenes y comercios",
   moda: "Ropa y accesorios",
   servicio: "Servicios y oficios",
-  estetica: "Estética y belleza",
+  estetica: "Peluquería y estética",
   salud: "Salud y bienestar",
 };
 

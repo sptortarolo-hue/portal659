@@ -41,6 +41,7 @@ import { PreviewSessionSync } from "@/components/store/preview-session-sync";
 import { canPreviewVendor, getPreviewActor, isServingPreview } from "@/lib/preview";
 import { discountOf } from "@/lib/promo";
 import { breadcrumbJsonLd, neighborhoodLabel, vendorJsonLd, verticalSeoName } from "@/lib/json-ld";
+import { rubroLabel } from "@/lib/config";
 import type { Metadata } from "next";
 
 export const dynamic = "force-dynamic";
@@ -315,6 +316,7 @@ export default async function TiendaPage({
   // meta description: rubro + barrio como keywords objetivo).
   const storeHood = neighborhoodLabel(v.neighborhood) || "tu barrio";
   const storeRubro = v.category || verticalSeoName(v.vertical);
+  const rubroHeading = rubroLabel(v.category);
   const storeBlurb =
     (typeof v.description === "string" && v.description.trim()) ||
     fallbackVendorBlurb(v.store_name, storeRubro, storeHood);
@@ -731,7 +733,7 @@ export default async function TiendaPage({
           <>
             <div className="border border-border rounded-2xl p-8 text-center bg-card mb-6">
               <h2 className="font-display text-2xl font-semibold mb-2">
-                {isEstetica ? "Estética del barrio" : "Servicio del barrio"}
+                {rubroHeading || (isEstetica ? "Estética del barrio" : "Servicio del barrio")}
               </h2>
               {v.services_list && (
                 <p className="text-muted-foreground max-w-md mx-auto mb-2">

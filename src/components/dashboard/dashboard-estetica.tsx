@@ -44,12 +44,12 @@ const VERTICAL_OPTIONS = [
   { value: "comercio", label: "Comercio del barrio" },
   { value: "servicio", label: "Servicio u oficio" },
   { value: "moda", label: "Ropa y accesorios" },
-  { value: "estetica", label: "Estética y belleza (uñas, pestañas, cejas, masajes)" },
+  { value: "estetica", label: "Peluquería y estética (peluquería, barbería, uñas, pestañas, cejas, masajes)" },
   { value: "otro", label: "Otro" },
 ] as const;
 
 const CATEGORY_SUGGESTIONS: Record<string, string[]> = {
-  estetica: ["uñas", "pestañas", "cejas", "masajes", "peluquería", "depilación", "maquillaje", "facial", "corporal", "otros"],
+  estetica: ["peluquería", "barbería", "uñas", "pestañas", "cejas", "masajes", "depilación", "maquillaje", "facial", "corporal", "otros"],
   otro: ["otros"],
 };
 

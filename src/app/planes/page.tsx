@@ -198,7 +198,7 @@ export default async function PlanesPage() {
           <p className="text-sm text-muted-foreground max-w-md mx-auto">
             Gastronomía y comercios: 20 pedidos online por mes. Moda: 5 pedidos
             por mes. Servicios: 5 solicitudes (presupuestos + turnos) por mes.
-            Estética: 10 solicitudes (consultas + turnos) + 5 pedidos por mes.
+            Peluquería y estética: 10 solicitudes (consultas + turnos) + 5 pedidos por mes.
             Farmacias, dietéticas y perfumerías usan los planes de comercio.
           </p>
         </div>

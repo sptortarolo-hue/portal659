@@ -15,7 +15,7 @@ const TIPO_OPTIONS = [
   { value: "comercio", label: "Comercio del barrio (almacén, farmacia, dietética, perfumería, kiosco, pet shop, veterinaria)" },
   { value: "servicio", label: "Servicio u oficio (electricista, plomero, jardinería)" },
   { value: "moda", label: "Ropa y accesorios (indumentaria, calzado, bijouterie)" },
-  { value: "estetica", label: "Estética y belleza (uñas, pestañas, cejas, masajes, peluquería)" },
+  { value: "estetica", label: "Peluquería y estética (peluquería, barbería, uñas, pestañas, cejas, masajes)" },
   { value: "otro", label: "Otro" },
 ] as const;
 

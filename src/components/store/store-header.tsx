@@ -10,6 +10,7 @@ import { VendorShareButton } from "@/components/store/vendor-share-button";
 import { Badge } from "@/components/ui/badge";
 import { isStoreOpen } from "@/lib/open-hours";
 import { neighborhoodLabel } from "@/lib/json-ld";
+import { rubroLabel, verticalDisplayName } from "@/lib/config";
 
 type VendorData = {
   id: string;
@@ -102,7 +103,7 @@ export function StoreHeader({
   const [showMap, setShowMap] = useState(false);
   const openNow = isStoreOpen(v as any);
   const hood = neighborhoodLabel(v.neighborhood);
-  const rubro = v.category || v.vertical;
+  const rubro = rubroLabel(v.category) || verticalDisplayName(v.vertical);
 
   const mapsUrl = v.lat != null && v.lng != null
     ? `https://www.google.com/maps/search/?api=1&query=${v.lat},${v.lng}`

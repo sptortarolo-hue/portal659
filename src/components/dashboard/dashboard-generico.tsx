@@ -32,7 +32,7 @@ const VERTICAL_OPTIONS = [
   { value: "comercio", label: "Comercio" },
   { value: "servicio", label: "Servicio" },
   { value: "moda", label: "Ropa y Accesorios" },
-  { value: "estetica", label: "Estética y Belleza" },
+  { value: "estetica", label: "Peluquería y Estética" },
   { value: "otro", label: "Otro" },
 ];
 

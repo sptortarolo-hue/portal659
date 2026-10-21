@@ -129,8 +129,8 @@ export default function ManualesPage() {
         />
         <Card
           href="/manuales/estetica"
-          emoji="💅"
-          title="Estética y belleza"
+          emoji="💇"
+          title="Peluquería y estética"
           desc="Turnera por profesional, servicios, packs de sesiones y fichas."
           disabled
         />

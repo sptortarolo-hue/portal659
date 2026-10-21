@@ -301,7 +301,7 @@ export default function VendorSuscripcionPage() {
           <>
           {!eff.eligibleForPaid && (
             <div className="rounded-2xl border border-border bg-card p-5 text-sm text-muted-foreground">
-              Los planes de pago están disponibles para <b>gastronomía</b>, <b>comercios de barrio</b>, <b>moda</b>, <b>estética</b> y <b>servicios</b> (plan Oficios).
+              Los planes de pago están disponibles para <b>gastronomía</b>, <b>comercios de barrio</b>, <b>moda</b>, <b>peluquería y estética</b> y <b>servicios</b> (plan Oficios).
               Para tu rubro, el plan <b>Gratuito</b> incluye tu ficha y vidriera completa.
             </div>
           )}

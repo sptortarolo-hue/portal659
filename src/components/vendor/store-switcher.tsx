@@ -26,7 +26,7 @@ const VERTICAL_EMOJI: Record<string, string> = {
   comercio: "🏪",
   servicio: "🔧",
   moda: "👗",
-  estetica: "💅",
+  estetica: "💇",
   otro: "📋",
 };
 

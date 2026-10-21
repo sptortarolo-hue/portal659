@@ -1042,7 +1042,7 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
               onChange={(e) => setStoreVertical(e.target.value)}
             >
               <option value="servicio">Servicio u oficio</option>
-              <option value="estetica">Estética y belleza</option>
+              <option value="estetica">Peluquería y estética</option>
               <option value="gastronomia">Gastronomía</option>
               <option value="comercio">Comercio del barrio</option>
               <option value="moda">Ropa y accesorios</option>

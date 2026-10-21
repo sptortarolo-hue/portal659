@@ -164,7 +164,7 @@ const [doneIsGift, setDoneIsGift] = useState(false);
   // elige entre los próximos 3; default el primero (el server lo valida y,
   // si viene vacío/trucho, auto-asigna el próximo).
   const isRetailVendor = vendor?.vertical === "moda" || vendor?.vertical === "comercio";
-  const showSlots = isRetailVendor && method === "delivery" && deliverySlots.length > 0 && !deliveryCoordinar;
+  const showSlots = isRetailVendor && method === "delivery" && deliverySlots.length > 0 && !deliveryCoordinar && !shipActive;
   const activeSlotId = slotId || deliverySlots[0]?.id || "";
   const activeSlotLabel = deliverySlots.find((s) => s.id === activeSlotId)?.label || "";
 
@@ -314,7 +314,7 @@ const [doneIsGift, setDoneIsGift] = useState(false);
   const isGiftOnly = items.length > 0 && items.every((i) => (i as any).isGift === true);
   // "¿Con cuánto abonás?" (efectivo + delivery, salvo que el comercio lo apague):
   // el vuelto se calcula en vivo contra el total final (con descuentos y envío).
-  const cashAskVisible = paymentMethod === "efectivo" && method === "delivery" && cashAskAmount && !isGiftOnly;
+  const cashAskVisible = paymentMethod === "efectivo" && method === "delivery" && cashAskAmount && !isGiftOnly && !shipActive;
   const cashAmountNum = Math.round((parseFloat(cashAmount.replace(",", ".")) || 0) * 100) / 100;
   const cashAskValid = !cashAskVisible || (cashAmountNum > 0 && cashAmountNum >= displayTotal);
   const cashChange = cashAskVisible && cashAmountNum > 0 ? Math.max(0, Math.round((cashAmountNum - displayTotal) * 100) / 100) : 0;
@@ -334,6 +334,12 @@ const [doneIsGift, setDoneIsGift] = useState(false);
   useEffect(() => {
     if (isGiftOnly && method === "delivery") setMethod("pickup");
   }, [isGiftOnly, method]);
+  // Zona extendida (Portal 659 Envíos): el courier no cobra en efectivo ni
+  // coordina por WhatsApp — solo transferencia (o MP por el botón de abajo).
+  // "¿Con cuánto abonás?" solo aplica a efectivo: queda fuera por acá también.
+  useEffect(() => {
+    if (shipActive && paymentMethod !== "transferencia") setPaymentMethod("transferencia");
+  }, [shipActive, paymentMethod]);
 
   if (mpReturn) {
     const s = mpReturn;
@@ -1233,6 +1239,11 @@ const [doneIsGift, setDoneIsGift] = useState(false);
         {/* Payment method */}
         <div>
           <Label>¿Cómo pagás?</Label>
+          {shipActive ? (
+            <p className="rounded-xl border-2 border-primary bg-primary/5 px-3 py-2 text-sm font-medium text-primary mt-1">
+              🏦 Transferencia (el envío extendido se paga por adelantado)
+            </p>
+          ) : (
           <div className="grid grid-cols-3 gap-2 mt-1">
             <button
               type="button"
@@ -1273,6 +1284,7 @@ const [doneIsGift, setDoneIsGift] = useState(false);
               🏦 Transferencia
             </button>
           </div>
+          )}
         </div>
 
         {/* ¿Con cuánto abonás? (efectivo + delivery): el repartidor lleva el cambio justo. */}

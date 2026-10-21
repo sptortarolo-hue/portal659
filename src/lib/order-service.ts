@@ -326,6 +326,13 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
         : deliveryCfg.mode === "zones" && deliveryZoneId
           ? { kind: "zone", zoneId: String(deliveryZoneId) }
           : { kind: "in_area" };
+  // Zona extendida (Portal 659 Envíos): el courier no cobra en efectivo ni usa
+  // WhatsApp de pago — solo transferencia (o MP por WebCheckout). Se normaliza
+  // server-side para que un POST directo no genere un pedido impagable.
+  const paymentMethodFinal =
+    deliverySelection.kind === "extends_zone"
+      ? (paymentMethodNorm === "mercadopago" ? "mercadopago" : "transferencia")
+      : paymentMethodNorm;
 
   // Turno de entrega (retail delivery): el cliente elige entre los próximos
   // slots; si manda uno inválido/vacío (o viene de un canal sin UI, ej. bot),
@@ -434,7 +441,7 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
   const hasDeadlineCol = deadlineCol?.exists === true;
   const expiryHours = Number((vendorRow as any)?.transfer_expiry_hours) || 0;
   const transferDeadlineAt =
-    hasDeadlineCol && !isPreview && paymentMethodNorm === "transferencia" && expiryHours > 0 && expiryHours <= 168
+    hasDeadlineCol && !isPreview && paymentMethodFinal === "transferencia" && expiryHours > 0 && expiryHours <= 168
       ? new Date(Date.now() + expiryHours * 3_600_000).toISOString()
       : null;
 
@@ -449,7 +456,7 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
   // Se pide solo en efectivo + delivery, si el comercio no lo apagó. En pruebas
   // (preview) no se exige para no trabar el recorrido, pero se guarda igual.
   const cashAmountRequired =
-    paymentMethodNorm === "efectivo" && method === "delivery" && !isPreview &&
+    paymentMethodFinal === "efectivo" && method === "delivery" && !isPreview &&
     (vendorRow ? (vendorRow as any).cash_ask_amount !== false : false);
   const cashAmountFinal =
     typeof cashAmount === "number" && Number.isFinite(cashAmount) && cashAmount > 0
@@ -463,11 +470,11 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
   let giftcardCodeFinal: string | null = null;
   const wantsGiftcard =
     typeof giftcardCode === "string" && giftcardCode.trim() !== "" && !isPreview &&
-    paymentMethodNorm !== "mercadopago";
+    paymentMethodFinal !== "mercadopago";
 
   try {
     await withTransaction(async (tx) => {
-      const paymentStatus = paymentMethodNorm === "transferencia" ? "pending" : "paid";
+      const paymentStatus = paymentMethodFinal === "transferencia" ? "pending" : "paid";
       const isPickup = method === "pickup";
 
       const pricing = await resolveOrderPricing({
@@ -486,7 +493,7 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
         // Descuento en efectivo: corre con la misma fórmula que el checkout
         // muestra en pantalla (antes no se aplicaba server-side: el cliente
         // veía un precio y el pedido guardaba otro).
-        paymentMethod: paymentMethodNorm,
+        paymentMethod: paymentMethodFinal,
         cashDiscountPct: (vendorRow as any)?.cash_discount_pct,
       });
       resolvedItems = pricing.items;
@@ -543,7 +550,9 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
       const zoneCols = hasZoneCols ? ", delivery_zone_id, delivery_zone_name, delivery_out_of_area, delivery_fee" : "";
       const zoneVals = hasZoneCols ? `, $${nextParam++}, $${nextParam++}, $${nextParam++}, $${nextParam++}` : "";
       const zoneParams: unknown[] = hasZoneCols
-        ? [pricing.deliveryZoneId, pricing.deliveryZoneName, pricing.deliveryOutOfArea, pricing.deliveryFee]
+        // Zonas extendidas del catálogo: su id vive en shipping_zones y NO
+        // entra en delivery_zone_id (FK a delivery_zones → 500 si se coloca).
+        ? [deliverySelection.kind === "extends_zone" ? null : pricing.deliveryZoneId, pricing.deliveryZoneName, pricing.deliveryOutOfArea, pricing.deliveryFee]
         : [];
       // Zonas extendidas del catálogo (migración portal-shipments).
       const shipCols = hasShipCols ? ", shipping_zone_id, shipping_zone_name" : "";
@@ -580,7 +589,7 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
           customerPhoneE164,
           customerAddress || null,
           isPickup ? "pickup" : "delivery",
-          paymentMethodNorm,
+          paymentMethodFinal,
           JSON.stringify(resolvedItems),
           resolvedTotal,
           notesFinal,
@@ -669,13 +678,13 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
     // cliente mande el WhatsApp. Campañita "paymentLabel" e itemsCount igual
     // que la notificación in-app de la tx.
     const paymentLabel =
-      paymentMethodNorm === "efectivo"
+      paymentMethodFinal === "efectivo"
         ? "💵 Efectivo"
-        : paymentMethodNorm === "transferencia"
+        : paymentMethodFinal === "transferencia"
           ? "🏦 Transferencia"
           : "📱 Coordinar";
     const abonaLabel =
-      paymentMethodNorm === "efectivo" && cashAmountFinal
+      paymentMethodFinal === "efectivo" && cashAmountFinal
         ? ` · abona $${cashAmountFinal.toLocaleString("es-AR")} (vuelto $${Math.max(0, Math.round((cashAmountFinal - resolvedTotal) * 100) / 100).toLocaleString("es-AR")})`
         : "";
     void sendPushToUser(vendor.user_id, {

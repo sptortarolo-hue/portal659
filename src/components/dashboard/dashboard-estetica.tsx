@@ -573,7 +573,7 @@ export default function DashboardEstetica({
                 className="mt-1 max-w-40"
               />
               <p className="text-xs text-muted-foreground mt-1">
-                Se usa al generar links de cobro (podés cambiarla caso por caso). Cobrar seña online es del plan Oficios.
+                Se usa al generar links de cobro (podés cambiarla caso por caso). Cobrar seña online es de los planes pagos (Turnera o Gestión).
               </p>
             </div>
             <Button onClick={savePagos} className="w-full" disabled={uploading}>

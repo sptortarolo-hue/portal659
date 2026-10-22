@@ -1,6 +1,7 @@
 import { getUserId } from "@/lib/auth-utils";
 import { resolveOwnedVendorId } from "@/lib/vendor-utils";
 import { query, queryOne } from "@/lib/db";
+import { PLAN_IDS } from "@/lib/plans";
 import { NextResponse } from "next/server";
 
 const TRIAL_DAYS = 30;
@@ -47,10 +48,17 @@ export async function POST(request: Request) {
     );
   }
 
-  // Cada vertical compra su plan: servicios solo Oficios; estética es híbrida
-  // (Oficios para turnera, Pedidos/Gestión para venta de productos).
+  // Cada vertical compra su plan: servicios solo Oficios; estética compra
+  // "Turnera" (fila `pedidos`) o Gestión integral. Oficios ya no se vende
+  // a estética: solo queda accesible como activación/renovación grandfathering
+  // para quien ya lo tiene como plan actual.
+  const grandfatheredOficios = vendor.vertical === "estetica" && vendor.plan_id === PLAN_IDS.oficios;
   const allowedSlugs =
-    vendor.vertical === "servicio" ? ["oficios"] : vendor.vertical === "estetica" ? ["oficios", "pedidos", "gestion"] : ["pedidos", "gestion"];
+    vendor.vertical === "servicio"
+      ? ["oficios"]
+      : vendor.vertical === "estetica"
+        ? grandfatheredOficios ? ["oficios", "pedidos", "gestion"] : ["pedidos", "gestion"]
+      : ["pedidos", "gestion"];
   if (!allowedSlugs.includes(planSlug)) {
     return NextResponse.json({ error: "Plan inválido para tu rubro" }, { status: 400 });
   }

@@ -1005,7 +1005,7 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
           {quota.used >= quota.limit ? (
             <p className="font-medium">
               Llegaste al tope de {quota.limit} solicitudes online del mes. Las nuevas llegan por WhatsApp.
-              El plan Oficios las hace ilimitadas.
+              Con un plan pago son ilimitadas.
             </p>
           ) : (
             <p>
@@ -1621,7 +1621,7 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
                                 </div>
                               ) : (
                                 <p className="text-[11px] text-muted-foreground">
-                                  La cotización con precio formal es del plan Oficios.
+                                  La cotización con precio formal es de los planes pagos.
                                 </p>
                               )}
                         <div className="flex gap-2 flex-wrap">
@@ -1787,7 +1787,7 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
               className="mt-1 max-w-40"
             />
             <p className="text-xs text-muted-foreground mt-1">
-              Se usa al generar el link de cobro (podés cambiarlo caso por caso). Cobrar seña online es del plan Oficios.
+              Se usa al generar el link de cobro (podés cambiarlo caso por caso). Cobrar seña online es de los planes pagos.
             </p>
           </div>
           <Button onClick={handleSaveAll} className="w-full" disabled={uploading}>
@@ -1832,7 +1832,9 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
           </div>
         </div>
         <p className="text-[11px] text-muted-foreground mt-2">
-          Estadísticas completas de 30 días con el plan Oficios.
+          {isEstetica
+            ? "Estadísticas de 7 días con el plan Turnera (completas e ilimitadas con Gestión integral)."
+            : "Estadísticas completas de 30 días con el plan Oficios."}
         </p>
       </CollapsibleSection>
       </>
@@ -1867,7 +1869,7 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
         ) : (
           <PlanLock
             title="Libro de clientes"
-            description={`Tus clientes con su historial de trabajos y ${presupuestosLow}, notas y contacto directo por WhatsApp. Parte del plan Oficios.`}
+            description={`Tus clientes con su historial de trabajos y ${presupuestosLow}, notas y contacto directo por WhatsApp. Parte del plan ${isEstetica ? "Gestión integral" : "Oficios"}.`}
           />
         )
       )}

@@ -3,10 +3,11 @@ import { resolveVendorPlan } from "@/lib/plans";
 import type { Plan, Vendor } from "@/types/database";
 
 /**
- * Tope mensual de solicitudes para servicios (Fase 1): presupuestos + turnos
- * no cancelados del mes calendario. Espejo del tope de pedidos gastro
- * (max_orders_month). Un plan pago vigente (Oficios) resuelve NULL = ilimitado;
- * si vence, cae a la fila "gratuito" (5, configurable por admin).
+ * Tope mensual de solicitudes para servicios y estética: presupuestos +
+ * turnos/consultas no cancelados del mes calendario. Espejo del tope de
+ * pedidos gastro (max_orders_month). Un plan pago vigente ("Turnera" para
+ * estética, Oficios para servicios) resuelve NULL = ilimitado; si vence,
+ * cae a la fila "gratuito" (5, configurable por admin).
  */
 export async function getServiceQuota(vendorId: string): Promise<{
   used: number;

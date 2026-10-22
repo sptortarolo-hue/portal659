@@ -116,12 +116,13 @@ const COMERCIO_FREE_FEATURES: PlanFeatures = {
   emits_orders: true,
 };
 
-// Estética (peluquería, uñas, pestañas, cejas, masajes...): híbrido turnera +
-// productos. Gratis: turnera con tope propio (ESTETICA_FREE_QUOTES_MONTH, NO
-// los 5 de servicio) + venta online con tope propio
-// (ESTETICA_FREE_ORDERS_MONTH). Con plan pago vigente (Oficios para turnera;
-// Pedidos/Gestión para productos) suma lo del plan con mask de vertical
-// (sin kds/mesas/recipes: un centro de estética no tiene cocina ni salón).
+// Estética (peluquería, barbería, uñas, pestañas, cejas, masajes...): híbrido
+// turnera + productos. 3 planes: Gratuito (5 solicitudes/mes con tope propio,
+// ESTETICA_FREE_QUOTES_MONTH, NO los 5 de servicio — y 5 pedidos con
+// ESTETICA_FREE_ORDERS_MONTH), "Turnera" (fila `pedidos`: turnera + pedidos
+// ilimitados) y "Gestión integral" (todo el POS/Caja/Clientes impresión).
+// NO se vende Oficios a estética (solo servicios); con plan pago vigente la
+// turnera completa (cotizar con precio + seña MP) es override de código.
 const ESTETICA_FREE_FEATURES: PlanFeatures = {
   ...GRATUITO_FEATURES,
   cart: true,
@@ -129,7 +130,7 @@ const ESTETICA_FREE_FEATURES: PlanFeatures = {
 };
 
 /** Tope mensual de solicitudes (turnos + presupuestos) gratis de estética. */
-export const ESTETICA_FREE_QUOTES_MONTH = 10;
+export const ESTETICA_FREE_QUOTES_MONTH = 5;
 
 /** Tope mensual de pedidos online gratis de estética (venta de productos). */
 export const ESTETICA_FREE_ORDERS_MONTH = 5;
@@ -305,7 +306,13 @@ export function resolveVendorPlan(
       // Mask del vertical: gestión trae kds/mesas/recipes en su JSONB, pero
       // un centro de estética nunca los usa.
       if (ESTETICA_FEATURE_MASK[feature] === false) return false;
-      if (trialActive || active) return featureOf(plan, feature);
+      if (trialActive || active) {
+        // La turnera completa (cotizar con precio + seña MP) es parte de la
+        // propuesta de los planes pagos de estética ("Turnera" usa la fila
+        // `pedidos`, cuyo JSONB no las trae: se resuelven por override).
+        if (feature === "quotes_respond" || feature === "deposits") return true;
+        return featureOf(plan, feature);
+      }
       return ESTETICA_FREE_FEATURES[feature] === true;
     }
     if (!eligibleForPaid) return GRATUITO_FEATURES[feature] === true;
@@ -317,7 +324,7 @@ export function resolveVendorPlan(
   // plan; en cualquier otro caso (gratuito o pago vencido) se leen del plan
   // "gratuito" para que el admin pueda configurar el tope sin tocar código.
   // Excepciones con tope propio: moda gratis/vencido usa el suyo (5 pedidos,
-  // no los 20 de gastro); estética gratis/vencido usa los suyos (10
+  // no los 20 de gastro); estética gratis/vencido usa los suyos (5
   // solicitudes + 5 pedidos).
   const freePlanRow = plans.find((p) => p.slug === "gratuito") ?? null;
   const limitRow = trialActive || active ? plan : freePlanRow;

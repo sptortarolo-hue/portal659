@@ -61,7 +61,7 @@ export const POST = withRateLimit(async (request: Request) => {
     }
   } catch { /* sin TZ: se sigue */ }
 
-  // Tope mensual del plan (servicios: 5; estética gratis: 10). 429 si se alcanza.
+  // Tope mensual del plan (servicios: 5; estética gratis: 5). 429 si se alcanza.
   // En modo prueba no se consume tope.
   if (!isPreview) try {
     const quota = await getServiceQuota(vendorId);

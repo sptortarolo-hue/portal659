@@ -71,7 +71,7 @@ export default async function PlanesPage() {
             comercio de barrio.
           </p>
           <p className="text-xs text-muted-foreground mt-2">
-            Los planes pagos están disponibles para <b>gastronomía</b>, <b>comercios de barrio</b>, <b>moda</b> y <b>servicios</b> (plan Oficios). Gastronomía, comercio y moda comparten Pedidos y Gestión (sin cocina ni mesas fuera de gastro); servicios usa Oficios.
+            Los planes pagos están disponibles para <b>gastronomía</b>, <b>comercios de barrio</b>, <b>moda</b> y <b>servicios</b> (plan Oficios). Gastronomía, comercio y moda comparten Pedidos y Gestión (sin cocina ni mesas fuera de gastro); servicios usa Oficios y peluquería y estética usa <b>Turnera</b> (Pedidos) y Gestión integral.
           </p>
         </div>
 
@@ -198,7 +198,7 @@ export default async function PlanesPage() {
           <p className="text-sm text-muted-foreground max-w-md mx-auto">
             Gastronomía y comercios: 20 pedidos online por mes. Moda: 5 pedidos
             por mes. Servicios: 5 solicitudes (presupuestos + turnos) por mes.
-            Peluquería y estética: 10 solicitudes (consultas + turnos) + 5 pedidos por mes.
+            Peluquería y estética: 5 solicitudes (consultas + turnos) y 5 pedidos online por mes.
             Farmacias, dietéticas y perfumerías usan los planes de comercio.
           </p>
         </div>

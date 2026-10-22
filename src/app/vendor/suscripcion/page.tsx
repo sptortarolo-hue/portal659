@@ -56,7 +56,20 @@ const PLAN_COPY: Record<string, { title: string; desc: string }> = {
     title: "Oficios",
     desc: "Solicitudes ilimitadas, cotización con precio, seña online y reseñas.",
   },
+  pedidos_estetica: {
+    title: "Turnera",
+    desc: "Turnera libre: consultas y turnos ilimitados + pedidos online ilimitados, reseñas, cotización con precio y seña por Mercado Pago.",
+  },
 };
+
+/** Copy por vertical: `pedidos` se llama "Turnera" en estética. */
+function planCopyFor(slug: string, vertical: string | null | undefined): { title: string; desc: string } | undefined {
+  if (vertical === "estetica") {
+    const esteticaCopy = PLAN_COPY[`${slug}_estetica`];
+    if (esteticaCopy) return esteticaCopy;
+  }
+  return PLAN_COPY[slug];
+}
 
 export default function VendorSuscripcionPage() {
   const router = useRouter();
@@ -161,7 +174,7 @@ export default function VendorSuscripcionPage() {
             <h3 className="font-display font-semibold">Pago por transferencia</h3>
             <p className="text-sm text-muted-foreground">
               Transferí <b className="text-foreground">${Number(payInfo.order.amount).toLocaleString("es-AR")}</b> por el
-              plan {payInfo.order.plan.name} (cubre hasta {new Date(payInfo.order.periodEnd).toLocaleDateString("es-AR")}).
+              plan {planCopyFor(payInfo.order.plan.slug, me.vertical)?.title ?? payInfo.order.plan.name} (cubre hasta {new Date(payInfo.order.periodEnd).toLocaleDateString("es-AR")}).
             </p>
             <div className="text-sm space-y-1 rounded-xl bg-muted p-4">
               {payInfo.transfer?.alias && <p>Alias: <b>{payInfo.transfer.alias}</b></p>}
@@ -178,7 +191,7 @@ export default function VendorSuscripcionPage() {
                 className="w-full"
                 variant="outline"
                 onClick={() => {
-                  const msg = encodeURIComponent(`Hola! Hice una transferencia para activar el plan ${payInfo.order.plan.name}. Referencia: ${payInfo.order.externalReference}`);
+                  const msg = encodeURIComponent(`Hola! Hice una transferencia para activar el plan ${planCopyFor(payInfo.order.plan.slug, me.vertical)?.title ?? payInfo.order.plan.name}. Referencia: ${payInfo.order.externalReference}`);
                   window.open(`https://wa.me/${payInfo.transfer.whatsapp.replace(/[^0-9]/g, "")}?text=${msg}`, "_blank");
                 }}
               >
@@ -280,7 +293,7 @@ export default function VendorSuscripcionPage() {
             </div>
             {me.usage.quotesOverLimit && (
               <p className="text-[11px] text-red-500 mt-1">
-                Llegaste al límite de solicitudes de este mes. Con Oficios son ilimitadas.
+                Llegaste al límite de solicitudes de este mes. Con un plan pago son ilimitadas.
               </p>
             )}
           </div>
@@ -309,7 +322,9 @@ export default function VendorSuscripcionPage() {
             <div className="grid sm:grid-cols-2 gap-3">
               {me.plans
                 .filter((p) => p.slug !== "gratuito")
-                .filter((p) => (me.vertical === "servicio" ? p.slug === "oficios" : me.vertical === "estetica" ? true : p.slug !== "oficios"))
+                // Oficios ya no se ofrece a estética; solo se ve su card quien
+                // ya lo tiene como plan (grandfathering: puede renovarlo).
+                .filter((p) => (me.vertical === "servicio" ? p.slug === "oficios" : p.slug !== "oficios" || eff.slug === "oficios"))
                 .map((plan) => {
                   const current = eff.slug === plan.slug && (eff.status === "trial" || eff.status === "active");
                   const active = eff.status === "trial" || eff.status === "active";
@@ -318,10 +333,10 @@ export default function VendorSuscripcionPage() {
                   return (
                     <div key={plan.id} className="rounded-2xl border border-border bg-card p-4 flex flex-col">
                       <div className="flex items-center justify-between">
-                        <h4 className="font-display font-semibold">{plan.name}</h4>
+                        <h4 className="font-display font-semibold">{planCopyFor(plan.slug, me.vertical)?.title ?? plan.name}</h4>
                         {plan.popular && <Badge variant="secondary" className="text-[10px]">Popular</Badge>}
                       </div>
-                      <p className="text-xs text-muted-foreground mt-1 mb-3">{(me.vertical === "estetica" && PLAN_COPY[`${plan.slug}_estetica`] ? PLAN_COPY[`${plan.slug}_estetica`] : PLAN_COPY[plan.slug])?.desc ?? plan.description}</p>
+                      <p className="text-xs text-muted-foreground mt-1 mb-3">{planCopyFor(plan.slug, me.vertical)?.desc ?? plan.description}</p>
                       <div className="mb-3">
                         {promo ? (
                           <div className="flex items-center gap-2 flex-wrap">

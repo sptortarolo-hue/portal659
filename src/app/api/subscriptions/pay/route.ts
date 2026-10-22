@@ -1,7 +1,7 @@
 import { getUserId } from "@/lib/auth-utils";
 import { resolveOwnedVendorId } from "@/lib/vendor-utils";
 import { queryMany, queryOne } from "@/lib/db";
-import { activePromo } from "@/lib/plans";
+import { activePromo, PLAN_IDS } from "@/lib/plans";
 import { isMpEnabled } from "@/lib/mp-oauth";
 import { getSiteUrl } from "@/lib/site-url";
 import { NextResponse } from "next/server";
@@ -51,12 +51,15 @@ export async function POST(request: Request) {
   }
   // Servicios solo puede comprar Oficios (ni Pedidos ni Gestión: son de cocina/mostrador).
   // Gastro, comercio y moda compran Pedidos/Gestión.
-  // Estética es híbrida: Oficios (turnera) o Pedidos/Gestión (venta de productos).
+  // Estética compra "Turnera" (fila `pedidos`) o Gestión integral. Oficios ya
+  // no se vende a estética: solo queda accesible como renovación
+  // grandfathering para quien ya lo tiene activo.
+  const grandfatheredOficios = vendor.vertical === "estetica" && vendor.plan_id === PLAN_IDS.oficios;
   const allowedSlugs =
     vendor.vertical === "servicio"
       ? ["oficios"]
       : vendor.vertical === "estetica"
-        ? ["oficios", "pedidos", "gestion"]
+        ? grandfatheredOficios ? ["oficios", "pedidos", "gestion"] : ["pedidos", "gestion"]
       : vendor.vertical === "gastronomia" || vendor.vertical === "comercio" || vendor.vertical === "moda"
         ? ["pedidos", "gestion"]
         : [];

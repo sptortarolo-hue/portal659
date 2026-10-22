@@ -324,11 +324,14 @@ export default function OrderDetailModal({ order, vendorName, vendorLogoUrl, onC
   // Pedido solo-tarjetas: de aceptado va directo a listo (nada que empaquetar).
   const giftOnly = order.is_gift_only === true;
   const nextStatus = nextStatusFor(order.status as OrderStatus, order.method, isRetail, order.channel, orderNeedsKitchen(order), giftOnly);
-  // Envío por logística partner: los pasos "enviado/entregado" los maneja el
-  // operador desde su panel; acá solo se coachearon Aceptar/Empaquetar/Listo.
-  const hasCarrierShipment = !!(order as any).shipment;
+  // Envío por logística partner (zona extendida): los pasos "enviado/entregado"
+  // los maneja el operador desde su panel — el comercio solo prepara y avisa
+  // (bloque violeta). Se decide por `shipping_zone_id` (el pedido ES de
+  // logística), no por la existencia del encargo: así los botones de reparto
+  // propio no aparecen ni antes de apretar "Avisar a la logística".
+  const isLogisticsOrder = !!(order as any).shipping_zone_id;
   const logisticsOwnsNext =
-    hasCarrierShipment && (nextStatus === "sent" || nextStatus === "completed");
+    isLogisticsOrder && (nextStatus === "sent" || nextStatus === "completed");
 
   const customerPhone = order.customer_phone?.replace(/\D/g, "");
   // Mostrador y mesa son ventas presenciales: sin WhatsApp del cliente.

@@ -59,7 +59,13 @@ export function useVendorOrders({ vendorId, enabled = true }: Options) {
             setOrders((prev) => {
               const map = new Map(prev.map((o) => [o.id, o]));
               for (const order of data.orders) {
-                map.set(order.id, order);
+                // MERGE, no replace: la fila del SSE es un subconjunto del
+                // pedido (el server manda SELECT * del tablero, pero igual no
+                // incluye el envío embebido ni eventuales campos del cliente).
+                // Un replace hacía "desaparecer" el bloque de logística y los
+                // labels de estados derivados.
+                const prior = map.get(order.id);
+                map.set(order.id, prior ? { ...prior, ...order } : order);
               }
               return Array.from(map.values()).sort(
                 (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()

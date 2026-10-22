@@ -149,7 +149,11 @@ export async function attachShipments(
         `SELECT DISTINCT ON (order_id)
                 s.order_id, s.id, s.code, s.status, s.note, s.failed_reason, s.pod_photo_url,
                 s.shipping_zone_name, s.dest_lat, s.dest_lng,
-                s.delivered_to_name, s.delivered_dni, s.delivered_lat, s.delivered_lng, s.delivered_geo_ok
+                s.delivered_to_name, s.delivered_dni, s.delivered_lat, s.delivered_lng, s.delivered_geo_ok,
+                CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'shipments' AND column_name = 'ack_at')
+                  THEN s.ack_at ELSE NULL END AS ack_at,
+                CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'shipments' AND column_name = 'ack_by_profile')
+                  THEN s.ack_by_profile ELSE NULL END AS ack_by_profile
          FROM shipments s
          WHERE s.vendor_id = $1 AND s.order_id = ANY($2::uuid[])
          ORDER BY s.order_id, s.created_at DESC`,
@@ -178,6 +182,8 @@ export async function attachShipments(
       deliveredLat: r.delivered_lat != null ? Number(r.delivered_lat) : null,
       deliveredLng: r.delivered_lng != null ? Number(r.delivered_lng) : null,
       deliveredGeoOk: r.delivered_geo_ok === true,
+      // Acuse de recibo de la logística (lo ve el comercio en el bloque).
+      ackAt: r.ack_at != null ? String(r.ack_at) : null,
     };
   }
 }

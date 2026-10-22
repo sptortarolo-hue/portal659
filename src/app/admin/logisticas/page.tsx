@@ -25,6 +25,8 @@ export default function LogisticasAdminPage() {
   const [cPhone, setCPhone] = useState("");
   const [cEmail, setCEmail] = useState("");
   const [cNotes, setCNotes] = useState("");
+  const [cWaPhones, setCWaPhones] = useState("");
+  const [cWaInvite, setCWaInvite] = useState("");
 
   const [zName, setZName] = useState("");
   const [zDesc, setZDesc] = useState("");
@@ -194,13 +196,15 @@ export default function LogisticasAdminPage() {
                 <Input className="h-9 text-sm" placeholder="Teléfono" value={cPhone} onChange={(e) => setCPhone(e.target.value)} maxLength={40} />
                 <Input className="h-9 text-sm" placeholder="Email" value={cEmail} onChange={(e) => setCEmail(e.target.value)} maxLength={120} />
                 <Input className="h-9 text-sm" placeholder="Notas" value={cNotes} onChange={(e) => setCNotes(e.target.value)} maxLength={500} />
+                <Input className="h-9 text-sm" placeholder="Teléfonos WA (coma)" value={cWaPhones} onChange={(e) => setCWaPhones(e.target.value)} maxLength={400} />
+                <Input className="h-9 text-sm" placeholder="Link de grupo WA" value={cWaInvite} onChange={(e) => setCWaInvite(e.target.value)} maxLength={500} />
               </div>
               <Button
                 size="sm"
                 disabled={busy || !cName.trim()}
                 onClick={async () => {
-                  const ok = await save("/api/admin/carriers", "POST", { name: cName.trim(), phone: cPhone.trim(), email: cEmail.trim(), notes: cNotes.trim() }, "Logística creada");
-                  if (ok) { setCName(""); setCPhone(""); setCEmail(""); setCNotes(""); }
+                  const ok = await save("/api/admin/carriers", "POST", { name: cName.trim(), phone: cPhone.trim(), email: cEmail.trim(), notes: cNotes.trim(), wa_phones: cWaPhones.trim(), wa_invite_url: cWaInvite.trim() }, "Logística creada");
+                  if (ok) { setCName(""); setCPhone(""); setCEmail(""); setCNotes(""); setCWaPhones(""); setCWaInvite(""); }
                 }}
               >
                 Crear
@@ -226,8 +230,13 @@ export default function LogisticasAdminPage() {
                   <Input className="h-8 text-xs" placeholder="Email" defaultValue={c.email || ""} key={`${c.id}-e`} onBlur={(e) => (e.target.value || null) !== (c.email || null) && save("/api/admin/carriers", "PATCH", { ...c, email: e.target.value }, "Actualizada")} />
                   <Input className="h-8 text-xs" placeholder="Notas" defaultValue={c.notes || ""} key={`${c.id}-n`} onBlur={(e) => (e.target.value || null) !== (c.notes || null) && save("/api/admin/carriers", "PATCH", { ...c, notes: e.target.value }, "Actualizada")} />
                 </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <Input className="h-8 text-xs" placeholder="Teléfonos WA (coma)" defaultValue={c.wa_phones || ""} key={`${c.id}-wp`} onBlur={(e) => (e.target.value || null) !== (c.wa_phones || null) && save("/api/admin/carriers", "PATCH", { ...c, wa_phones: e.target.value }, "Actualizada")} />
+                  <Input className="h-8 text-xs" placeholder="Link de grupo WA" defaultValue={c.wa_invite_url || ""} key={`${c.id}-wi`} onBlur={(e) => (e.target.value || null) !== (c.wa_invite_url || null) && save("/api/admin/carriers", "PATCH", { ...c, wa_invite_url: e.target.value }, "Actualizada")} />
+                </div>
                 <p className="text-[11px] text-muted-foreground">
                   {Number(c.shipments_count) || 0} envíos · {Number(c.zones_count) || 0} zonas activas
+                  {" · "}WA: teléfonos de despacho separados por coma y/o link de invitación al grupo (así avisa el comercio).
                 </p>
               </div>
             ))}

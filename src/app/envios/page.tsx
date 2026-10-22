@@ -47,6 +47,8 @@ type ShipmentRow = {
   deliveredLat: number | null;
   deliveredLng: number | null;
   deliveredGeoOk: boolean;
+  /** Acuse de recibo de la logística (ISO) — ya sellado = no re-acusar. */
+  ackAt?: string | null;
 };
 
 type CarrierRow = { id: string; name: string };
@@ -139,6 +141,17 @@ export default function EnviosOperadorPage() {
       const shipments: ShipmentRow[] = Array.isArray(j?.shipments) ? j.shipments : [];
       setData({ shipments, carriers: Array.isArray(j?.carriers) ? j.carriers : [], ready: j.ready !== false });
       setError("");
+      // Acuse de recibo (fire-and-forget): los encargos que aparecieron en el
+      // panel sin acuse quedan marcados "vistos por la logística" para el
+      // comercio. Nunca bloquea la carga.
+      const unacked = shipments.filter((s) => !s.ackAt).map((s) => s.id);
+      if (unacked.length > 0) {
+        fetch("/api/shipments/operator/ack", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ shipmentIds: unacked }),
+        }).catch(() => {});
+      }
     } catch {
       setError("Error de red");
     }

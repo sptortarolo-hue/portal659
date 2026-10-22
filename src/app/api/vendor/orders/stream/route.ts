@@ -1,5 +1,6 @@
 import { getVendorByRequest } from "@/lib/vendor-utils";
 import { getPool } from "@/lib/db";
+import { attachShipments } from "@/lib/shipping-server";
 
 export const dynamic = "force-dynamic";
 
@@ -26,19 +27,13 @@ export async function GET(request: Request) {
         if (closed) return;
         try {
           const pool = getPool();
+          // SELECT *: el cliente REEMPLAZA el pedido con esta fila, así que
+          // cualquier columna que falte "desaparece" del panel (pasó con
+          // shipping_zone_id — se caía el bloque de logística — y antes con
+          // kitchen_done). `*` trae todas las columnas existentes y es
+          // tolerante a migraciones sin aplicar.
           const { rows } = await pool.query(
-            `SELECT id, status, pickup_number, customer_name, total, channel,
-                    method, payment_method, payment_status, estimated_minutes,
-                    created_at, closed_at, updated_at, items, modification_notes,
-                    customer_phone, customer_address, is_preview, transfer_proof_url,
-                    CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'courier_lat') THEN courier_lat ELSE NULL END AS courier_lat,
-                    CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'courier_lng') THEN courier_lng ELSE NULL END AS courier_lng,
-                    CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'courier_updated_at') THEN courier_updated_at ELSE NULL END AS courier_updated_at,
-                    -- Tildado de empaque/cocina: sin esto el SSE reemplaza el
-                    -- objeto y los ticks tildados en otro dispositivo se pierden.
-                    CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'kitchen_done')
-                      THEN kitchen_done ELSE '[]'::jsonb END AS kitchen_done
-             FROM orders
+            `SELECT * FROM orders
              WHERE vendor_id = $1 AND updated_at > $2
              ORDER BY updated_at ASC
              LIMIT 20`,
@@ -47,6 +42,9 @@ export async function GET(request: Request) {
 
           if (rows.length > 0) {
             lastCheck = new Date().toISOString();
+            // Envío embebido (Portal 659 Envíos) para que el pill violeta y el
+            // estado de la logística también se actualicen en vivo.
+            await attachShipments(rows, vendor.id).catch(() => {});
             const payload = JSON.stringify({ type: "orders_update", orders: rows });
             controller.enqueue(encoder.encode(`data: ${payload}\n\n`));
           }

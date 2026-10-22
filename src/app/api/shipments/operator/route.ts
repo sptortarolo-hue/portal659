@@ -45,6 +45,8 @@ export async function GET(request: Request) {
             s.shipping_zone_name, s.requested_at, s.picked_up_at, s.delivered_at, s.created_at,
             s.dest_lat, s.dest_lng,
             s.delivered_to_name, s.delivered_dni, s.delivered_lat, s.delivered_lng, s.delivered_geo_ok,
+            CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'shipments' AND column_name = 'ack_at')
+              THEN s.ack_at ELSE NULL END AS ack_at,
             o.total, o.customer_name, o.customer_phone, o.customer_address,
             o.items, o.status AS order_status, o.delivery_window, o.pickup_number,
             v.store_name, v.slug AS store_slug, v.location AS store_address,
@@ -102,6 +104,8 @@ export async function GET(request: Request) {
       deliveredLat: r.delivered_lat != null ? Number(r.delivered_lat) : null,
       deliveredLng: r.delivered_lng != null ? Number(r.delivered_lng) : null,
       deliveredGeoOk: r.delivered_geo_ok === true,
+      // Acuse de recibo (el comercio lo ve en el detalle del pedido).
+      ackAt: r.ack_at != null ? String(r.ack_at) : null,
     };
   });
 

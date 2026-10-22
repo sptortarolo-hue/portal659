@@ -3,6 +3,12 @@ import { queryMany, queryOne, withTransaction } from "@/lib/db";
 import { NextResponse } from "next/server";
 import { formatShipmentCode, SHIPMENT_STATUS_LABELS } from "@/lib/shipping";
 import { carrierWaTargets, carrierWaText, notifyCarrierOperators } from "@/lib/shipping-notify";
+import {
+  shipmentExtColsReady,
+  shipmentAckColsReady,
+  carrierWaColsReady,
+} from "@/lib/shipping-server";
+
 
 export const dynamic = "force-dynamic";
 
@@ -18,36 +24,54 @@ export async function GET(request: Request) {
   if (!vendor) return NextResponse.json({ error: "Comercio no encontrado" }, { status: 404 });
 
   try {
+    // Columnas extendidas por probe cacheado: sin las migraciones aplicadas
+    // la query usa la variante corta y todo sigue funcionando (sin cert, sin
+    // acuse, WA solo al phone único).
+    const extCols = await shipmentExtColsReady();
+    const ackCols = extCols && (await shipmentAckColsReady());
+    const waCols = await carrierWaColsReady();
     const rows = await queryMany<Record<string, unknown>>(
       `SELECT s.id, s.order_id, s.code, s.status, s.note, s.failed_reason, s.pod_photo_url,
               s.shipping_zone_name, s.requested_at, s.picked_up_at, s.delivered_at, s.created_at,
-              s.dest_lat, s.dest_lng,
-              s.delivered_to_name, s.delivered_dni, s.delivered_lat, s.delivered_lng, s.delivered_geo_ok,
-              CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'shipments' AND column_name = 'ack_at')
-                THEN s.ack_at ELSE NULL END AS ack_at,
-              CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'shipments' AND column_name = 'ack_by_profile')
-                THEN s.ack_by_profile ELSE NULL END AS ack_by_profile,
+              ${extCols ? `s.dest_lat, s.dest_lng,
+              s.delivered_to_name, s.delivered_dni, s.delivered_lat, s.delivered_lng, s.delivered_geo_ok,` : ""}
+              ${ackCols ? "s.ack_at, s.ack_by_profile," : ""}
               o.pickup_number AS order_number, o.total, o.customer_name, o.customer_phone,
               o.customer_address, o.method, o.status AS order_status, o.delivery_window,
               v.store_name, v.location AS store_address,
               c.phone AS carrier_phone,
-              CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'carriers' AND column_name = 'wa_phones')
-                THEN c.wa_phones ELSE NULL END AS carrier_wa_phones,
-              CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'carriers' AND column_name = 'wa_invite_url')
-                THEN c.wa_invite_url ELSE NULL END AS carrier_wa_invite,
-              sz.eta_days,
-              ap.full_name AS ack_by_name
+              ${waCols ? "c.wa_phones AS carrier_wa_phones, c.wa_invite_url AS carrier_wa_invite," : ""}
+              sz.eta_days
        FROM shipments s
        JOIN orders o ON o.id = s.order_id
        JOIN vendors v ON v.id = s.vendor_id
        LEFT JOIN carriers c ON c.id = s.carrier_id
        LEFT JOIN shipping_zones sz ON sz.id = s.shipping_zone_id
-       LEFT JOIN profiles ap ON ap.id = s.ack_by_profile
        WHERE s.vendor_id = $1
        ORDER BY s.created_at DESC
        LIMIT 200`,
       [vendor.id]
     );
+    // Nombres del acuse (best-effort, solo con la migración aplicada).
+    const ackNames = new Map<string, string>();
+    if (ackCols) {
+      const ackIds = (rows || [])
+        .map((r) => r.ack_by_profile)
+        .filter((v): v is string => v != null);
+      if (ackIds.length > 0) {
+        try {
+          const prows = await queryMany<{ id: string; full_name: string | null }>(
+            `SELECT id, full_name FROM profiles WHERE id = ANY($1::uuid[])`,
+            [ackIds]
+          );
+          for (const p of prows || []) {
+            if (p.full_name) ackNames.set(String(p.id), String(p.full_name));
+          }
+        } catch {
+          /* best-effort */
+        }
+      }
+    }
     const shipments = (rows || []).map((r) => {
       const codePub = formatShipmentCode(String(r.code));
       const statusKey = String(r.status);
@@ -98,7 +122,7 @@ export async function GET(request: Request) {
         deliveredGeoOk: r.delivered_geo_ok === true,
         // Acuse de recibo de la logística (el operador abrió el panel).
         ackAt: r.ack_at != null ? String(r.ack_at) : null,
-        ackByName: r.ack_by_name != null ? String(r.ack_by_name) : null,
+        ackByName: r.ack_by_profile != null ? ackNames.get(String(r.ack_by_profile)) ?? null : null,
         // WhatsApp: varios destinos posibles (despachantes + grupo).
         waTargets,
         waUrl: waTargets[0]?.url ?? null,
@@ -205,16 +229,16 @@ export async function POST(request: Request) {
     });
 
     // Datos para el WhatsApp al carrier + push a sus operadores (fuera de la
-    // tx, best-effort: si falla el aviso el encargo ya está creado).
+    // tx, best-effort: si falla el aviso el encargo ya está creado). Las
+    // columnas WA del carrier van por probe: sin migrate-carrier-wa.sql la
+    // referencia directa rompería el parse de la query (CASE no protege).
+    const waCols = await carrierWaColsReady();
     const waInfo = await queryOne<Record<string, unknown>>(
       `SELECT o.pickup_number AS order_number, o.customer_name, o.customer_phone,
               o.customer_address, sz.eta_days,
               v.store_name, v.location AS store_address,
-              c.phone AS carrier_phone, c.id AS carrier_id,
-              CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'carriers' AND column_name = 'wa_phones')
-                THEN c.wa_phones ELSE NULL END AS carrier_wa_phones,
-              CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'carriers' AND column_name = 'wa_invite_url')
-                THEN c.wa_invite_url ELSE NULL END AS carrier_wa_invite
+              c.phone AS carrier_phone, c.id AS carrier_id
+              ${waCols ? ", c.wa_phones AS carrier_wa_phones, c.wa_invite_url AS carrier_wa_invite" : ""}
        FROM orders o
        JOIN vendors v ON v.id = o.vendor_id
        JOIN shipping_zones sz ON sz.id = $2

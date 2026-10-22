@@ -15,6 +15,7 @@ import {
   applyAdvanceTx,
   syncAndNotify,
 } from "@/lib/shipment-handoff";
+import { shipmentExtColsReady, shipmentAckColsReady } from "@/lib/shipping-server";
 import { geocodeAddress, geocodeAddressesBatch } from "@/lib/geocode";
 
 export const dynamic = "force-dynamic";
@@ -40,13 +41,16 @@ export async function GET(request: Request) {
   }
   const carrierIds = carriers.map((c) => c.id);
 
+  // Columnas extendidas por probe cacheado: sin migrar usa la variante corta
+  // (sin dest/cert/ack) y el panel sigue funcionando en modo legacy.
+  const extCols = await shipmentExtColsReady();
+  const ackCols = extCols && (await shipmentAckColsReady());
   const rows = await queryMany<Record<string, unknown>>(
     `SELECT s.id, s.order_id, s.code, s.status, s.note, s.failed_reason, s.pod_photo_url,
             s.shipping_zone_name, s.requested_at, s.picked_up_at, s.delivered_at, s.created_at,
-            s.dest_lat, s.dest_lng,
-            s.delivered_to_name, s.delivered_dni, s.delivered_lat, s.delivered_lng, s.delivered_geo_ok,
-            CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'shipments' AND column_name = 'ack_at')
-              THEN s.ack_at ELSE NULL END AS ack_at,
+            ${extCols ? `s.dest_lat, s.dest_lng,
+            s.delivered_to_name, s.delivered_dni, s.delivered_lat, s.delivered_lng, s.delivered_geo_ok,` : ""}
+            ${ackCols ? "s.ack_at," : ""}
             o.total, o.customer_name, o.customer_phone, o.customer_address,
             o.items, o.status AS order_status, o.delivery_window, o.pickup_number,
             v.store_name, v.slug AS store_slug, v.location AS store_address,

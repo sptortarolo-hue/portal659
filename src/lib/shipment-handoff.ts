@@ -152,36 +152,66 @@ export type AdvanceInput = {
  */
 export async function applyAdvanceTx(input: AdvanceInput): Promise<void> {
   const { shipmentId, status, carrierId, note, photoUrl, operatorProfileId, courierName, podEnforced, cert } = input;
+  // Sin migrate-shipments-pod.sql las columnas del cert no existen: la SQL
+  // usa la variante corta (PostgreSQL resuelve columnas en parse-time — un
+  // CASE no protege una columna inexistente).
+  const podCols = await podColumnsReady();
   await withTransaction(async (tx) => {
-    await tx.queryVoid(
-      `UPDATE shipments SET status = $2, carrier_id = COALESCE(carrier_id, $3),
-            failed_reason = $4,
-            picked_up_at = CASE WHEN $5 THEN now() ELSE picked_up_at END,
-            delivered_at = CASE WHEN $6 THEN now() ELSE delivered_at END,
-            pod_photo_url = COALESCE($7, pod_photo_url),
-            delivered_to_name = CASE WHEN $6 AND $8 THEN $9 ELSE delivered_to_name END,
-            delivered_dni = CASE WHEN $6 AND $8 THEN $10 ELSE delivered_dni END,
-            delivered_lat = CASE WHEN $6 AND $8 THEN $11 ELSE delivered_lat END,
-            delivered_lng = CASE WHEN $6 AND $8 THEN $12 ELSE delivered_lng END,
-            delivered_geo_ok = CASE WHEN $6 AND $8 THEN true ELSE delivered_geo_ok END
-          WHERE id = $1`,
-      [
-        shipmentId,
-        status,
-        carrierId,
-        status === "failed_attempt" || status === "returned"
-          ? note || null
-          : null,
-        status === "picked_up",
-        status === "delivered",
-        photoUrl,
-        status === "delivered" && podEnforced,
-        status === "delivered" && podEnforced ? cert?.name?.slice(0, 80) : null,
-        status === "delivered" && podEnforced ? cert?.dni : null,
-        status === "delivered" && podEnforced ? cert?.lat : null,
-        status === "delivered" && podEnforced ? cert?.lng : null,
-      ]
-    );
+    if (podCols) {
+      // SQL única (los $5/$6/$7 con CASE/COALESCE aplican timestamps y POD
+      // solo cuando toca). El certificado (quién/DNI/GPS) se escribe solo en
+      // delivered (podEnforced).
+      await tx.queryVoid(
+        `UPDATE shipments SET status = $2, carrier_id = COALESCE(carrier_id, $3),
+              failed_reason = $4,
+              picked_up_at = CASE WHEN $5 THEN now() ELSE picked_up_at END,
+              delivered_at = CASE WHEN $6 THEN now() ELSE delivered_at END,
+              pod_photo_url = COALESCE($7, pod_photo_url),
+              delivered_to_name = CASE WHEN $6 AND $8 THEN $9 ELSE delivered_to_name END,
+              delivered_dni = CASE WHEN $6 AND $8 THEN $10 ELSE delivered_dni END,
+              delivered_lat = CASE WHEN $6 AND $8 THEN $11 ELSE delivered_lat END,
+              delivered_lng = CASE WHEN $6 AND $8 THEN $12 ELSE delivered_lng END,
+              delivered_geo_ok = CASE WHEN $6 AND $8 THEN true ELSE delivered_geo_ok END
+            WHERE id = $1`,
+        [
+          shipmentId,
+          status,
+          carrierId,
+          status === "failed_attempt" || status === "returned"
+            ? note || null
+            : null,
+          status === "picked_up",
+          status === "delivered",
+          photoUrl,
+          status === "delivered" && podEnforced,
+          status === "delivered" && podEnforced ? cert?.name?.slice(0, 80) : null,
+          status === "delivered" && podEnforced ? cert?.dni : null,
+          status === "delivered" && podEnforced ? cert?.lat : null,
+          status === "delivered" && podEnforced ? cert?.lng : null,
+        ]
+      );
+    } else {
+      // Legacy (sin migración pod): misma transición, sin certificado.
+      await tx.queryVoid(
+        `UPDATE shipments SET status = $2, carrier_id = COALESCE(carrier_id, $3),
+              failed_reason = $4,
+              picked_up_at = CASE WHEN $5 THEN now() ELSE picked_up_at END,
+              delivered_at = CASE WHEN $6 THEN now() ELSE delivered_at END,
+              pod_photo_url = COALESCE($7, pod_photo_url)
+            WHERE id = $1`,
+        [
+          shipmentId,
+          status,
+          carrierId,
+          status === "failed_attempt" || status === "returned"
+            ? note || null
+            : null,
+          status === "picked_up",
+          status === "delivered",
+          photoUrl,
+        ]
+      );
+    }
     await tx.queryVoid(
       `INSERT INTO shipment_events (shipment_id, status, note, photo_url, operator_profile_id)
        VALUES ($1, $2, $3, $4, $5)`,

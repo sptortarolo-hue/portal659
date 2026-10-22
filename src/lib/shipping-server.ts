@@ -128,11 +128,62 @@ export async function fetchShipmentEvents(shipmentId: string) {
 }
 
 /**
+ * Probes cacheados de columnas extendidas (migraciones pod/carrier-wa sin
+ * aplicar → las queries usan la variante corta en vez de romper). TTL 60s:
+ * si el admin aplica la migración con el server corriendo, en un minuto se
+ * re-probea y el modo completo se activa solo (sin restart).
+ */
+const PROBE_TTL_MS = 60_000;
+
+let extColsOk: boolean | null = null;
+let extColsAt = 0;
+export async function shipmentExtColsReady(): Promise<boolean> {
+  if (extColsOk !== null && Date.now() - extColsAt < PROBE_TTL_MS) return extColsOk;
+  try {
+    await queryOne(`SELECT dest_lat FROM shipments LIMIT 1`);
+    extColsOk = true;
+  } catch {
+    extColsOk = false;
+  }
+  extColsAt = Date.now();
+  return extColsOk;
+}
+
+let ackColsOk: boolean | null = null;
+let ackColsAt = 0;
+export async function shipmentAckColsReady(): Promise<boolean> {
+  if (ackColsOk !== null && Date.now() - ackColsAt < PROBE_TTL_MS) return ackColsOk;
+  try {
+    await queryOne(`SELECT ack_at FROM shipments LIMIT 1`);
+    ackColsOk = true;
+  } catch {
+    ackColsOk = false;
+  }
+  ackColsAt = Date.now();
+  return ackColsOk;
+}
+
+/** Columnas WA del carrier (migrate-carrier-wa.sql). */
+let carrierWaColsOk: boolean | null = null;
+let carrierWaColsAt = 0;
+export async function carrierWaColsReady(): Promise<boolean> {
+  if (carrierWaColsOk !== null && Date.now() - carrierWaColsAt < PROBE_TTL_MS) return carrierWaColsOk;
+  try {
+    await queryOne(`SELECT wa_phones FROM carriers LIMIT 1`);
+    carrierWaColsOk = true;
+  } catch {
+    carrierWaColsOk = false;
+  }
+  carrierWaColsAt = Date.now();
+  return carrierWaColsOk;
+}
+
+/**
  * Envíos embebidos por pedido (row mutada in-place): el panel del comercio
  * abre el detalle con `order.shipment` disponible en el primer render
  * (antes dependía de un segundo fetch a /api/vendor/shipments y el bloque
  * violeta "parpadeaba"/desaparecía entre polls). 200 pedidos máx = lista del
- * tablero; tolerante a migración sin aplicar.
+ * tablero; tolerante a migración sin aplicar (variante corta sin dest/cert).
  */
 export async function attachShipments(
   // Cualquier fila del panel (el spread del caller destruye el tipo exacto);
@@ -142,18 +193,18 @@ export async function attachShipments(
 ): Promise<void> {
   if (!Array.isArray(orders) || orders.length === 0) return;
   const orderIds = orders.map((o) => o.id).slice(0, 400);
+  const extCols = await shipmentExtColsReady();
+  const ackCols = extCols && (await shipmentAckColsReady());
   let rows: Array<Record<string, unknown>> = [];
   try {
     rows =
       (await queryMany<Record<string, unknown>>(
         `SELECT DISTINCT ON (order_id)
                 s.order_id, s.id, s.code, s.status, s.note, s.failed_reason, s.pod_photo_url,
-                s.shipping_zone_name, s.dest_lat, s.dest_lng,
-                s.delivered_to_name, s.delivered_dni, s.delivered_lat, s.delivered_lng, s.delivered_geo_ok,
-                CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'shipments' AND column_name = 'ack_at')
-                  THEN s.ack_at ELSE NULL END AS ack_at,
-                CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'shipments' AND column_name = 'ack_by_profile')
-                  THEN s.ack_by_profile ELSE NULL END AS ack_by_profile
+                s.shipping_zone_name${extCols ? `,
+                s.dest_lat, s.dest_lng,
+                s.delivered_to_name, s.delivered_dni, s.delivered_lat, s.delivered_lng, s.delivered_geo_ok` : ""}${ackCols ? `,
+                s.ack_at` : ""}
          FROM shipments s
          WHERE s.vendor_id = $1 AND s.order_id = ANY($2::uuid[])
          ORDER BY s.order_id, s.created_at DESC`,
@@ -176,7 +227,7 @@ export async function attachShipments(
       shippingZoneName: r.shipping_zone_name != null ? String(r.shipping_zone_name) : null,
       podPhotoUrl: r.pod_photo_url != null ? String(r.pod_photo_url) : null,
       failedReason: r.failed_reason != null ? String(r.failed_reason) : null,
-      // Certificado de entrega (visible cuando delivered).
+      // Certificado de entrega (visible cuando delivered; solo con migración).
       deliveredToName: r.delivered_to_name != null ? String(r.delivered_to_name) : null,
       deliveredDni: r.delivered_dni != null ? String(r.delivered_dni) : null,
       deliveredLat: r.delivered_lat != null ? Number(r.delivered_lat) : null,

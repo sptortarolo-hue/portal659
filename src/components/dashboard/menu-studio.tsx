@@ -551,12 +551,13 @@ export function MenuStudio({
     if (isDesktop()) setDrawerOpen(true);
   }
 
-  /** Nuevo combo: mismo form con el toggle 🧩 ya prendido. */
+  /** Nuevo combo: mismo form con el toggle 🧩 ya prendido. Abre el drawer
+   * siempre (en mobile es full-width): la solapa Combos no tiene form inline. */
   function openNewCombo() {
     resetForm();
     setOffIsCombo(true);
     setShowForm(true);
-    if (isDesktop()) setDrawerOpen(true);
+    setDrawerOpen(true);
   }
 
   function closeEditor() {
@@ -1501,7 +1502,15 @@ export function MenuStudio({
       <ProductDrawer
         open={drawerOpen}
         onClose={closeEditor}
-        title={editingId ? offName || (isComercio ? "Editar producto" : "Editar plato") : (isComercio ? "Nuevo producto" : "Nuevo plato")}
+        title={
+          editingId
+            ? offName || (offIsCombo ? "Editar combo" : isComercio ? "Editar producto" : "Editar plato")
+            : offIsCombo
+              ? "Nuevo combo"
+              : isComercio
+                ? "Nuevo producto"
+                : "Nuevo plato"
+        }
         subtitle={
           editingId
             ? editingOffer?.category || undefined

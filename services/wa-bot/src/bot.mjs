@@ -1289,11 +1289,12 @@ async function handlePortalInbound({ vendor, waId, body, waPhone }) {
       }
     }
 
-    // 2) Si el cliente menciona un producto → buscar en todos los comercios y comparar.
-    const portalData = await fetchPortalMenu(text.length > 2 ? text : "");
+    // 2) Traer SIEMPRE el menú completo de la zona (sin filtro q) para poder
+    //    mostrar todos los comercios si no hay coincidencia de producto.
+    const portalData = await fetchPortalMenu("");
     const vendorsWithProducts = (portalData.vendors || []).filter((v) => (v.products || []).length > 0);
 
-    // Filtrar por texto si hay búsqueda
+    // Filtrar por texto si hay búsqueda (sobre el menú completo, en cliente).
     let matches = [];
     if (text.length > 2) {
       const t = text.toLowerCase();

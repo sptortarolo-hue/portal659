@@ -1321,6 +1321,10 @@ async function handlePortalInbound({ vendor, waId, body, waPhone }) {
         const prods = x.products.slice(0, 5).map((p) => `${p.name} $${p.price}`).join(", ");
         lines.push(`${i + 1}) *${x.vendor.store_name}* — ${prods}`);
       });
+      if (!state.welcomed) {
+        replies.unshift("¡Hola! 👋 Soy el asistente de *Portal 659*.");
+        state.welcomed = true;
+      }
       replies.push("Encontré en estos comercios:");
       replies.push(lines.join("\n"));
       replies.push("¿De cuál querés pedir? Respondé el número.");
@@ -1331,12 +1335,21 @@ async function handlePortalInbound({ vendor, waId, body, waPhone }) {
     if (vendorsWithProducts.length > 0) {
       state.portalVendorList = vendorsWithProducts.map((v) => ({ id: v.id, store_name: v.store_name }));
       const lines = vendorsWithProducts.map((v, i) => `${i + 1}) *${v.store_name}* (${(v.products || []).length} productos)`);
-      replies.push("Comercios de tu zona:");
+      if (!state.welcomed) {
+        replies.push("¡Hola! 👋 Soy el asistente de *Portal 659*. Estos son los comercios de tu zona:");
+        state.welcomed = true;
+      } else {
+        replies.push("Comercios de tu zona:");
+      }
       replies.push(lines.join("\n"));
-      replies.push("Mandame el nombre de un producto para buscar, o el número del comercio para ver su menú.");
+      replies.push("Mandame el nombre de un producto para buscar, o el nǧmero del comercio para ver su menǧ.");
       return await persist(state, vendor.id, waId, replies);
     }
 
+    if (!state.welcomed) {
+      replies.push("¡Hola! 👋 Soy el asistente de *Portal 659*.");
+      state.welcomed = true;
+    }
     replies.push("No encontré comercios con productos en tu zona por ahora. Escribí *ayuda* si necesitás asistencia.");
     return await persist(state, vendor.id, waId, replies);
 

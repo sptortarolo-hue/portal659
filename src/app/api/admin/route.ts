@@ -14,7 +14,9 @@ export async function GET(request: Request) {
   try {
     const [vendors, orders, reviews, products, stats, ordersByDay, ordersByVertical] = await Promise.all([
     queryMany(
-      `SELECT * FROM vendors ORDER BY created_at DESC`
+      // El vendor del bot es infraestructura, no un comercio: no se cuenta ni
+      // se lista en el dashboard admin (COALESCE por el gotcha de NULL NOT IN).
+      `SELECT * FROM vendors WHERE COALESCE(slug, '') NOT IN ('portal659-bot') ORDER BY created_at DESC`
     ),
     queryMany<Record<string, unknown>>(
       `SELECT o.*, v.store_name FROM orders o

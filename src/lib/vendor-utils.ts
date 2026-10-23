@@ -77,7 +77,7 @@ export async function getVendorByRequest(request: Request): Promise<{
   // `portal659-vendor-id` elige cuál; sin cookie (o inválida) gana el primero
   // (created_at) — determinista, mismo orden que la lista del switcher.
   const owned = await queryMany<{ id: string; user_id: string }>(
-    `SELECT id, user_id FROM vendors WHERE user_id = $1 AND slug NOT IN ('admin-portal659','portal659-bot','portal-central') ORDER BY created_at ASC LIMIT 20`,
+    `SELECT id, user_id FROM vendors WHERE user_id = $1 AND COALESCE(slug, '') NOT IN ('admin-portal659','portal659-bot','portal-central') ORDER BY created_at ASC LIMIT 20`,
     [user.id]
   );
   if (owned && owned.length > 0) {
@@ -142,7 +142,7 @@ export async function resolveOwnedVendorId(
   override?: unknown
 ): Promise<string | null> {
   const rows = await queryMany<{ id: string }>(
-    `SELECT id FROM vendors WHERE user_id = $1 AND slug NOT IN ('admin-portal659','portal659-bot','portal-central') ORDER BY created_at ASC LIMIT 20`,
+    `SELECT id FROM vendors WHERE user_id = $1 AND COALESCE(slug, '') NOT IN ('admin-portal659','portal659-bot','portal-central') ORDER BY created_at ASC LIMIT 20`,
     [userId]
   );
   if (!rows || rows.length === 0) return null;

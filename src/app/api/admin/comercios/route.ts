@@ -35,7 +35,9 @@ export async function GET(request: Request) {
     conditions.push(`(${q})`);
   }
 
-  const allConditions = ["slug NOT IN ('admin-portal659','portal659-bot','portal-central')", ...conditions];
+  // COALESCE: con slug NULL, "NULL NOT IN (...)" filtra comercios reales
+  // (gotcha de SQL) — coalesce evita que desaparezcan de la lista.
+  const allConditions = ["COALESCE(slug, '') NOT IN ('admin-portal659','portal659-bot','portal-central')", ...conditions];
   const whereClause = `WHERE ${allConditions.join(" AND ")}`;
   const vendors = await queryMany(
     `SELECT v.*,

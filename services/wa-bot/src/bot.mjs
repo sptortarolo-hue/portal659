@@ -1294,15 +1294,26 @@ async function handlePortalInbound({ vendor, waId, body, waPhone }) {
     const portalData = await fetchPortalMenu("");
     const vendorsWithProducts = (portalData.vendors || []).filter((v) => (v.products || []).length > 0);
 
+    // Normalizar para comparar: minúsculas, sin tildes, plural→singular aproximado.
+    function norm(s) {
+      return String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
+    }
+    function stem(w) {
+      return w.replace(/(es|s)$/i, "");
+    }
     // Filtrar por texto si hay búsqueda (sobre el menú completo, en cliente).
     let matches = [];
-    if (text.length > 2) {
-      const t = text.toLowerCase();
+    if (text.length > 2 && !/^(hola|buenas|buenos|chau|adios|gracias|ok|si|no|cancelar|ayuda|menu|menú|comercios)$/i.test(text.trim())) {
+      const t = norm(text);
+      const qTokens = t.split(" ").filter(Boolean).map(stem);
       for (const v of vendorsWithProducts) {
         for (const p of v.products || []) {
-          if (String(p.name || "").toLowerCase().includes(t) || String(p.category || "").toLowerCase().includes(t)) {
-            matches.push({ vendor: v, product: p });
-          }
+          const pn = norm(p.name);
+          const cn = norm(p.category);
+          const pTokens = pn.split(" ").filter(Boolean).map(stem);
+          // match si algún token de la búsqueda está en el nombre/categoría (o viceversa)
+          const hit = qTokens.some((qt) => pTokens.some((pt) => pt === qt || pt.includes(qt) || qt.includes(pt)) || cn.includes(qt));
+          if (hit) matches.push({ vendor: v, product: p });
         }
       }
     }
@@ -1331,18 +1342,24 @@ async function handlePortalInbound({ vendor, waId, body, waPhone }) {
       return await persist(state, vendor.id, waId, replies);
     }
 
-    // 3) Sin coincidencia: mostrar comercios disponibles.
+    // 3) Sin coincidencia: mostrar comercios disponibles (solo la primera vez
+    //    o si no habíamos mostrado la lista; si ya la vio, no repetir el listado).
     if (vendorsWithProducts.length > 0) {
-      state.portalVendorList = vendorsWithProducts.map((v) => ({ id: v.id, store_name: v.store_name }));
-      const lines = vendorsWithProducts.map((v, i) => `${i + 1}) *${v.store_name}* (${(v.products || []).length} productos)`);
-      if (!state.welcomed) {
-        replies.push("¡Hola! 👋 Soy el asistente de *Portal 659*. Estos son los comercios de tu zona:");
-        state.welcomed = true;
+      const alreadyListed = Array.isArray(state.portalVendorList) && state.portalVendorList.length > 0;
+      if (!alreadyListed) {
+        state.portalVendorList = vendorsWithProducts.map((v) => ({ id: v.id, store_name: v.store_name }));
+        const lines = vendorsWithProducts.map((v, i) => `${i + 1}) *${v.store_name}* (${(v.products || []).length} productos)`);
+        if (!state.welcomed) {
+          replies.push("¡Hola! 👋 Soy el asistente de *Portal 659*. Estos son los comercios de tu zona:");
+          state.welcomed = true;
+        } else {
+          replies.push("Comercios de tu zona:");
+        }
+        replies.push(lines.join("\n"));
+        replies.push("Mandame el nombre de un producto para buscar, o el número del comercio para ver su menú.");
       } else {
-        replies.push("Comercios de tu zona:");
+        replies.push("No encontré ese producto. Mandame otro nombre, o el número del comercio de la lista anterior.");
       }
-      replies.push(lines.join("\n"));
-      replies.push("Mandame el nombre de un producto para buscar, o el nǧmero del comercio para ver su menǧ.");
       return await persist(state, vendor.id, waId, replies);
     }
 

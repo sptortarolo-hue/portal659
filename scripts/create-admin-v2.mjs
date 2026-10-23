@@ -52,16 +52,9 @@ async function main() {
     );
     const userId = profileRes.rows[0].id;
 
-    await client.query(
-      `INSERT INTO vendors (user_id, store_name, slug, category, vertical, neighborhood, accepting_quotes, verified, is_admin)
-       VALUES ($1, $2, 'admin-portal659', 'admin', 'gastronomia', 'sicardi', false, true, true)
-       ON CONFLICT (slug) DO UPDATE SET
-         user_id = EXCLUDED.user_id,
-         store_name = EXCLUDED.store_name,
-         is_admin = true,
-         verified = true`,
-      [userId, name]
-    );
+    // Portal 659 no tiene tienda propia: el admin gestiona otros comercios
+    // mediante impersonación (admin-as). No se crea vendor fantasma.
+    await client.query(`UPDATE profiles SET is_admin = true WHERE id = $1`, [userId]);
 
     await client.query("COMMIT");
     console.log(`Admin creado/actualizado: ${email} (userId: ${userId})`);

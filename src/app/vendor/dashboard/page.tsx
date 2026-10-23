@@ -595,6 +595,9 @@ function VendorDashboardInner() {
       }
 
       if (me.error === "No autenticado") { router.push("/login"); return; }
+      // Admin sin tienda propia: redirigir al listado de comercios para
+      // impersonar uno (Portal 659 no tiene tienda propia).
+      if (!me.vendor && me.isAdmin) { router.push("/admin/comercios"); return; }
       if (me.preview) setPreviewSession(true);
       if (me.vendor) {
         setVendor(me.vendor);

@@ -32,7 +32,7 @@ export async function GET(request: Request) {
   }
 
   if (!resolved) {
-    return NextResponse.json({ vendor: null, staffRole, staffLevel, userId: user.id });
+    return NextResponse.json({ vendor: null, staffRole, staffLevel, userId: user.id, isAdmin: user.is_admin === true });
   }
 
   const vendor = await queryOne<Record<string, unknown>>(
@@ -66,7 +66,7 @@ export async function GET(request: Request) {
         plan_status: string | null;
       }>(
         `SELECT id, slug, store_name, logo_url, image_url, vertical, plan_id, plan_status
-         FROM vendors WHERE user_id = $1 ORDER BY created_at ASC LIMIT 20`,
+         FROM vendors WHERE user_id = $1 AND slug <> 'admin-portal659' ORDER BY created_at ASC LIMIT 20`,
         [listOwnerUserId]
       )
     : [];
@@ -79,6 +79,7 @@ export async function GET(request: Request) {
     staffLevel,
     userId: user.id,
     preview: previewSession,
+    isAdmin: user.is_admin === true,
   });
 }
 

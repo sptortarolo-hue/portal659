@@ -35,7 +35,8 @@ export async function GET(request: Request) {
     conditions.push(`(${q})`);
   }
 
-  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+  const allConditions = ["slug <> 'admin-portal659'", ...conditions];
+  const whereClause = `WHERE ${allConditions.join(" AND ")}`;
   const vendors = await queryMany(
     `SELECT v.*,
             sub.paid_at,

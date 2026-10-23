@@ -22,11 +22,5 @@ ON CONFLICT (email) DO UPDATE SET
   email_confirmed = true,
   verified = true;
 
--- 2) Crear (o actualizar) el comercio admin con is_admin = true
-INSERT INTO public.vendors (user_id, store_name, slug, category, vertical, neighborhood, accepting_quotes, verified, is_admin)
-SELECT id, 'Portal 659 Admin', 'admin-portal659', 'admin', 'gastronomia', 'sicardi', false, true, true
-FROM public.profiles
-WHERE email = '<EMAIL_ADMIN>'
-ON CONFLICT (slug) DO UPDATE SET
-  is_admin = true,
-  verified = true;
+-- 2) Portal 659 no tiene tienda propia: el admin gestiona otros comercios
+--    mediante impersonación (admin-as). No se crea vendor fantasma.

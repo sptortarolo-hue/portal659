@@ -142,6 +142,10 @@ function phoneFor(waId, waPhone) {
 }
 
 export async function handleInbound({ vendor, waId, body, waPhone }) {
+  // Modo portal: un solo número sirve a todos los comercios de la zona activa.
+  if (config.botMode === "portal") {
+    return await handlePortalInbound({ vendor, waId, body, waPhone });
+  }
   const text = String(body || "").trim();
   const state = (await getState(vendor.id, waId)) || { ...DEFAULT_STATE };
   if (!Array.isArray(state.history)) state.history = [];
@@ -1173,6 +1177,177 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const rand = (min, max) => Math.round(min + Math.random() * (max - min));
 // Delay humano (igual que index.mjs): simula lectura antes del aviso.
 const humanDelay = (len) => Math.min(config.replyDelayMaxMs, config.replyDelayMinMs + len * 4 + rand(200, 700));
+
+// ————————————————————————————————————————————————————————————————
+// Modo PORTAL: un solo número sirve a todos los comercios de la zona activa.
+// ————————————————————————————————————————————————————————————————
+async function fetchPortalMenu(q = "") {
+  try {
+    const url = `${config.appUrl}/api/wa/portal-menu${q ? `?q=${encodeURIComponent(q)}` : ""}`;
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${config.waBotSecret}` },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) return { vendors: [] };
+    return await res.json();
+  } catch (e) {
+    console.error(`[bot][portal] menu fetch fail: ${e?.message}`);
+    return { vendors: [] };
+  }
+}
+
+async function handlePortalInbound({ vendor, waId, body, waPhone }) {
+  const text = String(body || "").trim();
+  const state = (await getState(vendor.id, waId)) || { ...DEFAULT_STATE };
+  if (!Array.isArray(state.history)) state.history = [];
+  const ph = phoneFor(waId, waPhone);
+  if (!state.customerPhone || (String(state.customerPhone).startsWith("lid:") && !ph.startsWith("lid:"))) {
+    state.customerPhone = ph;
+  }
+  if (!state.items || !Array.isArray(state.items) || state.items === DEFAULT_STATE.items) state.items = [];
+  if (!Array.isArray(state.history) || state.history === DEFAULT_STATE.history) state.history = [];
+  if (!state.zone) state.zone = "sicardi-garibaldi";
+  if (!state.portalVendorList) state.portalVendorList = [];
+  state.touchedAt = Date.now();
+  const replies = [];
+
+  try {
+    if (!vendor.enabled) return { replies: [], handoff: true };
+
+    if (RE_CANCEL.test(text)) {
+      state._cleared = true;
+      await clearState(vendor.id, waId);
+      return { replies: ["Ok, cancelé todo. Cuando quieras retomamos. 👋"] };
+    }
+
+    if (state.pausedUntil && state.pausedUntil > Date.now()) {
+      return { replies: [] };
+    }
+
+    state.history.push({ role: "user", text: text.slice(0, 200) });
+    if (state.history.length > 8) state.history = state.history.slice(-8);
+
+    if (RE_HUMAN.test(text)) {
+      return await handoffHuman(vendor, waId, text, state);
+    }
+
+    if (!config.takeOrders) {
+      await handleConcierge({ vendor, text, state, replies, waId });
+      return await persist(state, vendor.id, waId, replies);
+    }
+
+    // En flujo de pedido con un comercio elegido: reusar el flow normal.
+    if (state.currentVendorId && state.step !== "idle") {
+      const chosenVendor = { id: state.currentVendorId, store_name: state.currentVendorName || "Comercio", enabled: true };
+      await handleStep({ vendor: chosenVendor, text, state, replies, waId });
+      // Si el pedido se confirmó y se limpió, ofrecer otro comercio.
+      if (state._cleared) {
+        state.currentVendorId = null;
+        state.currentVendorName = null;
+        state.items = [];
+        state.step = "idle";
+        state._cleared = false;
+        replies.push("¿Querés pedir de otro comercio? Mandame el nombre del producto o escribí *comercios*.");
+      }
+      return await persist(state, vendor.id, waId, replies);
+    }
+
+    // Idle con comercio elegido: flujo normal de ese comercio.
+    if (state.currentVendorId && state.step === "idle") {
+      // Cambiar de comercio si lo pide.
+      if (/^(otro|cambiar|volver|comercios|menu|menú)$/i.test(text.trim())) {
+        state.currentVendorId = null;
+        state.currentVendorName = null;
+        state.items = [];
+        state.step = "idle";
+        state.portalVendorList = [];
+        // cae al bloque de portal idle abajo
+      } else {
+        const chosenVendor = { id: state.currentVendorId, store_name: state.currentVendorName || "Comercio", enabled: true };
+        await handleIdle({ vendor: chosenVendor, text, state, replies, waId });
+        return await persist(state, vendor.id, waId, replies);
+      }
+    }
+
+    // — Portal idle: sin comercio elegido —
+    // 1) Si el cliente responde un número de la última lista mostrada → elegir comercio.
+    const numMatch = text.trim().match(/^(\d+)$/);
+    if (numMatch && state.portalVendorList && state.portalVendorList.length > 0) {
+      const idx = Number(numMatch[1]) - 1;
+      if (idx >= 0 && idx < state.portalVendorList.length) {
+        const chosen = state.portalVendorList[idx];
+        state.currentVendorId = chosen.id;
+        state.currentVendorName = chosen.store_name;
+        state.portalVendorList = [];
+        state.items = [];
+        state.step = "idle";
+        const products = await getMenu(chosen.id);
+        replies.push(`Perfecto, estás pidiendo de *${chosen.store_name}*. 📋 Menú:`);
+        replies.push(products.slice(0, 20).map((p) => `• ${p.name} — $${p.price}`).join("\n") || "Sin productos disponibles.");
+        replies.push("Mandame tu pedido (ej: \"2 empanadas de carne y una coca\").");
+        return await persist(state, vendor.id, waId, replies);
+      }
+    }
+
+    // 2) Si el cliente menciona un producto → buscar en todos los comercios y comparar.
+    const portalData = await fetchPortalMenu(text.length > 2 ? text : "");
+    const vendorsWithProducts = (portalData.vendors || []).filter((v) => (v.products || []).length > 0);
+
+    // Filtrar por texto si hay búsqueda
+    let matches = [];
+    if (text.length > 2) {
+      const t = text.toLowerCase();
+      for (const v of vendorsWithProducts) {
+        for (const p of v.products || []) {
+          if (String(p.name || "").toLowerCase().includes(t) || String(p.category || "").toLowerCase().includes(t)) {
+            matches.push({ vendor: v, product: p });
+          }
+        }
+      }
+    }
+
+    if (matches.length > 0) {
+      // Agrupar por comercio para comparar
+      const byVendor = new Map();
+      for (const m of matches) {
+        if (!byVendor.has(m.vendor.id)) byVendor.set(m.vendor.id, { vendor: m.vendor, products: [] });
+        byVendor.get(m.vendor.id).products.push(m.product);
+      }
+      const list = Array.from(byVendor.values());
+      state.portalVendorList = list.map((x) => ({ id: x.vendor.id, store_name: x.vendor.store_name }));
+      const lines = [];
+      list.forEach((x, i) => {
+        const prods = x.products.slice(0, 5).map((p) => `${p.name} $${p.price}`).join(", ");
+        lines.push(`${i + 1}) *${x.vendor.store_name}* — ${prods}`);
+      });
+      replies.push("Encontré en estos comercios:");
+      replies.push(lines.join("\n"));
+      replies.push("¿De cuál querés pedir? Respondé el número.");
+      return await persist(state, vendor.id, waId, replies);
+    }
+
+    // 3) Sin coincidencia: mostrar comercios disponibles.
+    if (vendorsWithProducts.length > 0) {
+      state.portalVendorList = vendorsWithProducts.map((v) => ({ id: v.id, store_name: v.store_name }));
+      const lines = vendorsWithProducts.map((v, i) => `${i + 1}) *${v.store_name}* (${(v.products || []).length} productos)`);
+      replies.push("Comercios de tu zona:");
+      replies.push(lines.join("\n"));
+      replies.push("Mandame el nombre de un producto para buscar, o el número del comercio para ver su menú.");
+      return await persist(state, vendor.id, waId, replies);
+    }
+
+    replies.push("No encontré comercios con productos en tu zona por ahora. Escribí *ayuda* si necesitás asistencia.");
+    return await persist(state, vendor.id, waId, replies);
+
+  } catch (e) {
+    console.error("[bot][portal] error:", e?.message, "|", e?.stack?.split("\n")[1]);
+    const msg = String(e?.message || "");
+    if (msg && !/fetch|network|timeout|ENOTFOUND|ECONNREFUSED|EAI_AGAIN|etag/i.test(msg)) {
+      return { replies: [`${msg}`] };
+    }
+    return { replies: ["Uy, hubo un error. Mandame el mensaje de nuevo en un segundo. 🙏"] };
+  }
+}
 
 export async function sweepStaleConversations() {
   const now = Date.now();

@@ -40,9 +40,12 @@ export const config = {
   maxMsgPerDay: Number(process.env.WA_MAX_MSG_PER_DAY || 500),
   maxNewChatsPerHour: Number(process.env.WA_MAX_NEW_CHATS_PER_HOUR || 15),
   // Modo del bot de WhatsApp: "orders" (toma pedidos) o "concierge" (saludo,
-  // menú, "¿tuviste un problema?" + forwarding al dueño). Default concierge.
-  // No se borra código: el flujo de pedidos solo no se entra cuando está off.
+  // menǧ, "��tuviste un problema?" + forwarding al due��o). Default concierge.
+  // No se borra c��digo: el flujo de pedidos solo no se entra cuando estǭ off.
   takeOrders: process.env.BOT_TAKE_ORDERS === "1",
+  // Modo portal: un solo número sirve a todos los comercios de la zona activa.
+  // "portal" = multi-comercio; "vendor" (default) = un comercio por número.
+  botMode: process.env.BOT_MODE || "vendor",
   // Timeout de no-respuesta: si hay una pregunta pendiente (persona 1/2, consulta
   // o comprobante) sin contestar por más de esto, el bot avisa que va a ser
   // atendido por una persona y deriva (push al dueño + pausa).

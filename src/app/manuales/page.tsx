@@ -5,6 +5,7 @@ export const metadata = {
   title: "Manuales | Portal 659",
   description:
     "Guías paso a paso para usar Portal 659: manual básico transversal a todos los rubros y manuales específicos de gastronomía y comercio de barrio.",
+  alternates: { canonical: "/manuales" },
 };
 
 function Card({

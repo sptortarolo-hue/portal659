@@ -5,6 +5,7 @@ export const metadata = {
   title: "Política de Privacidad | Portal Print",
   description:
     "Cómo Portal Print maneja los datos en tu dispositivo.",
+  alternates: { canonical: "/privacidad-print" },
 };
 
 export default function PrivacidadPrintPage() {

@@ -6,6 +6,7 @@ export const metadata: Metadata = {
   title: "Repartidor y entregas | Portal 659",
   description:
     "Manual detallado: alta del repartidor por el comercio, descarga del APK, permisos, uso (tomar, entregar, punto vivo) y seguimiento.",
+  alternates: { canonical: "/manuales/reparto" },
 };
 
 export default function RepartoPage() {

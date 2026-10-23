@@ -55,8 +55,11 @@ export const metadata: Metadata = {
     "La Plata",
   ],
   authors: [{ name: "Portal 659" }],
-  // Canonical base: cada página pública define el suyo; este cubre la home.
-  alternates: { canonical: "/" },
+  // SIN canonical acá a propósito: un canonical en el layout raíz se hereda a
+  // TODA página que no defina el suyo (manuales, privacidad, auth...) y las
+  // hacía canonicalizar a la home ("Página alternativa con etiqueta canónica"
+  // en Search Console). La home define el suyo en page.tsx; cada página
+  // pública importante define el propio.
   // Verificación de Google Search Console (meta tag). Se setea por env
   // GOOGLE_SITE_VERIFICATION (solo el token `content`, sin la etiqueta).
   ...(process.env.GOOGLE_SITE_VERIFICATION

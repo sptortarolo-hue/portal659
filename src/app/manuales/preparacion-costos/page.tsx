@@ -6,6 +6,7 @@ export const metadata: Metadata = {
   title: "Preparación y Costo | Portal 659",
   description:
     "Manual detallado: insumos con merma, preparación por plato, food-cost con semáforo, elaborados, presentaciones y ficha PDF.",
+  alternates: { canonical: "/manuales/preparacion-costos" },
 };
 
 export default function PreparacionCostosPage() {

@@ -6,6 +6,7 @@ export const metadata: Metadata = {
   title: "Gastronomía | Portal 659",
   description:
     "Manual detallado de gastronomía: pedidos online y delivery, comanda de cocina, mesas, mostrador, menú y reparto.",
+  alternates: { canonical: "/manuales/gastronomia" },
 };
 
 export default function GastronomiaPage() {

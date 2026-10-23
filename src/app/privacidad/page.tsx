@@ -5,6 +5,7 @@ export const metadata = {
   title: "Política de Privacidad | Portal 659",
   description:
     "Cómo Portal 659 recopila, usa y protege tus datos personales.",
+  alternates: { canonical: "/privacidad" },
 };
 
 export default function PrivacidadPage() {

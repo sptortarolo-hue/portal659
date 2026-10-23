@@ -6,6 +6,7 @@ export const metadata: Metadata = {
   title: "Uso básico | Portal 659",
   description:
     "Manual básico transversal a todos los rubros: cuenta, panel, configuración, micrositio, pedidos y cobros.",
+  alternates: { canonical: "/manuales/basico" },
 };
 
 export default function BasicoPage() {

@@ -6,6 +6,7 @@ export const metadata: Metadata = {
   title: "Comercio de barrio | Portal 659",
   description:
     "Manual detallado de comercio de barrio: catálogo y vidriera, pedidos con empaque, mostrador con balanza, caja y reparto por franjas.",
+  alternates: { canonical: "/manuales/comercio" },
 };
 
 export default function ComercioPage() {

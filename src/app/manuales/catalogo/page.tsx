@@ -6,6 +6,7 @@ export const metadata: Metadata = {
   title: "Catálogo y menú | Portal 659",
   description:
     "Manual detallado: cómo cargar platos y productos, opciones, variantes, precios por volumen y promos.",
+  alternates: { canonical: "/manuales/catalogo" },
 };
 
 export default function CatalogoPage() {

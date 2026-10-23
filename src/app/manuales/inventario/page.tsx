@@ -6,6 +6,7 @@ export const metadata: Metadata = {
   title: "Inventario y stock | Portal 659",
   description:
     "Manual detallado: proveedores, compras, conteos físicos, kardex y reposición sugerida.",
+  alternates: { canonical: "/manuales/inventario" },
 };
 
 export default function InventarioPage() {

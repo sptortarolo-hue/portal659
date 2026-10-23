@@ -21,14 +21,29 @@ export async function GET(request: Request) {
     return NextResponse.json({ zone: zone?.slug, vendors: [] });
   }
 
-  // Comercios visibles de la zona
-  const vendors = await queryMany<any>(
-    `SELECT id, store_name, vertical, neighborhood, hours, open_override
-     FROM vendors
-     WHERE visible = true AND neighborhood = ANY($1)
-     ORDER BY store_name ASC`,
-    [neighborhoods]
-  );
+  // Comercios visibles de la zona. Se excluyen los que tienen el catálogo
+  // online apagado (accepts_online_orders = false): no aceptan pedidos por
+  // el bot. La columna puede no existir si la migración no se aplicó, por
+  // eso se hace un fallback sin ese filtro.
+  let vendors: any[] = [];
+  try {
+    vendors = await queryMany<any>(
+      `SELECT id, store_name, vertical, neighborhood, hours, open_override, accepts_online_orders
+       FROM vendors
+       WHERE visible = true AND neighborhood = ANY($1)
+         AND COALESCE(accepts_online_orders, true) = true
+       ORDER BY store_name ASC`,
+      [neighborhoods]
+    );
+  } catch {
+    vendors = await queryMany<any>(
+      `SELECT id, store_name, vertical, neighborhood, hours, open_override
+       FROM vendors
+       WHERE visible = true AND neighborhood = ANY($1)
+       ORDER BY store_name ASC`,
+      [neighborhoods]
+    );
+  }
 
   const vendorIds = vendors.map((v) => v.id);
   if (vendorIds.length === 0) {

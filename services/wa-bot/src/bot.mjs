@@ -21,6 +21,7 @@ const DEFAULT_STATE = {
   history: [],        // [{ role: "user"|"bot", text }] — contexto para la IA (cap 8)
   pendingMods: null,  // { offerId, group, options, max } — opciones requeridas pendientes
   pendingProduct: null, // { label, options, qty, fromRedeclare } — producto genérico a desambiguar
+  pendingConfirm: null, // { items } - confirmacion de baja confianza
 };
 
 const AWAITING_RECEIPT_TTL = 15 * 60; // 15 min para acreditar el comprobante
@@ -323,6 +324,31 @@ async function handleIdle({ vendor, text, state, replies, waId }) {
   // Pedido: IA primero, reglas después.
   const products = await getMenu(vendor.id);
 
+  // Confirmaci?n de baja confianza pendiente.
+  if (state.pendingConfirm) {
+    const pc = state.pendingConfirm;
+    if (/^(s[i\u00ed]|si|yes|ok|dale|confirmo|claro)\b/i.test(t)) {
+      const items = pc.items || [];
+      if (items.length) {
+        mergeItems(state, items.map((p) => ({ offerId: p.offerId || p.id, variantId: p.variantId, name: p.name, qty: Math.max(1, Number(p.qty) || 1), modifiers: p.modifiers || [] })));
+        applyContactFields(state, pc.parsed || {});
+      }
+      state.pendingConfirm = null;
+      state.handoffCount = 0;
+      if (maybeAskRequiredMods(state, products, replies)) return;
+      advanceAndAsk(state, vendor, replies);
+      return;
+    }
+    if (/^(no|nop|cancelar)\b/i.test(t)) {
+      state.pendingConfirm = null;
+      replies.push("Ok, descartado. Mandame tu pedido de nuevo.");
+      return;
+    }
+    // cualquier otra cosa: limpiar y procesar como nuevo pedido
+    state.pendingConfirm = null;
+  }
+
+
   // Pregunta ("empanadas tenés?", "cuánto sale la pizza?") → RESPONDER con la
   // lista, nunca ordenar (antes el match se trataba como pedido y agregaba a
   // ciegas).
@@ -333,9 +359,13 @@ async function handleIdle({ vendor, text, state, replies, waId }) {
   }
 
   let _parsed = (await parseWithLlm(text, products, llmCtx(state, vendor)).catch(() => null)) || parseByRules(text, products);
-  // Baja confianza del LLM -> pedir clarificación (no armar pedido incompleto).
-  if (_parsed && typeof _parsed.confidence === "number" && _parsed.confidence < 0.5) {
-    _parsed.complete = false;
+  // Baja confianza del LLM -> pedir confirmación antes de armar el pedido.
+  if (_parsed && typeof _parsed.confidence === "number" && _parsed.confidence < 0.5 && Array.isArray(_parsed.items) && _parsed.items.length) {
+    state.pendingConfirm = { items: _parsed.items, parsed: _parsed };
+    state.welcomed = true;
+    const resumen = _parsed.items.map((p) => `${p.qty || 1}× ${p.name}`).join(", ");
+    replies.push(`No estoy seguro de haber entendido bien: ¿es ${resumen}? (respondé *sí* o *no*)`);
+    return await persist(state, vendor.id, waId, replies);
   }
   let parsed = enrichParsed(products, _parsed);
 

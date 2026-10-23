@@ -8,6 +8,8 @@
  * - horario del local (vendors.hours): "lun: 09:00-13:00 y 17:00-22:00, ..."
  */
 
+import { parseWeeklyHours } from "@/lib/open-hours";
+
 export const DAY_KEYS = ["dom", "lun", "mar", "mie", "jue", "vie", "sab"] as const;
 
 export const WEEKDAY_ORDER = ["lun", "mar", "mie", "jue", "vie", "sab", "dom"] as const;
@@ -23,7 +25,6 @@ export const DAY_LABEL: Record<string, string> = {
 };
 
 export type Range = [number, number];
-
 export function toMinutes(t: unknown): number | null {
   const m = /^(\d{1,2}):(\d{2})/.exec(String(t || "").trim());
   if (!m) return null;
@@ -108,6 +109,31 @@ export function shiftsFromHoursText(hours: string | null, dateISO: string): Rang
   if (!hours) return null;
   const key = dayKeyForISO(dateISO);
   if (!key) return null;
+
+  // Parser semanal tolerante (mismo criterio de "Abierto ahora" del
+  // micrositio): si el string matchea el formato por días, un día sin franja o
+  // con "cerrado" está CERRADO ([]). Sin esto un "dom:" ausente (formato
+  // legacy, franjas sin minutos, etc.) devolvía null y el server de slots
+  // mostraba el día con el fallback 9-20 como si hubiese huecos.
+  const weekly = parseWeeklyHours(hours);
+  if (weekly) {
+    const dayIdx = (DAY_KEYS as readonly string[]).indexOf(key);
+    const entry = weekly.find((d) => d.dayIdx === dayIdx);
+    if (!entry || entry.closed) return [];
+    if (/abierto 24/i.test(entry.text)) return [[0, 24 * 60]];
+    const out: Range[] = [];
+    for (const seg of entry.text.split("·")) {
+      const m = seg.trim().match(/^(\d{1,2}):(\d{2})\s*[–-]\s*(\d{1,2}):(\d{2})$/);
+      if (!m) continue;
+      const a = Number(m[1]) * 60 + Number(m[2]);
+      const b = Number(m[3]) * 60 + Number(m[4]);
+      if (b > a) out.push([a, b]);
+    }
+    return out;
+  }
+
+  // Legacy sin formato por días ("lun a vie 9-18", etc.): parser estricto.
+  // NULL = no se pudo parsear (estimated, fallback 9-20 en el server de slots).
   const seg = new RegExp(`(?:^|,)\\s*${key}\\s*:\\s*([^,]+)`, "i").exec(hours);
   if (!seg) return null;
   const text = seg[1].trim().toLowerCase();

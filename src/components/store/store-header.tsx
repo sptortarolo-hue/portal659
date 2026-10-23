@@ -354,7 +354,7 @@ export function StoreHeader({
           {isService ? (
             <div className="rounded-2xl border border-border bg-card p-4 shadow-lg">
               <div className="flex items-center gap-2 mb-2">
-                <span className="text-lg">🔧</span>
+                <span className="text-lg">🛎️</span>
                 <span className="font-semibold text-sm">Atención</span>
               </div>
               {v.service_area && (

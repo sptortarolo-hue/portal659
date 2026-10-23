@@ -30,8 +30,10 @@ export function BookingForm({ vendorId, vendorName, services, serviceOptions, st
   const [phone, setPhone] = useState("");
   const [productName, setProductName] = useState("");
   const [serviceId, setServiceId] = useState("");
-  const [staffId, setStaffId] = useState("");
-  const [locationId, setLocationId] = useState("");
+  // Un solo profesional/sede activa: se preselecciona por default (el select
+  // queda visible con "Sin preferencia" como alternativa).
+  const [staffId, setStaffId] = useState(() => (staffOptions?.length === 1 ? staffOptions[0].id : ""));
+  const [locationId, setLocationId] = useState(() => (locationOptions?.length === 1 ? locationOptions[0].id : ""));
   // Sesiones de pack (estética): saldo por teléfono.
   const [credits, setCredits] = useState<{ pack_id: string; pack_name: string; remaining: number }[]>([]);
   const [creditsLoading, setCreditsLoading] = useState(false);

@@ -30,7 +30,7 @@ const MAX_PARSE_MISSES = 2;
 // Regexes
 const RE_CANCEL   = /^(cancelar|no gracias|basta)\b/i;
 const RE_CONFIRM  = /^(sí|si|dale|ok|okey|bueno|perfecto|confirmo|confirmar|listo)(?=[\s.,!¡]|$)/i;
-const RE_NO       = /^(no|nop|cancelar todo)\b/i;
+const RE_NO       = /^(no|nop|cancelar todo)\s*[.!?]*$/i;
 const RE_HUMAN    = /hablar con (una )?persona|hablar con alguien|humano|dueño|dueña|atención humana/i;
 const RE_MENU     = /\b(menú|menu|carta)\b/i;
 const RE_PICKUP   = /\b(retiro|retirar|paso por|voy por|busco)\b/i;
@@ -179,6 +179,11 @@ export async function handleInbound({ vendor, waId, body, waPhone }) {
       return { replies: ["Ok, cancelé todo. Cuando quieras retomamos. 👍"] };
     }
 
+    // Handoff explícito (disponible incluso durante la pausa).
+    if (RE_HUMAN.test(text)) {
+      return await handoffHuman(vendor, waId, text, state);
+    }
+
 // Pausa por handoff reciente: el dueño atiende, el bot calla. El aviso al
 // cliente ("una persona te va a atender") sale UNA sola vez — en el handoff
 // mismo — nunca acá: durante la pausa es silencio total.
@@ -188,12 +193,9 @@ if (state.pausedUntil && state.pausedUntil > Date.now()) {
 
     // Historial para el contexto del LLM (cap 8 mensajes).
     state.history.push({ role: "user", text: text.slice(0, 200) });
-    if (state.history.length > 8) state.history = state.history.slice(-8);
+    if (state.history.length > 16) state.history = state.history.slice(-16);
 
-    // Handoff explícito.
-    if (RE_HUMAN.test(text)) {
-      return await handoffHuman(vendor, waId, text, state);
-    }
+    // (movido arriba: disponible incluso durante la pausa)
 
     // Modo conserje (BOT_TAKE_ORDERS no está en "1"): saludar, compartir el
     // menú online, preguntar si hubo un problema para pedir (handoff a la
@@ -216,6 +218,8 @@ if (state.pausedUntil && state.pausedUntil > Date.now()) {
 
   } catch (e) {
     console.error("[bot] error:", e?.message, "|", e?.stack?.split("\n")[1]);
+    // Preservar el estado (mutations previas) antes de devolver el error.
+    try { if (vendor?.id) await persist(state, vendor.id, waId, replies); } catch {}
     const msg = String(e?.message || "");
     // Errores de negocio del API de pedidos (mensajes ya amigables: comercio
     // cerrado, tope del plan, modificador inexistente, stock, pack) → mostrar
@@ -340,9 +344,7 @@ async function handleIdle({ vendor, text, state, replies, waId }) {
     // Desambiguación: mención genérica → preguntar cuál/cuántas antes de agregar.
     // Con 1 solo candidato → attach inmediato. Los campos se aplican igual.
     const isAddition0 = /\b(agrega|agregá|agregar|también|tambien|sumá|suma|sumar|más|mas)(?=[\s.,!¡]|$)/i.test(text);
-    const shouldMerge0 =
-      isAddition0 && state.items.length > 0 &&
-      state.items.every((i) => parsed.items.some((p) => (p.offerId || p.id) === i.offerId));
+    const shouldMerge0 = isAddition0 && state.items.length > 0;
     const amb = ambiguousItems(products, parsed.items);
     if (amb.length) {
       const pp = amb[0];
@@ -365,7 +367,19 @@ async function handleIdle({ vendor, text, state, replies, waId }) {
       replies.push(pendingProductAsk(state) + extra);
       return;
     }
-    applyParsed(state, parsed, waId);
+    const isAddition = /\b(agrega|agregar|tambi\u00e9n|tambien|suma|sumar|m\u00e1s|mas)(?=[\s.,!]|$)/i.test(text);
+    if (isAddition && state.items.length > 0) {
+      mergeItems(state, (parsed.items || []).map((p) => ({
+        offerId: p.offerId || p.id,
+        variantId: p.variantId,
+        name: p.name,
+        qty: Math.max(1, Number(p.qty) || 1),
+        modifiers: p.modifiers || [],
+      })));
+      applyContactFields(state, parsed);
+    } else {
+      applyParsed(state, parsed, waId);
+    }
     // Opciones requeridas (gustos): preguntar antes de seguir con el resto.
     if (maybeAskRequiredMods(state, products, replies)) return;
     advanceAndAsk(state, vendor, replies);
@@ -446,7 +460,18 @@ async function handleStep({ vendor, text, state, replies, waId }) {
     if (parsed?.customerName && parsed.customerName !== state.customerName) { state.customerName = parsed.customerName; changed = true; }
     if (parsed?.payment && parsed.payment !== state.payment) { state.payment = parsed.payment; changed = true; }
     if (parsed?.items?.length) {
-      applyParsed(state, parsed, waId);
+      const isAddition = /\b(agrega|agregar|tambi\u00e9n|tambien|suma|sumar|m\u00e1s|mas)(?=[\s.,!]|$)/i.test(t);
+      if (isAddition && state.items.length > 0) {
+        mergeItems(state, (parsed.items || []).map((p) => ({
+          offerId: p.offerId || p.id,
+          variantId: p.variantId,
+          name: p.name,
+          qty: Math.max(1, Number(p.qty) || 1),
+          modifiers: p.modifiers || [],
+        })));
+      } else {
+        applyParsed(state, parsed, waId);
+      }
       changed = true;
     }
     if (changed) {
@@ -528,13 +553,13 @@ async function handleStep({ vendor, text, state, replies, waId }) {
     const pm = state.pendingMods;
     const item = state.items.find((i) => String(i.offerId) === String(pm.offerId));
     const matched = [];
-    // Tokenizar y normalizar: maneja plurales, tildes y opciones con par�ntesis/descripci�n.
+    // Tokenizar y normalizar: maneja plurales, tildes y opciones con par�ntesis/descripci�n.
     const optTokens = (o) => normLabel(o).split(" ").filter(Boolean).map((w) => w.replace(/(es|s)$/i, ""));
     for (const s of splitLabels(t)) {
       const ns = normLabel(s);
       if (!ns) continue;
       const nTokens = ns.split(" ").filter(Boolean).map((w) => w.replace(/(es|s)$/i, ""));
-      // 1) match exacto / contenci�n directa
+      // 1) match exacto / contenci�n directa
       let opt = pm.options.find((o) => {
         const no = normLabel(o);
         return no === ns || no.includes(ns) || ns.includes(no);
@@ -546,7 +571,7 @@ async function handleStep({ vendor, text, state, replies, waId }) {
           return nTokens.some((nt) => ot.some((otk) => otk === nt || otk.includes(nt) || nt.includes(otk)));
         });
       }
-      // 3) si la opci�n tiene par�ntesis/descripci�n, probar el primer token
+      // 3) si la opci�n tiene par�ntesis/descripci�n, probar el primer token
       if (!opt) {
         opt = pm.options.find((o) => {
           const first = normLabel(o).split(" ")[0];
@@ -556,6 +581,10 @@ async function handleStep({ vendor, text, state, replies, waId }) {
       if (opt && !matched.includes(opt)) matched.push(opt);
     }
     if (matched.length) {
+      if (matched.length > pm.max) {
+        replies.push(`Elegí hasta ${pm.max} ${pm.group.toLowerCase()} (mandaste ${matched.length}). Mandá solo ${pm.max}.`);
+        return await persist(state, vendor.id, waId, replies);
+      }
       if (item) {
         const others = (item.modifiers || []).filter((m) => {
           const label = typeof m === "string" ? m : m?.label;
@@ -572,7 +601,7 @@ async function handleStep({ vendor, text, state, replies, waId }) {
     // Fallback: si el texto es corto y no es comando, adjuntarlo crudo como
     // modificador para no trabar el pedido (la cocina lo lee tal cual).
     const low = t.toLowerCase();
-    const isCmd = /^(cancelar|ayuda|menu|men�|comercios|hola|chau|ok|si|no)$/i.test(low);
+    const isCmd = /^(cancelar|ayuda|menu|men�|comercios|hola|chau|ok|si|no)$/i.test(low);
     if (!isCmd && t.length > 0 && t.length <= 60) {
       if (item) {
         const others = (item.modifiers || []).filter((m) => {
@@ -587,14 +616,14 @@ async function handleStep({ vendor, text, state, replies, waId }) {
       advanceAndAsk(state, vendor, replies);
       return;
     }
-    // No matche� ninguna opci�n: repetir la pregunta con la lista completa.
+    // No matche� ninguna opci�n: repetir la pregunta con la lista completa.
     state.handoffCount = (state.handoffCount || 0) + 1;
     if (state.handoffCount >= MAX_PARSE_MISSES) {
       state.pendingMods = null;
       return handoffHuman(vendor, waId, text, state);
     }
     const lista = pm.options.join(", ");
-    replies.push(`No entend� qu� ${pm.group.toLowerCase()} quer�s. Opciones: ${lista}. Escrib� las que quer�s (ej: "${pm.options.slice(0, 2).join(" y ")}").`);
+    replies.push(`No entend� qu� ${pm.group.toLowerCase()} quer�s. Opciones: ${lista}. Escrib� las que quer�s (ej: "${pm.options.slice(0, 2).join(" y ")}").`);
     return;
   }
 
@@ -615,10 +644,12 @@ async function handleStep({ vendor, text, state, replies, waId }) {
   let got = false;
   // Se actualizan SIEMPRE (no solo si falta): el cliente puede cambiar de idea
   // en medio del flujo ("mejor retiro" tras decir "envío", "mejor efectivo"…).
-  if (parsed?.method && parsed.method !== state.method) { state.method = parsed.method; got = true; }
-  if (parsed?.customerAddress && parsed.customerAddress !== state.customerAddress) { state.customerAddress = parsed.customerAddress; got = true; }
-  if (parsed?.customerName && parsed.customerName !== state.customerName) { state.customerName = parsed.customerName; got = true; }
-  if (parsed?.payment && parsed.payment !== state.payment) { state.payment = parsed.payment; got = true; }
+  // Un valor re-afirmado (ej. "retiro" cuando ya era retiro) cuenta como progreso:
+  // evita handoff prematuro por repetir una confirmación.
+  if (parsed?.method) { state.method = parsed.method; got = true; }
+  if (parsed?.customerAddress) { state.customerAddress = parsed.customerAddress; got = true; }
+  if (parsed?.customerName) { state.customerName = parsed.customerName; got = true; }
+  if (parsed?.payment) { state.payment = parsed.payment; got = true; }
 
   // Productos en la respuesta: distinguir AGREGAR de RE-DECLARAR.
   //  - Verbos de suma ("agregá/también/más") y el parseo NO devolvió el
@@ -631,7 +662,8 @@ async function handleStep({ vendor, text, state, replies, waId }) {
   //  que JS NO trata como word-char — con \b el match fallaba y "agregá otra
   //  coca" no sumaba).
   if (parsed?.items?.length) {
-    const isAddition = /\b(agrega|agregá|agregar|también|tambien|sumá|suma|sumar|más|mas)(?=[\s.,!¡]|$)/i.test(t);
+    got = true;
+    const isAddition = /\b(agrega|agregǭ|agregar|tambiǸn|tambien|sumǭ|suma|sumar|mǭs|mas)(?=[\s.,!��]|$)/i.test(t);
     const fullCart =
       state.items.length > 0 &&
       state.items.every((i) => parsed.items.some((p) => (p.offerId || p.id) === i.offerId));
@@ -720,8 +752,7 @@ async function handleStep({ vendor, text, state, replies, waId }) {
   }
   // 2) Dirección: cuando falta, con dígitos o prefijo de calle y no hay items
   //    ni otra cosa consumida → tomarla como dirección.
-  if (!got && fieldsNow.includes("address") && t.length >= 4 &&
-      (/\d/.test(t) || /^(calle|av|avenida|pasaje|bulevar|diagonal|ruta|juan b|gral|barrio|localidad)/i.test(t))) {
+  if (!got && fieldsNow.includes("address") && t.length >= 4 && !RESPUESTAS_FLUJO.test(t) && !RE_MENU.test(t)) {
     state.customerAddress = t;
     got = true;
   }
@@ -808,7 +839,7 @@ function ambiguousItems(products, items) {
   return items.filter((p) => {
     const prod = products.find((x) => String(x.id) === String(p.offerId || p.id));
     if (!prod) return false;
-    const said = normalizeForMatch(p.said || "");
+    const said = normalizeForMatch(p.said || p.name || "");
     const fullName = normalizeForMatch(prod.name);
     return !!said && said !== fullName;
   });
@@ -971,13 +1002,19 @@ function shortReGreet(state, vendor) {
 // ———————————————————————————————————————————————————————————————————————————
 
 function applyParsed(state, parsed, waId) {
-  state.items = (parsed.items || []).map((p) => ({
-    offerId: p.offerId || p.id,
-    variantId: p.variantId,
-    name: p.name,
-    qty: Math.max(1, Number(p.qty) || 1),
-    modifiers: p.modifiers || [],
-  }));
+  state.items = (parsed.items || []).map((p) => {
+    const existing = state.items.find((i) => String(i.offerId) === String(p.offerId || p.id));
+    const mods = Array.isArray(p.modifiers) && p.modifiers.length > 0
+      ? p.modifiers
+      : (existing?.modifiers || []);
+    return {
+      offerId: p.offerId || p.id,
+      variantId: p.variantId,
+      name: p.name,
+      qty: Math.max(1, Number(p.qty) || 1),
+      modifiers: mods,
+    };
+  });
   applyContactFields(state, parsed);
 }
 
@@ -1260,7 +1297,7 @@ async function handlePortalInbound({ vendor, waId, body, waPhone }) {
     }
 
     state.history.push({ role: "user", text: text.slice(0, 200) });
-    if (state.history.length > 8) state.history = state.history.slice(-8);
+    if (state.history.length > 16) state.history = state.history.slice(-16);
 
     if (RE_HUMAN.test(text)) {
       return await handoffHuman(vendor, waId, text, state);
@@ -1481,7 +1518,7 @@ async function persist(state, vendorId, waId, replies) {
   // Historial de respuestas del bot (contexto para la próxima llamada IA).
   if (Array.isArray(replies) && replies.length) {
     state.history.push(...replies.map((r) => ({ role: "bot", text: r.slice(0, 200) })));
-    if (state.history.length > 8) state.history = state.history.slice(-8);
+    if (state.history.length > 16) state.history = state.history.slice(-16);
   }
   await setState(vendorId, waId, state, state.step === "awaiting_receipt" ? AWAITING_RECEIPT_TTL : undefined);
   return { replies };

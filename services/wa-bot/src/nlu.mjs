@@ -235,8 +235,9 @@ Reglas:
 - Us√° el CONTEXTO (carrito actual, preguntas pendientes, √∫ltimos mensajes) para entender a qu√© responde el cliente: si le preguntaste el nombre y contesta un nombre, extraelo; si le preguntaste los gustos y contesta gustos, ponelos en "modifiers" del √≠tem al que corresponden.
 - Si el cliente corrige o re-declara el pedido (ej. "no, mejor solo 3 empanadas"), devolv√© en "items" el carrito COMPLETO actualizado (todos los productos que quedan, con sus cantidades finales).
 - Si el cliente agrega productos sin re-declarar todo (ej. "agreg√° una coca"), devolv√© SOLO los items nuevos.
-- Si el cliente solo saluda, pregunta, o pide el men˙: "complete" false e "items" [].
-- Razon· internamente paso a paso antes de responder (quÈ productos, cantidades, mÈtodo, pago, datos faltantes). En "reasoning" ponÈ en 1 frase por quÈ marcaste "complete" true/false. En "confidence" ponÈ un n˙mero 0-1 con tu certeza. Si hay ambig¸edad (producto genÈrico, falta mÈtodo/datos), marc· complete false y pedÌ solo lo que falta. Nunca inventes productos que no estÈn en la lista.`;
+- Si el cliente solo saluda, pregunta, o pide el men√∫: "complete" false e "items" [].
+- Si el cliente dice "agreg√°/sum√°/tambi√©n/m√°s" + un producto: devolv√© SOLO ese producto nuevo (no el carrito completo), y complete true. Ej: carrito [empanadas x3], mensaje "agreg√° una coca" ‚Üí items [coca x1], complete true.
+- RazonÔøΩ internamente paso a paso antes de responder (quÔøΩ productos, cantidades, mÔøΩtodo, pago, datos faltantes). En "reasoning" ponÔøΩ en 1 frase por quÔøΩ marcaste "complete" true/false. En "confidence" ponÔøΩ un nÔøΩmero 0-1 con tu certeza. Si hay ambigÔøΩedad (producto genÔøΩrico, falta mÔøΩtodo/datos), marcÔøΩ complete false y pedÔøΩ solo lo que falta. Nunca inventes productos que no estÔøΩn en la lista.`;
 
 // Telemetr√≠a de uso del LLM (expuesta en /health del cerebro): as√≠ se verifica
 // en 1 comando si el bot est√° usando IA y con qu√© modelo respondi√≥ por √∫ltima vez.
@@ -496,10 +497,23 @@ export function extractFromText(text, products) {
   // Split sobre el texto ORIGINAL: las comas separan pedidos y normalizeEs
   // las destruir√≠a (todo quedar√≠a en un chunk sin separar).
   const out = [];
-  const tokens = String(text).split(/[,\n;]| e | y |\s*\+\s*/i);
-  for (const part of tokens) {
-    const item = parseChunk(part, products);
-    if (item) out.push(item);
+  // Primero intentar separar por comas/;/+/newline (no rompe nombres con "y").
+  let tokens = String(text).split(/[,\n;]|\s*\+\s*/i).map((s) => s.trim()).filter(Boolean);
+  // Si no se obtuvo nada con eso, o un chunk no matchea ning√∫n producto,
+  // intentar split por " y "/" e " como fallback (compatibilidad).
+  const tryParse = (toks) => toks.map((p) => parseChunk(p, products)).filter(Boolean);
+  let parsed = tryParse(tokens);
+  if (parsed.length === 0) {
+    tokens = String(text).split(/[,\n;]| e | y |\s*\+\s*/i);
+    parsed = tryParse(tokens);
+  }
+  // Dedup por offerId (evita duplicar si un chunk se parse√≥ dos veces).
+  const seen = new Set();
+  for (const it of parsed) {
+    const k = it.offerId || it.id;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(it);
   }
   return out;
 }

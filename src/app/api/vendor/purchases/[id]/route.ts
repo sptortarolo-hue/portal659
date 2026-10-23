@@ -1,5 +1,6 @@
 ﻿import { gateRequest, gateError } from "@/lib/subscription-gate";
 import { queryMany, queryOne, withTransaction } from "@/lib/db";
+import { toDateOnly } from "@/lib/expiry";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -33,7 +34,12 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
      WHERE i.purchase_id = $1 ORDER BY i.position ASC`,
     [id]
   );
-  return NextResponse.json({ purchase, items: items || [] });
+  return NextResponse.json({
+    purchase,
+    items: (items || []).map((it) =>
+      "expires_at" in it ? { ...it, expires_at: toDateOnly(it.expires_at) } : it
+    ),
+  });
 }
 
 /** Borra una compra y revierte el costo de cada insumo al de su compra
@@ -60,10 +66,21 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     [id]
   ).then((r) => (r || []).map((x) => x.ingredient_id));
   // Mercadería de la compra (para restar el stock que entró + revertir costo).
-  const merchLines = await queryMany<Record<string, any>>(
-    `SELECT product_id, variant_id, qty FROM purchase_items WHERE purchase_id = $1 AND ingredient_id IS NULL`,
-    [id]
-  ).then((r) => r || []);
+  let merchLines: Record<string, any>[] = [];
+  let hasItemExpiry = false;
+  try {
+    merchLines = await queryMany<Record<string, any>>(
+      `SELECT product_id, variant_id, qty, expires_at::text AS expires_at
+       FROM purchase_items WHERE purchase_id = $1 AND ingredient_id IS NULL`,
+      [id]
+    ).then((r) => r || []);
+    hasItemExpiry = true;
+  } catch {
+    merchLines = await queryMany<Record<string, any>>(
+      `SELECT product_id, variant_id, qty FROM purchase_items WHERE purchase_id = $1 AND ingredient_id IS NULL`,
+      [id]
+    ).then((r) => r || []);
+  }
 
   const result: { ingredient_id: string; cost_per_unit: number | null }[] = [];
   const { logStockMovement } = await import("@/lib/stock-ledger");
@@ -131,6 +148,30 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
           ]);
         } catch {
           /* columna cost_avg sin migrar: se omite */
+        }
+      }
+      // Si esta compra fue la que fijó el vencimiento actual, vuelve al anterior.
+      if (hasItemExpiry && m.product_id && m.expires_at) {
+        try {
+          const current = await tx.queryOne<{ expires_at: string | null }>(
+            `SELECT expires_at::text AS expires_at FROM products WHERE id = $1`,
+            [m.product_id]
+          );
+          if (toDateOnly(current?.expires_at) === toDateOnly(m.expires_at)) {
+            const latest = await tx.queryOne<{ expires_at: string | null }>(
+              `SELECT i.expires_at::text AS expires_at
+               FROM purchase_items i JOIN purchases p ON p.id = i.purchase_id
+               WHERE i.product_id = $1 AND i.expires_at IS NOT NULL AND p.vendor_id = $2
+               ORDER BY p.purchased_at DESC, i.created_at DESC LIMIT 1`,
+              [m.product_id, gate.vendor.id]
+            );
+            await tx.queryVoid(`UPDATE products SET expires_at = $1::date WHERE id = $2`, [
+              latest?.expires_at ?? null,
+              m.product_id,
+            ]);
+          }
+        } catch {
+          /* products.expires_at sin migrar: se omite */
         }
       }
     }

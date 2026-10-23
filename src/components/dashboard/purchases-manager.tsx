@@ -22,7 +22,7 @@ import {
 // Compras: formulario de carga rápida (proveedor + líneas con costo neto).
 // Al guardar, cada insumo actualiza su costo al ÚLTIMO precio (la API).
 // ---------------------------------------------------------------------------
-type BuyLine = { key: number; kind: "ing" | "prod" | "var"; ingredient_id: string; product_id: string; variant_id: string; qty: string; unit: string; unit_cost: string; total_paid: string };
+type BuyLine = { key: number; kind: "ing" | "prod" | "var"; ingredient_id: string; product_id: string; variant_id: string; qty: string; unit: string; unit_cost: string; total_paid: string; expires_at: string };
 
 function PurchaseForm({
   suppliers,
@@ -50,7 +50,7 @@ function PurchaseForm({
   const [receiptNumber, setReceiptNumber] = useState("");
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<BuyLine[]>([
-    { key: 0, kind: "ing", ingredient_id: "", product_id: "", variant_id: "", qty: "", unit: "g", unit_cost: "", total_paid: "" },
+    { key: 0, kind: "ing", ingredient_id: "", product_id: "", variant_id: "", qty: "", unit: "g", unit_cost: "", total_paid: "", expires_at: "" },
   ]);
   const [keySeq, setKeySeq] = useState(1);
   const [saving, setSaving] = useState(false);
@@ -146,8 +146,8 @@ function PurchaseForm({
                 unit_cost: Number(l.unit_cost),
               }
             : l.kind === "prod"
-              ? { product_id: l.product_id, qty: Math.floor(Number(l.qty)), unit_cost: Number(l.unit_cost) }
-              : { variant_id: l.variant_id, qty: Math.floor(Number(l.qty)), unit_cost: Number(l.unit_cost) }
+              ? { product_id: l.product_id, qty: Math.floor(Number(l.qty)), unit_cost: Number(l.unit_cost), expires_at: l.expires_at || null }
+              : { variant_id: l.variant_id, qty: Math.floor(Number(l.qty)), unit_cost: Number(l.unit_cost), expires_at: l.expires_at || null }
         ),
       }),
     });
@@ -391,6 +391,20 @@ function PurchaseForm({
                     = {formatMoney(isFinite(pv.lineTotal) ? pv.lineTotal : 0)}
                   </span>
                 </div>
+                {l.kind !== "ing" && (
+                  <div className="flex items-center gap-2">
+                    <Label className="text-xs text-muted-foreground flex-shrink-0">Vence</Label>
+                    <Input
+                      type="date"
+                      value={l.expires_at}
+                      onChange={(e) => patchLine(l.key, { expires_at: e.target.value })}
+                      className="h-8 text-xs w-auto"
+                    />
+                    <span className="text-[11px] text-muted-foreground">
+                      Se guarda en la ficha del producto
+                    </span>
+                  </div>
+                )}
                 {pv.badUnit && (
                   <p className="text-xs text-red-600">Unidad incompatible con “{ing!.base_unit}”.</p>
                 )}
@@ -412,7 +426,7 @@ function PurchaseForm({
             variant="outline"
             size="sm"
             onClick={() => {
-              setLines((prev) => [...prev, { key: keySeq, kind: "ing", ingredient_id: "", product_id: "", variant_id: "", qty: "", unit: "g", unit_cost: "", total_paid: "" }]);
+              setLines((prev) => [...prev, { key: keySeq, kind: "ing", ingredient_id: "", product_id: "", variant_id: "", qty: "", unit: "g", unit_cost: "", total_paid: "", expires_at: "" }]);
               setKeySeq((k) => k + 1);
             }}
           >

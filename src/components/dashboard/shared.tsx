@@ -15,6 +15,8 @@ import { isGiftProductRow } from "@/lib/gift-card-share";
 import { GiftcardManageButton } from "@/components/dashboard/giftcard-manage-button";
 import { saveDraft, loadDraft, clearDraft } from "@/lib/draft";
 import { HoursEditor } from "@/components/dashboard/hours-editor";
+import { SupplierSelect } from "@/components/dashboard/supplier-select";
+import { expiryLabel } from "@/lib/expiry";
 import {
   isDeliveryOpen,
   isDeliveryPaused,
@@ -321,6 +323,13 @@ type OfferFormProps = {
   offCost?: string;
   setOffCost?: (v: string) => void;
   costLabel?: string;
+  /** Proveedor habitual y vencimiento del stock (inventario). */
+  showSupplier?: boolean;
+  offSupplierId?: string;
+  setOffSupplierId?: (v: string) => void;
+  showExpiry?: boolean;
+  offExpiresAt?: string;
+  setOffExpiresAt?: (v: string) => void;
   /** Código de barras / SKU (búsqueda y etiquetas en mostrador). */
   showSku?: boolean;
   offSku?: string;
@@ -356,6 +365,8 @@ export function OfferForm({
   offStockControl = false, setOffStockControl,
   offPromoPrice = "", setOffPromoPrice,
   showCost = false, offCost = "", setOffCost, costLabel = "Costo compra ($)",
+  showSupplier = false, offSupplierId = "", setOffSupplierId,
+  showExpiry = false, offExpiresAt = "", setOffExpiresAt,
   offStockLowThreshold = 5, setOffStockLowThreshold,
   showPrep = false,
   offRequiresPrep = true, setOffRequiresPrep,
@@ -528,6 +539,31 @@ export function OfferForm({
             <Input type="number" step="0.01" min="0" value={offCost} onChange={(e) => setOffCost(e.target.value)} placeholder="Vacío = sin dato" />
             <p className="text-xs text-muted-foreground mt-0.5">
               Costo de compra manual (no toca el costo de preparación). La próxima compra lo actualiza.
+            </p>
+          </div>
+        )}
+        {!offIsCombo && showSupplier && setOffSupplierId && (
+          <SupplierSelect value={offSupplierId} onChange={setOffSupplierId} />
+        )}
+        {!offIsCombo && showExpiry && setOffExpiresAt && (
+          <div>
+            <Label>Vencimiento del stock</Label>
+            <div className="flex gap-1.5">
+              <Input
+                type="date"
+                value={offExpiresAt}
+                onChange={(e) => setOffExpiresAt(e.target.value)}
+                className="flex-1 min-w-0"
+              />
+              {offExpiresAt && (
+                <Button type="button" variant="outline" size="sm" onClick={() => setOffExpiresAt("")}>
+                  Quitar
+                </Button>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {offExpiresAt ? `${expiryLabel(offExpiresAt)}. ` : ""}
+              Se actualiza al cargar una compra con fecha.
             </p>
           </div>
         )}

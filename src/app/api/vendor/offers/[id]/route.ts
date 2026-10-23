@@ -1,5 +1,6 @@
 import { getVendorByRequest, resolveCategoryName } from "@/lib/vendor-utils";
 import { queryOne, withTransaction } from "@/lib/db";
+import { isValidDateOnly, toDateOnly } from "@/lib/expiry";
 import { NextResponse } from "next/server";
 
 export async function PATCH(
@@ -34,7 +35,7 @@ export async function PATCH(
     "available", "featured_today", "stock", "promo_price",
     "stock_low_threshold", "currency", "neighborhood", "type", "unit",
     "has_variants", "stock_control", "requires_prep", "cash_discount_excluded",
-    "pack_size", "size_guide", "promo_only", "sku",
+    "pack_size", "size_guide", "promo_only", "sku", "supplier_id", "expires_at",
   ] as const;
 
   const safeUpdate: Record<string, unknown> = {};
@@ -113,6 +114,51 @@ export async function PATCH(
     ).catch(() => null);
     if (dup) {
       return NextResponse.json({ error: `El código "${safeUpdate.sku}" ya está en otro producto` }, { status: 400 });
+    }
+  }
+  // Proveedor habitual (inventario): tolerante a migración sin aplicar.
+  if ("supplier_id" in safeUpdate) {
+    const hasSupplier = await queryOne<{ exists: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1 FROM information_schema.columns
+         WHERE table_name = 'products' AND column_name = 'supplier_id'
+       ) AS exists`
+    );
+    if (hasSupplier?.exists === true) {
+      const sid =
+        safeUpdate.supplier_id != null && String(safeUpdate.supplier_id).trim() !== ""
+          ? String(safeUpdate.supplier_id).trim()
+          : null;
+      if (sid) {
+        const owned = await queryOne<{ id: string }>(
+          `SELECT id FROM suppliers WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
+          [sid, vendor.id]
+        ).catch(() => null);
+        if (!owned) {
+          return NextResponse.json({ error: "Proveedor no encontrado" }, { status: 400 });
+        }
+      }
+      safeUpdate.supplier_id = sid;
+    } else {
+      delete safeUpdate.supplier_id;
+    }
+  }
+  // Vencimiento del stock (inventario): tolerante a migración sin aplicar.
+  if ("expires_at" in safeUpdate) {
+    const hasExpires = await queryOne<{ exists: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1 FROM information_schema.columns
+         WHERE table_name = 'products' AND column_name = 'expires_at'
+       ) AS exists`
+    );
+    if (hasExpires?.exists === true) {
+      const raw = safeUpdate.expires_at;
+      if (raw != null && String(raw).trim() !== "" && !isValidDateOnly(String(raw))) {
+        return NextResponse.json({ error: "Fecha de vencimiento inválida (usá AAAA-MM-DD)" }, { status: 400 });
+      }
+      safeUpdate.expires_at = raw != null && String(raw).trim() !== "" ? toDateOnly(raw) : null;
+    } else {
+      delete safeUpdate.expires_at;
     }
   }
   // Costo de compra manual (inventario): tolerante a migración sin aplicar.
@@ -206,7 +252,9 @@ export async function PATCH(
   const { touchPromoVersion } = await import("@/lib/promo-server");
   await touchPromoVersion(vendor.id);
 
-  return NextResponse.json({ offer });
+  return NextResponse.json({
+    offer: offer && "expires_at" in offer ? { ...offer, expires_at: toDateOnly(offer.expires_at) } : offer,
+  });
 }
 
 export async function DELETE(

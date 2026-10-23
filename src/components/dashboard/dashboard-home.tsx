@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import {
   DollarSign,
   ClipboardList,
@@ -17,6 +18,7 @@ import {
   Sparkles,
   Calculator,
   Users,
+  Boxes,
   BookOpen,
 } from "lucide-react";
 import type { Order, Booking, Vendor } from "@/types/database";
@@ -38,7 +40,8 @@ export type DashboardTab =
   | "caja"
   | "clientes"
   | "reviews"
-  | "recetas";
+  | "recetas"
+  | "inventario";
 
 type Props = {
   vendor: Vendor;
@@ -154,6 +157,32 @@ export function DashboardHome({
   const sellsOrders = isGastro || isModa || isComercio;
   // Retail (moda/comercio): flow con aceptación + empaque ("Por aceptar", "Empaquetando").
   const isRetail = isModa || isComercio;
+  const canInventory = can("inventory");
+  const [expiryAlerts, setExpiryAlerts] = useState({ expired: 0, soon: 0 });
+
+  useEffect(() => {
+    if (!canInventory) return;
+    let alive = true;
+    const load = () => {
+      fetch("/api/vendor/expirations", { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => {
+          if (alive && d?.counts) {
+            setExpiryAlerts({
+              expired: Number(d.counts.expired) || 0,
+              soon: Number(d.counts.soon) || 0,
+            });
+          }
+        })
+        .catch(() => {});
+    };
+    load();
+    window.addEventListener("portal:expiry-updated", load);
+    return () => {
+      alive = false;
+      window.removeEventListener("portal:expiry-updated", load);
+    };
+  }, [canInventory]);
   // Deep-link al manual de su vertical (default: índice de manuales).
   const manualUrl = isGastro
     ? "/manuales/gastronomia"
@@ -222,6 +251,19 @@ export function DashboardHome({
       icon: Calculator,
       accent: "bg-green-100 text-green-700",
       show: isGastro && can("recipes"),
+    },
+    {
+      tab: "inventario",
+      label: expiryAlerts.expired > 0 ? "Vencimientos" : "Por vencer",
+      desc:
+        `${expiryAlerts.expired + expiryAlerts.soon} producto(s) para revisar` +
+        (expiryAlerts.expired > 0 ? ` · ${expiryAlerts.expired} vencido(s)` : ""),
+      icon: Boxes,
+      accent:
+        expiryAlerts.expired > 0
+          ? "bg-red-100 text-red-700"
+          : "bg-amber-100 text-amber-700",
+      show: canInventory && expiryAlerts.expired + expiryAlerts.soon > 0,
     },
     {
       tab: "menu",

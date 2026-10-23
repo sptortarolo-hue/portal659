@@ -1823,6 +1823,7 @@ function VendorDashboardInner() {
                   showPrep={false}
                   showCosts={false}
                   canEditCost={effectivePlan.can("inventory")}
+                  showExpiry={effectivePlan.can("inventory")}
                   variants={variants}
                   productImages={productImages}
                   onCrop={openCrop}
@@ -1940,6 +1941,7 @@ function VendorDashboardInner() {
                     isComercio={isComercio}
                     enableHeladeriaKit={isGastro}
                     canEditCost={effectivePlan.can("inventory") || (isGastro && effectivePlan.can("recipes"))}
+                    showExpiry={effectivePlan.can("inventory")}
                     vendorId={vendor?.id}
                     vendorLogo={vendor?.logo_url || null}
                     vendorName={vendor?.store_name || null}
@@ -1956,6 +1958,7 @@ function VendorDashboardInner() {
                     showPrep={!isModa && !isComercio}
                     showCosts={isGastro}
                     canEditCost={effectivePlan.can("inventory") || (isGastro && effectivePlan.can("recipes"))}
+                    showExpiry={effectivePlan.can("inventory")}
                     variants={variants}
                     productImages={productImages}
                     onCrop={openCrop}

@@ -1,6 +1,7 @@
 ﻿import { gateRequest, gateError } from "@/lib/subscription-gate";
 import { queryMany, queryOne, withTransaction } from "@/lib/db";
 import { unitFactor } from "@/lib/costing";
+import { isValidDateOnly, toDateOnly } from "@/lib/expiry";
 import { NextResponse } from "next/server";
 import type { Ingredient, ReceiptType } from "@/types/database";
 
@@ -80,12 +81,23 @@ export async function POST(request: Request) {
     );
     if (!s) return NextResponse.json({ error: "Proveedor no encontrado" }, { status: 404 });
   }
-  if (purchased_at && !/^\d{4}-\d{2}-\d{2}$/.test(purchased_at)) {
+  if (purchased_at && !isValidDateOnly(purchased_at)) {
     return NextResponse.json({ error: "Fecha inválida (usá AAAA-MM-DD)" }, { status: 400 });
   }
   if (!Array.isArray(rawItems) || rawItems.length === 0) {
     return NextResponse.json({ error: "La compra necesita al menos una línea" }, { status: 400 });
   }
+
+  // Vencimiento/proveedor por producto: tolerante a migración sin aplicar.
+  const cols = await queryMany<{ table_name: string; column_name: string }>(
+    `SELECT table_name, column_name FROM information_schema.columns
+     WHERE table_name IN ('products', 'purchase_items')
+       AND column_name IN ('expires_at', 'supplier_id')`
+  ).catch(() => []);
+  const colSet = new Set((cols || []).map((c) => `${c.table_name}.${c.column_name}`));
+  const hasProductExpiry = colSet.has("products.expires_at");
+  const hasProductSupplier = colSet.has("products.supplier_id");
+  const hasItemExpiry = colSet.has("purchase_items.expires_at");
 
   const ingIds = Array.from(
     new Set((rawItems as any[]).map((i) => String(i?.ingredient_id || "")).filter(Boolean))
@@ -163,8 +175,8 @@ export async function POST(request: Request) {
   // Normalizar + validar líneas (conversión a unidad base).
   type NormLine =
     | { kind: "ingredient"; ingredient_id: string; qty: number; unit: string; unit_cost: number; qty_base: number; unit_cost_net: number; line_total: number }
-    | { kind: "product"; product_id: string; qty: number; unit_cost: number; line_total: number }
-    | { kind: "variant"; variant_id: string; product_id: string; qty: number; unit_cost: number; line_total: number };
+    | { kind: "product"; product_id: string; qty: number; unit_cost: number; line_total: number; expires_at: string | null }
+    | { kind: "variant"; variant_id: string; product_id: string; qty: number; unit_cost: number; line_total: number; expires_at: string | null };
   const items: NormLine[] = [];
   for (let idx = 0; idx < (rawItems as any[]).length; idx++) {
     const raw = (rawItems as any[])[idx];
@@ -180,14 +192,21 @@ export async function POST(request: Request) {
       if (!isFinite(mCost) || mCost < 0) {
         return NextResponse.json({ error: `Línea ${idx + 1}: costo inválido` }, { status: 400 });
       }
+      let expiresAt: string | null = null;
+      if (raw?.expires_at != null && String(raw.expires_at).trim() !== "") {
+        if (!isValidDateOnly(raw.expires_at)) {
+          return NextResponse.json({ error: `Línea ${idx + 1}: fecha de vencimiento inválida` }, { status: 400 });
+        }
+        expiresAt = toDateOnly(raw.expires_at);
+      }
       if (vid) {
         const v = varMap.get(vid) as any;
         if (!v) return NextResponse.json({ error: `Línea ${idx + 1}: variante inválida` }, { status: 400 });
-        items.push({ kind: "variant", variant_id: vid, product_id: String(v.product_id), qty: mQty, unit_cost: mCost, line_total: round2(mQty * mCost) });
+        items.push({ kind: "variant", variant_id: vid, product_id: String(v.product_id), qty: mQty, unit_cost: mCost, line_total: round2(mQty * mCost), expires_at: expiresAt });
       } else {
         const p = prodMap.get(pid) as any;
         if (!p) return NextResponse.json({ error: `Línea ${idx + 1}: producto inválido` }, { status: 400 });
-        items.push({ kind: "product", product_id: pid, qty: mQty, unit_cost: mCost, line_total: round2(mQty * mCost) });
+        items.push({ kind: "product", product_id: pid, qty: mQty, unit_cost: mCost, line_total: round2(mQty * mCost), expires_at: expiresAt });
       }
       continue;
     }
@@ -236,15 +255,36 @@ export async function POST(request: Request) {
     );
     if (!p) throw new Error("No se pudo crear la compra");
     const { logStockMovement } = await import("@/lib/stock-ledger");
+    // Proveedor habitual (solo si estaba vacío) + vencimiento del stock.
+    const applyProductMeta = async (productId: string, expiresAt: string | null) => {
+      const sets: string[] = [];
+      const vals: unknown[] = [productId];
+      let idx = 2;
+      if (hasProductExpiry && expiresAt) {
+        sets.push(`expires_at = $${idx}::date`);
+        vals.push(expiresAt);
+        idx++;
+      }
+      if (hasProductSupplier && supplier_id) {
+        sets.push(`supplier_id = COALESCE(supplier_id, $${idx}::uuid)`);
+        vals.push(supplier_id);
+        idx++;
+      }
+      if (sets.length > 0) {
+        await tx.queryVoid(`UPDATE products SET ${sets.join(", ")} WHERE id = $1`, vals);
+      }
+    };
     for (let i = 0; i < items.length; i++) {
       const it = items[i];
       if (it.kind === "product" || it.kind === "variant") {
         const pid = it.kind === "product" ? it.product_id : it.product_id;
         const vid = it.kind === "variant" ? it.variant_id : null;
+        const itemVals: unknown[] = [p.id, pid, vid, it.qty, it.unit_cost, it.line_total, i];
+        if (hasItemExpiry) itemVals.push(it.expires_at);
         await tx.queryVoid(
-          `INSERT INTO purchase_items (purchase_id, ingredient_id, product_id, variant_id, qty, unit, unit_cost_net, line_total, position)
-           VALUES ($1, NULL, $2, $3, $4, 'u', $5, $6, $7)`,
-          [p.id, pid, vid, it.qty, it.unit_cost, it.line_total, i]
+          `INSERT INTO purchase_items (purchase_id, ingredient_id, product_id, variant_id, qty, unit, unit_cost_net, line_total, position${hasItemExpiry ? ", expires_at" : ""})
+           VALUES ($1, NULL, $2, $3, $4, 'u', $5, $6, $7${hasItemExpiry ? ", $8" : ""})`,
+          itemVals
         );
         if (it.kind === "product") {
           // Entra stock + actualiza último/promedio en la misma sentencia.
@@ -264,6 +304,7 @@ export async function POST(request: Request) {
             [vid, it.qty, it.unit_cost]
           );
         }
+        await applyProductMeta(pid, it.expires_at);
         await logStockMovement(tx, {
           vendorId: gate.vendor.id,
           product_id: pid,

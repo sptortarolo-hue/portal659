@@ -52,17 +52,42 @@ export async function GET(request: Request) {
   }
   for (const k of Object.keys(soldPerDay)) soldPerDay[k] /= rangeDays;
 
-  const products = await queryMany<Record<string, any>>(
-    `SELECT id, name, stock, stock_low_threshold, cost_last, cost_avg
-     FROM products WHERE vendor_id = $1 AND stock_control = true`,
-    [gate.vendor.id]
-  ).catch(() => []);
-  const variants = await queryMany<Record<string, any>>(
-    `SELECT v.id, v.product_id, v.color, v.talle, v.stock, v.cost_last, p.name AS product_name
-     FROM product_variants v JOIN products p ON p.id = v.product_id
-     WHERE p.vendor_id = $1`,
-    [gate.vendor.id]
-  ).catch(() => []);
+  let products: Record<string, any>[] = [];
+  try {
+    products = await queryMany<Record<string, any>>(
+      `SELECT p.id, p.name, p.stock, p.stock_low_threshold, p.cost_last, p.cost_avg,
+              p.supplier_id, s.name AS supplier_name, s.phone AS supplier_phone
+       FROM products p LEFT JOIN suppliers s ON s.id = p.supplier_id
+       WHERE p.vendor_id = $1 AND p.stock_control = true`,
+      [gate.vendor.id]
+    );
+  } catch {
+    // Migración de proveedor por producto sin aplicar: misma consulta sin la columna.
+    products = await queryMany<Record<string, any>>(
+      `SELECT id, name, stock, stock_low_threshold, cost_last, cost_avg
+       FROM products WHERE vendor_id = $1 AND stock_control = true`,
+      [gate.vendor.id]
+    ).catch(() => []);
+  }
+  let variants: Record<string, any>[] = [];
+  try {
+    variants = await queryMany<Record<string, any>>(
+      `SELECT v.id, v.product_id, v.color, v.talle, v.stock, v.cost_last, p.name AS product_name,
+              p.supplier_id, s.name AS supplier_name, s.phone AS supplier_phone
+       FROM product_variants v
+       JOIN products p ON p.id = v.product_id
+       LEFT JOIN suppliers s ON s.id = p.supplier_id
+       WHERE p.vendor_id = $1`,
+      [gate.vendor.id]
+    );
+  } catch {
+    variants = await queryMany<Record<string, any>>(
+      `SELECT v.id, v.product_id, v.color, v.talle, v.stock, v.cost_last, p.name AS product_name
+       FROM product_variants v JOIN products p ON p.id = v.product_id
+       WHERE p.vendor_id = $1`,
+      [gate.vendor.id]
+    ).catch(() => []);
+  }
 
   // Mejor precio por target (para sugerir proveedor).
   const prices = await queryMany<Record<string, any>>(
@@ -95,6 +120,9 @@ export async function GET(request: Request) {
     costAvg: number | null;
     bestPrice: number | null;
     bestSupplier: string | null;
+    supplierId: string | null;
+    supplierName: string | null;
+    supplierPhone: string | null;
   };
   const suggestions: Suggestion[] = [];
   const push = (
@@ -105,7 +133,10 @@ export async function GET(request: Request) {
     stock: number,
     threshold: number,
     costLast: number | null,
-    costAvg: number | null = null
+    costAvg: number | null = null,
+    supplierId: string | null = null,
+    supplierName: string | null = null,
+    supplierPhone: string | null = null
   ) => {
     const avg = soldPerDay[`${kind === "variant" ? "v" : "p"}:${id}`] || 0;
     const cover = avg > 0 ? stock / avg : null;
@@ -122,19 +153,29 @@ export async function GET(request: Request) {
       suggestedQty: qty, costLast, costAvg,
       bestPrice: best?.price ?? null,
       bestSupplier: best?.supplier ?? null,
+      supplierId: supplierId || null,
+      supplierName: supplierName || null,
+      supplierPhone: supplierPhone || null,
     });
   };
   for (const p of products || []) {
     push("product", String(p.id), String(p.id), String(p.name || ""), Number(p.stock) || 0,
       Number(p.stock_low_threshold ?? 5) || 0,
       p.cost_last != null ? Number(p.cost_last) : null,
-      p.cost_avg != null ? Number(p.cost_avg) : null);
+      p.cost_avg != null ? Number(p.cost_avg) : null,
+      p.supplier_id != null ? String(p.supplier_id) : null,
+      p.supplier_name != null ? String(p.supplier_name) : null,
+      p.supplier_phone != null ? String(p.supplier_phone) : null);
   }
   for (const v of variants || []) {
     push("variant", String(v.id), String(v.product_id),
       `${v.product_name || ""} (${v.color || ""} · ${v.talle || ""})`,
       Number(v.stock) || 0, 0,
-      v.cost_last != null ? Number(v.cost_last) : null);
+      v.cost_last != null ? Number(v.cost_last) : null,
+      null,
+      v.supplier_id != null ? String(v.supplier_id) : null,
+      v.supplier_name != null ? String(v.supplier_name) : null,
+      v.supplier_phone != null ? String(v.supplier_phone) : null);
   }
   suggestions.sort((a, b) => (a.coverDays ?? 9999) - (b.coverDays ?? 9999));
   return NextResponse.json({ suggestions, coverDays, rangeDays });

@@ -14,6 +14,7 @@ import {
   useFormDraft,
 } from "@/components/dashboard/shared";
 import { clearDraft } from "@/lib/draft";
+import { toDateOnly } from "@/lib/expiry";
 import { ModifierLibrary, ProductModifiersBlock } from "@/components/dashboard/modifier-editor";
 import { VolumeEditor } from "@/components/dashboard/volume-editor";
 import { MenuImportModal } from "@/components/dashboard/menu-import";
@@ -75,6 +76,8 @@ type Props = {
   hasRecipes?: boolean;
   /** Permite editar el costo de compra manual (plan Gestión: inventory o recipes). */
   canEditCost?: boolean;
+  /** Muestra el campo de vencimiento del stock (plan Gestión con inventario). */
+  showExpiry?: boolean;
   /** Para el borrador del formulario (24h). */
   vendorId?: string | null;
   /** Todas las fotos extra (portada + extras del micrositio). Solo lectura para precarga. */
@@ -220,6 +223,7 @@ export function MenuStudio({
   isComercio = false,
   enableHeladeriaKit = false,
   canEditCost = false,
+  showExpiry = false,
   vendorId = null,
   vendorLogo = null,
   vendorName = null,
@@ -269,6 +273,9 @@ export function MenuStudio({
   const [offCost, setOffCost] = useState("");
   // Código de barras / SKU (búsqueda y etiquetas en mostrador).
   const [offSku, setOffSku] = useState("");
+  // Proveedor habitual y vencimiento (inventario).
+  const [offSupplierId, setOffSupplierId] = useState("");
+  const [offExpiresAt, setOffExpiresAt] = useState("");
   // Foto remota sugerida por lookup (se descarga al guardar).
   const [offRemotePhoto, setOffRemotePhoto] = useState<string | null>(null);
   // Combos: líneas de componentes (solo cuando isCombo). El estado vive acá;
@@ -374,6 +381,8 @@ export function MenuStudio({
     setOffPackSize("");
     setOffUnit("unidad");
     setOffSku("");
+    setOffSupplierId("");
+    setOffExpiresAt("");
     setOffRemotePhoto(null);
     setOffIsCombo(false);
     setOffComboItems([]);
@@ -465,6 +474,8 @@ export function MenuStudio({
     setOffUnit((offer as any).unit === "kg" ? "kg" : "unidad");
     setOffSku((offer as any).sku ? String((offer as any).sku) : "");
     setOffCost((offer as any).cost_last != null ? String((offer as any).cost_last) : "");
+    setOffSupplierId((offer as any).supplier_id ? String((offer as any).supplier_id) : "");
+    setOffExpiresAt(toDateOnly((offer as any).expires_at) || "");
     setOffRemotePhoto(null);
     // Combos: carga líneas si las hay (tolerante a DB sin la tabla).
     const comboRows = (comboItemsByProduct as any)?.[offer.id] || [];
@@ -492,6 +503,7 @@ export function MenuStudio({
     offStockControl: boolean; offPromoPrice: string; offStockLowThreshold: number;
     offRequiresPrep: boolean; offCashExcluded: boolean; offPackSize: string;
     offUnit: string; offSku: string; offCost: string;
+    offSupplierId: string; offExpiresAt: string;
     offRemotePhoto: string | null; hadFile: boolean;
     galleryUrls: { url: string }[];
   };
@@ -499,14 +511,14 @@ export function MenuStudio({
   const menuDraft = useFormDraft<MenuDraft>({
     vendorId,
     key: "menu-studio",
-    watch: [showForm, editingId, offName, offDesc, offPrice, offCategory, offPreview, offStock, offStockControl, offPromoPrice, offStockLowThreshold, offRequiresPrep, offCashExcluded, offPackSize, offUnit, offSku, offCost, offRemotePhoto, galleryUrls],
+    watch: [showForm, editingId, offName, offDesc, offPrice, offCategory, offPreview, offStock, offStockControl, offPromoPrice, offStockLowThreshold, offRequiresPrep, offCashExcluded, offPackSize, offUnit, offSku, offCost, offSupplierId, offExpiresAt, offRemotePhoto, galleryUrls],
     snapshot: () => {
       if (!showForm) return null;
       if (!editingId && !offName.trim() && !offPrice && !offDesc.trim() && galleryUrls.length === 0) return null;
       return {
         editingId, offName, offDesc, offPrice, offCategory, offPreview, offStock,
         offStockControl, offPromoPrice, offStockLowThreshold, offRequiresPrep,
-        offCashExcluded, offPackSize, offUnit, offSku, offCost, offRemotePhoto,
+        offCashExcluded, offPackSize, offUnit, offSku, offCost, offSupplierId, offExpiresAt, offRemotePhoto,
         galleryUrls,
         hadFile: offFile != null,
       };
@@ -530,6 +542,8 @@ export function MenuStudio({
       setOffUnit(d.offUnit === "kg" ? "kg" : "unidad");
       setOffSku(d.offSku || "");
       setOffCost(d.offCost || "");
+      setOffSupplierId(d.offSupplierId || "");
+      setOffExpiresAt(d.offExpiresAt || "");
       setOffRemotePhoto(d.offRemotePhoto || null);
       if (Array.isArray(d.galleryUrls)) setGalleryUrls(d.galleryUrls.filter((g) => g && g.url).slice(0, MAX_EXTRA_IMAGES));
       setPhotoNotice(d.hadFile === true);
@@ -604,6 +618,8 @@ export function MenuStudio({
       unit: isComercio ? offUnit : undefined,
       sku: isComercio && offSku.trim() ? offSku.trim() : null,
       cost_last: canEditCost && offCost.trim() !== "" && Number.isFinite(Number(offCost)) ? Math.round(Number(offCost) * 100) / 100 : undefined,
+      supplier_id: !offIsCombo && canEditCost ? offSupplierId || null : undefined,
+      expires_at: !offIsCombo && showExpiry ? offExpiresAt || null : undefined,
       is_combo: offIsCombo,
       combo_items: offIsCombo ? offComboItems.map((c) => ({ product_id: c.product_id, qty: c.qty })) : [],
     };
@@ -882,6 +898,12 @@ export function MenuStudio({
       offCost={offCost}
       setOffCost={setOffCost}
       costLabel={showCosts ? "Costo compra ($)" : "Costo ($)"}
+      showSupplier={canEditCost}
+      offSupplierId={offSupplierId}
+      setOffSupplierId={setOffSupplierId}
+      showExpiry={showExpiry}
+      offExpiresAt={offExpiresAt}
+      setOffExpiresAt={setOffExpiresAt}
       remotePhoto={offRemotePhoto}
       onRemotePhoto={setOffRemotePhoto}
       // Combos: el editor vive en OfferForm; acá solo el estado.

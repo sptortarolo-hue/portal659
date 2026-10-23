@@ -3,6 +3,7 @@ import { queryMany, queryOne, withTransaction } from "@/lib/db";
 import { getSiteUrl } from "@/lib/site-url";
 import { queryEffectiveModifiers } from "@/lib/modifier-rules";
 import { resolveVendorPlan } from "@/lib/plans";
+import { isValidDateOnly, toDateOnly } from "@/lib/expiry";
 import { NextResponse } from "next/server";
 import type { Plan, Vendor } from "@/types/database";
 
@@ -77,7 +78,10 @@ export async function GET(request: Request) {
     /* sin tabla: map vacío */
   }
 
-  return NextResponse.json({ offers, modifiersByProduct, comboItemsByProduct });
+  const normalizedOffers = (offers || []).map((o) =>
+    "expires_at" in o ? { ...o, expires_at: toDateOnly(o.expires_at) } : o
+  );
+  return NextResponse.json({ offers: normalizedOffers, modifiersByProduct, comboItemsByProduct });
 }
 
 export async function POST(request: Request) {
@@ -156,6 +160,38 @@ export async function POST(request: Request) {
     hasSizeGuide?.exists === true && body.size_guide && String(body.size_guide).trim()
       ? String(body.size_guide).trim().slice(0, 2000)
       : null;
+
+  // Proveedor habitual y vencimiento (inventario): tolerantes a migración sin aplicar.
+  const hasSupplierField = await queryOne<{ exists: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1 FROM information_schema.columns
+       WHERE table_name = 'products' AND column_name = 'supplier_id'
+     ) AS exists`
+  );
+  let supplierId: string | null = null;
+  if (hasSupplierField?.exists === true && body.supplier_id != null && String(body.supplier_id).trim() !== "") {
+    supplierId = String(body.supplier_id).trim();
+    const owned = await queryOne<{ id: string }>(
+      `SELECT id FROM suppliers WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
+      [supplierId, vendor.id]
+    ).catch(() => null);
+    if (!owned) {
+      return NextResponse.json({ error: "Proveedor no encontrado" }, { status: 400 });
+    }
+  }
+  const hasExpiresField = await queryOne<{ exists: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1 FROM information_schema.columns
+       WHERE table_name = 'products' AND column_name = 'expires_at'
+     ) AS exists`
+  );
+  let expiresAt: string | null = null;
+  if (hasExpiresField?.exists === true && body.expires_at != null && String(body.expires_at).trim() !== "") {
+    if (!isValidDateOnly(body.expires_at)) {
+      return NextResponse.json({ error: "Fecha de vencimiento inválida (usá AAAA-MM-DD)" }, { status: 400 });
+    }
+    expiresAt = toDateOnly(body.expires_at);
+  }
 
   const plans = await queryMany<Plan>(`SELECT * FROM plans`);
   const plan = resolveVendorPlan(fullVendor as Vendor, plans || []);
@@ -241,6 +277,8 @@ export async function POST(request: Request) {
     extraCols.push("cost_last");
     extraVals.push(Math.round(costLastNum * 100) / 100);
   }
+  if (supplierId != null) { extraCols.push("supplier_id"); extraVals.push(supplierId); }
+  if (expiresAt != null) { extraCols.push("expires_at"); extraVals.push(expiresAt); }
   const extraPlaceholders = extraVals.map((_, i) => `$${15 + i}`).join(", ");
   // Foto remota sugerida por lookup (Open Food Facts): se descarga a uploads
   // para no hotlinkear. Si falla, se guarda la URL tal cual (no rompe el alta).

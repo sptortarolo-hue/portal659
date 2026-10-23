@@ -235,6 +235,10 @@ export type PurchaseItem = {
   unit: string;
   unit_cost_net: number;
   line_total: number;
+  product_id?: string | null;
+  variant_id?: string | null;
+  /** Vencimiento informado al comprar (YYYY-MM-DD). NULL = sin fecha. */
+  expires_at?: string | null;
   position: number;
   created_at: string;
 };
@@ -348,6 +352,10 @@ export type Product = {
   sku?: string | null;
   /** Guía de talles por producto (moda): una línea por talle — "M: Pecho 96 cm". NULL = sin guía. */
   size_guide?: string | null;
+  /** Proveedor habitual (inventario). NULL = sin asignar. */
+  supplier_id?: string | null;
+  /** Vencimiento del stock actual (YYYY-MM-DD). NULL = sin fecha. */
+  expires_at?: string | null;
   created_at: string;
 };
 
@@ -487,6 +495,8 @@ export type Vendor = {
   /** Umbrales del semáforo food-cost (NULL = defaults 30/35). */
   food_cost_warn?: number | null;
   food_cost_bad?: number | null;
+  /** Días de aviso anticipado de vencimientos (0 = solo vencidos). */
+  expiry_alert_days?: number | null;
   /** Opt-out de venta online: false = solo contacto aunque el plan traiga carrito. */
   accepts_online_orders?: boolean | null;
   /** Exigir turno de caja abierto para cobrar en Mostrador/Mesas. */

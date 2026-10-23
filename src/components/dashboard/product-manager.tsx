@@ -11,7 +11,9 @@ import { QuantityInput } from "@/components/ui/quantity-input";
 import { Badge } from "@/components/ui/badge";
 import { OfferForm, OfferList, CategoryManager, apiJson, useFormDraft } from "@/components/dashboard/shared";
 import { VolumeEditor } from "@/components/dashboard/volume-editor";
+import { SupplierSelect } from "@/components/dashboard/supplier-select";
 import { clearDraft } from "@/lib/draft";
+import { toDateOnly } from "@/lib/expiry";
 import { isGiftProductRow } from "@/lib/gift-card-share";
 import { ModifierLibrary, ProductModifiersBlock } from "@/components/dashboard/modifier-editor";
 import { ProductImage } from "@/components/product-image";
@@ -42,6 +44,8 @@ type OfferRow = {
   sku?: string | null;
   /** Formato de pack del producto (1 = por unidad). */
   pack_size?: number | null;
+  supplier_id?: string | null;
+  expires_at?: string | null;
 };
 
 type Props = {
@@ -54,6 +58,8 @@ type Props = {
   showCosts?: boolean;
   /** Permite editar el costo de compra manual (plan Gestión: inventory o recipes). */
   canEditCost?: boolean;
+  /** Muestra el campo de vencimiento del stock (plan Gestión con inventario). */
+  showExpiry?: boolean;
   /** Para el borrador del formulario (24h). */
   vendorId?: string | null;
   /** Variantes de todos los productos (solo moda). */
@@ -92,7 +98,7 @@ const PM_VIEWS: { id: string; icon: string; label: string }[] = [
 ];
 
 /** Gestión completa de platos/productos (listado + ficha inline + modificadores), sin ir a Configuración. */
-export function ProductManager({ isModa = false, isComercio = false, showStock = true, showPrep = false, showCosts = false, canEditCost = false, vendorId = null, variants, productImages, onCrop, onChanged }: Props) {
+export function ProductManager({ isModa = false, isComercio = false, showStock = true, showPrep = false, showCosts = false, canEditCost = false, showExpiry = false, vendorId = null, variants, productImages, onCrop, onChanged }: Props) {
   // Wording por vertical: gastro habla de "platos", retail de "productos".
   const noun = isModa || isComercio ? "Producto" : "Plato";
   const [offers, setOffers] = useState<OfferRow[]>([]);
@@ -123,6 +129,9 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
   const [offRequiresPrep, setOffRequiresPrep] = useState(showPrep);
   const [offCashExcluded, setOffCashExcluded] = useState(false);
   const [offSku, setOffSku] = useState("");
+  // Proveedor habitual y vencimiento (inventario).
+  const [offSupplierId, setOffSupplierId] = useState("");
+  const [offExpiresAt, setOffExpiresAt] = useState("");
   // "Se vende de a N" (pack, moda): precio del PAQUETE. Solo sin variantes.
   const [offPackSize, setOffPackSize] = useState("");
   // Combos (OfferForm): mismo wiring que MenuStudio (solo rama con OfferForm:
@@ -202,6 +211,8 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
     setOffRequiresPrep(showPrep);
     setOffCashExcluded(false);
     setOffSku("");
+    setOffSupplierId("");
+    setOffExpiresAt("");
     setOffPackSize("");
     setOffHasVariants(false);
     setVariantRows([]);
@@ -231,6 +242,8 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
     setOffRequiresPrep(showPrep ? offer.requires_prep !== false : false);
     setOffCashExcluded(!!offer.cash_discount_excluded);
     setOffSku((offer as { sku?: string | null }).sku ?? "");
+    setOffSupplierId(offer.supplier_id ? String(offer.supplier_id) : "");
+    setOffExpiresAt(toDateOnly(offer.expires_at) || "");
     setOffPackSize(Number(offer.pack_size) >= 2 ? String(offer.pack_size) : "");
     setOffHasVariants(!!offer.has_variants);
     setVariantRows(
@@ -261,21 +274,22 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
     offCategory: string; offPreview: string | null; offStock: number;
     offStockControl: boolean; offPromoPrice: string; offCost: string;
     offStockLowThreshold: number; offRequiresPrep: boolean; offCashExcluded: boolean;
-    offHasVariants: boolean; offSizeGuide: string; offSku: string; offPackSize: string; variantRows: VariantRow[];
+    offHasVariants: boolean; offSizeGuide: string; offSku: string;
+    offSupplierId: string; offExpiresAt: string; offPackSize: string; variantRows: VariantRow[];
     hadFile: boolean;
   };
   const [photoNotice, setPhotoNotice] = useState(false);
   const productDraft = useFormDraft<ProductDraft>({
     vendorId,
     key: "product-manager",
-    watch: [showForm, editingId, offName, offDesc, offPrice, offCategory, offPreview, offStock, offStockControl, offPromoPrice, offCost, offStockLowThreshold, offRequiresPrep, offCashExcluded, offHasVariants, offSizeGuide, offSku, offPackSize, variantRows],
+    watch: [showForm, editingId, offName, offDesc, offPrice, offCategory, offPreview, offStock, offStockControl, offPromoPrice, offCost, offStockLowThreshold, offRequiresPrep, offCashExcluded, offHasVariants, offSizeGuide, offSku, offSupplierId, offExpiresAt, offPackSize, variantRows],
     snapshot: () => {
       if (!showForm) return null;
       if (!editingId && !offName.trim() && !offPrice && !offDesc.trim()) return null;
       return {
         editingId, offName, offDesc, offPrice, offCategory, offPreview, offStock,
         offStockControl, offPromoPrice, offCost, offStockLowThreshold, offRequiresPrep,
-        offCashExcluded, offHasVariants, offSizeGuide, offSku, offPackSize, variantRows,
+        offCashExcluded, offHasVariants, offSizeGuide, offSku, offSupplierId, offExpiresAt, offPackSize, variantRows,
         hadFile: offFile != null,
       };
     },
@@ -298,6 +312,8 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
       setOffHasVariants(d.offHasVariants === true);
       setOffSizeGuide(d.offSizeGuide || "");
       setOffSku(typeof d.offSku === "string" ? d.offSku : "");
+      setOffSupplierId(d.offSupplierId || "");
+      setOffExpiresAt(d.offExpiresAt || "");
       setOffPackSize(typeof d.offPackSize === "string" ? d.offPackSize : "");
       if (Array.isArray(d.variantRows)) setVariantRows(d.variantRows);
       setPhotoNotice(d.hadFile === true);
@@ -488,6 +504,8 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
           is_combo: offIsCombo && !offHasVariants,
           combo_items: offIsCombo && !offHasVariants ? offComboItems.map((c) => ({ product_id: c.product_id, qty: c.qty })) : [],
           cost_last: canEditCost && offCost.trim() !== "" && Number.isFinite(Number(offCost)) ? Math.round(Number(offCost) * 100) / 100 : undefined,
+          supplier_id: canEditCost ? offSupplierId || null : undefined,
+          expires_at: showExpiry ? offExpiresAt || null : undefined,
         }
       : {
           name: offName.trim(),
@@ -502,6 +520,8 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
           requires_prep: offRequiresPrep,
           cash_discount_excluded: offCashExcluded,
           cost_last: canEditCost && offCost.trim() !== "" && Number.isFinite(Number(offCost)) ? Math.round(Number(offCost) * 100) / 100 : undefined,
+          supplier_id: canEditCost ? offSupplierId || null : undefined,
+          expires_at: showExpiry ? offExpiresAt || null : undefined,
           is_combo: offIsCombo,
           combo_items: offIsCombo ? offComboItems.map((c) => ({ product_id: c.product_id, qty: c.qty })) : [],
         };
@@ -691,6 +711,7 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
             <Button type="button" variant="ghost" size="sm" onClick={printLabels} title="Etiquetas térmicas de góndola (una por variante)">🖨️ Etiquetas</Button>
           </div>
         </div>
+        {canEditCost && <SupplierSelect value={offSupplierId} onChange={setOffSupplierId} />}
         <div><Label>Categoría</Label><select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={offCategory} onChange={(e) => setOffCategory(e.target.value)}>{categories.length === 0 && <option value="ropa">ropa</option>}{categories.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}</select></div>
         <div className="flex items-center gap-2">
           <Switch checked={offHasVariants} onCheckedChange={setOffHasVariants} />
@@ -848,6 +869,10 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
         showCost={canEditCost}
         offCost={offCost} setOffCost={setOffCost}
         costLabel={showCosts ? "Costo compra ($)" : "Costo ($)"}
+        showSupplier={canEditCost}
+        offSupplierId={offSupplierId} setOffSupplierId={setOffSupplierId}
+        showExpiry={showExpiry}
+        offExpiresAt={offExpiresAt} setOffExpiresAt={setOffExpiresAt}
         // Combos (estética y resto con OfferForm): picker de componentes.
         offIsCombo={offIsCombo}
         setOffIsCombo={setOffIsCombo}

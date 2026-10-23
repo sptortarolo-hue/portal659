@@ -173,6 +173,7 @@ export async function POST(request: Request) {
     booking_schedule_mode,
     ficha_reminder_enabled,
     cash_ask_amount,
+    expiry_alert_days,
   } = body;
 
   // Limpia y valida delivery_extra_days. Devuelve el objeto podado o false
@@ -481,6 +482,14 @@ export async function POST(request: Request) {
   }
   // "¿Con cuánto abonás?" (efectivo + delivery): pedir el dato al cliente.
   if (cash_ask_amount !== undefined) payload.cash_ask_amount = cash_ask_amount === true;
+  // Aviso anticipado de vencimientos (inventario). 0 = solo vencidos.
+  if (expiry_alert_days !== undefined) {
+    const n = Number(expiry_alert_days);
+    payload.expiry_alert_days =
+      expiry_alert_days === null || expiry_alert_days === "" || !Number.isFinite(n)
+        ? 7
+        : Math.min(365, Math.max(0, Math.floor(n)));
+  }
 
   if (existing) {
     let vendor: Record<string, unknown> | undefined;
@@ -538,6 +547,7 @@ export async function POST(request: Request) {
         "booking_schedule_mode",
         "ficha_reminder_enabled",
         "cash_ask_amount",
+        "expiry_alert_days",
       ].filter((k) => k in payload && msg.includes(k));
       if (droppable.length > 0) {
         for (const k of droppable) delete payload[k];

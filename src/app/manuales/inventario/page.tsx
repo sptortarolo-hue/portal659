@@ -59,14 +59,32 @@ export default function InventarioPage() {
           <h2 className="font-display text-lg font-semibold mb-3">4. Reposición sugerida</h2>
           <p className="mb-3">
             En <span className="font-medium">Reposición</span> ves qué comprar y cuánto: cruza tu
-            stock y umbral con el promedio de ventas y te sugiere cantidades, con el mejor
-            proveedor y precio. Podés imprimir la lista para llevarla al mayorista.
+            stock y umbral con el promedio de ventas y te sugiere cantidades. La lista se agrupa
+            por <span className="font-medium">proveedor habitual</span>: desde cada grupo podés
+            abrir WhatsApp con el pedido ya armado (cantidades y total estimado). Los productos
+            sin proveedor quedan en un grupo aparte para asignarlo desde su ficha.
           </p>
           <Captura base="comercio-inventario-reposicion" alt="Reposición sugerida" />
         </div>
 
         <div>
-          <h2 className="font-display text-lg font-semibold mb-3">5. Costo de compra vs food-cost</h2>
+          <h2 className="font-display text-lg font-semibold mb-3">5. Vencimientos</h2>
+          <p className="mb-3">
+            Cargá la fecha de vencimiento en la ficha del producto o al registrar una compra
+            (la compra actualiza la fecha del producto). En{" "}
+            <span className="font-medium">Inventario → Vencimientos</span> ves los vencidos y los
+            próximos a vencer, con el stock y el proveedor. Configurá cuántos días antes avisar
+            (<span className="font-medium">0 = solo vencidos</span>). El aviso también aparece en{" "}
+            <span className="font-medium">Hoy</span> y como banner en Inventario.
+          </p>
+          <p className="text-muted-foreground">
+            El vencimiento es por producto (no por lote): si cambia la fecha de la última compra,
+            esa pasa a ser la fecha vigente.
+          </p>
+        </div>
+
+        <div>
+          <h2 className="font-display text-lg font-semibold mb-3">6. Costo de compra vs food-cost</h2>
           <p>
             No los confundas: el <span className="font-medium">costo de compra</span> es lo que
             pagaste por cada producto (lo actualiza cada compra); el{" "}

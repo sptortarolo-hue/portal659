@@ -70,6 +70,12 @@ jobs:
             echo 'LLM_API_KEY=${{ secrets.LLM_API_KEY }}' >> /opt/portal659/.env
             echo 'LLM_BASE_URL=${{ secrets.LLM_BASE_URL }}' >> /opt/portal659/.env
             echo 'LLM_MODEL=${{ secrets.LLM_MODEL }}' >> /opt/portal659/.env
+            echo 'GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}' >> /opt/portal659/.env
+            echo 'GEMINI_MODEL=${{ secrets.GEMINI_MODEL }}' >> /opt/portal659/.env
+            echo 'GROQ_API_KEY=${{ secrets.GROQ_API_KEY }}' >> /opt/portal659/.env
+            echo 'GROQ_MODEL=${{ secrets.GROQ_MODEL }}' >> /opt/portal659/.env
+            echo 'OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}' >> /opt/portal659/.env
+            BT='${{ vars.BOT_TAKE_ORDERS }}'; echo "BOT_TAKE_ORDERS=${BT:-1}" >> /opt/portal659/.env
             SN='${{ vars.LLM_SITE_NAME }}'; echo "LLM_SITE_NAME=${SN:-Portal 659 wa-bot}" >> /opt/portal659/.env
             WB_SECRET='${{ secrets.WA_BOT_SECRET }}'
             if [ -z "$WB_SECRET" ]; then WB_SECRET=$(openssl rand -hex 24); fi

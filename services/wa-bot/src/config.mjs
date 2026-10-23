@@ -11,8 +11,6 @@ export const config = {
   llmBaseUrl: (process.env.LLM_BASE_URL || "https://integrate.api.nvidia.com/v1").replace(/\/$/, ""),
   llmSiteUrl: process.env.LLM_SITE_URL || process.env.NEXT_PUBLIC_SITE_URL || "https://www.portal659.com.ar",
   llmSiteName: process.env.LLM_SITE_NAME || "Portal 659 wa-bot",
-  // Modelo default. Si va por Gemini, el alias flash-latest auto-trackea las
-// actualizaciones de Google (gemini-2.0-flash quedó deprecado sep-2026).
   llmModel:
     process.env.LLM_MODEL ||
     (process.env.LLM_BASE_URL?.includes("openrouter")
@@ -20,6 +18,20 @@ export const config = {
       : process.env.LLM_BASE_URL?.includes("generativelanguage")
         ? "gemini-flash-latest"
         : "google/gemma-4-31b-it"),
+  // Proveedores LLM (orden de prioridad). Solo se incluyen los que tienen API key.
+  // Prioridad: gratuitos primero (Gemini, Groq), luego el configurado (NVIDIA/OpenRouter).
+  llmProviders: (() => {
+    const out = [];
+    const geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || "";
+    if (geminiKey) out.push({ name: "gemini", baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai", apiKey: geminiKey, model: process.env.GEMINI_MODEL || "gemini-2.0-flash" });
+    const groqKey = process.env.GROQ_API_KEY || "";
+    if (groqKey) out.push({ name: "groq", baseUrl: "https://api.groq.com/openai/v1", apiKey: groqKey, model: process.env.GROQ_MODEL || "llama-3.3-70b-versatile" });
+    const orKey = process.env.OPENROUTER_API_KEY || "";
+    if (orKey) out.push({ name: "openrouter", baseUrl: "https://openrouter.ai/api/v1", apiKey: orKey, model: process.env.OPENROUTER_MODEL || "google/gemma-4-31b-it:free" });
+    if (process.env.LLM_API_KEY) out.push({ name: "primary", baseUrl: (process.env.LLM_BASE_URL || "https://integrate.api.nvidia.com/v1").replace(/\/$/, ""), apiKey: process.env.LLM_API_KEY, model: process.env.LLM_MODEL || "google/gemma-4-31b-it" });
+    // Si no hay ninguno, cae al legacy NVIDIA con LLM_API_KEY vacío (rule fallback).
+    return out;
+  })(),
   // ————— Anti-ban (pacing humano + rate limits) —————
   replyDelayMinMs: Number(process.env.WA_REPLY_DELAY_MIN_MS || 1200),
   replyDelayMaxMs: Number(process.env.WA_REPLY_DELAY_MAX_MS || 3500),

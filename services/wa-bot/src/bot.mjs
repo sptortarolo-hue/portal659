@@ -1,7 +1,9 @@
 import { config } from "./config.mjs";
 import { getState, setState, clearState, forEachConversation } from "./state.mjs";
 import { getMenu, getMenuSync, matchProduct, matchAllProducts, normalizeForMatch, menuSummary } from "./menu.mjs";
-import { parseWithLlm, parseByRules, normalizeEs, extractFromText, bareName, classifyIntent } from "./nlu.mjs";
+import { parseWithLlm, parseByRules, normalizeEs, extractFromText, bareName, 
+classifyIntent } from "./nlu.mjs";
+import { saveCorrection } from "./learning.mjs";
 import { getClientByVendor, sendText, sendTyping, sendPaused } from "./relay.mjs";
 
 const DEFAULT_STATE = {
@@ -228,7 +230,7 @@ if (state.pausedUntil && state.pausedUntil > Date.now()) {
 
 // Contexto para la llamada IA: carrito actual + qué se le preguntó + historial.
 function llmCtx(state, vendor) {
-  return { cart: state.items, pending: missingFields(state, vendor), history: state.history };
+  return { cart: state.items, pending: missingFields(state, vendor), history: state.history, vendorId: vendor?.id || vendor?.vendorId || null };
 }
 
 // ———————————————————————————————————————————————————————————————————————————
@@ -322,10 +324,12 @@ async function handleIdle({ vendor, text, state, replies, waId }) {
     return;
   }
 
-  let parsed = enrichParsed(
-    products,
-    (await parseWithLlm(text, products, llmCtx(state, vendor)).catch(() => null)) || parseByRules(text, products)
-  );
+  let _parsed = (await parseWithLlm(text, products, llmCtx(state, vendor)).catch(() => null)) || parseByRules(text, products);
+  // Baja confianza del LLM -> pedir clarificación (no armar pedido incompleto).
+  if (_parsed && typeof _parsed.confidence === "number" && _parsed.confidence < 0.5) {
+    _parsed.complete = false;
+  }
+  let parsed = enrichParsed(products, _parsed);
 
   if (parsed?.items?.length) {
     state.welcomed = true;
@@ -384,6 +388,21 @@ async function handleStep({ vendor, text, state, replies, waId }) {
   if (state.step === "confirm") {
     if (RE_CONFIRM.test(t)) {
       const order = await createOrder(vendor.id, state);
+      // Aprendizaje: guardamos el pedido exitoso como ejemplo para futuras correcciones.
+      try {
+        const lastUser = (state.history || []).filter((h) => h.role === "user").slice(-1)[0]?.text || "";
+        await saveCorrection(vendor.id, {
+          customerMsg: lastUser,
+          corrected: {
+            items: state.items.map((i) => ({ name: i.name, qty: i.qty, modifiers: i.modifiers || [] })),
+            method: state.method,
+            payment: state.payment,
+            customerName: state.customerName,
+            customerAddress: state.customerAddress,
+          },
+          outcome: "success",
+        });
+      } catch {}
       if (state.payment === "transferencia") {
         state.step = "awaiting_receipt";
         state.orderId = order.orderId || order.id;

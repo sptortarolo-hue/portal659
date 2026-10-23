@@ -1,5 +1,6 @@
 import { config } from "./config.mjs";
 import { matchProduct } from "./menu.mjs";
+import { loadCorrections, formatFewShot } from "./learning.mjs";
 
 // NVIDIA rota el catálogo /models (410 Gone) sin aviso. El auto-descubrimiento
 // no confía en la lista — la prueba real (POST chat/completions) decide: el
@@ -217,7 +218,9 @@ Dado el mensaje del cliente y la lista de productos disponibles, devolvé SOLO u
   "customerName": string | null,
   "customerPhone": string | null,
   "customerAddress": string | null,
-  "note": string | null
+  "note": string | null,
+  "reasoning": string,
+  "confidence": number
 }
 
 Reglas:
@@ -232,83 +235,115 @@ Reglas:
 - Usá el CONTEXTO (carrito actual, preguntas pendientes, últimos mensajes) para entender a qué responde el cliente: si le preguntaste el nombre y contesta un nombre, extraelo; si le preguntaste los gustos y contesta gustos, ponelos en "modifiers" del ítem al que corresponden.
 - Si el cliente corrige o re-declara el pedido (ej. "no, mejor solo 3 empanadas"), devolvé en "items" el carrito COMPLETO actualizado (todos los productos que quedan, con sus cantidades finales).
 - Si el cliente agrega productos sin re-declarar todo (ej. "agregá una coca"), devolvé SOLO los items nuevos.
-- Si el cliente solo saluda, pregunta, o pide el menú: "complete" false e "items" [].`;
+- Si el cliente solo saluda, pregunta, o pide el men�: "complete" false e "items" [].
+- Razon� internamente paso a paso antes de responder (qu� productos, cantidades, m�todo, pago, datos faltantes). En "reasoning" pon� en 1 frase por qu� marcaste "complete" true/false. En "confidence" pon� un n�mero 0-1 con tu certeza. Si hay ambig�edad (producto gen�rico, falta m�todo/datos), marc� complete false y ped� solo lo que falta. Nunca inventes productos que no est�n en la lista.`;
 
 // Telemetría de uso del LLM (expuesta en /health del cerebro): así se verifica
 // en 1 comando si el bot está usando IA y con qué modelo respondió por última vez.
 export const llmStats = { ok: 0, fail: 0, cooldown: 0, lastModel: null, lastAt: null };
 
+// Cooldown por proveedor (anti-429/410). Clave: `${name}:${model}`.
+const providerCooldowns = new Map();
+function providerCooled(provider) {
+  const until = providerCooldowns.get(`${provider.name}:${provider.model}`);
+  return !!until && until > Date.now();
+}
+function markProviderCooldown(provider) {
+  providerCooldowns.set(`${provider.name}:${provider.model}`, Date.now() + 5 * 60 * 1000);
+}
+
+export async function llmChat(messages, opts = {}) {
+  const providers = Array.isArray(config.llmProviders) && config.llmProviders.length
+    ? config.llmProviders
+    : [{ name: "legacy", baseUrl: config.llmBaseUrl, apiKey: config.llmApiKey, model: config.llmModel }];
+  if (!providers.some((p) => p.apiKey)) return null;
+
+  const maxTokens = opts.max_tokens || 400;
+  const temperature = opts.temperature ?? 0;
+  const timeout = opts.timeout;
+
+  for (const provider of providers) {
+    if (!provider.apiKey) continue;
+    if (providerCooled(provider)) continue;
+
+    const headers = {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${provider.apiKey}`,
+    };
+    if (provider.name === "openrouter") {
+      headers["HTTP-Referer"] = config.llmSiteUrl;
+      headers["X-Title"] = config.llmSiteName;
+    }
+
+    const body = {
+      model: provider.model,
+      temperature,
+      max_tokens: maxTokens,
+      messages,
+    };
+
+    const t = timeout || (provider.name === "openrouter" ? 30000 : 20000);
+    let res;
+    try {
+      res = await fetch(`${provider.baseUrl}/chat/completions`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(t),
+      });
+    } catch (e) {
+      console.error(`[bot] LLM ${provider.name} fetch error: ${e?.message || e}`);
+      continue;
+    }
+
+    if (res.status === 429 || res.status === 503 || res.status === 410 || res.status === 404 || res.status === 402 || res.status === 403) {
+      markProviderCooldown(provider);
+      const snippet = (await res.text().catch(() => "")).slice(0, 200);
+      console.warn(`[bot] LLM ${provider.name}/${provider.model} no disponible (${res.status}) - siguiente proveedor | ${snippet}`);
+      continue;
+    }
+    if (!res.ok) {
+      const snippet = (await res.text().catch(() => "")).slice(0, 200);
+      console.warn(`[bot] LLM ${provider.name} error ${res.status}: ${snippet}`);
+      continue;
+    }
+
+    const data = await res.json().catch(() => null);
+    const content = data?.choices?.[0]?.message?.content || "";
+    if (!content) {
+      console.warn(`[bot] LLM ${provider.name} sin contenido`);
+      continue;
+    }
+    llmStats.ok++;
+    llmStats.lastModel = `${provider.name}:${provider.model}`;
+    llmStats.lastAt = new Date().toISOString();
+    return { content, provider: `${provider.name}:${provider.model}` };
+  }
+
+  llmStats.fail++;
+  return null;
+}
+
 export async function parseWithLlm(message, products, ctx = null) {
-  if (!config.llmApiKey) {
+  const hasProvider = Array.isArray(config.llmProviders) && config.llmProviders.some((p) => p.apiKey);
+  if (!hasProvider && !config.llmApiKey) {
     if (!parseWithLlm._reported) {
-      console.warn("[bot] LLM sin LLM_API_KEY — los pedidos caen al fallback de reglas");
+      console.warn("[bot] LLM sin API key - los pedidos caen al fallback de reglas");
       parseWithLlm._reported = true;
     }
     return null;
   }
 
-  const model = await resolveModel();
-  if (!model) {
-    llmStats.cooldown++;
-    return null;
-  }
-
-  const parsed = await callOnce(message, products, model, ctx);
-  if (parsed !== null) {
-    llmStats.ok++;
-    llmStats.lastModel = model;
-    llmStats.lastAt = new Date().toISOString();
-    console.log(`[bot] LLM ok (${model}): items=${parsed.items?.length ?? 0}`);
-    return { ...parsed, __llm: true };
-  }
-
-  // Si el modelo pinchó (410/404/402/429), rotar alternativas 1 vez.
-  if (parseWithLlm._modelDeprecated) {
-    parseWithLlm._modelDeprecated = false;
-    resolvedModelCache = null;
-    console.log("[bot] LLM re-descubriendo modelo tras fallo del verificado");
-
-    // Gemini/OpenRouter: reintento rotando alternativas del proveedor.
-    const kind = proveedor();
-    if (kind === "openrouter" || kind === "gemini") {
-      const alts = [...(ALTERNATIVAS[kind] || []), config.llmModel].filter(
-        (alt) => alt && alt !== model && !isCooledDown(alt)
-      );
-      // dedupe de defensa
-      const uniq = [...new Set(alts)];
-      for (const alt of uniq) {
-        console.log(`[bot] ${kind} retry con ${alt}`);
-        const retry = await callOnce(message, products, alt, ctx);
-        if (retry !== null) {
-          llmStats.ok++;
-          llmStats.lastModel = alt;
-          llmStats.lastAt = new Date().toISOString();
-          console.log(`[bot] LLM ok (${alt}): items=${retry.items?.length ?? 0}`);
-          resolvedModelCache = alt;
-          return { ...retry, __llm: true };
-        }
-      }
-      llmStats.fail++;
-      return null;
-    }
-
-    const fresh = await resolveModel();
-    if (fresh) {
-      const retry = await callOnce(message, products, fresh, ctx);
-      if (retry !== null) {
-        llmStats.ok++;
-        llmStats.lastModel = fresh;
-        llmStats.lastAt = new Date().toISOString();
-        console.log(`[bot] LLM ok (${fresh}): items=${retry.items?.length ?? 0}`);
-        return { ...retry, __llm: true };
-      }
-    }
+  const result = await callOnce(message, products, ctx);
+  if (result !== null) {
+    console.log(`[bot] LLM ok: items=${result.items?.length ?? 0}`);
+    return { ...result, __llm: true };
   }
   llmStats.fail++;
   return null;
 }
 
-async function callOnce(message, products, model, ctx = null) {
+async function callOnce(message, products, ctx = null) {
   // Menú enriquecido: por producto, sus grupos de modificadores (opciones +
   // required/máx) y variantes (color/talle). Sin esto la IA no sabe que esas
   // opciones existen y no las extrae.
@@ -354,61 +389,26 @@ async function callOnce(message, products, model, ctx = null) {
   }
   const contextBlock = parts.length ? `\n\n${parts.join("\n\n")}` : "";
 
-  const headers = {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${config.llmApiKey}`,
-  };
-  if (isOpenRouter()) {
-    headers["HTTP-Referer"] = config.llmSiteUrl;
-    headers["X-Title"] = config.llmSiteName;
+  // Few-shot aprendido (correcciones del dueño)
+  let fewShot = "";
+  if (ctx?.vendorId) {
+    try {
+      const { loadCorrections, formatFewShot } = await import("./learning.mjs");
+      const corr = await loadCorrections(ctx.vendorId);
+      fewShot = formatFewShot(corr);
+    } catch {}
   }
 
-  let res;
-  try {
-    res = await fetch(`${config.llmBaseUrl}/chat/completions`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        model,
-        temperature: 0,
-        max_tokens: 400,
-        messages: [
-          { role: "system", content: SYSTEM },
-          { role: "user", content: `Productos disponibles:\n${menu}\n\nMensaje del cliente: "${message}"${contextBlock}` },
-        ],
-      }),
-      signal: AbortSignal.timeout(isOpenRouter() ? 30_000 : 15_000),
-    });
-  } catch (e) {
-    console.error(`[bot] LLM fetch error: ${e?.name || "Error"}: ${e?.message || e}`);
-    return null;
-  }
+  const llmResult = await llmChat(
+    [
+      { role: "system", content: SYSTEM + fewShot },
+      { role: "user", content: `Productos disponibles:\n${menu}\n\nMensaje del cliente: "${message}"${contextBlock}` },
+    ],
+    { max_tokens: 500, temperature: 0, timeout: 25000 }
+  );
+  if (!llmResult) return null;
 
-  if (res.status === 410 || res.status === 404 || res.status === 429) {
-    markCooldown(model);
-    parseWithLlm._modelDeprecated = true;
-    const snippet = (await res.text().catch(() => "")).slice(0, 300);
-    console.error(`[bot] LLM modelo ${model} no responde o fue rate-limited (${res.status}) — re-descubriendo en el próximo mensaje | ${snippet}`);
-    return null;
-  }
-  if (res.status === 402 || res.status === 403) {
-    parseWithLlm._modelDeprecated = true;
-    const snippet = (await res.text().catch(() => "")).slice(0, 300);
-    console.error(`[bot] LLM modelo ${model} no está en el tier gratis (${res.status}) — probando otro | ${snippet}`);
-    return null;
-  }
-  if (!res.ok) {
-    const snippet = (await res.text().catch(() => "")).slice(0, 300);
-    console.error(`[bot] LLM error ${res.status}: ${snippet}`);
-    return null;
-  }
-
-  const data = await res.json().catch((e) => ({ __jsonErr: e.message }));
-  if (data?.__jsonErr) {
-    console.error(`[bot] LLM json inválido: ${data.__jsonErr}`);
-    return null;
-  }
-  const content = data?.choices?.[0]?.message?.content || "";
+  const content = llmResult.content;
   const json = content.replace(/```json/gi, "").replace(/```/g, "").trim();
   const start = json.indexOf("{");
   const end = json.lastIndexOf("}");

@@ -52,8 +52,13 @@ export async function clearState(vendorId, waId) {
 
 /** Itera TODAS las conversaciones activas (no vencidas): fn(vendorId, waId, state).
  *  Para el sweep de inactividad del cerebro (cliente que no contesta → persona).
- *  Con Redis activo el scan no ve las keys (limitación aceptada del piloto:
- *  el VPS corre redis=off, todo vive en memoria del proceso). */
+ *  ⚠️ Limitación conocida (Fase 3): con Redis activo este scan NO ve las keys
+ *  (Upstash REST no soporta SCAN por patrón desde acá), así que el sweep de
+ *  inactividad solo corre en modo memoria. El VPS corre redis=off (todo vive
+ *  en memoria del proceso), donde el sweep funciona completo. Si algún día se
+ *  enciende Redis, las conversaciones vencidas caen solas por TTL y un cliente
+ *  que vuelve tras 30+ min arranca de cero — sin aviso de "te atiende una
+ *  persona" — hasta implementar un scan alternativo (colas por vendor). */
 export async function forEachConversation(fn) {
   const now = Date.now();
   for (const [k, entry] of memory) {

@@ -241,7 +241,11 @@ Reglas:
 
 // Telemetría de uso del LLM (expuesta en /health del cerebro): así se verifica
 // en 1 comando si el bot está usando IA y con qué modelo respondió por última vez.
-export const llmStats = { ok: 0, fail: 0, cooldown: 0, lastModel: null, lastAt: null };
+export const llmStats = {
+  ok: 0, fail: 0, cooldown: 0, lastModel: null, lastAt: null,
+  // Telemetría de parseos (Fase 3): de dónde salió el pedido entendido.
+  parses: { llm: 0, rules: 0, lowConfidence: 0 },
+};
 
 // Cooldown por proveedor (anti-429/410). Clave: `${name}:${model}`.
 const providerCooldowns = new Map();
@@ -337,6 +341,7 @@ export async function parseWithLlm(message, products, ctx = null) {
 
   const result = await callOnce(message, products, ctx);
   if (result !== null) {
+    llmStats.parses.llm++;
     console.log(`[bot] LLM ok: items=${result.items?.length ?? 0}`);
     return { ...result, __llm: true };
   }

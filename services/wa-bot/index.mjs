@@ -154,7 +154,7 @@ const server = createServer(async (req, res) => {
     }
     res.writeHead(200, { "content-type": "application/json" });
     res.end(JSON.stringify({
-      llm: { hasKey: !!config.llmApiKey, ...llmStats },
+      llm: { hasKey: (config.llmProviders || []).some((p) => p.apiKey) || !!config.llmApiKey, ...llmStats },
       stats,
       limits: {
         maxMsgPerHour: config.maxMsgPerHour,
@@ -187,7 +187,7 @@ const server = createServer(async (req, res) => {
     res.writeHead(200, { "content-type": "application/json" });
     res.end(JSON.stringify({
       ok: true, clients: clientCount(),
-      llm: { hasKey: !!config.llmApiKey, ...llmStats },
+      llm: { hasKey: (config.llmProviders || []).some((p) => p.apiKey) || !!config.llmApiKey, ...llmStats },
       stats,
       limits: { replyDelayMinMs: config.replyDelayMinMs, replyDelayMaxMs: config.replyDelayMaxMs, replyGapMs: config.replyGapMs, maxMsgPerHour: config.maxMsgPerHour, maxMsgPerDay: config.maxMsgPerDay, maxNewChatsPerHour: config.maxNewChatsPerHour },
     }));
@@ -433,3 +433,4 @@ server.listen(config.port, () => {
   console.log(`[wa-bot] LLM ${config.llmApiKey ? `activo (${config.llmModel} via ${config.llmBaseUrl})` : "DESACTIVADO — mensajes sin saludo solo"}`);
   console.log(`[wa-bot] redis=${config.redisUrl ? "on" : "off"} db=${config.databaseUrl ? "ok" : "no conf"} appUrl=${config.appUrl}`);
 });
+

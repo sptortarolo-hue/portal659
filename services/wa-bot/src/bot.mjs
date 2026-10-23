@@ -2,7 +2,7 @@ import { config } from "./config.mjs";
 import { getState, setState, clearState, forEachConversation } from "./state.mjs";
 import { getMenu, getMenuSync, matchProduct, matchAllProducts, normalizeForMatch, menuSummary } from "./menu.mjs";
 import { parseWithLlm, parseByRules, normalizeEs, extractFromText, bareName, 
-classifyIntent } from "./nlu.mjs";
+classifyIntent, llmStats } from "./nlu.mjs";
 import { saveCorrection } from "./learning.mjs";
 import { getClientByVendor, sendText, sendTyping, sendPaused } from "./relay.mjs";
 
@@ -357,8 +357,11 @@ async function handleIdle({ vendor, text, state, replies, waId }) {
   }
 
   let _parsed = (await parseWithLlm(text, products, llmCtx(state, vendor)).catch(() => null)) || parseByRules(text, products);
+  // Telemetría (Fase 3): de dónde salió el parseo.
+  if (_parsed?.__llm) llmStats.parses.llm++; else if (_parsed) llmStats.parses.rules++;
   // Baja confianza del LLM -> pedir confirmación antes de armar el pedido.
   if (_parsed && typeof _parsed.confidence === "number" && _parsed.confidence < 0.5 && Array.isArray(_parsed.items) && _parsed.items.length) {
+    llmStats.parses.lowConfidence++;
     state.pendingConfirm = { items: _parsed.items, parsed: _parsed };
     state.welcomed = true;
     const resumen = _parsed.items.map((p) => `${p.qty || 1}× ${p.name}`).join(", ");
@@ -812,6 +815,7 @@ function advanceAndAsk(state, vendor, replies) {
   if (missing.length === 0) {
     // Todo completo: resumen (con total estimado) + confirmación.
     state.step = "confirm";
+    console.log(`[bot] transición → confirm (items=${state.items.length}, vendor=${vendor?.store_name || vendor?.id || "?"})`);
     replies.push(summaryText(state, vendor));
     return;
   }
@@ -1401,6 +1405,38 @@ async function handlePortalInbound({ vendor, waId, body, waPhone }) {
     function stem(w) {
       return w.replace(/(es|s)$/i, "");
     }
+
+    // 1b) Selección por NOMBRE de comercio: si el texto menciona el nombre de
+    //     un comercio de la lista mostrada (o de la zona), entrar directo sin
+    //     pedir el número ("pedir de Azahar" → entra a Azahar).
+    if (text.length >= 3 && !/^(hola|buenas|buenos|chau|adios|gracias|ok|si|no|cancelar|ayuda|menu|menú|comercios)$/i.test(text.trim())) {
+      const tn = norm(text);
+      const tTokens = tn.split(" ").filter(Boolean).map(stem);
+      const candidates = (Array.isArray(state.portalVendorList) && state.portalVendorList.length > 0
+        ? state.portalVendorList
+        : vendorsWithProducts.map((v) => ({ id: v.id, store_name: v.store_name })));
+      const nameHit = candidates.find((v) => {
+        const vn = norm(v.store_name);
+        const vTokens = vn.split(" ").filter(Boolean).map(stem);
+        if (!vTokens.length) return false;
+        // el nombre completo contenido en el mensaje, o todos los tokens del
+        // nombre aparecen en el mensaje ("pedir de heladería 655")
+        return vn === tn || tn.includes(vn) || vTokens.every((vt) => tTokens.some((tt) => tt === vt || tt.includes(vt) || vt.includes(tt)));
+      });
+      if (nameHit) {
+        state.currentVendorId = nameHit.id;
+        state.currentVendorName = nameHit.store_name;
+        state.portalVendorList = [];
+        state.items = [];
+        state.step = "idle";
+        const products = await getMenu(nameHit.id);
+        replies.push(`Perfecto, estás pidiendo de *${nameHit.store_name}*. 📋 Menú:`);
+        replies.push(products.slice(0, 20).map((p) => `• ${p.name} — $${p.price}`).join("\n") || "Sin productos disponibles.");
+        replies.push("Mandame tu pedido (ej: \"2 empanadas de carne y una coca\").");
+        return await persist(state, vendor.id, waId, replies);
+      }
+    }
+
     // Filtrar por texto si hay búsqueda (sobre el menú completo, en cliente).
     let matches = [];
     if (text.length > 2 && !/^(hola|buenas|buenos|chau|adios|gracias|ok|si|no|cancelar|ayuda|menu|menú|comercios)$/i.test(text.trim())) {
@@ -1447,8 +1483,12 @@ async function handlePortalInbound({ vendor, waId, body, waPhone }) {
     if (vendorsWithProducts.length > 0) {
       const alreadyListed = Array.isArray(state.portalVendorList) && state.portalVendorList.length > 0;
       if (!alreadyListed) {
-        state.portalVendorList = vendorsWithProducts.map((v) => ({ id: v.id, store_name: v.store_name }));
-        const lines = vendorsWithProducts.map((v, i) => `${i + 1}) *${v.store_name}* (${(v.products || []).length} productos)`);
+        // Lista acotada (Fase 3): máximo 8 comercios; el resto se alcanza por
+        // nombre o buscando un producto.
+        const CAP = 8;
+        const shown = vendorsWithProducts.slice(0, CAP);
+        state.portalVendorList = shown.map((v) => ({ id: v.id, store_name: v.store_name }));
+        const lines = shown.map((v, i) => `${i + 1}) *${v.store_name}* (${(v.products || []).length} productos)`);
         if (!state.welcomed) {
           replies.push("¡Hola! 👋 Soy el asistente de *Portal 659*. Estos son los comercios de tu zona:");
           state.welcomed = true;
@@ -1456,9 +1496,12 @@ async function handlePortalInbound({ vendor, waId, body, waPhone }) {
           replies.push("Comercios de tu zona:");
         }
         replies.push(lines.join("\n"));
-        replies.push("Mandame el nombre de un producto para buscar, o el número del comercio para ver su menú.");
+        if (vendorsWithProducts.length > CAP) {
+          replies.push(`(y ${vendorsWithProducts.length - CAP} más — escribí el nombre del comercio para verlo)`);
+        }
+        replies.push("Mandame el nombre de un producto para buscar, o el nombre o número del comercio para ver su menú.");
       } else {
-        replies.push("No encontré ese producto. Mandame otro nombre, o el número del comercio de la lista anterior.");
+        replies.push("No encontré ese producto. Mandame otro nombre, o el nombre o número del comercio de la lista anterior.");
       }
       return await persist(state, vendor.id, waId, replies);
     }

@@ -66,7 +66,7 @@ export async function GET(request: Request) {
         plan_status: string | null;
       }>(
         `SELECT id, slug, store_name, logo_url, image_url, vertical, plan_id, plan_status
-         FROM vendors WHERE user_id = $1 AND slug <> 'admin-portal659' ORDER BY created_at ASC LIMIT 20`,
+         FROM vendors WHERE user_id = $1 AND slug NOT IN ('admin-portal659','portal659-bot','portal-central') ORDER BY created_at ASC LIMIT 20`,
         [listOwnerUserId]
       )
     : [];

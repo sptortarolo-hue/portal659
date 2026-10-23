@@ -13,7 +13,13 @@ export async function GET(request: Request) {
   if (!user) {
     return NextResponse.json({ error: "No autenticado" }, { status: 401 });
   }
-  const { vendor } = await getVendorByRequest(request);
+  // Fallback al vendor del bot para admin (el bot es infraestructura, no tienda).
+  let vendor = (await getVendorByRequest(request)).vendor;
+  if (!vendor && user.is_admin) {
+    vendor = await queryOne<{ id: string; user_id: string | null }>(
+      `SELECT id, user_id FROM vendors WHERE slug IN ('portal659-bot','admin-portal659','portal-central') LIMIT 1`
+    ) ?? null;
+  }
   if (!vendor) {
     return NextResponse.json({ error: "No autorizado" }, { status: 403 });
   }

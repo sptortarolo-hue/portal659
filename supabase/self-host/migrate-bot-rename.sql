@@ -9,7 +9,7 @@ SET store_name = 'Portal 659 Bot (sistema)',
     slug = 'portal659-bot',
     visible = false,
     is_admin = false
-WHERE slug = 'admin-portal659';
+WHERE slug IN ('admin-portal659', 'portal-central');
 
 -- Seguridad: si por algún motivo quedó el slug viejo, lo excluimos igual
 -- (el código ya filtra ambos slugs en /admin/comercios y en la resolución).

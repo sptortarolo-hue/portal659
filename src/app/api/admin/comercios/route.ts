@@ -35,7 +35,7 @@ export async function GET(request: Request) {
     conditions.push(`(${q})`);
   }
 
-  const allConditions = ["slug <> 'admin-portal659'", ...conditions];
+  const allConditions = ["slug NOT IN ('admin-portal659','portal659-bot','portal-central')", ...conditions];
   const whereClause = `WHERE ${allConditions.join(" AND ")}`;
   const vendors = await queryMany(
     `SELECT v.*,

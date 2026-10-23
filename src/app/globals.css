@@ -296,3 +296,19 @@ html.dark {
 .maplibregl-popup-close-button:hover {
   color: #101623;
 }
+
+/* Mapa mobile a pantalla completa: los controles flotantes de MapLibre
+   quedan tapados por la hoja, así que se ocultan (la atribución de OSM
+   vive siempre visible en la barra superior, incluso con la hoja abierta). */
+.mapa-map--mobile .maplibregl-ctrl-top-right,
+.mapa-map--mobile .maplibregl-ctrl-bottom-left,
+.mapa-map--mobile .maplibregl-ctrl-attrib {
+  display: none;
+}
+
+/* El mapa ocupa la pantalla: el pie global solo agregaría scroll. */
+@media (max-width: 1023px) {
+  body:has(.mapa-page) footer {
+    display: none;
+  }
+}

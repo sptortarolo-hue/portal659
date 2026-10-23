@@ -20,14 +20,9 @@ export default async function MapaPage() {
     [zone.neighborhoods]
   );
 
-  const vendorsWithCoords = vendors.filter(
-    (v) => (v.lat != null && v.lng != null) || (v.location && v.location.trim() !== "")
-  );
-
   return (
     <MapPageClient
       vendors={vendors}
-      vendorsWithCoords={vendorsWithCoords}
       verticals={VERTICALS.filter((v) => v.slug !== "salud").map((v) => ({
         slug: v.slug,
         name: v.name,

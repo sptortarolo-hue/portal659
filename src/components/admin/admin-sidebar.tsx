@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { X, LayoutDashboard, Store, Users, Star, FileText, Settings, LogOut, Megaphone, BarChart3, Tag, CreditCard, MessageCircle, Truck } from "lucide-react";
+import { X, LayoutDashboard, Store, Users, Star, FileText, Settings, LogOut, Megaphone, BarChart3, Tag, CreditCard, MessageCircle, Truck, Phone } from "lucide-react";
 
 const NAV_ITEMS = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
   { href: "/admin/metricas", label: "Métricas", icon: BarChart3 },
   { href: "/admin/logisticas", label: "Portal Envíos", icon: Truck },
+  { href: "/admin/portal-wa", label: "WA del Portal", icon: Phone },
   { href: "/admin/bots", label: "Bots WhatsApp", icon: MessageCircle },
   { href: "/admin/comercios", label: "Comercios", icon: Store },
   { href: "/admin/suscripciones", label: "Suscripciones", icon: CreditCard },

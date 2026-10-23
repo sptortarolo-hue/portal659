@@ -136,15 +136,21 @@ export function ShipmentBox({
           })
         );
         const firstWa = Array.isArray(data.waTargets) ? data.waTargets[0]?.url : null;
-        if (firstWa && waWin && !waWin.closed) {
+        const anySent = Array.isArray(data.waSent) && data.waSent.some((w: any) => w.sent);
+        if (anySent) {
+          if (waWin && !waWin.closed) waWin.close();
+          setMsg("WhatsApp enviado por el número de Portal 659 + push a los operadores ✅");
+        } else if (firstWa && waWin && !waWin.closed) {
           waWin.location.href = firstWa;
           setMsg("Aviso enviado: WhatsApp abierto + push a los operadores ✅");
         } else if (firstWa) {
-          // Popup bloqueado: el botón "📲 Avisar WhatsApp" queda como fallback.
-          setMsg("Encargo creado + push a los operadores ✅ (toca 📲 para el WhatsApp)");
+          if (waWin) waWin.close();
+          setMsg("Encargo creado + push a los operadores ✅ (toca 📲 para el WhatsApp manual)");
         } else if (data.pushedOperators) {
+          if (waWin) waWin.close();
           setMsg("Aviso enviado a la logística ✅");
         } else {
+          if (waWin) waWin.close();
           setMsg("Encargo creado ✅");
         }
       } else if (res.status === 409) {

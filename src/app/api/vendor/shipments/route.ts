@@ -274,6 +274,42 @@ export async function POST(request: Request) {
           waText
         )
       : [];
+
+    // Envío automático por el número WA central de Portal 659 (si está vinculado).
+    // Reemplaza el envío por el WA del comercio: el aviso sale por el número
+    // de la plataforma, no por el del comercio.
+    const portalVendor = await queryOne<{ id: string }>(
+      `SELECT id FROM vendors WHERE is_portal = true LIMIT 1`
+    ).catch(() => undefined);
+    let waSent: { phone: string; sent: boolean; reason?: string }[] = [];
+    if (portalVendor?.id) {
+      try {
+        const { isDaytimeAR: isDay, sendWaText: sendWa } = await import("@/lib/wa-send");
+        if (isDay()) {
+          const phones = [waInfo?.carrier_phone, ...(waInfo?.carrier_wa_phones ? String(waInfo.carrier_wa_phones).split(/[,;\s]+/) : [])]
+            .map((p) => String(p || "").trim())
+            .filter((p) => p.replace(/\D/g, "").length >= 8);
+          const unique = [...new Set(phones)];
+          if (unique.length > 0) {
+            const results = await Promise.allSettled(
+              unique.map((phone) =>
+                sendWa({ vendorId: portalVendor.id, waId: phone, text: waText, orderId })
+              )
+            );
+            waSent = unique.map((phone, i) => {
+              const r = results[i];
+              if (r.status === "fulfilled") {
+                return { phone, sent: r.value.sent, reason: r.value.reason };
+              }
+              return { phone, sent: false, reason: "error" };
+            });
+          }
+        }
+      } catch {
+        /* best-effort: WA nunca rompe el flujo */
+      }
+    }
+
     const pushedOperators = await notifyCarrierOperators(
       waInfo?.carrier_id != null ? String(waInfo.carrier_id) : null,
       { code: codePub, zoneName, storeName: waInfo?.store_name != null ? String(waInfo.store_name) : null }
@@ -284,6 +320,7 @@ export async function POST(request: Request) {
       shipment: { ...shipment, code: codePub },
       waTargets,
       waUrl: waTargets[0]?.url ?? null,
+      waSent,
       carrierPhone: waInfo?.carrier_phone != null ? String(waInfo.carrier_phone) : null,
       pushedOperators,
       statusLabel: SHIPMENT_STATUS_LABELS[shipment.status as keyof typeof SHIPMENT_STATUS_LABELS] || "requested",

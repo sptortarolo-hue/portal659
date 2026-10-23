@@ -528,19 +528,35 @@ async function handleStep({ vendor, text, state, replies, waId }) {
     const pm = state.pendingMods;
     const item = state.items.find((i) => String(i.offerId) === String(pm.offerId));
     const matched = [];
+    // Tokenizar y normalizar: maneja plurales, tildes y opciones con paréntesis/descripción.
+    const optTokens = (o) => normLabel(o).split(" ").filter(Boolean).map((w) => w.replace(/(es|s)$/i, ""));
     for (const s of splitLabels(t)) {
       const ns = normLabel(s);
       if (!ns) continue;
-      const opt = pm.options.find((o) => {
+      const nTokens = ns.split(" ").filter(Boolean).map((w) => w.replace(/(es|s)$/i, ""));
+      // 1) match exacto / contención directa
+      let opt = pm.options.find((o) => {
         const no = normLabel(o);
         return no === ns || no.includes(ns) || ns.includes(no);
       });
+      // 2) match por token (cualquier palabra coincide, con stem)
+      if (!opt) {
+        opt = pm.options.find((o) => {
+          const ot = optTokens(o);
+          return nTokens.some((nt) => ot.some((otk) => otk === nt || otk.includes(nt) || nt.includes(otk)));
+        });
+      }
+      // 3) si la opción tiene paréntesis/descripción, probar el primer token
+      if (!opt) {
+        opt = pm.options.find((o) => {
+          const first = normLabel(o).split(" ")[0];
+          return first && nTokens.some((nt) => first === nt || first.includes(nt) || nt.includes(first));
+        });
+      }
       if (opt && !matched.includes(opt)) matched.push(opt);
     }
     if (matched.length) {
       if (item) {
-        // Reemplazar las opciones del grupo (el cliente redefine) con lo nuevo,
-        // respetando el mÃ¡x del grupo. Otras opciones (otros grupos) quedan.
         const others = (item.modifiers || []).filter((m) => {
           const label = typeof m === "string" ? m : m?.label;
           if (!label) return false;
@@ -553,13 +569,32 @@ async function handleStep({ vendor, text, state, replies, waId }) {
       advanceAndAsk(state, vendor, replies);
       return;
     }
-    // No matcheÃ³ ninguna opciÃ³n: repetir la pregunta.
+    // Fallback: si el texto es corto y no es comando, adjuntarlo crudo como
+    // modificador para no trabar el pedido (la cocina lo lee tal cual).
+    const low = t.toLowerCase();
+    const isCmd = /^(cancelar|ayuda|menu|menú|comercios|hola|chau|ok|si|no)$/i.test(low);
+    if (!isCmd && t.length > 0 && t.length <= 60) {
+      if (item) {
+        const others = (item.modifiers || []).filter((m) => {
+          const label = typeof m === "string" ? m : m?.label;
+          if (!label) return false;
+          return !pm.options.some((o) => normLabel(o) === normLabel(label));
+        });
+        item.modifiers = [...others, t];
+      }
+      state.pendingMods = null;
+      state.handoffCount = 0;
+      advanceAndAsk(state, vendor, replies);
+      return;
+    }
+    // No matcheó ninguna opción: repetir la pregunta con la lista completa.
     state.handoffCount = (state.handoffCount || 0) + 1;
     if (state.handoffCount >= MAX_PARSE_MISSES) {
       state.pendingMods = null;
       return handoffHuman(vendor, waId, text, state);
     }
-    replies.push(`ðŸ§© No entendÃ­ quÃ© ${pm.group.toLowerCase()} querÃ©s â€” escribÃ­ las opciones que querÃ©s (ej: *"${pm.options.slice(0, 2).join(" y ")}"*).`);
+    const lista = pm.options.join(", ");
+    replies.push(`No entendí qué ${pm.group.toLowerCase()} querés. Opciones: ${lista}. Escribí las que querés (ej: "${pm.options.slice(0, 2).join(" y ")}").`);
     return;
   }
 

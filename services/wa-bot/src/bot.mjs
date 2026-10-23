@@ -196,8 +196,6 @@ if (state.pausedUntil && state.pausedUntil > Date.now()) {
     state.history.push({ role: "user", text: text.slice(0, 200) });
     if (state.history.length > 16) state.history = state.history.slice(-16);
 
-    // (movido arriba: disponible incluso durante la pausa)
-
     // Modo conserje (BOT_TAKE_ORDERS no está en "1"): saludar, compartir el
     // menú online, preguntar si hubo un problema para pedir (handoff a la
     // persona) y escuchar consultas/sugerencias — sin armar el pedido. El

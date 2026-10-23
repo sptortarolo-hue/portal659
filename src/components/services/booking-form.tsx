@@ -21,11 +21,9 @@ type Props = {
   locationOptions?: { id: string; name: string; address?: string | null }[];
   /** Política de cancelación visible antes de reservar. */
   cancelPolicy?: string | null;
-  /** "hours" (default) | "grid" = agenda por semana (grilla del cliente). */
-  scheduleMode?: string | null;
 };
 
-export function BookingForm({ vendorId, vendorName, services, serviceOptions, staffOptions, locationOptions, cancelPolicy, scheduleMode }: Props) {
+export function BookingForm({ vendorId, vendorName, services, serviceOptions, staffOptions, locationOptions, cancelPolicy }: Props) {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [productName, setProductName] = useState("");
@@ -75,7 +73,10 @@ export function BookingForm({ vendorId, vendorName, services, serviceOptions, st
 
   const useCatalog = !!serviceOptions && serviceOptions.length > 0;
   const chosenService = useCatalog ? serviceOptions.find((s) => s.id === serviceId) : undefined;
-  const useWeekPicker = useCatalog && scheduleMode === "grid";
+  // El picker semanal se usa siempre que hay catálogo de servicios: muestra
+  // solo los días con horario (los cerrados quedan deshabilitados), sin
+  // importar el modo de agenda (grid u hours) del comercio.
+  const useWeekPicker = useCatalog;
   const useSlots = useCatalog && !!serviceId && !!bookingDate && !useWeekPicker;
   const handlePickSlot = useCallback((date: string, time: string) => {
     setBookingDate(date);

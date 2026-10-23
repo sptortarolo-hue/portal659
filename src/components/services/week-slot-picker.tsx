@@ -126,26 +126,29 @@ export function WeekSlotPicker({ vendorId, serviceId, staffId, durationMin, valu
           const date = d.date;
           const key = d.weekday || dayKeyForISO(date) || "";
           const past = date < today;
+          const closedDay = d.closed || d.blocked;
           const availCount = d.slots.filter((s) => s.available).length;
           const selected = date === viewDate;
           return (
             <button
               key={date}
               type="button"
-              disabled={past}
+              disabled={past || closedDay}
               onClick={() => setViewDate(date)}
               className={`flex-shrink-0 w-16 rounded-xl border px-1 py-2 text-center transition-colors ${
                 selected
                   ? "border-primary bg-primary/10 text-primary"
                   : past
                     ? "border-border text-muted-foreground/40"
-                    : "border-border hover:bg-muted"
+                    : closedDay
+                      ? "border-border text-muted-foreground/40"
+                      : "border-border hover:bg-muted"
               }`}
             >
               <span className="block text-[11px] font-medium uppercase">{DAY_LABEL[key] || key}</span>
               <span className="block text-sm tabular-nums">{fmtDateShort(date)}</span>
               <span className="block h-3 text-[10px] mt-0.5">
-                {date === today ? "hoy" : past ? "" : d.closed || d.blocked ? "—" : availCount > 0 ? `${availCount}` : "libre"}
+                {date === today ? "hoy" : past ? "" : closedDay ? "Cerrado" : availCount > 0 ? `${availCount}` : "libre"}
               </span>
             </button>
           );

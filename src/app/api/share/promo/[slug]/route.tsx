@@ -53,11 +53,11 @@ export async function GET(
     image_url: string | null;
     logo_url: string | null;
     description: string | null;
-    visible: boolean;
+    visibility: "hidden" | "private" | "public" | null;
     preview_token: string | null;
     preview_token_expires_at: string | null;
   }>(
-    `SELECT store_name, image_url, logo_url, description, visible, preview_token, preview_token_expires_at FROM vendors WHERE slug = $1 LIMIT 1`,
+    `SELECT store_name, image_url, logo_url, description, visibility, preview_token, preview_token_expires_at FROM vendors WHERE slug = $1 LIMIT 1`,
     [slug]
   );
 
@@ -65,7 +65,8 @@ export async function GET(
     return new Response("Not found", { status: 404 });
   }
 
-  const isPreview = !vendor.visible;
+  const vis = vendor.visibility ?? "hidden";
+  const isPreview = vis === "hidden";
   if (isPreview && !isPreviewTokenValid(vendor, previewParam)) {
     return new Response("Not found", { status: 404 });
   }
@@ -667,7 +668,7 @@ export async function GET(
       code: "promo-og-v3-nofont",
       uptimeSec: Math.round(process.uptime()),
       slug,
-      visible: vendor.visible,
+      visibility: vendor.visibility ?? "hidden",
       mode,
       manualImage: !!manualImage,
       selection: selectedIds,

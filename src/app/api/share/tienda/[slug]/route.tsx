@@ -32,8 +32,9 @@ async function ogJpeg(element: ReactElement): Promise<Response> {
 
 // Tarjeta de compartir (og:image) del micrositio: banner + logo + nombre + leyenda.
 // Al pegar el link en WhatsApp se ve esta imagen con el comercio.
-// Acepta ?preview=<token> para comercios ocultos (misma autorización que el
+// Acepta ?preview=<token> para comercios hidden (misma autorización que el
 // micrositio en prueba); la tarjeta sale con cinta "MODO PRUEBA".
+// Para private: genera tarjeta normal SIN cinta MODO PRUEBA.
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ slug: string }> }
@@ -46,11 +47,11 @@ export async function GET(
     image_url: string | null;
     logo_url: string | null;
     description: string | null;
-    visible: boolean;
+    visibility: "hidden" | "private" | "public" | null;
     preview_token: string | null;
     preview_token_expires_at: string | null;
   }>(
-    `SELECT store_name, image_url, logo_url, description, visible, preview_token, preview_token_expires_at FROM vendors WHERE slug = $1 LIMIT 1`,
+    `SELECT store_name, image_url, logo_url, description, visibility, preview_token, preview_token_expires_at FROM vendors WHERE slug = $1 LIMIT 1`,
     [slug]
   );
 
@@ -58,7 +59,8 @@ export async function GET(
     return new Response("Not found", { status: 404 });
   }
 
-  const isPreview = !vendor.visible;
+  const vis = vendor.visibility ?? "hidden";
+  const isPreview = vis === "hidden";
   if (isPreview && !isPreviewTokenValid(vendor, previewParam)) {
     return new Response("Not found", { status: 404 });
   }

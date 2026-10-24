@@ -47,27 +47,42 @@ import type { Metadata } from "next";
 export const dynamic = "force-dynamic";
 
 /**
- * Carga el comercio: público si `visible = true`; si está oculto, solo en
- * modo prueba para dueño/admin/token válido (`?preview=1` o `?preview=<token>`).
+ * Carga el comercio según su visibilidad:
+ * - public:    siempre accesible
+ * - private:   accesible para dueño/admin (sin token preview)
+ * - hidden:    solo con preview token válido (dueño/admin/token)
  */
 async function loadVendorForRequest(slug: string, previewParam: string | null) {
+  // 1. Público: visible en portal y micrositio
   const pub = await queryOne<any>(
-    `SELECT * FROM vendors WHERE slug = $1 AND visible = true LIMIT 1`,
+    `SELECT * FROM vendors WHERE slug = $1 AND visibility = 'public' LIMIT 1`,
     [slug]
   );
   if (pub) return { vendor: pub, preview: false };
 
-  const hidden = await queryOne<any>(
-    `SELECT * FROM vendors WHERE slug = $1 LIMIT 1`,
+  // 2. Private / Hidden: micrositio con control de acceso
+  const vendor = await queryOne<any>(
+    `SELECT * FROM vendors WHERE slug = $1 AND visibility IN ('private','hidden') LIMIT 1`,
     [slug]
   );
-  if (!hidden) return { vendor: null, preview: false };
+  if (!vendor) return { vendor: null, preview: false };
 
   const actor = await getPreviewActor();
-  if (!canPreviewVendor({ vendor: hidden, actor, tokenParam: previewParam })) {
+  const vis = vendor.visibility ?? (vendor.visible ? "public" : "hidden");
+
+  if (vis === "private") {
+    // Private: dueño o admin pueden ver sin token preview
+    if (actor?.isAdmin || (actor && vendor.user_id && actor.userId === vendor.user_id)) {
+      return { vendor, preview: false };
+    }
     return { vendor: null, preview: false };
   }
-  return { vendor: hidden, preview: isServingPreview(hidden) };
+
+  // vis === "hidden": requiere preview token (dueño/admin/token)
+  if (!canPreviewVendor({ vendor, actor, tokenParam: previewParam })) {
+    return { vendor: null, preview: false };
+  }
+  return { vendor, preview: true };
 }
 
 /**
@@ -114,12 +129,13 @@ export async function generateMetadata({
       : "";
   const shareImage = `${siteUrl}/og/tienda/${slug}.jpg${previewTokenParam}`;
 
+  const vis = vendor.visibility ?? (vendor.visible ? "public" : "hidden");
   return {
     title,
     description,
-    // El modo prueba nunca se indexa.
-    ...(preview ? { robots: { index: false, follow: false } } : {}),
-    // Canonical sin ?preview: consolida señales en la URL pública.
+    // Modo preview y private nunca se indexan.
+    ...((preview || vis === "private") ? { robots: { index: false, follow: false } } : {}),
+    // Canonical sin ?preview: consolida señales en la URL limpia.
     alternates: { canonical: `/tienda/${slug}` },
     openGraph: {
       title,

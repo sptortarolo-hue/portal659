@@ -239,7 +239,7 @@ export default function VendorSidebar({
                     active={currentTab === "caja"}
                     onClick={() => handleTab("caja")}
                     icon={DollarSign}
-                    label="Cobros"
+                    label="Caja"
                   />
                   {isEstetica && (
                     <>
@@ -257,6 +257,22 @@ export default function VendorSidebar({
                         label="Mostrador"
                       />
                     </>
+                  )}
+                  {isEstetica && canFiscal && (
+                    <NavButton
+                      active={currentTab === "fiscal"}
+                      onClick={() => handleTab("fiscal")}
+                      icon={Receipt}
+                      label="Facturación"
+                    />
+                  )}
+                  {isEstetica && canInventory && (
+                    <NavButton
+                      active={currentTab === "inventario"}
+                      onClick={() => handleTab("inventario")}
+                      icon={Boxes}
+                      label="Inventario"
+                    />
                   )}
                 </>
               ) : (
@@ -305,14 +321,12 @@ export default function VendorSidebar({
             <div className="space-y-0.5">
               {isService ? (
                 <>
-                  {!isEstetica && (
-                    <NavButton
-                      active={currentTab === "galeria"}
-                      onClick={() => handleTab("galeria")}
-                      icon={Image}
-                      label="Galería"
-                    />
-                  )}
+                  <NavButton
+                    active={currentTab === "galeria"}
+                    onClick={() => handleTab("galeria")}
+                    icon={Image}
+                    label="Galería"
+                  />
                   <NavButton
                     active={currentTab === "config"}
                     onClick={() => handleTab("config")}
@@ -331,6 +345,14 @@ export default function VendorSidebar({
                     icon={Share}
                     label="Promos"
                   />
+                  {isEstetica && (
+                    <NavButton
+                      active={currentTab === "gastos"}
+                      onClick={() => handleTab("gastos")}
+                      icon={Receipt}
+                      label="Gastos"
+                    />
+                  )}
                   {isEstetica && (
                     <NavButton
                       active={currentTab === "tarjetas"}

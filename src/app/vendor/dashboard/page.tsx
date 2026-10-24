@@ -1544,7 +1544,7 @@ function VendorDashboardInner() {
   const tabTitle =
     isService && tab === "orders" ? (isEstetica ? "Consultas" : "Presupuestos")
     : isService && tab === "pos" ? "Turnos"
-    : isService && tab === "caja" ? "Cobros"
+    : isService && tab === "caja" ? "Caja"
     : isService && tab === "config" ? "Configuración"
     : isService && tab === "history" ? "Historial"
     : isService && tab === "clientes" ? "Clientes"
@@ -1860,6 +1860,62 @@ function VendorDashboardInner() {
                   />
                 </div>
               </div>
+              ) : isEstetica && tab === "mostrador" ? (
+                <TabErrorBoundary tab="pos">
+                  {effectivePlan.can("pos") ? (
+                    <MemoMostrador vendorId={vendor.id} />
+                  ) : (
+                    <PlanLock
+                      title="Mostrador"
+                      description="Venta directa en el local con ticket, sin cocina. Parte del plan Gestión integral."
+                    />
+                  )}
+                </TabErrorBoundary>
+              ) : isEstetica && tab === "gastos" ? (
+                <TabErrorBoundary tab="gastos">
+                  {effectivePlan.can("pos") ? (
+                    <MemoExpensesManager />
+                  ) : (
+                    <PlanLock
+                      title="Libro de gastos"
+                      description="Gastos manuales, retiros de caja y compras a proveedor en un solo lugar, con reportes. Parte del plan Gestión integral."
+                    />
+                  )}
+                </TabErrorBoundary>
+              ) : isEstetica && tab === "fiscal" ? (
+                <TabErrorBoundary tab="fiscal">
+                  {effectivePlan.can("fiscal") ? (
+                    <FiscalConfigSection defaultOpen />
+                  ) : (
+                    <PlanLock
+                      title="Facturación electrónica"
+                      description="Emití Factura C y notas de crédito directo a ARCA, con QR en el ticket y reportes por período. Parte del plan Gestión integral."
+                    />
+                  )}
+                </TabErrorBoundary>
+              ) : isEstetica && tab === "inventario" ? (
+                <TabErrorBoundary tab="inventario">
+                  {effectivePlan.can("inventory") ? (
+                    <MemoInventoryTab />
+                  ) : (
+                    <PlanLock
+                      title="Inventario y compras"
+                      description="Proveedores, costos, conteos físicos, kardex y reposición sugerida. Parte del plan Gestión integral."
+                    />
+                  )}
+                </TabErrorBoundary>
+              ) : isEstetica && tab === "galeria" ? (
+                <TabErrorBoundary tab="galeria">
+                  <GalleryManager
+                    title="Galería de fotos de tu local"
+                    emptyText="Todavía no subiste fotos de tu local."
+                    captionPlaceholder="Ej: frente del local, trabajos..."
+                  />
+                </TabErrorBoundary>
+              ) : isEstetica && tab === "analytics" ? (
+                <TabErrorBoundary tab="analytics">
+                  <MemoVendorAnalytics />
+                </TabErrorBoundary>
               ) : (
               <DashboardServicio
                 {...dashboardProps}
@@ -1885,26 +1941,9 @@ function VendorDashboardInner() {
                 canCrm={effectivePlan.can("crm")}
               />
               )}
-              {isEstetica && tab === "mostrador" && (
-                <TabErrorBoundary tab="pos">
-                  {effectivePlan.can("pos") ? (
-                    <MemoMostrador vendorId={vendor.id} />
-                  ) : (
-                    <PlanLock
-                      title="Mostrador"
-                      description="Venta directa en el local con ticket, sin cocina. Parte del plan Gestión integral."
-                    />
-                  )}
-                </TabErrorBoundary>
-              )}
               {isEstetica && tab === "caja" && effectivePlan.can("pos") && (
                 <TabErrorBoundary tab="caja-z">
                   <MemoCajaManager closeRequest={cashCloseReq} />
-                </TabErrorBoundary>
-              )}
-              {isEstetica && tab === "analytics" && (
-                <TabErrorBoundary tab="analytics">
-                  <MemoVendorAnalytics />
                 </TabErrorBoundary>
               )}
             </div>
@@ -2231,7 +2270,7 @@ function VendorDashboardInner() {
             <div className="grid grid-cols-2 gap-2">
               {isService ? (
                 <>
-                  {!isEstetica && !isEmployee && (
+                  {!isEmployee && (
                     <button onClick={() => { setTab("galeria"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "galeria" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
                       <Image className="h-5 w-5" />Galería
                     </button>
@@ -2265,6 +2304,21 @@ function VendorDashboardInner() {
                       </button>
                       )}
                     </>
+                  )}
+                  {isEstetica && !isEmployee && (
+                    <button onClick={() => { setTab("gastos"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "gastos" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
+                      <Receipt className="h-5 w-5" />Gastos
+                    </button>
+                  )}
+                  {isEstetica && effectivePlan.can("fiscal") && !isEmployee && (
+                    <button onClick={() => { setTab("fiscal"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "fiscal" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
+                      <Receipt className="h-5 w-5" />Facturación
+                    </button>
+                  )}
+                  {isEstetica && effectivePlan.can("inventory") && !isEmployee && (
+                    <button onClick={() => { setTab("inventario"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "inventario" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
+                      <Boxes className="h-5 w-5" />Inventario
+                    </button>
                   )}
                   {!isEmployee && (
                   <button onClick={() => { setTab("reviews"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "reviews" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>

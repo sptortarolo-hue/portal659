@@ -19,6 +19,7 @@ import {
 } from "@/components/dashboard/shared";
 import { MpConnectCard } from "@/components/dashboard/mp-connect-card";
 import { StripeConnectCard } from "@/components/dashboard/stripe-connect-card";
+import { FiscalTabShortcut } from "@/components/dashboard/fiscal-config-section";
 import { PrinterConfigSection } from "@/components/dashboard/printer-config-section";
 import { StaffManager } from "@/components/vendor/staff-manager";
 import { HoursEditor } from "@/components/dashboard/hours-editor";
@@ -580,6 +581,10 @@ export default function DashboardEstetica({
               {uploading ? "Guardando..." : "Guardar pagos"}
             </Button>
           </div>
+        </ConfigSection>
+
+        <ConfigSection id="fiscal" label="Facturación" icon="🧾" status={vendor?.fiscal_cert ? "ok" : vendor?.cuit ? "warn" : "off"}>
+          <FiscalTabShortcut />
         </ConfigSection>
 
         <ConfigSection id="turnera" label="Turnera" icon="📅">

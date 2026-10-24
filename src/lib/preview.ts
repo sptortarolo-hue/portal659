@@ -6,11 +6,15 @@ import { queryOne } from "./db";
 /**
  * Modo prueba / preview compartible de micrositios.
  *
- * Un comercio oculto (`visible = false`) puede verse sin aparecer en
- * home/buscar/mapa/sitemap cuando:
- * - el visitante es el dueño (`vendors.user_id`), o
- * - es admin (`profiles.is_admin`), o
- * - presenta un `preview_token` válido (link compartible, con expiración opcional).
+ * Estados de visibilidad (columna `visibility`):
+ * - public:    visible en portal (home/buscar/mapa/sitemap), micrositio abierto
+ * - private:   NO visible en portal, micrositio funcional SIN limitaciones de preview
+ * - hidden:    oculto, solo accesible via preview token (dueño/admin/token)
+ *
+ * Lógica de acceso al micrositio:
+ * - public:    siempre accesible
+ * - private:   accesible para dueño/admin (sin token preview)
+ * - hidden:    accesible solo con preview token válido (dueño/admin/token)
  */
 
 export type PreviewActor = { userId: string; isAdmin: boolean } | null;
@@ -19,6 +23,7 @@ export type PreviewVendor = {
   id: string;
   user_id: string | null;
   visible: boolean | null;
+  visibility: "hidden" | "private" | "public" | null;
   preview_token: string | null;
   preview_token_expires_at: string | null;
 };
@@ -71,9 +76,10 @@ export function isPreviewTokenValid(
 }
 
 /**
- * ¿Puede este visitante ver el comercio en modo prueba?
- * - Si ya es visible, siempre (no es preview, es público).
- * - Si está oculto: dueño, admin o token válido.
+ * ¿Puede este visitante ver el micrositio?
+ * - public:    siempre
+ * - private:   dueño o admin (sin token preview)
+ * - hidden:    dueño, admin o token preview válido
  */
 export function canPreviewVendor(opts: {
   vendor: PreviewVendor;
@@ -81,16 +87,22 @@ export function canPreviewVendor(opts: {
   tokenParam: string | null;
 }): boolean {
   const { vendor, actor, tokenParam } = opts;
-  if (vendor.visible) return true;
+  const vis = vendor.visibility ?? (vendor.visible ? "public" : "hidden");
+
+  if (vis === "public") return true;
   if (actor?.isAdmin) return true;
   if (actor && vendor.user_id && actor.userId === vendor.user_id) return true;
-  if (tokenParam && isPreviewTokenValid(vendor, tokenParam)) return true;
+
+  // Solo hidden requiere token preview; private NO lo necesita para owner/admin
+  if (vis === "hidden" && tokenParam && isPreviewTokenValid(vendor, tokenParam)) return true;
+
   return false;
 }
 
-/** ¿Se está sirviendo en modo prueba? (oculto + acceso por preview). */
+/** ¿Se está sirviendo en modo preview (con limitaciones: is_preview, banner, etc.)? */
 export function isServingPreview(vendor: PreviewVendor): boolean {
-  return !vendor.visible;
+  const vis = vendor.visibility ?? (vendor.visible ? "public" : "hidden");
+  return vis === "hidden";
 }
 
 /** Token nuevo para compartir (48 chars hex). */

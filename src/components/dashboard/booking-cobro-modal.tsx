@@ -275,7 +275,7 @@ export function BookingCobroModal({
             Cancelar
           </Button>
           <Button size="sm" className="h-9 flex-1" disabled={submitting} onClick={submit}>
-            {submitting ? "Cobrando…" : paymentMethod === "fiado" ? "Registrar deuda" : "Cobrar y atender"}
+            {submitting ? "Cobrando…" : paymentMethod === "fiado" ? "Registrar deuda" : "Cobrar"}
           </Button>
         </div>
       </div>

@@ -212,7 +212,7 @@ export function BookingCard({
           </button>
         )
       )}
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         {booking.status === "pending" && (
           <>
             <Button
@@ -371,7 +371,7 @@ export function BookingCard({
                   href={`https://wa.me/?text=${encodeURIComponent(`Hola, te paso el link para la seña del turno ($${Number((booking as any).deposit_amount).toLocaleString("es-AR")}): ${stripeBookingLink[booking.id]}`)}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-xs font-medium text-green-600 hover:underline whitespace-nowrap"
+                  className="text-xs font-medium text-green-600 hover:underline"
                 >
                   📲 Enviar
                 </a>
@@ -398,7 +398,7 @@ export function BookingCard({
                   href={`https://wa.me/?text=${encodeURIComponent(`Hola, te paso el link para la seña del turno ($${Number((booking as any).deposit_amount).toLocaleString("es-AR")}): ${mpBookingLink[booking.id]}`)}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-xs font-medium text-green-600 hover:underline whitespace-nowrap"
+                  className="text-xs font-medium text-green-600 hover:underline"
                 >
                   📲 Enviar
                 </a>

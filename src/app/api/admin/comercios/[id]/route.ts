@@ -112,11 +112,15 @@ export async function PATCH(
     "instagram", "facebook", "description", "address", "hours", "location", "image_url",
     "logo_url", "payment_methods", "delivery_options", "services_list", "service_area",
     "free_estimate", "accepting_quotes", "verified", "featured", "is_admin",
-    "prep_time_min", "urgent_enabled", "lat", "lng", "visible", "user_id",
+    "prep_time_min", "urgent_enabled", "lat", "lng", "visible", "visibility", "user_id",
   ];
   const clean: Record<string, unknown> = {};
   for (const k of Object.keys(body)) {
     if (allowed.includes(k)) clean[k] = body[k];
+  }
+  // Visibilidad enum: validar valor (nunca escribir un string arbitrario).
+  if ("visibility" in clean && !["hidden", "private", "public"].includes(clean.visibility as string)) {
+    return NextResponse.json({ error: "Visibilidad inválida" }, { status: 400 });
   }
   // "salud" legacy va a comercio (su modelo real).
   if (clean.vertical === "salud") clean.vertical = "comercio";

@@ -24,7 +24,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
               SELECT MAX(p.created_at) FROM products p WHERE p.vendor_id = v.id
             ), v.created_at)) AS last_mod
      FROM vendors v
-     WHERE v.visible = true
+     WHERE v.visibility = 'public'
      ORDER BY last_mod DESC`
   );
 
@@ -45,7 +45,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
                 SELECT MAX(p.created_at) FROM products p WHERE p.vendor_id = v.id
               ), v.created_at)) AS last_mod
        FROM vendors v
-       WHERE v.visible = true AND v.carta_visibility = 'public'
+       WHERE v.visibility = 'public' AND v.carta_visibility = 'public'
        ORDER BY last_mod DESC`
     );
     cartaRoutes = (cartas || []).map((v) => ({

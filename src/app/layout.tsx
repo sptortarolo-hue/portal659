@@ -12,7 +12,7 @@ import { ToastProvider } from "@/lib/toast";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { ThemeProvider } from "@/components/ui/theme-provider";
 import { ThemeColorSync } from "@/components/ui/theme-color-sync";
-import { ScrollToTop } from "@/components/ui/scroll-to-top";
+import { WhatsAppFloat } from "@/components/ui/whatsapp-float";
 import { BottomNav } from "@/components/nav/bottom-nav";
 import { OnboardingOverlay } from "@/components/onboarding/onboarding-overlay";
 import { AnalyticsBeacon } from "@/components/analytics/analytics-beacon";
@@ -136,7 +136,7 @@ export default function RootLayout({
               </ErrorBoundary>
               <CartFooter />
               <CartDrawer />
-              <ScrollToTop />
+              <WhatsAppFloat />
               <BottomNav />
               <footer className="border-t border-border py-6 text-center text-sm text-muted-foreground bg-card">
                 <div className="container mx-auto px-4 flex flex-col sm:flex-row items-center justify-center gap-2">

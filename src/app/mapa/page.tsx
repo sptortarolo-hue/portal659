@@ -16,7 +16,7 @@ export const metadata = {
 export default async function MapaPage() {
   const zone = await getZone();
   const vendors = await queryMany<Vendor>(
-    `SELECT * FROM vendors WHERE visible = true AND neighborhood = ANY($1) ORDER BY store_name`,
+    `SELECT * FROM vendors WHERE visibility = 'public' AND neighborhood = ANY($1) ORDER BY store_name`,
     [zone.neighborhoods]
   );
 

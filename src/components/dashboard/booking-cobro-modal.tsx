@@ -32,7 +32,7 @@ export function BookingCobroModal({
     booking.deposit_status === "paid" ? Number(booking.deposit_amount || 0) : 0;
   const balance = Math.max(0, total - depositPaid);
 
-  const [paymentMethod, setPaymentMethod] = useState<"efectivo" | "transferencia" | "tarjeta" | "mixto" | "whatsapp" | "fiado">("efectivo");
+  const [paymentMethod, setPaymentMethod] = useState<"efectivo" | "transferencia" | "tarjeta" | "mixto" | "fiado">("efectivo");
   const [amountToCharge, setAmountToCharge] = useState(String(balance));
   const [amountReceived, setAmountReceived] = useState("");
   const [wantFiscal, setWantFiscal] = useState(false);
@@ -162,7 +162,6 @@ export function BookingCobroModal({
               <option value="transferencia">Transferencia</option>
               <option value="tarjeta">Tarjeta</option>
               <option value="mixto">Mixto</option>
-              <option value="whatsapp">WhatsApp</option>
               <option value="fiado">Fiado (deuda, no se cobra ahora)</option>
             </select>
           </div>

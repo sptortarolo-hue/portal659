@@ -192,7 +192,7 @@ export function BookingCard({
             rows={2}
             className="text-xs"
           />
-          <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
             <Button size="sm" className="h-7 text-xs" disabled={productsBusy} onClick={() => handleSaveProducts(booking.id)}>
               {productsBusy ? "Guardando..." : "Guardar"}
             </Button>
@@ -253,16 +253,16 @@ export function BookingCard({
                 No vino
               </Button>
             )}
-              {onCobroBooking && (
-                <Button
-                  size="sm"
-                  className="h-7 text-xs"
-                  disabled={cobroOpenId === booking.id}
-                  onClick={() => onCobroBooking(booking.id)}
-                >
-                  {cobroOpenId === booking.id ? "Cobrando…" : "💰 Cobrar servicio"}
-                </Button>
-              )}
+            {onCobroBooking && (
+              <Button
+                size="sm"
+                className="h-7 text-xs"
+                disabled={cobroOpenId === booking.id}
+                onClick={() => onCobroBooking(booking.id)}
+              >
+                {cobroOpenId === booking.id ? "Cobrando…" : "💰 Cobrar servicio"}
+              </Button>
+            )}
             <Button
               size="sm"
               variant="outline"
@@ -283,7 +283,40 @@ export function BookingCard({
             </Button>
           </>
         )}
-        {(booking.status === "pending" || booking.status === "confirmed") && (
+        {booking.status === "completed" && (
+          <>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs"
+              title="Agendar el próximo turno con los mismos datos"
+              onClick={() => {
+                setRebook({
+                  customerName: String(booking.customer_name || ""),
+                  customerPhone: String(booking.customer_phone || ""),
+                  serviceId: typeof booking.service_id === "string" ? booking.service_id : "",
+                  staffId: typeof booking.staff_id === "string" ? booking.staff_id : "",
+                  durationMin: Number(booking.duration_min) || 60,
+                });
+                setBookingModalOpen(true);
+              }}
+            >
+              🔁 Repetir
+            </Button>
+            {(booking as any).payment_status === "paid" && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs"
+                title="Ver comprobante emitido"
+                onClick={() => onNavigate?.("caja")}
+              >
+                🧾 Comprobante
+              </Button>
+            )}
+          </>
+        )}
+        {(booking.status === "pending" || booking.status === "confirmed" || booking.status === "completed") && (
           <Button
             size="sm"
             variant="outline"
@@ -294,7 +327,7 @@ export function BookingCard({
             📋 Ficha
           </Button>
         )}
-        {(booking.status === "pending" || booking.status === "confirmed") && onEditBooking && (
+        {(booking.status === "pending" || booking.status === "confirmed" || booking.status === "completed") && onEditBooking && (
           <Button
             size="sm"
             variant="outline"
@@ -329,8 +362,8 @@ export function BookingCard({
             )}
           </>
         )}
-        {canDeposits && vendor?.stripe_account_id && Number((booking as any).deposit_amount) > 0 && (booking as any).deposit_status !== "paid" && (booking.status === "pending" || booking.status === "confirmed") && (
-          <div className="w-full">
+          {canDeposits && vendor?.stripe_account_id && Number((booking as any).deposit_amount) > 0 && (booking as any).deposit_status !== "paid" && (booking.status === "pending" || booking.status === "confirmed") && (
+            <div className="min-w-0">
             {(booking as any).deposit_status === "paid" ? null : stripeBookingLink[booking.id] ? (
               <div className="flex items-center gap-2">
                 <Input value={stripeBookingLink[booking.id]} readOnly className="h-7 text-[11px] flex-1" onFocus={(e) => e.target.select()} />
@@ -356,8 +389,8 @@ export function BookingCard({
             )}
           </div>
         )}
-        {canDeposits && vendor?.mp_user_id && Number((booking as any).deposit_amount) > 0 && (booking as any).deposit_status !== "paid" && (booking.status === "pending" || booking.status === "confirmed") && (
-          <div className="w-full">
+          {canDeposits && vendor?.mp_user_id && Number((booking as any).deposit_amount) > 0 && (booking as any).deposit_status !== "paid" && (booking.status === "pending" || booking.status === "confirmed") && (
+            <div className="min-w-0">
             {mpBookingLink[booking.id] ? (
               <div className="flex items-center gap-2">
                 <Input value={mpBookingLink[booking.id]} readOnly className="h-7 text-[11px] flex-1" onFocus={(e) => e.target.select()} />

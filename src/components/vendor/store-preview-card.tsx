@@ -34,7 +34,8 @@ export function StorePreviewCard({
   const [copied, setCopied] = useState(false);
   const [msg, setMsg] = useState("");
 
-  const isVisible = !!vendor.visible;
+  const visibility = vendor.visibility ?? (vendor.visible ? "public" : "hidden");
+  const isVisible = visibility === "public";
   const requested = !!vendor.publish_requested_at;
   const token: string | null = vendor.preview_token ?? null;
   const slug: string | null = vendor.slug ?? null;
@@ -94,7 +95,9 @@ export function StorePreviewCard({
           </p>
         </div>
         {isVisible ? (
-          <Badge className="bg-green-100 text-green-700 flex-shrink-0">Visible al público</Badge>
+          <Badge className="bg-green-100 text-green-700 flex-shrink-0">Público</Badge>
+        ) : visibility === "private" ? (
+          <Badge className="bg-amber-100 text-amber-700 flex-shrink-0">Privado</Badge>
         ) : requested ? (
           <Badge className="bg-amber-100 text-amber-700 flex-shrink-0">Solicitud enviada</Badge>
         ) : (

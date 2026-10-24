@@ -187,14 +187,15 @@ export async function PATCH(request: Request) {
     }
   }
 
-  if (action === "toggle_visible") {
-    const vendor = await queryOne<{ visible: boolean }>(
-      `SELECT visible FROM vendors WHERE id = $1`,
+if (action === "toggle_visible") {
+    const vendor = await queryOne<{ visibility: "hidden" | "private" | "public" }>(
+      `SELECT visibility FROM vendors WHERE id = $1`,
       [vendorId]
     );
     if (!vendor) return NextResponse.json({ error: "Comercio no encontrado" }, { status: 404 });
-    await query(`UPDATE vendors SET visible = $1 WHERE id = $2`, [!vendor.visible, vendorId]);
-    return NextResponse.json({ ok: true, visible: !vendor.visible });
+    const next = vendor.visibility === "hidden" ? "private" : vendor.visibility === "private" ? "public" : "hidden";
+    await query(`UPDATE vendors SET visibility = $1 WHERE id = $2`, [next, vendorId]);
+    return NextResponse.json({ ok: true, visibility: next });
   }
 
   // Publicación con aprobación: rechazar limpia la solicitud pendiente.
@@ -203,7 +204,7 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ ok: true, requested: false });
   }
 
-  // Aprobar publicación: visible + limpia la solicitud.
+  // Aprobar publicación: visibility = public + limpia la solicitud.
   if (action === "approve_publish") {
     const vendor = await queryOne<{ id: string }>(
       `SELECT id FROM vendors WHERE id = $1`,
@@ -211,10 +212,10 @@ export async function PATCH(request: Request) {
     );
     if (!vendor) return NextResponse.json({ error: "Comercio no encontrado" }, { status: 404 });
     await query(
-      `UPDATE vendors SET visible = true, publish_requested_at = NULL WHERE id = $1`,
+      `UPDATE vendors SET visibility = 'public', publish_requested_at = NULL WHERE id = $1`,
       [vendorId]
     );
-    return NextResponse.json({ ok: true, visible: true });
+    return NextResponse.json({ ok: true, visibility: "public" });
   }
 
   if (action === "assign_user") {

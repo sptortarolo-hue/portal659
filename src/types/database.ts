@@ -533,6 +533,8 @@ export type Vendor = {
   preview_token_expires_at?: string | null;
   /** Solicitud de publicación pendiente de aprobación del admin. */
   publish_requested_at?: string | null;
+  /** Visibilidad del comercio: hidden=oculto (solo preview), private=micrositio funcional sin listar, public=visible en portal. */
+  visibility?: "hidden" | "private" | "public" | null;
   visible?: boolean | null;
   created_at: string;
 };

@@ -41,11 +41,10 @@ export async function GET(request: Request) {
     }
 
     // Solo comercios activos en la app (visibles en el portal): las pruebas
-    // y borradores ocultos no entran en ninguna métrica. Tolerante a
-    // migración pendiente (sin `visible` → fallback a `verified`).
-    const useVisible = await hasColumn("vendors", "visible");
-    const activeV = useVisible ? "v.visible = true" : "v.verified = true";
-    const activeW = useVisible ? "w.visible = true" : "w.verified = true";
+    // y borradores ocultos no entran en ninguna métrica.
+    // Con visibility enum: solo 'public' cuenta para métricas del portal.
+    const activeV = "v.visibility = 'public'";
+    const activeW = "w.visibility = 'public'";
     // Visitas: tolerante a migración pendiente (sin tabla → ceros).
     const useVisits = await hasTable("store_visits");
     // Consultas/tupera de servicios: tolerante a migración SIN aplicar (sin

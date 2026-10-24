@@ -35,7 +35,8 @@ export type EmitirFacturaCResult = {
 /** Fila de comprobante (espejo de `invoices` para las rutas API). */
 export type FiscalInvoice = {
   id: string;
-  order_id: string;
+  order_id: string | null;
+  booking_id: string | null;
   cbte_tipo: number;
   punto_venta: number;
   cbte_nro: number;

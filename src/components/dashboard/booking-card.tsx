@@ -51,6 +51,8 @@ export type BookingCardProps = {
   confirmLinkBusy: string | null;
   handleConfirmLink: (id: string, existingToken?: string | null) => void;
   canDeposits: boolean;
+  canFiscal?: boolean;
+  fiscalReady?: boolean;
   vendor: Vendor | null;
   stripeBookingLink: Record<string, string>;
   stripeBookingBusy: string | null;
@@ -58,6 +60,9 @@ export type BookingCardProps = {
   mpBookingLink: Record<string, string>;
   mpBookingBusy: string | null;
   handleBookingMpDepositLink: (id: string) => void;
+  /** Abre el modal de cobro del turno (saldo tras descontar seña). */
+  onCobroBooking?: (id: string) => void;
+  cobroOpenId?: string | null;
 };
 
 /** Tarjeta de un turno con todas sus acciones (detalle en modal y lista). */
@@ -78,6 +83,8 @@ export function BookingCard({
   confirmLinkBusy,
   handleConfirmLink,
   canDeposits,
+  canFiscal,
+  fiscalReady,
   vendor,
   stripeBookingLink,
   stripeBookingBusy,
@@ -85,6 +92,8 @@ export function BookingCard({
   mpBookingLink,
   mpBookingBusy,
   handleBookingMpDepositLink,
+  onCobroBooking,
+  cobroOpenId,
 }: BookingCardProps) {
   // Defensa contra datos basura ("null"/"undefined" de ediciones viejas).
   const nz = (v: unknown): string => {
@@ -95,6 +104,12 @@ export function BookingCard({
   const productLabel = nz(booking.product_label || booking.product_name);
   const serviceStaffLabel = [nz(booking.service_label), nz(booking.staff_label)].filter(Boolean).join(" · ");
   const notesText = nz(booking.notes);
+
+  const servicePrice = Number((booking as any).service_price || 0);
+  const depositPaid =
+    (booking as any).deposit_status === "paid" ? Number((booking as any).deposit_amount || 0) : 0;
+  const balance = Math.max(0, servicePrice - depositPaid);
+  const hasAmount = servicePrice > 0 || depositPaid > 0;
 
   return (
     <Card className="p-3">
@@ -110,6 +125,18 @@ export function BookingCard({
             {booking.location_label && ` · 📍 ${booking.location_label}`}
             {(booking as any).deposit_status === "paid" ? " · seña pagada ✅" : ""}
           </p>
+          {hasAmount && booking.status !== "completed" && (
+            <p className="text-xs text-muted-foreground mb-1">
+              Total $${servicePrice.toLocaleString("es-AR")}
+              {depositPaid > 0 ? ` · seña pagada $${depositPaid.toLocaleString("es-AR")}` : ""}
+              {balance > 0 ? ` · saldo $${balance.toLocaleString("es-AR")}` : ""}
+            </p>
+          )}
+          {booking.status === "completed" && (
+            <p className="text-xs text-muted-foreground mb-1">
+              Atendido · cobrado {nz((booking as any).payment_method)} $${Number((booking as any).amount_paid || 0).toLocaleString("es-AR")}
+            </p>
+          )}
           {booking.customer_phone && (
             <a
               href={waLinkFor(booking.customer_phone) || undefined}
@@ -226,6 +253,16 @@ export function BookingCard({
                 No vino
               </Button>
             )}
+              {onCobroBooking && (
+                <Button
+                  size="sm"
+                  className="h-7 text-xs"
+                  disabled={cobroOpenId === booking.id}
+                  onClick={() => onCobroBooking(booking.id)}
+                >
+                  {cobroOpenId === booking.id ? "Cobrando…" : "💰 Cobrar servicio"}
+                </Button>
+              )}
             <Button
               size="sm"
               variant="outline"

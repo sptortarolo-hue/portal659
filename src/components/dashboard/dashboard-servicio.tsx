@@ -29,6 +29,7 @@ import { loadDraft, saveDraft } from "@/lib/draft";
 import { AgendaView, type AgendaViewMode } from "@/components/dashboard/agenda-view";
 import { EsteticaWeekPlanner } from "@/components/dashboard/estetica-week-planner";
 import { BookingCard, type BookingCardProps } from "@/components/dashboard/booking-card";
+import { BookingCobroModal } from "@/components/dashboard/booking-cobro-modal";
 import { Modal } from "@/components/ui/modal";
 import type { Vendor, Product, ProductModifier, Booking, VendorGallery } from "@/types/database";
 
@@ -450,6 +451,10 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
     durationMin: number;
     date?: string;
   } | null>(null);
+  // Cobro de turno (servicio / estética / oficios).
+  const [cobroOpenId, setCobroOpenId] = useState<string | null>(null);
+  const [canFiscal, setCanFiscal] = useState(false);
+  const [fiscalReady, setFiscalReady] = useState(false);
 
   async function handleConvertQuote(id: string) {
     if (!convDate || !convTime) {
@@ -478,6 +483,10 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
     } finally {
       setConvBusy(false);
     }
+  }
+
+  async function handleCobroBooking(id: string) {
+    setCobroOpenId(id);
   }
 
   const loadQuotes = async () => {
@@ -511,6 +520,18 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
       } catch { /* noop */ }
     })();
   }, []);
+
+  useEffect(() => {
+    if (!vendor) return;
+    (async () => {
+      try {
+        const res = await fetch("/api/vendor/fiscal/config");
+        const data = await res.json().catch(() => ({}));
+        setCanFiscal(!!data.can_fiscal);
+        setFiscalReady(!!data.ready);
+      } catch { /* sin fiscal disponible */ }
+    })();
+  }, [vendor?.id]);
 
   useEffect(() => {
     if (!vendor) return;
@@ -989,13 +1010,17 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
     confirmLinkBusy,
     handleConfirmLink,
     canDeposits,
-    vendor,
     stripeBookingLink,
     stripeBookingBusy,
     handleBookingStripeDepositLink,
     mpBookingLink,
     mpBookingBusy,
     handleBookingMpDepositLink,
+    onCobroBooking: handleCobroBooking,
+    cobroOpenId,
+    canFiscal,
+    fiscalReady,
+    vendor,
   };
 
   return (
@@ -1935,6 +1960,19 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
         >
           <BookingCard booking={selectedBooking} {...bookingCardProps} />
         </Modal>
+      )}
+      {cobroOpenId && (
+        <BookingCobroModal
+          booking={bookings.find((b: any) => b.id === cobroOpenId)}
+          open={!!cobroOpenId}
+          onClose={() => setCobroOpenId(null)}
+          onSuccess={() => {
+            setCobroOpenId(null);
+            reload();
+          }}
+          canFiscal={canFiscal}
+          fiscalReady={fiscalReady}
+        />
       )}
     </div>
   );

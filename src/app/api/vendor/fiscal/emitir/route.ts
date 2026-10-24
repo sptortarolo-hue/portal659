@@ -1,19 +1,18 @@
 import { queryMany, queryOne } from "@/lib/db";
 import { getVendorByRequest } from "@/lib/vendor-utils";
 import { resolveVendorPlan } from "@/lib/plans";
-import { decryptFiscalSecret, isValidCuit } from "@/lib/arca/crypto";
-import { ArcaError } from "@/lib/arca/wsaa";
-import { explainArcaFault } from "@/lib/arca/faults";
-import { emitirFacturaC, type FiscalInvoice } from "@/lib/arca/emit";
-import { normalizeReceptorFiscal, parseArcaObs } from "@/lib/arca/wsfe";
+import { isValidCuit } from "@/lib/arca/crypto";
+import { normalizeReceptorFiscal } from "@/lib/arca/wsfe";
+import { issueFiscalInvoice, FiscalIssueError } from "@/lib/arca/issue-invoice";
 import type { Order, Plan, Vendor } from "@/types/database";
 import { NextResponse } from "next/server";
 
 /**
- * Emite la Factura C de un pedido cobrado (toggle "con comprobante fiscal").
- * Idempotente por pedido: si ya existe, devuelve la existente.
- * Si ARCA falla, responde 502 y el cobro sigue como "sin fiscal" (el cliente
- * reintenta desde el historial).
+ * Emite la Factura C de un pedido cobrado (toggle "con comprobante fiscal")
+ * o de un turno atendido (cobro de servicio).
+ * Idempotente por referencia (pedido o turno): si ya existe, devuelve la existente.
+ * Si ARCA falla, responde 502 y el cobro sigue como "sin fiscal" (se reintenta
+ * desde el historial / Facturación).
  */
 export async function POST(request: Request) {
   const { vendor: gateVendor, staffRole: gateStaff } = await getVendorByRequest(request);
@@ -39,17 +38,15 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json().catch(() => ({}));
-  // Mostrador: un pedido. Mesas: la cuenta cierra N consumiciones → UNA
-  // Factura C por el total sumado, adjunta al pedido principal (el más
-  // nuevo). Idempotencia por el UNIQUE (vendor_id, order_id) de invoices.
   const orderIdRaw = String(body.orderId || "");
+  const bookingIdRaw = String(body.bookingId || "");
   const orderIds: string[] = Array.isArray(body.orderIds)
     ? [...new Set((body.orderIds as unknown[]).map((x) => String(x)).filter(Boolean))].slice(0, 50)
     : orderIdRaw
       ? [orderIdRaw]
       : [];
-  if (orderIds.length === 0) {
-    return NextResponse.json({ error: "orderId requerido" }, { status: 400 });
+  if (orderIds.length === 0 && !bookingIdRaw) {
+    return NextResponse.json({ error: "orderId o bookingId requerido" }, { status: 400 });
   }
 
   // Receptor: consumidor final por default; con documento (DNI/CUIT) la
@@ -73,112 +70,93 @@ export async function POST(request: Request) {
       ? body.receptorNombre.trim().slice(0, 120)
       : null;
 
-  const orders = await queryMany<Order>(
-    `SELECT * FROM orders WHERE id = ANY($1::uuid[]) AND vendor_id = $2`,
-    [orderIds, vendor.id]
-  );
-  if (orders.length !== orderIds.length) {
-    return NextResponse.json({ error: "Pedido no encontrado" }, { status: 404 });
-  }
-  for (const o of orders) {
-    if (o.status === "cancelled") {
-      return NextResponse.json({ error: "No se puede facturar un pedido cancelado" }, { status: 400 });
+  let total = 0;
+  let orderId: string | null = null;
+  let bookingId: string | null = null;
+
+  if (bookingIdRaw) {
+    const b = await queryOne<{
+      id: string; vendor_id: string; status: string | null;
+      service_price: number | null; total?: number | null;
+    }>(
+      `SELECT id, vendor_id, status, service_price::numeric AS service_price FROM bookings WHERE id = $1 LIMIT 1`,
+      [bookingIdRaw]
+    );
+    if (!b) return NextResponse.json({ error: "Turno no encontrado" }, { status: 404 });
+    if (b.vendor_id !== vendor.id) return NextResponse.json({ error: "No autorizado" }, { status: 403 });
+    if (b.status === "cancelled") {
+      return NextResponse.json({ error: "No se puede facturar un turno cancelado" }, { status: 400 });
     }
+    bookingId = b.id;
+    total = Math.round((Number(b.service_price) || 0) * 100) / 100;
+  } else {
+    const orders = await queryMany<Order>(
+      `SELECT * FROM orders WHERE id = ANY($1::uuid[]) AND vendor_id = $2`,
+      [orderIds, vendor.id]
+    );
+    if (orders.length !== orderIds.length) {
+      return NextResponse.json({ error: "Pedido no encontrado" }, { status: 404 });
+    }
+    for (const o of orders) {
+      if (o.status === "cancelled") {
+        return NextResponse.json({ error: "No se puede facturar un pedido cancelado" }, { status: 400 });
+      }
+    }
+    const principal = [...orders]
+      .sort((a, b) => (String((a as any).created_at) < String((b as any).created_at) ? -1 : 1))
+      .slice(-1)[0];
+    orderId = principal.id;
+    total = Math.round(orders.reduce((s, o) => s + (Number(o.total) || 0), 0) * 100) / 100;
   }
-  const principal = [...orders]
-    .sort((a, b) => (String((a as any).created_at) < String((b as any).created_at) ? -1 : 1))
-    .slice(-1)[0];
-  const orderId = principal.id;
-  const total = Math.round(orders.reduce((s, o) => s + (Number(o.total) || 0), 0) * 100) / 100;
+
   if (!Number.isFinite(total) || total <= 0) {
     return NextResponse.json({ error: "Total inválido para facturar" }, { status: 400 });
   }
 
-  // Idempotencia: un pedido = un comprobante.
-  const existing = await queryOne<FiscalInvoice>(
-    `SELECT * FROM invoices WHERE vendor_id = $1 AND order_id = $2 LIMIT 1`,
-    [vendor.id, orderId]
+  // Idempotencia: una referencia = un comprobante.
+  const refId = bookingId || orderId;
+  const existing = await queryOne<FiscalInvoiceRow>(
+    `SELECT * FROM invoices WHERE vendor_id = $1 AND COALESCE(booking_id, order_id) = $2 LIMIT 1`,
+    [vendor.id, refId]
   );
   if (existing) return NextResponse.json({ ok: true, invoice: existing, recovered: true });
 
-  // Config fiscal completa.
-  const cuit = (vendor.cuit || "").replace(/\D/g, "");
-  const ptoVta = Number(vendor.fiscal_punto_venta);
-  if (!cuit || !isValidCuit(cuit) || !Number.isInteger(ptoVta) || ptoVta <= 0) {
-    return NextResponse.json(
-      { error: "Configurá CUIT y punto de venta en la sección Fiscal", code: "fiscal_config" },
-      { status: 409 }
-    );
-  }
-  if (!vendor.fiscal_cert || !vendor.fiscal_key) {
-    return NextResponse.json(
-      { error: "Subí el certificado y la clave ARCA en la sección Fiscal", code: "fiscal_config" },
-      { status: 409 }
-    );
-  }
-  let certPem: string;
-  let keyPem: string;
+  let result;
   try {
-    certPem = decryptFiscalSecret(vendor.fiscal_cert);
-    keyPem = decryptFiscalSecret(vendor.fiscal_key);
-  } catch {
-    return NextResponse.json(
-      { error: "No se pudo leer el certificado (revisá FISCAL_KEY y volvé a subirlo)", code: "fiscal_config" },
-      { status: 500 }
-    );
-  }
-
-  const env = vendor.fiscal_env === "prod" ? "prod" : "homo";
-  // Log por etapa (sin secretos) → visible en `docker logs` como [fiscal].
-  const t0 = Date.now();
-  const flog = (stage: string, extra?: string) =>
-    console.log(`[fiscal] vendor=${vendor.id} order=${orderId} env=${env} stage=${stage} +${Date.now() - t0}ms${extra ? ` ${extra}` : ""}`);
-  try {
-    flog("start", `ptoVta=${ptoVta} total=${total} pedidos=${orders.length}`);
-    const r = await emitirFacturaC(
-      { env, cuit, certPem, keyPem },
-      ptoVta,
+    result = await issueFiscalInvoice({
+      vendor,
       total,
-      undefined,
-      receptor
-    );
-    flog("cae-ok", `cbte=${r.puntoVenta}-${r.cbteNro}${r.recovered ? " recovered" : ""}`);
-    // Columnas receptor_nombre/cond_iva: tolerante a migración sin aplicar.
-    const hasReceptorCols = await queryOne<{ exists: boolean }>(
-      `SELECT EXISTS (
-         SELECT 1 FROM information_schema.columns
-         WHERE table_name = 'invoices' AND column_name = 'receptor_nombre'
-       ) AS exists`
-    );
-    const receptorCols = hasReceptorCols?.exists === true ? ", receptor_nombre, receptor_cond_iva" : "";
-    const receptorVals = hasReceptorCols?.exists === true ? [receptorNombre, receptor.condicionIva] : [];
-    try {
-      const saved = await queryOne<FiscalInvoice>(
-        `INSERT INTO invoices (vendor_id, order_id, cbte_tipo, punto_venta, cbte_nro, cae, cae_vto, total, receptor_doc_tipo, receptor_doc_nro, env${receptorCols})
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11${receptorVals.map((_, i) => `, $${12 + i}`).join("")})
-         RETURNING *`,
-        [vendor.id, orderId, r.cbteTipo, r.puntoVenta, r.cbteNro, r.cae, r.caeVto, total, receptor.docTipo, receptor.docNro, env, ...receptorVals]
-      );
-      return NextResponse.json({ ok: true, invoice: saved, qr_url: r.qrUrl, recovered: r.recovered });
-    } catch {
-      // Carrera: otro request lo guardó primero → devolver el existente.
-      const raced = await queryOne<FiscalInvoice>(
-        `SELECT * FROM invoices WHERE vendor_id = $1 AND order_id = $2 LIMIT 1`,
-        [vendor.id, orderId]
-      );
-      if (raced) return NextResponse.json({ ok: true, invoice: raced, recovered: true });
-      throw new ArcaError("No se pudo guardar el comprobante");
-    }
+      orderId: orderId ?? null,
+      bookingId: bookingId ?? null,
+      receptor,
+      receptorNombre,
+    });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : "Error de ARCA";
-    const code = e instanceof ArcaError ? "arca_error" : "fiscal_error";
-    // Detail largo: incluye las <Observaciones> completas del rechazo (R).
-    const detail = e instanceof ArcaError ? (e.detail || "").slice(0, 4000) : "";
-    flog("error", `${code}: ${msg.slice(0, 200)}${detail && !msg.includes(detail.slice(0, 40)) ? ` | ${detail}` : ""}`);
-    const hint = explainArcaFault(msg);
-    // Obs parseadas aparte para la UI (lista completa, no solo la primera).
-    const obs = e instanceof ArcaError ? parseArcaObs(e.detail || "") : [];
-    const fullMsg = obs.length > 0 ? `${msg} (${obs.join(" | ").slice(0, 500)})` : msg;
-    return NextResponse.json({ error: fullMsg, code, ...(hint ? { hint } : {}) }, { status: 502 });
+    if (e instanceof FiscalIssueError) {
+      return NextResponse.json(
+        { error: e.message, code: e.code, ...(e.hint ? { hint: e.hint } : {}), ...(e.detail ? { detail: e.detail.slice(0, 2000) } : {}) },
+        { status: e.status }
+      );
+    }
+    throw e;
   }
+  return NextResponse.json({ ok: true, invoice: result.invoice, qr_url: result.qrUrl, recovered: result.recovered });
 }
+
+type FiscalInvoiceRow = {
+  id: string;
+  order_id: string | null;
+  booking_id: string | null;
+  cbte_tipo: number;
+  punto_venta: number;
+  cbte_nro: number;
+  cae: string;
+  cae_vto: string;
+  total: number;
+  env: string;
+  created_at: string;
+  receptor_doc_tipo?: number | null;
+  receptor_doc_nro?: string | null;
+  receptor_nombre?: string | null;
+  receptor_cond_iva?: number | null;
+};

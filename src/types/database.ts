@@ -548,7 +548,7 @@ export type Booking = {
   booking_date: string;
   booking_time: string;
   notes: string | null;
-  status: "pending" | "confirmed" | "cancelled" | "noshow";
+  status: "pending" | "confirmed" | "cancelled" | "noshow" | "completed";
   /** portal = online del cliente (cuenta al tope) · vendor = manual (no cuenta). */
   origin?: QuoteOrigin;
   duration_min?: number | null;
@@ -560,6 +560,13 @@ export type Booking = {
   /** Inicio/fin como timestamp (para la grilla del calendario). */
   starts_at?: string | null;
   ends_at?: string | null;
+  /** Pago del turno (cobro de servicio): medio, monto cobrado en el acto,
+   *  momento del cobro y momento en que se dio por atendido. */
+  payment_status?: "paid" | "pending" | null;
+  payment_method?: string | null;
+  amount_paid?: number | null;
+  paid_at?: string | null;
+  completed_at?: string | null;
   /** Turno de prueba (modo preview). true = no cuenta en topes/métricas/CRM. */
   is_preview?: boolean;
   created_at: string;

@@ -1,0 +1,20 @@
+-- Visibilidad de 3 estados para comercios
+-- hidden  = oculto (solo preview con token)
+-- private = micrositio funcional sin listar en portal
+-- public  = visible en portal (home/buscar/mapa/sitemap)
+
+ALTER TABLE public.vendors ADD COLUMN IF NOT EXISTS visibility text NOT NULL DEFAULT 'hidden'
+  CHECK (visibility IN ('hidden', 'private', 'public'));
+
+-- Backfill desde columna legacy `visible`
+UPDATE public.vendors
+SET visibility = CASE
+  WHEN visible = true THEN 'public'
+  ELSE 'hidden'
+END;
+
+-- Índice para queries frecuentes
+CREATE INDEX IF NOT EXISTS idx_vendors_visibility ON public.vendors (visibility);
+
+COMMENT ON COLUMN public.vendors.visibility IS
+  'Visibilidad del comercio: hidden=oculto (solo preview), private=micrositio funcional sin listar, public=visible en portal';

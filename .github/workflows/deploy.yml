@@ -75,8 +75,9 @@ jobs:
             echo 'GROQ_API_KEY=${{ secrets.GROQ_API_KEY }}' >> /opt/portal659/.env
             echo 'GROQ_MODEL=${{ secrets.GROQ_MODEL }}' >> /opt/portal659/.env
             echo 'OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}' >> /opt/portal659/.env
-            BT='${{ vars.BOT_TAKE_ORDERS }}'; echo "BOT_TAKE_ORDERS=${BT:-1}" >> /opt/portal659/.env
-            BM='${{ vars.BOT_MODE }}'; echo "BOT_MODE=${BM:-portal}" >> /opt/portal659/.env
+            # Comercios: conserje por default. El flujo portal se activa por
+            # slug del vendor central en el cerebro, no por env global.
+            BT='${{ vars.BOT_TAKE_ORDERS }}'; echo "BOT_TAKE_ORDERS=${BT:-0}" >> /opt/portal659/.env
             SN='${{ vars.LLM_SITE_NAME }}'; echo "LLM_SITE_NAME=${SN:-Portal 659 wa-bot}" >> /opt/portal659/.env
             WB_SECRET='${{ secrets.WA_BOT_SECRET }}'
             if [ -z "$WB_SECRET" ]; then WB_SECRET=$(openssl rand -hex 24); fi

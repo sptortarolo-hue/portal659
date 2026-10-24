@@ -99,8 +99,9 @@ services:
       - DATABASE_URL=${DATABASE_URL}
       - UPSTASH_REDIS_REST_URL=${UPSTASH_REDIS_REST_URL}
       - UPSTASH_REDIS_REST_TOKEN=${UPSTASH_REDIS_REST_TOKEN}
-      - BOT_TAKE_ORDERS=${BOT_TAKE_ORDERS:-1}
-      - BOT_MODE=${BOT_MODE:-portal}
+      # Comercios: conserje por default (off) — el flujo portal se activa por
+      # slug del vendor central en el cerebro, no por env global.
+      - BOT_TAKE_ORDERS=${BOT_TAKE_ORDERS:-0}
       - LLM_API_KEY=${LLM_API_KEY}
       - LLM_BASE_URL=${LLM_BASE_URL}
       - LLM_MODEL=${LLM_MODEL}

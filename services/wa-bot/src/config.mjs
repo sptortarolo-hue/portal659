@@ -43,9 +43,9 @@ export const config = {
   // menǧ, "��tuviste un problema?" + forwarding al due��o). Default concierge.
   // No se borra c��digo: el flujo de pedidos solo no se entra cuando estǭ off.
   takeOrders: process.env.BOT_TAKE_ORDERS === "1",
-  // Modo portal: un solo número sirve a todos los comercios de la zona activa.
-  // "portal" = multi-comercio; "vendor" (default) = un comercio por número.
-  botMode: process.env.BOT_MODE || "vendor",
+  // El flujo portal NO se activa por env: se identifica por slug del vendor
+  // central en bot.mjs (isPortalVendor). Los comercios siempre pasan por el
+  // flujo por-comercio, con takeOrders off por default (conserje).
   // Timeout de no-respuesta: si hay una pregunta pendiente (persona 1/2, consulta
   // o comprobante) sin contestar por más de esto, el bot avisa que va a ser
   // atendido por una persona y deriva (push al dueño + pausa).

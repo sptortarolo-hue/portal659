@@ -5,6 +5,7 @@ import { parseWithLlm, parseByRules, normalizeEs, extractFromText, bareName,
 classifyIntent, llmStats } from "./nlu.mjs";
 import { saveCorrection } from "./learning.mjs";
 import { getClientByVendor, sendText, sendTyping, sendPaused } from "./relay.mjs";
+import { feedPush } from "./metrics.mjs";
 
 const DEFAULT_STATE = {
   step: "idle",
@@ -142,9 +143,19 @@ function phoneFor(waId, waPhone) {
   return normalizePhone(waId);
 }
 
+/** ¿Este relay es el número central de Portal 659 (infraestructura del bot)?
+ *  Identificación por slug del vendor (tolera renombres históricos). */
+function isPortalVendor(vendor) {
+  const slug = String(vendor?.slug || "").toLowerCase();
+  return ["portal659-bot", "portal-central", "admin-portal659"].includes(slug);
+}
+
 export async function handleInbound({ vendor, waId, body, waPhone }) {
-  // Modo portal: un solo número sirve a todos los comercios de la zona activa.
-  if (config.botMode === "portal") {
+  // Modo portal SOLO para el relay del número central de Portal 659: se
+  // identifica por slug del vendor (infraestructura del bot), NO por env
+  // global — así el número de un comercio con su propio APK nunca cae en el
+  // flujo multi-comercio y sigue el flujo por-comercio de siempre.
+  if (isPortalVendor(vendor)) {
     return await handlePortalInbound({ vendor, waId, body, waPhone });
   }
   const text = String(body || "").trim();
@@ -299,6 +310,11 @@ function alternativesText(text, products) {
 // ———————————————————————————————————————————————————————————————————————————
 
 async function handleIdle({ vendor, text, state, replies, waId }) {
+  // `t` = texto recortado. El bloque pendingConfirm de acá abajo lo usa y NO
+  // estaba definido en esta función → ReferenceError → el catch respondía
+  // "Uy, hubo un error" EN LOOP: el cliente contestaba el "¿sí o no?" y el
+  // bot se trababa para siempre (la causa del "no llego a hacer un pedido").
+  const t = text.trim();
   // Saludo solo la PRIMERA vez (welcomed flag). Después se contesta con las
   // preguntas pendientes, nunca el mismo texto otra vez.
   if (!state.welcomed && RE_GREETING.test(text) && text.length < 40) {
@@ -632,7 +648,7 @@ async function handleStep({ vendor, text, state, replies, waId }) {
     // Fallback: si el texto es corto y no es comando, adjuntarlo crudo como
     // modificador para no trabar el pedido (la cocina lo lee tal cual).
     const low = t.toLowerCase();
-    const isCmd = /^(cancelar|ayuda|menu|men�|comercios|hola|chau|ok|si|no)$/i.test(low);
+    const isCmd = /^(cancelar|ayuda|menu|menú|comercios|hola|chau|ok|si|no)$/i.test(low);
     if (!isCmd && t.length > 0 && t.length <= 60) {
       if (item) {
         const others = (item.modifiers || []).filter((m) => {
@@ -654,7 +670,7 @@ async function handleStep({ vendor, text, state, replies, waId }) {
       return handoffHuman(vendor, waId, text, state);
     }
     const lista = pm.options.join(", ");
-    replies.push(`No entend� qu� ${pm.group.toLowerCase()} quer�s. Opciones: ${lista}. Escrib� las que quer�s (ej: "${pm.options.slice(0, 2).join(" y ")}").`);
+    replies.push(`No entendí qué ${pm.group.toLowerCase()} querés. Opciones: ${lista}. Escribí las que querés (ej: "${pm.options.slice(0, 2).join(" y ")}").`);
     return;
   }
 
@@ -694,14 +710,17 @@ async function handleStep({ vendor, text, state, replies, waId }) {
   //  coca" no sumaba).
   if (parsed?.items?.length) {
     got = true;
-    const isAddition = /\b(agrega|agregǭ|agregar|tambiǸn|tambien|sumǭ|suma|sumar|mǭs|mas)(?=[\s.,!��]|$)/i.test(t);
+    // (la versión anterior tenía los acentos como bytes rotos: "agregǭ/mǭs"
+    //  no matcheaba NADA → "agregá una coca" REEMPLAZABA el carrito entero
+    //  en vez de sumarlo — pedidos que se perdían a mitad de flujo)
+    const isAddition = /\b(agrega|agregá|agregar|también|tambien|sumá|suma|sumar|más|mas)(?=[\s.,!¡]|$)/i.test(t);
     const fullCart =
       state.items.length > 0 &&
       state.items.every((i) => parsed.items.some((p) => (p.offerId || p.id) === i.offerId));
     const shouldMerge = isAddition && !fullCart;
 
         // Desambiguación (patrón PRODUCTNO): mención genérica ("empanadas" ≠
-    // "Empanada de carne") → preguntar cuál/cuántas ANTES de agregar a ciegas.
+        // "Empanada de carne") → preguntar cuál/cuántas ANTES de agregar a ciegas.
     // Con 1 SOLO candidato no hay ambigüedad de cuál → attach inmediato
     // ("quiero 1 coca" → Coca-Cola ×1, sin pregunta innecesaria).
     // Los items EXACTOS del mismo mensaje se agregan igual (no se pierden) y
@@ -1335,10 +1354,8 @@ async function handlePortalInbound({ vendor, waId, body, waPhone }) {
       return await handoffHuman(vendor, waId, text, state);
     }
 
-    if (!config.takeOrders) {
-      await handleConcierge({ vendor, text, state, replies, waId });
-      return await persist(state, vendor.id, waId, replies);
-    }
+    // El bot central SIEMPRE toma pedidos (es su propósito): no pasa por el
+    // gate global BOT_TAKE_ORDERS — ese gate gobierna solo a los comercios.
 
     // En flujo de pedido con un comercio elegido: reusar el flow normal.
     if (state.currentVendorId && state.step !== "idle") {

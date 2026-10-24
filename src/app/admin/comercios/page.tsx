@@ -24,7 +24,7 @@ type Vendor = {
   address: string;
   verified: boolean;
   is_admin: boolean;
-  visible: boolean;
+  visibility: "hidden" | "private" | "public";
   logo_url: string | null;
   created_at: string;
   plan_id: string | null;
@@ -64,6 +64,7 @@ export default function AdminComerciosPage() {
   const [filterVerified, setFilterVerified] = useState("");
   const [filterPending, setFilterPending] = useState(false);
   const [filterPay, setFilterPay] = useState<"all" | "paid" | "unpaid" | "expired">("all");
+  const [filterVisibility, setFilterVisibility] = useState<"all" | "hidden" | "private" | "public">("all");
   const [plans, setPlans] = useState<Plan[]>([]);
   const [createOpen, setCreateOpen] = useState(false);
   const [planModal, setPlanModal] = useState<{ vendor: Vendor; planSlug: string } | null>(null);
@@ -82,13 +83,14 @@ export default function AdminComerciosPage() {
       const params = new URLSearchParams();
       if (filterVertical) params.set("vertical", filterVertical);
       if (filterVerified) params.set("verified", filterVerified);
+      if (filterVisibility !== "all") params.set("visibility", filterVisibility);
       const res = await fetch(`/api/admin/comercios?${params}`);
       const data = await res.json();
       if (!data.error) setVendors(data.vendors);
     } finally {
       setLoading(false);
     }
-  }, [filterVertical, filterVerified]);
+  }, [filterVertical, filterVerified, filterVisibility]);
 
   useEffect(() => { fetchVendors(); }, [fetchVendors]);
 
@@ -111,10 +113,14 @@ export default function AdminComerciosPage() {
   }
 
   async function handleToggleVisible(id: string) {
+    // Con visibility enum, alternamos: hidden -> private -> public -> hidden
+    const v = vendors.find((x) => x.id === id);
+    if (!v) return;
+    const next = v.visibility === "hidden" ? "private" : v.visibility === "private" ? "public" : "hidden";
     await fetch("/api/admin/comercios", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ vendorId: id, action: "toggle_visible" }),
+      body: JSON.stringify({ vendorId: id, action: "set_visibility", visibility: next }),
     });
     fetchVendors();
   }
@@ -219,10 +225,11 @@ export default function AdminComerciosPage() {
   }
 
   const visibleVendors = vendors.filter((v) => {
-    if (filterPending && !(v.publish_requested_at && !v.visible)) return false;
+    if (filterPending && !(v.publish_requested_at && v.visibility === "hidden")) return false;
     if (filterPay === "paid" && !v.paid_at) return false;
     if (filterPay === "unpaid" && !(hasPaidPlan(v) && !v.paid_at)) return false;
     if (filterPay === "expired" && v.plan_status !== "expired") return false;
+    if (filterVisibility !== "all" && v.visibility !== filterVisibility) return false;
     return true;
   });
 
@@ -334,21 +341,26 @@ export default function AdminComerciosPage() {
     {
       key: "verified",
       label: "Estado",
-      render: (v) => (
-        <div className="flex items-center gap-1">
-          {v.visible ? (
-            <span className="text-[10px] text-green-600 font-medium">&#9679; Visible</span>
-          ) : (
-            <span className="text-[10px] text-muted-foreground">&#9679; Oculto</span>
-          )}
-          {v.verified && <span className="text-[10px] text-blue-600 font-medium">&#10003; Verificado</span>}
-          {v.publish_requested_at && !v.visible && (
-            <span className="text-[10px] text-violet-700 font-bold">📩 Solicita publicar</span>
-          )}
-          {v.is_admin && <span className="text-[10px] text-amber-600 font-medium">Admin</span>}
-          {!v.verified && !v.is_admin && <span className="text-[10px] text-muted-foreground">Pendiente</span>}
-        </div>
-      ),
+      render: (v) => {
+        const vis = v.visibility;
+        const visBadge =
+          vis === "public"
+            ? <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300">Público</span>
+            : vis === "private"
+            ? <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">Privado</span>
+            : <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-muted text-muted-foreground">Oculto</span>;
+        return (
+          <div className="flex items-center gap-1">
+            {visBadge}
+            {v.verified && <span className="text-[10px] text-blue-600 font-medium">&#10003; Verificado</span>}
+            {v.publish_requested_at && vis === "hidden" && (
+              <span className="text-[10px] text-violet-700 font-bold">📩 Solicita publicar</span>
+            )}
+            {v.is_admin && <span className="text-[10px] text-amber-600 font-medium">Admin</span>}
+            {!v.verified && !v.is_admin && <span className="text-[10px] text-muted-foreground">Pendiente</span>}
+          </div>
+        );
+      },
     },
     {
       key: "created_at",
@@ -396,6 +408,16 @@ export default function AdminComerciosPage() {
         </select>
         <select
           className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+          value={filterVisibility}
+          onChange={(e) => setFilterVisibility(e.target.value as typeof filterVisibility)}
+        >
+          <option value="all">Todas las visibilidades</option>
+          <option value="public">Público</option>
+          <option value="private">Privado</option>
+          <option value="hidden">Oculto</option>
+        </select>
+        <select
+          className="h-9 rounded-md border border-input bg-background px-3 text-sm"
           value={filterPay}
           onChange={(e) => setFilterPay(e.target.value as typeof filterPay)}
           title="Filtrar por estado de pago"
@@ -413,7 +435,7 @@ export default function AdminComerciosPage() {
               : "border-border text-muted-foreground hover:bg-muted"
           }`}
         >
-          📩 Pendientes ({vendors.filter((v) => v.publish_requested_at && !v.visible).length})
+          📩 Pendientes ({vendors.filter((v) => v.publish_requested_at && v.visibility === "hidden").length})
         </button>
       </div>
 
@@ -431,7 +453,7 @@ export default function AdminComerciosPage() {
           emptyMessage="No hay comercios"
           actions={(v) => (
             <div className="flex items-center gap-1 justify-end">
-              {v.publish_requested_at && !v.visible && (
+              {v.publish_requested_at && v.visibility === "hidden" && (
                 <>
                   <button
                     onClick={() => handleApprovePublish(v.id)}
@@ -468,11 +490,21 @@ export default function AdminComerciosPage() {
               <button
                 onClick={() => handleToggleVisible(v.id)}
                 className={`text-xs px-2 py-1 rounded-md border transition-colors ${
-                  v.visible ? "border-green-300 bg-green-50 text-green-700" : "border-border text-muted-foreground hover:bg-muted"
+                  v.visibility === "public"
+                    ? "border-green-300 bg-green-50 text-green-700"
+                    : v.visibility === "private"
+                    ? "border-amber-300 bg-amber-50 text-amber-700"
+                    : "border-border text-muted-foreground hover:bg-muted"
                 }`}
-                title={v.visible ? "Ocultar de la página" : "Mostrar en la página"}
+                title={
+                  v.visibility === "public"
+                    ? "Cambiar a Privado"
+                    : v.visibility === "private"
+                    ? "Cambiar a Oculto"
+                    : "Cambiar a Público"
+                }
               >
-                {v.visible ? "Visible" : "Oculto"}
+                {v.visibility === "public" ? "Público" : v.visibility === "private" ? "Privado" : "Oculto"}
               </button>
               <button
                 onClick={() => handleToggleWaBot(v.id)}

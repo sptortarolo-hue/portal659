@@ -56,9 +56,10 @@ export default function AdminComercioDetailPage() {
     load();
   }
 
-  async function toggleVisible() {
-    await patch({ visible: !vendor?.visible });
-    setMsg(vendor?.visible ? "Comercio oculto de la página." : "Comercio visible en la página.");
+  async function setVisibility(nextVis: "hidden" | "private" | "public") {
+    await patch({ visibility: nextVis });
+    const labels = { hidden: "Oculto", private: "Privado", public: "Público" };
+    setMsg(`Visibilidad cambiada a: ${labels[nextVis]}.`);
   }
 
   async function assignUser() {
@@ -130,7 +131,8 @@ export default function AdminComercioDetailPage() {
     return <p className="text-muted-foreground">Comercio no encontrado.</p>;
   }
 
-  const visible = !!vendor.visible;
+  const visibility = vendor.visibility ?? "hidden";
+  const visible = visibility === "public";
 
   return (
     <div className="space-y-5">
@@ -139,10 +141,15 @@ export default function AdminComercioDetailPage() {
           <ArrowLeft className="h-4 w-4" /> Volver a comercios
         </Link>
         <div className="flex items-center gap-2">
-          <Button size="sm" variant={visible ? "outline" : "default"} onClick={toggleVisible}>
-            {visible ? <EyeOff className="h-4 w-4 mr-1" /> : <Eye className="h-4 w-4 mr-1" />}
-            {visible ? "Ocultar de la página" : "Mostrar en la página"}
-          </Button>
+          <select
+            className="h-9 rounded-md border border-input bg-background px-3 py-2 text-sm"
+            value={visibility}
+            onChange={(e) => setVisibility(e.target.value as "hidden" | "private" | "public")}
+          >
+            <option value="hidden">Oculto</option>
+            <option value="private">Privado</option>
+            <option value="public">Público</option>
+          </select>
           <Button size="sm" asChild>
             <Link href={`/vendor/dashboard?as=${vendor.id}`}>
               <Pencil className="h-4 w-4 mr-1" /> Editar en el dashboard
@@ -162,8 +169,10 @@ export default function AdminComercioDetailPage() {
         <div>
           <h1 className="font-display text-2xl font-semibold flex items-center gap-2">
             {vendor.store_name}
-            {visible ? (
-              <Badge className="bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300">Visible</Badge>
+            {visibility === "public" ? (
+              <Badge className="bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300">Público</Badge>
+            ) : visibility === "private" ? (
+              <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">Privado</Badge>
             ) : (
               <Badge variant="secondary">Oculto</Badge>
             )}

@@ -15,6 +15,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "No autorizado" }, { status: 403 });
   }
 
+  // Solo hidden puede generar/usar preview tokens
+  const vendorData = await queryOne<{ visibility: "hidden" | "private" | "public" | null }>(
+    `SELECT visibility FROM vendors WHERE id = $1 LIMIT 1`,
+    [resolved.id]
+  );
+  const vis = vendorData?.visibility ?? "hidden";
+  if (vis !== "hidden") {
+    return NextResponse.json(
+      { error: "Solo comercios ocultos pueden generar links de prueba" },
+      { status: 400 }
+    );
+  }
+
   const body = await request.json().catch(() => ({}));
   const { action, expiresInDays } = body as {
     action?: string;

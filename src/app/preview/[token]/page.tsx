@@ -32,6 +32,7 @@ export default async function PreviewPage({
     [token]
   );
   if (!vendor || !isPreviewTokenValid(vendor, token)) notFound();
+  if (vendor.visibility !== "hidden") notFound();
 
   const micrositeUrl = `/tienda/${vendor.slug}?preview=${encodeURIComponent(token)}`;
 

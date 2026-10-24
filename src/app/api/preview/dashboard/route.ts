@@ -22,12 +22,18 @@ export async function POST(request: Request) {
     id: string;
     preview_token: string | null;
     preview_token_expires_at: string | null;
+    visibility: "hidden" | "private" | "public" | null;
   }>(
-    `SELECT id, preview_token, preview_token_expires_at FROM vendors WHERE preview_token = $1 LIMIT 1`,
+    `SELECT id, preview_token, preview_token_expires_at, visibility FROM vendors WHERE preview_token = $1 LIMIT 1`,
     [token]
   );
   if (!vendor || !isPreviewTokenValid(vendor, token)) {
     return NextResponse.json({ error: "Link de prueba inválido o vencido" }, { status: 403 });
+  }
+
+  // Solo hidden puede usar preview dashboard
+  if (vendor.visibility !== "hidden") {
+    return NextResponse.json({ error: "Este comercio no usa modo prueba" }, { status: 403 });
   }
 
   const session = await signPreviewSession(vendor.id);

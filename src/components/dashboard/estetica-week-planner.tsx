@@ -323,7 +323,7 @@ export function EsteticaWeekPlanner({
                   const label = t % 60 === 0;
                   return (
                     <Fragment key={t}>
-                      <div className={`pr-1 text-[10px] text-right tabular-nums leading-none ${label ? "text-muted-foreground py-0.5" : "text-transparent"}`}>
+                      <div className={`pr-1 text-[10px] text-right tabular-nums leading-none ${label ? "text-muted-foreground py-0.5" : "text-transparent"} sticky left-0 z-20 bg-background border-r border-border`}>
                         {fmtMinutes(t)}
                       </div>
                       {weekDates.map((date) => {

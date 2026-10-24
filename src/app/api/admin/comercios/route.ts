@@ -187,7 +187,21 @@ export async function PATCH(request: Request) {
     }
   }
 
-if (action === "toggle_visible") {
+if (action === "set_visibility") {
+    const { visibility } = body as { visibility?: "hidden" | "private" | "public" };
+    if (!visibility || !["hidden", "private", "public"].includes(visibility)) {
+      return NextResponse.json({ error: "Visibilidad inválida" }, { status: 400 });
+    }
+    const vendor = await queryOne<{ id: string }>(
+      `SELECT id FROM vendors WHERE id = $1`,
+      [vendorId]
+    );
+    if (!vendor) return NextResponse.json({ error: "Comercio no encontrado" }, { status: 404 });
+    await query(`UPDATE vendors SET visibility = $1 WHERE id = $2`, [visibility, vendorId]);
+    return NextResponse.json({ ok: true, visibility });
+  }
+
+  if (action === "toggle_visible") {
     const vendor = await queryOne<{ visibility: "hidden" | "private" | "public" }>(
       `SELECT visibility FROM vendors WHERE id = $1`,
       [vendorId]

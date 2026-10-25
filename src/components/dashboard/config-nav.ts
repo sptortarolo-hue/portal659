@@ -10,6 +10,7 @@ import {
   Printer,
   QrCode,
   Receipt,
+  Scale,
   ShoppingBag,
   Siren,
   Store,
@@ -36,6 +37,7 @@ export const CONFIG_SECTION_ICONS: Record<string, LucideIcon> = {
   preparacion: Timer,
   equipo: Users,
   impresora: Printer,
+  balanza: Scale,
   alertas: Bell,
   fiscal: Receipt,
   menu: BookOpen,
@@ -57,6 +59,7 @@ export const CONFIG_SECTION_DESCS: Record<string, string> = {
   preparacion: "Demora que ven tus clientes en el micrositio.",
   equipo: "Repartidores y usuarios del local (nombre, nivel y contraseña).",
   impresora: "Tickets y comandas en papel.",
+  balanza: "Balanza conectada: guía y prueba.",
   alertas: "Avisos de pedido nuevo en este celu.",
   fiscal: "Abrir la pestaña Facturación: comprobantes, NC y reportes.",
   menu: "Acceso rápido a tu carta.",
@@ -78,7 +81,7 @@ export const CONFIG_SECTION_GROUPS: Array<{
   { id: "ventas", label: "Ventas", sections: ["pagos", "menu", "catalogo", "carta"] },
   { id: "turnera", label: "Turnera", sections: ["turnera", "fichas", "packs"] },
   { id: "servicio", label: "Servicio", sections: ["servicios", "urgencia"] },
-  { id: "operacion", label: "Operación", sections: ["preparacion", "equipo", "impresora", "alertas", "fiscal"] },
+  { id: "operacion", label: "Operación", sections: ["preparacion", "equipo", "impresora", "balanza", "alertas", "fiscal"] },
 ];
 
 export const CONFIG_SECTION_FALLBACK_ICON: LucideIcon = Settings2;
@@ -92,6 +95,7 @@ export const CONFIG_SECTION_LABELS: Record<string, string> = {
   preparacion: "Tiempo de preparación",
   equipo: "Equipo y usuarios",
   impresora: "Impresora",
+  balanza: "Balanza",
   alertas: "Alertas",
   fiscal: "Facturación",
   menu: "Menú",
@@ -110,7 +114,7 @@ export function sectionsForVertical(vertical: string | null | undefined): string
     case "gastronomia":
       return ["perfil", "ubicacion", "contacto", "pagos", "preparacion", "equipo", "impresora", "alertas", "fiscal", "menu", "carta"];
     case "comercio":
-      return ["perfil", "ubicacion", "contacto", "pagos", "equipo", "impresora", "alertas", "fiscal", "catalogo", "carta"];
+      return ["perfil", "ubicacion", "contacto", "pagos", "equipo", "impresora", "balanza", "alertas", "fiscal", "catalogo", "carta"];
     case "moda":
       return ["perfil", "ubicacion", "contacto", "pagos", "equipo", "impresora", "alertas", "fiscal", "carta"];
     case "estetica":

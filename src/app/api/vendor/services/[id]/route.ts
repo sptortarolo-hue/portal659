@@ -59,6 +59,58 @@ export async function PATCH(
     sets.push(`price = $${idx++}`);
     vals.push(n);
   }
+  // Precio "desde" (banda opcional "Desde X – Hasta Y"). Mutuamente
+  // excluyente con el fijo: si se setea "desde", `price` queda NULL.
+  let priceFromVal: number | null | undefined;
+  let priceToVal: number | null | undefined;
+  if (body.price_from !== undefined) {
+    const raw = body.price_from;
+    const n = raw == null || raw === "" ? null : Number(raw);
+    if (n !== null && (!Number.isFinite(n) || n < 0)) {
+      return NextResponse.json({ error: "El precio 'desde' debe ser un monto válido" }, { status: 400 });
+    }
+    priceFromVal = n;
+  }
+  if (body.price_to !== undefined) {
+    const raw = body.price_to;
+    const n = raw == null || raw === "" ? null : Number(raw);
+    if (n !== null && !Number.isFinite(n)) {
+      return NextResponse.json({ error: "El precio 'hasta' debe ser un monto válido" }, { status: 400 });
+    }
+    priceToVal = n;
+  }
+  if (priceFromVal !== undefined || priceToVal !== undefined) {
+    let baseFrom = priceFromVal;
+    if (baseFrom === undefined) {
+      const cur = await queryOne<{ price_from: number | null }>(
+        `SELECT price_from FROM services WHERE vendor_id = $1 AND id = $2 LIMIT 1`,
+        [vendor.id, id]
+      ).catch(() => null);
+      baseFrom = cur?.price_from != null ? Number(cur.price_from) : null;
+    }
+    if (priceToVal != null && (baseFrom == null || priceToVal <= baseFrom)) {
+      return NextResponse.json(
+        { error: baseFrom == null ? "Para la banda cargá primero el 'desde'" : "El precio 'hasta' debe ser mayor que el 'desde'" },
+        { status: 400 }
+      );
+    }
+    if (priceFromVal !== undefined) {
+      sets.push(`price_from = $${idx++}`);
+      vals.push(priceFromVal);
+      if (priceFromVal !== null) {
+        // El fijo y el "desde" son excluyentes.
+        sets.push(`price = NULL`);
+        if (priceToVal === undefined) sets.push(`price_to = NULL`);
+      } else {
+        // Sin "desde": limpia también la banda.
+        sets.push(`price_to = NULL`);
+      }
+    }
+    if (priceToVal !== undefined && priceFromVal === undefined) {
+      sets.push(`price_to = $${idx++}`);
+      vals.push(priceToVal);
+    }
+  }
   if (body.commission_pct !== undefined) {
     const raw = body.commission_pct;
     const n = raw == null || raw === "" ? null : Number(raw);

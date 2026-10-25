@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ProductImage } from "@/components/product-image";
 import { BookingForm } from "@/components/services/booking-form";
+import { servicePriceLabel } from "@/lib/service-price";
 
 export type EsteticaServiceCard = {
   id: string;
@@ -11,6 +12,8 @@ export type EsteticaServiceCard = {
   deposit_amount: number | null;
   duration_min: number | null;
   price: number | null;
+  price_from?: number | null;
+  price_to?: number | null;
   require_deposit: boolean | null;
   deposit_hours: number | null;
   image_url: string | null;
@@ -57,7 +60,7 @@ export function ServiceCards({
             <span className="text-[13px] font-medium line-clamp-1">{s.name}</span>
             <span className="text-xs text-muted-foreground">
               {[s.duration_min != null && Number(s.duration_min) > 0 ? `${s.duration_min} min` : null,
-                s.price != null && Number(s.price) >= 0 ? `$${Number(s.price).toLocaleString("es-AR")}` : null]
+                servicePriceLabel(s)]
                 .filter(Boolean)
                 .join(" · ") || "Consultar"}
             </span>
@@ -102,6 +105,8 @@ export function EsteticaServicesSection({
     deposit_amount: s.deposit_amount,
     duration_min: s.duration_min,
     price: s.price,
+    price_from: s.price_from,
+    price_to: s.price_to,
     require_deposit: s.require_deposit,
     deposit_hours: s.deposit_hours,
   }));
@@ -272,9 +277,9 @@ export function ServiceBookingSheet({
                       ⏱️ {service.duration_min} min
                     </span>
                   )}
-                  {service.price != null && Number(service.price) >= 0 && (
+                  {servicePriceLabel(service) && (
                     <span className="font-display font-bold text-lg">
-                      ${Number(service.price).toLocaleString("es-AR")}
+                      {servicePriceLabel(service)}
                     </span>
                   )}
                 </div>

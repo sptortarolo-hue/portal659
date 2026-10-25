@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
+import { servicePriceLabel } from "@/lib/service-price";
 
 type Service = {
   id: string;
@@ -15,6 +16,8 @@ type Service = {
   buffer_min: number | null;
   deposit_amount: number | null;
   price: number | null;
+  price_from?: number | null;
+  price_to?: number | null;
   commission_pct: number | null;
   require_deposit?: boolean | null;
   deposit_hours?: number | null;
@@ -35,6 +38,9 @@ export function EsteticaServicesManager({ onChanged }: { onChanged?: () => void 
   const [buffer, setBuffer] = useState("0");
   const [deposit, setDeposit] = useState("");
   const [price, setPrice] = useState("");
+  const [priceMode, setPriceMode] = useState<"fijo" | "desde">("fijo");
+  const [priceFrom, setPriceFrom] = useState("");
+  const [priceTo, setPriceTo] = useState("");
   const [commission, setCommission] = useState("");
   const [locationId, setLocationId] = useState("");
   const [category, setCategory] = useState("");
@@ -48,6 +54,9 @@ export function EsteticaServicesManager({ onChanged }: { onChanged?: () => void 
   const [msg, setMsg] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editPrice, setEditPrice] = useState("");
+  const [editPriceMode, setEditPriceMode] = useState<"fijo" | "desde">("fijo");
+  const [editPriceFrom, setEditPriceFrom] = useState("");
+  const [editPriceTo, setEditPriceTo] = useState("");
   const [editCommission, setEditCommission] = useState("");
   const [editRequire, setEditRequire] = useState(false);
   const [editHours, setEditHours] = useState("24");
@@ -105,7 +114,9 @@ export function EsteticaServicesManager({ onChanged }: { onChanged?: () => void 
           duration_min: Number(duration) || 60,
           buffer_min: Number(buffer) || 0,
           deposit_amount: deposit === "" ? null : Number(deposit),
-          price: price === "" ? null : Number(price),
+          price: priceMode === "fijo" ? (price === "" ? null : Number(price)) : null,
+          price_from: priceMode === "desde" ? (priceFrom === "" ? null : Number(priceFrom)) : null,
+          price_to: priceMode === "desde" && priceTo !== "" ? Number(priceTo) : null,
           commission_pct: commission === "" ? null : Number(commission),
           location_id: locationId || undefined,
           require_deposit: requireDeposit,
@@ -124,6 +135,9 @@ export function EsteticaServicesManager({ onChanged }: { onChanged?: () => void 
       setBuffer("0");
       setDeposit("");
       setPrice("");
+      setPriceMode("fijo");
+      setPriceFrom("");
+      setPriceTo("");
       setCommission("");
       setLocationId("");
       setRequireDeposit(false);
@@ -145,7 +159,9 @@ export function EsteticaServicesManager({ onChanged }: { onChanged?: () => void 
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          price: editPrice === "" ? null : Number(editPrice),
+          price: editPriceMode === "fijo" ? (editPrice === "" ? null : Number(editPrice)) : null,
+          price_from: editPriceMode === "desde" ? (editPriceFrom === "" ? null : Number(editPriceFrom)) : null,
+          price_to: editPriceMode === "desde" && editPriceTo !== "" ? Number(editPriceTo) : null,
           commission_pct: editCommission === "" ? null : Number(editCommission),
           require_deposit: editRequire,
           deposit_hours: editHours === "" ? 24 : Number(editHours),
@@ -224,11 +240,11 @@ export function EsteticaServicesManager({ onChanged }: { onChanged?: () => void 
                   )}
                   <span className="block text-muted-foreground">
                     {s.duration_min ?? 60} min{s.buffer_min ? ` +${s.buffer_min} buffer` : ""} · seña {s.deposit_amount ? money(Number(s.deposit_amount)) : "no"}
-                    {s.price != null ? ` · ${money(Number(s.price))}` : ""}{s.commission_pct != null ? ` · ${Number(s.commission_pct)}%` : ""}
+                    {servicePriceLabel(s) ? ` · ${servicePriceLabel(s)}` : ""}{s.commission_pct != null ? ` · ${Number(s.commission_pct)}%` : ""}
                     {s.require_deposit ? ` · 🔒 seña obligatoria (${s.deposit_hours ?? 24}h)` : ""}
                   </span>
                 </span>
-                <button type="button" onClick={() => { setEditingId(editingId === s.id ? null : s.id); setEditPrice(s.price != null ? String(s.price) : ""); setEditCommission(s.commission_pct != null ? String(s.commission_pct) : ""); setEditRequire(s.require_deposit === true); setEditHours(s.deposit_hours != null ? String(s.deposit_hours) : "24"); setEditImage(typeof s.image_url === "string" ? s.image_url : ""); setEditCategory(typeof (s as any).category === "string" ? (s as any).category : ""); }} className="text-muted-foreground hover:text-foreground flex-shrink-0" title="Precio, comisión y seña">
+                <button type="button" onClick={() => { setEditingId(editingId === s.id ? null : s.id); setEditPriceMode(s.price != null || (s.price_from == null && s.price_to == null) ? "fijo" : "desde"); setEditPrice(s.price != null ? String(s.price) : ""); setEditPriceFrom(s.price_from != null ? String(s.price_from) : ""); setEditPriceTo(s.price_to != null ? String(s.price_to) : ""); setEditCommission(s.commission_pct != null ? String(s.commission_pct) : ""); setEditRequire(s.require_deposit === true); setEditHours(s.deposit_hours != null ? String(s.deposit_hours) : "24"); setEditImage(typeof s.image_url === "string" ? s.image_url : ""); setEditCategory(typeof (s as any).category === "string" ? (s as any).category : ""); }} className="text-muted-foreground hover:text-foreground flex-shrink-0" title="Precio, comisión y seña">
                   ✏️
                 </button>
                 <button type="button" onClick={() => toggle(s)} className="text-muted-foreground hover:text-foreground flex-shrink-0" title={s.active === false ? "Activar" : "Pausar"}>
@@ -241,8 +257,19 @@ export function EsteticaServicesManager({ onChanged }: { onChanged?: () => void 
               {editingId === s.id && (
                 <div className="grid grid-cols-2 gap-2 mt-2">
                   <div>
-                    <Label className="text-xs">Precio ($)</Label>
-                    <Input value={editPrice} onChange={(e) => setEditPrice(e.target.value)} inputMode="decimal" placeholder="Vacío = sin precio" className="mt-1 h-9 text-sm bg-background" />
+                    <Label className="text-xs">Precio</Label>
+                    <div className="flex gap-1 mt-1">
+                      <button type="button" onClick={() => setEditPriceMode("fijo")} className={`px-2 py-1 rounded-md border text-[11px] font-medium ${editPriceMode === "fijo" ? "border-primary text-primary bg-primary/5" : "border-border text-muted-foreground"}`}>Fijo</button>
+                      <button type="button" onClick={() => setEditPriceMode("desde")} className={`px-2 py-1 rounded-md border text-[11px] font-medium ${editPriceMode === "desde" ? "border-primary text-primary bg-primary/5" : "border-border text-muted-foreground"}`}>Desde</button>
+                    </div>
+                    {editPriceMode === "fijo" ? (
+                      <Input value={editPrice} onChange={(e) => setEditPrice(e.target.value)} inputMode="decimal" placeholder="Vacío = sin precio" className="mt-1 h-9 text-sm bg-background" />
+                    ) : (
+                      <div className="flex gap-1 mt-1">
+                        <Input value={editPriceFrom} onChange={(e) => setEditPriceFrom(e.target.value)} inputMode="decimal" placeholder="Desde ($)" className="h-9 text-sm bg-background min-w-0" />
+                        <Input value={editPriceTo} onChange={(e) => setEditPriceTo(e.target.value)} inputMode="decimal" placeholder="Hasta (opcional)" className="h-9 text-sm bg-background min-w-0" />
+                      </div>
+                    )}
                   </div>
                   <div>
                     <Label className="text-xs">Comisión % (vacío = la del profesional)</Label>
@@ -332,8 +359,19 @@ export function EsteticaServicesManager({ onChanged }: { onChanged?: () => void 
           <Input value={deposit} onChange={(e) => setDeposit(e.target.value)} inputMode="decimal" placeholder="Vacío = sin seña" className="mt-1 h-9 text-sm" />
         </div>
         <div>
-          <Label className="text-xs">Precio ($, opcional)</Label>
-          <Input value={price} onChange={(e) => setPrice(e.target.value)} inputMode="decimal" placeholder="Se muestra al reservar" className="mt-1 h-9 text-sm" />
+          <Label className="text-xs">Precio</Label>
+          <div className="flex gap-1 mt-1">
+            <button type="button" onClick={() => setPriceMode("fijo")} className={`px-2 py-1 rounded-md border text-[11px] font-medium ${priceMode === "fijo" ? "border-primary text-primary bg-primary/5" : "border-border text-muted-foreground"}`}>Fijo</button>
+            <button type="button" onClick={() => setPriceMode("desde")} className={`px-2 py-1 rounded-md border text-[11px] font-medium ${priceMode === "desde" ? "border-primary text-primary bg-primary/5" : "border-border text-muted-foreground"}`}>Desde</button>
+          </div>
+          {priceMode === "fijo" ? (
+            <Input value={price} onChange={(e) => setPrice(e.target.value)} inputMode="decimal" placeholder="Vacío = sin precio" className="mt-1 h-9 text-sm" />
+          ) : (
+            <div className="flex gap-1 mt-1">
+              <Input value={priceFrom} onChange={(e) => setPriceFrom(e.target.value)} inputMode="decimal" placeholder="Desde ($)" className="h-9 text-sm min-w-0" />
+              <Input value={priceTo} onChange={(e) => setPriceTo(e.target.value)} inputMode="decimal" placeholder="Hasta (opcional)" className="h-9 text-sm min-w-0" />
+            </div>
+          )}
         </div>
         <div>
           <Label className="text-xs">Comisión % (opcional)</Label>

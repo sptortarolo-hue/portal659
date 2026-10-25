@@ -53,6 +53,19 @@ export async function POST(request: Request) {
   if (price !== null && (!Number.isFinite(price) || price < 0)) {
     return NextResponse.json({ error: "El precio debe ser un monto válido" }, { status: 400 });
   }
+  // Precio "desde" (banda opcional "Desde X – Hasta Y"). Mutuamente
+  // excluyente con el fijo: si viene `price_from`, el fijo se limpia.
+  const fromRaw = body.price_from;
+  const priceFrom = fromRaw == null || fromRaw === "" ? null : Number(fromRaw);
+  if (priceFrom !== null && (!Number.isFinite(priceFrom) || priceFrom < 0)) {
+    return NextResponse.json({ error: "El precio 'desde' debe ser un monto válido" }, { status: 400 });
+  }
+  const toRaw = body.price_to;
+  const priceTo = toRaw == null || toRaw === "" ? null : Number(toRaw);
+  if (priceTo !== null && (!Number.isFinite(priceTo) || (priceFrom !== null && priceTo <= priceFrom))) {
+    return NextResponse.json({ error: "El precio 'hasta' debe ser mayor que el 'desde'" }, { status: 400 });
+  }
+  const effectivePrice = priceFrom !== null ? null : price;
   const commRaw = body.commission_pct;
   const commissionPct = commRaw == null || commRaw === "" ? null : Number(commRaw);
   if (commissionPct !== null && (!Number.isFinite(commissionPct) || commissionPct < 0 || commissionPct > 100)) {
@@ -100,7 +113,7 @@ export async function POST(request: Request) {
           durationMin,
           bufferMin,
           depositAmount,
-          price,
+          effectivePrice,
           commissionPct,
           locationId,
           body.active === false ? false : true,
@@ -118,7 +131,7 @@ export async function POST(request: Request) {
             durationMin,
             bufferMin,
             depositAmount,
-            price,
+            effectivePrice,
             commissionPct,
             body.active === false ? false : true,
           ]
@@ -162,6 +175,17 @@ export async function POST(request: Request) {
           if (withCat) row = withCat;
         } catch { /* sin columna: se ignora */ }
       }
+    }
+    // Precio "desde" (migración aparte): post-update tolerante. Con "desde"
+    // el fijo queda NULL; sin "desde" no toca nada.
+    if (priceFrom !== null) {
+      try {
+        const withFrom = await queryOne<Record<string, unknown>>(
+          `UPDATE services SET price_from = $1, price_to = $2, price = NULL WHERE id = $3 RETURNING *`,
+          [priceFrom, priceFrom !== null ? priceTo : null, (row as { id: string }).id]
+        );
+        if (withFrom) row = withFrom;
+      } catch { /* sin columnas: se ignora */ }
     }
     // Seña obligatoria (migración aparte): post-update tolerante. Si el
     // comercio lo pidió explícito y falta la columna, avisar (503).

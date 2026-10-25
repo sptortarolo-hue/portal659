@@ -8,13 +8,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { TimeSelect24 } from "@/components/ui/time-select-24";
 import { WeekSlotPicker } from "@/components/services/week-slot-picker";
 import { readPreviewSession } from "@/components/store/preview-session-sync";
+import { servicePriceLabel } from "@/lib/service-price";
 
 type Props = {
   vendorId: string;
   vendorName: string;
   services?: { id: string; name: string }[];
   /** Catálogo de servicios de estética (con seña, duración y precio): reserva por ID. */
-  serviceOptions?: { id: string; name: string; deposit_amount: number | null; duration_min: number | null; price?: number | null; require_deposit?: boolean | null; deposit_hours?: number | null }[];
+  serviceOptions?: { id: string; name: string; deposit_amount: number | null; duration_min: number | null; price?: number | null; price_from?: number | null; price_to?: number | null; require_deposit?: boolean | null; deposit_hours?: number | null }[];
   /** Profesionales del centro (agenda por profesional). */
   staffOptions?: { id: string; name: string }[];
   /** Sedes del centro (multi-sede light). */
@@ -292,7 +293,7 @@ export function BookingForm({ vendorId, vendorName, services, serviceOptions, st
             <option value="">Seleccionar servicio</option>
             {serviceOptions.map(s => (
               <option key={s.id} value={s.id}>
-                {s.name}{s.duration_min ? ` · ${s.duration_min} min` : ""}{s.price != null ? ` · $${Number(s.price).toLocaleString("es-AR")}` : ""}{s.deposit_amount ? ` · seña $${Number(s.deposit_amount).toLocaleString("es-AR")}` : ""}
+                {s.name}{s.duration_min ? ` · ${s.duration_min} min` : ""}{servicePriceLabel(s) ? ` · ${servicePriceLabel(s)}` : ""}{s.deposit_amount ? ` · seña $${Number(s.deposit_amount).toLocaleString("es-AR")}` : ""}
               </option>
             ))}
           </select>

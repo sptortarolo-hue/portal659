@@ -105,12 +105,13 @@ export const POST = withRateLimit(async (request: Request) => {
         buffer_min: number | null;
         deposit_amount: number | null;
         price: number | null;
+        price_from: number | null;
         commission_pct: number | null;
         require_deposit: boolean | null;
         deposit_hours: number | null;
         active: boolean | null;
       }>(
-        `SELECT name, duration_min, buffer_min, deposit_amount, price, commission_pct, require_deposit, deposit_hours, active FROM services WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
+        `SELECT name, duration_min, buffer_min, deposit_amount, price, price_from, commission_pct, require_deposit, deposit_hours, active FROM services WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
         [serviceId, vendorId]
       ).catch(() =>
         queryOne<{
@@ -151,6 +152,11 @@ export const POST = withRateLimit(async (request: Request) => {
       if (Number(svc.buffer_min) > 0) bufferMin = Math.min(120, Math.max(0, Math.floor(Number(svc.buffer_min))));
       if (svc.deposit_amount != null && Number(svc.deposit_amount) > 0) depositAmount = Number(svc.deposit_amount);
       if (svc.price != null && Number(svc.price) >= 0) servicePrice = Number(svc.price);
+      // Precio "desde": el snapshot toma el mínimo de referencia; el final
+      // se define al cobrar (el cobro actualiza el snapshot).
+      else if ((svc as { price_from?: number | null }).price_from != null && Number((svc as { price_from?: number | null }).price_from) >= 0) {
+        servicePrice = Number((svc as { price_from?: number | null }).price_from);
+      }
       if (svc.commission_pct != null && Number(svc.commission_pct) >= 0) serviceCommission = Number(svc.commission_pct);
       // Seña obligatoria solo si hay monto configurado (si no, se ignora).
       if (svc.require_deposit === true && depositAmount != null && depositAmount > 0) {

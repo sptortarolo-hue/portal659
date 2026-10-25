@@ -18,6 +18,8 @@ export type CartaService = {
   description: string | null;
   duration_min: number | null;
   price: number | null;
+  price_from?: number | null;
+  price_to?: number | null;
 };
 
 export type CartaData = {
@@ -125,13 +127,14 @@ export async function loadCartaData(vendorId: string, isCatalog: boolean): Promi
   }
 
   // Servicios (verticales servicio/estética): lista simple de lectura.
-  // Precio vive en otra migración: se intenta con price y se reintenta sin él.
+  // Precio vive en otra migración: se intenta con price (+ precio "desde") y
+  // se reintenta sin él.
   let services: CartaService[] = [];
   try {
     let rows: any[] | null = null;
     try {
       rows = await queryMany<any>(
-        `SELECT id, name, description, duration_min, price FROM services WHERE vendor_id = $1 AND active = true ORDER BY position ASC, name ASC`,
+        `SELECT id, name, description, duration_min, price, price_from, price_to FROM services WHERE vendor_id = $1 AND active = true ORDER BY position ASC, name ASC`,
         [vendorId]
       );
     } catch {
@@ -146,6 +149,8 @@ export async function loadCartaData(vendorId: string, isCatalog: boolean): Promi
       description: s.description != null ? String(s.description) : null,
       duration_min: s.duration_min != null ? Number(s.duration_min) : null,
       price: s.price != null ? Number(s.price) : null,
+      price_from: s.price_from != null ? Number(s.price_from) : null,
+      price_to: s.price_to != null ? Number(s.price_to) : null,
     }));
   } catch {
     services = [];

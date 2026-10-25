@@ -5,9 +5,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { isFromPricing } from "@/lib/service-price";
 
 export type BookingCobroModalProps = {
   booking: any;
+  /** Servicio del turno (para saber si el precio es "desde" y el final se define al cobrar). */
+  service?: { price?: number | null; price_from?: number | null; price_to?: number | null } | null;
   open: boolean;
   onClose: () => void;
   onSuccess: () => void;
@@ -21,19 +24,21 @@ function fmt(n: number | null | undefined): string {
 
 export function BookingCobroModal({
   booking,
+  service,
   open,
   onClose,
   onSuccess,
   canFiscal = false,
   fiscalReady = false,
 }: BookingCobroModalProps) {
-  const total = Number(booking.service_price || 0);
+  const snapshotTotal = Number(booking.service_price || 0);
   const depositPaid =
     booking.deposit_status === "paid" ? Number(booking.deposit_amount || 0) : 0;
-  const balance = Math.max(0, total - depositPaid);
+  const fromPricing = service ? isFromPricing(service) : false;
 
   const [paymentMethod, setPaymentMethod] = useState<"efectivo" | "transferencia" | "tarjeta" | "mixto" | "fiado">("efectivo");
-  const [amountToCharge, setAmountToCharge] = useState(String(balance));
+  const [finalPrice, setFinalPrice] = useState("");
+  const [amountToCharge, setAmountToCharge] = useState("");
   const [amountReceived, setAmountReceived] = useState("");
   const [wantFiscal, setWantFiscal] = useState(false);
   const [receptorTipo, setReceptorTipo] = useState<"cf" | "dni" | "cuit">("cf");
@@ -44,11 +49,17 @@ export function BookingCobroModal({
   const [submitting, setSubmitting] = useState(false);
   const firstInput = useRef<HTMLInputElement>(null);
 
-  const vuelto = Number(amountReceived) - balance;
+  const total = fromPricing && Number(finalPrice) > 0 ? Number(finalPrice) : snapshotTotal;
+  const balance = Math.max(0, total - depositPaid);
+  // Vacío = cobrar el saldo exacto; si el comercio tipea, respeta lo tipeado.
+  const amount = amountToCharge === "" ? balance : Number(amountToCharge);
+
+  const vuelto = Number(amountReceived) - amount;
 
   useEffect(() => {
     if (!open) { setErr(null); return; }
-    setAmountToCharge(String(balance));
+    setFinalPrice(String(snapshotTotal));
+    setAmountToCharge("");
     setAmountReceived("");
     setWantFiscal(false);
     setReceptorTipo("cf");
@@ -56,7 +67,7 @@ export function BookingCobroModal({
     setReceptorNombre("");
     setReceptorCond("6");
     if (firstInput.current) firstInput.current.focus();
-  }, [open, balance]);
+  }, [open, snapshotTotal, depositPaid]);
 
   if (!open) return null;
 
@@ -65,19 +76,23 @@ export function BookingCobroModal({
 
   async function submit() {
     setErr(null);
-    const parsed = Number(amountToCharge);
-    if (!(parsed > 0)) {
+    if (fromPricing && !(Number(finalPrice) > 0)) {
+      setErr("Poné el precio final del servicio");
+      return;
+    }
+    if (!(amount > 0)) {
       setErr("El monto a cobrar debe ser mayor a 0");
       return;
     }
-    if (parsed < balance) {
+    if (amount < balance) {
       setErr(`Monto insuficiente: el saldo es $${balance.toLocaleString("es-AR")}`);
       return;
     }
     const body: Record<string, unknown> = {
       payment_method: paymentMethod,
-      amount_paid: parsed,
+      amount_paid: amount,
     };
+    if (fromPricing) body.final_price = Number(finalPrice);
     if (wantFiscal) {
       body.wantFiscal = true;
       body.receptorNombre = receptorNombre.trim() || undefined;
@@ -133,6 +148,22 @@ export function BookingCobroModal({
         </div>
 
         <div className="space-y-3 text-sm">
+          {fromPricing && (
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">
+                Precio final del servicio (se cobra "desde": definilo al atender)
+              </Label>
+              <Input
+                value={finalPrice}
+                onChange={(e) => setFinalPrice(e.target.value)}
+                type="text"
+                inputMode="decimal"
+                placeholder={fmt(snapshotTotal)}
+                className="h-9 text-xs"
+                disabled={submitting}
+              />
+            </div>
+          )}
           <div className="rounded-lg border border-border bg-muted p-3">
             <div className="flex justify-between text-xs text-muted-foreground mb-1">
               <span>Total del servicio</span>

@@ -387,7 +387,7 @@ export default function DashboardServicio({
     })();
   }, [isEstetica, bookings.length]);
   // Catálogo para el modal de turno manual (estética): servicios + staff.
-  const [catalogServices, setCatalogServices] = useState<{ id: string; name: string }[]>([]);
+  const [catalogServices, setCatalogServices] = useState<{ id: string; name: string; price?: number | null; price_from?: number | null; price_to?: number | null }[]>([]);
   const [catalogStaff, setCatalogStaff] = useState<{ id: string; name: string }[]>([]);
   const [catalogLocations, setCatalogLocations] = useState<{ id: string; name: string }[]>([]);
 
@@ -702,7 +702,13 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
         ]);
         if (sRes?.ok) {
           const data = await sRes.json().catch(() => ({}));
-          setCatalogServices((data.services || []).map((s: any) => ({ id: String(s.id), name: String(s.name ?? "") })));
+          setCatalogServices((data.services || []).map((s: any) => ({
+            id: String(s.id),
+            name: String(s.name ?? ""),
+            price: s.price != null ? Number(s.price) : null,
+            price_from: s.price_from != null ? Number(s.price_from) : null,
+            price_to: s.price_to != null ? Number(s.price_to) : null,
+          })));
         }
         if (tRes?.ok) {
           const data = await tRes.json().catch(() => ({}));
@@ -1964,6 +1970,7 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
       {cobroOpenId && (
         <BookingCobroModal
           booking={bookings.find((b: any) => b.id === cobroOpenId)}
+          service={catalogServices.find((s) => s.id === bookings.find((b: any) => b.id === cobroOpenId)?.service_id)}
           open={!!cobroOpenId}
           onClose={() => setCobroOpenId(null)}
           onSuccess={() => {

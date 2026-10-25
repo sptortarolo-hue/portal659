@@ -10,6 +10,7 @@ import { CategoryNav } from "@/components/store/category-nav";
 import { PromoSection } from "@/components/store/promo-section";
 import { WeeklyHours } from "@/components/store/weekly-hours";
 import { neighborhoodLabel, verticalSeoName } from "@/lib/json-ld";
+import { servicePriceLabel } from "@/lib/service-price";
 import type { Metadata } from "next";
 
 export const dynamic = "force-dynamic";
@@ -171,8 +172,8 @@ export default async function CartaPage({ params }: { params: Promise<{ slug: st
                         <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{s.description}</p>
                       )}
                     </div>
-                    {s.price != null && (
-                      <p className="font-bold text-primary whitespace-nowrap">${s.price.toLocaleString("es-AR")}</p>
+                    {servicePriceLabel(s) && (
+                      <p className="font-bold text-primary whitespace-nowrap">{servicePriceLabel(s)}</p>
                     )}
                   </div>
                 </li>

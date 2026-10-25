@@ -53,11 +53,11 @@ export async function resolveBookingRefs(
 
   try {
     if (serviceId) {
-      const svc = await queryOne<{ name: string; duration_min: number | null; buffer_min: number | null; price: number | null; commission_pct: number | null }>(
-        `SELECT name, duration_min, buffer_min, price, commission_pct FROM services WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
+      const svc = await queryOne<{ name: string; duration_min: number | null; buffer_min: number | null; price: number | null; price_from?: number | null; commission_pct: number | null }>(
+        `SELECT name, duration_min, buffer_min, price, price_from, commission_pct FROM services WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
         [serviceId, vendorId]
       ).catch(() =>
-        queryOne<{ name: string; duration_min: number | null; buffer_min: number | null; price: number | null; commission_pct: number | null }>(
+        queryOne<{ name: string; duration_min: number | null; buffer_min: number | null; price: number | null; price_from?: number | null; commission_pct: number | null }>(
           `SELECT name, duration_min, buffer_min FROM services WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
           [serviceId, vendorId]
         )
@@ -67,6 +67,9 @@ export async function resolveBookingRefs(
         if (Number(svc.duration_min) > 0) durationMin = clampDuration(svc.duration_min);
         if (Number(svc.buffer_min) > 0) bufferMin = Math.min(120, Math.max(0, Math.floor(Number(svc.buffer_min))));
         if (svc.price != null && Number(svc.price) >= 0) servicePrice = Number(svc.price);
+        // Precio "desde": snapshot = mínimo de referencia; el final se
+        // define al cobrar (el cobro actualiza el snapshot).
+        else if (svc.price_from != null && Number(svc.price_from) >= 0) servicePrice = Number(svc.price_from);
         if (svc.commission_pct != null && Number(svc.commission_pct) >= 0) serviceCommission = Number(svc.commission_pct);
       } else {
         serviceId = null;

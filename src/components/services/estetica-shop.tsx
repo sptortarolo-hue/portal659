@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { ProductImage } from "@/components/product-image";
+import { servicePriceLabel } from "@/lib/service-price";
 
 const money = (n: number) => `$${Number(n).toLocaleString("es-AR")}`;
 
@@ -13,7 +14,7 @@ const money = (n: number) => `$${Number(n).toLocaleString("es-AR")}`;
 export function ServicePickCards({
   services,
 }: {
-  services: { id: string; name: string; deposit_amount: number | null; duration_min: number | null; price: number | null; require_deposit?: boolean | null; image_url?: string | null }[];
+  services: { id: string; name: string; deposit_amount: number | null; duration_min: number | null; price: number | null; price_from?: number | null; price_to?: number | null; require_deposit?: boolean | null; image_url?: string | null }[];
 }) {
   if (services.length === 0) return null;
   function pick(id: string) {
@@ -33,7 +34,7 @@ export function ServicePickCards({
             <p className="font-semibold text-sm truncate">{s.name}</p>
             <p className="text-xs text-muted-foreground">
               {s.duration_min ? `${s.duration_min} min` : ""}
-              {s.price != null ? ` · ${money(Number(s.price))}` : ""}
+              {servicePriceLabel(s) ? ` · ${servicePriceLabel(s)}` : ""}
               {s.require_deposit ? " · 🔒 con seña" : ""}
             </p>
             <Button size="sm" className="mt-1.5 h-8 text-xs" onClick={() => pick(s.id)}>

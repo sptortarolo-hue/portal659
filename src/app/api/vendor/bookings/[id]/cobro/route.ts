@@ -41,6 +41,16 @@ export async function POST(
   const paymentMethod = String(body.payment_method || "").trim();
   const amountPaid = Number(body.amount_paid);
   const wantFiscal = body.wantFiscal === true;
+  // Precio final del servicio (servicios cobrados "desde"): lo define el
+  // comercio al atender; actualiza el snapshot `service_price` del turno.
+  const finalPriceRaw = body.final_price;
+  const finalPrice =
+    finalPriceRaw == null || finalPriceRaw === ""
+      ? null
+      : Math.round(Number(finalPriceRaw) * 100) / 100;
+  if (finalPrice !== null && (!Number.isFinite(finalPrice) || finalPrice <= 0)) {
+    return NextResponse.json({ error: "El precio final debe ser mayor a 0" }, { status: 400 });
+  }
 
   const validMethods = ["efectivo", "transferencia", "tarjeta", "mixto", "whatsapp", "fiado"];
   if (!validMethods.includes(paymentMethod)) {
@@ -83,9 +93,11 @@ export async function POST(
     return NextResponse.json({ error: "Solo se puede cobrar un turno confirmado" }, { status: 400 });
   }
 
-  const total = Math.round((Number(booking.service_price) || 0) * 100) / 100;
+  const total = finalPrice != null ? finalPrice : Math.round((Number(booking.service_price) || 0) * 100) / 100;
   const depositPaid = booking.deposit_status === "paid" ? Math.round((Number(booking.deposit_amount) || 0) * 100) / 100 : 0;
   const balance = Math.max(0, total - depositPaid);
+  // La Factura C refleja lo realmente cobrado del servicio (seña + saldo del acto).
+  const invoiceTotal = Math.round((depositPaid + amountPaid) * 100) / 100;
 
   if (paymentMethod === "fiado") {
     try {
@@ -143,7 +155,7 @@ export async function POST(
     try {
       const issued = await issueFiscalInvoice({
         vendor: gate.vendor,
-        total,
+        total: invoiceTotal,
         orderId: null,
         bookingId: id,
         receptor,
@@ -172,6 +184,15 @@ export async function POST(
          WHERE id = $3 AND vendor_id = $4 AND status <> 'completed'`,
         [paymentMethod, amountPaid, id, gate.vendor.id]
       );
+      // Precio final ("desde"): el snapshot del turno pasa a ser lo realmente
+      // cobrado (comisiones y analytics lo siguen). Tolerante si la columna
+      // de comisiones no está migrada.
+      if (finalPrice != null) {
+        await tx.queryVoid(
+          `UPDATE bookings SET service_price = $1 WHERE id = $2 AND vendor_id = $3`,
+          [finalPrice, id, gate.vendor.id]
+        ).catch(() => { /* sin columna: se ignora */ });
+      }
       // Efectivo: movimiento de caja para que cuadre en el cierre Z.
       if (paymentMethod === "efectivo" && amountPaid > 0) {
         const shift = await tx.queryOne<{ id: string }>(

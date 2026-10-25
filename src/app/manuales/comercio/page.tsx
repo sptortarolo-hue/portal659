@@ -71,6 +71,15 @@ export default function ComercioPage() {
             suelto tenés la línea de <span className="font-medium">monto manual</span>. También
             podés guardar el teléfono del cliente para sumarlo a tu agenda.
           </p>
+          <p className="mb-3">
+            La balanza funciona con <span className="font-medium">cualquier marca</span> (USB
+            directo, adaptador USB-serial DB9 o Bluetooth): el portal detecta los baudios
+            automáticamente y entiende los formatos de texto más comunes (kg, gramos y frames
+            continuos). La guía de conexión y el botón{" "}
+            <span className="font-medium">Probar balanza</span> están en{" "}
+            <span className="font-medium">Configuración → Balanza</span>. Si tu balanza no envía
+            sola, apretá su tecla Imprimir/Enviar mientras el portal lee.
+          </p>
           <Captura base="comercio-mostrador-grid" alt="Mostrador del comercio" />
         </div>
 

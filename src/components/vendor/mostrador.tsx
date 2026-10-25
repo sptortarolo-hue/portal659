@@ -24,6 +24,13 @@ import { fmtVence, buildGiftcardWaText, giftcardCardUrl, giftcardWaLink } from "
 import { ComboBuilderSheet } from "@/components/store/combo-builder";
 import type { ComboMemberRow } from "@/lib/combo";
 import { dimSuffix } from "@/lib/variant-utils";
+import {
+  isWebSerialSupported,
+  getCachedScalePort,
+  requestScalePort,
+  clearCachedScalePort,
+  readScaleFromPort,
+} from "@/lib/scale-reader";
 
 const OFFLINE_PAYMENT_LABELS: Record<string, string> = {
   efectivo: "Efectivo",
@@ -1093,55 +1100,37 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
   }
 
   // Balanza física por Web Serial (Chrome/Edge en la PC del mostrador).
-  // Lee el stream ASCII de la balanza (~2s) y vuelca el último peso estable.
+  // La lógica vive en src/lib/scale-reader.ts (universal: barrido de baudios +
+  // parser multi-formato + puerto recordado). Acá solo se volca el peso a la línea.
   const [scaleReading, setScaleReading] = useState(false);
   async function readScaleInto(key: string) {
-    const nav = navigator as any;
-    if (!nav?.serial) {
+    if (!isWebSerialSupported()) {
       setMsg("Este navegador no soporta balanza directa (usá Chrome en PC o cargá el peso manual)");
       return;
     }
     setScaleReading(true);
-    setMsg("");
+    setMsg("Leyendo balanza… si tu balanza no envía solo, apretá su tecla Imprimir/Enviar");
     try {
-      const port = await nav.serial.requestPort();
-      await port.open({ baudRate: 9600 });
-      const reader = port.readable.getReader();
-      const decoder = new TextDecoder();
-      let buf = "";
-      let lastKg: number | null = null;
-      const deadline = Date.now() + 4000;
+      let port = getCachedScalePort();
+      if (!port) port = await requestScalePort();
       try {
-        while (Date.now() < deadline) {
-          const { value, done } = await Promise.race([
-            reader.read(),
-            new Promise<{ value?: undefined; done: true }>((res) => setTimeout(() => res({ done: true }), 500)),
-          ]);
-          if (done || !value) break;
-          buf += decoder.decode(value, { stream: true });
-          // Formatos típicos: "ST,GS,+  1.235kg", " 0.542 kg", "1240 g".
-          const m = buf.match(/([+-]?\s*\d+[.,]\d+)\s*(kg|KG|g\b|G\b)?/);
-          if (m) {
-            let v = Number(m[1].replace(/\s/g, "").replace(",", "."));
-            if (Number.isFinite(v)) {
-              if (m[2] && m[2].toLowerCase() === "g") v = v / 1000;
-              lastKg = Math.abs(v);
-            }
-          }
-          if (buf.length > 500) buf = buf.slice(-200);
-        }
-      } finally {
-        try { reader.releaseLock(); } catch { /* noop */ }
-        try { await port.close(); } catch { /* noop */ }
-      }
-      if (lastKg != null && lastKg > 0) {
-        setLineKg(key, lastKg);
+        const { kg } = await readScaleFromPort(port, { vendorId });
+        setLineKg(key, kg);
         setMsg("");
-      } else {
-        setMsg("No se pudo leer el peso: poné algo en la balanza e intentá de nuevo");
+      } catch (e: any) {
+        if (e?.name === "ScaleUnparsedError" && e.raw) {
+          setMsg(`No se pudo leer el peso. La balanza envió: «${String(e.raw).replace(/[^\x20-\x7E]/g, "·").slice(-80)}» — probá de nuevo o cargá el peso a mano (la guía está en Configuración → Balanza)`);
+        } else if (e?.name === "ScaleNoDataError") {
+          setMsg("No llegó ningún dato de la balanza (revisá el cable y probá de nuevo)");
+        } else if (e?.name === "ScalePortError") {
+          clearCachedScalePort();
+          setMsg("No se pudo abrir la balanza (revisá el cable y el puerto)");
+        } else {
+          setMsg(e?.message || "No se pudo leer el peso: cargalo a mano");
+        }
       }
     } catch (e: any) {
-      if (e?.name !== "NotFoundError") setMsg("No se pudo abrir la balanza (revisá el cable y el puerto)");
+      if (e?.name !== "NotFoundError") setMsg(e?.message || "No se pudo leer el peso: cargalo a mano");
     } finally {
       setScaleReading(false);
     }

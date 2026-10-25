@@ -82,6 +82,23 @@ export async function POST(request: Request) {
       );
     }
   }
+  // Servicio "Oferta del día" (destacado): uno solo por comercio (el server
+  // enforcea la exclusividad). Requiere la columna (migración aparte).
+  const featuredToday = body.featured_today === true || body.featured_today === "true";
+  if (featuredToday) {
+    const hasFeaturedCol = await queryOne<{ exists: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1 FROM information_schema.columns
+         WHERE table_name = 'services' AND column_name = 'featured_today'
+       ) AS exists`
+    );
+    if (hasFeaturedCol?.exists !== true) {
+      return NextResponse.json(
+        { error: "Falta aplicar la migración migrate-service-featured.sql en la base" },
+        { status: 503 }
+      );
+    }
+  }
   const effectivePrice = priceFrom !== null ? null : price;
   const commRaw = body.commission_pct;
   const commissionPct = commRaw == null || commRaw === "" ? null : Number(commRaw);
@@ -212,11 +229,34 @@ export async function POST(request: Request) {
         `UPDATE services SET require_deposit = $1, deposit_hours = $2 WHERE id = $3 RETURNING *`,
         [requireDeposit, depositHours, (row as { id: string }).id]
       );
-      if (updated) return NextResponse.json({ service: updated });
+      if (updated) row = updated;
     } catch {
       if (wantsRequire) {
         return NextResponse.json(
           { error: "Falta aplicar la migración migrate-estetica-require-deposit.sql en la base" },
+          { status: 503 }
+        );
+      }
+    }
+    // "Oferta del día" (migración aparte): uno solo por comercio (al marcar
+    // uno, se apagan los demás del mismo vendor, igual que los productos).
+    if (featuredToday) {
+      try {
+        const withFeat = await queryOne<Record<string, unknown>>(
+          `UPDATE services SET featured_today = true
+            WHERE id = $1 AND vendor_id = $2 RETURNING *`,
+          [(row as { id: string }).id, vendor.id]
+        );
+        if (withFeat) {
+          await queryOne(
+            `UPDATE services SET featured_today = false WHERE vendor_id = $1 AND id <> $2`,
+            [vendor.id, (row as { id: string }).id]
+          ).catch(() => { /* sin columna: ya se avisó antes de insertar */ });
+          return NextResponse.json({ service: withFeat });
+        }
+      } catch {
+        return NextResponse.json(
+          { error: "Falta aplicar la migración migrate-service-featured.sql en la base" },
           { status: 503 }
         );
       }

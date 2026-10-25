@@ -4,7 +4,7 @@ import Link from "next/link";
 import { X, Package, ChefHat, ShoppingBag, LayoutGrid, UtensilsCrossed, Settings, BarChart3, History, Star, ExternalLink, LogOut, Home, Sparkles, Calculator, Bot, DollarSign, Receipt, Users, MessageSquare, CalendarDays, ClipboardList, Boxes, Image, BookOpen, Share, Gift } from "lucide-react";
 import type { ConfigSectionStatus } from "@/components/dashboard/config-nav";
 
-type Tab = "hoy" | "config" | "menu" | "orders" | "pedidos" | "mostrador" | "history" | "comanda" | "analytics" | "pos" | "mesas" | "caja" | "gastos" | "clientes" | "reviews" | "recetas" | "fiscal" | "inventario" | "galeria" | "promos" | "tarjetas";
+type Tab = "hoy" | "config" | "menu" | "orders" | "pedidos" | "mostrador" | "history" | "comanda" | "analytics" | "pos" | "mesas" | "caja" | "gastos" | "clientes" | "reviews" | "recetas" | "fiscal" | "inventario" | "galeria" | "promos" | "tarjetas" | "servicios";
 
 interface VendorSidebarProps {
   open: boolean;
@@ -368,6 +368,14 @@ export default function VendorSidebar({
                       icon={ShoppingBag}
                       label="Catálogo"
                       suffix={`${menuCount}`}
+                    />
+                  )}
+                  {isEstetica && (
+                    <NavButton
+                      active={currentTab === "servicios"}
+                      onClick={() => handleTab("servicios")}
+                      icon={Sparkles}
+                      label="Servicios"
                     />
                   )}
                 </>

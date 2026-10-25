@@ -14,6 +14,7 @@ export type EsteticaServiceCard = {
   price: number | null;
   price_from?: number | null;
   price_to?: number | null;
+  featured_today?: boolean | null;
   require_deposit: boolean | null;
   deposit_hours: number | null;
   image_url: string | null;
@@ -53,6 +54,11 @@ export function ServiceCards({
             {s.require_deposit === true && s.deposit_amount != null && Number(s.deposit_amount) > 0 && (
               <span className="absolute top-2 left-2 rounded-full bg-black/60 text-white px-2 py-0.5 text-[10px] font-semibold">
                 🔒 Con seña
+              </span>
+            )}
+            {s.featured_today === true && (
+              <span className="absolute top-2 right-2 rounded-full bg-sun text-ink px-2 py-0.5 text-[10px] font-bold">
+                Hoy
               </span>
             )}
           </span>
@@ -107,6 +113,7 @@ export function EsteticaServicesSection({
     price: s.price,
     price_from: s.price_from,
     price_to: s.price_to,
+    featured_today: s.featured_today,
     require_deposit: s.require_deposit,
     deposit_hours: s.deposit_hours,
   }));
@@ -274,7 +281,12 @@ export function ServiceBookingSheet({
                 <div className="flex items-center gap-2 flex-wrap text-sm">
                   {service.duration_min != null && Number(service.duration_min) > 0 && (
                     <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium">
-                      ⏱️ {service.duration_min} min
+                      ⏱ {service.duration_min} min
+                    </span>
+                  )}
+                  {service.featured_today === true && (
+                    <span className="rounded-full bg-sun text-ink px-2.5 py-1 text-xs font-bold">
+                      Hoy
                     </span>
                   )}
                   {servicePriceLabel(service) && (

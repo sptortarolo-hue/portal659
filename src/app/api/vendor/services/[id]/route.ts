@@ -81,6 +81,30 @@ export async function PATCH(
     }
     priceToVal = n;
   }
+  // "Oferta del día" (destacado del servicio): uno solo por comercio, igual
+  // que los productos. Requiere la columna (migración aparte).
+  const wantsFeatured = body.featured_today === true || body.featured_today === "true";
+  const wantsUnfeature = body.featured_today === false || body.featured_today === "false";
+  if (wantsFeatured || wantsUnfeature) {
+    const hasFeaturedCol = await queryOne<{ exists: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1 FROM information_schema.columns
+         WHERE table_name = 'services' AND column_name = 'featured_today'
+       ) AS exists`
+    );
+    if (hasFeaturedCol?.exists !== true) {
+      if (wantsFeatured) {
+        return NextResponse.json(
+          { error: "Falta aplicar la migración migrate-service-featured.sql en la base" },
+          { status: 503 }
+        );
+      }
+      // Sin columna no hay nada que apagar: seguir con el resto de la edición.
+    } else {
+      sets.push(`featured_today = $${idx++}`);
+      vals.push(wantsFeatured);
+    }
+  }
   if (body.commission_pct !== undefined) {
     const raw = body.commission_pct;
     const n = raw == null || raw === "" ? null : Number(raw);
@@ -228,6 +252,13 @@ export async function PATCH(
       vals
     );
     if (!row) return NextResponse.json({ error: "No encontrado" }, { status: 404 });
+    // Uno solo por comercio: al marcar uno, se apagan los demás del vendor.
+    if (wantsFeatured) {
+      await queryOne(
+        `UPDATE services SET featured_today = false WHERE vendor_id = $1 AND id <> $2`,
+        [vendor.id, id]
+      ).catch(() => { /* tolerante: la columna ya se verificó antes */ });
+    }
     return NextResponse.json({ service: row });
   } catch (e) {
     // Red de seguridad: si alguna columna quedara asignada dos veces, es un

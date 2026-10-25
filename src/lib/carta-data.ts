@@ -20,6 +20,7 @@ export type CartaService = {
   price: number | null;
   price_from?: number | null;
   price_to?: number | null;
+  featured_today?: boolean;
 };
 
 export type CartaData = {
@@ -134,7 +135,7 @@ export async function loadCartaData(vendorId: string, isCatalog: boolean): Promi
     let rows: any[] | null = null;
     try {
       rows = await queryMany<any>(
-        `SELECT id, name, description, duration_min, price, price_from, price_to FROM services WHERE vendor_id = $1 AND active = true ORDER BY position ASC, name ASC`,
+        `SELECT id, name, description, duration_min, price, price_from, price_to, featured_today FROM services WHERE vendor_id = $1 AND active = true ORDER BY featured_today DESC, position ASC, name ASC`,
         [vendorId]
       );
     } catch {
@@ -151,6 +152,7 @@ export async function loadCartaData(vendorId: string, isCatalog: boolean): Promi
       price: s.price != null ? Number(s.price) : null,
       price_from: s.price_from != null ? Number(s.price_from) : null,
       price_to: s.price_to != null ? Number(s.price_to) : null,
+      featured_today: s.featured_today === true,
     }));
   } catch {
     services = [];

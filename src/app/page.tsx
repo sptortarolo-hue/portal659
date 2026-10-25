@@ -4,6 +4,7 @@ import { VERTICALS } from "@/lib/config";
 import { getZone } from "@/lib/zone";
 import { vendorSellsOnline, resolveVendorPlan } from "@/lib/plans";
 import { OfferCard } from "@/components/offers/offer-card";
+import { ServiceOfferCard } from "@/components/offers/service-offer-card";
 import { HorizontalCarousel } from "@/components/ui/horizontal-carousel";
 import { VendorCard } from "@/components/store/vendor-card";
 import { MostOrderedSection } from "@/components/home/most-ordered-section";
@@ -45,10 +46,55 @@ export default async function HomePage() {
 
   const plans = await queryMany<Plan>(`SELECT * FROM plans ORDER BY sort ASC`);
 
+  // Servicios "oferta del día" (estética): igual que los productos, uno por
+  // comercio (el server enforcea la exclusividad al marcar). Tolerante a la
+  // migración sin aplicar (si falla, la sección sigue siendo sólo productos).
+  let featuredServicesRaw: {
+    id: string;
+    name: string;
+    description: string | null;
+    duration_min: number | null;
+    price: number | null;
+    price_from: number | null;
+    price_to: number | null;
+    image_url: string | null;
+    vendors: { id: string; slug: string; store_name: string; vertical: string } | null;
+  }[] = [];
+  try {
+    featuredServicesRaw = await queryMany<{
+      id: string;
+      name: string;
+      description: string | null;
+      duration_min: number | null;
+      price: number | null;
+      price_from: number | null;
+      price_to: number | null;
+      image_url: string | null;
+      vendors: { id: string; slug: string; store_name: string; vertical: string } | null;
+    }>(
+      `SELECT s.id, s.name, s.description, s.duration_min,
+              s.price::numeric AS price, s.price_from::numeric AS price_from, s.price_to::numeric AS price_to,
+              s.image_url,
+              json_build_object('id', v.id, 'slug', v.slug, 'store_name', v.store_name, 'vertical', v.vertical) AS vendors
+         FROM services s
+         JOIN vendors v ON v.id = s.vendor_id
+        WHERE s.featured_today = true AND s.active = true
+          AND v.visibility = 'public'
+          AND COALESCE(to_jsonb(v)->>'carta_visibility', 'public') = 'public'
+          AND v.neighborhood = ANY($1)
+        ORDER BY s.id DESC`,
+      [zone.neighborhoods]
+    );
+  } catch {
+    featuredServicesRaw = [];
+  }
+
   // Oferta del día: una sola por comercio (los destacados viejos con más de
   // una oferta se deduplican acá; el server ya enforcea 1 por vendor).
+  // Mezcla productos y servicios: si un comercio tuviera los dos, gana el
+  // producto (como hoy) y el servicio queda fuera.
   const seenFeaturedVendors = new Set<string>();
-  const featured =
+  const featuredProducts =
     (offers || [])?.filter((o) => {
       if (!o.featured_today || o.vendors?.vertical === "servicio") return false;
       const vid = o.vendors?.id;
@@ -56,6 +102,19 @@ export default async function HomePage() {
       seenFeaturedVendors.add(vid);
       return true;
     }) || [];
+  const featuredServices =
+    (featuredServicesRaw || []).filter((s: any) => {
+      if (!s || !s.vendors?.id || seenFeaturedVendors.has(s.vendors.id)) return false;
+      seenFeaturedVendors.add(s.vendors.id);
+      return true;
+    }) || [];
+  // Intercalados para que los servicios no queden siempre al final.
+  type FeaturedItem = { kind: "product"; id: string; data: OfferWithVendor } | { kind: "service"; id: string; data: (typeof featuredServices)[number] };
+  const featuredItems: FeaturedItem[] = [];
+  for (let i = 0; i < Math.max(featuredProducts.length, featuredServices.length); i++) {
+    if (featuredProducts[i]) featuredItems.push({ kind: "product", id: featuredProducts[i].id, data: featuredProducts[i] });
+    if (featuredServices[i]) featuredItems.push({ kind: "service", id: featuredServices[i].id, data: featuredServices[i] });
+  }
   const destacados = (vendors || []).filter((v) => {
     if (v.featured) return true;
     // Prioridad del plan Oficios: servicios con plan vigente también destacan.
@@ -176,8 +235,8 @@ export default async function HomePage() {
       {/* Abiertos ahora (cliente — zona horaria del usuario) */}
       <OpenNowSection vendors={rankVendors(vendors || [], rankStats)} onlineByVendor={onlineByVendor} />
 
-      {/* Oferta de hoy */}
-      {featured.length > 0 && (
+      {/* Oferta de hoy (productos y servicios destacados, uno por comercio) */}
+      {featuredItems.length > 0 && (
         <section className="container mx-auto px-4 py-6" id="ofertas">
           <div className="rounded-2xl border border-sun/40 bg-gradient-to-r from-warm to-accent p-4 sm:p-6 mb-4">
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -195,23 +254,40 @@ export default async function HomePage() {
             </div>
           </div>
           <HorizontalCarousel>
-            {featured.map((o) => (
-              <div key={o.id} className="min-w-[280px] max-w-[320px] snap-start">
-                <OfferCard
-                  name={o.name}
-                  description={o.description}
-                  price={Number(o.price)}
-                  promoPrice={o.promo_price != null ? Number(o.promo_price) : null}
-                  category={o.category}
-                  storeName={o.vendors?.store_name || ""}
-                  storeSlug={o.vendors?.slug || ""}
-                  offerId={o.id}
-                  featured
-                  imageUrl={o.image_url}
-                  vertical={o.vendors?.vertical || null}
-                />
-              </div>
-            ))}
+            {featuredItems.map((it) =>
+              it.kind === "product" ? (
+                <div key={`p-${it.id}`} className="min-w-[280px] max-w-[320px] snap-start">
+                  <OfferCard
+                    name={it.data.name}
+                    description={it.data.description}
+                    price={Number(it.data.price)}
+                    promoPrice={it.data.promo_price != null ? Number(it.data.promo_price) : null}
+                    category={it.data.category}
+                    storeName={it.data.vendors?.store_name || ""}
+                    storeSlug={it.data.vendors?.slug || ""}
+                    offerId={it.data.id}
+                    featured
+                    imageUrl={it.data.image_url}
+                    vertical={it.data.vendors?.vertical || null}
+                  />
+                </div>
+              ) : (
+                <div key={`s-${it.id}`} className="min-w-[280px] max-w-[320px] snap-start">
+                  <ServiceOfferCard
+                    name={it.data.name}
+                    description={it.data.description}
+                    durationMin={it.data.duration_min != null ? Number(it.data.duration_min) : null}
+                    price={it.data.price != null ? Number(it.data.price) : null}
+                    priceFrom={it.data.price_from != null ? Number(it.data.price_from) : null}
+                    priceTo={it.data.price_to != null ? Number(it.data.price_to) : null}
+                    storeName={it.data.vendors?.store_name || ""}
+                    storeSlug={it.data.vendors?.slug || ""}
+                    imageUrl={it.data.image_url}
+                    featured
+                  />
+                </div>
+              )
+            )}
           </HorizontalCarousel>
         </section>
       )}

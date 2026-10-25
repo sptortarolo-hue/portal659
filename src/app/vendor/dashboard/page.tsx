@@ -19,6 +19,7 @@ import {
   Table,
   CalendarDays,
   MoreHorizontal,
+  Sparkles,
   X,
   Wrench,
   Shirt,
@@ -62,6 +63,7 @@ import DashboardGastro from "@/components/dashboard/dashboard-gastro";
 import DashboardComercio from "@/components/dashboard/dashboard-comercio";
 import DashboardServicio from "@/components/dashboard/dashboard-servicio";
 import DashboardEstetica from "@/components/dashboard/dashboard-estetica";
+import { EsteticaServicesManager } from "@/components/dashboard/estetica-managers";
 import DashboardGenerico from "@/components/dashboard/dashboard-generico";
 import { GalleryManager } from "@/components/dashboard/gallery-manager";
 import { GiftcardsTab } from "@/components/dashboard/giftcards-tab";
@@ -160,7 +162,7 @@ type Offer = DBProduct;
 
 type MenuCategory = { id: string; name: string; position: number };
 
-  type DashTab = "hoy" | "config" | "menu" | "orders" | "pedidos" | "mostrador" | "history" | "comanda" | "analytics" | "pos" | "mesas" | "caja" | "gastos" | "clientes" | "reviews" | "recetas" | "fiscal" | "inventario" | "galeria" | "promos" | "tarjetas";
+  type DashTab = "hoy" | "config" | "menu" | "orders" | "pedidos" | "mostrador" | "history" | "comanda" | "analytics" | "pos" | "mesas" | "caja" | "gastos" | "clientes" | "reviews" | "recetas" | "fiscal" | "inventario" | "galeria" | "promos" | "tarjetas" | "servicios";
 
 /**
  * Segunda columna de Configuración en desktop (estilo Fudo): la usan todas
@@ -396,7 +398,7 @@ function VendorDashboardInner() {
   // Borrador de UI (24h): pestaña, filtros y pedido abierto sobreviven a recargas.
   const dashDraftReady = useRef(false);
   const pendingOrderId = useRef<string | null>(null);
-  const VALID_TABS: DashTab[] = ["hoy", "config", "menu", "orders", "pedidos", "mostrador", "history", "comanda", "analytics", "pos", "mesas", "caja", "gastos", "clientes", "reviews", "recetas", "fiscal", "inventario", "promos", "tarjetas"];
+  const VALID_TABS: DashTab[] = ["hoy", "config", "menu", "orders", "pedidos", "mostrador", "history", "comanda", "analytics", "pos", "mesas", "caja", "gastos", "clientes", "reviews", "recetas", "fiscal", "inventario", "promos", "tarjetas", "servicios"];
   useEffect(() => {
     if (dashDraftReady.current || !vendor?.id) return;
     dashDraftReady.current = true;
@@ -1600,6 +1602,7 @@ function VendorDashboardInner() {
     : isEstetica && tab === "pedidos" ? "Pedidos"
     : isEstetica && tab === "mostrador" ? "Mostrador"
     : isEstetica && tab === "menu" ? "Catálogo"
+    : isEstetica && tab === "servicios" ? "Servicios"
     : tab === "menu" ? (isRetail ? "Catálogo" : "Menú")
     : tab === "hoy" ? "Hoy"
     : tab === "orders" ? "Pedidos"
@@ -1858,7 +1861,7 @@ function VendorDashboardInner() {
         )}
 
         {/* Tab content */}
-        <div className={`flex-1 px-4 mt-4 pb-28 lg:pb-10 ${tab === "comanda" ? "w-full max-w-none" : `mx-auto w-full ${["orders", "pedidos", "mostrador", "history", "pos", "mesas", "caja", "gastos", "clientes", "analytics", "recetas", "inventario", "hoy", "menu", "promos", "tarjetas"].includes(tab) ? "max-w-7xl" : "max-w-4xl"}`}`}>
+        <div className={`flex-1 px-4 mt-4 pb-28 lg:pb-10 ${tab === "comanda" ? "w-full max-w-none" : `mx-auto w-full ${["orders", "pedidos", "mostrador", "history", "pos", "mesas", "caja", "gastos", "clientes", "analytics", "recetas", "inventario", "hoy", "menu", "promos", "tarjetas", "servicios"].includes(tab) ? "max-w-7xl" : "max-w-4xl"}`}`}>
           <TabErrorBoundary tab={tab || "dashboard"}>
           {isService ? (
             <div className="space-y-4">
@@ -1880,6 +1883,10 @@ function VendorDashboardInner() {
                   onChanged={() => loadData()}
                   vendorId={vendor?.id}
                 />
+                </TabErrorBoundary>
+              ) : isEstetica && tab === "servicios" ? (
+                <TabErrorBoundary tab="servicios">
+                <EsteticaServicesManager onChanged={() => loadData()} />
                 </TabErrorBoundary>
               ) : isEstetica && tab === "config" ? (
               <div className="flex gap-4 items-start">
@@ -2348,6 +2355,11 @@ function VendorDashboardInner() {
                       {!isEmployee && (
                       <button onClick={() => { setTab("menu"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "menu" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
                         <ShoppingBag className="h-5 w-5" />Catálogo ({menuCount})
+                      </button>
+                      )}
+                      {!isEmployee && (
+                      <button onClick={() => { setTab("servicios"); setMoreOpen(false); }} className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium ${tab === "servicios" ? "border-primary text-primary bg-primary/5" : "border-border bg-background"}`}>
+                        <Sparkles className="h-5 w-5" />Servicios
                       </button>
                       )}
                     </>

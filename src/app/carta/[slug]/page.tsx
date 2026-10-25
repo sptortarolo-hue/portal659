@@ -175,6 +175,9 @@ export default async function CartaPage({ params }: { params: Promise<{ slug: st
                     {servicePriceLabel(s) && (
                       <p className="font-bold text-primary whitespace-nowrap">{servicePriceLabel(s)}</p>
                     )}
+                    {s.featured_today === true && (
+                      <span className="rounded-full bg-sun text-ink px-2 py-0.5 text-[10px] font-bold">Hoy</span>
+                    )}
                   </div>
                 </li>
               ))}

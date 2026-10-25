@@ -22,6 +22,7 @@ type Service = {
   require_deposit?: boolean | null;
   deposit_hours?: number | null;
   image_url?: string | null;
+  featured_today?: boolean | null;
   active: boolean | null;
 };
 
@@ -194,6 +195,29 @@ export function EsteticaServicesManager({ onChanged }: { onChanged?: () => void 
     } catch { /* noop */ }
   }
 
+  // "Oferta del día": un solo servicio destacado por comercio (el server
+  // apaga los demás al marcar uno, igual que con los productos).
+  async function toggleFeatured(s: Service) {
+    const next = !(s.featured_today === true);
+    try {
+      const res = await fetch(`/api/vendor/services/${s.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ featured_today: next }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (data.error) {
+        setMsg(data.error);
+        return;
+      }
+      setMsg(next ? `"${s.name}" es la oferta de hoy en tu carta y en el home.` : "");
+      await load();
+      onChanged?.();
+    } catch {
+      setMsg("Error de conexión");
+    }
+  }
+
   async function remove(id: string) {
     if (!confirm("¿Borrar este servicio? Los turnos viejos se conservan.")) return;
     try {
@@ -216,7 +240,7 @@ export function EsteticaServicesManager({ onChanged }: { onChanged?: () => void 
       <div>
         <p className="font-medium text-sm">💅 Servicios</p>
         <p className="text-xs text-muted-foreground">
-          Cada servicio tiene su duración y su seña. El turno online se bloquea si se pisa con otro del mismo profesional.
+          Cada servicio tiene su duración y su seña. El turno online se bloquea si se pisa con otro del mismo profesional. Con <span title="Oferta del día">★</span> marcás la oferta del día (una sola): flota primero en tu carta, con badge "Hoy", y aparece en el home.
         </p>
       </div>
       {loading ? (
@@ -238,12 +262,18 @@ export function EsteticaServicesManager({ onChanged }: { onChanged?: () => void 
                   {(s as any).category && (
                     <span className="inline-block rounded-full bg-primary/10 text-primary text-[10px] font-bold px-2 py-0.5 mt-0.5">{String((s as any).category)}</span>
                   )}
+                  {s.featured_today === true && (
+                    <span className="inline-block rounded-full bg-sun text-ink text-[10px] font-bold px-2 py-0.5 mt-0.5">Hoy</span>
+                  )}
                   <span className="block text-muted-foreground">
                     {s.duration_min ?? 60} min{s.buffer_min ? ` +${s.buffer_min} buffer` : ""} · seña {s.deposit_amount ? money(Number(s.deposit_amount)) : "no"}
                     {servicePriceLabel(s) ? ` · ${servicePriceLabel(s)}` : ""}{s.commission_pct != null ? ` · ${Number(s.commission_pct)}%` : ""}
-                    {s.require_deposit ? ` · 🔒 seña obligatoria (${s.deposit_hours ?? 24}h)` : ""}
+                    {s.require_deposit ? ` · ⏰ seña obligatoria (${s.deposit_hours ?? 24}h)` : ""}
                   </span>
                 </span>
+                <button type="button" onClick={() => toggleFeatured(s)} className={`flex-shrink-0 ${s.featured_today === true ? "text-sun" : "text-muted-foreground hover:text-foreground"}`} title={s.featured_today === true ? "Quitar de Hoy" : "Oferta del día"}>
+                  {s.featured_today === true ? "★" : "☆"}
+                </button>
                 <button type="button" onClick={() => { setEditingId(editingId === s.id ? null : s.id); setEditPriceMode(s.price != null || (s.price_from == null && s.price_to == null) ? "fijo" : "desde"); setEditPrice(s.price != null ? String(s.price) : ""); setEditPriceFrom(s.price_from != null ? String(s.price_from) : ""); setEditPriceTo(s.price_to != null ? String(s.price_to) : ""); setEditCommission(s.commission_pct != null ? String(s.commission_pct) : ""); setEditRequire(s.require_deposit === true); setEditHours(s.deposit_hours != null ? String(s.deposit_hours) : "24"); setEditImage(typeof s.image_url === "string" ? s.image_url : ""); setEditCategory(typeof (s as any).category === "string" ? (s as any).category : ""); }} className="text-muted-foreground hover:text-foreground flex-shrink-0" title="Precio, comisión y seña">
                   ✏️
                 </button>

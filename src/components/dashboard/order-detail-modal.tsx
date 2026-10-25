@@ -73,6 +73,8 @@ type Props = {
   onClose: () => void;
   onAction: (order: Order, status: OrderStatus, reason?: string) => void;
   onModify?: (orderId: string, items: OrderItem[], modificationNotes: string) => Promise<{ ok: boolean; error?: string }>;
+  /** Pesables (modo confirmar): guarda los kg reales y sella la confirmación de peso. */
+  onConfirmWeight?: (orderId: string, items: OrderItem[]) => Promise<{ ok: boolean; error?: string }>;
   offers?: DBProduct[];
   canPrint?: boolean;
   transfer?: { alias: string | null; cbu: string | null; holder: string | null };
@@ -87,9 +89,18 @@ type Props = {
   onAssigned?: (order: Order) => void;
 };
 
-export default function OrderDetailModal({ order, vendorName, vendorLogoUrl, onClose, onAction, onModify, offers = [], canPrint = true, transfer, blockUnpaid = false, onMarkPaid, isRetail = false, onApartadoChanged, onPacked, onAssigned }: Props) {
+export default function OrderDetailModal({ order, vendorName, vendorLogoUrl, onClose, onAction, onModify, onConfirmWeight, offers = [], canPrint = true, transfer, blockUnpaid = false, onMarkPaid, isRetail = false, onApartadoChanged, onPacked, onAssigned }: Props) {
   const [editing, setEditing] = useState(false);
   const [editItems, setEditItems] = useState<OrderItem[]>([]);
+  // Pesables (modo confirmar): edición de kg reales + confirmación.
+  const [weightEditing, setWeightEditing] = useState(false);
+  const [weightItems, setWeightItems] = useState<OrderItem[]>([]);
+  const [weightSaving, setWeightSaving] = useState(false);
+  const [weightError, setWeightError] = useState<string | null>(null);
+  // Link de pago MP del pedido post-peso (mercadopago pendiente).
+  const [payLink, setPayLink] = useState<string | null>(null);
+  const [payLinkBusy, setPayLinkBusy] = useState(false);
+  const [payLinkError, setPayLinkError] = useState("");
   const [modNotes, setModNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [productSearch, setProductSearch] = useState("");
@@ -361,6 +372,70 @@ export default function OrderDetailModal({ order, vendorName, vendorLogoUrl, onC
   // (bot o manual): acá abajo duplicaría. Las demás variantes sí se muestran.
   const contextualWa = contextualWaRaw?.variant === "transfer" ? null : contextualWaRaw;
   const isBlockedByPayment = blockUnpaid && isTransferAppPending;
+
+  // Pesables (modo confirmar): pedido nacido "pendiente de peso".
+  const weightEstimated = Number((order as any).weight_estimated_total) || 0;
+  const weightConfirmed = !!(order as any).weight_confirmed_at;
+  const weightPending = weightEstimated > 0 && !weightConfirmed && !isTerminal;
+  const mpWeightPending =
+    order.payment_method === "mercadopago" && weightConfirmed &&
+    order.payment_status === "pending" && !isTerminal;
+
+  const startWeightEdit = useCallback(() => {
+    setWeightItems(JSON.parse(JSON.stringify(order.items || [])));
+    setWeightError(null);
+    setWeightEditing(true);
+  }, [order.items]);
+
+  const setWeightKg = (index: number, kg: number) => {
+    const safe = Number.isFinite(kg) ? Math.max(0, Math.round(kg * 1000) / 1000) : 0;
+    setWeightItems((prev) => prev.map((item, i) => (i === index ? { ...item, qty: safe } : item)));
+  };
+
+  const weightTotal = weightItems.reduce((sum, item) => sum + orderLineTotal(item), 0);
+
+  const confirmWeight = async () => {
+    if (!onConfirmWeight) return;
+    const badKg = weightItems.find((it) => (it as any).unit === "kg" && !(Number(it.qty) > 0));
+    if (badKg) {
+      setWeightError(`Poné el peso real de "${badKg.name}" (mayor a 0) o cancelá`);
+      return;
+    }
+    setWeightSaving(true);
+    setWeightError(null);
+    const result = await onConfirmWeight(order.id, weightItems).catch((err) => ({
+      ok: false,
+      error: err instanceof Error ? err.message : "Error de red",
+    }));
+    setWeightSaving(false);
+    if (!result.ok) {
+      setWeightError(result.error || "No se pudo confirmar el peso");
+    } else {
+      setWeightEditing(false);
+    }
+  };
+
+  const genPayLink = async () => {
+    setPayLinkBusy(true);
+    setPayLinkError("");
+    try {
+      const res = await fetch("/api/payments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ vendorId: order.vendor_id, orderId: order.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.error || !data.initPoint) {
+        setPayLinkError(data.error || "No se pudo generar el link.");
+        return;
+      }
+      setPayLink(data.initPoint as string);
+    } catch {
+      setPayLinkError("Error de red. Probá de nuevo.");
+    } finally {
+      setPayLinkBusy(false);
+    }
+  };
 
   // Estado del bot (una sola vez por sesión): decide botón de bot vs WA manual.
   // "unknown" (fetch falla) = modo manual: el link wa.me funciona siempre.
@@ -682,6 +757,118 @@ export default function OrderDetailModal({ order, vendorName, vendorLogoUrl, onC
                 >
                   {apBusy === "remainder" ? "Guardando…" : `✅ Marcar saldo cobrado ($${ap.remainder.toLocaleString("es-AR")})`}
                 </Button>
+              )}
+            </div>
+          )}
+
+          {/* Pesables (modo confirmar): pendiente de peso */}
+          {!editing && (weightPending || weightEditing) && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 space-y-2">
+              {weightEditing ? (
+                <>
+                  <p className="text-xs font-bold text-amber-800">⚖️ Pesá y cargá los kilos reales</p>
+                  <div className="space-y-1.5">
+                    {weightItems.map((item, i) => (
+                      <div key={i} className="flex items-center justify-between gap-2 bg-white/70 rounded-lg px-2 py-1.5">
+                        <div className="min-w-0">
+                          <p className="text-xs font-medium truncate">{item.name}</p>
+                          {(item as any).unit === "kg" && (
+                            <p className="text-[10px] text-muted-foreground">${Number(item.price).toLocaleString("es-AR")}/kg</p>
+                          )}
+                        </div>
+                        {(item as any).unit === "kg" ? (
+                          <div className="flex items-center gap-1.5 flex-shrink-0">
+                            <Input
+                              type="number"
+                              inputMode="decimal"
+                              step="0.001"
+                              min="0"
+                              value={Number(item.qty).toLocaleString("es-AR", { maximumFractionDigits: 3 })}
+                              onChange={(e) => setWeightKg(i, Number(e.target.value.replace(",", ".")))}
+                              className="h-7 w-20 text-sm text-right"
+                              aria-label={`Peso real de ${item.name} en kilos`}
+                            />
+                            <span className="text-xs text-muted-foreground">kg</span>
+                          </div>
+                        ) : (
+                          <span className="text-xs font-medium flex-shrink-0 tabular-nums">{item.qty}×</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-amber-700">Estimado: ${weightEstimated.toLocaleString("es-AR")}</span>
+                    <span className="font-bold text-amber-900 tabular-nums">Total real: ${weightTotal.toLocaleString("es-AR")}</span>
+                  </div>
+                  {weightError && <p className="text-xs font-semibold text-red-600">{weightError}</p>}
+                  <div className="flex gap-2">
+                    <Button size="sm" className="flex-1" disabled={weightSaving} onClick={confirmWeight}>
+                      {weightSaving ? "Guardando…" : "✅ Confirmar peso"}
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => setWeightEditing(false)}>
+                      Cancelar
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p className="text-xs font-bold text-amber-800">⚖️ Pendiente de peso</p>
+                  <p className="text-xs text-amber-700 leading-relaxed">
+                    Total estimado ${weightEstimated.toLocaleString("es-AR")}. Pesá, ajustá los kilos y confirmá
+                    el total real para que el cliente pueda pagar.
+                  </p>
+                  <Button size="sm" className="w-full" onClick={startWeightEdit}>
+                    ⚖️ Confirmar peso
+                  </Button>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Pesables: pago MP del total real (peso ya confirmado) */}
+          {!editing && mpWeightPending && (
+            <div className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2.5 space-y-2">
+              <p className="text-xs font-bold text-blue-800">
+                💳 Pago pendiente — total real ${Number(order.total).toLocaleString("es-AR")}
+              </p>
+              {payLinkError && <p className="text-xs font-semibold text-red-600 bg-red-50 border border-red-200 rounded-lg px-2 py-1.5">{payLinkError}</p>}
+              {!payLink ? (
+                <>
+                  <Button size="sm" className="w-full" disabled={payLinkBusy} onClick={genPayLink}>
+                    {payLinkBusy ? "Generando…" : "🔗 Generar link de pago (MP)"}
+                  </Button>
+                  <p className="text-[10px] text-muted-foreground">
+                    El cliente también puede pagar desde su link de seguimiento.
+                  </p>
+                </>
+              ) : (
+                <div className="space-y-1.5">
+                  <Input value={payLink} readOnly onFocus={(e) => e.target.select()} className="h-8 text-[11px]" />
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => { void navigator.clipboard?.writeText(payLink).catch(() => {}); }}
+                    >
+                      Copiar link
+                    </Button>
+                    {customerPhone ? (
+                      <a
+                        href={`https://wa.me/${customerPhone}?text=${encodeURIComponent(`Hola, tu pedido ya está pesado: total $${Number(order.total).toLocaleString("es-AR")}. Podés pagarlo con este link: ${payLink}`)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="rounded-md bg-green-500 text-white text-xs font-medium py-2 text-center hover:bg-green-600"
+                      >
+                        Enviar por WA
+                      </a>
+                    ) : (
+                      <Button type="button" variant="outline" size="sm" disabled>
+                        Sin teléfono
+                      </Button>
+                    )}
+                  </div>
+                </div>
               )}
             </div>
           )}

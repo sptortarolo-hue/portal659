@@ -73,6 +73,8 @@ export const POST = withRateLimit(async (request: Request) => {
       shippingZoneName: result.shippingZoneName,
       deliveryWindow: result.deliveryWindow,
       giftcard_discount: result.giftcard_discount || 0,
+      weightPending: result.weightPending === true,
+      weightTolerancePct: result.weightTolerancePct,
     });
   } catch (e) {
     if (e instanceof InvalidPhoneError) {

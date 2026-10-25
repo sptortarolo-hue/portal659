@@ -25,6 +25,17 @@ export const GET = withRateLimit(
               o.pickup_number,
               o.estimated_minutes,
               o.created_at,
+              -- Pesables (migrate-weight-confirm.sql, tolerante sin aplicar).
+              CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'weight_confirmed_at')
+                THEN o.weight_confirmed_at ELSE NULL END AS weight_confirmed_at,
+              CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'weight_approved_at')
+                THEN o.weight_approved_at ELSE NULL END AS weight_approved_at,
+              CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'weight_estimated_total')
+                THEN o.weight_estimated_total ELSE NULL END AS weight_estimated_total,
+              CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'vendors' AND column_name = 'weight_tolerance_pct')
+                THEN v.weight_tolerance_pct ELSE 20 END AS weight_tolerance_pct,
+              CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'vendors' AND column_name = 'weight_confirm_mode')
+                THEN v.weight_confirm_mode ELSE 'estimado' END AS weight_confirm_mode,
               CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'giftcard_discount')
                 THEN COALESCE(o.giftcard_discount, 0) ELSE 0 END AS giftcard_discount,
               -- Turno de entrega retail (tolerante a migración sin aplicar).

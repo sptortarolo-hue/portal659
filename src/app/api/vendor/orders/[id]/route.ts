@@ -70,7 +70,7 @@ function customerNotificationText(
 }
 
 const RETURN_COLUMNS =
-  "customer_phone, customer_name, customer_address, total, payment_method, payment_status, notes, modification_notes, method, items, pickup_number, transfer_proof_url, track_token, CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'cancel_reason') THEN cancel_reason ELSE NULL END AS cancel_reason, CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'cancelled_by') THEN cancelled_by ELSE NULL END AS cancelled_by, CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'kitchen_done') THEN kitchen_done ELSE '[]'::jsonb END AS kitchen_done, CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'delivery_zone_id') THEN delivery_zone_id ELSE NULL END AS delivery_zone_id, CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'delivery_zone_name') THEN delivery_zone_name ELSE NULL END AS delivery_zone_name, CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'delivery_out_of_area') THEN delivery_out_of_area ELSE false END AS delivery_out_of_area, CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'delivery_fee') THEN delivery_fee ELSE 0 END AS delivery_fee";
+  "customer_phone, customer_name, customer_address, total, payment_method, payment_status, notes, modification_notes, method, items, pickup_number, transfer_proof_url, track_token, CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'cancel_reason') THEN cancel_reason ELSE NULL END AS cancel_reason, CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'cancelled_by') THEN cancelled_by ELSE NULL END AS cancelled_by, CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'kitchen_done') THEN kitchen_done ELSE '[]'::jsonb END AS kitchen_done, CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'delivery_zone_id') THEN delivery_zone_id ELSE NULL END AS delivery_zone_id, CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'delivery_zone_name') THEN delivery_zone_name ELSE NULL END AS delivery_zone_name, CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'delivery_out_of_area') THEN delivery_out_of_area ELSE false END AS delivery_out_of_area, CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'delivery_fee') THEN delivery_fee ELSE 0 END AS delivery_fee, CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'weight_confirmed_at') THEN weight_confirmed_at ELSE NULL END AS weight_confirmed_at, CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'weight_estimated_total') THEN weight_estimated_total ELSE NULL END AS weight_estimated_total, CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'weight_approved_at') THEN weight_approved_at ELSE NULL END AS weight_approved_at";
 
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   const params = await context.params;
@@ -103,11 +103,15 @@ export async function PATCH(
     return NextResponse.json({ error: "No autorizado" }, { status: 403 });
   }
 
-  const fullVendor = await queryOne<{ id: string; store_name: string; slug: string | null; block_unpaid_orders: boolean; vertical: string; delivery_fee: number | null; free_delivery_min: number | null; cash_discount_pct: number | null; kitchen_strict_close: boolean | null; address: string | null; }>(
+  const fullVendor = await queryOne<{ id: string; store_name: string; slug: string | null; block_unpaid_orders: boolean; vertical: string; delivery_fee: number | null; free_delivery_min: number | null; cash_discount_pct: number | null; kitchen_strict_close: boolean | null; address: string | null; transfer_expiry_hours: number | null; }>(
     `SELECT id, store_name, slug, block_unpaid_orders, vertical, delivery_fee, free_delivery_min, cash_discount_pct,
       -- Tolerante a migración de cierre estricto sin aplicar (default: libre).
       CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'vendors' AND column_name = 'kitchen_strict_close')
         THEN kitchen_strict_close ELSE false END AS kitchen_strict_close,
+      -- Vencimiento de transferencias (M4.2): al confirmar el peso arranca el
+      -- plazo del cliente para pagar (modos pesables con total real).
+      CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'vendors' AND column_name = 'transfer_expiry_hours')
+        THEN transfer_expiry_hours ELSE NULL END AS transfer_expiry_hours,
       address
       FROM vendors WHERE id = $1 LIMIT 1`,
     [vendor.id]
@@ -115,6 +119,9 @@ export async function PATCH(
 
   const body = await request.json();
   const { status, estimated_minutes, modification_notes, payment_status } = body;
+  // Confirmación de peso (pesables): el comercio pesa, ajusta kg y sella el
+  // total real. Con el sello, el cliente puede pagar (link MP/seguimiento).
+  const weightConfirmFlag = body.weight_confirm === true;
   // Motivo de la cancelación (M4.1): viaja al cliente en el push y queda en
   // el detalle/seguimiento. Máx 200 char, ignorado si no cancela.
   const cancel_reason =
@@ -141,7 +148,7 @@ export async function PATCH(
     toggleItem === undefined &&
     rawKitchenDone === undefined;
 
-  const isModifyOnly = !status && !payment_status && (rawItems !== undefined || modification_notes !== undefined);
+  const isModifyOnly = !status && !payment_status && (rawItems !== undefined || modification_notes !== undefined || weightConfirmFlag);
 
   // Tildado de cocina (KDS acumulativo): alterna o reemplaza el array de
   // progreso sin cambiar el estado del pedido. Solo en estados operativos.
@@ -165,14 +172,19 @@ export async function PATCH(
     return NextResponse.json({ error: "Estado de pago inválido" }, { status: 400 });
   }
 
-  const currentOrder = await queryOne<{ status: string; payment_status: string; payment_method: string; channel: string; method: string; items: OrderItem[] | null; customer_name: string | null; customer_phone: string | null; total: number; is_preview: boolean | null; kitchen_done: boolean[] | null; cash_amount: number | null }>(
+  const currentOrder = await queryOne<{ status: string; payment_status: string; payment_method: string; channel: string; method: string; items: OrderItem[] | null; customer_name: string | null; customer_phone: string | null; total: number; is_preview: boolean | null; kitchen_done: boolean[] | null; cash_amount: number | null; weight_confirmed_at: string | null; weight_estimated_total: number | null }>(
     `SELECT status, payment_status, payment_method, channel, method, items, customer_name, customer_phone, total, is_preview,
       -- Tolerante a migración de progreso de cocina sin aplicar.
       CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'kitchen_done')
         THEN kitchen_done ELSE '[]'::jsonb END AS kitchen_done,
       -- "¿Con cuánto abonás?" (efectivo + delivery). Tolerante a migración.
       CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'cash_amount')
-        THEN cash_amount ELSE NULL END AS cash_amount
+        THEN cash_amount ELSE NULL END AS cash_amount,
+      -- Pesables (migrate-weight-confirm.sql): sello de peso + estimado.
+      CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'weight_confirmed_at')
+        THEN weight_confirmed_at ELSE NULL END AS weight_confirmed_at,
+      CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'weight_estimated_total')
+        THEN weight_estimated_total ELSE NULL END AS weight_estimated_total
       FROM orders WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
     [params.id, vendor.id]
   );
@@ -227,7 +239,12 @@ export async function PATCH(
     );
   }
 
-  if (isModifyOnly && currentOrder.status !== "new") {
+  // Pesables: un pedido con peso pendiente de confirmar (nació "pendiente de
+  // peso") se puede seguir ajustando en cualquier estado no-final: el comercio
+  // pesa cuando el producto está en la balanza, no cuando el pedido entra.
+  const isWeightPending =
+    currentOrder.weight_confirmed_at == null && currentOrder.weight_estimated_total != null;
+  if (isModifyOnly && currentOrder.status !== "new" && !(isWeightPending && currentOrder.status !== "completed" && currentOrder.status !== "cancelled")) {
     return NextResponse.json(
       { error: "Solo se pueden modificar pedidos en estado nuevo" },
       { status: 400 }
@@ -428,6 +445,37 @@ export async function PATCH(
         if (payment_status === "paid") updateData.paid_at = new Date().toISOString();
       }
 
+      // Confirmación de peso (pesables): sella la fecha y, si el pedido era de
+      // transferencia con vencimiento, el plazo del cliente arranca recién acá
+      // (el total real recién existe después de pesar).
+      if (weightConfirmFlag) {
+        try {
+          const wc = await tx.query<{ exists: boolean }>(
+            `SELECT EXISTS (
+               SELECT 1 FROM information_schema.columns
+               WHERE table_name = 'orders' AND column_name = 'weight_confirmed_at'
+             ) AS exists`
+          );
+          if (wc[0]?.exists === true) {
+            updateData.weight_confirmed_at = new Date().toISOString();
+            const expiryH = Number(fullVendor?.transfer_expiry_hours) || 0;
+            if (expiryH > 0 && expiryH <= 168 && currentOrder.payment_method === "transferencia") {
+              const dc = await tx.query<{ exists: boolean }>(
+                `SELECT EXISTS (
+                   SELECT 1 FROM information_schema.columns
+                   WHERE table_name = 'orders' AND column_name = 'transfer_deadline_at'
+                 ) AS exists`
+              );
+              if (dc[0]?.exists === true) {
+                updateData.transfer_deadline_at = new Date(Date.now() + expiryH * 3_600_000).toISOString();
+              }
+            }
+          }
+        } catch {
+          /* sin migración: se salta el sello (el flujo sigue tolerante) */
+        }
+      }
+
       // Modificación de ítems: los precios/total se recalculan server-side
       // (desde la DB, no desde el body) para que el pedido quede coherente y
       // el cliente no pueda forzar un precio.
@@ -626,6 +674,40 @@ export async function PATCH(
   const isCounterPickup =
     currentOrder.channel === "mesa" ||
     (currentOrder.channel === "mostrador" && order.method !== "delivery");
+
+  // Confirmación de peso (pesables): aviso al cliente con el total real y link
+  // de seguimiento (ahí puede pagar con MP si el cobro era online).
+  if (weightConfirmFlag && order.customer_phone && !isCounterPickup && !order.is_preview) {
+    try {
+      const phoneVariants = phoneVariantsAR(order.customer_phone as string);
+      const customerProfile = await queryOne<{ id: string; email: string | null }>(
+        `SELECT id, email FROM profiles
+         WHERE regexp_replace(phone, '[^0-9]', '', 'g') = ANY($1)
+            OR regexp_replace(whatsapp, '[^0-9]', '', 'g') = ANY($1)
+         LIMIT 1`,
+        [phoneVariants]
+      );
+      if (customerProfile) {
+        const estTotal = Number(currentOrder.weight_estimated_total) || 0;
+        const realTotal = Number(order.total) || 0;
+        const diffBig = estTotal > 0 && Math.abs(realTotal - estTotal) / estTotal > 0.001;
+        const title = "⚖️ Peso confirmado";
+        const body = `${fullVendor?.store_name || "El comercio"} confirmó el peso de tu pedido: total ${diffBig ? "real" : ""} $${realTotal.toLocaleString("es-AR")}${diffBig ? ` (estimado $${estTotal.toLocaleString("es-AR")})` : ""}. Ya podés pagarlo${currentOrder.payment_method === "mercadopago" ? " desde el seguimiento con Mercado Pago" : ""}.`;
+        await queryMany<Record<string, unknown>>(
+          `INSERT INTO notifications (user_id, title, body, type, link)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [customerProfile.id, title, body, "order", order.track_token ? `/seguimiento/${order.track_token}` : "/mis-pedidos"]
+        );
+        await sendPushToUser(customerProfile.id, {
+          title,
+          body,
+          link: order.track_token ? `/seguimiento/${order.track_token}` : "/mis-pedidos",
+        });
+      }
+    } catch {
+      // best-effort: la confirmación queda igual
+    }
+  }
 
   const pushText = customerNotificationText(
     status,

@@ -34,6 +34,12 @@ type TrackOrder = {
   courier_lat: number | null;
   courier_lng: number | null;
   courier_updated_at: string | null;
+  // Pesables (modo confirmar).
+  weight_confirmed_at?: string | null;
+  weight_approved_at?: string | null;
+  weight_estimated_total?: number | null;
+  weight_tolerance_pct?: number | null;
+  weight_confirm_mode?: string | null;
   vendors: {
     store_name: string;
     slug: string;
@@ -56,6 +62,10 @@ export default function SeguimientoPedidoPage() {
   const [countdown, setCountdown] = useState<number | null>(null);
   const [loggedIn, setLoggedIn] = useState<boolean | null>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
+  // Pesables: pagar el total real / aceptarlo si difiere del estimado.
+  const [weightBusy, setWeightBusy] = useState(false);
+  const [weightMsg, setWeightMsg] = useState("");
+  const [weightErr, setWeightErr] = useState("");
 
   const fetchData = useCallback(async () => {
     if (!token) return;
@@ -131,6 +141,66 @@ export default function SeguimientoPedidoPage() {
   const isDone = order.status === "completed" || order.status === "cancelled";
   const phone = vendor?.whatsapp || vendor?.phone || "";
 
+  // Pesables (modo confirmar): el pedido nació pendiente de peso.
+  const weightEstimated = Number(order.weight_estimated_total) || 0;
+  const weightConfirmed = !!order.weight_confirmed_at;
+  const inWeightFlow = weightEstimated > 0 && !isDone;
+  const needsApproval = (() => {
+    if (!inWeightFlow || !weightConfirmed) return false;
+    if (order.weight_approved_at) return false;
+    const est = weightEstimated;
+    const real = Number(order.total) || 0;
+    const tol = Number(order.weight_tolerance_pct) > 0 ? Math.min(100, Math.floor(Number(order.weight_tolerance_pct))) : 20;
+    return est > 0 && Math.abs(real - est) / est > tol / 100;
+  })();
+  const canPayWeight =
+    inWeightFlow && weightConfirmed && order.payment_method === "mercadopago" &&
+    order.payment_status !== "paid" && !needsApproval;
+
+  async function approveWeight() {
+    if (!token || weightBusy) return;
+    setWeightBusy(true);
+    setWeightErr("");
+    setWeightMsg("");
+    try {
+      const res = await fetch(`/api/orders/track/${token}/approve`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        setWeightErr(data.error || "No se pudo aceptar el total");
+        return;
+      }
+      setOrder((prev) => (prev ? { ...prev, weight_approved_at: new Date().toISOString() } : prev));
+      setWeightMsg("¡Listo! Ya podés pagar el total real.");
+    } catch {
+      setWeightErr("Error de conexión. Probá de nuevo.");
+    } finally {
+      setWeightBusy(false);
+    }
+  }
+
+  async function payWeight() {
+    if (!token || weightBusy || !order) return;
+    setWeightBusy(true);
+    setWeightErr("");
+    try {
+      const res = await fetch("/api/payments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId: order.id, trackToken: token }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error || !data.initPoint) {
+        setWeightErr(data.error || "No se pudo iniciar el pago");
+        return;
+      }
+      window.location.href = data.initPoint as string;
+    } catch {
+      setWeightErr("Error de conexión. Probá de nuevo.");
+    } finally {
+      setWeightBusy(false);
+    }
+  }
+
   return (
     <main className="container mx-auto px-4 py-8 max-w-md">
       <div className="flex items-center justify-between mb-1">
@@ -190,6 +260,52 @@ export default function SeguimientoPedidoPage() {
           <p className="mt-2 rounded-xl bg-red-50 border border-red-100 px-3 py-2 text-xs text-red-600">
             🚫 Motivo de la cancelación: {(order as any).cancel_reason}
           </p>
+        )}
+
+        {/* Pesables (modo confirmar): pesando / total real / aceptar / pagar */}
+        {inWeightFlow && !weightConfirmed && (
+          <p className="mt-2 rounded-xl bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800 font-medium">
+            ⚖️ El comercio está pesando tu pedido. Cuando confirme el peso te avisamos con el
+            total real para pagar.
+          </p>
+        )}
+        {inWeightFlow && weightConfirmed && (
+          <div className="mt-2 rounded-xl bg-blue-50 border border-blue-200 px-3 py-2.5 text-xs text-blue-900 space-y-2">
+            <p className="font-semibold">
+              ⚖️ Peso confirmado — Total real: ${Number(order.total).toLocaleString("es-AR")}
+              {Math.abs(Number(order.total) - weightEstimated) > 0.01 && (
+                <span className="font-normal"> (estimado: ${weightEstimated.toLocaleString("es-AR")})</span>
+              )}
+            </p>
+            {needsApproval ? (
+              <>
+                <p className="text-blue-800">
+                  El total real difiere de tu estimado. Si estás de acuerdo, aceptalo para habilitar el pago.
+                </p>
+                <button
+                  type="button"
+                  onClick={approveWeight}
+                  disabled={weightBusy}
+                  className="w-full rounded-lg bg-blue-600 text-white text-xs font-semibold py-2 hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                >
+                  {weightBusy ? "Aceptando…" : `✅ Aceptar total ($${Number(order.total).toLocaleString("es-AR")})`}
+                </button>
+              </>
+            ) : canPayWeight ? (
+              <button
+                type="button"
+                onClick={payWeight}
+                disabled={weightBusy}
+                className="w-full rounded-lg bg-blue-600 text-white text-xs font-semibold py-2 hover:bg-blue-700 disabled:opacity-50 transition-colors"
+              >
+                {weightBusy ? "Abriendo Mercado Pago…" : `💳 Pagar $${Number(order.total).toLocaleString("es-AR")} con Mercado Pago`}
+              </button>
+            ) : order.payment_method === "mercadopago" && order.payment_status === "paid" ? (
+              <p className="text-green-700 font-medium">✅ Pago acreditado</p>
+            ) : null}
+            {weightMsg && <p className="text-green-700 font-medium">{weightMsg}</p>}
+            {weightErr && <p className="text-red-600 font-medium">{weightErr}</p>}
+          </div>
         )}
 
       <div className="mt-3 space-y-1">

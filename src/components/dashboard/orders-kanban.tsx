@@ -149,6 +149,13 @@ function OrderCard({
                 <AlertTriangle className="h-2.5 w-2.5" /> Pago pendiente
               </span>
             )}
+            {/* Pesables (modo confirmar): el comercio tiene que pesar y confirmar el total real. */}
+            {(order as any).weight_estimated_total != null && !(order as any).weight_confirmed_at &&
+              order.status !== "completed" && order.status !== "cancelled" && (
+              <span className="inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-amber-100 text-amber-800 border-amber-200">
+                ⚖️ Pendiente de peso
+              </span>
+            )}
             {order.payment_method === "efectivo" && Number((order as any).cash_amount) > 0 && (
               <span className="inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-green-100 text-green-700 border-green-200">
                 💵 Abona ${Number((order as any).cash_amount).toLocaleString("es-AR")}

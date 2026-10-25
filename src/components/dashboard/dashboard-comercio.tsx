@@ -24,6 +24,7 @@ import {
 } from "@/components/dashboard/shared";
 import { MpConnectCard } from "@/components/dashboard/mp-connect-card";
 import { PrinterConfigSection } from "@/components/dashboard/printer-config-section";
+import { ScaleConfigSection } from "@/components/dashboard/scale-config-section";
 import { StaffManager } from "@/components/vendor/staff-manager";
 import { FiscalTabShortcut } from "@/components/dashboard/fiscal-config-section";
 import { HoursEditor } from "@/components/dashboard/hours-editor";
@@ -136,6 +137,13 @@ export default function DashboardComercio({
   const [storefrontLayout, setStorefrontLayout] = useState(
     vendor?.storefront_layout === "vidriera" ? "vidriera" : "lista"
   );
+  // Pesables (venta por kilo): cobro estimado vs confirmación de peso.
+  const [weightMode, setWeightMode] = useState(
+    (vendor as any)?.weight_confirm_mode === "confirmar" ? "confirmar" : "estimado"
+  );
+  const [weightTolerance, setWeightTolerance] = useState(
+    (vendor as any)?.weight_tolerance_pct != null ? String((vendor as any).weight_tolerance_pct) : "20"
+  );
   const [cashDiscount, setCashDiscount] = useState(
     vendor?.cash_discount_pct != null ? String(vendor.cash_discount_pct) : ""
   );
@@ -167,6 +175,8 @@ export default function DashboardComercio({
       setOnlineOrders(vendor.accepts_online_orders !== false);
       setCoordinar(vendor.delivery_coordinar === true);
       setStorefrontLayout(vendor.storefront_layout === "vidriera" ? "vidriera" : "lista");
+    setWeightMode((vendor as any)?.weight_confirm_mode === "confirmar" ? "confirmar" : "estimado");
+    setWeightTolerance((vendor as any)?.weight_tolerance_pct != null ? String((vendor as any).weight_tolerance_pct) : "20");
     setCashDiscount(vendor.cash_discount_pct != null ? String(vendor.cash_discount_pct) : "");
     setCashAsk(vendor.cash_ask_amount !== false);
   }, [vendor]);
@@ -622,6 +632,10 @@ export default function DashboardComercio({
       />
       </ConfigSection>
 
+      <ConfigSection id="balanza" label="Balanza" icon="⚖️">
+        <ScaleConfigSection />
+      </ConfigSection>
+
       <ConfigSection id="alertas" label="Alertas" icon="🔔">
       <PushAlertCard />
       </ConfigSection>
@@ -691,6 +705,54 @@ export default function DashboardComercio({
                 que el catálogo sea simple (la vidriera no soporta esos casos).
               </p>
             )}
+          {(offers.some((o) => (o as any).unit === "kg") || weightMode !== "estimado") && (
+            <div className="rounded-xl border border-border px-3 py-2.5 space-y-2.5">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <Label className="text-sm">⚖️ Venta por kilo — cobro</Label>
+                  <p className="text-xs text-muted-foreground">
+                    {weightMode === "confirmar"
+                      ? "Confirmar peso: el pedido entra pendiente de pago, vos pesás y confirmás el total real; recién ahí el cliente paga (link de Mercado Pago desde el seguimiento, transferencia o efectivo)."
+                      : "Estimado: el cliente paga los kilos que declaró al pedir (como hasta hoy)."}
+                  </p>
+                </div>
+                <select
+                  value={weightMode}
+                  onChange={async (e) => {
+                    const next = e.target.value === "confirmar" ? "confirmar" : "estimado";
+                    setWeightMode(next);
+                    await saveVendor({ weight_confirm_mode: next });
+                  }}
+                  className="h-9 rounded-md border border-input bg-background px-2 text-sm flex-shrink-0"
+                  aria-label="Cobro de venta por kilo"
+                >
+                  <option value="estimado">Estimado</option>
+                  <option value="confirmar">Confirmar peso</option>
+                </select>
+              </div>
+              {weightMode === "confirmar" && (
+                <div className="flex items-center gap-2">
+                  <Label className="text-xs whitespace-nowrap">Tolerancia sin aprobar:</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={100}
+                    value={weightTolerance}
+                    onChange={(e) => setWeightTolerance(e.target.value)}
+                    onBlur={async () => {
+                      const n = Math.min(100, Math.max(1, Math.floor(Number(weightTolerance) || 20)));
+                      setWeightTolerance(String(n));
+                      await saveVendor({ weight_tolerance_pct: n });
+                    }}
+                    className="h-8 w-20 text-sm"
+                  />
+                  <span className="text-xs text-muted-foreground">
+                    % — si el total real difiere más, el cliente tiene que aceptarlo en el seguimiento antes de pagar.
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
           <CategoryManager
             categories={categories}
             onAdd={async (name) => {

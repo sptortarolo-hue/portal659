@@ -1018,6 +1018,53 @@ function VendorDashboardInner() {
     }
   }
 
+  /** Pesables (modo confirmar): guarda los kg reales y sella la confirmación de peso. */
+  async function confirmOrderWeight(
+    orderId: string,
+    items: OrderItem[]
+  ): Promise<{ ok: boolean; error?: string }> {
+    try {
+      const res = await fetch(`/api/vendor/orders/${orderId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items, weight_confirm: true }),
+      });
+      const text = await res.text();
+      const data = (() => {
+        try {
+          return text ? JSON.parse(text) : {};
+        } catch {
+          return {};
+        }
+      })();
+      if (!res.ok || data.error) {
+        const err = data.error || data.message || `HTTP ${res.status}`;
+        setMsg(`Error: ${err}`);
+        return { ok: false, error: String(err) };
+      }
+      const updated = data.order as Record<string, unknown> | undefined;
+      const newTotal = Number(updated?.total ?? 0);
+      setMsg(`⚖️ Peso confirmado · $${newTotal.toLocaleString("es-AR")}`);
+      setOrders((prev) =>
+        prev.map((o) =>
+          o.id === orderId
+            ? { ...o, items: (updated?.items as OrderItem[]) ?? o.items, total: newTotal, ...(updated ?? {}) }
+            : o
+        )
+      );
+      setSelectedOrder((prev) =>
+        prev && prev.id === orderId
+          ? ({ ...prev, items: (updated?.items as OrderItem[]) ?? prev.items, total: newTotal, ...(updated ?? {}) } as Order)
+          : prev
+      );
+      return { ok: true };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Error al confirmar el peso";
+      setMsg(`Error: ${message}`);
+      return { ok: false, error: message };
+    }
+  }
+
   const openShare = useCallback(async () => {
     if (!vendor?.slug) return;
     setCopied(false);
@@ -2492,6 +2539,7 @@ function VendorDashboardInner() {
           onClose={() => setSelectedOrder(null)}
           onAction={(order, status, reason) => updateOrderStatus(order, status, reason)}
           onModify={modifyOrder}
+          onConfirmWeight={confirmOrderWeight}
           offers={offers}
           canPrint={effectivePlan.can("printer")}
           transfer={{

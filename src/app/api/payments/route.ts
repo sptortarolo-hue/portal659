@@ -33,6 +33,14 @@ export async function POST(request: Request) {
     return debtPreference(body, request);
   }
 
+  // Cobro de pedido post-peso (pesables, modo "confirmar"): { vendorId, orderId }
+  // (desde el panel) o { orderId, trackToken } (desde el seguimiento público).
+  // El pedido ya existe (nació pendiente de peso) y el comercio ya confirmó
+  // el total real: acá solo generamos la preferencia por ese monto.
+  if (body?.orderId && (body?.vendorId || body?.trackToken)) {
+    return orderWeightPreference(body, request);
+  }
+
   if (!vendorId || !items || !total) {
     return NextResponse.json({ error: "Faltan datos" }, { status: 400 });
   }
@@ -263,6 +271,187 @@ async function debtPreference(body: any, request: Request) {
   }
 }
 
+/**
+ * Link de cobro de pedido post-peso (pesables, modo "confirmar").
+ * Genera una preferencia por el total REAL del pedido (ya pesado y confirmado
+ * por el comercio). El webhook (rama portal659_order_) marca el pedido pagado.
+ * Dos vías:
+ *  - Panel: { vendorId, orderId } — requiere sesión del comercio.
+ *  - Seguimiento público: { orderId, trackToken } — el cliente toca "Pagar".
+ *    Con diferencia > tolerancia exige weight_approved_at (aceptó el total).
+ */
+async function orderWeightPreference(body: any, request: Request) {
+  const vendorId = typeof body?.vendorId === "string" ? body.vendorId : "";
+  const orderId = String(body?.orderId || "");
+  const trackToken = typeof body?.trackToken === "string" ? body.trackToken : "";
+
+  if (!orderId || (!vendorId && !trackToken)) {
+    return NextResponse.json({ error: "Faltan datos (pedido)" }, { status: 400 });
+  }
+
+  // Vía pública (seguimiento): el token del pedido autoriza.
+  if (!vendorId && trackToken) {
+    const match = await queryOne<{ id: string }>(
+      `SELECT id FROM orders WHERE id = $1 AND track_token = $2 LIMIT 1`,
+      [orderId, trackToken]
+    );
+    if (!match) {
+      return NextResponse.json({ error: "No autorizado" }, { status: 403 });
+    }
+  } else {
+    // Vía panel: solo el dueño/admin del comercio genera links de cobro.
+    try {
+      const { getVendorByRequest } = await import("@/lib/vendor-utils");
+      const { vendor: caller } = await getVendorByRequest(request);
+      if (!caller || caller.id !== vendorId) {
+        return NextResponse.json({ error: "No autorizado" }, { status: 403 });
+      }
+    } catch {
+      return NextResponse.json({ error: "No autorizado" }, { status: 403 });
+    }
+  }
+
+  const order = await queryOne<{
+    id: string;
+    vendor_id: string;
+    store_name: string;
+    slug: string | null;
+    total: number | null;
+    pickup_number: number | null;
+    status: string;
+    payment_status: string;
+    payment_method: string;
+    track_token: string | null;
+    weight_confirmed_at: string | null;
+    weight_approved_at: string | null;
+    weight_estimated_total: number | null;
+  }>(
+    `SELECT o.id, o.vendor_id, o.total, o.pickup_number, o.status, o.payment_status, o.payment_method, o.track_token,
+            v.store_name, v.slug,
+            CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'weight_confirmed_at')
+              THEN o.weight_confirmed_at ELSE NULL END AS weight_confirmed_at,
+            CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'weight_approved_at')
+              THEN o.weight_approved_at ELSE NULL END AS weight_approved_at,
+            CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'weight_estimated_total')
+              THEN o.weight_estimated_total ELSE NULL END AS weight_estimated_total
+     FROM orders o JOIN vendors v ON v.id = o.vendor_id
+     WHERE o.id = $1 LIMIT 1`,
+    [orderId]
+  );
+
+  if (!order || order.vendor_id !== (vendorId || order.vendor_id)) {
+    return NextResponse.json({ error: "Pedido no encontrado" }, { status: 404 });
+  }
+
+  // Tolerancia: si el total real difiere del estimado más allá del % pactado,
+  // el cliente tiene que haber tocado "Aceptar total" en el seguimiento.
+  let tolerancePct = 20;
+  try {
+    const vcfg = await queryOne<{ weight_tolerance_pct: number | null }>(
+      `SELECT weight_tolerance_pct FROM vendors WHERE id = $1 LIMIT 1`,
+      [order.vendor_id]
+    );
+    if (Number.isFinite(Number(vcfg?.weight_tolerance_pct)) && Number(vcfg?.weight_tolerance_pct) > 0) {
+      tolerancePct = Math.min(100, Math.floor(Number(vcfg?.weight_tolerance_pct)));
+    }
+  } catch { /* default 20 */ }
+
+  if (order.status === "cancelled") {
+    return NextResponse.json({ error: "El pedido fue cancelado" }, { status: 400 });
+  }
+  if (order.payment_status !== "pending") {
+    return NextResponse.json({ error: "Este pedido ya no está pendiente de pago" }, { status: 400 });
+  }
+  if (order.payment_method !== "mercadopago") {
+    return NextResponse.json({ error: "Este pedido no se cobra online" }, { status: 400 });
+  }
+  if (!order.weight_confirmed_at) {
+    return NextResponse.json({ error: "El comercio todavía no confirmó el peso de tu pedido" }, { status: 409 });
+  }
+  if (trackToken && !vendorId) {
+    const est = Number(order.weight_estimated_total) || 0;
+    const real = Number(order.total) || 0;
+    const diffExceeds = est > 0 && Math.abs(real - est) / est > tolerancePct / 100;
+    if (diffExceeds && !order.weight_approved_at) {
+      return NextResponse.json(
+        { error: "Primero aceptá el total actualizado", code: "approval_required" },
+        { status: 409 }
+      );
+    }
+  }
+
+  const vendor = await queryOne<
+    { store_name: string; slug: string } & VendorMpRow
+  >(
+    `SELECT id, store_name, slug, mp_user_id, mp_access_token, mp_refresh_token, mp_public_key, mp_expires_at, mp_connected_at
+     FROM vendors WHERE id = $1 LIMIT 1`,
+    [order.vendor_id]
+  );
+  if (!vendor) {
+    return NextResponse.json({ error: "Comercio no encontrado" }, { status: 404 });
+  }
+  const mpToken = await getVendorMpToken(vendor);
+  if (!mpToken) {
+    return NextResponse.json(
+      { error: "El comercio todavía no conectó Mercado Pago", code: "vendor_not_connected" },
+      { status: 409 }
+    );
+  }
+
+  const amount = Math.round(Number(order.total) * 100) / 100;
+  if (!(amount > 0)) {
+    return NextResponse.json({ error: "El total del pedido no es válido" }, { status: 400 });
+  }
+  const track = order.track_token || trackToken;
+  const backBase = `${getSiteUrl()}${track ? `/seguimiento/${track}` : "/mis-pedidos"}`;
+
+  try {
+    const preference = {
+      items: [
+        {
+          title: `Pedido ${order.pickup_number != null ? `Nro. ${order.pickup_number}` : `#${order.id.slice(0, 8)}`} — ${vendor.store_name}`,
+          unit_price: amount,
+          quantity: 1,
+          currency_id: "ARS",
+        },
+      ],
+      metadata: {
+        vendor_id: order.vendor_id,
+        order_id: order.id,
+        customer_name: "",
+        customer_phone: "",
+      },
+      external_reference: `portal659_order_${order.id}_${Date.now()}`,
+      back_urls: {
+        success: `${backBase}?paid=1`,
+        failure: backBase,
+        pending: backBase,
+      },
+      auto_return: "approved",
+      notification_url: `${getSiteUrl()}/api/webhooks/mercadopago`,
+    };
+    const res = await fetch("https://api.mercadopago.com/checkout/preferences", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${mpToken}`,
+      },
+      body: JSON.stringify(preference),
+    });
+    const data = await res.json();
+    if (data.id) {
+      const isTest = mpToken.startsWith("TEST-");
+      const initPoint = isTest && data.sandbox_init_point ? data.sandbox_init_point : data.init_point;
+      console.log(`[MP preference] ok order-weight id=${data.id} vendor=${order.vendor_id} order=${order.id} total=${amount}`);
+      return NextResponse.json({ preferenceId: data.id, initPoint, sandbox: isTest });
+    }
+    console.warn(`[MP preference] FAIL order-weight vendor=${order.vendor_id} message=${data.message || data.error || "sin detalle"}`);
+    return NextResponse.json({ error: data.message || "Error al crear preferencia" }, { status: 500 });
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message || "Error de conexión con Mercado Pago" }, { status: 500 });
+  }
+}
+
 // El checkout le pregunta "¿puedo cobrar online?" + config de pago por comercio.
 export async function GET(request: Request) {
   const vendorId = new URL(request.url).searchParams.get("vendorId");
@@ -283,9 +472,23 @@ export async function GET(request: Request) {
     /* migración sin aplicar: default activado */
   }
 
+  // Modo de cobro de pesables (migrate-weight-confirm.sql, tolerante): con
+  // "confirmar" + carrito con kg, el checkout difiere el pago MP hasta que el
+  // comercio pesa (el botón MP crea el pedido y el cobro sale del seguimiento).
+  let weightConfirmMode = "estimado";
+  try {
+    const v = await queryOne<{ weight_confirm_mode: string | null }>(
+      `SELECT weight_confirm_mode FROM vendors WHERE id = $1 LIMIT 1`,
+      [vendorId]
+    );
+    if (v?.weight_confirm_mode === "confirmar") weightConfirmMode = "confirmar";
+  } catch {
+    /* migración sin aplicar: modo estimado */
+  }
+
   // Sin OK de MP el checkout nunca ofrece pago online.
   if (!isMpEnabled()) {
-    return NextResponse.json({ configured: false, reason: "mp_disabled", cashAskAmount });
+    return NextResponse.json({ configured: false, reason: "mp_disabled", cashAskAmount, weightConfirmMode });
   }
 
   const vendor = await queryOne<{ mp_user_id: number | null }>(
@@ -297,5 +500,6 @@ export async function GET(request: Request) {
     configured: !!vendor?.mp_user_id,
     publicKey: null,
     cashAskAmount,
+    weightConfirmMode,
   });
 }

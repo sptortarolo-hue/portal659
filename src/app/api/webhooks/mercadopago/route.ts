@@ -541,6 +541,112 @@ export async function POST(request: Request) {
           return NextResponse.json({ ok: true });
         }
 
+        // Rama cobro de pedido post-peso (pesables, modo "confirmar"):
+        // portal659_order_{orderId}_{ts}. El pedido YA existe (nació pendiente
+        // de peso): acá solo se marca pagado y se avisa a comercio y cliente.
+        // Idempotente: si ya está pagado, no toca nada.
+        if (externalRef?.startsWith("portal659_order_")) {
+          const orderId = externalRef.split("_")[2];
+          if (orderId) {
+            const wOrder = await queryOne<{
+              id: string;
+              vendor_id: string;
+              customer_name: string;
+              customer_phone: string | null;
+              total: number | null;
+              pickup_number: number | null;
+              status: string;
+              payment_status: string;
+              track_token: string | null;
+            }>(
+              `SELECT id, vendor_id, customer_name, customer_phone, total, pickup_number, status, payment_status, track_token
+               FROM orders WHERE id = $1 LIMIT 1`,
+              [orderId]
+            ).catch(() => undefined);
+            if (wOrder && wOrder.payment_status !== "paid" && wOrder.status !== "cancelled") {
+              await query(
+                `UPDATE orders SET payment_status = 'paid', mp_payment_id = $1, paid_at = now() WHERE id = $2 AND payment_status <> 'paid'`,
+                [String(payment.id || ""), orderId]
+              ).catch((e) => logApiError("mp-webhook/order-paid", e));
+
+              // Tarjetas emitidas por esta venta (idempotente por unidad).
+              try {
+                const { issueGiftcardsForOrder } = await import("@/lib/giftcards");
+                const { withTransaction: wTx, queryOne: q1o } = await import("@/lib/db");
+                const itemsRow = await q1o<{ items: any[] | null }>(
+                  `SELECT items FROM orders WHERE id = $1 LIMIT 1`,
+                  [orderId]
+                );
+                if (itemsRow?.items) {
+                  await wTx(async (tx) => {
+                    await issueGiftcardsForOrder(tx, {
+                      vendorId: wOrder.vendor_id,
+                      orderId,
+                      items: itemsRow.items as any[],
+                      customerName: wOrder.customer_name,
+                      customerPhone: wOrder.customer_phone,
+                      isPreview: false,
+                      note: `Venta online MP${wOrder.pickup_number != null ? ` #${wOrder.pickup_number}` : ""}`,
+                    });
+                  });
+                }
+              } catch (e) {
+                logApiError("mp-webhook/order-giftcards", e);
+              }
+
+              // Aviso al comercio.
+              const vrow = await queryOne<{ user_id: string; store_name: string }>(
+                `SELECT user_id, store_name FROM vendors WHERE id = $1 LIMIT 1`,
+                [wOrder.vendor_id]
+              );
+              if (vrow?.user_id) {
+                const title = "¡Pago acreditado! 💰";
+                const body = `El cliente pagó el pedido${wOrder.pickup_number != null ? ` Nro. ${wOrder.pickup_number}` : ""} de $${Number(wOrder.total || 0).toLocaleString("es-AR")} por Mercado Pago.`;
+                await query(
+                  `INSERT INTO notifications (user_id, title, body, type, link)
+                   VALUES ($1, $2, $3, 'payment', '/vendor/dashboard')`,
+                  [vrow.user_id, title, body]
+                ).catch(() => {});
+                try {
+                  await sendPushToUser(vrow.user_id, { title, body, link: "/vendor/dashboard" });
+                } catch { /* best-effort */ }
+              }
+
+              // Aviso al cliente (el pago online recién confirmó el total real).
+              if (wOrder.customer_phone && !wOrder.customer_phone.startsWith("lid:")) {
+                try {
+                  const { phoneVariantsAR } = await import("@/lib/phone");
+                  const cProfile = await queryOne<{ id: string }>(
+                    `SELECT id FROM profiles
+                     WHERE regexp_replace(phone, '[^0-9]', '', 'g') = ANY($1)
+                        OR regexp_replace(whatsapp, '[^0-9]', '', 'g') = ANY($1)
+                     LIMIT 1`,
+                    [phoneVariantsAR(wOrder.customer_phone)]
+                  );
+                  if (cProfile) {
+                    const cTitle = "✅ ¡Pago aprobado!";
+                    const cBody = `Tu pago de $${Number(wOrder.total || 0).toLocaleString("es-AR")} en ${vrow?.store_name || "el comercio"} fue aprobado. Ya preparan tu pedido.`;
+                    await query(
+                      `INSERT INTO notifications (user_id, title, body, type, link)
+                       VALUES ($1, $2, $3, 'order', $4)`,
+                      [cProfile.id, cTitle, cBody, wOrder.track_token ? `/seguimiento/${wOrder.track_token}` : "/mis-pedidos"]
+                    ).catch(() => {});
+                    try {
+                      await sendPushToUser(cProfile.id, {
+                        title: cTitle,
+                        body: cBody,
+                        link: wOrder.track_token ? `/seguimiento/${wOrder.track_token}` : "/mis-pedidos",
+                      });
+                    } catch { /* best-effort */ }
+                  }
+                } catch { /* best-effort */ }
+              }
+              console.log(`[mp-webhook] order-paid ok order=${orderId} amount=${Number(payment.transaction_amount) || 0}`);
+            }
+          }
+          return NextResponse.json({ ok: true });
+        }
+
         const parts = externalRef.split("_");
         const vendorId = parts[1];
 

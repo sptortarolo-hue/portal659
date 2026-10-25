@@ -41,6 +41,10 @@ export default function CheckoutPage() {
   const [done, setDone] = useState(false);
   const [error, setError] = useState("");
   const [mpConfigured, setMpConfigured] = useState(false);
+  // Pesables (modo "confirmar"): con kg en el carrito el pago MP se difiere
+  // hasta que el comercio pesa — el botón crea el pedido y el cobro sale del
+  // seguimiento con el total real.
+  const [weightConfirmMode, setWeightConfirmMode] = useState("estimado");
   const [userId, setUserId] = useState<string | null>(null);
   // Canje de giftcard (efectivo/transferencia/Coordinar-por-WA): valida el
   // saldo y lo descuenta del total. MP va por su propia ruta (ya cobró todo).
@@ -64,6 +68,9 @@ export default function CheckoutPage() {
 const [doneVendorName, setDoneVendorName] = useState<string | null>(null);
 const [doneIsPreview, setDoneIsPreview] = useState(false);
 const [doneIsGift, setDoneIsGift] = useState(false);
+// Pesables: el pedido nació pendiente de peso (modo confirmar) — el pago
+// llega después, cuando el comercio confirma el total real.
+const [doneWeightPending, setDoneWeightPending] = useState(false);
   // Vuelta de Mercado Pago (back_urls: /checkout?payment=success|pending|failure&vendor=<slug>).
   // El pedido lo crea el webhook de forma asíncrona; el token de seguimiento
   // se obtiene con un poll corto a /api/orders/latest-token.
@@ -285,6 +292,7 @@ const [doneIsGift, setDoneIsGift] = useState(false);
       .then(d => {
         setMpConfigured(d.configured);
         if (typeof d.cashAskAmount === "boolean") setCashAskAmount(d.cashAskAmount);
+        if (typeof d.weightConfirmMode === "string") setWeightConfirmMode(d.weightConfirmMode);
       })
       .catch(() => setMpConfigured(false));
     // Turnos de reparto (retail): el server calcula hoy+próximos en TZ AR.
@@ -312,6 +320,8 @@ const [doneIsGift, setDoneIsGift] = useState(false);
   // Compra 100% giftcards: no hay retiro ni delivery — entrega digital por
   // WhatsApp al teléfono del comprador (se pide abajo si falta).
   const isGiftOnly = items.length > 0 && items.every((i) => (i as any).isGift === true);
+  // ¿Carrito con productos por kilo? (pesables).
+  const cartHasKg = items.some((i) => (i as any).unit === "kg");
   // "¿Con cuánto abonás?" (efectivo + delivery, salvo que el comercio lo apague):
   // el vuelto se calcula en vivo contra el total final (con descuentos y envío).
   const cashAskVisible = paymentMethod === "efectivo" && method === "delivery" && cashAskAmount && !isGiftOnly && !shipActive;
@@ -429,13 +439,22 @@ const [doneIsGift, setDoneIsGift] = useState(false);
   if (done) {
     return (
       <main className="container mx-auto px-4 py-20 max-w-md text-center">
-        <div className="text-6xl mb-4 animate-bounce-in">✅</div>
+        <div className="text-6xl mb-4 animate-bounce-in">{doneWeightPending ? "⚖️" : "✅"}</div>
         <h1 className="font-display text-3xl font-semibold mb-4">
-          Pedido enviado
+          {doneWeightPending ? "¡Pedido recibido!" : "Pedido enviado"}
         </h1>
         <p className="text-muted-foreground mb-4">
-          Se abrió WhatsApp con tu pedido para{" "}
-          <span className="font-medium">{doneVendorName || "el local"}</span>.
+          {doneWeightPending ? (
+            <>
+              <span className="font-medium">{doneVendorName || "El comercio"}</span> va a pesar tu pedido y
+              confirmar el total real. Te avisamos acá y por WhatsApp para que pagues el monto exacto.
+            </>
+          ) : (
+            <>
+              Se abrió WhatsApp con tu pedido para{" "}
+              <span className="font-medium">{doneVendorName || "el local"}</span>.
+            </>
+          )}
           {doneIsGift && (
             <span className="block mt-1 text-sm font-medium text-violet-700">
               🎁 Son solo tarjetas: te llegan por WhatsApp al confirmar el pago, sin retiro ni envío.
@@ -464,7 +483,7 @@ const [doneIsGift, setDoneIsGift] = useState(false);
             </>
           )}
         </p>
-        {!userId && (
+        {!userId && !doneWeightPending && (
           <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4 mb-6 text-left">
             <p className="font-semibold text-sm mb-1">📋 ¿Guardamos tus datos para la próxima?</p>
             <p className="text-xs text-muted-foreground leading-relaxed mb-3">
@@ -511,6 +530,9 @@ const [doneIsGift, setDoneIsGift] = useState(false);
   // Modo prueba: el micrositio en preview guarda el contexto en sessionStorage.
   const previewCtx = v?.id ? readPreviewSession(v.id) : null;
   const isPreview = previewCtx !== null;
+  // MP diferido (pesables, modo confirmar): solo si el carrito tiene kg y el
+  // comercio pesa antes de cobrar. Un pedido de prueba nunca difiere.
+  const mpDeferred = weightConfirmMode === "confirmar" && cartHasKg && !isPreview;
 
   async function lookupPhone() {
     // Autocompletar datos de pedidos anteriores: solo con celular válido.
@@ -537,6 +559,73 @@ const [doneIsGift, setDoneIsGift] = useState(false);
       return;
     }
     if (!name || !phone) return;
+
+    // MP diferido (pesables, modo confirmar): NO se abre Mercado Pago acá.
+    // Se crea el pedido con MP pendiente de peso; el comercio pesa, confirma
+    // el total real y el cliente paga desde el seguimiento.
+    if (mpDeferred) {
+      if (sendingRef.current) return;
+      sendingRef.current = true;
+      setLoading(true);
+      setError("");
+      const e164D = toE164(phone);
+      if (!e164D) {
+        setError(phoneMsg || "Ingresá tu celular con código de área (ej: 11 5555 1234)");
+        setLoading(false);
+        sendingRef.current = false;
+        return;
+      }
+      try {
+        const res = await fetch("/api/orders", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            vendorId: v.id,
+            customerName: name,
+            customerPhone: e164D,
+            customerAddress: method === "delivery" ? fullAddress || null : null,
+            method,
+            paymentMethod: "mercadopago",
+            customerId: userId || null,
+            deliveryZoneId: method === "delivery" && zonesMode && !deliveryOutOfArea && !shipActive ? activeZoneId || null : null,
+            deliveryOutOfArea: method === "delivery" && deliveryOutOfArea && !shipActive,
+            shippingZoneId: method === "delivery" && shipActive ? shipZoneId : null,
+            deliveryWindow: method === "delivery" && showSlots && activeSlotId ? activeSlotId : null,
+            cashAmount: cashAskVisible && cashAmountNum > 0 ? cashAmountNum : null,
+            items: items.map((i) => ({
+              offerId: i.offerId,
+              variantId: i.variantId,
+              name: i.name,
+              price: i.price + (i.modifiers || []).reduce((s, m) => s + m.price_mod, 0),
+              qty: i.qty,
+              modifiers: (i.modifiers || []).map((m) => ({ label: m.label, group: m.group })),
+              unit: (i as any).unit,
+              combo_members: (i as any).comboMembers,
+            })),
+            total: displayTotal,
+            notes: notes.trim() || null,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok || data.error) {
+          setError(data.error || "Error al crear el pedido");
+          setLoading(false);
+          return;
+        }
+        clear();
+        setDoneVendorName(v.storeName || null);
+        setDoneTrackToken(data.trackToken || null);
+        setDoneWeightPending(true);
+        setDone(true);
+        setLoading(false);
+      } catch {
+        setError("Ocurrió un error al enviar el pedido. Probá de nuevo.");
+        setLoading(false);
+      } finally {
+        sendingRef.current = false;
+      }
+      return;
+    }
     const e164 = toE164(phone);
     if (!e164) {
       setError(phoneMsg || "Ingresá tu celular con código de área (ej: 11 5555 1234)");
@@ -1351,6 +1440,14 @@ const [doneIsGift, setDoneIsGift] = useState(false);
 
         {error && <p className="text-sm text-red-600">{error}</p>}
 
+        {/* Pesables (modo confirmar): el total se cierra cuando el comercio pesa. */}
+        {mpDeferred && (
+          <div className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 font-medium">
+            ⚖️ Este pedido incluye productos por kilo: el comercio confirma el peso real y después
+            pagás el total exacto (te avisamos por el seguimiento y por WhatsApp).
+          </div>
+        )}
+
         {/* Hero CTA */}
         <Button
           type="submit"
@@ -1367,13 +1464,15 @@ const [doneIsGift, setDoneIsGift] = useState(false);
             disabled={loading}
             className="w-full rounded-xl border-2 border-blue-200 bg-blue-50 text-blue-700 py-3 text-sm font-medium hover:bg-blue-100 disabled:opacity-50 transition-all"
           >
-            💳 Pagar con Mercado Pago
+            {mpDeferred ? "💳 Pedir y pagar después (peso exacto)" : "💳 Pagar con Mercado Pago"}
           </button>
         )}
 
         <p className="text-xs text-muted-foreground text-center px-4">
           {mpConfigured
-            ? "Elegí WhatsApp para coordinar el pago directo, o pagá online con Mercado Pago."
+            ? mpDeferred
+              ? "Con productos por kilo, el pago online se hace después de que el comercio pese tu pedido."
+              : "Elegí WhatsApp para coordinar el pago directo, o pagá online con Mercado Pago."
             : "El pedido se envía al WhatsApp del local. Sin registro, sin pagar online: el local te pasa el total y coordinás el pago directo."}
         </p>
       </form>

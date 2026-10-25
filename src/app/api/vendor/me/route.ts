@@ -175,6 +175,8 @@ export async function POST(request: Request) {
     ficha_reminder_enabled,
     cash_ask_amount,
     expiry_alert_days,
+    weight_confirm_mode,
+    weight_tolerance_pct,
   } = body;
 
   // Limpia y valida delivery_extra_days. Devuelve el objeto podado o false
@@ -483,6 +485,17 @@ export async function POST(request: Request) {
   }
   // "¿Con cuánto abonás?" (efectivo + delivery): pedir el dato al cliente.
   if (cash_ask_amount !== undefined) payload.cash_ask_amount = cash_ask_amount === true;
+  // Pesables (venta por kilo): modo de cobro + tolerancia sin aprobar.
+  if (weight_confirm_mode !== undefined) {
+    payload.weight_confirm_mode = weight_confirm_mode === "confirmar" ? "confirmar" : "estimado";
+  }
+  if (weight_tolerance_pct !== undefined) {
+    const n = Number(weight_tolerance_pct);
+    if (!Number.isFinite(n) || n < 1 || n > 100) {
+      return NextResponse.json({ error: "La tolerancia debe estar entre 1 y 100" }, { status: 400 });
+    }
+    payload.weight_tolerance_pct = Math.floor(n);
+  }
   // Aviso anticipado de vencimientos (inventario). 0 = solo vencidos.
   if (expiry_alert_days !== undefined) {
     const n = Number(expiry_alert_days);
@@ -549,6 +562,8 @@ export async function POST(request: Request) {
         "ficha_reminder_enabled",
         "cash_ask_amount",
         "expiry_alert_days",
+        "weight_confirm_mode",
+        "weight_tolerance_pct",
       ].filter((k) => k in payload && msg.includes(k));
       if (droppable.length > 0) {
         for (const k of droppable) delete payload[k];

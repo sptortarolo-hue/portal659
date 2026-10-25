@@ -80,6 +80,13 @@ export type CreateOrderResult = {
   deliveryWindow: string | null;
   /** Canje de giftcard aplicado (0 = sin canje). */
   giftcard_discount?: number;
+  /**
+   * true = el pedido con kg quedó "pendiente de peso" (modo confirmar): el
+   * comercio confirma el peso real y recién ahí se cobra (link MP/transferencia).
+   */
+  weightPending?: boolean;
+  /** Tolerancia % (estimado vs real) configurada por el comercio. */
+  weightTolerancePct?: number;
 };
 
 /** Negocio: el comercio no acepta pedidos online (plan sin carrito). → 403 */
@@ -227,6 +234,19 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
     [vendorId]
   );
 
+  // Modo de cobro de productos pesables (migrate-weight-confirm.sql, tolerante
+  // sin aplicar): 'estimado' = se cobra el declarado (como siempre);
+  // 'confirmar' = el pedido con kg nace pendiente de pago hasta que el
+  // comercio pesa y confirma el total real.
+  const weightCfg = await queryOne<{ weight_confirm_mode: string | null; weight_tolerance_pct: number | null }>(
+    `SELECT weight_confirm_mode, weight_tolerance_pct FROM vendors WHERE id = $1 LIMIT 1`
+  ).catch(() => null);
+  const weightConfirmMode = weightCfg?.weight_confirm_mode === "confirmar" ? "confirmar" : "estimado";
+  const weightTolerancePct =
+    Number.isFinite(Number(weightCfg?.weight_tolerance_pct)) && Number(weightCfg?.weight_tolerance_pct) > 0
+      ? Math.min(100, Math.floor(Number(weightCfg?.weight_tolerance_pct)))
+      : 20;
+
   if (vendorRow) {
     const planRows = await queryMany<Record<string, unknown>>(`SELECT * FROM plans`);
     const plan = resolveVendorPlan(vendorRow as any, planRows as any);
@@ -300,6 +320,7 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
   let resolvedZoneName: string | null = null;
   let resolvedOutOfArea = false;
   let resolvedShipName: string | null = null;
+  let resolvedWeightPending = false;
 
   // Token público del link de seguimiento (/seguimiento/[token]). Se genera
   // acá y viaja en el mensaje de WhatsApp del pedido.
@@ -442,8 +463,15 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
   ).catch(() => null);
   const hasDeadlineCol = deadlineCol?.exists === true;
   const expiryHours = Number((vendorRow as any)?.transfer_expiry_hours) || 0;
+  // Modo "confirmar" + carrito con kg: la transferencia se paga después de que
+  // el comercio pese (total real) → el deadline NO nace al crear; lo sella el
+  // PATCH al confirmar el peso.
+  const incomingHasKg = (items as any[]).some((i) => (i as any)?.unit === "kg");
+  const weightDeferredTransfer =
+    !isPreview && weightConfirmMode === "confirmar" && incomingHasKg &&
+    (paymentMethodFinal === "transferencia" || paymentMethodFinal === "mercadopago");
   const transferDeadlineAt =
-    hasDeadlineCol && !isPreview && paymentMethodFinal === "transferencia" && expiryHours > 0 && expiryHours <= 168
+    hasDeadlineCol && !isPreview && paymentMethodFinal === "transferencia" && !weightDeferredTransfer && expiryHours > 0 && expiryHours <= 168
       ? new Date(Date.now() + expiryHours * 3_600_000).toISOString()
       : null;
 
@@ -455,6 +483,16 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
      ) AS exists`
   ).catch(() => null);
   const hasCashAmountCol = cashAmountCol?.exists === true;
+
+  // Pesables (migrate-weight-confirm.sql, tolerante sin aplicar): snapshot del
+  // estimado + sello de confirmación de peso.
+  const weightCol = await queryOne<{ exists: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1 FROM information_schema.columns
+       WHERE table_name = 'orders' AND column_name = 'weight_estimated_total'
+     ) AS exists`
+  ).catch(() => null);
+  const hasWeightCols = weightCol?.exists === true;
   // Se pide solo en efectivo + delivery, si el comercio no lo apagó. En pruebas
   // (preview) no se exige para no trabar el recorrido, pero se guarda igual.
   const cashAmountRequired =
@@ -476,7 +514,6 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
 
   try {
     await withTransaction(async (tx) => {
-      const paymentStatus = paymentMethodFinal === "transferencia" ? "pending" : "paid";
       const isPickup = method === "pickup";
 
       const pricing = await resolveOrderPricing({
@@ -511,6 +548,20 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
       resolvedShipName = extZoneSelected
         ? extZones.find((z) => z.id === extZoneSelected)?.name ?? null
         : null;
+
+      // MP diferido (modo "confirmar" + carrito con kg): el pedido nace
+      // pendiente de pago; el comercio pesa y después se cobra el total real
+      // (link MP desde el panel/seguimiento). Sin kg o modo estimado: como
+      // siempre. Un pedido de prueba nunca difiere (no se cobra igual).
+      const hasKgItems = resolvedItems.some((i) => (i as any)?.unit === "kg");
+      const deferMpPayment =
+        !isPreview &&
+        weightConfirmMode === "confirmar" &&
+        hasKgItems &&
+        paymentMethodFinal === "mercadopago";
+      resolvedWeightPending = deferMpPayment || weightDeferredTransfer;
+      const paymentStatus =
+        paymentMethodFinal === "transferencia" || deferMpPayment ? "pending" : "paid";
 
       // Canje de giftcard (efectivo/transferencia): sobre el total recién
       // calculado, dentro de la misma tx (si falla se hace rollback de todo).
@@ -580,9 +631,15 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
       const cashAmountCols = hasCashAmountCol ? ", cash_amount" : "";
       const cashAmountVals = hasCashAmountCol ? `, $${nextParam++}` : "";
       const cashAmountParams: unknown[] = hasCashAmountCol ? [cashAmountFinal] : [];
+      // Pesables (migrate-weight-confirm.sql): snapshot del estimado (para la
+      // diferencia que ve el cliente). weight_confirmed_at nace NULL.
+      const weightCols = hasWeightCols && resolvedWeightPending ? ", weight_estimated_total" : "";
+      const weightVals = hasWeightCols && resolvedWeightPending ? `, $${nextParam++}` : "";
+      const weightParams: unknown[] =
+        hasWeightCols && resolvedWeightPending ? [Math.round(resolvedTotal * 100) / 100] : [];
       const rows = await tx.query<{ id: string }>(
-        `INSERT INTO orders (vendor_id, customer_id, customer_name, customer_phone, customer_address, method, payment_method, items, total, status, notes, device_id, payment_status, pickup_number, cash_pct, cash_discount, track_token${volumeCols}${zoneCols}${shipCols}${windowCols}${previewCols}${giftcardCols}${deadlineCols}${cashAmountCols})
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'new', $10, $11, $12, $13, $14, $15, $16${volumeVals}${zoneVals}${shipVals}${windowVals}${previewVals}${giftcardVals}${deadlineVals}${cashAmountVals})
+        `INSERT INTO orders (vendor_id, customer_id, customer_name, customer_phone, customer_address, method, payment_method, items, total, status, notes, device_id, payment_status, pickup_number, cash_pct, cash_discount, track_token${volumeCols}${zoneCols}${shipCols}${windowCols}${previewCols}${giftcardCols}${deadlineCols}${cashAmountCols}${weightCols})
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'new', $10, $11, $12, $13, $14, $15, $16${volumeVals}${zoneVals}${shipVals}${windowVals}${previewVals}${giftcardVals}${deadlineVals}${cashAmountVals}${weightVals})
          RETURNING id`,
         [
           vendorId,
@@ -609,6 +666,7 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
           ...giftcardParams,
           ...deadlineParams,
           ...cashAmountParams,
+          ...weightParams,
         ]
       );
       orderId = rows[0]?.id;
@@ -653,7 +711,7 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
           [
             vendor.user_id,
             "Nuevo pedido recibido",
-            `${isPreview ? "🧪 [PRUEBA] " : ""}Nro. ${pickupNumber} · ${customerName} hizo un pedido de ${resolvedItemsCount} producto${resolvedItemsCount > 1 ? "s" : ""} por $${resolvedTotal.toLocaleString("es-AR")} · ${paymentLabel}${abonaLabel}`,
+            `${isPreview ? "🧪 [PRUEBA] " : ""}${resolvedWeightPending ? "⚖️ Pendiente de peso · " : ""}Nro. ${pickupNumber} · ${customerName} hizo un pedido de ${resolvedItemsCount} producto${resolvedItemsCount > 1 ? "s" : ""} por $${resolvedTotal.toLocaleString("es-AR")} · ${paymentLabel}${abonaLabel}`,
             "order",
             "/vendor/dashboard",
           ]
@@ -690,8 +748,8 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
         ? ` · abona $${cashAmountFinal.toLocaleString("es-AR")} (vuelto $${Math.max(0, Math.round((cashAmountFinal - resolvedTotal) * 100) / 100).toLocaleString("es-AR")})`
         : "";
     void sendPushToUser(vendor.user_id, {
-      title: `${isPreview ? "🧪 " : "🛎️ "}Pedido nuevo #${pickupNumber} · $${resolvedTotal.toLocaleString("es-AR")}`,
-      body: `${customerName} · ${resolvedItemsCount} producto${resolvedItemsCount !== 1 ? "s" : ""} · ${paymentLabel}${abonaLabel}`,
+      title: `${isPreview ? "🧪 " : resolvedWeightPending ? "⚖️ " : "🛎️ "}Pedido nuevo #${pickupNumber} · $${resolvedTotal.toLocaleString("es-AR")}`,
+      body: `${customerName} · ${resolvedItemsCount} producto${resolvedItemsCount !== 1 ? "s" : ""} · ${paymentLabel}${abonaLabel}${resolvedWeightPending ? " · pesá y confirmá el total real" : ""}`,
       link: "/vendor/dashboard",
       // Tag único por pedido: no colapsa con otros y renotify hace que
       // cada pedido suene/vibre aunque haya notificaciones visibles.
@@ -728,5 +786,5 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
     }
   }
 
-  return { orderId, total: resolvedTotal, items: resolvedItems, pickupNumber, cashDiscount: resolvedCashDiscount, cashPct: resolvedCashPct, volumeDiscount: resolvedVolumeDiscount, volumeApplied: resolvedVolumeApplied, trackToken, deliveryFee: resolvedDeliveryFee, deliveryZoneName: resolvedZoneName, deliveryOutOfArea: resolvedOutOfArea, shippingZoneName: resolvedShipName, deliveryWindow: resolvedWindow, giftcard_discount: giftcardApplied };
+  return { orderId, total: resolvedTotal, items: resolvedItems, pickupNumber, cashDiscount: resolvedCashDiscount, cashPct: resolvedCashPct, volumeDiscount: resolvedVolumeDiscount, volumeApplied: resolvedVolumeApplied, trackToken, deliveryFee: resolvedDeliveryFee, deliveryZoneName: resolvedZoneName, deliveryOutOfArea: resolvedOutOfArea, shippingZoneName: resolvedShipName, deliveryWindow: resolvedWindow, giftcard_discount: giftcardApplied, weightPending: resolvedWeightPending, weightTolerancePct };
 }

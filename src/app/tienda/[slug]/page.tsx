@@ -663,6 +663,9 @@ export default async function TiendaPage({
         .includes("Efectivo") && Number(v.cash_discount_pct) > 0
         ? Number(v.cash_discount_pct)
         : null,
+    // Pesables: múltiplo de venta y peso mínimo (0/NULL = libre/sin mínimo).
+    weightStepKg: Number((v as any).weight_step_kg) > 0 ? Number((v as any).weight_step_kg) : null,
+    weightMinKg: Number((v as any).weight_min_kg) > 0 ? Number((v as any).weight_min_kg) : null,
     volumeGroups,
   };
   const waNumber = (v.whatsapp || "").replace(/[^0-9]/g, "");

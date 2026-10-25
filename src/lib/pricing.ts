@@ -15,6 +15,7 @@ import {
   type VolumeLineInput,
 } from "@/lib/volume-pricing";
 import { resolveComboMembers, type ComboDefRow, type ComboVariantRow } from "@/lib/combo-server";
+import { readWeightRules, weightError, type WeightRules } from "@/lib/weight-rules";
 import type { ComboMemberRow } from "@/lib/combo";
 
 /** Interfaz mínima: sirve la Tx de withTransaction o un wrapper de queryMany. */
@@ -127,6 +128,12 @@ export async function resolveOrderPricing(opts: {
   paymentMethod?: string | null;
   /** % de descuento en efectivo del comercio (0/NULL = sin descuento). */
   cashDiscountPct?: number | null;
+  /**
+   * true = omitir las reglas de peso (paso/mínimo) del comercio: solo el
+   * COMERCIO edita el peso real del pedido (PATCH vendor, modo "confirmar") y
+   * la balanza manda. Los pedidos del cliente siempre se validan.
+   */
+  skipWeightRules?: boolean;
 }): Promise<ResolvedPricing> {
   const { tx, vendorId, method } = opts;
   const cashPct = normalizeCashPct(opts.cashDiscountPct);
@@ -336,16 +343,39 @@ export async function resolveOrderPricing(opts: {
   const outItems: OrderItem[] = [];
   let subtotal = 0;
 
+  // Reglas de peso del comercio (múltiplo + mínimo; tolerante a migración sin
+  // aplicar: cualquier fallo = libre, como hasta hoy). Solo aplican a los
+  // pedidos del cliente: el comercio editando el peso real manda la balanza.
+  const weightRules: WeightRules = opts.skipWeightRules
+    ? { step: 0, min: 0 }
+    : await (async () => {
+        try {
+          const row = await tx.query<{ weight_step_kg: number | null; weight_min_kg: number | null }>(
+            `SELECT weight_step_kg, weight_min_kg FROM vendors WHERE id = $1 LIMIT 1`,
+            [vendorId]
+          );
+          return readWeightRules(row[0]?.weight_step_kg, row[0]?.weight_min_kg);
+        } catch {
+          return { step: 0, min: 0 };
+        }
+      })();
+
   for (const it of opts.items) {
     if (!it) continue;
 
     const qty = Number(it.qty);
     // Por peso: kilos decimales (0 < kg <= 99), sin piso entero ni pack.
     const isKg = !it.variantId && (productById.get(String(it.offerId)) as any)?.unit === "kg";
+    const kgName = (productById.get(String(it.offerId)) as any)?.name || "el producto";
     const qtySafe = isKg
       ? Number.isFinite(qty) && qty > 0 && qty <= 99
-        ? Math.round(qty * 1000) / 1000
-        : (() => { throw new PricingError(`Indicá el peso en kilos de "${(productById.get(String(it.offerId)) as any)?.name || "el producto"}".`); })()
+        ? (() => {
+            if (opts.skipWeightRules) return Math.round(qty * 1000) / 1000;
+            const err = weightError(qty, weightRules, kgName);
+            if (err) throw new PricingError(err);
+            return Math.round(qty * 1000) / 1000;
+          })()
+        : (() => { throw new PricingError(`Indicá el peso en kilos de "${kgName}".`); })()
       : Number.isFinite(qty) ? Math.min(99, Math.max(1, Math.floor(qty))) : 1;
 
     let product: ProductRow | undefined;

@@ -144,6 +144,13 @@ export default function DashboardComercio({
   const [weightTolerance, setWeightTolerance] = useState(
     (vendor as any)?.weight_tolerance_pct != null ? String((vendor as any).weight_tolerance_pct) : "20"
   );
+  // Múltiplo de venta (0 = libre) y peso mínimo (kg).
+  const [weightStep, setWeightStep] = useState(
+    Number((vendor as any)?.weight_step_kg) > 0 ? String(Number((vendor as any).weight_step_kg)) : ""
+  );
+  const [weightMin, setWeightMin] = useState(
+    Number((vendor as any)?.weight_min_kg) > 0 ? String(Number((vendor as any).weight_min_kg)) : ""
+  );
   const [cashDiscount, setCashDiscount] = useState(
     vendor?.cash_discount_pct != null ? String(vendor.cash_discount_pct) : ""
   );
@@ -177,6 +184,8 @@ export default function DashboardComercio({
       setStorefrontLayout(vendor.storefront_layout === "vidriera" ? "vidriera" : "lista");
     setWeightMode((vendor as any)?.weight_confirm_mode === "confirmar" ? "confirmar" : "estimado");
     setWeightTolerance((vendor as any)?.weight_tolerance_pct != null ? String((vendor as any).weight_tolerance_pct) : "20");
+    setWeightStep(Number((vendor as any)?.weight_step_kg) > 0 ? String(Number((vendor as any).weight_step_kg)) : "");
+    setWeightMin(Number((vendor as any)?.weight_min_kg) > 0 ? String(Number((vendor as any).weight_min_kg)) : "");
     setCashDiscount(vendor.cash_discount_pct != null ? String(vendor.cash_discount_pct) : "");
     setCashAsk(vendor.cash_ask_amount !== false);
   }, [vendor]);
@@ -751,6 +760,51 @@ export default function DashboardComercio({
                   </span>
                 </div>
               )}
+              <div className="flex flex-wrap items-center gap-2">
+                <Label className="text-xs whitespace-nowrap">Múltiplo de venta:</Label>
+                <select
+                  value={weightStep === "" ? "libre" : weightStep}
+                  onChange={async (e) => {
+                    const raw = e.target.value === "libre" ? "" : e.target.value;
+                    setWeightStep(raw);
+                    await saveVendor({ weight_step_kg: raw === "" ? null : Number(raw) });
+                  }}
+                  className="h-8 rounded-md border border-input bg-background px-2 text-sm"
+                  aria-label="Múltiplo de venta en kilos"
+                >
+                  <option value="libre">Libre (cualquier peso)</option>
+                  <option value="0.5">De a medio kilo</option>
+                  <option value="0.25">De a cuarto de kilo</option>
+                </select>
+                <div className="flex items-center gap-1.5">
+                  <Label className="text-xs whitespace-nowrap">Peso mínimo:</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.05"
+                    value={weightMin === "" ? "" : String(Number(weightMin) * 1000)}
+                    onChange={(e) => setWeightMin(e.target.value === "" ? "" : String(Math.max(0, Number(e.target.value)) / 1000))}
+                    onBlur={async () => {
+                      const grams = Number(weightMin === "" ? "" : weightMin) * 1000;
+                      if (weightMin === "" || !(grams > 0)) {
+                        setWeightMin("");
+                        await saveVendor({ weight_min_kg: null });
+                      } else {
+                        const kg = Math.min(50, Math.max(0.001, Math.round(grams) / 1000));
+                        setWeightMin(String(kg));
+                        await saveVendor({ weight_min_kg: kg });
+                      }
+                    }}
+                    className="h-8 w-20 text-sm"
+                    aria-label="Peso mínimo de venta en gramos"
+                  />
+                  <span className="text-xs text-muted-foreground">g</span>
+                </div>
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                El múltiplo y el mínimo acotan lo que puede cargar el cliente en el micrositio (con chips de
+                medio kilo / 1 kg). El peso real que pesás en el mostrador o al confirmar no se limita.
+              </p>
             </div>
           )}
           <CategoryManager

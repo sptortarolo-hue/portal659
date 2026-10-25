@@ -177,6 +177,8 @@ export async function POST(request: Request) {
     expiry_alert_days,
     weight_confirm_mode,
     weight_tolerance_pct,
+    weight_step_kg,
+    weight_min_kg,
   } = body;
 
   // Limpia y valida delivery_extra_days. Devuelve el objeto podado o false
@@ -496,6 +498,29 @@ export async function POST(request: Request) {
     }
     payload.weight_tolerance_pct = Math.floor(n);
   }
+  // Pesables: múltiplo de venta (0 = libre; 0.25 o 0.5) y peso mínimo (kg).
+  if (weight_step_kg !== undefined) {
+    if (weight_step_kg === null || weight_step_kg === "" || weight_step_kg === 0) {
+      payload.weight_step_kg = null;
+    } else {
+      const s = Number(weight_step_kg);
+      if (!Number.isFinite(s) || s <= 0 || s > 1) {
+        return NextResponse.json({ error: "El múltiplo debe ser 0,25 kg, 0,5 kg o libre" }, { status: 400 });
+      }
+      payload.weight_step_kg = Math.round(s * 1000) / 1000;
+    }
+  }
+  if (weight_min_kg !== undefined) {
+    if (weight_min_kg === null || weight_min_kg === "" || weight_min_kg === 0) {
+      payload.weight_min_kg = null;
+    } else {
+      const m = Number(weight_min_kg);
+      if (!Number.isFinite(m) || m < 0.001 || m > 50) {
+        return NextResponse.json({ error: "El peso mínimo debe estar entre 0,001 kg y 50 kg" }, { status: 400 });
+      }
+      payload.weight_min_kg = Math.round(m * 1000) / 1000;
+    }
+  }
   // Aviso anticipado de vencimientos (inventario). 0 = solo vencidos.
   if (expiry_alert_days !== undefined) {
     const n = Number(expiry_alert_days);
@@ -564,6 +589,8 @@ export async function POST(request: Request) {
         "expiry_alert_days",
         "weight_confirm_mode",
         "weight_tolerance_pct",
+        "weight_step_kg",
+        "weight_min_kg",
       ].filter((k) => k in payload && msg.includes(k));
       if (droppable.length > 0) {
         for (const k of droppable) delete payload[k];

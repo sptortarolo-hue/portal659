@@ -89,6 +89,10 @@ export type CartVendor = {
   deliveryZones?: { id: string; name: string; description: string | null; fee: number }[];
   /** % de descuento en efectivo del comercio (visual en checkout). */
   cashDiscountPct?: number | null;
+  /** Pesables: múltiplo de venta en kg (0/NULL = libre). */
+  weightStepKg?: number | null;
+  /** Pesables: peso mínimo de venta en kg (0/NULL = sin mínimo). */
+  weightMinKg?: number | null;
   /** Reglas de volumen (espejo visual). */
   volumeGroups?: CartVolumeGroup[];
 };
@@ -138,6 +142,8 @@ function loadCart(): CartState {
               deliveryAreaText: parsed.vendor.deliveryAreaText ?? null,
               deliveryZones: Array.isArray(parsed.vendor.deliveryZones) ? parsed.vendor.deliveryZones : undefined,
               cashDiscountPct: parsed.vendor.cashDiscountPct ?? null,
+              weightStepKg: parsed.vendor.weightStepKg ?? null,
+              weightMinKg: parsed.vendor.weightMinKg ?? null,
               volumeGroups: Array.isArray(parsed.vendor.volumeGroups) ? parsed.vendor.volumeGroups : undefined,
             }
           : null,

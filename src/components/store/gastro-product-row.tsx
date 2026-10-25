@@ -6,6 +6,7 @@ import { AddToCartButton } from "@/components/offers/add-to-cart-button";
 import { ProductImage } from "@/components/product-image";
 import { CashPrice } from "@/components/store/cash-price";
 import { cashAppliesToItem, cashPrice, normalizeCashPct } from "@/lib/cash-discount";
+import { isValidWeight, readWeightRules, weightChips, weightError, weightStepLabel } from "@/lib/weight-rules";
 import { useCart, type CartModifier, type CartVolumeGroup } from "@/lib/cart";
 import { useToast } from "@/lib/toast";
 import { volumeBadgeText, volumeGroupColor } from "@/lib/volume-pricing";
@@ -39,6 +40,10 @@ type VendorBrief = {
   deliveryFee?: number | null;
   freeDeliveryMin?: number | null;
   cashDiscountPct?: number | null;
+  /** Pesables: múltiplo de venta en kg (0/NULL = libre). */
+  weightStepKg?: number | null;
+  /** Pesables: peso mínimo de venta en kg (0/NULL = sin mínimo). */
+  weightMinKg?: number | null;
   volumeGroups?: CartVolumeGroup[];
   deliveryMode?: "flat" | "zones" | null;
   deliveryAreaText?: string | null;
@@ -222,9 +227,13 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
       : null;
   const showDesde = desdeRange != null && desdeRange.max !== desdeRange.min;
   const singleTotal = desdeRange != null && desdeRange.max === desdeRange.min ? desdeRange.min : null;
-  // Por peso: el cliente indica los kilos (acepta coma decimal).
+  // Por peso: el cliente indica los kilos (acepta coma decimal), respetando
+  // el paso y el mínimo del comercio (migrate-weight-step; sin ella = libre).
   const kgNum = isKg ? Number(String(kg).replace(",", ".")) : NaN;
-  const kgOk = isKg ? Number.isFinite(kgNum) && kgNum > 0 && kgNum <= 99 : true;
+  const weightRules = isKg ? readWeightRules(vendor.weightStepKg, vendor.weightMinKg) : { step: 0, min: 0 };
+  const kgOk = isKg ? isValidWeight(kgNum, weightRules) : true;
+  const kgErr = isKg && !kgOk && String(kg).trim() !== "" ? weightError(kgNum, weightRules, product.name) : null;
+  const kgPlaceholder = weightRules.step > 0 ? String(weightRules.step).replace(".", ",") : weightRules.min > 0 ? String(weightRules.min).replace(".", ",") : "0,5";
   const grandTotal = isKg ? unitTotal * (kgOk ? kgNum : 0) : unitTotal * qty;
 
   const allRequiredMet = modifiers
@@ -399,25 +408,46 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
         {!outStock &&
           (acceptsCart ? (
             isKg ? (
-              <div className="flex items-center gap-1.5">
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  value={kg}
-                  onChange={(e) => setKg(e.target.value)}
-                  placeholder="0,5"
-                  className="w-20 h-9 px-2 text-sm text-center tabular-nums rounded-md border border-input bg-background"
-                  aria-label={`Peso en kilos de ${product.name}`}
-                />
-                <span className="text-xs text-muted-foreground">kg</span>
-                <button
-                  type="button"
-                  onClick={() => { if (kgOk) handleAdd(); }}
-                  disabled={!kgOk}
-                  className="rounded-md px-3 py-1.5 text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-                >
-                  Agregar · ${grandTotal.toLocaleString("es-AR")}
-                </button>
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={kg}
+                    onChange={(e) => setKg(e.target.value)}
+                    placeholder={kgPlaceholder}
+                    className="w-20 h-9 px-2 text-sm text-center tabular-nums rounded-md border border-input bg-background"
+                    aria-label={`Peso en kilos de ${product.name}`}
+                  />
+                  <span className="text-xs text-muted-foreground">kg</span>
+                  <button
+                    type="button"
+                    onClick={() => { if (kgOk) handleAdd(); }}
+                    disabled={!kgOk}
+                    className="rounded-md px-3 py-1.5 text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                  >
+                    Agregar · ${grandTotal.toLocaleString("es-AR")}
+                  </button>
+                </div>
+                {(weightRules.step > 0 || weightRules.min > 0) && (
+                  <div className="flex flex-wrap items-center gap-1">
+                    {weightChips(weightRules.step).map((w) => (
+                      <button
+                        key={w}
+                        type="button"
+                        onClick={() => setKg(String(w).replace(".", ","))}
+                        className="rounded-full border border-border bg-muted/50 px-2 py-0.5 text-[10px] font-medium text-muted-foreground hover:bg-muted transition-colors"
+                      >
+                        {Number.isInteger(w) ? `${w} kg` : `${String(w).replace(".", ",")} kg`}
+                      </button>
+                    ))}
+                    <span className="text-[10px] text-muted-foreground">
+                      {weightRules.step > 0 ? weightStepLabel(weightRules.step) : ""}
+                      {weightRules.step > 0 && weightRules.min > 0 ? " · " : ""}
+                      {weightRules.min > 0 ? `mínimo ${(weightRules.min * 1000).toLocaleString("es-AR", { maximumFractionDigits: 3 })} g` : ""}
+                    </span>
+                  </div>
+                )}
               </div>
             ) : (
               <AddToCartButton offerId={product.id} name={product.name} price={baseUnit} vendor={vendor} modifiers={modifiers} cashExcluded={cashExcluded} origPrice={pack > 1 ? Number(product.price) : listBaseUnit} hasPromo={hasPromo} packSize={pack > 1 ? pack : undefined} packPrice={pack > 1 ? basePrice : undefined} />
@@ -786,7 +816,7 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
                           inputMode="decimal"
                           value={kg}
                           onChange={(e) => setKg(e.target.value)}
-                          placeholder="0,5"
+                          placeholder={kgPlaceholder}
                           className="w-24 h-9 px-2 text-sm text-center tabular-nums rounded-lg border border-input bg-background"
                           aria-label={`Peso en kilos de ${product.name}`}
                         />
@@ -825,6 +855,26 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
                     Agregar al pedido · ${grandTotal.toLocaleString("es-AR")}
                     {modifiers.length > 0 && !allRequiredMet && ` (te ${totalMissing === 1 ? "falta 1" : `faltan ${totalMissing}`})`}
                   </button>
+                  {isKg && (weightRules.step > 0 || weightRules.min > 0) && (
+                    <div className="flex flex-wrap items-center gap-1">
+                      {weightChips(weightRules.step).map((w) => (
+                        <button
+                          key={w}
+                          type="button"
+                          onClick={() => setKg(String(w).replace(".", ","))}
+                          className="rounded-full border border-border bg-muted/50 px-2 py-0.5 text-[10px] font-medium text-muted-foreground hover:bg-muted transition-colors"
+                        >
+                          {Number.isInteger(w) ? `${w} kg` : `${String(w).replace(".", ",")} kg`}
+                        </button>
+                      ))}
+                      <span className="text-[10px] text-muted-foreground">
+                        {weightRules.step > 0 ? weightStepLabel(weightRules.step) : ""}
+                        {weightRules.step > 0 && weightRules.min > 0 ? " · " : ""}
+                        {weightRules.min > 0 ? `mínimo ${(weightRules.min * 1000).toLocaleString("es-AR", { maximumFractionDigits: 3 })} g` : ""}
+                      </span>
+                    </div>
+                  )}
+                  {kgErr && <p className="text-[11px] text-red-600">{kgErr}</p>}
                 </>
               ) : (
                 <a href={consultHref} target="_blank" rel="noopener noreferrer" className="block w-full rounded-xl bg-primary text-primary-foreground text-center text-sm font-medium py-3 hover:bg-primary/90 transition-colors">

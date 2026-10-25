@@ -497,6 +497,8 @@ export async function PATCH(
           freeDeliveryMin: fullVendor?.free_delivery_min,
           paymentMethod: currentOrder.payment_method,
           cashDiscountPct: fullVendor?.cash_discount_pct ?? null,
+          // El comercio edita el peso real: la balanza manda, sin paso/mínimo.
+          skipWeightRules: true,
         });
         updateData.items = JSON.stringify(pricing.items);
         updateData.total = pricing.total;

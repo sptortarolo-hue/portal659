@@ -96,6 +96,8 @@ export default async function CartaPage({ params }: { params: Promise<{ slug: st
         .includes("Efectivo") && Number(v.cash_discount_pct) > 0
         ? Number(v.cash_discount_pct)
         : null,
+    weightStepKg: Number((v as any).weight_step_kg) > 0 ? Number((v as any).weight_step_kg) : null,
+    weightMinKg: Number((v as any).weight_min_kg) > 0 ? Number((v as any).weight_min_kg) : null,
     volumeGroups: [],
   };
 

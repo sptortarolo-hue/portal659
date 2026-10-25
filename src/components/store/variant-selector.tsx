@@ -25,6 +25,10 @@ type Props = {
     deliveryFee?: number | null;
     freeDeliveryMin?: number | null;
     cashDiscountPct?: number | null;
+    /** Pesables: múltiplo de venta en kg (0/NULL = libre). */
+    weightStepKg?: number | null;
+    /** Pesables: peso mínimo de venta en kg (0/NULL = sin mínimo). */
+    weightMinKg?: number | null;
     deliveryMode?: "flat" | "zones" | null;
     deliveryAreaText?: string | null;
     deliveryZones?: { id: string; name: string; description: string | null; fee: number }[];
@@ -105,7 +109,7 @@ export function VariantSelector({ productId, name, variants, vendor, stockContro
     // Promo de la línea: por variante o por opción en promo (igual que gastro).
     const promoLine = c.promo != null || selectionHasPromo(modifiers, mods);
     const switched = addItem(
-      { id: vendor.id, slug: vendor.slug, storeName: vendor.storeName, whatsapp: vendor.whatsapp, vertical: vendor.vertical, deliveryFee: vendor.deliveryFee ?? null, freeDeliveryMin: vendor.freeDeliveryMin ?? null, cashDiscountPct: vendor.cashDiscountPct ?? null, deliveryMode: vendor.deliveryMode ?? null, deliveryAreaText: vendor.deliveryAreaText ?? null, deliveryZones: vendor.deliveryZones },
+      { id: vendor.id, slug: vendor.slug, storeName: vendor.storeName, whatsapp: vendor.whatsapp, vertical: vendor.vertical, deliveryFee: vendor.deliveryFee ?? null, freeDeliveryMin: vendor.freeDeliveryMin ?? null, cashDiscountPct: vendor.cashDiscountPct ?? null, weightStepKg: vendor.weightStepKg ?? null, weightMinKg: vendor.weightMinKg ?? null, deliveryMode: vendor.deliveryMode ?? null, deliveryAreaText: vendor.deliveryAreaText ?? null, deliveryZones: vendor.deliveryZones },
       { offerId: productId, variantId: c.id, name, price: price!, qty: n, modifiers: mods, hasPromo: promoLine, cashExcluded: promoLine && cashExcluded, image: image ?? null }
     );
     addToast(n > 1 ? `${name}${dimSuffix(c.color, c.talle)} agregado × ${n} al carrito` : `${name}${dimSuffix(c.color, c.talle)} agregado al carrito`);

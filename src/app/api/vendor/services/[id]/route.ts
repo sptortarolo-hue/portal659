@@ -80,35 +80,53 @@ export async function PATCH(
     priceToVal = n;
   }
   if (priceFromVal !== undefined || priceToVal !== undefined) {
-    let baseFrom = priceFromVal;
-    if (baseFrom === undefined) {
-      const cur = await queryOne<{ price_from: number | null }>(
-        `SELECT price_from FROM services WHERE vendor_id = $1 AND id = $2 LIMIT 1`,
-        [vendor.id, id]
-      ).catch(() => null);
-      baseFrom = cur?.price_from != null ? Number(cur.price_from) : null;
-    }
-    if (priceToVal != null && (baseFrom == null || priceToVal <= baseFrom)) {
-      return NextResponse.json(
-        { error: baseFrom == null ? "Para la banda cargá primero el 'desde'" : "El precio 'hasta' debe ser mayor que el 'desde'" },
-        { status: 400 }
-      );
-    }
-    if (priceFromVal !== undefined) {
-      sets.push(`price_from = $${idx++}`);
-      vals.push(priceFromVal);
-      if (priceFromVal !== null) {
-        // El fijo y el "desde" son excluyentes.
-        sets.push(`price = NULL`);
-        if (priceToVal === undefined) sets.push(`price_to = NULL`);
-      } else {
-        // Sin "desde": limpia también la banda.
-        sets.push(`price_to = NULL`);
+    // Sin las columnas (migración sin aplicar) no se puede persistir "desde".
+    // Si el panel pide un valor real, avisar con la migración correcta; si
+    // sólo limpia, la edición sigue sin tocar esas columnas.
+    const hasFromCols = await queryOne<{ exists: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1 FROM information_schema.columns
+         WHERE table_name = 'services' AND column_name = 'price_from'
+       ) AS exists`
+    );
+    if (hasFromCols?.exists !== true) {
+      if (priceFromVal != null || priceToVal != null) {
+        return NextResponse.json(
+          { error: "Falta aplicar la migración migrate-service-price-from.sql en la base" },
+          { status: 503 }
+        );
       }
-    }
-    if (priceToVal !== undefined && priceFromVal === undefined) {
-      sets.push(`price_to = $${idx++}`);
-      vals.push(priceToVal);
+    } else {
+      let baseFrom = priceFromVal;
+      if (baseFrom === undefined) {
+        const cur = await queryOne<{ price_from: number | null }>(
+          `SELECT price_from FROM services WHERE vendor_id = $1 AND id = $2 LIMIT 1`,
+          [vendor.id, id]
+        ).catch(() => null);
+        baseFrom = cur?.price_from != null ? Number(cur.price_from) : null;
+      }
+      if (priceToVal != null && (baseFrom == null || priceToVal <= baseFrom)) {
+        return NextResponse.json(
+          { error: baseFrom == null ? "Para la banda cargá primero el 'desde'" : "El precio 'hasta' debe ser mayor que el 'desde'" },
+          { status: 400 }
+        );
+      }
+      if (priceFromVal !== undefined) {
+        sets.push(`price_from = $${idx++}`);
+        vals.push(priceFromVal);
+        if (priceFromVal !== null) {
+          // El fijo y el "desde" son excluyentes.
+          sets.push(`price = NULL`);
+          if (priceToVal === undefined) sets.push(`price_to = NULL`);
+        } else {
+          // Sin "desde": limpia también la banda.
+          sets.push(`price_to = NULL`);
+        }
+      }
+      if (priceToVal !== undefined && priceFromVal === undefined) {
+        sets.push(`price_to = $${idx++}`);
+        vals.push(priceToVal);
+      }
     }
   }
   if (body.commission_pct !== undefined) {
@@ -194,7 +212,7 @@ export async function PATCH(
     return NextResponse.json({ service: row });
   } catch {
     return NextResponse.json(
-      { error: "Falta aplicar la migración migrate-estetica.sql (o migrate-estetica-commissions.sql para precio/comisión, migrate-estetica-require-deposit.sql para seña obligatoria) en la base" },
+      { error: "Falta aplicar una migración en la base: migrate-estetica.sql, o alguna de migrate-estetica-commissions.sql (precio/comisión), migrate-estetica-require-deposit.sql (seña obligatoria), migrate-estetica-service-photo.sql (foto), migrate-estetica-service-menu.sql (categoría) o migrate-service-price-from.sql (precio 'desde')" },
       { status: 503 }
     );
   }

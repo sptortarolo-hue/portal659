@@ -65,6 +65,23 @@ export async function POST(request: Request) {
   if (priceTo !== null && (!Number.isFinite(priceTo) || (priceFrom !== null && priceTo <= priceFrom))) {
     return NextResponse.json({ error: "El precio 'hasta' debe ser mayor que el 'desde'" }, { status: 400 });
   }
+  // Sin las columnas (migración sin aplicar) no se puede crear el servicio
+  // con precio "desde": avisar ANTES de insertar (si no, el servicio quedaría
+  // guardado sin ningún precio en silencio).
+  if (priceFrom !== null || priceTo !== null) {
+    const hasFromCols = await queryOne<{ exists: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1 FROM information_schema.columns
+         WHERE table_name = 'services' AND column_name = 'price_from'
+       ) AS exists`
+    );
+    if (hasFromCols?.exists !== true) {
+      return NextResponse.json(
+        { error: "Falta aplicar la migración migrate-service-price-from.sql en la base" },
+        { status: 503 }
+      );
+    }
+  }
   const effectivePrice = priceFrom !== null ? null : price;
   const commRaw = body.commission_pct;
   const commissionPct = commRaw == null || commRaw === "" ? null : Number(commRaw);

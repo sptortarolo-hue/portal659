@@ -515,7 +515,7 @@ export default async function TiendaPage({
   const isEstetica = v.vertical === "estetica";
   // Catálogo de servicios + profesionales (estética): turnera por servicio
   // con duración y agenda por profesional. Tolerante a migración sin aplicar.
-  let esteticaServices: { id: string; name: string; deposit_amount: number | null; duration_min: number | null; price: number | null; require_deposit: boolean | null; deposit_hours: number | null; image_url: string | null; category: string | null; description: string | null }[] = [];
+  let esteticaServices: { id: string; name: string; deposit_amount: number | null; duration_min: number | null; price: number | null; price_from: number | null; price_to: number | null; require_deposit: boolean | null; deposit_hours: number | null; image_url: string | null; category: string | null; description: string | null }[] = [];
   let esteticaStaff: { id: string; name: string; photo_url: string | null; bio: string | null }[] = [];
   let esteticaLocations: { id: string; name: string; address: string | null }[] = [];
   let esteticaPacks: { id: string; name: string; sessions_total: number | null; price: number | null }[] = [];
@@ -539,7 +539,7 @@ export default async function TiendaPage({
   if (isEstetica) {
     try {
       const srows = await queryMany<any>(
-        `SELECT id, name, deposit_amount, duration_min, price, require_deposit, deposit_hours, image_url, category, description FROM services WHERE vendor_id = $1 AND active = true ORDER BY position ASC, name ASC`,
+        `SELECT id, name, deposit_amount, duration_min, price, price_from, price_to, require_deposit, deposit_hours, image_url, category, description FROM services WHERE vendor_id = $1 AND active = true ORDER BY position ASC, name ASC`,
         [v.id]
       ).catch(() =>
         queryMany<any>(
@@ -568,6 +568,8 @@ export default async function TiendaPage({
         deposit_amount: s.deposit_amount != null ? Number(s.deposit_amount) : null,
         duration_min: s.duration_min != null ? Number(s.duration_min) : null,
         price: s.price != null ? Number(s.price) : null,
+        price_from: s.price_from != null ? Number(s.price_from) : null,
+        price_to: s.price_to != null ? Number(s.price_to) : null,
         require_deposit: s.require_deposit === true,
         deposit_hours: s.deposit_hours != null ? Number(s.deposit_hours) : null,
         image_url: typeof s.image_url === "string" && s.image_url ? s.image_url : null,

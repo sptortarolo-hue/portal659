@@ -80,6 +80,14 @@ export default function ComercioPage() {
             <span className="font-medium">Configuración → Balanza</span>. Si tu balanza no envía
             sola, apretá su tecla Imprimir/Enviar mientras el portal lee.
           </p>
+          <p className="mb-3">
+            Con <span className="font-medium">lector de código de barras</span> no hace
+            falta hacer clic: leé el código y el producto se agrega solo, y volver a leer
+            el mismo código <span className="font-medium">suma cantidades</span>. Funciona
+            incluso si la lectura cae mientras estás en otro campo (kilos, cliente,
+            notas). Los productos con variantes o modificadores abren su selector para
+            elegir; un código que no existe sólo muestra un aviso.
+          </p>
           <Captura base="comercio-mostrador-grid" alt="Mostrador del comercio" />
         </div>
 

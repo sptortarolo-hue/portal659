@@ -598,9 +598,20 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
     }
     return null;
   }
-  function submitCodeSearch() {
-    const q = query.trim().toLowerCase();
-    if (!q) return;
+  /**
+   * Resuelve un código leído (escáner) o tipeado (buscador).
+   * - SKU exacto del producto → add() (suma cantidad si la línea ya existe).
+   * - SKU exacto de una variante → elige variante (picker si hace falta).
+   * - Nombre único → add().
+   * - Sin match: desde escáner, aviso simple sin popup (el alta rápida sigue
+   *   disponible tipeando a mano); desde el buscador, alta rápida como siempre.
+   */
+  function resolveScanCode(code: string, fromScan: boolean) {
+    const q = code.trim().toLowerCase();
+    if (!q) {
+      searchRef.current?.focus();
+      return;
+    }
     const hit = products.find((p) => ((p as any).sku || "").toLowerCase() === q && p.available !== false);
     if (hit) {
       add(hit);
@@ -627,9 +638,19 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
       searchRef.current?.focus();
       return;
     }
-    // Sin coincidencia única: ofrecer crear el producto pre-llenado.
-    openQuickCreate(/^\d+$/.test(q) ? { sku: q } : { name: query.trim() });
+    if (fromScan) {
+      setMsg(`Código «${code.trim()}» no encontrado`);
+      searchRef.current?.focus();
+      return;
+    }
+    // Sin coincidencia única (tipeo manual): ofrecer crear el producto pre-llenado.
+    openQuickCreate(/^\d+$/.test(q) ? { sku: q } : { name: code.trim() });
   }
+  function submitCodeSearch() {
+    resolveScanCode(query, false);
+  }
+  // El listener global de escáner (montado con deps []) llama siempre a la
+  // versión actual del resolver (catálogo fresco), no a la del montaje.
 
   /** Elegir un cliente: trae nombre + dirección con el teléfono,
     colapsa el bloque y sigue la venta (foco en lo siguiente útil). */
@@ -1187,6 +1208,109 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
   const chargeFnRef = useRef(charge);
   chargeFnRef.current = charge;
   const lastEnterRef = useRef(0);
+
+  // ── Escáner de código de barras "manos libres" ────────────────────────────
+  // Un lector USB "tipea" el código y manda Enter a una velocidad que un
+  // humano no alcanza. Si el foco NO está en el buscador (quedó en el input
+  // de kilos, en el buscador de cliente, en notas o en el body), el scan se
+  // perdería: este listener captura la ráfaga y la resuelve igual. El
+  // tipeo humano normal (pausas >250ms o teclas no-código) resetea la
+  // ventana y no se ve afectado.
+  const SCAN_BURST_MS = 250; // pausa máxima entre teclas de una misma lectura
+  const scanBurstRef = useRef({
+    code: "",
+    lastAt: 0,
+    started: null as null | { el: HTMLInputElement | HTMLTextAreaElement; value: string },
+  });
+  const resolveScanRef = useRef<(code: string, fromScan: boolean) => void>(() => {});
+  resolveScanRef.current = resolveScanCode;
+  function resetScanBurst() {
+    scanBurstRef.current = { code: "", lastAt: 0, started: null };
+  }
+  /** Restaura el valor de un campo donde aterrizó una ráfaga, vía setter
+   * nativo + evento input para que React (controlado) también lo registre. */
+  function restoreFieldValue(el: HTMLInputElement | HTMLTextAreaElement, value: string) {
+    try {
+      const proto =
+        el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+      const desc = Object.getOwnPropertyDescriptor(proto, "value");
+      if (desc?.set) desc.set.call(el, value);
+      else el.value = value;
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+    } catch {
+      try { el.value = value; } catch { /* noop */ }
+    }
+  }
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.repeat || e.isComposing) return;
+      if (e.ctrlKey || e.metaKey || e.altKey) {
+        resetScanBurst();
+        return;
+      }
+      const t = e.target as HTMLElement | null;
+      const isField = t?.tagName === "INPUT" || t?.tagName === "TEXTAREA" || t?.isContentEditable;
+      // Carácter de código (alfanumérico o guion).
+      if (e.key.length === 1 && /[A-Za-z0-9-]/.test(e.key)) {
+        if (t === searchRef.current) {
+          // El buscador resuelve solo: el listener global no interfere.
+          resetScanBurst();
+          return;
+        }
+        const now = Date.now();
+        const b = scanBurstRef.current;
+        if (b.code && now - b.lastAt <= SCAN_BURST_MS) {
+          // Ráfaga en curso: el carácter no debe ensuciar el campo enfocado.
+          e.preventDefault();
+          b.code += e.key;
+          b.lastAt = now;
+          return;
+        }
+        scanBurstRef.current = {
+          code: e.key,
+          lastAt: now,
+          started: isField
+            ? { el: t as HTMLInputElement | HTMLTextAreaElement, value: (t as HTMLInputElement | HTMLTextAreaElement).value }
+            : null,
+        };
+        return;
+      }
+      if (e.key === "Enter") {
+        const b = scanBurstRef.current;
+        const now = Date.now();
+        // ≥4 chars: un EAN/ SKU real (un monto o teléfono tipeado a mano nunca
+        // entra completo dentro de 250ms entre teclas).
+        if (b.code.length >= 4 && now - b.lastAt <= SCAN_BURST_MS) {
+          e.preventDefault();
+          if (b.started) restoreFieldValue(b.started.el, b.started.value);
+          const code = b.code;
+          resetScanBurst();
+          resolveScanRef.current(code, true);
+        } else {
+          resetScanBurst();
+        }
+        return;
+      }
+      resetScanBurst();
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  // Manos libres: si nada tiene el foco, vuelve al buscador para el próximo
+  // escaneo. Solo PC (finePointer): en mobile abriría el teclado sin pedirlo.
+  useEffect(() => {
+    if (!finePointer) return;
+    const id = window.setInterval(() => {
+      // No robar el foco mientras hay un modal/picker abierto o cargando.
+      if (loading || qcOpen || variantPicker || pickerProduct || comboPicker || methodModal) return;
+      const active = document.activeElement;
+      if (active && active !== document.body) return;
+      searchRef.current?.focus();
+    }, 400);
+    return () => window.clearInterval(id);
+  }, [finePointer, loading, qcOpen, variantPicker, pickerProduct, comboPicker, methodModal]);
+
   useEffect(() => {
     if (!finePointer) return;
     const DOUBLE_MS = 500;
@@ -1196,6 +1320,13 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
       if (e.key !== "Enter") { lastEnterRef.current = 0; return; }
       if (e.repeat || e.isComposing) return;
       if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+      // El Enter de un escáner de código de barras NUNCA cobra: si hay una
+      // ráfaga reciente, este listener la ignora (la procesa el de scan).
+      const b = scanBurstRef.current;
+      if (b.code.length >= 4 && Date.now() - b.lastAt <= SCAN_BURST_MS) {
+        lastEnterRef.current = 0;
+        return;
+      }
       const st = chargeStateRef.current;
       if (st.method !== "direct" || !st.hasItems || st.saving || st.blocked) { lastEnterRef.current = 0; return; }
       const t = e.target as HTMLElement | null;
@@ -1754,7 +1885,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") submitCodeSearch(); }}
-            placeholder="Buscar producto o código…"
+            placeholder="Escaneá el código o buscá por nombre…"
             className="flex-1 min-w-0 h-10 px-3 text-sm rounded-xl border border-input bg-background"
           />
           <button

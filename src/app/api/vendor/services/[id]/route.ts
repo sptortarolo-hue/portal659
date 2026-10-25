@@ -50,19 +50,21 @@ export async function PATCH(
     sets.push(`deposit_amount = $${idx++}`);
     vals.push(n);
   }
+  // Precio fijo y precio "desde" (banda "Desde X – Hasta Y"). Son
+  // excluyentes entre sí: con "desde" el fijo queda NULL. Se PARSEAN acá y
+  // se aplican al final del UPDATE con UNA asignación por columna (Postgres
+  // aborta con "multiple assignments" si una columna aparece dos veces).
+  let priceVal: number | null | undefined;
+  let priceFromVal: number | null | undefined;
+  let priceToVal: number | null | undefined;
   if (body.price !== undefined) {
     const raw = body.price;
     const n = raw == null || raw === "" ? null : Number(raw);
     if (n !== null && (!Number.isFinite(n) || n < 0)) {
       return NextResponse.json({ error: "El precio debe ser un monto válido" }, { status: 400 });
     }
-    sets.push(`price = $${idx++}`);
-    vals.push(n);
+    priceVal = n;
   }
-  // Precio "desde" (banda opcional "Desde X – Hasta Y"). Mutuamente
-  // excluyente con el fijo: si se setea "desde", `price` queda NULL.
-  let priceFromVal: number | null | undefined;
-  let priceToVal: number | null | undefined;
   if (body.price_from !== undefined) {
     const raw = body.price_from;
     const n = raw == null || raw === "" ? null : Number(raw);
@@ -78,56 +80,6 @@ export async function PATCH(
       return NextResponse.json({ error: "El precio 'hasta' debe ser un monto válido" }, { status: 400 });
     }
     priceToVal = n;
-  }
-  if (priceFromVal !== undefined || priceToVal !== undefined) {
-    // Sin las columnas (migración sin aplicar) no se puede persistir "desde".
-    // Si el panel pide un valor real, avisar con la migración correcta; si
-    // sólo limpia, la edición sigue sin tocar esas columnas.
-    const hasFromCols = await queryOne<{ exists: boolean }>(
-      `SELECT EXISTS (
-         SELECT 1 FROM information_schema.columns
-         WHERE table_name = 'services' AND column_name = 'price_from'
-       ) AS exists`
-    );
-    if (hasFromCols?.exists !== true) {
-      if (priceFromVal != null || priceToVal != null) {
-        return NextResponse.json(
-          { error: "Falta aplicar la migración migrate-service-price-from.sql en la base" },
-          { status: 503 }
-        );
-      }
-    } else {
-      let baseFrom = priceFromVal;
-      if (baseFrom === undefined) {
-        const cur = await queryOne<{ price_from: number | null }>(
-          `SELECT price_from FROM services WHERE vendor_id = $1 AND id = $2 LIMIT 1`,
-          [vendor.id, id]
-        ).catch(() => null);
-        baseFrom = cur?.price_from != null ? Number(cur.price_from) : null;
-      }
-      if (priceToVal != null && (baseFrom == null || priceToVal <= baseFrom)) {
-        return NextResponse.json(
-          { error: baseFrom == null ? "Para la banda cargá primero el 'desde'" : "El precio 'hasta' debe ser mayor que el 'desde'" },
-          { status: 400 }
-        );
-      }
-      if (priceFromVal !== undefined) {
-        sets.push(`price_from = $${idx++}`);
-        vals.push(priceFromVal);
-        if (priceFromVal !== null) {
-          // El fijo y el "desde" son excluyentes.
-          sets.push(`price = NULL`);
-          if (priceToVal === undefined) sets.push(`price_to = NULL`);
-        } else {
-          // Sin "desde": limpia también la banda.
-          sets.push(`price_to = NULL`);
-        }
-      }
-      if (priceToVal !== undefined && priceFromVal === undefined) {
-        sets.push(`price_to = $${idx++}`);
-        vals.push(priceToVal);
-      }
-    }
   }
   if (body.commission_pct !== undefined) {
     const raw = body.commission_pct;
@@ -201,6 +153,73 @@ export async function PATCH(
     sets.push(`location_id = $${idx++}`);
     vals.push(raw);
   }
+  // --- Precio: fijo vs "desde" (un solo punto, una asignación por columna) ---
+  if (priceVal !== undefined || priceFromVal !== undefined || priceToVal !== undefined) {
+    // Sin las columnas (migración sin aplicar) no se puede persistir "desde".
+    // Si el panel pide un valor real, avisar con la migración correcta; si
+    // sólo limpia, la edición sigue con el resto de los campos.
+    const hasFromCols = await queryOne<{ exists: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1 FROM information_schema.columns
+         WHERE table_name = 'services' AND column_name = 'price_from'
+       ) AS exists`
+    );
+    // Valor base del "desde" para validar la banda cuando sólo viene el "hasta".
+    let baseFrom = priceFromVal;
+    if (priceToVal != null && baseFrom === undefined) {
+      const cur = await queryOne<{ price_from: number | null }>(
+        `SELECT price_from FROM services WHERE vendor_id = $1 AND id = $2 LIMIT 1`,
+        [vendor.id, id]
+      ).catch(() => null);
+      baseFrom = cur?.price_from != null ? Number(cur.price_from) : null;
+    }
+    if (priceToVal != null && (baseFrom == null || priceToVal <= baseFrom)) {
+      return NextResponse.json(
+        { error: baseFrom == null ? "Para la banda cargá primero el 'desde'" : "El precio 'hasta' debe ser mayor que el 'desde'" },
+        { status: 400 }
+      );
+    }
+    if (hasFromCols && priceFromVal != null) {
+      // Modo "desde": el fijo queda NULL y la banda se guarda completa.
+      sets.push(`price = $${idx++}`);
+      vals.push(null);
+      sets.push(`price_from = $${idx++}`);
+      vals.push(priceFromVal);
+      if (priceToVal !== undefined) {
+        sets.push(`price_to = $${idx++}`);
+        vals.push(priceToVal);
+      } else {
+        sets.push(`price_to = NULL`);
+      }
+    } else if (hasFromCols) {
+      // Modo fijo (o limpieza): precio explícito y banda en NULL.
+      if (priceVal !== undefined) {
+        sets.push(`price = $${idx++}`);
+        vals.push(priceVal);
+      }
+      if (priceFromVal !== undefined) {
+        sets.push(`price_from = $${idx++}`);
+        vals.push(null);
+        if (priceToVal === undefined) sets.push(`price_to = NULL`);
+      }
+      if (priceToVal !== undefined) {
+        sets.push(`price_to = $${idx++}`);
+        vals.push(priceToVal);
+      }
+    } else {
+      // Sin las columnas: sólo el fijo (si viene) se puede guardar.
+      if (priceFromVal != null || priceToVal != null) {
+        return NextResponse.json(
+          { error: "Falta aplicar la migración migrate-service-price-from.sql en la base" },
+          { status: 503 }
+        );
+      }
+      if (priceVal !== undefined) {
+        sets.push(`price = $${idx++}`);
+        vals.push(priceVal);
+      }
+    }
+  }
   if (sets.length === 0) return NextResponse.json({ error: "Sin cambios" }, { status: 400 });
 
   try {
@@ -210,7 +229,15 @@ export async function PATCH(
     );
     if (!row) return NextResponse.json({ error: "No encontrado" }, { status: 404 });
     return NextResponse.json({ service: row });
-  } catch {
+  } catch (e) {
+    // Red de seguridad: si alguna columna quedara asignada dos veces, es un
+    // bug nuestro (no una migración faltante).
+    if (/multiple assignments/i.test((e as Error)?.message || "")) {
+      return NextResponse.json(
+        { error: "Error interno al guardar el servicio" },
+        { status: 500 }
+      );
+    }
     return NextResponse.json(
       { error: "Falta aplicar una migración en la base: migrate-estetica.sql, o alguna de migrate-estetica-commissions.sql (precio/comisión), migrate-estetica-require-deposit.sql (seña obligatoria), migrate-estetica-service-photo.sql (foto), migrate-estetica-service-menu.sql (categoría) o migrate-service-price-from.sql (precio 'desde')" },
       { status: 503 }

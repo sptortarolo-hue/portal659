@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { isAdmin } from "@/lib/admin-utils";
 import { queryMany, queryOne } from "@/lib/db";
+import { AR_DAY_SQL } from "@/lib/analytics-day";
 
 export const dynamic = "force-dynamic";
 
@@ -36,7 +37,7 @@ export async function GET(request: Request) {
         `SELECT to_char(ds.day, 'YYYY-MM-DD') AS day,
                 count(pv.id) AS views,
                 count(DISTINCT pv.device_id) AS visitors
-           FROM generate_series(CURRENT_DATE - 29, CURRENT_DATE, interval '1 day') AS ds(day)
+           FROM generate_series(${AR_DAY_SQL} - 29, ${AR_DAY_SQL}, interval '1 day') AS ds(day)
            LEFT JOIN portal_page_views pv ON pv.day = ds.day::date
           GROUP BY ds.day ORDER BY ds.day`,
         []
@@ -44,25 +45,25 @@ export async function GET(request: Request) {
       queryMany<Record<string, unknown>>(
         `SELECT path, count(*) AS views, count(DISTINCT device_id) AS uniques
            FROM portal_page_views
-          WHERE day >= CURRENT_DATE - 29
+          WHERE day >= ${AR_DAY_SQL} - 29
           GROUP BY path ORDER BY views DESC LIMIT 12`
       ),
       queryMany<Record<string, unknown>>(
         `SELECT COALESCE(value, '(sin término)') AS value, count(*) AS n
            FROM portal_events
-          WHERE kind = 'search' AND day >= CURRENT_DATE - 29
+          WHERE kind = 'search' AND day >= ${AR_DAY_SQL} - 29
           GROUP BY value ORDER BY n DESC LIMIT 12`
       ),
       queryMany<Record<string, unknown>>(
         `SELECT count(*) FILTER (WHERE kind = 'wa_click') AS wa_clicks,
                 count(*) FILTER (WHERE kind = 'store_open') AS store_opens
-           FROM portal_events WHERE day >= CURRENT_DATE - 29`
+           FROM portal_events WHERE day >= ${AR_DAY_SQL} - 29`
       ),
       queryMany<Record<string, unknown>>(
         `SELECT v.store_name, count(*) AS n
            FROM portal_events e
            JOIN vendors v ON v.id = e.vendor_id
-          WHERE e.kind = 'wa_click' AND e.day >= CURRENT_DATE - 29
+          WHERE e.kind = 'wa_click' AND e.day >= ${AR_DAY_SQL} - 29
           GROUP BY v.store_name ORDER BY n DESC LIMIT 8`
       ),
     ]);

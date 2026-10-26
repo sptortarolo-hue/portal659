@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { queryOne, query } from "@/lib/db";
 import { DEVICE_COOKIE, deviceCookieOptions, getDeviceId, newDeviceId } from "@/lib/device";
+import { AR_DAY_SQL } from "@/lib/analytics-day";
 
 const KINDS = new Set(["search", "wa_click", "store_open"]);
 
@@ -45,9 +46,11 @@ export async function POST(request: Request) {
     }
 
     try {
+      // El día se pasa explícito en huso AR (mismo motivo que track-page:
+      // el default de columna CURRENT_DATE corre en UTC en el contenedor).
       await query(
-        `INSERT INTO portal_events (kind, value, vendor_id, path, device_id)
-         VALUES ($1, $2, $3, $4, $5)`,
+        `INSERT INTO portal_events (kind, value, vendor_id, path, device_id, day)
+         VALUES ($1, $2, $3, $4, $5, ${AR_DAY_SQL})`,
         [kind, value, vendorId, rawPath.slice(0, 300) || null, deviceId]
       );
     } catch (e: any) {

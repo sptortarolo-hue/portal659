@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { queryOne, query } from "@/lib/db";
 import { DEVICE_COOKIE, deviceCookieOptions, getDeviceId, newDeviceId } from "@/lib/device";
+import { AR_DAY_SQL } from "@/lib/analytics-day";
 
 /**
  * Beacon público de vistas de página (portal_page_views): 1 fila por
@@ -26,8 +27,10 @@ export async function POST(request: Request) {
     }
 
     try {
+      // El día se pasa explícito en huso AR: el default de columna es
+      // CURRENT_DATE (UTC en el contenedor) y corría la fecha de madrugada.
       await query(
-        `INSERT INTO portal_page_views (path, device_id) VALUES ($1, $2)
+        `INSERT INTO portal_page_views (path, device_id, day) VALUES ($1, $2, ${AR_DAY_SQL})
          ON CONFLICT ON CONSTRAINT uq_portal_pv_path_device_day DO NOTHING`,
         [path.slice(0, 300), deviceId]
       );

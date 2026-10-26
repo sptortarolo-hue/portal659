@@ -7,8 +7,7 @@ import { withRateLimit } from "@/lib/api-wrapper";
  * y confirma, cancela o reprograma su turno.
  * - POST { token, action: "confirm" }: pending → confirmed.
  * - POST { token, action: "cancel" }: pending/confirmed → cancelled. Si falta
- *   menos de cancel_hours (default 24) se marca como tardía (el comercio ve
- *   que la seña no se devuelve, según su política).
+ *   menos de cancel_hours (default 24) se marca como tardía.
  * - POST { token, action: "reschedule", bookingDate, bookingTime }:
  *   pending/confirmed → misma fila con nueva fecha/hora (previo chequeo de
  *   solape como en POST /api/bookings; 409 si choca). La seña pagada, los

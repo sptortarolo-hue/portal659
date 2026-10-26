@@ -801,7 +801,7 @@ export function EsteticaCancelPolicy({
       <div>
         <p className="font-medium text-sm">📝 Política de cancelación</p>
         <p className="text-xs text-muted-foreground">
-          Se muestra en el micrositio antes de reservar. Ej: "Cancelá con 24 h de anticipación o la seña no se devuelve".
+          Se muestra en el micrositio antes de reservar. Ej: "Cancelá con 24 h de anticipación".
         </p>
       </div>
       <div>

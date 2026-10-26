@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
+import { Modal } from "@/components/ui/modal";
 import { servicePriceLabel } from "@/lib/service-price";
 
 type Service = {
@@ -23,46 +24,96 @@ type Service = {
   deposit_hours?: number | null;
   image_url?: string | null;
   featured_today?: boolean | null;
+  location_id?: string | null;
   active: boolean | null;
 };
 
 const money = (n: number | null) =>
   n == null ? "—" : `$${Number(n).toLocaleString("es-AR")}`;
 
+/** Estado del editor único de servicios (modal compartido por alta/edición). */
+type ServiceFormState = {
+  name: string;
+  description: string;
+  category: string;
+  locationId: string;
+  duration: string;
+  buffer: string;
+  deposit: string;
+  priceMode: "fijo" | "desde";
+  price: string;
+  priceFrom: string;
+  priceTo: string;
+  commission: string;
+  requireDeposit: boolean;
+  depositHours: string;
+  imageUrl: string;
+  active: boolean;
+  featured: boolean;
+};
+
+function blankForm(): ServiceFormState {
+  return {
+    name: "",
+    description: "",
+    category: "",
+    locationId: "",
+    duration: "60",
+    buffer: "0",
+    deposit: "",
+    priceMode: "fijo",
+    price: "",
+    priceFrom: "",
+    priceTo: "",
+    commission: "",
+    requireDeposit: false,
+    depositHours: "24",
+    imageUrl: "",
+    active: true,
+    featured: false,
+  };
+}
+
+function formFromService(s: Service): ServiceFormState {
+  return {
+    name: String(s.name ?? ""),
+    description: typeof s.description === "string" ? s.description : "",
+    category: typeof (s as any).category === "string" ? (s as any).category : "",
+    locationId: typeof s.location_id === "string" ? s.location_id : "",
+    duration: s.duration_min != null ? String(s.duration_min) : "60",
+    buffer: s.buffer_min != null ? String(s.buffer_min) : "0",
+    deposit: s.deposit_amount != null ? String(s.deposit_amount) : "",
+    priceMode: s.price != null || (s.price_from == null && s.price_to == null) ? "fijo" : "desde",
+    price: s.price != null ? String(s.price) : "",
+    priceFrom: s.price_from != null ? String(s.price_from) : "",
+    priceTo: s.price_to != null ? String(s.price_to) : "",
+    commission: s.commission_pct != null ? String(s.commission_pct) : "",
+    requireDeposit: s.require_deposit === true,
+    depositHours: s.deposit_hours != null ? String(s.deposit_hours) : "24",
+    imageUrl: typeof s.image_url === "string" ? s.image_url : "",
+    active: s.active !== false,
+    featured: s.featured_today === true,
+  };
+}
+
 /** ABM de servicios del centro de estética (duración + buffer + seña). */
 export function EsteticaServicesManager({ onChanged }: { onChanged?: () => void }) {
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
   const [missing, setMissing] = useState(false);
-  const [name, setName] = useState("");
-  const [duration, setDuration] = useState("60");
-  const [buffer, setBuffer] = useState("0");
-  const [deposit, setDeposit] = useState("");
-  const [price, setPrice] = useState("");
-  const [priceMode, setPriceMode] = useState<"fijo" | "desde">("fijo");
-  const [priceFrom, setPriceFrom] = useState("");
-  const [priceTo, setPriceTo] = useState("");
-  const [commission, setCommission] = useState("");
-  const [locationId, setLocationId] = useState("");
-  const [category, setCategory] = useState("");
   const [categories, setCategories] = useState<string[]>([]);
-  const [requireDeposit, setRequireDeposit] = useState(false);
-  const [depositHours, setDepositHours] = useState("24");
-  const [imageUrl, setImageUrl] = useState("");
-  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [locations, setLocations] = useState<{ id: string; name: string }[]>([]);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+
+  // Editor único (modal) compartido por alta y edición: así todos los campos
+  // están siempre en los dos flujos y no se vuelven a desincronizar.
+  const [formOpen, setFormOpen] = useState(false);
+  const [formMode, setFormMode] = useState<"create" | "edit">("create");
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editPrice, setEditPrice] = useState("");
-  const [editPriceMode, setEditPriceMode] = useState<"fijo" | "desde">("fijo");
-  const [editPriceFrom, setEditPriceFrom] = useState("");
-  const [editPriceTo, setEditPriceTo] = useState("");
-  const [editCommission, setEditCommission] = useState("");
-  const [editRequire, setEditRequire] = useState(false);
-  const [editHours, setEditHours] = useState("24");
-  const [editImage, setEditImage] = useState("");
-  const [editCategory, setEditCategory] = useState("");
+  const [form, setForm] = useState<ServiceFormState>(blankForm);
+  const patch = (p: Partial<ServiceFormState>) => setForm((f) => ({ ...f, ...p }));
 
   async function uploadServicePhoto(file: File): Promise<string | null> {
     const fd = new FormData();
@@ -99,87 +150,100 @@ export function EsteticaServicesManager({ onChanged }: { onChanged?: () => void 
 
   useEffect(() => { load(); }, []);
 
-  async function create() {
-    if (!name.trim()) {
-      setMsg("Poné un nombre al servicio");
+  function openCreate() {
+    setForm(blankForm());
+    setFormMode("create");
+    setEditingId(null);
+    setMsg("");
+    setFormOpen(true);
+  }
+
+  function openEdit(s: Service) {
+    setForm(formFromService(s));
+    setFormMode("edit");
+    setEditingId(s.id);
+    setMsg("");
+    setFormOpen(true);
+  }
+
+  // Validación compartida con los mismos mensajes que la API.
+  function validate(): string | null {
+    if (!form.name.trim()) return "Poné un nombre al servicio";
+    const deposit = form.deposit.trim() === "" ? null : Number(form.deposit);
+    if (deposit != null && (!Number.isFinite(deposit) || deposit < 0)) {
+      return "La seña debe ser un monto válido";
+    }
+    if (form.priceMode === "desde") {
+      const from = form.priceFrom.trim() === "" ? null : Number(form.priceFrom);
+      if (from != null && (!Number.isFinite(from) || from < 0)) {
+        return "El precio 'desde' debe ser un monto válido";
+      }
+      const to = form.priceTo.trim() === "" ? null : Number(form.priceTo);
+      if (to != null && (!Number.isFinite(to) || (from != null && to <= from))) {
+        return from == null ? "Para la banda cargá primero el 'desde'" : "El precio 'hasta' debe ser mayor que el 'desde'";
+      }
+    }
+    const commission = form.commission.trim() === "" ? null : Number(form.commission);
+    if (commission != null && (!Number.isFinite(commission) || commission < 0 || commission > 100)) {
+      return "La comisión debe estar entre 0 y 100";
+    }
+    if (form.requireDeposit && !(deposit != null && deposit > 0)) {
+      return "Para exigir seña poné primero el monto";
+    }
+    const hours = form.depositHours.trim() === "" ? 24 : Number(form.depositHours);
+    if (!Number.isFinite(hours) || hours < 1 || hours > 168) {
+      return "Las horas para pagar deben estar entre 1 y 168";
+    }
+    return null;
+  }
+
+  async function saveForm() {
+    const err = validate();
+    if (err) {
+      setMsg(err);
       return;
     }
+    const payload: Record<string, unknown> = {
+      name: form.name.trim(),
+      description: form.description.trim() || null,
+      category: form.category.trim() || null,
+      location_id: form.locationId || null,
+      duration_min: Number(form.duration) || 60,
+      buffer_min: Number(form.buffer) || 0,
+      deposit_amount: form.deposit.trim() === "" ? null : Number(form.deposit),
+      price: form.priceMode === "fijo" ? (form.price.trim() === "" ? null : Number(form.price)) : null,
+      price_from: form.priceMode === "desde" ? (form.priceFrom.trim() === "" ? null : Number(form.priceFrom)) : null,
+      price_to: form.priceMode === "desde" && form.priceTo.trim() !== "" ? Number(form.priceTo) : null,
+      commission_pct: form.commission.trim() === "" ? null : Number(form.commission),
+      require_deposit: form.requireDeposit,
+      deposit_hours: form.depositHours.trim() === "" ? 24 : Number(form.depositHours),
+      image_url: form.imageUrl || null,
+      active: form.active,
+      featured_today: form.featured,
+    };
     setSaving(true);
     setMsg("");
     try {
-      const res = await fetch("/api/vendor/services", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: name.trim(),
-          duration_min: Number(duration) || 60,
-          buffer_min: Number(buffer) || 0,
-          deposit_amount: deposit === "" ? null : Number(deposit),
-          price: priceMode === "fijo" ? (price === "" ? null : Number(price)) : null,
-          price_from: priceMode === "desde" ? (priceFrom === "" ? null : Number(priceFrom)) : null,
-          price_to: priceMode === "desde" && priceTo !== "" ? Number(priceTo) : null,
-          commission_pct: commission === "" ? null : Number(commission),
-          location_id: locationId || undefined,
-          require_deposit: requireDeposit,
-          deposit_hours: depositHours === "" ? 24 : Number(depositHours),
-          image_url: imageUrl || undefined,
-          category: category.trim() || undefined,
-        }),
-      });
-      const data = await res.json();
+      const res = await fetch(
+        formMode === "edit" && editingId ? `/api/vendor/services/${editingId}` : "/api/vendor/services",
+        {
+          method: formMode === "edit" ? "PATCH" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        }
+      );
+      const data = await res.json().catch(() => ({}));
       if (data.error) {
         setMsg(data.error);
         return;
       }
-      setName("");
-      setDuration("60");
-      setBuffer("0");
-      setDeposit("");
-      setPrice("");
-      setPriceMode("fijo");
-      setPriceFrom("");
-      setPriceTo("");
-      setCommission("");
-      setLocationId("");
-      setRequireDeposit(false);
-      setDepositHours("24");
-      setImageUrl("");
-      setCategory("");
+      setFormOpen(false);
       await load();
       onChanged?.();
     } catch {
       setMsg("Error de conexión");
     } finally {
       setSaving(false);
-    }
-  }
-
-  async function saveEdit(id: string) {
-    try {
-      const res = await fetch(`/api/vendor/services/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          price: editPriceMode === "fijo" ? (editPrice === "" ? null : Number(editPrice)) : null,
-          price_from: editPriceMode === "desde" ? (editPriceFrom === "" ? null : Number(editPriceFrom)) : null,
-          price_to: editPriceMode === "desde" && editPriceTo !== "" ? Number(editPriceTo) : null,
-          commission_pct: editCommission === "" ? null : Number(editCommission),
-          require_deposit: editRequire,
-          deposit_hours: editHours === "" ? 24 : Number(editHours),
-          image_url: editImage || null,
-          category: editCategory.trim() || null,
-        }),
-      });
-      const data = await res.json();
-      if (data.error) {
-        setMsg(data.error);
-        return;
-      }
-      setEditingId(null);
-      await load();
-      onChanged?.();
-    } catch {
-      setMsg("Error de conexión");
     }
   }
 
@@ -210,7 +274,6 @@ export function EsteticaServicesManager({ onChanged }: { onChanged?: () => void 
         setMsg(data.error);
         return;
       }
-      setMsg(next ? `"${s.name}" es la oferta de hoy en tu carta y en el home.` : "");
       await load();
       onChanged?.();
     } catch {
@@ -238,11 +301,14 @@ export function EsteticaServicesManager({ onChanged }: { onChanged?: () => void 
   return (
     <Card className="p-4 space-y-3">
       <div>
-        <p className="font-medium text-sm">💅 Servicios</p>
+        <p className="font-medium text-sm">✨ Servicios</p>
         <p className="text-xs text-muted-foreground">
-          Cada servicio tiene su duración y su seña. El turno online se bloquea si se pisa con otro del mismo profesional. Con <span title="Oferta del día">★</span> marcás la oferta del día (una sola): flota primero en tu carta, con badge "Hoy", y aparece en el home.
+          Cada servicio tiene su duración y su seña. El turno online se bloquea si se pisa con otro del mismo profesional. Con <span title="Oferta del día">★</span> marcás la oferta del día (una sola): flota primero en tu carta, con badge &quot;Hoy&quot;, y aparece en el home.
         </p>
       </div>
+      <Button size="sm" className="w-full" onClick={openCreate}>
+        + Agregar servicio
+      </Button>
       {loading ? (
         <p className="text-xs text-muted-foreground">Cargando...</p>
       ) : services.length === 0 ? (
@@ -263,7 +329,7 @@ export function EsteticaServicesManager({ onChanged }: { onChanged?: () => void 
                     <span className="inline-block rounded-full bg-primary/10 text-primary text-[10px] font-bold px-2 py-0.5 mt-0.5">{String((s as any).category)}</span>
                   )}
                   {s.featured_today === true && (
-                    <span className="inline-block rounded-full bg-sun text-ink text-[10px] font-bold px-2 py-0.5 mt-0.5">Hoy</span>
+                    <span className="inline-block rounded-full bg-sun text-ink text-[10px] font-bold px-2 py-0.5 mt-0.5 ml-1">Hoy</span>
                   )}
                   <span className="block text-muted-foreground">
                     {s.duration_min ?? 60} min{s.buffer_min ? ` +${s.buffer_min} buffer` : ""} · seña {s.deposit_amount ? money(Number(s.deposit_amount)) : "no"}
@@ -274,7 +340,7 @@ export function EsteticaServicesManager({ onChanged }: { onChanged?: () => void 
                 <button type="button" onClick={() => toggleFeatured(s)} className={`flex-shrink-0 ${s.featured_today === true ? "text-sun" : "text-muted-foreground hover:text-foreground"}`} title={s.featured_today === true ? "Quitar de Hoy" : "Oferta del día"}>
                   {s.featured_today === true ? "★" : "☆"}
                 </button>
-                <button type="button" onClick={() => { setEditingId(editingId === s.id ? null : s.id); setEditPriceMode(s.price != null || (s.price_from == null && s.price_to == null) ? "fijo" : "desde"); setEditPrice(s.price != null ? String(s.price) : ""); setEditPriceFrom(s.price_from != null ? String(s.price_from) : ""); setEditPriceTo(s.price_to != null ? String(s.price_to) : ""); setEditCommission(s.commission_pct != null ? String(s.commission_pct) : ""); setEditRequire(s.require_deposit === true); setEditHours(s.deposit_hours != null ? String(s.deposit_hours) : "24"); setEditImage(typeof s.image_url === "string" ? s.image_url : ""); setEditCategory(typeof (s as any).category === "string" ? (s as any).category : ""); }} className="text-muted-foreground hover:text-foreground flex-shrink-0" title="Precio, comisión y seña">
+                <button type="button" onClick={() => openEdit(s)} className="text-muted-foreground hover:text-foreground flex-shrink-0" title="Editar servicio">
                   ✏️
                 </button>
                 <button type="button" onClick={() => toggle(s)} className="text-muted-foreground hover:text-foreground flex-shrink-0" title={s.active === false ? "Activar" : "Pausar"}>
@@ -284,189 +350,154 @@ export function EsteticaServicesManager({ onChanged }: { onChanged?: () => void 
                   🗑️
                 </button>
               </div>
-              {editingId === s.id && (
-                <div className="grid grid-cols-2 gap-2 mt-2">
-                  <div>
-                    <Label className="text-xs">Precio</Label>
-                    <div className="flex gap-1 mt-1">
-                      <button type="button" onClick={() => setEditPriceMode("fijo")} className={`px-2 py-1 rounded-md border text-[11px] font-medium ${editPriceMode === "fijo" ? "border-primary text-primary bg-primary/5" : "border-border text-muted-foreground"}`}>Fijo</button>
-                      <button type="button" onClick={() => setEditPriceMode("desde")} className={`px-2 py-1 rounded-md border text-[11px] font-medium ${editPriceMode === "desde" ? "border-primary text-primary bg-primary/5" : "border-border text-muted-foreground"}`}>Desde</button>
-                    </div>
-                    {editPriceMode === "fijo" ? (
-                      <Input value={editPrice} onChange={(e) => setEditPrice(e.target.value)} inputMode="decimal" placeholder="Vacío = sin precio" className="mt-1 h-9 text-sm bg-background" />
-                    ) : (
-                      <div className="flex gap-1 mt-1">
-                        <Input value={editPriceFrom} onChange={(e) => setEditPriceFrom(e.target.value)} inputMode="decimal" placeholder="Desde ($)" className="h-9 text-sm bg-background min-w-0" />
-                        <Input value={editPriceTo} onChange={(e) => setEditPriceTo(e.target.value)} inputMode="decimal" placeholder="Hasta (opcional)" className="h-9 text-sm bg-background min-w-0" />
-                      </div>
-                    )}
-                  </div>
-                  <div>
-                    <Label className="text-xs">Comisión % (vacío = la del profesional)</Label>
-                    <Input value={editCommission} onChange={(e) => setEditCommission(e.target.value)} inputMode="decimal" placeholder="Ej: 40" className="mt-1 h-9 text-sm bg-background" />
-                  </div>
-                  <div>
-                    <Label className="text-xs">Rubro</Label>
-                    <Input value={editCategory} onChange={(e) => setEditCategory(e.target.value)} placeholder="Ej: Uñas" list="estetica-service-cats" className="mt-1 h-9 text-sm bg-background" />
-                  </div>
-                  <div className="col-span-2 space-y-2 rounded-md border border-border p-2">
-                    <label className="flex items-center gap-2 text-xs cursor-pointer">
-                      <input type="checkbox" checked={editRequire} onChange={(e) => setEditRequire(e.target.checked)} className="h-4 w-4" />
-                      🔒 Exigir seña para reservar (si no paga, no reserva)
-                    </label>
-                    {editRequire && (
-                      <div>
-                        <Label className="text-xs">Horas para pagar antes de liberar el turno</Label>
-                        <Input value={editHours} onChange={(e) => setEditHours(e.target.value)} inputMode="numeric" placeholder="24" className="mt-1 h-9 text-sm bg-background" />
-                      </div>
-                    )}
-                  </div>
-                  <div className="col-span-2">
-                    <Label className="text-xs">Foto (opcional, se ve en la carta)</Label>
-                    <div className="flex items-center gap-2 mt-1">
-                      {editImage ? (
-                        <>
-                          <img src={editImage} alt="" className="h-10 w-10 rounded-lg object-cover border border-border" />
-                          <button type="button" onClick={() => setEditImage("")} className="text-xs text-red-600 hover:underline">Quitar</button>
-                        </>
-                      ) : (
-                        <label className="inline-flex items-center gap-2 rounded-md border border-input px-3 py-2 text-xs font-medium cursor-pointer hover:bg-muted">
-                          📷 Subir foto
-                          <input
-                            type="file" accept="image/*" className="hidden"
-                            onChange={async (e) => {
-                              const f = e.target.files?.[0];
-                              if (!f) return;
-                              const url = await uploadServicePhoto(f);
-                              if (url) setEditImage(url);
-                              else setMsg("No se pudo subir la foto");
-                              e.target.value = "";
-                            }}
-                          />
-                        </label>
-                      )}
-                    </div>
-                  </div>
-                  <div className="col-span-2">
-                    <Button size="sm" className="w-full" onClick={() => saveEdit(s.id)}>Guardar precio, comisión y seña</Button>
-                  </div>
-                </div>
-              )}
             </div>
           ))}
         </div>
       )}
-      <div className="grid grid-cols-2 gap-2">
-        <div className="col-span-2">
-          <Label className="text-xs">Nombre del servicio</Label>
-          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ej: Kapping gel" className="mt-1 h-9 text-sm" />
-        </div>
-        <div className="col-span-2">
-          <Label className="text-xs">Rubro (opcional, agrupa la carta)</Label>
-          <Input
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            placeholder="Ej: Uñas, Pestañas, Cejas"
-            list="estetica-service-cats"
-            className="mt-1 h-9 text-sm"
-          />
+      <Modal
+        open={formOpen}
+        onClose={() => setFormOpen(false)}
+        title={formMode === "create" ? "Nuevo servicio" : "Editar servicio"}
+        footer={
+          <div className="flex gap-2">
+            <Button variant="outline" className="flex-1" onClick={() => setFormOpen(false)}>
+              Cancelar
+            </Button>
+            <Button className="flex-1" onClick={saveForm} disabled={saving}>
+              {saving ? "Guardando..." : "Guardar cambios"}
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-3 px-6 py-4">
+          {msg && <p className="text-xs text-red-600">{msg}</p>}
+          {/* Datos */}
+          <div>
+            <Label className="text-xs">Nombre del servicio</Label>
+            <Input value={form.name} onChange={(e) => patch({ name: e.target.value })} placeholder="Ej: Kapping gel" className="mt-1 h-9 text-sm" />
+          </div>
+          <div>
+            <Label className="text-xs">Descripción (opcional, se ve en la carta)</Label>
+            <Textarea value={form.description} onChange={(e) => patch({ description: e.target.value })} placeholder="Ej: Baño de gel que endurece y dura 3 semanas" className="mt-1 text-sm" rows={2} />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <Label className="text-xs">Rubro (opcional, agrupa la carta)</Label>
+              <Input value={form.category} onChange={(e) => patch({ category: e.target.value })} placeholder="Ej: Uñas" list="estetica-service-cats" className="mt-1 h-9 text-sm" />
+            </div>
+            {locations.length > 0 && (
+              <div>
+                <Label className="text-xs">Sede</Label>
+                <select
+                  value={form.locationId}
+                  onChange={(e) => patch({ locationId: e.target.value })}
+                  className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
+                >
+                  <option value="">Todas las sedes</option>
+                  {locations.map((l) => (
+                    <option key={l.id} value={l.id}>{l.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
           <datalist id="estetica-service-cats">
             {categories.map((c) => (
               <option key={c} value={c} />
             ))}
           </datalist>
-        </div>
-        <div>
-          <Label className="text-xs">Duración (min)</Label>
-          <Input value={duration} onChange={(e) => setDuration(e.target.value)} inputMode="numeric" placeholder="60" className="mt-1 h-9 text-sm" />
-        </div>
-        <div>
-          <Label className="text-xs">Buffer (min)</Label>
-          <Input value={buffer} onChange={(e) => setBuffer(e.target.value)} inputMode="numeric" placeholder="0" className="mt-1 h-9 text-sm" />
-        </div>
-        <div className="col-span-2">
-          <Label className="text-xs">Seña por servicio ($, opcional)</Label>
-          <Input value={deposit} onChange={(e) => setDeposit(e.target.value)} inputMode="decimal" placeholder="Vacío = sin seña" className="mt-1 h-9 text-sm" />
-        </div>
-        <div>
-          <Label className="text-xs">Precio</Label>
-          <div className="flex gap-1 mt-1">
-            <button type="button" onClick={() => setPriceMode("fijo")} className={`px-2 py-1 rounded-md border text-[11px] font-medium ${priceMode === "fijo" ? "border-primary text-primary bg-primary/5" : "border-border text-muted-foreground"}`}>Fijo</button>
-            <button type="button" onClick={() => setPriceMode("desde")} className={`px-2 py-1 rounded-md border text-[11px] font-medium ${priceMode === "desde" ? "border-primary text-primary bg-primary/5" : "border-border text-muted-foreground"}`}>Desde</button>
-          </div>
-          {priceMode === "fijo" ? (
-            <Input value={price} onChange={(e) => setPrice(e.target.value)} inputMode="decimal" placeholder="Vacío = sin precio" className="mt-1 h-9 text-sm" />
-          ) : (
-            <div className="flex gap-1 mt-1">
-              <Input value={priceFrom} onChange={(e) => setPriceFrom(e.target.value)} inputMode="decimal" placeholder="Desde ($)" className="h-9 text-sm min-w-0" />
-              <Input value={priceTo} onChange={(e) => setPriceTo(e.target.value)} inputMode="decimal" placeholder="Hasta (opcional)" className="h-9 text-sm min-w-0" />
+          {/* Agenda */}
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <Label className="text-xs">Duración (min)</Label>
+              <Input value={form.duration} onChange={(e) => patch({ duration: e.target.value })} inputMode="numeric" placeholder="60" className="mt-1 h-9 text-sm" />
             </div>
-          )}
-        </div>
-        <div>
-          <Label className="text-xs">Comisión % (opcional)</Label>
-          <Input value={commission} onChange={(e) => setCommission(e.target.value)} inputMode="decimal" placeholder="Vacío = la del profesional" className="mt-1 h-9 text-sm" />
-        </div>
-        {locations.length > 0 && (
-          <div className="col-span-2">
-            <Label className="text-xs">Sede (opcional)</Label>
-            <select
-              value={locationId}
-              onChange={(e) => setLocationId(e.target.value)}
-              className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
-            >
-              <option value="">Todas las sedes</option>
-              {locations.map((l) => (
-                <option key={l.id} value={l.id}>{l.name}</option>
-              ))}
-            </select>
+            <div>
+              <Label className="text-xs">Buffer (min)</Label>
+              <Input value={form.buffer} onChange={(e) => patch({ buffer: e.target.value })} inputMode="numeric" placeholder="0" className="mt-1 h-9 text-sm" />
+            </div>
           </div>
-        )}
-        <div className="col-span-2">
-          <Label className="text-xs">Foto (opcional, se ve en la carta)</Label>
-          <div className="flex items-center gap-2 mt-1">
-            {imageUrl ? (
-              <>
-                <img src={imageUrl} alt="" className="h-10 w-10 rounded-lg object-cover border border-border" />
-                <button type="button" onClick={() => setImageUrl("")} className="text-xs text-red-600 hover:underline">Quitar</button>
-              </>
+          {/* Precio + seña + comisión */}
+          <div className="rounded-md border border-border p-3 space-y-2">
+            <Label className="text-xs">Precio</Label>
+            <div className="flex gap-1">
+              <button type="button" onClick={() => patch({ priceMode: "fijo" })} className={`px-2 py-1 rounded-md border text-[11px] font-medium ${form.priceMode === "fijo" ? "border-primary text-primary bg-primary/5" : "border-border text-muted-foreground"}`}>Fijo</button>
+              <button type="button" onClick={() => patch({ priceMode: "desde" })} className={`px-2 py-1 rounded-md border text-[11px] font-medium ${form.priceMode === "desde" ? "border-primary text-primary bg-primary/5" : "border-border text-muted-foreground"}`}>Desde</button>
+            </div>
+            {form.priceMode === "fijo" ? (
+              <Input value={form.price} onChange={(e) => patch({ price: e.target.value })} inputMode="decimal" placeholder="Vacío = sin precio" className="h-9 text-sm" />
             ) : (
-              <label className="inline-flex items-center gap-2 rounded-md border border-input px-3 py-2 text-xs font-medium cursor-pointer hover:bg-muted">
-                {uploadingPhoto ? "Subiendo..." : "📷 Subir foto"}
-                <input
-                  type="file" accept="image/*" className="hidden"
-                  onChange={async (e) => {
-                    const f = e.target.files?.[0];
-                    if (!f) return;
-                    setUploadingPhoto(true);
-                    const url = await uploadServicePhoto(f);
-                    setUploadingPhoto(false);
-                    if (url) setImageUrl(url);
-                    else setMsg("No se pudo subir la foto");
-                    e.target.value = "";
-                  }}
-                />
-              </label>
+              <div className="flex gap-1">
+                <Input value={form.priceFrom} onChange={(e) => patch({ priceFrom: e.target.value })} inputMode="decimal" placeholder="Desde ($)" className="h-9 text-sm min-w-0" />
+                <Input value={form.priceTo} onChange={(e) => patch({ priceTo: e.target.value })} inputMode="decimal" placeholder="Hasta (opcional)" className="h-9 text-sm min-w-0" />
+              </div>
+            )}
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <Label className="text-xs">Seña por servicio ($, opcional)</Label>
+                <Input value={form.deposit} onChange={(e) => patch({ deposit: e.target.value })} inputMode="decimal" placeholder="Vacío = sin seña" className="mt-1 h-9 text-sm" />
+              </div>
+              <div>
+                <Label className="text-xs">Comisión % (vacío = la del profesional)</Label>
+                <Input value={form.commission} onChange={(e) => patch({ commission: e.target.value })} inputMode="decimal" placeholder="Ej: 40" className="mt-1 h-9 text-sm" />
+              </div>
+            </div>
+          </div>
+          {/* Reserva */}
+          <div className="rounded-md border border-border p-2 space-y-2">
+            <label className="flex items-center gap-2 text-xs cursor-pointer">
+              <input type="checkbox" checked={form.requireDeposit} onChange={(e) => patch({ requireDeposit: e.target.checked })} className="h-4 w-4" />
+              ⏰ Exigir seña para reservar (si no paga, no reserva)
+            </label>
+            {form.requireDeposit && (
+              <div>
+                <Label className="text-xs">Horas para pagar (vacío = 24)</Label>
+                <Input value={form.depositHours} onChange={(e) => patch({ depositHours: e.target.value })} inputMode="numeric" placeholder="24" className="mt-1 h-9 text-sm" />
+              </div>
             )}
           </div>
-        </div>
-        <div className="col-span-2 space-y-2 rounded-md border border-border p-2">
-          <label className="flex items-center gap-2 text-xs cursor-pointer">
-            <input type="checkbox" checked={requireDeposit} onChange={(e) => setRequireDeposit(e.target.checked)} className="h-4 w-4" />
-            🔒 Exigir seña para reservar (si no paga, no reserva)
-          </label>
-          {requireDeposit && (
-            <div>
-              <Label className="text-xs">Horas para pagar (vacío = 24)</Label>
-              <Input value={depositHours} onChange={(e) => setDepositHours(e.target.value)} inputMode="numeric" placeholder="24" className="mt-1 h-9 text-sm" />
+          {/* Foto */}
+          <div>
+            <Label className="text-xs">Foto (opcional, se ve en la carta)</Label>
+            <div className="flex items-center gap-2 mt-1">
+              {form.imageUrl ? (
+                <>
+                  <img src={form.imageUrl} alt="" className="h-10 w-10 rounded-lg object-cover border border-border" />
+                  <button type="button" onClick={() => patch({ imageUrl: "" })} className="text-xs text-red-600 hover:underline">Quitar</button>
+                </>
+              ) : (
+                <label className="inline-flex items-center gap-2 rounded-md border border-input px-3 py-2 text-xs font-medium cursor-pointer hover:bg-muted">
+                  {uploadingPhoto ? "Subiendo..." : "📷 Subir foto"}
+                  <input
+                    type="file" accept="image/*" className="hidden"
+                    onChange={async (e) => {
+                      const f = e.target.files?.[0];
+                      if (!f) return;
+                      setUploadingPhoto(true);
+                      const url = await uploadServicePhoto(f);
+                      setUploadingPhoto(false);
+                      if (url) patch({ imageUrl: url });
+                      else setMsg("No se pudo subir la foto");
+                      e.target.value = "";
+                    }}
+                  />
+                </label>
+              )}
             </div>
-          )}
+          </div>
+          {/* Estado */}
+          <div className="rounded-md border border-border p-2 space-y-2">
+            <label className="flex items-center gap-2 text-xs cursor-pointer">
+              <input type="checkbox" checked={form.active} onChange={(e) => patch({ active: e.target.checked })} className="h-4 w-4" />
+              Activo (si lo pausás, sale de la carta y no se puede reservar)
+            </label>
+            <label className="flex items-center gap-2 text-xs cursor-pointer">
+              <input type="checkbox" checked={form.featured} onChange={(e) => patch({ featured: e.target.checked })} className="h-4 w-4" />
+              ⭐ Oferta del día (una sola por comercio; flota en la carta y aparece en el home)
+            </label>
+          </div>
         </div>
-      </div>
-      {msg && <p className="text-xs text-red-600">{msg}</p>}
-      <Button size="sm" className="w-full" onClick={create} disabled={saving}>
-        {saving ? "Guardando..." : "＋ Agregar servicio"}
-      </Button>
+      </Modal>
     </Card>
   );
 }

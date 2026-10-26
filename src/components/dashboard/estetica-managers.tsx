@@ -96,8 +96,12 @@ function formFromService(s: Service): ServiceFormState {
   };
 }
 
-/** ABM de servicios del centro de estética (duración + buffer + seña). */
-export function EsteticaServicesManager({ onChanged }: { onChanged?: () => void }) {
+/** ABM de servicios del centro de estética (duración + buffer + seña).
+ *
+ * `canChargeDeposits`: la seña online sólo se puede cobrar con Mercado Pago o
+ * Stripe conectado; sin ninguno de los dos, los campos de seña se muestran
+ * deshabilitados con el aviso (configurarla no tendría efecto). */
+export function EsteticaServicesManager({ onChanged, canChargeDeposits = true }: { onChanged?: () => void; canChargeDeposits?: boolean }) {
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
   const [missing, setMissing] = useState(false);
@@ -187,7 +191,7 @@ export function EsteticaServicesManager({ onChanged }: { onChanged?: () => void 
     if (commission != null && (!Number.isFinite(commission) || commission < 0 || commission > 100)) {
       return "La comisión debe estar entre 0 y 100";
     }
-    if (form.requireDeposit && !(deposit != null && deposit > 0)) {
+    if (canChargeDeposits && form.requireDeposit && !(deposit != null && deposit > 0)) {
       return "Para exigir seña poné primero el monto";
     }
     const hours = form.depositHours.trim() === "" ? 24 : Number(form.depositHours);
@@ -210,12 +214,13 @@ export function EsteticaServicesManager({ onChanged }: { onChanged?: () => void 
       location_id: form.locationId || null,
       duration_min: Number(form.duration) || 60,
       buffer_min: Number(form.buffer) || 0,
-      deposit_amount: form.deposit.trim() === "" ? null : Number(form.deposit),
+      // Sin MP/Stripe conectado no se puede cobrar la seña online: no se guarda.
+      deposit_amount: canChargeDeposits && form.deposit.trim() !== "" ? Number(form.deposit) : null,
       price: form.priceMode === "fijo" ? (form.price.trim() === "" ? null : Number(form.price)) : null,
       price_from: form.priceMode === "desde" ? (form.priceFrom.trim() === "" ? null : Number(form.priceFrom)) : null,
       price_to: form.priceMode === "desde" && form.priceTo.trim() !== "" ? Number(form.priceTo) : null,
       commission_pct: form.commission.trim() === "" ? null : Number(form.commission),
-      require_deposit: form.requireDeposit,
+      require_deposit: canChargeDeposits && form.requireDeposit,
       deposit_hours: form.depositHours.trim() === "" ? 24 : Number(form.depositHours),
       image_url: form.imageUrl || null,
       active: form.active,
@@ -435,7 +440,12 @@ export function EsteticaServicesManager({ onChanged }: { onChanged?: () => void 
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <Label className="text-xs">Seña por servicio ($, opcional)</Label>
-                <Input value={form.deposit} onChange={(e) => patch({ deposit: e.target.value })} inputMode="decimal" placeholder="Vacío = sin seña" className="mt-1 h-9 text-sm" />
+                <Input value={form.deposit} onChange={(e) => patch({ deposit: e.target.value })} inputMode="decimal" placeholder={canChargeDeposits ? "Vacío = sin seña" : "Conectá MP para cobrar señas"} className="mt-1 h-9 text-sm" disabled={!canChargeDeposits} />
+                {!canChargeDeposits && (
+                  <p className="text-[11px] text-muted-foreground mt-1">
+                    La seña online se cobra con Mercado Pago o Stripe: conectá tu cuenta en <strong>Pagos</strong> para poder configurarla.
+                  </p>
+                )}
               </div>
               <div>
                 <Label className="text-xs">Comisión % (vacío = la del profesional)</Label>
@@ -445,10 +455,15 @@ export function EsteticaServicesManager({ onChanged }: { onChanged?: () => void 
           </div>
           {/* Reserva */}
           <div className="rounded-md border border-border p-2 space-y-2">
-            <label className="flex items-center gap-2 text-xs cursor-pointer">
-              <input type="checkbox" checked={form.requireDeposit} onChange={(e) => patch({ requireDeposit: e.target.checked })} className="h-4 w-4" />
+            <label className={`flex items-center gap-2 text-xs ${canChargeDeposits ? "cursor-pointer" : "opacity-60"}`}>
+              <input type="checkbox" checked={form.requireDeposit} onChange={(e) => patch({ requireDeposit: e.target.checked })} className="h-4 w-4" disabled={!canChargeDeposits} />
               ⏰ Exigir seña para reservar (si no paga, no reserva)
             </label>
+            {!canChargeDeposits && (
+              <p className="text-[11px] text-muted-foreground">
+                Disponible al conectar Mercado Pago o Stripe en <strong>Pagos</strong>.
+              </p>
+            )}
             {form.requireDeposit && (
               <div>
                 <Label className="text-xs">Horas para pagar (vacío = 24)</Label>

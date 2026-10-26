@@ -89,6 +89,8 @@ export function EsteticaServicesSection({
   staffOptions,
   locationOptions,
   cancelPolicy,
+  cancelRefundsDeposit,
+  cancelHours,
 }: {
   services: EsteticaServiceCard[];
   vendorId: string;
@@ -96,6 +98,9 @@ export function EsteticaServicesSection({
   staffOptions?: { id: string; name: string }[];
   locationOptions?: { id: string; name: string; address?: string | null }[];
   cancelPolicy?: string | null;
+  /** Seña al cancelar dentro del plazo: false = no se devuelve. */
+  cancelRefundsDeposit?: boolean;
+  cancelHours?: number;
 }) {
   const [picked, setPicked] = useState<EsteticaServiceCard | null>(null);
   if (services.length === 0) return null;
@@ -136,6 +141,8 @@ export function EsteticaServicesSection({
           staffOptions={staffOptions}
           locationOptions={locationOptions}
           cancelPolicy={cancelPolicy}
+          cancelRefundsDeposit={cancelRefundsDeposit}
+          cancelHours={cancelHours}
           onClose={() => setPicked(null)}
         />
       )}
@@ -150,6 +157,8 @@ export function ServiceBookingSheet({
   staffOptions,
   locationOptions,
   cancelPolicy,
+  cancelRefundsDeposit,
+  cancelHours,
   onClose,
 }: {
   service: EsteticaServiceCard;
@@ -159,6 +168,9 @@ export function ServiceBookingSheet({
   staffOptions?: { id: string; name: string }[];
   locationOptions?: { id: string; name: string; address?: string | null }[];
   cancelPolicy?: string | null;
+  /** Seña al cancelar dentro del plazo: false = no se devuelve. */
+  cancelRefundsDeposit?: boolean;
+  cancelHours?: number;
   onClose: () => void;
 }) {
   const [step, setStep] = useState<"detail" | "book">("detail");
@@ -307,6 +319,11 @@ export function ServiceBookingSheet({
                 {cancelPolicy && (
                   <p className="text-xs text-muted-foreground">📋 {cancelPolicy}</p>
                 )}
+                {service.require_deposit === true && cancelRefundsDeposit === false && (
+                  <p className="text-xs rounded-lg bg-amber-50 border border-amber-200 text-amber-800 px-3 py-2">
+                    ↩️ Si cancelás con menos de {cancelHours ?? 24} h de anticipación, la seña no se devuelve.
+                  </p>
+                )}
                 <Button className="w-full" size="lg" onClick={() => setStep("book")}>
                   Solicitar turno →
                 </Button>
@@ -322,6 +339,8 @@ export function ServiceBookingSheet({
                 staffOptions={staffOptions}
                 locationOptions={locationOptions}
                 cancelPolicy={cancelPolicy}
+                cancelRefundsDeposit={cancelRefundsDeposit}
+                cancelHours={cancelHours}
               />
             </div>
           )}

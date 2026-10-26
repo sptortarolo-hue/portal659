@@ -138,6 +138,7 @@ export async function POST(request: Request) {
     quote_slots,
     cancel_policy_text,
     cancel_hours,
+    cancel_refunds_deposit,
     noshow_policy,
     google_review_url,
     loyalty_every,
@@ -358,6 +359,11 @@ export async function POST(request: Request) {
     }
     payload.cancel_hours = Math.round(n);
   }
+  // Seña al cancelar dentro del plazo (estética): true = se devuelve
+  // (default), false = se retiene. Tolerante a migración sin aplicar.
+  if (cancel_refunds_deposit !== undefined) {
+    payload.cancel_refunds_deposit = cancel_refunds_deposit !== false && cancel_refunds_deposit !== "false";
+  }
   // Política ante ausente (estética): 'none' o 'forfeit' (retiene seña).
   // Tolerante a migración sin aplicar (ver droppable más abajo).
   if (noshow_policy !== undefined) {
@@ -577,6 +583,7 @@ export async function POST(request: Request) {
         "floor_bg_url",
         "cancel_policy_text",
         "cancel_hours",
+        "cancel_refunds_deposit",
         "noshow_policy",
         "google_review_url",
         "loyalty_every",

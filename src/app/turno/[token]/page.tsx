@@ -21,6 +21,9 @@ type Booking = {
   location_label: string | null;
   cancel_policy_text: string | null;
   cancel_hours: number | null;
+  cancel_refunds_deposit: boolean;
+  deposit_amount: number | null;
+  deposit_status: string | null;
 };
 
 async function loadBooking(token: string): Promise<Booking | null> {
@@ -29,7 +32,9 @@ async function loadBooking(token: string): Promise<Booking | null> {
     const b = await queryOne<any>(
       `SELECT b.id, b.customer_name, b.booking_date::text AS booking_date,
               b.booking_time::text AS booking_time, b.status, b.notes,
+              b.deposit_amount, b.deposit_status,
               v.store_name, v.slug, v.whatsapp, v.cancel_policy_text, v.cancel_hours,
+              COALESCE(v.cancel_refunds_deposit, true) AS cancel_refunds_deposit,
               s.name AS service_label, st.name AS staff_label, l.name AS location_label
        FROM bookings b
        JOIN vendors v ON v.id = b.vendor_id
@@ -55,6 +60,9 @@ async function loadBooking(token: string): Promise<Booking | null> {
       location_label: b.location_label,
       cancel_policy_text: b.cancel_policy_text,
       cancel_hours: b.cancel_hours != null ? Number(b.cancel_hours) : null,
+      cancel_refunds_deposit: b.cancel_refunds_deposit !== false,
+      deposit_amount: b.deposit_amount != null ? Number(b.deposit_amount) : null,
+      deposit_status: b.deposit_status != null ? String(b.deposit_status) : null,
     };
   } catch {
     // Sin migración: sin página.
@@ -82,6 +90,14 @@ export default async function TurnoPage({ params }: { params: Promise<{ token: s
   const waNumber = (booking.whatsapp || "").replace(/[^0-9]/g, "");
   const terminal = booking.status === "cancelled" || booking.status === "noshow";
   const fichaTemplates = terminal ? [] : await templatesForBooking(token);
+
+  // Seña en riesgo: pagada, política de retención y cancelación dentro del
+  // plazo del comercio (se avisa antes de confirmar la cancelación).
+  const depositPaid = booking.deposit_status === "paid" && booking.deposit_amount != null && booking.deposit_amount > 0;
+  const limitHours = booking.cancel_hours ?? 24;
+  const startMs = new Date(`${booking.booking_date}T${booking.booking_time}:00`).getTime();
+  const withinWindow = Number.isFinite(startMs) && startMs - Date.now() < limitHours * 3600 * 1000;
+  const depositAtRisk = depositPaid && booking.cancel_refunds_deposit === false && withinWindow;
 
   return (
     <main className="min-h-screen bg-background">
@@ -113,6 +129,8 @@ export default async function TurnoPage({ params }: { params: Promise<{ token: s
                 initialStatus={booking.status}
                 cancelHours={booking.cancel_hours ?? 24}
                 cancelPolicy={booking.cancel_policy_text}
+                depositAtRisk={depositAtRisk}
+                depositAmount={depositPaid ? booking.deposit_amount : null}
               />
             </>
           )}

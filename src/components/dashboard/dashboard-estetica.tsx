@@ -160,6 +160,12 @@ export default function DashboardEstetica({
   const [cancelHours, setCancelHours] = useState(
     (vendor as any)?.cancel_hours != null ? String((vendor as any).cancel_hours) : "24"
   );
+  // Seña al cancelar dentro del plazo: true = se devuelve (default).
+  const [cancelRefundsDeposit, setCancelRefundsDeposit] = useState(
+    (vendor as any)?.cancel_refunds_deposit !== false
+  );
+  // Seña online: sólo cobrable con Mercado Pago o Stripe conectado.
+  const canChargeDeposits = !!((vendor as any)?.mp_user_id || (vendor as any)?.stripe_account_id);
   const [noshowPolicy, setNoshowPolicy] = useState(
     (vendor as any)?.noshow_policy === "forfeit" ? "forfeit" : "none"
   );
@@ -217,6 +223,7 @@ export default function DashboardEstetica({
     );
     setCancelPolicy(typeof vendor.cancel_policy_text === "string" ? vendor.cancel_policy_text : "");
     setCancelHours((vendor as any)?.cancel_hours != null ? String((vendor as any).cancel_hours) : "24");
+    setCancelRefundsDeposit((vendor as any)?.cancel_refunds_deposit !== false);
     setNoshowPolicy((vendor as any)?.noshow_policy === "forfeit" ? "forfeit" : "none");
     setGoogleReviewUrl(typeof vendor.google_review_url === "string" ? vendor.google_review_url : "");
     setLoyaltyEvery((vendor as any)?.loyalty_every != null ? String((vendor as any).loyalty_every) : "");
@@ -319,6 +326,7 @@ export default function DashboardEstetica({
         quote_slots: quoteSlots,
         cancel_policy_text: cancelPolicy.trim() || null,
         cancel_hours: cancelHours === "" ? 24 : Math.max(0, Number(cancelHours) || 0),
+        cancel_refunds_deposit: cancelRefundsDeposit,
         noshow_policy: noshowPolicy === "forfeit" ? "forfeit" : "none",
       });
       setMsg("Turnera guardada");
@@ -589,7 +597,7 @@ export default function DashboardEstetica({
 
         <ConfigSection id="turnera" label="Turnera" icon="📅">
           <div className="space-y-3">
-            <EsteticaServicesManager />
+            <EsteticaServicesManager canChargeDeposits={canChargeDeposits} />
             <EsteticaStaffManager />
             <EsteticaLocationsManager />
             <EsteticaBlocksManager />
@@ -667,6 +675,20 @@ export default function DashboardEstetica({
               onPolicy={setCancelPolicy}
               onHours={setCancelHours}
             />
+            <div>
+              <Label>Si cancela dentro del plazo ({cancelHours === "" ? 24 : cancelHours} h)</Label>
+              <select
+                value={cancelRefundsDeposit ? "devolver" : "retener"}
+                onChange={(e) => setCancelRefundsDeposit(e.target.value === "devolver")}
+                className="mt-1 h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+              >
+                <option value="devolver">Devolver la seña</option>
+                <option value="retener">Retener la seña (no se devuelve)</option>
+              </select>
+              <p className="text-xs text-muted-foreground mt-1">
+                Se muestra en el micrositio antes de reservar y al cancelar desde el link del turno. Con retención, la seña pagada queda a tu favor (igual que la política de ausente).
+              </p>
+            </div>
             <div>
               <Label>Si el cliente no viene</Label>
               <select

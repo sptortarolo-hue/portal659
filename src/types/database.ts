@@ -508,6 +508,8 @@ export type Vendor = {
   cancel_policy_text?: string | null;
   /** Anticipación mínima para cancelar (horas; default 24). */
   cancel_hours?: number | null;
+  /** Seña al cancelar dentro del plazo: true = se devuelve (default) | false = se retiene. */
+  cancel_refunds_deposit?: boolean | null;
   /** Agenda de la turnera: 'hours' (horario del local) | 'grid' (planificación por profesional). */
   booking_schedule_mode?: string | null;
   /** Recordatorios por WhatsApp (NULL = activados; false = solo push). */

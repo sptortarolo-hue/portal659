@@ -32,10 +32,13 @@ export const POST = withRateLimit(async (request: Request) => {
     staff_id: string | null;
     service_id: string | null;
     duration_min: number | null;
+    deposit_amount: number | null;
+    deposit_status: string | null;
   }>(
     `SELECT id, vendor_id, customer_name, booking_date::text AS booking_date,
             booking_time::text AS booking_time, starts_at::text AS starts_at, status,
-            staff_id::text AS staff_id, service_id::text AS service_id, duration_min
+            staff_id::text AS staff_id, service_id::text AS service_id, duration_min,
+            deposit_amount::numeric AS deposit_amount, deposit_status
      FROM bookings WHERE confirm_token = $1 LIMIT 1`,
     [token]
   ).catch(() => undefined);
@@ -61,6 +64,8 @@ export const POST = withRateLimit(async (request: Request) => {
         staff_id: null,
         service_id: null,
         duration_min: null,
+        deposit_amount: null,
+        deposit_status: null,
       };
     }
   }
@@ -84,12 +89,14 @@ export const POST = withRateLimit(async (request: Request) => {
   if (action === "cancel") {
   // Cancelación: ¿tardía? (dentro de cancel_hours del comercio, default 24).
   let late = false;
+  let refundsDeposit = true;
   try {
-    const vrow = await queryOne<{ cancel_hours: number | null }>(
-      `SELECT cancel_hours FROM vendors WHERE id = $1 LIMIT 1`,
+    const vrow = await queryOne<{ cancel_hours: number | null; cancel_refunds_deposit: boolean | null }>(
+      `SELECT cancel_hours, COALESCE(cancel_refunds_deposit, true) AS cancel_refunds_deposit FROM vendors WHERE id = $1 LIMIT 1`,
       [booking.vendor_id]
     ).catch(() => null);
     const limitHours = vrow?.cancel_hours != null ? Number(vrow.cancel_hours) : 24;
+    refundsDeposit = vrow?.cancel_refunds_deposit !== false;
     const startMs = booking.starts_at
       ? new Date(booking.starts_at).getTime()
       : new Date(`${booking.booking_date}T${String(booking.booking_time).slice(0, 5)}:00`).getTime();
@@ -97,14 +104,18 @@ export const POST = withRateLimit(async (request: Request) => {
       late = startMs - Date.now() < limitHours * 3600 * 1000;
     }
   } catch { /* sin columnas: no tardía */ }
+  const depositPaid = booking.deposit_status === "paid" && booking.deposit_amount != null && Number(booking.deposit_amount) > 0;
+  // Con retención y cancelación tardía, la seña queda para el comercio.
+  const retained = late && !refundsDeposit && depositPaid;
   await query(`UPDATE bookings SET status = 'cancelled' WHERE id = $1`, [booking.id]).catch(() => undefined);
   await notifyVendor(
     booking.vendor_id,
     booking.id,
     late ? "Turno cancelado (tardío)" : "Turno cancelado por la clienta",
-    `${booking.customer_name || "La clienta"} canceló su turno del ${booking.booking_date} ${String(booking.booking_time).slice(0, 5)}${late ? " dentro del plazo de cancelación (revisá tu política de seña)" : ""}.`
+    `${booking.customer_name || "La clienta"} canceló su turno del ${booking.booking_date} ${String(booking.booking_time).slice(0, 5)}${late ? " dentro del plazo de cancelación" : ""}.` +
+      (retained ? ` Según tu política, la seña de $${Number(booking.deposit_amount).toLocaleString("es-AR")} queda retenida.` : depositPaid ? " Devolvé la seña pagada." : "")
   );
-  return NextResponse.json({ ok: true, status: "cancelled", late });
+  return NextResponse.json({ ok: true, status: "cancelled", late, retained, refundsDeposit });
   }
 
 if (action === "reschedule") {

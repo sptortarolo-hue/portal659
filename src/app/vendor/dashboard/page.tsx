@@ -1133,6 +1133,9 @@ function VendorDashboardInner() {
   // comparte bandeja, agenda y cobros con servicios, pero la Configuración
   // es propia (DashboardEstetica: turnera, profesionales, fichas, packs).
   const isEstetica = vendor?.vertical === "estetica";
+  // Seña online (estética): sólo se puede cobrar con Mercado Pago o Stripe
+  // conectado; sin ninguno, los campos de seña se muestran deshabilitados.
+  const canChargeDeposits = !!((vendor as any)?.mp_user_id || (vendor as any)?.stripe_account_id);
   const isService = vendor?.vertical === "servicio" || isEstetica;
   const isGastro = vendor?.vertical === "gastronomia";
   const isComercio = vendor?.vertical === "comercio";
@@ -1886,7 +1889,7 @@ function VendorDashboardInner() {
                 </TabErrorBoundary>
               ) : isEstetica && tab === "servicios" ? (
                 <TabErrorBoundary tab="servicios">
-                <EsteticaServicesManager onChanged={() => loadData()} />
+                <EsteticaServicesManager onChanged={() => loadData()} canChargeDeposits={canChargeDeposits} />
                 </TabErrorBoundary>
               ) : isEstetica && tab === "config" ? (
               <div className="flex gap-4 items-start">

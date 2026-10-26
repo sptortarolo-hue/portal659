@@ -22,9 +22,12 @@ type Props = {
   locationOptions?: { id: string; name: string; address?: string | null }[];
   /** Política de cancelación visible antes de reservar. */
   cancelPolicy?: string | null;
+  /** Seña al cancelar dentro del plazo: false = no se devuelve. */
+  cancelRefundsDeposit?: boolean;
+  cancelHours?: number;
 };
 
-export function BookingForm({ vendorId, vendorName, services, serviceOptions, staffOptions, locationOptions, cancelPolicy }: Props) {
+export function BookingForm({ vendorId, vendorName, services, serviceOptions, staffOptions, locationOptions, cancelPolicy, cancelRefundsDeposit, cancelHours }: Props) {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [productName, setProductName] = useState("");
@@ -433,6 +436,11 @@ export function BookingForm({ vendorId, vendorName, services, serviceOptions, st
       {cancelPolicy && (
         <p className="text-xs text-muted-foreground text-center">
           📝 {cancelPolicy}
+        </p>
+      )}
+      {cancelRefundsDeposit === false && (
+        <p className="text-xs text-muted-foreground text-center">
+          ↩️ Si cancelás con menos de {cancelHours ?? 24} h, la seña no se devuelve.
         </p>
       )}
       <p className="text-xs text-muted-foreground text-center">

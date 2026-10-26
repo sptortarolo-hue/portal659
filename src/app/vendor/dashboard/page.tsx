@@ -1889,7 +1889,12 @@ function VendorDashboardInner() {
                 </TabErrorBoundary>
               ) : isEstetica && tab === "servicios" ? (
                 <TabErrorBoundary tab="servicios">
-                <EsteticaServicesManager onChanged={() => loadData()} canChargeDeposits={canChargeDeposits} />
+                <EsteticaServicesManager
+          onChanged={() => loadData()}
+          canChargeDeposits={canChargeDeposits}
+          cancelRefundsDeposit={(vendor as any)?.cancel_refunds_deposit !== false}
+          cancelHours={(vendor as any)?.cancel_hours != null ? Number((vendor as any).cancel_hours) : 24}
+        />
                 </TabErrorBoundary>
               ) : isEstetica && tab === "config" ? (
               <div className="flex gap-4 items-start">

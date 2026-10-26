@@ -101,7 +101,7 @@ function formFromService(s: Service): ServiceFormState {
  * `canChargeDeposits`: la seña online sólo se puede cobrar con Mercado Pago o
  * Stripe conectado; sin ninguno de los dos, los campos de seña se muestran
  * deshabilitados con el aviso (configurarla no tendría efecto). */
-export function EsteticaServicesManager({ onChanged, canChargeDeposits = true }: { onChanged?: () => void; canChargeDeposits?: boolean }) {
+export function EsteticaServicesManager({ onChanged, canChargeDeposits = true, cancelRefundsDeposit = true, cancelHours = 24 }: { onChanged?: () => void; canChargeDeposits?: boolean; cancelRefundsDeposit?: boolean; cancelHours?: number }) {
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
   const [missing, setMissing] = useState(false);
@@ -118,6 +118,36 @@ export function EsteticaServicesManager({ onChanged, canChargeDeposits = true }:
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<ServiceFormState>(blankForm);
   const patch = (p: Partial<ServiceFormState>) => setForm((f) => ({ ...f, ...p }));
+  // Política de seña al cancelar dentro del plazo (dato del comercio, se
+  // guarda al instante vía PATCH me). Estado local para no depender del
+  // refresh del padre: el selector responde aunque el vendor tarde.
+  const [refunds, setRefunds] = useState(cancelRefundsDeposit);
+  const [savingPolicy, setSavingPolicy] = useState(false);
+  useEffect(() => { setRefunds(cancelRefundsDeposit); }, [cancelRefundsDeposit]);
+
+  async function saveRefundPolicy(next: boolean) {
+    setRefunds(next);
+    setSavingPolicy(true);
+    try {
+      const res = await fetch("/api/vendor/me", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cancel_refunds_deposit: next }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (data.error || res.status >= 400) {
+        setRefunds(!next);
+        setMsg(typeof data.error === "string" ? data.error : "No se pudo guardar la política");
+        return;
+      }
+      onChanged?.();
+    } catch {
+      setRefunds(!next);
+      setMsg("Error de conexión");
+    } finally {
+      setSavingPolicy(false);
+    }
+  }
 
   async function uploadServicePhoto(file: File): Promise<string | null> {
     const fd = new FormData();
@@ -309,6 +339,21 @@ export function EsteticaServicesManager({ onChanged, canChargeDeposits = true }:
         <p className="font-medium text-sm">✨ Servicios</p>
         <p className="text-xs text-muted-foreground">
           Cada servicio tiene su duración y su seña. El turno online se bloquea si se pisa con otro del mismo profesional. Con <span title="Oferta del día">★</span> marcás la oferta del día (una sola): flota primero en tu carta, con badge &quot;Hoy&quot;, y aparece en el home.
+        </p>
+      </div>
+      <div className="rounded-md border border-border p-2 space-y-1">
+        <Label className="text-xs">Seña si la clienta cancela dentro del plazo ({cancelHours} h)</Label>
+        <select
+          value={refunds ? "devolver" : "retener"}
+          onChange={(e) => saveRefundPolicy(e.target.value === "devolver")}
+          disabled={savingPolicy}
+          className="mt-1 h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+        >
+          <option value="devolver">Devolver la seña</option>
+          <option value="retener">Retener la seña (no se devuelve)</option>
+        </select>
+        <p className="text-[11px] text-muted-foreground">
+          Se muestra en el micrositio antes de reservar y al cancelar desde el link del turno. Con retención, la seña pagada queda a tu favor (igual que la política de ausente).
         </p>
       </div>
       <Button size="sm" className="w-full" onClick={openCreate}>

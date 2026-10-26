@@ -142,7 +142,7 @@ export default function RootLayout({
                 <div className="container mx-auto px-4 flex flex-col sm:flex-row items-center justify-center gap-2">
                   <span>© {new Date().getFullYear()} Portal 659 — El centro comercial de tu barrio · 0% comisión</span>
                   <span className="hidden sm:inline text-border">·</span>
-                  <div className="flex items-center gap-3">
+                  <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
                     <Link href="/" className="hover:text-foreground transition-colors">Inicio</Link>
                     <Link href="/buscar" className="hover:text-foreground transition-colors">Comercios</Link>
                     <Link href="/barrio" className="hover:text-foreground transition-colors">Info del barrio</Link>

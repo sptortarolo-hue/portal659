@@ -292,7 +292,9 @@ export function StoreHeader({
 
       {/* Zona 2: Grid de info cards */}
       <div className="container mx-auto px-4 max-w-4xl mt-3">
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        {/* 3 columnas recién en lg: a 640-1024 la card de Horarios quedaba en
+            ~200px y la semana desbordaba (franjas "09:00-13:00 · 17:00-22:00"). */}
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
           {/* Ubicación (servicios: zona de cobertura si no hay dirección física) */}
           <div className="col-span-2 sm:col-span-1 rounded-2xl border border-border bg-card p-4 shadow-lg">
             <div className="flex items-center gap-2 mb-2">
@@ -344,8 +346,9 @@ export function StoreHeader({
             )}
           </div>
 
-          {/* Horarios */}
-          <div className="rounded-2xl border border-border bg-card p-4 shadow-lg">
+          {/* Horarios — ancho completo en mobile: la grilla 2 columnas dejaba la
+              card en ~158px y la semana se desbordaba/partía en 4 renglones */}
+          <div className="col-span-2 sm:col-span-1 rounded-2xl border border-border bg-card p-4 shadow-lg">
             <div className="flex items-center gap-2 mb-2">
               <span className="text-lg">🕐</span>
               <span className="font-semibold text-sm">Horarios</span>

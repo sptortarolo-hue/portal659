@@ -433,6 +433,73 @@ export function activePromo(plan: Plan): PlanPromo | null {
   };
 }
 
+/**
+ * Precio del día de un plan: ÚNICA fuente de verdad.
+ *
+ * Mientras la promo esté vigente (precio < lista, meses > 0 y
+ * `promo_ends_at` no pasado), la pagan TODOS: altas nuevas y renovaciones,
+ * con los mismos términos (N meses al precio promo). Si no, precio de lista.
+ *
+ * Lo consumen el panel del comercio, los avisos por mail, el circuito de
+ * renovación (`renew`), el pago por Mercado Pago (`pay`), el cron de avisos
+ * y el modal de emisión manual del admin, para que el monto que se cobra,
+ * el que se muestra y el que se avisa sean siempre el mismo.
+ */
+export type PlanPrice = {
+  /** Monto a cobrar hoy. */
+  amount: number;
+  /** ¿El monto sale de la promo? */
+  isPromo: boolean;
+  listPrice: number;
+  /** Descuento real (null si no es promo o el precio de lista no es mayor). */
+  offPct: number | null;
+  /** Meses que cubre el pago (los de la promo, o 1 si es lista). */
+  months: number;
+  promoEndsAt: string | null;
+  promoLabel: string | null;
+};
+
+export function planPriceFor(plan: Plan | null | undefined, at: Date = new Date()): PlanPrice | null {
+  if (!plan) return null;
+  const listPrice = Number(plan.price_monthly || 0);
+  const atList: PlanPrice = {
+    amount: listPrice,
+    isPromo: false,
+    listPrice,
+    offPct: null,
+    months: 1,
+    promoEndsAt: plan.promo_ends_at ?? null,
+    promoLabel: plan.promo_label ?? null,
+  };
+
+  const promo = activePromo(plan);
+  if (!promo) return atList;
+  // `activePromo` valida contra "ahora"; con fecha inyectada se revalida el fin.
+  if (promo.endsAt && new Date(promo.endsAt).getTime() <= at.getTime()) return atList;
+
+  return {
+    amount: promo.price,
+    isPromo: true,
+    listPrice: promo.listPrice,
+    offPct: promo.offPct,
+    months: promo.months,
+    promoEndsAt: promo.endsAt,
+    promoLabel: promo.label,
+  };
+}
+
+/**
+ * Texto que explica el precio cobrado, para mails, panel y recibo:
+ * "precio promo −25% (lista $20.000)" o "precio de lista".
+ */
+export function planPriceNote(price: PlanPrice | null): string | null {
+  if (!price || price.amount <= 0) return null;
+  if (price.isPromo && price.offPct) {
+    return `precio promo −${price.offPct}% (lista ${formatPrice(price.listPrice)})`;
+  }
+  return "precio de lista";
+}
+
 export function daysLeft(dateStr: string | null): number {
   if (!dateStr) return 0;
   const diff = new Date(dateStr).getTime() - Date.now();

@@ -2,10 +2,11 @@ import { NextResponse } from "next/server";
 import { isAdmin } from "@/lib/admin-utils";
 import { getAuthUser } from "@/lib/auth";
 import { queryMany, queryOne, query, withTransaction } from "@/lib/db";
-import { resolveVendorPlan } from "@/lib/plans";
-import { nextReceiptSeq } from "@/lib/plan-payments";
+import { resolveVendorPlan, planPriceFor } from "@/lib/plans";
+import { nextReceiptSeq, getPortalBank } from "@/lib/plan-payments";
+import { getSiteUrl } from "@/lib/site-url";
 import { buildPlanReceiptPdf } from "@/lib/plan-receipt-pdf";
-import { planReceiptEmail, sendEmail } from "@/lib/email";
+import { planReceiptEmail, planComprobanteReminderEmail, sendEmail } from "@/lib/email";
 import { sendPushToUser } from "@/lib/push";
 import type { Plan } from "@/types/database";
 
@@ -61,12 +62,30 @@ export async function GET(request: Request) {
        ORDER BY s.created_at DESC`,
       [vendorId]
     );
+    const payments = await queryMany(
+      `SELECT p.id, p.amount, p.period_start, p.period_end, p.reference, p.method, p.status,
+              p.comprobante_url, p.comprobante_at, p.created_at, p.reviewed_at, p.review_note,
+              pl.name AS plan_name
+         FROM subscription_payments p
+         LEFT JOIN plans pl ON pl.id = p.plan_id
+        WHERE p.vendor_id = $1
+        ORDER BY p.created_at DESC
+        LIMIT 50`,
+      [vendorId]
+    ).catch(() => []);
+    const receipts = await queryMany(
+      `SELECT id, amount, plan_name, method, seq, year, issued_at, emailed_at, period_start, period_end
+         FROM plan_receipts WHERE vendor_id = $1 ORDER BY issued_at DESC LIMIT 50`,
+      [vendorId]
+    ).catch(() => []);
     return NextResponse.json({
       vendor,
       history: history.map((h: Record<string, unknown>) => ({
         ...h,
         amount: h.amount != null ? Number(h.amount) : null,
       })),
+      payments,
+      receipts,
       plans,
     });
   }
@@ -127,28 +146,93 @@ export async function GET(request: Request) {
     };
   });
 
-  return NextResponse.json({
-    subscriptions: result,
-    plans,
-    // Cola de revisión: pagos por transferencia pendientes, con el comprobante.
-    payments: (await queryMany<Record<string, unknown>>(
+  // Cola de revisión: pendientes (con y sin comprobante) + revisados (30 días).
+  const [pending, reviewed, bank] = await Promise.all([
+    queryMany<Record<string, unknown>>(
       `SELECT p.id, p.amount, p.period_start, p.period_end, p.reference, p.created_at,
-              p.comprobante_url, p.comprobante_name, p.comprobante_at,
-              v.id AS vendor_id, v.store_name, v.slug, v.vertical,
-              pl.name AS plan_name
+              p.comprobante_url, p.comprobante_name, p.comprobante_at, p.last_nudge_at,
+              p.promo_pct, p.promo_list_price, p.plan_id,
+              v.id AS vendor_id, v.store_name, v.slug, v.vertical, v.plan_expires_at,
+              pl.name AS plan_name, pl.price_monthly AS plan_list_price,
+              pl.promo_price AS plan_promo_price, pl.promo_months AS plan_promo_months,
+              pl.promo_ends_at AS plan_promo_ends_at
          FROM subscription_payments p
          JOIN vendors v ON v.id = p.vendor_id
          LEFT JOIN plans pl ON pl.id = p.plan_id
         WHERE p.status = 'pending'
         ORDER BY p.comprobante_at NULLS FIRST, p.created_at ASC
-        LIMIT 100`
-    ).catch(() => [] as Record<string, unknown>[])).map((p: Record<string, unknown>) => ({
+        LIMIT 200`
+    ).catch(() => [] as Record<string, unknown>[]),
+    queryMany<Record<string, unknown>>(
+      `SELECT p.id, p.amount, p.period_end, p.reference, p.method, p.status,
+              p.reviewed_at, p.review_note, p.comprobante_url,
+              v.id AS vendor_id, v.store_name, pl.name AS plan_name
+         FROM subscription_payments p
+         JOIN vendors v ON v.id = p.vendor_id
+         LEFT JOIN plans pl ON pl.id = p.plan_id
+        WHERE p.status IN ('approved', 'rejected')
+          AND p.reviewed_at > now() - interval '30 days'
+        ORDER BY p.reviewed_at DESC
+        LIMIT 200`
+    ).catch(() => [] as Record<string, unknown>[]),
+    queryOne<{ alias: string | null; cbu: string | null; titular: string | null; qr_url: string | null; whatsapp: string | null; notes: string | null }>(
+      `SELECT alias, cbu, titular, qr_url, whatsapp, notes FROM portal_bank WHERE id = 1`
+    ).catch(() => null),
+  ]);
+
+  // Monto esperado hoy por plan: para marcar reclamos que no coincidan.
+  const priceOf = (planId: unknown, list: unknown, promo: unknown, months: unknown, ends: unknown): number => {
+    const p = planPriceFor(
+      {
+        id: String(planId || ""),
+        price_monthly: Number(list || 0),
+        promo_price: promo == null ? null : Number(promo),
+        promo_months: months == null ? null : Number(months),
+        promo_ends_at: (ends as string | null) ?? null,
+        promo_label: null,
+        slug: "",
+        name: "",
+      } as unknown as Plan,
+      new Date()
+    );
+    return p?.amount ?? Number(list || 0);
+  };
+
+  const pendingOut = (pending || []).map((p: Record<string, unknown>) => {
+    const expected = priceOf(
+      p.plan_id,
+      p.plan_list_price,
+      p.plan_promo_price,
+      p.plan_promo_months,
+      p.plan_promo_ends_at
+    );
+    const amount = p.amount != null ? Number(p.amount) : null;
+    return {
+      ...p,
+      amount,
+      expected_amount: expected,
+      amount_mismatch: amount != null && expected > 0 && Math.abs(amount - expected) > 1,
+      age_hours: p.created_at
+        ? Math.round((Date.now() - new Date(p.created_at as string).getTime()) / 3600000)
+        : null,
+    };
+  });
+
+  return NextResponse.json({
+    subscriptions: result,
+    plans,
+    // Cola: pendientes primero con comprobante (ya se puede decidir).
+    pending: pendingOut.sort((a: any, b: any) => {
+      const ax = a.comprobante_at ? 0 : 1;
+      const bx = b.comprobante_at ? 0 : 1;
+      return ax - bx || (b.age_hours ?? 0) - (a.age_hours ?? 0);
+    }),
+    reviewed: (reviewed || []).map((p: Record<string, unknown>) => ({
       ...p,
       amount: p.amount != null ? Number(p.amount) : null,
     })),
-    bank: await queryOne<{ alias: string | null; cbu: string | null; titular: string | null; qr_url: string | null; notes: string | null }>(
-      `SELECT alias, cbu, titular, qr_url, notes FROM portal_bank WHERE id = 1`
-    ).catch(() => null),
+    bank,
+    bankComplete: !!(bank && (bank.alias || bank.cbu)),
   });
 }
 
@@ -188,6 +272,143 @@ async function insertSubscription(
     ]
   );
   return rows[0];
+}
+
+/** Datos de contacto del comercio (dueño por email + ficha para el recibo). */
+async function loadVendorContact(vendorId: string) {
+  return queryOne<{
+    user_id: string | null;
+    store_name: string;
+    address: string | null;
+    phone: string | null;
+    whatsapp: string | null;
+    email: string | null;
+  }>(
+    `SELECT v.user_id, v.store_name, v.address, v.phone, v.whatsapp, p.email
+       FROM vendors v LEFT JOIN profiles p ON p.id = v.user_id
+      WHERE v.id = $1`,
+    [vendorId]
+  );
+}
+
+/** Inserta la fila del Recibo X (dentro de la tx de aprobación/emisión). */
+async function insertReceipt(
+  tx: Parameters<Parameters<typeof withTransaction>[0]>[0],
+  p: {
+    vendorId: string;
+    paymentId: string | null;
+    planId: string | null;
+    planName: string;
+    amount: number;
+    periodStart: string | null;
+    periodEnd: string | null;
+    methodLabel: string;
+    promoPct: number | null;
+    promoListPrice: number | null;
+    seq: number;
+    year: number;
+  }
+): Promise<{ id: string }> {
+  const rows = await tx.query<{ id: string }>(
+    `INSERT INTO plan_receipts
+       (vendor_id, payment_id, plan_id, plan_name, amount, period_start, period_end,
+        method, promo_pct, promo_list_price, seq, year)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+     RETURNING id`,
+    [
+      p.vendorId,
+      p.paymentId,
+      p.planId,
+      p.planName,
+      p.amount,
+      p.periodStart,
+      p.periodEnd,
+      p.methodLabel,
+      p.promoPct,
+      p.promoListPrice,
+      p.seq,
+      p.year,
+    ]
+  );
+  return rows[0];
+}
+
+/**
+ * Emite el aviso de un recibo: PDF por mail al dueño + campana/push.
+ * Compartido por approve_payment, emit_receipt y resend_receipt.
+ */
+async function sendReceiptNotice(params: {
+  info: Awaited<ReturnType<typeof loadVendorContact>>;
+  planName: string;
+  receiptNumber: string;
+  /** Fila del recibo (approve/emit) o del pago (resend marca emailed igual). */
+  receiptId: string;
+  amount: number;
+  periodStart: string | null;
+  periodEnd: string | null;
+  methodLabel: string;
+  promoPct: number | null;
+  promoListPrice: number | null;
+  noticeBody: string;
+}) {
+  const { info, receiptId } = params;
+  const title = "¡Pago acreditado!";
+  const promoNote =
+    params.promoPct && params.promoListPrice
+      ? `precio promo −${params.promoPct}% (lista $${Number(params.promoListPrice).toLocaleString("es-AR")})`
+      : "precio de lista";
+
+  if (info?.email && process.env.RESEND_API_KEY) {
+    try {
+      const pdf = await buildPlanReceiptPdf({
+        vendor: {
+          store_name: info.store_name,
+          address: info.address,
+          phone: info.phone,
+          whatsapp: info.whatsapp,
+        },
+        receiptNumber: params.receiptNumber,
+        issuedAt: new Date().toISOString(),
+        planName: params.planName,
+        amount: params.amount,
+        periodStart: params.periodStart,
+        periodEnd: params.periodEnd,
+        method: params.methodLabel,
+        priceNote: promoNote,
+      });
+      const mail = planReceiptEmail({
+        storeName: info.store_name,
+        planName: params.planName,
+        receiptNumber: params.receiptNumber,
+        amount: params.amount,
+        periodEnd: params.periodEnd,
+        priceNote: promoNote,
+      });
+      await sendEmail({
+        to: info.email,
+        subject: mail.subject,
+        html: mail.html,
+        attachments: [
+          { filename: `recibo-X-${params.receiptNumber.replace("/", "-")}.pdf`, content: pdf.toString("base64") },
+        ],
+      });
+      await query(`UPDATE plan_receipts SET emailed_at = now() WHERE id = $1`, [receiptId]).catch(() => undefined);
+    } catch {
+      /* mail best-effort */
+    }
+  }
+
+  if (info?.user_id) {
+    await query(
+      `INSERT INTO notifications (user_id, title, body, type, link) VALUES ($1, $2, $3, 'payment', '/vendor/suscripcion')`,
+      [info.user_id, title, params.noticeBody]
+    ).catch(() => undefined);
+    try {
+      await sendPushToUser(info.user_id, { title, body: params.noticeBody, link: "/vendor/suscripcion" });
+    } catch {
+      /* push best-effort */
+    }
+  }
 }
 
 export async function PATCH(request: Request) {
@@ -546,7 +767,7 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ ok: true, periodEnd });
   }
 
-  if (action === "approve_payment") {
+    if (action === "approve_payment") {
     const { paymentId } = body;
     if (!paymentId) return NextResponse.json({ error: "paymentId requerido" }, { status: 400 });
 
@@ -558,6 +779,8 @@ export async function PATCH(request: Request) {
       period_start: string;
       period_end: string;
       status: string;
+      promo_pct: number | null;
+      promo_list_price: number | null;
     }>(
       `SELECT * FROM subscription_payments WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
       [paymentId, vendorId]
@@ -574,19 +797,7 @@ export async function PATCH(request: Request) {
         )
       : null;
 
-    const info = await queryOne<{
-      user_id: string | null;
-      store_name: string;
-      address: string | null;
-      phone: string | null;
-      whatsapp: string | null;
-      email: string | null;
-    }>(
-      `SELECT v.user_id, v.store_name, v.address, v.phone, v.whatsapp, p.email
-         FROM vendors v LEFT JOIN profiles p ON p.id = v.user_id
-        WHERE v.id = $1`,
-      [vendorId]
-    );
+    const info = await loadVendorContact(vendorId);
 
     const year = new Date().getFullYear();
     let receiptId = "";
@@ -617,81 +828,38 @@ export async function PATCH(request: Request) {
           WHERE id = $3`,
         [adminUserId, sub.id, payment.id]
       );
-      const rec = await tx.query<{ id: string }>(
-        `INSERT INTO plan_receipts
-           (vendor_id, payment_id, plan_id, plan_name, amount, period_start, period_end, method, seq, year)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, 'transferencia', $8, $9)
-         RETURNING id`,
-        [
-          vendorId,
-          payment.id,
-          plan?.id ?? payment.plan_id,
-          plan?.name ?? "Plan",
-          Number(payment.amount),
-          payment.period_start,
-          payment.period_end,
-          receiptSeq,
-          year,
-        ]
-      );
-      receiptId = rec[0]?.id ?? "";
+      const rec = await insertReceipt(tx, {
+        vendorId,
+        paymentId: payment.id,
+        planId: plan?.id ?? payment.plan_id,
+        planName: plan?.name ?? "Plan",
+        amount: Number(payment.amount),
+        periodStart: payment.period_start,
+        periodEnd: payment.period_end,
+        methodLabel: "Transferencia bancaria",
+        promoPct: payment.promo_pct ?? null,
+        promoListPrice: payment.promo_list_price ?? null,
+        seq: receiptSeq,
+        year,
+      });
+      receiptId = rec.id;
     });
 
     // Fuera de la tx: recibo X en PDF por email + aviso al comercio.
-    if (receiptSeq > 0 && receiptId && info) {
-      const title = "¡Pago acreditado!";
-      const until = new Date(payment.period_end).toLocaleDateString("es-AR");
-      const bodyTxt = `Tu plan ${plan?.name ?? "pagado"} está activo hasta el ${until}. Te enviamos el Recibo X ${receiptNumber} por email.`;
-
-      if (info.email && process.env.RESEND_API_KEY) {
-        try {
-          const pdf = await buildPlanReceiptPdf({
-            vendor: {
-              store_name: info.store_name,
-              address: info.address,
-              phone: info.phone,
-              whatsapp: info.whatsapp,
-            },
-            receiptNumber,
-            issuedAt: new Date().toISOString(),
-            planName: plan?.name ?? "Plan",
-            amount: Number(payment.amount),
-            periodStart: payment.period_start,
-            periodEnd: payment.period_end,
-            method: "Transferencia bancaria",
-          });
-          const mail = planReceiptEmail({
-            storeName: info.store_name,
-            planName: plan?.name ?? "Plan",
-            receiptNumber,
-            amount: Number(payment.amount),
-            periodEnd: payment.period_end,
-          });
-          await sendEmail({
-            to: info.email,
-            subject: mail.subject,
-            html: mail.html,
-            attachments: [
-              { filename: `recibo-X-${receiptNumber.replace("/", "-")}.pdf`, content: pdf.toString("base64") },
-            ],
-          });
-          await query(`UPDATE plan_receipts SET emailed_at = now() WHERE id = $1`, [receiptId]).catch(() => undefined);
-        } catch {
-          /* mail best-effort */
-        }
-      }
-
-      if (info.user_id) {
-        await query(
-          `INSERT INTO notifications (user_id, title, body, type, link) VALUES ($1, $2, $3, 'payment', '/vendor/suscripcion')`,
-          [info.user_id, title, bodyTxt]
-        ).catch(() => undefined);
-        try {
-          await sendPushToUser(info.user_id, { title, body: bodyTxt, link: "/vendor/suscripcion" });
-        } catch {
-          /* push best-effort */
-        }
-      }
+    if (receiptSeq > 0 && receiptId) {
+      await sendReceiptNotice({
+        info,
+        planName: plan?.name ?? "Plan",
+        receiptNumber,
+        receiptId,
+        amount: Number(payment.amount),
+        periodStart: payment.period_start,
+        periodEnd: payment.period_end,
+        methodLabel: "Transferencia bancaria",
+        promoPct: payment.promo_pct ?? null,
+        promoListPrice: payment.promo_list_price ?? null,
+        noticeBody: `Tu plan ${plan?.name ?? "pagado"} está activo hasta el ${new Date(payment.period_end).toLocaleDateString("es-AR")}. Te enviamos el Recibo X ${receiptNumber} por email.`,
+      });
     }
 
     return NextResponse.json({
@@ -701,9 +869,237 @@ export async function PATCH(request: Request) {
     });
   }
 
+  // Recibo emitido a mano (pago por transferencia o en efectivo por fuera de
+  // la app). Audita como pago aprobado y, si se pide, renueva el plan.
+  if (action === "emit_receipt") {
+    const { planId, amount, periodStart, periodEnd, method, renew, note, promoPct, promoListPrice } = body;
+    const amountNum = Number(amount);
+    if (!planId || !Number.isFinite(amountNum) || amountNum <= 0) {
+      return NextResponse.json({ error: "Indicá plan y monto (mayor a 0)" }, { status: 400 });
+    }
+    const methodValue = method === "efectivo" ? "efectivo" : "transferencia";
+    const start = toIsoOrNull(periodStart);
+    const end = toIsoOrNull(periodEnd);
+    if (!start || !end || new Date(end) <= new Date(start)) {
+      return NextResponse.json({ error: "Período inválido (el fin debe ser posterior al inicio)" }, { status: 400 });
+    }
+
+    const plan = await queryOne<{ id: string; name: string; slug: string; price_monthly: number }>(
+      `SELECT id, name, slug, price_monthly FROM plans WHERE id = $1`,
+      [planId]
+    );
+    if (!plan) return NextResponse.json({ error: "Plan inválido" }, { status: 400 });
+
+    const info = await loadVendorContact(vendorId);
+    const year = new Date().getFullYear();
+    let seq = 0;
+    const methodLabel = methodValue === "efectivo" ? "Efectivo" : "Transferencia bancaria";
+    const pct = Number.isFinite(Number(promoPct)) && Number(promoPct) > 0 ? Math.round(Number(promoPct)) : null;
+    const listPrice = Number(promoListPrice) > 0 ? Number(promoListPrice) : null;
+
+    let paymentId = "";
+    let receiptId = "";
+    let receiptNumber = "";
+    await withTransaction(async (tx) => {
+      seq = await nextReceiptSeq(tx, year);
+      receiptNumber = `${String(seq).padStart(4, "0")}/${year}`;
+      const pay = await tx.query<{ id: string }>(
+        `INSERT INTO subscription_payments
+           (vendor_id, plan_id, amount, period_start, period_end, reference, method, status,
+            reviewed_at, reviewed_by, review_note, promo_pct, promo_list_price)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'approved', now(), $8, $9, $10, $11)
+         RETURNING id`,
+        [
+          vendorId,
+          plan.id,
+          amountNum,
+          start,
+          end,
+          `manual_${vendorId.slice(0, 8)}_${Math.floor(new Date(end).getTime() / 1000)}`,
+          methodValue,
+          adminUserId,
+          (note ? String(note).slice(0, 400) : "Recibo emitido manualmente por administrador").slice(0, 500),
+          pct,
+          listPrice,
+        ]
+      );
+      paymentId = pay[0]?.id ?? "";
+      if (renew !== false) {
+        await tx.queryVoid(
+          `UPDATE vendors SET plan_id = $1, plan_status = 'active', plan_expires_at = $2, trial_ends_at = NULL WHERE id = $3`,
+          [plan.id, end, vendorId]
+        );
+        const sub = await insertSubscription(tx, {
+          vendorId,
+          planId: plan.id,
+          status: "active",
+          periodStart: start,
+          periodEnd: end,
+          paymentMethod: methodValue,
+          amount: amountNum,
+          paid: true,
+          note: `Pago ${methodValue === "efectivo" ? "en efectivo" : "por transferencia"} registrado por administrador`,
+        });
+        await tx.queryVoid(`UPDATE subscription_payments SET subscription_id = $1 WHERE id = $2`, [sub.id, paymentId]);
+      }
+      const rec = await insertReceipt(tx, {
+        vendorId,
+        paymentId,
+        planId: plan.id,
+        planName: plan.name,
+        amount: amountNum,
+        periodStart: start,
+        periodEnd: end,
+        methodLabel,
+        promoPct: pct,
+        promoListPrice: listPrice,
+        seq,
+        year,
+      });
+      receiptId = rec.id;
+    });
+
+    if (info && receiptId) {
+      await sendReceiptNotice({
+        info,
+        planName: plan.name,
+        receiptNumber,
+        receiptId,
+        amount: amountNum,
+        periodStart: start,
+        periodEnd: end,
+        methodLabel,
+        promoPct: pct,
+        promoListPrice: listPrice,
+        noticeBody:
+          renew === false
+            ? `Emitimos tu Recibo X ${receiptNumber} por $${amountNum.toLocaleString("es-AR")}.`
+            : `Acreditamos tu pago del plan ${plan.name} por $${amountNum.toLocaleString("es-AR")}: está activo hasta el ${new Date(end).toLocaleDateString("es-AR")}. Recibo X ${receiptNumber}.`,
+      });
+    }
+
+    return NextResponse.json({ ok: true, approved: true, receipt: { number: receiptNumber, id: receiptId } });
+  }
+
+  // Reenvío de un recibo ya emitido (regenera el PDF y lo manda por mail).
+  if (action === "resend_receipt") {
+    const { receiptId } = body;
+    if (!receiptId) return NextResponse.json({ error: "receiptId requerido" }, { status: 400 });
+
+    const receipt = await queryOne<{
+      id: string;
+      vendor_id: string;
+      plan_name: string | null;
+      amount: number;
+      period_start: string | null;
+      period_end: string | null;
+      seq: number;
+      year: number;
+      promo_pct: number | null;
+      promo_list_price: number | null;
+    }>(
+      `SELECT id, vendor_id, plan_name, amount, period_start, period_end, seq, year, promo_pct, promo_list_price
+         FROM plan_receipts WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
+      [receiptId, vendorId]
+    );
+    if (!receipt) return NextResponse.json({ error: "Recibo no encontrado" }, { status: 404 });
+
+    const info = await loadVendorContact(vendorId);
+    const receiptNumber = `${String(receipt.seq).padStart(4, "0")}/${receipt.year}`;
+    await sendReceiptNotice({
+      info,
+      planName: receipt.plan_name || "Plan",
+      receiptNumber,
+      receiptId: receipt.id,
+      amount: Number(receipt.amount),
+      periodStart: receipt.period_start,
+      periodEnd: receipt.period_end,
+      methodLabel: "Transferencia bancaria",
+      promoPct: receipt.promo_pct ?? null,
+      promoListPrice: receipt.promo_list_price ?? null,
+      noticeBody: `Te reenviamos el Recibo X ${receiptNumber} del plan ${receipt.plan_name || ""}.`,
+    });
+
+    return NextResponse.json({ ok: true, resent: true, receipt: { number: receiptNumber } });
+  }
+
+  // Recordatorio al comercio: falta subir el comprobante (idempotente por día).
+  if (action === "nudge_pending") {
+    const { paymentId } = body;
+    if (!paymentId) return NextResponse.json({ error: "paymentId requerido" }, { status: 400 });
+
+    const payment = await queryOne<{
+      id: string;
+      amount: number;
+      reference: string;
+      status: string;
+      comprobante_at: string | null;
+      last_nudge_at: string | null;
+    }>(
+      `SELECT id, amount, reference, status, comprobante_at, last_nudge_at
+         FROM subscription_payments WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
+      [paymentId, vendorId]
+    );
+    if (!payment) return NextResponse.json({ error: "Pago no encontrado" }, { status: 404 });
+    if (payment.status !== "pending" || payment.comprobante_at) {
+      return NextResponse.json({ error: "Este pago no está esperando comprobante" }, { status: 409 });
+    }
+    if (payment.last_nudge_at && Date.now() - new Date(payment.last_nudge_at).getTime() < 23 * 3600 * 1000) {
+      return NextResponse.json({ error: "Ya se le recordó hace menos de un día" }, { status: 409 });
+    }
+
+    const info = await loadVendorContact(vendorId);
+    const bank = await getPortalBank().catch(() => null);
+    const renewUrl = `${getSiteUrl()}/vendor/suscripcion#renovar`;
+    const planName = (await queryOne<{ name: string }>(
+      `SELECT p.name FROM subscription_payments s LEFT JOIN plans p ON p.id = s.plan_id WHERE s.id = $1`,
+      [payment.id]
+    ))?.name ?? "tu plan";
+
+    let mailed = false;
+    if (info?.email && process.env.RESEND_API_KEY) {
+      try {
+        const mail = planComprobanteReminderEmail({
+          storeName: info.store_name,
+          planName,
+          amount: Number(payment.amount),
+          reference: payment.reference,
+          renewUrl,
+          bank: {
+            alias: bank?.alias ?? null,
+            cbu: bank?.cbu ?? null,
+            titular: bank?.titular ?? null,
+            qrUrl: bank?.qr_url ?? null,
+          },
+        });
+        mailed = await sendEmail({ to: info.email, subject: mail.subject, html: mail.html });
+      } catch {
+        mailed = false;
+      }
+    }
+    if (info?.user_id) {
+      const title = "Falta tu comprobante";
+      const bodyTxt = `Todavía no recibimos el comprobante de la renovación de ${planName}. Subilo desde Mi suscripción.`;
+      await query(
+        `INSERT INTO notifications (user_id, title, body, type, link) VALUES ($1, $2, $3, 'payment', '/vendor/suscripcion')`,
+        [info.user_id, title, bodyTxt]
+      ).catch(() => undefined);
+      try {
+        await sendPushToUser(info.user_id, { title, body: bodyTxt, link: "/vendor/suscripcion" });
+      } catch {
+        /* push best-effort */
+      }
+    }
+
+    await query(`UPDATE subscription_payments SET last_nudge_at = now() WHERE id = $1`, [payment.id]).catch(() => undefined);
+    return NextResponse.json({ ok: true, mailed });
+  }
+
   if (action === "reject_payment") {
-    const { paymentId, note } = body;
-    const reason = String(note ?? "").trim();
+    const { paymentId, note, reasonPreset } = body;
+    const preset = String(reasonPreset ?? "").trim();
+    const extra = String(note ?? "").trim();
+    const reason = [preset, extra].filter(Boolean).join(" — ") || extra;
     if (!paymentId) return NextResponse.json({ error: "paymentId requerido" }, { status: 400 });
     if (!reason) return NextResponse.json({ error: "Indicá el motivo del rechazo (se le envía al comercio)" }, { status: 400 });
 
@@ -758,10 +1154,10 @@ export async function PATCH(request: Request) {
       }
     }
 
-    return NextResponse.json({ ok: true, rejected: true });
+    return NextResponse.json({ ok: true, rejected: true, reason });
   }
 
-  if (action === "cancel") {
+if (action === "cancel") {
     const { note } = body;
     const vendorFull = await queryOne<{ plan_id: string | null }>(
       `SELECT plan_id FROM vendors WHERE id = $1`,

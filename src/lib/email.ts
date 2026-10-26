@@ -224,20 +224,23 @@ export function reviewRequestEmail(vendorName: string, reviewUrl: string): { sub
 
 /**
  * Aviso de vencimiento próximo del plan (T-7 / T-2) o de plan ya vencido.
- * Incluye los datos de cobro del portal y el link para renovar por
- * transferencia y subir el comprobante.
+ * Deja en claro el precio a pagar hoy (promo o lista) y los datos de cobro.
  */
 export function planRenewalEmail(params: {
   storeName: string;
   planName: string;
-  amount: number;
+  /** Precio de hoy (promo si está vigente, si no lista). */
+  price: { amount: number; isPromo: boolean; listPrice: number; offPct: number | null; promoEndsAt: string | null };
   daysLeft: number;
   renewUrl: string;
-  bank: { alias: string | null; cbu: string | null; titular: string | null; qrUrl: string | null };
+  bank: { alias: string | null; cbu: string | null; titular: string | null; qrUrl: string | null; whatsapp?: string | null };
 }): { subject: string; html: string } {
-  const { storeName, planName, amount, daysLeft, renewUrl, bank } = params;
+  const { storeName, planName, price, daysLeft, renewUrl, bank } = params;
   const when = daysLeft > 0 ? `vence en ${daysLeft} ${daysLeft === 1 ? "día" : "días"}` : "venció";
-  const amountStr = `$${Number(amount).toLocaleString("es-AR")}`;
+  const amountStr = `$${Number(price.amount).toLocaleString("es-AR")}`;
+  const promoLine = price.isPromo && price.offPct
+    ? `<p style="font-size:14px">Estás pagando el <b>precio promo −${price.offPct}%</b> (lista $${Number(price.listPrice).toLocaleString("es-AR")}${price.promoEndsAt ? `, vigente hasta el ${new Date(price.promoEndsAt).toLocaleDateString("es-AR")}` : ""}). <b>Vale también para tu renovación.</b></p>`
+    : `<p style="font-size:14px">Precio de lista: <b>$${Number(price.listPrice).toLocaleString("es-AR")}</b>/mes.</p>`;
   const bankLines = [
     bank.alias ? `Alias: <b>${bank.alias}</b>` : "",
     bank.cbu ? `CBU: <b>${bank.cbu}</b>` : "",
@@ -253,7 +256,8 @@ export function planRenewalEmail(params: {
     html: `
       <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px">
         <h1 style="color:#4f46e5">${daysLeft > 0 ? "Tu plan está por vencer" : "Tu plan venció"}</h1>
-        <p>Hola <strong>${storeName}</strong>: tu plan <strong>${planName}</strong> (${amountStr}/mes) ${when}.</p>
+        <p>Hola <strong>${storeName}</strong>: tu plan <strong>${planName}</strong> hoy cuesta <strong>${amountStr}</strong>/mes y ${when}.</p>
+        ${promoLine}
         <p style="font-size:14px">Mientras tengas el comprobante cargado y lo revisemos, <b>el servicio no se corta</b>.</p>
         <div style="background:#f4f4f5;border-radius:12px;padding:16px;margin:16px 0">
           <p style="font-weight:bold;margin:0 0 8px">Datos para transferir</p>
@@ -273,6 +277,48 @@ export function planRenewalEmail(params: {
   };
 }
 
+/**
+ * Recordatorio de que falta subir el comprobante (lo dispara el admin desde la
+ * cola de revisión; idempotente por reclamo y día).
+ */
+export function planComprobanteReminderEmail(params: {
+  storeName: string;
+  planName: string;
+  amount: number;
+  reference: string;
+  renewUrl: string;
+  bank: { alias: string | null; cbu: string | null; titular: string | null; qrUrl: string | null };
+}): { subject: string; html: string } {
+  const { storeName, planName, amount, reference, renewUrl, bank } = params;
+  const amountStr = `$${Number(amount).toLocaleString("es-AR")}`;
+  const bankLines = [
+    bank.alias ? `Alias: <b>${bank.alias}</b>` : "",
+    bank.cbu ? `CBU: <b>${bank.cbu}</b>` : "",
+  ].filter(Boolean).join("<br>");
+  return {
+    subject: `Falta el comprobante de tu plan ${planName}`,
+    html: `
+      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px">
+        <h1 style="color:#4f46e5">Estamos esperando tu comprobante</h1>
+        <p>Hola <strong>${storeName}</strong>: iniciaste la renovación del plan <strong>${planName}</strong> por <strong>${amountStr}</strong>, pero todavía no recibimos el comprobante de la transferencia.</p>
+        <div style="background:#f4f4f5;border-radius:12px;padding:16px;margin:16px 0">
+          <p style="font-weight:bold;margin:0 0 8px">Datos para transferir</p>
+          ${bankLines || "<p>Escribinos por WhatsApp para los datos de cobro.</p>"}
+          <p style="font-size:13px;margin-top:8px">Referencia: <b>${reference}</b></p>
+        </div>
+        <p style="text-align:center;margin:24px 0">
+          <a href="${renewUrl}" style="background:#4f46e5;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold">
+            Subir el comprobante
+          </a>
+        </p>
+        <p style="color:#666;font-size:14px">Sin el comprobante no podemos acreditar el pago y, cuando venza el período, el plan baja a Gratuito.</p>
+        <hr style="border:none;border-top:1px solid #eee;margin:20px 0">
+        <p style="color:#999;font-size:12px">Portal 659 — El centro comercial de tu barrio · 0% comisión</p>
+      </div>
+    `,
+  };
+}
+
 /** Recibo X emitido tras aprobar el pago del plan (no valido como factura). */
 export function planReceiptEmail(params: {
   storeName: string;
@@ -280,10 +326,13 @@ export function planReceiptEmail(params: {
   receiptNumber: string;
   amount: number;
   periodEnd: string | null;
+  /** Nota del precio cobrado ("precio promo −25% (lista $20.000)"). */
+  priceNote?: string | null;
 }): { subject: string; html: string } {
   const { storeName, planName, receiptNumber, amount, periodEnd } = params;
   const amountStr = `$${Number(amount).toLocaleString("es-AR")}`;
   const until = periodEnd ? new Date(periodEnd).toLocaleDateString("es-AR") : null;
+  const priceLine = params.priceNote ? `<p style="color:#666;font-size:13px">${params.priceNote}</p>` : "";
   return {
     subject: `Recibo X ${receiptNumber} — plan ${planName} (${amountStr})`,
     html: `
@@ -291,6 +340,7 @@ export function planReceiptEmail(params: {
         <h1 style="color:#4f46e5">¡Pago acreditado! 🎉</h1>
         <p>Hola <strong>${storeName}</strong>: acreditamos tu pago del plan <strong>${planName}</strong> por <strong>${amountStr}</strong>${until ? ` (cubre hasta el ${until})` : ""}.</p>
         <p>Va adjunto tu <strong>Recibo X Nº ${receiptNumber}</strong>.</p>
+        ${priceLine}
         <p style="color:#666;font-size:13px">Documento no válido como factura.</p>
         <hr style="border:none;border-top:1px solid #eee;margin:20px 0">
         <p style="color:#999;font-size:12px">Portal 659 — El centro comercial de tu barrio · 0% comisión</p>

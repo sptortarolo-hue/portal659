@@ -17,6 +17,8 @@ export type PlanReceiptPdfData = {
   periodStart: string | null;
   periodEnd: string | null;
   method: string;
+  /** Nota del precio cobrado ("precio promo −25% (lista $20.000)"). */
+  priceNote?: string | null;
 };
 
 const money = (n: number) =>
@@ -31,7 +33,7 @@ const fdate = (iso: string | null): string => {
 };
 
 export async function buildPlanReceiptPdf(data: PlanReceiptPdfData): Promise<Buffer> {
-  const { vendor, receiptNumber, issuedAt, planName, amount, periodStart, periodEnd, method } = data;
+  const { vendor, receiptNumber, issuedAt, planName, amount, periodStart, periodEnd, method, priceNote } = data;
   const doc = await PDFDocument.create();
   const page = doc.addPage([595.28, 841.89]); // A4
   const { width } = page.getSize();
@@ -81,7 +83,12 @@ export async function buildPlanReceiptPdf(data: PlanReceiptPdfData): Promise<Buf
     y -= 15;
   }
   text(`Medio de pago: ${method}`, M, y, 10);
-  y -= 30;
+  y -= 15;
+  if (priceNote) {
+    text(priceNote.charAt(0).toUpperCase() + priceNote.slice(1), M, y, 9, font, gray);
+    y -= 15;
+  }
+  y -= 15;
 
   const totalStr = money(amount);
   text("TOTAL", width - M - 170, y, 11, bold, gray);

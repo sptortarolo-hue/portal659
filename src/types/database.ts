@@ -72,6 +72,7 @@ export type PortalBank = {
   cbu: string | null;
   titular: string | null;
   qr_url: string | null;
+  whatsapp: string | null;
   notes: string | null;
   updated_at: string | null;
 };

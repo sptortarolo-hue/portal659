@@ -1,7 +1,7 @@
 import { getUserId } from "@/lib/auth-utils";
 import { queryMany, queryOne } from "@/lib/db";
 import { getVendorByRequest } from "@/lib/vendor-utils";
-import { resolveVendorPlan, daysLeft } from "@/lib/plans";
+import { resolveVendorPlan, daysLeft, planPriceFor } from "@/lib/plans";
 import { getPortalBank } from "@/lib/plan-payments";
 import { NextResponse } from "next/server";
 import type { Plan, Vendor, VendorSubscription } from "@/types/database";
@@ -121,6 +121,77 @@ export async function GET(request: Request) {
   }
   bank = await getPortalBank().catch(() => null);
 
+  // Precio de hoy del plan actual (promo si está vigente, si no lista).
+  const currentPlan = plans.find((p) => p.id === vendor.plan_id) ?? null;
+  const priceToday = planPriceFor(currentPlan);
+
+  // Proyección de cierre de mes (predictivo): ritmo actual vs tope del plan.
+  const nowDate = new Date();
+  const dayOfMonth = nowDate.getDate();
+  const daysInMonth = new Date(nowDate.getFullYear(), nowDate.getMonth() + 1, 0).getDate();
+  const projectedOrders =
+    dayOfMonth > 0 ? Math.round((usage.ordersThisMonth / dayOfMonth) * daysInMonth) : usage.ordersThisMonth;
+  const projectedQuotes =
+    vendor.vertical === "servicio" || vendor.vertical === "estetica"
+      ? dayOfMonth > 0
+        ? Math.round((usage.quotesThisMonth / dayOfMonth) * daysInMonth)
+        : usage.quotesThisMonth
+      : null;
+
+  // Qué se pierde al bajar a Gratuito (evita el downgrade silencioso).
+  const freePlan = plans.find((p) => p.slug === "gratuito") ?? null;
+  const wouldLose: { key: string; label: string; current: string; free: string }[] = [];
+  if (effective.slug !== "gratuito" && effective.plan) {
+    const compare: { key: string; label: string; get: (f: any) => unknown }[] = [
+      { key: "pos", label: "Mostrador y Caja", get: (f) => f.pos },
+      { key: "crm", label: "Clientes (CRM)", get: (f) => f.crm },
+      { key: "analytics_days", label: "Estadísticas", get: (f) => f.analytics_days },
+      { key: "kds", label: "Comanda (cocina)", get: (f) => f.kds },
+      { key: "mesas", label: "Mesas", get: (f) => f.mesas },
+      { key: "printer", label: "Impresión", get: (f) => f.printer },
+      { key: "reviews_manage", label: "Gestión de reseñas", get: (f) => f.reviews_manage },
+      { key: "recipes", label: "Preparación y Costo", get: (f) => f.recipes },
+      { key: "fiscal", label: "Facturación", get: (f) => f.fiscal },
+      { key: "inventory", label: "Inventario", get: (f) => f.inventory },
+      { key: "quotes_respond", label: "Cotizar con precio", get: (f) => f.quotes_respond },
+      { key: "deposits", label: "Seña online", get: (f) => f.deposits },
+    ];
+    const curF = effective.plan.features as any;
+    const freeF = (freePlan?.features ?? {}) as any;
+    for (const c of compare) {
+      const cur = c.get(curF);
+      const fre = c.get(freeF);
+      if (cur && !fre) {
+        const current = c.key === "analytics_days" ? `${cur} días de historial` : "incluido";
+        const free = c.key === "analytics_days" ? "sin historial" : "no incluye";
+        wouldLose.push({ key: c.key, label: c.label, current, free });
+      }
+    }
+    // Límites: si hoy está por encima de los del plan gratis, se lo dice.
+    if (
+      freePlan?.max_products != null &&
+      usage.products > Number(freePlan.max_products)
+    ) {
+      wouldLose.push({
+        key: "max_products",
+        label: "Productos publicados",
+        current: `${usage.products} publicados`,
+        free: `Gratuito permite ${freePlan.max_products}`,
+      });
+    }
+    if (
+      freePlan?.max_orders_month != null &&
+      usage.ordersThisMonth > Number(freePlan.max_orders_month)
+    ) {
+      wouldLose.push({
+        key: "max_orders_month",
+        label: "Pedidos este mes",
+        current: `${usage.ordersThisMonth} pedidos`,
+        free: `Gratuito permite ${freePlan.max_orders_month}`,
+      });
+    }
+  }
+
   return NextResponse.json({
     vendorId: vendor.id,
     vertical: vendor.vertical,
@@ -146,9 +217,40 @@ export async function GET(request: Request) {
     usage,
     history: history || [],
     planExpiresAt: vendor.plan_expires_at ?? null,
+    daysLeftPlan: daysLeft(vendor.plan_expires_at),
+    // Precio de hoy (misma fuente que el cobro y los mails).
+    priceToday: priceToday
+      ? {
+          amount: priceToday.amount,
+          isPromo: priceToday.isPromo,
+          listPrice: priceToday.listPrice,
+          offPct: priceToday.offPct,
+          months: priceToday.months,
+          promoEndsAt: priceToday.promoEndsAt,
+        }
+      : null,
+    projected: {
+      orders: projectedOrders,
+      ordersLimit: effective.maxOrdersMonth,
+      ordersOverProjected:
+        effective.maxOrdersMonth != null && projectedOrders > effective.maxOrdersMonth,
+      quotes: projectedQuotes,
+      quotesLimit: effective.maxQuotesMonth,
+      quotesOverProjected:
+        effective.maxQuotesMonth != null &&
+        projectedQuotes != null &&
+        projectedQuotes > effective.maxQuotesMonth,
+    },
+    monthResetOn: new Date(nowDate.getFullYear(), nowDate.getMonth() + 1, 1).toISOString(),
+    wouldLose,
     payments,
     pending,
     receipts,
-    bank,
+    bank: bank
+      ? {
+          ...bank,
+          whatsapp: (bank as { whatsapp?: string | null }).whatsapp ?? null,
+        }
+      : bank,
   });
 }

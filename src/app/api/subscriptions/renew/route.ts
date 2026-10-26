@@ -96,7 +96,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const { amount, periodStart, periodEnd } = computeRenewal(vendor, plan);
+  const { amount, periodStart, periodEnd, price } = computeRenewal(vendor, plan);
   if (amount <= 0) {
     return NextResponse.json({ error: "El plan no tiene precio cargado: consultá con el administrador." }, { status: 400 });
   }
@@ -104,10 +104,19 @@ export async function POST(request: Request) {
   const reference = buildReference(vendor.id, plan.slug, periodStart);
   const row = await queryOne<{ id: string }>(
     `INSERT INTO subscription_payments
-      (vendor_id, plan_id, amount, period_start, period_end, reference, method, status)
-     VALUES ($1, $2, $3, $4, $5, $6, 'transferencia', 'pending')
+      (vendor_id, plan_id, amount, period_start, period_end, reference, method, status, promo_pct, promo_list_price)
+     VALUES ($1, $2, $3, $4, $5, $6, 'transferencia', 'pending', $7, $8)
      RETURNING id`,
-    [vendor.id, plan.id, amount, periodStart, periodEnd, reference]
+    [
+      vendor.id,
+      plan.id,
+      amount,
+      periodStart,
+      periodEnd,
+      reference,
+      price.isPromo ? price.offPct ?? null : null,
+      price.isPromo ? price.listPrice : null,
+    ]
   );
 
   // Si el plan ya había vencido, entra en gracia: no se corta mientras se revisa.
@@ -125,6 +134,14 @@ export async function POST(request: Request) {
       periodStart,
       periodEnd,
       reference,
+    },
+    price: {
+      amount: price.amount,
+      isPromo: price.isPromo,
+      listPrice: price.listPrice,
+      offPct: price.offPct,
+      months: price.months,
+      promoEndsAt: price.promoEndsAt,
     },
     bank: await getPortalBank(),
     renewUrl: `${getSiteUrl()}/vendor/suscripcion#renovar`,

@@ -1,7 +1,7 @@
 import { getUserId } from "@/lib/auth-utils";
 import { resolveOwnedVendorId } from "@/lib/vendor-utils";
 import { queryMany, queryOne } from "@/lib/db";
-import { activePromo, PLAN_IDS } from "@/lib/plans";
+import { planPriceFor, PLAN_IDS } from "@/lib/plans";
 import { isMpEnabled } from "@/lib/mp-oauth";
 import { getSiteUrl } from "@/lib/site-url";
 import { NextResponse } from "next/server";
@@ -101,12 +101,12 @@ export async function POST(request: Request) {
     }, { status: 400 });
   }
 
-  const isNewSubscriber = vendor.plan_status !== "active";
-  const promo = isNewSubscriber ? activePromo(plan) : null;
-
-  const billedMonths = promo ? promo.months : 1;
+  // Precio del día: mientras la promo esté vigente la pagan todos (altas y
+  // renovaciones), misma regla que el circuito de transferencia.
+  const price = planPriceFor(plan)!;
+  const chargeAmount = price.amount;
+  const billedMonths = price.months || 1;
   const periodDays = billedMonths * PERIOD_DAYS;
-  const chargeAmount = promo ? promo.price * promo.months : Number(plan.price_monthly);
 
   const base = Math.max(
     now,
@@ -145,8 +145,8 @@ export async function POST(request: Request) {
     const preference = {
       items: [
         {
-          title: promo
-            ? `Portal 659 — Plan ${plan.name} (${promo.months} ${promo.months === 1 ? "mes" : "meses"} promo)`
+          title: price.isPromo
+            ? `Portal 659 — Plan ${plan.name} (${billedMonths} ${billedMonths === 1 ? "mes" : "meses"} promo −${price.offPct}%)`
             : `Portal 659 — Plan ${plan.name} (1 mes)`,
           unit_price: chargeAmount,
           quantity: 1,

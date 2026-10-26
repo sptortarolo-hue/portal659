@@ -1,9 +1,11 @@
 import { query, queryMany } from "@/lib/db";
 import { sendPushToUser } from "@/lib/push";
 import { getPortalBank } from "@/lib/plan-payments";
+import { planPriceFor } from "@/lib/plans";
 import { getSiteUrl } from "@/lib/site-url";
 import { planRenewalEmail, sendEmail } from "@/lib/email";
 import { NextResponse } from "next/server";
+import type { Plan } from "@/types/database";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +29,10 @@ type DueVendor = {
   email: string | null;
   plan_name: string;
   plan_price: number;
+  plan_promo_price: number | null;
+  plan_promo_months: number | null;
+  plan_promo_ends_at: string | null;
+  plan_promo_label: string | null;
   plan_expires_at: string;
   plan_status: string;
 };
@@ -58,6 +64,10 @@ export async function GET(request: Request) {
               pr.email AS email,
               p.name AS plan_name,
               p.price_monthly AS plan_price,
+              p.promo_price AS plan_promo_price,
+              p.promo_months AS plan_promo_months,
+              p.promo_ends_at AS plan_promo_ends_at,
+              p.promo_label AS plan_promo_label,
               v.plan_expires_at
          FROM vendors v
          JOIN plans p ON p.id = v.plan_id
@@ -133,10 +143,24 @@ export async function GET(request: Request) {
       // 2) Mail al dueño.
       if (v.email) {
         try {
+          const listAmount = Number(v.plan_price) || 0;
+          const price = planPriceFor({
+            price_monthly: listAmount,
+            promo_price: v.plan_promo_price == null ? null : Number(v.plan_promo_price),
+            promo_months: v.plan_promo_months == null ? null : Number(v.plan_promo_months),
+            promo_ends_at: v.plan_promo_ends_at,
+            promo_label: v.plan_promo_label,
+          } as Plan);
           const mail = planRenewalEmail({
             storeName: v.store_name,
             planName: v.plan_name,
-            amount: Number(v.plan_price) || 0,
+            price: {
+              amount: price?.amount ?? listAmount,
+              isPromo: !!price?.isPromo,
+              listPrice: price?.listPrice ?? listAmount,
+              offPct: price?.offPct ?? null,
+              promoEndsAt: price?.promoEndsAt ?? null,
+            },
             daysLeft,
             renewUrl,
             bank: {

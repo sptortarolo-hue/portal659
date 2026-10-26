@@ -108,6 +108,13 @@ export default function ReciboPrintPage() {
           <p className="text-sm text-muted-foreground">
             Medio de pago: {r.method === "transferencia" ? "Transferencia bancaria" : r.method}
           </p>
+          {r.promo_pct && r.promo_list_price ? (
+            <p className="text-xs text-muted-foreground">
+              Precio promo −{r.promo_pct}% (lista ${Number(r.promo_list_price).toLocaleString("es-AR")})
+            </p>
+          ) : (
+            <p className="text-xs text-muted-foreground">Precio de lista</p>
+          )}
           <div className="flex items-center justify-between border-t border-border mt-3 pt-3">
             <span className="font-semibold text-muted-foreground">TOTAL</span>
             <span className="text-2xl font-bold">

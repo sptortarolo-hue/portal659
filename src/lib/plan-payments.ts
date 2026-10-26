@@ -1,5 +1,5 @@
 import { queryOne, type Tx } from "@/lib/db";
-import { activePromo } from "@/lib/plans";
+import { planPriceFor, type PlanPrice } from "@/lib/plans";
 import type { Plan, PortalBank } from "@/types/database";
 
 const PERIOD_DAYS = 30;
@@ -18,6 +18,7 @@ export async function getPortalBank(): Promise<PortalBank> {
     cbu: process.env.PORTAL_TRANSFER_CBU || null,
     titular: process.env.PORTAL_TRANSFER_TITULAR || null,
     qr_url: process.env.PORTAL_TRANSFER_QR_URL || null,
+    whatsapp: process.env.PORTAL_WHATSAPP || null,
     notes: null,
     updated_at: null,
   };
@@ -30,32 +31,38 @@ export function renewalBase(planExpiresAt: string | null): Date {
 }
 
 /**
- * Monto y período de una renovación. Replica la lógica de
- * POST /api/subscriptions/pay: promo solo para suscriptores nuevos (plan
- * vigente o en prueba), si no 1 mes al precio de lista.
+ * Monto y período de una renovación. Mientras la promo esté vigente la pagan
+ * TODOS (altas y renovaciones) con los mismos términos: N meses al precio
+ * promo. Sin promo, 1 mes al precio de lista.
  */
 export function computeRenewal(
-  vendor: { plan_status: string | null; plan_expires_at: string | null; trial_ends_at: string | null },
+  vendor: { plan_expires_at: string | null },
   plan: Plan
-): { amount: number; periodStart: string; periodEnd: string; promoMonths: number } {
+): {
+  amount: number;
+  periodStart: string;
+  periodEnd: string;
+  promoMonths: number;
+  price: PlanPrice;
+} {
   const base = renewalBase(vendor.plan_expires_at);
-  const now = Date.now();
-  const covered =
-    (vendor.plan_status === "trial" &&
-      vendor.trial_ends_at &&
-      new Date(vendor.trial_ends_at).getTime() > now) ||
-    (vendor.plan_status === "active" &&
-      vendor.plan_expires_at &&
-      new Date(vendor.plan_expires_at).getTime() > now);
-  const promo = covered ? null : activePromo(plan);
-  const months = promo ? promo.months : 1;
-  const amount = promo ? promo.price * promo.months : Number(plan.price_monthly);
+  const price = planPriceFor(plan) ?? {
+    amount: Number(plan.price_monthly || 0),
+    isPromo: false,
+    listPrice: Number(plan.price_monthly || 0),
+    offPct: null,
+    months: 1,
+    promoEndsAt: plan.promo_ends_at ?? null,
+    promoLabel: plan.promo_label ?? null,
+  };
+  const months = price.months || 1;
   const periodEnd = new Date(base.getTime() + months * PERIOD_DAYS * 24 * 60 * 60 * 1000);
   return {
-    amount,
+    amount: price.amount,
     periodStart: base.toISOString(),
     periodEnd: periodEnd.toISOString(),
     promoMonths: months,
+    price,
   };
 }
 

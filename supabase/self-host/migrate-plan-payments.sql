@@ -32,9 +32,15 @@ CREATE TABLE IF NOT EXISTS public.subscription_payments (
   reference text NOT NULL,
   method text NOT NULL DEFAULT 'transferencia',
   status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
+  -- Snapshot del precio cobrado (para que el recibo explique de dónde salió el
+  -- monto aunque el plan cambie de precio o se venza la promo).
+  promo_pct integer,
+  promo_list_price numeric,
   comprobante_url text,
   comprobante_name text,
   comprobante_at timestamptz,
+  -- Último recordatorio enviado al comercio (idempotencia del "Recordarle").
+  last_nudge_at timestamptz,
   reviewed_by uuid REFERENCES public.profiles(id),
   reviewed_at timestamptz,
   review_note text,
@@ -45,6 +51,10 @@ CREATE INDEX IF NOT EXISTS idx_subscription_payments_vendor
 CREATE INDEX IF NOT EXISTS idx_subscription_payments_pending
   ON public.subscription_payments(status, created_at)
   WHERE status = 'pending';
+ALTER TABLE public.subscription_payments
+  ADD COLUMN IF NOT EXISTS last_nudge_at timestamptz,
+  ADD COLUMN IF NOT EXISTS promo_pct integer,
+  ADD COLUMN IF NOT EXISTS promo_list_price numeric;
 
 -- 2) Recibos X ---------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.plan_receipts (
@@ -57,12 +67,19 @@ CREATE TABLE IF NOT EXISTS public.plan_receipts (
   period_start timestamptz,
   period_end timestamptz,
   method text NOT NULL DEFAULT 'transferencia',
+  -- Snapshot del descuento aplicado (para que el recibo explique de dónde
+  -- salió el monto aunque el plan cambie de precio después).
+  promo_pct integer,
+  promo_list_price numeric,
   -- Numeración global por año ("Recibo X Nº 0001/2026"), opaca para el comercio.
   seq integer NOT NULL,
   year integer NOT NULL,
   issued_at timestamptz NOT NULL DEFAULT now(),
   emailed_at timestamptz
 );
+ALTER TABLE public.plan_receipts
+  ADD COLUMN IF NOT EXISTS promo_pct integer,
+  ADD COLUMN IF NOT EXISTS promo_list_price numeric;
 CREATE INDEX IF NOT EXISTS idx_plan_receipts_vendor
   ON public.plan_receipts(vendor_id, issued_at DESC);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_plan_receipts_seq
@@ -84,9 +101,12 @@ CREATE TABLE IF NOT EXISTS public.portal_bank (
   cbu text,
   titular text,
   qr_url text,
+  whatsapp text,
   notes text,
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+ALTER TABLE public.portal_bank
+  ADD COLUMN IF NOT EXISTS whatsapp text;
 INSERT INTO public.portal_bank (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
 
 -- 5) Gracia: plan_status 'past_due' -------------------------------------------

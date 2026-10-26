@@ -300,8 +300,29 @@ export default function SeguimientoPedidoPage() {
               >
                 {weightBusy ? "Abriendo Mercado Pago…" : `💳 Pagar $${Number(order.total).toLocaleString("es-AR")} con Mercado Pago`}
               </button>
-            ) : order.payment_method === "mercadopago" && order.payment_status === "paid" ? (
+            ) : (order.payment_method === "mercadopago" || order.payment_method === "transferencia") && order.payment_status === "paid" ? (
               <p className="text-green-700 font-medium">✅ Pago acreditado</p>
+            ) : order.payment_method === "transferencia" && order.payment_status === "pending" ? (
+              <>
+                <p className="text-blue-800">
+                  Transferencia por <strong>${Number(order.total).toLocaleString("es-AR")}</strong> (monto exacto).
+                  Cuando la hagas, avisanos por WhatsApp con el comprobante.
+                </p>
+                {phone && (
+                  <a
+                    href={`https://wa.me/${phone.replace(/[^0-9]/g, "")}?text=${encodeURIComponent(`Hola! Quiero transferir mi pedido ${order.pickup_number != null ? `Nro. ${order.pickup_number}` : `#${order.id.slice(0, 8)}`} por $${Number(order.total).toLocaleString("es-AR")}. ¿Me pasás los datos?`)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block w-full rounded-lg bg-green-500 text-white text-xs font-semibold py-2 text-center hover:bg-green-600 transition-colors"
+                  >
+                    💬 Avisar por WhatsApp
+                  </a>
+                )}
+              </>
+            ) : order.payment_method === "efectivo" ? (
+              <p className="text-blue-800">
+                💵 Pagás <strong>${Number(order.total).toLocaleString("es-AR")}</strong> al recibir tu pedido.
+              </p>
             ) : null}
             {weightMsg && <p className="text-green-700 font-medium">{weightMsg}</p>}
             {weightErr && <p className="text-red-600 font-medium">{weightErr}</p>}

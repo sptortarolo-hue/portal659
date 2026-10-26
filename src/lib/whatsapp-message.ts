@@ -266,3 +266,74 @@ export function buildTransferInstructionsMessage(params: {
   ].filter((l) => l !== null && l !== undefined && l !== "").join("\n");
 }
 
+/**
+ * Mensaje del pedido ya PESADO (modo "confirmar"): detalle con el peso real de
+ * cada ítem, el total real y la acción de pago según el método elegido.
+ * Manual a propósito: el comercio aprieta el botón tras revisar el total.
+ */
+export function buildWeighedOrderMessage(params: {
+  vendorName: string;
+  customerName: string;
+  /** Identificador legible ("Nro. 12" o "#abcdef12"). */
+  orderLabel: string;
+  items: WaItem[];
+  total: number;
+  paymentMethod: string;
+  /** Datos bancarios (solo transferencia). */
+  alias?: string | null;
+  cbu?: string | null;
+  holder?: string | null;
+  /** Link público de seguimiento (pago MP y consulta de estado). */
+  trackUrl?: string | null;
+  /** true = el total real difiere del estimado que declaró el cliente. */
+  changedFromEstimate?: boolean;
+}): string {
+  const itemLines = params.items.map((i) => {
+    const modStr = i.modifiers && i.modifiers.length > 0
+      ? ` (${i.modifiers.join(", ")})`
+      : "";
+    return `- ${qtyLabel(i)} ${i.name}${modStr}: *$${itemTotal(i).toLocaleString("es-AR")}*${comboSuffix(i)}`;
+  });
+  const credentials = [
+    params.alias ? `Alias: ${params.alias}` : "",
+    params.cbu ? `CBU: ${params.cbu}` : "",
+  ].filter((l) => l !== "").join("\n");
+
+  const paymentBlock = (() => {
+    const total = `$${params.total.toLocaleString("es-AR")}`;
+    switch (params.paymentMethod) {
+      case "efectivo":
+        return [`Pagás ${total} al recibir tu pedido. 💵`, "Si abonás con cambio, avisanos por acá."];
+      case "transferencia":
+        return [
+          `Transferencia por ${total} (monto exacto):`,
+          credentials,
+          params.holder ? `Titular: ${params.holder}` : "",
+          "Mandanos la foto o el PDF del comprobante por acá y lo verificamos enseguida. 🙏",
+        ];
+      case "mercadopago":
+        return params.trackUrl
+          ? [`Pagá ${total} con Mercado Pago desde el seguimiento:`, params.trackUrl]
+          : [`Pagá ${total} con Mercado Pago. Te avisamos por acá con el link de pago.`];
+      default:
+        return [`Total: ${total}. Coordinamos el pago por este chat. 📱`];
+    }
+  })().filter((l) => l !== null && l !== undefined && l !== "");
+
+  return [
+    `⚖️ ¡Tu pedido ${params.orderLabel} de ${params.vendorName} ya está pesado!`,
+    "",
+    "Detalle (peso real):",
+    ...itemLines,
+    "",
+    params.changedFromEstimate
+      ? `Total real: *$${params.total.toLocaleString("es-AR")}* (distinto del estimado: lo pesamos en el local)`
+      : `Total real: *$${params.total.toLocaleString("es-AR")}*`,
+    "",
+    ...paymentBlock,
+    params.trackUrl && params.paymentMethod !== "mercadopago"
+      ? `Seguí tu pedido acá: ${params.trackUrl}`
+      : "",
+  ].filter((l) => l !== null && l !== undefined && l !== "").join("\n");
+}
+

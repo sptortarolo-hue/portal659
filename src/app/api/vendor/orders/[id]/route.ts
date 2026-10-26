@@ -225,14 +225,24 @@ export async function PATCH(
   }
 
   const ADVANCE_STATUSES = ["preparing", "ready", "sent", "completed"];
-  if (
-    status &&
-    fullVendor?.block_unpaid_orders &&
+  // Toggle del comercio: no avanzar transferencias app sin marcar pagado.
+  const blockUnpaidGate =
+    !!status &&
+    fullVendor?.block_unpaid_orders === true &&
     currentOrder.payment_method === "transferencia" &&
     currentOrder.channel === "app" &&
     currentOrder.payment_status === "pending" &&
-    ADVANCE_STATUSES.includes(status)
-  ) {
+    ADVANCE_STATUSES.includes(status);
+  // Flujo de pesada (modo "confirmar"): transferencia/MP se cobran DESPUÉS de
+  // pesar el total real → nunca se despacha sin pago, independiente del toggle.
+  // Efectivo queda fuera a propósito: se cobra al entregar o al retirar.
+  const weightUnpaidGate =
+    !!status &&
+    ADVANCE_STATUSES.includes(status) &&
+    currentOrder.weight_estimated_total != null &&
+    currentOrder.payment_status === "pending" &&
+    (currentOrder.payment_method === "transferencia" || currentOrder.payment_method === "mercadopago");
+  if (blockUnpaidGate || weightUnpaidGate) {
     return NextResponse.json(
       { error: "Primero confirmá el pago (marcá el pedido como pagado) para avanzar", code: "payment_pending" },
       { status: 403 }

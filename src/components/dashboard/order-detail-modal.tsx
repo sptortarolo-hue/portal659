@@ -101,6 +101,10 @@ export default function OrderDetailModal({ order, vendorName, vendorLogoUrl, onC
   const [payLink, setPayLink] = useState<string | null>(null);
   const [payLinkBusy, setPayLinkBusy] = useState(false);
   const [payLinkError, setPayLinkError] = useState("");
+  // "📲 Enviar pedido pesado por WhatsApp" (todos los métodos).
+  const [weighedBusy, setWeighedBusy] = useState(false);
+  const [weighedMsg, setWeighedMsg] = useState("");
+  const [weighedErr, setWeighedErr] = useState("");
   const [modNotes, setModNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [productSearch, setProductSearch] = useState("");
@@ -380,6 +384,15 @@ export default function OrderDetailModal({ order, vendorName, vendorLogoUrl, onC
   const mpWeightPending =
     order.payment_method === "mercadopago" && weightConfirmed &&
     order.payment_status === "pending" && !isTerminal;
+  // Peso confirmado y falta cobrar: muestra el envío del pedido pesado por WA.
+  // Efectivo/coordinar pueden avisar el monto aunque el estado siga "paid"
+  // (se cobra al entregar); transferencia/MP solo mientras estén pendientes.
+  const isWeighedFlow =
+    weightEstimated > 0 && weightConfirmed && !isTerminal;
+  const canSendWeighed =
+    isWeighedFlow &&
+    (order.payment_status !== "paid" ||
+      (order.payment_method !== "transferencia" && order.payment_method !== "mercadopago"));
 
   const startWeightEdit = useCallback(() => {
     setWeightItems(JSON.parse(JSON.stringify(order.items || [])));
@@ -464,6 +477,34 @@ export default function OrderDetailModal({ order, vendorName, vendorLogoUrl, onC
     isTransferAppPending && isCounterChannel === false && customerPhone && transferHasData && transferInstructions
       ? `https://wa.me/${customerPhone}?text=${encodeURIComponent(transferInstructions)}`
       : null;
+
+  // "📲 Enviar pedido pesado por WhatsApp": tras confirmar el peso real, manda
+  // el detalle con kg + el total y la acción de pago según el método. Si el bot
+  // no está conectado, el endpoint devuelve el texto y cae al WA manual.
+  const sendWeighedOrder = async () => {
+    if (weighedBusy) return;
+    setWeighedBusy(true);
+    setWeighedMsg("");
+    setWeighedErr("");
+    try {
+      const res = await fetch(`/api/vendor/orders/${order.id}/send-weighed-order`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.ok) {
+        setWeighedMsg(data.sent ? "Pedido pesado enviado por WhatsApp ✅" : "Enviado");
+        return;
+      }
+      if (res.status === 502 && data.text) {
+        window.open(`https://wa.me/${customerPhone}?text=${encodeURIComponent(data.text)}`, "_blank");
+        setWeighedMsg("El bot no está conectado — se abrió tu WhatsApp con el mensaje listo.");
+        return;
+      }
+      setWeighedErr(data.error || "No se pudo enviar el pedido pesado");
+    } catch {
+      setWeighedErr("Error de red. Probá de nuevo.");
+    } finally {
+      setWeighedBusy(false);
+    }
+  };
 
   const startEditing = useCallback(() => {
     setEditItems(JSON.parse(JSON.stringify(order.items || [])));
@@ -844,31 +885,56 @@ export default function OrderDetailModal({ order, vendorName, vendorLogoUrl, onC
               ) : (
                 <div className="space-y-1.5">
                   <Input value={payLink} readOnly onFocus={(e) => e.target.select()} className="h-8 text-[11px]" />
-                  <div className="grid grid-cols-2 gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => { void navigator.clipboard?.writeText(payLink).catch(() => {}); }}
-                    >
-                      Copiar link
-                    </Button>
-                    {customerPhone ? (
-                      <a
-                        href={`https://wa.me/${customerPhone}?text=${encodeURIComponent(`Hola, tu pedido ya está pesado: total $${Number(order.total).toLocaleString("es-AR")}. Podés pagarlo con este link: ${payLink}`)}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="rounded-md bg-green-500 text-white text-xs font-medium py-2 text-center hover:bg-green-600"
-                      >
-                        Enviar por WA
-                      </a>
-                    ) : (
-                      <Button type="button" variant="outline" size="sm" disabled>
-                        Sin teléfono
-                      </Button>
-                    )}
-                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="w-full"
+                    onClick={() => { void navigator.clipboard?.writeText(payLink).catch(() => {}); }}
+                  >
+                    Copiar link
+                  </Button>
+                  <p className="text-[10px] text-muted-foreground">
+                    Mandale el pedido pesado con el botón de abajo (lleva el link de seguimiento donde paga).
+                  </p>
                 </div>
+              )}
+            </div>
+          )}
+
+          {/* Pesables: enviar el pedido ya pesado por WhatsApp (todos los métodos) */}
+          {!editing && canSendWeighed && (
+            <div className="rounded-xl border border-green-200 bg-green-50 px-3 py-2.5 space-y-2">
+              <p className="text-xs font-bold text-green-800">
+                📲 Pedido pesado — total real ${Number(order.total).toLocaleString("es-AR")}
+              </p>
+              {order.payment_method === "efectivo" && order.payment_status !== "pending" && (
+                <p className="text-xs text-green-700">
+                  💵 Efectivo: el cliente paga ${Number(order.total).toLocaleString("es-AR")} al recibir / retirar.
+                </p>
+              )}
+              {order.payment_method === "transferencia" && order.payment_status === "pending" && (
+                <p className="text-xs text-green-700">
+                  🏦 Transferencia: el mensaje lleva el alias/CBU y el monto exacto a transferir.
+                </p>
+              )}
+              <Button
+                type="button"
+                size="sm"
+                className="w-full bg-green-600 hover:bg-green-700 text-white"
+                disabled={weighedBusy || !customerPhone || isCounterChannel}
+                onClick={sendWeighedOrder}
+              >
+                {weighedBusy ? "Enviando…" : "📲 Enviar pedido pesado por WhatsApp"}
+              </Button>
+              {!customerPhone || isCounterChannel ? (
+                <p className="text-[10px] text-muted-foreground">
+                  El pedido no tiene teléfono del cliente — avisale el total por la vía que uses de siempre.
+                </p>
+              ) : null}
+              {weighedMsg && <p className="text-[11px] font-medium text-green-700">{weighedMsg}</p>}
+              {weighedErr && (
+                <p className="text-xs font-semibold text-red-600 bg-red-50 border border-red-200 rounded-lg px-2 py-1.5">{weighedErr}</p>
               )}
             </div>
           )}
@@ -1257,7 +1323,13 @@ export default function OrderDetailModal({ order, vendorName, vendorLogoUrl, onC
                       )}
                     </div>
                   )}
-                  {useBotSend ? (
+                  {canSendWeighed ? (
+                    <p className="text-center text-[11px] text-amber-700">
+                      Mandale el pedido pesado con el botón{" "}
+                      <span className="font-semibold">📲 Enviar pedido pesado por WhatsApp</span> (arriba): lleva el
+                      alias/CBU y el monto exacto a transferir.
+                    </p>
+                  ) : useBotSend ? (
                     <Button
                       type="button"
                       variant="outline"
@@ -1293,7 +1365,7 @@ export default function OrderDetailModal({ order, vendorName, vendorLogoUrl, onC
                       Cargá tu alias o CBU en Configuración → Cobros para mandarle los datos de pago al cliente.
                     </p>
                   )}
-                  {payMsg && <p className="text-center text-[10px] text-muted-foreground">{payMsg}</p>}
+                  {payMsg && canSendWeighed ? null : <p className="text-center text-[10px] text-muted-foreground">{payMsg}</p>}
                   {onMarkPaid && (
                     <Button
                       type="button"

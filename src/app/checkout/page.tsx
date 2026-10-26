@@ -1443,8 +1443,8 @@ const [doneWeightPending, setDoneWeightPending] = useState(false);
         {/* Pesables (modo confirmar): el total se cierra cuando el comercio pesa. */}
         {mpDeferred && (
           <div className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 font-medium">
-            ⚖️ Este pedido incluye productos por kilo: el comercio confirma el peso real y después
-            pagás el total exacto (te avisamos por el seguimiento y por WhatsApp).
+            ⚖️ Este pedido incluye productos por kilo: el comercio pesa y confirma el peso real, y
+            recién ahí pagás o abonás el total exacto (te avisamos por el seguimiento y por WhatsApp).
           </div>
         )}
 

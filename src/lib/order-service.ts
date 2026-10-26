@@ -467,9 +467,13 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
   // el comercio pese (total real) → el deadline NO nace al crear; lo sella el
   // PATCH al confirmar el peso.
   const incomingHasKg = (items as any[]).some((i) => (i as any)?.unit === "kg");
+  // Modo "confirmar" + carrito con kg: el pedido entra en el flujo de pesada
+  // con CUALQUIER método de pago. Lo que cambia por método es solo el cobro:
+  // transferencia/MP quedan "pending" (se cobra el total real tras pesar) y
+  // efectivo/coordinar siguen "paid" (se cobra al entregar o retirar).
+  // El deadline de transferencia NO nace al crear: lo sella el PATCH al confirmar.
   const weightDeferredTransfer =
-    !isPreview && weightConfirmMode === "confirmar" && incomingHasKg &&
-    (paymentMethodFinal === "transferencia" || paymentMethodFinal === "mercadopago");
+    !isPreview && weightConfirmMode === "confirmar" && incomingHasKg;
   const transferDeadlineAt =
     hasDeadlineCol && !isPreview && paymentMethodFinal === "transferencia" && !weightDeferredTransfer && expiryHours > 0 && expiryHours <= 168
       ? new Date(Date.now() + expiryHours * 3_600_000).toISOString()
@@ -553,13 +557,15 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
       // pendiente de pago; el comercio pesa y después se cobra el total real
       // (link MP desde el panel/seguimiento). Sin kg o modo estimado: como
       // siempre. Un pedido de prueba nunca difiere (no se cobra igual).
+      // Cualquier método guarda el estimado: el flujo de "confirmar peso" y el
+      // aviso al cliente aplican también a efectivo/coordinar (cobro al entregar).
       const hasKgItems = resolvedItems.some((i) => (i as any)?.unit === "kg");
       const deferMpPayment =
         !isPreview &&
         weightConfirmMode === "confirmar" &&
         hasKgItems &&
         paymentMethodFinal === "mercadopago";
-      resolvedWeightPending = deferMpPayment || weightDeferredTransfer;
+      resolvedWeightPending = weightDeferredTransfer;
       const paymentStatus =
         paymentMethodFinal === "transferencia" || deferMpPayment ? "pending" : "paid";
 

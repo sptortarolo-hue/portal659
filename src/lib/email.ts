@@ -222,6 +222,83 @@ export function reviewRequestEmail(vendorName: string, reviewUrl: string): { sub
   };
 }
 
+/**
+ * Aviso de vencimiento próximo del plan (T-7 / T-2) o de plan ya vencido.
+ * Incluye los datos de cobro del portal y el link para renovar por
+ * transferencia y subir el comprobante.
+ */
+export function planRenewalEmail(params: {
+  storeName: string;
+  planName: string;
+  amount: number;
+  daysLeft: number;
+  renewUrl: string;
+  bank: { alias: string | null; cbu: string | null; titular: string | null; qrUrl: string | null };
+}): { subject: string; html: string } {
+  const { storeName, planName, amount, daysLeft, renewUrl, bank } = params;
+  const when = daysLeft > 0 ? `vence en ${daysLeft} ${daysLeft === 1 ? "día" : "días"}` : "venció";
+  const amountStr = `$${Number(amount).toLocaleString("es-AR")}`;
+  const bankLines = [
+    bank.alias ? `Alias: <b>${bank.alias}</b>` : "",
+    bank.cbu ? `CBU: <b>${bank.cbu}</b>` : "",
+    bank.titular ? `Titular: ${bank.titular}` : "",
+  ].filter(Boolean).join("<br>");
+  const qr = bank.qrUrl
+    ? `<p style="text-align:center;margin:12px 0"><img src="${bank.qrUrl}" alt="QR" style="height:140px;border-radius:12px"></p>`
+    : "";
+  return {
+    subject: daysLeft > 0
+      ? `Tu plan ${planName} ${when} — renová por transferencia`
+      : `Tu plan ${planName} venció — renová para no cortar el servicio`,
+    html: `
+      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px">
+        <h1 style="color:#4f46e5">${daysLeft > 0 ? "Tu plan está por vencer" : "Tu plan venció"}</h1>
+        <p>Hola <strong>${storeName}</strong>: tu plan <strong>${planName}</strong> (${amountStr}/mes) ${when}.</p>
+        <p style="font-size:14px">Mientras tengas el comprobante cargado y lo revisemos, <b>el servicio no se corta</b>.</p>
+        <div style="background:#f4f4f5;border-radius:12px;padding:16px;margin:16px 0">
+          <p style="font-weight:bold;margin:0 0 8px">Datos para transferir</p>
+          ${bankLines || "<p>Escribinos por WhatsApp para los datos de cobro.</p>"}
+          ${qr}
+        </div>
+        <p style="text-align:center;margin:24px 0">
+          <a href="${renewUrl}" style="background:#4f46e5;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold">
+            Renovar y subir el comprobante
+          </a>
+        </p>
+        <p style="color:#666;font-size:14px">Transferí el monto del plan y subí la foto o el PDF del comprobante desde tu panel. Lo revisamos y te emitimos el recibo.</p>
+        <hr style="border:none;border-top:1px solid #eee;margin:20px 0">
+        <p style="color:#999;font-size:12px">Portal 659 — El centro comercial de tu barrio · 0% comisión</p>
+      </div>
+    `,
+  };
+}
+
+/** Recibo X emitido tras aprobar el pago del plan (no valido como factura). */
+export function planReceiptEmail(params: {
+  storeName: string;
+  planName: string;
+  receiptNumber: string;
+  amount: number;
+  periodEnd: string | null;
+}): { subject: string; html: string } {
+  const { storeName, planName, receiptNumber, amount, periodEnd } = params;
+  const amountStr = `$${Number(amount).toLocaleString("es-AR")}`;
+  const until = periodEnd ? new Date(periodEnd).toLocaleDateString("es-AR") : null;
+  return {
+    subject: `Recibo X ${receiptNumber} — plan ${planName} (${amountStr})`,
+    html: `
+      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px">
+        <h1 style="color:#4f46e5">¡Pago acreditado! 🎉</h1>
+        <p>Hola <strong>${storeName}</strong>: acreditamos tu pago del plan <strong>${planName}</strong> por <strong>${amountStr}</strong>${until ? ` (cubre hasta el ${until})` : ""}.</p>
+        <p>Va adjunto tu <strong>Recibo X Nº ${receiptNumber}</strong>.</p>
+        <p style="color:#666;font-size:13px">Documento no válido como factura.</p>
+        <hr style="border:none;border-top:1px solid #eee;margin:20px 0">
+        <p style="color:#999;font-size:12px">Portal 659 — El centro comercial de tu barrio · 0% comisión</p>
+      </div>
+    `,
+  };
+}
+
 export function orderReadyEmail(vendorName: string, total: number): { subject: string; html: string } {
   return {
     subject: `¡Tu pedido de ${vendorName} está listo!`,

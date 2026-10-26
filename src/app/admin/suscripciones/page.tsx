@@ -21,6 +21,7 @@ const SUB_LABELS: Record<string, { label: string; cls: string }> = {
   trial: { label: "Prueba", cls: "bg-amber-100 text-amber-700" },
   active: { label: "Activo", cls: "bg-green-100 text-green-700" },
   expired: { label: "Vencido", cls: "bg-red-100 text-red-700" },
+  past_due: { label: "Pago en revisión", cls: "bg-amber-100 text-amber-700" },
   cancelled: { label: "Cancelado", cls: "bg-gray-100 text-gray-600" },
   gratuito: { label: "Gratuito", cls: "bg-muted text-muted-foreground" },
 };
@@ -49,6 +50,12 @@ export default function AdminSuscripcionesPage() {
   const [history, setHistory] = useState<Record<string, HistoryItem[]>>({});
   const [historyLoading, setHistoryLoading] = useState<string | null>(null);
   const [modal, setModal] = useState<{ row: SuscripcionRow; sub: HistoryItem | null; createNew: boolean; isLatest: boolean } | null>(null);
+  // Circuito de pago por transferencia: cola de revisión + datos bancarios.
+  const [payments, setPayments] = useState<any[]>([]);
+  const [bank, setBank] = useState<any | null>(null);
+  const [bankOpen, setBankOpen] = useState(false);
+  const [reviewBusy, setReviewBusy] = useState<string | null>(null);
+  const [reviewMsg, setReviewMsg] = useState("");
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -58,11 +65,43 @@ export default function AdminSuscripcionesPage() {
       if (!data.error) {
         setRows(data.subscriptions || []);
         setPlans(data.plans || []);
+        setPayments(data.payments || []);
+        setBank(data.bank || null);
       }
     } finally {
       setLoading(false);
     }
   }, []);
+
+  async function reviewPayment(paymentId: string, approve: boolean, note?: string) {
+    setReviewBusy(paymentId);
+    setReviewMsg("");
+    try {
+      const res = await fetch("/api/admin/suscripciones", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          vendorId: payVendorId(paymentId),
+          action: approve ? "approve_payment" : "reject_payment",
+          paymentId,
+          note,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        setReviewMsg(data.error || "No se pudo registrar la revisión");
+      } else {
+        setReviewMsg(approve ? "Pago aprobado: plan activado y recibo emitido." : "Pago rechazado: se avisó al comercio.");
+      }
+      await fetchData();
+    } finally {
+      setReviewBusy(null);
+    }
+  }
+
+  function payVendorId(paymentId: string): string {
+    return payments.find((p) => p.id === paymentId)?.vendor_id || "";
+  }
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -284,6 +323,128 @@ export default function AdminSuscripcionesPage() {
           <p className={`text-2xl font-bold ${vencidos > 0 ? "text-red-600" : ""}`}>{vencidos}</p>
           <p className="text-xs text-muted-foreground">Vencidos</p>
         </div>
+      </div>
+
+      {/* Cola de revisión de pagos por transferencia */}
+      <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="font-display font-semibold text-sm">
+            Pagos por transferencia por revisar ({payments.length})
+          </h2>
+          <button
+            onClick={() => setBankOpen((v) => !v)}
+            className="text-xs text-primary font-medium hover:underline"
+          >
+            {bankOpen ? "Cerrar datos bancarios" : "Datos bancarios del portal"}
+          </button>
+        </div>
+
+        {bankOpen && (
+          <div className="grid sm:grid-cols-2 gap-3 rounded-xl border border-border p-4">
+            {(
+              [
+                ["alias", "Alias"],
+                ["cbu", "CBU"],
+                ["titular", "Titular"],
+                ["qr_url", "URL del QR"],
+              ] as const
+            ).map(([key, label]) => (
+              <label key={key} className="text-xs space-y-1">
+                <span className="text-muted-foreground">{label}</span>
+                <input
+                  className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
+                  value={(bank as any)?.[key] || ""}
+                  onChange={(e) => setBank((b: any) => ({ ...(b || {}), [key]: e.target.value }))}
+                />
+              </label>
+            ))}
+            <label className="text-xs space-y-1 sm:col-span-2">
+              <span className="text-muted-foreground">Nota interna</span>
+              <input
+                className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
+                value={(bank as any)?.notes || ""}
+                onChange={(e) => setBank((b: any) => ({ ...(b || {}), notes: e.target.value }))}
+              />
+            </label>
+            <div className="sm:col-span-2 flex justify-end">
+              <button
+                className="rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-white"
+                onClick={async () => {
+                  await fetch("/api/admin/suscripciones", {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ vendorId: "00000000-0000-0000-0000-000000000000", action: "save_bank", bank }),
+                  });
+                  await fetchData();
+                }}
+              >
+                Guardar datos bancarios
+              </button>
+            </div>
+          </div>
+        )}
+
+        {reviewMsg && <p className="text-xs text-muted-foreground">{reviewMsg}</p>}
+
+        {payments.length === 0 ? (
+          <p className="text-xs text-muted-foreground">No hay pagos pendientes de revisión.</p>
+        ) : (
+          <div className="divide-y divide-border">
+            {payments.map((p) => {
+              const stale =
+                !p.comprobante_at &&
+                Date.now() - new Date(p.created_at).getTime() > 48 * 3600 * 1000;
+              return (
+                <div key={p.id} className="py-3 flex flex-col sm:flex-row sm:items-center gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium">
+                      {p.store_name}{" "}
+                      <span className="text-xs font-normal text-muted-foreground">
+                        · {p.plan_name} · ${Number(p.amount).toLocaleString("es-AR")}
+                      </span>
+                    </p>
+                    <p className="text-[11px] text-muted-foreground">
+                      {new Date(p.created_at).toLocaleString("es-AR")}
+                      {p.comprobante_at
+                        ? ` · comprobante subido ${new Date(p.comprobante_at).toLocaleString("es-AR")}`
+                        : " · sin comprobante"}
+                      {stale ? " ⚠ +48h" : ""} · ref {p.reference}
+                    </p>
+                  </div>
+                  {p.comprobante_url && (
+                    <a
+                      href={p.comprobante_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-primary font-medium hover:underline"
+                    >
+                      Ver comprobante
+                    </a>
+                  )}
+                  <div className="flex gap-2">
+                    <button
+                      disabled={reviewBusy === p.id}
+                      onClick={() => reviewPayment(p.id, true)}
+                      className="rounded-lg bg-green-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+                    >
+                      {reviewBusy === p.id ? "..." : "Aprobar"}
+                    </button>
+                    <button
+                      disabled={reviewBusy === p.id}
+                      onClick={() => {
+                        const reason = prompt("Motivo del rechazo (se le envía al comercio):");
+                        if (reason) reviewPayment(p.id, false, reason);
+                      }}
+                      className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold disabled:opacity-50"
+                    >
+                      Rechazar
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       <div className="flex flex-wrap gap-3">

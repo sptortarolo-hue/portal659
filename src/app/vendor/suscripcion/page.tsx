@@ -17,6 +17,8 @@ type MeResponse = {
     trialActive: boolean;
     active: boolean;
     expired: boolean;
+    /** Gracia: hay un pago en revisión, el plan no cortó. */
+    grace: boolean;
     eligibleForPaid: boolean;
     name: string | null;
     badge: string | null;
@@ -37,6 +39,48 @@ type MeResponse = {
     quotesOverLimit: boolean;
   };
   history: VendorSubscription[];
+  planExpiresAt: string | null;
+  /** Reclamo de pago por transferencia (pending) o null. */
+  pending: {
+    id: string;
+    amount: number;
+    period_start: string;
+    period_end: string;
+    reference: string;
+    status: string;
+    comprobante_url: string | null;
+    comprobante_name: string | null;
+    comprobante_at: string | null;
+    plan_slug: string | null;
+    plan_name: string | null;
+    created_at: string;
+    review_note: string | null;
+  } | null;
+  payments: {
+    id: string;
+    amount: number;
+    period_end: string;
+    reference: string;
+    status: string;
+    comprobante_url: string | null;
+    comprobante_name: string | null;
+    comprobante_at: string | null;
+    plan_slug: string | null;
+    plan_name: string | null;
+    created_at: string;
+    review_note: string | null;
+  }[];
+  receipts: {
+    id: string;
+    amount: number;
+    plan_name: string;
+    seq: number;
+    year: number;
+    method: string;
+    issued_at: string;
+    period_end: string | null;
+  }[];
+  bank: { alias: string | null; cbu: string | null; titular: string | null; qr_url: string | null } | null;
 };
 
 const PLAN_COPY: Record<string, { title: string; desc: string }> = {
@@ -77,20 +121,76 @@ export default function VendorSuscripcionPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
-  const [payInfo, setPayInfo] = useState<any>(null);
+  const [file, setFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [renewMsg, setRenewMsg] = useState("");
+
+  async function load() {
+    const res = await fetch("/api/subscriptions/me");
+    const data = await res.json().catch(() => ({}));
+    if (data && !data.error) setMe(data);
+    else setError(data?.error || "No se pudo cargar tu suscripción");
+    setLoading(false);
+  }
+
+  async function renew(slug?: string) {
+    setBusy("renew");
+    setRenewMsg("");
+    try {
+      const res = await fetch("/api/subscriptions/renew", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ planSlug: slug ?? me?.effective.slug }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (data.ok) {
+        setRenewMsg("");
+        await load();
+      } else {
+        setRenewMsg(data.error || "No se pudo iniciar la renovación");
+      }
+    } catch {
+      setRenewMsg("Error de conexión");
+    }
+    setBusy(null);
+  }
+
+  async function uploadComprobante(paymentId: string) {
+    if (!file) return;
+    setUploading(true);
+    setRenewMsg("");
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch(`/api/vendor/suscripcion/pagos/${paymentId}/comprobante`, {
+        method: "POST",
+        body: form,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (data.ok) {
+        setFile(null);
+        await load();
+      } else {
+        setRenewMsg(data.error || "No se pudo subir el comprobante");
+      }
+    } catch {
+      setRenewMsg("Error de conexión");
+    }
+    setUploading(false);
+  }
 
   useEffect(() => {
-    fetch("/api/subscriptions/me")
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.error === "No autenticado") {
-          router.push("/login");
-          return;
-        }
-        setMe(d);
-      })
-      .catch(() => setError("Error al cargar tu suscripción"))
-      .finally(() => setLoading(false));
+    (async () => {
+      const res = await fetch("/api/subscriptions/me");
+      const d = await res.json().catch(() => ({}));
+      if (d.error === "No autenticado") {
+        router.push("/login");
+        return;
+      }
+      if (d && !d.error) setMe(d);
+      else setError(d?.error || "Error al cargar tu suscripción");
+      setLoading(false);
+    })();
   }, [router]);
 
   async function activate(slug: string) {
@@ -113,7 +213,6 @@ export default function VendorSuscripcionPage() {
 
   async function pay(slug: string) {
     setError("");
-    setPayInfo(null);
     setBusy(`pay-${slug}`);
     const res = await fetch("/api/subscriptions/pay", {
       method: "POST",
@@ -126,8 +225,11 @@ export default function VendorSuscripcionPage() {
       window.location.href = data.initPoint;
       return;
     }
+    // Modo transferencia (MP apagado o no configurado): va al circuito de
+    // reclamo + comprobante (datos bancarios del portal).
     if (data.ok && data.mode === "transfer") {
-      setPayInfo(data);
+      await renew();
+      document.getElementById("renovar")?.scrollIntoView({ behavior: "smooth" });
       return;
     }
     setError(data.error || "No se pudo generar el pago");
@@ -151,8 +253,10 @@ export default function VendorSuscripcionPage() {
       ? { label: `En prueba · ${trialTimeLeft} días`, cls: "bg-sun text-ink" }
       : eff.status === "active"
         ? { label: "Activo", cls: "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300" }
-        : eff.status === "expired"
-          ? { label: "Vencido", cls: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300" }
+      : eff.status === "expired"
+        ? { label: "Vencido", cls: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300" }
+        : eff.status === "past_due"
+          ? { label: "Pago en revisión", cls: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" }
           : { label: "Gratuito", cls: "bg-muted text-muted-foreground" };
 
   return (
@@ -169,36 +273,113 @@ export default function VendorSuscripcionPage() {
 
       <div className="container mx-auto px-4 mt-6 max-w-2xl space-y-6">
         {error && <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</p>}
-        {payInfo && (
-          <div className="rounded-2xl border border-border bg-card p-5 space-y-3">
-            <h3 className="font-display font-semibold">Pago por transferencia</h3>
-            <p className="text-sm text-muted-foreground">
-              Transferí <b className="text-foreground">${Number(payInfo.order.amount).toLocaleString("es-AR")}</b> por el
-              plan {planCopyFor(payInfo.order.plan.slug, me.vertical)?.title ?? payInfo.order.plan.name} (cubre hasta {new Date(payInfo.order.periodEnd).toLocaleDateString("es-AR")}).
-            </p>
-            <div className="text-sm space-y-1 rounded-xl bg-muted p-4">
-              {payInfo.transfer?.alias && <p>Alias: <b>{payInfo.transfer.alias}</b></p>}
-              {payInfo.transfer?.cbu && <p>CBU: <b>{payInfo.transfer.cbu}</b></p>}
-              {payInfo.transfer?.qrUrl && (
-                <span className="block pt-1"><img src={payInfo.transfer.qrUrl} alt="QR" className="h-28 w-28 rounded-lg" /></span>
+        {renewMsg && <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{renewMsg}</p>}
+
+        {/* Circuito de renovación por transferencia: reclamo + comprobante.
+            Mientras el pago está en revisión el plan NO se corta (gracia). */}
+        {eff.eligibleForPaid && eff.slug !== "gratuito" && (
+          <div id="renovar" className="rounded-2xl border border-border bg-card p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-display font-semibold">Renovar por transferencia</h3>
+              {eff.grace && (
+                <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 text-[10px]">
+                  Pago en revisión · plan activo
+                </Badge>
               )}
             </div>
-            <p className="text-xs text-muted-foreground">
-              Referencia: <code className="text-[10px]">{payInfo.order.externalReference}</code>
-            </p>
-            {payInfo.transfer?.whatsapp && (
-              <Button
-                className="w-full"
-                variant="outline"
-                onClick={() => {
-                  const msg = encodeURIComponent(`Hola! Hice una transferencia para activar el plan ${planCopyFor(payInfo.order.plan.slug, me.vertical)?.title ?? payInfo.order.plan.name}. Referencia: ${payInfo.order.externalReference}`);
-                  window.open(`https://wa.me/${payInfo.transfer.whatsapp.replace(/[^0-9]/g, "")}?text=${msg}`, "_blank");
-                }}
-              >
-                Avisar que transferí
-              </Button>
+
+            {eff.grace && (
+              <p className="text-xs text-muted-foreground">
+                Tu plan venció pero sigue funcionando mientras revisamos tu comprobante. Si lo rechazamos, te avisamos con el motivo.
+              </p>
             )}
-            <p className="text-[11px] text-muted-foreground">El administrador lo recibe y activa tu plan en minutos.</p>
+
+            {me.bank && (me.bank.alias || me.bank.cbu || me.bank.qr_url) && (
+              <div className="text-sm space-y-1 rounded-xl bg-muted p-4">
+                <p className="text-xs font-semibold text-muted-foreground">Transferí a la cuenta del portal</p>
+                {me.bank.alias && <p>Alias: <b>{me.bank.alias}</b></p>}
+                {me.bank.cbu && <p>CBU: <b>{me.bank.cbu}</b></p>}
+                {me.bank.titular && <p className="text-muted-foreground">Titular: {me.bank.titular}</p>}
+                {me.bank.qr_url && (
+                  <span className="block pt-1">
+                    <img src={me.bank.qr_url} alt="QR" className="h-28 w-28 rounded-lg" />
+                  </span>
+                )}
+              </div>
+            )}
+
+            {me.pending ? (
+              <div className="space-y-3">
+                <div className="rounded-xl border border-border p-4 text-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold">
+                      {me.pending.plan_name ?? "Plan"} · ${Number(me.pending.amount).toLocaleString("es-AR")}
+                    </span>
+                    <Badge variant="secondary" className="text-[10px]">
+                      {me.pending.comprobante_at ? "Comprobante recibido" : "Falta el comprobante"}
+                    </Badge>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground mt-1">
+                    Cubre hasta el {new Date(me.pending.period_end).toLocaleDateString("es-AR")} · Referencia:{" "}
+                    <code className="text-[10px]">{me.pending.reference}</code>
+                  </p>
+                  {me.pending.comprobante_url ? (
+                    <a
+                      href={me.pending.comprobante_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-primary font-medium hover:underline inline-block mt-2"
+                    >
+                      Ver comprobante subido ({me.pending.comprobante_name || "archivo"})
+                    </a>
+                  ) : (
+                    <div className="mt-3 space-y-2">
+                      <input
+                        type="file"
+                        accept="image/*,application/pdf"
+                        onChange={(e) => setFile(e.target.files?.[0] || null)}
+                        className="block w-full text-xs text-muted-foreground file:mr-3 file:rounded-lg file:border-0 file:bg-primary file:px-3 file:py-2 file:text-xs file:font-semibold file:text-white"
+                      />
+                      <Button
+                        className="w-full"
+                        size="sm"
+                        disabled={!file || uploading}
+                        onClick={() => uploadComprobante(me.pending!.id)}
+                      >
+                        {uploading ? "Subiendo..." : "Subir comprobante"}
+                      </Button>
+                      <p className="text-[11px] text-muted-foreground">
+                        Foto o PDF del comprobante (máx. 5 MB). Lo revisamos y te avisamos.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <p className="text-sm text-muted-foreground">
+                  Transferí el monto del mes a la cuenta del portal y subí el comprobante.
+                  Verificamos el pago y te emitimos el Recibo X. Mientras se revisa, tu plan no se corta.
+                </p>
+                <Button className="w-full" disabled={busy === "renew"} onClick={() => renew()}>
+                  {busy === "renew" ? "Generando..." : "Iniciar renovación por transferencia"}
+                </Button>
+              </div>
+            )}
+
+            {(me.payments || []).some((p) => p.status === "rejected") && (
+              <div className="text-xs text-red-600 space-y-1">
+                <p className="font-semibold">Pagos rechazados:</p>
+                {me.payments
+                  .filter((p) => p.status === "rejected")
+                  .slice(0, 3)
+                  .map((p) => (
+                    <p key={p.id}>
+                      {new Date(p.created_at).toLocaleDateString("es-AR")} · {p.review_note || "sin motivo"}
+                    </p>
+                  ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -387,6 +568,31 @@ export default function VendorSuscripcionPage() {
           </>
           )}
         </div>
+
+        {me.receipts && me.receipts.length > 0 && (
+          <div>
+            <h3 className="font-display font-semibold mb-2">Recibos de pago</h3>
+            <div className="rounded-2xl border border-border bg-card divide-y divide-border">
+              {me.receipts.map((r) => (
+                <div key={r.id} className="flex items-center justify-between px-4 py-3">
+                  <div>
+                    <a
+                      href={`/vendor/suscripcion/recibo/${r.id}`}
+                      className="text-sm font-medium text-primary hover:underline"
+                    >
+                      Recibo X {String(r.seq).padStart(4, "0")}/{r.year} · Plan {r.plan_name}
+                    </a>
+                    <p className="text-[11px] text-muted-foreground">
+                      {new Date(r.issued_at).toLocaleDateString("es-AR")} · ${Number(r.amount || 0).toLocaleString("es-AR")}
+                      {r.period_end ? ` · cubre hasta ${new Date(r.period_end).toLocaleDateString("es-AR")}` : ""}
+                    </p>
+                  </div>
+                  <span className="text-[10px] text-muted-foreground">No válido como factura</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {me.history.length > 0 && (
           <div>

@@ -1,14 +1,19 @@
 import { NextResponse } from "next/server";
 import { isAdmin } from "@/lib/admin-utils";
+import { getAuthUser } from "@/lib/auth";
 import { queryMany, queryOne, query, withTransaction } from "@/lib/db";
 import { resolveVendorPlan } from "@/lib/plans";
+import { nextReceiptSeq } from "@/lib/plan-payments";
+import { buildPlanReceiptPdf } from "@/lib/plan-receipt-pdf";
+import { planReceiptEmail, sendEmail } from "@/lib/email";
+import { sendPushToUser } from "@/lib/push";
 import type { Plan } from "@/types/database";
 
 export const dynamic = "force-dynamic";
 
 const PAYMENT_METHODS = ["efectivo", "transferencia", "mercadopago"];
 const SUB_STATUSES = ["trial", "active", "expired", "cancelled"];
-const VENDOR_STATUSES = ["gratuito", "trial", "active", "expired", "cancelled"];
+const VENDOR_STATUSES = ["gratuito", "trial", "active", "expired", "cancelled", "past_due"];
 
 async function findPlan(planSlug?: unknown, planId?: unknown): Promise<Plan | null> {
   if (planId) {
@@ -122,7 +127,29 @@ export async function GET(request: Request) {
     };
   });
 
-  return NextResponse.json({ subscriptions: result, plans });
+  return NextResponse.json({
+    subscriptions: result,
+    plans,
+    // Cola de revisión: pagos por transferencia pendientes, con el comprobante.
+    payments: (await queryMany<Record<string, unknown>>(
+      `SELECT p.id, p.amount, p.period_start, p.period_end, p.reference, p.created_at,
+              p.comprobante_url, p.comprobante_name, p.comprobante_at,
+              v.id AS vendor_id, v.store_name, v.slug, v.vertical,
+              pl.name AS plan_name
+         FROM subscription_payments p
+         JOIN vendors v ON v.id = p.vendor_id
+         LEFT JOIN plans pl ON pl.id = p.plan_id
+        WHERE p.status = 'pending'
+        ORDER BY p.comprobante_at NULLS FIRST, p.created_at ASC
+        LIMIT 100`
+    ).catch(() => [] as Record<string, unknown>[])).map((p: Record<string, unknown>) => ({
+      ...p,
+      amount: p.amount != null ? Number(p.amount) : null,
+    })),
+    bank: await queryOne<{ alias: string | null; cbu: string | null; titular: string | null; qr_url: string | null; notes: string | null }>(
+      `SELECT alias, cbu, titular, qr_url, notes FROM portal_bank WHERE id = 1`
+    ).catch(() => null),
+  });
 }
 
 type UpsertSubParams = {
@@ -137,13 +164,17 @@ type UpsertSubParams = {
   note?: string | null;
 };
 
-async function insertSubscription(tx: Parameters<Parameters<typeof withTransaction>[0]>[0], p: UpsertSubParams) {
+async function insertSubscription(
+  tx: Parameters<Parameters<typeof withTransaction>[0]>[0],
+  p: UpsertSubParams
+): Promise<{ id: string }> {
   const paidAt = p.paid ? new Date().toISOString() : null;
-  await tx.queryVoid(
+  const rows = await tx.query<{ id: string }>(
     `INSERT INTO vendor_subscriptions (
        vendor_id, plan_id, status, current_period_start, current_period_end,
        payment_method, amount, paid_at, note
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+     RETURNING id`,
     [
       p.vendorId,
       p.planId,
@@ -156,6 +187,7 @@ async function insertSubscription(tx: Parameters<Parameters<typeof withTransacti
       p.note ?? null,
     ]
   );
+  return rows[0];
 }
 
 export async function PATCH(request: Request) {
@@ -168,6 +200,36 @@ export async function PATCH(request: Request) {
 
   if (!vendorId || !action) {
     return NextResponse.json({ error: "vendorId y action son requeridos" }, { status: 400 });
+  }
+
+  // Usuario admin que ejecuta la acción (auditoría de reviewed_by).
+  const adminUser = await getAuthUser(request);
+  const adminUserId = adminUser?.id ?? null;
+
+  // Los datos bancarios del portal no dependen de un comercio.
+  if (action === "save_bank") {
+    const b = body.bank ?? {};
+    const clean = (v: unknown, max = 120) => {
+      const s = String(v ?? "").trim();
+      return s ? s.slice(0, max) : null;
+    };
+    try {
+      await query(
+        `UPDATE portal_bank
+            SET alias = $1, cbu = $2, titular = $3, qr_url = $4, notes = $5, updated_at = now()
+          WHERE id = 1`,
+        [
+          clean(b.alias, 60),
+          clean(b.cbu, 40),
+          clean(b.titular, 120),
+          clean(b.qr_url, 400),
+          clean(b.notes, 500),
+        ]
+      );
+    } catch {
+      return NextResponse.json({ error: "Falta aplicar la migración migrate-plan-payments.sql" }, { status: 503 });
+    }
+    return NextResponse.json({ ok: true });
   }
 
   const vendor = await queryOne<{ id: string; plan_expires_at: string | null }>(
@@ -482,6 +544,221 @@ export async function PATCH(request: Request) {
     });
 
     return NextResponse.json({ ok: true, periodEnd });
+  }
+
+  if (action === "approve_payment") {
+    const { paymentId } = body;
+    if (!paymentId) return NextResponse.json({ error: "paymentId requerido" }, { status: 400 });
+
+    const payment = await queryOne<{
+      id: string;
+      vendor_id: string;
+      plan_id: string | null;
+      amount: number;
+      period_start: string;
+      period_end: string;
+      status: string;
+    }>(
+      `SELECT * FROM subscription_payments WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
+      [paymentId, vendorId]
+    );
+    if (!payment) return NextResponse.json({ error: "Pago no encontrado" }, { status: 404 });
+    if (payment.status !== "pending") {
+      return NextResponse.json({ error: "Este pago ya fue revisado" }, { status: 409 });
+    }
+
+    const plan = payment.plan_id
+      ? await queryOne<{ id: string; name: string; slug: string }>(
+          `SELECT id, name, slug FROM plans WHERE id = $1`,
+          [payment.plan_id]
+        )
+      : null;
+
+    const info = await queryOne<{
+      user_id: string | null;
+      store_name: string;
+      address: string | null;
+      phone: string | null;
+      whatsapp: string | null;
+      email: string | null;
+    }>(
+      `SELECT v.user_id, v.store_name, v.address, v.phone, v.whatsapp, p.email
+         FROM vendors v LEFT JOIN profiles p ON p.id = v.user_id
+        WHERE v.id = $1`,
+      [vendorId]
+    );
+
+    const year = new Date().getFullYear();
+    let receiptId = "";
+    let receiptNumber = "";
+    let receiptSeq = 0;
+
+    await withTransaction(async (tx) => {
+      receiptSeq = await nextReceiptSeq(tx, year);
+      receiptNumber = `${String(receiptSeq).padStart(4, "0")}/${year}`;
+      await tx.queryVoid(
+        `UPDATE vendors SET plan_id = $1, plan_status = 'active', plan_expires_at = $2, trial_ends_at = NULL WHERE id = $3`,
+        [plan?.id ?? null, payment.period_end, vendorId]
+      );
+      const sub = await insertSubscription(tx, {
+        vendorId,
+        planId: (plan?.id ?? payment.plan_id) as string,
+        status: "active",
+        periodStart: payment.period_start,
+        periodEnd: payment.period_end,
+        paymentMethod: "transferencia",
+        amount: Number(payment.amount),
+        paid: true,
+        note: `Renovación por transferencia (reclamo aprobado)`,
+      });
+      await tx.queryVoid(
+        `UPDATE subscription_payments
+            SET status = 'approved', reviewed_at = now(), reviewed_by = $1, subscription_id = $2
+          WHERE id = $3`,
+        [adminUserId, sub.id, payment.id]
+      );
+      const rec = await tx.query<{ id: string }>(
+        `INSERT INTO plan_receipts
+           (vendor_id, payment_id, plan_id, plan_name, amount, period_start, period_end, method, seq, year)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'transferencia', $8, $9)
+         RETURNING id`,
+        [
+          vendorId,
+          payment.id,
+          plan?.id ?? payment.plan_id,
+          plan?.name ?? "Plan",
+          Number(payment.amount),
+          payment.period_start,
+          payment.period_end,
+          receiptSeq,
+          year,
+        ]
+      );
+      receiptId = rec[0]?.id ?? "";
+    });
+
+    // Fuera de la tx: recibo X en PDF por email + aviso al comercio.
+    if (receiptSeq > 0 && receiptId && info) {
+      const title = "¡Pago acreditado!";
+      const until = new Date(payment.period_end).toLocaleDateString("es-AR");
+      const bodyTxt = `Tu plan ${plan?.name ?? "pagado"} está activo hasta el ${until}. Te enviamos el Recibo X ${receiptNumber} por email.`;
+
+      if (info.email && process.env.RESEND_API_KEY) {
+        try {
+          const pdf = await buildPlanReceiptPdf({
+            vendor: {
+              store_name: info.store_name,
+              address: info.address,
+              phone: info.phone,
+              whatsapp: info.whatsapp,
+            },
+            receiptNumber,
+            issuedAt: new Date().toISOString(),
+            planName: plan?.name ?? "Plan",
+            amount: Number(payment.amount),
+            periodStart: payment.period_start,
+            periodEnd: payment.period_end,
+            method: "Transferencia bancaria",
+          });
+          const mail = planReceiptEmail({
+            storeName: info.store_name,
+            planName: plan?.name ?? "Plan",
+            receiptNumber,
+            amount: Number(payment.amount),
+            periodEnd: payment.period_end,
+          });
+          await sendEmail({
+            to: info.email,
+            subject: mail.subject,
+            html: mail.html,
+            attachments: [
+              { filename: `recibo-X-${receiptNumber.replace("/", "-")}.pdf`, content: pdf.toString("base64") },
+            ],
+          });
+          await query(`UPDATE plan_receipts SET emailed_at = now() WHERE id = $1`, [receiptId]).catch(() => undefined);
+        } catch {
+          /* mail best-effort */
+        }
+      }
+
+      if (info.user_id) {
+        await query(
+          `INSERT INTO notifications (user_id, title, body, type, link) VALUES ($1, $2, $3, 'payment', '/vendor/suscripcion')`,
+          [info.user_id, title, bodyTxt]
+        ).catch(() => undefined);
+        try {
+          await sendPushToUser(info.user_id, { title, body: bodyTxt, link: "/vendor/suscripcion" });
+        } catch {
+          /* push best-effort */
+        }
+      }
+    }
+
+    return NextResponse.json({
+      ok: true,
+      approved: true,
+      receipt: receiptSeq > 0 ? { number: receiptNumber, id: receiptId } : null,
+    });
+  }
+
+  if (action === "reject_payment") {
+    const { paymentId, note } = body;
+    const reason = String(note ?? "").trim();
+    if (!paymentId) return NextResponse.json({ error: "paymentId requerido" }, { status: 400 });
+    if (!reason) return NextResponse.json({ error: "Indicá el motivo del rechazo (se le envía al comercio)" }, { status: 400 });
+
+    const payment = await queryOne<{ id: string; vendor_id: string; status: string; plan_id: string | null }>(
+      `SELECT id, vendor_id, status, plan_id FROM subscription_payments WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
+      [paymentId, vendorId]
+    );
+    if (!payment) return NextResponse.json({ error: "Pago no encontrado" }, { status: 404 });
+    if (payment.status !== "pending") {
+      return NextResponse.json({ error: "Este pago ya fue revisado" }, { status: 409 });
+    }
+
+    const other = await queryOne<{ c: number }>(
+      `SELECT count(*)::int AS c FROM subscription_payments WHERE vendor_id = $1 AND status = 'pending' AND id <> $2`,
+      [vendorId, payment.id]
+    ).catch(() => ({ c: 0 }));
+
+    const info = await queryOne<{ user_id: string | null; store_name: string; plan_status: string | null; plan_expires_at: string | null }>(
+      `SELECT user_id, store_name, plan_status, plan_expires_at FROM vendors WHERE id = $1`,
+      [vendorId]
+    );
+
+    await withTransaction(async (tx) => {
+      await tx.queryVoid(
+        `UPDATE subscription_payments
+            SET status = 'rejected', reviewed_at = now(), reviewed_by = $1, review_note = $2
+          WHERE id = $3`,
+        [adminUserId, reason.slice(0, 500), payment.id]
+      );
+      // Si era el único reclamo pendiente y el plan estaba en gracia, corta:
+      // sin reclamo no hay razón para no cortar.
+      if ((other?.c ?? 0) === 0 && info?.plan_status === "past_due") {
+        const expiresMs = info.plan_expires_at ? new Date(info.plan_expires_at).getTime() : 0;
+        await tx.queryVoid(
+          `UPDATE vendors SET plan_status = $1 WHERE id = $2`,
+          [expiresMs > Date.now() ? "active" : "expired", vendorId]
+        );
+      }
+    });
+
+    if (info?.user_id) {
+      const title = "Pago rechazado";
+      const bodyTxt = `No pudimos acreditar tu pago: ${reason.slice(0, 200)}. Podés subir un nuevo comprobante desde Mi suscripción.`;
+      await query(
+        `INSERT INTO notifications (user_id, title, body, type, link) VALUES ($1, $2, $3, 'payment', '/vendor/suscripcion')`,
+        [info.user_id, title, bodyTxt]
+      ).catch(() => undefined);
+      try {
+        await sendPushToUser(info.user_id, { title, body: bodyTxt, link: "/vendor/suscripcion" });
+      } catch {
+        /* push best-effort */
+      }
+    }
+
+    return NextResponse.json({ ok: true, rejected: true });
   }
 
   if (action === "cancel") {

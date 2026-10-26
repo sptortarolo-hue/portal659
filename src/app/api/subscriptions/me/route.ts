@@ -2,6 +2,7 @@ import { getUserId } from "@/lib/auth-utils";
 import { queryMany, queryOne } from "@/lib/db";
 import { getVendorByRequest } from "@/lib/vendor-utils";
 import { resolveVendorPlan, daysLeft } from "@/lib/plans";
+import { getPortalBank } from "@/lib/plan-payments";
 import { NextResponse } from "next/server";
 import type { Plan, Vendor, VendorSubscription } from "@/types/database";
 
@@ -82,6 +83,44 @@ export async function GET(request: Request) {
       effective.maxQuotesMonth != null && quotesThisMonth >= effective.maxQuotesMonth,
   };
 
+  // Circuito de pago por transferencia: reclamo pendiente (si existe) +
+  // historial de pagos y de recibos X. Todo tolerante a migración sin aplicar.
+  let pending = null;
+  let payments: unknown[] = [];
+  let receipts: unknown[] = [];
+  let bank = null;
+  try {
+    const rows = await queryMany(
+      `SELECT p.id, p.amount, p.period_start, p.period_end, p.reference, p.status,
+              p.comprobante_url, p.comprobante_name, p.comprobante_at, p.created_at,
+              p.review_note, pl.slug AS plan_slug, pl.name AS plan_name
+         FROM subscription_payments p
+         LEFT JOIN plans pl ON pl.id = p.plan_id
+        WHERE p.vendor_id = $1
+        ORDER BY p.created_at DESC
+        LIMIT 12`,
+      [vendor.id]
+    );
+    payments = rows || [];
+    pending = (rows || []).find((r: any) => r.status === "pending") || null;
+  } catch {
+    /* sin migración: el circuito queda oculto */
+  }
+  try {
+    receipts = (await queryMany(
+      `SELECT r.id, r.amount, r.plan_name, r.seq, r.year, r.method, r.issued_at,
+              r.period_start, r.period_end
+         FROM plan_receipts r
+        WHERE r.vendor_id = $1
+        ORDER BY r.issued_at DESC
+        LIMIT 12`,
+      [vendor.id]
+    )) || [];
+  } catch {
+    /* sin migración */
+  }
+  bank = await getPortalBank().catch(() => null);
+
   return NextResponse.json({
     vendorId: vendor.id,
     vertical: vendor.vertical,
@@ -92,6 +131,7 @@ export async function GET(request: Request) {
       trialActive: effective.trialActive,
       active: effective.active,
       expired: effective.expired,
+      grace: effective.grace,
       eligibleForPaid: effective.eligibleForPaid,
       name: effective.plan?.name ?? null,
       badge: effective.plan?.badge ?? null,
@@ -105,5 +145,10 @@ export async function GET(request: Request) {
     },
     usage,
     history: history || [],
+    planExpiresAt: vendor.plan_expires_at ?? null,
+    payments,
+    pending,
+    receipts,
+    bank,
   });
 }

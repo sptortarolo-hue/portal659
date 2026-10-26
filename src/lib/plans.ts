@@ -200,6 +200,8 @@ export type EffectivePlan = {
   trialActive: boolean;
   active: boolean;
   expired: boolean;
+  /** Gracia por pago en revisión (plan_status='past_due'): features pagas vigentes. */
+  grace: boolean;
   eligibleForPaid: boolean;
   can: (feature: FeatureKey) => boolean;
   analyticsDays: number;
@@ -238,6 +240,7 @@ export function resolveVendorPlan(
       trialActive: false,
       active: false,
       expired: false,
+      grace: false,
       eligibleForPaid: isGastroVendor(vendor) || isComercioVendor(vendor) || isServicioVendor(vendor) || isModaVendor(vendor) || isEsteticaVendor(vendor),
       can: () => true,
       analyticsDays: 99999,
@@ -266,15 +269,21 @@ export function resolveVendorPlan(
     planExpiresAt !== null &&
     now < planExpiresAt;
 
-  const pendingRenewal =
-    isPaid && vendor.plan_status === "active" && planExpiresAt !== null && now >= planExpiresAt;
+  // Gracia por pago en revisión: el comercio subió el comprobante de la
+  // renovación y el admin todavía no lo corroboró. El plan NO corta las
+  // features pagas hasta que se apruebe o rechace (migrate-plan-payments.sql).
+  const grace = isPaid && vendor.plan_status === "past_due";
 
-  const expired = !trialActive && !active && isPaid;
+  // Features pagas vigentes: plan al día o en gracia.
+  const paid = trialActive || active || grace;
+
+  const expired = !paid && isPaid;
 
   let status: PlanStatus;
   if (!isPaid) status = "gratuito";
   else if (trialActive) status = "trial";
   else if (active) status = "active";
+  else if (grace) status = "past_due";
   else status = expired ? "expired" : "gratuito";
 
   // Gastro, comercio, moda, servicios y estética pueden tener planes pagos;
@@ -286,27 +295,27 @@ export function resolveVendorPlan(
       // Mask del vertical: gestión trae kds/mesas/recipes en su JSONB, pero
       // un local de ropa nunca los usa (no tiene cocina ni salón).
       if (MODA_FEATURE_MASK[feature] === false) return false;
-      if (trialActive || active) return featureOf(plan, feature);
+      if (paid) return featureOf(plan, feature);
       return MODA_FEATURES[feature] === true;
     }
     if (isComercioVendor(vendor)) {
       // Mask del vertical: gestión trae kds/mesas/recipes en su JSONB, pero
       // un comercio nunca las usa (no tiene cocina ni salón).
       if (COMERCIO_FEATURE_MASK[feature] === false) return false;
-      if (trialActive || active) return featureOf(plan, feature);
+      if (paid) return featureOf(plan, feature);
       return COMERCIO_FREE_FEATURES[feature] === true;
     }
     if (isServicioVendor(vendor)) {
       // Mask del vertical: sin cocina, salón, POS ni carrito (solo contacto).
       if (SERVICIO_FEATURE_MASK[feature] === false) return false;
-      if (trialActive || active) return featureOf(plan, feature);
+      if (paid) return featureOf(plan, feature);
       return SERVICIO_FREE_FEATURES[feature] === true;
     }
     if (isEsteticaVendor(vendor)) {
       // Mask del vertical: gestión trae kds/mesas/recipes en su JSONB, pero
       // un centro de estética nunca los usa.
       if (ESTETICA_FEATURE_MASK[feature] === false) return false;
-      if (trialActive || active) {
+      if (paid) {
         // La turnera completa (cotizar con precio + seña MP) es parte de la
         // propuesta de los planes pagos de estética ("Turnera" usa la fila
         // `pedidos`, cuyo JSONB no las trae: se resuelven por override).
@@ -316,7 +325,7 @@ export function resolveVendorPlan(
       return ESTETICA_FREE_FEATURES[feature] === true;
     }
     if (!eligibleForPaid) return GRATUITO_FEATURES[feature] === true;
-    if (trialActive || active) return featureOf(plan, feature);
+    if (paid) return featureOf(plan, feature);
     return FREE_GASTRO_FEATURES[feature] === true;
   };
 
@@ -327,15 +336,15 @@ export function resolveVendorPlan(
   // no los 20 de gastro); estética gratis/vencido usa los suyos (5
   // solicitudes + 5 pedidos).
   const freePlanRow = plans.find((p) => p.slug === "gratuito") ?? null;
-  const limitRow = trialActive || active ? plan : freePlanRow;
+  const limitRow = paid ? plan : freePlanRow;
   const maxOrdersMonth =
-    isModaVendor(vendor) && !(trialActive || active)
+    isModaVendor(vendor) && !(paid)
       ? MODA_FREE_ORDERS_MONTH
-      : isEsteticaVendor(vendor) && !(trialActive || active)
+      : isEsteticaVendor(vendor) && !(paid)
         ? ESTETICA_FREE_ORDERS_MONTH
         : (limitRow?.max_orders_month ?? null);
   const maxQuotesMonth =
-    isEsteticaVendor(vendor) && !(trialActive || active)
+    isEsteticaVendor(vendor) && !(paid)
       ? ESTETICA_FREE_QUOTES_MONTH
       : (limitRow?.max_quotes_month ?? null);
 
@@ -346,9 +355,10 @@ export function resolveVendorPlan(
     trialActive,
     active,
     expired,
+    grace,
     eligibleForPaid,
     can,
-    analyticsDays: trialActive || active ? (plan?.features.analytics_days ?? 0) : 0,
+    analyticsDays: paid ? (plan?.features.analytics_days ?? 0) : 0,
     maxProducts: limitRow?.max_products ?? null,
     maxOrdersMonth,
     maxQuotesMonth,

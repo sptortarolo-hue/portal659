@@ -16,7 +16,65 @@ export type Vertical =
 
 export type PlanSlug = "gratuito" | "pedidos" | "gestion" | "oficios";
 
-export type PlanStatus = "gratuito" | "trial" | "active" | "expired" | "cancelled" | "preview";
+export type PlanStatus =
+  | "gratuito"
+  | "trial"
+  | "active"
+  | "expired"
+  | "cancelled"
+  | "preview"
+  /** Gracia: el plan venció pero hay un pago por transferencia en revisión (no corta). */
+  | "past_due";
+
+/** Estado de un reclamo de pago de plan por transferencia. */
+export type SubscriptionPaymentStatus = "pending" | "approved" | "rejected";
+
+export type SubscriptionPayment = {
+  id: string;
+  vendor_id: string;
+  plan_id: string | null;
+  subscription_id: string | null;
+  amount: number;
+  period_start: string;
+  period_end: string;
+  reference: string;
+  method: string;
+  status: SubscriptionPaymentStatus;
+  comprobante_url: string | null;
+  comprobante_name: string | null;
+  comprobante_at: string | null;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  review_note: string | null;
+  created_at: string;
+};
+
+export type PlanReceipt = {
+  id: string;
+  vendor_id: string;
+  payment_id: string | null;
+  plan_id: string | null;
+  plan_name: string | null;
+  amount: number;
+  period_start: string | null;
+  period_end: string | null;
+  method: string;
+  seq: number;
+  year: number;
+  issued_at: string;
+  emailed_at: string | null;
+};
+
+/** Datos de cobro del PORTAL (fila única, editable en /admin). */
+export type PortalBank = {
+  id: number;
+  alias: string | null;
+  cbu: string | null;
+  titular: string | null;
+  qr_url: string | null;
+  notes: string | null;
+  updated_at: string | null;
+};
 
 export type PlanFeatures = {
   info: boolean;

@@ -125,11 +125,18 @@ export function StoreHeader({
     ? `Gratis desde $${Number(v.free_delivery_min).toLocaleString("es-AR")}`
     : null;
 
-  const prepLabel = v.delivery_prep_min != null && Number(v.delivery_prep_min) > 0
-    ? `~${Number(v.delivery_prep_min)} min`
-    : v.prep_time_min != null && Number(v.prep_time_min) > 0
-      ? `~${Number(v.prep_time_min)} min`
-      : null;
+  // Gastro mide su demora con prep_time_min (campo propio, "Control de demora"
+  // del panel). delivery_prep_min es solo retail y su default 60 (migración)
+  // no debe filtrarse a los demás verticales.
+  const gastroPrep = v.prep_time_min != null && Number(v.prep_time_min) > 0
+    ? Number(v.prep_time_min)
+    : null;
+  const prepMin = isCatalog
+    ? (v.delivery_prep_min != null && Number(v.delivery_prep_min) > 0
+        ? Number(v.delivery_prep_min)
+        : gastroPrep)
+    : gastroPrep;
+  const prepLabel = prepMin != null ? `~${prepMin} min` : null;
 
   const cashDiscountLabel = v.cash_discount_pct != null && Number(v.cash_discount_pct) > 0
     ? `−${Number(v.cash_discount_pct)}% efectivo`

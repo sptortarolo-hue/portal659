@@ -46,7 +46,6 @@ type ServiceFormState = {
   priceTo: string;
   commission: string;
   requireDeposit: boolean;
-  depositHours: string;
   imageUrl: string;
   active: boolean;
   featured: boolean;
@@ -67,7 +66,6 @@ function blankForm(): ServiceFormState {
     priceTo: "",
     commission: "",
     requireDeposit: false,
-    depositHours: "24",
     imageUrl: "",
     active: true,
     featured: false,
@@ -89,7 +87,6 @@ function formFromService(s: Service): ServiceFormState {
     priceTo: s.price_to != null ? String(s.price_to) : "",
     commission: s.commission_pct != null ? String(s.commission_pct) : "",
     requireDeposit: s.require_deposit === true,
-    depositHours: s.deposit_hours != null ? String(s.deposit_hours) : "24",
     imageUrl: typeof s.image_url === "string" ? s.image_url : "",
     active: s.active !== false,
     featured: s.featured_today === true,
@@ -101,7 +98,7 @@ function formFromService(s: Service): ServiceFormState {
  * `canChargeDeposits`: la seña online sólo se puede cobrar con Mercado Pago o
  * Stripe conectado; sin ninguno de los dos, los campos de seña se muestran
  * deshabilitados con el aviso (configurarla no tendría efecto). */
-export function EsteticaServicesManager({ onChanged, canChargeDeposits = true, cancelRefundsDeposit = true, cancelHours = 24 }: { onChanged?: () => void; canChargeDeposits?: boolean; cancelRefundsDeposit?: boolean; cancelHours?: number }) {
+export function EsteticaServicesManager({ onChanged, canChargeDeposits = true }: { onChanged?: () => void; canChargeDeposits?: boolean }) {
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
   const [missing, setMissing] = useState(false);
@@ -121,34 +118,6 @@ export function EsteticaServicesManager({ onChanged, canChargeDeposits = true, c
   // Política de seña al cancelar dentro del plazo (dato del comercio, se
   // guarda al instante vía PATCH me). Estado local para no depender del
   // refresh del padre: el selector responde aunque el vendor tarde.
-  const [refunds, setRefunds] = useState(cancelRefundsDeposit);
-  const [savingPolicy, setSavingPolicy] = useState(false);
-  useEffect(() => { setRefunds(cancelRefundsDeposit); }, [cancelRefundsDeposit]);
-
-  async function saveRefundPolicy(next: boolean) {
-    setRefunds(next);
-    setSavingPolicy(true);
-    try {
-      const res = await fetch("/api/vendor/me", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cancel_refunds_deposit: next }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (data.error || res.status >= 400) {
-        setRefunds(!next);
-        setMsg(typeof data.error === "string" ? data.error : "No se pudo guardar la política");
-        return;
-      }
-      onChanged?.();
-    } catch {
-      setRefunds(!next);
-      setMsg("Error de conexión");
-    } finally {
-      setSavingPolicy(false);
-    }
-  }
-
   async function uploadServicePhoto(file: File): Promise<string | null> {
     const fd = new FormData();
     fd.append("file", file);
@@ -224,10 +193,6 @@ export function EsteticaServicesManager({ onChanged, canChargeDeposits = true, c
     if (canChargeDeposits && form.requireDeposit && !(deposit != null && deposit > 0)) {
       return "Para exigir seña poné primero el monto";
     }
-    const hours = form.depositHours.trim() === "" ? 24 : Number(form.depositHours);
-    if (!Number.isFinite(hours) || hours < 1 || hours > 168) {
-      return "Las horas para pagar deben estar entre 1 y 168";
-    }
     return null;
   }
 
@@ -251,8 +216,7 @@ export function EsteticaServicesManager({ onChanged, canChargeDeposits = true, c
       price_to: form.priceMode === "desde" && form.priceTo.trim() !== "" ? Number(form.priceTo) : null,
       commission_pct: form.commission.trim() === "" ? null : Number(form.commission),
       require_deposit: canChargeDeposits && form.requireDeposit,
-      deposit_hours: form.depositHours.trim() === "" ? 24 : Number(form.depositHours),
-      image_url: form.imageUrl || null,
+        image_url: form.imageUrl || null,
       active: form.active,
       featured_today: form.featured,
     };
@@ -341,21 +305,6 @@ export function EsteticaServicesManager({ onChanged, canChargeDeposits = true, c
           Cada servicio tiene su duración y su seña. El turno online se bloquea si se pisa con otro del mismo profesional. Con <span title="Oferta del día">★</span> marcás la oferta del día (una sola): flota primero en tu carta, con badge &quot;Hoy&quot;, y aparece en el home.
         </p>
       </div>
-      <div className="rounded-md border border-border p-2 space-y-1">
-        <Label className="text-xs">Seña si la clienta cancela dentro del plazo ({cancelHours} h)</Label>
-        <select
-          value={refunds ? "devolver" : "retener"}
-          onChange={(e) => saveRefundPolicy(e.target.value === "devolver")}
-          disabled={savingPolicy}
-          className="mt-1 h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
-        >
-          <option value="devolver">Devolver la seña</option>
-          <option value="retener">Retener la seña (no se devuelve)</option>
-        </select>
-        <p className="text-[11px] text-muted-foreground">
-          Se muestra en el micrositio antes de reservar y al cancelar desde el link del turno. Con retención, la seña pagada queda a tu favor (igual que la política de ausente).
-        </p>
-      </div>
       <Button size="sm" className="w-full" onClick={openCreate}>
         + Agregar servicio
       </Button>
@@ -384,7 +333,7 @@ export function EsteticaServicesManager({ onChanged, canChargeDeposits = true, c
                   <span className="block text-muted-foreground">
                     {s.duration_min ?? 60} min{s.buffer_min ? ` +${s.buffer_min} buffer` : ""} · seña {s.deposit_amount ? money(Number(s.deposit_amount)) : "no"}
                     {servicePriceLabel(s) ? ` · ${servicePriceLabel(s)}` : ""}{s.commission_pct != null ? ` · ${Number(s.commission_pct)}%` : ""}
-                    {s.require_deposit ? ` · ⏰ seña obligatoria (${s.deposit_hours ?? 24}h)` : ""}
+                    {s.require_deposit ? ` · ⏰ seña obligatoria` : ""}
                   </span>
                 </span>
                 <button type="button" onClick={() => toggleFeatured(s)} className={`flex-shrink-0 ${s.featured_today === true ? "text-sun" : "text-muted-foreground hover:text-foreground"}`} title={s.featured_today === true ? "Quitar de Hoy" : "Oferta del día"}>
@@ -482,38 +431,27 @@ export function EsteticaServicesManager({ onChanged, canChargeDeposits = true, c
                 <Input value={form.priceTo} onChange={(e) => patch({ priceTo: e.target.value })} inputMode="decimal" placeholder="Hasta (opcional)" className="h-9 text-sm min-w-0" />
               </div>
             )}
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <Label className="text-xs">Seña por servicio ($, opcional)</Label>
-                <Input value={form.deposit} onChange={(e) => patch({ deposit: e.target.value })} inputMode="decimal" placeholder={canChargeDeposits ? "Vacío = sin seña" : "Conectá MP para cobrar señas"} className="mt-1 h-9 text-sm" disabled={!canChargeDeposits} />
-                {!canChargeDeposits && (
-                  <p className="text-[11px] text-muted-foreground mt-1">
-                    La seña online se cobra con Mercado Pago o Stripe: conectá tu cuenta en <strong>Pagos</strong> para poder configurarla.
-                  </p>
-                )}
-              </div>
-              <div>
-                <Label className="text-xs">Comisión % (vacío = la del profesional)</Label>
-                <Input value={form.commission} onChange={(e) => patch({ commission: e.target.value })} inputMode="decimal" placeholder="Ej: 40" className="mt-1 h-9 text-sm" />
-              </div>
+            <div>
+              <Label className="text-xs">Comisión % (vacío = la del profesional)</Label>
+              <Input value={form.commission} onChange={(e) => patch({ commission: e.target.value })} inputMode="decimal" placeholder="Ej: 40" className="mt-1 h-9 text-sm" />
             </div>
           </div>
-          {/* Reserva */}
+          {/* Reserva: la seña se cobra por MP al reservar (sin plazo configurable) */}
           <div className="rounded-md border border-border p-2 space-y-2">
             <label className={`flex items-center gap-2 text-xs ${canChargeDeposits ? "cursor-pointer" : "opacity-60"}`}>
               <input type="checkbox" checked={form.requireDeposit} onChange={(e) => patch({ requireDeposit: e.target.checked })} className="h-4 w-4" disabled={!canChargeDeposits} />
-              ⏰ Exigir seña para reservar (si no paga, no reserva)
+              ⏰ Exigir seña para reservar (se abona por Mercado Pago al reservar)
             </label>
-            {!canChargeDeposits && (
-              <p className="text-[11px] text-muted-foreground">
-                Disponible al conectar Mercado Pago o Stripe en <strong>Pagos</strong>.
-              </p>
-            )}
             {form.requireDeposit && (
               <div>
-                <Label className="text-xs">Horas para pagar (vacío = 24)</Label>
-                <Input value={form.depositHours} onChange={(e) => patch({ depositHours: e.target.value })} inputMode="numeric" placeholder="24" className="mt-1 h-9 text-sm" />
+                <Label className="text-xs">Monto de la seña ($)</Label>
+                <Input value={form.deposit} onChange={(e) => patch({ deposit: e.target.value })} inputMode="decimal" placeholder="Ej: 2000" className="mt-1 h-9 text-sm" />
               </div>
+            )}
+            {!canChargeDeposits && (
+              <p className="text-[11px] text-muted-foreground">
+                La seña online se cobra con Mercado Pago o Stripe: conectá tu cuenta en <strong>Pagos</strong> para poder configurarla.
+              </p>
             )}
           </div>
           {/* Foto */}
@@ -861,7 +799,7 @@ export function EsteticaCancelPolicy({
       <div>
         <p className="font-medium text-sm">📝 Política de cancelación</p>
         <p className="text-xs text-muted-foreground">
-          Se muestra en el micrositio antes de reservar. Ej: "Cancelá con 24 h de anticipación".
+          Se muestra en el micrositio antes de reservar. Definí con cuánta anticipación deben cancelar para no perder la seña (si cancelan después, se pierde). Ej: "Cancelá con 24 h de anticipación".
         </p>
       </div>
       <div>
@@ -875,7 +813,7 @@ export function EsteticaCancelPolicy({
         />
       </div>
       <div>
-        <Label className="text-xs">Anticipación mínima (horas)</Label>
+        <Label className="text-xs">Anticipación para cancelar sin perder la seña (horas)</Label>
         <Input value={hours} onChange={(e) => onHours(e.target.value)} inputMode="numeric" placeholder="24" className="mt-1 h-9 text-sm" />
       </div>
     </Card>

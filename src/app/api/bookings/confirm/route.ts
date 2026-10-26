@@ -105,17 +105,22 @@ export const POST = withRateLimit(async (request: Request) => {
     }
   } catch { /* sin columnas: no tardía */ }
   const depositPaid = booking.deposit_status === "paid" && booking.deposit_amount != null && Number(booking.deposit_amount) > 0;
-  // Con retención y cancelación tardía, la seña queda para el comercio.
-  const retained = late && !refundsDeposit && depositPaid;
+  // La seña se pierde si la política es no-devolución, o si se devuelve pero
+  // cancelan dentro del plazo.
+  const forfeited = depositPaid && (!refundsDeposit || late);
   await query(`UPDATE bookings SET status = 'cancelled' WHERE id = $1`, [booking.id]).catch(() => undefined);
   await notifyVendor(
     booking.vendor_id,
     booking.id,
     late ? "Turno cancelado (tardío)" : "Turno cancelado por la clienta",
     `${booking.customer_name || "La clienta"} canceló su turno del ${booking.booking_date} ${String(booking.booking_time).slice(0, 5)}${late ? " dentro del plazo de cancelación" : ""}.` +
-      (retained ? ` Según tu política, la seña de $${Number(booking.deposit_amount).toLocaleString("es-AR")} queda retenida.` : depositPaid ? " Devolvé la seña pagada." : "")
+      (forfeited
+        ? refundsDeposit
+          ? ` Canceló dentro del plazo: según tu política la seña de $${Number(booking.deposit_amount).toLocaleString("es-AR")} se pierde.`
+          : ` Según tu política, la seña de $${Number(booking.deposit_amount).toLocaleString("es-AR")} queda retenida.`
+        : depositPaid ? " Devolvé la seña pagada." : "")
   );
-  return NextResponse.json({ ok: true, status: "cancelled", late, retained, refundsDeposit });
+  return NextResponse.json({ ok: true, status: "cancelled", late, forfeited, refundsDeposit });
   }
 
 if (action === "reschedule") {

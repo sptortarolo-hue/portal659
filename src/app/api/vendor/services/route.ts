@@ -113,12 +113,14 @@ export async function POST(request: Request) {
   if (imageUrl && !imageUrl.startsWith("/uploads/") && !imageUrl.includes("/uploads/")) {
     imageUrl = null;
   }
+  // La seña se cobra por MP al reservar: ya no hay plazo configurable. Si no
+// viene, queda NULL (el cron libera a las 24h fijas).
   const hoursRaw = body.deposit_hours;
-  const depositHours = hoursRaw == null || hoursRaw === "" ? 24 : Math.round(Number(hoursRaw));
+  const depositHours = hoursRaw == null || hoursRaw === "" ? null : Math.round(Number(hoursRaw));
   if (requireDeposit && !(depositAmount != null && depositAmount > 0)) {
     return NextResponse.json({ error: "Para exigir seña poné primero el monto" }, { status: 400 });
   }
-  if (!Number.isFinite(depositHours) || depositHours < 1 || depositHours > 168) {
+  if (depositHours != null && (!Number.isFinite(depositHours) || depositHours < 1 || depositHours > 168)) {
     return NextResponse.json({ error: "Las horas para pagar deben estar entre 1 y 168" }, { status: 400 });
   }
   // Sede (multi-sede light): valida que sea del comercio.

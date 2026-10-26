@@ -300,10 +300,9 @@ export function BookingForm({ vendorId, vendorName, services, serviceOptions, st
               </option>
             ))}
           </select>
-          {chosenService?.deposit_amount ? (
+          {chosenService?.require_deposit && chosenService?.deposit_amount ? (
             <p className="text-xs text-muted-foreground mt-1">
-              💰 Este servicio pide una seña de ${Number(chosenService.deposit_amount).toLocaleString("es-AR")} para confirmar (te la descuentan el día del turno).
-              {chosenService.require_deposit ? " 🔒 Sin la seña el turno se libera." : ""}
+              🔒 Este servicio exige seña de ${Number(chosenService.deposit_amount).toLocaleString("es-AR")}, que se abona con Mercado Pago al reservar (te la descuentan el día del turno).
             </p>
           ) : null}
         </div>
@@ -433,14 +432,19 @@ export function BookingForm({ vendorId, vendorName, services, serviceOptions, st
       <Button type="submit" className="w-full" disabled={loading}>
         {loading ? "Reservando..." : "Reservar turno"}
       </Button>
-      {cancelPolicy && (
+      {cancelPolicy && cancelRefundsDeposit !== false && (
         <p className="text-xs text-muted-foreground text-center">
           📝 {cancelPolicy}
         </p>
       )}
       {cancelRefundsDeposit === false && (
         <p className="text-xs text-muted-foreground text-center">
-          ↩️ Si cancelás con menos de {cancelHours ?? 24} h, la seña no se devuelve.
+          ↩️ La seña no se devuelve.
+        </p>
+      )}
+      {cancelRefundsDeposit !== false && (
+        <p className="text-xs text-muted-foreground text-center">
+          ↩️ Si cancelás con más de {cancelHours ?? 24} h de anticipación te devolvemos la seña; dentro de ese plazo se pierde.
         </p>
       )}
       <p className="text-xs text-muted-foreground text-center">

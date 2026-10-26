@@ -161,6 +161,11 @@ export default function DashboardEstetica({
   const [cancelHours, setCancelHours] = useState(
     (vendor as any)?.cancel_hours != null ? String((vendor as any).cancel_hours) : "24"
   );
+  // Seña al cancelar: true = se devuelve (si cancelan con anticipación),
+  // false = no se devuelve (entonces no se configura texto ni anticipación).
+  const [cancelRefundsDeposit, setCancelRefundsDeposit] = useState(
+    (vendor as any)?.cancel_refunds_deposit !== false
+  );
   // Seña online: sólo cobrable con Mercado Pago o Stripe conectado.
   const canChargeDeposits = !!((vendor as any)?.mp_user_id || (vendor as any)?.stripe_account_id);
   const [noshowPolicy, setNoshowPolicy] = useState(
@@ -220,6 +225,7 @@ export default function DashboardEstetica({
     );
     setCancelPolicy(typeof vendor.cancel_policy_text === "string" ? vendor.cancel_policy_text : "");
     setCancelHours((vendor as any)?.cancel_hours != null ? String((vendor as any).cancel_hours) : "24");
+    setCancelRefundsDeposit((vendor as any)?.cancel_refunds_deposit !== false);
     setNoshowPolicy((vendor as any)?.noshow_policy === "forfeit" ? "forfeit" : "none");
     setGoogleReviewUrl(typeof vendor.google_review_url === "string" ? vendor.google_review_url : "");
     setLoyaltyEvery((vendor as any)?.loyalty_every != null ? String((vendor as any).loyalty_every) : "");
@@ -322,6 +328,7 @@ export default function DashboardEstetica({
         quote_slots: quoteSlots,
         cancel_policy_text: cancelPolicy.trim() || null,
         cancel_hours: cancelHours === "" ? 24 : Math.max(0, Number(cancelHours) || 0),
+        cancel_refunds_deposit: cancelRefundsDeposit,
         noshow_policy: noshowPolicy === "forfeit" ? "forfeit" : "none",
       });
       setMsg("Turnera guardada");
@@ -592,12 +599,7 @@ export default function DashboardEstetica({
 
         <ConfigSection id="turnera" label="Turnera" icon="📅">
           <div className="space-y-3">
-            <EsteticaServicesManager
-              canChargeDeposits={canChargeDeposits}
-              cancelRefundsDeposit={(vendor as any)?.cancel_refunds_deposit !== false}
-              cancelHours={(vendor as any)?.cancel_hours != null ? Number((vendor as any).cancel_hours) : 24}
-              onChanged={() => reload()}
-            />
+            <EsteticaServicesManager canChargeDeposits={canChargeDeposits} />
             <EsteticaStaffManager />
             <EsteticaLocationsManager />
             <EsteticaBlocksManager />
@@ -669,12 +671,30 @@ export default function DashboardEstetica({
                 </div>
               </>
             )}
-            <EsteticaCancelPolicy
-              policy={cancelPolicy}
-              hours={cancelHours}
-              onPolicy={setCancelPolicy}
-              onHours={setCancelHours}
-            />
+            <div>
+              <Label>Al cancelar el turno, la seña…</Label>
+              <select
+                value={cancelRefundsDeposit ? "devolver" : "retener"}
+                onChange={(e) => setCancelRefundsDeposit(e.target.value === "devolver")}
+                className="mt-1 h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+              >
+                <option value="devolver">Se devuelve (si cancelan con anticipación)</option>
+                <option value="retener">No se devuelve</option>
+              </select>
+              <p className="text-xs text-muted-foreground mt-1">
+                {cancelRefundsDeposit
+                  ? "Definí el texto y con cuánta anticipación deben cancelar para no perderla."
+                  : "Con esta opción no se configura texto ni anticipación: la seña pagada siempre queda a tu favor."}
+              </p>
+            </div>
+            {cancelRefundsDeposit && (
+              <EsteticaCancelPolicy
+                policy={cancelPolicy}
+                hours={cancelHours}
+                onPolicy={setCancelPolicy}
+                onHours={setCancelHours}
+              />
+            )}
             <div>
               <Label>Si el cliente no viene</Label>
               <select

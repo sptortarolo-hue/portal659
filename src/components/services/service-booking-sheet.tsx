@@ -312,16 +312,20 @@ export function ServiceBookingSheet({
                 )}
                 {service.require_deposit === true && service.deposit_amount != null && Number(service.deposit_amount) > 0 && (
                   <p className="text-xs rounded-lg bg-amber-50 border border-amber-200 text-amber-800 px-3 py-2">
-                    🔒 Este servicio exige seña de ${Number(service.deposit_amount).toLocaleString("es-AR")}
-                    {service.deposit_hours != null && Number(service.deposit_hours) > 0 ? ` (a pagar dentro de ${service.deposit_hours}h)` : ""} para confirmar.
+                    🔒 Este servicio exige seña de ${Number(service.deposit_amount).toLocaleString("es-AR")}, que se abona con Mercado Pago al reservar.
                   </p>
                 )}
-                {cancelPolicy && (
+                {cancelPolicy && cancelRefundsDeposit !== false && (
                   <p className="text-xs text-muted-foreground">📋 {cancelPolicy}</p>
                 )}
                 {service.require_deposit === true && cancelRefundsDeposit === false && (
                   <p className="text-xs rounded-lg bg-amber-50 border border-amber-200 text-amber-800 px-3 py-2">
-                    ↩️ Si cancelás con menos de {cancelHours ?? 24} h de anticipación, la seña no se devuelve.
+                    ↩️ La seña no se devuelve.
+                  </p>
+                )}
+                {service.require_deposit === true && cancelRefundsDeposit !== false && (
+                  <p className="text-xs text-muted-foreground">
+                    ↩️ Si cancelás con más de {cancelHours ?? 24} h de anticipación te devolvemos la seña; dentro de ese plazo se pierde.
                   </p>
                 )}
                 <Button className="w-full" size="lg" onClick={() => setStep("book")}>

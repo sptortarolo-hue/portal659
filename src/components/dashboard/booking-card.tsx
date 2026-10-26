@@ -124,6 +124,7 @@ export function BookingCard({
             {serviceStaffLabel && ` · ${serviceStaffLabel}`}
             {booking.location_label && ` · 📍 ${booking.location_label}`}
             {(booking as any).deposit_status === "paid" ? " · seña pagada ✅" : ""}
+            {booking.status === "pending" && (booking as any).deposit_status === "pending" ? " · seña impaga ⏳" : ""}
           </p>
           {hasAmount && booking.status !== "completed" && (
             <p className="text-xs text-muted-foreground mb-1">

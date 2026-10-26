@@ -173,7 +173,8 @@ if (action === "reschedule") {
     }>(
       `SELECT booking_time::text AS booking_time, duration_min, starts_at::text AS starts_at,
               ends_at::text AS ends_at, staff_id::text AS staff_id
-       FROM bookings WHERE vendor_id = $1 AND booking_date = $2 AND status IN ('pending', 'confirmed') AND id <> $3`,
+       FROM bookings WHERE vendor_id = $1 AND booking_date = $2 AND status IN ('pending', 'confirmed')
+         AND NOT (status = 'pending' AND COALESCE(deposit_status, 'none') = 'pending') AND id <> $3`,
       [booking.vendor_id, newDate, booking.id]
     ).catch(() => []);
     const clash = (rows || []).find((b) => {

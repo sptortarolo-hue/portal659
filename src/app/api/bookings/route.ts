@@ -266,6 +266,8 @@ export const POST = withRateLimit(async (request: Request) => {
   // Control de solape (bloquea): turnos no cancelados del mismo día que se
   // pisan. Con profesional elegido solo bloquea su agenda; sin profesional,
   // bloquea contra todos (conservador). Tolera filas legacy sin starts_at.
+  // Un turno pendiente con seña SIN pagar NO ocupa el horario ("si no paga,
+  // no reserva"): recién ocupa cuando el webhook marca la seña como pagada.
   try {
     const rows = await queryMany<{
       booking_time: string;
@@ -276,7 +278,8 @@ export const POST = withRateLimit(async (request: Request) => {
     }>(
       `SELECT booking_time::text AS booking_time, duration_min, starts_at::text AS starts_at, ends_at::text AS ends_at,
               staff_id::text AS staff_id
-       FROM bookings WHERE vendor_id = $1 AND booking_date = $2 AND status IN ('pending', 'confirmed')`,
+       FROM bookings WHERE vendor_id = $1 AND booking_date = $2 AND status IN ('pending', 'confirmed')
+         AND NOT (status = 'pending' AND COALESCE(deposit_status, 'none') = 'pending')`,
       [vendorId, bookingDate]
     );
     const clash = (rows || []).find((b) => {

@@ -241,10 +241,16 @@ export function BookingForm({ vendorId, vendorName, services, serviceOptions, st
     }
     if (data.depositRequired) {
       if (data.depositInitPoint) {
-        setDepositPayUrl(String(data.depositInitPoint));
-      } else {
-        setDepositMsg(data.depositWarning || "Este servicio exige seña: coordiná el pago por WhatsApp.");
+        // La seña se cobra por MP al reservar: se va directo al checkout.
+        // El link queda en la pantalla de éxito como respaldo.
+        const payUrl = String(data.depositInitPoint);
+        setDepositPayUrl(payUrl);
+        setDone(true);
+        setLoading(false);
+        window.location.href = payUrl;
+        return;
       }
+      setDepositMsg(data.depositWarning || "Este servicio exige seña: coordiná el pago por WhatsApp.");
     }
     setDone(true);
     setLoading(false);
@@ -435,11 +441,6 @@ export function BookingForm({ vendorId, vendorName, services, serviceOptions, st
       {cancelPolicy && cancelRefundsDeposit !== false && (
         <p className="text-xs text-muted-foreground text-center">
           📝 {cancelPolicy}
-        </p>
-      )}
-      {cancelRefundsDeposit === false && (
-        <p className="text-xs text-muted-foreground text-center">
-          ↩️ La seña no se devuelve.
         </p>
       )}
       {cancelRefundsDeposit !== false && (

@@ -116,7 +116,8 @@ export async function daySlots(ctx: SlotContext, date: string): Promise<DaySlots
       (await queryMany<Row>(
         `SELECT booking_time::text AS booking_time, duration_min, starts_at::text AS starts_at,
                 ends_at::text AS ends_at, staff_id::text AS staff_id
-         FROM bookings WHERE vendor_id = $1 AND booking_date = $2 AND status IN ('pending', 'confirmed')`,
+         FROM bookings WHERE vendor_id = $1 AND booking_date = $2 AND status IN ('pending', 'confirmed')
+           AND NOT (status = 'pending' AND COALESCE(deposit_status, 'none') = 'pending')`,
         [vendorId, date]
       )) || [];
   } catch {

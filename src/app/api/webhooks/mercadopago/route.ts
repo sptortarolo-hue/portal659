@@ -214,6 +214,43 @@ export async function POST(request: Request) {
                 `SELECT user_id, store_name FROM vendors WHERE id = $1 LIMIT 1`,
                 [booking.vendor_id]
               ).catch(() => undefined);
+              // Al acreditar la seña el turno empieza a ocupar el horario:
+              // si mientras tanto otra clienta lo tomó (confirmado), avisar.
+              try {
+                const own = await queryOne<{ booking_date: string; starts_at: string | null; ends_at: string | null; staff_id: string | null }>(
+                  `SELECT booking_date::text AS booking_date, starts_at::text AS starts_at, ends_at::text AS ends_at, staff_id::text AS staff_id
+                   FROM bookings WHERE id = $1 LIMIT 1`,
+                  [bookingId]
+                ).catch(() => undefined);
+                if (own?.booking_date) {
+                  const others = await queryMany<{ id: string; starts_at: string | null; ends_at: string | null; staff_id: string | null }>(
+                    `SELECT id, starts_at::text AS starts_at, ends_at::text AS ends_at, staff_id::text AS staff_id
+                     FROM bookings
+                     WHERE vendor_id = $1 AND booking_date = $2 AND status = 'confirmed' AND id <> $3
+                       AND NOT (status = 'pending' AND COALESCE(deposit_status, 'none') = 'pending')`,
+                    [booking.vendor_id, own.booking_date, bookingId]
+                  ).catch(() => []);
+                  const clash = (others || []).find((o) => {
+                    if (own.staff_id && o.staff_id && o.staff_id !== own.staff_id) return false;
+                    if (!own.starts_at || !own.ends_at || !o.starts_at || !o.ends_at) return false;
+                    const os = new Date(own.starts_at).getTime();
+                    const oe = new Date(own.ends_at).getTime();
+                    const xs = new Date(o.starts_at).getTime();
+                    const xe = new Date(o.ends_at).getTime();
+                    if ([os, oe, xs, xe].some((n) => Number.isNaN(n))) return false;
+                    return os < xe && xs < oe;
+                  });
+                  if (clash && vrow?.user_id) {
+                    const wtitle = "⚠️ Turno tomado: seña pagada";
+                    const wbody = `${booking.customer_name || "La clienta"} pagó la seña, pero el horario ya había sido reservado por otro turno confirmado. Revisá la agenda y contactala.`;
+                    await query(
+                      `INSERT INTO notifications (user_id, title, body, type, link)
+                       VALUES ($1, $2, $3, 'payment', '/vendor/dashboard')`,
+                      [vrow.user_id, wtitle, wbody]
+                    ).catch(() => undefined);
+                  }
+                }
+              } catch { /* best-effort: el aviso de seña pagada igual sale */ }
               if (vrow?.user_id) {
                 const title = "¡Seña de turno pagada!";
                 const body = `${booking.customer_name || "La clienta"} pagó $${paidAmount.toLocaleString("es-AR")} de seña${mismatch ? ` (difiere de $${expected.toLocaleString("es-AR")}, revisar)` : ""}.`;

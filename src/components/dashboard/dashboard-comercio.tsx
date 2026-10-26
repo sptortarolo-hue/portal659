@@ -714,7 +714,14 @@ export default function DashboardComercio({
                 que el catálogo sea simple (la vidriera no soporta esos casos).
               </p>
             )}
-          {(offers.some((o) => (o as any).unit === "kg") || weightMode !== "estimado") && (
+              <p className="text-[11px] text-muted-foreground">
+                ¿Querés entender bien la venta por peso? Está el{" "}
+                <a href="/manuales/pesables" className="text-primary font-medium underline">
+                  manual de venta por peso
+                </a>
+                .
+              </p>
+              {(offers.some((o) => (o as any).unit === "kg") || weightMode !== "estimado") && (
             <div className="rounded-xl border border-border px-3 py-2.5 space-y-2.5">
               <div className="flex items-center justify-between gap-3">
                 <div>

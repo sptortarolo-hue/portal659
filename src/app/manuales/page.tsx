@@ -115,6 +115,12 @@ export default function ManualesPage() {
           desc="Catálogo y vidriera, pedidos con empaque, mostrador con balanza, caja y reparto por franjas."
         />
         <Card
+          href="/manuales/pesables"
+          emoji="🥩"
+          title="Venta por peso (detallado)"
+          desc="Carnicerías y verdulerías: múltiplo y peso mínimo, modo confirmar (pesar antes de cobrar) y pedido pesado por WhatsApp."
+        />
+        <Card
           href="/manuales/servicio"
           emoji="🔧"
           title="Servicios y oficios"

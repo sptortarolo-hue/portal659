@@ -3,6 +3,13 @@
 import Link from "next/link";
 import { Fragment, useMemo } from "react";
 import { useCart } from "@/lib/cart";
+import {
+  isValidWeight,
+  nudgeWeight,
+  readWeightRules,
+  weightError,
+  weightStepLabel,
+} from "@/lib/weight-rules";
 import { cartLineTotal } from "@/lib/order-line";
 import { mirrorVolume } from "@/lib/volume-mirror";
 import { ProductImage } from "@/components/product-image";
@@ -11,6 +18,8 @@ import { VolumeProgress } from "@/components/store/volume-progress";
 export function CartDrawer() {
   const { open, setOpen, items, vendor, total, count, setQty, removeItem, clear } = useCart();
   const vol = useMemo(() => mirrorVolume(items, vendor?.volumeGroups), [items, vendor]);
+  // Mismas reglas de peso que el micrositio (múltiplo + mínimo del comercio).
+  const weightRules = readWeightRules(vendor?.weightStepKg, vendor?.weightMinKg);
   const netTotal = total - vol.volumeDiscount;
 
   if (!open) return null;
@@ -127,18 +136,58 @@ export function CartDrawer() {
 
                   <div className="flex items-center justify-between gap-2">
                     {(item as any).unit === "kg" ? (
-                      <div className="flex items-center gap-1 flex-shrink-0">
-                        <input
-                          type="number"
-                          inputMode="decimal"
-                          min={0}
-                          step="0.001"
-                          value={item.qty}
-                          onChange={(e) => setQty(item.offerId, Number(e.target.value), item.modifiers)}
-                          className="w-20 h-8 px-1 text-sm text-center tabular-nums rounded-lg border border-input bg-background"
-                          aria-label={`Peso en kilos de ${item.name}`}
-                        />
-                        <span className="text-[11px] text-muted-foreground">kg</span>
+                      <div className="flex-shrink-0 space-y-0.5">
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => setQty(item.offerId, nudgeWeight(item.qty, -1, weightRules), item.modifiers)}
+                            className="h-8 w-8 flex items-center justify-center rounded-lg border border-border bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-colors"
+                            aria-label="Menos peso"
+                          >
+                            −
+                          </button>
+                          <input
+                            type="number"
+                            inputMode="decimal"
+                            min={0}
+                            step={weightRules.step > 0 ? weightRules.step : 0.001}
+                            value={item.qty}
+                            onChange={(e) => {
+                              const raw = e.target.value;
+                              const v = Number(raw.replace(",", "."));
+                              if (isValidWeight(v, weightRules)) {
+                                setQty(item.offerId, v, item.modifiers);
+                              } else if (raw.trim() === "") {
+                                // Borrón total: vuelve al piso (mínimo o paso).
+                                setQty(item.offerId, nudgeWeight(0, 1, weightRules), item.modifiers);
+                              }
+                            }}
+                            className="w-16 h-8 px-1 text-sm text-center tabular-nums rounded-lg border border-input bg-background"
+                            aria-label={`Peso en kilos de ${item.name}`}
+                          />
+                          <span className="text-[11px] text-muted-foreground">kg</span>
+                          <button
+                            onClick={() => setQty(item.offerId, nudgeWeight(item.qty, 1, weightRules), item.modifiers)}
+                            className="h-8 w-8 flex items-center justify-center rounded-lg border border-border bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-colors"
+                            aria-label="Más peso"
+                          >
+                            +
+                          </button>
+                        </div>
+                        {!isValidWeight(item.qty, weightRules) && (
+                          <p className="text-[10px] text-red-600">
+                            {weightError(item.qty, weightRules, item.name)}
+                          </p>
+                        )}
+                        {(weightRules.step > 0 || weightRules.min > 0) && isValidWeight(item.qty, weightRules) && (
+                          <p className="text-[10px] text-muted-foreground">
+                            {[
+                              weightRules.step > 0 ? weightStepLabel(weightRules.step) : "",
+                              weightRules.min > 0
+                                ? `mínimo ${(weightRules.min * 1000).toLocaleString("es-AR", { maximumFractionDigits: 3 })} g`
+                                : "",
+                            ].filter(Boolean).join(" · ")}
+                          </p>
+                        )}
                       </div>
                     ) : (
                       <div className="flex items-center border border-border rounded-lg flex-shrink-0">

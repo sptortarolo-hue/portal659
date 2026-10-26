@@ -6,7 +6,16 @@ import { AddToCartButton } from "@/components/offers/add-to-cart-button";
 import { ProductImage } from "@/components/product-image";
 import { CashPrice } from "@/components/store/cash-price";
 import { cashAppliesToItem, cashPrice, normalizeCashPct } from "@/lib/cash-discount";
-import { isValidWeight, readWeightRules, weightChips, weightError, weightStepLabel } from "@/lib/weight-rules";
+import {
+  isValidWeight,
+  nudgeWeight,
+  readWeightRules,
+  weightChips,
+  weightError,
+  weightStepLabel,
+  weightToInput,
+  type WeightRules,
+} from "@/lib/weight-rules";
 import { useCart, type CartModifier, type CartVolumeGroup } from "@/lib/cart";
 import { useToast } from "@/lib/toast";
 import { volumeBadgeText, volumeGroupColor } from "@/lib/volume-pricing";
@@ -86,6 +95,103 @@ type Props = {
  * y "Agregar al pedido" que cierra la ficha y vuelve al menú.
  * Desktop: fila actual con botón directo (sin modal).
  */
+/**
+ * Selector de peso para productos por kilo: input editable (con coma), chips de
+ * fracciones típicas y botones −/＋ que caminan el paso configurado por el
+ * comercio (múltiplo, o 100 g si es libre), sin bajar del peso mínimo ni pasar
+ * de 99 kg. Un solo control para la fila (desktop) y la ficha (mobile).
+ */
+function WeightPicker({
+  value,
+  onChange,
+  rules,
+  productName,
+  variant = "row",
+  error,
+  onAdd,
+  addLabel,
+  addDisabled,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  rules: WeightRules;
+  productName: string;
+  variant?: "row" | "footer";
+  error?: string | null;
+  onAdd?: () => void;
+  addLabel?: string;
+  addDisabled?: boolean;
+}) {
+  const nudge = (dir: 1 | -1) => {
+    const cur = value.trim() === "" ? 0 : Number(String(value).replace(",", "."));
+    onChange(weightToInput(nudgeWeight(Number.isFinite(cur) ? cur : 0, dir, rules)));
+  };
+  const stop = (e: { stopPropagation: () => void }) => e.stopPropagation();
+  const btnCls = variant === "footer" ? "h-9 w-9" : "h-8 w-8";
+  const nudgeCls = `${btnCls} flex-shrink-0 flex items-center justify-center rounded-lg border border-border bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-colors`;
+  const inputCls =
+    variant === "footer"
+      ? "w-20 h-9 px-2 text-sm text-center tabular-nums rounded-lg border border-input bg-background"
+      : "w-20 h-9 px-2 text-sm text-center tabular-nums rounded-md border border-input bg-background";
+  const placeholder =
+    rules.step > 0 ? weightToInput(rules.step) : rules.min > 0 ? weightToInput(rules.min) : "0,5";
+  const hint = [
+    rules.step > 0 ? weightStepLabel(rules.step) : "",
+    rules.min > 0 ? `mínimo ${(rules.min * 1000).toLocaleString("es-AR", { maximumFractionDigits: 3 })} g` : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center gap-1.5">
+        <button type="button" aria-label="Menos peso" className={nudgeCls} onClick={(e) => { stop(e); nudge(-1); }}>
+          −
+        </button>
+        <input
+          type="text"
+          inputMode="decimal"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onClick={stop}
+          placeholder={placeholder}
+          className={inputCls}
+          aria-label={`Peso en kilos de ${productName}`}
+        />
+        <span className="text-xs text-muted-foreground">kg</span>
+        <button type="button" aria-label="Más peso" className={nudgeCls} onClick={(e) => { stop(e); nudge(1); }}>
+          +
+        </button>
+        {onAdd && (
+          <button
+            type="button"
+            onClick={(e) => { stop(e); if (!addDisabled) onAdd(); }}
+            disabled={addDisabled}
+            className="rounded-md px-3 py-1.5 text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+          >
+            {addLabel}
+          </button>
+        )}
+      </div>
+      {(rules.step > 0 || rules.min > 0) && (
+        <div className="flex flex-wrap items-center gap-1">
+          {weightChips(rules.step).map((w) => (
+            <button
+              key={w}
+              type="button"
+              onClick={(e) => { stop(e); onChange(weightToInput(w)); }}
+              className="rounded-full border border-border bg-muted/50 px-2 py-0.5 text-[10px] font-medium text-muted-foreground hover:bg-muted transition-colors"
+            >
+              {weightToInput(w)} kg
+            </button>
+          ))}
+          {hint && <span className="text-[10px] text-muted-foreground">{hint}</span>}
+        </div>
+      )}
+      {error && <p className="text-[11px] text-red-600">{error}</p>}
+    </div>
+  );
+}
+
 export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart = true, consultHref, images = [], autoOpen = false, onClose }: Props) {
   const [open, setOpen] = useState(false);
   const close = useCallback(() => {
@@ -233,7 +339,6 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
   const weightRules = isKg ? readWeightRules(vendor.weightStepKg, vendor.weightMinKg) : { step: 0, min: 0 };
   const kgOk = isKg ? isValidWeight(kgNum, weightRules) : true;
   const kgErr = isKg && !kgOk && String(kg).trim() !== "" ? weightError(kgNum, weightRules, product.name) : null;
-  const kgPlaceholder = weightRules.step > 0 ? String(weightRules.step).replace(".", ",") : weightRules.min > 0 ? String(weightRules.min).replace(".", ",") : "0,5";
   const grandTotal = isKg ? unitTotal * (kgOk ? kgNum : 0) : unitTotal * qty;
 
   const allRequiredMet = modifiers
@@ -408,47 +513,17 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
         {!outStock &&
           (acceptsCart ? (
             isKg ? (
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-1.5">
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    value={kg}
-                    onChange={(e) => setKg(e.target.value)}
-                    placeholder={kgPlaceholder}
-                    className="w-20 h-9 px-2 text-sm text-center tabular-nums rounded-md border border-input bg-background"
-                    aria-label={`Peso en kilos de ${product.name}`}
-                  />
-                  <span className="text-xs text-muted-foreground">kg</span>
-                  <button
-                    type="button"
-                    onClick={() => { if (kgOk) handleAdd(); }}
-                    disabled={!kgOk}
-                    className="rounded-md px-3 py-1.5 text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-                  >
-                    Agregar · ${grandTotal.toLocaleString("es-AR")}
-                  </button>
-                </div>
-                {(weightRules.step > 0 || weightRules.min > 0) && (
-                  <div className="flex flex-wrap items-center gap-1">
-                    {weightChips(weightRules.step).map((w) => (
-                      <button
-                        key={w}
-                        type="button"
-                        onClick={() => setKg(String(w).replace(".", ","))}
-                        className="rounded-full border border-border bg-muted/50 px-2 py-0.5 text-[10px] font-medium text-muted-foreground hover:bg-muted transition-colors"
-                      >
-                        {Number.isInteger(w) ? `${w} kg` : `${String(w).replace(".", ",")} kg`}
-                      </button>
-                    ))}
-                    <span className="text-[10px] text-muted-foreground">
-                      {weightRules.step > 0 ? weightStepLabel(weightRules.step) : ""}
-                      {weightRules.step > 0 && weightRules.min > 0 ? " · " : ""}
-                      {weightRules.min > 0 ? `mínimo ${(weightRules.min * 1000).toLocaleString("es-AR", { maximumFractionDigits: 3 })} g` : ""}
-                    </span>
-                  </div>
-                )}
-              </div>
+              <WeightPicker
+                value={kg}
+                onChange={setKg}
+                rules={weightRules}
+                productName={product.name}
+                variant="row"
+                error={kgErr}
+                onAdd={handleAdd}
+                addLabel={`Agregar · ${grandTotal.toLocaleString("es-AR")}`}
+                addDisabled={!kgOk}
+              />
             ) : (
               <AddToCartButton offerId={product.id} name={product.name} price={baseUnit} vendor={vendor} modifiers={modifiers} cashExcluded={cashExcluded} origPrice={pack > 1 ? Number(product.price) : listBaseUnit} hasPromo={hasPromo} packSize={pack > 1 ? pack : undefined} packPrice={pack > 1 ? basePrice : undefined} />
             )
@@ -804,25 +879,24 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
               (acceptsCart ? (
                 <>
                   {/* Cantidad / peso */}
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">
-                      {isKg ? "Peso" : "Cantidad"}
-                      {pack > 1 && !isKg && <span className="ml-1.5 text-xs text-muted-foreground">(de a {pack})</span>}
-                    </span>
-                    {isKg ? (
-                      <div className="flex items-center gap-1">
-                        <input
-                          type="text"
-                          inputMode="decimal"
-                          value={kg}
-                          onChange={(e) => setKg(e.target.value)}
-                          placeholder={kgPlaceholder}
-                          className="w-24 h-9 px-2 text-sm text-center tabular-nums rounded-lg border border-input bg-background"
-                          aria-label={`Peso en kilos de ${product.name}`}
-                        />
-                        <span className="text-xs text-muted-foreground">kg</span>
-                      </div>
-                    ) : (
+                  {isKg ? (
+                    <div className="space-y-1.5">
+                      <span className="text-sm font-medium">Peso</span>
+                      <WeightPicker
+                        value={kg}
+                        onChange={setKg}
+                        rules={weightRules}
+                        productName={product.name}
+                        variant="footer"
+                        error={kgErr}
+                      />
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium">
+                        Cantidad
+                        {pack > 1 && <span className="ml-1.5 text-xs text-muted-foreground">(de a {pack})</span>}
+                      </span>
                       <div className="flex items-center border border-border rounded-lg">
                         <button
                           type="button"
@@ -842,8 +916,8 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
                           +
                         </button>
                       </div>
-                    )}
-                  </div>
+                    </div>
+                  )}
 
                   {/* Total + Agregar */}
                   <button
@@ -855,26 +929,6 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
                     Agregar al pedido · ${grandTotal.toLocaleString("es-AR")}
                     {modifiers.length > 0 && !allRequiredMet && ` (te ${totalMissing === 1 ? "falta 1" : `faltan ${totalMissing}`})`}
                   </button>
-                  {isKg && (weightRules.step > 0 || weightRules.min > 0) && (
-                    <div className="flex flex-wrap items-center gap-1">
-                      {weightChips(weightRules.step).map((w) => (
-                        <button
-                          key={w}
-                          type="button"
-                          onClick={() => setKg(String(w).replace(".", ","))}
-                          className="rounded-full border border-border bg-muted/50 px-2 py-0.5 text-[10px] font-medium text-muted-foreground hover:bg-muted transition-colors"
-                        >
-                          {Number.isInteger(w) ? `${w} kg` : `${String(w).replace(".", ",")} kg`}
-                        </button>
-                      ))}
-                      <span className="text-[10px] text-muted-foreground">
-                        {weightRules.step > 0 ? weightStepLabel(weightRules.step) : ""}
-                        {weightRules.step > 0 && weightRules.min > 0 ? " · " : ""}
-                        {weightRules.min > 0 ? `mínimo ${(weightRules.min * 1000).toLocaleString("es-AR", { maximumFractionDigits: 3 })} g` : ""}
-                      </span>
-                    </div>
-                  )}
-                  {kgErr && <p className="text-[11px] text-red-600">{kgErr}</p>}
                 </>
               ) : (
                 <a href={consultHref} target="_blank" rel="noopener noreferrer" className="block w-full rounded-xl bg-primary text-primary-foreground text-center text-sm font-medium py-3 hover:bg-primary/90 transition-colors">

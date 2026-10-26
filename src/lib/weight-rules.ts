@@ -67,3 +67,41 @@ export function weightError(kg: number, rules: WeightRules, productName?: string
   }
   return null;
 }
+
+/** Paso del botón ±: el múltiplo configurado; si es libre, 0,1 kg (100 g). */
+export function weightStepForPicker(rules: WeightRules): number {
+  return rules.step > 0 ? rules.step : 0.1;
+}
+
+/** Piso efectivo del ±: el peso mínimo del comercio (o el paso si no hay mínimo). */
+export function weightFloor(rules: WeightRules): number {
+  return rules.min > 0 ? rules.min : weightStepForPicker(rules);
+}
+
+/** Techo ajustado al múltiplo (nunca pasa de WEIGHT_MAX_KG). */
+export function weightCeiling(rules: WeightRules): number {
+  const step = weightStepForPicker(rules);
+  if (rules.step > 0) return Math.floor(WEIGHT_MAX_KG / step + 1e-9) * step;
+  return WEIGHT_MAX_KG;
+}
+
+/**
+ * Siguiente/anterior peso válido para el ±. Se recorre la escala desde el piso
+ * en incrementos del paso, así un valor suelto (ej. 0,25 con paso 0,5) cae
+ * siempre en un peso vendible. Redondeado a 3 decimales (evita 0,30000004).
+ */
+export function nudgeWeight(current: number, dir: 1 | -1, rules: WeightRules): number {
+  const step = weightStepForPicker(rules);
+  const floor = weightFloor(rules);
+  const max = weightCeiling(rules);
+  const base = Number.isFinite(current) && current > 0 ? current : floor - dir * step;
+  const steps = Math.round((base - floor) / step) + dir;
+  const next = Math.round((floor + steps * step) * 1000) / 1000;
+  return Math.min(max, Math.max(floor, next));
+}
+
+/** Formato del peso para el input ("0,5"). */
+export function weightToInput(kg: number): string {
+  const rounded = Math.round(kg * 1000) / 1000;
+  return String(rounded).replace(".", ",");
+}

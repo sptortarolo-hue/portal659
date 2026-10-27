@@ -10,6 +10,7 @@ import { addClient, removeClient, getClient, getClientByVendor, sendText, sendTy
 import { saveQrToken, clearQrToken, setBotStatus } from "./src/state.mjs";
 import { countOutbound, markNewChat, limitsReport } from "./src/limits.mjs";
 import { bumpInbound, feedPush, feedList, metricsReport, touchLastSeen } from "./src/metrics.mjs";
+import { isDuplicate } from "./src/dedup.mjs";
 
 // Telemetría de salud (anti-ban): contadores de proceso para /health y logs.
 const stats = { messages: 0, replies: 0, errors: 0, loggedOut: 0, limitsHit: 0 };
@@ -305,6 +306,11 @@ async function attach(ws, token) {
     }
     if (msg.type === "image" || msg.type === "file") {
       lastSeen.set(token, Date.now());
+      // Idempotencia para media (comprobantes duplicados por retry).
+      if (msg.msg_id && await isDuplicate(msg.msg_id)) {
+        console.log(`[dedup] media duplicada ${msg.msg_id} de ${msg.wa_id} — descartada`);
+        return;
+      }
       if (!msg.wa_id || !msg.data) return;
       console.log(`[msg] media de ${msg.wa_id}: ${msg.mime} (${Math.round((msg.data.length * 3) / 4 / 1024)}KB)`);
       try {
@@ -332,6 +338,15 @@ async function attach(ws, token) {
     if (!msg.wa_id || !msg.body) return;
 
     lastSeen.set(token, Date.now());
+
+    // Idempotencia: si Meta reintenta el webhook (o el relay reenvía tras una
+    // caída), el mismo mensaje no se procesa dos veces → evita pedidos duplicados.
+    if (msg.msg_id && await isDuplicate(msg.msg_id)) {
+      console.log(`[dedup] mensaje duplicado ${msg.msg_id} de ${msg.wa_id} — descartado`);
+      feedPush({ vendorId: vendor.id, store: vendor.store_name, kind: "system", waId: msg.wa_id, text: "mensaje duplicado (retry) descartado" });
+      return;
+    }
+
     stats.messages++;
     bumpInbound(vendor.id, vendor.store_name, msg.wa_id, msg.body);
     console.log(`[msg] de ${msg.wa_id}: ${msg.body}`);

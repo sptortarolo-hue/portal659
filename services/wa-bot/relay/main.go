@@ -184,6 +184,7 @@ type inboundMsg struct {
 	waID    string // parte numérica del JID (celular del cliente)
 	waPhone string // teléfono real (SenderAlt) cuando el chat es LID, si hay
 	body    string
+	msgID   string // ID del mensaje en WhatsApp (para idempotencia: evita duplicados por retry)
 }
 
 // mediaMsg es una imagen/PDF descargada (ej. comprobante de transferencia)
@@ -194,6 +195,7 @@ type mediaMsg struct {
 	mime    string
 	name    string
 	data    []byte
+	msgID   string // ID del mensaje en WhatsApp (para idempotencia)
 }
 
 // qrMsg es el mensaje WS del relay → cerebro con el payload del QR (para que
@@ -378,14 +380,14 @@ func (r *relay) onMessage(m *events.Message) {
 		}
 		fmt.Printf("INBOUND_MEDIA=%s mime=%s size=%d chat=%s\n", mm.kind, mime, len(data), chatJID)
 		select {
-		case r.media <- mediaMsg{waID: chatJID, waPhone: waPhone, mime: mime, name: fileName, data: data}:
+		case r.media <- mediaMsg{waID: chatJID, waPhone: waPhone, mime: mime, name: fileName, data: data, msgID: m.Info.ID}:
 		default:
 			log.Printf("media queue llena, descartando")
 		}
 		// Si la foto lleva caption, procesar también el texto (ej. "ya pagué").
 		if cap := getText(m.Message); cap != "" {
-			fmt.Printf("INBOUND=%s len=%d\n", chatJID, len(cap))
-			r.inbound <- inboundMsg{waID: chatJID, waPhone: waPhone, body: cap}
+			fmt.Printf("INBOUND=%s len=%d msgID=%s\n", chatJID, len(cap), m.Info.ID)
+			r.inbound <- inboundMsg{waID: chatJID, waPhone: waPhone, body: cap, msgID: m.Info.ID}
 		}
 		return
 	}
@@ -398,8 +400,8 @@ func (r *relay) onMessage(m *events.Message) {
 		fmt.Printf("INBOUND_EMPTY=%s chat=%s\n", messageType(m.Message), chatJID)
 		return
 	}
-	fmt.Printf("INBOUND=%s len=%d phone=%s\n", chatJID, len(text), waPhone)
-	r.inbound <- inboundMsg{waID: chatJID, waPhone: waPhone, body: text}
+	fmt.Printf("INBOUND=%s len=%d phone=%s msgID=%s\n", chatJID, len(text), waPhone, m.Info.ID)
+	r.inbound <- inboundMsg{waID: chatJID, waPhone: waPhone, body: text, msgID: m.Info.ID}
 }
 
 // extractMedia inspecciona el mensaje (tras unwrap) y devuelve la referencia
@@ -596,6 +598,7 @@ type wsOut struct {
 	Mime    string `json:"mime,omitempty"`
 	Name    string `json:"name,omitempty"`
 	Data    string `json:"data,omitempty"` // base64 (solo type image/file)
+	MsgID   string `json:"msg_id,omitempty"` // ID del mensaje en WhatsApp (idempotencia)
 }
 
 type wsIn struct {
@@ -651,7 +654,7 @@ func (r *relay) writeLoop(ctx context.Context, conn *websocket.Conn) {
 		case <-ctx.Done():
 			return
 		case m := <-r.inbound:
-			out := wsOut{Type: "message", WaID: m.waID, WaPhone: m.waPhone, Body: m.body}
+			out := wsOut{Type: "message", WaID: m.waID, WaPhone: m.waPhone, Body: m.body, MsgID: m.msgID}
 			if err := r.writeMsg(conn, out); err != nil {
 				r.enqueuePending(out)
 				return
@@ -669,6 +672,7 @@ func (r *relay) writeLoop(ctx context.Context, conn *websocket.Conn) {
 				Mime:    mm.mime,
 				Name:    mm.name,
 				Data:    base64.StdEncoding.EncodeToString(mm.data),
+				MsgID:   mm.msgID,
 			}
 			if err := r.writeMsg(conn, out); err != nil {
 				r.enqueuePending(out)

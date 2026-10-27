@@ -227,18 +227,7 @@ export function BookingFichaModal({
                 <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                   Datos del cliente
                 </span>
-                {!editing ? (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-6 text-[11px]"
-                    onClick={() => setEditing(true)}
-                  >
-                    ✏️ Editar
-                  </Button>
-                ) : (
-                  <span className="text-[11px] text-muted-foreground">editando…</span>
-                )}
+
               </div>
 
               <div className="flex justify-between items-center">
@@ -365,16 +354,16 @@ export function BookingFichaModal({
         )}
 
         <div className="mt-4 flex gap-2">
-          {onNavigate && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-9 flex-1"
-              onClick={() => { onNavigate?.("clientes", phone); onClose(); }}
-            >
-              Ver datos
-            </Button>
-          )}
+{!editing && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-9 flex-1"
+            onClick={() => setEditing(true)}
+          >
+            Ver datos
+          </Button>
+)}
           <Button size="sm" className="h-9 flex-1" onClick={onClose}>
             Cerrar
           </Button>

@@ -100,8 +100,8 @@ function GroupForm({
   const firstTier = tiers.find((t) => Number.isFinite(t.min_qty) && Number(t.value) > 0);
   const summaryTier = firstTier
     ? firstTier.kind === "fixed_total"
-      ? `Llevá ${Math.floor(Number(firstTier.min_qty))} y pagá ${fmt$(Number(firstTier.value))}`
-      : `${Math.floor(Number(firstTier.min_qty))}+ con ${Number(firstTier.value).toLocaleString("es-AR")}% off`
+      ? `Llevá ${Number(firstTier.min_qty)} y pagá ${fmt$(Number(firstTier.value))}`
+      : `${Number(firstTier.min_qty)}+ con ${Number(firstTier.value).toLocaleString("es-AR")}% off`
     : null;
 
   function toggleProduct(id: string, checked: boolean) {
@@ -152,7 +152,7 @@ function GroupForm({
     if (selected.size === 0) return setError("Tildá al menos un producto del grupo");
     const clean = tiers
       .map((t) => ({
-        min_qty: Math.floor(Number(t.min_qty)),
+        min_qty: Math.round(Number(t.min_qty) * 1000) / 1000,
         kind: t.kind,
         value: Number(t.value),
       }))
@@ -293,8 +293,9 @@ function GroupForm({
               <div key={t.id} className="flex items-center gap-2">
                 <Input
                   type="number"
-                  min={2}
-                  max={99}
+                  min={0.1}
+                  max={999}
+                  step={0.1}
                   className="w-20"
                   value={t.min_qty}
                   onChange={(e) => setTier(i, { min_qty: Number(e.target.value) })}
@@ -466,7 +467,7 @@ function PackWizard({
         name: name.trim(),
         product_ids: [...selected],
         combo_ids: comboIds,
-        tiers: [{ min_qty: Math.floor(Number(qty)) || 6, kind: "fixed_total", value: Number(price) || 0 }],
+        tiers: [{ min_qty: Math.round(Number(qty) * 1000) / 1000 || 6, kind: "fixed_total", value: Number(price) || 0 }],
         combine_promo: false,
         combine_cash: false,
         extras_mode: "on_top",

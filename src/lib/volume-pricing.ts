@@ -35,6 +35,8 @@ export type VolumeGroupInput = {
   /** true = extras con costo absorbidos por el pack fijo. */
   extrasIncluded: boolean;
   tiers: VolumeTierInput[];
+  /** Escala interna: 1 para unidades, 1000 para kg (gramos). Default 1. */
+  scale?: number;
 };
 
 export type VolumeLineInput = {
@@ -151,8 +153,13 @@ export function applyVolumePricing(
 
   for (const group of groups || []) {
     if (!group || group.active === false) continue;
+    const scale = group.scale && group.scale > 0 ? group.scale : 1;
     const tiers = [...(group.tiers || [])]
-      .filter((t) => Number(t?.minQty) >= 2 && Number(t?.value) > 0)
+      .filter((t) => {
+        const scaled = Number(t?.minQty) * scale;
+        const minScaled = scale > 1 ? 1 : 2;
+        return Number.isFinite(scaled) && scaled >= minScaled && Number(t?.value) > 0;
+      })
       .sort((a, b) => Number(a.minQty) - Number(b.minQty));
     if (tiers.length === 0) continue;
     const memberSet = new Set((group.productIds || []).map(String));
@@ -165,6 +172,7 @@ export function applyVolumePricing(
     for (const i of idxs) claimed.add(i);
 
     const groupQty = idxs.reduce((s, i) => s + lines[i].qty, 0);
+    const scaledGroupQty = groupQty * scale;
     for (const i of idxs) {
       results[i].groupId = group.id;
       results[i].groupName = group.name;
@@ -177,13 +185,13 @@ export function applyVolumePricing(
     // unitIdx -> neto prorrateado (si gana fijo)
     let fixedNetByIdx = new Map<number, number>();
     let fixedLabel = "";
-    if (fixedTiers.some((t) => groupQty >= t.minQty)) {
+    if (fixedTiers.some((t) => scaledGroupQty >= t.minQty * scale)) {
       // Expando unidades (valor cubierto por el pack) de mayor a menor: los
       // sets cubren las caras primero. Los extras on_top van por encima.
       const units: { idx: number; pack: number; extra: number }[] = [];
       for (const i of idxs) {
         const { packUnit, extraUnit } = packSplitFor(lines[i], group);
-        for (let k = 0; k < lines[i].qty; k++) units.push({ idx: i, pack: packUnit, extra: extraUnit });
+        for (let k = 0; k < Math.round(lines[i].qty * scale); k++) units.push({ idx: i, pack: packUnit, extra: extraUnit });
       }
       units.sort((a, b) => b.pack - a.pack);
       let cursor = 0;
@@ -194,18 +202,20 @@ export function applyVolumePricing(
         const remaining = units.length - cursor;
         // El pack solo se toma si DESCUENTA (valor < bruto que cubre).
         const tier = fixedTiers.find((t) => {
-          if (remaining < t.minQty) return false;
+          const tScaled = t.minQty * scale;
+          if (remaining < tScaled) return false;
           const sliceGross = units
-            .slice(cursor, cursor + t.minQty)
+            .slice(cursor, cursor + tScaled)
             .reduce((s, u) => s + u.pack, 0);
           return Number(t.value) < sliceGross;
         });
         if (!tier) break;
-        const slice = units.slice(cursor, cursor + tier.minQty);
+        const tierScaled = tier.minQty * scale;
+        const slice = units.slice(cursor, cursor + tierScaled);
         packsGross += slice.reduce((s, u) => s + u.pack, 0);
         packsValue += Number(tier.value);
         usedTiers.push(tier);
-        cursor += tier.minQty;
+        cursor += tierScaled;
       }
       if (usedTiers.length > 0) {
         // Prorrateo del valor de los packs entre las unidades consumidas +
@@ -240,7 +250,7 @@ export function applyVolumePricing(
     let pctNetByIdx = new Map<number, number>();
     let pctBest: VolumeTierInput | null = null;
     for (const t of pctTiers) {
-      if (groupQty >= t.minQty && (!pctBest || t.minQty > pctBest.minQty)) pctBest = t;
+      if (scaledGroupQty >= t.minQty * scale && (!pctBest || t.minQty > pctBest.minQty)) pctBest = t;
     }
     if (pctBest) {
       const pct = Number(pctBest.value) / 100;
@@ -290,7 +300,7 @@ export function tiersForProduct(
     if (!g || g.active === false) continue;
     if ((g.productIds || []).map(String).includes(String(offerId))) {
       const tiers = [...(g.tiers || [])]
-        .filter((t) => Number(t?.minQty) >= 2 && Number(t?.value) > 0)
+        .filter((t) => Number(t?.minQty) > 0 && Number(t?.value) > 0)
         .sort((a, b) => Number(a.minQty) - Number(b.minQty));
       if (tiers.length > 0) return { group: g, tiers };
     }
@@ -386,11 +396,11 @@ export function validateVolumeGroupPayload(body: any): { error?: string; value?:
   const seen = new Set<number>();
   for (const t of rawTiers) {
     const tt = t as { min_qty?: unknown; kind?: unknown; value?: unknown };
-    const minQty = Math.floor(Number(tt?.min_qty));
+    const minQty = Math.round(Number(tt?.min_qty) * 1000) / 1000;
     const kind = tt?.kind === "percent_off" ? "percent_off" : "fixed_total";
     const value = Number(tt?.value);
-    if (!Number.isFinite(minQty) || minQty < 2 || minQty > 99) {
-      return { error: "La cantidad de cada tramo va de 2 a 99" };
+    if (!Number.isFinite(minQty) || minQty < 0.1 || minQty > 999) {
+      return { error: "La cantidad de cada tramo va de 0.1 a 999" };
     }
     if (seen.has(minQty)) return { error: `Hay dos tramos con cantidad ${minQty}` };
     seen.add(minQty);

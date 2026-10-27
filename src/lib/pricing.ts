@@ -626,6 +626,12 @@ export async function resolveOrderPricing(opts: {
             combineCash: g.combine_cash === true,
             extrasIncluded: g.extras_mode === "included",
             tiers: tiersByGroup.get(g.id) || [],
+            scale: (Array.isArray(g.product_ids) ? g.product_ids.map(String) : []).length > 0 &&
+              (Array.isArray(g.product_ids) ? g.product_ids.map(String) : []).every(
+                (id: string) => (productById.get(id) as any)?.unit === "kg"
+              )
+              ? 1000
+              : 1,
           }))
           .filter((g) => g.productIds.length > 0 && g.tiers.length > 0);
         if (volGroups.length > 0) {

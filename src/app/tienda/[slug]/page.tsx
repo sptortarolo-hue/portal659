@@ -411,6 +411,7 @@ export default async function TiendaPage({
   let volumeGroups: any[] = [];
   // Nombres de productos para comunicar "se combina con" (Fase combinables).
   const nameById = new Map((offers || []).map((o: any) => [String(o.id), String(o.name)]));
+  const unitById = new Map((offers || []).map((o: any) => [String(o.id), String(o.unit || "unidad")]));
   // Detalle para el cartel "Armá tu pack" (foto + precio para quick-add).
   const detailById = new Map(
     (offers || []).map((o: any) => [
@@ -450,6 +451,7 @@ export default async function TiendaPage({
               combineCash: g.combine_cash === true,
               extrasIncluded: g.extras_mode === "included",
               tiers: tiersByGroup[g.id] || [],
+              scale: ids.length > 0 && ids.every((id: string) => unitById.get(id) === "kg") ? 1000 : 1,
               memberNames: ids.map((id: string) => nameById.get(id)).filter(Boolean),
               members: ids.map((id: string) => detailById.get(id)).filter(Boolean),
             };

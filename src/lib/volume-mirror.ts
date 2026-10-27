@@ -14,16 +14,22 @@ export function mirrorVolume(items: CartItem[], groups?: CartVolumeGroup[] | nul
   const empty: VolumeResult = { volumeDiscount: 0, lines: [], applied: [] };
   if (!groups || groups.length === 0 || !items || items.length === 0) return empty;
 
-  const volGroups: VolumeGroupInput[] = groups.map((g) => ({
-    id: g.id,
-    name: g.name,
-    productIds: g.productIds || [],
-    active: true,
-    combinePromo: !!g.combinePromo,
-    combineCash: !!g.combineCash,
-    extrasIncluded: !!g.extrasIncluded,
-    tiers: (g.tiers || []).map((t) => ({ minQty: t.minQty, kind: t.kind, value: t.value })),
-  }));
+  const volGroups: VolumeGroupInput[] = groups.map((g) => {
+    const ids = new Set((g.productIds || []).map(String));
+    const matching = items.filter((i) => ids.has(String(i.offerId)));
+    const allKg = matching.length > 0 && matching.every((i) => (i as any).unit === "kg");
+    return {
+      id: g.id,
+      name: g.name,
+      productIds: g.productIds || [],
+      active: true,
+      combinePromo: !!g.combinePromo,
+      combineCash: !!g.combineCash,
+      extrasIncluded: !!g.extrasIncluded,
+      tiers: (g.tiers || []).map((t) => ({ minQty: t.minQty, kind: t.kind, value: t.value })),
+      scale: allKg ? 1000 : (g.scale || 1),
+    };
+  });
 
   const volLines = items.map((i) => {
     const mods = (i.modifiers || []).reduce((s, m) => s + Number(m.price_mod || 0), 0);

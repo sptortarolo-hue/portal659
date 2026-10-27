@@ -67,6 +67,8 @@ export type CartVolumeGroup = {
   combineCash: boolean;
   extrasIncluded: boolean;
   tiers: { minQty: number; kind: "fixed_total" | "percent_off"; value: number }[];
+  /** Escala interna: 1 unidades, 1000 kg (gramos). */
+  scale?: number;
   /** Nombres de los miembros (lo arma el server para mostrar "se combina con"). */
   memberNames?: string[];
 };

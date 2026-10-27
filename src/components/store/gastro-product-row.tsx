@@ -303,6 +303,7 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
       combineCash: g.combineCash,
       extrasIncluded: g.extrasIncluded,
       tiers: g.tiers,
+      scale: g.scale,
     })),
     product.id
   );

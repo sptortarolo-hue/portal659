@@ -31,6 +31,7 @@ type VendorBrief = {
     combineCash: boolean;
     extrasIncluded: boolean;
     tiers: { minQty: number; kind: "fixed_total" | "percent_off"; value: number }[];
+    scale?: number;
     memberNames?: string[];
   }[];
 };
@@ -115,6 +116,7 @@ export function ProductCard({ product, variants = [], images = [], vendor, modif
       combineCash: !!g.combineCash,
       extrasIncluded: !!g.extrasIncluded,
       tiers: (g.tiers || []) as never,
+      scale: g.scale,
     })),
     String(product.id)
   );

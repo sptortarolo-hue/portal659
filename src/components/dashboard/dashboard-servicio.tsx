@@ -30,6 +30,7 @@ import { AgendaView, type AgendaViewMode } from "@/components/dashboard/agenda-v
 import { EsteticaWeekPlanner } from "@/components/dashboard/estetica-week-planner";
 import { BookingCard, type BookingCardProps } from "@/components/dashboard/booking-card";
 import { BookingCobroModal } from "@/components/dashboard/booking-cobro-modal";
+import { BookingFichaModal } from "@/components/dashboard/booking-ficha-modal";
 import { Modal } from "@/components/ui/modal";
 import type { Vendor, Product, ProductModifier, Booking, VendorGallery } from "@/types/database";
 
@@ -453,6 +454,7 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
   } | null>(null);
   // Cobro de turno (servicio / estética / oficios).
   const [cobroOpenId, setCobroOpenId] = useState<string | null>(null);
+  const [fichaOpenId, setFichaOpenId] = useState<string | null>(null);
   const [canFiscal, setCanFiscal] = useState(false);
   const [fiscalReady, setFiscalReady] = useState(false);
 
@@ -1023,6 +1025,7 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
     mpBookingBusy,
     handleBookingMpDepositLink,
     onCobroBooking: handleCobroBooking,
+    onFichaBooking: (id: string) => setFichaOpenId(id),
     cobroOpenId,
     canFiscal,
     fiscalReady,
@@ -1979,6 +1982,15 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
           }}
           canFiscal={canFiscal}
           fiscalReady={fiscalReady}
+        />
+      )}
+      {fichaOpenId && (
+        <BookingFichaModal
+          booking={bookings.find((b: any) => b.id === fichaOpenId)}
+          open={!!fichaOpenId}
+          onClose={() => setFichaOpenId(null)}
+          onNavigate={onNavigate}
+          vendorId={vendor?.id}
         />
       )}
     </div>

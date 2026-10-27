@@ -32,6 +32,8 @@ export type BookingCardProps = {
   formAlerts: Record<string, { template: string; session_no: number; labels: string[] }[]>;
   onNavigate?: (section: "orders" | "pos" | "caja" | "config" | "pedidos" | "clientes") => void;
   onEditBooking?: (booking: any) => void;
+  /** Abre la modal de ficha de la clienta (datos + sesiones anteriores + carga de ficha de la última sesión). */
+  onFichaBooking?: (id: string) => void;
   editingProductsId: string | null;
   setEditingProductsId: (id: string | null) => void;
   productsText: string;
@@ -71,6 +73,7 @@ export function BookingCard({
   formAlerts,
   onNavigate,
   onEditBooking,
+  onFichaBooking,
   editingProductsId,
   setEditingProductsId,
   productsText,
@@ -323,7 +326,7 @@ export function BookingCard({
             variant="outline"
             className="h-7 text-xs"
             title="Abrir la ficha de la clienta"
-            onClick={() => onNavigate?.("clientes")}
+            onClick={() => (onFichaBooking ? onFichaBooking(booking.id) : onNavigate?.("clientes"))}
           >
             📋 Ficha
           </Button>

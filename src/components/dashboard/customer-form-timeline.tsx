@@ -37,10 +37,13 @@ function fmtDate(value: string | null | undefined): string {
 export function CustomerFormTimeline({
   vendorId,
   phone,
+  bookingId,
   onChanged,
 }: {
   vendorId?: string | null;
   phone: string;
+  /** Si viene, las sesiones nuevas se vinculan a este turno (última sesión). */
+  bookingId?: string | null;
   onChanged?: () => void;
 }) {
   const [templates, setTemplates] = useState<Template[]>([]);
@@ -98,7 +101,7 @@ export function CustomerFormTimeline({
       const res = await fetch("/api/vendor/form-entries", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ template_id: templateId, customer_phone: phone }),
+        body: JSON.stringify({ template_id: templateId, customer_phone: phone, ...(bookingId ? { booking_id: bookingId } : {}) }),
       });
       const data = await res.json().catch(() => ({}));
       if (data.error || !data.entry) {
@@ -193,6 +196,11 @@ export function CustomerFormTimeline({
                   <span className="flex-1 min-w-0">
                     <span className="block text-xs font-medium truncate">
                       {e.template_name || tpl?.name || "Ficha"} · Sesión {e.session_no} · {fmtDate(e.created_at)}
+                      {bookingId && e.booking_id === bookingId && (
+                        <span className="ml-1 inline-block rounded-full bg-primary/10 text-primary text-[10px] font-bold px-1.5 py-0.5">
+                          este turno
+                        </span>
+                      )}
                     </span>
                     <span className="block text-[11px] text-muted-foreground">
                       {e.status === "complete" ? "✅ Completa" : "📝 Borrador"}

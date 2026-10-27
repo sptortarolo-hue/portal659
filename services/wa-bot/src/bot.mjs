@@ -445,14 +445,106 @@ async function handleIdle({ vendor, text, state, replies, waId }) {
 }
 
 // ———————————————————————————————————————————————————————————————————————————
+// Edición del carrito en confirmación: "sacá la coca", "poné 3 empanadas",
+// "cambiá 2 por 3 empanadas". Devuelve true si manejó el texto.
+// ———————————————————————————————————————————————————————————————————————————
+function applyCartEdit(state, text) {
+  const t = String(text || "").trim().toLowerCase();
+  if (!state.items || state.items.length === 0) return false;
+
+  // 1) Remoción: "sacá/quita/elimina/borra X"
+  const removeMatch = t.match(/^(sac[aá]|quit[aá]|elimina|elimin[aá]|borr[aá]|saca|quita|elimina|borra)\s+(.+)$/i);
+  if (removeMatch) {
+    const search = removeMatch[2].trim();
+    const idx = findCartItemIndex(state.items, search);
+    if (idx === -1) {
+      return { handled: true, msg: `No encontré "${search}" en tu pedido. Tu pedido tiene: ${state.items.map((i) => i.name).join(", ")}.` };
+    }
+    const removed = state.items.splice(idx, 1)[0];
+    return { handled: true, msg: `Listo, saqué ${removed.name} del pedido.` };
+  }
+
+  // 2) Cambio de cantidad: "poné 3 empanadas" / "poné 3 de empanadas" /
+  //    "cambiá empanadas a 3" / "cambiá 2 por 3 empanadas" / "empanadas a 3"
+  let qtyMatch = t.match(/^(pon[eé]|cambi[aá]|modific[aá]|ajust[aá])\s+(\d+)\s+(?:de\s+)?(.+)$/i);
+  if (qtyMatch) {
+    const newQty = Number(qtyMatch[2]);
+    const search = qtyMatch[3].trim();
+    const idx = findCartItemIndex(state.items, search);
+    if (idx === -1) {
+      return { handled: true, msg: `No encontré "${search}" en tu pedido. Tu pedido tiene: ${state.items.map((i) => i.name).join(", ")}.` };
+    }
+    if (newQty <= 0) {
+      const removed = state.items.splice(idx, 1)[0];
+      return { handled: true, msg: `Listo, saqué ${removed.name} del pedido.` };
+    }
+    state.items[idx].qty = newQty;
+    return { handled: true, msg: `Listo, cambié ${state.items[idx].name} a ${newQty}.` };
+  }
+  qtyMatch = t.match(/^(pon[eé]|cambi[aá])\s+(.+?)\s+(?:a|por)\s+(\d+)$/i);
+  if (qtyMatch) {
+    const search = qtyMatch[2].trim();
+    const newQty = Number(qtyMatch[3]);
+    const idx = findCartItemIndex(state.items, search);
+    if (idx === -1) {
+      return { handled: true, msg: `No encontré "${search}" en tu pedido. Tu pedido tiene: ${state.items.map((i) => i.name).join(", ")}.` };
+    }
+    if (newQty <= 0) {
+      const removed = state.items.splice(idx, 1)[0];
+      return { handled: true, msg: `Listo, saqué ${removed.name} del pedido.` };
+    }
+    state.items[idx].qty = newQty;
+    return { handled: true, msg: `Listo, cambié ${state.items[idx].name} a ${newQty}.` };
+  }
+
+  return false;
+}
+
+/** Busca el índice de un item del carrito por nombre (fuzzy). */
+function findCartItemIndex(items, search) {
+  const s = normalizeForMatch(search);
+  if (!s) return -1;
+  // Match exacto primero (normalizado con stem).
+  let idx = items.findIndex((i) => normalizeForMatch(i.name) === s);
+  if (idx !== -1) return idx;
+  // Contenido: el nombre contiene el search (o viceversa).
+  idx = items.findIndex((i) => {
+    const n = normalizeForMatch(i.name);
+    return n.includes(s) || s.includes(n);
+  });
+  if (idx !== -1) return idx;
+  // Fuzzy: alguna palabra del search está en el nombre.
+  const words = s.split(/\s+/).filter((w) => w.length >= 3);
+  idx = items.findIndex((i) => {
+    const n = normalizeForMatch(i.name);
+    return words.some((w) => n.split(/\s+/).some((nw) => nw === w || nw.includes(w) || w.includes(nw)));
+  });
+  return idx;
+}
+
+// ———————————————————————————————————————————————————————————————————————————
 // En flujo: respuesta del cliente completa o corrige el pedido
 // ———————————————————————————————————————————————————————————————————————————
 
 async function handleStep({ vendor, text, state, replies, waId }) {
   const t = text.trim();
 
-  // En confirm: "sí" crea; "no" cancela; cualquier otra cosa = corrección.
+  // En confirm: "sí" crea; "no" cancela; edición del carrito (sacar/cambiar
+  // cantidad) se aplica sin reiniciar el pedido; el resto = corrección.
   if (state.step === "confirm") {
+    // Edición del carrito: "sacá la coca", "poné 3 empanadas", etc.
+    const edit = applyCartEdit(state, t);
+    if (edit) {
+      if (state.items.length === 0) {
+        replies.push("Tu pedido quedó vacío. Mandame tu pedido de nuevo, o escribí *cancelar*.");
+        state.step = "idle";
+        return;
+      }
+      replies.push(edit.msg);
+      replies.push(summaryText(state, vendor));
+      replies.push("¿Confirmás? (sí/no) — o seguí modificando.");
+      return;
+    }
     if (RE_CONFIRM.test(t)) {
       const order = await createOrder(vendor.id, state);
       // Aprendizaje: guardamos el pedido exitoso como ejemplo para futuras correcciones.

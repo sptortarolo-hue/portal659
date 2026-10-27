@@ -157,7 +157,42 @@ async function main() {
   if (!hr.includes("Che Sancho") || !hr.includes("Abierto ahora") || !hr.includes("lun a vie")) { console.log("!!! no respondió los horarios"); ok = false; }
   else { console.log(">>> OK: horarios → tienda + estado + horario"); }
 
-  // 10. Horarios de todas las tiendas (sin mencionar una)
+  // 10. Edición del carrito en confirmación ("sacá la coca", "poné 3 empanadas")
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "cancelar" });
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "comercios" });
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "1" });
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "2 empanadas de carne y 1 coca" });
+  // Force confirm step (the flow might ask for method/name first; let's just check the edit works when in confirm)
+  // Actually, let's test the edit on a pre-set confirm state
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "cancelar" });
+  // Set up a confirm state manually
+  const { setState: ss } = await import("./src/state.mjs");
+  await ss(portalVendor.id, wa, { ...DEFAULT_STATE, step: "confirm", welcomed: true, currentVendorId: "store1", currentVendorName: "Che Sancho", currentVendorSlug: "che-sancho", items: [{ offerId: "p1", name: "Empanada de carne", qty: 2, modifiers: [] }, { offerId: "p2", name: "Coca-Cola 500ml", qty: 1, modifiers: [] }], method: "pickup", payment: "whatsapp" });
+  // Remove an item
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "sacá la coca" });
+  show("sacar coca (portal)", r);
+  const sc = (r.replies || []).join(" ");
+  if (!sc.includes("saqué") || !sc.includes("Coca-Cola") || sc.includes("Coca-Cola ×1")) { /* item should be removed */ }
+  // Verify the item was removed by checking the summary
+  // The removal message mentions "Coca-Cola 500ml"; the summary (• lines) should NOT.
+  const summaryLines = (r.replies || []).filter((x) => x.startsWith("•") || x.startsWith("✅")).join(" ");
+  if (summaryLines.includes("Coca-Cola")) { console.log("!!! la coca no se sacó del carrito"); ok = false; }
+  else { console.log(">>> OK: 'sacá la coca' → item eliminado del carrito"); }
+  // Change quantity
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "poné 3 empanadas" });
+  show("cambiar cantidad (portal)", r);
+  const cq = (r.replies || []).join(" ");
+  if (!cq.includes("cambié") || !cq.includes("3")) { console.log("!!! no cambió la cantidad"); ok = false; }
+  else { console.log(">>> OK: 'poné 3 empanadas' → cantidad actualizada"); }
+  // Verify empty cart handling
+  await ss(portalVendor.id, wa, { ...DEFAULT_STATE, step: "confirm", welcomed: true, currentVendorId: "store1", currentVendorName: "Che Sancho", currentVendorSlug: "che-sancho", items: [{ offerId: "p1", name: "Empanada de carne", qty: 1, modifiers: [] }], method: "pickup", payment: "whatsapp" });
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "sacá la empanada" });
+  show("carrito vacío (portal)", r);
+  const cv = (r.replies || []).join(" ");
+  if (!cv.includes("vacío")) { console.log("!!! no avisó que el carrito quedó vacío"); ok = false; }
+  else { console.log(">>> OK: carrito vacío → aviso + volver a idle"); }
+
+  // 11. Horarios de todas las tiendas (sin mencionar una)
   r = await handleInbound({ vendor: portalVendor, waId: wa, body: "cancelar" });
   r = await handleInbound({ vendor: portalVendor, waId: wa, body: "horarios" });
   show("horarios todas (portal)", r);

@@ -1,3 +1,4 @@
+// @ts-nocheck
 // Los tests cubren el flujo de pedidos (BOT_TAKE_ORDERS=1 — el bot del chat
 // toma pedidos). Con el bot apagado (default) corre el concierge (test aparte).
 process.env.BOT_TAKE_ORDERS = "1";

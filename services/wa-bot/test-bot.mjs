@@ -1,3 +1,4 @@
+// @ts-nocheck
 import("./src/bot.mjs").then(async ({ handleInbound }) => {
   process.env.LLM_API_KEY = "";
   const vendor = { id: "v1", store_name: "Test Burger", vertical: "gastronomia", enabled: true };

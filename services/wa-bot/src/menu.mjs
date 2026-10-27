@@ -1,7 +1,18 @@
+// @ts-check
 import { config } from "./config.mjs";
 
-const cache = new Map(); // vendorId -> { products, at }
+/** @typedef {{ id: string; name: string; description?: string | null; price: number; category?: string | null; modifiers?: any[]; variants?: any[]; store_id?: string; store_name?: string; store_slug?: string | null; store_open?: boolean; store_open_text?: string | null; }} Product */
 
+/** @typedef {{ products: Product[]; at: number; stores?: any[] }} MenuCache */
+
+/** @type {Map<string | number, MenuCache>} */
+const cache = new Map();
+
+/**
+ * Obtiene el menú de un vendor (con cache de 60s).
+ * @param {string | number} vendorId
+ * @returns {Promise<Product[]>}
+ */
 export async function getMenu(vendorId) {
   const hit = cache.get(vendorId);
   if (hit && Date.now() - hit.at < 60 * 1000) return hit.products;
@@ -16,11 +27,12 @@ export async function getMenu(vendorId) {
       return hit?.products || [];
     }
     const data = await res.json();
+    /** @type {Product[]} */
     const products = data.products || [];
     cache.set(vendorId, { products, at: Date.now() });
     return products;
   } catch (e) {
-    console.error(`[bot] menu fetch fail: ${e.message}`);
+    console.error(`[bot] menu fetch fail: ${/** @type {any} */ (e)?.message}`);
     return hit?.products || []; // fallback: caché vieja si la hubo
   }
 }
@@ -31,6 +43,10 @@ export async function getMenu(vendorId) {
 // ———————————————————————————————————————————————————————————————————————————
 const PORTAL_MENU_KEY = "__portal__";
 
+/**
+ * Obtiene el menú agregado del portal (todas las tiendas visibles).
+ * @returns {Promise<Product[]>}
+ */
 export async function getPortalMenu() {
   const hit = cache.get(PORTAL_MENU_KEY);
   if (hit && Date.now() - hit.at < 60 * 1000) return hit.products;
@@ -46,7 +62,7 @@ export async function getPortalMenu() {
     }
     const data = await res.json();
     const stores = data.vendors || data.stores || [];
-    // Aplanar: cada producto ya trae store_id/store_name/store_slug.
+    /** @type {Product[]} */
     const products = [];
     for (const s of stores) {
       for (const p of s.products || []) {
@@ -56,31 +72,31 @@ export async function getPortalMenu() {
     cache.set(PORTAL_MENU_KEY, { products, at: Date.now(), stores });
     return products;
   } catch (e) {
-    console.error(`[bot] portal-menu fetch fail: ${e.message}`);
+    console.error(`[bot] portal-menu fetch fail: ${/** @type {any} */ (e)?.message}`);
     return hit?.products || [];
   }
 }
 
-/** Versión sync del menú del portal (solo cache). */
+/** Versión sync del menú del portal (solo cache). @returns {Product[]} */
 export function getPortalMenuSync() {
   const hit = cache.get(PORTAL_MENU_KEY);
   return hit?.products || [];
 }
 
-/** Tiendas del menú del portal (solo cache). */
+/** Tiendas del menú del portal (solo cache). @returns {any[]} */
 export function getPortalStoresSync() {
   const hit = cache.get(PORTAL_MENU_KEY);
   return hit?.stores || [];
 }
 
 /** Versión sync que lee SOLO el cache (poblado por getMenu en la conversación).
- *  Para el total estimado del resumen: si no hay cache, devuelve [] (sin total). */
+ *  Para el total estimado del resumen: si no hay cache, devuelve [] (sin total). @param {string | number} vendorId @returns {Product[]} */
 export function getMenuSync(vendorId) {
   const hit = cache.get(vendorId);
   return hit?.products || [];
 }
 
-/** Mapea un nombre libre a un producto del menú. Mejorado con stem + "contains" para typos/variantes. */
+/** Mapea un nombre libre a un producto del menú. Mejorado con stem + "contains" para typos/variantes. @param {Product[]} products @param {string} name @returns {Product | null} */
 export function matchProduct(products, name) {
   const n = normalizeForMatch(name);
   if (!n) return null;
@@ -140,7 +156,7 @@ function normalizeForMatch(name) {
 export { normalizeForMatch };
 
 /** TODOS los productos que matchean un nombre (para desambiguar: "empanadas"
- *  → [carne, jamón y queso]). Máx 4 candidatos. */
+ *  → [carne, jamón y queso]). Máx 4 candidatos. @param {Product[]} products @param {string} name @returns {Product[]} */
 export function matchAllProducts(products, name) {
   const n = normalizeForMatch(name);
   if (!n) return [];
@@ -154,6 +170,7 @@ export function matchAllProducts(products, name) {
   return inter.slice(0, 4);
 }
 
+/** @param {string} vendorName @param {Product[]} products @returns {string} */
 export function menuSummary(vendorName, products) {
   const lines = products.slice(0, 25).map((p) => `• ${p.name} — $${p.price}`);
   return `🍽️ *Menú de ${vendorName}*\n\n${lines.join("\n")}\n\nRespondé con lo que querés pedir, por ejemplo: "dos hamburguesas y una coca".`;
@@ -173,6 +190,7 @@ const FOOTERS = [
   "Escribime tu pedido y te lo preparo, por ejemplo: \"dos empanadas y un agua\".",
 ];
 
+/** @param {string} s @returns {number} */
 function hashStr(s) {
   let h = 0;
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;

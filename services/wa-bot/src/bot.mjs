@@ -1,3 +1,5 @@
+// @ts-nocheck — pendiente de conversión a TypeScript (tipos JSDoc + // @ts-check).
+// Ver menu.mjs y metrics.mjs para el patrón de anotación.
 import { config } from "./config.mjs";
 import { getState, setState, clearState, forEachConversation } from "./state.mjs";
 import { getMenu, getMenuSync, matchProduct, matchAllProducts, normalizeForMatch, menuSummary } from "./menu.mjs";

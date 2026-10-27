@@ -1,3 +1,4 @@
+// @ts-nocheck
 // Test del lado IA: contexto de conversación en el prompt, re-declarar/agregar
 // con LLM, y el fix del bypass de cooldown (429 no se reintenta con timeout 60s).
 // Necesita el modo pedidos (BOT_TAKE_ORDERS=1 — default off = concierge).

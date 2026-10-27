@@ -1,3 +1,4 @@
+// @ts-nocheck — pendiente de conversión a TypeScript.
 import { config } from "./config.mjs";
 import { matchProduct } from "./menu.mjs";
 import { loadCorrections, formatFewShot } from "./learning.mjs";

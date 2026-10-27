@@ -1,3 +1,4 @@
+// @ts-nocheck
 // Test del bot del portal (conserje del barrio + pedidos por tienda).
 // NO toca el bot de los comercios (concierge): usa handlePortalInbound directo.
 process.env.BOT_TAKE_ORDERS = "";

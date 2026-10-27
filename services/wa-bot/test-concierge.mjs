@@ -1,3 +1,4 @@
+// @ts-nocheck
 // Test del auto-responder (default: BOT_TAKE_ORDERS sin setear → concierge).
 // El bot es un auto-responder puro: TODO mensaje recibe la respuesta automática
 // (estado abierto/cerrado + menú online + pie de ayuda); la ÚNICA escalada es

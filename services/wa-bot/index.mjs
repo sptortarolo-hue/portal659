@@ -1,3 +1,4 @@
+// @ts-nocheck — pendiente de conversión a TypeScript.
 import { createServer } from "node:http";
 import { WebSocketServer, WebSocket } from "ws";
 import { config } from "./src/config.mjs";

@@ -239,7 +239,8 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
   // 'confirmar' = el pedido con kg nace pendiente de pago hasta que el
   // comercio pesa y confirma el total real.
   const weightCfg = await queryOne<{ weight_confirm_mode: string | null; weight_tolerance_pct: number | null }>(
-    `SELECT weight_confirm_mode, weight_tolerance_pct FROM vendors WHERE id = $1 LIMIT 1`
+    `SELECT weight_confirm_mode, weight_tolerance_pct FROM vendors WHERE id = $1 LIMIT 1`,
+    [vendorId]
   ).catch(() => null);
   const weightConfirmMode = weightCfg?.weight_confirm_mode === "confirmar" ? "confirmar" : "estimado";
   const weightTolerancePct =

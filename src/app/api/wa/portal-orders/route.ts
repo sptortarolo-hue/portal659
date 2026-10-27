@@ -27,11 +27,15 @@ export async function GET(request: Request) {
     customer_name: string;
     store_name: string;
     store_slug: string | null;
+    store_id: string;
     total: number;
+    method: string | null;
+    payment_method: string | null;
+    items: any;
     created_at: string;
   }>(
-    `SELECT o.id, o.pickup_number, o.status, o.track_token, o.customer_name, o.total, o.created_at,
-            v.store_name, v.slug AS store_slug
+    `SELECT o.id, o.pickup_number, o.status, o.track_token, o.customer_name, o.total, o.method, o.payment_method, o.items, o.created_at,
+            v.id AS store_id, v.store_name, v.slug AS store_slug
      FROM orders o
      JOIN vendors v ON v.id = o.vendor_id
      WHERE regexp_replace(coalesce(o.customer_phone, ''), '[^0-9]', '', 'g') LIKE '%' || $1
@@ -56,7 +60,11 @@ export async function GET(request: Request) {
       status: o.status,
       storeName: o.store_name,
       storeSlug: o.store_slug,
+      storeId: o.store_id,
       total: Number(o.total),
+      method: o.method || "pickup",
+      paymentMethod: o.payment_method || "whatsapp",
+      items: Array.isArray(o.items) ? o.items : [],
       trackUrl: o.track_token ? `${siteUrl}/seguimiento/${o.track_token}` : null,
       createdAt: o.created_at,
     })),

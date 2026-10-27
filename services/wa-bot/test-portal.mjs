@@ -54,7 +54,7 @@ globalThis.fetch = async (url, opts) => {
   }
   if (u.includes("/api/wa/handoff")) { handoffNotified = true; return { ok: true, json: async () => ({ ok: true }) }; }
   if (u.includes("/api/wa/order")) return { ok: true, json: async () => ({ ok: true, orderId: "ord-portal-1", total: 2400, trackToken: "tok-portal-1", pickupNumber: 7 }) };
-  if (u.includes("/api/wa/portal-orders")) return { ok: true, json: async () => ({ orders: [{ id: "ord-portal-1", pickupNumber: 7, status: "preparing", storeName: "Che Sancho", storeSlug: "che-sancho", total: 2400, trackUrl: "https://www.portal659.com.ar/seguimiento/tok-portal-1", createdAt: new Date().toISOString() }] }) };
+  if (u.includes("/api/wa/portal-orders")) return { ok: true, json: async () => ({ orders: [{ id: "ord-portal-1", pickupNumber: 7, status: "preparing", storeName: "Che Sancho", storeSlug: "che-sancho", storeId: "store1", total: 2400, method: "pickup", paymentMethod: "whatsapp", items: [{ product_id: "p1", name: "Empanada de carne", price: 1200, qty: 2, modifiers: [] }], trackUrl: "https://www.portal659.com.ar/seguimiento/tok-portal-1", createdAt: new Date().toISOString() }] }) };
   return realFetch(url, opts);
 };
 
@@ -125,7 +125,21 @@ async function main() {
   if (!st.includes("Che Sancho") || !st.includes("En preparación") || !st.includes("seguimiento/tok-portal-1")) { console.log("!!! no respondió el estado del pedido"); ok = false; }
   else { console.log(">>> OK: consulta de estado → tienda + estado + link de seguimiento"); }
 
-  // 8. Aislamiento: el portal NO usa el concierge de negocios (handleConcierge).
+  // 8. Re-pedido ("lo mismo que la última vez")
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "cancelar" });
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "repetir pedido" });
+  show("re-pedido (portal)", r);
+  const rp = (r.replies || []).join(" ");
+  if (!rp.includes("Empanada de carne") || !rp.includes("¿Confirmás") || !rp.includes("Che Sancho")) { console.log("!!! re-pedido no armó el carrito"); ok = false; }
+  else { console.log(">>> OK: re-pedido → carrito armado + confirmación"); }
+  // Confirmar → crea el pedido
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "sí" });
+  show("confirmar re-pedido (portal)", r);
+  const rpc = (r.replies || []).join(" ");
+  if (!rpc.includes("Pedido confirmado") && !rpc.includes("confirmado")) { console.log("!!! re-pedido no confirmó"); ok = false; }
+  else { console.log(">>> OK: re-pedido confirmado → pedido creado"); }
+
+  // 9. Aislamiento: el portal NO usa el concierge de negocios (handleConcierge).
   //    Verificamos que el saludo es el del portal, no el de un comercio.
   r = await handleInbound({ vendor: portalVendor, waId: wa, body: "cancelar" });
   r = await handleInbound({ vendor: portalVendor, waId: wa, body: "hola" });

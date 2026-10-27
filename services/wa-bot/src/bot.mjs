@@ -1398,6 +1398,67 @@ async function handlePortalInbound({ vendor, waId, body, waPhone }) {
       }
     }
 
+    // — Re-pedido ("lo mismo que la última vez", "repetir pedido", "pedime lo
+    //   de siempre"). Arma el carrito con los ítems del último pedido del
+    //   teléfono y pide confirmación antes de crear el nuevo pedido. —
+    const RE_REORDER = /(?:repetir|repetime|repetirme|lo mismo|de nuevo|otra vez|el mismo pedido|pedime lo de siempre|repetir pedido|repetir el pedido|repetirme el pedido)/i;
+    if (RE_REORDER.test(text) && !/^(hola|buenas|buenos|chau|adios|gracias|ok|si|no|cancelar|ayuda|menu|menú|comercios)$/i.test(text.trim())) {
+      const rawPhone = state.customerPhone || waId;
+      const phone = String(rawPhone).startsWith("lid:") ? waId : rawPhone;
+      try {
+        const res = await fetch(`${config.appUrl}/api/wa/portal-orders?phone=${encodeURIComponent(String(phone))}`, {
+          headers: { Authorization: `Bearer ${config.waBotSecret}` },
+          signal: AbortSignal.timeout(10_000),
+        });
+        const data = res.ok ? await res.json().catch(() => null) : null;
+        const orders = data?.orders || [];
+        if (orders.length === 0) {
+          replies.push("No encontré pedidos anteriores de tu número. Mandame tu pedido directo (ej: \"2 empanadas de carne y una coca\") y te lo armo. 🙌");
+          return await persist(state, vendor.id, waId, replies);
+        }
+        const last = orders[0];
+        const items = Array.isArray(last.items) ? last.items : [];
+        // Mapear items del pedido a formato del carrito del bot (offerId, etc.)
+        // Solo ítems con product_id válido (los manuales no se pueden re-pedir).
+        const cartItems = items
+          .filter((it) => it && (it.product_id || it.offerId))
+          .map((it) => ({
+            offerId: it.product_id || it.offerId,
+            variantId: it.variant_id || it.variantId || null,
+            name: it.name,
+            qty: Math.max(0.001, Number(it.qty) || 1),
+            modifiers: Array.isArray(it.modifiers) ? it.modifiers : [],
+            price: Number(it.price) || 0,
+          }));
+        if (cartItems.length === 0) {
+          replies.push(`Tu último pedido a *${last.storeName}* no tiene productos re-pedibles. Mandame tu pedido directo y te lo armo. 🙌`);
+          return await persist(state, vendor.id, waId, replies);
+        }
+        // Armar el estado como si el cliente hubiera pedido esos ítems, en
+        // confirmación. El comercio elegido es el de ese pedido (store_id
+        // viene del endpoint portal-orders).
+        state.currentVendorId = last.storeId;
+        state.currentVendorName = last.storeName;
+        state.currentVendorSlug = last.storeSlug || null;
+        state.items = cartItems;
+        state.method = last.method || "pickup";
+        state.payment = last.paymentMethod || "whatsapp";
+        state.customerName = last.customerName || state.customerName;
+        state.portalVendorList = [];
+        state.step = "confirm";
+        // Resumen
+        const summary = cartItems.map((i) => `• ${i.name} ×${i.qty}`).join("\n");
+        replies.push(`Tu último pedido a *${last.storeName}*:`);
+        replies.push(summary);
+        replies.push(`Total estimado: $${last.total.toLocaleString("es-AR")}`);
+        replies.push("¿Confirmás el mismo pedido? Respondé *sí* para confirmar o *no* para cancelar.");
+        return await persist(state, vendor.id, waId, replies);
+      } catch (e) {
+        replies.push("No pude armar el re-pedido ahora. Probá de nuevo en un momento, o mandame tu pedido directo. 🙏");
+        return await persist(state, vendor.id, waId, replies);
+      }
+    }
+
     // El bot central SIEMPRE toma pedidos (es su propósito): no pasa por el
     // gate global BOT_TAKE_ORDERS — ese gate gobierna solo a los comercios.
 

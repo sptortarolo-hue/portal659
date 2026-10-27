@@ -70,7 +70,7 @@ function GroupForm({
   const [tiers, setTiers] = useState<TierRow[]>(
     initial?.tiers?.length
       ? initial.tiers.map((t, i) => ({ id: `t${i}`, min_qty: Number(t.min_qty), kind: t.kind, value: Number(t.value) }))
-      : [{ id: "t0", min_qty: 12, kind: "fixed_total", value: 0 }]
+      : [{ id: "t0", min_qty: 2, kind: "fixed_total", value: 0 }]
   );
   const [combinePromo, setCombinePromo] = useState(!!initial?.combine_promo);
   const [combineCash, setCombineCash] = useState(!!initial?.combine_cash);
@@ -338,7 +338,7 @@ function GroupForm({
                 onClick={() =>
                   setTiers((prev) => [
                     ...prev,
-                    { id: `t${Date.now()}`, min_qty: 6, kind: "fixed_total", value: 0 },
+                    { id: `t${Date.now()}`, min_qty: 2, kind: "fixed_total", value: 0 },
                   ])
                 }
               >

@@ -192,7 +192,7 @@ export async function handleInbound({ vendor, waId, body, waPhone }) {
     }
 
     // Handoff explícito (disponible incluso durante la pausa).
-    if (RE_HUMAN.test(text)) {
+    if (RE_HUMAN.test(text) || RE_AYUDA.test(text)) {
       return await handoffHuman(vendor, waId, text, state);
     }
 
@@ -1350,7 +1350,7 @@ async function handlePortalInbound({ vendor, waId, body, waPhone }) {
     state.history.push({ role: "user", text: text.slice(0, 200) });
     if (state.history.length > 16) state.history = state.history.slice(-16);
 
-    if (RE_HUMAN.test(text)) {
+    if (RE_HUMAN.test(text) || RE_AYUDA.test(text)) {
       return await handoffHuman(vendor, waId, text, state);
     }
 
@@ -1359,12 +1359,13 @@ async function handlePortalInbound({ vendor, waId, body, waPhone }) {
 
     // En flujo de pedido con un comercio elegido: reusar el flow normal.
     if (state.currentVendorId && state.step !== "idle") {
-      const chosenVendor = { id: state.currentVendorId, store_name: state.currentVendorName || "Comercio", enabled: true };
+      const chosenVendor = { id: state.currentVendorId, store_name: state.currentVendorName || "Comercio", slug: state.currentVendorSlug || null, enabled: true };
       await handleStep({ vendor: chosenVendor, text, state, replies, waId });
       // Si el pedido se confirmó y se limpió, ofrecer otro comercio.
       if (state._cleared) {
         state.currentVendorId = null;
         state.currentVendorName = null;
+        state.currentVendorSlug = null;
         state.items = [];
         state.step = "idle";
         state._cleared = false;
@@ -1379,12 +1380,13 @@ async function handlePortalInbound({ vendor, waId, body, waPhone }) {
       if (/^(otro|cambiar|volver|comercios|menu|menú)$/i.test(text.trim())) {
         state.currentVendorId = null;
         state.currentVendorName = null;
+        state.currentVendorSlug = null;
         state.items = [];
         state.step = "idle";
         state.portalVendorList = [];
         // cae al bloque de portal idle abajo
       } else {
-        const chosenVendor = { id: state.currentVendorId, store_name: state.currentVendorName || "Comercio", enabled: true };
+        const chosenVendor = { id: state.currentVendorId, store_name: state.currentVendorName || "Comercio", slug: state.currentVendorSlug || null, enabled: true };
         await handleIdle({ vendor: chosenVendor, text, state, replies, waId });
         return await persist(state, vendor.id, waId, replies);
       }
@@ -1399,13 +1401,15 @@ async function handlePortalInbound({ vendor, waId, body, waPhone }) {
         const chosen = state.portalVendorList[idx];
         state.currentVendorId = chosen.id;
         state.currentVendorName = chosen.store_name;
+        state.currentVendorSlug = chosen.slug || null;
         state.portalVendorList = [];
         state.items = [];
         state.step = "idle";
         const products = await getMenu(chosen.id);
         replies.push(`Perfecto, estás pidiendo de *${chosen.store_name}*. 📋 Menú:`);
         replies.push(products.slice(0, 20).map((p) => `• ${p.name} — $${p.price}`).join("\n") || "Sin productos disponibles.");
-        replies.push("Mandame tu pedido (ej: \"2 empanadas de carne y una coca\").");
+        const link = chosen.slug ? `\nMirá el menú con fotos: ${config.publicUrl}/tienda/${chosen.slug}` : "";
+        replies.push(`Mandame tu pedido (ej: "2 empanadas de carne y una coca").${link}`);
         return await persist(state, vendor.id, waId, replies);
       }
     }
@@ -1443,13 +1447,15 @@ async function handlePortalInbound({ vendor, waId, body, waPhone }) {
       if (nameHit) {
         state.currentVendorId = nameHit.id;
         state.currentVendorName = nameHit.store_name;
+        state.currentVendorSlug = nameHit.slug || null;
         state.portalVendorList = [];
         state.items = [];
         state.step = "idle";
         const products = await getMenu(nameHit.id);
         replies.push(`Perfecto, estás pidiendo de *${nameHit.store_name}*. 📋 Menú:`);
         replies.push(products.slice(0, 20).map((p) => `• ${p.name} — $${p.price}`).join("\n") || "Sin productos disponibles.");
-        replies.push("Mandame tu pedido (ej: \"2 empanadas de carne y una coca\").");
+        const link = nameHit.slug ? `\nMirá el menú con fotos: ${config.publicUrl}/tienda/${nameHit.slug}` : "";
+        replies.push(`Mandame tu pedido (ej: "2 empanadas de carne y una coca").${link}`);
         return await persist(state, vendor.id, waId, replies);
       }
     }
@@ -1479,7 +1485,7 @@ async function handlePortalInbound({ vendor, waId, body, waPhone }) {
         byVendor.get(m.vendor.id).products.push(m.product);
       }
       const list = Array.from(byVendor.values());
-      state.portalVendorList = list.map((x) => ({ id: x.vendor.id, store_name: x.vendor.store_name }));
+      state.portalVendorList = list.map((x) => ({ id: x.vendor.id, store_name: x.vendor.store_name, slug: x.vendor.slug || null }));
       const lines = [];
       list.forEach((x, i) => {
         const prods = x.products.slice(0, 5).map((p) => `${p.name} $${p.price}`).join(", ");
@@ -1504,7 +1510,7 @@ async function handlePortalInbound({ vendor, waId, body, waPhone }) {
         // nombre o buscando un producto.
         const CAP = 8;
         const shown = vendorsWithProducts.slice(0, CAP);
-        state.portalVendorList = shown.map((v) => ({ id: v.id, store_name: v.store_name }));
+        state.portalVendorList = shown.map((v) => ({ id: v.id, store_name: v.store_name, slug: v.slug || null }));
         const lines = shown.map((v, i) => `${i + 1}) *${v.store_name}* (${(v.products || []).length} productos)`);
         if (!state.welcomed) {
           replies.push("¡Hola! 👋 Soy el asistente de *Portal 659*. Estos son los comercios de tu zona:");

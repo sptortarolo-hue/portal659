@@ -25,6 +25,54 @@ export async function getMenu(vendorId) {
   }
 }
 
+// ———————————————————————————————————————————————————————————————————————————
+// Menú agregado del PORTAL (todas las tiendas visibles). Lo consume el bot del
+// portal (is_portal). Cacheado bajo la key "__portal__".
+// ———————————————————————————————————————————————————————————————————————————
+const PORTAL_MENU_KEY = "__portal__";
+
+export async function getPortalMenu() {
+  const hit = cache.get(PORTAL_MENU_KEY);
+  if (hit && Date.now() - hit.at < 60 * 1000) return hit.products;
+
+  try {
+    const res = await fetch(`${config.appUrl}/api/wa/portal-menu`, {
+      headers: { Authorization: `Bearer ${config.waBotSecret}` },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!res.ok) {
+      console.error(`[bot] portal-menu error ${res.status}`);
+      return hit?.products || [];
+    }
+    const data = await res.json();
+    const stores = data.vendors || data.stores || [];
+    // Aplanar: cada producto ya trae store_id/store_name/store_slug.
+    const products = [];
+    for (const s of stores) {
+      for (const p of s.products || []) {
+        products.push({ ...p, store_id: p.store_id || s.id, store_name: p.store_name || s.store_name, store_slug: p.store_slug || s.slug, store_open: s.store_open, store_open_text: s.open_text });
+      }
+    }
+    cache.set(PORTAL_MENU_KEY, { products, at: Date.now(), stores });
+    return products;
+  } catch (e) {
+    console.error(`[bot] portal-menu fetch fail: ${e.message}`);
+    return hit?.products || [];
+  }
+}
+
+/** Versión sync del menú del portal (solo cache). */
+export function getPortalMenuSync() {
+  const hit = cache.get(PORTAL_MENU_KEY);
+  return hit?.products || [];
+}
+
+/** Tiendas del menú del portal (solo cache). */
+export function getPortalStoresSync() {
+  const hit = cache.get(PORTAL_MENU_KEY);
+  return hit?.stores || [];
+}
+
 /** Versión sync que lee SOLO el cache (poblado por getMenu en la conversación).
  *  Para el total estimado del resumen: si no hay cache, devuelve [] (sin total). */
 export function getMenuSync(vendorId) {

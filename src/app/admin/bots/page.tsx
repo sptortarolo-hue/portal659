@@ -293,6 +293,7 @@ export default function AdminBotsPage() {
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-medium text-sm">{b.store_name}</span>
                       <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium border ${meta.className}`}>{meta.label}</span>
+                      {b.slug === "portal659-bot" && <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold bg-violet-100 text-violet-700 border border-violet-200">PORTAL</span>}
                       {!b.enabled && <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold bg-red-100 text-red-700">APAGADO</span>}
                       {b.cooling && (
                         <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold bg-amber-100 text-amber-800" title="Enfriamiento anti-ban: sin proactivos y topes a la mitad">

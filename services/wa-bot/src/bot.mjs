@@ -570,6 +570,7 @@ async function handleStep({ vendor, text, state, replies, waId }) {
         if (order.trackToken) {
           replies.push(`📦 Seguí tu pedido acá: ${trackUrl(order.trackToken)}`);
         }
+        replies.push("Mandame el comprobante (foto o PDF) por acá. Después de verificarlo, te confirmo. 🙌");
       } else {
         replies.push("✅ ¡Pedido confirmado! Te avisamos por acá cuando esté listo.");
         if (order.trackToken) {
@@ -577,6 +578,8 @@ async function handleStep({ vendor, text, state, replies, waId }) {
         }
         state._cleared = true;
         await clearState(vendor.id, waId);
+        // El canal queda abierto: el cliente puede pedir de otra tienda.
+        replies.push("¿Querés pedir de otra tienda? Mandame el nombre del producto o escribí *comercios*. 🛒");
       }
       return;
     }
@@ -1954,6 +1957,7 @@ export async function handleInboundMedia({ vendor, waId, mime, name, buffer, waP
         data.trackToken
           ? `✅ Comprobante recibido. El comercio lo verifica y comienza a preparar tu pedido.\n\n📦 Seguí tu pedido acá: ${trackUrl(data.trackToken)}`
           : "✅ Comprobante recibido. El comercio lo verifica y te avisa enseguida. 👍",
+        "¿Querés pedir de otra tienda? Mandame el nombre del producto o escribí *comercios*. 🛒",
       ],
     };
   } catch (e) {

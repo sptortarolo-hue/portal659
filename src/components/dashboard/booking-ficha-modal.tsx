@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -225,7 +225,7 @@ export function BookingFichaModal({
             <div className="rounded-lg border border-border bg-muted p-3 space-y-2 text-xs mb-3">
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  Datos de la clienta
+                  Datos del cliente
                 </span>
                 {!editing ? (
                   <Button
@@ -304,7 +304,7 @@ export function BookingFichaModal({
                   )}
                   {!customer && (
                     <p className="text-xs text-muted-foreground italic pt-1">
-                      Aún no hay ficha de clienta. Tocá ✏️ Editar para cargar los datos.
+                      Aún no hay ficha del cliente. Tocá ✏️ Editar para cargar los datos.
                     </p>
                   )}
                 </>
@@ -312,7 +312,7 @@ export function BookingFichaModal({
                 <div className="space-y-2 pt-1">
                   <div className="space-y-1">
                     <Label className="text-[11px]">Nombre</Label>
-                    <Input className="h-8 text-xs" value={fName} onChange={(e) => setFName(e.target.value)} placeholder="Nombre de la clienta" />
+                    <Input className="h-8 text-xs" value={fName} onChange={(e) => setFName(e.target.value)} placeholder="Nombre del cliente" />
                   </div>
                   <div className="space-y-1">
                     <Label className="text-[11px]">Dirección</Label>
@@ -372,7 +372,7 @@ export function BookingFichaModal({
               className="h-9 flex-1"
               onClick={() => { onNavigate("clientes"); onClose(); }}
             >
-              ✏️ Editar en Clientes
+              Ver datos
             </Button>
           )}
           <Button size="sm" className="h-9 flex-1" onClick={onClose}>

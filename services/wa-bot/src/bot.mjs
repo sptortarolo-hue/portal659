@@ -611,6 +611,19 @@ async function handleStep({ vendor, text, state, replies, waId }) {
         }
         state._cleared = true;
         await clearState(vendor.id, waId);
+        // Upselling: sugerir productos complementarios de la misma tienda.
+        try {
+          const products = await getMenu(vendor.id);
+          const orderedNames = (state.items || []).map((i) => String(i.name || "").toLowerCase());
+          const hasDrink = orderedNames.some((n) => /coca|sprite|gaseosa|agua|jugo|cerveza|vino|bebida/.test(n));
+          const hasFood = orderedNames.some((n) => /empanada|pizza|milanesa|hamburguesa|sandwich|tarta|pasta/.test(n));
+          if (hasFood && !hasDrink && products.length > 0) {
+            const drinks = products.filter((p) => /bebida|gaseosa|coca|sprite|agua|jugo|cerveza/i.test(String(p.category || "") + " " + String(p.name || ""))).slice(0, 3);
+            if (drinks.length > 0) {
+              replies.push(`💡 Los que piden ${orderedNames[0]} suelen agregar: ${drinks.map((d) => `${d.name} ($${d.price})`).join(", ")}.`);
+            }
+          }
+        } catch { /* best-effort */ }
         // El canal queda abierto: el cliente puede pedir de otra tienda.
         replies.push("¿Querés pedir de otra tienda? Mandame el nombre del producto o escribí *comercios*. 🛒");
       }
@@ -1709,6 +1722,278 @@ async function handlePortalInbound({ vendor, waId, body, waPhone }) {
       }
       if (targets.length > 5) replies.push(`(y ${targets.length - 5} tienda${targets.length - 5 !== 1 ? "s" : ""} más — escribí el nombre para ver su horario)`);
       return await persist(state, vendor.id, waId, replies);
+    }
+
+    // — Promociones ("¿qué promos hay?", "ofertas", "descuentos") —
+    const RE_PROMO = /(?:promo|promoci[oó]n|promociones|oferta|ofertas|descuento|descuentos|novedad|novedades)/i;
+    if (RE_PROMO.test(text) && !/^(hola|buenas|buenos|chau|adios|gracias|ok|si|no|cancelar|ayuda|menu|menú|comercios)$/i.test(text.trim())) {
+      const portalData = await fetchPortalMenu("");
+      const stores = portalData.vendors || portalData.stores || [];
+      const promoStores = stores.map((s) => {
+        const promos = (s.products || []).filter((p) => p.promo_price != null || p.featured_today === true);
+        return { store: s, promos };
+      }).filter((x) => x.promos.length > 0);
+      if (promoStores.length === 0) {
+        replies.push("No hay promos activas en la zona por ahora. Escribí *comercios* para ver todas las tiendas. 🙌");
+        return await persist(state, vendor.id, waId, replies);
+      }
+      if (!state.welcomed) { replies.unshift("¡Hola! 👋 Soy el asistente de *Portal 659*."); state.welcomed = true; }
+      replies.push("🔥 Promos y destacados de la zona:");
+      for (const { store, promos } of promoStores.slice(0, 6)) {
+        const lines = promos.slice(0, 4).map((p) => {
+          const orig = p.original_price ? ` (antes $${Number(p.original_price).toLocaleString("es-AR")})` : "";
+          return `  • ${p.name} — $${Number(p.price).toLocaleString("es-AR")}${orig}${p.featured_today ? " ⭐" : ""}`;
+        });
+        replies.push(`*${store.store_name}*:\n${lines.join("\\n")}`);
+      }
+      replies.push("¿Querés pedir de alguna? Escribí el nombre o el número.");
+      return await persist(state, vendor.id, waId, replies);
+    }
+
+    // — Ubicación de tienda ("¿dónde queda X?", "dirección", "ubicación") —
+    const RE_LOCATION = /(?:d[oó]nde (?:queda|est[aá]|es|fica)|direcci[oó]n|ubicaci[oó]n|c[oó]mo (?:llego|llegar)|mapa)/i;
+    if (RE_LOCATION.test(text) && !/^(hola|buenas|buenos|chau|adios|gracias|ok|si|no|cancelar|ayuda|menu|menú|comercios)$/i.test(text.trim())) {
+      const portalData = await fetchPortalMenu("");
+      const stores = portalData.vendors || portalData.stores || [];
+      const tn = String(text || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      const matched = stores.filter((s) => {
+        const sn = String(s.store_name || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        return sn && (tn.includes(sn) || sn.split(" ").some((w) => w.length >= 3 && tn.includes(w)));
+      });
+      const targets = matched.length > 0 ? matched : stores;
+      if (targets.length === 0) {
+        replies.push("No encontré tiendas en la zona. Escribí *comercios* para ver el listado. 🙌");
+        return await persist(state, vendor.id, waId, replies);
+      }
+      for (const s of targets.slice(0, 4)) {
+        const lines = [`📍 *${s.store_name}*`];
+        if (s.address) lines.push(`  ${s.address}`);
+        if (s.neighborhood) lines.push(`  Barrio: ${s.neighborhood}`);
+        lines.push(`  🗺️ https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(s.store_name + " " + (s.address || s.neighborhood || ""))}`);
+        replies.push(lines.join("\n"));
+      }
+      return await persist(state, vendor.id, waId, replies);
+    }
+
+    // — Métodos de pago ("¿aceptan tarjeta?", "¿cómo pago?") —
+    const RE_PAYMENT = /(?:aceptan|acepta|pago|pagar|pagás|pagas|tarjeta|efectivo|transferencia|método|forma de pago|medio de pago)/i;
+    if (RE_PAYMENT.test(text) && !/^(hola|buenas|buenos|chau|adios|gracias|ok|si|no|cancelar|ayuda|menu|menú|comercios)$/i.test(text.trim())) {
+      const portalData = await fetchPortalMenu("");
+      const stores = portalData.vendors || portalData.stores || [];
+      const tn = String(text || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      const matched = stores.filter((s) => {
+        const sn = String(s.store_name || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        return sn && (tn.includes(sn) || sn.split(" ").some((w) => w.length >= 3 && tn.includes(w)));
+      });
+      const targets = matched.length > 0 ? matched : stores;
+      if (targets.length === 0) {
+        replies.push("No encontré tiendas en la zona. Escribí *comercios* para ver el listado. 🙌");
+        return await persist(state, vendor.id, waId, replies);
+      }
+      for (const s of targets.slice(0, 4)) {
+        const methods = String(s.payment_methods || "").split(",").map((m) => m.trim()).filter(Boolean);
+        const methodsText = methods.length > 0 ? methods.join(", ") : "Consultá directamente con el comercio";
+        const cashDiscount = s.cash_discount_pct ? ` (descuento ${s.cash_discount_pct}% en efectivo)` : "";
+        replies.push(`💳 *${s.store_name}*: ${methodsText}${cashDiscount}`);
+      }
+      return await persist(state, vendor.id, waId, replies);
+    }
+
+    // — Historial de pedidos ("mis pedidos", "qué pedí", "historial") —
+    const RE_HISTORY = /(?:mis pedidos|qué ped[ií]|historial|últimos pedidos|pedidos anteriores|mis últimos)/i;
+    if (RE_HISTORY.test(text) && !/^(hola|buenas|buenos|chau|adios|gracias|ok|si|no|cancelar|ayuda|menu|menú|comercios)$/i.test(text.trim())) {
+      const rawPhone = state.customerPhone || waId;
+      const phone = String(rawPhone).startsWith("lid:") ? waId : rawPhone;
+      try {
+        const res = await fetch(`${config.appUrl}/api/wa/portal-orders?phone=${encodeURIComponent(String(phone))}`, {
+          headers: { Authorization: `Bearer ${config.waBotSecret}` },
+          signal: AbortSignal.timeout(10_000),
+        });
+        const data = res.ok ? await res.json().catch(() => null) : null;
+        const orders = data?.orders || [];
+        if (orders.length === 0) {
+          replies.push("No encontré pedidos de tu número en las últimas 48h. Si hiciste un pedido, mandame el número o escribí *ayuda*. 🙌");
+          return await persist(state, vendor.id, waId, replies);
+        }
+        const STATUS_LABEL = { new: "Recibido", preparing: "En preparación", ready: "Listo", sent: "En camino", completed: "Completado" };
+        replies.push("📋 Tus últimos pedidos:");
+        for (const o of orders.slice(0, 5)) {
+          const nro = o.pickupNumber ? `Nro. ${o.pickupNumber}` : `#${String(o.id).slice(0, 8)}`;
+          const status = STATUS_LABEL[o.status] || o.status;
+          replies.push(`  • ${o.storeName} — ${nro}: ${status}${o.trackUrl ? ` → ${o.trackUrl}` : ""}`);
+        }
+        return await persist(state, vendor.id, waId, replies);
+      } catch (e) {
+        replies.push("No pude consultar tus pedidos ahora. Probá de nuevo en un momento. 🙏");
+        return await persist(state, vendor.id, waId, replies);
+      }
+    }
+
+    // — Tiendas por categoría/vertical ("¿qué pizzerías hay?", "tiendas de ropa") —
+    const VERTICAL_LABELS = { gastronomia: "Gastronomía", comercio: "Comercio", servicio: "Servicios", moda: "Moda", salud: "Salud", estetica: "Estética" };
+    const RE_VERTICAL = /(?:tiendas? (?:de|del)|comercios? (?:de|del)|qué (?:pizzerías|rotiserías|verdulerías|carnicerías|kioscos|ferreterías|floristerías|librerías|pet shops|veterinarias|farmacias|peluquerías|barberías|estéticas|ropa|indumentaria|zapaterías|bijouterie)|pizzerías|rotiserías|verdulerías|carnicerías|kioscos|ferreterías|floristerías|librerías|pet shops|veterinarias|farmacias|peluquerías|barberías|estéticas|moda|ropa|indumentaria)/i;
+    if (RE_VERTICAL.test(text) && !/^(hola|buenas|buenos|chau|adios|gracias|ok|si|no|cancelar|ayuda|menu|menú|comercios)$/i.test(text.trim())) {
+      const portalData = await fetchPortalMenu("");
+      const stores = portalData.vendors || portalData.stores || [];
+      // Mapear keywords a verticales
+      const keywordToVertical = {
+        pizzería: "gastronomia", pizza: "gastronomia", rotisería: "gastronomia", comida: "gastronomia",
+        verdulería: "comercio", carnicería: "comercio", kiosco: "comercio", ferretería: "comercio",
+        floristería: "comercio", librería: "comercio", "pet shop": "comercio", veterinaria: "comercio",
+        farmacia: "salud", peluquería: "estetica", barbería: "estetica", estética: "estetica",
+        ropa: "moda", indumentaria: "moda", zapatería: "moda", bijouterie: "moda",
+        servicio: "servicio", oficio: "servicio",
+      };
+      const tn = String(text || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      let targetVertical = null;
+      for (const [kw, v] of Object.entries(keywordToVertical)) {
+        if (tn.includes(kw)) { targetVertical = v; break; }
+      }
+      const filtered = targetVertical ? stores.filter((s) => s.vertical === targetVertical) : stores;
+      if (filtered.length === 0) {
+        replies.push(`No encontré tiendas de esa categoría en la zona. Escribí *comercios* para ver todas. 🙌`);
+        return await persist(state, vendor.id, waId, replies);
+      }
+      if (!state.welcomed) { replies.unshift("¡Hola! 👋 Soy el asistente de *Portal 659*."); state.welcomed = true; }
+      const label = targetVertical ? (VERTICAL_LABELS[targetVertical] || targetVertical) : "Todas";
+      replies.push(`Tiendas de ${label} en la zona:`);
+      for (const s of filtered.slice(0, 8)) {
+        replies.push(`  ${s.store_open === true ? "🟢" : "🔴"} *${s.store_name}*${s.neighborhood ? ` — ${s.neighborhood}` : ""}${s.store_open === false && s.next_open_text ? ` (abre ${s.next_open_text})` : ""}`);
+      }
+      if (filtered.length > 8) replies.push(`(y ${filtered.length - 8} más — escribí el nombre para ver su menú)`);
+      replies.push("Mandame el nombre de una tienda o un producto para buscar.");
+      return await persist(state, vendor.id, waId, replies);
+    }
+
+    // — Ayuda sobre el portal ("¿cómo funciona?", "qué es portal 659") —
+    const RE_HELP = /(?:c[oó]mo funciona|qu[eé] es portal|para qu[eé] sirve|c[oó]mo (?:me )?registro|c[oó]mo (?:me )?anoto|c[oó]mo (?:me )?sumo|ayuda sobre|informaci[oó]n sobre portal|qué es esto)/i;
+    if (RE_HELP.test(text) && !/^(hola|buenas|buenos|chau|adios|gracias|ok|si|no|cancelar|ayuda|menu|menú|comercios)$/i.test(text.trim())) {
+      replies.push("Portal 659 es el centro comercial de tu barrio 🏪");
+      replies.push("Acá podés:");
+      replies.push("• Ver tiendas y productos de tu zona");
+      replies.push("• Pedir por WhatsApp o delivery");
+      replies.push("• Consultar horarios, promos y ubicaciones");
+      replies.push("• Seguir tus pedidos en tiempo real");
+      replies.push("");
+      replies.push("Mirá todas las tiendas: https://www.portal659.com.ar/buscar");
+      replies.push("¿Tenés un comercio? Sumalo gratis: https://www.portal659.com.ar/comercios");
+      replies.push("Escribí *comercios* para ver las tiendas o *ayuda* para hablar con una persona. 🙌");
+      return await persist(state, vendor.id, waId, replies);
+    }
+
+    // — Queja/reclamo ("mi pedido llegó mal", "no recibí", "tengo un problema") —
+    const RE_COMPLAINT = /(?:lleg[oó] mal|no (?:recib[ií]|lleg[oó])|problema con (?:mi|el) pedido|reclamo|queja|me (?:cobraron|cobr[oó]) mal|pedido (?:equivocado|incorrecto|incompleto)|falt[oó]|no (?:est[aá]|estaba) (?:bien|completo))/i;
+    if (RE_COMPLAINT.test(text)) {
+      const rawPhone = state.customerPhone || waId;
+      const phone = String(rawPhone).startsWith("lid:") ? waId : rawPhone;
+      // Buscar el último pedido para dar contexto al admin.
+      let lastOrderInfo = "";
+      try {
+        const res = await fetch(`${config.appUrl}/api/wa/portal-orders?phone=${encodeURIComponent(String(phone))}`, {
+          headers: { Authorization: `Bearer ${config.waBotSecret}` },
+          signal: AbortSignal.timeout(10_000),
+        });
+        const data = res.ok ? await res.json().catch(() => null) : null;
+        const orders = data?.orders || [];
+        if (orders.length > 0) {
+          const o = orders[0];
+          lastOrderInfo = ` (último pedido: ${o.storeName} Nro. ${o.pickupNumber || o.id.slice(0, 8)}, ${o.status})`;
+        }
+      } catch { /* best-effort */ }
+      replies.push("Lamento que tengas un problema con tu pedido. 🙏");
+      replies.push(`Te comunico con una persona del equipo de Portal 659 para que te ayude.${lastOrderInfo}`);
+      // Handoff a los admins del portal.
+      await handoffHuman(vendor, waId, text, state);
+      return await persist(state, vendor.id, waId, replies);
+    }
+
+    // — Tiempo de entrega ("¿cuándo llega?", "¿cuánto tarda?") —
+    const RE_DELIVERY_TIME = /(?:cu[aá]ndo (?:llega|entrega|me llega)|cu[aá]nto (?:tarda|demora)|tiempo de (?:entrega|env[ií]o)|eta|demora)/i;
+    if (RE_DELIVERY_TIME.test(text) && !/^(hola|buenas|buenos|chau|adios|gracias|ok|si|no|cancelar|ayuda|menu|menú|comercios)$/i.test(text.trim())) {
+      const rawPhone = state.customerPhone || waId;
+      const phone = String(rawPhone).startsWith("lid:") ? waId : rawPhone;
+      try {
+        const res = await fetch(`${config.appUrl}/api/wa/portal-orders?phone=${encodeURIComponent(String(phone))}`, {
+          headers: { Authorization: `Bearer ${config.waBotSecret}` },
+          signal: AbortSignal.timeout(10_000),
+        });
+        const data = res.ok ? await res.json().catch(() => null) : null;
+        const orders = data?.orders || [];
+        const activeOrder = orders.find((o) => o.status === "sent" || o.status === "preparing" || o.status === "ready");
+        if (activeOrder) {
+          const STATUS_ETA = { preparing: "Está en preparación", ready: "Listo para retirar", sent: "En camino" };
+          replies.push(`${activeOrder.storeName} — ${STATUS_ETA[activeOrder.status] || activeOrder.status}.`);
+          if (activeOrder.trackUrl) replies.push(`📦 Seguilo en tiempo real acá: ${activeOrder.trackUrl}`);
+        } else if (orders.length > 0) {
+          const o = orders[0];
+          const STATUS_LABEL = { new: "Recibido", preparing: "En preparación", ready: "Listo", sent: "En camino", completed: "Completado" };
+          replies.push(`Tu último pedido (${o.storeName}) está: ${STATUS_LABEL[o.status] || o.status}.`);
+          if (o.trackUrl) replies.push(`📦 ${o.trackUrl}`);
+        } else {
+          replies.push("No encontré pedidos activos de tu número. Si hiciste un pedido, mandame el número o escribí *ayuda*. 🙌");
+        }
+        return await persist(state, vendor.id, waId, replies);
+      } catch (e) {
+        replies.push("No pude consultar el estado ahora. Probá de nuevo en un momento. 🙏");
+        return await persist(state, vendor.id, waId, replies);
+      }
+    }
+
+    // — Stock/disponibilidad ("¿tienen stock de X?", "¿hay X?") —
+    const RE_STOCK = /(?:stock|disponible|disponibilidad|hay (?:stock|de)|tienen (?:stock|de))/i;
+    if (RE_STOCK.test(text) && !/^(hola|buenas|buenos|chau|adios|gracias|ok|si|no|cancelar|ayuda|menu|menú|comercios)$/i.test(text.trim())) {
+      const portalData = await fetchPortalMenu("");
+      const stores = portalData.vendors || portalData.stores || [];
+      const tn = String(text || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      // Extraer el nombre del producto buscado (quitar palabras de stock)
+      const searchTerm = tn.replace(/(?:stock|disponible|disponibilidad|hay|tienen|de|del|la|el|los|las|un|una)\b/g, "").trim();
+      const matches = [];
+      for (const s of stores) {
+        for (const p of s.products || []) {
+          const pn = String(p.name || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+          if (searchTerm && pn.includes(searchTerm)) {
+            const stockInfo = p.stock_control ? (p.stock > 0 ? `Stock: ${p.stock}` : "Sin stock") : "Disponible";
+            matches.push({ store: s.store_name, product: p.name, stock: stockInfo, price: p.price });
+          }
+        }
+      }
+      if (matches.length === 0) {
+        replies.push("No encontré ese producto en la zona. Escribí *comercios* para ver todas las tiendas. 🙌");
+        return await persist(state, vendor.id, waId, replies);
+      }
+      if (!state.welcomed) { replies.unshift("¡Hola! 👋 Soy el asistente de *Portal 659*."); state.welcomed = true; }
+      replies.push("Disponibilidad:");
+      for (const m of matches.slice(0, 8)) {
+        replies.push(`  • ${m.product} en *${m.store}* — $${Number(m.price).toLocaleString("es-AR")} (${m.stock})`);
+      }
+      replies.push("¿Querés pedir alguno? Mandame el nombre del producto o el número del comercio.");
+      return await persist(state, vendor.id, waId, replies);
+    }
+
+    // — Cancelación de pedido ("quiero cancelar mi pedido") —
+    const RE_CANCEL_ORDER = /(?:cancelar|cancel[aá]|anular)\s+(?:mi\s+)?pedido/i;
+    if (RE_CANCEL_ORDER.test(text)) {
+      const rawPhone = state.customerPhone || waId;
+      const phone = String(rawPhone).startsWith("lid:") ? waId : rawPhone;
+      try {
+        const res = await fetch(`${config.appUrl}/api/wa/portal-orders?phone=${encodeURIComponent(String(phone))}`, {
+          headers: { Authorization: `Bearer ${config.waBotSecret}` },
+          signal: AbortSignal.timeout(10_000),
+        });
+        const data = res.ok ? await res.json().catch(() => null) : null;
+        const orders = (data?.orders || []).filter((o) => o.status === "new" || o.status === "confirmed" || o.status === "preparing");
+        if (orders.length === 0) {
+          replies.push("No tenés pedidos pendientes para cancelar. Si tenés un problema con un pedido, escribí *ayuda*. 🙌");
+          return await persist(state, vendor.id, waId, replies);
+        }
+        const o = orders[0];
+        replies.push(`Tu pedido ${o.pickupNumber ? `Nro. ${o.pickupNumber}` : ""} de *${o.storeName}* está en estado "${o.status}".`);
+        replies.push("Para cancelarlo, escribí *ayuda* y una persona del equipo te asiste (la cancelación requiere confirmación). 🙌");
+        return await persist(state, vendor.id, waId, replies);
+      } catch (e) {
+        replies.push("No pude consultar tus pedidos ahora. Probá de nuevo en un momento. 🙏");
+        return await persist(state, vendor.id, waId, replies);
+      }
     }
 
     // El bot central SIEMPRE toma pedidos (es su propósito): no pasa por el

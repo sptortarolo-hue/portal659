@@ -27,10 +27,20 @@ export async function getPortalSetting(key: PortalSettingKey): Promise<boolean> 
 }
 
 export async function setPortalSetting(key: PortalSettingKey, value: boolean): Promise<void> {
-  await query(
-    `INSERT INTO portal_settings (key, value, updated_at)
-     VALUES ($1, $2::jsonb, now())
-     ON CONFLICT (key) DO UPDATE SET value = $2::jsonb, updated_at = now()`,
-    [key, JSON.stringify(value)]
-  );
+  try {
+    await query(
+      `INSERT INTO portal_settings (key, value, updated_at)
+       VALUES ($1, $2::jsonb, now())
+       ON CONFLICT (key) DO UPDATE SET value = $2::jsonb, updated_at = now()`,
+      [key, JSON.stringify(value)]
+    );
+  } catch (e: any) {
+    // 42P01 = tabla inexistente (migración pendiente): error claro, no genérico.
+    if (e?.code === "42P01") {
+      throw new Error(
+        "Falta aplicar la migración supabase/self-host/migrate-portal-settings.sql en la base"
+      );
+    }
+    throw e;
+  }
 }

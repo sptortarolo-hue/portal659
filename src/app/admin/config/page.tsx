@@ -30,6 +30,7 @@ export default function AdminConfigPage() {
   // Botón flotante de WhatsApp del portal (on/off global, /api/portal-settings).
   const [waFloat, setWaFloat] = useState<boolean | null>(null);
   const [savingWaFloat, setSavingWaFloat] = useState(false);
+  const [waFloatError, setWaFloatError] = useState("");
 
   async function patchConfig(type: "neighborhood" | "category", id: string, data: Record<string, unknown>) {
     await api("/api/admin/config", {
@@ -153,7 +154,7 @@ export default function AdminConfigPage() {
 
   async function toggleWaFloat(next: boolean) {
     setSavingWaFloat(true);
-    setError("");
+    setWaFloatError("");
     try {
       await api("/api/admin/settings", {
         method: "PATCH",
@@ -162,7 +163,7 @@ export default function AdminConfigPage() {
       });
       setWaFloat(next);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "No se pudo guardar el switch");
+      setWaFloatError(e instanceof Error ? e.message : "No se pudo guardar el switch");
     } finally {
       setSavingWaFloat(false);
     }
@@ -213,7 +214,10 @@ export default function AdminConfigPage() {
             </button>
           )}
         </div>
-        {waFloat === false && (
+        {waFloatError && (
+          <p className="text-xs text-red-600 pt-3">{waFloatError}</p>
+        )}
+        {waFloat === false && !waFloatError && (
           <p className="text-xs text-amber-700 pt-3">El botón está oculto en todo el sitio.</p>
         )}
       </div>

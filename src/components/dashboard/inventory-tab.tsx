@@ -97,9 +97,21 @@ const REASONS: Record<string, string> = {
  * conteos físicos, kardex y reposición sugerida. Montada con
  * `can("inventory")`; sin el flag ni las rutas responden.
  */
-export function InventoryTab({ reloadKey = 0 }: { reloadKey?: number }) {
+export function InventoryTab({
+  reloadKey = 0,
+  highlightPurchase = null,
+}: {
+  reloadKey?: number;
+  /** Compra a resaltar al llegar desde "Ver origen" de un gasto automático. */
+  highlightPurchase?: { id: string; nonce: number } | null;
+}) {
   const [view, setView] = useState<SubView>("compras");
   const [msg, setMsg] = useState("");
+  // Llegada desde "Ver origen" (tab Gastos): asegura mostrar la subvista
+  // Compras, que es donde vive el origen de esos gastos.
+  useEffect(() => {
+    if (highlightPurchase?.nonce) setView("compras");
+  }, [highlightPurchase?.nonce]);
   // Catálogo para pickers (compras) y conteos.
   const [products, setProducts] = useState<{ id: string; name: string; cost_last?: number | null; stock?: number | null }[]>([]);
   const [variants, setVariants] = useState<{ id: string; product_id: string; color: string; talle: string; price: number; stock: number; cost_last?: number | null }[]>([]);
@@ -442,6 +454,8 @@ export function InventoryTab({ reloadKey = 0 }: { reloadKey?: number }) {
           products={products}
           variants={variants}
           allowMerchandise
+          highlightPurchaseId={highlightPurchase?.id ?? null}
+          highlightNonce={highlightPurchase?.nonce ?? 0}
         />
       )}
 

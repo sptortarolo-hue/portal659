@@ -560,6 +560,8 @@ export function PurchasesManager({
   products = [],
   variants = [],
   allowMerchandise = false,
+  highlightPurchaseId = null,
+  highlightNonce = 0,
 }: {
   ingredients: Ingredient[];
   search: string;
@@ -567,6 +569,9 @@ export function PurchasesManager({
   products?: { id: string; name: string; cost_last?: number | null; stock?: number | null }[];
   variants?: { id: string; product_id: string; color: string; talle: string; price: number; stock: number; cost_last?: number | null }[];
   allowMerchandise?: boolean;
+  /** Compra a abrir/resaltar al llegar desde "Ver origen" del tab Gastos. */
+  highlightPurchaseId?: string | null;
+  highlightNonce?: number;
 }) {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [purchases, setPurchases] = useState<PurchaseRow[]>([]);
@@ -577,6 +582,8 @@ export function PurchasesManager({
   const [expanded, setExpanded] = useState<string | null>(null);
   const [detail, setDetail] = useState<PurchaseDetail | null>(null);
   const [msg, setMsg] = useState("");
+  // Fila resaltada puntualmente (llegada desde "Ver origen" en Gastos).
+  const [highlighted, setHighlighted] = useState<string | null>(null);
 
   const loadAll = useCallback(async () => {
     const [s, p] = await Promise.all([
@@ -591,6 +598,26 @@ export function PurchasesManager({
   useEffect(() => {
     loadAll();
   }, [loadAll]);
+
+  // Llegada desde "Ver origen" (tab Gastos): abre la compra que generó el
+  // gasto, la resalta un rato y la trae a la vista. El nonce hace que dos
+  // clics seguidos al mismo origen vuelvan a disparar el resaltado.
+  useEffect(() => {
+    if (!highlightNonce || !highlightPurchaseId) return;
+    openDetail(highlightPurchaseId);
+    setHighlighted(highlightPurchaseId);
+    const t = window.setTimeout(() => {
+      document
+        .getElementById(`purchase-${highlightPurchaseId}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 200);
+    const clear = window.setTimeout(() => setHighlighted(null), 4000);
+    return () => {
+      window.clearTimeout(t);
+      window.clearTimeout(clear);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [highlightNonce, highlightPurchaseId]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -729,7 +756,11 @@ export function PurchasesManager({
             </p>
           )}
           {filtered.map((p) => (
-            <div key={p.id} className="rounded-xl border border-border">
+            <div
+              key={p.id}
+              id={`purchase-${p.id}`}
+              className={`rounded-xl border ${highlighted === p.id ? "border-primary ring-2 ring-primary/30" : "border-border"}`}
+            >
               <button
                 onClick={() => openDetail(p.id)}
                 className="w-full text-left p-2.5 flex items-center gap-2"

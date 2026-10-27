@@ -31,7 +31,7 @@ const SOURCES: { value: string; label: string }[] = [
  * y compras a proveedor). Filtros + totales + salidas (A4/XLSX/CSV).
  */
 export function ExpensesManager() {
-  const weekAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const weekAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const todayStr = new Date().toISOString().slice(0, 10);
   const [from, setFrom] = useState(weekAgo);
   const [to, setTo] = useState(todayStr);
@@ -52,6 +52,21 @@ export function ExpensesManager() {
   const [fPay, setFPay] = useState("efectivo");
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
+
+  // Gastos automáticos no se borran acá: se corrigen en su origen (la compra
+  // o el movimiento de caja que los generó). El evento lo escucha el
+  // dashboard, que salta a la pestaña correspondiente.
+  function goToOrigen(e: Expense) {
+    // Sin vínculo (gasto viejo, cargado antes de linkear la compra): no hay
+    // origen al que saltar. Se avisa en vez de no hacer nada en silencio.
+    if (!e.source_id) {
+      setMsg("Este gasto quedó sin vínculo con su compra, así que no se puede abrir el origen. Borralo a mano desde la base (tabla expenses) o pedile a soporte que lo limpie.");
+      return;
+    }
+    window.dispatchEvent(
+      new CustomEvent("portal:go-origen", { detail: { source: e.source, source_id: e.source_id } })
+    );
+  }
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -281,7 +296,18 @@ export function ExpensesManager() {
                       🗑️
                     </button>
                   ) : (
-                    <span className="text-[10px] text-muted-foreground" title="Automático: se corrige desde su origen">🔗</span>
+                    <button
+                      type="button"
+                      onClick={() => goToOrigen(e)}
+                      title={
+                        e.source === "compra"
+                          ? "Ir a la compra que generó este gasto (se borra desde ahí)"
+                          : "Ir al movimiento de caja que generó este gasto"
+                      }
+                      className="text-primary hover:underline text-[11px] font-medium px-1 whitespace-nowrap"
+                    >
+                      🔗 Ver origen
+                    </button>
                   )}
                 </div>
               </div>
@@ -289,6 +315,12 @@ export function ExpensesManager() {
           </div>
         )}
       </div>
+
+      <p className="text-xs text-muted-foreground">
+        Los gastos con <span className="font-medium">🔗 Ver origen</span> se generan solos desde una compra o un
+        retiro de caja: no se borran acá, se corrigen en su origen (borrar la compra o el movimiento las quita
+        del libro). Solo los <span className="font-medium">Manual</span> se borran desde esta pestaña.
+      </p>
 
       {formOpen && (
         <div className="fixed inset-0 z-[70] bg-black/50 flex items-end sm:items-center justify-center p-4" onClick={() => !saving && setFormOpen(false)}>

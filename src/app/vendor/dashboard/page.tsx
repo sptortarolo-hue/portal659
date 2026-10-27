@@ -466,6 +466,22 @@ function VendorDashboardInner() {
     window.addEventListener("portal:go-tarjetas", handler);
     return () => window.removeEventListener("portal:go-tarjetas", handler);
   }, [handleTabChange]);
+  // Gastos automáticos ("Ver origen" en Gastos) → pestaña del origen: compra
+  // (Inventario→Compras, con la compra resaltada) o movimiento de caja.
+  const [purchaseHighlight, setPurchaseHighlight] = useState<{ id: string; nonce: number } | null>(null);
+  useEffect(() => {
+    const handler = (ev: Event) => {
+      const d = (ev as CustomEvent<{ source?: string; source_id?: string | null }>).detail;
+      if (d?.source === "compra" && d.source_id) {
+        handleTabChange("inventario");
+        setPurchaseHighlight({ id: d.source_id, nonce: Date.now() });
+      } else if (d?.source === "caja") {
+        handleTabChange("caja");
+      }
+    };
+    window.addEventListener("portal:go-origen", handler);
+    return () => window.removeEventListener("portal:go-origen", handler);
+  }, [handleTabChange]);
   // Pedido de cierre desde la pill del header: va a Caja y auto-abre el
   // pre-cierre (el tab monta lazy: el contador llega como prop).
   const [cashCloseReq, setCashCloseReq] = useState(0);
@@ -1953,7 +1969,7 @@ function VendorDashboardInner() {
               ) : isEstetica && tab === "inventario" ? (
                 <TabErrorBoundary tab="inventario">
                   {effectivePlan.can("inventory") ? (
-                    <MemoInventoryTab />
+                    <MemoInventoryTab highlightPurchase={purchaseHighlight} />
                   ) : (
                     <PlanLock
                       title="Inventario y compras"
@@ -2175,7 +2191,7 @@ function VendorDashboardInner() {
               {mountedTabs.has("inventario") && (
                 <div className={tab === "inventario" ? "" : "hidden"}>
                   {effectivePlan.can("inventory") ? (
-                    <MemoInventoryTab />
+                    <MemoInventoryTab highlightPurchase={purchaseHighlight} />
                   ) : (
                     <PlanLock
                       title="Inventario y compras"

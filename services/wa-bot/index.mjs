@@ -3,7 +3,7 @@ import { createServer } from "node:http";
 import { WebSocketServer, WebSocket } from "ws";
 import { config } from "./src/config.mjs";
 import { vendorByToken } from "./src/db.mjs";
-import { handleInbound, handleInboundMedia, startAwaitingReceipt, sweepStaleConversations } from "./src/bot.mjs";
+import { handleInbound, handleInboundMedia, startAwaitingReceipt, sweepStaleConversations, sweepAbandonedCarts } from "./src/bot.mjs";
 import { getState, countByVendor } from "./src/state.mjs";
 import { llmStats } from "./src/nlu.mjs";
 import { addClient, removeClient, getClient, getClientByVendor, sendText, sendTyping, sendPaused, clientCount, forEachClient, clientsList } from "./src/relay.mjs";
@@ -418,6 +418,11 @@ async function attach(ws, token) {
 setInterval(() => {
   sweepStaleConversations().catch((e) => console.error("[sweep] error:", e?.message || e));
 }, 60_000);
+
+// Sweep de carritos abandonados cada 10 min: recordatorio suave al cliente.
+setInterval(() => {
+  sweepAbandonedCarts().catch((e) => console.error("[nudge] error:", e?.message || e));
+}, 10 * 60 * 1000);
 
 // Heartbeat: distingue "relay vivo (aunque en silencio)" de "relay caído".
 // Envía ping cada 20s; gorilla/websocket del relay contesta pong automáticamente.

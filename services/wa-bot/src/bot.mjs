@@ -20,6 +20,7 @@ const DEFAULT_STATE = {
   welcomed: false,    // saludo una sola vez por chat
   handoffCount: 0,
   pausedUntil: 0,
+  nudgeSent: false,   // recordatorio de carrito abandonado (una sola vez)
   orderId: null,
   history: [],        // [{ role: "user"|"bot", text }] — contexto para la IA (cap 8)
   pendingMods: null,  // { offerId, group, options, max } — opciones requeridas pendientes
@@ -2298,6 +2299,53 @@ export async function sweepStaleConversations() {
     state.pausedUntil = Date.now() + HANDOFF_PAUSE_MIN * 60 * 1000;
     await setState(vendorId, waId, state).catch(() => {});
     console.log(`[sweep] ${vendor.store_name} (${waId}) sin respuesta > ${config.handoffTimeoutMin} min — derivado a persona`);
+  });
+}
+
+// Sweep de carritos abandonados (cada 10 min): si el cliente armó un carrito
+// ("flow" o "confirm") y no respondió en 30 min, mandar un recordatorio suave.
+// Solo una vez por conversación (nudgeSent). Anti-ban: respeta rate limits.
+const ABANDONED_CART_TIMEOUT_MS = 30 * 60 * 1000;
+
+export async function sweepAbandonedCarts() {
+  const now = Date.now();
+  await forEachConversation(async (vendorId, waId, state) => {
+    if (!state || !state.step) return;
+    if (state.step !== "flow" && state.step !== "confirm") return;
+    if (state.nudgeSent) return;
+    if (state.pausedUntil && state.pausedUntil > now) return;
+    const client = getClientByVendor(vendorId);
+    if (!client || !client.vendor || client.vendor.enabled === false) return;
+    const vendor = client.vendor;
+    if (!Array.isArray(state.items) || state.items.length === 0) return;
+    const touched = Number(state.touchedAt) || 0;
+    if (!touched || now - touched < ABANDONED_CART_TIMEOUT_MS) return;
+
+    try {
+      const { hour, day } = await countOutbound(vendorId, 1).catch(() => ({ hour: 0, day: 0 }));
+      const capH = isCooling(vendorId) ? limitsCap(config.maxMsgPerHour) : config.maxMsgPerHour;
+      const capD = isCooling(vendorId) ? limitsCap(config.maxMsgPerDay) : config.maxMsgPerDay;
+      if (hour > capH || day > capD) {
+        console.log(`[nudge] ${vendor.store_name} (${waId}) tope de salida alcanzado`);
+        return;
+      }
+    } catch { /* sin redis: se sigue */ }
+
+    const cartSummary = state.items.map((i) => `${i.qty || 1}x ${i.name}`).join(', ');
+    const nudgeMsg = `¿Te quedó algo en el carrito? Tenés: ${cartSummary}.\n\nMandame tu pedido cuando quieras. Si cambiaste de idea, escribí *cancelar*. 👋`;
+    try {
+      await sleep(humanDelay(nudgeMsg.length));
+      sendTyping(client, waId);
+      const sent = sendText(client, waId, nudgeMsg);
+      sendPaused(client, waId);
+      if (sent) {
+        state.nudgeSent = true;
+        await setState(vendorId, waId, state).catch(() => {});
+        console.log(`[nudge] ${vendor.store_name} (${waId}) carrito abandonado -> recordatorio enviado`);
+      }
+    } catch (e) {
+      console.error(`[nudge] error enviando a ${waId}: ${e?.message}`);
+    }
   });
 }
 

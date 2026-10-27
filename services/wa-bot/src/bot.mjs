@@ -976,7 +976,13 @@ function advanceAndAsk(state, vendor, replies) {
 
 function missingFields(state, vendor) {
   const out = [];
-  if (!state.method) out.push("method");
+  // Si el comercio solo acepta un método de entrega, no preguntar.
+  const deliveryOpts = vendor?.delivery_options || "ambos";
+  if (!state.method) {
+    if (deliveryOpts === "retiro") state.method = "pickup";
+    else if (deliveryOpts === "domicilio") state.method = "delivery";
+    else out.push("method");
+  }
   if (state.method === "delivery" && !state.customerAddress) out.push("address");
   if (!state.customerName) out.push("name");
   if (!state.payment && acceptsTransfer(vendor)) out.push("payment");
@@ -1652,6 +1658,11 @@ async function handlePortalInbound({ vendor, waId, body, waPhone }) {
         state.currentVendorId = last.storeId;
         state.currentVendorName = last.storeName;
         state.currentVendorSlug = last.storeSlug || null;
+        state.currentVendorTransfer = { alias: last.transferAlias || null, cbu: last.transferCbu || null, holder: last.transferHolder || null };
+        state.currentVendorDelivery = last.deliveryOptions || "ambos";
+        if (state.currentVendorDelivery === "retiro") state.method = "pickup";
+        else if (state.currentVendorDelivery === "domicilio") state.method = "delivery";
+        else state.method = last.method || "pickup";
         state.items = cartItems;
         state.method = last.method || "pickup";
         state.payment = last.paymentMethod || "whatsapp";
@@ -1705,7 +1716,7 @@ async function handlePortalInbound({ vendor, waId, body, waPhone }) {
 
     // En flujo de pedido con un comercio elegido: reusar el flow normal.
     if (state.currentVendorId && state.step !== "idle") {
-      const chosenVendor = { id: state.currentVendorId, store_name: state.currentVendorName || "Comercio", slug: state.currentVendorSlug || null, enabled: true };
+      const chosenVendor = { id: state.currentVendorId, store_name: state.currentVendorName || "Comercio", slug: state.currentVendorSlug || null, enabled: true, transfer_alias: state.currentVendorTransfer?.alias || null, transfer_cbu: state.currentVendorTransfer?.cbu || null, transfer_holder: state.currentVendorTransfer?.holder || null, delivery_options: state.currentVendorDelivery || "ambos" };
       await handleStep({ vendor: chosenVendor, text, state, replies, waId });
       // Si el pedido se confirmó y se limpió, ofrecer otro comercio.
       if (state._cleared) {
@@ -1732,7 +1743,7 @@ async function handlePortalInbound({ vendor, waId, body, waPhone }) {
         state.portalVendorList = [];
         // cae al bloque de portal idle abajo
       } else {
-        const chosenVendor = { id: state.currentVendorId, store_name: state.currentVendorName || "Comercio", slug: state.currentVendorSlug || null, enabled: true };
+        const chosenVendor = { id: state.currentVendorId, store_name: state.currentVendorName || "Comercio", slug: state.currentVendorSlug || null, enabled: true, transfer_alias: state.currentVendorTransfer?.alias || null, transfer_cbu: state.currentVendorTransfer?.cbu || null, transfer_holder: state.currentVendorTransfer?.holder || null, delivery_options: state.currentVendorDelivery || "ambos" };
         await handleIdle({ vendor: chosenVendor, text, state, replies, waId });
         return await persist(state, vendor.id, waId, replies);
       }
@@ -1745,9 +1756,22 @@ async function handlePortalInbound({ vendor, waId, body, waPhone }) {
       const idx = Number(numMatch[1]) - 1;
       if (idx >= 0 && idx < state.portalVendorList.length) {
         const chosen = state.portalVendorList[idx];
+        // Buscar los datos completos de la tienda (transfer, delivery, open) en el menú del portal.
+        const portalData = await fetchPortalMenu("");
+        const storeInfo = (portalData.vendors || portalData.stores || []).find((s) => s.id === chosen.id) || chosen;
         state.currentVendorId = chosen.id;
         state.currentVendorName = chosen.store_name;
-        state.currentVendorSlug = chosen.slug || null;
+        state.currentVendorSlug = chosen.slug || storeInfo.slug || null;
+        state.currentVendorTransfer = { alias: storeInfo.transfer_alias || null, cbu: storeInfo.transfer_cbu || null, holder: storeInfo.transfer_holder || null };
+        state.currentVendorDelivery = storeInfo.delivery_options || "ambos";
+        // Aviso si está cerrado (pero permitimos pedir igual).
+        if (storeInfo.store_open === false) {
+          replies.push(`⚠️ *${chosen.store_name}* está cerrado ahora. ${storeInfo.next_open_text || ""} Podés ver el menú y hacer el pedido para cuando abra.`);
+        }
+        // Auto-setear método si la tienda solo acepta uno.
+        if (state.currentVendorDelivery === "retiro") state.method = "pickup";
+        else if (state.currentVendorDelivery === "domicilio") state.method = "delivery";
+        else state.method = null;
         state.portalVendorList = [];
         state.items = [];
         state.step = "idle";
@@ -1791,9 +1815,19 @@ async function handlePortalInbound({ vendor, waId, body, waPhone }) {
         return vn === tn || tn.includes(vn) || vTokens.every((vt) => tTokens.some((tt) => tt === vt || tt.includes(vt) || vt.includes(tt)));
       });
       if (nameHit) {
+        const portalData2 = await fetchPortalMenu("");
+        const storeInfo2 = (portalData2.vendors || portalData2.stores || []).find((s) => s.id === nameHit.id) || nameHit;
         state.currentVendorId = nameHit.id;
         state.currentVendorName = nameHit.store_name;
-        state.currentVendorSlug = nameHit.slug || null;
+        state.currentVendorSlug = nameHit.slug || storeInfo2.slug || null;
+        state.currentVendorTransfer = { alias: storeInfo2.transfer_alias || null, cbu: storeInfo2.transfer_cbu || null, holder: storeInfo2.transfer_holder || null };
+        state.currentVendorDelivery = storeInfo2.delivery_options || "ambos";
+        if (storeInfo2.store_open === false) {
+          replies.push(`⚠️ *${nameHit.store_name}* está cerrado ahora. ${storeInfo2.next_open_text || ""} Podés ver el menú y hacer el pedido para cuando abra.`);
+        }
+        if (state.currentVendorDelivery === "retiro") state.method = "pickup";
+        else if (state.currentVendorDelivery === "domicilio") state.method = "delivery";
+        else state.method = null;
         state.portalVendorList = [];
         state.items = [];
         state.step = "idle";

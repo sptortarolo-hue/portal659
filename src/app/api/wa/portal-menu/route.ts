@@ -13,7 +13,8 @@ export async function GET(request: Request) {
   }
 
   const stores = await queryMany<any>(
-    `SELECT id, store_name, slug, vertical, hours, open_override, address, neighborhood
+    `SELECT id, store_name, slug, vertical, hours, open_override, address, neighborhood,
+            transfer_alias, transfer_cbu, transfer_holder, delivery_options, cash_discount_pct
      FROM vendors
      WHERE COALESCE(visible, true) = true
        AND slug NOT IN ('admin-portal659','portal659-bot','portal-central')
@@ -122,6 +123,11 @@ export async function GET(request: Request) {
       open_text: openStatusText(storeOpen),
       next_open_text: nextOpen,
       hours: s.hours || null,
+      transfer_alias: s.transfer_alias || null,
+      transfer_cbu: s.transfer_cbu || null,
+      transfer_holder: s.transfer_holder || null,
+      delivery_options: s.delivery_options || "ambos",
+      cash_discount_pct: s.cash_discount_pct != null ? Number(s.cash_discount_pct) : null,
       products: storeProducts,
     };
   });

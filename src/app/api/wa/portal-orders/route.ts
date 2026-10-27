@@ -32,10 +32,14 @@ export async function GET(request: Request) {
     method: string | null;
     payment_method: string | null;
     items: any;
+    transfer_alias: string | null;
+    transfer_cbu: string | null;
+    transfer_holder: string | null;
+    delivery_options: string | null;
     created_at: string;
   }>(
     `SELECT o.id, o.pickup_number, o.status, o.track_token, o.customer_name, o.total, o.method, o.payment_method, o.items, o.created_at,
-            v.id AS store_id, v.store_name, v.slug AS store_slug
+            v.id AS store_id, v.store_name, v.slug AS store_slug, v.transfer_alias, v.transfer_cbu, v.transfer_holder, v.delivery_options
      FROM orders o
      JOIN vendors v ON v.id = o.vendor_id
      WHERE regexp_replace(coalesce(o.customer_phone, ''), '[^0-9]', '', 'g') LIKE '%' || $1
@@ -61,6 +65,10 @@ export async function GET(request: Request) {
       storeName: o.store_name,
       storeSlug: o.store_slug,
       storeId: o.store_id,
+      transferAlias: o.transfer_alias || null,
+      transferCbu: o.transfer_cbu || null,
+      transferHolder: o.transfer_holder || null,
+      deliveryOptions: o.delivery_options || "ambos",
       total: Number(o.total),
       method: o.method || "pickup",
       paymentMethod: o.payment_method || "whatsapp",

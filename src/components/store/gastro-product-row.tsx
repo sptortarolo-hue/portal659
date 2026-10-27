@@ -18,7 +18,8 @@ import {
 } from "@/lib/weight-rules";
 import { useCart, type CartModifier, type CartVolumeGroup } from "@/lib/cart";
 import { useToast } from "@/lib/toast";
-import { volumeBadgeText, volumeGroupColor } from "@/lib/volume-pricing";
+import { volumeBadgeText, volumeGroupColor, applyVolumePricing } from "@/lib/volume-pricing";
+import type { VolumeGroupInput, VolumeLineInput } from "@/lib/volume-pricing";
 import { openPack } from "@/components/store/pack-sheet";
 import { OptionPrice } from "@/components/offers/option-price";
 import {
@@ -341,6 +342,36 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
   const kgOk = isKg ? isValidWeight(kgNum, weightRules) : true;
   const kgErr = isKg && !kgOk && String(kg).trim() !== "" ? weightError(kgNum, weightRules, product.name) : null;
   const grandTotal = isKg ? unitTotal * (kgOk ? kgNum : 0) : unitTotal * qty;
+  // Precio por volumen "inline": si el producto es kg y pertenece a un grupo
+  // de un solo producto, aplicamos el tramo correspondiente a los kg elegidos
+  // (el carrito sigue recalculando con el resto de productos).
+  let inlineVolTotal: number | null = null;
+  if (isKg && kgOk && kgNum > 0 && volGroup && (volGroup.productIds || []).length === 1) {
+    const g: VolumeGroupInput = {
+      id: volGroup.id,
+      name: volGroup.name,
+      productIds: (volGroup.productIds || []).map(String),
+      active: true,
+      combinePromo: !!volGroup.combinePromo,
+      combineCash: !!volGroup.combineCash,
+      extrasIncluded: !!volGroup.extrasIncluded,
+      tiers: (volGroup.tiers || []).map((t: any) => ({ minQty: Number(t.minQty), kind: t.kind, value: Number(t.value) })),
+      scale: volGroup.scale,
+    };
+    const line: VolumeLineInput = {
+      offerId: product.id,
+      qty: kgNum,
+      listUnit: unitTotal,
+      promoUnit: hasPromo ? Number(product.promo_price) : null,
+      modsUnit: 0,
+      refUnit: unitTotal,
+      hasPromo,
+      excluded: product.cash_discount_excluded,
+    };
+    const vol = applyVolumePricing([line], [g]);
+    if (vol.volumeDiscount > 0) inlineVolTotal = vol.lines[0]?.netTotal ?? null;
+  }
+  const displayTotal = inlineVolTotal != null ? inlineVolTotal : grandTotal;
 
   const allRequiredMet = modifiers
     .filter((m) => m.required)
@@ -522,7 +553,7 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
                 variant="row"
                 error={kgErr}
                 onAdd={handleAdd}
-                addLabel={`Agregar · ${grandTotal.toLocaleString("es-AR")}`}
+                addLabel={`Agregar · ${displayTotal.toLocaleString("es-AR")}`}
                 addDisabled={!kgOk}
               />
             ) : (
@@ -927,7 +958,7 @@ export function GastroProductRow({ product, vendor, modifiers = [], acceptsCart 
                     disabled={!allRequiredMet || (isKg && !kgOk)}
                     className="w-full rounded-xl bg-primary text-primary-foreground text-sm font-semibold py-3 hover:bg-primary/90 transition-colors active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    Agregar al pedido · ${grandTotal.toLocaleString("es-AR")}
+                    Agregar al pedido · ${displayTotal.toLocaleString("es-AR")}
                     {modifiers.length > 0 && !allRequiredMet && ` (te ${totalMissing === 1 ? "falta 1" : `faltan ${totalMissing}`})`}
                   </button>
                 </>

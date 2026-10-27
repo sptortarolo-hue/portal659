@@ -238,7 +238,70 @@ Reglas:
 - Si el cliente agrega productos sin re-declarar todo (ej. "agregá una coca"), devolvé SOLO los items nuevos.
 - Si el cliente solo saluda, pregunta, o pide el menú: "complete" false e "items" [].
 - Si el cliente dice "agregá/sumá/también/más" + un producto: devolvé SOLO ese producto nuevo (no el carrito completo), y complete true. Ej: carrito [empanadas x3], mensaje "agregá una coca" → items [coca x1], complete true.
-- Razon� internamente paso a paso antes de responder (qu� productos, cantidades, m�todo, pago, datos faltantes). En "reasoning" pon� en 1 frase por qu� marcaste "complete" true/false. En "confidence" pon� un n�mero 0-1 con tu certeza. Si hay ambig�edad (producto gen�rico, falta m�todo/datos), marc� complete false y ped� solo lo que falta. Nunca inventes productos que no est�n en la lista.`;
+- Razon� internamente paso a paso antes de responder (qu� productos, cantidades, m�todo, pago, datos faltantes). En "reasoning" pon� en 1 frase por qu� marcaste "complete" true/false. En "confidence" pon� un n�mero 0-1 con tu certeza. Si hay ambig�edad (producto gen�rico, falta m�todo/datos), marc� complete false y ped� solo lo que falta. Nunca inventes productos que no est�n en la lista.
+
+EJEMPLOS de conversaciones mezcladas (usá como guía):
+
+1) Negación + cambio:
+Cliente: "quiero 2 empanadas de carne y una coca"
+→ items: [{name:"Empanada de carne",qty:2},{name:"Coca-Cola 500ml",qty:1}], complete:false
+Cliente: "no, mejor sacá la coca y poné una sprite"
+→ items: [{name:"Empanada de carne",qty:2},{name:"Sprite",qty:1}], complete:false
+(La coca se quitó, se agregó sprite. Se reemplaza, no se suma.)
+
+2) Multi-intent (pedido + pregunta):
+Cliente: "quiero 2 empanadas y ¿tienen pizza?"
+→ items: [{name:"Empanada de carne",qty:2}], complete:false
+(La pregunta NO es un pedido. Solo se agregan las empanadas.)
+
+3) Corrección de cantidad:
+Cliente: "3 empanadas de carne" → items:[{name:"Empanada de carne",qty:3}], complete:false
+Cliente: "mejor 5" → items:[{name:"Empanada de carne",qty:5}], complete:false
+(Solo cambió la cantidad.)
+
+4) Agregar sin re-declarar:
+Cliente: "2 empanadas de carne" → items:[{name:"Empanada de carne",qty:2}]
+Cliente: "agregá una coca" → items:[{name:"Coca-Cola 500ml",qty:1}], complete:true
+(Solo el item nuevo. El sistema lo mergea con el carrito.)
+
+5) Cambio de método/pago:
+Cliente: "2 empanadas, retiro, efectivo" → method:"pickup", payment:"efectivo", complete:true
+Cliente: "mejor delivery a calle 5 123" → method:"delivery", customerAddress:"calle 5 123", payment:"efectivo", complete:true
+(Solo cambió método y dirección. Los items no se tocaron.)
+
+6) Cantidades en lenguaje natural:
+Cliente: "una docena de empanadas de carne" → items:[{name:"Empanada de carne",qty:12}], complete:false
+Cliente: "y media docena de jamón y queso" → items:[{name:"Empanada de jamón y queso",qty:6}], complete:true
+
+7) Cancelación parcial:
+Cliente: "2 empanadas y una coca" → items:[{name:"Empanada de carne",qty:2},{name:"Coca-Cola 500ml",qty:1}], complete:false
+Cliente: "sacá la coca" → items:[], complete:false
+(La coca se quitó. Las empanadas se mantienen.)
+
+8) Negación total:
+Cliente: "no quiero nada" / "cancelá" / "olvídalo" → items:[], complete:false, confidence:0.9
+
+9) Pregunta de precio:
+Cliente: "¿cuánto sale la pizza?" → items:[], complete:false, confidence:0.9
+(Es una pregunta, no un pedido.)
+
+10) Negación + corrección:
+Cliente: "quiero 3 empanadas" → items:[{name:"Empanada de carne",qty:3}], complete:false
+Cliente: "no, mejor 2 y agregá una coca" → items:[{name:"Empanada de carne",qty:2},{name:"Coca-Cola 500ml",qty:1}], complete:false
+(Se corrigió la cantidad Y se agregó un item nuevo.)
+
+REGLAS DE NEGACIÓN:
+- "no quiero X" / "sin X" / "sacá X" → QUITAR X del carrito (no agregar).
+- "no quiero nada" / "cancelá" / "olvídalo" → carrito vacío, complete:false.
+- "no" solo (respondiendo a una pregunta del bot) → no es negación de producto; es respuesta a la pregunta pendiente.
+
+REGLAS DE MULTI-INTENT:
+- Si el mensaje tiene pedido Y pregunta ("quiero 2 empanadas y ¿tienen pizza?"), procesar el pedido y marcar complete:false (la pregunta se responde por separado).
+- Si el mensaje tiene corrección Y agregado ("no, mejor 2 y agregá una coca"), devolver el carrito completo actualizado.
+
+REGLAS DE CANTIDADES:
+- "una docena" = 12, "media docena" = 6, "un par" = 2, "el doble" = 2× la cantidad anterior.
+- Si el cliente dice solo un número ("3") respondiendo a "¿cuántas?", es la cantidad del producto pendiente.`;
 
 // Telemetría de uso del LLM (expuesta en /health del cerebro): así se verifica
 // en 1 comando si el bot está usando IA y con qué modelo respondió por última vez.
@@ -287,6 +350,11 @@ export async function llmChat(messages, opts = {}) {
       max_tokens: maxTokens,
       messages,
     };
+    // JSON mode: fuerza respuesta en JSON válido (soportado por Gemini, OpenAI, DeepSeek).
+    // Evita que el modelo devuelva texto libre que no se pueda parsear.
+    if (opts.response_format === "json") {
+      body.response_format = { type: "json_object" };
+    }
 
     const t = timeout || (provider.name === "openrouter" ? 30000 : 20000);
     let res;
@@ -411,7 +479,7 @@ async function callOnce(message, products, ctx = null) {
       { role: "system", content: SYSTEM + fewShot },
       { role: "user", content: `Productos disponibles:\n${menu}\n\nMensaje del cliente: "${message}"${contextBlock}` },
     ],
-    { max_tokens: 500, temperature: 0, timeout: 25000 }
+    { max_tokens: 500, temperature: 0, timeout: 25000, response_format: "json" }
   );
   if (!llmResult) return null;
 

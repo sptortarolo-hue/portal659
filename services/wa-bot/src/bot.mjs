@@ -527,7 +527,7 @@ function findCartItemIndex(items, search) {
 // ———————————————————————————————————————————————————————————————————————————
 
 async function handleStep({ vendor, text, state, replies, waId }) {
-  const t = text.trim();
+  let t = text.trim();
 
   // En confirm: "sí" crea; "no" cancela; edición del carrito (sacar/cambiar
   // cantidad) se aplica sin reiniciar el pedido; el resto = corrección.
@@ -542,7 +542,14 @@ async function handleStep({ vendor, text, state, replies, waId }) {
       }
       replies.push(edit.msg);
       replies.push(summaryText(state, vendor));
-      replies.push("¿Confirmás? (sí/no) — o seguí modificando.");
+      replies.push("¿Confirmás? 1️⃣ Sí  2️⃣ No  3️⃣ Modificar");
+      return;
+    }
+    // Opciones numeradas: 1=Sí, 2=No, 3=Modificar
+    if (/^(1|1️⃣)$/.test(t)) t = "sí";
+    if (/^(2|2️⃣)$/.test(t)) t = "no";
+    if (/^(3|3️⃣)$/.test(t)) {
+      replies.push("¿Qué querés modificar? (ej: \"sacá la coca\", \"poné 3 empanadas\", o *cancelar* para empezar de nuevo)");
       return;
     }
     if (RE_CONFIRM.test(t)) {
@@ -1470,7 +1477,7 @@ async function fetchPortalMenu(q = "") {
 
 async function handlePortalInbound({ vendor, waId, body, waPhone }) {
   const text = String(body || "").trim();
-  const state = (await getState(vendor.id, waId)) || { ...DEFAULT_STATE };
+  let state = (await getState(vendor.id, waId)) || { ...DEFAULT_STATE };
   if (!Array.isArray(state.history)) state.history = [];
   const ph = phoneFor(waId, waPhone);
   if (!state.customerPhone || (String(state.customerPhone).startsWith("lid:") && !ph.startsWith("lid:"))) {
@@ -1480,6 +1487,34 @@ async function handlePortalInbound({ vendor, waId, body, waPhone }) {
   if (!Array.isArray(state.history) || state.history === DEFAULT_STATE.history) state.history = [];
   if (!state.zone) state.zone = "sicardi-garibaldi";
   if (!state.portalVendorList) state.portalVendorList = [];
+
+  // B5: Timeout de sesión (30 min sin actividad → resetear como conversación nueva).
+  const SESSION_TIMEOUT_MS = 30 * 60 * 1000;
+  if (state.touchedAt && Date.now() - Number(state.touchedAt) > SESSION_TIMEOUT_MS && state.welcomed) {
+    const savedPhone = state.customerPhone;
+    state = { ...DEFAULT_STATE, customerPhone: savedPhone };
+    await clearState(vendor.id, waId).catch(() => {});
+  }
+
+  // B4: Saludo personalizado — si el cliente tiene pedidos anteriores, saludar por nombre.
+  if (!state.welcomed && !state._personalGreetingDone) {
+    try {
+      const rawPhone = state.customerPhone || waId;
+      const phone = String(rawPhone).startsWith("lid:") ? waId : rawPhone;
+      const res = await fetch(`${config.appUrl}/api/wa/portal-orders?phone=${encodeURIComponent(String(phone))}`, {
+        headers: { Authorization: `Bearer ${config.waBotSecret}` },
+        signal: AbortSignal.timeout(5_000),
+      });
+      const data = res.ok ? await res.json().catch(() => null) : null;
+      const orders = data?.orders || [];
+      if (orders.length > 0 && orders[0].customerName) {
+        state.customerName = orders[0].customerName;
+        state._lastOrder = orders[0];
+        state._personalGreetingDone = true;
+      }
+    } catch { /* best-effort */ }
+  }
+
   state.touchedAt = Date.now();
   const replies = [];
 
@@ -2062,7 +2097,7 @@ async function handlePortalInbound({ vendor, waId, body, waPhone }) {
         state.step = "idle";
         const products = await getMenu(chosen.id);
         replies.push(`Perfecto, estás pidiendo de *${chosen.store_name}*. 📋 Menú:`);
-        replies.push(products.slice(0, 20).map((p) => `• ${p.name} — $${p.price}`).join("\n") || "Sin productos disponibles.");
+        replies.push(products.slice(0, 20).map((p, i) => `${i + 1}) ${p.name} — $${p.price}`).join("\n") || "Sin productos disponibles.");
         const link = chosen.slug ? `\nMirá el menú con fotos: ${config.publicUrl}/tienda/${chosen.slug}` : "";
         replies.push(`Mandame tu pedido (ej: "2 empanadas de carne y una coca").${link}`);
         return await persist(state, vendor.id, waId, replies);
@@ -2118,7 +2153,7 @@ async function handlePortalInbound({ vendor, waId, body, waPhone }) {
         state.step = "idle";
         const products = await getMenu(nameHit.id);
         replies.push(`Perfecto, estás pidiendo de *${nameHit.store_name}*. 📋 Menú:`);
-        replies.push(products.slice(0, 20).map((p) => `• ${p.name} — $${p.price}`).join("\n") || "Sin productos disponibles.");
+        replies.push(products.slice(0, 20).map((p, i) => `${i + 1}) ${p.name} — $${p.price}`).join("\n") || "Sin productos disponibles.");
         const link = nameHit.slug ? `\nMirá el menú con fotos: ${config.publicUrl}/tienda/${nameHit.slug}` : "";
         replies.push(`Mandame tu pedido (ej: "2 empanadas de carne y una coca").${link}`);
         return await persist(state, vendor.id, waId, replies);
@@ -2164,7 +2199,9 @@ async function handlePortalInbound({ vendor, waId, body, waPhone }) {
       for (const v of vendorsWithProducts) for (const p of v.products || []) if (p.category) allCategories.add(norm(p.category));
       const categoryMatch = [...allCategories].find((c) => qTokens.some((qt) => c === qt || c.includes(qt) || qt.includes(c)));
       if (!state.welcomed) {
-        replies.unshift("¡Hola! 👋 Soy el asistente de *Portal 659*.");
+        const _greetName = state.customerName ? ` ${state.customerName}` : "";
+        const _lastOrderHint = state._lastOrder ? `\n¿El pedido de siempre? (${state._lastOrder.storeName}: ${state._lastOrder.pickupNumber ? "Nro. " + state._lastOrder.pickupNumber : ""}) o ¿algo diferente?` : "";
+        replies.unshift(`¡Hola${_greetName}! 👋 Soy el asistente de *Portal 659*.${_lastOrderHint}`);
         state.welcomed = true;
       }
       if (categoryMatch) {
@@ -2206,7 +2243,8 @@ async function handlePortalInbound({ vendor, waId, body, waPhone }) {
     }
 
     if (!state.welcomed) {
-      replies.push("¡Hola! 👋 Soy el asistente de *Portal 659*.");
+      const _greetName2 = state.customerName ? ` ${state.customerName}` : "";
+      replies.push(`¡Hola${_greetName2}! 👋 Soy el asistente de *Portal 659*.`);
       state.welcomed = true;
     }
     replies.push("No encontré comercios con productos en tu zona por ahora. Escribí *ayuda* si necesitás asistencia.");

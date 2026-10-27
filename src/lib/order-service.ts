@@ -466,7 +466,21 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
   // Modo "confirmar" + carrito con kg: la transferencia se paga después de que
   // el comercio pese (total real) → el deadline NO nace al crear; lo sella el
   // PATCH al confirmar el peso.
-  const incomingHasKg = (items as any[]).some((i) => (i as any)?.unit === "kg");
+  let incomingHasKg = (items as any[]).some((i) => (i as any)?.unit === "kg");
+  if (!incomingHasKg) {
+    try {
+      const pids = ((items as any[]) || []).map((i) => String(i?.product_id ?? i?.offerId ?? "")).filter(Boolean);
+      if (pids.length > 0) {
+        const kgRows = await queryMany<{ id: string }>(
+          'SELECT id FROM products WHERE id = ANY(::uuid[]) AND unit = ' + "'kg'",
+          [pids]
+        ).catch(() => [] as { id: string }[]);
+        if (kgRows.length > 0) incomingHasKg = true;
+      }
+    } catch {
+      /* sin match: flow normal */
+    }
+  }
   // Modo "confirmar" + carrito con kg: el pedido entra en el flujo de pesada
   // con CUALQUIER método de pago. Lo que cambia por método es solo el cobro:
   // transferencia/MP quedan "pending" (se cobra el total real tras pesar) y
@@ -565,7 +579,7 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
         weightConfirmMode === "confirmar" &&
         hasKgItems &&
         paymentMethodFinal === "mercadopago";
-      resolvedWeightPending = weightDeferredTransfer;
+      resolvedWeightPending = !isPreview && weightConfirmMode === "confirmar" && (incomingHasKg || hasKgItems);
       const paymentStatus =
         paymentMethodFinal === "transferencia" || deferMpPayment ? "pending" : "paid";
 

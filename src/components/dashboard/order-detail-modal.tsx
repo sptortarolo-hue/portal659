@@ -399,7 +399,9 @@ export default function OrderDetailModal({ order, vendorName, vendorLogoUrl, onC
       (order.payment_method !== "transferencia" && order.payment_method !== "mercadopago"));
 
   const startWeightEdit = useCallback(() => {
-    setWeightItems(JSON.parse(JSON.stringify(order.items || [])));
+    const cloned = JSON.parse(JSON.stringify(order.items || []));
+    setWeightItems(cloned);
+    setWeightKgText(cloned.map((it: any) => String(Number(it.qty) || "")));
     setWeightError(null);
     setWeightEditing(true);
   }, [order.items]);

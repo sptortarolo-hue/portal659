@@ -615,7 +615,7 @@ export function MenuStudio({
       requires_prep: isComercio ? false : offRequiresPrep,
       cash_discount_excluded: offCashExcluded,
       pack_size: offPackSize ? Math.floor(Number(offPackSize)) : null,
-      unit: isComercio ? offUnit : undefined,
+      unit: offUnit,
       sku: isComercio && offSku.trim() ? offSku.trim() : null,
       cost_last: canEditCost && offCost.trim() !== "" && Number.isFinite(Number(offCost)) ? Math.round(Number(offCost) * 100) / 100 : undefined,
       supplier_id: !offIsCombo && canEditCost ? offSupplierId || null : undefined,
@@ -888,7 +888,7 @@ export function MenuStudio({
       setOffCashExcluded={setOffCashExcluded}
       offPackSize={offPackSize}
       setOffPackSize={setOffPackSize}
-      showUnit={isComercio}
+      showUnit={true}
       offUnit={offUnit}
       setOffUnit={setOffUnit}
       showSku={isComercio}

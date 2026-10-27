@@ -119,7 +119,15 @@ async function main() {
   if (!handoffNotified || !(r.replies || []).join(" ").includes("Enseguida te atiende una persona")) { console.log("!!! 'ayuda' no derivó al humano (portal)"); ok = false; }
   else { console.log(">>> OK: 'ayuda' → handoff a los admins del portal"); }
 
-  // 7. Consulta de estado del pedido ("¿cómo va mi pedido?")
+  // 7. Búsqueda por categoría ("bebidas", "empanadas")
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "cancelar" });
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "bebidas" });
+  show("búsqueda categoría bebidas (portal)", r);
+  const bc = (r.replies || []).join(" ");
+  if (!bc.includes("Coca-Cola") || !bc.includes("Productos de la categoría")) { console.log("!!! búsqueda por categoría no funcionó"); ok = false; }
+  else { console.log(">>> OK: búsqueda por categoría → productos de la categoría"); }
+
+  // 8. Consulta de estado del pedido ("¿cómo va mi pedido?")
   r = await handleInbound({ vendor: portalVendor, waId: wa, body: "cancelar" });
   r = await handleInbound({ vendor: portalVendor, waId: wa, body: "¿cómo va mi pedido?" });
   show("estado del pedido (portal)", r);

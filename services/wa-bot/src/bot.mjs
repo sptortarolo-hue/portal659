@@ -1605,7 +1605,7 @@ async function handlePortalInbound({ vendor, waId, body, waPhone }) {
           const cn = norm(p.category);
           const pTokens = pn.split(" ").filter(Boolean).map(stem);
           // match si algún token de la búsqueda está en el nombre/categoría (o viceversa)
-          const hit = qTokens.some((qt) => pTokens.some((pt) => pt === qt || pt.includes(qt) || qt.includes(pt)) || cn.includes(qt));
+          const hit = qTokens.some((qt) => pTokens.some((pt) => pt === qt || pt.includes(qt) || qt.includes(pt)) || cn.includes(qt) || qt.includes(cn));
           if (hit) matches.push({ vendor: v, product: p });
         }
       }
@@ -1622,14 +1622,25 @@ async function handlePortalInbound({ vendor, waId, body, waPhone }) {
       state.portalVendorList = list.map((x) => ({ id: x.vendor.id, store_name: x.vendor.store_name, slug: x.vendor.slug || null }));
       const lines = [];
       list.forEach((x, i) => {
-        const prods = x.products.slice(0, 5).map((p) => `${p.name} $${p.price}`).join(", ");
+        const prods = x.products.slice(0, 8).map((p) => `${p.name} $${p.price}`).join(", ");
         lines.push(`${i + 1}) *${x.vendor.store_name}* — ${prods}`);
       });
+      // Detectar si la búsqueda fue por categoría (el texto coincide con una
+      // categoría existente) para mostrar un encabezado más claro.
+      const t = norm(text);
+      const qTokens = t.split(" ").filter(Boolean).map(stem);
+      const allCategories = new Set();
+      for (const v of vendorsWithProducts) for (const p of v.products || []) if (p.category) allCategories.add(norm(p.category));
+      const categoryMatch = [...allCategories].find((c) => qTokens.some((qt) => c === qt || c.includes(qt) || qt.includes(c)));
       if (!state.welcomed) {
         replies.unshift("¡Hola! 👋 Soy el asistente de *Portal 659*.");
         state.welcomed = true;
       }
-      replies.push("Encontré en estos comercios:");
+      if (categoryMatch) {
+        replies.push(`Productos de la categoría *${categoryMatch}*:`);
+      } else {
+        replies.push("Encontré en estos comercios:");
+      }
       replies.push(lines.join("\n"));
       replies.push("¿De cuál querés pedir? Respondé el número.");
       return await persist(state, vendor.id, waId, replies);

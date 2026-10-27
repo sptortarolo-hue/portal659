@@ -11,6 +11,7 @@ import { saveQrToken, clearQrToken, setBotStatus } from "./src/state.mjs";
 import { countOutbound, markNewChat, limitsReport } from "./src/limits.mjs";
 import { bumpInbound, feedPush, feedList, metricsReport, touchLastSeen } from "./src/metrics.mjs";
 import { isDuplicate } from "./src/dedup.mjs";
+import { trackEvent } from "./src/telemetry.mjs";
 
 // Telemetría de salud (anti-ban): contadores de proceso para /health y logs.
 const stats = { messages: 0, replies: 0, errors: 0, loggedOut: 0, limitsHit: 0 };
@@ -349,6 +350,7 @@ async function attach(ws, token) {
 
     stats.messages++;
     bumpInbound(vendor.id, vendor.store_name, msg.wa_id, msg.body);
+    trackEvent(vendor.id, "message_in", msg.wa_id, { text: String(msg.body || "").slice(0, 100) });
     console.log(`[msg] de ${msg.wa_id}: ${msg.body}`);
 
     // Rate limit de chats nuevos: si es primer contacto y ya se superó el tope
@@ -369,6 +371,7 @@ async function attach(ws, token) {
     const result = await handleInbound({ vendor, waId: msg.wa_id, body: msg.body, waPhone: msg.wa_phone });
     if (result.handoff) {
       feedPush({ vendorId: vendor.id, store: vendor.store_name, kind: "limit", waId: msg.wa_id, text: "bot apagado — no responde, atiende el dueño" });
+      trackEvent(vendor.id, "handoff", msg.wa_id, { reason: "bot_disabled" });
       console.log(`[bot] handoff de ${msg.wa_id} (bot apagado) -> responde el dueño`);
       return;
     }
@@ -401,6 +404,7 @@ async function attach(ws, token) {
       console.log(`[bot] reply a ${msg.wa_id} (${sent ? "enviado" : "SIN_CONEXION"}): ${reply}`);
     }
     sendPaused(client, msg.wa_id);
+    trackEvent(vendor.id, "message_out", msg.wa_id, { replies: replies.length });
   });
 
   ws.on("close", () => {

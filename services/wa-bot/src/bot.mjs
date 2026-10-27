@@ -196,6 +196,7 @@ export async function handleInbound({ vendor, waId, body, waPhone }) {
 
     // Handoff explícito (disponible incluso durante la pausa).
     if (RE_HUMAN.test(text) || RE_AYUDA.test(text)) {
+      try { (await import("./telemetry.mjs")).trackEvent(vendor.id, "handoff", waId, { reason: "ayuda" }); } catch {}
       return await handoffHuman(vendor, waId, text, state);
     }
 
@@ -557,6 +558,7 @@ async function handleStep({ vendor, text, state, replies, waId }) {
       let order;
       try {
         order = await createOrder(vendor.id, state);
+        try { (await import("./telemetry.mjs")).trackEvent(vendor.id, "order_created", waId, { orderId: order?.orderId || order?.id, total: order?.total, items: state.items?.length }); } catch {}
       } catch (e) {
         const msg = String(e?.message || "");
         // Manejo amigable: si el comercio está cerrado o sin stock, sugerir
@@ -1536,6 +1538,7 @@ async function handlePortalInbound({ vendor, waId, body, waPhone }) {
     if (state.history.length > 16) state.history = state.history.slice(-16);
 
     if (RE_HUMAN.test(text) || RE_AYUDA.test(text)) {
+      try { (await import("./telemetry.mjs")).trackEvent(vendor.id, "handoff", waId, { reason: "ayuda" }); } catch {}
       return await handoffHuman(vendor, waId, text, state);
     }
 
@@ -1544,6 +1547,7 @@ async function handlePortalInbound({ vendor, waId, body, waPhone }) {
     //   del teléfono y responde estado + link de seguimiento. —
     const RE_STATUS = /(?:c[oó]mo (?:va|est[aá])|d[oó]nde (?:est[aá]|va)|estado|seguimiento|mi pedido|rastrear|track)/i;
     if (RE_STATUS.test(text) && !/^(hola|buenas|buenos|chau|adios|gracias|ok|si|no|cancelar|ayuda|menu|menú|comercios)$/i.test(text.trim())) {
+      try { (await import("./telemetry.mjs")).trackEvent(vendor.id, "status_query", waId, {}); } catch {}
       const rawPhone = state.customerPhone || waId;
       const phone = String(rawPhone).startsWith("lid:") ? waId : rawPhone;
       try {
@@ -1670,6 +1674,7 @@ async function handlePortalInbound({ vendor, waId, body, waPhone }) {
     //   teléfono y pide confirmación antes de crear el nuevo pedido. —
     const RE_REORDER = /(?:repetir|repetime|repetirme|lo mismo|de nuevo|otra vez|el mismo pedido|pedime lo de siempre|repetir pedido|repetir el pedido|repetirme el pedido)/i;
     if (RE_REORDER.test(text) && !/^(hola|buenas|buenos|chau|adios|gracias|ok|si|no|cancelar|ayuda|menu|menú|comercios)$/i.test(text.trim())) {
+      try { (await import("./telemetry.mjs")).trackEvent(vendor.id, "reorder", waId, {}); } catch {}
       const rawPhone = state.customerPhone || waId;
       const phone = String(rawPhone).startsWith("lid:") ? waId : rawPhone;
       try {
@@ -2341,6 +2346,7 @@ export async function sweepAbandonedCarts() {
       if (sent) {
         state.nudgeSent = true;
         await setState(vendorId, waId, state).catch(() => {});
+        try { (await import("./telemetry.mjs")).trackEvent(vendorId, "cart_abandoned", waId, { items: state.items?.length }); } catch {}
         console.log(`[nudge] ${vendor.store_name} (${waId}) carrito abandonado -> recordatorio enviado`);
       }
     } catch (e) {

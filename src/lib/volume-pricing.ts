@@ -318,14 +318,16 @@ export function volumeBadgeText(
   // Grupo multi-producto = pack combinable: chip identificador con precio.
   // El detalle (lista de combinables) vive en el sheet PackSheet.
   const mixed = (found.group.productIds || []).length > 1;
+  const isKg = (found.group.scale || 1) > 1;
+  const u = isKg ? " kg" : "";
   const parts = found.tiers.slice(0, 2).map((t) =>
     t.kind === "fixed_total"
       ? mixed
-        ? `Pack x${t.minQty} · Combinables · ${fmtMoney(Number(t.value))}`
-        : `Llevá ${t.minQty} y pagá ${fmtMoney(Number(t.value))}`
+        ? `Pack x${t.minQty}${u} · Combinables · ${fmtMoney(Number(t.value))}`
+        : `Llevā ${t.minQty}${u} y pagā ${fmtMoney(Number(t.value))}`
       : mixed
-        ? `Pack x${t.minQty}+ · Combinables · ${Number(t.value).toLocaleString("es-AR")}% off`
-        : `${t.minQty}+ con ${Number(t.value).toLocaleString("es-AR")}% off`
+        ? `Pack x${t.minQty}${u}+ · Combinables · ${Number(t.value).toLocaleString("es-AR")}% off`
+        : `${t.minQty}${u}+ con ${Number(t.value).toLocaleString("es-AR")}% off`
   );
   return `📦 ${parts.join(" · ")}`;
 }

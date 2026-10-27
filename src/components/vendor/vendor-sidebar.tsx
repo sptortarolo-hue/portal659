@@ -442,6 +442,7 @@ export default function VendorSidebar({
             </Link>
           )}
           {!isEmployee && (
+           <>
           <Link
             href="/vendor/wa-bot"
             className="flex items-center gap-3 rounded-lg border border-border px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
@@ -449,6 +450,14 @@ export default function VendorSidebar({
             <Bot className="h-4 w-4 text-primary" />
             <span className="flex-1 truncate">Bot de WhatsApp</span>
           </Link>
+          <Link
+            href="/vendor/wa-bot/conversaciones"
+            className="flex items-center gap-3 rounded-lg border border-border px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+          >
+            <MessageSquare className="h-4 w-4 text-primary" />
+            <span className="flex-1 truncate">Conversaciones del bot</span>
+          </Link>
+           </>
           )}
           <Link
             href="/manuales"

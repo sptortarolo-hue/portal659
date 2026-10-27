@@ -122,7 +122,7 @@ export const POST = withRateLimit(
     if (!r.ok) {
       return NextResponse.json({ error: data.error || "No se pudo enviar", text }, { status: 502 });
     }
-    return NextResponse.json({ ok: true, sent: data.sent === true, reason: data.reason || null });
+    return NextResponse.json({ ok: true, sent: data.sent === true, reason: data.reason || null, text });
   },
   { maxRequests: 20 }
 );

@@ -534,10 +534,19 @@ export default function OrderDetailModal({ order, vendorName, vendorLogoUrl, onC
       const res = await fetch(`/api/vendor/orders/${order.id}/send-weighed-order`, { method: "POST" });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.ok) {
-        setWeighedMsg(data.sent ? "Pedido pesado enviado por WhatsApp ✅" : "Enviado");
+        if (data.sent) {
+          setWeighedMsg("Pedido pesado enviado por WhatsApp ✅");
+          return;
+        }
+        if (data.text && customerPhone) {
+          window.open(`https://wa.me/${customerPhone}?text=${encodeURIComponent(data.text)}`, "_blank");
+          setWeighedMsg("El bot no está conectado — se abrió tu WhatsApp con el mensaje listo.");
+          return;
+        }
+        setWeighedMsg("Enviado");
         return;
       }
-      if (res.status === 502 && data.text) {
+      if ((res.status === 502 || res.ok) && data.text && customerPhone) {
         window.open(`https://wa.me/${customerPhone}?text=${encodeURIComponent(data.text)}`, "_blank");
         setWeighedMsg("El bot no está conectado — se abrió tu WhatsApp con el mensaje listo.");
         return;

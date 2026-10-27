@@ -7,7 +7,6 @@ import { Plus, Trash2, Pencil, Check, X } from "lucide-react";
 
 type Neighborhood = { id: string; name: string; slug: string; lat: number | null; lng: number | null };
 type Category = { id: string; name: string; slug: string; vertical: string | null };
-
 async function api(path: string, init?: RequestInit) {
   const res = await fetch(path, init);
   const data = await res.json().catch(() => null);
@@ -28,6 +27,9 @@ export default function AdminConfigPage() {
   const [newCategory, setNewCategory] = useState({ name: "", slug: "", vertical: "" });
   const [editingNeighborhood, setEditingNeighborhood] = useState<Neighborhood | null>(null);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
+  // Botón flotante de WhatsApp del portal (on/off global, /api/portal-settings).
+  const [waFloat, setWaFloat] = useState<boolean | null>(null);
+  const [savingWaFloat, setSavingWaFloat] = useState(false);
 
   async function patchConfig(type: "neighborhood" | "category", id: string, data: Record<string, unknown>) {
     await api("/api/admin/config", {
@@ -75,6 +77,13 @@ export default function AdminConfigPage() {
       const data = await api("/api/admin/config");
       setNeighborhoods(Array.isArray(data?.neighborhoods) ? data.neighborhoods : []);
       setCategories(Array.isArray(data?.categories) ? data.categories : []);
+      // El on/off del botón vive en endpoint público (lo mismo que lee el layout).
+      try {
+        const s = await api("/api/portal-settings");
+        setWaFloat(s?.waFloat !== false);
+      } catch {
+        setWaFloat(null);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo cargar la configuración");
     } finally {
@@ -142,6 +151,23 @@ export default function AdminConfigPage() {
     }
   }
 
+  async function toggleWaFloat(next: boolean) {
+    setSavingWaFloat(true);
+    setError("");
+    try {
+      await api("/api/admin/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: "wa_float", value: next }),
+      });
+      setWaFloat(next);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo guardar el switch");
+    } finally {
+      setSavingWaFloat(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <h1 className="font-display text-2xl font-semibold">Configuración</h1>
@@ -154,6 +180,43 @@ export default function AdminConfigPage() {
           </Button>
         </div>
       )}
+
+      <div className="border border-border rounded-xl p-5 bg-card">
+        <h2 className="font-medium text-lg mb-4">Portal</h2>
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <p className="text-sm font-medium">Botón flotante de WhatsApp</p>
+            <p className="text-xs text-muted-foreground">
+              Contacto al portal (221 201 0898) en todas las páginas públicas. Apagalo
+              para hacer pruebas sin que aparezca.
+            </p>
+          </div>
+          {waFloat === null ? (
+            <span className="text-xs text-muted-foreground">…</span>
+          ) : (
+            <button
+              type="button"
+              role="switch"
+              aria-checked={waFloat}
+              aria-label="Botón flotante de WhatsApp"
+              disabled={savingWaFloat}
+              onClick={() => toggleWaFloat(!waFloat)}
+              className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors disabled:opacity-50 ${
+                waFloat ? "bg-primary" : "bg-muted"
+              }`}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                  waFloat ? "translate-x-6" : "translate-x-1"
+                }`}
+              />
+            </button>
+          )}
+        </div>
+        {waFloat === false && (
+          <p className="text-xs text-amber-700 pt-3">El botón está oculto en todo el sitio.</p>
+        )}
+      </div>
 
       <div className="border border-border rounded-xl p-5 bg-card">
         <h2 className="font-medium text-lg mb-4">Barrios</h2>

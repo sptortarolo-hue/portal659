@@ -136,6 +136,7 @@ export default function RootLayout({
               </ErrorBoundary>
               <CartFooter />
               <CartDrawer />
+              {/* On/off global del botón: /admin/config (setting wa_float). */}
               <WhatsAppFloat />
               <BottomNav />
               <footer className="border-t border-border py-6 text-center text-sm text-muted-foreground bg-card">

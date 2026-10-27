@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useCart } from "@/lib/cart";
 
@@ -10,10 +11,24 @@ const WHATSAPP_URL =
 export function WhatsAppFloat() {
   const pathname = usePathname();
   const { count } = useCart();
+  // On/off global desde /admin/config (default ON si el fetch falla o la
+  // migración no está aplicada: nunca "desaparece" el botón por un error).
+  const [enabled, setEnabled] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/portal-settings")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (alive) setEnabled(d?.waFloat !== false); })
+      .catch(() => { if (alive) setEnabled(true); });
+    return () => { alive = false; };
+  }, []);
 
   if (pathname?.startsWith("/vendor") || pathname?.startsWith("/admin")) {
     return null;
   }
+  // Mientras se resuelve el setting no renderiza (sin flash del botón).
+  if (enabled === null) return null;
 
   // Con carrito la barra "Ver pedido" ocupa desde bottom-14 (mobile) /
   // bottom-0 (desktop): el botón se posiciona por encima para no taparla.

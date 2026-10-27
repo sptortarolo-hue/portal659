@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect, useRef } from "react";
 import { LivePreview } from "@/components/dashboard/shared";
@@ -50,7 +50,7 @@ type Props = {
   /** Sub-vista a mostrar (el dashboard switchea por tab). Sin section = todo (legacy). */
   section?: "hoy" | "presupuestos" | "turnos" | "cobros" | "ficha" | "reviews" | "history" | "clientes" | "galeria";
   /** Navegación a otra sub-vista (botones del Hoy). */
-  onNavigate?: (section: "orders" | "pos" | "caja" | "config" | "pedidos" | "clientes") => void;
+  onNavigate?: (section: "orders" | "pos" | "caja" | "config" | "pedidos" | "clientes", phone?: string | null) => void;
   /** Pedidos de productos (solo estética los muestra en el Hoy). */
   orders?: Record<string, unknown>[];
   /** Vertical estética: el Hoy suma pedidos de productos. */
@@ -61,6 +61,8 @@ type Props = {
   canDeposits?: boolean;
   /** El plan permite libro de clientes (Oficios). Sin esto, tab Clientes muestra PlanLock. */
   canCrm?: boolean;
+  /** Teléfono del cliente a resaltar al abrir la pestaña Clientes. */
+  highlightClientPhone?: string | null;
   onQuotesChanged?: () => void;
   configSectionId?: string;
   onConfigSectionId?: (id: string) => void;
@@ -316,6 +318,7 @@ export default function DashboardServicio({
   canQuotePrice: canQuotePriceProp,
   canDeposits: canDepositsProp,
   canCrm = false,
+  highlightClientPhone = null,
   onQuotesChanged,
   orders: ordersProp = [],
   configSectionId,
@@ -1899,6 +1902,7 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
             vendorId={vendor?.id || null}
             loyaltyEvery={(vendor as any)?.loyalty_every ?? null}
             loyaltyPct={(vendor as any)?.loyalty_pct ?? null}
+            highlightPhone={highlightClientPhone}
           />
         ) : (
           <PlanLock

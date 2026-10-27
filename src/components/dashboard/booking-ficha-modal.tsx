@@ -31,7 +31,7 @@ export type BookingFichaModalProps = {
   booking: any;
   open: boolean;
   onClose: () => void;
-  onNavigate?: (section: "orders" | "pos" | "caja" | "config" | "pedidos" | "clientes") => void;
+  onNavigate?: (section: "orders" | "pos" | "caja" | "config" | "pedidos" | "clientes", phone?: string | null) => void;
   vendorId?: string | null;
 };
 
@@ -370,7 +370,7 @@ export function BookingFichaModal({
               variant="outline"
               size="sm"
               className="h-9 flex-1"
-              onClick={() => { onNavigate("clientes"); onClose(); }}
+              onClick={() => { onNavigate?.("clientes", phone); onClose(); }}
             >
               Ver datos
             </Button>

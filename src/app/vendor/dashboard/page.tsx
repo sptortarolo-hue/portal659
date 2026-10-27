@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { Suspense, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
@@ -449,9 +449,11 @@ function VendorDashboardInner() {
 
   // Callbacks estables para el hook de teclado y los tabs memoizados.
   const { addToast } = useToast();
-  const handleTabChange = useCallback((t: DashTab) => {
+  const [clientHighlight, setClientHighlight] = useState<{ phone: string; nonce: number } | null>(null);
+  const handleTabChange = useCallback((t: DashTab, phone?: string | null) => {
     if (t === "config") { enterConfigTab(); return; }
     setTab(t);
+    if (t === "clientes" && phone) setClientHighlight({ phone, nonce: Date.now() });
   }, [enterConfigTab]);
   const openOrderDetail = useCallback((o: Order) => setSelectedOrder(o), []);
   // Atajo Mostrador/Mesas → pestaña Caja (banner "abrí la caja").
@@ -1245,7 +1247,7 @@ function VendorDashboardInner() {
   ) : isComercio ? (
     <DashboardComercio {...dashboardProps} configSectionId={configSection} onConfigSectionId={handleConfigSection} />
   ) : isService ? (
-    <DashboardServicio {...dashboardProps} />
+    <DashboardServicio {...dashboardProps} highlightClientPhone={clientHighlight?.phone ?? null} />
   ) : isModa ? (
     <DashboardModa {...dashboardProps} variants={variants} productImages={productImages} configSectionId={configSection} onConfigSectionId={handleConfigSection} />
   ) : (

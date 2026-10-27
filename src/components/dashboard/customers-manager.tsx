@@ -1,6 +1,6 @@
-"use client";
+﻿"use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { CustomerFormTimeline } from "@/components/dashboard/customer-form-timeline";
 import { customerMatches } from "@/lib/search-match";
@@ -270,7 +270,7 @@ function waLink(phone: string): string {
   return `https://wa.me/${d}`;
 }
 
-export function CustomersManager({ serviceMode = false, vendorId = null, loyaltyEvery = null, loyaltyPct = null }: { serviceMode?: boolean; vendorId?: string | null; loyaltyEvery?: number | null; loyaltyPct?: number | null } = {}) {
+export function CustomersManager({ serviceMode = false, vendorId = null, loyaltyEvery = null, loyaltyPct = null, highlightPhone = null }: { serviceMode?: boolean; vendorId?: string | null; loyaltyEvery?: number | null; loyaltyPct?: number | null; highlightPhone?: string | null } = {}) {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -278,6 +278,18 @@ export function CustomersManager({ serviceMode = false, vendorId = null, loyalty
   const [query, setQuery] = useState("");
   const [segment, setSegment] = useState<"all" | Segment>("all");
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  // Auto-expandir y scrollear al cliente indicado por highlightPhone.
+  useEffect(() => {
+    if (!highlightPhone || customers.length === 0) return;
+    const found = customers.find((cc) => String(cc.phone) === String(highlightPhone));
+    if (!found) return;
+    setExpandedId(found.id);
+    setTimeout(() => {
+      const el = cardRefs.current[found.id];
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 50);
+  }, [highlightPhone, customers]);
   const [orders, setOrders] = useState<CustomerOrder[]>([]);
   const [quotes, setQuotes] = useState<CustomerQuote[]>([]);
   const [bookings, setBookings] = useState<CustomerBooking[]>([]);
@@ -587,7 +599,7 @@ export function CustomersManager({ serviceMode = false, vendorId = null, loyalty
       ) : (
         <div className="space-y-2">
           {filtered.map((c) => (
-            <div key={c.id} className="border border-border rounded-xl bg-card overflow-hidden">
+            <div key={c.id} ref={(el) => { cardRefs.current[c.id] = el; }} className="border border-border rounded-xl bg-card overflow-hidden">
               <button
                 onClick={() => openCustomer(c)}
                 className="w-full text-left p-3 flex items-center gap-3"

@@ -54,6 +54,7 @@ globalThis.fetch = async (url, opts) => {
   }
   if (u.includes("/api/wa/handoff")) { handoffNotified = true; return { ok: true, json: async () => ({ ok: true }) }; }
   if (u.includes("/api/wa/order")) return { ok: true, json: async () => ({ ok: true, orderId: "ord-portal-1", total: 2400, trackToken: "tok-portal-1", pickupNumber: 7 }) };
+  if (u.includes("/api/wa/portal-orders")) return { ok: true, json: async () => ({ orders: [{ id: "ord-portal-1", pickupNumber: 7, status: "preparing", storeName: "Che Sancho", storeSlug: "che-sancho", total: 2400, trackUrl: "https://www.portal659.com.ar/seguimiento/tok-portal-1", createdAt: new Date().toISOString() }] }) };
   return realFetch(url, opts);
 };
 
@@ -116,7 +117,15 @@ async function main() {
   if (!handoffNotified || !(r.replies || []).join(" ").includes("Enseguida te atiende una persona")) { console.log("!!! 'ayuda' no derivó al humano (portal)"); ok = false; }
   else { console.log(">>> OK: 'ayuda' → handoff a los admins del portal"); }
 
-  // 7. Aislamiento: el portal NO usa el concierge de negocios (handleConcierge).
+  // 7. Consulta de estado del pedido ("¿cómo va mi pedido?")
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "cancelar" });
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "¿cómo va mi pedido?" });
+  show("estado del pedido (portal)", r);
+  const st = (r.replies || []).join(" ");
+  if (!st.includes("Che Sancho") || !st.includes("En preparación") || !st.includes("seguimiento/tok-portal-1")) { console.log("!!! no respondió el estado del pedido"); ok = false; }
+  else { console.log(">>> OK: consulta de estado → tienda + estado + link de seguimiento"); }
+
+  // 8. Aislamiento: el portal NO usa el concierge de negocios (handleConcierge).
   //    Verificamos que el saludo es el del portal, no el de un comercio.
   r = await handleInbound({ vendor: portalVendor, waId: wa, body: "cancelar" });
   r = await handleInbound({ vendor: portalVendor, waId: wa, body: "hola" });

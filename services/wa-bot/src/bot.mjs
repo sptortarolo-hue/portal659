@@ -1356,6 +1356,48 @@ async function handlePortalInbound({ vendor, waId, body, waPhone }) {
       return await handoffHuman(vendor, waId, text, state);
     }
 
+    // — Consulta de estado del pedido ("¿cómo va mi pedido?", "¿dónde está?",
+    //   "estado", "seguimiento", "mi pedido"). El bot busca el último pedido
+    //   del teléfono y responde estado + link de seguimiento. —
+    const RE_STATUS = /(?:c[oó]mo (?:va|est[aá])|d[oó]nde (?:est[aá]|va)|estado|seguimiento|mi pedido|rastrear|track)/i;
+    if (RE_STATUS.test(text) && !/^(hola|buenas|buenos|chau|adios|gracias|ok|si|no|cancelar|ayuda|menu|menú|comercios)$/i.test(text.trim())) {
+      const rawPhone = state.customerPhone || waId;
+      const phone = String(rawPhone).startsWith("lid:") ? waId : rawPhone;
+      try {
+        const res = await fetch(`${config.appUrl}/api/wa/portal-orders?phone=${encodeURIComponent(String(phone))}`, {
+          headers: { Authorization: `Bearer ${config.waBotSecret}` },
+          signal: AbortSignal.timeout(10_000),
+        });
+        const data = res.ok ? await res.json().catch(() => null) : null;
+        const orders = data?.orders || [];
+        if (orders.length === 0) {
+          replies.push("No encontré pedidos recientes de tu número en las últimas 48h. Si hiciste un pedido, mandame el número o escribí *ayuda* para que te atienda una persona. 🙌");
+          return await persist(state, vendor.id, waId, replies);
+        }
+        const STATUS_LABEL = {
+          new: "Recibido (esperando que lo acepten)",
+          preparing: "En preparación",
+          ready: "Listo para retirar",
+          sent: "En camino",
+          completed: "Completado",
+        };
+        for (const o of orders.slice(0, 3)) {
+          const nro = o.pickupNumber ? `Nro. ${o.pickupNumber}` : `#${String(o.id).slice(0, 8)}`;
+          const status = STATUS_LABEL[o.status] || o.status;
+          const lines = [`${o.storeName} — ${nro}: ${status}`];
+          if (o.trackUrl) lines.push(`📦 Seguilo acá: ${o.trackUrl}`);
+          replies.push(lines.join("\n"));
+        }
+        if (orders.length > 3) {
+          replies.push(`(y ${orders.length - 3} pedido${orders.length - 3 !== 1 ? "s" : ""} más — escribí *ayuda* para ver el detalle)`);
+        }
+        return await persist(state, vendor.id, waId, replies);
+      } catch (e) {
+        replies.push("No pude consultar tus pedidos ahora. Probá de nuevo en un momento, o escribí *ayuda*. 🙏");
+        return await persist(state, vendor.id, waId, replies);
+      }
+    }
+
     // El bot central SIEMPRE toma pedidos (es su propósito): no pasa por el
     // gate global BOT_TAKE_ORDERS — ese gate gobierna solo a los comercios.
 

@@ -112,7 +112,9 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
       if (m.variant_id) {
         if (mq > 0) {
           await tx.queryVoid(`UPDATE product_variants SET stock = GREATEST(0, stock - $1) WHERE id = $2`, [mq, m.variant_id]);
-          await logStockMovement(tx, { vendorId: gate.vendor.id, variant_id: String(m.variant_id), qty_delta: -mq, reason: "compra", ref_purchase: id });
+          // ref_purchase debe ser null: la compra ya se borró y stock_ledger
+          // referencia purchases(id) (FK → rollback si apunta a una fila ausente).
+          await logStockMovement(tx, { vendorId: gate.vendor.id, variant_id: String(m.variant_id), qty_delta: -mq, reason: "compra" });
         }
         const prev = await tx.queryOne<{ unit_cost_net: number }>(
           `SELECT i.unit_cost_net FROM purchase_items i JOIN purchases p ON p.id = i.purchase_id
@@ -124,7 +126,8 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
       } else if (m.product_id) {
         if (mq > 0) {
           await tx.queryVoid(`UPDATE products SET stock = GREATEST(0, COALESCE(stock, 0) - $1) WHERE id = $2`, [mq, m.product_id]);
-          await logStockMovement(tx, { vendorId: gate.vendor.id, product_id: String(m.product_id), qty_delta: -mq, reason: "compra", ref_purchase: id });
+          // ref_purchase debe ser null (ver comentario en la rama de variantes).
+          await logStockMovement(tx, { vendorId: gate.vendor.id, product_id: String(m.product_id), qty_delta: -mq, reason: "compra" });
         }
         const prev = await tx.queryOne<{ unit_cost_net: number }>(
           `SELECT i.unit_cost_net FROM purchase_items i JOIN purchases p ON p.id = i.purchase_id

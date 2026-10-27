@@ -9,19 +9,11 @@ export function TurnoConfirmButtons({
   initialStatus,
   cancelHours,
   cancelPolicy,
-  depositAtRisk,
-  depositAmount,
-  depositRetained,
 }: {
   token: string;
   initialStatus: string;
   cancelHours: number;
   cancelPolicy: string | null;
-  /** Seña pagada + política de retención + dentro del plazo: se avisa. */
-  depositAtRisk?: boolean;
-  depositAmount?: number | null;
-  /** true = no se devuelve nunca; false = se devuelve salvo cancelar tarde. */
-  depositRetained?: boolean;
 }) {
   const [status, setStatus] = useState(initialStatus);
   const [busy, setBusy] = useState<"confirm" | "cancel" | "reschedule" | null>(null);
@@ -143,13 +135,6 @@ export function TurnoConfirmButtons({
         {confirmingCancel && (
           <div className="mt-2 space-y-2">
             {cancelPolicy && <p className="text-xs text-green-800">📝 {cancelPolicy}</p>}
-            {depositAtRisk && (
-              <p className="text-xs rounded-lg bg-amber-50 border border-amber-200 text-amber-800 px-3 py-2">
-                {depositRetained
-                  ? `⚠️ La seña de $${Number(depositAmount || 0).toLocaleString("es-AR")} no se devuelve.`
-                  : `⚠️ Estás cancelando dentro de las ${cancelHours} h: la seña de $${Number(depositAmount || 0).toLocaleString("es-AR")} no se devuelve.`}
-              </p>
-            )}
             <div className="flex gap-2">
               <Button size="sm" variant="outline" className="flex-1" onClick={() => setConfirmingCancel(false)}>
                 Volver

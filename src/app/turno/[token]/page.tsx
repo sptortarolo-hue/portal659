@@ -91,14 +91,6 @@ export default async function TurnoPage({ params }: { params: Promise<{ token: s
   const terminal = booking.status === "cancelled" || booking.status === "noshow";
   const fichaTemplates = terminal ? [] : await templatesForBooking(token);
 
-  // Seña en riesgo: pagada y (política de no-devolución, o devolución pero
-  // cancelando dentro del plazo: ahí también se pierde).
-  const depositPaid = booking.deposit_status === "paid" && booking.deposit_amount != null && booking.deposit_amount > 0;
-  const limitHours = booking.cancel_hours ?? 24;
-  const startMs = new Date(`${booking.booking_date}T${booking.booking_time}:00`).getTime();
-  const withinWindow = Number.isFinite(startMs) && startMs - Date.now() < limitHours * 3600 * 1000;
-  const depositAtRisk = depositPaid && (booking.cancel_refunds_deposit === false || withinWindow);
-
   return (
     <main className="min-h-screen bg-background">
       <div className="container mx-auto px-4 py-10 max-w-md">
@@ -129,9 +121,6 @@ export default async function TurnoPage({ params }: { params: Promise<{ token: s
                 initialStatus={booking.status}
                 cancelHours={booking.cancel_hours ?? 24}
                 cancelPolicy={booking.cancel_policy_text}
-                depositAtRisk={depositAtRisk}
-                depositAmount={depositPaid ? booking.deposit_amount : null}
-                depositRetained={booking.cancel_refunds_deposit === false}
               />
             </>
           )}

@@ -1459,6 +1459,35 @@ async function handlePortalInbound({ vendor, waId, body, waPhone }) {
       }
     }
 
+    // — Horarios por tienda ("¿a qué hora abre X?", "¿está abierto X?",
+    //   "horarios de X", "cuándo abre X"). El bot busca la tienda por nombre
+    //   en el menú del portal y responde abierto/cerrado + próximo horario. —
+    const RE_HOURS = /(?:a qu[eé] hora|horario|cu[aá]ndo (?:abre|cierra)|est[aá] (?:abierto|cerrado)|abre|cierra)/i;
+    if (RE_HOURS.test(text) && !/^(hola|buenas|buenos|chau|adios|gracias|ok|si|no|cancelar|ayuda|menu|menú|comercios)$/i.test(text.trim())) {
+      const portalData = await fetchPortalMenu("");
+      const stores = portalData.vendors || portalData.stores || [];
+      // Resolver la tienda por nombre (si se menciona) o listar todas.
+      const tn = String(text || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      const matched = stores.filter((s) => {
+        const sn = String(s.store_name || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        return sn && (tn.includes(sn) || sn.split(" ").some((w) => w.length >= 3 && tn.includes(w)));
+      });
+      const targets = matched.length > 0 ? matched : stores;
+      if (targets.length === 0) {
+        replies.push("No encontré tiendas en la zona. Escribí *comercios* para ver el listado. 🙌");
+        return await persist(state, vendor.id, waId, replies);
+      }
+      for (const s of targets.slice(0, 5)) {
+        const status = s.store_open === true ? "Abierto ahora ✓" : s.store_open === false ? "Cerrado" : "Horario no disponible";
+        const lines = [`${s.store_name}: ${status}`];
+        if (s.store_open === false && s.next_open_text) lines.push(`  → ${s.next_open_text}`);
+        if (s.hours) lines.push(`  Horario: ${s.hours}`);
+        replies.push(lines.join("\n"));
+      }
+      if (targets.length > 5) replies.push(`(y ${targets.length - 5} tienda${targets.length - 5 !== 1 ? "s" : ""} más — escribí el nombre para ver su horario)`);
+      return await persist(state, vendor.id, waId, replies);
+    }
+
     // El bot central SIEMPRE toma pedidos (es su propósito): no pasa por el
     // gate global BOT_TAKE_ORDERS — ese gate gobierna solo a los comercios.
 

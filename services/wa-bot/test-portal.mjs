@@ -16,6 +16,7 @@ const MOCK_PORTAL_MENU = {
       store_open: true,
       open_text: "Abierto ahora",
       next_open_text: null,
+      hours: "lun a vie 09:00-13:00 y 17:00-22:00",
       products: [
         { id: "p1", store_id: "store1", store_name: "Che Sancho", store_slug: "che-sancho", name: "Empanada de carne", price: 1200, category: "Empanadas", modifiers: [], variants: [] },
         { id: "p2", store_id: "store1", store_name: "Che Sancho", store_slug: "che-sancho", name: "Coca-Cola 500ml", price: 1000, category: "Bebidas", modifiers: [], variants: [] },
@@ -29,6 +30,7 @@ const MOCK_PORTAL_MENU = {
       store_open: true,
       open_text: "Abierto ahora",
       next_open_text: null,
+      hours: "lun a vie 09:00-13:00 y 17:00-22:00",
       products: [
         { id: "p3", store_id: "store2", store_name: "La Esquina", store_slug: "la-esquina", name: "Milanesa napolitana", price: 2500, category: "Platos", modifiers: [], variants: [] },
       ],
@@ -139,7 +141,23 @@ async function main() {
   if (!rpc.includes("Pedido confirmado") && !rpc.includes("confirmado")) { console.log("!!! re-pedido no confirmó"); ok = false; }
   else { console.log(">>> OK: re-pedido confirmado → pedido creado"); }
 
-  // 9. Aislamiento: el portal NO usa el concierge de negocios (handleConcierge).
+  // 9. Horarios por tienda ("¿a qué hora abre X?")
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "cancelar" });
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "¿a qué hora abre Che Sancho?" });
+  show("horarios (portal)", r);
+  const hr = (r.replies || []).join(" ");
+  if (!hr.includes("Che Sancho") || !hr.includes("Abierto ahora") || !hr.includes("lun a vie")) { console.log("!!! no respondió los horarios"); ok = false; }
+  else { console.log(">>> OK: horarios → tienda + estado + horario"); }
+
+  // 10. Horarios de todas las tiendas (sin mencionar una)
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "cancelar" });
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "horarios" });
+  show("horarios todas (portal)", r);
+  const hra = (r.replies || []).join(" ");
+  if (!hra.includes("Che Sancho") || !hra.includes("La Esquina")) { console.log("!!! no listó horarios de todas las tiendas"); ok = false; }
+  else { console.log(">>> OK: horarios → todas las tiendas"); }
+
+  // 11. Aislamiento: el portal NO usa el concierge de negocios (handleConcierge).
   //    Verificamos que el saludo es el del portal, no el de un comercio.
   r = await handleInbound({ vendor: portalVendor, waId: wa, body: "cancelar" });
   r = await handleInbound({ vendor: portalVendor, waId: wa, body: "hola" });

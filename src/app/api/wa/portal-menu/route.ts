@@ -121,6 +121,7 @@ export async function GET(request: Request) {
       store_open: storeOpen,
       open_text: openStatusText(storeOpen),
       next_open_text: nextOpen,
+      hours: s.hours || null,
       products: storeProducts,
     };
   });

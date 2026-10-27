@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useCallback, useState } from "react";
+import { readScaleFromPort, requestScalePort, getCachedScalePort, isWebSerialSupported, clearCachedScalePort } from "@/lib/scale-reader";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -95,8 +96,11 @@ export default function OrderDetailModal({ order, vendorName, vendorLogoUrl, onC
   // Pesables (modo confirmar): edición de kg reales + confirmación.
   const [weightEditing, setWeightEditing] = useState(false);
   const [weightItems, setWeightItems] = useState<OrderItem[]>([]);
+  const [weightKgText, setWeightKgText] = useState<string[]>([]);
   const [weightSaving, setWeightSaving] = useState(false);
   const [weightError, setWeightError] = useState<string | null>(null);
+  const [scaleReading, setScaleReading] = useState(false);
+  const [scaleError, setScaleError] = useState<string>("");
   // Link de pago MP del pedido post-peso (mercadopago pendiente).
   const [payLink, setPayLink] = useState<string | null>(null);
   const [payLinkBusy, setPayLinkBusy] = useState(false);
@@ -400,10 +404,48 @@ export default function OrderDetailModal({ order, vendorName, vendorLogoUrl, onC
     setWeightEditing(true);
   }, [order.items]);
 
-  const setWeightKg = (index: number, kg: number) => {
-    const safe = Number.isFinite(kg) ? Math.max(0, Math.round(kg * 1000) / 1000) : 0;
-    setWeightItems((prev) => prev.map((item, i) => (i === index ? { ...item, qty: safe } : item)));
+  const setWeightKg = (index: number, value: string) => {
+    setWeightKgText((prev) => prev.map((t, i) => (i === index ? value : t)));
+    const parsed = Number(String(value).replace(",", "."));
+    if (Number.isFinite(parsed) && parsed >= 0) {
+      const safe = Math.round(parsed * 1000) / 1000;
+      setWeightItems((prev) => prev.map((item, i) => (i === index ? { ...item, qty: safe } : item)));
+    }
   };
+
+  async function readScaleInto(index: number) {
+    if (!isWebSerialSupported()) {
+      setScaleError("Este navegador no soporta balanza directa (usa Chrome en PC)");
+      return;
+    }
+    setScaleReading(true);
+    setScaleError("");
+    try {
+      let port = getCachedScalePort();
+      if (!port) port = await requestScalePort();
+      try {
+        const res = await readScaleFromPort(port, { vendorId: (order as any).vendor_id ?? null });
+        setWeightKg(index, String(res.kg));
+        setScaleError("");
+      } catch (e: any) {
+        const err = e;
+        if (err && err.name === "ScaleUnparsedError" && err.raw) {
+          setScaleError("No se pudo leer el peso. La balanza envio: " + String(err.raw).replace(/[^\x20-\x7E]/g, "?").slice(-60));
+        } else if (err && err.name === "ScaleNoDataError") {
+          setScaleError("No llego ningun dato de la balanza (revisa cable y vuelve a intentar)");
+        } else if (err && err.name === "ScalePortError") {
+          clearCachedScalePort();
+          setScaleError("No se pudo abrir la balanza (revisa cable y puerto)");
+        } else {
+          setScaleError((err && err.message) || "No se pudo leer el peso: cargalo a mano");
+        }
+      }
+    } catch (e: any) {
+      setScaleError((e && e.message) || "No se pudo abrir la balanza");
+    } finally {
+      setScaleReading(false);
+    }
+  }
 
   const weightTotal = weightItems.reduce((sum, item) => sum + orderLineTotal(item), 0);
 
@@ -820,16 +862,25 @@ export default function OrderDetailModal({ order, vendorName, vendorLogoUrl, onC
                         {(item as any).unit === "kg" ? (
                           <div className="flex items-center gap-1.5 flex-shrink-0">
                             <Input
-                              type="number"
+                              type="text"
                               inputMode="decimal"
-                              step="0.001"
-                              min="0"
-                              value={Number(item.qty).toLocaleString("es-AR", { maximumFractionDigits: 3 })}
-                              onChange={(e) => setWeightKg(i, Number(e.target.value.replace(",", ".")))}
+                              value={weightKgText[i] ?? ""}
+                              onChange={(e) => setWeightKg(i, e.target.value)}
                               className="h-7 w-20 text-sm text-right"
                               aria-label={`Peso real de ${item.name} en kilos`}
                             />
                             <span className="text-xs text-muted-foreground">kg</span>
+                            {isWebSerialSupported() && (
+                              <button
+                                type="button"
+                                onClick={() => readScaleInto(i)}
+                                disabled={scaleReading}
+                                className="h-7 px-2 text-xs rounded border border-border bg-muted text-muted-foreground hover:text-foreground disabled:opacity-50"
+                                title="Leer peso de la balanza"
+                              >
+                                {scaleReading ? "..." : "Balanza"}
+                              </button>
+                            )}
                           </div>
                         ) : (
                           <span className="text-xs font-medium flex-shrink-0 tabular-nums">{item.qty}×</span>

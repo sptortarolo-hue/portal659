@@ -374,9 +374,10 @@ export function FormRenderer({
                   </div>
                 )}
                 {!disabled && vendorId && urls.length < (f.maxPhotos || 3) && (
-                  <div className="mt-1.5">
+                  <div className="mt-1.5 flex flex-wrap gap-2">
+                    {/* Galería / archivos (varios) */}
                     <label className="inline-flex items-center gap-2 rounded-md border border-input px-3 py-2 text-xs font-medium cursor-pointer hover:bg-muted">
-                      📷 {uploading === f.id ? "Subiendo..." : "Agregar foto"}
+                      🖼️ {uploading === f.id ? "Subiendo..." : "Elegir de la galería"}
                       <input
                         type="file"
                         accept="image/*"
@@ -385,7 +386,18 @@ export function FormRenderer({
                         onChange={(e) => uploadPhotos(f, e.target.files)}
                       />
                     </label>
-                    {uploadNote && <p className="text-[11px] text-muted-foreground mt-1">{uploadNote}</p>}
+                    {/* Cámara del celular: capture fuerza el disparador (sacar una foto por vez) */}
+                    <label className="inline-flex items-center gap-2 rounded-md border border-input px-3 py-2 text-xs font-medium cursor-pointer hover:bg-muted">
+                      📷 Tomar foto
+                      <input
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        className="hidden"
+                        onChange={(e) => uploadPhotos(f, e.target.files)}
+                      />
+                    </label>
+                    {uploadNote && <p className="w-full text-[11px] text-muted-foreground">{uploadNote}</p>}
                   </div>
                 )}
                 {!disabled && !vendorId && (

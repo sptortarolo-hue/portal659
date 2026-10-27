@@ -57,6 +57,11 @@ globalThis.fetch = async (url, opts) => {
   if (u.includes("/api/wa/handoff")) { handoffNotified = true; return { ok: true, json: async () => ({ ok: true }) }; }
   if (u.includes("/api/wa/order")) return { ok: true, json: async () => ({ ok: true, orderId: "ord-portal-1", total: 2400, trackToken: "tok-portal-1", pickupNumber: 7 }) };
   if (u.includes("/api/wa/portal-orders")) return { ok: true, json: async () => ({ orders: [{ id: "ord-portal-1", pickupNumber: 7, status: "preparing", storeName: "Che Sancho", storeSlug: "che-sancho", storeId: "store1", total: 2400, method: "pickup", paymentMethod: "whatsapp", items: [{ product_id: "p1", name: "Empanada de carne", price: 1200, qty: 2, modifiers: [] }], trackUrl: "https://www.portal659.com.ar/seguimiento/tok-portal-1", createdAt: new Date().toISOString() }] }) };
+  if (u.includes("/api/wa/favorites")) {
+    if (opts?.method === "POST") return { ok: true, json: async () => ({ ok: true }) };
+    if (opts?.method === "DELETE") return { ok: true, json: async () => ({ ok: true }) };
+    return { ok: true, json: async () => ({ favorites: [{ vendor_id: "store1", store_name: "Che Sancho", slug: "che-sancho" }] }) };
+  }
   return realFetch(url, opts);
 };
 
@@ -200,7 +205,30 @@ async function main() {
   if (!hra.includes("Che Sancho") || !hra.includes("La Esquina")) { console.log("!!! no listó horarios de todas las tiendas"); ok = false; }
   else { console.log(">>> OK: horarios → todas las tiendas"); }
 
-  // 11. Aislamiento: el portal NO usa el concierge de negocios (handleConcierge).
+  // 11. Favoritos: "guardá X como favorito" → agrega
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "cancelar" });
+  handoffNotified = false;
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "guardá Che Sancho como favorito" });
+  show("favorito add (portal)", r);
+  const fa = (r.replies || []).join(" ");
+  if (!fa.includes("agregada a tus favoritas")) { console.log("!!! no agregó el favorito"); ok = false; }
+  else { console.log(">>> OK: 'guardá como favorito' → agregado"); }
+
+  // 12. Favoritos: "mis favoritos" → lista
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "mis favoritos" });
+  show("favoritos lista (portal)", r);
+  const fl = (r.replies || []).join(" ");
+  if (!fl.includes("Che Sancho") || !fl.includes("favoritas")) { console.log("!!! no listó los favoritos"); ok = false; }
+  else { console.log(">>> OK: 'mis favoritos' → lista con tiendas"); }
+
+  // 13. Favoritos: "sacá X de favoritos" → quita
+  r = await handleInbound({ vendor: portalVendor, waId: wa, body: "sacá Che Sancho de favoritos" });
+  show("favorito remove (portal)", r);
+  const fr = (r.replies || []).join(" ");
+  if (!fr.includes("saqué") || !fr.includes("favoritos")) { console.log("!!! no quitó el favorito"); ok = false; }
+  else { console.log(">>> OK: 'sacá de favoritos' → quitado"); }
+
+  // 14. Aislamiento: el portal NO usa el concierge de negocios (handleConcierge).
   //    Verificamos que el saludo es el del portal, no el de un comercio.
   r = await handleInbound({ vendor: portalVendor, waId: wa, body: "cancelar" });
   r = await handleInbound({ vendor: portalVendor, waId: wa, body: "hola" });

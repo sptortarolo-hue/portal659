@@ -546,7 +546,40 @@ async function handleStep({ vendor, text, state, replies, waId }) {
       return;
     }
     if (RE_CONFIRM.test(t)) {
-      const order = await createOrder(vendor.id, state);
+      let order;
+      try {
+        order = await createOrder(vendor.id, state);
+      } catch (e) {
+        const msg = String(e?.message || "");
+        // Manejo amigable: si el comercio está cerrado o sin stock, sugerir
+        // alternativas (solo en el bot del portal, que tiene visión multi-tienda).
+        const isPortal = Array.isArray(state.portalVendorList) || state.portalVendorList !== undefined;
+        if (isPortal && /cerrad/i.test(msg)) {
+          replies.push(`${msg}`);
+          try {
+            const portalData = await fetchPortalMenu("");
+            const openStores = (portalData.vendors || portalData.stores || [])
+              .filter((s) => s.store_open === true && s.id !== vendor.id)
+              .slice(0, 4);
+            if (openStores.length > 0) {
+              replies.push("Pero estas tiendas están abiertas ahora:");
+              replies.push(openStores.map((s, i) => `${i + 1}) *${s.store_name}*`).join("\\n"));
+              replies.push("¿Querés pedir de alguna? Escribí el nombre o el número.");
+            } else {
+              replies.push("No hay otras tiendas abiertas en la zona ahora. Escribí *comercios* para ver todas.");
+            }
+          } catch { /* best-effort */ }
+          return await persist(state, vendor.id, waId, replies);
+        }
+        if (/stock|agotado|sin stock/i.test(msg)) {
+          replies.push(`${msg}`);
+          replies.push("¿Querés cambiar ese producto por otro? Mandame tu pedido corregido. 🙏");
+          return await persist(state, vendor.id, waId, replies);
+        }
+        // Otros errores: mostrar tal cual (comportamiento existente).
+        throw e;
+      }
+      // Aprendizaje: guardamos el pedido exitoso como ejemplo para futuras correcciones.
       // Aprendizaje: guardamos el pedido exitoso como ejemplo para futuras correcciones.
       try {
         const lastUser = (state.history || []).filter((h) => h.role === "user").slice(-1)[0]?.text || "";
@@ -1489,6 +1522,90 @@ async function handlePortalInbound({ vendor, waId, body, waPhone }) {
         return await persist(state, vendor.id, waId, replies);
       } catch (e) {
         replies.push("No pude consultar tus pedidos ahora. Probá de nuevo en un momento, o escribí *ayuda*. 🙏");
+        return await persist(state, vendor.id, waId, replies);
+      }
+    }
+
+    // — Favoritos: "guardá X como favorito", "mis favoritos", "sacá X de favoritos" —
+    const RE_FAV_ADD = /(?:guard[aá]|agreg[aá]|marc[aá]|favorito)\s+(.+?)(?:\s+como\s+favorito)?$/i;
+    const RE_FAV_LIST = /^(?:mis\s+)?favoritos$/i;
+    const RE_FAV_REMOVE = /^(?:sac[aá]|quit[aá]|elimina|borr[aá])\s+(.+?)\s+de\s+favoritos$/i;
+    const isFavAdd = RE_FAV_ADD.test(text) && !/^(hola|buenas|buenos|chau|adios|gracias|ok|si|no|cancelar|ayuda|menu|menú|comercios)$/i.test(text.trim());
+    const isFavList = RE_FAV_LIST.test(text.trim());
+    const isFavRemove = RE_FAV_REMOVE.test(text.trim());
+
+    if (isFavAdd || isFavList || isFavRemove) {
+      const rawPhone = state.customerPhone || waId;
+      const phone = String(rawPhone).startsWith("lid:") ? waId : rawPhone;
+      try {
+        if (isFavRemove) {
+          const m = text.trim().match(RE_FAV_REMOVE);
+          const name = m ? m[1].trim() : "";
+          // Resolver el vendor por nombre en el menú del portal.
+          const portalData = await fetchPortalMenu("");
+          const stores = portalData.vendors || portalData.stores || [];
+          const store = stores.find((s) => {
+            const sn = String(s.store_name || "").toLowerCase();
+            return sn.includes(name.toLowerCase()) || name.toLowerCase().includes(sn);
+          });
+          if (store) {
+            await fetch(`${config.appUrl}/api/wa/favorites`, {
+              method: "DELETE",
+              headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.waBotSecret}` },
+              body: JSON.stringify({ phone, vendorId: store.id }),
+              signal: AbortSignal.timeout(10_000),
+            });
+            replies.push(`Listo, saqué *${store.store_name}* de tus favoritos. 🙌`);
+          } else {
+            replies.push(`No encontré "${name}" en las tiendas de la zona. Escribí *mis favoritos* para ver tu lista.`);
+          }
+          return await persist(state, vendor.id, waId, replies);
+        }
+
+        if (isFavList) {
+          const res = await fetch(`${config.appUrl}/api/wa/favorites?phone=${encodeURIComponent(String(phone))}`, {
+            headers: { Authorization: `Bearer ${config.waBotSecret}` },
+            signal: AbortSignal.timeout(10_000),
+          });
+          const data = res.ok ? await res.json().catch(() => null) : null;
+          const favs = data?.favorites || [];
+          if (favs.length === 0) {
+            replies.push("No tenés tiendas favoritas todavía. Escribí *guardá [nombre] como favorito* para agregar una. ⭐");
+          } else {
+            replies.push("⭐ Tus tiendas favoritas:");
+            favs.forEach((f, i) => replies.push(`${i + 1}) *${f.store_name}*`));
+            replies.push("Mandame el nombre de una tienda para ver su menú, o *comercios* para ver todas.");
+          }
+          return await persist(state, vendor.id, waId, replies);
+        }
+
+        // isFavAdd: "guardá X como favorito" / "favorito X"
+        const m = text.trim().match(RE_FAV_ADD);
+        const name = m ? m[1].replace(/\s+como\s+favorito$/i, "").trim() : "";
+        const portalData = await fetchPortalMenu("");
+        const stores = portalData.vendors || portalData.stores || [];
+        const store = stores.find((s) => {
+          const sn = String(s.store_name || "").toLowerCase();
+          return sn.includes(name.toLowerCase()) || name.toLowerCase().includes(sn);
+        });
+        if (!store) {
+          replies.push(`No encontré "${name}" en las tiendas de la zona. Escribí *comercios* para ver el listado.`);
+          return await persist(state, vendor.id, waId, replies);
+        }
+        const res = await fetch(`${config.appUrl}/api/wa/favorites`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.waBotSecret}` },
+          body: JSON.stringify({ phone, vendorId: store.id }),
+          signal: AbortSignal.timeout(10_000),
+        });
+        if (res.ok) {
+          replies.push(`⭐ *${store.store_name}* agregada a tus favoritas. Escribí *mis favoritos* para ver tu lista.`);
+        } else {
+          replies.push("No pude guardar el favorito. Probá de nuevo en un momento. 🙏");
+        }
+        return await persist(state, vendor.id, waId, replies);
+      } catch (e) {
+        replies.push("No pude gestionar tus favoritos ahora. Probá de nuevo en un momento. 🙏");
         return await persist(state, vendor.id, waId, replies);
       }
     }

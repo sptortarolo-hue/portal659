@@ -14,7 +14,8 @@ export async function GET(request: Request) {
 
   const stores = await queryMany<any>(
     `SELECT id, store_name, slug, vertical, hours, open_override, address, neighborhood,
-            transfer_alias, transfer_cbu, transfer_holder, delivery_options, cash_discount_pct
+            transfer_alias, transfer_cbu, transfer_holder, delivery_options, cash_discount_pct,
+            payment_methods, delivery_fee, free_delivery_min, delivery_mode, delivery_area_text
      FROM vendors
      WHERE COALESCE(visible, true) = true
        AND slug NOT IN ('admin-portal659','portal659-bot','portal-central')
@@ -30,7 +31,7 @@ export async function GET(request: Request) {
 
   const products = await queryMany<any>(
     `SELECT id, vendor_id, name, description, price, promo_price, category, available,
-            requires_prep, stock_control, stock, has_variants
+            requires_prep, stock_control, stock, has_variants, featured_today, image_url
      FROM products WHERE vendor_id = ANY($1) AND available = true
      ORDER BY featured_today DESC, name ASC`,
     [storeIds]
@@ -103,6 +104,10 @@ export async function GET(request: Request) {
         name: p.name,
         description: p.description,
         price: p.promo_price != null ? Number(p.promo_price) : Number(p.price),
+        original_price: p.promo_price != null ? Number(p.price) : null,
+        promo_price: p.promo_price != null ? Number(p.promo_price) : null,
+        featured_today: p.featured_today === true,
+        image_url: p.image_url || null,
         category: p.category,
         requires_prep: p.requires_prep !== false,
         stock_control: p.stock_control === true,
@@ -128,6 +133,11 @@ export async function GET(request: Request) {
       transfer_holder: s.transfer_holder || null,
       delivery_options: s.delivery_options || "ambos",
       cash_discount_pct: s.cash_discount_pct != null ? Number(s.cash_discount_pct) : null,
+      payment_methods: s.payment_methods || null,
+      delivery_fee: s.delivery_fee != null ? Number(s.delivery_fee) : null,
+      free_delivery_min: s.free_delivery_min != null ? Number(s.free_delivery_min) : null,
+      delivery_mode: s.delivery_mode || "flat",
+      delivery_area_text: s.delivery_area_text || null,
       products: storeProducts,
     };
   });

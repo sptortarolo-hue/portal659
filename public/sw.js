@@ -10,7 +10,7 @@
 // - Si el HTML cacheado referencia chunks ausentes, la app muestra su
 //   ErrorBoundary (no pantalla muerta). Nunca se precachea ni se sirve
 //   teniendo red (lección v12/v13). Purga v14. Otros paths: sin cambios.
-const CACHE_NAME = "portal659-v18";
+const CACHE_NAME = "portal659-v19";
 const API_CACHE = "portal659-api-v18";
 // Documentos del panel: nombre fijo para no purgarlos en cada deploy.
 const DOC_CACHE = "portal659-doc";

@@ -49,8 +49,8 @@ function PurchaseForm({
   const [receiptType, setReceiptType] = useState("ninguno");
   const [receiptNumber, setReceiptNumber] = useState("");
   const [notes, setNotes] = useState("");
-  const [lines, setLines] = useState<BuyLine[]>([
-    { key: 0, kind: "ing", ingredient_id: "", product_id: "", variant_id: "", qty: "", unit: "g", unit_cost: "", total_paid: "", expires_at: "" },
+  const [lines, setLines] = useState<BuyLine[]>(() => [
+    { key: 0, kind: (ingredients && ingredients.length > 0) ? "ing" : (allowMerchandise ? "prod" : "ing"), ingredient_id: "", product_id: "", variant_id: "", qty: "", unit: "g", unit_cost: "", total_paid: "", expires_at: "" },
   ]);
   const [keySeq, setKeySeq] = useState(1);
   const [saving, setSaving] = useState(false);
@@ -170,7 +170,7 @@ function PurchaseForm({
             >
               <option value="">Sin proveedor</option>
               {suppliers
-                .filter((s) => s.active)
+                .filter((s) => s.active !== false)
                 .map((s) => (
                   <option key={s.id} value={s.id}>{s.name}</option>
                 ))}
@@ -426,7 +426,7 @@ function PurchaseForm({
             variant="outline"
             size="sm"
             onClick={() => {
-              setLines((prev) => [...prev, { key: keySeq, kind: "ing", ingredient_id: "", product_id: "", variant_id: "", qty: "", unit: "g", unit_cost: "", total_paid: "", expires_at: "" }]);
+              setLines((prev) => [...prev, { key: keySeq, kind: (ingredients && ingredients.length > 0) ? "ing" : (allowMerchandise ? "prod" : "ing"), ingredient_id: "", product_id: "", variant_id: "", qty: "", unit: "g", unit_cost: "", total_paid: "", expires_at: "" }]);
               setKeySeq((k) => k + 1);
             }}
           >
@@ -576,6 +576,17 @@ export function PurchasesManager({
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [purchases, setPurchases] = useState<PurchaseRow[]>([]);
   const [loading, setLoading] = useState(true);
+  // Fallback defensivo: si el prop de insumos llega vacío (cache, plan resuelto
+  // tarde, o la vista padre no los pasó), los traemos directo para no dejar el
+  // selector de insumos vacío en Compras.
+  const [fetchedIngredients, setFetchedIngredients] = useState<Ingredient[]>([]);
+  useEffect(() => {
+    if (ingredients && ingredients.length > 0) return;
+    getJson<{ ingredients: Ingredient[] }>("/api/vendor/ingredients").then((d) => {
+      if (d?.ingredients && d.ingredients.length > 0) setFetchedIngredients(d.ingredients);
+    });
+  }, [ingredients]);
+  const effectiveIngredients = ingredients && ingredients.length > 0 ? ingredients : fetchedIngredients;
   const [showForm, setShowForm] = useState(false);
   const [showSuppliers, setShowSuppliers] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<Supplier | "new" | null>(null);
@@ -695,7 +706,7 @@ export function PurchasesManager({
       {showForm && (
         <PurchaseForm
           suppliers={suppliers}
-          ingredients={ingredients}
+          ingredients={effectiveIngredients}
           products={products}
           variants={variants}
           allowMerchandise={allowMerchandise}

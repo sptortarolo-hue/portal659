@@ -186,7 +186,7 @@ export function RecipeManager() {
             onClick={() => setView("insumos")}
             className={`px-4 py-2 ${view === "insumos" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
           >
-            🧂 Insumos ({ingredients.filter((i) => i.active).length})
+            🧂 Insumos ({ingredients.filter((i) => i.active !== false).length})
           </button>
           <button
             onClick={() => setView("compras")}
@@ -208,7 +208,7 @@ export function RecipeManager() {
 
       {view === "compras" ? (
         <PurchasesManager
-          ingredients={ingredients.filter((i) => i.active)}
+          ingredients={ingredients.filter((i) => i.active !== false)}
           search={search}
           onChanged={refreshAfterSave}
         />
@@ -272,7 +272,7 @@ export function RecipeManager() {
                     title={p.name}
                     subtitle="Preparación del plato (cantidades netas por porción)"
                     salePrice={p.price}
-                    ingredients={ingredients.filter((i) => i.active)}
+                    ingredients={ingredients.filter((i) => i.active !== false)}
                     recipes={recipes}
                     allItems={allItems}
                     products={products}
@@ -326,7 +326,7 @@ export function RecipeManager() {
                       isEditing
                         ? "border-primary bg-primary/5"
                         : "border-border hover:bg-muted/50"
-                    } ${!i.active ? "opacity-50" : ""}`}
+                    } ${i.active === false ? "opacity-50" : ""}`}
                   >
                     <span className="flex-1 min-w-0">
                       <span className="block text-sm font-medium truncate">
@@ -338,7 +338,7 @@ export function RecipeManager() {
                         {i.is_elaborated ? (hasSub ? " · con sub-preparación" : " · sin sub-preparación") : ""}
                       </span>
                     </span>
-                    {!i.active && <Badge variant="secondary">Inactivo</Badge>}
+                    {i.active === false && <Badge variant="secondary">Inactivo</Badge>}
                   </button>
                 );
               })}
@@ -372,7 +372,7 @@ export function RecipeManager() {
                     title={`Sub-preparación: ${editingIngredient.name}`}
                     subtitle="Costo del elaborado (se prorratea en los platos que lo usan)"
                     yieldUnit={(ingredients.find((i) => i.id === selectedElaborated)?.base_unit as string) || "g"}
-                    ingredients={ingredients.filter((i) => i.active && i.id !== selectedElaborated)}
+                    ingredients={ingredients.filter((i) => i.active !== false && i.id !== selectedElaborated)}
                     recipes={recipes}
                     allItems={allItems}
                     thresholds={thresholds}

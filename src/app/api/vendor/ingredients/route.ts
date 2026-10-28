@@ -31,7 +31,7 @@ export async function GET(request: Request) {
   const onlyActive = searchParams.get("active") === "1";
 
   const ingredients = await queryMany<Record<string, unknown>>(
-    `SELECT * FROM ingredients WHERE vendor_id = $1 ${onlyActive ? "AND active = true" : ""}
+    `SELECT * FROM ingredients WHERE vendor_id = $1 ${onlyActive ? "AND (active IS NULL OR active = true)" : ""}
      ORDER BY name ASC`,
     [gate.vendor.id]
   );

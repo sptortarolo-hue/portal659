@@ -91,6 +91,15 @@ jobs:
             # etiqueta (lo consume layout.tsx). Si el secret no existe, escribe
             # vacío y la app simplemente no renderiza el meta.
             echo 'GOOGLE_SITE_VERIFICATION=${{ secrets.GOOGLE_SITE_VERIFICATION }}' >> /opt/portal659/.env
+            # Alertas del monitor de salud (Telegram). Si los secrets no están
+            # se saltea la escritura: el monitor funciona igual y sólo no avisa
+            # por el chat (fail-open, mismo criterio que el resto).
+            TG_TOKEN='${{ secrets.TELEGRAM_BOT_TOKEN }}'
+            TG_CHAT='${{ secrets.TELEGRAM_CHAT_ID }}'
+            if [ -n "$TG_TOKEN" ] && [ -n "$TG_CHAT" ]; then
+              echo "TELEGRAM_BOT_TOKEN=$TG_TOKEN" >> /opt/portal659/.env
+              echo "TELEGRAM_CHAT_ID=$TG_CHAT" >> /opt/portal659/.env
+            fi
 
             # Backup previo al deploy (DB + uploads → R2). Tolera primer arranque
             # (sin contenedores aún). Si falla NO bloquea el deploy — el backup
@@ -102,8 +111,12 @@ jobs:
             # Cloudflare en /opt/portal659-certs, se genera un placeholder
             # autofirmado para que nginx levante igual (el modo Strict se
             # enciende recién con el cert real instalado).
+            # Se validan el .pem Y el .key: nginx parsea `ssl_certificate` al
+            # arrancar, así que con uno solo de los dos el contenedor muere
+            # entero → 80 y 443 caídos → Cloudflare devuelve 521. Antes sólo se
+            # regeneraba si faltaba el .pem.
             mkdir -p /opt/portal659-certs
-            if [ ! -f /opt/portal659-certs/origin.pem ]; then
+            if [ ! -s /opt/portal659-certs/origin.pem ] || [ ! -s /opt/portal659-certs/origin.key ]; then
               openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
                 -keyout /opt/portal659-certs/origin.key \
                 -out /opt/portal659-certs/origin.pem \
@@ -125,6 +138,30 @@ jobs:
             # llenaron el disco de 20G y voltearon Postgres): no falla el
             # deploy si no hay nada que podar.
             docker builder prune -f || true
+
+            # Verificación REAL del borde. El healthcheck de compose es del
+            # container 'app', así que un nginx roto (cert que no carga,
+            # upstream muerto) pasaba desapercibido y el deploy terminaba
+            # "Deploy completado!" con el sitio en 521 — pasó el 28-oct-2026.
+            # Acá se pega al origen por 80 y por 443 como lo hace Cloudflare.
+            EDGE_OK=no
+            for _i in $(seq 1 12); do
+              if curl -fsS --max-time 5 -H 'Host: www.portal659.com.ar' \
+                   http://127.0.0.1/api/health >/dev/null 2>&1 \
+                 && curl -fsSk --max-time 5 https://127.0.0.1/api/health >/dev/null 2>&1; then
+                EDGE_OK=yes; break
+              fi
+              sleep 5
+            done
+            if [ "$EDGE_OK" != "yes" ]; then
+              echo "ERROR: nginx NO responde en 80/443 tras el deploy — el deploy falla a propósito."
+              echo "--- estado de nginx ---"
+              docker inspect --format '{{.Name}} status={{.State.Status}} restarts={{.RestartCount}} exit={{.State.ExitCode}} err={{.State.Error}}' portal659-nginx 2>&1 || true
+              echo "--- log de nginx ---"
+              docker logs --tail 60 portal659-nginx 2>&1 || true
+              exit 1
+            fi
+            echo "Borde verificado: nginx responde 200 en 80 y 443."
 
             # Backup diario self-managed (04:00 AR = 07:00 UTC). Self-healing:
             # reinstala rclone + script + crontab si faltan. /opt/portal659-backups
@@ -154,6 +191,25 @@ jobs:
               "0 13 * * * root curl -fsS \"https://www.portal659.com.ar/api/cron/plan-reminders?secret=$CRON_SECRET_VAL\" >> /var/log/portal659-cron.log 2>&1" \
               > /etc/cron.d/portal659-reminders
             chmod 644 /etc/cron.d/portal659-reminders
+            systemctl enable --now cron >/dev/null 2>&1 || service cron start >/dev/null 2>&1 || true
+
+            # Monitor de salud + auto-heal + forense (cron self-managed, cada 2
+            # min, mismo patrón que los de arriba). Mira http://127.0.0.1 con
+            # Host del sitio: pasa por nginx (el único que publica 80/443) →
+            # app → Postgres, o sea justo lo que Cloudflare necesita para no
+            # dar 521. La capa externa la cubre health-monitor.yml (mira la URL
+            # pública, que desde el host no se ve si el VPS está apagado).
+            # /opt/portal659-monitor queda FUERA de /opt/portal659: sobrevive al
+            # rm -rf del deploy y guarda el estado entre corridas.
+            mkdir -p /opt/portal659-monitor
+            cp -f /opt/portal659/scripts/health-monitor.sh /opt/portal659-monitor/health-monitor.sh
+            cp -f /opt/portal659/scripts/alert-telegram.sh /opt/portal659-monitor/alert-telegram.sh
+            chmod +x /opt/portal659-monitor/health-monitor.sh /opt/portal659-monitor/alert-telegram.sh
+            chmod 700 /opt/portal659-monitor
+            printf '%s\n' \
+              '*/2 * * * * root /opt/portal659-monitor/health-monitor.sh >> /opt/portal659-monitor/cron.log 2>&1' \
+              > /etc/cron.d/portal659-monitor
+            chmod 644 /etc/cron.d/portal659-monitor
             systemctl enable --now cron >/dev/null 2>&1 || service cron start >/dev/null 2>&1 || true
 
             rm -f /tmp/code.tgz

@@ -1,0 +1,147 @@
+name: Health Monitor
+
+# Monitor EXTERNO del sitio. La capa de adentro (scripts/health-monitor.sh, cron
+# cada 2 min en el VPS) no puede ver un host completamente caído: desde adentro
+# localhost responde aunque el VPS esté apagado. Este workflow mira la URL
+# pública, que es lo que ve el usuario.
+#
+# Cada 5 min:
+#   1. pega a https://www.portal659.com.ar/api/health
+#   2. si falla, espera 60s y vuelve a pegar (un blip de un redeploy o de un
+#      restart de nginx no debe disparar nada)
+#   3. si sigue caído, entra al VPS por SSH y corre el monitor con --force:
+#      captura forense, intenta el auto-heal y manda la alerta a Telegram
+#   4. verifica y deja el run en rojo si el sitio sigue abajo
+#
+# Los secrets son los mismos del deploy (VPS_HOST / VPS_USER / VPS_SSH_KEY) más
+# TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID para avisar. Sin los de Telegram el
+# monitor funciona igual: registra todo y sólo no manda el chat.
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: health-monitor
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SITE: https://www.portal659.com.ar
+      HEALTH: https://www.portal659.com.ar/api/health
+    steps:
+      - uses: actions/checkout@v4
+
+      # ---- intento 1 ---------------------------------------------------------
+      # No falla el paso: guarda el código y sigue, para poder reintentar.
+      # curl -w '%{http_code}' ya imprime "000" si no puede conectar; se
+      # normaliza para que el log no muestre "000000".
+      - name: Intento 1
+        id: c1
+        run: |
+          code=$(curl -s --max-time 25 -o /dev/null -w '%{http_code}' "$HEALTH" 2>/dev/null)
+          case "$code" in [0-9][0-9][0-9]) ;; *) code=000 ;; esac
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "intento 1: HTTP $code"
+
+      - name: Esperar 60s y reintentar
+        id: c2
+        if: steps.c1.outputs.code != '200'
+        run: |
+          echo "el sitio no respondió 200: esperando 60s para descartar un blip"
+          sleep 60
+          code=$(curl -s --max-time 25 -o /dev/null -w '%{http_code}' "$HEALTH" 2>/dev/null)
+          case "$code" in [0-9][0-9][0-9]) ;; *) code=000 ;; esac
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "intento 2: HTTP $code"
+
+      # ---- corté de verdad: forense + heal + alerta ---------------------------
+      - name: Forense + auto-heal + alerta
+        id: heal
+        if: steps.c1.outputs.code != '200' && steps.c2.outputs.code != '200'
+        continue-on-error: true
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: 22
+          command_timeout: 10m
+          script: |
+            set -u
+            echo "SITIO CAÍDO — http=${{ steps.c1.outputs.code }} / ${{ steps.c2.outputs.code }}"
+            MON=/opt/portal659-monitor/health-monitor.sh
+            ALERT=/opt/portal659-monitor/alert-telegram.sh
+            [ -x "$ALERT" ] || ALERT=/opt/portal659/scripts/alert-telegram.sh
+
+            if [ -x "$MON" ]; then
+              # El monitor captura forense, intenta el heal y manda el Telegram.
+              sh "$MON" --force
+            else
+              # El monitor todavía no está instalado (primer run tras el deploy):
+              # forense inline + alerta, para no quedarnos sin datos.
+              echo "AVISO: $MON no está instalado — forense inline"
+              {
+                echo "== forense inline (monitor no instalado) =="
+                date -u
+                uptime; free -m; df -h /
+                docker ps -a --format '{{.Names}} | {{.Status}}'
+                docker inspect --format '{{.Name}} {{.State.Status}} r={{.RestartCount}} oom={{.State.OOMKilled}} exit={{.State.ExitCode}} err={{.State.Error}}' \
+                  portal659 portal659-nginx portal659-db 2>&1 || true
+                ss -ltnp 2>/dev/null | grep -E ':(80|443) ' || echo "NADIE escucha en 80/443"
+                docker logs --tail 40 portal659-nginx 2>&1 || true
+              } 2>&1
+              # Heal mínimo: levantar lo caído sin reconstruir.
+              cd /opt/portal659 2>/dev/null && docker compose up -d 2>&1 | tail -n 10 || true
+              sleep 20
+              code=$(curl -s --max-time 10 -H 'Host: www.portal659.com.ar' \
+                -o /dev/null -w '%{http_code}' http://127.0.0.1/api/health 2>/dev/null)
+              case "$code" in [0-9][0-9][0-9]) ;; *) code=000 ;; esac
+              echo "tras heal inline: HTTP $code"
+              sh "$ALERT" "🔴 PORTAL 659 caído y el monitor no estaba instalado en el VPS. Tras levantar el stack: HTTP $code. Instalá el cron con el próximo deploy." || true
+            fi
+
+      # ---- no pude entrar al VPS ---------------------------------------------
+      # Host apagado, red caída o SSH rechazado: desde afuera es indistinguible
+      # y es el único caso que el monitor de adentro no puede ver. Con
+      # continue-on-error el paso falla sin tumbar el job, así que se compara
+      # el outcome (no el conclusion) del paso de heal.
+      - name: Avisar que no pude entrar al VPS
+        if: steps.heal.outcome == 'failure'
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          ./scripts/alert-telegram.sh "🔴 PORTAL 659: el sitio está caído Y no pude entrar al VPS por SSH (host apagado, red o llave). Hay que entrar a mano: ssh root@103.195.103.245"
+
+      # ---- blip: se recuperó solo --------------------------------------------
+      - name: Avisar que fue un blip
+        if: steps.c1.outputs.code != '200' && steps.c2.outputs.code == '200'
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          ./scripts/alert-telegram.sh "🟡 PORTAL 659: falló un chequeo (HTTP ${{ steps.c1.outputs.code }}) y se recuperó solo. No hice nada. Si se repite, mirar el run de GitHub Actions."
+
+      # ---- veredicto final ----------------------------------------------------
+      # El run queda en rojo si el sitio sigue abajo, así se ve en la lista sin
+      # tener que abrir el log.
+      - name: Veredicto final
+        if: steps.c1.outputs.code != '200'
+        run: |
+          sleep 10
+          code=$(curl -s --max-time 25 -o /dev/null -w '%{http_code}' "$HEALTH" 2>/dev/null)
+          case "$code" in [0-9][0-9][0-9]) ;; *) code=000 ;; esac
+          echo "estado final: HTTP $code"
+          if [ "$code" != "200" ]; then
+            echo "::error::El sitio sigue caído tras el auto-heal (HTTP $code)"
+            exit 1
+          fi
+          echo "✅ el sitio volvió a responder"

@@ -17,7 +17,7 @@ export default function LogisticasAdminPage() {
   const [operators, setOperators] = useState<any[]>([]);
   const [error, setError] = useState("");
   const [msg, setMsg] = useState("");
-  const [tab, setTab] = useState<"carriers" | "zones" | "operators" | "settlement">("carriers");
+  const [tab, setTab] = useState<"carriers" | "zones" | "operators" | "solicitudes" | "settlement">("carriers");
   const [busy, setBusy] = useState(false);
 
   // Forms.
@@ -159,11 +159,12 @@ export default function LogisticasAdminPage() {
           <h1 className="text-lg font-bold">🚚 Portal 659 Envíos</h1>
         </div>
 
-        <div className="grid grid-cols-4 gap-1.5">
+        <div className="grid grid-cols-5 gap-1.5">
           {[
             { k: "carriers", l: "🤝 Logísticas" },
             { k: "zones", l: "🗺️ Zonas" },
             { k: "operators", l: "👤 Operadores" },
+            { k: "solicitudes", l: "📥 Solicitudes" },
             { k: "settlement", l: "🧾 Liquidación" },
           ].map((t) => (
             <button
@@ -225,6 +226,20 @@ export default function LogisticasAdminPage() {
                     onCheckedChange={(v) => save("/api/admin/carriers", "PATCH", { ...c, active: v }, "Actualizada")}
                   />
                 </div>
+                {c.self_registered && (
+                  <span className="inline-block rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-900">
+                    📥 Autoregistrada {c.active ? "· activa" : "· pendiente de aprobación"}
+                  </span>
+                )}
+                {c.contact_name && (
+                  <p className="text-[11px] text-muted-foreground">Contacto: {c.contact_name}</p>
+                )}
+                {c.coverage && (
+                  <p className="text-[11px] text-muted-foreground">Cobertura: {c.coverage}</p>
+                )}
+                {c.vehicle && (
+                  <p className="text-[11px] text-muted-foreground">Vehículo: {c.vehicle}</p>
+                )}
                 <div className="grid grid-cols-3 gap-2">
                   <Input className="h-8 text-xs" placeholder="Teléfono" defaultValue={c.phone || ""} key={`${c.id}-p`} onBlur={(e) => (e.target.value || null) !== (c.phone || null) && save("/api/admin/carriers", "PATCH", { ...c, phone: e.target.value }, "Actualizada")} />
                   <Input className="h-8 text-xs" placeholder="Email" defaultValue={c.email || ""} key={`${c.id}-e`} onBlur={(e) => (e.target.value || null) !== (c.email || null) && save("/api/admin/carriers", "PATCH", { ...c, email: e.target.value }, "Actualizada")} />
@@ -240,6 +255,63 @@ export default function LogisticasAdminPage() {
                 </p>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Solicitudes de autoregistro pendientes */}
+        {tab === "solicitudes" && (
+          <div className="space-y-3">
+            <p className="text-xs text-muted-foreground">
+              Logísticas registradas por sí mismas (autoregistro). Aprobá para activarlas y que empiecen a recibir encargos;
+              rechazá si no corresponden.
+            </p>
+            {carriers.filter((c: any) => c.self_registered && !c.active).length === 0 ? (
+              <div className="rounded-xl border border-border bg-background p-6 text-center">
+                <p className="text-sm text-muted-foreground">No hay solicitudes pendientes 🎉</p>
+              </div>
+            ) : (
+              carriers
+                .filter((c: any) => c.self_registered && !c.active)
+                .map((c: any) => (
+                  <div key={c.id} className="rounded-xl border border-border bg-background p-3 space-y-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold">{c.name}</p>
+                        {c.contact_name && <p className="text-[11px] text-muted-foreground">Contacto: {c.contact_name}</p>}
+                        {c.phone && <p className="text-[11px] text-muted-foreground">WhatsApp: {c.phone}</p>}
+                        {c.email && <p className="text-[11px] text-muted-foreground">Email: {c.email}</p>}
+                        {c.coverage && <p className="text-[11px] text-muted-foreground">Cobertura: {c.coverage}</p>}
+                        {c.vehicle && <p className="text-[11px] text-muted-foreground">Vehículo: {c.vehicle}</p>}
+                        {c.notes && <p className="text-[11px] text-muted-foreground">Notas: {c.notes}</p>}
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        disabled={busy}
+                        onClick={async () => {
+                          const ok = await save("/api/admin/carriers", "POST", { action: "approve", id: c.id }, "Logística aprobada");
+                          if (ok) await load();
+                        }}
+                      >
+                        ✅ Aprobar
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={busy}
+                        onClick={async () => {
+                          const note = window.prompt("Motivo del rechazo (opcional):") || "";
+                          const ok = await save("/api/admin/carriers", "POST", { action: "reject", id: c.id, note }, "Solicitud rechazada");
+                          if (ok) await load();
+                        }}
+                      >
+                        ❌ Rechazar
+                      </Button>
+                    </div>
+                  </div>
+                ))
+            )}
           </div>
         )}
 
@@ -296,7 +368,7 @@ export default function LogisticasAdminPage() {
                   <Switch checked={z.active} onCheckedChange={(v) => save("/api/admin/ship-zones", "PATCH", { ...z, active: v }, "Actualizada")} />
                 </div>
                 <div className="grid grid-cols-4 gap-2">
-                  <Input className="h-8 text-xs" type="number" inputMode="decimal" placeholder="$" defaultValue={z.price != null ? String(z.price) : ""} key={`${z.id}-p`} onBlur={(e) => Number(e.target.value) !== Number(z.price) && save("/api/admin/ship-zones", "PATCH", { ...z, price: Number(e.target.value) }, "Actualizada")} />
+                  <Input className="h-8 text-xs" type="number" inputMode="decimal" placeholder="Precio $" defaultValue={z.price != null ? String(z.price) : ""} key={`${z.id}-p`} onBlur={(e) => Number(e.target.value) !== Number(z.price) && save("/api/admin/ship-zones", "PATCH", { ...z, price: Number(e.target.value) }, "Actualizada")} />
                   <Input className="h-8 text-xs" type="number" inputMode="numeric" placeholder="ETA" defaultValue={z.eta_days != null ? String(z.eta_days) : ""} key={`${z.id}-e`} onBlur={(e) => Number(e.target.value) !== Number(z.eta_days) && save("/api/admin/ship-zones", "PATCH", { ...z, etaDays: Number(e.target.value) }, "Actualizada")} />
                   <Input className="h-8 text-xs" placeholder="Orden" defaultValue={z.position != null ? String(z.position) : ""} key={`${z.id}-o`} onBlur={(e) => Number(e.target.value) !== Number(z.position) && save("/api/admin/ship-zones", "PATCH", { ...z, position: Number(e.target.value) }, "Actualizada")} />
                   <select className="h-8 text-xs rounded-md border border-input bg-background px-1" defaultValue={z.carrier_id || ""} onBlur={(e) => (e.target.value || null) !== (z.carrier_id || null) && save("/api/admin/ship-zones", "PATCH", { ...z, carrierId: e.target.value || null }, "Actualizada")}>
@@ -306,9 +378,26 @@ export default function LogisticasAdminPage() {
                     ))}
                   </select>
                 </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] text-muted-foreground whitespace-nowrap">Tarifa de la logística al local ($):</span>
+                  <Input
+                    className="h-8 text-xs flex-1"
+                    type="number"
+                    inputMode="decimal"
+                    placeholder="0"
+                    defaultValue={z.carrier_fee != null ? String(z.carrier_fee) : ""}
+                    key={`${z.id}-cf`}
+                    onBlur={(e) => {
+                      const v = Number(e.target.value);
+                      if (!Number.isFinite(v) || v < 0) return;
+                      save("/api/admin/ship-zones", "PATCH", { kind: "zone_rate", id: z.id, fee: v }, "Tarifa actualizada");
+                    }}
+                  />
+                </div>
                 <p className="text-[11px] text-muted-foreground">
                   {z.carrier_name ? `Entrega ${z.carrier_name}` : "Sin logística asignada"}
                   {z.description ? ` · ${z.description}` : ""}
+                  {" · "}El comprador paga ${Math.round(Number(z.price) || 0).toLocaleString("es-AR")} de envío.
                 </p>
               </div>
             ))}

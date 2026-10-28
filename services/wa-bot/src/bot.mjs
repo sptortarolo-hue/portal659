@@ -6,7 +6,7 @@ import { getMenu, getMenuSync, matchProduct, matchAllProducts, normalizeForMatch
 import { parseWithLlm, parseByRules, normalizeEs, extractFromText, bareName, 
 classifyIntent, llmStats } from "./nlu.mjs";
 import { saveCorrection } from "./learning.mjs";
-import { getClientByVendor, sendText, sendTyping, sendPaused } from "./relay.mjs";
+import { getClientByVendor, sendText, sendTyping, sendPaused, sendImage, sendDocument } from "./relay.mjs";
 import { feedPush } from "./metrics.mjs";
 
 const DEFAULT_STATE = {
@@ -1788,6 +1788,25 @@ async function handlePortalInbound({ vendor, waId, body, waPhone }) {
         replies.push(`*${store.store_name}*:\n${lines.join("\\n")}`);
       }
       replies.push("¿Querés pedir de alguna? Escribí el nombre o el número.");
+      // Enviar foto de la primera promo con imagen (best-effort).
+      const client = getClientByVendor(vendor.id);
+      if (client) {
+        const promoWithImage = promoStores.flatMap((ps) => ps.promos).find((p) => p.image_url);
+        if (promoWithImage) {
+          try {
+            const imgRes = await fetch(promoWithImage.image_url, { signal: AbortSignal.timeout(10_000) });
+            if (imgRes.ok) {
+              const buf = Buffer.from(await imgRes.arrayBuffer());
+              const b64 = buf.toString("base64");
+              const caption = `🔥 ${promoWithImage.name} — $${Number(promoWithImage.price).toLocaleString("es-AR")}${promoWithImage.original_price ? ` (antes $${Number(promoWithImage.original_price).toLocaleString("es-AR")})` : ""}`;
+              sendImage(client, waId, b64, caption);
+              console.log(`[bot][portal] imagen promo enviada: ${promoWithImage.name}`);
+            }
+          } catch (e) {
+            console.error(`[bot][portal] error enviando imagen promo: ${e?.message}`);
+          }
+        }
+      }
       return await persist(state, vendor.id, waId, replies);
     }
 
@@ -2217,6 +2236,28 @@ async function handlePortalInbound({ vendor, waId, body, waPhone }) {
       }
       replies.push(lines.join("\n"));
       replies.push("¿De cuál querés pedir? Respondé el número.");
+      // Enviar foto del primer producto encontrado (si tiene imagen) — best-effort.
+      // Solo si es una búsqueda específica (no categoría con muchos resultados).
+      if (matches.length <= 3) {
+        const client = getClientByVendor(vendor.id);
+        if (client) {
+          const withImage = matches.find((m) => m.product?.image_url);
+          if (withImage) {
+            try {
+              const imgRes = await fetch(withImage.product.image_url, { signal: AbortSignal.timeout(10_000) });
+              if (imgRes.ok) {
+                const buf = Buffer.from(await imgRes.arrayBuffer());
+                const b64 = buf.toString("base64");
+                const caption = `${withImage.product.name} — $${Number(withImage.product.price).toLocaleString("es-AR")} (${withImage.vendor.store_name})`;
+                sendImage(client, waId, b64, caption);
+                console.log(`[bot][portal] imagen enviada: ${withImage.product.name}`);
+              }
+            } catch (e) {
+              console.error(`[bot][portal] error enviando imagen: ${e?.message}`);
+            }
+          }
+        }
+      }
       return await persist(state, vendor.id, waId, replies);
     }
 
@@ -2295,6 +2336,7 @@ export async function sweepStaleConversations() {
       sendTyping(client, waId);
       sendText(client, waId, `Enseguida te atiende una persona de *${vendor.store_name}* 🙌`);
       sendPaused(client, waId);
+      try { (await import("./telemetry.mjs")).trackMessage(vendorId, waId, "out", `Enseguida te atiende una persona de *${vendor.store_name}* 🙌`); } catch {}
     } catch { /* el push al dueño va igual */ }
 
     // Push al dueño con contexto (teléfono + último mensaje) — la "nota interna".
@@ -2347,6 +2389,7 @@ export async function sweepAbandonedCarts() {
         state.nudgeSent = true;
         await setState(vendorId, waId, state).catch(() => {});
         try { (await import("./telemetry.mjs")).trackEvent(vendorId, "cart_abandoned", waId, { items: state.items?.length }); } catch {}
+        try { (await import("./telemetry.mjs")).trackMessage(vendorId, waId, "out", nudgeMsg); } catch {}
         console.log(`[nudge] ${vendor.store_name} (${waId}) carrito abandonado -> recordatorio enviado`);
       }
     } catch (e) {

@@ -606,6 +606,10 @@ type wsIn struct {
 	WaID  string `json:"wa_id,omitempty"`
 	Text  string `json:"text,omitempty"`
 	Error string `json:"message,omitempty"`
+	Body  string `json:"body,omitempty"`
+	Data  string `json:"data,omitempty"`
+	Name  string `json:"name,omitempty"`
+	Mime  string `json:"mime,omitempty"`
 }
 
 func (r *relay) writeMsg(conn *websocket.Conn, v interface{}) error {
@@ -710,6 +714,24 @@ func (r *relay) readLoop(ctx context.Context, conn *websocket.Conn) {
 			if in.WaID != "" && in.Text != "" {
 				r.sendText(ctx, in.WaID, in.Text)
 			}
+		case "image":
+			if in.WaID != "" && in.Data != "" {
+				data, err := base64.StdEncoding.DecodeString(in.Data)
+				if err != nil {
+					log.Printf("decode image: %v", err)
+				} else {
+					r.sendImage(ctx, in.WaID, data, in.Body)
+				}
+			}
+		case "document":
+			if in.WaID != "" && in.Data != "" {
+				data, err := base64.StdEncoding.DecodeString(in.Data)
+				if err != nil {
+					log.Printf("decode document: %v", err)
+				} else {
+					r.sendDocument(ctx, in.WaID, data, in.Name, in.Mime)
+				}
+			}
 		case "typing", "paused":
 			// Indicador de tipeo (anti-ban): que el dueño "parezca" que escribe
 			// antes de responder. Se ignora si el chat ya no es válido.
@@ -743,6 +765,65 @@ func (r *relay) sendText(ctx context.Context, waID, text string) {
 	_, err := r.client.SendMessage(ctx, jid, &waProto.Message{Conversation: proto.String(text)})
 	if err != nil {
 		log.Printf("send a %s: %v", waID, err)
+	}
+}
+
+// sendImage envía una imagen (bytes) con caption opcional.
+func (r *relay) sendImage(ctx context.Context, waID string, data []byte, caption string) {
+	jid := parseJIDForSend(waID)
+	uploaded, err := r.client.Upload(ctx, data, whatsmeow.MediaImage)
+	if err != nil {
+		log.Printf("upload image a %s: %v", waID, err)
+		return
+	}
+	msg := &waProto.Message{
+		ImageMessage: &waProto.ImageMessage{
+			Caption:       proto.String(caption),
+			Mimetype:      proto.String("image/jpeg"),
+			URL:           proto.String(uploaded.URL),
+			DirectPath:     proto.String(uploaded.DirectPath),
+			MediaKey:      uploaded.MediaKey,
+			FileEncSHA256: uploaded.FileEncSHA256,
+			FileSHA256:    uploaded.FileSHA256,
+			FileLength:    proto.Uint64(uint64(len(data))),
+		},
+	}
+	_, err = r.client.SendMessage(ctx, jid, msg)
+	if err != nil {
+		log.Printf("send image a %s: %v", waID, err)
+	}
+}
+
+// sendDocument envía un documento (PDF, etc.) con nombre y mime.
+func (r *relay) sendDocument(ctx context.Context, waID string, data []byte, fileName, mime string) {
+	jid := parseJIDForSend(waID)
+	uploaded, err := r.client.Upload(ctx, data, whatsmeow.MediaDocument)
+	if err != nil {
+		log.Printf("upload document a %s: %v", waID, err)
+		return
+	}
+	if mime == "" {
+		mime = "application/pdf"
+	}
+	if fileName == "" {
+		fileName = "documento.pdf"
+	}
+	msg := &waProto.Message{
+		DocumentMessage: &waProto.DocumentMessage{
+			Title:         proto.String(fileName),
+			FileName:      proto.String(fileName),
+			Mimetype:      proto.String(mime),
+			URL:           proto.String(uploaded.URL),
+			DirectPath:     proto.String(uploaded.DirectPath),
+			MediaKey:      uploaded.MediaKey,
+			FileEncSHA256: uploaded.FileEncSHA256,
+			FileSHA256:    uploaded.FileSHA256,
+			FileLength:    proto.Uint64(uint64(len(data))),
+		},
+	}
+	_, err = r.client.SendMessage(ctx, jid, msg)
+	if err != nil {
+		log.Printf("send document a %s: %v", waID, err)
 	}
 }
 

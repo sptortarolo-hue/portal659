@@ -46,8 +46,19 @@ services:
       - CRON_SECRET=${CRON_SECRET}
       # Meta de verificación de Search Console (layout.tsx lo lee en runtime).
       - GOOGLE_SITE_VERIFICATION=${GOOGLE_SITE_VERIFICATION:-}
+      # Sólo para el botón "Enviar alerta de prueba" de /admin/monitor. El cron
+      # del host los lee del mismo .env; acá el panel nunca los muestra.
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
     volumes:
       - uploads_data:/app/uploads
+      # Monitor de salud del HOST (scripts/health-monitor.sh, cron cada 2 min):
+      # montado READ-ONLY para que /admin/monitor muestre estado real del VPS
+      # (disco, RAM, contenedores, forenses) sin meterle el socket de docker al
+      # contenedor. El contenedor corre como root (Dockerfile sin USER) y el
+      # cron es el único que escribe acá. Si el dir no existe en el host,
+      # Docker lo crea vacío y el panel muestra "monitor no instalado".
+      - /opt/portal659-monitor:/monitor:ro
     expose:
       - "3000"
     networks:

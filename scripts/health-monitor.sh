@@ -42,6 +42,11 @@ ENV_FILE=$APP_DIR/.env
 LOG=$MONITOR_DIR/monitor.log
 FAIL_FILE=$MONITOR_DIR/fails
 LAST_HEAL=$MONITOR_DIR/last-heal
+# status.json lo lee /admin/monitor (montado read-only en el contenedor app):
+# es la única forma de que el panel vea datos del HOST sin meterle el socket de
+# docker al contenedor. outages.log es el historial de cortes.
+STATUS_FILE=$MONITOR_DIR/status.json
+OUTAGES_LOG=$MONITOR_DIR/outages.log
 
 HEAL_COOLDOWN=${HEAL_COOLDOWN:-600}      # segundos entre auto-heals (anti-flapping)
 DISK_HEAL_MAX_PCT=${DISK_HEAL_MAX_PCT:-90}
@@ -278,6 +283,15 @@ handle_outage() {
   fi
 
   _up=$(is_up && echo "SÍ" || echo "NO")
+
+  # Historial de cortes (una línea por corte; lo muestra /admin/monitor).
+  printf '%s | http=%s | fallos=%s | heal=%s | arriba=%s | forense=%s\n' \
+    "$(ts)" "$_code" "$_fails" "$_healed" "$_up" "$(basename "$_forensic")" >> "$OUTAGES_LOG"
+  if [ "$(wc -l < "$OUTAGES_LOG" 2>/dev/null || echo 0)" -gt 100 ]; then
+    tail -n 60 "$OUTAGES_LOG" > "$OUTAGES_LOG.tmp" 2>/dev/null \
+      && cat "$OUTAGES_LOG.tmp" > "$OUTAGES_LOG" && rm -f "$OUTAGES_LOG.tmp"
+  fi
+
   {
     echo "🔴 PORTAL 659 CAÍDO — $(ts)"
     echo
@@ -307,6 +321,95 @@ handle_outage() {
   return 0
 }
 
+# --- status.json para /admin/monitor -------------------------------------------
+# Se escribe en CADA corrida (no sólo cuando falla): el panel necesita saber que
+# el monitor está vivo, no sólo que el sitio está caído. Atómico vía tmp + mv
+# (mismo filesystem): una lectura del panel nunca ve JSON a medias.
+# Se construye a mano y sin comas colgadas para no depender de jq.
+write_status() {
+  _http=$1
+  _up=$2
+  _st="$STATUS_FILE.tmp"
+
+  _mem=$(free -m 2>/dev/null | awk '/^Mem:/{print $3" "$2} /^Swap:/{print $3" "$2}')
+  _mem_used=$(echo "$_mem" | awk 'NR==1{print $1}'); _mem_used=${_mem_used:-0}
+  _mem_tot=$(echo "$_mem" | awk 'NR==1{print $2}'); _mem_tot=${_mem_tot:-0}
+  _swp_used=$(echo "$_mem" | awk 'NR==2{print $1}'); _swp_used=${_swp_used:-0}
+  _swp_tot=$(echo "$_mem" | awk 'NR==2{print $2}'); _swp_tot=${_swp_tot:-0}
+  _load=$(awk '{print $1" "$2" "$3}' /proc/loadavg 2>/dev/null)
+  _upt=$(cut -d. -f1 /proc/uptime 2>/dev/null); _upt=${_upt:-0}
+
+  # contenedores: nombre, estado, salud, restarts, OOM, exit code
+  _cjson=""
+  for _c in $CONTAINERS; do
+    _row=$(docker inspect --format '{{.State.Status}}|{{.RestartCount}}|{{.State.OOMKilled}}|{{.State.ExitCode}}|{{.State.Error}}' \
+      "$_c" 2>/dev/null) || continue
+    _st_c=$(echo "$_row" | cut -d'|' -f1)
+    _rs=$(echo "$_row" | cut -d'|' -f2)
+    _oom=$(echo "$_row" | cut -d'|' -f3)
+    _ex=$(echo "$_row" | cut -d'|' -f4)
+    _err=$(echo "$_row" | cut -d'|' -f5)
+    _hl=$(docker inspect --format '{{.State.Health.Status}}' "$_c" 2>/dev/null) || _hl=""
+    [ -n "$_hl" ] || _hl="-"
+    _err=$(printf '%s' "$_err" | tr -d '"\\' | cut -c1-120)
+    [ -n "$_cjson" ] && _cjson="$_cjson,"
+    _cjson="$_cjson{\"name\":\"$_c\",\"status\":\"$_st_c\",\"health\":\"$_hl\",\"restarts\":$_rs,\"oom\":$([ "$_oom" = "true" ] && echo true || echo false),\"exit\":$_ex,\"error\":\"$_err\"}"
+  done
+
+  # ¿escucha alguien en 80/443? es la firma de un 521
+  _l80=no; _l443=no
+  _listen=$(ss -ltn 2>/dev/null)
+  echo "$_listen" | grep -qE ':80 ' && _l80=yes
+  echo "$_listen" | grep -qE ':443 ' && _l443=yes
+
+  _lastheal=$(readf "$LAST_HEAL"); _lastheal=${_lastheal:-0}
+  _now=$(date -u +%s)
+  _age=0; [ "$_lastheal" -gt 0 ] 2>/dev/null && _age=$(( _now - _lastheal ))
+
+  # Telegram configurado: se informa sí/no, nunca se expone el token.
+  _tg=no
+  if [ -f "$ENV_FILE" ]; then
+    _tok=$(sed -n 's/^TELEGRAM_BOT_TOKEN=//p' "$ENV_FILE" | head -n 1 | tr -d '"'"'"' \r')
+    _cid=$(sed -n 's/^TELEGRAM_CHAT_ID=//p' "$ENV_FILE" | head -n 1 | tr -d '"'"'"' \r')
+    [ -n "$_tok" ] && [ -n "$_cid" ] && _tg=yes
+  fi
+
+  # fails SIEMPRE numérico: si el archivo no existe, un vacío rompería el JSON
+  # (el panel le hace JSON.parse). Igual el http del caído: "000" no es un
+  # número JSON válido (cero a la izquierda), se normaliza a entero.
+  _fails_n=$(readf "$FAIL_FILE" | tr -dc '0-9')
+  [ -n "$_fails_n" ] || _fails_n=0
+  _http_n=$(echo "$_http" | tr -dc '0-9')
+  [ -n "$_http_n" ] || _http_n=0
+  _http_n=$(( 10#$_http_n ))
+  cat > "$_st" <<EOF
+{
+  "ts": "$(ts)",
+  "ts_unix": $_now,
+  "http": $_http_n,
+  "up": $([ "$_up" = "1" ] && echo true || echo false),
+  "fails": $_fails_n,
+  "disk_pct": $(disk_pct),
+  "mem_used_mb": $_mem_used,
+  "mem_total_mb": $_mem_tot,
+  "swap_used_mb": $_swp_used,
+  "swap_total_mb": $_swp_tot,
+  "load": "$(echo "$_load" | tr -d '"')",
+  "uptime_sec": $_upt,
+  "listening_80": $([ "$_l80" = "yes" ] && echo true || echo false),
+  "listening_443": $([ "$_l443" = "yes" ] && echo true || echo false),
+  "last_heal_unix": $_lastheal,
+  "last_heal_ago_sec": $_age,
+  "heal_cooldown_sec": $HEAL_COOLDOWN,
+  "disk_heal_max_pct": $DISK_HEAL_MAX_PCT,
+  "max_fails": $MAX_FAILS,
+  "telegram_configured": $([ "$_tg" = "yes" ] && echo true || echo false),
+  "containers": [$_cjson]
+}
+EOF
+  mv -f "$_st" "$STATUS_FILE"
+}
+
 # --- main ----------------------------------------------------------------------
 if [ "$STATUS_ONLY" = "1" ]; then
   echo "http=$(probe_code) fails=$(readf "$FAIL_FILE" | sed 's/^$/0/') disco=$(disk_pct)%"
@@ -324,6 +427,7 @@ if [ "$_code" = "200" ]; then
     alert "$(cat "$MONITOR_DIR/alert.txt")"
   fi
   writef "$FAIL_FILE" 0
+  write_status "$_code" 1
   exit 0
 fi
 
@@ -335,9 +439,14 @@ log "check falló: http=$_code (fallos seguidos: $_fails)"
 
 if [ "$_fails" -ge "$MAX_FAILS" ] || [ "$FORCE" = "1" ]; then
   handle_outage "$_code" "$_fails"
-  exit $?
+  _rc=$?
+  # El status se escribe DESPUÉS del heal: si sanó, el panel tiene que ver el
+  # 200 y el contador en 0, no el corte que ya se resolvió.
+  write_status "$(probe_code)" $([ "$(probe_code)" = "200" ] && echo 1 || echo 0)
+  exit $_rc
 fi
 
 # Un solo fallo: no hacemos nada todavía (un redeploy o un restart de nginx
 # pueden tardar más que el intervalo del cron).
+write_status "$_code" 0
 exit 0

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import StatsCard from "@/components/admin/stats-card";
-import { Store, Users, ShoppingCart, Package, Star, DollarSign } from "lucide-react";
+import { Store, Users, ShoppingCart, Package, Star, DollarSign, ShieldCheck, AlertTriangle } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts";
 import { VERTICALS } from "@/lib/config";
 
@@ -25,6 +25,18 @@ type Order = {
   status: string;
   vendor_id: string;
   store_name?: string;
+};
+
+type MonitorLite = {
+  ready: boolean;
+  status?: {
+    up: boolean;
+    http: number;
+    fails: number;
+    disk_pct: number;
+    telegram_configured?: boolean;
+    ts_unix?: number;
+  };
 };
 
 const VERTICAL_COLORS: Record<string, string> = {
@@ -63,6 +75,7 @@ async function fetchJson(url: string, ms = 8000): Promise<any | null> {
 export default function AdminDashboard() {
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [monitor, setMonitor] = useState<MonitorLite | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [shareCopied, setShareCopied] = useState(false);
@@ -81,11 +94,14 @@ export default function AdminDashboard() {
   const fetchData = useCallback(async () => {
     setError(false);
     try {
-      const [adminData, usersData] = await Promise.all([
+      const [adminData, usersData, monitorData] = await Promise.all([
         fetchJson("/api/admin"),
         fetchJson("/api/admin/users?per_page=1"),
+        // Semáforo del VPS: si falla, el dashboard no fragata, sólo queda sin pill.
+        fetchJson("/api/admin/monitor?lite=1"),
       ]);
 
+      if (monitorData) setMonitor(monitorData);
       if (adminData && !adminData.error) {
         setStats({
           ...adminData.stats,
@@ -153,6 +169,36 @@ export default function AdminDashboard() {
   return (
     <div className="space-y-6">
       <h1 className="font-display text-2xl font-semibold">Dashboard</h1>
+
+      {/* Semáforo del VPS: el estado del sitio a la vista, sin entrar al panel de monitor. */}
+      {monitor?.ready && monitor.status && (
+        <a
+          href="/admin/monitor"
+          className={`rounded-xl border px-4 py-3 flex items-center gap-3 transition-colors ${
+            monitor.status.up
+              ? "border-emerald-200 bg-emerald-50 hover:bg-emerald-100"
+              : "border-red-300 bg-red-50 hover:bg-red-100"
+          }`}
+        >
+          <span
+            className={`inline-flex h-7 w-7 rounded-full items-center justify-center flex-shrink-0 text-white ${
+              monitor.status.up ? "bg-emerald-500" : "bg-red-500"
+            }`}
+          >
+            {monitor.status.up ? <ShieldCheck className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className={`text-sm font-medium ${monitor.status.up ? "text-emerald-800" : "text-red-800"}`}>
+              {monitor.status.up ? "Sitio arriba" : `Sitio sin responder (HTTP ${monitor.status.http})`}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Disco {monitor.status.disk_pct}% · {monitor.status.fails} fallo(s) seguidos
+              {monitor.status.telegram_configured === false ? " · alertas sin configurar" : ""}
+            </p>
+          </div>
+          <span className="text-xs text-muted-foreground flex-shrink-0 hidden sm:inline">Ver monitor ›</span>
+        </a>
+      )}
 
       <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         <StatsCard label="Comercios" value={stats?.totalVendors || 0} icon={Store} color="text-primary" />

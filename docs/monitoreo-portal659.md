@@ -85,7 +85,36 @@ Sin esto el monitor funciona igual — registra todo y solo no manda el chat.
 El deploy los escribe en `/opt/portal659/.env`; si los secrets no están, saltea
 la escritura y el monitor arranca en modo fail-open.
 
-## Revisar y operar
+### Desde el panel: `/admin/monitor`
+
+El dashboard de admin trae el estado sin SSH: **Dashboard → Monitor** (y un
+semáforo compacto arriba del dashboard con disco % y fallos seguidos, que linka
+al tab). Muestra lo que el cron escribe en cada corrida —no corre docker, no
+toca el host:
+
+- semáforo grande (arriba / caído + HTTP y fallos seguidos), KPIs de disco,
+  memoria, swap y load con edad de la última corrida;
+- tabla de **contenedores** (estado, health, reinicios, OOM, exit code, error);
+- tarjetas de **auto-heal** (último intento, cooldown, umbral de disco, fallos
+  para actuar) y **cortes registrados** (`outages.log`, una fila por corte);
+- **forenses** descargables en un modal (se leen del montaje, sin SSH);
+- log del monitor (rotado) y acceso a los runs del monitor externo.
+
+Dos acciones desde el panel:
+
+- **Verificar el borde ahora**: pega a `/api/health` vía nginx (el mismo camino
+  de Cloudflare) y reporta HTTP + latencia + si la base responde. Es la misma
+  verificación que hace el deploy al terminar.
+- **Probar alerta de Telegram**: manda un mensaje de prueba al chat configurado.
+  Si no llega, el tab muestra igual si `telegram_configured` está en `false`.
+
+Si el directorio no está montado (`/monitor:ro` falta o está vacío), el tab
+muestra "Monitor no instalado" con el link a los runs de GitHub.
+
+> El montaje es **read-only** a propósito: el panel lee, el cron escribe. El
+> contenedor no puede tocar el estado del host.
+
+## Revisar y operar (VPS)
 
 ```bash
 # estado actual (http, fallos seguidos, disco, containers)
@@ -119,7 +148,10 @@ Los runs del monitor externo quedan en
 - Instala el cron del monitor (self-managed, se auto-repara en cada deploy) y
   escribe los secrets de Telegram al `.env`.
 
-**`nginx.conf`, `docker-compose.yml`** — sin cambios.
+**`nginx.conf`** — sin cambios. **`docker-compose.yml`** — monta
+`/opt/portal659-monitor:/monitor:ro` en el servicio `app` y pasa
+`TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` al contenedor (solo los lee
+`alert-telegram.sh` en los disparos del cron; nunca se exponen por la API).
 
 ## Deuda conocida
 

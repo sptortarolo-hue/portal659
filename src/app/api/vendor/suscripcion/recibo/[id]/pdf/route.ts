@@ -2,6 +2,7 @@ import { getVendorByRequest } from "@/lib/vendor-utils";
 import { isAdmin } from "@/lib/admin-utils";
 import { queryOne } from "@/lib/db";
 import { buildPlanReceiptPdf } from "@/lib/plan-receipt-pdf";
+import { derivePromoFor } from "@/lib/plan-payments";
 import { NextResponse } from "next/server";
 import type { PlanReceipt, Vendor } from "@/types/database";
 
@@ -23,7 +24,7 @@ export async function GET(
     return NextResponse.json({ error: "No autenticado" }, { status: 401 });
   }
 
-  const receipt = await queryOne<PlanReceipt & { vendor_id: string }>(
+  const receipt = await queryOne<PlanReceipt & { vendor_id: string; plan_id: string | null }>(
     `SELECT r.*, v.id AS vendor_id
        FROM plan_receipts r JOIN vendors v ON v.id = r.vendor_id
       WHERE r.id = $1 LIMIT 1`,
@@ -41,6 +42,16 @@ export async function GET(
   );
   if (!v) return NextResponse.json({ error: "Comercio no encontrado" }, { status: 404 });
 
+  // Mismo criterio que el A4 y el mail: snapshot del recibo, o derivado del
+  // promo vigente si el monto coincide (recibos viejos sin la columna).
+  const promo =
+    receipt.promo_pct != null && receipt.promo_list_price != null
+      ? { pct: Number(receipt.promo_pct), listPrice: Number(receipt.promo_list_price) }
+      : await derivePromoFor(receipt.plan_id, Number(receipt.amount));
+  const priceNote = promo
+    ? `precio promo −${promo.pct}% (lista $${promo.listPrice.toLocaleString("es-AR")})`
+    : "precio de lista";
+
   const pdf = await buildPlanReceiptPdf({
     vendor: v,
     receiptNumber: `${String(receipt.seq).padStart(4, "0")}/${receipt.year}`,
@@ -50,6 +61,7 @@ export async function GET(
     periodStart: receipt.period_start,
     periodEnd: receipt.period_end,
     method: receipt.method === "transferencia" ? "Transferencia bancaria" : receipt.method,
+    priceNote,
   });
 
   const fname = `recibo-X-${String(receipt.seq).padStart(4, "0")}-${receipt.year}.pdf`;

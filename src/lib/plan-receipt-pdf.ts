@@ -32,6 +32,20 @@ const fdate = (iso: string | null): string => {
   return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()}`;
 };
 
+/**
+ * Las fuentes estándar (Helvetica) usan WinAnsi: un "−" U+2212 o un "—" U+2014
+ * hacen que drawText tire y el PDF no se genere. Se normaliza a ASCII antes de
+ * dibujar (los textos de promo llegan con esos signos desde el panel).
+ */
+const winAnsiSafe = (s: string): string =>
+  s
+    .replace(/[\u2212\u2013\u2014]/g, "-")
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u201c\u201d]/g, '"')
+    .replace(/\u2026/g, "...")
+    .replace(/\u00a0/g, " ")
+    .replace(/[^\u0000-\u00ff]/g, "");
+
 export async function buildPlanReceiptPdf(data: PlanReceiptPdfData): Promise<Buffer> {
   const { vendor, receiptNumber, issuedAt, planName, amount, periodStart, periodEnd, method, priceNote } = data;
   const doc = await PDFDocument.create();
@@ -45,10 +59,11 @@ export async function buildPlanReceiptPdf(data: PlanReceiptPdfData): Promise<Buf
   let y = 841.89 - 48;
 
   const text = (str: string, x: number, yy: number, size = 10, f = font, color = black, maxW?: number) => {
-    let s = str;
+    const full = winAnsiSafe(str);
+    let s = full;
     if (maxW) {
-      while (s.length > 1 && f.widthOfTextAtSize(s + "…", size) > maxW) s = s.slice(0, -1);
-      if (s !== str) s += "…";
+      while (s.length > 1 && f.widthOfTextAtSize(s + "...", size) > maxW) s = s.slice(0, -1);
+      if (s !== full) s += "...";
     }
     page.drawText(s, { x, y: yy, size, font: f, color });
   };

@@ -63,6 +63,9 @@ export type PlanReceipt = {
   year: number;
   issued_at: string;
   emailed_at: string | null;
+  /** Snapshot del descuento aplicado (null = precio de lista). */
+  promo_pct: number | null;
+  promo_list_price: number | null;
 };
 
 /** Datos de cobro del PORTAL (fila única, editable en /admin). */

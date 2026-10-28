@@ -15,8 +15,13 @@ import {
   applyAdvanceTx,
   syncAndNotify,
 } from "@/lib/shipment-handoff";
-import { shipmentExtColsReady, shipmentAckColsReady } from "@/lib/shipping-server";
+import { shipmentExtColsReady, shipmentAckColsReady, fetchPendingCarrier } from "@/lib/shipping-server";
 import { geocodeAddress, geocodeAddressesBatch } from "@/lib/geocode";
+import {
+  getShipmentPaymentsMap,
+  shipmentFeeColsReady,
+  validateShipmentPayment,
+} from "@/lib/shipment-payments";
 
 export const dynamic = "force-dynamic";
 
@@ -37,7 +42,16 @@ export async function GET(request: Request) {
   }
   const carriers = await fetchOperatorCarriers(user.id);
   if (carriers.length === 0) {
-    return NextResponse.json({ shipments: [], ready: true, carriers: [] });
+    // ¿Solicitud de logística en revisión? (autoregistro sin aprobar)
+    const pending = await fetchPendingCarrier(user.id);
+    return NextResponse.json({
+      shipments: [],
+      ready: true,
+      carriers: [],
+      pending: pending
+        ? { carrierName: pending.carrier_name, requestedAt: pending.created_at }
+        : null,
+    });
   }
   const carrierIds = carriers.map((c) => c.id);
 
@@ -45,12 +59,15 @@ export async function GET(request: Request) {
   // (sin dest/cert/ack) y el panel sigue funcionando en modo legacy.
   const extCols = await shipmentExtColsReady();
   const ackCols = extCols && (await shipmentAckColsReady());
+  const feeCols = await shipmentFeeColsReady();
   const rows = await queryMany<Record<string, unknown>>(
     `SELECT s.id, s.order_id, s.code, s.status, s.note, s.failed_reason, s.pod_photo_url,
             s.shipping_zone_name, s.requested_at, s.picked_up_at, s.delivered_at, s.created_at,
             ${extCols ? `s.dest_lat, s.dest_lng,
             s.delivered_to_name, s.delivered_dni, s.delivered_lat, s.delivered_lng, s.delivered_geo_ok,` : ""}
             ${ackCols ? "s.ack_at," : ""}
+            ${feeCols ? "s.carrier_fee," : ""}
+            sz.eta_days,
             o.total, o.customer_name, o.customer_phone, o.customer_address,
             o.items, o.status AS order_status, o.delivery_window, o.pickup_number,
             v.store_name, v.slug AS store_slug, v.location AS store_address,
@@ -60,12 +77,15 @@ export async function GET(request: Request) {
      JOIN orders o ON o.id = s.order_id
      JOIN vendors v ON v.id = s.vendor_id
      LEFT JOIN carriers c ON c.id = s.carrier_id
+     LEFT JOIN shipping_zones sz ON sz.id = s.shipping_zone_id
      WHERE (s.carrier_id = ANY($1::uuid[])
         OR (s.carrier_id IS NULL AND s.shipping_zone_id IS NULL))
      ORDER BY s.requested_at ASC
      LIMIT 300`,
     [carrierIds]
   );
+  // Cobros ya registrados (mapa por shipment_id).
+  const payments = feeCols ? await getShipmentPaymentsMap((rows || []).map((r) => String(r.id))) : new Map();
 
   const shipments = (rows || []).map((r) => {
     const coordAlt = r.dest_lat != null && r.dest_lng != null
@@ -102,6 +122,7 @@ export async function GET(request: Request) {
       items: Array.isArray(r.items) ? r.items : [],
       total: Number(r.total) || 0,
       orderStatus: r.order_status != null ? String(r.order_status) : null,
+      etaDays: r.eta_days != null ? Number(r.eta_days) : null,
       // Certificado de entrega (visible después de delivered).
       deliveredToName: r.delivered_to_name != null ? String(r.delivered_to_name) : null,
       deliveredDni: r.delivered_dni != null ? String(r.delivered_dni) : null,
@@ -110,6 +131,9 @@ export async function GET(request: Request) {
       deliveredGeoOk: r.delivered_geo_ok === true,
       // Acuse de recibo (el comercio lo ve en el detalle del pedido).
       ackAt: r.ack_at != null ? String(r.ack_at) : null,
+      // Tarifa de la logística congelada al avisar + cobro al retirar.
+      carrierFee: r.carrier_fee != null ? Number(r.carrier_fee) : null,
+      payment: payments.get(String(r.id)) ?? null,
     };
   });
 
@@ -194,6 +218,34 @@ export async function POST(request: Request) {
     );
   }
 
+  // Cobro al local al retirar (opcional; se registra con la transición).
+  let paymentInput: {
+    vendorId: string;
+    amount: number;
+    method: string;
+    payerName: string | null;
+    note: string | null;
+  } | null = null;
+  if (body?.payment != null) {
+    if (!(await shipmentFeeColsReady())) {
+      return NextResponse.json(
+        { error: "Falta aplicar la migración migrate-shipment-carrier-fee.sql para registrar cobros" },
+        { status: 503 }
+      );
+    }
+    const parsed = validateShipmentPayment(body.payment);
+    if (parsed.error) return NextResponse.json({ error: parsed.error }, { status: 400 });
+    if (status !== "picked_up") {
+      return NextResponse.json(
+        { error: "El cobro al local se registra al colectar el paquete" },
+        { status: 400 }
+      );
+    }
+    paymentInput = parsed.payment
+      ? { vendorId: current.vendor_id, ...parsed.payment }
+      : null;
+  }
+
   // Foto POD: URL que ya subió el form (tolerante, hasta 500 chars http).
   let photoUrl: string | null = null;
   if (podPhotoUrl && podPhotoUrl.length <= 500 && podPhotoUrl.startsWith("http")) {
@@ -211,6 +263,7 @@ export async function POST(request: Request) {
       courierName: null,
       podEnforced,
       cert: cert.cert,
+      payment: paymentInput,
     });
   } catch (e) {
     return NextResponse.json(
@@ -221,7 +274,7 @@ export async function POST(request: Request) {
 
   // Estado del pedido sincronizado + push/mail comercio-comprador (best-effort).
   const sync = await syncAndNotify(current, status, note);
-  return NextResponse.json({ ok: true, status, statusLabel: SHIPMENT_STATUS_LABELS[status as ShipmentStatus] || status, orderSynced: sync.applied });
+  return NextResponse.json({ ok: true, status, statusLabel: SHIPMENT_STATUS_LABELS[status as ShipmentStatus] || status, orderSynced: sync.applied, payment: paymentInput ? { amount: paymentInput.amount, method: paymentInput.method } : null });
 }
 
 /** Shipment + is_preview del pedido (para la transición y los avisos). */

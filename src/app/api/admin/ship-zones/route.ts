@@ -16,11 +16,24 @@ export async function GET(request: Request) {
   }
   try {
     const zones = await queryMany<Record<string, unknown>>(
-      `SELECT z.*, c.name AS carrier_name
+      `SELECT z.*, c.name AS carrier_name,
+              r.fee AS carrier_fee
        FROM shipping_zones z
        LEFT JOIN carriers c ON c.id = z.carrier_id
+       LEFT JOIN carrier_zone_rates r
+         ON r.shipping_zone_id = z.id AND r.carrier_id = z.carrier_id
        ORDER BY z.position ASC, z.created_at ASC`,
       []
+    ).catch(() =>
+      // Sin la migración de tarifas (carrier_zone_rates no existe): el admin
+      // ve el catálogo igual, sin la columna de tarifa.
+      queryMany<Record<string, unknown>>(
+        `SELECT z.*, c.name AS carrier_name
+         FROM shipping_zones z
+         LEFT JOIN carriers c ON c.id = z.carrier_id
+         ORDER BY z.position ASC, z.created_at ASC`,
+        []
+      )
     );
     let operators: Record<string, unknown>[] = [];
     try {
@@ -124,6 +137,39 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ ok: true });
     } catch {
       return NextResponse.json({ error: "No se pudo actualizar" }, { status: 500 });
+    }
+  }
+
+  // Tarifa de la logística para una zona (la ve/edita el admin; la puede
+  // cambiar también la propia logística desde su panel).
+  if (kind === "zone_rate") {
+    const id = String(body?.id ?? "").trim();
+    if (!id) return NextResponse.json({ error: "Falta el id de la zona" }, { status: 400 });
+    const fee = Number(body?.fee);
+    if (!Number.isFinite(fee) || fee < 0) {
+      return NextResponse.json({ error: "Tarifa inválida" }, { status: 400 });
+    }
+    try {
+      const carrierId = await queryOne<{ carrier_id: string | null }>(
+        `SELECT carrier_id FROM shipping_zones WHERE id = $1 LIMIT 1`,
+        [id]
+      );
+      if (!carrierId?.carrier_id) {
+        return NextResponse.json({ error: "La zona no tiene logística asignada" }, { status: 400 });
+      }
+      await query(
+        `INSERT INTO carrier_zone_rates (carrier_id, shipping_zone_id, fee, updated_at)
+         VALUES ($1, $2, $3, now())
+         ON CONFLICT (carrier_id, shipping_zone_id)
+         DO UPDATE SET fee = EXCLUDED.fee, updated_at = now()`,
+        [String(carrierId.carrier_id), id, Math.round(fee * 100) / 100]
+      );
+      return NextResponse.json({ ok: true });
+    } catch {
+      return NextResponse.json(
+        { error: "Falta aplicar la migración migrate-shipment-carrier-fee.sql" },
+        { status: 503 }
+      );
     }
   }
 

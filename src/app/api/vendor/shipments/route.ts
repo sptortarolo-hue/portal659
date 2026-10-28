@@ -199,25 +199,55 @@ export async function POST(request: Request) {
   }
 
   try {
+    // Tarifa vigente de la logística para esa zona (snapshot congelado).
+    const feeReady = await shipmentFeeColsReady();
     const shipment = await withTransaction(async (tx) => {
       // Carrier pre-asignado desde la zona del catálogo (manual operable).
       const zone = await tx.queryOne<{ carrier_id: string | null }>(
         `SELECT carrier_id FROM shipping_zones WHERE id = $1 LIMIT 1`,
         [order.shipping_zone_id as string]
       ).catch(() => undefined);
+      const carrierId = zone?.carrier_id != null ? String(zone.carrier_id) : null;
+      // Snapshot de la tarifa: lo que la logística le cobrará al local al
+      // retirar (historial estable aunque después cambie carrier_zone_rates).
+      let carrierFee: number | null = null;
+      if (feeReady && carrierId) {
+        const rate = await tx
+          .queryOne<{ fee: number }>(
+            `SELECT fee FROM carrier_zone_rates WHERE carrier_id = $1 AND shipping_zone_id = $2 LIMIT 1`,
+            [carrierId, order.shipping_zone_id as string]
+          )
+          .catch(() => undefined);
+        if (rate) carrierFee = Number(rate.fee) || 0;
+      }
       const row = await tx.queryOne<{ id: string; code: string; status: string }>(
-        `INSERT INTO shipments (order_id, vendor_id, carrier_id, shipping_zone_id, shipping_zone_name, code, status, note)
-         VALUES ($1, $2, $3, $4, $5, $6, 'requested', $7)
-         RETURNING id, code, status`,
-        [
-          orderId,
-          vendor.id,
-          zone?.carrier_id != null ? String(zone.carrier_id) : null,
-          order.shipping_zone_id as string,
-          order.shipping_zone_name != null ? String(order.shipping_zone_name) : null,
-          code,
-          note,
-        ]
+        feeReady
+          ? `INSERT INTO shipments (order_id, vendor_id, carrier_id, shipping_zone_id, shipping_zone_name, code, status, note, carrier_fee)
+             VALUES ($1, $2, $3, $4, $5, $6, 'requested', $7, $8)
+             RETURNING id, code, status`
+          : `INSERT INTO shipments (order_id, vendor_id, carrier_id, shipping_zone_id, shipping_zone_name, code, status, note)
+             VALUES ($1, $2, $3, $4, $5, $6, 'requested', $7)
+             RETURNING id, code, status`,
+        feeReady
+          ? [
+              orderId,
+              vendor.id,
+              carrierId,
+              order.shipping_zone_id as string,
+              order.shipping_zone_name != null ? String(order.shipping_zone_name) : null,
+              code,
+              note,
+              carrierFee,
+            ]
+          : [
+              orderId,
+              vendor.id,
+              carrierId,
+              order.shipping_zone_id as string,
+              order.shipping_zone_name != null ? String(order.shipping_zone_name) : null,
+              code,
+              note,
+            ]
       );
       if (!row) throw new Error("No se pudo crear el envío");
       await tx.queryVoid(

@@ -200,7 +200,7 @@ export async function POST(request: Request) {
 
   try {
     // Tarifa vigente de la logística para esa zona (snapshot congelado).
-    const feeReady = await shipmentFeeColsReady();
+    const feeReady = await shipmentExtColsReady();
     const shipment = await withTransaction(async (tx) => {
       // Carrier pre-asignado desde la zona del catálogo (manual operable).
       const zone = await tx.queryOne<{ carrier_id: string | null }>(

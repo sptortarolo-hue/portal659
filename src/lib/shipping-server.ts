@@ -232,56 +232,7 @@ export async function fetchShipmentEvents(shipmentId: string) {
 
 /**
  * Probes cacheados de columnas extendidas (migraciones pod/carrier-wa sin
- * aplicar → las queries usan la variante corta en vez de romper). TTL 60s:
- * si el admin aplica la migración con el server corriendo, en un minuto se
- * re-probea y el modo completo se activa solo (sin restart).
- */
-const PROBE_TTL_MS = 60_000;
-
-let extColsOk: boolean | null = null;
-let extColsAt = 0;
-export async function shipmentExtColsReady(): Promise<boolean> {
-  if (extColsOk !== null && Date.now() - extColsAt < PROBE_TTL_MS) return extColsOk;
-  try {
-    await queryOne(`SELECT dest_lat FROM shipments LIMIT 1`);
-    extColsOk = true;
-  } catch {
-    extColsOk = false;
-  }
-  extColsAt = Date.now();
-  return extColsOk;
-}
-
-let ackColsOk: boolean | null = null;
-let ackColsAt = 0;
-export async function shipmentAckColsReady(): Promise<boolean> {
-  if (ackColsOk !== null && Date.now() - ackColsAt < PROBE_TTL_MS) return ackColsOk;
-  try {
-    await queryOne(`SELECT ack_at FROM shipments LIMIT 1`);
-    ackColsOk = true;
-  } catch {
-    ackColsOk = false;
-  }
-  ackColsAt = Date.now();
-  return ackColsOk;
-}
-
-/** Columnas WA del carrier (migrate-carrier-wa.sql). */
-let carrierWaColsOk: boolean | null = null;
-let carrierWaColsAt = 0;
-export async function carrierWaColsReady(): Promise<boolean> {
-  if (carrierWaColsOk !== null && Date.now() - carrierWaColsAt < PROBE_TTL_MS) return carrierWaColsOk;
-  try {
-    await queryOne(`SELECT wa_phones FROM carriers LIMIT 1`);
-    carrierWaColsOk = true;
-  } catch {
-    carrierWaColsOk = false;
-  }
-  carrierWaColsAt = Date.now();
-  return carrierWaColsOk;
-}
-
-/**
+ /**
  * Envíos embebidos por pedido (row mutada in-place): el panel del comercio
  * abre el detalle con `order.shipment` disponible en el primer render
  * (antes dependía de un segundo fetch a /api/vendor/shipments y el bloque

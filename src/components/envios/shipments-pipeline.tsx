@@ -339,8 +339,8 @@ function ShipmentCard({
             🚗 Cómo llegar
           </a>
         ) : null}
-        {s.customerPhone && (
-          <a href={waUrlFromPhone(s.customerPhone, buyerVoyText(s.code, s.storeName))} target="_blank" rel="noopener noreferrer"
+        {s.customerPhone && waUrlFromPhone(s.customerPhone, buyerVoyText(s.code, s.storeName)) && (
+          <a href={waUrlFromPhone(s.customerPhone, buyerVoyText(s.code, s.storeName)) ?? undefined} target="_blank" rel="noopener noreferrer"
             className="rounded-full border border-border bg-background px-2 py-0.5 text-[11px] font-medium hover:bg-muted">
             💬 WhatsApp
           </a>

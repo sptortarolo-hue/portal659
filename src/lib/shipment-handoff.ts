@@ -9,6 +9,7 @@ import {
   type ShipmentStatus,
 } from "./shipping";
 import { syncOrderForShipmentStatus } from "./shipping-server";
+import { recordShipmentPaymentTx, shipmentFeeColsReady } from "./shipment-payments";
 
 export type ShipmentStatusValue = string;
 
@@ -144,14 +145,24 @@ export type AdvanceInput = {
   courierName: string | null;
   podEnforced: boolean;
   cert: DeliveryCert | null;
+  /** Cobro al local, registrado en la misma transición a picked_up. */
+  payment?: {
+    vendorId: string;
+    amount: number;
+    method: string;
+    payerName: string | null;
+    note: string | null;
+  } | null;
 };
 
 /**
  * Ejecuta la transición: UPDATE del encargo + evento de timeline.
  * El SQL usa CASE/COALESCE para guardar el certificado solo en delivered.
+ * Si viene `payment` y el estado es picked_up, registra el cobro al local
+ * en la misma transacción (idempotente por UNIQUE(shipment_id)).
  */
 export async function applyAdvanceTx(input: AdvanceInput): Promise<void> {
-  const { shipmentId, status, carrierId, note, photoUrl, operatorProfileId, courierName, podEnforced, cert } = input;
+  const { shipmentId, status, carrierId, note, photoUrl, operatorProfileId, courierName, podEnforced, cert, payment } = input;
   // Sin migrate-shipments-pod.sql las columnas del cert no existen: la SQL
   // usa la variante corta (PostgreSQL resuelve columnas en parse-time — un
   // CASE no protege una columna inexistente).
@@ -217,6 +228,19 @@ export async function applyAdvanceTx(input: AdvanceInput): Promise<void> {
        VALUES ($1, $2, $3, $4, $5)`,
       [shipmentId, status, eventNote(note, courierName), photoUrl, operatorProfileId]
     );
+    // Cobro al local al retirar (misma tx; tolerante a migración sin aplicar).
+    if (payment && status === "picked_up" && (await shipmentFeeColsReady())) {
+      await recordShipmentPaymentTx(tx, {
+        shipmentId,
+        vendorId: payment.vendorId,
+        carrierId,
+        collectedBy: operatorProfileId,
+        amount: payment.amount,
+        method: payment.method,
+        payerName: payment.payerName,
+        note: payment.note,
+      });
+    }
   });
 }
 

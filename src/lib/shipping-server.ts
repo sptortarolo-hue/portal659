@@ -6,6 +6,109 @@
  * el checkout no las muestra y los pedidos no cambian).
  */
 import { queryMany, queryOne, withTransaction } from "@/lib/db";
+
+const PROBE_TTL_MS = 60_000;
+
+/**
+ * Probes cacheados de columnas extendidas (migraciones pod/carrier-wa sin
+ * aplicar → las queries usan la variante corta en vez de romper). TTL 60s:
+ * si el admin aplica la migración con el server corriendo, en un minuto se
+ * re-probea y el modo completo se activa solo (sin restart).
+ */
+let extColsOk: boolean | null = null;
+let extColsAt = 0;
+export async function shipmentExtColsReady(): Promise<boolean> {
+  if (extColsOk !== null && Date.now() - extColsAt < PROBE_TTL_MS) return extColsOk;
+  try {
+    await queryOne(`SELECT dest_lat FROM shipments LIMIT 1`);
+    extColsOk = true;
+  } catch {
+    extColsOk = false;
+  }
+  extColsAt = Date.now();
+  return extColsOk;
+}
+
+let ackColsOk: boolean | null = null;
+let ackColsAt = 0;
+export async function shipmentAckColsReady(): Promise<boolean> {
+  if (ackColsOk !== null && Date.now() - ackColsAt < PROBE_TTL_MS) return ackColsOk;
+  try {
+    await queryOne(`SELECT ack_at FROM shipments LIMIT 1`);
+    ackColsOk = true;
+  } catch {
+    ackColsOk = false;
+  }
+  ackColsAt = Date.now();
+  return ackColsOk;
+}
+
+/** Columnas WA del carrier (migrate-carrier-wa.sql). */
+let carrierWaColsOk: boolean | null = null;
+let carrierWaColsAt = 0;
+export async function carrierWaColsReady(): Promise<boolean> {
+  if (carrierWaColsOk !== null && Date.now() - carrierWaColsAt < PROBE_TTL_MS) return carrierWaColsOk;
+  try {
+    await queryOne(`SELECT wa_phones FROM carriers LIMIT 1`);
+    carrierWaColsOk = true;
+  } catch {
+    carrierWaColsOk = false;
+  }
+  carrierWaColsAt = Date.now();
+  return carrierWaColsOk;
+}
+
+/**
+ * Logística del perfil que todavía NO está aprobada (autoregistro):
+ * fila en carrier_operators/carriers pendiente de activación por el admin.
+ * Devuelve null si no hay nada pendiente (o sin migración aplicada).
+ */
+export async function fetchPendingCarrier(
+  profileId: string
+): Promise<{ carrier_id: string; carrier_name: string; created_at: string } | null> {
+  try {
+    const row = await queryOne<{
+      carrier_id: string;
+      carrier_name: string;
+      created_at: string;
+    }>(
+      `SELECT c.id AS carrier_id, c.name AS carrier_name, o.created_at
+         FROM carrier_operators o
+         JOIN carriers c ON c.id = o.carrier_id
+        WHERE o.profile_id = $1 AND o.active = false AND c.active = false
+        ORDER BY o.created_at DESC
+        LIMIT 1`,
+      [profileId]
+    );
+    return row
+      ? {
+          carrier_id: String(row.carrier_id),
+          carrier_name: String(row.carrier_name),
+          created_at: String(row.created_at),
+        }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Tarifas de un carrier por zona (para el panel de la logística). */
+export async function fetchCarrierZoneRates(
+  carrierId: string
+): Promise<Array<{ shipping_zone_id: string; fee: number }>> {
+  try {
+    const rows = await queryMany<{ shipping_zone_id: string; fee: number }>(
+      `SELECT shipping_zone_id, fee FROM carrier_zone_rates WHERE carrier_id = $1`,
+      [carrierId]
+    );
+    return (rows || []).map((r) => ({
+      shipping_zone_id: String(r.shipping_zone_id),
+      fee: Number(r.fee) || 0,
+    }));
+  } catch {
+    return [];
+  }
+}
 import type { ShippingZoneInfo } from "@/lib/shipping";
 import { orderStatusForShipmentEvent, SHIPMENT_STATUS_LABELS, type ShipmentStatus } from "@/lib/shipping";
 

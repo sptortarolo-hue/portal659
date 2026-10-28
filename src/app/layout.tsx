@@ -150,6 +150,7 @@ export default function RootLayout({
                     <Link href="/planes" className="hover:text-foreground transition-colors">Planes</Link>
                     <Link href="/manuales" className="hover:text-foreground transition-colors">Manuales</Link>
                     <Link href="/comercios" className="hover:text-foreground transition-colors">Sistema para comercios</Link>
+                    <Link href="/logisticas" className="hover:text-foreground transition-colors">Logísticas</Link>
                     <Link href="/privacidad" className="hover:text-foreground transition-colors">Privacidad</Link>
                   </div>
                 </div>

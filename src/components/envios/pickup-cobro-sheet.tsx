@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { SHIPMENT_PAYMENT_METHODS, type ShipmentPaymentMethod } from "@/lib/shipment-payments";
+import { SHIPMENT_PAYMENT_METHODS, type ShipmentPaymentMethod } from "@/lib/shipment-payments-types";
 
 /**
  * Hoja "Colectar y cobrar" del panel de logística: al retirar el paquete

@@ -12,17 +12,9 @@ import { queryMany, queryOne, withTransaction, type Tx } from "@/lib/db";
  * Todo tolerante a migración sin aplicar (probes cacheados con TTL).
  */
 
-/** Métodos de cobro (mismos que el panel del comercio, más "fiado"). */
-export const SHIPMENT_PAYMENT_METHODS = [
-  { key: "efectivo", label: "💵 Efectivo" },
-  { key: "transferencia", label: "🏦 Transferencia" },
-  { key: "tarjeta", label: "💳 Tarjeta" },
-  { key: "mixto", label: "🪙 Mixto" },
-  { key: "fiado", label: "📓 Fiado (deuda)" },
-] as const;
+import { SHIPMENT_PAYMENT_METHODS, type ShipmentPaymentMethod } from "./shipment-payments-types";
 
-export type ShipmentPaymentMethod =
-  (typeof SHIPMENT_PAYMENT_METHODS)[number]["key"];
+export { SHIPMENT_PAYMENT_METHODS, type ShipmentPaymentMethod };
 
 export type ShipmentPaymentRow = {
   amount: number;

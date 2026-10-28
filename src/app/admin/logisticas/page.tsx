@@ -158,6 +158,19 @@ export default function LogisticasAdminPage() {
           <Link href="/admin" className="text-sm text-muted-foreground hover:text-foreground">← Admin</Link>
           <h1 className="text-lg font-bold">🚚 Portal 659 Envíos</h1>
         </div>
+        <div className="rounded-xl border border-border bg-background p-3 flex flex-wrap items-center gap-2">
+          <p className="text-xs text-muted-foreground flex-1 min-w-0">
+            Invitá logísticas por WhatsApp: compartí el link de registro.
+          </p>
+          <a
+            href={`https://wa.me/?text=${encodeURIComponent("Sumate a Portal 659 Envíos y repartí para los comercios de tu barrio. Registrate acá: " + (typeof window !== "undefined" ? window.location.origin : "https://www.portal659.com.ar") + "/registro-logistica")}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex h-9 items-center rounded-md bg-emerald-600 px-3 text-sm font-medium text-white hover:bg-emerald-700"
+          >
+            📲 Compartir por WhatsApp
+          </a>
+        </div>
 
         <div className="grid grid-cols-5 gap-1.5">
           {[

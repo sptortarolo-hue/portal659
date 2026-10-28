@@ -67,6 +67,14 @@ export default function LogisticasLandingPage() {
             <Link href="/login?next=/envios">
               <Button size="lg" variant="outline" className="h-11">Ya tengo cuenta · Entrar al panel</Button>
             </Link>
+            <a
+              href="https://wa.me/?text=Sumate%20a%20Portal%20659%20Env%C3%ADos%20y%20repart%C3%AD%20para%20los%20comercios%20de%20tu%20barrio.%20Registrate%20ac%C3%A1%3A%20https%3A%2F%2Fwww.portal659.com.ar%2Fregistro-logistica"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex h-11 items-center rounded-md bg-emerald-600 px-4 text-sm font-medium text-white hover:bg-emerald-700"
+            >
+              📲 Compartir por WhatsApp
+            </a>
           </div>
         </div>
       </section>

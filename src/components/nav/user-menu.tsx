@@ -238,13 +238,6 @@ export function UserMenu() {
                 <span>🛵</span> Unirme como repartidor
               </Link>
               <Link
-                href="/registro-logistica"
-                className="flex items-center gap-3 px-4 py-3 text-sm text-foreground hover:bg-muted transition-colors"
-                onClick={() => setMenuOpen(false)}
-              >
-                <span>🚚</span> Sumá tu logística
-              </Link>
-              <Link
                 href="/manuales"
                 className="flex items-center gap-3 px-4 py-3 text-sm text-foreground hover:bg-muted transition-colors"
                 onClick={() => setMenuOpen(false)}

@@ -2123,7 +2123,7 @@ async function handlePortalInbound({ vendor, waId, body, waPhone }) {
         const products = await getMenu(chosen.id);
         replies.push(`Perfecto, estás pidiendo de *${chosen.store_name}*. 📋 Menú:`);
         replies.push(products.slice(0, 20).map((p, i) => `${i + 1}) ${p.name} — $${p.price}`).join("\n") || "Sin productos disponibles.");
-        const link = chosen.slug ? `\nMirá el menú con fotos: ${config.publicUrl}/tienda/${chosen.slug}` : "";
+        const link = state.currentVendorSlug ? `\nMirá el menú con fotos: ${config.publicUrl}/tienda/${state.currentVendorSlug}` : "";
         replies.push(`Mandame tu pedido (ej: "2 empanadas de carne y una coca").${link}`);
         // Enviar collage de imágenes del menú (best-effort).
         const _client = getClientByVendor(vendor.id);
@@ -2136,8 +2136,8 @@ async function handlePortalInbound({ vendor, waId, body, waPhone }) {
             if (_imgRes.ok) {
               const _buf = Buffer.from(await _imgRes.arrayBuffer());
               const _b64 = _buf.toString("base64");
-              sendImage(_client, waId, _b64, `📋 Menú de ${nameHit.store_name}`);
-              console.log(`[bot][portal] menú imagen enviado: ${nameHit.store_name}`);
+              sendImage(_client, waId, _b64, `📋 Menú de ${chosen.store_name}`);
+              console.log(`[bot][portal] menú imagen enviado: ${chosen.store_name}`);
             }
           } catch (e) {
             console.error(`[bot][portal] error enviando menú imagen: ${e?.message}`);
@@ -2197,7 +2197,7 @@ async function handlePortalInbound({ vendor, waId, body, waPhone }) {
         const products = await getMenu(nameHit.id);
         replies.push(`Perfecto, estás pidiendo de *${nameHit.store_name}*. 📋 Menú:`);
         replies.push(products.slice(0, 20).map((p, i) => `${i + 1}) ${p.name} — $${p.price}`).join("\n") || "Sin productos disponibles.");
-        const link = nameHit.slug ? `\nMirá el menú con fotos: ${config.publicUrl}/tienda/${nameHit.slug}` : "";
+        const link = state.currentVendorSlug ? `\nMirá el menú con fotos: ${config.publicUrl}/tienda/${state.currentVendorSlug}` : "";
         replies.push(`Mandame tu pedido (ej: "2 empanadas de carne y una coca").${link}`);
         // Enviar collage de imágenes del menú (best-effort).
         const _client = getClientByVendor(vendor.id);

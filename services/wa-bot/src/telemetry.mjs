@@ -20,3 +20,23 @@ export function trackEvent(vendorId, type, waId, meta) {
     }).catch(() => {});
   } catch { /* best-effort */ }
 }
+
+/**
+ * Registra un mensaje del chat (entrante o saliente) para el historial.
+ * Fire-and-forget: no bloquea el flujo del bot.
+ * @param {string} vendorId
+ * @param {string} waId
+ * @param {"in"|"out"} direction
+ * @param {string} text
+ */
+export function trackMessage(vendorId, waId, direction, text) {
+  if (!vendorId || !waId || !text) return;
+  try {
+    fetch(`${config.appUrl}/api/wa/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.waBotSecret}` },
+      body: JSON.stringify({ vendorId, waId: String(waId).replace(/@.*/, ""), direction, text: String(text).slice(0, 2000) }),
+      signal: AbortSignal.timeout(5_000),
+    }).catch(() => {});
+  } catch { /* best-effort */ }
+}

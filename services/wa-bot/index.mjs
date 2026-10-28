@@ -6,12 +6,12 @@ import { vendorByToken } from "./src/db.mjs";
 import { handleInbound, handleInboundMedia, startAwaitingReceipt, sweepStaleConversations, sweepAbandonedCarts } from "./src/bot.mjs";
 import { getState, countByVendor } from "./src/state.mjs";
 import { llmStats } from "./src/nlu.mjs";
-import { addClient, removeClient, getClient, getClientByVendor, sendText, sendTyping, sendPaused, clientCount, forEachClient, clientsList } from "./src/relay.mjs";
+import { addClient, removeClient, getClient, getClientByVendor, sendText, sendTyping, sendPaused, sendImage, sendDocument, clientCount, forEachClient, clientsList } from "./src/relay.mjs";
 import { saveQrToken, clearQrToken, setBotStatus } from "./src/state.mjs";
 import { countOutbound, markNewChat, limitsReport } from "./src/limits.mjs";
 import { bumpInbound, feedPush, feedList, metricsReport, touchLastSeen } from "./src/metrics.mjs";
 import { isDuplicate } from "./src/dedup.mjs";
-import { trackEvent } from "./src/telemetry.mjs";
+import { trackEvent, trackMessage } from "./src/telemetry.mjs";
 
 // Telemetría de salud (anti-ban): contadores de proceso para /health y logs.
 const stats = { messages: 0, replies: 0, errors: 0, loggedOut: 0, limitsHit: 0 };
@@ -48,13 +48,24 @@ const server = createServer(async (req, res) => {
     const vendorId = String(body.vendorId || "");
     const waId = String(body.waId || "");
     const text = String(body.text || "");
+    const type = String(body.type || "text"); // "text" | "image" | "document"
     const orderId = body.orderId ? String(body.orderId) : null;
     // noState: recordatorios/avisos — no toca la máquina del asistente
     // (no setea awaiting_receipt) pero sí respeta rate limits.
     const noState = body.noState === true;
-    if (!vendorId || !waId || !text) {
+    if (!vendorId || !waId) {
       res.writeHead(400, { "content-type": "application/json" });
-      res.end(JSON.stringify({ error: "vendorId, waId y text requeridos" }));
+      res.end(JSON.stringify({ error: "vendorId y waId requeridos" }));
+      return;
+    }
+    if (type === "text" && !text) {
+      res.writeHead(400, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "text requerido para type=text" }));
+      return;
+    }
+    if ((type === "image" || type === "document") && !body.data) {
+      res.writeHead(400, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "data (base64) requerido para type=image/document" }));
       return;
     }
 
@@ -113,11 +124,22 @@ const server = createServer(async (req, res) => {
     }
     await sleep(humanDelay(text.length));
     sendTyping(c, waId);
-    sendText(c, waId, text);
+    if (type === "image") {
+      sendImage(c, waId, body.data, text);
+      feedPush({ vendorId, store: c.vendor?.store_name, kind: "send", waId, text: `[imagen] ${text}` });
+      trackMessage(vendorId, waId, "out", text ? `📷 ${text}` : "📷 imagen");
+    } else if (type === "document") {
+      sendDocument(c, waId, body.data, body.name || "documento.pdf", body.mime || "application/pdf");
+      feedPush({ vendorId, store: c.vendor?.store_name, kind: "send", waId, text: `[documento] ${body.name || "documento.pdf"}` });
+      trackMessage(vendorId, waId, "out", `📄 ${body.name || "documento.pdf"}`);
+    } else {
+      sendText(c, waId, text);
+      feedPush({ vendorId, store: c.vendor?.store_name, kind: "send", waId, text });
+      trackMessage(vendorId, waId, "out", text);
+    }
     sendPaused(c, waId);
     stats.replies++;
-    feedPush({ vendorId, store: c.vendor?.store_name, kind: "send", waId, text });
-    console.log(`[send] app → ${waId} (orderId ${orderId || "-"}${enFlujo ? ", en_flujo sin estado" : ""}): ${text.slice(0, 80)}`);
+    console.log(`[send] app → ${waId} (type=${type}, orderId ${orderId || "-"}${enFlujo ? ", en_flujo sin estado" : ""})`);
     res.writeHead(200, { "content-type": "application/json" });
     res.end(JSON.stringify({ ok: true, sent: true, enFlujo: enFlujo || undefined }));
     return;
@@ -328,6 +350,7 @@ async function attach(ws, token) {
         for (const reply of result.replies || []) {
           const sent = sendText(getClient(token), msg.wa_id, reply);
           console.log(`[bot] reply a ${msg.wa_id} (${sent ? "enviado" : "SIN_CONEXION"}): ${reply.slice(0, 80)}`);
+          trackMessage(vendor.id, msg.wa_id, "out", reply);
         }
       } catch (e) {
         console.error(`[bot] error manejando media: ${e.message}`);
@@ -351,6 +374,7 @@ async function attach(ws, token) {
     stats.messages++;
     bumpInbound(vendor.id, vendor.store_name, msg.wa_id, msg.body);
     trackEvent(vendor.id, "message_in", msg.wa_id, { text: String(msg.body || "").slice(0, 100) });
+    trackMessage(vendor.id, msg.wa_id, "in", msg.body);
     console.log(`[msg] de ${msg.wa_id}: ${msg.body}`);
 
     // Rate limit de chats nuevos: si es primer contacto y ya se superó el tope
@@ -405,6 +429,7 @@ async function attach(ws, token) {
     }
     sendPaused(client, msg.wa_id);
     trackEvent(vendor.id, "message_out", msg.wa_id, { replies: replies.length });
+    for (const reply of replies) trackMessage(vendor.id, msg.wa_id, "out", reply);
   });
 
   ws.on("close", () => {

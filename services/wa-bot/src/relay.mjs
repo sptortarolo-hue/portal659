@@ -43,6 +43,20 @@ export function sendText(client, waId, text) {
   return true;
 }
 
+/** Envía una imagen por WhatsApp (base64). Caption opcional. */
+export function sendImage(client, waId, data, caption) {
+  if (!client || client.ws.readyState !== WebSocket.OPEN) return false;
+  client.ws.send(JSON.stringify({ type: "image", wa_id: waId, data, body: caption || "" }));
+  return true;
+}
+
+/** Envía un documento (PDF) por WhatsApp (base64). */
+export function sendDocument(client, waId, data, fileName, mime) {
+  if (!client || client.ws.readyState !== WebSocket.OPEN) return false;
+  client.ws.send(JSON.stringify({ type: "document", wa_id: waId, data, name: fileName || "documento.pdf", mime: mime || "application/pdf" }));
+  return true;
+}
+
 /** Avisa al relay que "está tipeando" (ChatPresence composing) — el dueño se ve
  *  como si estuviera escribiendo. No bloquea: si el relay no está, se ignora. */
 export function sendTyping(client, waId) {

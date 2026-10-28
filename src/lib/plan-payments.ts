@@ -86,3 +86,28 @@ export async function nextReceiptSeq(
   );
   return row?.[0]?.next ?? 1;
 }
+
+/**
+ * Deriva el descuento aplicado a un monto cuando el reclamo o el recibo no
+ * guardó el snapshot (filas anteriores a la columna, o emisiones viejas): si
+ * el plan tiene una promo vigente y el monto coincide con el precio promo, se
+ * toma ese descuento. Si no, null → "precio de lista".
+ */
+export async function derivePromoFor(
+  planId: string | null | undefined,
+  amount: number
+): Promise<{ pct: number; listPrice: number } | null> {
+  const value = Number(amount);
+  if (!planId || !(value > 0)) return null;
+  try {
+    const plan = await queryOne<Plan>(`SELECT * FROM plans WHERE id = $1`, [planId]);
+    if (!plan) return null;
+    const price = planPriceFor(plan);
+    if (price?.isPromo && Math.abs(price.amount - value) <= 1) {
+      return { pct: price.offPct ?? 0, listPrice: price.listPrice };
+    }
+  } catch {
+    /* tolerante: sin snapshot ni derivación queda "precio de lista" */
+  }
+  return null;
+}

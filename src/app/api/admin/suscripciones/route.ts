@@ -3,7 +3,7 @@ import { isAdmin } from "@/lib/admin-utils";
 import { getAuthUser } from "@/lib/auth";
 import { queryMany, queryOne, query, withTransaction } from "@/lib/db";
 import { resolveVendorPlan, planPriceFor } from "@/lib/plans";
-import { nextReceiptSeq, getPortalBank } from "@/lib/plan-payments";
+import { nextReceiptSeq, getPortalBank, derivePromoFor } from "@/lib/plan-payments";
 import { getSiteUrl } from "@/lib/site-url";
 import { buildPlanReceiptPdf } from "@/lib/plan-receipt-pdf";
 import { planReceiptEmail, planComprobanteReminderEmail, sendEmail } from "@/lib/email";
@@ -803,6 +803,14 @@ export async function PATCH(request: Request) {
     let receiptId = "";
     let receiptNumber = "";
     let receiptSeq = 0;
+    // Snapshot del descuento: el del reclamo, o derivado del promo vigente
+    // (reclamos viejos sin la columna siguen mostrando el promo en el recibo).
+    const promoSnapshot =
+      payment.promo_pct != null && payment.promo_list_price != null
+        ? { pct: Number(payment.promo_pct), listPrice: Number(payment.promo_list_price) }
+        : await derivePromoFor(payment.plan_id, Number(payment.amount));
+    const promoPct = promoSnapshot?.pct ?? null;
+    const promoListPrice = promoSnapshot?.listPrice ?? null;
 
     await withTransaction(async (tx) => {
       receiptSeq = await nextReceiptSeq(tx, year);
@@ -837,8 +845,8 @@ export async function PATCH(request: Request) {
         periodStart: payment.period_start,
         periodEnd: payment.period_end,
         methodLabel: "Transferencia bancaria",
-        promoPct: payment.promo_pct ?? null,
-        promoListPrice: payment.promo_list_price ?? null,
+        promoPct,
+        promoListPrice,
         seq: receiptSeq,
         year,
       });
@@ -856,8 +864,8 @@ export async function PATCH(request: Request) {
         periodStart: payment.period_start,
         periodEnd: payment.period_end,
         methodLabel: "Transferencia bancaria",
-        promoPct: payment.promo_pct ?? null,
-        promoListPrice: payment.promo_list_price ?? null,
+        promoPct,
+        promoListPrice,
         noticeBody: `Tu plan ${plan?.name ?? "pagado"} está activo hasta el ${new Date(payment.period_end).toLocaleDateString("es-AR")}. Te enviamos el Recibo X ${receiptNumber} por email.`,
       });
     }
@@ -896,6 +904,11 @@ export async function PATCH(request: Request) {
     const methodLabel = methodValue === "efectivo" ? "Efectivo" : "Transferencia bancaria";
     const pct = Number.isFinite(Number(promoPct)) && Number(promoPct) > 0 ? Math.round(Number(promoPct)) : null;
     const listPrice = Number(promoListPrice) > 0 ? Number(promoListPrice) : null;
+    // Si no vino el snapshot (modal viejo o emisión por API), se deriva del
+    // promo vigente cuando el monto coincida con el precio promo.
+    const derived = !pct ? await derivePromoFor(plan.id, amountNum) : null;
+    const promoPctFinal = pct ?? derived?.pct ?? null;
+    const promoListFinal = listPrice ?? derived?.listPrice ?? null;
 
     let paymentId = "";
     let receiptId = "";
@@ -919,8 +932,8 @@ export async function PATCH(request: Request) {
           methodValue,
           adminUserId,
           (note ? String(note).slice(0, 400) : "Recibo emitido manualmente por administrador").slice(0, 500),
-          pct,
-          listPrice,
+          promoPctFinal,
+          promoListFinal,
         ]
       );
       paymentId = pay[0]?.id ?? "";
@@ -951,8 +964,8 @@ export async function PATCH(request: Request) {
         periodStart: start,
         periodEnd: end,
         methodLabel,
-        promoPct: pct,
-        promoListPrice: listPrice,
+        promoPct: promoPctFinal,
+        promoListPrice: promoListFinal,
         seq,
         year,
       });
@@ -969,8 +982,8 @@ export async function PATCH(request: Request) {
         periodStart: start,
         periodEnd: end,
         methodLabel,
-        promoPct: pct,
-        promoListPrice: listPrice,
+        promoPct: promoPctFinal,
+        promoListPrice: promoListFinal,
         noticeBody:
           renew === false
             ? `Emitimos tu Recibo X ${receiptNumber} por $${amountNum.toLocaleString("es-AR")}.`

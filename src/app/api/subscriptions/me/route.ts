@@ -2,7 +2,7 @@ import { getUserId } from "@/lib/auth-utils";
 import { queryMany, queryOne } from "@/lib/db";
 import { getVendorByRequest } from "@/lib/vendor-utils";
 import { resolveVendorPlan, daysLeft, planPriceFor } from "@/lib/plans";
-import { getPortalBank } from "@/lib/plan-payments";
+import { getPortalBank, derivePromoFor } from "@/lib/plan-payments";
 import { NextResponse } from "next/server";
 import type { Plan, Vendor, VendorSubscription } from "@/types/database";
 
@@ -109,7 +109,7 @@ export async function GET(request: Request) {
   try {
     receipts = (await queryMany(
       `SELECT r.id, r.amount, r.plan_name, r.seq, r.year, r.method, r.issued_at,
-              r.period_start, r.period_end
+              r.period_start, r.period_end, r.promo_pct, r.promo_list_price, r.plan_id
          FROM plan_receipts r
         WHERE r.vendor_id = $1
         ORDER BY r.issued_at DESC
@@ -120,6 +120,33 @@ export async function GET(request: Request) {
     /* sin migración */
   }
   bank = await getPortalBank().catch(() => null);
+
+  // Recibos viejos sin snapshot de promo: se deriva del vigente si el monto
+  // coincide con el precio promo (así el A4 y el PDF muestran el descuento).
+  const receiptsOut: unknown[] = [];
+  for (const r of receipts as any[]) {
+    let promoPct = r.promo_pct ?? null;
+    let promoListPrice = r.promo_list_price ?? null;
+    if ((promoPct == null || promoListPrice == null) && vendor.plan_id) {
+      const derived = await derivePromoFor(vendor.plan_id, Number(r.amount)).catch(() => null);
+      if (derived) {
+        promoPct = promoPct ?? derived.pct;
+        promoListPrice = promoListPrice ?? derived.listPrice;
+      }
+    }
+    receiptsOut.push({
+      id: r.id,
+      amount: Number(r.amount),
+      plan_name: r.plan_name,
+      seq: r.seq,
+      year: r.year,
+      method: r.method,
+      issued_at: r.issued_at,
+      period_end: r.period_end,
+      promo_pct: promoPct,
+      promo_list_price: promoListPrice,
+    });
+  }
 
   // Precio de hoy del plan actual (promo si está vigente, si no lista).
   const currentPlan = plans.find((p) => p.id === vendor.plan_id) ?? null;
@@ -245,7 +272,7 @@ export async function GET(request: Request) {
     wouldLose,
     payments,
     pending,
-    receipts,
+    receipts: receiptsOut,
     bank: bank
       ? {
           ...bank,

@@ -63,6 +63,8 @@ type Props = {
   canCrm?: boolean;
   /** Teléfono del cliente a resaltar al abrir la pestaña Clientes. */
   highlightClientPhone?: string | null;
+  /** Id del turno a abrir automáticamente (deep-link desde notificación). */
+  highlightBookingId?: string | null;
   onQuotesChanged?: () => void;
   configSectionId?: string;
   onConfigSectionId?: (id: string) => void;
@@ -319,6 +321,7 @@ export default function DashboardServicio({
   canDeposits: canDepositsProp,
   canCrm = false,
   highlightClientPhone = null,
+  highlightBookingId = null,
   onQuotesChanged,
   orders: ordersProp = [],
   configSectionId,
@@ -399,6 +402,12 @@ export default function DashboardServicio({
   const [agendaView, setAgendaView] = useState<AgendaViewMode>("day");
   const [agendaDate, setAgendaDate] = useState<string>(() => arToday());
   const [selectedBookingId, setSelectedBookingId] = useState<string | null>(null);
+  // Deep-link: abrir el turno indicado (desde notificación de la campanita).
+  useEffect(() => {
+    if (!highlightBookingId) return;
+    if (!(bookings as any[]).some((b: any) => b.id === highlightBookingId)) return;
+    setSelectedBookingId(highlightBookingId);
+  }, [highlightBookingId, bookings]);
   const [editingBooking, setEditingBooking] = useState<any | null>(null);
   const agendaViewInit = useRef(false);
   useEffect(() => {

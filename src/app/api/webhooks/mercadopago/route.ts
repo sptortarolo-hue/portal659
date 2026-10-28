@@ -1,4 +1,4 @@
-import { query, queryOne, queryMany, withTransaction } from "@/lib/db";
+﻿import { query, queryOne, queryMany, withTransaction } from "@/lib/db";
 import { logApiError } from "@/lib/api-error";
 import { adjustStockForItems, OutOfStockError } from "@/lib/stock";
 import { sendPushToUser } from "@/lib/push";
@@ -202,7 +202,7 @@ export async function POST(request: Request) {
               // (plata cobrada pero seña sin marcar = estado roto).
               try {
                 const marked = await queryOne<{ id: string }>(
-                  `UPDATE bookings SET deposit_status = 'paid', mp_payment_id = $1 WHERE id = $2 RETURNING id`,
+                  `UPDATE bookings SET deposit_status = 'paid', mp_payment_id = $1, status = CASE WHEN status = 'pending' THEN 'confirmed' ELSE status END WHERE id = $2 RETURNING id`,
                   [String(payment.id || ""), bookingId]
                 );
                 if (!marked) throw new Error("update sin fila");
@@ -245,8 +245,8 @@ export async function POST(request: Request) {
                     const wbody = `${booking.customer_name || "La clienta"} pagó la seña, pero el horario ya había sido reservado por otro turno confirmado. Revisá la agenda y contactala.`;
                     await query(
                       `INSERT INTO notifications (user_id, title, body, type, link)
-                       VALUES ($1, $2, $3, 'payment', '/vendor/dashboard')`,
-                      [vrow.user_id, wtitle, wbody]
+                       VALUES ($1, $2, $3, 'payment', $4)`,
+                       [vrow.user_id, wtitle, wbody, '/vendor/dashboard?booking=' + bookingId]
                     ).catch(() => undefined);
                   }
                 }
@@ -256,12 +256,12 @@ export async function POST(request: Request) {
                 const body = `${booking.customer_name || "La clienta"} pagó $${paidAmount.toLocaleString("es-AR")} de seña${mismatch ? ` (difiere de $${expected.toLocaleString("es-AR")}, revisar)` : ""}.`;
                 await query(
                   `INSERT INTO notifications (user_id, title, body, type, link)
-                   VALUES ($1, $2, $3, 'payment', '/vendor/dashboard')`,
-                  [vrow.user_id, title, body]
+                    VALUES ($1, $2, $3, 'payment', $4)`,
+                   [vrow.user_id, title, body, '/vendor/dashboard?booking=' + bookingId]
                 ).catch(() => undefined);
                 try {
                   const { sendPushToUser } = await import("@/lib/push");
-                  await sendPushToUser(vrow.user_id, { title, body, link: "/vendor/dashboard" });
+                  await sendPushToUser(vrow.user_id, { title, body, link: `/vendor/dashboard?booking=${bookingId}` });
                 } catch { /* best-effort */ }
               }
               if (booking.customer_phone) {

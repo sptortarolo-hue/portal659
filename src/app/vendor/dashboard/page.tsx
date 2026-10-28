@@ -398,6 +398,7 @@ function VendorDashboardInner() {
   // Borrador de UI (24h): pestaña, filtros y pedido abierto sobreviven a recargas.
   const dashDraftReady = useRef(false);
   const pendingOrderId = useRef<string | null>(null);
+  const [bookingHighlight, setBookingHighlight] = useState<string | null>(null);
   const VALID_TABS: DashTab[] = ["hoy", "config", "menu", "orders", "pedidos", "mostrador", "history", "comanda", "analytics", "pos", "mesas", "caja", "gastos", "clientes", "reviews", "recetas", "fiscal", "inventario", "promos", "tarjetas", "servicios"];
   useEffect(() => {
     if (dashDraftReady.current || !vendor?.id) return;
@@ -411,6 +412,15 @@ function VendorDashboardInner() {
         deepTab = raw === "turnos" ? "pos" : raw;
         const url = new URL(window.location.href);
         url.searchParams.delete("tab");
+        window.history.replaceState(window.history.state, "", url.toString());
+      }
+    } catch { /* noop */ }
+    try {
+      const bParam = new URLSearchParams(window.location.search).get("booking");
+      if (bParam) {
+        setBookingHighlight(bParam);
+        const url = new URL(window.location.href);
+        url.searchParams.delete("booking");
         window.history.replaceState(window.history.state, "", url.toString());
       }
     } catch { /* noop */ }
@@ -657,6 +667,26 @@ function VendorDashboardInner() {
       setLoading(false);
     }
   }, [router, loadServiceData]);
+
+  // Auto-refresco de turnos (cada 30s, solo si la pestaña está visible): los
+  // turnos nuevos (p. ej. reserva con seña pagada por MP) aparecen sin
+  // recargar manualmente.
+  useEffect(() => {
+    if (!vendor?.id) return;
+    let cancelled = false;
+    const refreshBookings = async () => {
+      if (document.visibilityState !== "visible") return;
+      try {
+        const r = await fetch("/api/vendor/bookings", { credentials: "include" });
+        const d = r.ok ? await r.json().catch(() => ({})) : {};
+        if (!cancelled && Array.isArray(d?.bookings)) setBookings(d.bookings);
+      } catch { /* best-effort */ }
+    };
+    const interval = setInterval(refreshBookings, 30000);
+    const onVis = () => { if (document.visibilityState === "visible") refreshBookings(); };
+    document.addEventListener("visibilitychange", onVis);
+    return () => { cancelled = true; clearInterval(interval); document.removeEventListener("visibilitychange", onVis); };
+  }, [vendor?.id]);
 
   useEffect(() => {
     if (impersonatingId) {
@@ -1247,7 +1277,7 @@ function VendorDashboardInner() {
   ) : isComercio ? (
     <DashboardComercio {...dashboardProps} configSectionId={configSection} onConfigSectionId={handleConfigSection} />
   ) : isService ? (
-    <DashboardServicio {...dashboardProps} highlightClientPhone={clientHighlight?.phone ?? null} />
+    <DashboardServicio {...dashboardProps} highlightClientPhone={clientHighlight?.phone ?? null} highlightBookingId={bookingHighlight} />
   ) : isModa ? (
     <DashboardModa {...dashboardProps} variants={variants} productImages={productImages} configSectionId={configSection} onConfigSectionId={handleConfigSection} />
   ) : (

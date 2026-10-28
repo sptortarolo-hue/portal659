@@ -125,7 +125,7 @@ async function markBookingDepositPaid(bookingId: string, sessionId: string, paid
   const expected = Number(booking.deposit_amount) || 0;
   const mismatch = expected > 0 && Math.abs(paidAmount - expected) > 1;
   await query(
-    `UPDATE bookings SET deposit_status = 'paid', mp_payment_id = $1 WHERE id = $2`,
+    `UPDATE bookings SET deposit_status = 'paid', mp_payment_id = $1, status = CASE WHEN status = 'pending' THEN 'confirmed' ELSE status END WHERE id = $2`,
     [`stripe:${sessionId}`, bookingId]
   ).catch(async () => {
     // Sin columnas de seña en bookings (migración sin aplicar): al menos

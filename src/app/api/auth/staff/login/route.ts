@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { queryOne } from "@/lib/db";
+import { queryOne, queryMany } from "@/lib/db";
 import { verifyPassword, signAccessToken } from "@/lib/auth";
 import { withRateLimit } from "@/lib/api-wrapper";
 
@@ -22,17 +22,33 @@ function cookieOpts() {
  */
 export async function GET(request: Request) {
   const store = new URL(request.url).searchParams.get("store")?.trim() || "";
-  if (store.length < 2) return NextResponse.json({ vendor: null });
-  const vendor =
-    (await queryOne<{ id: string; store_name: string; logo_url: string | null; slug: string }>(
-      `SELECT id, store_name, logo_url, slug FROM vendors WHERE lower(slug) = lower($1) LIMIT 1`,
-      [store]
-    )) ??
-    (await queryOne<{ id: string; store_name: string; logo_url: string | null; slug: string }>(
-      `SELECT id, store_name, logo_url, slug FROM vendors WHERE store_name ILIKE $1 LIMIT 1`,
-      [`%${store}%`]
-    ));
-  return NextResponse.json({ vendor: vendor ?? null });
+  if (store.length < 2) return NextResponse.json({ vendors: [] });
+  // Candidatos: coincidencia exacta de slug primero, luego prefijo, luego contiene.
+  const exact = await queryMany<{ id: string; store_name: string; logo_url: string | null; slug: string }>(
+    `SELECT id, store_name, logo_url, slug FROM vendors WHERE lower(slug) = lower($1) LIMIT 5`,
+    [store]
+  );
+  const prefix = exact.length === 0
+    ? await queryMany<{ id: string; store_name: string; logo_url: string | null; slug: string }>(
+        `SELECT id, store_name, logo_url, slug FROM vendors WHERE store_name ILIKE $1 ORDER BY store_name ASC LIMIT 8`,
+        [`${store}%`]
+      )
+    : [];
+  const contains = exact.length === 0 && prefix.length === 0
+    ? await queryMany<{ id: string; store_name: string; logo_url: string | null; slug: string }>(
+        `SELECT id, store_name, logo_url, slug FROM vendors WHERE store_name ILIKE $1 ORDER BY store_name ASC LIMIT 8`,
+        [`%${store}%`]
+      )
+    : [];
+  const merged = [...exact, ...prefix, ...contains];
+  // Dedup por id.
+  const seen = new Set<string>();
+  const vendors = merged.filter((v) => {
+    if (seen.has(v.id)) return false;
+    seen.add(v.id);
+    return true;
+  }).slice(0, 8);
+  return NextResponse.json({ vendors, vendor: vendors[0] ?? null });
 }
 
 // Login del equipo del local: comercio + usuario + contraseña (sin email).

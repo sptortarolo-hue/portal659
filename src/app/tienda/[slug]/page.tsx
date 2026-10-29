@@ -969,6 +969,44 @@ export default async function TiendaPage({
           </>
         ) : (noCart || menuHidden) && sections.length === 0 ? (
           <>
+            {/* Destacado hoy: se muestra aunque el menú esté oculto */}
+            {((offers || []).filter((o: any) => o.featured_today) as any[]).length > 0 && (
+              <section className="mt-6 mb-6">
+                <h2 className="font-display text-2xl font-semibold mb-3">⭐ La oferta de hoy</h2>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {((offers || []).filter((o: any) => o.featured_today) as any[]).map((o: any) => (
+                    <div key={o.id} className="border border-border rounded-2xl p-4 bg-card flex items-center gap-3">
+                      <div className="h-16 w-16 rounded-xl overflow-hidden flex-shrink-0 bg-muted">
+                        {o.image_url ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={o.image_url} alt={o.name} className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-2xl">⭐</div>
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="font-semibold leading-tight truncate">{o.name}</p>
+                        {o.price != null && (
+                          <p className="text-sm font-bold text-primary mt-1">
+                            ${Number(o.price).toLocaleString("es-AR")}
+                          </p>
+                        )}
+                        {waNumber && (
+                          <a
+                            href={`https://wa.me/${waNumber}?text=${encodeURIComponent(`Hola! Me interesa ${o.name}`)}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-block mt-1 text-xs text-green-600 font-medium hover:underline"
+                          >
+                            Consultar por WhatsApp →
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
             {/* Solo contacto sin carta cargada: tarjeta de contacto directa */}
             <div className="border border-border rounded-2xl p-8 text-center bg-card mt-6 mb-6">
               <h2 className="font-display text-2xl font-semibold mb-2">

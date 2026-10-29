@@ -28,6 +28,7 @@ function LoginForm() {
   const [teamUser, setTeamUser] = useState("");
   const [teamPass, setTeamPass] = useState("");
   const [storeName, setStoreName] = useState<string | null>(null);
+  const [storeCandidates, setStoreCandidates] = useState<{ id: string; store_name: string; logo_url: string | null; slug: string }[]>([]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -54,11 +55,14 @@ function LoginForm() {
       try {
         const res = await fetch(`/api/auth/staff/login?store=${encodeURIComponent(store.trim())}`);
         const data = await res.json().catch(() => ({}));
-        setStoreName(data.vendor?.store_name || null);
+        const cands = Array.isArray(data.vendors) ? data.vendors : (data.vendor ? [data.vendor] : []);
+        setStoreCandidates(cands);
+        setStoreName(cands.length === 1 ? cands[0].store_name : (cands[0]?.store_name || null));
       } catch {
+        setStoreCandidates([]);
         setStoreName(null);
       }
-    }, 400);
+    }, 300);
     return () => clearTimeout(t);
   }, [store, mode]);
 
@@ -183,15 +187,42 @@ function LoginForm() {
       <form onSubmit={handleTeamLogin} className="space-y-4">
         <div>
           <Label htmlFor="store">Comercio</Label>
-          <Input
-            id="store"
-            type="text"
-            placeholder="Nombre del local"
-            value={store}
-            onChange={(e) => setStore(e.target.value)}
-            autoCapitalize="none"
-          />
-          {storeName && <p className="text-xs text-green-600 mt-1">🏪 {storeName}</p>}
+          <div className="relative">
+            <Input
+              id="store"
+              type="text"
+              placeholder="Nombre del local"
+              value={store}
+              onChange={(e) => setStore(e.target.value)}
+              autoCapitalize="none"
+              autoComplete="off"
+            />
+            {storeCandidates.length > 1 && (
+              <div className="absolute z-20 mt-1 w-full rounded-xl border border-border bg-background shadow-lg max-h-48 overflow-y-auto">
+                {storeCandidates.map((v) => (
+                  <button
+                    key={v.id}
+                    type="button"
+                    onClick={() => {
+                      setStore(v.store_name);
+                      setStoreCandidates([]);
+                      setStoreName(v.store_name);
+                    }}
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-muted flex items-center gap-2"
+                  >
+                    {v.logo_url && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={v.logo_url} alt="" className="h-6 w-6 rounded object-cover" />
+                    )}
+                    <span className="truncate">{v.store_name}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          {storeName && storeCandidates.length <= 1 && (
+            <p className="text-xs text-green-600 mt-1">🏪 {storeName}</p>
+          )}
         </div>
         <div>
           <Label htmlFor="teamUser">Usuario</Label>

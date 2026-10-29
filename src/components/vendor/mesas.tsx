@@ -517,6 +517,31 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
     return () => clearTimeout(t);
   }, [cart, selected, payment, mobileView, vendorId]);
   const [printingTicket, setPrintingTicket] = useState(false);
+  // Cobro parcial de la cuenta de la mesa.
+  const [partialPayOpen, setPartialPayOpen] = useState(false);
+  const [partialPayMode, setPartialPayMode] = useState<"amount" | "items">("amount");
+  const [partialPayAmount, setPartialPayAmount] = useState("");
+  const [partialPayMethod, setPartialPayMethod] = useState("efectivo");
+  const [partialPayBusy, setPartialPayBusy] = useState(false);
+  const [partialPaid, setPartialPaid] = useState(0);
+  const [partialPending, setPartialPending] = useState<number | null>(null);
+  // Checklist de ítems para cobro por consumición (id de línea -> cantidad a cobrar).
+  const [partialItemQty, setPartialItemQty] = useState<Record<string, number>>({});
+  // Refresca el saldo parcial cuando cambia la mesa seleccionada.
+  useEffect(() => {
+    if (!selected?.id) {
+      setPartialPaid(0);
+      setPartialPending(null);
+      return;
+    }
+    fetch(`/api/vendor/tables/${selected.id}/partial-payment`)
+      .then((r) => r.json())
+      .then((d) => {
+        setPartialPaid(Number(d?.paid) || 0);
+        setPartialPending(d?.pending != null ? Number(d.pending) : null);
+      })
+      .catch(() => {});
+  }, [selected?.id]);
   // % descuento en efectivo del comercio (0 = sin descuento).
   const [cashPct, setCashPct] = useState(0);
   // Fiscal ARCA (plan Gestión + config completa): check por cierre de mesa.
@@ -1520,6 +1545,66 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
     if (!data.ok) setTimeout(() => setMsg(""), 3000);
   }
 
+  async function doPartialPayment() {
+    if (!selected) return;
+    let amount = Number(partialPayAmount);
+    if (partialPayMode === "items") {
+      amount = openOrders
+        .flatMap((o: any) => (o.items || []).map((it: any, ii: number) => ({ it, ii, o })))
+        .reduce((s, { it, ii, o }) => {
+          const key = `${o.id}__${ii}`;
+          const q = partialItemQty[key] ?? 0;
+          return s + (Number(it.price) || 0) * q;
+        }, 0);
+    }
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setMsg("Indicá un monto mayor a 0");
+      setTimeout(() => setMsg(""), 3000);
+      return;
+    }
+    setPartialPayBusy(true);
+    try {
+      // Cobro por ítem: si hay cantidades seleccionadas, se envían como items.
+      let items: { orderId: string; lineIndex: number; qty: number }[] = [];
+      if (partialPayMode === "items") {
+        Object.entries(partialItemQty).forEach(([key, qty]) => {
+          if (qty > 0) {
+            const [orderId, idx] = key.split("__");
+            items.push({ orderId, lineIndex: Number(idx), qty });
+          }
+        });
+      }
+      const res = await fetch(`/api/vendor/tables/${selected.id}/partial-payment`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mode: partialPayMode,
+          amount,
+          paymentMethod: partialPayMethod,
+          items,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (data.error) {
+        setMsg(`❌ ${data.error}`);
+        setTimeout(() => setMsg(""), 4000);
+        return;
+      }
+      setPartialPaid(Number(data.paid) || 0);
+      setPartialPending(data.pending != null ? Number(data.pending) : null);
+      setPartialPayAmount("");
+      setPartialItemQty({});
+      setPartialPayOpen(false);
+      setMsg(`✅ Cobro parcial registrado ($${Number(data.payment?.amount || amount).toLocaleString("es-AR")})`);
+      setTimeout(() => setMsg(""), 3000);
+    } catch {
+      setMsg("❌ Error de conexión");
+      setTimeout(() => setMsg(""), 3000);
+    } finally {
+      setPartialPayBusy(false);
+    }
+  }
+
   const cartCount = cart.reduce((s, i) => s + i.qty, 0);
   // Descuento manual ya guardado en las cuentas abiertas (la cuenta lo trae
   // en su total; acá se resta del bruto reconstruido para no duplicar).
@@ -2501,12 +2586,21 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
                       </Button>
                       <Button
                         size="sm"
+                        variant="secondary"
                         disabled={!hasAccount || shiftBlocked || resBlocked}
-                        onClick={closeTable}
+                        onClick={() => setPartialPayOpen(true)}
                       >
-                        Cobrado y cerrar
+                        💵 Cobrar parcial
                       </Button>
                     </div>
+                    <Button
+                      size="sm"
+                      disabled={!hasAccount || shiftBlocked || resBlocked}
+                      onClick={closeTable}
+                      className="w-full"
+                    >
+                      Cobrado y cerrar
+                    </Button>
                     {shiftBlocked && (
                       <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5 mt-1.5">
                         🔒 Abrí la caja para cobrar.{" "}
@@ -2667,6 +2761,165 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
           onConfirm={handleModConfirm}
           onCancel={() => setPickerProduct(null)}
         />
+      )}
+
+      {partialPayOpen && (
+        <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4" onClick={() => !partialPayBusy && setPartialPayOpen(false)}>
+          <div
+            className="w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl border border-border bg-background p-4 space-y-3 max-h-[92vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="font-display font-semibold">💵 Cobrar parcial — {selected?.name}</h3>
+              <button
+                type="button"
+                onClick={() => !partialPayBusy && setPartialPayOpen(false)}
+                className="h-8 w-8 rounded-full hover:bg-muted flex items-center justify-center text-muted-foreground"
+                aria-label="Cerrar"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="text-xs text-muted-foreground">
+              Total mesa: <b>${mesaPayTotal.toLocaleString("es-AR")}</b>
+              {" · "}Ya pagado: <b>${partialPaid.toLocaleString("es-AR")}</b>
+              {" · "}Pendiente: <b>${(partialPending ?? mesaPayTotal - partialPaid).toLocaleString("es-AR")}</b>
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setPartialPayMode("amount")}
+                className={`flex-1 rounded-lg py-2 text-sm font-medium ${partialPayMode === "amount" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}
+              >
+                Por monto
+              </button>
+              <button
+                type="button"
+                onClick={() => setPartialPayMode("items")}
+                className={`flex-1 rounded-lg py-2 text-sm font-medium ${partialPayMode === "items" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}
+              >
+                Por ítem
+              </button>
+            </div>
+            <div>
+              <label className="text-xs font-medium">Medio de pago</label>
+              <select
+                value={partialPayMethod}
+                onChange={(e) => setPartialPayMethod(e.target.value)}
+                className="mt-1 w-full h-10 px-3 text-sm rounded-xl border border-input bg-background"
+              >
+                <option value="efectivo">Efectivo</option>
+                <option value="transferencia">Transferencia</option>
+                <option value="tarjeta">Tarjeta</option>
+                <option value="mixto">Mixto</option>
+                <option value="whatsapp">WhatsApp</option>
+              </select>
+            </div>
+            {partialPayMode === "amount" ? (
+              <div>
+                <label className="text-xs font-medium">Monto a cobrar</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={partialPayAmount}
+                  onChange={(e) => setPartialPayAmount(e.target.value)}
+                  className="mt-1 w-full h-10 px-3 text-sm rounded-xl border border-input bg-background"
+                  placeholder="0,00"
+                />
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-60 overflow-y-auto">
+                <p className="text-xs text-muted-foreground">Tildá las consumiciones a cobrar (cantidad editable).</p>
+                {openOrders.flatMap((o: any, oi: number) =>
+                  (o.items || []).map((it: any, ii: number) => {
+                    const key = `${o.id}__${ii}`;
+                    const qty = partialItemQty[key] ?? 0;
+                    return (
+                      <div key={key} className="flex items-center gap-2 text-sm border border-border rounded-lg px-2 py-1.5">
+                        <input
+                          type="checkbox"
+                          checked={qty > 0}
+                          onChange={(e) =>
+                            setPartialItemQty((prev) => ({
+                              ...prev,
+                              [key]: e.target.checked ? (Number(it.qty) || 1) : 0,
+                            }))
+                          }
+                        />
+                        <span className="flex-1 truncate">{it.name || "Ítem"}</span>
+                        <input
+                          type="number"
+                          min="0"
+                          max={Number(it.qty) || 1}
+                          step="0.001"
+                          value={qty || ""}
+                          onChange={(e) =>
+                            setPartialItemQty((prev) => ({
+                              ...prev,
+                              [key]: Math.min(Number(it.qty) || 1, Math.max(0, Number(e.target.value) || 0)),
+                            }))
+                          }
+                          className="w-16 h-7 text-xs rounded border border-input bg-background px-1"
+                        />
+                        <span className="text-xs text-muted-foreground tabular-nums">
+                          ${((Number(it.price) || 0) * (qty || 0)).toLocaleString("es-AR")}
+                        </span>
+                      </div>
+                    );
+                  })
+                )}
+                <div className="text-xs text-right font-medium">
+                  Total seleccionado: $
+                  {openOrders
+                    .flatMap((o: any) => (o.items || []).map((it: any, ii: number) => ({ it, ii, o })))
+                    .reduce((s, { it, ii, o }) => {
+                      const key = `${o.id}__${ii}`;
+                      const q = partialItemQty[key] ?? 0;
+                      return s + (Number(it.price) || 0) * q;
+                    }, 0)
+                    .toLocaleString("es-AR")}
+                </div>
+              </div>
+            )}
+            <div className="grid grid-cols-3 gap-2">
+              <Button variant="outline" disabled={partialPayBusy} onClick={() => setPartialPayOpen(false)}>
+                Cancelar
+              </Button>
+              <Button
+                variant="outline"
+                disabled={partialPayBusy}
+                onClick={async () => {
+                  const amt = partialPayMode === "items"
+                    ? openOrders.flatMap((o: any) => (o.items || []).map((it: any, ii: number) => ({ it, ii, o }))).reduce((s: number, { it, ii, o }: any) => {
+                        const key = `${o.id}__${ii}`;
+                        const q = partialItemQty[key] ?? 0;
+                        return s + (Number(it.price) || 0) * q;
+                      }, 0)
+                    : Number(partialPayAmount) || 0;
+                  if (!amt || amt <= 0) return;
+                  try {
+                    await fetch("/api/print", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        type: "precuenta",
+                        tableName: selected?.name,
+                        items: openOrders.flatMap((o: any) => (o.items || [])),
+                        total: amt,
+                      }),
+                    });
+                  } catch { /* best-effort */ }
+                }}
+              >
+                🖨️ Recibo
+              </Button>
+              <Button disabled={partialPayBusy} onClick={doPartialPayment}>
+                {partialPayBusy ? "Registrando..." : "Registrar pago"}
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

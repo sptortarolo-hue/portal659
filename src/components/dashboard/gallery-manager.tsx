@@ -32,6 +32,9 @@ export function GalleryManager({
 }) {
   const [items, setItems] = useState<GalleryItem[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [dragOver, setDragOver] = useState<number | null>(null);
+  const [savingOrder, setSavingOrder] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [captions, setCaptions] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
@@ -133,9 +136,37 @@ export function GalleryManager({
     }
   }
 
+  async function persistOrder(next: GalleryItem[]) {
+    setSavingOrder(true);
+    try {
+      await fetch("/api/vendor/gallery/reorder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: next.map((i) => i.id) }),
+      });
+      onChanged?.();
+    } catch {
+      /* best-effort */
+    } finally {
+      setSavingOrder(false);
+    }
+  }
+
+  function moveItem(from: number, to: number) {
+    if (from === to || from < 0 || to < 0 || from >= items.length || to >= items.length) return;
+    const next = [...items];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    setItems(next);
+    persistOrder(next);
+  }
+
   return (
     <div className="space-y-3">
-      <p className="text-sm font-medium">{title}</p>
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-medium">{title}</p>
+        {savingOrder && <span className="text-xs text-muted-foreground">Guardando orden…</span>}
+      </div>
       <div>
         <input
           ref={fileRef}
@@ -159,11 +190,23 @@ export function GalleryManager({
         <p className="text-sm text-muted-foreground text-center py-4">{emptyText}</p>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          {items.map((item) => {
+          {items.map((item, idx) => {
             const draft = captions[item.id] ?? item.caption ?? "";
             const dirty = draft.trim() !== (item.caption || "").trim();
             return (
-              <div key={item.id} className="border border-border rounded-lg overflow-hidden bg-background">
+              <div
+                key={item.id}
+                draggable
+                onDragStart={() => setDragIndex(idx)}
+                onDragOver={(e) => { e.preventDefault(); setDragOver(idx); }}
+                onDrop={() => {
+                  if (dragIndex != null && dragIndex !== idx) moveItem(dragIndex, idx);
+                  setDragIndex(null);
+                  setDragOver(null);
+                }}
+                onDragEnd={() => { setDragIndex(null); setDragOver(null); }}
+                className={`border border-border rounded-lg overflow-hidden bg-background ${dragOver === idx ? "ring-2 ring-primary" : ""} ${dragIndex === idx ? "opacity-50" : ""}`}
+              >
                 <div className="aspect-square relative">
                   <ProductImage
                     src={item.image_url}
@@ -193,6 +236,30 @@ export function GalleryManager({
                         {savingId === item.id ? "…" : "OK"}
                       </Button>
                     )}
+                  </div>
+                  <div className="flex gap-1">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="flex-1 h-7 text-xs"
+                      disabled={idx === 0 || savingOrder}
+                      onClick={() => moveItem(idx, idx - 1)}
+                      title="Mover a la izquierda"
+                    >
+                      ←
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="flex-1 h-7 text-xs"
+                      disabled={idx === items.length - 1 || savingOrder}
+                      onClick={() => moveItem(idx, idx + 1)}
+                      title="Mover a la derecha"
+                    >
+                      →
+                    </Button>
                   </div>
                   <Button
                     type="button"

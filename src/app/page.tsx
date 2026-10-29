@@ -39,7 +39,8 @@ export default async function HomePage() {
     `SELECT p.*, json_build_object('id', v.id, 'slug', v.slug, 'store_name', v.store_name, 'vertical', v.vertical) AS vendors
      FROM products p
      JOIN vendors v ON v.id = p.vendor_id
-     WHERE p.neighborhood = ANY($1) AND p.available = true AND v.visibility = 'public' AND COALESCE(to_jsonb(v)->>'carta_visibility', 'public') = 'public'
+     WHERE p.neighborhood = ANY($1) AND p.available = true AND v.visibility = 'public'
+        AND (COALESCE(to_jsonb(v)->>'carta_visibility', 'public') = 'public' OR p.featured_today = true)
      ORDER BY p.featured_today DESC, p.created_at DESC`,
     [zone.neighborhoods]
   );

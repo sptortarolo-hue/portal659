@@ -100,18 +100,6 @@ function GroupForm({
   // por defecto es "Precio por kg/unidad".
   const allKg = selectedList.length > 0 && selectedList.every((p) => p.unit === "kg");
   const kgUnit = allKg ? " kg" : "";
-  // Si el grupo es 100% por peso y el tramo todavía no tiene precio, el tipo
-  // natural es "Precio por kg" (no "precio fijo por N kg en total").
-  useEffect(() => {
-    if (!allKg) return;
-    setTiers((prev) =>
-      prev.map((t) =>
-        t.kind === "fixed_total" && !(Number(t.value) > 0)
-          ? { ...t, kind: "unit_price" as const, min_qty: t.min_qty === 2 ? 1 : t.min_qty }
-          : t
-      )
-    );
-  }, [allKg]);
   const firstTier = tiers.find((t) => Number.isFinite(t.min_qty) && Number(t.value) > 0);
   const summaryTier = firstTier
     ? firstTier.kind === "fixed_total"
@@ -356,7 +344,7 @@ function GroupForm({
                 onClick={() =>
                   setTiers((prev) => [
                     ...prev,
-                    { id: `t${Date.now()}`, min_qty: allKg ? 3 : 2, kind: allKg ? "unit_price" : "fixed_total", value: 0 },
+                    { id: `t${Date.now()}`, min_qty: 2, kind: "fixed_total", value: 0 },
                   ])
                 }
               >
@@ -482,10 +470,6 @@ function PackWizard({
   const comboIds = [...combo].filter((id) => selected.has(id));
   const soloIds = [...selected].filter((id) => !combo.has(id));
   const nameOf = (id: string) => products.find((p) => p.id === id)?.name || "Producto";
-  // Si todo lo tildado se vende por peso, el precio del tramo es $/kg.
-  const selAllKg =
-    [...selected].length > 0 &&
-    [...selected].every((id) => products.find((p) => p.id === id)?.unit === "kg");
 
   async function handleSave() {
     setError("");
@@ -495,7 +479,7 @@ function PackWizard({
         name: name.trim(),
         product_ids: [...selected],
         combo_ids: comboIds,
-        tiers: [{ min_qty: Math.round(Number(qty) * 1000) / 1000 || 6, kind: selAllKg ? "unit_price" : "fixed_total", value: Number(price) || 0 }],
+        tiers: [{ min_qty: Math.round(Number(qty) * 1000) / 1000 || 6, kind: "fixed_total", value: Number(price) || 0 }],
         combine_promo: false,
         combine_cash: false,
         extras_mode: "on_top",
@@ -638,7 +622,7 @@ function PackWizard({
             <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2">
               <p className="text-sm font-semibold text-emerald-900">🧊 {name.trim()}</p>
               <p className="text-xs text-emerald-700 mt-0.5">
-                Llevá {Math.floor(Number(qty)) || 6}{selAllKg ? " kg" : ""} y pagá ${Number(price).toLocaleString("es-AR")}{selAllKg ? " el kg" : ""}
+                Llevá {Math.floor(Number(qty)) || 6} y pagá ${Number(price).toLocaleString("es-AR")}
               </p>
               {comboIds.length >= 2 && (
                 <p className="text-xs text-emerald-900 mt-1.5 font-medium">

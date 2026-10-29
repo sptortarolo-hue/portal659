@@ -3,6 +3,7 @@ import { notifyServiceClient } from "@/lib/service-notify";
 import { sendPushToUser } from "@/lib/push";
 import { isDaytimeAR, sendWaText } from "@/lib/wa-send";
 import { getSiteUrl } from "@/lib/site-url";
+import { bookingReminderMessage, bookingWhenLabel } from "@/lib/booking-message";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -189,12 +190,19 @@ export async function GET(request: Request) {
   // Push al local agrupado: un solo aviso por comercio con la cantidad.
   const vendorAgg = new Map<string, { userId: string | null; count: number }>();
   for (const b of due24 || []) {
-    const when = `${b.booking_date} ${String(b.booking_time || "").slice(0, 5)}`;
     const title = "⏰ Turno mañana";
-    const bodyClient = `Te recordamos tu turno de mañana ${when} en ${b.store_name}.`;
     // Ficha exigida pendiente (si el interruptor global lo permite): borrador
     // + link. Con ficha_reminder_enabled = false no se adjunta.
     const fichaUrl = b.ficha_reminder_enabled === false ? null : await fichaLinkFor(b);
+    // Mensaje único (mismo texto que el botón del panel y la tarjeta).
+    const msgOpts = {
+      customerName: b.customer_name,
+      when: bookingWhenLabel(b.booking_date),
+      time: b.booking_time,
+      storeName: b.store_name,
+      token: b.confirm_token,
+      fichaUrl,
+    };
     try {
       if (b.user_id) {
         const agg = vendorAgg.get(b.vendor_id) || { userId: b.user_id, count: 0 };
@@ -203,7 +211,7 @@ export async function GET(request: Request) {
       }
       await notifyServiceClient(b.customer_phone, {
         title,
-        body: `${bodyClient}${b.confirm_token ? " Confirmá o cancelá acá: /turno/" + b.confirm_token : ""}${fichaUrl ? ` Completá tu ficha antes de venir: ${fichaUrl}` : ""}`,
+        body: bookingReminderMessage({ ...msgOpts, withLink: false }),
         ...(b.confirm_token ? { link: `/turno/${b.confirm_token}` } : {}),
       });
       // WhatsApp por el número del comercio (opt-out vendors.wa_reminders,
@@ -211,9 +219,7 @@ export async function GET(request: Request) {
       let channel: string | null = null;
       if (b.wa_reminders !== false && isDaytimeAR() && b.customer_phone) {
         const siteUrl = getSiteUrl(request);
-        const waBody =
-          `⏰ Hola ${String(b.customer_name || "").split(" ")[0] || ""}! Te recordamos tu turno de mañana ${when} en ${b.store_name}.`.trim() +
-          (b.confirm_token ? ` Confirmá o cancelá acá: ${siteUrl}/turno/${b.confirm_token}` : "");
+        const waBody = bookingReminderMessage({ ...msgOpts, origin: siteUrl });
         const wa = await sendWaText({ vendorId: b.vendor_id, waId: b.customer_phone, text: waBody });
         if (wa.sent) channel = "wa";
       }
@@ -259,11 +265,17 @@ export async function GET(request: Request) {
       [todayAR, nowHHMM, in2hHHMM]
     ).catch(() => []);
     for (const b of due2 || []) {
-      const when = `${String(b.booking_time || "").slice(0, 5)}`;
       try {
         await notifyServiceClient(b.customer_phone, {
           title: "⏰ Tu turno es hoy",
-          body: `Te esperamos hoy ${when} en ${b.store_name}${b.product_name ? ` · ${b.product_name}` : ""}.${b.confirm_token ? " Si surge algo, avisá acá: /turno/" + b.confirm_token : ""}`,
+          body: bookingReminderMessage({
+            customerName: b.customer_name,
+            when: "de hoy",
+            time: b.booking_time,
+            storeName: b.store_name,
+            token: b.confirm_token,
+            withLink: false,
+          }),
           ...(b.confirm_token ? { link: `/turno/${b.confirm_token}` } : {}),
         });
         let channel2: string | null = null;
@@ -272,7 +284,14 @@ export async function GET(request: Request) {
           const wa = await sendWaText({
             vendorId: b.vendor_id,
             waId: b.customer_phone,
-            text: `⏰ Hola ${String(b.customer_name || "").split(" ")[0] || ""}! Te esperamos hoy ${when} en ${b.store_name}.${b.confirm_token ? ` Si surge algo, avisá acá: ${siteUrl}/turno/${b.confirm_token}` : ""}`.trim(),
+            text: bookingReminderMessage({
+              customerName: b.customer_name,
+              when: "de hoy",
+              time: b.booking_time,
+              storeName: b.store_name,
+              origin: siteUrl,
+              token: b.confirm_token,
+            }),
           });
           if (wa.sent) channel2 = "wa";
         }

@@ -25,6 +25,7 @@ import { BookingManualModal } from "@/components/dashboard/booking-manual-modal"
 import { EsteticaWaitlistManager, type WaitEntry } from "@/components/dashboard/estetica-managers";
 import { StaffManager } from "@/components/vendor/staff-manager";
 import { arToday } from "@/lib/booking-schedule";
+import { bookingReminderMessage, bookingWhenLabel } from "@/lib/booking-message";
 import { loadDraft, saveDraft } from "@/lib/draft";
 import { AgendaView, type AgendaViewMode } from "@/components/dashboard/agenda-view";
 import { EsteticaWeekPlanner } from "@/components/dashboard/estetica-week-planner";
@@ -1429,8 +1430,14 @@ const PREF_SLOT_OPTIONS = ["mañana", "tarde", "noche"];
                 <div className="space-y-1.5">
                   {tmr.map((b: any) => {
                     const time = String(b.booking_time || "").slice(0, 5);
-                    const first = String(b.customer_name || "").split(" ")[0] || "";
-                    const msg = `Hola ${first}! Te recuerdo tu turno de mañana ${time}${b.service_label ? ` (${b.service_label})` : ""}. ¿Confirmás?`;
+                    const msg = bookingReminderMessage({
+                      customerName: b.customer_name,
+                      when: bookingWhenLabel(b.booking_date),
+                      time,
+                      storeName: vendor?.store_name || storeName,
+                      origin: typeof window !== "undefined" ? window.location.origin : "",
+                      token: b.confirm_token,
+                    });
                     const wa = b.customer_phone
                       ? `https://wa.me/${String(b.customer_phone).replace(/[^0-9]/g, "")}?text=${encodeURIComponent(msg)}`
                       : null;

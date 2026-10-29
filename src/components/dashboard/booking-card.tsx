@@ -7,6 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import type { Vendor } from "@/types/database";
+import { bookingReminderMessage, bookingWhenLabel } from "@/lib/booking-message";
 
 export const BOOKING_STATUS_COLORS: Record<string, string> = {
   pending: "bg-yellow-100 text-yellow-700",
@@ -356,7 +357,14 @@ export function BookingCard({
             </Button>
             {typeof (booking as any).confirm_token === "string" && (booking as any).confirm_token && booking.customer_phone && (
               <a
-                href={`https://wa.me/${String(booking.customer_phone).replace(/[^0-9]/g, "")}?text=${encodeURIComponent(`Hola! Te paso el link de tu turno del ${booking.booking_date} ${String(booking.booking_time).slice(0, 5)}: ${typeof window !== "undefined" ? window.location.origin : ""}/turno/${(booking as any).confirm_token} — confirmalo cuando puedas 👆`)}`}
+                href={`https://wa.me/${String(booking.customer_phone).replace(/[^0-9]/g, "")}?text=${encodeURIComponent(bookingReminderMessage({
+                  customerName: booking.customer_name,
+                  when: bookingWhenLabel(booking.booking_date),
+                  time: booking.booking_time,
+                  storeName: vendor?.store_name,
+                  origin: typeof window !== "undefined" ? window.location.origin : "",
+                  token: (booking as any).confirm_token,
+                }))}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center h-7 px-2 rounded-md border border-input text-xs font-medium text-green-600 hover:bg-muted"

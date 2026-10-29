@@ -10,6 +10,8 @@
  *    (14 empanadas con pack de 12 = 12 a pack + 2 a unidad). Los sets cubren las
  *    unidades más caras primero.
  *  - `percent_off`: si se llega al tramo, TODO el grupo va con el mejor % alcanzado.
+ *  - `unit_price`: "a partir de N, $X por unidad/kg" (umbral acumulativo):
+ *    si el grupo llega a N, TODAS las unidades se cobran a $X (5,2 kg -> 5,2 x $X).
  *  - Si un grupo tiene tramos de ambos tipos, se aplica el que más descuenta.
  *  - Base de la unidad: `price` (o `promo` si `combinePromo`); los modificadores
  *    con costo se suman salvo `extrasIncluded` + tramo fijo (el pack los absorbe).
@@ -180,7 +182,7 @@ export function applyVolumePricing(
 
     const fixedTiers = tiers.filter((t) => t.kind === "fixed_total").sort((a, b) => b.minQty - a.minQty);
     const pctTiers = tiers.filter((t) => t.kind === "percent_off");
-    const unitPriceTiers = tiers.filter((t) => t.kind === "unit_price");
+    const unitTiers = tiers.filter((t) => t.kind === "unit_price");
 
     // --- Estrategia A: sets fijos (greedy del tramo mayor) ---
     // unitIdx -> neto prorrateado (si gana fijo)
@@ -261,17 +263,20 @@ export function applyVolumePricing(
       }
     }
 
-    // --- Estrategia C: precio por unidad a partir de N (tipico kg) ---
-    let unitPriceNetByIdx = new Map<number, number>();
-    let unitPriceBest: VolumeTierInput | null = null;
-    for (const t of unitPriceTiers) {
-      if (scaledGroupQty >= t.minQty * scale && (!unitPriceBest || Number(t.value) < Number(unitPriceBest.value))) {
-        unitPriceBest = t;
+    // --- Estrategia C: precio por unidad/kg a partir de N (umbral acumulativo) ---
+    // "a partir de 3 kg, $D el kg": al llegar a N se cobran TODAS las unidades
+    // a $D (5,2 kg -> 5,2 x $D). Gana el tramo alcanzado más barato.
+    let unitNetByIdx = new Map<number, number>();
+    let unitBest: VolumeTierInput | null = null;
+    for (const t of unitTiers) {
+      if (scaledGroupQty >= t.minQty * scale && (!unitBest || Number(t.value) < Number(unitBest.value))) {
+        unitBest = t;
       }
     }
-    if (unitPriceBest) {
+    if (unitBest) {
       for (const i of idxs) {
-        unitPriceNetByIdx.set(i, round2(Number(unitPriceBest.value) * lines[i].qty));
+        const mods = group.extrasIncluded ? 0 : Number(lines[i].modsUnit) || 0;
+        unitNetByIdx.set(i, round2((Number(unitBest.value) + mods) * lines[i].qty));
       }
     }
 
@@ -281,28 +286,32 @@ export function applyVolumePricing(
     const refGross = round2(idxs.reduce((s, i) => s + results[i].grossTotal, 0));
     const fixedNetTotal = round2([...fixedNetByIdx.values()].reduce((s, v) => s + v, 0));
     const pctNetTotal = round2([...pctNetByIdx.values()].reduce((s, v) => s + v, 0));
-    const unitPriceNetTotal = round2([...unitPriceNetByIdx.values()].reduce((s, v) => s + v, 0));
+    const unitNetTotal = round2([...unitNetByIdx.values()].reduce((s, v) => s + v, 0));
     const fixedSaves = fixedNetByIdx.size > 0 ? round2(refGross - fixedNetTotal) : 0;
     const pctSaves = pctNetByIdx.size > 0 ? round2(refGross - pctNetTotal) : 0;
-    const unitPriceSaves = unitPriceNetByIdx.size > 0 ? round2(refGross - unitPriceNetTotal) : 0;
-    if (fixedSaves <= 0 && pctSaves <= 0 && unitPriceSaves <= 0) continue;
-    const useFixed = fixedSaves > 0 && fixedSaves >= pctSaves && fixedSaves >= unitPriceSaves;
-    const usePct = !useFixed && pctSaves > 0 && pctSaves >= unitPriceSaves;
-    const useUnitPrice = !useFixed && !usePct && unitPriceSaves > 0;
+    const unitSaves = unitNetByIdx.size > 0 ? round2(refGross - unitNetTotal) : 0;
+    if (fixedSaves <= 0 && pctSaves <= 0 && unitSaves <= 0) continue;
+    const useFixed = fixedSaves > 0 && fixedSaves >= pctSaves && fixedSaves >= unitSaves;
+    const usePct = !useFixed && pctSaves > 0 && pctSaves >= unitSaves;
 
     if (useFixed) {
       volumeDiscount = round2(volumeDiscount + fixedSaves);
       for (const i of idxs) results[i].netTotal = fixedNetByIdx.get(i) ?? results[i].grossTotal;
       applied.push({ groupId: group.id, groupName: group.name, qty: groupQty, label: fixedLabel });
-    } else if (pctBest) {
+    } else if (usePct && pctBest) {
       volumeDiscount = round2(volumeDiscount + pctSaves);
       for (const i of idxs) results[i].netTotal = pctNetByIdx.get(i) ?? results[i].grossTotal;
       applied.push({ groupId: group.id, groupName: group.name, qty: groupQty, label: packLabel(pctBest) });
-    } else if (useUnitPrice && unitPriceBest) {
-      volumeDiscount = round2(volumeDiscount + unitPriceSaves);
-      for (const i of idxs) results[i].netTotal = unitPriceNetByIdx.get(i) ?? results[i].grossTotal;
-      const u = scale > 1 ? " kg" : "";
-      applied.push({ groupId: group.id, groupName: group.name, qty: groupQty, label: `${unitPriceBest.minQty}${u} a ${fmtMoney(Number(unitPriceBest.value))}` });
+    } else if (unitBest) {
+      volumeDiscount = round2(volumeDiscount + unitSaves);
+      for (const i of idxs) results[i].netTotal = unitNetByIdx.get(i) ?? results[i].grossTotal;
+      const suffix = scale > 1 ? " kg" : " u";
+      applied.push({
+        groupId: group.id,
+        groupName: group.name,
+        qty: groupQty,
+        label: `${Number(unitBest.minQty)}${suffix} a ${fmtMoney(Number(unitBest.value))}`,
+      });
     }
 
     // Sin combine_cash, el cash no corre sobre estas líneas.
@@ -348,10 +357,14 @@ export function volumeBadgeText(
     t.kind === "fixed_total"
       ? mixed
         ? `Pack x${t.minQty}${u} · Combinables · ${fmtMoney(Number(t.value))}`
-        : `Llevā ${t.minQty}${u} y pagā ${fmtMoney(Number(t.value))}`
-      : mixed
-        ? `Pack x${t.minQty}${u}+ · Combinables · ${Number(t.value).toLocaleString("es-AR")}% off`
-        : `${t.minQty}${u}+ con ${Number(t.value).toLocaleString("es-AR")}% off`
+        : `Llevá ${t.minQty}${u} y pagá ${fmtMoney(Number(t.value))}`
+      : t.kind === "unit_price"
+        ? mixed
+          ? `Pack x${t.minQty}${u}+ · ${fmtMoney(Number(t.value))} c/u`
+          : `${t.minQty}${u}+ a ${fmtMoney(Number(t.value))}${isKg ? "/kg" : " c/u"}`
+        : mixed
+          ? `Pack x${t.minQty}${u}+ · Combinables · ${Number(t.value).toLocaleString("es-AR")}% off`
+          : `${t.minQty}${u}+ con ${Number(t.value).toLocaleString("es-AR")}% off`
   );
   return `📦 ${parts.join(" · ")}`;
 }

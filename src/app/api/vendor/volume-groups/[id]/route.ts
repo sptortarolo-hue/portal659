@@ -69,7 +69,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     if (!updated) return NextResponse.json({ error: "Grupo no encontrado" }, { status: 404 });
     return NextResponse.json({ group: updated });
   } catch {
-    return NextResponse.json({ error: "Falta aplicar la migración de precios por volumen" }, { status: 503 });
+    return NextResponse.json({ error: "Falta aplicar la migración migrate-volume-pricing-kg.sql (tramos decimales y precio por kg/unidad)" }, { status: 503 });
   }
 }
 

@@ -637,7 +637,7 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
                 combineCash: g.combine_cash === true,
                 extrasIncluded: g.extras_mode === "included",
                 tiers: (Array.isArray(g.tiers) ? g.tiers : [])
-                  .filter((t: any) => t && (t.kind === "fixed_total" || t.kind === "percent_off"))
+                  .filter((t: any) => t && (t.kind === "fixed_total" || t.kind === "percent_off" || t.kind === "unit_price"))
                   .map((t: any) => ({ minQty: Number(t.min_qty), kind: t.kind, value: Number(t.value) })),
               }))
               .filter((g) => g.productIds.length > 0 && g.tiers.length > 0)

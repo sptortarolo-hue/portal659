@@ -609,9 +609,12 @@ export async function resolveOrderPricing(opts: {
           `SELECT group_id, min_qty, kind, value FROM volume_tiers WHERE group_id = ANY($1)`,
           [gRows.map((g) => g.id)]
         );
-        const tiersByGroup = new Map<string, { minQty: number; kind: "fixed_total" | "percent_off"; value: number }[]>();
+        const tiersByGroup = new Map<
+          string,
+          { minQty: number; kind: "fixed_total" | "percent_off" | "unit_price"; value: number }[]
+        >();
         for (const t of tRows) {
-          if (t.kind !== "fixed_total" && t.kind !== "percent_off") continue;
+          if (t.kind !== "fixed_total" && t.kind !== "percent_off" && t.kind !== "unit_price") continue;
           const arr = tiersByGroup.get(t.group_id) || [];
           arr.push({ minQty: Number(t.min_qty), kind: t.kind, value: Number(t.value) });
           tiersByGroup.set(t.group_id, arr);

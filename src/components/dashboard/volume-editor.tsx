@@ -101,7 +101,9 @@ function GroupForm({
   const summaryTier = firstTier
     ? firstTier.kind === "fixed_total"
       ? `Llevá ${Number(firstTier.min_qty)} y pagá ${fmt$(Number(firstTier.value))}`
-      : `${Number(firstTier.min_qty)}+ con ${Number(firstTier.value).toLocaleString("es-AR")}% off`
+      : firstTier.kind === "unit_price"
+        ? `Desde ${Number(firstTier.min_qty)}, ${fmt$(Number(firstTier.value))} c/u`
+        : `${Number(firstTier.min_qty)}+ con ${Number(firstTier.value).toLocaleString("es-AR")}% off`
     : null;
 
   function toggleProduct(id: string, checked: boolean) {
@@ -317,7 +319,7 @@ function GroupForm({
                   className="flex-1 min-w-0"
                   value={t.value || ""}
                   onChange={(e) => setTier(i, { value: Number(e.target.value) })}
-                  placeholder={t.kind === "fixed_total" ? "Ej: 18000" : "Ej: 10"}
+                  placeholder={t.kind === "fixed_total" ? "Ej: 18000" : t.kind === "unit_price" ? "Ej: 8000" : "Ej: 10"}
                 />
                 {tiers.length > 1 && (
                   <Button
@@ -347,6 +349,12 @@ function GroupForm({
               </Button>
             )}
           </div>
+          <p className="text-[11px] text-muted-foreground mt-2 leading-snug">
+            <strong>Precio fijo</strong>: &quot;N por $X&quot; (si sobran unidades, van al precio normal).{" "}
+            <strong>Precio por kg/unidad</strong>: &quot;a partir de N, $X c/u&quot; — se cobran TODAS
+            las unidades a $X (ej: 5,2 kg con tramo de 3 kg = 5,2 × $X).{" "}
+            <strong>% off</strong>: todo el grupo con ese descuento.
+          </p>
         </div>
 
         <div className="space-y-2 rounded-xl bg-muted/50 p-3">

@@ -22,7 +22,7 @@ export type PackGroup = {
   productIds: string[];
   memberNames?: string[];
   members?: PackMember[];
-  tiers: { minQty: number; kind: "fixed_total" | "percent_off"; value: number }[];
+  tiers: { minQty: number; kind: "fixed_total" | "percent_off" | "unit_price"; value: number }[];
 };
 
 function openPack(groupId: string) {
@@ -61,10 +61,14 @@ export function PackSheet({
   const tierText = isSolo
     ? next.kind === "fixed_total"
       ? `Llevá ${next.minQty} y pagá $${Number(next.value).toLocaleString("es-AR")} · solo, no combina con otros`
-      : `${next.minQty}+ con ${Number(next.value).toLocaleString("es-AR")}% off · solo, no combina con otros`
+      : next.kind === "unit_price"
+        ? `Desde ${next.minQty}+ a $${Number(next.value).toLocaleString("es-AR")} c/u · solo, no combina con otros`
+        : `${next.minQty}+ con ${Number(next.value).toLocaleString("es-AR")}% off · solo, no combina con otros`
     : next.kind === "fixed_total"
       ? `pack x${next.minQty}, combinables entre sí · pagás $${Number(next.value).toLocaleString("es-AR")}`
-      : `pack x${next.minQty}+, combinables entre sí · ${Number(next.value).toLocaleString("es-AR")}% off`;
+      : next.kind === "unit_price"
+        ? `desde x${next.minQty}+, combinables entre sí · $${Number(next.value).toLocaleString("es-AR")} c/u`
+        : `pack x${next.minQty}+, combinables entre sí · ${Number(next.value).toLocaleString("es-AR")}% off`;
   const members = (group.members || []).filter((m) => ids.has(String(m.id)));
   // Ahorro vivo del pack (espejo; el servidor recalcula y manda).
   const vol = useMemo(

@@ -433,7 +433,7 @@ export default async function TiendaPage({
         );
         const tiersByGroup: Record<string, any[]> = {};
         for (const t of tRows || []) {
-          if (t.kind !== "fixed_total" && t.kind !== "percent_off") continue;
+          if (t.kind !== "fixed_total" && t.kind !== "percent_off" && t.kind !== "unit_price") continue;
           (tiersByGroup[t.group_id] ||= []).push({
             minQty: Number(t.min_qty),
             kind: t.kind,

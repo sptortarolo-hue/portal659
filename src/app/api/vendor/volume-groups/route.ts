@@ -87,23 +87,38 @@ export async function POST(request: Request) {
     }
   }
 
-  const created = await withTransaction(async (tx) => {
-    const g = await tx.queryOne<Record<string, unknown>>(
-      `INSERT INTO volume_groups (vendor_id, name, product_ids, combine_promo, combine_cash, extras_mode)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-      [vendor.id, v.value!.name, v.value!.productIds, v.value!.combinePromo, v.value!.combineCash, v.value!.extrasMode]
-    );
-    if (!g) throw new Error("No se pudo crear el grupo");
-    const tiers: Record<string, unknown>[] = [];
-    for (const t of v.value!.tiers) {
-      const row = await tx.queryOne<Record<string, unknown>>(
-        `INSERT INTO volume_tiers (group_id, min_qty, kind, value) VALUES ($1, $2, $3, $4) RETURNING *`,
-        [g.id, t.minQty, t.kind, t.value]
+  let created: Record<string, unknown> | null = null;
+  try {
+    created = await withTransaction(async (tx) => {
+      const g = await tx.queryOne<Record<string, unknown>>(
+        `INSERT INTO volume_groups (vendor_id, name, product_ids, combine_promo, combine_cash, extras_mode)
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+        [vendor.id, v.value!.name, v.value!.productIds, v.value!.combinePromo, v.value!.combineCash, v.value!.extrasMode]
       );
-      if (row) tiers.push(row);
-    }
-    return { ...g, tiers };
-  });
+      if (!g) throw new Error("No se pudo crear el grupo");
+      const tiers: Record<string, unknown>[] = [];
+      for (const t of v.value!.tiers) {
+        const row = await tx.queryOne<Record<string, unknown>>(
+          `INSERT INTO volume_tiers (group_id, min_qty, kind, value) VALUES ($1, $2, $3, $4) RETURNING *`,
+          [g.id, t.minQty, t.kind, t.value]
+        );
+        if (row) tiers.push(row);
+      }
+      return { ...g, tiers };
+    });
+  } catch {
+    const wantsKg =
+      v.value!.tiers.some((t) => t.kind === "unit_price" || !Number.isInteger(t.minQty)) ||
+      v.value!.tiers.some((t) => t.minQty < 2);
+    return NextResponse.json(
+      {
+        error: wantsKg
+          ? "Falta aplicar la migración migrate-volume-pricing-kg.sql (tramos decimales y precio por kg/unidad)"
+          : "No se pudo guardar el grupo",
+      },
+      { status: 503 }
+    );
+  }
 
   return NextResponse.json({ group: created });
 }

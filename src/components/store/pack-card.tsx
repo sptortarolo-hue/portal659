@@ -16,7 +16,7 @@ export type PackCardGroup = {
   name: string;
   productIds: string[];
   members?: PackCardMember[];
-  tiers: { minQty: number; kind: "fixed_total" | "percent_off"; value: number }[];
+  tiers: { minQty: number; kind: "fixed_total" | "percent_off" | "unit_price"; value: number }[];
 };
 
 /**
@@ -33,7 +33,9 @@ export function PackCard({ group }: { group: PackCardGroup }) {
   const tierText =
     tier.kind === "fixed_total"
       ? `Pack x${tier.minQty} · $${Number(tier.value).toLocaleString("es-AR")}`
-      : `Pack x${tier.minQty}+ · ${Number(tier.value).toLocaleString("es-AR")}% off`;
+      : tier.kind === "unit_price"
+        ? `Desde x${tier.minQty}+ · $${Number(tier.value).toLocaleString("es-AR")} c/u`
+        : `Pack x${tier.minQty}+ · ${Number(tier.value).toLocaleString("es-AR")}% off`;
 
   return (
     <button

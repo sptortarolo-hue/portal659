@@ -265,6 +265,10 @@ export default function EnviosOperadorPage() {
               💲 Mis tarifas
             </Link>
             <span className="text-border">·</span>
+            <Link href="/envios/plan" className="text-xs text-muted-foreground hover:text-foreground">
+              💳 Mi plan
+            </Link>
+            <span className="text-border">·</span>
             <Link href="/logisticas" className="text-xs text-muted-foreground hover:text-foreground">
               Cómo funciona
             </Link>

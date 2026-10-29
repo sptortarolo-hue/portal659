@@ -71,10 +71,10 @@ export async function POST(request: Request) {
 
   const body = await request.json().catch(() => ({}));
   const name = String(body?.name ?? "").trim();
-  const price = Number(body?.price);
-  if (!name || !Number.isFinite(price) || price <= 0) {
-    return NextResponse.json({ error: "Faltan el nombre y el precio de la zona" }, { status: 400 });
-  }
+  if (!name) return NextResponse.json({ error: "Falta el nombre de la zona" }, { status: 400 });
+  // El precio al comprador lo define el portal/admin, no la logística.
+  // Si la logística no lo envía, queda en 0 (el admin lo completa).
+  const price = body?.price != null ? Number(body.price) : 0;
   const carrierId = String(body?.carrierId ?? "").trim();
   if (!carrierId || !carrierIds.has(carrierId)) {
     return NextResponse.json({ error: "Esa logística no te pertenece" }, { status: 403 });

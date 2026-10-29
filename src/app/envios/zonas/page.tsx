@@ -29,12 +29,11 @@ export default function MisZonasPage() {
   // Form de alta.
   const [name, setName] = useState("");
   const [desc, setDesc] = useState("");
-  const [price, setPrice] = useState("");
   const [fee, setFee] = useState("");
   const [eta, setEta] = useState("2");
   const [carrierId, setCarrierId] = useState("");
 
-  const [draft, setDraft] = useState<Record<string, { name: string; price: string; fee: string; eta: string; active: boolean }>>({});
+  const [draft, setDraft] = useState<Record<string, { name: string; fee: string; eta: string; active: boolean }>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -58,7 +57,7 @@ export default function MisZonasPage() {
         Object.fromEntries(
           list.map((z) => [
             z.id,
-            { name: z.name, price: String(z.price), fee: z.carrierFee != null ? String(z.carrierFee) : "", eta: z.etaDays != null ? String(z.etaDays) : "2", active: z.active },
+            { name: z.name, fee: z.carrierFee != null ? String(z.carrierFee) : "", eta: z.etaDays != null ? String(z.etaDays) : "2", active: z.active },
           ])
         )
       );
@@ -74,8 +73,8 @@ export default function MisZonasPage() {
   }, [load]);
 
   async function createZone() {
-    if (!name.trim() || !Number(price)) {
-      setError("Faltan el nombre y el precio de la zona");
+    if (!name.trim()) {
+      setError("Falta el nombre de la zona");
       return;
     }
     setBusy(true);
@@ -88,7 +87,6 @@ export default function MisZonasPage() {
         body: JSON.stringify({
           name: name.trim(),
           description: desc.trim() || undefined,
-          price: Number(price),
           carrierFee: fee.trim() ? Number(fee) : undefined,
           etaDays: Number(eta),
           carrierId,
@@ -99,10 +97,9 @@ export default function MisZonasPage() {
         setError(j.error || "No se pudo crear la zona");
         return;
       }
-      setMsg("Zona creada ✅");
+      setMsg("Zona creada ✅. El equipo de Portal 659 le asigna el precio al comprador.");
       setName("");
       setDesc("");
-      setPrice("");
       setFee("");
       setEta("2");
       await load();
@@ -126,7 +123,6 @@ export default function MisZonasPage() {
         body: JSON.stringify({
           id: z.id,
           name: d.name.trim() || z.name,
-          price: Number(d.price) || z.price,
           carrierFee: d.fee.trim() === "" ? null : Number(d.fee),
           etaDays: Number(d.eta) || z.etaDays || 2,
           active: d.active,
@@ -193,13 +189,17 @@ export default function MisZonasPage() {
           <div className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">{msg}</div>
         )}
 
+        <div className="rounded-xl border border-border bg-background px-3 py-2.5 text-[11px] text-muted-foreground space-y-1">
+          <p>Definís <b>tu tarifa</b> (lo que te paga el local al retirar). El <b>precio al comprador</b> lo define el portal y el local; no lo ves acá.</p>
+          <p>Se congela en cada encargo al avisar: cambiar una tarifa no modifica los envíos ya creados.</p>
+        </div>
+
         {/* Alta */}
         <div className="rounded-xl border border-border bg-background p-3 space-y-2">
           <p className="text-sm font-semibold">Nueva zona</p>
           <div className="grid grid-cols-2 gap-2">
             <Input className="h-9 text-sm" placeholder="Nombre (ej: City Bell)*" value={name} onChange={(e) => setName(e.target.value)} maxLength={120} />
-            <Input className="h-9 text-sm" placeholder="Descripción (opcional)" value={desc} onChange={(e) => setDesc(e.target.value)} maxLength={300} />
-            <Input className="h-9 text-sm" type="number" inputMode="decimal" placeholder="Precio al comprador $" value={price} onChange={(e) => setPrice(e.target.value)} />
+            <Input className="h-9 text-sm" placeholder="Descripción / cobertura" value={desc} onChange={(e) => setDesc(e.target.value)} maxLength={300} />
             <Input className="h-9 text-sm" type="number" inputMode="decimal" placeholder="Mi tarifa al local $" value={fee} onChange={(e) => setFee(e.target.value)} />
             <Input className="h-9 text-sm" type="number" inputMode="numeric" placeholder="ETA días" value={eta} onChange={(e) => setEta(e.target.value)} />
             {carrierNames.length > 1 && (
@@ -214,10 +214,7 @@ export default function MisZonasPage() {
               </select>
             )}
           </div>
-          <p className="text-[11px] text-muted-foreground">
-            El precio al comprador es lo que ve el local al optar en su configuración; tu tarifa es lo que te paga el local al retirar.
-          </p>
-          <Button size="sm" disabled={busy || !name.trim() || !Number(price)} onClick={createZone}>
+          <Button size="sm" disabled={busy || !name.trim()} onClick={createZone}>
             {busy ? "..." : "Crear zona"}
           </Button>
         </div>
@@ -235,7 +232,7 @@ export default function MisZonasPage() {
         ) : (
           <div className="space-y-2">
             {zones.map((z) => {
-              const d = draft[z.id] || { name: z.name, price: String(z.price), fee: z.carrierFee != null ? String(z.carrierFee) : "", eta: z.etaDays != null ? String(z.etaDays) : "2", active: z.active };
+              const d = draft[z.id] || { name: z.name, fee: z.carrierFee != null ? String(z.carrierFee) : "", eta: z.etaDays != null ? String(z.etaDays) : "2", active: z.active };
               return (
                 <div key={z.id} className="rounded-xl border border-border bg-background p-3 space-y-2">
                   <div className="flex items-center justify-between gap-2">
@@ -254,13 +251,12 @@ export default function MisZonasPage() {
                       Activa
                     </label>
                   </div>
-                  <div className="grid grid-cols-3 gap-2">
+                  {z.description && (
+                    <p className="text-[11px] text-muted-foreground">{z.description}</p>
+                  )}
+                  <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="text-[10px] text-muted-foreground">Precio comprador $</label>
-                      <Input className="h-8 text-xs mt-0.5" type="number" inputMode="decimal" value={d.price} onChange={(e) => setDraft((dd) => ({ ...dd, [z.id]: { ...d, price: e.target.value } }))} />
-                    </div>
-                    <div>
-                      <label className="text-[10px] text-muted-foreground">Mi tarifa $</label>
+                      <label className="text-[10px] text-muted-foreground">Mi tarifa (lo que te paga el local) $</label>
                       <Input className="h-8 text-xs mt-0.5" type="number" inputMode="decimal" value={d.fee} onChange={(e) => setDraft((dd) => ({ ...dd, [z.id]: { ...d, fee: e.target.value } }))} placeholder="0" />
                     </div>
                     <div>
@@ -268,6 +264,9 @@ export default function MisZonasPage() {
                       <Input className="h-8 text-xs mt-0.5" type="number" inputMode="numeric" value={d.eta} onChange={(e) => setDraft((dd) => ({ ...dd, [z.id]: { ...d, eta: e.target.value } }))} />
                     </div>
                   </div>
+                  <p className="text-[10px] text-muted-foreground">
+                    El comprador paga ${Math.round(z.price).toLocaleString("es-AR")} de envío en el checkout (precio del catálogo, lo define el portal).
+                  </p>
                   <div className="flex gap-2">
                     <Button size="sm" className="h-8" disabled={busy} onClick={() => saveZone(z)}>
                       {busy ? "..." : "Guardar"}

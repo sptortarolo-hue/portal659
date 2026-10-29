@@ -552,8 +552,9 @@ export function CajaManager({ closeRequest = 0 }: { closeRequest?: number }) {
             </div>
           </dl>
           <div className="rounded-xl bg-primary/5 border border-primary/20 px-4 py-3 text-center">
-            <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Efectivo disponible</p>
+            <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Efectivo esperado en cajón</p>
             <p className="font-display text-3xl font-bold tabular-nums">{money(disponible)}</p>
+            <p className="text-[10px] text-muted-foreground mt-0.5">sólo efectivo · incluye fondo, ventas y movimientos</p>
           </div>
           <div className="grid grid-cols-3 gap-2">
             <Button type="button" variant="outline" onClick={() => { setMovKind("ingreso"); setMovAmount(""); setMovReason(""); setMovCategory(""); }}>
@@ -633,6 +634,11 @@ export function CajaManager({ closeRequest = 0 }: { closeRequest?: number }) {
             </button>
           </div>
         </div>
+         <div className="rounded-xl bg-primary/5 border border-primary/20 px-4 py-3 text-center mb-3">
+           <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Total vendido del turno</p>
+           <p className="font-display text-2xl font-bold tabular-nums">{money(summary.netTotal)}</p>
+           <p className="text-[10px] text-muted-foreground mt-0.5">todos los medios de pago · incluye señas cobradas</p>
+         </div>
         {methods.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             {shift ? "Sin cobros desde la apertura." : "Sin cobros desde el último cierre."}
@@ -649,6 +655,9 @@ export function CajaManager({ closeRequest = 0 }: { closeRequest?: number }) {
             ))}
           </div>
         )}
+        <p className="text-[10px] text-muted-foreground mt-2">
+           Mercado Pago, Transferencia, Tarjeta y Mixto se listan informativos: no entran al cajón (se acreditan aparte).
+         </p>
         {(summary.senasCount || 0) > 0 && (
           <p className="text-xs text-muted-foreground mt-2">
             + {money(summary.senasTotal)} en señas cobradas con saldo pendiente (ya están en el cajón)
@@ -671,7 +680,7 @@ export function CajaManager({ closeRequest = 0 }: { closeRequest?: number }) {
         <div className="border-t border-border mt-3 pt-3 grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
           <div>
             <p className="text-sm font-bold tabular-nums">{money(summary.netTotal)}</p>
-            <p className="text-[10px] text-muted-foreground">Neto cobrado</p>
+            <p className="text-[10px] text-muted-foreground">Total vendido</p>
           </div>
           <div>
             <p className="text-sm font-bold tabular-nums">{money(summary.cashTotal)}</p>
@@ -1043,7 +1052,7 @@ export function CajaManager({ closeRequest = 0 }: { closeRequest?: number }) {
                 <div className="rounded-xl border border-border p-3 space-y-1.5 text-sm">
                   <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Resumen</p>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Ingresos por ventas ({summary.ordersCount})</span>
+                    <span className="text-muted-foreground">Total vendido del turno ({summary.ordersCount} cobros)</span>
                     <span className="tabular-nums font-medium">{money(summary.netTotal)}</span>
                   </div>
                   <div className="flex justify-between">
@@ -1051,7 +1060,7 @@ export function CajaManager({ closeRequest = 0 }: { closeRequest?: number }) {
                     <span className="tabular-nums">{money(shift.opening_amount)}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Efectivo de ventas</span>
+                    <span className="text-muted-foreground">Efectivo del turno</span>
                     <span className="tabular-nums">{money(summary.cashTotal)}</span>
                   </div>
                   {(summary.senasCount || 0) > 0 && (

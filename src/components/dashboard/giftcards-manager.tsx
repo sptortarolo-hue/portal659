@@ -45,6 +45,7 @@ export function GiftcardsManager({
   const [amount, setAmount] = useState("");
   const [buyer, setBuyer] = useState("");
   const [expires, setExpires] = useState("");
+  const [payMethod, setPayMethod] = useState("efectivo");
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
   const [lastCode, setLastCode] = useState<string | null>(null);
@@ -231,7 +232,7 @@ export function GiftcardsManager({
       const res = await fetch("/api/vendor/giftcards", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "sell", amount: Number(amount), customer_name: buyer.trim() || undefined, expires_at: expires || undefined }),
+        body: JSON.stringify({ action: "sell", amount: Number(amount), customer_name: buyer.trim() || undefined, expires_at: expires || undefined, payment_method: payMethod }),
       });
       const data = await res.json();
       if (data.error) {
@@ -463,6 +464,16 @@ export function GiftcardsManager({
         <div>
           <label className="text-[11px] text-muted-foreground">Vence (opcional)</label>
           <Input value={expires} onChange={(e) => setExpires(e.target.value)} type="date" className="h-9 text-sm mt-0.5" />
+        </div>
+        <div>
+          <label className="text-[11px] text-muted-foreground">Medio de pago</label>
+          <select value={payMethod} onChange={(e) => setPayMethod(e.target.value)} className="h-9 text-sm mt-0.5 w-full rounded-md border border-input bg-background px-2">
+            <option value="efectivo">Efectivo</option>
+            <option value="mercadopago">Mercado Pago</option>
+            <option value="transferencia">Transferencia</option>
+            <option value="tarjeta">Tarjeta</option>
+            <option value="mixto">Mixto</option>
+          </select>
         </div>
         <Button size="sm" className="w-full" onClick={sell} disabled={saving}>
           {saving ? "Generando..." : "🎁 Emitir giftcard"}

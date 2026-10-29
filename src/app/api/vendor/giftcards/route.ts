@@ -93,6 +93,23 @@ export async function POST(request: Request) {
         }
       }
       if (!card) return NextResponse.json({ error: "No se pudo generar el código" }, { status: 500 });
+      // Ingreso manual para el cierre de caja (Z): registra el medio de pago.
+      // Tolerante a migración sin aplicar: si la tabla no existe se ignora.
+      const pm = typeof body.payment_method === "string" ? body.payment_method.trim() : "";
+      if (pm && (card as { id?: string }).id) {
+        await queryOne(
+          `INSERT INTO manual_income (vendor_id, kind, ref_id, amount, payment_method, note, created_by)
+           VALUES ($1, 'giftcard', $2, $3, $4, $5, $6)`,
+          [
+            gate.vendor.id,
+            (card as { id: string }).id,
+            amount,
+            pm,
+            `Giftcard ${((card as { code?: string }).code) || ""}`.trim(),
+            gate.previewSession ? null : gate.user.id,
+          ]
+        ).catch(() => undefined);
+      }
       return NextResponse.json({ giftcard: card });
     }
 

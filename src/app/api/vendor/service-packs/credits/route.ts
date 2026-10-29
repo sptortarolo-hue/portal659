@@ -49,8 +49,8 @@ export async function POST(request: Request) {
     if (action === "sell") {
       const packId = String(body.pack_id || "");
       if (!packId) return NextResponse.json({ error: "Falta el pack" }, { status: 400 });
-      const pack = await queryOne<{ id: string; sessions_total: number }>(
-        `SELECT id, sessions_total FROM service_packs WHERE id = $1 AND vendor_id = $2 AND active = true LIMIT 1`,
+      const pack = await queryOne<{ id: string; sessions_total: number; price: number | null }>(
+        `SELECT id, sessions_total, price FROM service_packs WHERE id = $1 AND vendor_id = $2 AND active = true LIMIT 1`,
         [packId, gate.vendor.id]
       );
       if (!pack) return NextResponse.json({ error: "Pack no encontrado" }, { status: 404 });
@@ -61,6 +61,23 @@ export async function POST(request: Request) {
          RETURNING *`,
         [pack.id, gate.vendor.id, phone, Math.max(1, Number(pack.sessions_total) || 1)]
       );
+      // Ingreso manual para el cierre de caja (Z).
+      const pm = typeof body.payment_method === "string" ? body.payment_method.trim() : "";
+      const price = Number(pack.price) || 0;
+      if (pm && price > 0) {
+        await queryOne(
+          `INSERT INTO manual_income (vendor_id, kind, ref_id, amount, payment_method, note, created_by)
+           VALUES ($1, 'pack', $2, $3, $4, $5, $6)`,
+          [
+            gate.vendor.id,
+            pack.id,
+            price,
+            pm,
+            `Pack ${packId}`,
+            gate.previewSession ? null : gate.user.id,
+          ]
+        ).catch(() => undefined);
+      }
       return NextResponse.json({ credit });
     }
 

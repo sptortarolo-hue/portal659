@@ -849,6 +849,7 @@ export function EsteticaPacksManager({ onChanged }: { onChanged?: () => void }) 
   // Venta / consulta de saldo por teléfono.
   const [phone, setPhone] = useState("");
   const [sellPackId, setSellPackId] = useState("");
+  const [packPayMethod, setPackPayMethod] = useState("efectivo");
   const [credits, setCredits] = useState<Credit[]>([]);
   const [creditsLoading, setCreditsLoading] = useState(false);
   const [creditsMsg, setCreditsMsg] = useState("");
@@ -958,7 +959,7 @@ export function EsteticaPacksManager({ onChanged }: { onChanged?: () => void }) 
       const res = await fetch("/api/vendor/service-packs/credits", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "sell", pack_id: sellPackId, customer_phone: phone.trim() }),
+        body: JSON.stringify({ action: "sell", pack_id: sellPackId, customer_phone: phone.trim(), payment_method: packPayMethod }),
       });
       const data = await res.json();
       if (data.error) {
@@ -1062,6 +1063,16 @@ export function EsteticaPacksManager({ onChanged }: { onChanged?: () => void }) 
             {packs.filter((p) => p.active !== false).map((p) => (
               <option key={p.id} value={p.id}>{p.name}</option>
             ))}
+          </select>
+        </div>
+        <div>
+          <label className="text-[11px] text-muted-foreground">Medio de pago</label>
+          <select value={packPayMethod} onChange={(e) => setPackPayMethod(e.target.value)} className="h-9 text-sm mt-0.5 w-full rounded-md border border-input bg-background px-2">
+            <option value="efectivo">Efectivo</option>
+            <option value="mercadopago">Mercado Pago</option>
+            <option value="transferencia">Transferencia</option>
+            <option value="tarjeta">Tarjeta</option>
+            <option value="mixto">Mixto</option>
           </select>
         </div>
         <div className="flex gap-2">

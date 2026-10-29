@@ -34,6 +34,10 @@ export type CashClosingSummary = {
   egresosGastosCount: number;
   /** Parte de esos gastos pagada en efectivo (baja el efectivo esperado). */
   gastosEfectivo: number;
+  /** Ingresos manuales (packs/giftcards) creados en el período. */
+  manualIncomeTotal: number;
+  manualIncomeCount: number;
+  manualIncomeByMethod: Record<string, ClosingMethodTotals>;
 };
 
 function round2(n: number): number {
@@ -242,6 +246,39 @@ async function fetchPeriodGastos(
   }
 }
 
+/** Ingresos manuales (packs de sesiones y giftcards) creados en el
+ *  período, agrupados por medio de pago. Tolerante a migración sin aplicar. */
+async function fetchPeriodManualIncome(
+  vendorId: string,
+  since: string
+): Promise<{ total: number; count: number; byMethod: Record<string, ClosingMethodTotals> }> {
+  const byMethod: Record<string, ClosingMethodTotals> = {};
+  let total = 0;
+  let count = 0;
+  try {
+    const rows = await queryMany<{ amount: number; payment_method: string | null }>(
+      `SELECT amount, payment_method
+       FROM manual_income
+       WHERE vendor_id = $1 AND created_at >= $2`,
+      [vendorId, since]
+    );
+    for (const r of rows || []) {
+      const a = Number(r.amount) || 0;
+      if (!(a > 0)) continue;
+      const m = r.payment_method || "efectivo";
+      if (!byMethod[m]) byMethod[m] = { count: 0, total: 0 };
+      byMethod[m].count++;
+      byMethod[m].total += a;
+      count++;
+      total += a;
+    }
+    for (const d of Object.values(byMethod)) d.total = round2(d.total);
+  } catch {
+    // tabla inexistente: sin ingresos manuales
+  }
+  return { total: round2(total), count, byMethod };
+}
+
 export async function computeCashClosing(
   vendorId: string,
   since: string
@@ -355,6 +392,18 @@ export async function computeCashClosing(
   // Egresos del libro de Gastos (manual + compras) del período.
   const gastosPeriodo = await fetchPeriodGastos(vendorId, since);
 
+  // Ingresos manuales (packs/giftcards) del período.
+  const manualIncomePeriodo = await fetchPeriodManualIncome(vendorId, since);
+
+  // Ingresos manuales: suman al total del período por medio de pago.
+  for (const [m, d] of Object.entries(manualIncomePeriodo.byMethod)) {
+    if (!byMethod[m]) byMethod[m] = { count: 0, total: 0 };
+    byMethod[m].count += d.count;
+    byMethod[m].total += d.total;
+    gross += d.total;
+    net += d.total;
+  }
+
   const rounded: Record<string, ClosingMethodTotals> = {};
   for (const [m, d] of Object.entries(byMethod)) {
     rounded[m] = { count: d.count, total: round2(d.total) };
@@ -411,5 +460,8 @@ export async function computeCashClosing(
     egresosGastos: gastosPeriodo.total,
     egresosGastosCount: gastosPeriodo.count,
     gastosEfectivo: gastosPeriodo.efectivo,
+    manualIncomeTotal: manualIncomePeriodo.total,
+    manualIncomeCount: manualIncomePeriodo.count,
+    manualIncomeByMethod: manualIncomePeriodo.byMethod,
   };
 }

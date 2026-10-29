@@ -16,7 +16,7 @@
  *  - Orden fijo: volumen primero, efectivo después (solo si `combineCash`).
  */
 
-export type VolumeTierKind = "fixed_total" | "percent_off";
+export type VolumeTierKind = "fixed_total" | "percent_off" | "unit_price";
 export type VolumeExtrasMode = "on_top" | "included";
 
 export type VolumeTierInput = {
@@ -118,9 +118,9 @@ function packSplitFor(
 }
 
 function packLabel(tier: VolumeTierInput): string {
-  return tier.kind === "fixed_total"
-    ? `${tier.minQty}x ${fmtMoney(tier.value)}`
-    : `${tier.minQty}+ con ${Number(tier.value).toLocaleString("es-AR")}% off`;
+  if (tier.kind === "fixed_total") return `${tier.minQty}x ${fmtMoney(tier.value)}`;
+  if (tier.kind === "unit_price") return `${tier.minQty}+ a ${fmtMoney(tier.value)}/u`;
+  return `${tier.minQty}+ con ${Number(tier.value).toLocaleString("es-AR")}% off`;
 }
 
 /**
@@ -180,6 +180,7 @@ export function applyVolumePricing(
 
     const fixedTiers = tiers.filter((t) => t.kind === "fixed_total").sort((a, b) => b.minQty - a.minQty);
     const pctTiers = tiers.filter((t) => t.kind === "percent_off");
+    const unitPriceTiers = tiers.filter((t) => t.kind === "unit_price");
 
     // --- Estrategia A: sets fijos (greedy del tramo mayor) ---
     // unitIdx -> neto prorrateado (si gana fijo)
@@ -260,16 +261,34 @@ export function applyVolumePricing(
       }
     }
 
+    // --- Estrategia C: precio por unidad a partir de N (tipico kg) ---
+    let unitPriceNetByIdx = new Map<number, number>();
+    let unitPriceBest: VolumeTierInput | null = null;
+    for (const t of unitPriceTiers) {
+      if (scaledGroupQty >= t.minQty * scale && (!unitPriceBest || Number(t.value) < Number(unitPriceBest.value))) {
+        unitPriceBest = t;
+      }
+    }
+    if (unitPriceBest) {
+      for (const i of idxs) {
+        unitPriceNetByIdx.set(i, round2(Number(unitPriceBest.value) * lines[i].qty));
+      }
+    }
+
     // Gana la que más descuenta CONTRA la referencia sin volumen: el volumen
     // nunca deja el total más caro (si el pack es peor que la promo vigente,
     // no se aplica y el cash sigue corriendo normal).
     const refGross = round2(idxs.reduce((s, i) => s + results[i].grossTotal, 0));
     const fixedNetTotal = round2([...fixedNetByIdx.values()].reduce((s, v) => s + v, 0));
     const pctNetTotal = round2([...pctNetByIdx.values()].reduce((s, v) => s + v, 0));
+    const unitPriceNetTotal = round2([...unitPriceNetByIdx.values()].reduce((s, v) => s + v, 0));
     const fixedSaves = fixedNetByIdx.size > 0 ? round2(refGross - fixedNetTotal) : 0;
     const pctSaves = pctNetByIdx.size > 0 ? round2(refGross - pctNetTotal) : 0;
-    if (fixedSaves <= 0 && pctSaves <= 0) continue;
-    const useFixed = fixedSaves >= pctSaves;
+    const unitPriceSaves = unitPriceNetByIdx.size > 0 ? round2(refGross - unitPriceNetTotal) : 0;
+    if (fixedSaves <= 0 && pctSaves <= 0 && unitPriceSaves <= 0) continue;
+    const useFixed = fixedSaves > 0 && fixedSaves >= pctSaves && fixedSaves >= unitPriceSaves;
+    const usePct = !useFixed && pctSaves > 0 && pctSaves >= unitPriceSaves;
+    const useUnitPrice = !useFixed && !usePct && unitPriceSaves > 0;
 
     if (useFixed) {
       volumeDiscount = round2(volumeDiscount + fixedSaves);
@@ -279,6 +298,11 @@ export function applyVolumePricing(
       volumeDiscount = round2(volumeDiscount + pctSaves);
       for (const i of idxs) results[i].netTotal = pctNetByIdx.get(i) ?? results[i].grossTotal;
       applied.push({ groupId: group.id, groupName: group.name, qty: groupQty, label: packLabel(pctBest) });
+    } else if (useUnitPrice && unitPriceBest) {
+      volumeDiscount = round2(volumeDiscount + unitPriceSaves);
+      for (const i of idxs) results[i].netTotal = unitPriceNetByIdx.get(i) ?? results[i].grossTotal;
+      const u = scale > 1 ? " kg" : "";
+      applied.push({ groupId: group.id, groupName: group.name, qty: groupQty, label: `${unitPriceBest.minQty}${u} a ${fmtMoney(Number(unitPriceBest.value))}` });
     }
 
     // Sin combine_cash, el cash no corre sobre estas líneas.
@@ -399,7 +423,8 @@ export function validateVolumeGroupPayload(body: any): { error?: string; value?:
   for (const t of rawTiers) {
     const tt = t as { min_qty?: unknown; kind?: unknown; value?: unknown };
     const minQty = Math.round(Number(tt?.min_qty) * 1000) / 1000;
-    const kind = tt?.kind === "percent_off" ? "percent_off" : "fixed_total";
+    const kind =
+      tt?.kind === "percent_off" ? "percent_off" : tt?.kind === "unit_price" ? "unit_price" : "fixed_total";
     const value = Number(tt?.value);
     if (!Number.isFinite(minQty) || minQty < 0.1 || minQty > 999) {
       return { error: "La cantidad de cada tramo va de 0.1 a 999" };

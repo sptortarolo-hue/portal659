@@ -11,7 +11,7 @@ import { volumeGroupColor, type VolumeColor } from "@/lib/volume-pricing";
 type Product = { id: string; name: string; category?: string | null; price?: number | null };
 type Category = { id?: string; name: string };
 
-type TierRow = { id: string; min_qty: number; kind: "fixed_total" | "percent_off"; value: number };
+type TierRow = { id: string; min_qty: number; kind: "fixed_total" | "percent_off" | "unit_price"; value: number };
 
 type GroupRow = {
   id: string;
@@ -20,15 +20,15 @@ type GroupRow = {
   combine_promo: boolean;
   combine_cash: boolean;
   extras_mode: "on_top" | "included";
-  tiers: { min_qty: number; kind: "fixed_total" | "percent_off"; value: number }[];
+  tiers: { min_qty: number; kind: "fixed_total" | "percent_off" | "unit_price"; value: number }[];
 };
 
 const fmt$ = (n: number) => `$${Number(n).toLocaleString("es-AR")}`;
 
 function tierLabel(t: { min_qty: number; kind: string; value: number }): string {
-  return t.kind === "fixed_total"
-    ? `${t.min_qty}x ${fmt$(Number(t.value))}`
-    : `${t.min_qty}+ con ${Number(t.value).toLocaleString("es-AR")}% off`;
+  if (t.kind === "fixed_total") return `${t.min_qty}x ${fmt$(Number(t.value))}`;
+  if (t.kind === "unit_price") return `${t.min_qty}+ a ${fmt$(Number(t.value))}/u`;
+  return `${t.min_qty}+ con ${Number(t.value).toLocaleString("es-AR")}% off`;
 }
 
 /** Nombres de los miembros del grupo ("se combinan entre sí"). */
@@ -57,7 +57,7 @@ function GroupForm({
     product_ids: string[];
     /** Subconjunto que combina entre sí; el resto va a grupos solo. */
     combo_ids: string[];
-    tiers: { min_qty: number; kind: "fixed_total" | "percent_off"; value: number }[];
+    tiers: { min_qty: number; kind: "fixed_total" | "percent_off" | "unit_price"; value: number }[];
     combine_promo: boolean;
     combine_cash: boolean;
     extras_mode: "on_top" | "included";
@@ -307,6 +307,7 @@ function GroupForm({
                   className="h-9 rounded-xl border border-border bg-background px-2 text-sm"
                 >
                   <option value="fixed_total">Precio fijo ($)</option>
+                  <option value="unit_price">Precio por kg/unidad ($)</option>
                   <option value="percent_off">% off</option>
                 </select>
                 <Input
@@ -645,7 +646,7 @@ type VolumeSaveData = {
   product_ids: string[];
   /** Subconjunto que combina entre sí; el resto va a grupos solo. */
   combo_ids: string[];
-  tiers: { min_qty: number; kind: "fixed_total" | "percent_off"; value: number }[];
+  tiers: { min_qty: number; kind: "fixed_total" | "percent_off" | "unit_price"; value: number }[];
   combine_promo: boolean;
   combine_cash: boolean;
   extras_mode: "on_top" | "included";

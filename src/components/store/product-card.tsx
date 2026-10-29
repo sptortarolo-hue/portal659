@@ -30,7 +30,7 @@ type VendorBrief = {
     combinePromo: boolean;
     combineCash: boolean;
     extrasIncluded: boolean;
-    tiers: { minQty: number; kind: "fixed_total" | "percent_off"; value: number }[];
+    tiers: { minQty: number; kind: "fixed_total" | "percent_off" | "unit_price"; value: number }[];
     scale?: number;
     memberNames?: string[];
   }[];

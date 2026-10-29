@@ -26,7 +26,9 @@ export function VolumeProgress({ groups, showMembers = false }: { groups: CartVo
       const nextLabel =
         next.kind === "fixed_total"
           ? `${next.minQty}x $${Number(next.value).toLocaleString("es-AR")}`
-          : `${next.minQty}+ con ${Number(next.value).toLocaleString("es-AR")}% off`;
+          : next.kind === "unit_price"
+            ? `${next.minQty}+ a $${Number(next.value).toLocaleString("es-AR")}/u`
+            : `${next.minQty}+ con ${Number(next.value).toLocaleString("es-AR")}% off`;
       out.push({
         id: g.id,
         name: g.name,

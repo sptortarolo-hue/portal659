@@ -27,6 +27,13 @@ export type CashClosingSummary = {
   depositsTotal: number;
   depositsCount: number;
   depositsByMethod: Record<string, ClosingMethodTotals>;
+  /** Egresos del libro de Gastos (manual + compras) creados en el período.
+   *  Los retiros de caja categorizados (source='caja') ya están en los
+   *  movimientos y se excluyen aquí para no duplicar. */
+  egresosGastos: number;
+  egresosGastosCount: number;
+  /** Parte de esos gastos pagada en efectivo (baja el efectivo esperado). */
+  gastosEfectivo: number;
 };
 
 function round2(n: number): number {
@@ -148,6 +155,12 @@ export type ShiftSummary = {
   movements: CashMovement[];
   ingresosTotal: number;
   retirosTotal: number;
+  /** Egresos del libro de Gastos (manual + compras) creados en el período.
+   *  Los retiros de caja categorizados (source='caja') ya están en
+   *  retirosTotal y no se duplican. */
+  egresosGastos: number;
+  egresosGastosCount: number;
+  gastosEfectivo: number;
   /**
    * Efectivo esperado/disponible ahora (estilo Lightspeed):
    * apertura + ventas en efectivo del turno (+ señas en efectivo con
@@ -170,14 +183,18 @@ export async function computeShiftSummary(
     else ingresosTotal += m.amount;
   }
   const senasCash = sales.senasByMethod?.["efectivo"]?.total ?? 0;
+  const gastosEfectivo = sales.gastosEfectivo ?? 0;
   const expectedCash = round2(
-    shift.opening_amount + sales.cashTotal + senasCash + ingresosTotal - retirosTotal
+    shift.opening_amount + sales.cashTotal + senasCash + ingresosTotal - retirosTotal - gastosEfectivo
   );
   return {
     shift,
     movements,
     ingresosTotal: round2(ingresosTotal),
     retirosTotal: round2(retirosTotal),
+    egresosGastos: sales.egresosGastos ?? 0,
+    egresosGastosCount: sales.egresosGastosCount ?? 0,
+    gastosEfectivo: round2(gastosEfectivo),
     expectedCash,
   };
 }
@@ -193,6 +210,36 @@ async function hasColumn(table: string, column: string): Promise<boolean> {
     [table, column]
   ).catch(() => null);
   return row?.exists === true;
+}
+
+/** Egresos del libro de Gastos (manual + compras) creados en el período.
+ *  Tolerante a migración sin aplicar: si la tabla no existe devuelve ceros. */
+async function fetchPeriodGastos(
+  vendorId: string,
+  since: string
+): Promise<{ total: number; count: number; efectivo: number }> {
+  try {
+    const rows = await queryMany<{ amount: number; payment_method: string | null }>(
+      `SELECT amount, payment_method
+       FROM expenses
+       WHERE vendor_id = $1 AND created_at >= $2
+         AND source IN ('manual', 'compra')`,
+      [vendorId, since]
+    );
+    let total = 0;
+    let efectivo = 0;
+    let count = 0;
+    for (const r of rows || []) {
+      const a = Number(r.amount) || 0;
+      if (!(a > 0)) continue;
+      total += a;
+      count++;
+      if ((r.payment_method || "") === "efectivo") efectivo += a;
+    }
+    return { total: round2(total), count, efectivo: round2(efectivo) };
+  } catch {
+    return { total: 0, count: 0, efectivo: 0 };
+  }
 }
 
 export async function computeCashClosing(
@@ -305,6 +352,9 @@ export async function computeCashClosing(
   }
   for (const d of Object.values(depositsByMethod)) d.total = round2(d.total);
 
+  // Egresos del libro de Gastos (manual + compras) del período.
+  const gastosPeriodo = await fetchPeriodGastos(vendorId, since);
+
   const rounded: Record<string, ClosingMethodTotals> = {};
   for (const [m, d] of Object.entries(byMethod)) {
     rounded[m] = { count: d.count, total: round2(d.total) };
@@ -358,5 +408,8 @@ export async function computeCashClosing(
     depositsTotal: round2(depositsTotal),
     depositsCount,
     depositsByMethod,
+    egresosGastos: gastosPeriodo.total,
+    egresosGastosCount: gastosPeriodo.count,
+    gastosEfectivo: gastosPeriodo.efectivo,
   };
 }

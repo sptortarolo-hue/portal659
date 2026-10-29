@@ -22,6 +22,9 @@ type ClosingSummary = {
   depositsTotal?: number;
   depositsCount?: number;
   depositsByMethod?: Record<string, MethodTotals>;
+  egresosGastos?: number;
+  egresosGastosCount?: number;
+  gastosEfectivo?: number;
 };
 
 type CashShift = {
@@ -697,6 +700,33 @@ export function CajaManager({ closeRequest = 0 }: { closeRequest?: number }) {
         </div>
       </div>
 
+      <div className="border border-border rounded-xl p-4 bg-card">
+        <h3 className="font-medium text-sm mb-3">Egresos del turno</h3>
+        <div className="space-y-2 text-sm">
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Retiros manuales</span>
+            <span className="tabular-nums text-red-600">-{money(retirosTotal)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Gastos (manual + compras) <span className="text-xs">({summary.egresosGastosCount || 0})</span></span>
+            <span className="tabular-nums text-red-600">-{money(summary.egresosGastos || 0)}</span>
+          </div>
+          <div className="border-t border-border pt-2 flex justify-between font-bold">
+            <span>Total egresos</span>
+            <span className="tabular-nums text-red-600">-{money(retirosTotal + (summary.egresosGastos || 0))}</span>
+          </div>
+        </div>
+        <p className="text-[10px] text-muted-foreground mt-2">
+          Los retiros categorizados ya estan en Gastos y no se duplican. Los gastos pagados en efectivo bajan el efectivo esperado del cajon.
+        </p>
+      </div>
+
+      <div className="rounded-xl bg-primary/5 border border-primary/20 px-4 py-3 text-center">
+        <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Resultado del turno</p>
+        <p className="font-display text-2xl font-bold tabular-nums">{money(summary.netTotal - (retirosTotal + (summary.egresosGastos || 0)))}</p>
+        <p className="text-[10px] text-muted-foreground mt-0.5">ventas (todos los medios) - egresos</p>
+      </div>
+
       {shift && movements.length > 0 && (
         <div className="border border-border rounded-xl p-4 bg-card">
           <h3 className="font-medium text-sm mb-3">Movimientos del turno</h3>
@@ -1077,7 +1107,15 @@ export function CajaManager({ closeRequest = 0 }: { closeRequest?: number }) {
                     <span className="text-muted-foreground">Retiros manuales</span>
                     <span className="tabular-nums text-red-600">−{money(retirosTotal)}</span>
                   </div>
-                  <div className="border-t border-border pt-1.5 flex justify-between font-bold">
+                   <div className="flex justify-between">
+                     <span className="text-muted-foreground">Gastos (manual + compras)</span>
+                     <span className="tabular-nums text-red-600">-{money(summary.egresosGastos || 0)}</span>
+                   </div>
+                   <div className="flex justify-between">
+                     <span className="text-muted-foreground">Resultado del turno</span>
+                     <span className="tabular-nums font-medium">{money(summary.netTotal - (retirosTotal + (summary.egresosGastos || 0)))}</span>
+                   </div>
+               <div className="border-t border-border pt-1.5 flex justify-between font-bold">
                     <span>Efectivo esperado</span>
                     <span className="tabular-nums">{money(disponible)}</span>
                   </div>

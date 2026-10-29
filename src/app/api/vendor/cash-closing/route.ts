@@ -148,10 +148,11 @@ export async function POST(request: Request) {
           userId,
           shift?.id ?? null,
           shift ? shift.opening_amount : null,
-          JSON.stringify({
-            ingresos: shiftSummary?.ingresosTotal ?? 0,
-            retiros: shiftSummary?.retirosTotal ?? 0,
-          }),
+           JSON.stringify({
+             ingresos: shiftSummary?.ingresosTotal ?? 0,
+             retiros: shiftSummary?.retirosTotal ?? 0,
+             gastos: shiftSummary?.egresosGastos ?? 0,
+           }),
           expectedCash,
         ]
       );

@@ -8,7 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import { Card } from "@/components/ui/card";
 import { volumeGroupColor, type VolumeColor } from "@/lib/volume-pricing";
 
-type Product = { id: string; name: string; category?: string | null; price?: number | null };
+type Product = { id: string; name: string; category?: string | null; price?: number | null; unit?: string | null };
 type Category = { id?: string; name: string };
 
 type TierRow = { id: string; min_qty: number; kind: "fixed_total" | "percent_off" | "unit_price"; value: number };
@@ -30,7 +30,6 @@ function tierLabel(t: { min_qty: number; kind: string; value: number }): string 
   if (t.kind === "unit_price") return `${t.min_qty}+ a ${fmt$(Number(t.value))}/u`;
   return `${t.min_qty}+ con ${Number(t.value).toLocaleString("es-AR")}% off`;
 }
-
 /** Nombres de los miembros del grupo ("se combinan entre sí"). */
 function memberNames(g: GroupRow, products: Product[]): string[] {
   const byId = new Map(products.map((p) => [p.id, p.name]));
@@ -97,12 +96,28 @@ function GroupForm({
   const fc = initial?.id ? volumeGroupColor(initial.id) : EMERALD;
   const selectedList = products.filter((p) => selected.has(p.id));
   const comboCount = selectedList.filter((p) => combo.has(p.id)).length;
+  // Grupo 100% por peso: el precio del tramo se lee "por kg" y el tipo
+  // por defecto es "Precio por kg/unidad".
+  const allKg = selectedList.length > 0 && selectedList.every((p) => p.unit === "kg");
+  const kgUnit = allKg ? " kg" : "";
+  // Si el grupo es 100% por peso y el tramo todavía no tiene precio, el tipo
+  // natural es "Precio por kg" (no "precio fijo por N kg en total").
+  useEffect(() => {
+    if (!allKg) return;
+    setTiers((prev) =>
+      prev.map((t) =>
+        t.kind === "fixed_total" && !(Number(t.value) > 0)
+          ? { ...t, kind: "unit_price" as const, min_qty: t.min_qty === 2 ? 1 : t.min_qty }
+          : t
+      )
+    );
+  }, [allKg]);
   const firstTier = tiers.find((t) => Number.isFinite(t.min_qty) && Number(t.value) > 0);
   const summaryTier = firstTier
     ? firstTier.kind === "fixed_total"
-      ? `Llevá ${Number(firstTier.min_qty)} y pagá ${fmt$(Number(firstTier.value))}`
+      ? `Llevá ${Number(firstTier.min_qty)}${kgUnit} y pagá ${fmt$(Number(firstTier.value))}${allKg ? " en total" : ""}`
       : firstTier.kind === "unit_price"
-        ? `Desde ${Number(firstTier.min_qty)}, ${fmt$(Number(firstTier.value))} c/u`
+        ? `Llevá ${Number(firstTier.min_qty)}${kgUnit} y pagá ${fmt$(Number(firstTier.value))}${allKg ? " el kg" : " c/u"}`
         : `${Number(firstTier.min_qty)}+ con ${Number(firstTier.value).toLocaleString("es-AR")}% off`
     : null;
 
@@ -308,8 +323,8 @@ function GroupForm({
                   onChange={(e) => setTier(i, { kind: e.target.value as TierRow["kind"] })}
                   className="h-9 rounded-xl border border-border bg-background px-2 text-sm"
                 >
-                  <option value="fixed_total">Precio fijo ($)</option>
-                  <option value="unit_price">Precio por kg/unidad ($)</option>
+                  <option value="fixed_total">{allKg ? "Precio fijo (total en kg)" : "Precio fijo ($)"}</option>
+                  <option value="unit_price">{allKg ? "Precio por kg ($/kg)" : "Precio por unidad ($ c/u)"}</option>
                   <option value="percent_off">% off</option>
                 </select>
                 <Input
@@ -341,7 +356,7 @@ function GroupForm({
                 onClick={() =>
                   setTiers((prev) => [
                     ...prev,
-                    { id: `t${Date.now()}`, min_qty: 2, kind: "fixed_total", value: 0 },
+                    { id: `t${Date.now()}`, min_qty: allKg ? 3 : 2, kind: allKg ? "unit_price" : "fixed_total", value: 0 },
                   ])
                 }
               >
@@ -467,6 +482,10 @@ function PackWizard({
   const comboIds = [...combo].filter((id) => selected.has(id));
   const soloIds = [...selected].filter((id) => !combo.has(id));
   const nameOf = (id: string) => products.find((p) => p.id === id)?.name || "Producto";
+  // Si todo lo tildado se vende por peso, el precio del tramo es $/kg.
+  const selAllKg =
+    [...selected].length > 0 &&
+    [...selected].every((id) => products.find((p) => p.id === id)?.unit === "kg");
 
   async function handleSave() {
     setError("");
@@ -476,7 +495,7 @@ function PackWizard({
         name: name.trim(),
         product_ids: [...selected],
         combo_ids: comboIds,
-        tiers: [{ min_qty: Math.round(Number(qty) * 1000) / 1000 || 6, kind: "fixed_total", value: Number(price) || 0 }],
+        tiers: [{ min_qty: Math.round(Number(qty) * 1000) / 1000 || 6, kind: selAllKg ? "unit_price" : "fixed_total", value: Number(price) || 0 }],
         combine_promo: false,
         combine_cash: false,
         extras_mode: "on_top",
@@ -619,7 +638,7 @@ function PackWizard({
             <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2">
               <p className="text-sm font-semibold text-emerald-900">🧊 {name.trim()}</p>
               <p className="text-xs text-emerald-700 mt-0.5">
-                Llevá {Math.floor(Number(qty)) || 6} y pagá ${Number(price).toLocaleString("es-AR")}
+                Llevá {Math.floor(Number(qty)) || 6}{selAllKg ? " kg" : ""} y pagá ${Number(price).toLocaleString("es-AR")}{selAllKg ? " el kg" : ""}
               </p>
               {comboIds.length >= 2 && (
                 <p className="text-xs text-emerald-900 mt-1.5 font-medium">

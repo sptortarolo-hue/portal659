@@ -981,7 +981,7 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
               <VolumeEditor
                 products={offers
                   .filter((o) => !isGiftProductRow(o))
-                  .map((o) => ({ id: o.id, name: o.name, category: o.category, price: Number(o.price) || 0 }))}
+                  .map((o) => ({ id: o.id, name: o.name, category: o.category, price: Number(o.price) || 0, unit: (o as any).unit ?? null }))}
                 categories={categories}
               />
               <p className="text-xs text-muted-foreground">

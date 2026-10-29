@@ -357,11 +357,11 @@ export function volumeBadgeText(
     t.kind === "fixed_total"
       ? mixed
         ? `Pack x${t.minQty}${u} · Combinables · ${fmtMoney(Number(t.value))}`
-        : `Llevá ${t.minQty}${u} y pagá ${fmtMoney(Number(t.value))}`
+        : `Llevá ${t.minQty}${u} y pagá ${fmtMoney(Number(t.value))}${isKg ? " en total" : ""}`
       : t.kind === "unit_price"
         ? mixed
           ? `Pack x${t.minQty}${u}+ · ${fmtMoney(Number(t.value))} c/u`
-          : `${t.minQty}${u}+ a ${fmtMoney(Number(t.value))}${isKg ? "/kg" : " c/u"}`
+          : `Llevá ${t.minQty}${u} y pagá ${fmtMoney(Number(t.value))}${isKg ? " el kg" : " c/u"}`
         : mixed
           ? `Pack x${t.minQty}${u}+ · Combinables · ${Number(t.value).toLocaleString("es-AR")}% off`
           : `${t.minQty}${u}+ con ${Number(t.value).toLocaleString("es-AR")}% off`

@@ -27,7 +27,7 @@ export function VolumeProgress({ groups, showMembers = false }: { groups: CartVo
         next.kind === "fixed_total"
           ? `${next.minQty}x $${Number(next.value).toLocaleString("es-AR")}`
           : next.kind === "unit_price"
-            ? `${next.minQty}+ a $${Number(next.value).toLocaleString("es-AR")}/u`
+            ? `${next.minQty}${(g.scale || 1) > 1 ? " kg" : ""}+ a $${Number(next.value).toLocaleString("es-AR")}${(g.scale || 1) > 1 ? "/kg" : "/u"}`
             : `${next.minQty}+ con ${Number(next.value).toLocaleString("es-AR")}% off`;
       out.push({
         id: g.id,

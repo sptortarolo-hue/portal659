@@ -1227,7 +1227,7 @@ export function MenuStudio({
 
       {view === "volumen" && (
         <VolumeEditor
-          products={offers.map((o) => ({ id: o.id, name: o.name, category: o.category, price: Number(o.price) || 0 }))}
+          products={offers.map((o) => ({ id: o.id, name: o.name, category: o.category, price: Number(o.price) || 0, unit: (o as any).unit ?? null }))}
           categories={categories}
         />
       )}

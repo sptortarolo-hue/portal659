@@ -207,10 +207,33 @@ jobs:
             chmod +x /opt/portal659-monitor/health-monitor.sh /opt/portal659-monitor/alert-telegram.sh
             chmod 700 /opt/portal659-monitor
             printf '%s\n' \
-              '*/2 * * * * root /opt/portal659-monitor/health-monitor.sh >> /opt/portal659-monitor/cron.log 2>&1' \
+              '*/2 * * * * root /opt/portal659-monitor/health-monitor.sh >> /opt/portal659-monitor/monitor.log 2>&1' \
               > /etc/cron.d/portal659-monitor
             chmod 644 /etc/cron.d/portal659-monitor
+            # El log del monitor es /opt/portal659-monitor/monitor.log (lo lee
+            # /admin/monitor): el redirect del cron apunta ahí, no a un
+            # cron.log que nadie lee.
             systemctl enable --now cron >/dev/null 2>&1 || service cron start >/dev/null 2>&1 || true
+            if ! pgrep -x cron >/dev/null 2>&1 && ! systemctl is-active --quiet cron 2>/dev/null; then
+              echo "⚠️  El daemon cron NO quedó activo: el monitor cada 2 min no va a correr."
+              echo "    El run sincrónico de abajo garantiza el primer status.json, pero revisar el cron a mano."
+            fi
+            # Primera corrida SINCRÓNICA: status.json existe de inmediato (el
+            # panel /admin/monitor depende de ese archivo) y cualquier error
+            # de la primera corrida aparece acá, no escondido en el cron.
+            rm -f /opt/portal659-monitor/cron.log 2>/dev/null || true
+            if /opt/portal659-monitor/health-monitor.sh; then
+              if [ -s /opt/portal659-monitor/status.json ]; then
+                echo "Monitor: status.json generado — el panel /admin/monitor tiene datos."
+              else
+                echo "⚠️  El monitor corrió 0 (ok) pero NO escribió status.json. Revisar a mano:"
+                echo "    tail -50 /opt/portal659-monitor/monitor.log"
+              fi
+            else
+              echo "⚠️  El monitor falló su primera corrida (exit $?). status.json puede no existir."
+              echo "    tail -50 /opt/portal659-monitor/monitor.log"
+              tail -50 /opt/portal659-monitor/monitor.log 2>/dev/null || true
+            fi
 
             rm -f /tmp/code.tgz
             echo "Deploy completado!"

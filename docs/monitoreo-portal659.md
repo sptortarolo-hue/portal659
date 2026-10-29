@@ -147,6 +147,12 @@ Los runs del monitor externo quedan en
   verde con el sitio en 521.
 - Instala el cron del monitor (self-managed, se auto-repara en cada deploy) y
   escribe los secrets de Telegram al `.env`.
+- **Corre el monitor una vez al final, en sincrónico**: `status.json` queda
+  escrito en el mismo deploy (el panel `/admin/monitor` no arranca "sin
+  datos") y un error de la primera corrida sale en el log de Actions, no
+  escondido en el cron. También verifica que el daemon `cron` quedó activo y
+  avisa si no (sin el cron no hay corridas cada 2 min). El redirect del cron
+  es al mismo `monitor.log` que lee el panel — no hay `cron.log` separado.
 
 **`nginx.conf`** — sin cambios. **`docker-compose.yml`** — monta
 `/opt/portal659-monitor:/monitor:ro` en el servicio `app` y pasa

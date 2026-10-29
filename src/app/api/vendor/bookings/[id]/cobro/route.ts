@@ -193,22 +193,11 @@ export async function POST(
           [finalPrice, id, gate.vendor.id]
         ).catch(() => { /* sin columna: se ignora */ });
       }
-      // Efectivo: movimiento de caja para que cuadre en el cierre Z.
-      if (paymentMethod === "efectivo" && amountPaid > 0) {
-        const shift = await tx.queryOne<{ id: string }>(
-          `SELECT id FROM cash_shifts WHERE vendor_id = $1 AND status = 'open' LIMIT 1`,
-          [gate.vendor.id]
-        ).catch(() => null);
-        if (shift) {
-          await tx.queryVoid(
-            `INSERT INTO cash_movements (vendor_id, shift_id, kind, amount, reason, created_by, created_at)
-             VALUES ($1, $2, 'ingreso', $3, $4, NULL, now())`,
-            [gate.vendor.id, shift.id, amountPaid, `Cobro turno ${booking.booking_date} ${String(booking.booking_time).slice(0, 5)} — ${booking.customer_name || ""}`]
-          ).catch(() => {
-            /* cash_movements sin migrar: el cobro queda registrado igual */
-          });
-        }
-      }
+      // El cobro del turno se registra en la Caja a través de `bookings.paid_at`
+      // (computeCashClosing suma bookings por payment_method), igual que
+      // gastronomía con `orders`. Antes se insertaba un `cash_movement`
+      // manual de efectivo, lo que solo cubría ese medio y duplicaba el
+      // esperado; ahora el efectivo entra por cashTotal y queda por medio.
     });
   } catch (e) {
     const emsg = (e as Error)?.message || "";

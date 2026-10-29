@@ -5,4 +5,5 @@ export const CASH_METHOD_LABELS: Record<string, string> = {
   mixto: "Mixto",
   whatsapp: "Coordinar",
   mercadopago: "Mercado Pago",
+  stripe: "Tarjeta online",
 };

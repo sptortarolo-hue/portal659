@@ -81,6 +81,7 @@ async function markQuoteDepositPaid(quoteId: string, sessionId: string, paidAmou
     [`stripe:${sessionId}`, quoteId]
   ).catch(() => undefined);
   if (!marked) throw new Error("markQuoteDepositPaid sin persistencia");
+  await query(`UPDATE quotes SET deposit_paid_at = now(), deposit_method = 'stripe' WHERE id = $1 AND deposit_paid_at IS NULL`, [quoteId]).catch(() => undefined);
   const vrow = await queryOne<{ user_id: string; store_name: string; vertical: string | null }>(
     `SELECT user_id, store_name, vertical FROM vendors WHERE id = $1 LIMIT 1`,
     [quote.vendor_id]
@@ -132,6 +133,7 @@ async function markBookingDepositPaid(bookingId: string, sessionId: string, paid
     // marcar con stripe_session_id si existe.
     await query(`UPDATE bookings SET stripe_session_id = $1 WHERE id = $2`, [sessionId, bookingId]).catch(() => undefined);
   });
+  await query(`UPDATE bookings SET deposit_paid_at = now(), deposit_method = 'stripe' WHERE id = $1 AND deposit_paid_at IS NULL`, [bookingId]).catch(() => undefined);
   const vrow = await queryOne<{ user_id: string; store_name: string }>(
     `SELECT user_id, store_name FROM vendors WHERE id = $1 LIMIT 1`,
     [booking.vendor_id]

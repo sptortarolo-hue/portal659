@@ -19,6 +19,9 @@ type ClosingSummary = {
   avgTicket: number;
   senasTotal?: number;
   senasCount?: number;
+  depositsTotal?: number;
+  depositsCount?: number;
+  depositsByMethod?: Record<string, MethodTotals>;
 };
 
 type CashShift = {
@@ -619,7 +622,7 @@ export function CajaManager({ closeRequest = 0 }: { closeRequest?: number }) {
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-medium text-sm">{shift ? "Ventas del turno" : "Cierre actual"}</h3>
           <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground">{summary.ordersCount} pedidos</span>
+            <span className="text-xs text-muted-foreground">{summary.ordersCount} cobros</span>
             <button
               type="button"
               onClick={() => setShowSnapshot(true)}
@@ -650,6 +653,20 @@ export function CajaManager({ closeRequest = 0 }: { closeRequest?: number }) {
           <p className="text-xs text-muted-foreground mt-2">
             + {money(summary.senasTotal)} en señas cobradas con saldo pendiente (ya están en el cajón)
           </p>
+        )}
+        {(summary.depositsCount || 0) > 0 && (
+          <div className="mt-2 space-y-1">
+            <p className="text-xs font-medium text-muted-foreground">
+              Señas cobradas (turnos/consultas): {money(summary.depositsTotal)}
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {Object.entries(summary.depositsByMethod || {}).map(([m, d]) => (
+                <span key={m} className="text-[11px] rounded-md bg-muted px-1.5 py-0.5">
+                  {CASH_METHOD_LABELS[m] || m} {money(d.total)} <span className="text-muted-foreground">({d.count})</span>
+                </span>
+              ))}
+            </div>
+          </div>
         )}
         <div className="border-t border-border mt-3 pt-3 grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
           <div>

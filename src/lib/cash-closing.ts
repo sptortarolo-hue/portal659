@@ -21,6 +21,12 @@ export type CashClosingSummary = {
   senasTotal: number;
   senasCount: number;
   senasByMethod: Record<string, ClosingMethodTotals>;
+  /** Señas de turnos/consultas cobradas en el período (MP/Stripe). Se
+   * suman al total del período en el mismo momento en que se acreditaron,
+   * para que el cierre refleje todos los ingresos. */
+  depositsTotal: number;
+  depositsCount: number;
+  depositsByMethod: Record<string, ClosingMethodTotals>;
 };
 
 function round2(n: number): number {
@@ -181,6 +187,14 @@ export async function computeShiftSummary(
  * pago. Con descuento en efectivo, `orders.total` es neto y `cash_discount`
  * el desagregado: bruto = total + descuento, neto = total.
  */
+async function hasColumn(table: string, column: string): Promise<boolean> {
+  const row = await queryOne<{ exists: boolean }>(
+    `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = $1 AND column_name = $2) AS exists`,
+    [table, column]
+  ).catch(() => null);
+  return row?.exists === true;
+}
+
 export async function computeCashClosing(
   vendorId: string,
   since: string
@@ -195,6 +209,52 @@ export async function computeCashClosing(
      WHERE vendor_id = $1 AND paid_at IS NOT NULL AND paid_at >= $2 AND status != 'cancelled'`,
     [vendorId, since]
   );
+
+  // Cobros de turnos (servicios / estética / oficios): no viven en `orders`,
+  // pero son ingresos del período y deben aparecer en el cierre por medio de
+  // pago, igual que gastronomía. Tolerante a migración sin aplicar.
+  const bookingRows: Array<{ payment_method: string | null; amount_paid: number }> = [];
+  if (await hasColumn("bookings", "paid_at")) {
+    const brows = await queryMany<{ payment_method: string | null; amount_paid: number }>(
+      `SELECT payment_method, amount_paid
+       FROM bookings
+       WHERE vendor_id = $1 AND paid_at IS NOT NULL AND paid_at >= $2
+         AND COALESCE(payment_status, '') = 'paid'
+         AND COALESCE(amount_paid, 0) > 0
+         AND COALESCE(status, '') <> 'cancelled'
+         AND COALESCE(payment_method, 'efectivo') <> 'fiado'`,
+      [vendorId, since]
+    ).catch(() => []);
+    for (const b of brows || []) bookingRows.push(b);
+  }
+
+  // Señas cobradas por MP/Stripe en turnos y consultas: se suman al total
+  // del período en el momento en que se acreditaron (deposit_paid_at).
+  // Tolerante a migración sin aplicar (deposit_paid_at puede no existir).
+  const depositRows: Array<{ deposit_method: string | null; deposit_amount: number }> = [];
+  if (await hasColumn("bookings", "deposit_paid_at")) {
+    const drows = await queryMany<{ deposit_method: string | null; deposit_amount: number }>(
+      `SELECT deposit_method, deposit_amount
+       FROM bookings
+       WHERE vendor_id = $1 AND deposit_status = 'paid'
+         AND deposit_paid_at IS NOT NULL AND deposit_paid_at >= $2
+         AND COALESCE(deposit_amount, 0) > 0
+         AND COALESCE(status, '') <> 'cancelled'`,
+      [vendorId, since]
+    ).catch(() => []);
+    for (const d of drows || []) depositRows.push(d);
+  }
+  if (await hasColumn("quotes", "deposit_paid_at")) {
+    const qrows = await queryMany<{ deposit_method: string | null; deposit_amount: number }>(
+      `SELECT deposit_method, deposit_amount
+       FROM quotes
+       WHERE vendor_id = $1 AND deposit_status = 'paid'
+         AND deposit_paid_at IS NOT NULL AND deposit_paid_at >= $2
+         AND COALESCE(deposit_amount, 0) > 0`,
+      [vendorId, since]
+    ).catch(() => []);
+    for (const d of qrows || []) depositRows.push(d);
+  }
 
   const byMethod: Record<string, ClosingMethodTotals> = {};
   let gross = 0;
@@ -212,6 +272,38 @@ export async function computeCashClosing(
     discounts += disc;
     net += total;
   }
+  for (const b of bookingRows) {
+    const amount = Number(b.amount_paid) || 0;
+    if (!(amount > 0)) continue;
+    const m = b.payment_method || "efectivo";
+    if (!byMethod[m]) byMethod[m] = { count: 0, total: 0 };
+    byMethod[m].count++;
+    byMethod[m].total += amount;
+    gross += amount;
+    net += amount;
+  }
+
+  // Señas (MP/Stripe) del período: se suman al total como ingreso aparte,
+  // agrupadas por medio, y se exponen como subtotal informativo.
+  const depositsByMethod: Record<string, ClosingMethodTotals> = {};
+  let depositsTotal = 0;
+  let depositsCount = 0;
+  for (const d of depositRows) {
+    const amount = Number(d.deposit_amount) || 0;
+    if (!(amount > 0)) continue;
+    const m = d.deposit_method || "mercadopago";
+    if (!depositsByMethod[m]) depositsByMethod[m] = { count: 0, total: 0 };
+    depositsByMethod[m].count++;
+    depositsByMethod[m].total += amount;
+    depositsCount++;
+    depositsTotal += amount;
+    if (!byMethod[m]) byMethod[m] = { count: 0, total: 0 };
+    byMethod[m].count++;
+    byMethod[m].total += amount;
+    gross += amount;
+    net += amount;
+  }
+  for (const d of Object.values(depositsByMethod)) d.total = round2(d.total);
 
   const rounded: Record<string, ClosingMethodTotals> = {};
   for (const [m, d] of Object.entries(byMethod)) {
@@ -253,15 +345,18 @@ export async function computeCashClosing(
 
   return {
     since,
-    ordersCount: rows.length,
+    ordersCount: rows.length + bookingRows.length,
     grossTotal: round2(gross),
     discountsTotal: round2(discounts),
     netTotal: round2(net),
     byMethod: rounded,
     cashTotal: rounded["efectivo"]?.total ?? 0,
-    avgTicket: rows.length > 0 ? round2(net / rows.length) : 0,
+    avgTicket: (rows.length + bookingRows.length) > 0 ? round2(net / (rows.length + bookingRows.length)) : 0,
     senasTotal: round2(senasTotal),
     senasCount,
     senasByMethod,
+    depositsTotal: round2(depositsTotal),
+    depositsCount,
+    depositsByMethod,
   };
 }

@@ -12,8 +12,14 @@ export async function GET(request: Request) {
     );
   }
 
+  // Las mesas abiertas (no completadas/canceladas) deben aparecer siempre,
+  // aunque el local tenga muchas órdenes históricas: si no, el saldo abierto
+  // de una mesa se "pierde" al superar el límite de 50.
   const orders = await queryMany<Record<string, unknown>>(
-    `SELECT * FROM orders WHERE vendor_id = $1 ORDER BY created_at DESC LIMIT 50`,
+    `SELECT * FROM orders WHERE vendor_id = $1
+     ORDER BY CASE WHEN status IN ('completed','cancelled') THEN 1 ELSE 0 END,
+              created_at DESC
+     LIMIT 200`,
     [vendor.id]
   );
 

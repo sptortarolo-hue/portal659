@@ -542,6 +542,23 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
       })
       .catch(() => {});
   }, [selected?.id]);
+
+  // Si una mesa ocupada no tiene consumiciones cargadas en memoria (p. ej.
+  // al volver de otra pestaña), re-sincroniza las órdenes para no perder
+  // el saldo abierto.
+  useEffect(() => {
+    if (!selected?.id || selected.status !== "ocupada") return;
+    const hasOpen = allOrders.some((o: any) => o.table_id === selected.id && o.status !== "completed" && o.status !== "cancelled");
+    if (hasOpen) return;
+    // Re-fetch orders una sola vez.
+    fetch("/api/vendor/orders")
+      .then((r) => r.json())
+      .then((d) => {
+        if (Array.isArray(d?.orders)) setOrders(d.orders);
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected?.id]);
   // % descuento en efectivo del comercio (0 = sin descuento).
   const [cashPct, setCashPct] = useState(0);
   // Fiscal ARCA (plan Gestión + config completa): check por cierre de mesa.

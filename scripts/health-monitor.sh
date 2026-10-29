@@ -377,11 +377,12 @@ write_status() {
   # fails SIEMPRE numérico: si el archivo no existe, un vacío rompería el JSON
   # (el panel le hace JSON.parse). Igual el http del caído: "000" no es un
   # número JSON válido (cero a la izquierda), se normaliza a entero.
-  _fails_n=$(readf "$FAIL_FILE" | tr -dc '0-9')
+  # POSIX puro: dash (Ubuntu /bin/sh) no soporta la base-N del bash (10#N),
+  # así que los ceros a la izquierda se recortan con sed.
+  _fails_n=$(readf "$FAIL_FILE" | tr -dc '0-9' | sed 's/^0*//')
   [ -n "$_fails_n" ] || _fails_n=0
-  _http_n=$(echo "$_http" | tr -dc '0-9')
+  _http_n=$(echo "$_http" | tr -dc '0-9' | sed 's/^0*//')
   [ -n "$_http_n" ] || _http_n=0
-  _http_n=$(( 10#$_http_n ))
   cat > "$_st" <<EOF
 {
   "ts": "$(ts)",

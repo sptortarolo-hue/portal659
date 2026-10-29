@@ -57,7 +57,15 @@ function LoginForm() {
         const data = await res.json().catch(() => ({}));
         const cands = Array.isArray(data.vendors) ? data.vendors : (data.vendor ? [data.vendor] : []);
         setStoreCandidates(cands);
-        setStoreName(cands.length === 1 ? cands[0].store_name : (cands[0]?.store_name || null));
+        if (cands.length === 1) {
+          // Auto-rellenar el campo con el nombre sugerido (único match).
+          setStore(cands[0].store_name);
+          setStoreName(cands[0].store_name);
+        } else if (cands.length > 1) {
+          setStoreName(cands[0]?.store_name || null);
+        } else {
+          setStoreName(null);
+        }
       } catch {
         setStoreCandidates([]);
         setStoreName(null);

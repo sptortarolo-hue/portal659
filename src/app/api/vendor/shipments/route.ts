@@ -209,16 +209,29 @@ export async function POST(request: Request) {
       ).catch(() => undefined);
       const carrierId = zone?.carrier_id != null ? String(zone.carrier_id) : null;
       // Snapshot de la tarifa: lo que la logística le cobrará al local al
-      // retirar (historial estable aunque después cambie carrier_zone_rates).
+      // retirar (historial estable aunque después cambie la zona). Fuente
+      // primaria: shipping_zones.carrier_fee (la define la logística o el
+      // admin); fallback: carrier_zone_rates.fee (compatibilidad v2).
       let carrierFee: number | null = null;
       if (feeReady && carrierId) {
-        const rate = await tx
-          .queryOne<{ fee: number }>(
-            `SELECT fee FROM carrier_zone_rates WHERE carrier_id = $1 AND shipping_zone_id = $2 LIMIT 1`,
-            [carrierId, order.shipping_zone_id as string]
-          )
-          .catch(() => undefined);
-        if (rate) carrierFee = Number(rate.fee) || 0;
+        try {
+          const zone = await tx.queryOne<{ carrier_fee: number | null }>(
+            `SELECT carrier_fee FROM shipping_zones WHERE id = $1 LIMIT 1`,
+            [order.shipping_zone_id as string]
+          );
+          if (zone?.carrier_fee != null) carrierFee = Number(zone.carrier_fee) || 0;
+        } catch {
+          /* columna sin migrar */
+        }
+        if (carrierFee == null) {
+          const rate = await tx
+            .queryOne<{ fee: number }>(
+              `SELECT fee FROM carrier_zone_rates WHERE carrier_id = $1 AND shipping_zone_id = $2 LIMIT 1`,
+              [carrierId, order.shipping_zone_id as string]
+            )
+            .catch(() => undefined);
+          if (rate) carrierFee = Number(rate.fee) || 0;
+        }
       }
       const row = await tx.queryOne<{ id: string; code: string; status: string }>(
         feeReady

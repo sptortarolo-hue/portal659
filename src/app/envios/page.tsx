@@ -257,6 +257,10 @@ export default function EnviosOperadorPage() {
             </p>
           </div>
           <div className="flex items-center gap-1.5">
+            <Link href="/envios/zonas" className="text-xs text-muted-foreground hover:text-foreground">
+              🗺️ Mis zonas
+            </Link>
+            <span className="text-border">·</span>
             <Link href="/envios/tarifas" className="text-xs text-muted-foreground hover:text-foreground">
               💲 Mis tarifas
             </Link>

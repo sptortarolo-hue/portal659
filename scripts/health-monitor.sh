@@ -36,7 +36,8 @@
 
 set -u
 
-MONITOR_DIR=/opt/portal659-monitor
+# (POSIX `: ${VAR:=default}`: si el harness la setea antes del source, se respeta)
+: ${MONITOR_DIR:=/opt/portal659-monitor}
 APP_DIR=/opt/portal659
 ENV_FILE=$APP_DIR/.env
 LOG=$MONITOR_DIR/monitor.log
@@ -47,6 +48,13 @@ LAST_HEAL=$MONITOR_DIR/last-heal
 # docker al contenedor. outages.log es el historial de cortes.
 STATUS_FILE=$MONITOR_DIR/status.json
 OUTAGES_LOG=$MONITOR_DIR/outages.log
+# disk.json: análisis de qué ocupa el disco (lo pide el usuario tras el incidente
+# de disco lleno). Se lee desde el panel junto a status.json; el colector corre
+# en el HOST (aquí), no en el contenedor (el montaje es :ro).
+DISK_FILE=$MONITOR_DIR/disk.json
+DISK_TTL_S=${DISK_TTL_S:-900}             # escaneo completo cada 15 min
+DISK_TTL_HOT_S=${DISK_TTL_HOT_S:-300}     # disco caliente (>= HOT_PCT): cada 5 min
+DISK_HOT_PCT=${DISK_HOT_PCT:-70}
 
 HEAL_COOLDOWN=${HEAL_COOLDOWN:-600}      # segundos entre auto-heals (anti-flapping)
 DISK_HEAL_MAX_PCT=${DISK_HEAL_MAX_PCT:-90}
@@ -82,6 +90,131 @@ log() {
 
 readf() { cat "$1" 2>/dev/null || echo ""; }
 writef() { printf '%s' "$2" > "$1"; }
+
+# --- análisis de disco ---------------------------------------------------------
+# Tamaños "humanos" de docker df / journalctl → MB entero (filtro POSIX, sin jq,
+# SIN match()/RSTART: el awk de busybox se porta raro con ellos según el input).
+# "2.6GB"→2662 · "345MB"→345 · "1.2kB"→0 · "97.3M in the file system."→97
+# Imprime el PRIMER número con unidad pegada que encuentre; vacío si no hay.
+to_mb() {
+  awk '
+{
+  # a los separadores se vuelven espacios: los tokens sobreviven pegados
+  gsub(/[^0-9.BkMG]/, " ", $0)
+  for (i = 1; i <= NF; i++) {
+    tok = $i
+    lead = ""; j = 1
+    while (j <= length(tok)) {
+      ch = substr(tok, j, 1)
+      if (ch ~ /[0-9.]/) { lead = lead ch; j++ } else break
+    }
+    if (lead == "") continue
+    c = substr(tok, j, 1)
+    if (c == "G") { printf "%d", int(lead * 1024); next }
+    if (c == "M") { printf "%d", int(lead); next }
+    if (c == "k") { printf "%d", int(lead / 1024); next }
+  }
+}'
+}
+
+# "1\t/var\n2\t/abc" → [{"path":"/var","mb":1},...] (values MB tab-separated)
+du_to_json() {
+  awk -F'\t' '
+{
+  mb=$1
+  p=$2
+  if (p == "" || (p in seen)) next
+  seen[p] = 1
+  if (n++) out = out ","
+  gsub(/\\/, "", p)
+  gsub(/"/, "", p)
+  out = out "{\"path\":\"" p "\",\"mb\":" mb "}"
+}
+END { printf "%s", out }'
+}
+
+collect_disk_detail() {
+  _pct=$(disk_pct)
+  _ttl=$DISK_TTL_S
+  [ "${_pct:-0}" -ge "$DISK_HOT_PCT" ] 2>/dev/null && _ttl=$DISK_TTL_HOT_S
+  _age_f=999999
+  _mk=$(stat -c %Y "$DISK_FILE" 2>/dev/null)
+  if [ -n "$_mk" ]; then
+    _age_f=$(( $(date -u +%s) - _mk ))
+  fi
+  [ "${_age_f:-999999}" -lt "$_ttl" ] && return 0
+
+  # docker system df: 4 líneas "Type|Size|Reclaimable" → un solo awk saca los MB
+  _vals=$(docker system df --format '{{.Type}}|{{.Size}}|{{.Reclaimable}}' 2>/dev/null | awk -F'|' '
+function m(v,   lead, j, ch, c) {
+  lead = ""; j = 1
+  while (j <= length(v)) {
+    ch = substr(v, j, 1)
+    if (ch ~ /[0-9.]/) { lead = lead ch; j++ } else break
+  }
+  c = substr(v, j, 1)
+  if (c == "G") return int(lead * 1024)
+  if (c == "M") return int(lead)
+  if (c == "k") return int(lead / 1024)
+  return 0
+}
+/Images/      { img=m($2) }
+/Containers/  { cnt=m($2) }
+/Volumes/     { vol=m($2) }
+/Cache/       { bc=m($2); bcf=m($3) }
+END { printf "%d %d %d %d %d", img, cnt, vol, bc, bcf }')
+  _img_mb=$(echo "$_vals" | awk '{print $1}'); _img_mb=${_img_mb:-0}
+  _cnt_mb=$(echo "$_vals" | awk '{print $2}'); _cnt_mb=${_cnt_mb:-0}
+  _vol_mb=$(echo "$_vals" | awk '{print $3}'); _vol_mb=${_vol_mb:-0}
+  _bc_mb=$(echo "$_vals"  | awk '{print $4}'); _bc_mb=${_bc_mb:-0}
+  _bcf_mb=$(echo "$_vals" | awk '{print $5}'); _bcf_mb=${_bcf_mb:-0}
+
+  # top-10 de toda la raíz (sólo una partición, así no cuenta /proc) + desglose
+  # de lo que suele ser grande: /var/lib (docker), /var/log y /opt/portal659*
+  _dirs=$( { du -m -d1 -x / 2>/dev/null
+             du -m -d1 -x /var/lib 2>/dev/null
+             du -m -d1 -x /var/log 2>/dev/null
+             du -m -s /opt/portal659 2>/dev/null
+             du -m -s /opt/portal659-monitor 2>/dev/null
+             du -m -s /opt/portal659-backups 2>/dev/null
+           } | sort -rn | head -12 )
+  _dirsjson=$(echo "$_dirs" | du_to_json)
+
+  # volúmenes docker (uploads, backups…) — cada uno por nombre
+  _vols=$(du -m -d1 /var/lib/docker/volumes 2>/dev/null | grep -v '/var/lib/docker/volumes$' | head -8)
+  _volsjson=$(echo "$_vols" | awk -F'\t' '
+{
+  mb=$1; p=$2
+  if (p == "") next
+  sub(/\/var\/lib\/docker\/volumes\//, "", p)
+  if (p == "_data") next
+  sub(/\/_data$/, "", p)
+  if (p == "") p = "root"
+  if (n++) out = out ","
+  gsub(/\\/, "", p); gsub(/"/, "", p)
+  out = out "{\"path\":\"" p "\",\"mb\":" mb "}"
+}
+END { printf "%s", out }')
+
+  # journalctl imprime "Archived and active journals take up 97.3M in the file system."
+  _jstr=$(journalctl --disk-usage 2>/dev/null)
+  _jmb=$(printf '%s' "$_jstr" | to_mb)
+  [ -n "$_jmb" ] || _jmb=0
+
+  _dt=$(ts)
+  cat > "$DISK_FILE.tmp" <<EOF
+{
+  "ts": "$_dt",
+  "ts_unix": $(date -u +%s),
+  "docker": {"images_mb":$_img_mb,"containers_mb":$_cnt_mb,"volumes_mb":$_vol_mb,"cache_mb":$_bc_mb,"cache_reclaimable_mb":$_bcf_mb},
+  "dirs": [$_dirsjson],
+  "volumes": [$_volsjson],
+  "journal_mb": $_jmb
+}
+EOF
+  mv -f "$DISK_FILE.tmp" "$DISK_FILE"
+  log "análisis de disco escrito (raíz ${_pct:-?}% — docker: img=${_img_mb}MB vol=${_vol_mb}MB cache=${_bc_mb}MB)"
+}
 
 # --- chequeo -------------------------------------------------------------------
 # curl -w '%{http_code}' YA imprime "000" cuando no puede conectar, así que no
@@ -412,6 +545,9 @@ EOF
 }
 
 # --- main ----------------------------------------------------------------------
+# Hook de prueba: HEALTH_MONITOR_TEST=1 saltea el main (los harness hacen source
+# del archivo completo y llaman funciones sueltas). else...fi delimitan el main.
+if [ "${HEALTH_MONITOR_TEST:-0}" = "1" ]; then :; else
 if [ "$STATUS_ONLY" = "1" ]; then
   echo "http=$(probe_code) fails=$(readf "$FAIL_FILE" | sed 's/^$/0/') disco=$(disk_pct)%"
   container_lines
@@ -419,6 +555,7 @@ if [ "$STATUS_ONLY" = "1" ]; then
 fi
 
 _code=$(probe_code)
+collect_disk_detail
 if [ "$_code" = "200" ]; then
   _prev=$(readf "$FAIL_FILE")
   if [ -n "$_prev" ] && [ "$_prev" != "0" ]; then
@@ -451,3 +588,4 @@ fi
 # pueden tardar más que el intervalo del cron).
 write_status "$_code" 0
 exit 0
+fi

@@ -95,6 +95,9 @@ toca el host:
 - semáforo grande (arriba / caído + HTTP y fallos seguidos), KPIs de disco,
   memoria, swap y load con edad de la última corrida;
 - tabla de **contenedores** (estado, health, reinicios, OOM, exit code, error);
+- **análisis de disco** (ver abajo, se lee de `disk.json`): chips de Docker
+  (imágenes / capas / volúmenes / build cache / recuperable con prune), barras
+  por directorio y por volumen, y el tamaño del journal de systemd;
 - tarjetas de **auto-heal** (último intento, cooldown, umbral de disco, fallos
   para actuar) y **cortes registrados** (`outages.log`, una fila por corte);
 - **forenses** descargables en un modal (se leen del montaje, sin SSH);
@@ -107,6 +110,31 @@ Dos acciones desde el panel:
   verificación que hace el deploy al terminar.
 - **Probar alerta de Telegram**: manda un mensaje de prueba al chat configurado.
   Si no llega, el tab muestra igual si `telegram_configured` está en `false`.
+
+#### Análisis de disco (`disk.json`)
+
+Además de `status.json`, el monitor mantiene **`disk.json`** (escritura atómica
+tmp + mv, como el status) con el desglose de qué ocupa el disco — nació tras el
+incidente de sep-2026 (R2 con 403 + snapshots de deploy llenaron los 20G y
+Postgres entró en PANIC). Lo recolecta la misma corrida del cron en el HOST
+(sin SSH, sin docker socket al contenedor):
+
+- `docker system df`: imágenes, capas de contenedores, volúmenes y **build
+  cache** (también cuánto de ese cache es recuperable con
+  `docker builder prune`);
+- `du` top de la raíz + desglose de `/var/lib`, `/var/log` y `/opt/portal659*`
+  (y volúmenes de datos de docker por nombre — uploads, backups…);
+- tamaño del **journal** de systemd (`journalctl --disk-usage`).
+
+Cadencia con TTL (para no pagar un `du -x /` completo cada 2 min): escaneo
+completo cada **15 min**, o cada **5 min** con el disco ≥ **70%**
+(`DISK_TTL_S` / `DISK_TTL_HOT_S` / `DISK_HOT_PCT` sobreescribibles por env).
+El panel lo lee del mismo montaje `:ro` y muestra "Escaneado hace X" según el
+mtime del archivo. Ojo al interpretarlo: `/var/lib`, `/var/log` y `/opt` también
+están incluidos dentro de la raíz — no se suman.
+
+Si el archivo todavía no existe (deploy anterior a esta versión), la sección
+avisa y aparece cuando corra la primera corrida.
 
 Si el directorio no está montado (`/monitor:ro` falta o está vacío), el tab
 muestra "Monitor no instalado" con el link a los runs de GitHub.

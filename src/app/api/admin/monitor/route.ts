@@ -18,6 +18,9 @@ const MONITOR_DIR = process.env.MONITOR_DIR || "/monitor";
 const STATUS_FILE = join(MONITOR_DIR, "status.json");
 const LOG_FILE = join(MONITOR_DIR, "monitor.log");
 const OUTAGES_FILE = join(MONITOR_DIR, "outages.log");
+// Análisis de disco: lo escribe el monitor cada 15 min (o cada 5 si el disco
+// está caliente). Tolerante a que no exista (deploys anteriores a esta versión).
+const DISK_FILE = join(MONITOR_DIR, "disk.json");
 
 /** Nombre de forense válido: nada de `..` ni de rutas arbitrarias. */
 const FORENSIC_RE = /^forensics-\d{8}-\d{6}\.log$/;
@@ -56,6 +59,19 @@ function listForenses(): Array<{ name: string; bytes: number; mtime: string }> {
       .slice(0, 30);
   } catch {
     return [];
+  }
+}
+
+/** disk.json + mtime (para "escaneado hace X"). null si falta o es inválido. */
+function readDiskDetail(): { detail: any; mtime_unix: number } | null {
+  try {
+    const st = statSync(DISK_FILE);
+    if (!st.isFile()) return null;
+    const detail = JSON.parse(readFileSync(DISK_FILE, "utf8"));
+    if (!detail || typeof detail !== "object" || !Array.isArray(detail.dirs)) return null;
+    return { detail, mtime_unix: Math.floor(st.mtime.getTime() / 1000) };
+  } catch {
+    return null;
   }
 }
 
@@ -120,11 +136,14 @@ export async function GET(request: Request) {
       });
     }
 
+    const disk = readDiskDetail();
     return NextResponse.json({
       ready: true,
       status,
       log: tailLines(LOG_FILE, 60),
       forensics: listForenses(),
+      disk_detail: disk?.detail ?? null,
+      disk_detail_mtime_unix: disk?.mtime_unix ?? null,
       outages: tailLines(OUTAGES_FILE, 20).map((line) => {
         // "2026-10-28T00:24:34Z | http=000 | fallos=3 | heal=SÍ — ... | arriba=NO | forense=x.log"
         const parts = line.split(" | ").map((p) => p.trim());

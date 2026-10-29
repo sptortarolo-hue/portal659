@@ -40,6 +40,17 @@ type MonitorStatus = {
 
 type OutageRow = { raw: string; ts: string; http: string; fallos: string; heal: string; arriba: string };
 
+type DiskDir = { path: string; mb: number };
+
+type DiskDetail = {
+  ts: string;
+  ts_unix: number;
+  docker: { images_mb: number; containers_mb: number; volumes_mb: number; cache_mb: number; cache_reclaimable_mb: number };
+  dirs: DiskDir[];
+  volumes: DiskDir[];
+  journal_mb: number;
+};
+
 type Data = {
   ready: boolean;
   reason?: string;
@@ -47,6 +58,8 @@ type Data = {
   log?: string[];
   forensics?: Array<{ name: string; bytes: number; mtime: string }>;
   outages?: OutageRow[];
+  disk_detail?: DiskDetail | null;
+  disk_detail_mtime_unix?: number | null;
 };
 
 /** Fetch con timeout: un endpoint colgado no puede congelar el panel. */
@@ -76,6 +89,24 @@ function ago(unix?: number): string {
 function gb(mb?: number): string {
   if (!mb || mb <= 0) return "—";
   return `${(mb / 1024).toFixed(1)} GB`;
+}
+
+/** MB → texto corto: <1024 MB queda en MB; arriba, GB ( patrón de gb()). */
+function fmtMb(mb?: number): string {
+  if (!mb || mb <= 0) return "0";
+  if (mb < 1024) return `${mb} MB`;
+  return `${(mb / 1024).toFixed(1)} GB`;
+}
+
+const DIR_LABEL: Record<string, string> = {
+  "/": "Raíz (total del disco)",
+  "/var/lib/docker": "Docker (todas sus capas)",
+  "/var/lib": "/var/lib",
+  "/var/log": "Logs del sistema",
+};
+
+function dirLabel(p: string): string {
+  return DIR_LABEL[p] || p;
 }
 
 const CONTAINER_LABEL: Record<string, string> = {
@@ -200,6 +231,9 @@ export default function AdminMonitor() {
   const s = data.status;
   const diskTone = s.disk_pct >= (s.disk_heal_max_pct || 90) ? "text-red-600" : s.disk_pct >= 75 ? "text-amber-600" : "text-emerald-600";
   const up = s.up !== false && s.http === 200;
+  const disk = data.disk_detail ?? null;
+  const diskArr = disk ? [...disk.dirs, ...disk.volumes].map((x) => x.mb) : [];
+  const diskMax = Math.max(1, ...diskArr);
 
   return (
     <div className="space-y-5">
@@ -323,6 +357,74 @@ export default function AdminMonitor() {
         </div>
         {(s.containers || []).length === 0 && (
           <p className="text-xs text-muted-foreground">El monitor no pudo leer los contenedores.</p>
+        )}
+      </div>
+
+      {/* Análisis de disco */}
+      <div className="border border-border rounded-xl p-4 bg-card">
+        <div className="flex items-baseline justify-between gap-3 mb-3">
+          <h2 className="font-medium text-sm">Análisis de disco</h2>
+          <span className="text-xs text-muted-foreground">
+            {disk ? `Escaneado ${ago(data.disk_detail_mtime_unix ?? undefined)}` : "—"}
+          </span>
+        </div>
+        {!disk ? (
+          <p className="text-sm text-muted-foreground">
+            Todavía sin datos: el análisis lo escribe el monitor en el host (desde el deploy que incluye esta versión). Aparece acá cuando corra la
+            primera corrida.
+          </p>
+        ) : (
+          <>
+            {/* Docker en chips: es casi siempre lo más grande y lo más fácil de recuperar */}
+            <div className="flex flex-wrap gap-2 mb-4">
+              <span className="text-xs px-2 py-1 rounded-full bg-blue-50 text-blue-700">🖼️ Imágenes Docker: {fmtMb(disk.docker?.images_mb)}</span>
+              {(disk.docker?.containers_mb ?? 0) > 0 && (
+                <span className="text-xs px-2 py-1 rounded-full bg-blue-50 text-blue-700">📦 Capas de contenedores: {fmtMb(disk.docker.containers_mb)}</span>
+              )}
+              <span className="text-xs px-2 py-1 rounded-full bg-violet-50 text-violet-700">Storage (volúmenes): {fmtMb(disk.docker?.volumes_mb)}</span>
+              <span className="text-xs px-2 py-1 rounded-full bg-amber-50 text-amber-700">Build cache: {fmtMb(disk.docker?.cache_mb)}</span>
+              {(disk.docker?.cache_reclaimable_mb ?? 0) > 0 && (
+                <span className="text-xs px-2 py-1 rounded-full bg-emerald-50 text-emerald-700">
+                  ♻️ Recuperable con prune: {fmtMb(disk.docker.cache_reclaimable_mb)}
+                </span>
+              )}
+              {(disk.journal_mb ?? 0) > 0 && (
+                <span className="text-xs px-2 py-1 rounded-full bg-muted text-muted-foreground">🧾 Journal de systemd: {fmtMb(disk.journal_mb)}</span>
+              )}
+            </div>
+
+            {/* Barras por directorio (proporcionales al más grande) */}
+            <div className="space-y-2">
+              {(disk.dirs || []).map((d) => (
+                <div key={d.path} className="flex items-center gap-3">
+                  <span className="text-xs w-48 shrink-0 truncate font-mono" title={d.path}>
+                    {dirLabel(d.path)}
+                  </span>
+                  <div className="flex-1 h-3 rounded-full bg-muted overflow-hidden">
+                    <div className="h-full bg-blue-500 rounded-full" style={{ width: `${Math.max(2, Math.round((d.mb / diskMax) * 100))}%` }} />
+                  </div>
+                  <span className="text-xs text-muted-foreground w-20 text-right shrink-0">{fmtMb(d.mb)}</span>
+                </div>
+              ))}
+              {(disk.volumes || []).length > 0 && (
+                <>
+                  <p className="text-xs text-muted-foreground mt-3 mb-1">Volúmenes de datos de docker (por nombre):</p>
+                  <div className="flex flex-wrap gap-2">
+                    {(disk.volumes || []).map((v) => (
+                      <span key={v.path} className="text-xs px-2 py-1 rounded-full bg-muted text-muted-foreground font-mono">
+                        {v.path}: {fmtMb(v.mb)}
+                      </span>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+
+            <p className="text-xs text-muted-foreground mt-3">
+              Ojo: <span className="font-mono">/var/lib</span>, <span className="font-mono">/var/log</span> y <span className="font-mono">/opt</span>{" "}
+              también están incluidos en la raíz — no los sumes. El colector corre cada 15 min (o cada 5 min con el disco ≥70%).
+            </p>
+          </>
         )}
       </div>
 

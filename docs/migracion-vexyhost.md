@@ -42,7 +42,7 @@ docker --version && docker compose version
 3. El mismo deploy instala el cron de backup (`/etc/cron.d/portal659-backup`,
    07:00 UTC = 04:00 AR) y rclone. `/opt/portal659-backups` está fuera del path
    del deploy: no se borra nunca.
-4. El deploy también hace **snapshot previo** (backup de DB+uploads a R2) en cada deploy.
+4. El deploy también hace **snapshot previo db-only** (solo dump de DB → R2; el tar de uploads queda para el cron diario) en cada deploy.
 
 ## 3. Exportar del VPS viejo
 

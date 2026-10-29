@@ -1,8 +1,16 @@
 #!/bin/sh
-# Portal 659 — backup diario self-managed (DB + uploads → Cloudflare R2)
+# Portal 659 — backup self-managed (DB + uploads → Cloudflare R2)
 #
-# Corre en el HOST como root (cron instalado por deploy.yml: 07:00 UTC = 04:00 AR;
-# también corre como snapshot previo a cada deploy). Independiente del host:
+# Dos modos:
+#   - cron diario (07:00 UTC = 04:00 AR, instalado por deploy.yml): completo
+#     (pg_dump + tar de uploads).
+#   - snapshot previo a cada deploy (--db-only o env BACKUP_DB_ONLY=1): SOLO
+#     dump de DB. El deploy no pisa el volumen de uploads y el cron diario ya
+#     lo sube a R2 (30 días): con ~100 deploys/semana, sumarle el tar de
+#     uploads (~350MB cada uno) a cada deploy fue una de las causas del disco
+#     lleno de sep-2026.
+#
+# Corre en el HOST como root. Independiente del sistema:
 # funciona en cualquier VPS con Docker.
 #
 # - DB:    docker exec portal659-db pg_dump → gzip (valida integridad + completitud)
@@ -10,7 +18,9 @@
 #   downloads/ — el .zip del agente y APKs son reconstruibles y pesaban ~100MB
 #   por snapshot) → R2 (bucket privado; config por env vars, sin archivo)
 # - Push:  rclone → R2 (bucket privado; config por env vars, sin archivo de config)
-# - Retención: 7 días local (conservando siempre las 3 copias más nuevas),
+# - Retención: DB por CANTIDAD (los últimos BACKUP_DB_KEEP=10) — los snapshots
+#   db-only por deploy pueden ser 100+/semana y con días-límite se desbordaba,
+#   uploads 7 días local (conservando siempre las 3 copias más nuevas),
 #   30 días en R2. La limpieza local corre SIEMPRE aunque falle el push
 #   (disco VPS chico: la acumulación por push fallido ya lo llenó una vez
 #   y volteó Postgres). cron.log se rota a 500 líneas por run.
@@ -19,6 +29,7 @@
 #   POSTGRES_USER / POSTGRES_DB (defaults portal659)
 #   R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY / R2_ENDPOINT
 #   R2_BUCKET (default portal659-backups)
+#   BACKUP_DB_KEEP (últimos N dumps de DB que quedan en disco, default 10)
 #
 # Salida: 0 = OK; 1 = error (queda en cron.log / log del deploy).
 # /opt/portal659-backups está FUERA de /opt/portal659: el deploy no lo borra nunca.
@@ -30,6 +41,12 @@ set -u
 BACKUP_ROOT=/opt/portal659-backups
 ENV_FILE=/opt/portal659/.env
 NOW=$(date -u +%Y%m%d-%H%M%S)
+BACKUP_DB_KEEP=${BACKUP_DB_KEEP:-10}
+
+# --db-only (o env BACKUP_DB_ONLY=1): snapshot de deploy = solo dump de DB.
+DB_ONLY=no
+[ "${1:-}" = "--db-only" ] && DB_ONLY=yes
+[ "${BACKUP_DB_ONLY:-0}" = "1" ] && DB_ONLY=yes
 
 mkdir -p "$BACKUP_ROOT/db" "$BACKUP_ROOT/uploads"
 
@@ -51,6 +68,17 @@ envget() {
 PGUSER=$(envget POSTGRES_USER); PGUSER=${PGUSER:-portal659}
 PGDB=$(envget POSTGRES_DB); PGDB=${PGDB:-portal659}
 R2_BUCKET=$(envget R2_BUCKET); R2_BUCKET=${R2_BUCKET:-portal659-backups}
+
+# Recorte por CANTIDAD: deja los $3 más nuevos del patrón, borra el resto
+# (sin mirar la edad). Lo usa el dump de DB: los snapshots db-only por deploy
+# pueden ser 100+ por semana y un límite por días se desbordaba — igual que
+# prune_local, corre SIEMPRE (aunque el push a R2 haya fallado).
+prune_keep() {
+  _dir=$1; _pat=$2; _n=$3
+  ls -t "$_dir"/$_pat 2>/dev/null | tail -n +"$((_n + 1))" 2>/dev/null | while IFS= read -r _f; do
+    rm -f "$_f"
+  done
+}
 
 # Limpieza local resiliente: borra archivos con más de $3 días PERO conserva
 # siempre los $4 más nuevos (resguardo si R2 lleva caído varios días).
@@ -105,10 +133,14 @@ else
   rm -f "$DB_FILE"
 fi
 
-# --- 2. Uploads ----------------------------------------------------------------
+# --- 2. Uploads (solo modo completo; el snapshot de deploy es db-only) ---------
 # El volumen es <proyecto>_uploads_data según el nombre del folder del compose:
 # se busca por sufijo para no depender del prefijo.
 UPLOADS_FILE="$BACKUP_ROOT/uploads/uploads-$NOW.tar.gz"
+if [ "$DB_ONLY" = "yes" ]; then
+  echo "[$NOW] modo db-only: skip uploads (los cubre el cron diario con R2 30 días)"
+  rm -f "$UPLOADS_FILE" 2>/dev/null
+else
 VOL=$(docker volume ls --format '{{.Name}}' | grep -E '(^|_)uploads_data$' | head -n 1)
 if [ -n "$VOL" ]; then
   echo "[$NOW] tar uploads (volumen $VOL) → $UPLOADS_FILE"
@@ -125,6 +157,7 @@ if [ -n "$VOL" ]; then
 else
   echo "[$NOW] WARNING: sin volumen uploads_data, skip uploads"
   rm -f "$UPLOADS_FILE"
+fi
 fi
 
 # --- 3. Push a R2 (offsite) ----------------------------------------------------
@@ -154,11 +187,17 @@ export RCLONE_CONFIG_R2_SECRET_ACCESS_KEY="$R2_SK"
 
 echo "[$NOW] push → R2:$R2_BUCKET"
 # stderr de rclone sale inline al log (para diagnóstico); stdout se descarta.
-# Sin exit acá: la limpieza local corre SIEMPRE (ver paso 5).
+# Sin exit acá: la limpieza local corre SIEMPRE (ver paso 5). En db-only no hay
+# uploads que subir (nunca se creó el tar).
 PUSH_OK=yes
 rclone copy "$BACKUP_ROOT/db" "R2:$R2_BUCKET/db" --no-traverse 2>&1 >/dev/null \
-  && rclone copy "$BACKUP_ROOT/uploads" "R2:$R2_BUCKET/uploads" --no-traverse 2>&1 >/dev/null \
   || PUSH_OK=no
+if [ "$DB_ONLY" = "no" ]; then
+  if [ "$PUSH_OK" = "yes" ]; then
+    rclone copy "$BACKUP_ROOT/uploads" "R2:$R2_BUCKET/uploads" --no-traverse 2>&1 >/dev/null \
+      || PUSH_OK=no
+  fi
+fi
 if [ "$PUSH_OK" = "yes" ]; then
   echo "[$NOW] push a R2 OK"
 else
@@ -166,43 +205,64 @@ else
 fi
 
 # --- 4. Verificación post-subida (solo si el push anduvo) ----------------------
+# En db-only sólo hay DB: el uploads no se subió ni existe, no se verifica.
 VERIFY_OK=yes
 if [ "$PUSH_OK" = "yes" ]; then
+  CHECK_UP=no
+  if [ "$DB_ONLY" = "no" ]; then
+    CHECK_UP=yes
+    R2_UP_COUNT=$(rclone ls "R2:$R2_BUCKET/uploads" --max-depth 1 2>/dev/null | wc -l | tr -d ' ')
+  fi
   R2_DB_COUNT=$(rclone ls "R2:$R2_BUCKET/db" --max-depth 1 2>/dev/null | wc -l | tr -d ' ')
-  R2_UP_COUNT=$(rclone ls "R2:$R2_BUCKET/uploads" --max-depth 1 2>/dev/null | wc -l | tr -d ' ')
-  if [ "$R2_DB_COUNT" = "0" ] || [ "$R2_UP_COUNT" = "0" ]; then
-    echo "[$NOW] CRITICAL: R2 quedó vacío después del push (db=$R2_DB_COUNT uploads=$R2_UP_COUNT) — reintentando"
-    if rclone copy "$BACKUP_ROOT/db" "R2:$R2_BUCKET/db" --no-traverse 2>&1 >/dev/null \
-      && rclone copy "$BACKUP_ROOT/uploads" "R2:$R2_BUCKET/uploads" --no-traverse 2>&1 >/dev/null; then
+  if [ "$R2_DB_COUNT" = "0" ] || { [ "$CHECK_UP" = "yes" ] && [ "$R2_UP_COUNT" = "0" ]; }; then
+    echo "[$NOW] CRITICAL: R2 quedó vacío después del push (db=$R2_DB_COUNT uploads=${R2_UP_COUNT:-n/a}) — reintentando"
+    if rclone copy "$BACKUP_ROOT/db" "R2:$R2_BUCKET/db" --no-traverse 2>&1 >/dev/null; then
       R2_DB_COUNT=$(rclone ls "R2:$R2_BUCKET/db" --max-depth 1 2>/dev/null | wc -l | tr -d ' ')
+    fi
+    if [ "$CHECK_UP" = "yes" ]; then
+      rclone copy "$BACKUP_ROOT/uploads" "R2:$R2_BUCKET/uploads" --no-traverse 2>&1 >/dev/null || true
       R2_UP_COUNT=$(rclone ls "R2:$R2_BUCKET/uploads" --max-depth 1 2>/dev/null | wc -l | tr -d ' ')
     fi
-    if [ "$R2_DB_COUNT" = "0" ] || [ "$R2_UP_COUNT" = "0" ]; then
-      echo "[$NOW] CRITICAL: R2 sigue vacío tras re-intento (db=$R2_DB_COUNT uploads=$R2_UP_COUNT)"
+    if [ "$R2_DB_COUNT" = "0" ] || { [ "$CHECK_UP" = "yes" ] && [ "$R2_UP_COUNT" = "0" ]; }; then
+      echo "[$NOW] CRITICAL: R2 sigue vacío tras re-intento (db=$R2_DB_COUNT uploads=${R2_UP_COUNT:-n/a})"
       VERIFY_OK=no
     fi
   fi
   if [ "$VERIFY_OK" = "yes" ]; then
-    echo "[$NOW] verificado en R2: db=$R2_DB_COUNT archivos, uploads=$R2_UP_COUNT archivos"
+    if [ "$CHECK_UP" = "yes" ]; then
+      echo "[$NOW] verificado en R2: db=$R2_DB_COUNT archivos, uploads=$R2_UP_COUNT archivos"
+    else
+      echo "[$NOW] verificado en R2: db=$R2_DB_COUNT archivos (db-only)"
+    fi
   fi
 else
   echo "[$NOW] skip verificación R2 (push falló)"
 fi
 
 # --- 5. Retención (corre SIEMPRE) ------------------------------------------------
-# Local corta (7 días, conservando las 3 más nuevas): el disco del VPS es
-# chico y cada deploy suma un snapshot. R2 (30 días) es la copia de resguardo.
-prune_local "$BACKUP_ROOT/db" 'portal659-*.sql.gz' 7 3
+# DB: últimos BACKUP_DB_KEEP dumps (por cantidad, no días: los snapshots db-only
+# por deploy llegaron a 100+/semana y con días-límite desbordaba). Uploads:
+# 7 días (cron diario, 3 más nuevas siempre). R2 (30 días) es el resguardo.
+prune_keep "$BACKUP_ROOT/db" 'portal659-*.sql.gz' "$BACKUP_DB_KEEP"
+# Uploads: limpieza por edad en ambos modos — el snapshot db-only no genera
+# tar pero igual poda los viejos (los excedentes de la época pre-db-only se
+# van borrando a medida que pasan los 7 días).
 prune_local "$BACKUP_ROOT/uploads" 'uploads-*.tar.gz' 7 3
 if [ "$PUSH_OK" = "yes" ]; then
   rclone delete "R2:$R2_BUCKET/db" --min-age 30d >/dev/null 2>&1 || true
-  rclone delete "R2:$R2_BUCKET/uploads" --min-age 30d >/dev/null 2>&1 || true
+  if [ "$DB_ONLY" = "no" ]; then
+    rclone delete "R2:$R2_BUCKET/uploads" --min-age 30d >/dev/null 2>&1 || true
+  fi
 else
   echo "[$NOW] skip limpieza R2 (sin conexión)"
 fi
 
 if [ "$PUSH_OK" = "yes" ] && [ "$VERIFY_OK" = "yes" ]; then
-  echo "[$NOW] backup completo (retención: 7 días local / 30 días R2, 3 copias locales siempre)"
+  if [ "$DB_ONLY" = "yes" ]; then
+    echo "[$NOW] snapshot db-only OK (retención DB: últimos $BACKUP_DB_KEEP)"
+  else
+    echo "[$NOW] backup completo (retención: DB últimos $BACKUP_DB_KEEP, uploads 7 días local / 30 días R2)"
+  fi
   exit 0
 else
   echo "[$NOW] backup INCOMPLETO: copia local OK, offsite falló (revisá cron.log)"

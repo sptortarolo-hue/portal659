@@ -101,10 +101,11 @@ jobs:
               echo "TELEGRAM_CHAT_ID=$TG_CHAT" >> /opt/portal659/.env
             fi
 
-            # Backup previo al deploy (DB + uploads → R2). Tolera primer arranque
-            # (sin contenedores aún). Si falla NO bloquea el deploy — el backup
-            # diario corre igual por cron.
-            bash /opt/portal659/scripts/backup.sh || echo "WARNING: backup previo falló, continúa el deploy"
+            # Snapshot previo al deploy: SOLO dump de DB (el tar de uploads queda
+            # para el cron diario: con ~100 deploys/semana el tar de ~350MB por
+            # deploy desbordaba el disco). Tolera primer arranque (sin
+            # contenedores aún). Si falla NO bloquea el deploy.
+            bash /opt/portal659/scripts/backup.sh --db-only || echo "WARNING: backup previo falló, continúa el deploy"
 
             cd /opt/portal659
             # Cert TLS para nginx :443. Si aún no pegaste el Origin CA de

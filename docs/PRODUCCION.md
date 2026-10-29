@@ -104,7 +104,7 @@ Backup diario **self-managed** (independiente del host — funciona en cualquier
 - Validación del dump (gzip íntegro + marcador de dump completo) antes de subir.
 - Retención: **14 días local, 30 días en R2**. `/opt/portal659-backups` está fuera
   del path del deploy: no se borra nunca.
-- El deploy además hace **snapshot previo** (DB+uploads → R2) en cada deploy.
+- El deploy además hace **snapshot previo db-only** (solo DB → R2; el tar de uploads queda para el cron diario) en cada deploy.
 - Runbook de migración/restore: `docs/migracion-vexyhost.md`.
 
 Restore:

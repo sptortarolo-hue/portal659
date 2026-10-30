@@ -8,7 +8,7 @@ export function CartFooter() {
   if (count === 0) return null;
 
   return (
-    <div className="fixed bottom-14 sm:bottom-0 left-0 right-0 z-40 border-t border-border bg-card/95 backdrop-blur-sm shadow-lg animate-slide-in-bottom">
+    <div className="fixed bottom-14 sm:bottom-0 left-0 right-0 z-40 border-t border-border bg-card shadow-lg animate-slide-in-bottom">
       <div className="container mx-auto px-4 py-3 max-w-4xl flex items-center justify-between gap-4">
         <div className="flex items-center gap-3 min-w-0">
           <div key={count} className="flex items-center justify-center h-9 w-9 rounded-full bg-primary text-primary-foreground text-sm font-bold flex-shrink-0 animate-pop-in">

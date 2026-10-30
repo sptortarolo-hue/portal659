@@ -107,6 +107,8 @@ export type PlanFeatures = {
   fiscal: boolean;
   /** Inventario compartido: proveedores, listas de precios, costos, conteos y kardex. */
   inventory: boolean;
+  /** Pantalla TV: carta digital en un televisor (/pantalla/[token]). */
+  screens: boolean;
 };
 
 export type Plan = {
@@ -119,6 +121,8 @@ export type Plan = {
   max_orders_month: number | null;
   /** Tope mensual de presupuestos + turnos (servicios). NULL = ilimitado. Puede faltar si la migración aún no se aplicó. */
   max_quotes_month?: number | null;
+  /** Cantidad máxima de pantallas TV del comercio. 0 = sin Pantalla TV. Puede faltar si la migración no está aplicada. */
+  max_screens?: number | null;
   features: PlanFeatures;
   badge: string | null;
   popular: boolean;

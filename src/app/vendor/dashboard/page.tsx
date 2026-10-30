@@ -74,6 +74,7 @@ import { VendorOrderHistory } from "@/components/dashboard/vendor-order-history"
 import { RecipeManager } from "@/components/dashboard/recipe-manager";
 import { ProductManager } from "@/components/dashboard/product-manager";
 import { MenuStudio } from "@/components/dashboard/menu-studio";
+import { TvScreenManager } from "@/components/vendor/tv-screen-manager";
 import ComandaKDS from "@/components/dashboard/comanda-kds";
 import { playNewOrderAlert, resumeAudioContext, startTitleFlash, stopTitleFlash, startRepeatAlert, stopRepeatAlert } from "@/lib/sounds";
 import { PushAlertCard } from "@/components/dashboard/push-alert-card";
@@ -162,7 +163,7 @@ type Offer = DBProduct;
 
 type MenuCategory = { id: string; name: string; position: number };
 
-  type DashTab = "hoy" | "config" | "menu" | "orders" | "pedidos" | "mostrador" | "history" | "comanda" | "analytics" | "pos" | "mesas" | "caja" | "gastos" | "clientes" | "reviews" | "recetas" | "fiscal" | "inventario" | "galeria" | "promos" | "tarjetas" | "servicios";
+  type DashTab = "hoy" | "config" | "menu" | "orders" | "pedidos" | "mostrador" | "history" | "comanda" | "analytics" | "pos" | "mesas" | "caja" | "gastos" | "clientes" | "reviews" | "recetas" | "fiscal" | "inventario" | "galeria" | "promos" | "tarjetas" | "pantalla" | "servicios";
 
 /**
  * Segunda columna de Configuración en desktop (estilo Fudo): la usan todas
@@ -399,7 +400,7 @@ function VendorDashboardInner() {
   const dashDraftReady = useRef(false);
   const pendingOrderId = useRef<string | null>(null);
   const [bookingHighlight, setBookingHighlight] = useState<string | null>(null);
-  const VALID_TABS: DashTab[] = ["hoy", "config", "menu", "orders", "pedidos", "mostrador", "history", "comanda", "analytics", "pos", "mesas", "caja", "gastos", "clientes", "reviews", "recetas", "fiscal", "inventario", "promos", "tarjetas", "servicios"];
+  const VALID_TABS: DashTab[] = ["hoy", "config", "menu", "orders", "pedidos", "mostrador", "history", "comanda", "analytics", "pos", "mesas", "caja", "gastos", "clientes", "reviews", "recetas", "fiscal", "inventario", "promos", "tarjetas", "pantalla", "servicios"];
   useEffect(() => {
     if (dashDraftReady.current || !vendor?.id) return;
     dashDraftReady.current = true;
@@ -1671,6 +1672,7 @@ function VendorDashboardInner() {
     : tab === "inventario" ? "Inventario"
     : tab === "promos" ? "Promos"
     : tab === "tarjetas" ? "Tarjetas"
+    : tab === "pantalla" ? "Pantalla TV"
     : "Configuración";
 
   const todayLabel = new Date().toLocaleDateString("es-AR", {
@@ -1708,6 +1710,7 @@ function VendorDashboardInner() {
         planSlug={effectivePlan.plan?.slug ?? null}
         canFiscal={effectivePlan.can("fiscal")}
         canInventory={effectivePlan.can("inventory")}
+        canScreens={effectivePlan.can("screens")}
         canScreens={effectivePlan.can("screens")}
         configNavSections={sectionsForVertical(vendor?.vertical)}
         activeConfigSection={configSection}
@@ -1914,7 +1917,7 @@ function VendorDashboardInner() {
         )}
 
         {/* Tab content */}
-        <div className={`flex-1 px-4 mt-4 pb-28 lg:pb-10 ${tab === "comanda" ? "w-full max-w-none" : `mx-auto w-full ${["orders", "pedidos", "mostrador", "history", "pos", "mesas", "caja", "gastos", "clientes", "analytics", "recetas", "inventario", "hoy", "menu", "promos", "tarjetas", "servicios"].includes(tab) ? "max-w-7xl" : "max-w-4xl"}`}`}>
+        <div className={`flex-1 px-4 mt-4 pb-28 lg:pb-10 ${tab === "comanda" ? "w-full max-w-none" : `mx-auto w-full ${["orders", "pedidos", "mostrador", "history", "pos", "mesas", "caja", "gastos", "clientes", "analytics", "recetas", "inventario", "hoy", "menu", "promos", "tarjetas", "pantalla", "servicios"].includes(tab) ? "max-w-7xl" : "max-w-4xl"}`}`}>
           <TabErrorBoundary tab={tab || "dashboard"}>
           {isService ? (
             <div className="space-y-4">
@@ -2275,6 +2278,13 @@ function VendorDashboardInner() {
                       vertical={vendor?.vertical ?? null}
                       storeName={(vendor as any)?.store_name || "el local"}
                     />
+                  </TabErrorBoundary>
+                </div>
+              )}
+              {!isService && effectivePlan.can("screens") && mountedTabs.has("pantalla") && (
+                <div className={tab === "pantalla" ? "" : "hidden"}>
+                  <TabErrorBoundary tab="pantalla">
+                    <TvScreenManager enabled={effectivePlan.can("screens")} maxScreens={Number(effectivePlan.maxScreens ?? 0)} />
                   </TabErrorBoundary>
                 </div>
               )}

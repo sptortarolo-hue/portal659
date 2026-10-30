@@ -80,6 +80,7 @@ const GRATUITO_FEATURES: PlanFeatures = {
   deposits: false,
   fiscal: false,
   inventory: false,
+  screens: false,
 };
 
 // Features del plan Gratuito para gastronomía: carta completa + carrito +
@@ -167,6 +168,9 @@ const SERVICIO_FEATURE_MASK: Partial<Record<FeatureKey, false>> = {
   modifiers: false,
   recipes: false,
   fiscal: false,
+  // Un servicio (plomero/electricista) no tiene carta de menú: la Pantalla
+  // TV es de comercios que venden con carta (gastro/comercio/moda/estética).
+  screens: false,
 };
 
 // Features del plan que no aplican al vertical moda (forzadas a false).
@@ -209,6 +213,8 @@ export type EffectivePlan = {
   maxOrdersMonth: number | null;
   /** Tope mensual combinado de presupuestos + turnos (servicios). NULL = ilimitado. */
   maxQuotesMonth: number | null;
+  /** Cantidad máxima de pantallas TV del comercio (planes con feature `screens`). 0 = sin TV. */
+  maxScreens: number | null;
   hasTrial: boolean;
   trialEndsAt: string | null;
 };
@@ -247,6 +253,7 @@ export function resolveVendorPlan(
       maxProducts: null,
       maxOrdersMonth: null,
       maxQuotesMonth: null,
+      maxScreens: null,
       hasTrial: false,
       trialEndsAt: vendor.trial_ends_at,
     };
@@ -347,6 +354,9 @@ export function resolveVendorPlan(
     isEsteticaVendor(vendor) && !(paid)
       ? ESTETICA_FREE_QUOTES_MONTH
       : (limitRow?.max_quotes_month ?? null);
+  // Pantallas TV: solo las trae el plan pago vigente con feature `screens`
+  // (Gestión integral). El gratuito y los pagos vencidos no tienen (0).
+  const maxScreens = paid ? Number(plan?.max_screens ?? 0) : 0;
 
   return {
     plan,
@@ -362,6 +372,7 @@ export function resolveVendorPlan(
     maxProducts: limitRow?.max_products ?? null,
     maxOrdersMonth,
     maxQuotesMonth,
+    maxScreens,
     hasTrial: trialEndsAt !== null && now < trialEndsAt,
     trialEndsAt: vendor.trial_ends_at,
   };

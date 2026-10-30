@@ -72,7 +72,7 @@ const GESTION_ITEMS: { tab: Tab; label: string; icon: typeof UtensilsCrossed; sh
   { tab: "tarjetas", label: "Tarjetas", icon: Gift, show: (g, m, c) => c || m },
   // Pantalla TV: carta en el televisor del local (planes con `screens`).
   // Se pasa por prop porque el gate es del plan, no del vertical.
-  { tab: "pantalla", label: "Pantalla TV", icon: Monitor, show: (_g, _m, _c, screens) => screens },
+  { tab: "pantalla", label: "Pantalla TV", icon: Monitor, show: (_g, _m, _c, screens) => !!screens },
   { tab: "config", label: "Configuración", icon: Settings, show: () => true },
 ];
 

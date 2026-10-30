@@ -68,6 +68,7 @@ function PlanEditor({
     max_products: plan.max_products != null ? String(plan.max_products) : "",
     max_orders_month: plan.max_orders_month != null ? String(plan.max_orders_month) : "",
     max_quotes_month: (plan as Plan).max_quotes_month != null ? String((plan as Plan).max_quotes_month) : "",
+    max_screens: (plan as any).max_screens != null ? String((plan as any).max_screens) : "",
     promo_price: plan.promo_price != null ? String(plan.promo_price) : "",
     promo_months: plan.promo_months != null ? String(plan.promo_months) : "",
     promo_ends_at: toDateTimeLocal(plan.promo_ends_at),
@@ -89,6 +90,7 @@ function PlanEditor({
     max_products: draft.max_products ? Number(draft.max_products) : null,
     max_orders_month: draft.max_orders_month ? Number(draft.max_orders_month) : null,
     max_quotes_month: draft.max_quotes_month ? Number(draft.max_quotes_month) : null,
+    max_screens: draft.max_screens ? Number(draft.max_screens) : null,
     promo_price: draft.promo_price ? Number(draft.promo_price) : null,
     promo_months: draft.promo_months ? Number(draft.promo_months) : null,
     promo_ends_at: draft.promo_ends_at ? new Date(draft.promo_ends_at).toISOString() : null,
@@ -111,6 +113,7 @@ function PlanEditor({
           max_products: draft.max_products ? Number(draft.max_products) : null,
           max_orders_month: draft.max_orders_month ? Number(draft.max_orders_month) : null,
           max_quotes_month: draft.max_quotes_month ? Number(draft.max_quotes_month) : null,
+    max_screens: draft.max_screens ? Number(draft.max_screens) : null,
           promo_price: draft.promo_price ? Number(draft.promo_price) : null,
           promo_months: draft.promo_months ? Number(draft.promo_months) : null,
           promo_ends_at: draft.promo_ends_at ? new Date(draft.promo_ends_at).toISOString() : null,
@@ -216,6 +219,17 @@ function PlanEditor({
               placeholder="Vacío = ilimitado"
               value={draft.max_quotes_month ?? ""}
               onChange={(e) => setDraft({ ...draft, max_quotes_month: e.target.value })}
+              className="mt-1"
+            />
+          </div>
+          <div>
+            <Label className="text-xs">Pantallas TV (max.)</Label>
+            <Input
+              type="number"
+              min={0}
+              placeholder="0 = sin TV"
+              value={draft.max_screens ?? ""}
+              onChange={(e) => setDraft({ ...draft, max_screens: e.target.value })}
               className="mt-1"
             />
           </div>

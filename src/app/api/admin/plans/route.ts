@@ -12,6 +12,7 @@ const ALLOWED = [
   "max_products",
   "max_orders_month",
   "max_quotes_month",
+  "max_screens",
   "badge",
   "popular",
   "sort",
@@ -50,7 +51,7 @@ export async function PATCH(request: Request) {
     if (v === "" || v === null || v === undefined) {
       if (["promo_price", "promo_months", "promo_ends_at", "promo_label"].includes(k)) {
         clean[k] = null;
-      } else if (["description", "badge", "max_products", "max_orders_month", "max_quotes_month"].includes(k)) {
+      } else if (["description", "badge", "max_products", "max_orders_month", "max_quotes_month", "max_screens"].includes(k)) {
         clean[k] = null;
       }
       continue;
@@ -60,7 +61,7 @@ export async function PATCH(request: Request) {
       const n = Number(v);
       if (!Number.isFinite(n) || n < 0) continue;
       clean[k] = n;
-    } else if (["max_products", "max_orders_month", "max_quotes_month", "promo_months", "sort"].includes(k)) {
+    } else if (["max_products", "max_orders_month", "max_quotes_month", "max_screens", "promo_months", "sort"].includes(k)) {
       const n = Number(v);
       if (!Number.isFinite(n) || n < 0) continue;
       clean[k] = n;

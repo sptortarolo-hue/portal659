@@ -383,6 +383,115 @@ export function TvScreenEditor({ open, screen, categories, onClose, onSaved }: P
             </div>
           </Field>
 
+          <Field label="Posters publicitarios (se intercalan entre las slides)">
+            <div className="space-y-2">
+              <p className="text-[11px] text-muted-foreground">
+                Imágenes (PNG/JPG) o videos (MP4) a pantalla completa. Se suben desde tu computadora.
+              </p>
+              {(config.posters || []).map((p, i) => (
+                <div key={`${p.url}-${i}`} className="flex items-center gap-2 rounded-lg border border-border bg-card p-2">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  {p.type === "video" ? (
+                    <video src={p.url} className="h-12 w-20 rounded object-cover" muted />
+                  ) : (
+                    <img src={p.url} alt="" className="h-12 w-20 rounded object-cover" />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="truncate text-xs text-muted-foreground">{p.url.split("/").pop()}</div>
+                    <div className="mt-1 flex items-center gap-2">
+                      <label className="text-[10px] text-muted-foreground">Duración (s)</label>
+                      <input
+                        type="number"
+                        min={3}
+                        max={60}
+                        className="w-16 rounded border border-border bg-background px-2 py-1 text-xs"
+                        value={p.durationSec}
+                        onChange={(e) => {
+                          const next = (config.posters || []).map((x, j) =>
+                            j === i ? { ...x, durationSec: Number(e.target.value) || 5 } : x
+                          );
+                          edit({ posters: next });
+                        }}
+                      />
+                      <select
+                        className="rounded border border-border bg-background px-2 py-1 text-xs"
+                        value={p.type}
+                        onChange={(e) => {
+                          const next = (config.posters || []).map((x, j) =>
+                            j === i ? { ...x, type: e.target.value as "image" | "video" } : x
+                          );
+                          edit({ posters: next });
+                        }}
+                      >
+                        <option value="image">Imagen</option>
+                        <option value="video">Video</option>
+                      </select>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="px-1 text-muted-foreground hover:text-foreground"
+                    onClick={() => {
+                      if (i === 0) return;
+                      const next = [...(config.posters || [])];
+                      [next[i - 1], next[i]] = [next[i], next[i - 1]];
+                      edit({ posters: next });
+                    }}
+                  >
+                    ↑
+                  </button>
+                  <button
+                    type="button"
+                    className="px-1 text-muted-foreground hover:text-foreground"
+                    onClick={() => {
+                      if (i === (config.posters || []).length - 1) return;
+                      const next = [...(config.posters || [])];
+                      [next[i + 1], next[i]] = [next[i], next[i + 1]];
+                      edit({ posters: next });
+                    }}
+                  >
+                    ↓
+                  </button>
+                  <button
+                    type="button"
+                    className="text-muted-foreground hover:text-destructive"
+                    onClick={() => edit({ posters: (config.posters || []).filter((_, j) => j !== i) })}
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+              <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-border px-3 py-2 text-xs text-muted-foreground hover:border-primary hover:text-primary">
+                + Subir poster
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,video/mp4"
+                  className="hidden"
+                  onChange={async (e) => {
+                    const f = e.target.files?.[0];
+                    if (!f) return;
+                    const fd = new FormData();
+                    fd.append("file", f);
+                    fd.append("folder", "tv");
+                    try {
+                      const r = await fetch("/api/vendor/upload", { method: "POST", body: fd });
+                      const data = await r.json();
+                      if (r.ok && data.url) {
+                        const type = f.type.startsWith("video/") ? "video" : "image";
+                        edit({ posters: [...(config.posters || []), { url: data.url, type, durationSec: 5 }] });
+                      } else {
+                        setMsg(data.error || "No se pudo subir el poster");
+                      }
+                    } catch {
+                      setMsg("Error al subir el poster");
+                    }
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+            </div>
+          </Field>
+
           <Field label="Pie de pantalla">
             <input
               className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"

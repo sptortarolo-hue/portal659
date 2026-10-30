@@ -28,6 +28,15 @@ export type TvDaypart = {
   theme: TvTheme | "";
 };
 
+export type TvPoster = {
+  /** URL del archivo (imagen PNG/JPG o video MP4). */
+  url: string;
+  /** "image" | "video". */
+  type: "image" | "video";
+  /** Segundos que se muestra (video: se ignora, se reproduce completo). */
+  durationSec: number;
+};
+
 export type TvConfig = {
   theme: TvTheme;
   columns: 2 | 3 | 4;
@@ -47,6 +56,12 @@ export type TvConfig = {
   /** Pantalla de "volvemos a las X" cuando el local está cerrado. */
   closedScreen: boolean;
   footerText: string;
+  /**
+   * Posters publicitarios: imágenes o videos que se intercalan entre las
+   * slides de la carta (promos, combos, eventos). Se leen del catálogo de
+   * uploads; la TV los muestra a pantalla completa durante `durationSec`.
+   */
+  posters: TvPoster[];
 };
 
 export const DEFAULT_TV_CONFIG: TvConfig = {
@@ -66,6 +81,7 @@ export const DEFAULT_TV_CONFIG: TvConfig = {
   dayparts: [],
   closedScreen: true,
   footerText: "",
+  posters: [],
 };
 
 /** Valores aceptados por el editor (para selects y normalización). */
@@ -158,6 +174,21 @@ export function normalizeTvConfig(input: unknown): TvConfig {
         .slice(0, 6)
     : [];
 
+  const posters = Array.isArray(raw.posters)
+    ? raw.posters
+        .map((p: unknown) => {
+          const pr = asObj(p);
+          const url = str(pr.url, "").trim();
+          if (!url) return null;
+          const type: TvPoster["type"] = pr.type === "video" ? "video" : "image";
+          const dur = Number(pr.durationSec);
+          const durationSec = Number.isFinite(dur) && dur > 0 ? Math.min(60, Math.max(3, Math.round(dur))) : 5;
+          return { url, type, durationSec };
+        })
+        .filter((p): p is TvPoster => !!p)
+        .slice(0, 20)
+    : [];
+
   return {
     theme,
     columns,
@@ -182,6 +213,7 @@ export function normalizeTvConfig(input: unknown): TvConfig {
     dayparts,
     closedScreen: bool(raw.closedScreen, true),
     footerText: str(raw.footerText, "").slice(0, 120),
+    posters,
   };
 }
 

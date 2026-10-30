@@ -65,7 +65,7 @@ export function QuoteForm({ vendorId, vendorName, servicesList, prefEnabled = tr
     setLoading(true);
     setError("");
 
-    // Fotos (opcional, hasta 3; "del problema" en oficios). Se suben antes de la solicitud.
+    // Fotos (opcional, hasta 3). Se suben antes de la solicitud.
     let photoUrls: string[] = [];
     if (photos.length > 0) {
       try {
@@ -141,7 +141,7 @@ export function QuoteForm({ vendorId, vendorName, servicesList, prefEnabled = tr
         <Textarea id="q-desc" value={description} onChange={e => setDescription(e.target.value)} placeholder={estetica ? "¿Qué querés saber? Ej: precio, duración, cómo es la sesión..." : "Contanos brevemente qué necesitás, medidas, cantidades, etc."} required rows={3} />
       </div>
       <div>
-        <Label htmlFor="q-photos">{estetica ? "Fotos (opcional, hasta 3)" : "Fotos del problema (opcional, hasta 3)"}</Label>
+        <Label htmlFor="q-photos">{estetica ? "Fotos (opcional, hasta 3)" : "Agregá fotos si querés (opcional)"}</Label>
         <Input
           id="q-photos"
           type="file"

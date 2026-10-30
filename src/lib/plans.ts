@@ -170,9 +170,9 @@ const SERVICIO_FEATURE_MASK: Partial<Record<FeatureKey, false>> = {
   modifiers: false,
   recipes: false,
   fiscal: false,
-  // Un servicio (plomero/electricista) no tiene carta de menú: la Pantalla
-  // TV es de comercios que venden con carta (gastro/comercio/moda/estética).
-  screens: false,
+  // Pantalla TV habilitada para prueba en todos los verticales (incluido
+  // servicio): un plomero puede mostrar sus servicios en un TV del local.
+  // (Quitada la máscara screens:false para permitir la prueba.)
 };
 
 // Features del plan que no aplican al vertical moda (forzadas a false).

@@ -15,15 +15,10 @@ export default function TvLayout({ children }: { children: React.ReactNode }) {
     <>
       <style
         dangerouslySetInnerHTML={{
+          // Solo el reset de la página: los keyframes del reproductor viven en
+          // `TvCanvas` para que el preview del panel use los mismos.
           __html: `
-@keyframes tv-progress { from { width: 0% } to { width: 100% } }
-@keyframes tv-breathe { 0%, 100% { opacity: .62 } 50% { opacity: 1 } }
-@keyframes tv-fade-in { from { opacity: 0; transform: translateY(12px) } to { opacity: 1; transform: none } }
 html, body { margin: 0; background: #000; overflow: hidden; }
-.tv-slide-enter { animation: tv-fade-in 420ms ease-out both; }
-@media (prefers-reduced-motion: reduce) {
-  .tv-slide-enter, [style*="tv-breathe"], [style*="tv-progress"] { animation: none !important; }
-}
 `,
         }}
       />

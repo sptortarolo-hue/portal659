@@ -27,9 +27,11 @@ type Props = {
   mode: "live" | "preview";
   vertical?: string | null;
   debug?: boolean;
+  /** Ajustar al contenedor padre (preview del panel). */
+  fitParent?: boolean;
 };
 
-export function TvPlayer({ snapshot, token, mode, vertical, debug = false }: Props) {
+export function TvPlayer({ snapshot, token, mode, vertical, debug = false, fitParent = false }: Props) {
   const [snap, setSnap] = useState<TvSnapshot>(snapshot);
   const [idx, setIdx] = useState(0);
   const [online, setOnline] = useState(true);
@@ -212,7 +214,7 @@ export function TvPlayer({ snapshot, token, mode, vertical, debug = false }: Pro
   }, [snap]);
 
   return (
-    <TvCanvas theme={(snap.theme as TvTheme) || "barrio"} debug={debug} offline={!online}>
+    <TvCanvas theme={(snap.theme as TvTheme) || "barrio"} debug={debug} offline={!online} fitParent={fitParent}>
       <div
         className="flex h-full w-full flex-col"
         style={{

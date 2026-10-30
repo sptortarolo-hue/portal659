@@ -18,9 +18,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  const admin = await isAdmin(request);
   const { vendor } = await getVendorByRequest(request);
-  const admin = vendor ? false : await isAdmin(request);
-  if (!vendor && !admin) {
+  if (!admin && !vendor) {
     return NextResponse.json({ error: "No autenticado" }, { status: 401 });
   }
 

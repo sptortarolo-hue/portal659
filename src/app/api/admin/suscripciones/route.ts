@@ -166,10 +166,19 @@ export async function GET(request: Request) {
     queryMany<Record<string, unknown>>(
       `SELECT p.id, p.amount, p.period_end, p.reference, p.method, p.status,
               p.reviewed_at, p.review_note, p.comprobante_url,
-              v.id AS vendor_id, v.store_name, pl.name AS plan_name
+              v.id AS vendor_id, v.store_name, pl.name AS plan_name,
+              r.id AS receipt_id, r.seq AS receipt_seq, r.year AS receipt_year,
+              r.emailed_at AS receipt_emailed_at, r.issued_at AS receipt_issued_at
          FROM subscription_payments p
          JOIN vendors v ON v.id = p.vendor_id
          LEFT JOIN plans pl ON pl.id = p.plan_id
+         LEFT JOIN LATERAL (
+           SELECT pr.id, pr.seq, pr.year, pr.emailed_at, pr.issued_at
+             FROM plan_receipts pr
+            WHERE pr.payment_id = p.id
+            ORDER BY pr.issued_at DESC
+            LIMIT 1
+         ) r ON true
         WHERE p.status IN ('approved', 'rejected')
           AND p.reviewed_at > now() - interval '30 days'
         ORDER BY p.reviewed_at DESC
@@ -308,13 +317,13 @@ async function insertReceipt(
     seq: number;
     year: number;
   }
-): Promise<{ id: string }> {
-  const rows = await tx.query<{ id: string }>(
+): Promise<{ id: string; issued_at: string }> {
+  const rows = await tx.query<{ id: string; issued_at: string }>(
     `INSERT INTO plan_receipts
        (vendor_id, payment_id, plan_id, plan_name, amount, period_start, period_end,
         method, promo_pct, promo_list_price, seq, year)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-     RETURNING id`,
+     RETURNING id, issued_at`,
     [
       p.vendorId,
       p.paymentId,
@@ -336,6 +345,11 @@ async function insertReceipt(
 /**
  * Emite el aviso de un recibo: PDF por mail al dueño + campana/push.
  * Compartido por approve_payment, emit_receipt y resend_receipt.
+ *
+ * Devuelve el resultado del envío para que la UI del admin pueda decir
+ * exactamente qué pasó (enviado / sin email / falta config / error), en vez
+ * de un "listo" optimista. `notify: false` evita la campana/push (reenvíos:
+ * no corresponde volver a avisar "¡Pago acreditado!").
  */
 async function sendReceiptNotice(params: {
   info: Awaited<ReturnType<typeof loadVendorContact>>;
@@ -350,15 +364,27 @@ async function sendReceiptNotice(params: {
   promoPct: number | null;
   promoListPrice: number | null;
   noticeBody: string;
-}) {
+  /** Fecha real de emisión del recibo (por defecto ahora). */
+  issuedAt?: string | null;
+  /** Campana + push al comercio (default true; los reenvíos no avisan). */
+  notify?: boolean;
+}): Promise<{ emailed: boolean; to: string | null; error: string | null }> {
   const { info, receiptId } = params;
-  const title = "¡Pago acreditado!";
+  const notify = params.notify !== false;
+  const issuedAt = params.issuedAt || new Date().toISOString();
   const promoNote =
     params.promoPct && params.promoListPrice
       ? `precio promo −${params.promoPct}% (lista $${Number(params.promoListPrice).toLocaleString("es-AR")})`
       : "precio de lista";
 
-  if (info?.email && process.env.RESEND_API_KEY) {
+  let emailed = false;
+  let error: string | null = null;
+
+  if (!info?.email) {
+    error = "El comercio no tiene email de contacto";
+  } else if (!process.env.RESEND_API_KEY) {
+    error = "Falta RESEND_API_KEY en el servidor";
+  } else {
     try {
       const pdf = await buildPlanReceiptPdf({
         vendor: {
@@ -368,7 +394,7 @@ async function sendReceiptNotice(params: {
           whatsapp: info.whatsapp,
         },
         receiptNumber: params.receiptNumber,
-        issuedAt: new Date().toISOString(),
+        issuedAt,
         planName: params.planName,
         amount: params.amount,
         periodStart: params.periodStart,
@@ -392,13 +418,15 @@ async function sendReceiptNotice(params: {
           { filename: `recibo-X-${params.receiptNumber.replace("/", "-")}.pdf`, content: pdf.toString("base64") },
         ],
       });
+      emailed = true;
       await query(`UPDATE plan_receipts SET emailed_at = now() WHERE id = $1`, [receiptId]).catch(() => undefined);
     } catch {
-      /* mail best-effort */
+      error = "El servicio de mail rechazó el envío";
     }
   }
 
-  if (info?.user_id) {
+  if (notify && info?.user_id) {
+    const title = "¡Pago acreditado!";
     await query(
       `INSERT INTO notifications (user_id, title, body, type, link) VALUES ($1, $2, $3, 'payment', '/vendor/suscripcion')`,
       [info.user_id, title, params.noticeBody]
@@ -409,6 +437,8 @@ async function sendReceiptNotice(params: {
       /* push best-effort */
     }
   }
+
+  return { emailed, to: info?.email ?? null, error };
 }
 
 export async function PATCH(request: Request) {
@@ -803,6 +833,7 @@ export async function PATCH(request: Request) {
     let receiptId = "";
     let receiptNumber = "";
     let receiptSeq = 0;
+    let receiptIssuedAt: string | null = null;
     // Snapshot del descuento: el del reclamo, o derivado del promo vigente
     // (reclamos viejos sin la columna siguen mostrando el promo en el recibo).
     const promoSnapshot =
@@ -851,11 +882,13 @@ export async function PATCH(request: Request) {
         year,
       });
       receiptId = rec.id;
+      receiptIssuedAt = rec.issued_at;
     });
 
     // Fuera de la tx: recibo X en PDF por email + aviso al comercio.
+    let notice: { emailed: boolean; to: string | null; error: string | null } | null = null;
     if (receiptSeq > 0 && receiptId) {
-      await sendReceiptNotice({
+      notice = await sendReceiptNotice({
         info,
         planName: plan?.name ?? "Plan",
         receiptNumber,
@@ -866,6 +899,7 @@ export async function PATCH(request: Request) {
         methodLabel: "Transferencia bancaria",
         promoPct,
         promoListPrice,
+        issuedAt: receiptIssuedAt,
         noticeBody: `Tu plan ${plan?.name ?? "pagado"} está activo hasta el ${new Date(payment.period_end).toLocaleDateString("es-AR")}. Te enviamos el Recibo X ${receiptNumber} por email.`,
       });
     }
@@ -874,6 +908,9 @@ export async function PATCH(request: Request) {
       ok: true,
       approved: true,
       receipt: receiptSeq > 0 ? { number: receiptNumber, id: receiptId } : null,
+      emailed: notice?.emailed ?? false,
+      to: notice?.to ?? null,
+      error: notice?.error ?? null,
     });
   }
 
@@ -913,6 +950,7 @@ export async function PATCH(request: Request) {
     let paymentId = "";
     let receiptId = "";
     let receiptNumber = "";
+    let receiptIssuedAt: string | null = null;
     await withTransaction(async (tx) => {
       seq = await nextReceiptSeq(tx, year);
       receiptNumber = `${String(seq).padStart(4, "0")}/${year}`;
@@ -970,10 +1008,12 @@ export async function PATCH(request: Request) {
         year,
       });
       receiptId = rec.id;
+      receiptIssuedAt = rec.issued_at;
     });
 
+    let notice: { emailed: boolean; to: string | null; error: string | null } | null = null;
     if (info && receiptId) {
-      await sendReceiptNotice({
+      notice = await sendReceiptNotice({
         info,
         planName: plan.name,
         receiptNumber,
@@ -984,6 +1024,7 @@ export async function PATCH(request: Request) {
         methodLabel,
         promoPct: promoPctFinal,
         promoListPrice: promoListFinal,
+        issuedAt: receiptIssuedAt,
         noticeBody:
           renew === false
             ? `Emitimos tu Recibo X ${receiptNumber} por $${amountNum.toLocaleString("es-AR")}.`
@@ -991,10 +1032,20 @@ export async function PATCH(request: Request) {
       });
     }
 
-    return NextResponse.json({ ok: true, approved: true, receipt: { number: receiptNumber, id: receiptId } });
+    return NextResponse.json({
+      ok: true,
+      approved: true,
+      receipt: { number: receiptNumber, id: receiptId },
+      emailed: notice?.emailed ?? false,
+      to: notice?.to ?? null,
+      error: notice?.error ?? null,
+    });
   }
 
   // Reenvío de un recibo ya emitido (regenera el PDF y lo manda por mail).
+  // Usa la fecha y el medio reales del recibo; si es viejo y no tiene snapshot
+  // de promo, la deriva igual que el A4 y el PDF del comercio. No vuelve a
+  // disparar el aviso "¡Pago acreditado!".
   if (action === "resend_receipt") {
     const { receiptId } = body;
     if (!receiptId) return NextResponse.json({ error: "receiptId requerido" }, { status: 400 });
@@ -1002,16 +1053,20 @@ export async function PATCH(request: Request) {
     const receipt = await queryOne<{
       id: string;
       vendor_id: string;
+      plan_id: string | null;
       plan_name: string | null;
       amount: number;
       period_start: string | null;
       period_end: string | null;
+      method: string | null;
+      issued_at: string;
       seq: number;
       year: number;
       promo_pct: number | null;
       promo_list_price: number | null;
     }>(
-      `SELECT id, vendor_id, plan_name, amount, period_start, period_end, seq, year, promo_pct, promo_list_price
+      `SELECT id, vendor_id, plan_id, plan_name, amount, period_start, period_end, method,
+              issued_at, seq, year, promo_pct, promo_list_price
          FROM plan_receipts WHERE id = $1 AND vendor_id = $2 LIMIT 1`,
       [receiptId, vendorId]
     );
@@ -1019,7 +1074,18 @@ export async function PATCH(request: Request) {
 
     const info = await loadVendorContact(vendorId);
     const receiptNumber = `${String(receipt.seq).padStart(4, "0")}/${receipt.year}`;
-    await sendReceiptNotice({
+    const promo =
+      receipt.promo_pct != null && receipt.promo_list_price != null
+        ? { pct: Number(receipt.promo_pct), listPrice: Number(receipt.promo_list_price) }
+        : await derivePromoFor(receipt.plan_id, Number(receipt.amount));
+    const methodLabel =
+      receipt.method === "efectivo"
+        ? "Efectivo"
+        : receipt.method === "mercadopago"
+          ? "Mercado Pago"
+          : "Transferencia bancaria";
+
+    const notice = await sendReceiptNotice({
       info,
       planName: receipt.plan_name || "Plan",
       receiptNumber,
@@ -1027,13 +1093,22 @@ export async function PATCH(request: Request) {
       amount: Number(receipt.amount),
       periodStart: receipt.period_start,
       periodEnd: receipt.period_end,
-      methodLabel: "Transferencia bancaria",
-      promoPct: receipt.promo_pct ?? null,
-      promoListPrice: receipt.promo_list_price ?? null,
+      methodLabel,
+      promoPct: promo?.pct ?? null,
+      promoListPrice: promo?.listPrice ?? null,
+      issuedAt: receipt.issued_at,
+      notify: false,
       noticeBody: `Te reenviamos el Recibo X ${receiptNumber} del plan ${receipt.plan_name || ""}.`,
     });
 
-    return NextResponse.json({ ok: true, resent: true, receipt: { number: receiptNumber } });
+    return NextResponse.json({
+      ok: true,
+      resent: true,
+      emailed: notice.emailed,
+      to: notice.to,
+      error: notice.error,
+      receipt: { number: receiptNumber, id: receipt.id },
+    });
   }
 
   // Recordatorio al comercio: falta subir el comprobante (idempotente por día).

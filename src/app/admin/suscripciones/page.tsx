@@ -6,7 +6,7 @@ import SubscriptionModal, { SuscripcionRow, HistoryItem, SuscripcionMode } from 
 import { VERTICALS } from "@/lib/config";
 import { planPriceFor, formatPrice } from "@/lib/plans";
 import {
-  Ban, Pencil, Plus, ChevronDown, ChevronRight, Trash2, ArrowLeftRight, Receipt,
+  Ban, Pencil, Plus, ChevronDown, ChevronRight, Trash2, ArrowLeftRight, Receipt, Mail,
 } from "lucide-react";
 
 type PlanOption = { id: string; slug: string; name: string; price_monthly: number };
@@ -38,6 +38,11 @@ type ReviewedItem = {
   vendor_id: string;
   store_name: string;
   plan_name: string;
+  receipt_id: string | null;
+  receipt_seq: number | null;
+  receipt_year: number | null;
+  receipt_emailed_at: string | null;
+  receipt_issued_at: string | null;
 };
 type ReceiptItem = {
   id: string;
@@ -140,7 +145,12 @@ export default function AdminSuscripcionesPage() {
     promoListPrice: number | null;
   } | null>(null);
   const [emitBusy, setEmitBusy] = useState(false);
-  const [resendBusy, setResendBusy] = useState<string | null>(null);
+  // Reenvío de recibos: estado local por recibo (buscando + resultado real del
+  // envío). El mensaje vive al lado del botón que lo disparó, no en la cola.
+  const [resendState, setResendState] = useState<Record<string, { busy?: boolean; ok?: boolean; text?: string }>>({});
+  // Modal de recibos emitidos de un comercio (reenviar / ver / emitir).
+  const [receiptsFor, setReceiptsFor] = useState<SuscripcionRow | null>(null);
+  const [receiptsLoading, setReceiptsLoading] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -264,7 +274,13 @@ export default function AdminSuscripcionesPage() {
     setApproveTarget(null);
     setReviewMsg(
       data
-        ? `Aprobado: plan activo hasta el ${fmt(item.plan_expires_at)} · recibo ${data.receipt?.number ?? "emitido"}${data.receipt ? "" : " (no se pudo emitir el recibo)"}`
+        ? `Aprobado: plan activo hasta el ${fmt(item.plan_expires_at)} · recibo ${data.receipt?.number ?? "emitido"}${
+            data.receipt
+              ? data.emailed
+                ? ` enviado a ${data.to}`
+                : ` · ⚠ no se envió por mail${data.error ? ` (${data.error})` : ""}`
+              : " (no se pudo emitir el recibo)"
+          }`
         : "No se pudo aprobar"
     );
   }
@@ -292,11 +308,52 @@ export default function AdminSuscripcionesPage() {
     setReviewMsg(data?.mailed ? "Recordatorio enviado por mail + push." : data ? "Recordatorio enviado por push." : "No se pudo enviar el recordatorio");
   }
 
-  async function resendReceipt(vendorId: string, r: ReceiptItem) {
-    setResendBusy(r.id);
-    const data = await patchQueue({ vendorId, action: "resend_receipt", receiptId: r.id });
-    setResendBusy(null);
-    setReviewMsg(data ? `Recibo ${r.year}/${String(r.seq).padStart(4, "0")} reenviado por mail.` : "No se pudo reenviar el recibo");
+  async function resendReceipt(vendorId: string, r: { id: string; seq: number; year: number }) {
+    setResendState((s) => ({ ...s, [r.id]: { busy: true } }));
+    try {
+      const res = await fetch("/api/admin/suscripciones", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ vendorId, action: "resend_receipt", receiptId: r.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.error) throw new Error(data.error || "No se pudo reenviar el recibo");
+      if (!data.emailed) {
+        setResendState((s) => ({
+          ...s,
+          [r.id]: { ok: false, text: data.error || "No se pudo enviar el mail" },
+        }));
+        return;
+      }
+      const now = new Date().toISOString();
+      setResendState((s) => ({ ...s, [r.id]: { ok: true, text: `Reenviado a ${data.to || "el comercio"}` } }));
+      setReceiptsByVendor((prev) => {
+        const list = prev[vendorId];
+        if (!list) return prev;
+        return {
+          ...prev,
+          [vendorId]: list.map((x) => (x.id === r.id ? { ...x, emailed_at: now } : x)),
+        };
+      });
+      setReviewed((prev) =>
+        prev.map((x) => (x.receipt_id === r.id ? { ...x, receipt_emailed_at: now } : x))
+      );
+    } catch (e) {
+      setResendState((s) => ({
+        ...s,
+        [r.id]: { ok: false, text: e instanceof Error ? e.message : "Error de conexión" },
+      }));
+    }
+  }
+
+  async function openReceipts(row: SuscripcionRow) {
+    setReceiptsFor(row);
+    setReceiptsLoading(true);
+    try {
+      await fetchHistory(row.vendor_id, true);
+    } finally {
+      setReceiptsLoading(false);
+    }
   }
 
   function openEmit(row: SuscripcionRow) {
@@ -336,7 +393,11 @@ export default function AdminSuscripcionesPage() {
     });
     setEmitBusy(false);
     if (data) {
-      setReviewMsg(`Recibo X ${data.receipt?.number ?? ""} emitido${emitForm.renew ? " y plan actualizado" : ""}.`);
+      setReviewMsg(
+        `Recibo X ${data.receipt?.number ?? ""} emitido${emitForm.renew ? " y plan actualizado" : ""}${
+          data.emailed ? ` · enviado a ${data.to}` : ` · ⚠ no se envió por mail${data.error ? ` (${data.error})` : ""}`
+        }.`
+      );
       setEmitRow(null);
       setEmitForm(null);
       await fetchHistory(emitRow.vendor_id, true);
@@ -658,6 +719,7 @@ export default function AdminSuscripcionesPage() {
                   <th className="py-2 pr-2 font-medium">Monto</th>
                   <th className="py-2 pr-2 font-medium">Método</th>
                   <th className="py-2 pr-2 font-medium">Resultado</th>
+                  <th className="py-2 pr-2 font-medium">Recibo</th>
                   <th className="py-2 font-medium">Revisado</th>
                 </tr>
               </thead>
@@ -673,6 +735,48 @@ export default function AdminSuscripcionesPage() {
                         {p.status === "approved" ? "Aprobado" : "Rechazado"}
                       </span>
                       {p.review_note && <p className="text-muted-foreground truncate max-w-[220px]" title={p.review_note}>{p.review_note}</p>}
+                    </td>
+                    <td className="py-2 pr-2">
+                      {p.receipt_id ? (
+                        <div className="flex flex-col gap-1">
+                          <div className="flex items-center gap-2">
+                            <a
+                              href={`/vendor/suscripcion/recibo/${p.receipt_id}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="font-medium text-primary hover:underline"
+                              title={p.receipt_emailed_at ? "Ver el A4 (abre en otra pestaña)" : "Ver el A4 (todavía sin mail)"}
+                            >
+                              {String(p.receipt_seq ?? 0).padStart(4, "0")}/{p.receipt_year}
+                            </a>
+                            <button
+                              disabled={resendState[p.receipt_id]?.busy}
+                              onClick={() =>
+                                resendReceipt(p.vendor_id, {
+                                  id: p.receipt_id as string,
+                                  seq: p.receipt_seq ?? 0,
+                                  year: p.receipt_year ?? 0,
+                                })
+                              }
+                              className="rounded-md border border-border px-2 py-0.5 text-[10px] font-semibold disabled:opacity-50"
+                              title={p.receipt_emailed_at ? "Volver a mandarlo por mail" : "Mandarlo por mail ahora"}
+                            >
+                              {resendState[p.receipt_id]?.busy ? "..." : "Reenviar"}
+                            </button>
+                          </div>
+                          {resendState[p.receipt_id]?.text ? (
+                            <p className={`text-[10px] ${resendState[p.receipt_id]?.ok ? "text-green-700 dark:text-green-400" : "text-red-600"}`}>
+                              {resendState[p.receipt_id]?.text}
+                            </p>
+                          ) : p.receipt_emailed_at ? (
+                            <p className="text-[10px] text-muted-foreground">enviado {fmtAgo(p.receipt_emailed_at)}</p>
+                          ) : (
+                            <p className="text-[10px] text-amber-600">sin mail</p>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground">-</span>
+                      )}
                     </td>
                     <td className="py-2">{p.reviewed_at ? new Date(p.reviewed_at).toLocaleString("es-AR") : "-"}</td>
                   </tr>
@@ -720,6 +824,13 @@ export default function AdminSuscripcionesPage() {
           emptyMessage="No hay suscripciones"
           actions={(r) => (
             <div className="flex items-center gap-1 justify-end">
+              <button
+                onClick={() => openReceipts(r)}
+                className="p-1.5 rounded-md hover:bg-muted transition-colors"
+                title="Recibos emitidos (ver, reenviar por mail)"
+              >
+                <Mail className="h-3.5 w-3.5 text-muted-foreground" />
+              </button>
               <button
                 onClick={() => openEmit(r)}
                 className="p-1.5 rounded-md hover:bg-muted transition-colors"
@@ -837,13 +948,20 @@ export default function AdminSuscripcionesPage() {
                         {r.emailed_at ? " · enviado por mail" : " · sin mail"}
                       </p>
                     </div>
-                    <button
-                      disabled={resendBusy === r.id}
-                      onClick={() => resendReceipt(expandedRow.vendor_id, r)}
-                      className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold disabled:opacity-50"
-                    >
-                      {resendBusy === r.id ? "..." : "Reenviar"}
-                    </button>
+                    <div className="flex flex-col items-end gap-1">
+                      <button
+                        disabled={resendState[r.id]?.busy}
+                        onClick={() => resendReceipt(expandedRow.vendor_id, r)}
+                        className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold disabled:opacity-50"
+                      >
+                        {resendState[r.id]?.busy ? "Enviando..." : "Reenviar"}
+                      </button>
+                      {resendState[r.id]?.text && (
+                        <p className={`text-[10px] text-right ${resendState[r.id]?.ok ? "text-green-700 dark:text-green-400" : "text-red-600"}`}>
+                          {resendState[r.id]?.text}
+                        </p>
+                      )}
+                    </div>
                   </div>
                 );
               })}
@@ -1018,6 +1136,108 @@ export default function AdminSuscripcionesPage() {
                 className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
               >
                 {emitBusy ? "..." : "Emitir recibo"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: recibos emitidos del comercio (reenviar / ver / emitir) */}
+      {receiptsFor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-xl max-h-[85vh] overflow-y-auto rounded-2xl border border-border bg-card p-5 space-y-3">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="font-display font-semibold">Recibos — {receiptsFor.store_name}</h3>
+                <p className="text-xs text-muted-foreground">
+                  Recibo X (documento no válido como factura). Reenviá el PDF por mail o abrí el A4.
+                </p>
+              </div>
+              <button
+                onClick={() => setReceiptsFor(null)}
+                className="rounded-md p-1.5 hover:bg-muted"
+                title="Cerrar"
+                aria-label="Cerrar"
+              >
+                ✕
+              </button>
+            </div>
+
+            {receiptsLoading ? (
+              <div className="space-y-2">
+                {[...Array(2)].map((_, i) => <div key={i} className="h-14 rounded-lg bg-muted animate-pulse" />)}
+              </div>
+            ) : (receiptsByVendor[receiptsFor.vendor_id] || []).length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Todavía no tiene recibos emitidos. Al aprobar un pago o emitir uno a mano, aparece acá.
+              </p>
+            ) : (
+              <div className="divide-y divide-border">
+                {(receiptsByVendor[receiptsFor.vendor_id] || []).map((r) => {
+                  const fb = resendState[r.id];
+                  return (
+                    <div key={r.id} className="py-3 flex flex-col sm:flex-row sm:items-center gap-2">
+                      <div className="flex-1 min-w-0">
+                        <a
+                          href={`/vendor/suscripcion/recibo/${r.id}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm font-medium text-primary hover:underline"
+                        >
+                          Recibo X {String(r.seq).padStart(4, "0")}/{r.year}
+                        </a>
+                        <p className="text-[11px] text-muted-foreground">
+                          {fmt(r.issued_at)} · {fmtMoney(r.amount)} · plan {r.plan_name} · {methodLabel(r.method)}
+                        </p>
+                        {fb?.text ? (
+                          <p className={`text-[11px] ${fb.ok ? "text-green-700 dark:text-green-400" : "text-red-600"}`}>
+                            {fb.text}
+                          </p>
+                        ) : r.emailed_at ? (
+                          <p className="text-[11px] text-muted-foreground">Enviado por mail el {new Date(r.emailed_at).toLocaleString("es-AR")}</p>
+                        ) : (
+                          <p className="text-[11px] text-amber-600">Todavía no se mandó por mail</p>
+                        )}
+                      </div>
+                      <div className="flex gap-2 shrink-0">
+                        <a
+                          href={`/vendor/suscripcion/recibo/${r.id}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold"
+                        >
+                          Ver A4
+                        </a>
+                        <button
+                          disabled={fb?.busy}
+                          onClick={() => resendReceipt(receiptsFor.vendor_id, r)}
+                          className="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+                        >
+                          {fb?.busy ? "Enviando..." : r.emailed_at ? "Reenviar por mail" : "Enviar por mail"}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            <div className="flex justify-between pt-1">
+              <button
+                onClick={() => {
+                  const row = receiptsFor;
+                  setReceiptsFor(null);
+                  openEmit(row);
+                }}
+                className="rounded-lg border border-border px-3 py-2 text-xs font-semibold"
+              >
+                Emitir recibo a mano
+              </button>
+              <button
+                onClick={() => setReceiptsFor(null)}
+                className="rounded-lg bg-muted px-4 py-2 text-sm font-semibold"
+              >
+                Cerrar
               </button>
             </div>
           </div>

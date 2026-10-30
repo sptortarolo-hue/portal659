@@ -255,7 +255,9 @@ export function resolveVendorPlan(
       maxProducts: null,
       maxOrdersMonth: null,
       maxQuotesMonth: null,
-      maxScreens: null,
+      // En preview el comercio puede probar la Pantalla TV: al menos 2
+      // pantallas (igual que Gestión), sin contar contra el plan real.
+      maxScreens: 2,
       hasTrial: false,
       trialEndsAt: vendor.trial_ends_at,
     };

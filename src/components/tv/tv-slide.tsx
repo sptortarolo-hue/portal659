@@ -13,13 +13,25 @@ type Props = {
 /** Bloque de categoría dentro de una columna (nombre + "continúa ›"). */
 function CategoryHeader({ name, count, continued }: { name: string; count: number; continued: boolean }) {
   return (
-    <div className="mb-2 flex items-baseline gap-3 border-b-2 pb-2" style={{ borderColor: "var(--tv-line)" }}>
-      <h3 className="font-bold uppercase tracking-wide" style={{ fontSize: TV_TYPE.category * 0.55 }}>
+    <div className="mb-2 flex items-center gap-3" style={{ paddingBottom: 10 }}>
+      <span
+        className="shrink-0 rounded-full"
+        style={{ width: 10, height: 44, background: "var(--tv-accent)" }}
+      />
+      <h3
+        className="font-display truncate font-black uppercase tracking-wide"
+        style={{ fontSize: TV_TYPE.category * 0.55, lineHeight: 1 }}
+      >
         {name}
       </h3>
-      <span style={{ fontSize: 24, color: "var(--tv-muted)" }}>{count}</span>
+      <span
+        className="shrink-0 rounded-full px-2.5 py-0.5 font-bold tabular-nums"
+        style={{ fontSize: 20, background: "var(--tv-scrim)", color: "var(--tv-muted)" }}
+      >
+        {count}
+      </span>
       {continued && (
-        <span className="ml-auto" style={{ fontSize: 24, color: "var(--tv-accent)" }}>
+        <span className="ml-auto shrink-0 font-semibold" style={{ fontSize: 23, color: "var(--tv-accent)" }}>
           continúa ›
         </span>
       )}
@@ -27,11 +39,19 @@ function CategoryHeader({ name, count, continued }: { name: string; count: numbe
   );
 }
 
-/** Una slide del tablero: columnas de categorías, sin scroll y sin recortes. */
+/**
+ * Una slide del tablero: columnas de categorías, sin scroll y sin recortes.
+ *
+ * Los ítems entran escalonados (stagger) para que la slide "se arme" sola en
+ * vez de aparecer de golpe: da sensación de vivo sin recargar la página.
+ */
 export function TvSlideView({ slide, sections, photoStyle, vertical }: Props) {
   const byId = new Map<string, TvItem>();
   for (const s of sections) for (const it of s.items) byId.set(it.id, it);
   const bySection = new Map(sections.map((s) => [s.id, s] as const));
+
+  // Índice global de la slide: el escalonado corre a lo largo de las columnas.
+  let order = 0;
 
   return (
     <div className="flex h-full w-full gap-8">
@@ -48,7 +68,17 @@ export function TvSlideView({ slide, sections, photoStyle, vertical }: Props) {
               {col.itemIds.map((id) => {
                 const item = byId.get(id);
                 if (!item) return null;
-                return <TvItemRow key={id} item={item} photoStyle={photoStyle} vertical={vertical} />;
+                const delay = Math.min(order, 10) * 45;
+                order += 1;
+                return (
+                  <div
+                    key={id}
+                    className="tv-item-enter"
+                    style={{ animationDelay: `${delay}ms` }}
+                  >
+                    <TvItemRow item={item} photoStyle={photoStyle} vertical={vertical} />
+                  </div>
+                );
               })}
             </div>
           </div>

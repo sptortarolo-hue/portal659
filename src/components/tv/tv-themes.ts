@@ -28,6 +28,18 @@ export type TvThemeTokens = {
   priceInk: string;
   /** Gradiente de fondo (scrim para fotos). */
   scrim: string;
+  /** Fondo del lienzo: gradiente + halos (da profundidad, no color plano). */
+  bgGrad: string;
+  /** Halo del acento (manchas de luz suave). */
+  glow: string;
+  /** Halo secundario (contraste de temperatura). */
+  glow2: string;
+  /** Fondo del chip de precio. */
+  priceBg: string;
+  /** Tinta del chip de precio (contrasta con priceBg). */
+  priceChipInk: string;
+  /** Scrim fuerte para texto sobre foto (hero). */
+  scrimStrong: string;
 };
 
 export const TV_THEME_TOKENS: Record<TvTheme, TvThemeTokens> = {
@@ -42,6 +54,15 @@ export const TV_THEME_TOKENS: Record<TvTheme, TvThemeTokens> = {
     accentInk: "#101623",
     priceInk: "#101623",
     scrim: "rgba(16,22,35,0.06)",
+    bgGrad:
+      "radial-gradient(1100px 620px at 8% -12%, rgba(163,230,51,0.22), transparent 62%)," +
+      "radial-gradient(900px 520px at 102% -6%, rgba(99,102,241,0.14), transparent 58%)," +
+      "linear-gradient(180deg, #FFFDF7 0%, #F6F1E6 100%)",
+    glow: "rgba(163,230,51,0.20)",
+    glow2: "rgba(99,102,241,0.14)",
+    priceBg: "#101623",
+    priceChipInk: "#FFFDF7",
+    scrimStrong: "linear-gradient(100deg, rgba(10,14,24,0.92) 0%, rgba(10,14,24,0.74) 46%, rgba(10,14,24,0.28) 100%)",
   },
   // Oscuro: el que se ve mejor en un local con poca luz.
   noche: {
@@ -54,6 +75,15 @@ export const TV_THEME_TOKENS: Record<TvTheme, TvThemeTokens> = {
     accentInk: "#101623",
     priceInk: "#E9FBFF",
     scrim: "rgba(245,247,250,0.06)",
+    bgGrad:
+      "radial-gradient(1200px 680px at 6% -14%, rgba(163,230,51,0.18), transparent 60%)," +
+      "radial-gradient(1000px 600px at 104% 4%, rgba(56,189,248,0.16), transparent 56%)," +
+      "linear-gradient(180deg, #0B1020 0%, #070A15 100%)",
+    glow: "rgba(163,230,51,0.16)",
+    glow2: "rgba(56,189,248,0.14)",
+    priceBg: "#A3E633",
+    priceChipInk: "#101623",
+    scrimStrong: "linear-gradient(100deg, rgba(4,7,16,0.94) 0%, rgba(4,7,16,0.76) 48%, rgba(4,7,16,0.24) 100%)",
   },
   // Pizarra: para bares/confiterías que quieren el estilo de menú pintado.
   pizarra: {
@@ -66,6 +96,15 @@ export const TV_THEME_TOKENS: Record<TvTheme, TvThemeTokens> = {
     accentInk: "#1E2A24",
     priceInk: "#FFD166",
     scrim: "rgba(242,240,230,0.06)",
+    bgGrad:
+      "radial-gradient(1000px 620px at 4% -10%, rgba(255,209,102,0.16), transparent 60%)," +
+      "radial-gradient(900px 540px at 98% 2%, rgba(52,211,153,0.12), transparent 56%)," +
+      "linear-gradient(180deg, #1E2A24 0%, #16201B 100%)",
+    glow: "rgba(255,209,102,0.14)",
+    glow2: "rgba(52,211,153,0.12)",
+    priceBg: "#FFD166",
+    priceChipInk: "#1E2A24",
+    scrimStrong: "linear-gradient(100deg, rgba(8,14,11,0.94) 0%, rgba(8,14,11,0.74) 48%, rgba(8,14,11,0.22) 100%)",
   },
   // Fresco: verdulería, heladería, dietéticas.
   fresco: {
@@ -78,6 +117,15 @@ export const TV_THEME_TOKENS: Record<TvTheme, TvThemeTokens> = {
     accentInk: "#04231A",
     priceInk: "#0E5C45",
     scrim: "rgba(18,33,26,0.05)",
+    bgGrad:
+      "radial-gradient(1000px 600px at 2% -12%, rgba(52,211,153,0.22), transparent 60%)," +
+      "radial-gradient(900px 540px at 100% 0%, rgba(125,211,252,0.18), transparent 56%)," +
+      "linear-gradient(180deg, #F7FBF4 0%, #E9F3EA 100%)",
+    glow: "rgba(52,211,153,0.18)",
+    glow2: "rgba(125,211,252,0.16)",
+    priceBg: "#0E5C45",
+    priceChipInk: "#F0FFF7",
+    scrimStrong: "linear-gradient(100deg, rgba(6,24,17,0.92) 0%, rgba(6,24,17,0.74) 46%, rgba(6,24,17,0.26) 100%)",
   },
 };
 
@@ -109,6 +157,12 @@ export function themeVars(theme: TvTheme): Record<string, string> {
     "--tv-accent-ink": t.accentInk,
     "--tv-price": t.priceInk,
     "--tv-scrim": t.scrim,
+    "--tv-bg-grad": t.bgGrad,
+    "--tv-glow": t.glow,
+    "--tv-glow-2": t.glow2,
+    "--tv-price-bg": t.priceBg,
+    "--tv-price-ink": t.priceChipInk,
+    "--tv-scrim-strong": t.scrimStrong,
   };
 }
 

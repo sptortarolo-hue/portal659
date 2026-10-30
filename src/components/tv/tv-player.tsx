@@ -12,9 +12,9 @@ import { buildSlides, TV_CANVAS, type TvItemRef, type TvPosterRef } from "@/lib/
 import type { TvItem, TvSnapshot } from "@/lib/tv-snapshot";
 import type { TvTheme } from "@/lib/tv-config";
 
-const HEADER_H = 110;
-const HERO_H = 300;
-const TICKER_H = 90;
+const HEADER_H = 118;
+const HERO_H = 320;
+const TICKER_H = 92;
 /** Anti burn-in: corrije 8px cada minuto en cualquier TV. */
 const SHIFT_MS = 60000;
 /** Recarga preventiva: las TVs barran mucho tiempo abiertas. */
@@ -53,7 +53,15 @@ export function TvPlayer({ snapshot, token, mode, vertical, debug = false, fitPa
           hasPhoto: !!i.imageUrl,
         })) as TvItemRef[],
       })),
-    [snap.sections, snap.config.showDescriptions]
+    // Firma estable del contenido: el poll de 30s devuelve arrays nuevos y,
+    // sin esto, se reconstruiría el layout y se reiniciaría la rotación.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [
+      `${snap.config.showDescriptions ? 1 : 0}`,
+      snap.sections
+        .map((s) => `${s.id}:${s.items.map((i) => `${i.id}/${i.name}/${i.desc ?? ""}/${i.imageUrl ? 1 : 0}`).join("|")}`)
+        .join("~"),
+    ]
   );
 
   const contentH =
@@ -70,7 +78,10 @@ export function TvPlayer({ snapshot, token, mode, vertical, debug = false, fitPa
         type: p.type === "video" ? "video" : "image",
         durationSec: p.durationSec || 5,
       })),
-    [snap.config.posters]
+    // Clave estable: si no, cada poll de 30s genera un array nuevo y reinicia
+    // el timer de rotación de slides.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [(snap.config.posters || []).map((p) => `${p.url}|${p.type}|${p.durationSec}`).join(",")]
   );
 
   const slides = useMemo(
@@ -87,9 +98,12 @@ export function TvPlayer({ snapshot, token, mode, vertical, debug = false, fitPa
     [sections, snap.config.columns, contentH, photoStyle, snap.config.showDescriptions, posters]
   );
 
+  // Solo se reinicia la rotación cuando cambia la VERSIÓN publicada (el
+  // comercio tocó "Publicar"). Antes se reseteaba con cada poll de 30s y la
+  // TV volvía a la primera slide todo el tiempo.
   useEffect(() => {
     setIdx(0);
-  }, [snap]);
+  }, [snap.version]);
 
   // --- Rotación de slides (cada slide usa su propia duración) -----------------
   useEffect(() => {
@@ -202,6 +216,8 @@ export function TvPlayer({ snapshot, token, mode, vertical, debug = false, fitPa
 
   const closed = snap.vendor.isOpen === false && snap.config.closedScreen;
   const slide = slides[Math.min(idx, Math.max(0, slides.length - 1))];
+  // Duración de la slide actual: los posters tienen la suya.
+  const slideDuration = slide?.poster ? slide.poster.durationSec : snap.config.slideSeconds;
   const upsellItem: TvItem | null = useMemo(() => {
     if (!snap.config.upsell.enabled) return null;
     const id = snap.config.upsell.productId;
@@ -243,9 +259,9 @@ export function TvPlayer({ snapshot, token, mode, vertical, debug = false, fitPa
                 <TvHero hero={snap.hero} upsell={snap.config.upsell} upsellItem={upsellItem} />
               </div>
             )}
-            <div key={idx} className="relative min-h-0 flex-1">
+            <div key={idx} className="tv-slide-enter relative min-h-0 flex-1">
               {slide?.poster ? (
-                <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-2xl">
+                <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-[28px]">
                   {slide.poster.type === "video" ? (
                     <video
                       src={slide.poster.url}
@@ -272,13 +288,34 @@ export function TvPlayer({ snapshot, token, mode, vertical, debug = false, fitPa
                 </div>
               )}
               {slides.length > 1 && (
-                <div
-                  className="absolute bottom-0 left-0 h-1 rounded-full"
-                  style={{
-                    background: "var(--tv-accent)",
-                    animation: `tv-progress ${snap.config.slideSeconds}s linear forwards`,
-                  }}
-                />
+                <div className="absolute inset-x-0 bottom-0 flex items-center gap-4">
+                  <div
+                    className="h-[6px] flex-1 overflow-hidden rounded-full"
+                    style={{ background: "var(--tv-scrim)" }}
+                  >
+                    <div
+                      className="h-full rounded-full"
+                      style={{
+                        background: "var(--tv-accent)",
+                        animation: `tv-progress ${slideDuration}s linear forwards`,
+                      }}
+                    />
+                  </div>
+                  <div className="flex items-center gap-2 pb-0.5">
+                    {slides.map((s, i) => (
+                      <span
+                        key={i}
+                        className="rounded-full transition-all"
+                        style={{
+                          width: i === idx ? 26 : 9,
+                          height: 9,
+                          background: i === idx ? "var(--tv-accent)" : "var(--tv-muted)",
+                          opacity: i === idx ? 1 : 0.45,
+                        }}
+                      />
+                    ))}
+                  </div>
+                </div>
               )}
             </div>
             {snap.config.ticker.enabled && <TvTicker text={snap.config.ticker.text} />}

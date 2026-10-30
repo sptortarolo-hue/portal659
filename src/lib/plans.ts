@@ -80,7 +80,9 @@ const GRATUITO_FEATURES: PlanFeatures = {
   deposits: false,
   fiscal: false,
   inventory: false,
-  screens: false,
+  // Pantalla TV: 1 pantalla gratis para los comercios con carta (growth).
+  // Servicios la enmascara a false (no tiene carta de menú).
+  screens: true,
 };
 
 // Features del plan Gratuito para gastronomía: carta completa + carrito +
@@ -354,9 +356,14 @@ export function resolveVendorPlan(
     isEsteticaVendor(vendor) && !(paid)
       ? ESTETICA_FREE_QUOTES_MONTH
       : (limitRow?.max_quotes_month ?? null);
-  // Pantallas TV: solo las trae el plan pago vigente con feature `screens`
-  // (Gestión integral). El gratuito y los pagos vencidos no tienen (0).
-  const maxScreens = paid ? Number(plan?.max_screens ?? 0) : 0;
+  // Pantallas TV: el gratuito tiene 1 (growth), la gestión 2. Servicios y los
+  // planes vencidos no tienen (0). El tope viene del plan (max_screens).
+  const fallbackScreens = paid
+    ? (plan?.slug === "gestion" ? 2 : 1)
+    : 1;
+  const maxScreens = can("screens")
+    ? Number((paid ? plan : freePlanRow)?.max_screens ?? fallbackScreens)
+    : 0;
 
   return {
     plan,

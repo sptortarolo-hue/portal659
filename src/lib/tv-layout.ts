@@ -62,8 +62,16 @@ export type TvColumn = {
   itemIds: string[];
 };
 
+export type TvPosterRef = {
+  url: string;
+  type: "image" | "video";
+  durationSec: number;
+};
+
 export type TvSlide = {
   columns: TvColumn[];
+  /** Si está presente, la slide es un poster a pantalla completa (sin columnas). */
+  poster?: TvPosterRef | null;
 };
 
 export type BuildSlidesInput = {
@@ -75,6 +83,10 @@ export type BuildSlidesInput = {
   height: number;
   photoStyle: "none" | "thumb";
   showDescriptions: boolean;
+  /** Posters a intercalar entre las slides de la carta. */
+  posters?: TvPosterRef[];
+  /** Cada cuántas slides se intercala un poster (default 3). */
+  posterEvery?: number;
 };
 
 function textLines(text: string, charW: number, fontSize: number, width: number): number {
@@ -187,7 +199,7 @@ export function packColumns(
 /** Todas las slides de la pantalla (wrapper cómodo para el player). */
 export function buildSlides(input: BuildSlidesInput): TvSlide[] {
   const width = TV_CANVAS.w - TV_CANVAS.safeX * 2;
-  return packColumns(
+  const menuSlides = packColumns(
     input.sections,
     input.columns,
     input.width ?? width,
@@ -195,6 +207,19 @@ export function buildSlides(input: BuildSlidesInput): TvSlide[] {
     input.photoStyle,
     input.showDescriptions
   );
+  const posters = (input.posters || []).filter((p) => !!p?.url);
+  if (posters.length === 0) return menuSlides;
+  const every = Math.max(1, Math.floor(input.posterEvery || 3));
+  const out: TvSlide[] = [];
+  let p = 0;
+  menuSlides.forEach((s, i) => {
+    if (i > 0 && i % every === 0 && p < posters.length) {
+      out.push({ columns: [], poster: posters[p++] });
+    }
+    out.push(s);
+  });
+  while (p < posters.length) out.push({ columns: [], poster: posters[p++] });
+  return out;
 }
 
 /** Escala para meter el lienzo de 1920×1080 en el viewport del TV. */

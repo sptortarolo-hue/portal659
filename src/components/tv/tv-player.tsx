@@ -8,7 +8,7 @@ import { TvSlideView } from "./tv-slide";
 import { TvTicker } from "./tv-ticker";
 import { TvClosed } from "./tv-closed";
 import { TV_FONT } from "./tv-themes";
-import { buildSlides, TV_CANVAS, type TvItemRef } from "@/lib/tv-layout";
+import { buildSlides, TV_CANVAS, type TvItemRef, type TvPosterRef } from "@/lib/tv-layout";
 import type { TvItem, TvSnapshot } from "@/lib/tv-snapshot";
 import type { TvTheme } from "@/lib/tv-config";
 
@@ -61,6 +61,16 @@ export function TvPlayer({ snapshot, token, mode, vertical, debug = false }: Pro
     (snap.hero.length > 0 ? HERO_H : 0) -
     (snap.config.ticker.enabled && snap.config.ticker.text.trim() ? TICKER_H : 0);
 
+  const posters: TvPosterRef[] = useMemo(
+    () =>
+      (snap.config.posters || []).map((p) => ({
+        url: p.url,
+        type: p.type === "video" ? "video" : "image",
+        durationSec: p.durationSec || 5,
+      })),
+    [snap.config.posters]
+  );
+
   const slides = useMemo(
     () =>
       buildSlides({
@@ -70,20 +80,23 @@ export function TvPlayer({ snapshot, token, mode, vertical, debug = false }: Pro
         height: contentH,
         photoStyle,
         showDescriptions: snap.config.showDescriptions,
+        posters,
       }),
-    [sections, snap.config.columns, contentH, photoStyle, snap.config.showDescriptions]
+    [sections, snap.config.columns, contentH, photoStyle, snap.config.showDescriptions, posters]
   );
 
   useEffect(() => {
     setIdx(0);
   }, [snap]);
 
-  // --- Rotación de slides ----------------------------------------------------
+  // --- Rotación de slides (cada slide usa su propia duración) -----------------
   useEffect(() => {
     if (slides.length <= 1) return;
-    const id = setInterval(() => setIdx((i) => (i + 1) % slides.length), snap.config.slideSeconds * 1000);
-    return () => clearInterval(id);
-  }, [slides.length, snap.config.slideSeconds]);
+    const cur = slides[Math.min(idx, slides.length - 1)];
+    const dur = (cur?.poster ? cur.poster.durationSec : snap.config.slideSeconds) * 1000;
+    const id = setTimeout(() => setIdx((i) => (i + 1) % slides.length), dur);
+    return () => clearTimeout(id);
+  }, [idx, slides, snap.config.slideSeconds]);
 
   // --- Cache offline: la TV sigue mostrando la última carta sin internet -----
   useEffect(() => {
@@ -229,7 +242,23 @@ export function TvPlayer({ snapshot, token, mode, vertical, debug = false }: Pro
               </div>
             )}
             <div key={idx} className="relative min-h-0 flex-1">
-              {slide ? (
+              {slide?.poster ? (
+                <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-2xl">
+                  {slide.poster.type === "video" ? (
+                    <video
+                      src={slide.poster.url}
+                      autoPlay
+                      muted
+                      loop
+                      playsInline
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={slide.poster.url} alt="" className="h-full w-full object-cover" />
+                  )}
+                </div>
+              ) : slide ? (
                 <TvSlideView slide={slide} sections={snap.sections} photoStyle={photoStyle} vertical={vertical} />
               ) : (
                 <div className="flex h-full items-center justify-center">

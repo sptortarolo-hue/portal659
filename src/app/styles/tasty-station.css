@@ -1,0 +1,277 @@
+/* ==========================================================================
+   Tasty Station UI — diseño del panel (panel del comercio + panel del portal).
+   Spec: https://... (JSON "Tasty Station UI" v1.0.0)
+
+   REGLA DE ORO: los tokens van bajo `.ts-ui`, NUNCA en `:root`. Fuera de
+   `.ts-ui` el sitio público y los micrositios siguen con los tokens de
+   globals.css intactos → el rediseño no puede repintar lo público.
+
+   Cómo se prende (switch por navegador, default clásico):
+     - script pre-paint en el <head> pone `data-panel-ui="tasty"` en <html>
+       lejos de la cookie `portal659-panel-ui`, el localStorage o `?ui=tasty`.
+     - los shells del panel (`/vendor/dashboard`, `/admin`) llevan `.ts-ui`
+       siempre (no-op sin el attribute).
+     - el kit nuevo (`src/components/panel-ui/*`) usa los mismos tokens, así
+       que se ve con el diseño nuevo aunque el switch esté apagado.
+   Helper: src/lib/panel-ui.ts
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   1. Tokens del panel (siempre activos dentro de .ts-ui)
+   -------------------------------------------------------------------------- */
+.ts-ui {
+  /* Paleta (spec) */
+  --color-background: #f8fafc;
+  --color-foreground: #0f172a;
+  --color-card: #ffffff;
+  --color-card-foreground: #0f172a;
+  --color-border: #e2e8f0;
+  --color-input: #e2e8f0;
+  --color-ring: #0d9488;
+
+  --color-primary: #0d9488;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #f1f5f9;
+  --color-secondary-foreground: #0f172a;
+  --color-accent: #e6f4f1;
+  --color-accent-foreground: #0f766e;
+  --color-muted: #f1f5f9;
+  --color-muted-foreground: #64748b;
+  --color-destructive: #ef4444;
+  --color-destructive-foreground: #ffffff;
+
+  /* Radios del spec: 8 botones/inputs · 12 tarjetas · 16 tarjetas activas */
+  --radius-sm: 8px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 12px;
+  --radius-2xl: 16px;
+  --radius-3xl: 20px;
+
+  /* Layout (spec) */
+  --ts-sidebar-w: 240px;
+  --ts-right-w: 320px;
+
+  /* Sombras (spec) */
+  --ts-shadow-card: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
+  --ts-shadow-pop: 0 8px 24px -4px rgba(15, 23, 42, 0.12);
+
+  /* Estados (spec) */
+  --ts-success: #10b981;
+  --ts-warning: #f59e0b;
+  --ts-danger: #ef4444;
+  --ts-info: #3b82f6;
+
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+}
+
+html.dark .ts-ui {
+  --color-background: #0f172a;
+  --color-foreground: #e2e8f0;
+  --color-card: #1e293b;
+  --color-card-foreground: #e2e8f0;
+  --color-border: #334155;
+  --color-input: #334155;
+  --color-ring: #2dd4bf;
+
+  --color-primary: #2dd4bf;
+  --color-primary-foreground: #042f2e;
+  --color-secondary: #1e293b;
+  --color-secondary-foreground: #e2e8f0;
+  --color-accent: #134e4a;
+  --color-accent-foreground: #99f6e4;
+  --color-muted: #1e293b;
+  --color-muted-foreground: #94a3b8;
+  --color-destructive: #f87171;
+  --color-destructive-foreground: #450a0a;
+
+  --ts-shadow-card: 0 1px 3px 0 rgba(0, 0, 0, 0.4);
+  --ts-shadow-pop: 0 8px 24px -4px rgba(0, 0, 0, 0.5);
+
+  --ts-success: #34d399;
+  --ts-warning: #fbbf24;
+  --ts-danger: #f87171;
+  --ts-info: #60a5fa;
+}
+
+/* --------------------------------------------------------------------------
+   2. Shell existente con el diseño nuevo (solo con el switch prendido)
+   -------------------------------------------------------------------------- */
+html[data-panel-ui="tasty"] .ts-ui .rounded-md,
+html[data-panel-ui="tasty"] .ts-ui .rounded-lg {
+  border-radius: 8px;
+}
+
+html[data-panel-ui="tasty"] .ts-ui .rounded-xl {
+  border-radius: 12px;
+}
+
+html[data-panel-ui="tasty"] .ts-ui .rounded-2xl {
+  border-radius: 16px;
+}
+
+/* Tarjetas: superficie blanca + borde slate + sombra corta del spec */
+html[data-panel-ui="tasty"] .ts-ui .bg-card {
+  border-color: var(--color-border);
+  box-shadow: var(--ts-shadow-card);
+}
+
+/* Foco visible teal en todo el panel */
+html[data-panel-ui="tasty"] .ts-ui :is(button, a, input, select, textarea, [role="button"]):focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+}
+
+/* Barras sticky sin backdrop-blur (bug de compositing en Chrome/Android):
+   el panel ya las pide sólidas; acá se refuerza el fondo del borde. */
+html[data-panel-ui="tasty"] .ts-ui [class*="sticky"] {
+  border-color: var(--color-border);
+}
+
+/* --------------------------------------------------------------------------
+   3. Utilidades del kit (src/components/panel-ui/*)
+   Funcionan dentro de .ts-ui (llevan los tokens) en cualquier modo.
+   -------------------------------------------------------------------------- */
+
+/* Tarjeta base del spec */
+@utility ts-card {
+  background-color: var(--color-card);
+  color: var(--color-card-foreground);
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  box-shadow: var(--ts-shadow-card);
+}
+
+/* Tarjeta cliqueable: al pasar el puntero se marca el borde en teal */
+@utility ts-card-hover {
+  background-color: var(--color-card);
+  color: var(--color-card-foreground);
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  box-shadow: var(--ts-shadow-card);
+  transition:
+    border-color 0.2s ease-out,
+    box-shadow 0.2s ease-out,
+    transform 0.2s ease-out;
+  &:hover {
+    border-color: var(--color-primary);
+    box-shadow: var(--ts-shadow-pop);
+  }
+}
+
+/* Badge de estado (spec: radio 12, 11px, semibold) */
+@utility ts-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  border-radius: 12px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+/* Chip de categoría (pill) + estado activo */
+@utility ts-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  border-radius: 9999px;
+  padding: 8px 16px;
+  border: 1px solid var(--color-border);
+  background-color: var(--color-card);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-foreground);
+  white-space: nowrap;
+  transition:
+    border-color 0.2s ease-out,
+    color 0.2s ease-out,
+    background-color 0.2s ease-out;
+}
+
+@utility ts-chip-active {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background-color: var(--color-accent);
+}
+
+/* Buscador con ícono a la izquierda (spec) */
+@utility ts-search {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+  background-color: var(--color-background);
+  padding: 8px 12px;
+  color: var(--color-muted-foreground);
+  font-size: 13px;
+  transition: border-color 0.2s ease-out;
+  &:focus-within {
+    border-color: var(--color-primary);
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.1);
+  }
+}
+
+/* Stepper de cantidad (pill con − / +) */
+@utility ts-stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: 9999px;
+  border: 1px solid var(--color-border);
+  padding: 4px 10px;
+  background-color: var(--color-card);
+}
+
+/* Panel lateral derecho del spec (resumen / facturación) */
+@utility ts-panel-right {
+  width: var(--ts-right-w);
+  flex-shrink: 0;
+  background-color: var(--color-card);
+  border-left: 1px solid var(--color-border);
+}
+
+/* Lateral del spec (240px) */
+@utility ts-sidebar {
+  width: var(--ts-sidebar-w);
+  flex-shrink: 0;
+  background-color: var(--color-card);
+  border-right: 1px solid var(--color-border);
+}
+
+/* Tipografía del spec (para los textos nuevos del panel) */
+@utility ts-title {
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 32px;
+}
+
+@utility ts-subtitle {
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 24px;
+}
+
+@utility ts-body-strong {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+@utility ts-body {
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 18px;
+}
+
+@utility ts-caption {
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 16px;
+}

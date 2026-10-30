@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { X, Package, ChefHat, ShoppingBag, LayoutGrid, UtensilsCrossed, Settings, BarChart3, History, Star, ExternalLink, LogOut, Home, Sparkles, Calculator, Bot, DollarSign, Receipt, Users, MessageSquare, CalendarDays, ClipboardList, Boxes, Image, BookOpen, Share, Gift, Monitor } from "lucide-react";
 import type { ConfigSectionStatus } from "@/components/dashboard/config-nav";
+import { PanelUiSwitch } from "@/components/panel-ui/panel-ui-switch";
 
 type Tab = "hoy" | "config" | "menu" | "orders" | "pedidos" | "mostrador" | "history" | "comanda" | "analytics" | "pos" | "mesas" | "caja" | "gastos" | "clientes" | "reviews" | "recetas" | "fiscal" | "inventario" | "galeria" | "promos" | "tarjetas" | "pantalla" | "servicios";
 
@@ -482,6 +483,9 @@ export default function VendorSidebar({
             <span className="flex-1 truncate">Manuales</span>
             <ExternalLink className="h-3 w-3" />
           </Link>
+          {/* Switch de diseño del panel: solo prende en esta navegadora
+              (cookie portal659-panel-ui). Ver src/lib/panel-ui.ts */}
+          <PanelUiSwitch />
           {/* "Volver al sitio" no aplica al equipo: se queda en su panel. */}
           {!isStaffMember && (
           <Link

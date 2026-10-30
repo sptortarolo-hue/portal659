@@ -1,4 +1,7 @@
 @import "tailwindcss";
+/* Tasty Station UI (diseño del panel): tokens scoped bajo .ts-ui + kit.
+   No pisa el sitio público. Ver src/app/styles/tasty-station.css */
+@import "./styles/tasty-station.css";
 
 @theme {
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;

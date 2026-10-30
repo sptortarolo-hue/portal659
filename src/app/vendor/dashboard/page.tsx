@@ -1682,7 +1682,7 @@ function VendorDashboardInner() {
   });
 
   return (
-    <div className="min-h-screen bg-background flex">
+    <div className="ts-ui min-h-screen bg-background flex">
       {/* Sidebar — desktop: always visible; mobile: slide-in.
           En modo cocina (sm+) se desmonta: pantalla pura para la Comanda. */}
       {!kitchenMode && (

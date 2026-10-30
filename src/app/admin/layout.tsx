@@ -16,7 +16,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   return (
     <AdminGuard>
-      <div className="min-h-screen bg-background flex">
+      <div className="ts-ui min-h-screen bg-background flex">
         <AdminSidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
         <div className="flex-1 flex flex-col min-h-screen lg:ml-64 min-w-0">

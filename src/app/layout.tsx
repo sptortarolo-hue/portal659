@@ -16,6 +16,8 @@ import { WhatsAppFloat } from "@/components/ui/whatsapp-float";
 import { BottomNav } from "@/components/nav/bottom-nav";
 import { OnboardingOverlay } from "@/components/onboarding/onboarding-overlay";
 import { AnalyticsBeacon } from "@/components/analytics/analytics-beacon";
+import { PANEL_UI_PRE_PAINT } from "@/lib/panel-ui";
+import { PanelUiProvider } from "@/components/panel-ui/panel-ui-provider";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -107,6 +109,14 @@ export default function RootLayout({
         <meta name="mobile-web-app-capable" content="yes" />
         <script
           dangerouslySetInnerHTML={{
+            // Pre-paint del diseño del panel: cookie `portal659-panel-ui`,
+            // localStorage o `?ui=tasty|classic` → data-panel-ui en <html>
+            // (default clásico). Mismo patrón que el tema de abajo.
+            __html: PANEL_UI_PRE_PAINT,
+          }}
+        />
+        <script
+          dangerouslySetInnerHTML={{
             // Pre-paint (antes del primer frame): resuelve el tema con la
             // misma lógica del ThemeProvider. Las barras del sistema usan el
             // color del modo (negro en oscuro, blanco en claro); el fondo del
@@ -123,6 +133,7 @@ export default function RootLayout({
         suppressHydrationWarning
       >
         <ThemeProvider>
+          <PanelUiProvider>
           <ThemeColorSync />
           <CartProvider>
             <ToastProvider>
@@ -157,6 +168,7 @@ export default function RootLayout({
               </footer>
             </ToastProvider>
           </CartProvider>
+          </PanelUiProvider>
         </ThemeProvider>
       </body>
     </html>

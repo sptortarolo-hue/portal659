@@ -97,18 +97,17 @@ html.dark .ts-ui {
 
 /* --------------------------------------------------------------------------
    2. Shell existente con el diseño nuevo (solo con el switch prendido)
+   El radio ya viene de los tokens (--radius-md 8 / --radius-lg 12 /
+   --radius-2xl 16); acá solo se refuerza lo que los tokens no alcanzan.
    -------------------------------------------------------------------------- */
-html[data-panel-ui="tasty"] .ts-ui .rounded-md,
-html[data-panel-ui="tasty"] .ts-ui .rounded-lg {
+
+/* Botones e inputs del spec: radio 8px y peso 600 */
+html[data-panel-ui="tasty"] .ts-ui :is(button, [role="button"], input, select, textarea) {
   border-radius: 8px;
 }
 
-html[data-panel-ui="tasty"] .ts-ui .rounded-xl {
-  border-radius: 12px;
-}
-
-html[data-panel-ui="tasty"] .ts-ui .rounded-2xl {
-  border-radius: 16px;
+html[data-panel-ui="tasty"] .ts-ui :is(button, [role="button"]) {
+  font-weight: 600;
 }
 
 /* Tarjetas: superficie blanca + borde slate + sombra corta del spec */
@@ -117,17 +116,44 @@ html[data-panel-ui="tasty"] .ts-ui .bg-card {
   box-shadow: var(--ts-shadow-card);
 }
 
+/* Barras sticky del panel (topbar, headers de tablas): superficie blanca */
+html[data-panel-ui="tasty"] .ts-ui [class*="sticky"] {
+  background-color: var(--color-card);
+  border-color: var(--color-border);
+}
+
+/* Links de acción del panel: teal, sin subrayado hasta el hover */
+html[data-panel-ui="tasty"] .ts-ui .text-primary {
+  color: var(--color-primary);
+}
+
 /* Foco visible teal en todo el panel */
 html[data-panel-ui="tasty"] .ts-ui :is(button, a, input, select, textarea, [role="button"]):focus-visible {
   outline: 2px solid var(--color-ring);
   outline-offset: 2px;
 }
 
-/* Barras sticky sin backdrop-blur (bug de compositing en Chrome/Android):
-   el panel ya las pide sólidas; acá se refuerza el fondo del borde. */
-html[data-panel-ui="tasty"] .ts-ui [class*="sticky"] {
-  border-color: var(--color-border);
-}
+/* Estados de pedidos/turnos con la paleta del spec (chips del Kanban) */
+html[data-panel-ui="tasty"] .ts-ui .bg-blue-100 { background-color: rgba(59, 130, 246, 0.12); }
+html[data-panel-ui="tasty"] .ts-ui .bg-amber-100 { background-color: rgba(245, 158, 11, 0.12); }
+html[data-panel-ui="tasty"] .ts-ui .bg-orange-100 { background-color: rgba(249, 115, 22, 0.12); }
+html[data-panel-ui="tasty"] .ts-ui .bg-green-100 { background-color: rgba(16, 185, 129, 0.12); }
+html[data-panel-ui="tasty"] .ts-ui .bg-emerald-100 { background-color: rgba(16, 185, 129, 0.12); }
+html[data-panel-ui="tasty"] .ts-ui .bg-violet-100 { background-color: rgba(139, 92, 246, 0.12); }
+html[data-panel-ui="tasty"] .ts-ui .bg-purple-100 { background-color: rgba(139, 92, 246, 0.12); }
+html[data-panel-ui="tasty"] .ts-ui .bg-cyan-100 { background-color: rgba(6, 182, 212, 0.12); }
+html[data-panel-ui="tasty"] .ts-ui .bg-gray-100 { background-color: var(--color-muted); }
+
+html[data-panel-ui="tasty"] .ts-ui .text-blue-700 { color: #2563eb; }
+html[data-panel-ui="tasty"] .ts-ui .text-amber-700 { color: #b45309; }
+html[data-panel-ui="tasty"] .ts-ui .text-orange-700 { color: #c2410c; }
+html[data-panel-ui="tasty"] .ts-ui .text-green-700 { color: #047857; }
+html[data-panel-ui="tasty"] .ts-ui .text-emerald-700 { color: #047857; }
+html[data-panel-ui="tasty"] .ts-ui .text-violet-700 { color: #6d28d9; }
+html[data-panel-ui="tasty"] .ts-ui .text-purple-700 { color: #6d28d9; }
+html[data-panel-ui="tasty"] .ts-ui .text-cyan-700 { color: #0e7490; }
+html[data-panel-ui="tasty"] .ts-ui .text-red-600 { color: var(--ts-danger); }
+html[data-panel-ui="tasty"] .ts-ui .text-red-700 { color: var(--ts-danger); }
 
 /* --------------------------------------------------------------------------
    3. Utilidades del kit (src/components/panel-ui/*)

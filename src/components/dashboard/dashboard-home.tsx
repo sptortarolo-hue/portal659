@@ -23,6 +23,14 @@ import {
 } from "lucide-react";
 import type { Order, Booking, Vendor } from "@/types/database";
 import { StorePreviewCard } from "@/components/vendor/store-preview-card";
+import {
+  Badge,
+  Card,
+  EmptyState,
+  KpiCard as KpiCardUi,
+  SectionHeader,
+  type BadgeTone,
+} from "@/components/panel-ui";
 import { statusLabel, orderNumberShort, orderCondition, CONDITION_META } from "@/lib/order-utils";
 import { isStoreOpen } from "@/lib/open-hours";
 import type { FeatureKey } from "@/lib/plans";
@@ -64,14 +72,14 @@ type Props = {
   isStaffMember?: boolean;
 };
 
-const STATUS_CHIP: Record<Order["status"], string> = {
-  new: "bg-blue-100 text-blue-700",
-  confirmed: "bg-amber-100 text-amber-700",
-  preparing: "bg-orange-100 text-orange-700",
-  ready: "bg-green-100 text-green-700",
-  sent: "bg-purple-100 text-purple-700",
-  completed: "bg-gray-100 text-gray-500",
-  cancelled: "bg-red-100 text-red-600",
+const STATUS_TONE: Record<Order["status"], BadgeTone> = {
+  new: "info",
+  confirmed: "warning",
+  preparing: "warning",
+  ready: "success",
+  sent: "info",
+  completed: "neutral",
+  cancelled: "danger",
 };
 
 function isToday(d: string): boolean {
@@ -84,60 +92,73 @@ function isToday(d: string): boolean {
   );
 }
 
-function KpiCard({
-  label,
-  value,
-  sub,
+/** Icono en círculo suave (paleta Tasty del panel). */
+function SoftIcon({
   icon: Icon,
-  accent,
+  tone = "primary",
 }: {
-  label: string;
-  value: string;
-  sub?: string;
-  icon: typeof DollarSign;
-  accent: string;
+  icon: typeof ShoppingBag;
+  tone?: "primary" | "success" | "warning" | "danger" | "info";
 }) {
+  const color = tone === "primary" ? "var(--color-primary)" : `var(--ts-${tone})`;
   return (
-    <div className="rounded-2xl border border-border bg-card p-4">
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-xs font-medium text-muted-foreground">{label}</span>
-        <span className={`inline-flex items-center justify-center h-8 w-8 rounded-lg ${accent}`}>
-          <Icon className="h-4 w-4" />
-        </span>
-      </div>
-      <p className="text-2xl font-semibold tabular-nums tracking-tight">{value}</p>
-      {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
-    </div>
+    <span
+      className="inline-flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full"
+      style={{ backgroundColor: "var(--color-accent)", color }}
+    >
+      <Icon className="h-5 w-5" />
+    </span>
   );
 }
 
+/** Atajo del home con la tarjeta activa del spec (radio 16, hover teal). */
 function ShortcutCard({
-  icon: Icon,
+  icon,
   label,
   desc,
   onClick,
-  accent,
 }: {
   icon: typeof ShoppingBag;
   label: string;
   desc: string;
   onClick: () => void;
-  accent: string;
 }) {
   return (
     <button
       onClick={onClick}
-      className="flex items-center gap-3 rounded-2xl border border-border bg-card p-3.5 text-left hover:border-primary/30 hover:shadow-sm transition-all"
+      className="ts-card-hover flex w-full items-center gap-3 p-4 text-left"
     >
-      <span className={`inline-flex items-center justify-center h-10 w-10 rounded-xl flex-shrink-0 ${accent}`}>
-        <Icon className="h-5 w-5" />
-      </span>
+      <SoftIcon icon={icon} />
       <span className="flex-1 min-w-0">
-        <span className="block text-sm font-semibold">{label}</span>
-        <span className="block text-xs text-muted-foreground truncate">{desc}</span>
+        <span className="ts-body-strong block">{label}</span>
+        <span className="ts-body block truncate text-muted-foreground">{desc}</span>
       </span>
-      <ArrowRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+      <ArrowRight className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
     </button>
+  );
+}
+
+/** Atajo como link (misma tarjeta, navegación). */
+function ShortcutLink({
+  href,
+  icon,
+  label,
+  desc,
+}: {
+  href: string;
+  icon: typeof ShoppingBag;
+  label: string;
+  desc: string;
+}) {
+  return (
+    <Link href={href} className="ts-card-hover flex items-center gap-3 p-4">
+      <SoftIcon icon={icon} />
+      <span className="flex-1 min-w-0">
+        <span className="ts-body-strong block">{label}</span>
+        <span className="ts-body block truncate text-muted-foreground">{desc}</span>
+      </span>
+      <ArrowRight className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
+    </Link>
   );
 }
 
@@ -207,13 +228,12 @@ export function DashboardHome({
     open_override: vendor.open_override ?? null,
   });
 
-  const shortcuts: { tab: DashboardTab; label: string; desc: string; icon: typeof ShoppingBag; accent: string; show: boolean }[] = [
+  const shortcuts: { tab: DashboardTab; label: string; desc: string; icon: typeof ShoppingBag; show: boolean }[] = [
     {
       tab: "pos",
       label: "Mostrador",
       desc: "Arma una venta y cobrá en el local",
       icon: ShoppingBag,
-      accent: "bg-blue-100 text-blue-700",
       show: can("pos"),
     },
     {
@@ -221,7 +241,6 @@ export function DashboardHome({
       label: "Comanda",
       desc: "Cocina organizada por estado",
       icon: ChefHat,
-      accent: "bg-orange-100 text-orange-700",
       show: isGastro && can("kds"),
     },
     {
@@ -229,7 +248,6 @@ export function DashboardHome({
       label: "Mesas",
       desc: "Abrí y cobrá tus mesas",
       icon: LayoutGrid,
-      accent: "bg-amber-100 text-amber-700",
       show: isGastro && can("mesas"),
     },
     {
@@ -237,7 +255,6 @@ export function DashboardHome({
       label: "Caja",
       desc: "Cobros del día y cierre (Z)",
       icon: DollarSign,
-      accent: "bg-emerald-100 text-emerald-700",
       show: can("pos"),
     },
     {
@@ -245,7 +262,6 @@ export function DashboardHome({
       label: "Clientes",
       desc: "Tu libro de clientes",
       icon: Users,
-      accent: "bg-cyan-100 text-cyan-700",
       show: can("crm"),
     },
     {
@@ -253,7 +269,6 @@ export function DashboardHome({
       label: "Preparación y Costo",
       desc: "Costos y food cost de tus platos",
       icon: Calculator,
-      accent: "bg-green-100 text-green-700",
       show: isGastro && can("recipes"),
     },
     {
@@ -263,10 +278,6 @@ export function DashboardHome({
         `${expiryAlerts.expired + expiryAlerts.soon} producto(s) para revisar` +
         (expiryAlerts.expired > 0 ? ` · ${expiryAlerts.expired} vencido(s)` : ""),
       icon: Boxes,
-      accent:
-        expiryAlerts.expired > 0
-          ? "bg-red-100 text-red-700"
-          : "bg-amber-100 text-amber-700",
       show: canInventory && expiryAlerts.expired + expiryAlerts.soon > 0,
     },
     {
@@ -274,7 +285,6 @@ export function DashboardHome({
       label: isRetail ? "Catálogo" : "Menú",
       desc: `${offerCount} ${offerCount === 1 ? "producto" : "productos"} publicados`,
       icon: isModa ? Shirt : isComercio ? ShoppingBag : UtensilsCrossed,
-      accent: "bg-violet-100 text-violet-700",
       show: true,
     },
   ];
@@ -291,41 +301,40 @@ export function DashboardHome({
       {sellsOrders ? (
         <>
           {/* KPIs */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <KpiCard
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <KpiCardUi
               label="Ventas de hoy"
               value={`$${ventasHoy.toLocaleString("es-AR")}`}
               sub={`${todayOrders.length} pedido${todayOrders.length === 1 ? "" : "s"} hoy`}
               icon={DollarSign}
-              accent="bg-green-100 text-green-700"
+              accent="success"
             />
-            <KpiCard
+            <KpiCardUi
               label="Pedidos activos"
               value={String(activos.length)}
               sub="en curso ahora"
               icon={ClipboardList}
-              accent="bg-blue-100 text-blue-700"
+              accent="info"
             />
-            <KpiCard
+            <KpiCardUi
               label="Ticket promedio"
               value={`$${ticketProm.toLocaleString("es-AR", { maximumFractionDigits: 0 })}`}
               sub="de los pedidos de hoy"
               icon={Receipt}
-              accent="bg-violet-100 text-violet-700"
             />
-            <KpiCard
+            <KpiCardUi
               label={isRetail ? "Por aceptar" : "Nuevos"}
               value={String(nuevos)}
               sub={isRetail ? "aceptalos para empacar" : "esperando tu respuesta"}
               icon={BellRing}
-              accent="bg-orange-100 text-orange-700"
+              accent="warning"
             />
           </div>
 
           {/* Pedidos activos recientes */}
-          <div className="rounded-2xl border border-border bg-card">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-              <h2 className="text-sm font-semibold">Pedidos activos</h2>
+          <Card>
+            <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
+              <SectionHeader title="Pedidos activos" />
               <button
                 onClick={() => onNavigate("orders")}
                 className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
@@ -334,45 +343,42 @@ export function DashboardHome({
               </button>
             </div>
             {activeList.length === 0 ? (
-              <div className="px-4 py-8 text-center">
-                <p className="text-sm text-muted-foreground">
-                  No tenés pedidos activos. Cuando alguien compre, aparece acá.
-                </p>
-              </div>
+              <EmptyState
+                icon={ClipboardList}
+                title="No tenés pedidos activos"
+                hint="Cuando alguien compre, aparece acá con su detalle y acciones."
+              />
             ) : (
               <div className="divide-y divide-border">
                 {activeList.slice(0, 5).map((o) => (
                   <button
                     key={o.id}
                     onClick={() => onOpenOrder(o)}
-                    className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-muted/50 transition-colors"
+                    className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-muted/50"
                   >
-                    <span className="inline-flex items-center justify-center h-9 w-9 rounded-lg bg-muted text-xs font-bold text-muted-foreground flex-shrink-0">
+                    <span className="ts-caption inline-flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-muted tabular-nums text-muted-foreground">
                       {orderNumberShort(o).replace("Nro. ", "#")}
                     </span>
                     <span className="flex-1 min-w-0">
-                      <span className="block text-sm font-medium truncate">{o.customer_name}</span>
-                      <span className="flex items-center gap-1.5 mt-0.5">
-                        <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full ${STATUS_CHIP[o.status]}`}>
-                          <span className="inline-block w-1 h-1 rounded-full bg-current" />
-                          {statusLabel(o.status, isRetail)}
-                        </span>
-                        <span className={`hidden sm:inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${CONDITION_META[orderCondition(o)].pillClass}`}>
+                      <span className="ts-body-strong block truncate">{o.customer_name}</span>
+                      <span className="mt-1 flex items-center gap-1.5">
+                        <Badge tone={STATUS_TONE[o.status]}>{statusLabel(o.status, isRetail)}</Badge>
+                        <Badge tone="neutral" className="hidden sm:inline-flex">
                           {CONDITION_META[orderCondition(o)].label}
-                        </span>
+                        </Badge>
                       </span>
                     </span>
-                    <span className="text-sm font-bold tabular-nums flex-shrink-0">
+                    <span className="ts-title tabular-nums flex-shrink-0">
                       ${Number(o.total).toLocaleString("es-AR")}
                     </span>
                   </button>
                 ))}
               </div>
             )}
-          </div>
+          </Card>
 
           {/* Atajos */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {shortcuts
               .filter((s) => s.show)
               .map((s) => (
@@ -381,23 +387,15 @@ export function DashboardHome({
                   icon={s.icon}
                   label={s.label}
                   desc={s.desc}
-                  accent={s.accent}
                   onClick={() => onNavigate(s.tab)}
                 />
               ))}
-            <Link
+            <ShortcutLink
               href={manualUrl}
-              className="flex items-center gap-3 rounded-2xl border border-border bg-card p-3.5 hover:border-primary/30 hover:shadow-sm transition-all"
-            >
-              <span className="inline-flex items-center justify-center h-10 w-10 rounded-xl bg-amber-100 text-amber-700 flex-shrink-0">
-                <BookOpen className="h-5 w-5" />
-              </span>
-              <span className="flex-1 min-w-0">
-                <span className="block text-sm font-semibold">Manuales</span>
-                <span className="block text-xs text-muted-foreground truncate">Guías paso a paso de tu rubro</span>
-              </span>
-              <ArrowRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-            </Link>
+              icon={BookOpen}
+              label="Manuales"
+              desc="Guías paso a paso de tu rubro"
+            />
           </div>
         </>
       ) : (
@@ -437,13 +435,12 @@ export function DashboardHome({
           </div>
 
           {/* Atajos */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {!isService && (
               <ShortcutCard
                 icon={UtensilsCrossed}
                 label="Publicaciones"
                 desc={`${offerCount} ${offerCount === 1 ? "producto" : "productos"} en tu vidriera`}
-                accent="bg-violet-100 text-violet-700"
                 onClick={() => onNavigate("menu")}
               />
             )}
@@ -451,42 +448,26 @@ export function DashboardHome({
               icon={QrCode}
               label="Compartir"
               desc="QR y link para difundir tu negocio"
-              accent="bg-green-100 text-green-700"
               onClick={onShare}
             />
             <ShortcutCard
               icon={Sparkles}
               label="Completá tu ficha"
               desc="Descripción, fotos y horarios para que te elijan"
-              accent="bg-amber-100 text-amber-700"
               onClick={() => onNavigate("config")}
             />
-            <Link
+            <ShortcutLink
               href="/planes"
-              className="flex items-center gap-3 rounded-2xl border border-border bg-card p-3.5 hover:border-primary/30 hover:shadow-sm transition-all"
-            >
-              <span className="inline-flex items-center justify-center h-10 w-10 rounded-xl bg-blue-100 text-blue-700 flex-shrink-0">
-                <DollarSign className="h-5 w-5" />
-              </span>
-              <span className="flex-1 min-w-0">
-                <span className="block text-sm font-semibold">Ver planes</span>
-                <span className="block text-xs text-muted-foreground truncate">Sumá venta online cuando crezcas</span>
-              </span>
-              <ArrowRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-            </Link>
-            <Link
+              icon={DollarSign}
+              label="Ver planes"
+              desc="Sumá venta online cuando crezcas"
+            />
+            <ShortcutLink
               href={manualUrl}
-              className="flex items-center gap-3 rounded-2xl border border-border bg-card p-3.5 hover:border-primary/30 hover:shadow-sm transition-all"
-            >
-              <span className="inline-flex items-center justify-center h-10 w-10 rounded-xl bg-amber-100 text-amber-700 flex-shrink-0">
-                <BookOpen className="h-5 w-5" />
-              </span>
-              <span className="flex-1 min-w-0">
-                <span className="block text-sm font-semibold">Manuales</span>
-                <span className="block text-xs text-muted-foreground truncate">Guías paso a paso de tu rubro</span>
-              </span>
-              <ArrowRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-            </Link>
+              icon={BookOpen}
+              label="Manuales"
+              desc="Guías paso a paso de tu rubro"
+            />
           </div>
         </>
       )}

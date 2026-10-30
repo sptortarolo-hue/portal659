@@ -11,6 +11,8 @@ type Props = {
   debug?: boolean;
   /** Chip de "sin conexión" (el menú sigue saliendo desde la cache). */
   offline?: boolean;
+  /** Ajustar al contenedor padre (preview del panel) en vez de a la ventana. */
+  fitParent?: boolean;
 };
 
 /**
@@ -20,7 +22,7 @@ type Props = {
  * menú en TV se vea compuesto: el layout se prueba a 1080p y se escala exacto
  * en cualquier pantalla, sin sorpresas de tamaño de texto ni de reflow.
  */
-export function TvCanvas({ children, theme, debug = false, offline = false }: Props) {
+export function TvCanvas({ children, theme, debug = false, offline = false, fitParent = false }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(1);
 
@@ -43,7 +45,7 @@ export function TvCanvas({ children, theme, debug = false, offline = false }: Pr
   return (
     <div
       ref={hostRef}
-      className="relative h-screen w-screen overflow-hidden bg-black"
+      className={`relative overflow-hidden bg-black ${fitParent ? "h-full w-full" : "h-screen w-screen"}`}
       style={{ cursor: "none" }}
     >
       <div

@@ -509,7 +509,7 @@ export function TvScreenEditor({ open, screen, categories, onClose, onSaved }: P
           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Vista previa (16:9)</p>
           <div className="overflow-hidden rounded-xl border border-border bg-black" style={{ aspectRatio: "16 / 9" }}>
             {snapshot ? (
-              <TvPlayer snapshot={snapshot} token="" mode="preview" debug={false} />
+              <TvPlayer snapshot={snapshot} token="" mode="preview" debug={false} fitParent />
             ) : (
               <div className="flex h-full items-center justify-center text-sm text-muted-foreground">Cargando…</div>
             )}

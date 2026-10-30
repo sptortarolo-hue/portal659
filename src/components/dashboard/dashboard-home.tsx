@@ -59,6 +59,9 @@ type Props = {
   onChanged?: () => void;
   /** Sesión de prueba (link compartido): gestiona todo salvo el token. */
   isPreview?: boolean;
+  /** Empleado/encargado (login "Soy del equipo"): no ve la vista previa del
+   *  micrositio — no navega el sitio público (ver src/proxy.ts). */
+  isStaffMember?: boolean;
 };
 
 const STATUS_CHIP: Record<Order["status"], string> = {
@@ -153,6 +156,7 @@ export function DashboardHome({
   onOpenOrder,
   onChanged,
   isPreview = false,
+  isStaffMember = false,
 }: Props) {
   const sellsOrders = isGastro || isModa || isComercio;
   // Retail (moda/comercio): flow con aceptación + empaque ("Por aceptar", "Empaquetando").
@@ -281,7 +285,9 @@ export function DashboardHome({
 
   return (
     <div className="space-y-5">
-      <StorePreviewCard vendor={vendor} onChanged={onChanged} canManageTokens={!isPreview} />
+      {!isStaffMember && (
+        <StorePreviewCard vendor={vendor} onChanged={onChanged} canManageTokens={!isPreview} />
+      )}
       {sellsOrders ? (
         <>
           {/* KPIs */}

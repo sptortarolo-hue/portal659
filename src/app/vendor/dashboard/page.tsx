@@ -1708,11 +1708,13 @@ function VendorDashboardInner() {
         planSlug={effectivePlan.plan?.slug ?? null}
         canFiscal={effectivePlan.can("fiscal")}
         canInventory={effectivePlan.can("inventory")}
+        canScreens={effectivePlan.can("screens")}
         configNavSections={sectionsForVertical(vendor?.vertical)}
         activeConfigSection={configSection}
         onConfigSection={handleConfigSection}
         configSectionStatus={(id) => getConfigSectionStatus(id, vendor)}
         isEmployee={isEmployee}
+        isStaffMember={staffRole === "staff"}
       />
       )}
 
@@ -1800,7 +1802,7 @@ function VendorDashboardInner() {
                   />
                 )}
               </div>
-              {vendor.slug && (
+              {vendor.slug && staffRole !== "staff" && (
                 <a
                   href={`/tienda/${vendor.slug}`}
                   target="_blank"
@@ -2305,6 +2307,7 @@ function VendorDashboardInner() {
                     onOpenOrder={openOrderDetail}
                     onChanged={loadData}
                     isPreview={previewSession}
+                    isStaffMember={staffRole === "staff"}
                   />
                   </TabErrorBoundary>
                 </div>

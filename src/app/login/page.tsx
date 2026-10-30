@@ -159,8 +159,9 @@ function LoginForm() {
       setMessage(data.error || "Error al iniciar sesión");
     } else {
       window.dispatchEvent(new Event("auth-changed"));
-      const safeNext = next && next.startsWith("/") ? next : null;
-      router.push(safeNext || "/vendor/dashboard");
+      // El equipo no navega el sitio público: siempre a su panel (el `next`
+      // de la URL es para compradores/dueños; ver src/proxy.ts).
+      router.push("/vendor/dashboard");
     }
     setLoading(false);
   }

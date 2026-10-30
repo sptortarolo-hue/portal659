@@ -16,9 +16,11 @@ type MeUser = {
 };
 
 type MeStaff = {
+  /** 'staff' = empleado/encargado del local · 'delivery' = repartidor. */
   role: string;
   store_name: string;
   vendor_id: string;
+  staff_level?: string | null;
 };
 
 type MeVendor = {
@@ -91,6 +93,10 @@ export function UserMenu() {
   const isBuyer = user?.role === "buyer";
   const isCarrier = user?.role === "carrier";
   const vendorImg = vendor?.logo_url || vendor?.image_url || null;
+  // Empleado/encargado del local (login "Soy del equipo"): menú acotado a su
+  // comercio — no navega el sitio público (ver src/proxy.ts).
+  const isStaffMember = staff?.role === "staff";
+  const isCourier = staff?.role === "delivery";
 
   return (
     <div className="relative" ref={menuRef}>
@@ -121,6 +127,42 @@ export function UserMenu() {
           {loading ? (
             <div className="px-4 py-3 text-sm text-muted-foreground">Cargando…</div>
           ) : user ? (
+            /* Empleado/encargado del local: SOLO su comercio. Nada de Mis
+               pedidos/favoritos/planes: trabaja en el panel y sale a
+               Cerrar sesión. (El proxy tampoco lo deja navegar lo público.) */
+            isStaffMember ? (
+              <>
+                <Link
+                  href="/perfil"
+                  className="flex items-center gap-3 px-4 py-3 text-sm text-foreground hover:bg-muted transition-colors"
+                  onClick={() => setMenuOpen(false)}
+                >
+                  <span>👤</span> Mi perfil
+                </Link>
+                <Link
+                  href="/vendor/dashboard"
+                  className="flex items-center gap-3 px-4 py-3 text-sm text-foreground hover:bg-muted transition-colors"
+                  onClick={() => setMenuOpen(false)}
+                >
+                  <span>🏪</span> Mi comercio
+                </Link>
+                <div className="border-t border-border my-1" />
+                <Link
+                  href="/manuales"
+                  className="flex items-center gap-3 px-4 py-3 text-sm text-foreground hover:bg-muted transition-colors"
+                  onClick={() => setMenuOpen(false)}
+                >
+                  <span>📘</span> Manuales y guías
+                </Link>
+                <div className="border-t border-border my-1" />
+                <button
+                  onClick={handleLogout}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-sm text-red-600 font-medium hover:bg-red-50 dark:hover:bg-red-950 transition-colors"
+                >
+                  <span>🚪</span> Cerrar sesión
+                </button>
+              </>
+            ) : (
             <>
               <Link
                 href="/perfil"
@@ -154,7 +196,7 @@ export function UserMenu() {
               )}
               {!isBuyer && (
                 <>
-                  {staff ? (
+                  {isCourier ? (
                     <Link
                       href="/vendor/dashboard"
                       className="flex items-center gap-3 px-4 py-3 text-sm text-foreground hover:bg-muted transition-colors"
@@ -207,6 +249,7 @@ export function UserMenu() {
                 <span>🚪</span> Cerrar sesión
               </button>
             </>
+            )
           ) : (
             <>
               <Link

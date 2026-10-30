@@ -39,16 +39,30 @@ export async function verifyPassword(password: string, hash: string): Promise<bo
   }
 }
 
-type DecodedToken = { userId: string; email?: string; role?: string; tv?: number };
+type DecodedToken = { userId: string; email?: string; role?: string; tv?: number; staff?: boolean };
 
-/** Firma un JWT (access token). `tv` = versión de tokens (logout en todos lados). */
+/**
+ * Firma un JWT (access token). `tv` = versión de tokens (logout en todos
+ * lados). `staff: true` marca la sesión de equipo del local (empleado o
+ * encargado, login "Soy del equipo"): el proxy la limita a su panel
+ * (/vendor, /perfil y /manuales) — ver src/proxy.ts.
+ */
 export async function signAccessToken(user: {
   id: string;
   email: string;
   role: string;
   tokenVersion?: number;
+  staff?: boolean;
 }): Promise<string> {
-  return new SignJWT({ sub: user.id, email: user.email, role: user.role, tv: user.tokenVersion ?? 1 })
+  return new SignJWT({
+    sub: user.id,
+    email: user.email,
+    role: user.role,
+    tv: user.tokenVersion ?? 1,
+    // Solo empleado/encargado: los tokens de dueño/comprador/repartidor no
+    // llevan el claim (el proxy los trata como sesión normal).
+    ...(user.staff ? { staff: true } : {}),
+  })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime(ACCESS_TTL)

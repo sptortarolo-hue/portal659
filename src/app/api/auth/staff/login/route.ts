@@ -108,6 +108,9 @@ export const POST = withRateLimit(async (request: Request) => {
     email: row.email || `equipo@${vendor.id}.local`,
     role: "vendor",
     tokenVersion: row.token_version,
+    // Sesión de equipo (empleado/encargado): el proxy la mantiene dentro de
+    // su panel — no navega el sitio público (ver src/proxy.ts).
+    staff: true,
   });
 
   const response = NextResponse.json({

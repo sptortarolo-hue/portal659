@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
 import { X, Package, ChefHat, ShoppingBag, LayoutGrid, UtensilsCrossed, Settings, BarChart3, History, Star, ExternalLink, LogOut, Home, Sparkles, Calculator, Bot, DollarSign, Receipt, Users, MessageSquare, CalendarDays, ClipboardList, Boxes, Image, BookOpen, Share, Gift, Monitor } from "lucide-react";
@@ -20,41 +20,41 @@ interface VendorSidebarProps {
   isGastro: boolean;
   isModa: boolean;
   isComercio?: boolean;
-  /** Vertical servicios: menú propio (Presupuestos/Turnos/Cobros/Configuración). */
+  /** Vertical servicios: menÃº propio (Presupuestos/Turnos/Cobros/ConfiguraciÃ³n). */
   isService?: boolean;
-  /** Vertical estética: suma Pedidos + Catálogo al menú de servicios. */
+  /** Vertical estÃ©tica: suma Pedidos + CatÃ¡logo al menÃº de servicios. */
   isEstetica?: boolean;
   pendingQuotesCount?: number;
   pendingBookingsCount?: number;
-  /** Pendientes offline por pestaña (outbox IndexedDB, Track Ventas F1). */
+  /** Pendientes offline por pestaÃ±a (outbox IndexedDB, Track Ventas F1). */
   pendingPosCount?: number;
   pendingMesasCount?: number;
   planName: string | null;
   planSlug: string | null;
-  /** Plan Gestión con facturación (can("fiscal")): muestra la pestaña Facturación. */
+  /** Plan GestiÃ³n con facturaciÃ³n (can("fiscal")): muestra la pestaÃ±a FacturaciÃ³n. */
   canFiscal?: boolean;
-  /** Plan Gestión con inventario (can("inventory")): muestra la pestaña Inventario. */
+  /** Plan GestiÃ³n con inventario (can("inventory")): muestra la pestaÃ±a Inventario. */
   canInventory?: boolean;
-  /** Plan Gestión con Pantalla TV (can("screens")): muestra la pestaña Pantalla. */
+  /** Plan GestiÃ³n con Pantalla TV (can("screens")): muestra la pestaÃ±a Pantalla. */
   canScreens?: boolean;
   // Props heredadas de cuando la sidebar mutaba en Config (ya no se usan,
   // pero se conservan opcionales para no tocar a los llamadores).
-  /** Secciones de Config (sidebar única): si viene y currentTab es config, la nav las muestra. */
+  /** Secciones de Config (sidebar Ãºnica): si viene y currentTab es config, la nav las muestra. */
   configNavSections?: string[] | null;
   activeConfigSection?: string;
   onConfigSection?: (id: string) => void;
   configSectionStatus?: (id: string) => ConfigSectionStatus | undefined;
-  /** Empleado raso: oculta Gestión, Análisis sensible y links de plan/bot. */
+  /** Empleado raso: oculta GestiÃ³n, AnÃ¡lisis sensible y links de plan/bot. */
   isEmployee?: boolean;
   /**
    * Empleado o encargado (login "Soy del equipo"): oculta las salidas a lo
-   * público — el micrositio y "Volver al sitio". El proxy tampoco lo deja
+   * pÃºblico â€” el micrositio y "Volver al sitio". El proxy tampoco lo deja
    * navegar fuera de su panel (ver src/proxy.ts).
    */
   isStaffMember?: boolean;
 }
 
-/** g = gastro · m = moda · c = comercio */
+/** g = gastro Â· m = moda Â· c = comercio */
 const OPERACION_ITEMS: { tab: Tab; label: string; icon: typeof Package; show: (g: boolean, m: boolean, c: boolean) => boolean; badge?: (orderCount: number, kitchenCount: number) => number }[] = [
   { tab: "orders", label: "Pedidos", icon: Package, show: () => true, badge: (c) => c },
   { tab: "comanda", label: "Comanda", icon: ChefHat, show: (g, m, c) => !m && !c, badge: (_, c) => c },
@@ -64,22 +64,22 @@ const OPERACION_ITEMS: { tab: Tab; label: string; icon: typeof Package; show: (g
 ];
 
 const GESTION_ITEMS: { tab: Tab; label: string; icon: typeof UtensilsCrossed; show: (g: boolean, m: boolean, c: boolean, screens?: boolean) => boolean; suffix?: (count: number) => string }[] = [
-  { tab: "menu", label: "Menú", icon: UtensilsCrossed, show: () => true, suffix: (c) => `${c}` },
+  { tab: "menu", label: "MenÃº", icon: UtensilsCrossed, show: () => true, suffix: (c) => `${c}` },
   { tab: "promos", label: "Promos", icon: Share, show: () => true },
-  { tab: "recetas", label: "Preparación y Costo", icon: Calculator, show: (g) => g },
+  { tab: "recetas", label: "PreparaciÃ³n y Costo", icon: Calculator, show: (g) => g },
   { tab: "clientes", label: "Clientes", icon: Users, show: (g, m, c) => g || c || m },
   { tab: "gastos", label: "Gastos", icon: Receipt, show: (g, m, c) => g || c || m },
   { tab: "tarjetas", label: "Tarjetas", icon: Gift, show: (g, m, c) => c || m },
   // Pantalla TV: carta en el televisor del local (planes con `screens`).
   // Se pasa por prop porque el gate es del plan, no del vertical.
   { tab: "pantalla", label: "Pantalla TV", icon: Monitor, show: (_g, _m, _c, screens) => !!screens },
-  { tab: "config", label: "Configuración", icon: Settings, show: () => true },
+  { tab: "config", label: "ConfiguraciÃ³n", icon: Settings, show: () => true },
 ];
 
 const ANALISIS_ITEMS: { tab: Tab; label: string; icon: typeof BarChart3 }[] = [
-  { tab: "analytics", label: "Estadísticas", icon: BarChart3 },
-  { tab: "history", label: "Histórico", icon: History },
-  { tab: "reviews", label: "Reseñas", icon: Star },
+  { tab: "analytics", label: "EstadÃ­sticas", icon: BarChart3 },
+  { tab: "history", label: "HistÃ³rico", icon: History },
+  { tab: "reviews", label: "ReseÃ±as", icon: Star },
 ];
 
 function NavButton({
@@ -97,7 +97,7 @@ function NavButton({
   label: string;
   badge?: number;
   suffix?: string;
-  /** Pendientes offline: píldora ámbar con conteo (no tapa el badge rojo). */
+  /** Pendientes offline: pÃ­ldora Ã¡mbar con conteo (no tapa el badge rojo). */
   syncBadge?: number;
 }) {
   return (
@@ -120,10 +120,10 @@ function NavButton({
       )}
       {syncBadge != null && syncBadge > 0 && (
         <span
-          title={`${syncBadge} acción${syncBadge === 1 ? "" : "es"} sin sincronizar`}
+          title={`${syncBadge} acciÃ³n${syncBadge === 1 ? "" : "es"} sin sincronizar`}
           className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[10px] font-bold bg-warning text-warning-foreground"
         >
-          ⇅{syncBadge}
+          â‡…{syncBadge}
         </span>
       )}
       {suffix != null && (
@@ -179,7 +179,7 @@ export default function VendorSidebar({
 
       <aside
         className={`
-          fixed top-0 left-0 z-50 h-full w-64 sidebar-desktop
+          fixed top-0 left-0 z-50 h-full w-64 sidebar-desktop bg-card
           flex flex-col transition-transform duration-200 ease-in-out
           lg:translate-x-0 lg:z-30
           ${open ? "translate-x-0" : "-translate-x-full"}
@@ -215,7 +215,7 @@ export default function VendorSidebar({
           </button>
         </div>
 
-        {/* Nav principal (siempre visible, también en la solapa Config). */}
+        {/* Nav principal (siempre visible, tambiÃ©n en la solapa Config). */}
         <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-5">
           <>
           {/* Inicio */}
@@ -276,7 +276,7 @@ export default function VendorSidebar({
                       active={currentTab === "fiscal"}
                       onClick={() => handleTab("fiscal")}
                       icon={Receipt}
-                      label="Facturación"
+                      label="FacturaciÃ³n"
                     />
                   )}
                   {isEstetica && canInventory && (
@@ -313,7 +313,7 @@ export default function VendorSidebar({
                   active={currentTab === "fiscal"}
                   onClick={() => handleTab("fiscal")}
                   icon={Receipt}
-                  label="Facturación"
+                  label="FacturaciÃ³n"
                 />
               )}
               {!isService && canInventory && (
@@ -327,10 +327,10 @@ export default function VendorSidebar({
             </div>
           </div>
 
-          {/* Gestión — el empleado opera sin gestión (ni menú, ni clientes, ni config) */}
+          {/* GestiÃ³n â€” el empleado opera sin gestiÃ³n (ni menÃº, ni clientes, ni config) */}
           {!isEmployee && (
           <div>
-            <p className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Gestión</p>
+            <p className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">GestiÃ³n</p>
             <div className="space-y-0.5">
               {isService ? (
                 <>
@@ -338,13 +338,13 @@ export default function VendorSidebar({
                     active={currentTab === "galeria"}
                     onClick={() => handleTab("galeria")}
                     icon={Image}
-                    label="Galería"
+                    label="GalerÃ­a"
                   />
                   <NavButton
                     active={currentTab === "config"}
                     onClick={() => handleTab("config")}
                     icon={ClipboardList}
-                    label="Configuración"
+                    label="ConfiguraciÃ³n"
                   />
                   <NavButton
                     active={currentTab === "clientes"}
@@ -379,7 +379,7 @@ export default function VendorSidebar({
                       active={currentTab === "menu"}
                       onClick={() => handleTab("menu")}
                       icon={ShoppingBag}
-                      label="Catálogo"
+                      label="CatÃ¡logo"
                       suffix={`${menuCount}`}
                     />
                   )}
@@ -396,7 +396,7 @@ export default function VendorSidebar({
                 <>
                 {GESTION_ITEMS.filter((i) => i.show(isGastro, isModa, isComercio, canScreens ?? false)).map((item) => {
                   const suffix = item.suffix ? item.suffix(menuCount) : null;
-                  const label = item.tab === "menu" && (isModa || isComercio) ? "Catálogo" : item.label;
+                  const label = item.tab === "menu" && (isModa || isComercio) ? "CatÃ¡logo" : item.label;
                   return (
                     <NavButton
                       key={item.tab}
@@ -413,7 +413,7 @@ export default function VendorSidebar({
                     active={currentTab === "galeria"}
                     onClick={() => handleTab("galeria")}
                     icon={Image}
-                    label="Galería"
+                    label="GalerÃ­a"
                   />
                 )}
                 </>
@@ -422,9 +422,9 @@ export default function VendorSidebar({
           </div>
           )}
 
-          {/* Análisis — el empleado solo ve el histórico */}
+          {/* AnÃ¡lisis â€” el empleado solo ve el histÃ³rico */}
           <div>
-            <p className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Análisis</p>
+            <p className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">AnÃ¡lisis</p>
             <div className="space-y-0.5">
               {((isService && !isEstetica) ? ANALISIS_ITEMS.filter((i) => i.tab !== "analytics") : ANALISIS_ITEMS)
                 .filter((i) => !isEmployee || i.tab === "history")
@@ -442,8 +442,8 @@ export default function VendorSidebar({
           </>
         </nav>
 
-        {/* Footer — el equipo (empleado/encargado) no ve plan ni bot: esas
-            secciones son del dueño (el proxy las manda al dashboard). */}
+        {/* Footer â€” el equipo (empleado/encargado) no ve plan ni bot: esas
+            secciones son del dueÃ±o (el proxy las manda al dashboard). */}
         <div className="px-3 py-3 border-t border-border space-y-2">
           {planSlug && !isStaffMember && (
             <Link
@@ -452,7 +452,7 @@ export default function VendorSidebar({
             >
               <Sparkles className="h-4 w-4 text-primary" />
               <span className="flex-1 truncate">Plan {planName ?? planSlug}</span>
-              <span className="text-primary">→</span>
+              <span className="text-primary">â†’</span>
             </Link>
           )}
           {!isStaffMember && (

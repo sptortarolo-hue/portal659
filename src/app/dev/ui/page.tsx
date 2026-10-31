@@ -221,31 +221,30 @@ export default function DevUiPage() {
           />
         </Card>
 
-        <h3 className="ts-subtitle mt-10">Lenguaje neo-brutalista</h3>
+        <h3 className="ts-subtitle mt-10">Lenguaje del panel</h3>
         <Card className="mt-3">
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <p className="ts-caption text-muted-foreground">Bordes</p>
+              <p className="ts-caption text-muted-foreground">Bordes y formas</p>
               <p className="ts-body mt-1">
-                Todo borde es <strong>negro de 1px</strong> (2px en barra
-                superior y tarjetas). Nada de radios: las tarjetas, botones,
-                inputs y chips son cuadrados.
+                Bordes <strong>negros de 1px</strong> y todo redondeado: base{" "}
+                <code>1rem</code> (botones e inputs 12-14px, tarjetas 16px,
+                tarjetas activas y chips 20px).
               </p>
             </div>
             <div>
               <p className="ts-caption text-muted-foreground">Sombras</p>
               <p className="ts-body mt-1">
-                Duras y desplazadas, sin difuminar:{" "}
-                <code>4px 4px 0 0 negro</code> en tarjetas y botones, más
-                grandes en la barra superior y en flotantes.
+                Suaves y difusas, sin desplazamiento: un halo al 5% más una
+                sombra corta. Más grande en la barra superior y en flotantes.
               </p>
             </div>
             <div>
               <p className="ts-caption text-muted-foreground">Color</p>
               <p className="ts-body mt-1">
-                Violeta para las acciones, <strong>lima</strong> para el ítem
-                activo del menú y los chips activos, azul para acentos, coral
-                para el foco. Estados semánticos con borde negro.
+                Fondo <strong>verde suave</strong>, tarjetas blancas, azul para
+                las acciones, <strong>ámbar</strong> para el ítem activo del
+                menú, <strong>lima</strong> para chips activos y secundarios.
               </p>
             </div>
             <div>
@@ -257,11 +256,12 @@ export default function DevUiPage() {
             </div>
           </div>
           <div className="mt-4 flex flex-wrap items-center gap-3">
-            <Button size="sm">Pasá el mouse por encima</Button>
+            <Button size="sm">Botón de acción</Button>
             <Chip active>Chip activo</Chip>
+            <Chip>Chip normal</Chip>
             <Badge tone="success">Con borde</Badge>
             <span className="ts-body text-muted-foreground">
-              Los botones se hunden 2px al hacer click y pierden la sombra.
+              Las tarjetas activas se elevan 2px al pasar el mouse.
             </span>
           </div>
         </Card>

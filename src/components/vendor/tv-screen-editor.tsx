@@ -119,13 +119,30 @@ export function TvScreenEditor({ open, screen, categories, onClose, onSaved }: P
             <Button
               onClick={async () => {
                 setSaving(true);
-                const r = await fetch(`/api/vendor/tv-screens/${screen.id}/publish`, { method: "POST" }).catch(() => null);
-                setSaving(false);
-                setDirty(false);
-                setMsg(r && r.ok ? "Publicado: la TV se actualiza sola." : "No se pudo publicar.");
-                onSaved();
+                setMsg(null);
+                try {
+                  if (!screen?.id) {
+                    setMsg("No se pudo publicar: pantalla sin ID.");
+                    return;
+                  }
+                  const r = await fetch(`/api/vendor/tv-screens/${screen.id}/publish`, {
+                    method: "POST",
+                  });
+                  const j = await r.json().catch(() => ({}));
+                  if (r.ok) {
+                    setMsg("Publicado: la TV se actualiza sola.");
+                    setDirty(false);
+                    onSaved();
+                  } else {
+                    setMsg("No se pudo publicar: " + (j.error || `HTTP ${r.status}`));
+                  }
+                } catch {
+                  setMsg("No se pudo publicar: error de conexión con el servidor.");
+                } finally {
+                  setSaving(false);
+                }
               }}
-              disabled={saving}
+              disabled={saving || !screen?.id}
             >
               {saving ? "Publicando…" : "Publicar en la TV"}
             </Button>

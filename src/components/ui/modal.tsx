@@ -9,9 +9,19 @@ type ModalProps = {
   title?: string;
   children: ReactNode;
   footer?: ReactNode;
+  /** Ancho del modal. Default "md" (max-w-lg). */
+  size?: "sm" | "md" | "lg" | "xl" | "2xl";
 };
 
-export function Modal({ open, onClose, title, children, footer }: ModalProps) {
+const SIZE_CLASS: Record<NonNullable<ModalProps["size"]>, string> = {
+  sm: "max-w-md",
+  md: "max-w-lg",
+  lg: "max-w-2xl",
+  xl: "max-w-4xl",
+  "2xl": "max-w-6xl",
+};
+
+export function Modal({ open, onClose, title, children, footer, size = "md" }: ModalProps) {
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -32,7 +42,7 @@ export function Modal({ open, onClose, title, children, footer }: ModalProps) {
     >
       <div
         ref={ref}
-        className="bg-card border border-border rounded-2xl shadow-2xl max-w-lg w-full max-h-[85vh] flex flex-col"
+        className={`bg-card border border-border rounded-2xl shadow-2xl ${SIZE_CLASS[size]} w-full max-h-[90vh] flex flex-col`}
         onClick={(e) => e.stopPropagation()}
       >
         {title && (

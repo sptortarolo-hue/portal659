@@ -107,6 +107,7 @@ export function TvScreenEditor({ open, screen, categories, onClose, onSaved }: P
       open={open}
       onClose={onClose}
       title={`Editar ${screen.name}`}
+      size="2xl"
       footer={
         <div className="flex w-full items-center gap-3">
           <span className="text-xs text-muted-foreground">
@@ -150,9 +151,9 @@ export function TvScreenEditor({ open, screen, categories, onClose, onSaved }: P
         </div>
       }
     >
-      <div className="grid gap-6 lg:grid-cols-[1fr_640px]">
+      <div className="grid gap-4 lg:grid-cols-[1fr_560px]">
         {/* ------------------------------------------------ configuración */}
-        <div className="space-y-6">
+        <div className="space-y-4">
           <Field label="Tema">
             <div className="grid grid-cols-4 gap-2">
               {TV_THEMES.map((t) => (

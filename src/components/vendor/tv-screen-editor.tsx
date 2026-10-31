@@ -91,6 +91,9 @@ export function TvScreenEditor({ open, screen, categories, onClose, onSaved }: P
     return snapshot.sections.flatMap((s) => s.items.map((i) => ({ id: i.id, name: i.name, priceLabel: i.priceLabel })));
   }, [snapshot]);
 
+  /** Cuántas ofertas hay para el banner (el server arma el pool). */
+  const heroCount = snapshot?.hero?.length ?? 0;
+
   const toggleDay = (idx: number, day: number) => {
     const next = config.dayparts.map((d, i) => {
       if (i !== idx) return d;
@@ -292,6 +295,40 @@ export function TvScreenEditor({ open, screen, categories, onClose, onSaved }: P
                 Elegí hasta 3 desde el preview: se guardan como destacados.
               </p>
             )}
+
+            {/* Rotación del banner: cambia solo entre las ofertas disponibles. */}
+            <div className="mt-3 rounded-lg border border-border bg-muted/40 p-3">
+              <div className="flex items-center gap-2">
+                <Switch
+                  checked={config.hero.rotate !== false}
+                  onCheckedChange={(v) => edit({ hero: { ...config.hero, rotate: v } })}
+                />
+                <span className="text-sm">Cambiar el destacado solo</span>
+              </div>
+              {config.hero.rotate !== false && (
+                <div className="mt-2 flex items-center gap-2">
+                  <label className="text-[11px] text-muted-foreground">Cada</label>
+                  <select
+                    className="rounded-lg border border-border bg-background px-2 py-1 text-xs"
+                    value={config.hero.seconds}
+                    onChange={(e) =>
+                      edit({ hero: { ...config.hero, seconds: Number(e.target.value) } })
+                    }
+                  >
+                    {[5, 8, 10, 15, 20].map((s) => (
+                      <option key={s} value={s}>
+                        {s} segundos
+                      </option>
+                    ))}
+                  </select>
+                  <span className="text-[11px] text-muted-foreground">
+                    {heroCount > 1
+                      ? `· ${heroCount} ofertas en la rotación`
+                      : "· hace falta más de una oferta para que rote"}
+                  </span>
+                </div>
+              )}
+            </div>
           </Field>
 
           <Field label="Upsell (zona que más vende)">
@@ -404,7 +441,8 @@ export function TvScreenEditor({ open, screen, categories, onClose, onSaved }: P
           <Field label="Posters publicitarios (se intercalan entre las slides)">
             <div className="space-y-2">
               <p className="text-[11px] text-muted-foreground">
-                Imágenes (PNG/JPG) o videos (MP4) a pantalla completa. Se suben desde tu computadora.
+                Imágenes (PNG/JPG/WEBP) o videos (MP4/WebM/MOV, hasta 25 MB). Se muestran a
+                pantalla completa, en bucle y sin sonido.
               </p>
               {(config.posters || []).map((p, i) => (
                 <div key={`${p.url}-${i}`} className="flex items-center gap-2 rounded-lg border border-border bg-card p-2">
@@ -483,7 +521,7 @@ export function TvScreenEditor({ open, screen, categories, onClose, onSaved }: P
                 + Subir poster
                 <input
                   type="file"
-                  accept="image/png,image/jpeg,video/mp4"
+                  accept="image/png,image/jpeg,image/webp,video/mp4,video/webm,video/quicktime"
                   className="hidden"
                   onChange={async (e) => {
                     const f = e.target.files?.[0];
@@ -495,7 +533,13 @@ export function TvScreenEditor({ open, screen, categories, onClose, onSaved }: P
                       const r = await fetch("/api/vendor/upload", { method: "POST", body: fd });
                       const data = await r.json();
                       if (r.ok && data.url) {
-                        const type = f.type.startsWith("video/") ? "video" : "image";
+                        // Detección por extensión como fallback: algunos
+                        // navegadores no dan MIME en .mov/.m4v y el poster
+                        // quedaría como imagen (no se reproduciría).
+                        const isVideo =
+                          f.type.startsWith("video/") ||
+                          /\.(mp4|webm|mov|m4v)$/i.test(f.name || "");
+                        const type = isVideo ? "video" : "image";
                         edit({ posters: [...(config.posters || []), { url: data.url, type, durationSec: 5 }] });
                       } else {
                         setMsg(data.error || "No se pudo subir el poster");

@@ -6,6 +6,7 @@ import { TvHeader } from "./tv-header";
 import { TvHero } from "./tv-hero";
 import { TvSlideView } from "./tv-slide";
 import { TvTicker } from "./tv-ticker";
+import { TvPosterStage } from "./tv-poster-stage";
 import { TvClosed } from "./tv-closed";
 import { TV_FONT } from "./tv-themes";
 import { buildSlides, TV_CANVAS, type TvItemRef, type TvPosterRef } from "@/lib/tv-layout";
@@ -34,6 +35,8 @@ type Props = {
 export function TvPlayer({ snapshot, token, mode, vertical, debug = false, fitParent = false }: Props) {
   const [snap, setSnap] = useState<TvSnapshot>(snapshot);
   const [idx, setIdx] = useState(0);
+  /** Índice de la oferta que se muestra en el banner. */
+  const [heroIdx, setHeroIdx] = useState(0);
   const [online, setOnline] = useState(true);
   const [shifted, setShifted] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
@@ -113,6 +116,23 @@ export function TvPlayer({ snapshot, token, mode, vertical, debug = false, fitPa
     const id = setTimeout(() => setIdx((i) => (i + 1) % slides.length), dur);
     return () => clearTimeout(id);
   }, [idx, slides, snap.config.slideSeconds]);
+
+  // --- Rotación del banner de ofertas (timer PROPIO, independiente de las
+  // slides): el destacado cambia solo aunque la carta se quede en la misma
+  // slide. Con una sola oferta no hay rotación (no hay salto visual). -------
+  const heroCount = snap.hero?.length ?? 0;
+  const heroRotateOn = snap.config.hero?.rotate !== false && heroCount > 1;
+  useEffect(() => {
+    if (!heroRotateOn) return;
+    const ms = Math.max(5, snap.config.hero?.seconds ?? 10) * 1000;
+    const id = setInterval(() => setHeroIdx((i) => (i + 1) % heroCount), ms);
+    return () => clearInterval(id);
+  }, [heroRotateOn, heroCount, snap.config.hero?.seconds]);
+
+  // Al publicar (cambia la versión) el banner vuelve a la primera oferta.
+  useEffect(() => {
+    setHeroIdx(0);
+  }, [snap.version]);
 
   // --- Cache offline: la TV sigue mostrando la última carta sin internet -----
   useEffect(() => {
@@ -231,6 +251,18 @@ export function TvPlayer({ snapshot, token, mode, vertical, debug = false, fitPa
 
   return (
     <TvCanvas theme={(snap.theme as TvTheme) || "barrio"} debug={debug} offline={!online} fitParent={fitParent}>
+      {/* Takeover publicitario: capa aparte que cubre el lienzo COMPLETO
+          (1920x1080), por encima del header, el banner y la cinta. Va como
+          hermano del contenido con padding (no dentro) para no respetar el
+          área segura. */}
+      {slide?.poster && (
+        <TvPosterStage
+          key={`poster-${slide.poster.url}`}
+          poster={slide.poster}
+          durationSec={slide.poster.durationSec}
+          shifted={shifted}
+        />
+      )}
       <div
         className="flex h-full w-full flex-col"
         style={{
@@ -256,27 +288,16 @@ export function TvPlayer({ snapshot, token, mode, vertical, debug = false, fitPa
           <>
             {snap.hero.length > 0 && (
               <div style={{ marginTop: 24 }}>
-                <TvHero hero={snap.hero} upsell={snap.config.upsell} upsellItem={upsellItem} />
+                <TvHero
+                  hero={snap.hero}
+                  index={heroIdx}
+                  upsell={snap.config.upsell}
+                  upsellItem={upsellItem}
+                />
               </div>
             )}
             <div key={idx} className="tv-slide-enter relative min-h-0 flex-1">
-              {slide?.poster ? (
-                <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-[28px]">
-                  {slide.poster.type === "video" ? (
-                    <video
-                      src={slide.poster.url}
-                      autoPlay
-                      muted
-                      loop
-                      playsInline
-                      className="h-full w-full object-cover"
-                    />
-                  ) : (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={slide.poster.url} alt="" className="h-full w-full object-cover" />
-                  )}
-                </div>
-              ) : slide ? (
+              {slide?.poster ? null : slide ? (
                 <TvSlideView slide={slide} sections={snap.sections} photoStyle={photoStyle} vertical={vertical} />
               ) : (
                 <div className="flex h-full items-center justify-center">

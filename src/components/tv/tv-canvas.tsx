@@ -61,6 +61,8 @@ export function TvCanvas({ children, theme, debug = false, offline = false, fitP
 @keyframes tv-breathe { 0%, 100% { opacity: .62 } 50% { opacity: 1 } }
 @keyframes tv-fade-in { from { opacity: 0; transform: translateY(14px) } to { opacity: 1; transform: none } }
 @keyframes tv-slide-in { from { opacity: 0; transform: translateX(-26px) scale(.985) } to { opacity: 1; transform: none } }
+@keyframes tv-hero-in { from { opacity: 0; transform: translateY(10px) scale(.985) } to { opacity: 1; transform: none } }
+@keyframes tv-poster-in { from { opacity: 0; transform: scale(.97) } to { opacity: 1; transform: none } }
 @keyframes tv-pop { 0% { opacity: 0; transform: scale(.94) translateY(10px) } 60% { transform: scale(1.015) translateY(0) } 100% { opacity: 1; transform: scale(1) } }
 @keyframes tv-kenburns { from { transform: scale(1.02) translate3d(0,0,0) } to { transform: scale(1.14) translate3d(-1.5%, -1%, 0) } }
 @keyframes tv-marquee { from { transform: translateX(0) } to { transform: translateX(-50%) } }
@@ -68,13 +70,15 @@ export function TvCanvas({ children, theme, debug = false, offline = false, fitP
 @keyframes tv-shimmer { 0% { transform: translateX(-120%) } 100% { transform: translateX(320%) } }
 @keyframes tv-price-in { from { opacity: 0; transform: translateY(8px) } to { opacity: 1; transform: none } }
 .tv-slide-enter { animation: tv-slide-in 520ms cubic-bezier(.22,.8,.28,1) both; }
+.tv-hero-enter { animation: tv-hero-in 620ms cubic-bezier(.22,.8,.28,1) both; }
+.tv-poster-in { animation: tv-poster-in 520ms cubic-bezier(.22,.8,.28,1) both; }
 .tv-item-enter { animation: tv-pop 460ms cubic-bezier(.22,.9,.3,1) both; }
 .tv-kenburns { animation: tv-kenburns 18s ease-out both; }
 .tv-marquee-track { animation: tv-marquee 26s linear infinite; }
 .tv-glow-pulse { animation: tv-glow-pulse 3.4s ease-in-out infinite; }
 .tv-price-in { animation: tv-price-in 420ms ease-out both; }
 @media (prefers-reduced-motion: reduce) {
-  .tv-slide-enter, .tv-item-enter, .tv-kenburns, .tv-marquee-track, .tv-glow-pulse, .tv-price-in,
+  .tv-slide-enter, .tv-item-enter, .tv-kenburns, .tv-marquee-track, .tv-glow-pulse, .tv-price-in, .tv-hero-enter, .tv-poster-in,
   [style*="tv-breathe"], [style*="tv-progress"] { animation: none !important; }
 }
 `,

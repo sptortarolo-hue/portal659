@@ -5,7 +5,7 @@ import path from "path";
 import { randomBytes } from "crypto";
 
 const MAX_SIZE = 5 * 1024 * 1024; // imágenes y PDF
-const MAX_VIDEO_SIZE = 50 * 1024 * 1024; // posters de video (clips cortos en bucle)
+const MAX_VIDEO_SIZE = 25 * 1024 * 1024; // posters de video (clips cortos en bucle)
 
 export type SaveUploadParams = {
   file: File;
@@ -40,14 +40,24 @@ export async function saveUploadedFile({ file, folder, vendorId }: SaveUploadPar
     throw new Error("Las fotos HEIC de iPhone no están soportadas: exportala como JPG y subila de nuevo");
   }
   if (isVideo ? file.size > MAX_VIDEO_SIZE : file.size > MAX_SIZE) {
-    throw new Error(isVideo ? "El video debe pesar menos de 50 MB" : "El archivo debe pesar menos de 5 MB");
+    throw new Error(
+      isVideo
+        ? "El video debe pesar menos de 25 MB (usá un clip corto, se repite en bucle)"
+        : "El archivo debe pesar menos de 5 MB"
+    );
   }
 
   const buffer = Buffer.from(await file.arrayBuffer());
 
-  const ext = (file.name.split(".").pop() || "jpg")
+  const rawExt = (file.name.split(".").pop() || "jpg")
     .toLowerCase()
     .replace(/[^a-z0-9]/g, "");
+  // Un video sin extensión reconocible (o con una rara) se guarda como MP4:
+  // si cayera en "jpg" el navegador no lo reproduciría.
+  const VIDEO_EXTS = ["mp4", "webm", "mov", "m4v"];
+  const ext = isVideo
+    ? (VIDEO_EXTS.includes(rawExt) ? rawExt : "mp4")
+    : rawExt;
   const filename = `${Date.now()}-${randomBytes(6).toString("hex")}.${ext}`;
 
   const uploadRoot = process.env.UPLOAD_DIR || path.join(process.cwd(), "uploads");

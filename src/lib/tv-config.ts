@@ -47,7 +47,14 @@ export type TvConfig = {
   showClock: boolean;
   showQr: boolean;
   photoStyle: "none" | "thumb";
-  hero: { mode: "auto" | "manual"; productIds: string[] };
+  hero: {
+    mode: "auto" | "manual";
+    productIds: string[];
+    /** Cambiar el destacado solo cada `seconds` (si hay 2+ ofertas). */
+    rotate: boolean;
+    /** Segundos que dura cada oferta en el banner. */
+    seconds: number;
+  };
   upsell: { enabled: boolean; text: string; productId: string | null };
   ticker: { enabled: boolean; text: string };
   /** Categorías visibles y su orden (por nombre canónico de vendor_categories). */
@@ -74,7 +81,7 @@ export const DEFAULT_TV_CONFIG: TvConfig = {
   showClock: true,
   showQr: false,
   photoStyle: "thumb",
-  hero: { mode: "auto", productIds: [] },
+  hero: { mode: "auto", productIds: [], rotate: true, seconds: 10 },
   upsell: { enabled: false, text: "", productId: null },
   ticker: { enabled: false, text: "" },
   categories: [],
@@ -137,6 +144,12 @@ export function normalizeTvConfig(input: unknown): TvConfig {
   const heroIds = Array.isArray(heroRaw.productIds)
     ? heroRaw.productIds.filter((x: unknown) => typeof x === "string" && x).slice(0, 4)
     : [];
+  // Rotación del banner: tolerante (el draft viejo no tiene estos campos).
+  const heroRotate = typeof heroRaw.rotate === "boolean" ? heroRaw.rotate : DEFAULT_TV_CONFIG.hero.rotate;
+  const heroSecondsRaw = Number(heroRaw.seconds);
+  const heroSeconds = Number.isFinite(heroSecondsRaw) && heroSecondsRaw > 0
+    ? Math.min(60, Math.max(5, Math.round(heroSecondsRaw)))
+    : DEFAULT_TV_CONFIG.hero.seconds;
 
   const upsellRaw = asObj(raw.upsell);
   const tickerRaw = asObj(raw.ticker);
@@ -199,7 +212,12 @@ export function normalizeTvConfig(input: unknown): TvConfig {
     showClock: bool(raw.showClock, true),
     showQr: bool(raw.showQr, false),
     photoStyle,
-    hero: { mode: heroRaw.mode === "manual" ? "manual" : "auto", productIds: heroIds },
+    hero: {
+      mode: heroRaw.mode === "manual" ? "manual" : "auto",
+      productIds: heroIds,
+      rotate: heroRotate,
+      seconds: heroSeconds,
+    },
     upsell: {
       enabled: bool(upsellRaw.enabled, false),
       text: str(upsellRaw.text, "").slice(0, 90),

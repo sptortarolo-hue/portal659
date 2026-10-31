@@ -133,7 +133,12 @@ jobs:
             [ "$DEPLOYED" = "1" ]
             # nginx cachea el DNS del upstream al arrancar: si 'app' se recrea con un IP
             # nuevo, nginx apunta a un IP muerto y el sitio da 502. Restart = re-resuelve.
-            docker restart portal659-nginx
+            # FORCE-RECREATE (no solo restart): nginx.conf se monta como volume de
+            # ARCHIVO; al reemplazarlo, el bind-mount puede quedar apuntando al
+            # inode viejo y el conf nuevo no tomaría hasta recrear el contenedor
+            # (un restart no alcanza). Necesario para que cambios de nginx.conf
+            # (ej. client_max_body_size) apliquen de verdad.
+            docker compose up -d --force-recreate nginx
             docker image prune -f
             # Higiene de disco (incidente sep-2026: build cache + backups
             # llenaron el disco de 20G y voltearon Postgres): no falla el

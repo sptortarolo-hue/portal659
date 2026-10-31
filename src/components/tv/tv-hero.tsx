@@ -3,7 +3,10 @@ import { TV_TYPE } from "@/lib/tv-layout";
 import type { TvItem } from "@/lib/tv-snapshot";
 
 type Props = {
+  /** Pool de ofertas (el reproductor rota entre ellas). */
   hero: TvItem[];
+  /** Índice de la oferta que se muestra como pieza principal. */
+  index?: number;
   upsell: { enabled: boolean; text: string; productId: string | null };
   upsellItem: TvItem | null;
 };
@@ -13,11 +16,18 @@ type Props = {
  * (Ken Burns) y velo degradado, no una caja con una foto cuadrada al lado.
  * Es la pantalla que más vende según los benchmarks de menús digitales: el
  * cliente mira el destacado, no la lista.
+ *
+ * `index` hace que la pieza principal rote entre las ofertas del pool; los
+ * chips de la derecha muestran las que siguen (con wraparound).
  */
-export function TvHero({ hero, upsell, upsellItem }: Props) {
-  const main = hero[0];
+export function TvHero({ hero, index = 0, upsell, upsellItem }: Props) {
+  if (!hero.length) return null;
+  const main = hero[index % hero.length];
   if (!main) return null;
-  const others = hero.slice(1, 3);
+  // Los 2 que siguen en la rotación (con wraparound): "qué viene después".
+  const others = [1, 2]
+    .map((n) => hero[(index + n) % hero.length])
+    .filter((i) => i && i.id !== main.id);
 
   return (
     <section
@@ -27,9 +37,10 @@ export function TvHero({ hero, upsell, upsellItem }: Props) {
         boxShadow: "inset 0 0 0 2px var(--tv-line), 0 18px 44px rgba(0,0,0,0.18)",
       }}
     >
-      {/* Foto a sangre con zoom lento. */}
+      {/* Foto a sangre con zoom lento. El key reinicia el Ken Burns cuando
+          cambia la oferta (si no, el zoom sigue sobre la foto anterior). */}
       {main.imageUrl ? (
-        <div className="absolute inset-0 overflow-hidden">
+        <div className="absolute inset-0 overflow-hidden" key={`bg-${main.id}`}>
           <div className="tv-kenburns h-full w-full">
             <ProductImage
               src={main.imageUrl}
@@ -44,6 +55,7 @@ export function TvHero({ hero, upsell, upsellItem }: Props) {
       ) : (
         <div
           className="absolute inset-0"
+          key={`bg-${main.id}`}
           style={{ background: "var(--tv-card)" }}
         />
       )}
@@ -58,7 +70,8 @@ export function TvHero({ hero, upsell, upsellItem }: Props) {
       />
 
       <div className="relative flex h-full items-center gap-8" style={{ padding: "0 36px 0 44px" }}>
-        <div className="min-w-0 flex-1">
+        {/* key en el bloque de texto: al rotar la oferta hace crossfade. */}
+        <div className="min-w-0 flex-1 tv-hero-enter" key={`txt-${main.id}`}>
           <p
             className="flex items-center gap-3 font-semibold uppercase tracking-[0.3em]"
             style={{ fontSize: 24, color: "var(--tv-accent)" }}

@@ -268,12 +268,22 @@ export async function loadCatalogSections(vendorId: string): Promise<{
   return { categoryNames: cats.map((c: any) => String(c.name)), sections };
 }
 
-/** Hero automático: destacados primero, después la promo más fuerte. */
+/**
+ * Cuántas ofertas entran en el pool del banner. El reproductor rota entre
+ * ellas (el destacado "Hoy" primero, después las promos por % de descuento).
+ */
+const HERO_POOL_MAX = 12;
+
+/**
+ * Pool de ofertas del banner: destacados ("Hoy") primero y después las promos
+ * ordenadas por % de descuento. En modo manual manda el orden elegido por el
+ * comercio. Sin ofertas cae al primer producto (el banner nunca queda vacío).
+ */
 function pickHero(sections: TvSection[], config: TvConfig, all: any[]): TvItem[] {
   if (config.hero.mode === "manual" && config.hero.productIds.length > 0) {
     const byId = new Map(sections.flatMap((s) => s.items).map((i) => [i.id, i]));
     const picked = config.hero.productIds.map((id) => byId.get(id)).filter(Boolean) as TvItem[];
-    return picked.slice(0, 3);
+    return picked.slice(0, 4);
   }
   const flat = sections.flatMap((s) => s.items);
   const featured = flat.filter((i) => i.badge === "Hoy");
@@ -290,7 +300,7 @@ function pickHero(sections: TvSection[], config: TvConfig, all: any[]): TvItem[]
     }
   }
   for (const id of promos) {
-    if (out.length >= 3) break;
+    if (out.length >= HERO_POOL_MAX) break;
     if (seen.has(id)) continue;
     const hit = flat.find((i) => i.id === id);
     if (hit) {
@@ -299,7 +309,7 @@ function pickHero(sections: TvSection[], config: TvConfig, all: any[]): TvItem[]
     }
   }
   if (out.length === 0 && flat.length > 0) out.push(flat[0]);
-  return out.slice(0, 3);
+  return out.slice(0, HERO_POOL_MAX);
 }
 
 /** Hora local (AR) como {day, minutes} para resolver franjas. */

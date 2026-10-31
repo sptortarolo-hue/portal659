@@ -5,10 +5,25 @@ import { ProductImage } from "@/components/product-image";
  * cliente pida algo que no se le puede vender), se muestra una pantalla digna
  * con el horario. Es el "empty state" que separa un cartel profesional de una
  * página estirada.
+ *
+ * Si el comercio tiene el QR de pedidos online habilitado, se SUMA a la
+ * pantalla (no reemplaza el horario): el local cerrado sigue pudiendo vender
+ * para retirar/recibir, así que el QR invita a pedir desde el celular.
  */
-export function TvClosed({ name, logoUrl, hoursText }: { name: string; logoUrl: string | null; hoursText: string | null }) {
+export function TvClosed({
+  name,
+  logoUrl,
+  hoursText,
+  qrDataUrl,
+}: {
+  name: string;
+  logoUrl: string | null;
+  hoursText: string | null;
+  /** PNG del QR (dataUrl). null = sin QR (no vende online o está apagado). */
+  qrDataUrl?: string | null;
+}) {
   return (
-    <div className="relative flex h-full flex-col items-center justify-center gap-8 overflow-hidden px-24 text-center">
+    <div className="relative flex h-full flex-col items-center justify-center gap-6 overflow-hidden px-24 text-center">
       {/* Halo del acento detrás del logo: da profundidad sin ruido. */}
       <div
         className="tv-glow-pulse pointer-events-none absolute left-1/2 top-1/2 h-[720px] w-[720px] -translate-x-1/2 -translate-y-1/2 rounded-full"
@@ -25,8 +40,8 @@ export function TvClosed({ name, logoUrl, hoursText }: { name: string; logoUrl: 
               src={logoUrl}
               name={name}
               alt={name}
-              className="h-40 w-40 object-cover"
-              iconClassName="h-20 w-20"
+              className="h-32 w-32 object-cover"
+              iconClassName="h-16 w-16"
               eager
             />
           </div>
@@ -35,16 +50,40 @@ export function TvClosed({ name, logoUrl, hoursText }: { name: string; logoUrl: 
 
       <h2
         className="relative font-display font-black leading-tight tracking-tight"
-        style={{ fontSize: 104 }}
+        style={{ fontSize: 84 }}
       >
-        Volvemos en un rato
+        {qrDataUrl ? "Ya puedes pedir online" : "Volvemos en un rato"}
       </h2>
       <p
         className="relative max-w-[1100px] leading-snug"
-        style={{ fontSize: 38, color: "var(--tv-muted)" }}
+        style={{ fontSize: 34, color: "var(--tv-muted)" }}
       >
         {hoursText ? `Nuestro horario: ${hoursText}` : "Consultanos por WhatsApp desde nuestro perfil."}
       </p>
+
+      {/* QR para pedir online (suma, no reemplaza). */}
+      {qrDataUrl && (
+        <div className="relative mt-2 flex items-center gap-10">
+          <div
+            className="rounded-[32px] p-6"
+            style={{ background: "#ffffff", boxShadow: "0 24px 70px rgba(0,0,0,0.4)" }}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={qrDataUrl}
+              alt="Código QR para pedir online"
+              className="h-[320px] w-[320px]"
+              style={{ imageRendering: "pixelated" }}
+            />
+          </div>
+          <div className="text-left">
+            <p style={{ fontSize: 52, fontWeight: 900, color: "var(--tv-accent)" }}>Pedí online</p>
+            <p className="mt-1 max-w-[380px] leading-snug" style={{ fontSize: 28, color: "var(--tv-muted)" }}>
+              Para retirar o recibir en tu casa. Escaneá el código desde el celular.
+            </p>
+          </div>
+        </div>
+      )}
 
       <span
         className="relative mt-2 rounded-full px-7 py-3 font-semibold"

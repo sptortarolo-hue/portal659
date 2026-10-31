@@ -7,6 +7,7 @@ import { TvHero } from "./tv-hero";
 import { TvSlideView } from "./tv-slide";
 import { TvTicker } from "./tv-ticker";
 import { TvPosterStage } from "./tv-poster-stage";
+import { TvQrSlide } from "./tv-qr-slide";
 import { TvClosed } from "./tv-closed";
 import { TV_FONT } from "./tv-themes";
 import { buildSlides, TV_CANVAS, type TvItemRef, type TvPosterRef } from "@/lib/tv-layout";
@@ -87,6 +88,11 @@ export function TvPlayer({ snapshot, token, mode, vertical, debug = false, fitPa
     [(snap.config.posters || []).map((p) => `${p.url}|${p.type}|${p.durationSec}`).join(",")]
   );
 
+  // QR en rotación: solo si el server lo generó y el modo lo permite en
+  // abierto ("siempre" | "abierto"). En modo "cerrado" no rota: aparece solo
+  // en la pantalla de local cerrado.
+  const qrInRotation = !!snap.qr && snap.config.qr?.mode !== "cerrado";
+
   const slides = useMemo(
     () =>
       buildSlides({
@@ -97,8 +103,10 @@ export function TvPlayer({ snapshot, token, mode, vertical, debug = false, fitPa
         photoStyle,
         showDescriptions: snap.config.showDescriptions,
         posters,
+        qr: { enabled: qrInRotation, every: 4 },
       }),
-    [sections, snap.config.columns, contentH, photoStyle, snap.config.showDescriptions, posters]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sections, snap.config.columns, contentH, photoStyle, snap.config.showDescriptions, posters, qrInRotation]
   );
 
   // Solo se reinicia la rotación cuando cambia la VERSIÓN publicada (el
@@ -112,10 +120,14 @@ export function TvPlayer({ snapshot, token, mode, vertical, debug = false, fitPa
   useEffect(() => {
     if (slides.length <= 1) return;
     const cur = slides[Math.min(idx, slides.length - 1)];
-    const dur = (cur?.poster ? cur.poster.durationSec : snap.config.slideSeconds) * 1000;
+    const dur = (cur?.poster
+      ? cur.poster.durationSec
+      : cur?.qr
+        ? snap.config.qr?.seconds ?? 12
+        : snap.config.slideSeconds) * 1000;
     const id = setTimeout(() => setIdx((i) => (i + 1) % slides.length), dur);
     return () => clearTimeout(id);
-  }, [idx, slides, snap.config.slideSeconds]);
+  }, [idx, slides, snap.config.slideSeconds, snap.config.qr?.seconds]);
 
   // --- Rotación del banner de ofertas (timer PROPIO, independiente de las
   // slides): el destacado cambia solo aunque la carta se quede en la misma
@@ -235,9 +247,16 @@ export function TvPlayer({ snapshot, token, mode, vertical, debug = false, fitPa
   }, [mode, token]);
 
   const closed = snap.vendor.isOpen === false && snap.config.closedScreen;
+  // QR en la pantalla de cerrado: solo si el server lo generó y el modo lo
+  // permite en cerrado ("siempre" | "cerrado"). En "abierto" no aparece acá.
+  const qrInClosed = !!snap.qr && snap.config.qr?.mode !== "abierto" ? snap.qr.dataUrl : null;
   const slide = slides[Math.min(idx, Math.max(0, slides.length - 1))];
-  // Duración de la slide actual: los posters tienen la suya.
-  const slideDuration = slide?.poster ? slide.poster.durationSec : snap.config.slideSeconds;
+  // Duración de la slide actual: posters y QR tienen la suya.
+  const slideDuration = slide?.poster
+    ? slide.poster.durationSec
+    : slide?.qr
+      ? snap.config.qr?.seconds ?? 12
+      : snap.config.slideSeconds;
   const upsellItem: TvItem | null = useMemo(() => {
     if (!snap.config.upsell.enabled) return null;
     const id = snap.config.upsell.productId;
@@ -263,6 +282,16 @@ export function TvPlayer({ snapshot, token, mode, vertical, debug = false, fitPa
           shifted={shifted}
         />
       )}
+      {slide?.qr && snap.qr && (
+        <TvQrSlide
+          key="qr-slide"
+          name={snap.vendor.name}
+          logoUrl={snap.vendor.logoUrl}
+          qrDataUrl={snap.qr.dataUrl}
+          durationSec={snap.config.qr?.seconds ?? 12}
+          shifted={shifted}
+        />
+      )}
       <div
         className="flex h-full w-full flex-col"
         style={{
@@ -282,7 +311,12 @@ export function TvPlayer({ snapshot, token, mode, vertical, debug = false, fitPa
 
         {closed ? (
           <div className="flex-1">
-            <TvClosed name={snap.vendor.name} logoUrl={snap.vendor.logoUrl} hoursText={snap.vendor.hoursText} />
+            <TvClosed
+              name={snap.vendor.name}
+              logoUrl={snap.vendor.logoUrl}
+              hoursText={snap.vendor.hoursText}
+              qrDataUrl={qrInClosed}
+            />
           </div>
         ) : (
           <>
@@ -297,7 +331,7 @@ export function TvPlayer({ snapshot, token, mode, vertical, debug = false, fitPa
               </div>
             )}
             <div key={idx} className="tv-slide-enter relative min-h-0 flex-1">
-              {slide?.poster ? null : slide ? (
+              {slide?.poster || slide?.qr ? null : slide ? (
                 <TvSlideView slide={slide} sections={snap.sections} photoStyle={photoStyle} vertical={vertical} />
               ) : (
                 <div className="flex h-full items-center justify-center">

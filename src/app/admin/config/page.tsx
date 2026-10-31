@@ -31,6 +31,9 @@ export default function AdminConfigPage() {
   const [waFloat, setWaFloat] = useState<boolean | null>(null);
   const [savingWaFloat, setSavingWaFloat] = useState(false);
   const [waFloatError, setWaFloatError] = useState("");
+  const [tvQrOnline, setTvQrOnline] = useState<boolean | null>(null);
+  const [savingTvQr, setSavingTvQr] = useState(false);
+  const [tvQrError, setTvQrError] = useState("");
 
   async function patchConfig(type: "neighborhood" | "category", id: string, data: Record<string, unknown>) {
     await api("/api/admin/config", {
@@ -82,8 +85,10 @@ export default function AdminConfigPage() {
       try {
         const s = await api("/api/portal-settings");
         setWaFloat(s?.waFloat !== false);
+        setTvQrOnline(s?.tvQrOnline === true);
       } catch {
         setWaFloat(null);
+        setTvQrOnline(null);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo cargar la configuración");
@@ -169,6 +174,23 @@ export default function AdminConfigPage() {
     }
   }
 
+  async function toggleTvQr(next: boolean) {
+    setSavingTvQr(true);
+    setTvQrError("");
+    try {
+      await api("/api/admin/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: "tv_qr_online", value: next }),
+      });
+      setTvQrOnline(next);
+    } catch (e) {
+      setTvQrError(e instanceof Error ? e.message : "No se pudo guardar el switch");
+    } finally {
+      setSavingTvQr(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <h1 className="font-display text-2xl font-semibold">Configuración</h1>
@@ -219,6 +241,46 @@ export default function AdminConfigPage() {
         )}
         {waFloat === false && !waFloatError && (
           <p className="text-xs text-amber-700 pt-3">El botón está oculto en todo el sitio.</p>
+        )}
+
+        <div className="mt-6 border-t border-border pt-5 flex items-center justify-between gap-4">
+          <div>
+            <p className="text-sm font-medium">QR de pedidos online en la Pantalla TV</p>
+            <p className="text-xs text-muted-foreground">
+              Muestra una pantalla con el QR para pedir desde el celular dentro de la carta
+              (y en la pantalla de local cerrado). Solo lo ven los comercios que venden online
+              y que lo activen en su pantalla.
+            </p>
+          </div>
+          {tvQrOnline === null ? (
+            <span className="text-xs text-muted-foreground">…</span>
+          ) : (
+            <button
+              type="button"
+              role="switch"
+              aria-checked={tvQrOnline}
+              aria-label="QR de pedidos online en la Pantalla TV"
+              disabled={savingTvQr}
+              onClick={() => toggleTvQr(!tvQrOnline)}
+              className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors disabled:opacity-50 ${
+                tvQrOnline ? "bg-primary" : "bg-muted"
+              }`}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                  tvQrOnline ? "translate-x-6" : "translate-x-1"
+                }`}
+              />
+            </button>
+          )}
+        </div>
+        {tvQrError && (
+          <p className="text-xs text-red-600 pt-3">{tvQrError}</p>
+        )}
+        {tvQrOnline === false && !tvQrError && (
+          <p className="text-xs text-muted-foreground pt-3">
+            Nadie ve el QR hasta que lo enciendas acá.
+          </p>
         )}
       </div>
 

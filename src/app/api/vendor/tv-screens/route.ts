@@ -6,6 +6,19 @@ import { normalizeTvConfig } from "@/lib/tv-config";
 export const dynamic = "force-dynamic";
 
 /**
+ * ¿El comercio vende online? (tiene slug, acepta pedidos y su vertical tiene
+ * carrito). Mismo criterio que `buildTvSnapshot` para decidir si el QR aplica.
+ */
+function vendorSellsOnline(vendor: any): boolean {
+  return !!(
+    vendor &&
+    vendor.slug &&
+    vendor.accepts_online_orders !== false &&
+    ["gastro", "moda", "comercio", "estetica"].includes(String(vendor.vertical || ""))
+  );
+}
+
+/**
  * ABM de pantallas TV del comercio.
  * GET  : lista (con el estado de conexión y si hay borrador sin publicar).
  * POST : crea una pantalla respetando `max_screens` del plan.
@@ -37,6 +50,8 @@ export async function GET(request: Request) {
     screens,
     maxScreens: guard.ctx.maxScreens,
     categories: catalog.categoryNames || [],
+    // ¿Este comercio vende online? (para habilitar/deshabilitar el QR en el editor)
+    sellsOnline: vendorSellsOnline(guard.ctx.vendor),
   });
 }
 

@@ -69,6 +69,13 @@ export type TvConfig = {
    * uploads; la TV los muestra a pantalla completa durante `durationSec`.
    */
   posters: TvPoster[];
+  /**
+   * QR de pedidos online: pantalla completa con el QR para pedir desde el
+   * celular. Se intercala como una slide más de la rotación y también puede
+   * sumarse a la pantalla de "local cerrado". `mode` decide cuándo aparece:
+   * "siempre" (abierto y cerrado), "abierto" o "cerrado".
+   */
+  qr: { enabled: boolean; mode: "siempre" | "abierto" | "cerrado"; seconds: number };
 };
 
 export const DEFAULT_TV_CONFIG: TvConfig = {
@@ -89,6 +96,7 @@ export const DEFAULT_TV_CONFIG: TvConfig = {
   closedScreen: true,
   footerText: "",
   posters: [],
+  qr: { enabled: false, mode: "siempre", seconds: 12 },
 };
 
 /** Valores aceptados por el editor (para selects y normalización). */
@@ -153,6 +161,15 @@ export function normalizeTvConfig(input: unknown): TvConfig {
 
   const upsellRaw = asObj(raw.upsell);
   const tickerRaw = asObj(raw.ticker);
+
+  // QR de pedidos online: tolerante (el draft viejo no lo trae).
+  const qrRaw = asObj(raw.qr);
+  const qrMode: TvConfig["qr"]["mode"] =
+    qrRaw.mode === "abierto" || qrRaw.mode === "cerrado" ? qrRaw.mode : "siempre";
+  const qrSecRaw = Number(qrRaw.seconds);
+  const qrSeconds = Number.isFinite(qrSecRaw) && qrSecRaw > 0
+    ? Math.min(60, Math.max(5, Math.round(qrSecRaw)))
+    : DEFAULT_TV_CONFIG.qr.seconds;
 
   const categories = Array.isArray(raw.categories)
     ? raw.categories
@@ -232,6 +249,7 @@ export function normalizeTvConfig(input: unknown): TvConfig {
     closedScreen: bool(raw.closedScreen, true),
     footerText: str(raw.footerText, "").slice(0, 120),
     posters,
+    qr: { enabled: bool(qrRaw.enabled, false), mode: qrMode, seconds: qrSeconds },
   };
 }
 

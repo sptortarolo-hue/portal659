@@ -5,10 +5,13 @@ import { queryOne, query } from "@/lib/db";
  * /admin/config. Tolerante a migración pendiente: sin tabla (o sin fila)
  * devuelve el default, que replica el comportamiento histórico.
  */
-export type PortalSettingKey = "wa_float";
+export type PortalSettingKey = "wa_float" | "tv_qr_online";
 
 const DEFAULTS: Record<PortalSettingKey, boolean> = {
   wa_float: true,
+  // QR de pedidos online en la Pantalla TV: apagado por default (fail-safe:
+  // nada cambia para los comercios existentes hasta que el admin lo encienda).
+  tv_qr_online: false,
 };
 
 export async function getPortalSetting(key: PortalSettingKey): Promise<boolean> {

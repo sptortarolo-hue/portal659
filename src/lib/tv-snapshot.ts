@@ -48,4 +48,10 @@ export type TvSnapshot = {
   daypartLabel: string | null;
   sections: TvSection[];
   hero: TvItem[];
+  /**
+   * QR de pedidos online (server-side): `url` es el link real de la tienda y
+   * `dataUrl` el PNG del QR ya renderizado. `null` cuando no aplica (comercio
+   * sin venta online, o el setting global está apagado).
+   */
+  qr: { url: string; dataUrl: string } | null;
 };

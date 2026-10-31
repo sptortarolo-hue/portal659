@@ -9,5 +9,6 @@ export const dynamic = "force-dynamic";
  */
 export async function GET() {
   const waFloat = await getPortalSetting("wa_float");
-  return NextResponse.json({ waFloat });
+  const tvQrOnline = await getPortalSetting("tv_qr_online");
+  return NextResponse.json({ waFloat, tvQrOnline });
 }

@@ -23,6 +23,7 @@ export function TvScreenManager({ enabled, maxScreens }: Props) {
   const [screens, setScreens] = useState<ScreenApi[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
   const [max, setMax] = useState(maxScreens);
+  const [sellsOnline, setSellsOnline] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<ScreenApi | null>(null);
   const [qrFor, setQrFor] = useState<ScreenApi | null>(null);
@@ -41,6 +42,7 @@ export function TvScreenManager({ enabled, maxScreens }: Props) {
       setError(null);
       setScreens(j.screens || []);
       setCategories(j.categories || []);
+      setSellsOnline(!!j.sellsOnline);
       setMax(Number(j.maxScreens ?? maxScreens));
     } catch {
       setError("Sin conexión con el servidor");
@@ -235,6 +237,7 @@ export function TvScreenManager({ enabled, maxScreens }: Props) {
           open
           screen={editing}
           categories={categories}
+          sellsOnline={sellsOnline}
           onClose={() => setEditing(null)}
           onSaved={load}
         />

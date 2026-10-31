@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { isAdmin } from "@/lib/admin-utils";
 import { setPortalSetting, type PortalSettingKey } from "@/lib/portal-settings";
 
-const KEYS: PortalSettingKey[] = ["wa_float"];
+const KEYS: PortalSettingKey[] = ["wa_float", "tv_qr_online"];
 
 export async function PATCH(request: Request) {
   try {

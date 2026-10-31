@@ -22,6 +22,15 @@ import {
 } from "./tv-config";
 import type { TvItem, TvSection, TvSnapshot } from "./tv-snapshot";
 import { randomBytes } from "node:crypto";
+import {
+  isGastroVendor,
+  isModaVendor,
+  isComercioVendor,
+  isEsteticaVendor,
+} from "./plans";
+import { getPortalSetting } from "./portal-settings";
+import { getSiteUrl } from "./site-url";
+import QRCode from "qrcode";
 
 export type TvScreenRow = {
   id: string;
@@ -371,6 +380,31 @@ export async function buildTvSnapshot(
   // Sin horarios cargados no se decide nada (null = ni abierto ni cerrado).
   const isOpen = openState;
 
+  // QR de pedidos online: solo si el admin lo habilitó, el comercio lo pidió
+  // en esta pantalla, y el local realmente vende online (tiene slug + acepta
+  // pedidos + su vertical tiene carrito). Servicios (plomero etc.) no lo ven.
+  let qr: TvSnapshot["qr"] = null;
+  try {
+    const sellsOnline =
+      !!vendor.slug &&
+      vendor.accepts_online_orders !== false &&
+      (isGastroVendor(vendor) ||
+        isModaVendor(vendor) ||
+        isComercioVendor(vendor) ||
+        isEsteticaVendor(vendor));
+    if (config.qr.enabled && sellsOnline && (await getPortalSetting("tv_qr_online"))) {
+      const url = `${getSiteUrl()}/tienda/${vendor.slug}?menu=1`;
+      const dataUrl = await QRCode.toDataURL(url, {
+        width: 900,
+        margin: 2,
+        color: { dark: "#0b1220", light: "#ffffff" },
+      });
+      qr = { url, dataUrl };
+    }
+  } catch {
+    qr = null;
+  }
+
   return {
     version: Number(row.version ?? 0),
     generatedAt: at.toISOString(),
@@ -387,5 +421,6 @@ export async function buildTvSnapshot(
     daypartLabel: resolved.label,
     sections,
     hero,
+    qr,
   };
 }

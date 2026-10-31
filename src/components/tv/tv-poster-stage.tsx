@@ -11,13 +11,15 @@ type Props = {
 };
 
 /**
- * Poster publicitario a PANTALLA COMPLETA.
+ * Poster publicitario a PANTALLA COMPLETA (modo híbrido).
  *
  * Los posters son un corte publicitario dentro de la carta: cubren todo el
  * lienzo 1920x1080 (header, banner, slides y cinta) como en la señalética
- * digital de un local. El medio va CENTRADO y sin recorte (`object-contain`)
- * sobre un fondo con la MISMA imagen/video reescalada y desenfocada: da
- * profundidad y evita las franjas negras cuando el formato no es 16:9.
+ * digital de un local. El medio va al MÁXIMO SIN RECORTE (`object-contain`
+ * a escala completa): toca el borde en el eje que cuelga (un 16:9 llena
+ * pantalla entera; un vertical llena el alto) y el fondo con la MISMA
+ * imagen/video reescalada y desenfocada completa los espacios sobrantes.
+ * Nunca se pierde contenido y nunca quedan franjas negras.
  */
 export function TvPosterStage({ poster, durationSec, shifted = false }: Props) {
   const isVideo = poster.type === "video";
@@ -39,7 +41,7 @@ export function TvPosterStage({ poster, durationSec, shifted = false }: Props) {
           style={{
             filter: "blur(44px) saturate(1.15)",
             transform: "scale(1.25)",
-            opacity: 0.5,
+            opacity: 0.55,
           }}
         >
           {isVideo ? (
@@ -71,46 +73,37 @@ export function TvPosterStage({ poster, durationSec, shifted = false }: Props) {
         className="absolute inset-0"
         style={{
           background:
-            "radial-gradient(120% 90% at 50% 50%, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0.72) 100%)",
+            "radial-gradient(120% 90% at 50% 50%, rgba(0,0,0,0.25) 0%, rgba(0,0,0,0.62) 100%)",
         }}
       />
 
-      {/* Poster centralizado, sin recorte. */}
-      <div className="absolute inset-0 flex items-center justify-center p-[6%]">
-        <div
-          className="tv-poster-in flex max-h-full max-w-full items-center justify-center overflow-hidden"
-          style={{
-            borderRadius: 28,
-            boxShadow: "0 30px 90px rgba(0,0,0,0.55)",
-          }}
-        >
-          {isVideo ? (
-            <video
-              key={`fg-${poster.url}`}
-              src={poster.url}
-              autoPlay
-              muted
-              loop
-              playsInline
-              className="max-h-[76vh] max-w-full object-contain"
-            />
-          ) : (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              key={`fg-${poster.url}`}
-              src={poster.url}
-              alt="Poster"
-              className="max-h-[76vh] max-w-full object-contain"
-            />
-          )}
-        </div>
-      </div>
+      {/* Medio a escala máxima, sin recorte: toca el borde en el eje que
+          cuelga y el blur completa el resto de la pantalla. */}
+      {isVideo ? (
+        <video
+          key={`fg-${poster.url}`}
+          src={poster.url}
+          autoPlay
+          muted
+          loop
+          playsInline
+          className="tv-poster-in absolute inset-0 h-full w-full object-contain"
+        />
+      ) : (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          key={`fg-${poster.url}`}
+          src={poster.url}
+          alt="Poster"
+          className="tv-poster-in absolute inset-0 h-full w-full object-contain"
+        />
+      )}
 
       {/* Progreso del poster (la barra de las slides queda tapada por el
           takeover, así que el poster lleva la suya). */}
-      <div className="absolute inset-x-0 bottom-0 px-[6%] pb-[4%]">
+      <div className="absolute inset-x-0 bottom-0 px-[6%] pb-[3%]">
         <div
-          className="h-[8px] w-full overflow-hidden rounded-full"
+          className="h-[6px] w-full overflow-hidden rounded-full"
           style={{ background: "rgba(255,255,255,0.18)" }}
         >
           <div

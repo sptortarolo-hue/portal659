@@ -8,6 +8,7 @@ import { TV_THEME_LABELS, TV_THEME_SWATCH, type TvThemeTokens } from "@/componen
 import { TvPlayer } from "@/components/tv/tv-player";
 import { TV_THEMES, normalizeTvConfig, TV_LAYOUT_CHOICES, type TvConfig } from "@/lib/tv-config";
 import type { TvSnapshot } from "@/lib/tv-snapshot";
+import { TvDestacadosPicker } from "./tv-destacados-picker";
 
 type ScreenApi = {
   id: string;
@@ -28,6 +29,8 @@ type Props = {
   open: boolean;
   screen: ScreenApi | null;
   categories: string[];
+  /** ¿El comercio vende online? (para habilitar el QR de pedidos). */
+  sellsOnline?: boolean;
   onClose: () => void;
   onSaved: () => void;
 };
@@ -37,12 +40,14 @@ type Props = {
  * ve la TV, alimentado por el borrador. "Cómo queda" y "cómo se ve" no pueden
  * divergir, y no hace falta publicar para probar un cambio.
  */
-export function TvScreenEditor({ open, screen, categories, onClose, onSaved }: Props) {
+export function TvScreenEditor({ open, screen, categories, sellsOnline = false, onClose, onSaved }: Props) {
   const [config, setConfig] = useState<TvConfig>(() => normalizeTvConfig(screen?.config));
   const [snapshot, setSnapshot] = useState<TvSnapshot | null>(null);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  /** Modal para elegir los destacados a mano (modo manual). */
+  const [pickerOpen, setPickerOpen] = useState(false);
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -88,7 +93,8 @@ export function TvScreenEditor({ open, screen, categories, onClose, onSaved }: P
 
   const items = useMemo(() => {
     if (!snapshot) return [];
-    return snapshot.sections.flatMap((s) => s.items.map((i) => ({ id: i.id, name: i.name, priceLabel: i.priceLabel })));
+    // Aplana la carta entera para el picker de destacados (con foto y precio).
+    return snapshot.sections.flatMap((s) => s.items);
   }, [snapshot]);
 
   /** Cuántas ofertas hay para el banner (el server arma el pool). */
@@ -106,6 +112,7 @@ export function TvScreenEditor({ open, screen, categories, onClose, onSaved }: P
   if (!screen) return null;
 
   return (
+    <>
     <Modal
       open={open}
       onClose={onClose}
@@ -291,9 +298,53 @@ export function TvScreenEditor({ open, screen, categories, onClose, onSaved }: P
               ))}
             </div>
             {config.hero.mode === "manual" && (
-              <p className="mt-2 text-[11px] text-muted-foreground">
-                Elegí hasta 3 desde el preview: se guardan como destacados.
-              </p>
+              <div className="mt-2 space-y-2">
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => setPickerOpen(true)}
+                  >
+                    Elegir productos ({config.hero.productIds.length}/4)
+                  </Button>
+                  <span className="text-[11px] text-muted-foreground">
+                    El banner rota entre estos.
+                  </span>
+                </div>
+
+                {config.hero.productIds.length > 0 && (
+                  <div className="space-y-1">
+                    {config.hero.productIds.map((id) => {
+                      const it = items.find((x) => x.id === id);
+                      return (
+                        <div
+                          key={id}
+                          className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-1.5"
+                        >
+                          <span className="min-w-0 flex-1 truncate text-sm">
+                            {it?.name ?? id}
+                          </span>
+                          <button
+                            type="button"
+                            aria-label="Quitar"
+                            className="text-muted-foreground hover:text-destructive"
+                            onClick={() =>
+                              edit({
+                                hero: {
+                                  ...config.hero,
+                                  productIds: config.hero.productIds.filter((x) => x !== id),
+                                },
+                              })
+                            }
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             )}
 
             {/* Rotación del banner: cambia solo entre las ofertas disponibles. */}
@@ -554,6 +605,95 @@ export function TvScreenEditor({ open, screen, categories, onClose, onSaved }: P
             </div>
           </Field>
 
+          {/* QR de pedidos online: pantalla con el QR para pedir desde el celular. */}
+          <Field label="QR para pedir online">
+            <div className="rounded-lg border border-border bg-muted/40 p-3">
+              <div className="flex items-center gap-2">
+                <Switch
+                  checked={config.qr?.enabled === true}
+                  disabled={!sellsOnline}
+                  onCheckedChange={(v) =>
+                    edit({ qr: { ...(config.qr || { mode: "siempre", seconds: 12 }), enabled: v } })
+                  }
+                />
+                <span className="text-sm">Mostrar el QR en la pantalla</span>
+              </div>
+              {!sellsOnline ? (
+                <p className="mt-1.5 text-[11px] text-amber-600">
+                  Este comercio no tiene venta online activada: el QR no se mostraría.
+                  Activala en tu configuración para poder usarlo.
+                </p>
+              ) : (
+                <p className="mt-1.5 text-[11px] text-muted-foreground">
+                  Aparece cada tanto en la carta y/o en la pantalla de local cerrado, para que
+                  los clientes escaneen y pidan desde el celular. Requiere que el portal lo tenga
+                  habilitado.
+                </p>
+              )}
+
+              {config.qr?.enabled && (
+                <div className="mt-3 space-y-3">
+                  <div>
+                    <p className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      Cuándo mostrarlo
+                    </p>
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { v: "siempre", label: "Siempre", icon: "🔄", desc: "Carta + cerrado" },
+                        { v: "abierto", label: "Solo abierto", icon: "🟢", desc: "En la carta" },
+                        { v: "cerrado", label: "Solo cerrado", icon: "🌙", desc: "Al cerrar" },
+                      ].map((o) => (
+                        <button
+                          key={o.v}
+                          type="button"
+                          onClick={() =>
+                            edit({
+                              qr: {
+                                ...(config.qr || { enabled: true, seconds: 12 }),
+                                mode: o.v as "siempre" | "abierto" | "cerrado",
+                              },
+                            })
+                          }
+                          className={`rounded-xl border-2 p-2 text-center text-xs font-medium transition-colors ${
+                            (config.qr?.mode || "siempre") === o.v
+                              ? "border-primary text-primary"
+                              : "border-border text-muted-foreground"
+                          }`}
+                        >
+                          <span className="block text-base">{o.icon}</span>
+                          {o.label}
+                          <span className="mt-0.5 block text-[10px] text-muted-foreground">{o.desc}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <label className="flex items-center gap-2 text-sm">
+                    Segundos en pantalla
+                    <select
+                      className="rounded-md border border-input bg-background px-2 py-1 text-sm"
+                      value={config.qr?.seconds ?? 12}
+                      onChange={(e) =>
+                        edit({
+                          qr: {
+                            ...(config.qr || { enabled: true, mode: "siempre" }),
+                            seconds: Number(e.target.value) || 12,
+                          },
+                        })
+                      }
+                    >
+                      {[8, 10, 12, 15, 20].map((s) => (
+                        <option key={s} value={s}>
+                          {s}s
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+              )}
+            </div>
+          </Field>
+
           <Field label="Pie de pantalla">
             <input
               className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
@@ -582,6 +722,18 @@ export function TvScreenEditor({ open, screen, categories, onClose, onSaved }: P
         </div>
       </div>
     </Modal>
+
+    <TvDestacadosPicker
+      open={pickerOpen}
+      items={items}
+      selected={config.hero.productIds}
+      onClose={() => setPickerOpen(false)}
+      onSave={(ids) => {
+        edit({ hero: { ...config.hero, productIds: ids } });
+        setPickerOpen(false);
+      }}
+    />
+    </>
   );
 }
 

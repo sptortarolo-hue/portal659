@@ -93,11 +93,11 @@
   background-color: var(--color-background);
   color: var(--color-foreground);
   /* Evita que el nuevo estilo desborde horizontalmente en mobile. */
-  overflow-x: hidden;
+  overflow-x: clip;
 }
 
 html[data-panel-ui="tasty"] .ts-ui {
-  overflow-x: hidden;
+  overflow-x: clip;
   max-width: 100%;
 }
 /* Cifras y códigos con la mono del spec (precios, totales, nros. de pedido) */

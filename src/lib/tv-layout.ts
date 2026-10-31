@@ -224,6 +224,7 @@ export function buildSlides(input: BuildSlidesInput): TvSlide[] {
 
 /** Escala para meter el lienzo de 1920×1080 en el viewport del TV. */
 export function scaleForViewport(vw: number, vh: number): number {
+  if (!Number.isFinite(vw) || !Number.isFinite(vh) || vw <= 0 || vh <= 0) return 0.1;
   return Math.min(vw / TV_CANVAS.w, vh / TV_CANVAS.h);
 }
 

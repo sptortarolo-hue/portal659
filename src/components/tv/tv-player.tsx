@@ -37,7 +37,7 @@ export function TvPlayer({ snapshot, token, mode, vertical, debug = false, fitPa
   const [online, setOnline] = useState(true);
   const [shifted, setShifted] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
-  const versionRef = useRef(snapshot.version);
+  const versionRef = useRef(snapshot?.version ?? 0);
 
   // --- Contenido a layout: los mismos campos que estima el motor -------------
   const photoStyle = snap.config.photoStyle;

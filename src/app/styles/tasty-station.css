@@ -92,8 +92,14 @@
   letter-spacing: normal;
   background-color: var(--color-background);
   color: var(--color-foreground);
+  /* Evita que el nuevo estilo desborde horizontalmente en mobile. */
+  overflow-x: hidden;
 }
 
+html[data-panel-ui="tasty"] .ts-ui {
+  overflow-x: hidden;
+  max-width: 100%;
+}
 /* Cifras y códigos con la mono del spec (precios, totales, nros. de pedido) */
 .ts-ui :is(.tabular-nums, [class*="font-mono"]) {
   font-family: var(--ts-font-mono);

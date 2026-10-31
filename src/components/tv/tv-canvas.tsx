@@ -30,13 +30,17 @@ export function TvCanvas({ children, theme, debug = false, offline = false, fitP
     const host = hostRef.current;
     if (!host) return;
     const fit = () => {
-      setScale(scaleForViewport(host.clientWidth, host.clientHeight));
+      const s = scaleForViewport(host.clientWidth, host.clientHeight);
+      setScale(s > 0 ? s : 0.1);
     };
-    fit();
+    // requestAnimationFrame asegura que el layout ya se calculó (el parent
+    // con aspectRatio puede tener 0x0 en el primer frame).
+    const raf = requestAnimationFrame(fit);
     const ro = new ResizeObserver(fit);
     ro.observe(host);
     window.addEventListener("orientationchange", fit);
     return () => {
+      cancelAnimationFrame(raf);
       ro.disconnect();
       window.removeEventListener("orientationchange", fit);
     };

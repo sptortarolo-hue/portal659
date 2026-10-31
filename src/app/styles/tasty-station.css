@@ -20,23 +20,29 @@
    1. Tokens del panel (siempre activos dentro de .ts-ui)
    -------------------------------------------------------------------------- */
 .ts-ui {
-  /* Paleta (spec) */
-  --color-background: #f8fafc;
-  --color-foreground: #0f172a;
+  /* Paleta: fondo TIZA (gasto cálido) para que las tarjetas blancas se
+     despeguen, y LIMA de Portal 659 como color de selección (en lugar del
+     teal del spec original). El lima claro (#a3e635) va en barras/acentos y
+     el foco; el lima oscuro (#4d7c0f) en botones y texto para mantener
+     contraste con blanco. */
+  --color-background: #f4f4f0;
+  --color-foreground: #1c1917;
   --color-card: #ffffff;
-  --color-card-foreground: #0f172a;
-  --color-border: #e2e8f0;
-  --color-input: #e2e8f0;
-  --color-ring: #0d9488;
+  --color-card-foreground: #1c1917;
+  --color-border: #e3e2dc;
+  --color-input: #e3e2dc;
+  --color-ring: #a3e635;
 
-  --color-primary: #0d9488;
+  --color-primary: #4d7c0f;
   --color-primary-foreground: #ffffff;
-  --color-secondary: #f1f5f9;
-  --color-secondary-foreground: #0f172a;
-  --color-accent: #e6f4f1;
-  --color-accent-foreground: #0f766e;
-  --color-muted: #f1f5f9;
-  --color-muted-foreground: #64748b;
+  --color-primary-light: #f3fce3;
+  --color-primary-accent: #a3e635;
+  --color-secondary: #edede6;
+  --color-secondary-foreground: #1c1917;
+  --color-accent: #f3fce3;
+  --color-accent-foreground: #4d7c0f;
+  --color-muted: #ebeae3;
+  --color-muted-foreground: #6b7280;
   --color-destructive: #ef4444;
   --color-destructive-foreground: #ffffff;
 
@@ -52,13 +58,13 @@
   --ts-sidebar-w: 240px;
   --ts-right-w: 320px;
 
-  /* Sombras: en claro se NOTAN (dos capas) para que los componentes se
-     despeguen del fondo gris del panel. En oscuro quedan más profundas. */
-  --ts-shadow-card: 0 1px 2px 0 rgba(15, 23, 42, 0.06), 0 4px 12px -2px rgba(15, 23, 42, 0.1);
-  --ts-shadow-raised: 0 1px 3px 0 rgba(15, 23, 42, 0.08), 0 8px 20px -6px rgba(15, 23, 42, 0.12);
-  --ts-shadow-float: 0 8px 24px -4px rgba(15, 23, 42, 0.16), 0 2px 6px -2px rgba(15, 23, 42, 0.1);
-  --ts-shadow-btn: 0 1px 2px 0 rgba(13, 148, 136, 0.4), 0 4px 10px -2px rgba(13, 148, 136, 0.25);
-  --ts-shadow-pop: 0 8px 24px -4px rgba(15, 23, 42, 0.12);
+  /* Sombras: sobre el fondo tiza, las tarjetas blancas necesitan una sombra
+     que se note (dos capas, tono cálido). En oscuro quedan más profundas. */
+  --ts-shadow-card: 0 1px 2px 0 rgba(28, 25, 23, 0.07), 0 6px 16px -4px rgba(28, 25, 23, 0.12);
+  --ts-shadow-raised: 0 1px 3px 0 rgba(28, 25, 23, 0.08), 0 10px 24px -8px rgba(28, 25, 23, 0.14);
+  --ts-shadow-float: 0 10px 28px -6px rgba(28, 25, 23, 0.18), 0 2px 8px -2px rgba(28, 25, 23, 0.1);
+  --ts-shadow-btn: 0 1px 2px 0 rgba(77, 124, 15, 0.35), 0 4px 10px -2px rgba(77, 124, 15, 0.25);
+  --ts-shadow-pop: 0 8px 24px -4px rgba(28, 25, 23, 0.14);
 
   /* Estados (spec) */
   --ts-success: #10b981;
@@ -73,6 +79,12 @@
 html.dark .ts-ui {
   --color-background: #0f172a;
   --color-foreground: #e2e8f0;
+  /* En oscuro el lima se aclara y el "primary-light" se oscurece (si no,
+     heredaría el tinte claro y rompería el contraste de la sidebar). */
+  --color-primary: #a3e635;
+  --color-primary-foreground: #1a2e05;
+  --color-primary-light: #22331a;
+  --color-primary-accent: #a3e635;
   --color-card: #1e293b;
   --color-card-foreground: #e2e8f0;
   --color-border: #334155;
@@ -260,7 +272,7 @@ html[data-panel-ui="tasty"] .ts-ui .text-red-700 { color: var(--ts-danger); }
   &:focus-within {
     border-color: var(--color-primary);
     outline: none;
-    box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.1);
+    box-shadow: 0 0 0 3px rgba(163, 230, 53, 0.25);
   }
 }
 

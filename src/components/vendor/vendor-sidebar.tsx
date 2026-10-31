@@ -561,14 +561,6 @@ export default function VendorSidebar({
           </div>
 
           <nav className="flex-1 space-y-1 overflow-y-auto px-2 py-3">
-            <RailItem
-              icon={Home}
-              label="Hoy"
-              active={currentTab === "hoy"}
-              onClick={() => handleTab("hoy")}
-            />
-          <div className="my-1 border-t border-border" />
-
           {/* Riel: Hoy + la operacion del vertical + Catalogo/Menu (o
               Galeria en servicios) + Configuracion. Lo demas --Promos,
               Preparacion, Clientes, Gastos, Tarjetas, Pantalla, Analisis,

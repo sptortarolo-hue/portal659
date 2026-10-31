@@ -12,6 +12,9 @@ const MIME: Record<string, string> = {
   avif: "image/avif",
   svg: "image/svg+xml",
   pdf: "application/pdf",
+  mp4: "video/mp4",
+  webm: "video/webm",
+  mov: "video/quicktime",
 };
 
 export async function GET(

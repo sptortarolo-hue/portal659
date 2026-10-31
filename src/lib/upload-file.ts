@@ -4,7 +4,8 @@ import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 import { randomBytes } from "crypto";
 
-const MAX_SIZE = 5 * 1024 * 1024;
+const MAX_SIZE = 5 * 1024 * 1024; // imágenes y PDF
+const MAX_VIDEO_SIZE = 50 * 1024 * 1024; // posters de video (clips cortos en bucle)
 
 export type SaveUploadParams = {
   file: File;
@@ -28,8 +29,9 @@ export async function saveUploadedFile({ file, folder, vendorId }: SaveUploadPar
 
   const safeFolder = String(folder || "offers").replace(/[^a-z0-9_-]/g, "");
   const isPdf = file.type === "application/pdf" || (file.name || "").toLowerCase().endsWith(".pdf");
-  if (!file.type.startsWith("image/") && !isPdf) {
-    throw new Error("El archivo debe ser una imagen o PDF");
+  const isVideo = file.type.startsWith("video/") || /\.(mp4|webm|mov|avi|mkv)$/i.test(file.name || "");
+  if (!file.type.startsWith("image/") && !isPdf && !isVideo) {
+    throw new Error("El archivo debe ser una imagen, PDF o video (MP4/WebM)");
   }
   if (file.type === "image/svg+xml" || (file.name || "").toLowerCase().endsWith(".svg")) {
     throw new Error("El formato SVG no está permitido por seguridad (usá JPG/PNG/WEBP)");
@@ -37,8 +39,8 @@ export async function saveUploadedFile({ file, folder, vendorId }: SaveUploadPar
   if (file.type === "image/heic" || file.type === "image/heif" || /\.(heic|heif)$/i.test(file.name || "")) {
     throw new Error("Las fotos HEIC de iPhone no están soportadas: exportala como JPG y subila de nuevo");
   }
-  if (file.size > MAX_SIZE) {
-    throw new Error("El archivo debe pesar menos de 5 MB");
+  if (isVideo ? file.size > MAX_VIDEO_SIZE : file.size > MAX_SIZE) {
+    throw new Error(isVideo ? "El video debe pesar menos de 50 MB" : "El archivo debe pesar menos de 5 MB");
   }
 
   const buffer = Buffer.from(await file.arrayBuffer());
@@ -52,8 +54,8 @@ export async function saveUploadedFile({ file, folder, vendorId }: SaveUploadPar
   // Carpeta por comercio: los archivos de un local nunca se mezclan con otro.
   const dir = path.join(uploadRoot, safeFolder, vendorId);
 
-  // PDF: se guarda tal cual (no se reprocesa).
-  if (isPdf) {
+  // PDF y video: se guardan tal cual (sin reprocesar con sharp).
+  if (isPdf || isVideo) {
     await mkdir(dir, { recursive: true });
     await writeFile(path.join(dir, filename), buffer);
     return `${getSiteUrl()}/uploads/${safeFolder}/${vendorId}/${filename}`;

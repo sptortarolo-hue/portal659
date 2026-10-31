@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import {
+  Menu,
   X,
   Package,
   ChefHat,
@@ -102,17 +103,17 @@ const OPERACION_ITEMS: { tab: Tab; label: string; short: string; icon: typeof Pa
   { tab: "caja", label: "Caja", short: "Caja", icon: DollarSign, show: (g, m, c) => g || c || m },
 ];
 
-const GESTION_ITEMS: { tab: Tab; label: string; icon: typeof UtensilsCrossed; show: (g: boolean, m: boolean, c: boolean, screens?: boolean) => boolean; suffix?: (count: number) => string }[] = [
-  { tab: "menu", label: "Menú", icon: UtensilsCrossed, show: () => true, suffix: (c) => `${c}` },
-  { tab: "promos", label: "Promos", icon: Share, show: () => true },
-  { tab: "recetas", label: "Preparación y Costo", icon: Calculator, show: (g) => g },
-  { tab: "clientes", label: "Clientes", icon: Users, show: (g, m, c) => g || c || m },
-  { tab: "gastos", label: "Gastos", icon: Receipt, show: (g, m, c) => g || c || m },
-  { tab: "tarjetas", label: "Tarjetas", icon: Gift, show: (g, m, c) => c || m },
+const GESTION_ITEMS: { tab: Tab; label: string; short: string; icon: typeof UtensilsCrossed; show: (g: boolean, m: boolean, c: boolean, screens?: boolean) => boolean; suffix?: (count: number) => string }[] = [
+  { tab: "menu", label: "Menú", short: "Menú", icon: UtensilsCrossed, show: () => true, suffix: (c) => `${c}` },
+  { tab: "promos", label: "Promos", short: "Promos", icon: Share, show: () => true },
+  { tab: "recetas", label: "Preparación y Costo", short: "Costo", icon: Calculator, show: (g) => g },
+  { tab: "clientes", label: "Clientes", short: "Clientes", icon: Users, show: (g, m, c) => g || c || m },
+  { tab: "gastos", label: "Gastos", short: "Gastos", icon: Receipt, show: (g, m, c) => g || c || m },
+  { tab: "tarjetas", label: "Tarjetas", short: "Tarjetas", icon: Gift, show: (g, m, c) => c || m },
   // Pantalla TV: carta en el televisor del local (planes con `screens`).
   // Se pasa por prop porque el gate es del plan, no del vertical.
-  { tab: "pantalla", label: "Pantalla TV", icon: Monitor, show: (_g, _m, _c, screens) => !!screens },
-  { tab: "config", label: "Configuración", icon: Settings, show: () => true },
+  { tab: "pantalla", label: "Pantalla TV", short: "Pantalla", icon: Monitor, show: (_g, _m, _c, screens) => !!screens },
+  { tab: "config", label: "Configuración", short: "Config", icon: Settings, show: () => true },
 ];
 
 const ANALISIS_ITEMS: { tab: Tab; label: string; icon: typeof BarChart3 }[] = [
@@ -163,110 +164,6 @@ function RailItem({
   );
 }
 
-/** Ítem del modo riel que abre un flyout con el submenú (hover/focus). */
-function RailGroup({
-  icon: Icon,
-  label,
-  children,
-  active = false,
-}: {
-  icon: typeof Package;
-  label: string;
-  children: React.ReactNode;
-  active?: boolean;
-}) {
-  return (
-    <div className="group relative">
-      <button
-        type="button"
-        title={label}
-        className={`
-          flex w-full flex-col items-center gap-1 rounded-lg px-1 py-2 transition-colors
-          ${active ? "bg-primary-light text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"}
-        `}
-      >
-        <Icon className="h-5 w-5" />
-        <span className="w-full truncate text-center text-[9px] font-semibold uppercase tracking-tight leading-none">
-          {label}
-        </span>
-      </button>
-      <div
-        className="
-          invisible absolute left-full top-0 z-50 ml-2 w-56 translate-x-1 rounded-xl border border-border
-          bg-card p-1.5 opacity-0 shadow-lg transition-all duration-150
-          group-hover:visible group-hover:translate-x-0 group-hover:opacity-100
-          group-focus-within:visible group-focus-within:translate-x-0 group-focus-within:opacity-100
-        "
-      >
-        <p className="px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-          {label}
-        </p>
-        <div className="space-y-0.5">{children}</div>
-      </div>
-    </div>
-  );
-}
-
-/** Opción dentro de un flyout del modo riel. */
-function FlyoutItem({
-  icon: Icon,
-  label,
-  active = false,
-  badge,
-  onClick,
-}: {
-  icon: typeof Package;
-  label: string;
-  active?: boolean;
-  badge?: number;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`
-        flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm font-medium transition-colors
-        ${active ? "bg-primary-light text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"}
-      `}
-    >
-      <Icon className="h-4 w-4 flex-shrink-0" />
-      <span className="flex-1 truncate">{label}</span>
-      {badge != null && badge > 0 && (
-        <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-danger px-1.5 text-[10px] font-bold text-white">
-          {badge}
-        </span>
-      )}
-    </button>
-  );
-}
-
-/** Link dentro de un flyout (rutas, no tabs). */
-function FlyoutLink({
-  href,
-  icon: Icon,
-  label,
-  external = false,
-  children,
-}: {
-  href: string;
-  icon: typeof Package;
-  label: string;
-  external?: boolean;
-  children?: React.ReactNode;
-}) {
-  return (
-    <Link
-      href={href}
-      {...(external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
-      className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-    >
-      <Icon className="h-4 w-4 flex-shrink-0" />
-      <span className="flex-1 truncate">{label}</span>
-      {children}
-    </Link>
-  );
-}
 
 /** Ítem del modo completo (256px). */
 function NavButton({
@@ -587,8 +484,6 @@ export default function VendorSidebar({
 
   // ---- Modo riel (desktop) ----
   if (!wide) {
-    const gestionActive = ["menu", "promos", "recetas", "clientes", "gastos", "tarjetas", "pantalla", "config", "galeria", "servicios"].includes(currentTab);
-    const analisisActive = ["analytics", "history", "reviews"].includes(currentTab);
 
     return (
       <>
@@ -598,22 +493,19 @@ export default function VendorSidebar({
             transition-transform duration-200 ease-in-out lg:z-30 lg:translate-x-0
           "
         >
-          {/* Cabecera: logo + expandir */}
-          <div className="flex flex-col items-center gap-2 border-b border-border py-3">
-            {storeLogo ? (
-              <img src={storeLogo} alt={storeName} className="h-9 w-9 rounded-full object-cover" />
-            ) : (
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary-light">
-                <span className="text-sm font-bold text-primary">{storeName.charAt(0)}</span>
-              </div>
-            )}
+          {/* Cabecera del riel: botón de menú (patrón Material Navigation
+              Rail: el ícono de arriba despliega la barra y revela el resto
+              de los destinos). La identidad del comercio vive en la barra
+              superior del panel, no acá. */}
+          <div className="flex justify-center border-b border-border py-3">
             <button
               type="button"
               onClick={toggle}
-              title="Desplegar el menú"
-              className="hidden lg:flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              title="Desplegar el menú (más opciones)"
+              className="flex h-12 w-12 flex-col items-center justify-center gap-1 rounded-xl text-primary transition-colors hover:bg-primary-light"
             >
-              <ChevronRight className="h-4 w-4" />
+              <Menu className="h-5 w-5" />
+              <span className="text-[9px] font-semibold uppercase leading-none tracking-tight">Menú</span>
             </button>
           </div>
 
@@ -626,117 +518,51 @@ export default function VendorSidebar({
             />
             <div className="my-1 border-t border-border" />
 
+            {/* Riel: Hoy + Gestión (Menú/Catálogo, Promos, Preparación,
+                Clientes, Gastos, Tarjetas, Pantalla, Configuración…).
+                El resto —Operaciones, Análisis, Bot y Cuenta— aparece al
+                desplegar el menú con el botón de arriba. */}
             {isService ? (
               <>
-                <RailItem
-                  icon={MessageSquare}
-                  label={isEstetica ? "Consultas" : "Presup."}
-                  active={currentTab === "orders"}
-                  badge={pendingQuotesCount}
-                  onClick={() => handleTab("orders")}
-                  title={isEstetica ? "Consultas" : "Presupuestos"}
-                />
-                <RailItem
-                  icon={CalendarDays}
-                  label="Turnos"
-                  active={currentTab === "pos"}
-                  badge={pendingBookingsCount}
-                  onClick={() => handleTab("pos")}
-                />
-                <RailItem icon={DollarSign} label="Caja" active={currentTab === "caja"} onClick={() => handleTab("caja")} />
-                {isEstetica && (
-                  <>
-                    <RailItem icon={Package} label="Pedidos" active={currentTab === "pedidos"} badge={orderCount} onClick={() => handleTab("pedidos")} />
-                    <RailItem icon={ShoppingBag} label="Mostr." active={currentTab === "mostrador"} onClick={() => handleTab("mostrador")} />
-                    {canFiscal && <RailItem icon={Receipt} label="Factura" active={currentTab === "fiscal"} onClick={() => handleTab("fiscal")} />}
-                    {canInventory && <RailItem icon={Boxes} label="Invent." active={currentTab === "inventario"} onClick={() => handleTab("inventario")} />}
-                  </>
-                )}
+                <RailItem icon={ClipboardList} label="Config" active={currentTab === "config"} onClick={() => handleTab("config")} title="Configuración" />
+                <RailItem icon={Users} label="Clientes" active={currentTab === "clientes"} onClick={() => handleTab("clientes")} />
+                <RailItem icon={Share} label="Promos" active={currentTab === "promos"} onClick={() => handleTab("promos")} />
+                <RailItem icon={Image} label="Galería" active={currentTab === "galeria"} onClick={() => handleTab("galeria")} />
+                {isEstetica && <RailItem icon={CalendarDays} label="Servicios" active={currentTab === "servicios"} onClick={() => handleTab("servicios")} />}
+                {isEstetica && <RailItem icon={Gift} label="Tarjetas" active={currentTab === "tarjetas"} onClick={() => handleTab("tarjetas")} />}
               </>
-            ) : (
-              OPERACION_ITEMS.filter((i) => i.show(isGastro, isModa, isComercio)).map((item) => {
-                const count = item.badge ? item.badge(orderCount, kitchenCount) : 0;
-                return (
+            ) : !isEmployee ? (
+              /* En el riel, Catálogo/Menú va al FINAL del grupo: primero los
+                 demás íconos de Gestión (Promos, Preparación, Clientes,
+                 Gastos, Tarjetas, Pantalla, Configuración). */
+              GESTION_ITEMS
+                .filter((i) => i.show(isGastro, isModa, isComercio, canScreens))
+                .sort((a, b) => (a.tab === "menu" ? 1 : 0) - (b.tab === "menu" ? 1 : 0))
+                .map((item) => (
                   <RailItem
                     key={item.tab}
                     icon={item.icon}
-                    label={item.short}
+                    label={item.tab === "menu" ? (isComercio || isModa ? "Catálogo" : "Menú") : item.short}
                     active={currentTab === item.tab}
-                    badge={count}
                     onClick={() => handleTab(item.tab)}
                     title={item.label}
                   />
-                );
-              })
-            )}
-            {!isService && canFiscal && (
-              <RailItem icon={Receipt} label="Factura" active={currentTab === "fiscal"} onClick={() => handleTab("fiscal")} />
-            )}
-            {!isService && canInventory && (
-              <RailItem icon={Boxes} label="Invent." active={currentTab === "inventario"} onClick={() => handleTab("inventario")} />
-            )}
-
-            <div className="my-1 border-t border-border" />
-
-            {!isEmployee && (
-              <RailGroup icon={Settings} label="Gestión" active={gestionActive}>
-                {isService ? (
-                  <>
-                    <FlyoutItem icon={Image} label="Galería" active={currentTab === "galeria"} onClick={() => handleTab("galeria")} />
-                    <FlyoutItem icon={ClipboardList} label="Configuración" active={currentTab === "config"} onClick={() => handleTab("config")} />
-                    <FlyoutItem icon={Users} label="Clientes" active={currentTab === "clientes"} onClick={() => handleTab("clientes")} />
-                    <FlyoutItem icon={Share} label="Promos" active={currentTab === "promos"} onClick={() => handleTab("promos")} />
-                    {isEstetica && (
-                      <>
-                        <FlyoutItem icon={CalendarDays} label="Servicios" active={currentTab === "servicios"} onClick={() => handleTab("servicios")} />
-                        <FlyoutItem icon={Gift} label="Tarjetas" active={currentTab === "tarjetas"} onClick={() => handleTab("tarjetas")} />
-                      </>
-                    )}
-                  </>
-                ) : (
-                  GESTION_ITEMS.filter((i) => i.show(isGastro, isModa, isComercio, canScreens)).map((item) => (
-                    <FlyoutItem
-                      key={item.tab}
-                      icon={item.icon}
-                      label={item.label}
-                      active={currentTab === item.tab}
-                      onClick={() => handleTab(item.tab)}
-                    />
-                  ))
-                )}
-              </RailGroup>
-            )}
-
-            <RailGroup icon={BarChart3} label="Análisis" active={analisisActive}>
-              {ANALISIS_ITEMS.filter((i) => !isEmployee || i.tab === "history").map((item) => (
-                <FlyoutItem
+                ))
+            ) : (
+              /* El empleado no tiene Gestión: su riel muestra Hoy + la
+                 operación diaria (Pedidos/Mostrador/Caja). */
+              OPERACION_ITEMS.filter((i) => i.show(isGastro, isModa, isComercio)).map((item) => (
+                <RailItem
                   key={item.tab}
                   icon={item.icon}
-                  label={item.label}
+                  label={item.short}
                   active={currentTab === item.tab}
                   onClick={() => handleTab(item.tab)}
+                  title={item.label}
                 />
-              ))}
-            </RailGroup>
-
-            {!isEmployee && (
-              <RailGroup icon={Bot} label="Bot" active={false}>
-                <FlyoutLink href="/vendor/wa-bot" icon={Bot} label="Bot de WhatsApp" />
-                <FlyoutLink href="/vendor/wa-bot/conversaciones" icon={MessageSquare} label="Conversaciones" />
-              </RailGroup>
+              ))
             )}
-
-            <RailGroup icon={Sparkles} label="Cuenta" active={false}>
-              {planSlug && !isEmployee && (
-                <FlyoutLink href="/vendor/suscripcion" icon={Sparkles} label={`Plan ${planName ?? planSlug}`} />
-              )}
-              <FlyoutLink href="/manuales" icon={BookOpen} label="Manuales" external />
-              <div className="px-1 py-1">
-                <PanelUiSwitch />
-              </div>
-              {!isStaffMember && <FlyoutLink href="/" icon={LogOut} label="Volver al sitio" />}
-            </RailGroup>
-          </nav>
+            </nav>
         </aside>
       </>
     );
@@ -756,28 +582,10 @@ export default function VendorSidebar({
           ${open ? "translate-x-0" : "-translate-x-full"}
         `}
       >
-        {/* Header */}
-        <div className="flex h-14 items-center gap-3 border-b border-border px-4">
-          {storeLogo ? (
-            <img src={storeLogo} alt={storeName} className="h-9 w-9 flex-shrink-0 rounded-full object-cover" />
-          ) : (
-            <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-primary-light">
-              <span className="text-sm font-bold text-primary">{storeName.charAt(0)}</span>
-            </div>
-          )}
-          <div className="min-w-0 flex-1">
-            <h2 className="truncate text-sm font-semibold text-text-main">{storeName}</h2>
-            {storeSlug && !isStaffMember && (
-              <a
-                href={`/tienda/${storeSlug}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
-              >
-                Micrositio <ExternalLink className="h-3 w-3" />
-              </a>
-            )}
-          </div>
+        {/* Header: la identidad del comercio está en la barra superior del
+            panel; acá solo queda el control de plegado. */}
+        <div className="flex h-14 items-center justify-between gap-3 border-b border-border px-4">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Menú</p>
           <button
             type="button"
             onClick={toggle}

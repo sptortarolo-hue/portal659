@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  Menu,
   X,
   LayoutDashboard,
   Store,
@@ -103,21 +104,17 @@ export default function AdminSidebar({
   if (!wide) {
     return (
       <aside className="fixed top-0 left-0 z-50 flex h-full w-[76px] flex-col border-r border-border bg-card transition-transform duration-200 ease-in-out lg:z-30 lg:translate-x-0">
-        <div className="flex flex-col items-center gap-2 border-b border-border py-3">
-          <Link
-            href="/admin"
-            className="flex h-9 w-9 items-center justify-center rounded-full bg-primary-light text-sm font-bold text-primary"
-            title="Panel Admin"
-          >
-            P
-          </Link>
+        {/* Riel: el botón de menú de arriba despliega la barra y revela el
+            resto de los destinos (patrón Material Navigation Rail). */}
+        <div className="flex justify-center border-b border-border py-3">
           <button
             type="button"
             onClick={toggle}
-            title="Desplegar el menú"
-            className="hidden lg:flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            title="Desplegar el menú (más opciones)"
+            className="flex h-12 w-12 flex-col items-center justify-center gap-1 rounded-xl text-primary transition-colors hover:bg-primary-light"
           >
-            <ChevronRight className="h-4 w-4" />
+            <Menu className="h-5 w-5" />
+            <span className="text-[9px] font-semibold uppercase leading-none tracking-tight">Menú</span>
           </button>
         </div>
         <nav className="flex-1 space-y-1 overflow-y-auto px-2 py-3">
@@ -159,17 +156,8 @@ export default function AdminSidebar({
           ${open ? "translate-x-0" : "-translate-x-full"}
         `}
       >
-        <div className="flex h-14 items-center gap-3 border-b border-border px-4">
-          <Link
-            href="/admin"
-            onClick={onClose}
-            className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-primary-light font-display text-base font-bold text-primary"
-          >
-            P
-          </Link>
-          <Link href="/admin" onClick={onClose} className="min-w-0 flex-1 truncate font-display text-lg font-semibold">
-            Panel Admin
-          </Link>
+        <div className="flex h-14 items-center justify-between gap-3 border-b border-border px-4">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Menú</p>
           <button
             type="button"
             onClick={toggle}

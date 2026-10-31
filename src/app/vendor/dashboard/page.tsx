@@ -1774,6 +1774,37 @@ function VendorDashboardInner() {
                 <Menu className="h-5 w-5" />
               </button>
 
+              {/* Identidad del comercio: primer elemento de la barra superior
+                  (antes vivía en la cabecera de la barra lateral). */}
+              <div className="flex items-center gap-2 min-w-0 flex-shrink-0">
+                {vendor.logo_url || vendor.image_url ? (
+                  <img
+                    src={vendor.logo_url || vendor.image_url || ""}
+                    alt={vendor.store_name}
+                    className="h-8 w-8 flex-shrink-0 rounded-full object-cover"
+                  />
+                ) : (
+                  <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-primary-light text-sm font-bold text-primary">
+                    {vendor.store_name.charAt(0)}
+                  </span>
+                )}
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold leading-tight max-w-[34vw] sm:max-w-[190px]">
+                    {vendor.store_name}
+                  </p>
+                  {vendor.slug && staffRole !== "staff" && (
+                    <a
+                      href={`/tienda/${vendor.slug}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-[11px] leading-none text-primary hover:underline"
+                    >
+                      Micrositio <ExternalLink className="h-3 w-3" />
+                    </a>
+                  )}
+                </div>
+              </div>
+
               {/* Switcher de tiendas (multi-comercio): en impersonación admin
                   lista los comercios del dueño impersonado (cookie admin-as). */}
               {!previewSession && (
@@ -1788,8 +1819,7 @@ function VendorDashboardInner() {
               <div className="flex-1 min-w-0">
                 <h1 className="text-sm font-semibold truncate leading-tight">{tabTitle}</h1>
                 <p className="text-[11px] text-muted-foreground leading-tight truncate">
-                  {vendor.store_name}
-                  <span className="hidden sm:inline"> · {todayLabel}</span>
+                  <span className="hidden sm:inline">{todayLabel}</span>
                 </p>
               </div>
 
@@ -1823,16 +1853,6 @@ function VendorDashboardInner() {
                   />
                 )}
               </div>
-              {vendor.slug && staffRole !== "staff" && (
-                <a
-                  href={`/tienda/${vendor.slug}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="hidden xl:inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted transition-colors flex-shrink-0"
-                >
-                  <ExternalLink className="h-3.5 w-3.5" /> Micrositio
-                </a>
-              )}
               <Button size="sm" onClick={openShare} className="flex-shrink-0">Compartir</Button>
               <div className="hidden lg:flex items-center gap-1 flex-shrink-0">
                 <NotificationBell />

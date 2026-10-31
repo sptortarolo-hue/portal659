@@ -36,23 +36,23 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         <AdminSidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} rail={rail} onToggleRail={toggleRail} />
 
         <div className={`flex-1 flex flex-col min-h-screen min-w-0 ${rail ? "lg:ml-[76px]" : "lg:ml-64"}`}>
-          <header className="sticky top-14 sm:top-0 z-30 bg-card border-b border-border px-4 py-3 flex items-center gap-3 lg:hidden">
+          {/* Barra superior: la identidad ("Panel Admin") es el primer
+              elemento a la izquierda, antes en la cabecera de la sidebar. */}
+          <header className="sticky top-14 sm:top-0 z-30 bg-card border-b border-border px-4 py-3 flex items-center gap-3">
             <button
               onClick={() => setSidebarOpen(true)}
-              className="p-2 rounded-lg hover:bg-muted transition-colors"
+              className="p-2 rounded-lg hover:bg-muted transition-colors lg:hidden"
+              aria-label="Abrir menú"
             >
               <Menu className="h-5 w-5" />
             </button>
-            <Link href="/admin" className="font-display text-lg font-semibold">
+            <Link href="/admin" className="font-display text-base sm:text-lg font-semibold truncate">
               Panel Admin
             </Link>
-          </header>
-
-          <header className="sticky top-0 z-30 bg-card border-b border-border px-6 py-3 hidden lg:flex items-center justify-between">
-            <div />
+            <div className="flex-1" />
             <Link
               href="/"
-              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+              className="text-sm text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
             >
               Volver al sitio
             </Link>

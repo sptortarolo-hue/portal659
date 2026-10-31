@@ -129,16 +129,47 @@ export function TvScreenManager({ enabled, maxScreens }: Props) {
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-semibold">{s.name}</p>
                   <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
+                    {/* Estados con explicación: el "Sin señal" se confundía
+                        con una falla — es solo que la tele no tiene la
+                        página abierta (el heartbeat pega cada 60s). */}
                     <span
-                      className={`rounded-full px-2 py-0.5 font-medium ${
-                        online ? "bg-green-100 text-green-700" : "bg-muted text-muted-foreground"
+                      title={
+                        online
+                          ? "La tele tiene la página abierta y recibe los cambios al instante."
+                          : "El navegador de la tele no pegó en los últimos 3 minutos. Abrí el link en la tele y dejalo abierto."
+                      }
+                      className={`cursor-help rounded-full border border-dashed px-2 py-0.5 font-medium ${
+                        online
+                          ? "border-green-300 bg-green-100 text-green-700"
+                          : "border-border bg-muted text-muted-foreground"
                       }`}
                     >
                       {online ? "🟢 Conectada" : "⚪ Sin señal"}
                     </span>
-                    {!s.published && <span className="text-amber-600">Nunca publicada</span>}
-                    {s.published && s.unpublishedDraft && <span className="text-amber-600">Cambios sin publicar</span>}
-                    {s.published && !s.unpublishedDraft && <span className="text-muted-foreground">Al día</span>}
+                    {!s.published && (
+                      <span
+                        title="Todavía no tocaste Publicar: la tele muestra la última versión publicada (o nada si es la primera)."
+                        className="cursor-help border-b border-dashed border-amber-400 text-amber-600"
+                      >
+                        Nunca publicada
+                      </span>
+                    )}
+                    {s.published && s.unpublishedDraft && (
+                      <span
+                        title="Tenés cambios sin publicar: la tele sigue mostrando la versión anterior. Tocá Publicar."
+                        className="cursor-help border-b border-dashed border-amber-400 text-amber-600"
+                      >
+                        Cambios sin publicar
+                      </span>
+                    )}
+                    {s.published && !s.unpublishedDraft && (
+                      <span
+                        title="Lo que se ve en la tele es la última versión publicada."
+                        className="cursor-help border-b border-dashed border-border text-muted-foreground"
+                      >
+                        Al día
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
@@ -213,9 +244,19 @@ export function TvScreenManager({ enabled, maxScreens }: Props) {
         <p className="text-sm text-muted-foreground">
           Abrí este link en el navegador de la tele (o usá el QR). Se actualiza sola cuando publiques cambios.
         </p>
+        {qrFor && !qrFor.published && (
+          <p className="mt-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            Esta pantalla tiene cambios sin publicar: la tele va a mostrar la versión anterior. Tocá{" "}
+            <strong>Publicar</strong> antes de abrirla.
+          </p>
+        )}
         <div className="mt-3 break-all rounded-lg bg-muted p-3 text-center text-sm font-medium">
           {qrFor ? `/pantalla/${qrFor.token}` : ""}
         </div>
+        <p className="mt-2 text-xs text-muted-foreground">
+          Dejalo abierto en la tele (pantalla completa): así muestra la carta al día y el pill pasa a{" "}
+          <strong>Conectada</strong> en menos de 1 minuto.
+        </p>
         <div className="mt-3 flex justify-center">
           {qrData ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -239,7 +280,17 @@ export function TvScreenManager({ enabled, maxScreens }: Props) {
           >
             Copiar link
           </Button>
-          <Button size="sm" variant="secondary" onClick={() => window.print()}>
+          <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => {
+                    if (!qrFor) return;
+                    window.open(`${window.location.origin}/pantalla/${qrFor.token}`, "_blank", "noopener");
+                  }}
+                >
+                  Probar en esta ventana
+                </Button>
+                <Button size="sm" variant="secondary" onClick={() => window.print()}>
             Imprimir
           </Button>
         </div>

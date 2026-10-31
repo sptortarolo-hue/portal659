@@ -1,6 +1,6 @@
 /* ==========================================================================
-   Tasty Station UI — diseño del panel (panel del comercio + panel del portal).
-   Spec: https://... (JSON "Tasty Station UI" v1.0.0)
+   Panel UI — estilo neo-brutalista (spec v0 del usuario)
+   Radios 0 · bordes negros · sombras duras desplazadas · DM Sans/Space Mono
 
    REGLA DE ORO: los tokens van bajo `.ts-ui`, NUNCA en `:root`. Fuera de
    `.ts-ui` el sitio público y los micrositios siguen con los tokens de
@@ -11,233 +11,287 @@
        lejos de la cookie `portal659-panel-ui`, el localStorage o `?ui=tasty`.
      - los shells del panel (`/vendor/dashboard`, `/admin`) llevan `.ts-ui`
        siempre (no-op sin el attribute).
-     - el kit nuevo (`src/components/panel-ui/*`) usa los mismos tokens, así
-       que se ve con el diseño nuevo aunque el switch esté apagado.
    Helper: src/lib/panel-ui.ts
    ========================================================================== */
 
 /* --------------------------------------------------------------------------
-   1. Tokens del panel (siempre activos dentro de .ts-ui)
+   1. Tokens del panel (siempre activos dentro de .ts-ui) — modo claro
    -------------------------------------------------------------------------- */
 .ts-ui {
-  /* Paleta: fondo TIZA (gasto cálido) para que las tarjetas blancas se
-     despeguen, y LIMA de Portal 659 como color de selección (en lugar del
-     teal del spec original). El lima claro (#a3e635) va en barras/acentos y
-     el foco; el lima oscuro (#4d7c0f) en botones y texto para mantener
-     contraste con blanco. */
-  --color-background: #f4f4f0;
-  --color-foreground: #1c1917;
-  --color-card: #ffffff;
-  --color-card-foreground: #1c1917;
-  --color-border: #e3e2dc;
-  --color-input: #e3e2dc;
-  --color-ring: #a3e635;
+  /* Paleta del spec */
+  --color-background: oklch(1 0 0);
+  --color-foreground: oklch(0 0 0);
+  --color-card: oklch(1 0 0);
+  --color-card-foreground: oklch(0 0 0);
+  --color-popover: oklch(1 0 0);
+  --color-popover-foreground: oklch(0 0 0);
 
-  --color-primary: #4d7c0f;
-  --color-primary-foreground: #ffffff;
-  --color-primary-light: #f3fce3;
-  --color-primary-accent: #a3e635;
-  --color-secondary: #edede6;
-  --color-secondary-foreground: #1c1917;
-  --color-accent: #f3fce3;
-  --color-accent-foreground: #4d7c0f;
-  --color-muted: #ebeae3;
-  --color-muted-foreground: #6b7280;
-  --color-destructive: #ef4444;
-  --color-destructive-foreground: #ffffff;
+  --color-primary: oklch(0.5172 0.2750 278.3157);
+  --color-primary-foreground: oklch(1 0 0);
+  --color-secondary: oklch(0.8693 0.2717 145.2141);
+  --color-secondary-foreground: oklch(0 0 0);
+  --color-muted: oklch(0.9551 0 0);
+  --color-muted-foreground: oklch(0.3211 0 0);
+  --color-accent: oklch(0.5635 0.2408 260.8178);
+  --color-accent-foreground: oklch(1 0 0);
+  --color-destructive: oklch(0 0 0);
+  --color-destructive-foreground: oklch(1 0 0);
 
-  /* Radios del spec: 8 botones/inputs · 12 tarjetas · 16 tarjetas activas */
-  --radius-sm: 8px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  --radius-xl: 12px;
-  --radius-2xl: 16px;
-  --radius-3xl: 20px;
+  --color-border: oklch(0 0 0);
+  --color-input: oklch(0 0 0);
+  --color-ring: oklch(0.6489 0.2370 26.9728);
 
-  /* Layout (spec) */
+  /* Familia sidebar del spec */
+  --color-sidebar: oklch(0.9551 0 0);
+  --color-sidebar-foreground: oklch(0 0 0);
+  --color-sidebar-primary: oklch(0.6489 0.2370 26.9728);
+  --color-sidebar-primary-foreground: oklch(1 0 0);
+  --color-sidebar-accent: oklch(0.5635 0.2408 260.8178);
+  --color-sidebar-accent-foreground: oklch(1 0 0);
+  --color-sidebar-border: oklch(0 0 0);
+  --color-sidebar-ring: oklch(0.6489 0.2370 26.9728);
+
+  /* El lima del spec se usa en el ítem activo del menú/riel y en los
+     secundarios; el violeta sigue siendo el color de acción (botones). */
+  --color-primary-light: oklch(0.8693 0.2717 145.2141);
+  --color-primary-accent: oklch(0 0 0);
+
+  /* Layout del panel */
   --ts-sidebar-w: 240px;
   --ts-right-w: 320px;
 
-  /* Sombras: sobre el fondo tiza, las tarjetas blancas necesitan una sombra
-     que se note (dos capas, tono cálido). En oscuro quedan más profundas. */
-  --ts-shadow-card: 0 1px 2px 0 rgba(28, 25, 23, 0.07), 0 6px 16px -4px rgba(28, 25, 23, 0.12);
-  --ts-shadow-raised: 0 1px 3px 0 rgba(28, 25, 23, 0.08), 0 10px 24px -8px rgba(28, 25, 23, 0.14);
-  --ts-shadow-float: 0 10px 28px -6px rgba(28, 25, 23, 0.18), 0 2px 8px -2px rgba(28, 25, 23, 0.1);
-  --ts-shadow-btn: 0 1px 2px 0 rgba(77, 124, 15, 0.35), 0 4px 10px -2px rgba(77, 124, 15, 0.25);
-  --ts-shadow-pop: 0 8px 24px -4px rgba(28, 25, 23, 0.14);
+  /* Radios 0: todo cuadrado (los rounded-full —avatares, botones
+     circulares— siguen redondos porque no dependen de estos tokens). */
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --radius-xl: 0px;
+  --radius-2xl: 0px;
+  --radius-3xl: 0px;
 
-  /* Estados (spec) */
-  --ts-success: #10b981;
-  --ts-warning: #f59e0b;
-  --ts-danger: #ef4444;
-  --ts-info: #3b82f6;
+  /* Sombras DURAS del spec: 4px de offset, sin difuminar, negras */
+  --ts-shadow-card: 4px 4px 0 0 oklch(0 0 0);
+  --ts-shadow-btn: 4px 4px 0 0 oklch(0 0 0);
+  --ts-shadow-raised: 6px 6px 0 0 oklch(0 0 0);
+  --ts-shadow-float: 8px 8px 0 0 oklch(0 0 0);
+  --ts-shadow-pop: 4px 4px 0 0 oklch(0 0 0);
 
+  /* Tipografías del spec (cargadas con next/font en el root layout) */
+  --ts-font: var(--font-dm-sans), ui-sans-serif, system-ui, sans-serif;
+  --ts-font-mono: var(--font-space-mono), ui-monospace, monospace;
+
+  /* Estados (semánticos del panel, con borde negro en los badges) */
+  --ts-success: #16a34a;
+  --ts-warning: #d97706;
+  --ts-danger: #dc2626;
+  --ts-info: #2563eb;
+
+  font-family: var(--ts-font);
   background-color: var(--color-background);
   color: var(--color-foreground);
 }
 
+/* Cifras y códigos con la mono del spec (precios, totales, números de
+   pedido, SKU): el panel ya marca muchos con `tabular-nums`. */
+.ts-ui :is(.tabular-nums, [class*="font-mono"]) {
+  font-family: var(--ts-font-mono);
+}
+
+/* --------------------------------------------------------------------------
+   2. Modo oscuro (spec)
+   -------------------------------------------------------------------------- */
 html.dark .ts-ui {
-  --color-background: #0f172a;
-  --color-foreground: #e2e8f0;
-  /* En oscuro el lima se aclara y el "primary-light" se oscurece (si no,
-     heredaría el tinte claro y rompería el contraste de la sidebar). */
-  --color-primary: #a3e635;
-  --color-primary-foreground: #1a2e05;
-  --color-primary-light: #22331a;
-  --color-primary-accent: #a3e635;
-  --color-card: #1e293b;
-  --color-card-foreground: #e2e8f0;
-  --color-border: #334155;
-  --color-input: #334155;
-  --color-ring: #2dd4bf;
+  --color-background: oklch(0 0 0);
+  --color-foreground: oklch(1 0 0);
+  --color-card: oklch(0.3211 0 0);
+  --color-card-foreground: oklch(1 0 0);
+  --color-popover: oklch(0.3211 0 0);
+  --color-popover-foreground: oklch(1 0 0);
 
-  --color-primary: #2dd4bf;
-  --color-primary-foreground: #042f2e;
-  --color-secondary: #1e293b;
-  --color-secondary-foreground: #e2e8f0;
-  --color-accent: #134e4a;
-  --color-accent-foreground: #99f6e4;
-  --color-muted: #1e293b;
-  --color-muted-foreground: #94a3b8;
-  --color-destructive: #f87171;
-  --color-destructive-foreground: #450a0a;
+  --color-primary: oklch(0.5172 0.2750 278.3157);
+  --color-primary-foreground: oklch(0 0 0);
+  --color-secondary: oklch(0.8693 0.2717 145.2141);
+  --color-secondary-foreground: oklch(0 0 0);
+  --color-muted: oklch(0.2178 0 0);
+  --color-muted-foreground: oklch(0.8452 0 0);
+  --color-accent: oklch(0.6755 0.1765 252.2592);
+  --color-accent-foreground: oklch(0 0 0);
+  --color-destructive: oklch(1 0 0);
+  --color-destructive-foreground: oklch(0 0 0);
 
-  --ts-shadow-card: 0 1px 3px 0 rgba(0, 0, 0, 0.4), 0 6px 16px -4px rgba(0, 0, 0, 0.45);
-  --ts-shadow-raised: 0 1px 3px 0 rgba(0, 0, 0, 0.5), 0 10px 24px -6px rgba(0, 0, 0, 0.55);
-  --ts-shadow-float: 0 10px 30px -6px rgba(0, 0, 0, 0.6), 0 2px 8px -2px rgba(0, 0, 0, 0.5);
-  --ts-shadow-btn: 0 1px 2px 0 rgba(45, 212, 191, 0.35), 0 4px 10px -2px rgba(45, 212, 191, 0.2);
-  --ts-shadow-pop: 0 8px 24px -4px rgba(0, 0, 0, 0.5);
+  --color-border: oklch(1 0 0);
+  --color-input: oklch(1 0 0);
+  --color-ring: oklch(0.3982 0.2594 264.8790);
 
-  --ts-success: #34d399;
+  --color-sidebar: oklch(0 0 0);
+  --color-sidebar-foreground: oklch(1 0 0);
+  --color-sidebar-primary: oklch(0.7044 0.1872 23.1858);
+  --color-sidebar-primary-foreground: oklch(0 0 0);
+  --color-sidebar-accent: oklch(0.6755 0.1765 252.2592);
+  --color-sidebar-accent-foreground: oklch(0 0 0);
+  --color-sidebar-border: oklch(1 0 0);
+  --color-sidebar-ring: oklch(0.7044 0.1872 23.1858);
+
+  /* En oscuro el activo es lima sobre negro: contraste máximo */
+  --color-primary-light: oklch(0.8693 0.2717 145.2141);
+  --color-primary-accent: oklch(1 0 0);
+
+  /* Sombra blanca en oscuro (la negra no se vería sobre fondo negro) */
+  --ts-shadow-card: 4px 4px 0 0 oklch(1 0 0);
+  --ts-shadow-btn: 4px 4px 0 0 oklch(1 0 0);
+  --ts-shadow-raised: 6px 6px 0 0 oklch(1 0 0);
+  --ts-shadow-float: 8px 8px 0 0 oklch(1 0 0);
+  --ts-shadow-pop: 4px 4px 0 0 oklch(1 0 0);
+
+  --ts-success: #4ade80;
   --ts-warning: #fbbf24;
   --ts-danger: #f87171;
   --ts-info: #60a5fa;
 }
 
 /* --------------------------------------------------------------------------
-   2. Shell existente con el diseño nuevo (solo con el switch prendido)
-   El radio ya viene de los tokens (--radius-md 8 / --radius-lg 12 /
-   --radius-2xl 16); acá solo se refuerza lo que los tokens no alcanzan.
+   3. Shell del panel con el diseño nuevo (solo con el switch prendido)
    -------------------------------------------------------------------------- */
 
-/* Botones e inputs del spec: radio 8px y peso 600 */
-html[data-panel-ui="tasty"] .ts-ui :is(button, [role="button"], input, select, textarea) {
-  border-radius: 8px;
-}
-
-html[data-panel-ui="tasty"] .ts-ui :is(button, [role="button"]) {
-  font-weight: 600;
-}
-
-/* Tarjetas: superficie blanca + borde slate + sombra que se nota */
-html[data-panel-ui="tasty"] .ts-ui .bg-card {
+/* Todo borde del panel es negro y de 1px (o 2px en los elementos que el
+   spec marca como "duros": tarjetas y barra superior). */
+html[data-panel-ui="tasty"] .ts-ui .border,
+html[data-panel-ui="tasty"] .ts-ui .border-t,
+html[data-panel-ui="tasty"] .ts-ui .border-b,
+html[data-panel-ui="tasty"] .ts-ui .border-l,
+html[data-panel-ui="tasty"] .ts-ui .border-r,
+html[data-panel-ui="tasty"] .ts-ui [class*="border-"] {
   border-color: var(--color-border);
+}
+
+/* Botones e inputs: cuadrados, peso 600 y "presionado" brutalista
+   (se desplazan 2px y pierden la sombra al hacer click). */
+html[data-panel-ui="tasty"] .ts-ui :is(button, [role="button"]) {
+  border-radius: 0;
+  font-weight: 600;
+  transition:
+    transform 0.1s ease-out,
+    box-shadow 0.1s ease-out,
+    background-color 0.15s ease-out;
+}
+
+html[data-panel-ui="tasty"] .ts-ui :is(button, [role="button"]):active {
+  transform: translate(2px, 2px);
+  box-shadow: none !important;
+}
+
+html[data-panel-ui="tasty"] .ts-ui :is(input, select, textarea) {
+  border-radius: 0;
+}
+
+/* Tarjetas: superficie blanca, borde negro y sombra dura */
+html[data-panel-ui="tasty"] .ts-ui .bg-card {
+  border: 1px solid var(--color-border);
   box-shadow: var(--ts-shadow-card);
 }
 
-/* Barras sticky del panel (topbar, headers de tablas): superficie blanca
-   y elevada sobre el contenido */
+/* Barra superior y headers fijos: elevados, con sombra más grande */
 html[data-panel-ui="tasty"] .ts-ui [class*="sticky"] {
   background-color: var(--color-card);
   border-color: var(--color-border);
   box-shadow: var(--ts-shadow-raised);
 }
 
-/* Botón primario y badges de color: sombra de color para que resalten */
+/* Botón primario: violeta con sombra dura */
 html[data-panel-ui="tasty"] .ts-ui .bg-primary {
+  border: 1px solid var(--color-border);
   box-shadow: var(--ts-shadow-btn);
 }
 
-/* Flotantes (flyouts de la sidebar, menús, modales): sombra fuerte */
-html[data-panel-ui="tasty"] .ts-ui :is(.shadow-lg, .shadow-xl, [role="dialog"], [class*="z-50"], [class*="z-60"], [class*="z-70"]).bg-card,
-html[data-panel-ui="tasty"] .ts-ui :is([role="dialog"], .shadow-lg, .shadow-xl) {
-  box-shadow: var(--ts-shadow-float);
+/* Ítem activo del menú/riel: fondo LIMA, texto negro y barra negra
+   (usa el secundario del spec, que es el lima). */
+html[data-panel-ui="tasty"] .ts-ui .bg-primary-light {
+  background-color: var(--color-secondary);
+  color: oklch(0 0 0);
+  border-color: oklch(0 0 0);
 }
 
-/* Links de acción del panel: teal, sin subrayado hasta el hover */
+html[data-panel-ui="tasty"] .ts-ui .border-l-primary-accent {
+  border-left-color: oklch(0 0 0);
+}
+
+/* Links de acción en violeta */
 html[data-panel-ui="tasty"] .ts-ui .text-primary {
   color: var(--color-primary);
 }
 
-/* Foco visible teal en todo el panel */
+/* Flotantes (flyouts, menús, modales): sombra dura grande */
+html[data-panel-ui="tasty"] .ts-ui :is(.shadow-lg, .shadow-xl, [role="dialog"]) {
+  border: 1px solid var(--color-border);
+  box-shadow: var(--ts-shadow-float);
+}
+
+/* Chips de estado del panel: borde negro para el look */
+html[data-panel-ui="tasty"] .ts-ui :is(.bg-blue-100, .bg-amber-100, .bg-orange-100, .bg-green-100, .bg-emerald-100, .bg-violet-100, .bg-purple-100, .bg-cyan-100, .bg-gray-100) {
+  border: 1px solid var(--color-border);
+}
+
+/* Foco visible: aro coral de 2px, sin difuminar */
 html[data-panel-ui="tasty"] .ts-ui :is(button, a, input, select, textarea, [role="button"]):focus-visible {
   outline: 2px solid var(--color-ring);
   outline-offset: 2px;
 }
 
-/* Estados de pedidos/turnos con la paleta del spec (chips del Kanban) */
-html[data-panel-ui="tasty"] .ts-ui .bg-blue-100 { background-color: rgba(59, 130, 246, 0.12); }
-html[data-panel-ui="tasty"] .ts-ui .bg-amber-100 { background-color: rgba(245, 158, 11, 0.12); }
-html[data-panel-ui="tasty"] .ts-ui .bg-orange-100 { background-color: rgba(249, 115, 22, 0.12); }
-html[data-panel-ui="tasty"] .ts-ui .bg-green-100 { background-color: rgba(16, 185, 129, 0.12); }
-html[data-panel-ui="tasty"] .ts-ui .bg-emerald-100 { background-color: rgba(16, 185, 129, 0.12); }
-html[data-panel-ui="tasty"] .ts-ui .bg-violet-100 { background-color: rgba(139, 92, 246, 0.12); }
-html[data-panel-ui="tasty"] .ts-ui .bg-purple-100 { background-color: rgba(139, 92, 246, 0.12); }
-html[data-panel-ui="tasty"] .ts-ui .bg-cyan-100 { background-color: rgba(6, 182, 212, 0.12); }
-html[data-panel-ui="tasty"] .ts-ui .bg-gray-100 { background-color: var(--color-muted); }
-
-html[data-panel-ui="tasty"] .ts-ui .text-blue-700 { color: #2563eb; }
-html[data-panel-ui="tasty"] .ts-ui .text-amber-700 { color: #b45309; }
-html[data-panel-ui="tasty"] .ts-ui .text-orange-700 { color: #c2410c; }
-html[data-panel-ui="tasty"] .ts-ui .text-green-700 { color: #047857; }
-html[data-panel-ui="tasty"] .ts-ui .text-emerald-700 { color: #047857; }
-html[data-panel-ui="tasty"] .ts-ui .text-violet-700 { color: #6d28d9; }
-html[data-panel-ui="tasty"] .ts-ui .text-purple-700 { color: #6d28d9; }
-html[data-panel-ui="tasty"] .ts-ui .text-cyan-700 { color: #0e7490; }
-html[data-panel-ui="tasty"] .ts-ui .text-red-600 { color: var(--ts-danger); }
-html[data-panel-ui="tasty"] .ts-ui .text-red-700 { color: var(--ts-danger); }
-
 /* --------------------------------------------------------------------------
-   3. Utilidades del kit (src/components/panel-ui/*)
-   Funcionan dentro de .ts-ui (llevan los tokens) en cualquier modo.
+   4. Utilidades del kit (src/components/panel-ui/*)
    -------------------------------------------------------------------------- */
 
-/* Tarjeta base del spec */
+/* Tarjeta base: blanca, borde negro, sombra dura del spec */
 @utility ts-card {
   background-color: var(--color-card);
   color: var(--color-card-foreground);
   border: 1px solid var(--color-border);
-  border-radius: 16px;
+  border-radius: 0;
   box-shadow: var(--ts-shadow-card);
 }
 
-/* Tarjeta cliqueable: al pasar el puntero se marca el borde en teal */
+/* Tarjeta cliqueable: se levanta al pasar el puntero y se hunde al click */
 @utility ts-card-hover {
   background-color: var(--color-card);
   color: var(--color-card-foreground);
   border: 1px solid var(--color-border);
-  border-radius: 16px;
+  border-radius: 0;
   box-shadow: var(--ts-shadow-card);
   transition:
-    border-color 0.2s ease-out,
-    box-shadow 0.2s ease-out,
-    transform 0.2s ease-out;
+    transform 0.15s ease-out,
+    box-shadow 0.15s ease-out,
+    border-color 0.15s ease-out;
   &:hover {
-    border-color: var(--color-primary);
-    box-shadow: var(--ts-shadow-pop);
+    transform: translate(-2px, -2px);
+    box-shadow: 6px 6px 0 0 var(--color-border);
+  }
+  &:active {
+    transform: translate(2px, 2px);
+    box-shadow: none;
   }
 }
 
-/* Badge de estado (spec: radio 12, 11px, semibold) */
+/* Badge de estado del spec: cuadrado, 11px, semibold, borde negro */
 @utility ts-badge {
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
-  border-radius: 12px;
-  padding: 4px 10px;
+  border-radius: 0;
+  padding: 3px 8px;
+  border: 1px solid var(--color-border);
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 700;
   line-height: 16px;
   white-space: nowrap;
 }
 
-/* Chip de categoría (pill) + estado activo */
+/* Chip de categoría: cuadrado con borde negro */
 @utility ts-chip {
   display: inline-flex;
   align-items: center;
   gap: 0.375rem;
-  border-radius: 9999px;
-  padding: 8px 16px;
+  border-radius: 0;
+  padding: 8px 14px;
   border: 1px solid var(--color-border);
   background-color: var(--color-card);
   font-size: 13px;
@@ -245,49 +299,49 @@ html[data-panel-ui="tasty"] .ts-ui .text-red-700 { color: var(--ts-danger); }
   color: var(--color-foreground);
   white-space: nowrap;
   transition:
-    border-color 0.2s ease-out,
-    color 0.2s ease-out,
-    background-color 0.2s ease-out;
+    transform 0.1s ease-out,
+    box-shadow 0.1s ease-out,
+    background-color 0.15s ease-out;
 }
 
 @utility ts-chip-active {
-  border-color: var(--color-primary);
-  color: var(--color-primary);
-  background-color: var(--color-accent);
+  border-color: var(--color-border);
+  color: oklch(0 0 0);
+  background-color: var(--color-secondary);
+  box-shadow: 3px 3px 0 0 var(--color-border);
 }
 
-/* Buscador con ícono a la izquierda (spec) */
+/* Buscador con ícono a la izquierda */
 @utility ts-search {
   display: flex;
   width: 100%;
   align-items: center;
   gap: 0.5rem;
-  border-radius: 8px;
+  border-radius: 0;
   border: 1px solid var(--color-border);
   background-color: var(--color-background);
   padding: 8px 12px;
   color: var(--color-muted-foreground);
   font-size: 13px;
-  transition: border-color 0.2s ease-out;
+  transition: box-shadow 0.15s ease-out;
   &:focus-within {
-    border-color: var(--color-primary);
     outline: none;
-    box-shadow: 0 0 0 3px rgba(163, 230, 53, 0.25);
+    box-shadow: 3px 3px 0 0 var(--color-border);
   }
 }
 
-/* Stepper de cantidad (pill con − / +) */
+/* Stepper de cantidad */
 @utility ts-stepper {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-  border-radius: 9999px;
+  border-radius: 0;
   border: 1px solid var(--color-border);
-  padding: 4px 10px;
+  padding: 4px 8px;
   background-color: var(--color-card);
 }
 
-/* Panel lateral derecho del spec (resumen / facturación) */
+/* Panel lateral derecho del layout (resumen / facturación) */
 @utility ts-panel-right {
   width: var(--ts-right-w);
   flex-shrink: 0;
@@ -295,24 +349,25 @@ html[data-panel-ui="tasty"] .ts-ui .text-red-700 { color: var(--ts-danger); }
   border-left: 1px solid var(--color-border);
 }
 
-/* Lateral del spec (240px) */
+/* Lateral del layout (240px) */
 @utility ts-sidebar {
   width: var(--ts-sidebar-w);
   flex-shrink: 0;
-  background-color: var(--color-card);
+  background-color: var(--color-sidebar);
   border-right: 1px solid var(--color-border);
 }
 
-/* Tipografía del spec (para los textos nuevos del panel) */
+/* Tipografía del spec */
 @utility ts-title {
   font-size: 24px;
   font-weight: 700;
   line-height: 32px;
+  letter-spacing: -0.01em;
 }
 
 @utility ts-subtitle {
   font-size: 18px;
-  font-weight: 600;
+  font-weight: 700;
   line-height: 24px;
 }
 
@@ -330,6 +385,8 @@ html[data-panel-ui="tasty"] .ts-ui .text-red-700 { color: var(--ts-danger); }
 
 @utility ts-caption {
   font-size: 11px;
-  font-weight: 500;
+  font-weight: 600;
   line-height: 16px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }

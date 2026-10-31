@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import Link from "next/link";
-import { Inter, Fraunces } from "next/font/google";
+import { Inter, Fraunces, DM_Sans, Space_Mono } from "next/font/google";
 import "./globals.css";
 import { Navigation } from "@/components/nav/navigation";
 import { CartProvider } from "@/lib/cart";
@@ -27,6 +27,22 @@ const inter = Inter({
 const fraunces = Fraunces({
   subsets: ["latin"],
   variable: "--font-fraunces",
+});
+
+// Tipografías del diseño neo-brutalista del panel (tokens .ts-ui). Solo se
+// aplican dentro de .ts-ui, así el sitio público sigue con Inter/Fraunces y
+// no paga el peso de estas fuentes.
+const dmSans = DM_Sans({
+  subsets: ["latin"],
+  variable: "--font-dm-sans",
+  display: "swap",
+});
+
+const spaceMono = Space_Mono({
+  subsets: ["latin"],
+  weight: ["400", "700"],
+  variable: "--font-space-mono",
+  display: "swap",
 });
 
 export const viewport: Viewport = {
@@ -129,7 +145,7 @@ export default function RootLayout({
         />
       </head>
       <body
-        className={`${inter.variable} ${fraunces.variable} antialiased min-h-screen flex flex-col`}
+        className={`${inter.variable} ${fraunces.variable} ${dmSans.variable} ${spaceMono.variable} antialiased min-h-screen flex flex-col`}
         suppressHydrationWarning
       >
         <ThemeProvider>

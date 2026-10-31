@@ -221,6 +221,51 @@ export default function DevUiPage() {
           />
         </Card>
 
+        <h3 className="ts-subtitle mt-10">Lenguaje neo-brutalista</h3>
+        <Card className="mt-3">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <p className="ts-caption text-muted-foreground">Bordes</p>
+              <p className="ts-body mt-1">
+                Todo borde es <strong>negro de 1px</strong> (2px en barra
+                superior y tarjetas). Nada de radios: las tarjetas, botones,
+                inputs y chips son cuadrados.
+              </p>
+            </div>
+            <div>
+              <p className="ts-caption text-muted-foreground">Sombras</p>
+              <p className="ts-body mt-1">
+                Duras y desplazadas, sin difuminar:{" "}
+                <code>4px 4px 0 0 negro</code> en tarjetas y botones, más
+                grandes en la barra superior y en flotantes.
+              </p>
+            </div>
+            <div>
+              <p className="ts-caption text-muted-foreground">Color</p>
+              <p className="ts-body mt-1">
+                Violeta para las acciones, <strong>lima</strong> para el ítem
+                activo del menú y los chips activos, azul para acentos, coral
+                para el foco. Estados semánticos con borde negro.
+              </p>
+            </div>
+            <div>
+              <p className="ts-caption text-muted-foreground">Tipografía</p>
+              <p className="ts-body mt-1">
+                DM Sans para el texto y Space Mono para los números
+                (precios, totales, códigos).
+              </p>
+            </div>
+          </div>
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <Button size="sm">Pasá el mouse por encima</Button>
+            <Chip active>Chip activo</Chip>
+            <Badge tone="success">Con borde</Badge>
+            <span className="ts-body text-muted-foreground">
+              Los botones se hunden 2px al hacer click y pierden la sombra.
+            </span>
+          </div>
+        </Card>
+
         <p className="ts-caption mt-10 text-muted-foreground">
           Tokens y utilidades: <code>src/app/styles/tasty-station.css</code> · Kit:{" "}
           <code>src/components/panel-ui/*</code> · Switch:{" "}

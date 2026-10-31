@@ -32,7 +32,8 @@
   --color-secondary-foreground: oklch(1 0 0);
   --color-muted: oklch(0.9551 0 0);
   --color-muted-foreground: oklch(0.3211 0 0);
-  --color-accent: oklch(0.7686 0.1647 70.0804);
+  /* LIMA de Portal 659 en lugar del ámbar del spec */
+  --color-accent: #a3e635;
   --color-accent-foreground: oklch(0 0 0);
   --color-destructive: oklch(0.6368 0.2078 25.3313);
   --color-destructive-foreground: oklch(1 0 0);
@@ -46,14 +47,16 @@
   --color-sidebar-foreground: oklch(0 0 0);
   --color-sidebar-primary: oklch(0.5106 0.2301 276.9656);
   --color-sidebar-primary-foreground: oklch(1 0 0);
-  --color-sidebar-accent: oklch(0.7686 0.1647 70.0804);
+  /* LIMA de Portal 659 también en el sidebar-accent del spec */
+  --color-sidebar-accent: #a3e635;
   --color-sidebar-accent-foreground: oklch(0 0 0);
   --color-sidebar-border: oklch(0 0 0);
   --color-sidebar-ring: oklch(0.7853 0.1041 274.7134);
 
-  /* El ítem activo del menú/riel usa el ACCENT del spec (ámbar) con texto
-     negro; el LIMA (secundario) queda para chips activos y destacados. */
-  --color-primary-light: oklch(0.7686 0.1647 70.0804);
+  /* El ítem activo del menú/riel usa el ACCENT (ahora el lima de Portal
+     659) con texto negro; el lima del spec como secundario sigue en los
+     chips activos y destacados. */
+  --color-primary-light: #a3e635;
   --color-primary-accent: oklch(0 0 0);
 
   /* Layout del panel */
@@ -113,7 +116,8 @@ html.dark .ts-ui {
   --color-secondary-foreground: oklch(0 0 0);
   --color-muted: oklch(0.3211 0 0);
   --color-muted-foreground: oklch(0.8452 0 0);
-  --color-accent: oklch(0.8790 0.1534 91.6054);
+  /* LIMA de Portal 659 (mismo token que en claro) */
+  --color-accent: #a3e635;
   --color-accent-foreground: oklch(0 0 0);
   --color-destructive: oklch(0.7467 0.2202 324.8734);
   --color-destructive-foreground: oklch(0 0 0);
@@ -126,12 +130,12 @@ html.dark .ts-ui {
   --color-sidebar-foreground: oklch(1 0 0);
   --color-sidebar-primary: oklch(0.6801 0.1583 276.9349);
   --color-sidebar-primary-foreground: oklch(0 0 0);
-  --color-sidebar-accent: oklch(0.8790 0.1534 91.6054);
+  --color-sidebar-accent: #a3e635;
   --color-sidebar-accent-foreground: oklch(0 0 0);
   --color-sidebar-border: oklch(1 0 0);
   --color-sidebar-ring: oklch(0.6801 0.1583 276.9349);
 
-  --color-primary-light: oklch(0.8790 0.1534 91.6054);
+  --color-primary-light: #a3e635;
   --color-primary-accent: oklch(1 0 0);
 
   /* En oscuro la sombra se invierte (halo claro sobre el fondo negro) */

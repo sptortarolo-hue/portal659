@@ -368,6 +368,23 @@ function VendorDashboardInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  // Modo riel (desktop): la sidebar izquierda se estrecha a íconos y los
+  // grupos abren en flyout. Persiste por navegadora; default = riel.
+  const [rail, setRail] = useState(true);
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem("portal659-sidebar-rail");
+      if (saved === "0") setRail(false);
+      if (saved === "1") setRail(true);
+    } catch { /* storage bloqueado: default riel */ }
+  }, []);
+  const toggleRail = useCallback(() => {
+    setRail((v) => {
+      const next = !v;
+      try { window.localStorage.setItem("portal659-sidebar-rail", next ? "1" : "0"); } catch { /* noop */ }
+      return next;
+    });
+  }, []);
   const [moreOpen, setMoreOpen] = useState(false);
   // Fullscreen del navegador (modo cocina de la Comanda).
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -1682,7 +1699,7 @@ function VendorDashboardInner() {
   });
 
   return (
-    <div className="min-h-screen bg-background flex">
+    <div className="ts-ui min-h-screen bg-background flex">
       {/* Sidebar — desktop: always visible; mobile: slide-in.
           En modo cocina (sm+) se desmonta: pantalla pura para la Comanda. */}
       {!kitchenMode && (
@@ -1717,6 +1734,8 @@ function VendorDashboardInner() {
         configSectionStatus={(id) => getConfigSectionStatus(id, vendor)}
         isEmployee={isEmployee}
         isStaffMember={staffRole === "staff"}
+        rail={rail}
+        onToggleRail={toggleRail}
       />
       )}
 
@@ -1724,7 +1743,7 @@ function VendorDashboardInner() {
           header (etiquetas nowrap) estire el flex item más allá del viewport
           y desborde en mobile. En modo cocina no hay sidebar: se quita el
           offset lg:ml-64 para usar todo el ancho. */}
-      <div className={`flex-1 flex flex-col min-h-screen min-w-0 ${kitchenMode ? "" : "lg:ml-64"}`}>
+      <div className={`flex-1 flex flex-col min-h-screen min-w-0 ${kitchenMode ? "" : rail ? "lg:ml-[76px]" : "lg:ml-64"}`}>
         {impersonatingId && (
           <div className="bg-amber-50 border-b border-amber-200">
             <div className="container mx-auto px-4 py-2 flex items-center justify-between gap-3 text-sm text-amber-900">
@@ -1755,6 +1774,37 @@ function VendorDashboardInner() {
                 <Menu className="h-5 w-5" />
               </button>
 
+              {/* Identidad del comercio: primer elemento de la barra superior
+                  (antes vivía en la cabecera de la barra lateral). */}
+              <div className="flex items-center gap-2 min-w-0 flex-shrink-0">
+                {vendor.logo_url || vendor.image_url ? (
+                  <img
+                    src={vendor.logo_url || vendor.image_url || ""}
+                    alt={vendor.store_name}
+                    className="h-8 w-8 flex-shrink-0 rounded-full object-cover"
+                  />
+                ) : (
+                  <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-primary-light text-sm font-bold text-primary">
+                    {vendor.store_name.charAt(0)}
+                  </span>
+                )}
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold leading-tight max-w-[34vw] sm:max-w-[190px]">
+                    {vendor.store_name}
+                  </p>
+                  {vendor.slug && staffRole !== "staff" && (
+                    <a
+                      href={`/tienda/${vendor.slug}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-[11px] leading-none text-primary hover:underline"
+                    >
+                      Micrositio <ExternalLink className="h-3 w-3" />
+                    </a>
+                  )}
+                </div>
+              </div>
+
               {/* Switcher de tiendas (multi-comercio): en impersonación admin
                   lista los comercios del dueño impersonado (cookie admin-as). */}
               {!previewSession && (
@@ -1769,8 +1819,7 @@ function VendorDashboardInner() {
               <div className="flex-1 min-w-0">
                 <h1 className="text-sm font-semibold truncate leading-tight">{tabTitle}</h1>
                 <p className="text-[11px] text-muted-foreground leading-tight truncate">
-                  {vendor.store_name}
-                  <span className="hidden sm:inline"> · {todayLabel}</span>
+                  <span className="hidden sm:inline">{todayLabel}</span>
                 </p>
               </div>
 
@@ -1804,16 +1853,6 @@ function VendorDashboardInner() {
                   />
                 )}
               </div>
-              {vendor.slug && staffRole !== "staff" && (
-                <a
-                  href={`/tienda/${vendor.slug}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="hidden xl:inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted transition-colors flex-shrink-0"
-                >
-                  <ExternalLink className="h-3.5 w-3.5" /> Micrositio
-                </a>
-              )}
               <Button size="sm" onClick={openShare} className="flex-shrink-0">Compartir</Button>
               <div className="hidden lg:flex items-center gap-1 flex-shrink-0">
                 <NotificationBell />

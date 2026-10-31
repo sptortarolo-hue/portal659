@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import Link from "next/link";
-import { Inter, Fraunces } from "next/font/google";
+import { Inter, Fraunces, DM_Sans, Space_Mono } from "next/font/google";
 import "./globals.css";
 import { Navigation } from "@/components/nav/navigation";
 import { CartProvider } from "@/lib/cart";
@@ -16,6 +16,8 @@ import { WhatsAppFloat } from "@/components/ui/whatsapp-float";
 import { BottomNav } from "@/components/nav/bottom-nav";
 import { OnboardingOverlay } from "@/components/onboarding/onboarding-overlay";
 import { AnalyticsBeacon } from "@/components/analytics/analytics-beacon";
+import { PANEL_UI_PRE_PAINT } from "@/lib/panel-ui";
+import { PanelUiProvider } from "@/components/panel-ui/panel-ui-provider";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -25,6 +27,22 @@ const inter = Inter({
 const fraunces = Fraunces({
   subsets: ["latin"],
   variable: "--font-fraunces",
+});
+
+// Tipografías del diseño neo-brutalista del panel (tokens .ts-ui). Solo se
+// aplican dentro de .ts-ui, así el sitio público sigue con Inter/Fraunces y
+// no paga el peso de estas fuentes.
+const dmSans = DM_Sans({
+  subsets: ["latin"],
+  variable: "--font-dm-sans",
+  display: "swap",
+});
+
+const spaceMono = Space_Mono({
+  subsets: ["latin"],
+  weight: ["400", "700"],
+  variable: "--font-space-mono",
+  display: "swap",
 });
 
 export const viewport: Viewport = {
@@ -107,6 +125,14 @@ export default function RootLayout({
         <meta name="mobile-web-app-capable" content="yes" />
         <script
           dangerouslySetInnerHTML={{
+            // Pre-paint del diseño del panel: cookie `portal659-panel-ui`,
+            // localStorage o `?ui=tasty|classic` → data-panel-ui en <html>
+            // (default clásico). Mismo patrón que el tema de abajo.
+            __html: PANEL_UI_PRE_PAINT,
+          }}
+        />
+        <script
+          dangerouslySetInnerHTML={{
             // Pre-paint (antes del primer frame): resuelve el tema con la
             // misma lógica del ThemeProvider. Las barras del sistema usan el
             // color del modo (negro en oscuro, blanco en claro); el fondo del
@@ -119,10 +145,11 @@ export default function RootLayout({
         />
       </head>
       <body
-        className={`${inter.variable} ${fraunces.variable} antialiased min-h-screen flex flex-col`}
+        className={`${inter.variable} ${fraunces.variable} ${dmSans.variable} ${spaceMono.variable} antialiased min-h-screen flex flex-col`}
         suppressHydrationWarning
       >
         <ThemeProvider>
+          <PanelUiProvider>
           <ThemeColorSync />
           <CartProvider>
             <ToastProvider>
@@ -157,6 +184,7 @@ export default function RootLayout({
               </footer>
             </ToastProvider>
           </CartProvider>
+          </PanelUiProvider>
         </ThemeProvider>
       </body>
     </html>

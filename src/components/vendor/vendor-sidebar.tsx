@@ -1,8 +1,41 @@
 "use client";
 
 import Link from "next/link";
-import { X, Package, ChefHat, ShoppingBag, LayoutGrid, UtensilsCrossed, Settings, BarChart3, History, Star, ExternalLink, LogOut, Home, Sparkles, Calculator, Bot, DollarSign, Receipt, Users, MessageSquare, CalendarDays, ClipboardList, Boxes, Image, BookOpen, Share, Gift, Monitor } from "lucide-react";
+import {
+  Menu,
+  X,
+  Package,
+  ChefHat,
+  ShoppingBag,
+  LayoutGrid,
+  UtensilsCrossed,
+  Settings,
+  BarChart3,
+  History,
+  Star,
+  ExternalLink,
+  LogOut,
+  Home,
+  Sparkles,
+  Calculator,
+  Bot,
+  DollarSign,
+  Receipt,
+  Users,
+  MessageSquare,
+  CalendarDays,
+  ClipboardList,
+  Boxes,
+  Image,
+  BookOpen,
+  Share,
+  Gift,
+  Monitor,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
 import type { ConfigSectionStatus } from "@/components/dashboard/config-nav";
+import { PanelUiSwitch } from "@/components/panel-ui/panel-ui-switch";
 
 type Tab = "hoy" | "config" | "menu" | "orders" | "pedidos" | "mostrador" | "history" | "comanda" | "analytics" | "pos" | "mesas" | "caja" | "gastos" | "clientes" | "reviews" | "recetas" | "fiscal" | "inventario" | "galeria" | "promos" | "tarjetas" | "pantalla" | "servicios";
 
@@ -52,28 +85,35 @@ interface VendorSidebarProps {
    * navegar fuera de su panel (ver src/proxy.ts).
    */
   isStaffMember?: boolean;
+  /**
+   * Modo riel (solo desktop): la sidebar se estrecha a 76px y muestra ícono +
+   * etiqueta mini; los grupos (Gestión/Análisis/Bot/Cuenta) abren en flyout.
+   *false o con el drawer móvil abierto se ve completa (256px).
+   */
+  rail?: boolean;
+  onToggleRail?: () => void;
 }
 
 /** g = gastro · m = moda · c = comercio */
-const OPERACION_ITEMS: { tab: Tab; label: string; icon: typeof Package; show: (g: boolean, m: boolean, c: boolean) => boolean; badge?: (orderCount: number, kitchenCount: number) => number }[] = [
-  { tab: "orders", label: "Pedidos", icon: Package, show: () => true, badge: (c) => c },
-  { tab: "comanda", label: "Comanda", icon: ChefHat, show: (g, m, c) => !m && !c, badge: (_, c) => c },
-  { tab: "pos", label: "Mostrador", icon: ShoppingBag, show: () => true },
-  { tab: "mesas", label: "Mesas", icon: LayoutGrid, show: (g) => g },
-  { tab: "caja", label: "Caja", icon: DollarSign, show: (g, m, c) => g || c || m },
+const OPERACION_ITEMS: { tab: Tab; label: string; short: string; icon: typeof Package; show: (g: boolean, m: boolean, c: boolean) => boolean; badge?: (orderCount: number, kitchenCount: number) => number }[] = [
+  { tab: "orders", label: "Pedidos", short: "Pedidos", icon: Package, show: () => true, badge: (c) => c },
+  { tab: "comanda", label: "Comanda", short: "Comanda", icon: ChefHat, show: (g, m, c) => !m && !c, badge: (_, c) => c },
+  { tab: "pos", label: "Mostrador", short: "Mostr.", icon: ShoppingBag, show: () => true },
+  { tab: "mesas", label: "Mesas", short: "Mesas", icon: LayoutGrid, show: (g) => g },
+  { tab: "caja", label: "Caja", short: "Caja", icon: DollarSign, show: (g, m, c) => g || c || m },
 ];
 
-const GESTION_ITEMS: { tab: Tab; label: string; icon: typeof UtensilsCrossed; show: (g: boolean, m: boolean, c: boolean, screens?: boolean) => boolean; suffix?: (count: number) => string }[] = [
-  { tab: "menu", label: "Menú", icon: UtensilsCrossed, show: () => true, suffix: (c) => `${c}` },
-  { tab: "promos", label: "Promos", icon: Share, show: () => true },
-  { tab: "recetas", label: "Preparación y Costo", icon: Calculator, show: (g) => g },
-  { tab: "clientes", label: "Clientes", icon: Users, show: (g, m, c) => g || c || m },
-  { tab: "gastos", label: "Gastos", icon: Receipt, show: (g, m, c) => g || c || m },
-  { tab: "tarjetas", label: "Tarjetas", icon: Gift, show: (g, m, c) => c || m },
+const GESTION_ITEMS: { tab: Tab; label: string; short: string; icon: typeof UtensilsCrossed; show: (g: boolean, m: boolean, c: boolean, screens?: boolean) => boolean; suffix?: (count: number) => string }[] = [
+  { tab: "menu", label: "Menú", short: "Menú", icon: UtensilsCrossed, show: () => true, suffix: (c) => `${c}` },
+  { tab: "promos", label: "Promos", short: "Promos", icon: Share, show: () => true },
+  { tab: "recetas", label: "Preparación y Costo", short: "Costo", icon: Calculator, show: (g) => g },
+  { tab: "clientes", label: "Clientes", short: "Clientes", icon: Users, show: (g, m, c) => g || c || m },
+  { tab: "gastos", label: "Gastos", short: "Gastos", icon: Receipt, show: (g, m, c) => g || c || m },
+  { tab: "tarjetas", label: "Tarjetas", short: "Tarjetas", icon: Gift, show: (g, m, c) => c || m },
   // Pantalla TV: carta en el televisor del local (planes con `screens`).
   // Se pasa por prop porque el gate es del plan, no del vertical.
-  { tab: "pantalla", label: "Pantalla TV", icon: Monitor, show: (_g, _m, _c, screens) => !!screens },
-  { tab: "config", label: "Configuración", icon: Settings, show: () => true },
+  { tab: "pantalla", label: "Pantalla TV", short: "Pantalla", icon: Monitor, show: (_g, _m, _c, screens) => !!screens },
+  { tab: "config", label: "Configuración", short: "Config", icon: Settings, show: () => true },
 ];
 
 const ANALISIS_ITEMS: { tab: Tab; label: string; icon: typeof BarChart3 }[] = [
@@ -82,6 +122,50 @@ const ANALISIS_ITEMS: { tab: Tab; label: string; icon: typeof BarChart3 }[] = [
   { tab: "reviews", label: "Reseñas", icon: Star },
 ];
 
+/** Ítem del modo riel: ícono arriba, etiqueta mini abajo (sin desplegar). */
+function RailItem({
+  icon: Icon,
+  label,
+  active = false,
+  badge,
+  onClick,
+  title,
+}: {
+  icon: typeof Package;
+  label: string;
+  active?: boolean;
+  badge?: number;
+  onClick: () => void;
+  title?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title || label}
+      className={`
+        relative flex w-full flex-col items-center gap-1 rounded-lg px-1 py-2 transition-colors
+        ${active ? "bg-primary-light text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"}
+      `}
+    >
+      <span className="relative">
+        <Icon className="h-5 w-5" />
+        {badge != null && badge > 0 && (
+          <span className="absolute -right-2 -top-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[9px] font-bold text-white">
+            {badge}
+          </span>
+        )}
+      </span>
+      <span className="w-full truncate text-center text-[9px] font-semibold uppercase tracking-tight leading-none">
+        {label}
+      </span>
+      {active && <span className="absolute left-0 top-1/2 h-6 w-0.5 -translate-y-1/2 rounded-full bg-primary-accent" />}
+    </button>
+  );
+}
+
+
+/** Ítem del modo completo (256px). */
 function NavButton({
   active,
   onClick,
@@ -135,6 +219,41 @@ function NavButton({
   );
 }
 
+/** Link del modo completo. */
+function NavLink({
+  href,
+  icon: Icon,
+  label,
+  external = false,
+  children,
+}: {
+  href: string;
+  icon: typeof Package;
+  label: string;
+  external?: boolean;
+  children?: React.ReactNode;
+}) {
+  return (
+    <Link
+      href={href}
+      {...(external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+      className="flex w-full items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+    >
+      <Icon className="h-5 w-5 flex-shrink-0" />
+      <span className="flex-1 truncate">{label}</span>
+      {children}
+    </Link>
+  );
+}
+
+function SectionLabel({ children }: { children: string }) {
+  return (
+    <p className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+      {children}
+    </p>
+  );
+}
+
 export default function VendorSidebar({
   open,
   onClose,
@@ -162,337 +281,351 @@ export default function VendorSidebar({
   canScreens = false,
   isEmployee = false,
   isStaffMember = false,
+  rail = false,
+  onToggleRail,
 }: VendorSidebarProps) {
   function handleTab(tab: Tab) {
     onTabChange(tab);
     onClose();
   }
 
+  // Modo completo: drawer móvil abierto, o escritorio sin riel.
+  const wide = open || !rail;
+  const toggle = onToggleRail || (() => {});
+
+
+  // ---- Iconos del riel: Hoy + la operacion del vertical + Catalogo/Menu
+  // (o Galeria en servicios) + Configuracion. Segun el perfil: el empleado
+  // no ve Catalogo ni Config (no tiene Gestion). El resto se ve al
+  // desplegar el menu. ----
+  const railItems: {
+    tab: Tab;
+    label: string;
+    title: string;
+    icon: typeof Package;
+    badge?: number;
+  }[] = [{ tab: "hoy", label: "Hoy", title: "Hoy", icon: Home }];
+
+  if (isService) {
+    railItems.push({
+      tab: "orders",
+      label: isEstetica ? "Consultas" : "Presup.",
+      title: isEstetica ? "Consultas" : "Presupuestos",
+      icon: MessageSquare,
+      badge: pendingQuotesCount,
+    });
+    railItems.push({ tab: "pos", label: "Turnos", title: "Turnos", icon: CalendarDays, badge: pendingBookingsCount });
+    railItems.push({ tab: "caja", label: "Caja", title: "Caja", icon: DollarSign });
+    if (isEstetica) {
+      railItems.push({ tab: "pedidos", label: "Pedidos", title: "Pedidos", icon: Package, badge: orderCount });
+      railItems.push({ tab: "mostrador", label: "Mostr.", title: "Mostrador", icon: ShoppingBag });
+      if (canFiscal) railItems.push({ tab: "fiscal", label: "Factura", title: "Facturacion", icon: Receipt });
+      if (canInventory) railItems.push({ tab: "inventario", label: "Invent.", title: "Inventario", icon: Boxes });
+    }
+  } else {
+    OPERACION_ITEMS.filter((i) => i.show(isGastro, isModa, isComercio)).forEach((item) => {
+      const count = item.badge ? item.badge(orderCount, kitchenCount) : 0;
+      railItems.push({ tab: item.tab, label: item.short, title: item.label, icon: item.icon, badge: count });
+    });
+    if (canFiscal) railItems.push({ tab: "fiscal", label: "Factura", title: "Facturacion", icon: Receipt });
+    if (canInventory) railItems.push({ tab: "inventario", label: "Invent.", title: "Inventario", icon: Boxes });
+  }
+
+  if (!isEmployee) {
+    if (isService) {
+      railItems.push({ tab: "galeria", label: "Galeria", title: "Galeria", icon: Image });
+    } else {
+      railItems.push({
+        tab: "menu",
+        label: isComercio || isModa ? "Catalogo" : "Menu",
+        title: isComercio || isModa ? "Catalogo" : "Menu",
+        icon: UtensilsCrossed,
+      });
+    }
+    railItems.push({ tab: "config", label: "Config", title: "Configuracion", icon: Settings });
+  }
+  // ---- Contenido reutilizable ----
+  const hoyItem = (
+    <NavButton
+      key="hoy"
+      active={currentTab === "hoy"}
+      onClick={() => handleTab("hoy")}
+      icon={Home}
+      label="Hoy"
+    />
+  );
+
+  const operaciones = (
+    <>
+      <p className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Operaciones</p>
+      <div className="space-y-0.5">
+        {isService ? (
+          <>
+            <NavButton
+              active={currentTab === "orders"}
+              onClick={() => handleTab("orders")}
+              icon={MessageSquare}
+              label={isEstetica ? "Consultas" : "Presupuestos"}
+              badge={pendingQuotesCount}
+            />
+            <NavButton
+              active={currentTab === "pos"}
+              onClick={() => handleTab("pos")}
+              icon={CalendarDays}
+              label="Turnos"
+              badge={pendingBookingsCount}
+            />
+            <NavButton
+              active={currentTab === "caja"}
+              onClick={() => handleTab("caja")}
+              icon={DollarSign}
+              label="Caja"
+            />
+            {isEstetica && (
+              <>
+                <NavButton
+                  active={currentTab === "pedidos"}
+                  onClick={() => handleTab("pedidos")}
+                  icon={Package}
+                  label="Pedidos"
+                  badge={orderCount}
+                />
+                <NavButton
+                  active={currentTab === "mostrador"}
+                  onClick={() => handleTab("mostrador")}
+                  icon={ShoppingBag}
+                  label="Mostrador"
+                />
+              </>
+            )}
+            {isEstetica && canFiscal && (
+              <NavButton
+                active={currentTab === "fiscal"}
+                onClick={() => handleTab("fiscal")}
+                icon={Receipt}
+                label="Facturación"
+              />
+            )}
+            {isEstetica && canInventory && (
+              <NavButton
+                active={currentTab === "inventario"}
+                onClick={() => handleTab("inventario")}
+                icon={Boxes}
+                label="Inventario"
+              />
+            )}
+          </>
+        ) : (
+          OPERACION_ITEMS.filter((i) => i.show(isGastro, isModa, isComercio)).map((item) => {
+            const count = item.badge ? item.badge(orderCount, kitchenCount) : 0;
+            const sync =
+              item.tab === "pos" ? pendingPosCount ?? 0
+              : item.tab === "mesas" ? pendingMesasCount ?? 0
+              : 0;
+            return (
+              <NavButton
+                key={item.tab}
+                active={currentTab === item.tab}
+                onClick={() => handleTab(item.tab)}
+                icon={item.icon}
+                label={item.label}
+                badge={count}
+                syncBadge={sync}
+              />
+            );
+          })
+        )}
+        {!isService && canFiscal && (
+          <NavButton
+            active={currentTab === "fiscal"}
+            onClick={() => handleTab("fiscal")}
+            icon={Receipt}
+            label="Facturación"
+          />
+        )}
+        {!isService && canInventory && (
+          <NavButton
+            active={currentTab === "inventario"}
+            onClick={() => handleTab("inventario")}
+            icon={Boxes}
+            label="Inventario"
+          />
+        )}
+      </div>
+    </>
+  );
+
+  const gestion = !isEmployee && (
+    <>
+      <SectionLabel>Gestión</SectionLabel>
+      <div className="space-y-0.5">
+        {isService ? (
+          <>
+            <NavButton active={currentTab === "galeria"} onClick={() => handleTab("galeria")} icon={Image} label="Galería" />
+            <NavButton active={currentTab === "config"} onClick={() => handleTab("config")} icon={ClipboardList} label="Configuración" />
+            <NavButton active={currentTab === "clientes"} onClick={() => handleTab("clientes")} icon={Users} label="Clientes" />
+            <NavButton active={currentTab === "promos"} onClick={() => handleTab("promos")} icon={Share} label="Promos" />
+            {isEstetica && (
+              <>
+                <NavButton active={currentTab === "servicios"} onClick={() => handleTab("servicios")} icon={CalendarDays} label="Servicios" />
+                <NavButton active={currentTab === "tarjetas"} onClick={() => handleTab("tarjetas")} icon={Gift} label="Tarjetas" />
+              </>
+            )}
+          </>
+        ) : (
+          GESTION_ITEMS.filter((i) => i.show(isGastro, isModa, isComercio, canScreens)).map((item) => (
+            <NavButton
+              key={item.tab}
+              active={currentTab === item.tab}
+              onClick={() => handleTab(item.tab)}
+              icon={item.icon}
+              label={item.label}
+              suffix={item.tab === "menu" ? item.suffix?.(menuCount) : undefined}
+            />
+          ))
+        )}
+      </div>
+    </>
+  );
+
+  const analisis = (
+    <>
+      <SectionLabel>Análisis</SectionLabel>
+      <div className="space-y-0.5">
+        {ANALISIS_ITEMS.filter((i) => !isEmployee || i.tab === "history").map((item) => (
+          <NavButton
+            key={item.tab}
+            active={currentTab === item.tab}
+            onClick={() => handleTab(item.tab)}
+            icon={item.icon}
+            label={item.label}
+          />
+        ))}
+      </div>
+    </>
+  );
+
+  // Los links que estaban en el footer pasan al menú como secciones propias
+  // (así no queda un footer larguísimo y no hace scroll en la primera vista).
+  const cuenta = (
+    <>
+      <SectionLabel>Mi cuenta</SectionLabel>
+      <div className="space-y-0.5">
+        {planSlug && !isEmployee && (
+          <NavLink href="/vendor/suscripcion" icon={Sparkles} label={`Plan ${planName ?? planSlug}`}>
+            <span className="text-primary">→</span>
+          </NavLink>
+        )}
+        {!isEmployee && (
+          <>
+            <NavLink href="/vendor/wa-bot" icon={Bot} label="Bot de WhatsApp" />
+            <NavLink href="/vendor/wa-bot/conversaciones" icon={MessageSquare} label="Conversaciones" />
+          </>
+        )}
+        <NavLink href="/manuales" icon={BookOpen} label="Manuales" external />
+        <div className="pt-1">
+          <PanelUiSwitch />
+        </div>
+        {!isStaffMember && (
+          <NavLink href="/" icon={LogOut} label="Volver al sitio" />
+        )}
+      </div>
+    </>
+  );
+
+  // ---- Modo riel (desktop) ----
+  if (!wide) {
+
+    return (
+      <>
+        <aside
+          className="
+            fixed top-0 left-0 z-50 flex h-full w-[76px] flex-col bg-card border-r border-border
+            transition-transform duration-200 ease-in-out lg:z-30 lg:translate-x-0
+          "
+        >
+          {/* Cabecera del riel: botón de menú (patrón Material Navigation
+              Rail: el ícono de arriba despliega la barra y revela el resto
+              de los destinos). La identidad del comercio vive en la barra
+              superior del panel, no acá. */}
+          <div className="flex justify-center border-b border-border py-3">
+            <button
+              type="button"
+              onClick={toggle}
+              title="Desplegar el menú (más opciones)"
+              className="flex h-12 w-12 flex-col items-center justify-center gap-1 rounded-xl text-primary transition-colors hover:bg-primary-light"
+            >
+              <Menu className="h-5 w-5" />
+              <span className="text-[9px] font-semibold uppercase leading-none tracking-tight">Menú</span>
+            </button>
+          </div>
+
+          <nav className="flex-1 space-y-1 overflow-y-auto px-2 py-3">
+          {/* Riel: Hoy + la operacion del vertical + Catalogo/Menu (o
+              Galeria en servicios) + Configuracion. Lo demas --Promos,
+              Preparacion, Clientes, Gastos, Tarjetas, Pantalla, Analisis,
+              Bot y Cuenta-- aparece al desplegar el menu con el boton de
+              arriba. */}
+          {railItems.map((item) => (
+            <RailItem
+              key={item.tab}
+              icon={item.icon}
+              label={item.label}
+              title={item.title}
+              badge={item.badge}
+              active={currentTab === item.tab}
+              onClick={() => handleTab(item.tab)}
+            />
+          ))}
+            </nav>
+        </aside>
+      </>
+    );
+  }
+
+  // ---- Modo completo (256px): drawer móvil o escritorio desplegado ----
   return (
     <>
       {open && (
-        <div
-          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
-          onClick={onClose}
-        />
+        <div className="fixed inset-0 z-40 bg-black/50 lg:hidden" onClick={onClose} />
       )}
 
       <aside
         className={`
-          fixed top-0 left-0 z-50 h-full w-64 sidebar-desktop bg-card
-          flex flex-col transition-transform duration-200 ease-in-out
-          lg:translate-x-0 lg:z-30
+          fixed top-0 left-0 z-50 flex h-full w-64 flex-col bg-card border-r border-border
+          transition-transform duration-200 ease-in-out lg:z-30 lg:translate-x-0
           ${open ? "translate-x-0" : "-translate-x-full"}
         `}
       >
-        {/* Header */}
-        <div className="flex items-center gap-3 px-4 py-4 border-b border-border">
-          {storeLogo ? (
-            <img src={storeLogo} alt={storeName} className="h-9 w-9 rounded-full object-cover flex-shrink-0" />
-          ) : (
-            <div className="h-9 w-9 rounded-full bg-primary-light flex items-center justify-center flex-shrink-0">
-              <span className="font-bold text-primary text-sm">{storeName.charAt(0)}</span>
-            </div>
-          )}
-          <div className="flex-1 min-w-0">
-            <h2 className="font-semibold text-sm truncate text-text-main">{storeName}</h2>
-            {storeSlug && !isStaffMember && (
-              <a
-                href={`/tienda/${storeSlug}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
-              >
-                Micrositio <ExternalLink className="h-3 w-3" />
-              </a>
-            )}
-          </div>
+        {/* Header: la identidad del comercio está en la barra superior del
+            panel; acá solo queda el control de plegado. */}
+        <div className="flex h-14 items-center justify-between gap-3 border-b border-border px-4">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Menú</p>
+          <button
+            type="button"
+            onClick={toggle}
+            title="Ocultar el menú (modo íconos)"
+            className="hidden lg:flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </button>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-muted transition-colors lg:hidden"
+            className="flex-shrink-0 rounded-lg p-1.5 transition-colors hover:bg-muted lg:hidden"
+            aria-label="Cerrar menú"
           >
             <X className="h-5 w-5" />
           </button>
         </div>
 
         {/* Nav principal (siempre visible, también en la solapa Config). */}
-        <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-5">
-          <>
-          {/* Inicio */}
-          <div>
-            <NavButton
-              active={currentTab === "hoy"}
-              onClick={() => handleTab("hoy")}
-              icon={Home}
-              label="Hoy"
-            />
-          </div>
-
-          {/* Operaciones */}
-          <div>
-            <p className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Operaciones</p>
-            <div className="space-y-0.5">
-              {isService ? (
-                <>
-                  <NavButton
-                    active={currentTab === "orders"}
-                    onClick={() => handleTab("orders")}
-                    icon={MessageSquare}
-                    label={isEstetica ? "Consultas" : "Presupuestos"}
-                    badge={pendingQuotesCount}
-                  />
-                  <NavButton
-                    active={currentTab === "pos"}
-                    onClick={() => handleTab("pos")}
-                    icon={CalendarDays}
-                    label="Turnos"
-                    badge={pendingBookingsCount}
-                  />
-                  <NavButton
-                    active={currentTab === "caja"}
-                    onClick={() => handleTab("caja")}
-                    icon={DollarSign}
-                    label="Caja"
-                  />
-                  {isEstetica && (
-                    <>
-                      <NavButton
-                        active={currentTab === "pedidos"}
-                        onClick={() => handleTab("pedidos")}
-                        icon={Package}
-                        label="Pedidos"
-                        badge={orderCount}
-                      />
-                      <NavButton
-                        active={currentTab === "mostrador"}
-                        onClick={() => handleTab("mostrador")}
-                        icon={ShoppingBag}
-                        label="Mostrador"
-                      />
-                    </>
-                  )}
-                  {isEstetica && canFiscal && (
-                    <NavButton
-                      active={currentTab === "fiscal"}
-                      onClick={() => handleTab("fiscal")}
-                      icon={Receipt}
-                      label="Facturación"
-                    />
-                  )}
-                  {isEstetica && canInventory && (
-                    <NavButton
-                      active={currentTab === "inventario"}
-                      onClick={() => handleTab("inventario")}
-                      icon={Boxes}
-                      label="Inventario"
-                    />
-                  )}
-                </>
-              ) : (
-                OPERACION_ITEMS.filter((i) => i.show(isGastro, isModa, isComercio)).map((item) => {
-                  const count = item.badge ? item.badge(orderCount, kitchenCount) : 0;
-                  const sync =
-                    item.tab === "pos" ? pendingPosCount ?? 0
-                    : item.tab === "mesas" ? pendingMesasCount ?? 0
-                    : 0;
-                  return (
-                    <NavButton
-                      key={item.tab}
-                      active={currentTab === item.tab}
-                      onClick={() => handleTab(item.tab)}
-                      icon={item.icon}
-                      label={item.label}
-                      badge={count}
-                      syncBadge={sync}
-                    />
-                  );
-                })
-              )}
-              {!isService && canFiscal && (
-                <NavButton
-                  active={currentTab === "fiscal"}
-                  onClick={() => handleTab("fiscal")}
-                  icon={Receipt}
-                  label="Facturación"
-                />
-              )}
-              {!isService && canInventory && (
-                <NavButton
-                  active={currentTab === "inventario"}
-                  onClick={() => handleTab("inventario")}
-                  icon={Boxes}
-                  label="Inventario"
-                />
-              )}
-            </div>
-          </div>
-
-          {/* Gestión — el empleado opera sin gestión (ni menú, ni clientes, ni config) */}
-          {!isEmployee && (
-          <div>
-            <p className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Gestión</p>
-            <div className="space-y-0.5">
-              {isService ? (
-                <>
-                  <NavButton
-                    active={currentTab === "galeria"}
-                    onClick={() => handleTab("galeria")}
-                    icon={Image}
-                    label="Galería"
-                  />
-                  <NavButton
-                    active={currentTab === "config"}
-                    onClick={() => handleTab("config")}
-                    icon={ClipboardList}
-                    label="Configuración"
-                  />
-                  <NavButton
-                    active={currentTab === "clientes"}
-                    onClick={() => handleTab("clientes")}
-                    icon={Users}
-                    label="Clientes"
-                  />
-                  <NavButton
-                    active={currentTab === "promos"}
-                    onClick={() => handleTab("promos")}
-                    icon={Share}
-                    label="Promos"
-                  />
-                  {isEstetica && (
-                    <NavButton
-                      active={currentTab === "gastos"}
-                      onClick={() => handleTab("gastos")}
-                      icon={Receipt}
-                      label="Gastos"
-                    />
-                  )}
-                  {isEstetica && (
-                    <NavButton
-                      active={currentTab === "tarjetas"}
-                      onClick={() => handleTab("tarjetas")}
-                      icon={Gift}
-                      label="Tarjetas"
-                    />
-                  )}
-                  {isEstetica && (
-                    <NavButton
-                      active={currentTab === "menu"}
-                      onClick={() => handleTab("menu")}
-                      icon={ShoppingBag}
-                      label="Catálogo"
-                      suffix={`${menuCount}`}
-                    />
-                  )}
-                  {isEstetica && (
-                    <NavButton
-                      active={currentTab === "servicios"}
-                      onClick={() => handleTab("servicios")}
-                      icon={Sparkles}
-                      label="Servicios"
-                    />
-                  )}
-                </>
-              ) : (
-                <>
-                {GESTION_ITEMS.filter((i) => i.show(isGastro, isModa, isComercio, canScreens ?? false)).map((item) => {
-                  const suffix = item.suffix ? item.suffix(menuCount) : null;
-                  const label = item.tab === "menu" && (isModa || isComercio) ? "Catálogo" : item.label;
-                  return (
-                    <NavButton
-                      key={item.tab}
-                      active={currentTab === item.tab}
-                      onClick={() => handleTab(item.tab)}
-                      icon={item.icon}
-                      label={label}
-                      suffix={suffix ?? undefined}
-                    />
-                  );
-                })}
-                {isComercio && (
-                  <NavButton
-                    active={currentTab === "galeria"}
-                    onClick={() => handleTab("galeria")}
-                    icon={Image}
-                    label="Galería"
-                  />
-                )}
-                </>
-              )}
-            </div>
-          </div>
-          )}
-
-          {/* Análisis — el empleado solo ve el histórico */}
-          <div>
-            <p className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Análisis</p>
-            <div className="space-y-0.5">
-              {((isService && !isEstetica) ? ANALISIS_ITEMS.filter((i) => i.tab !== "analytics") : ANALISIS_ITEMS)
-                .filter((i) => !isEmployee || i.tab === "history")
-                .map((item) => (
-                <NavButton
-                  key={item.tab}
-                  active={currentTab === item.tab}
-                  onClick={() => handleTab(item.tab)}
-                  icon={item.icon}
-                  label={item.label}
-                />
-              ))}
-            </div>
-          </div>
-          </>
+        <nav className="flex-1 space-y-5 overflow-y-auto px-3 py-4">
+          <div>{hoyItem}</div>
+          <div>{operaciones}</div>
+          {gestion && <div>{gestion}</div>}
+          <div>{analisis}</div>
+          <div>{cuenta}</div>
         </nav>
-
-        {/* Footer — el equipo (empleado/encargado) no ve plan ni bot: esas
-            secciones son del dueño (el proxy las manda al dashboard). */}
-        <div className="px-3 py-3 border-t border-border space-y-2">
-          {planSlug && !isStaffMember && (
-            <Link
-              href="/vendor/suscripcion"
-              className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-            >
-              <Sparkles className="h-4 w-4 text-primary" />
-              <span className="flex-1 truncate">Plan {planName ?? planSlug}</span>
-              <span className="text-primary">→</span>
-            </Link>
-          )}
-          {!isStaffMember && (
-           <>
-          <Link
-            href="/vendor/wa-bot"
-            className="flex items-center gap-3 rounded-lg border border-border px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-          >
-            <Bot className="h-4 w-4 text-primary" />
-            <span className="flex-1 truncate">Bot de WhatsApp</span>
-          </Link>
-          <Link
-            href="/vendor/wa-bot/conversaciones"
-            className="flex items-center gap-3 rounded-lg border border-border px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-          >
-            <MessageSquare className="h-4 w-4 text-primary" />
-            <span className="flex-1 truncate">Conversaciones del bot</span>
-          </Link>
-           </>
-          )}
-          <Link
-            href="/manuales"
-            target="_blank"
-            className="flex items-center gap-3 rounded-lg border border-border px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-          >
-            <BookOpen className="h-4 w-4 text-primary" />
-            <span className="flex-1 truncate">Manuales</span>
-            <ExternalLink className="h-3 w-3" />
-          </Link>
-          {/* "Volver al sitio" no aplica al equipo: se queda en su panel. */}
-          {!isStaffMember && (
-          <Link
-            href="/"
-            className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-          >
-            <LogOut className="h-5 w-5 flex-shrink-0" />
-            Volver al sitio
-          </Link>
-          )}
-        </div>
       </aside>
     </>
   );

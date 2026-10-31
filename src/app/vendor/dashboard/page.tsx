@@ -1764,7 +1764,7 @@ function VendorDashboardInner() {
         <div className={`sticky top-14 sm:top-0 z-30 bg-background border-b border-border ${kitchenMode ? "sm:hidden" : ""}`}>
           <div className="px-3 sm:px-4 py-2 sm:py-2.5">
             {/* Fila 1: menú + título + compartir (+ controles en desktop) */}
-            <div className="flex items-center gap-2 sm:gap-3">
+            <div className="flex items-center gap-2 sm:gap-3 min-w-0">
               {/* Mobile hamburger */}
               <button
                 onClick={() => setSidebarOpen(true)}
@@ -1853,7 +1853,10 @@ function VendorDashboardInner() {
                   />
                 )}
               </div>
-              <Button size="sm" onClick={openShare} className="flex-shrink-0">Compartir</Button>
+              <Button size="sm" onClick={openShare} className="flex-shrink-0">
+                <Share className="h-4 w-4 sm:mr-1.5" />
+                <span className="hidden sm:inline">Compartir</span>
+              </Button>
               <div className="hidden lg:flex items-center gap-1 flex-shrink-0">
                 <NotificationBell />
                 <UserMenu />

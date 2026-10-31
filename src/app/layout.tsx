@@ -143,14 +143,14 @@ export default function RootLayout({
               <OnboardingOverlay />
               <Navigation />
               <ErrorBoundary>
-                <main className="flex-1 pb-28">{children}</main>
+                <main className="flex-1 pb-28" data-portal-main>{children}</main>
               </ErrorBoundary>
               <CartFooter />
               <CartDrawer />
               {/* On/off global del botón: /admin/config (setting wa_float). */}
               <WhatsAppFloat />
               <BottomNav />
-              <footer className="border-t border-border py-6 text-center text-sm text-muted-foreground bg-card">
+              <footer className="border-t border-border py-6 text-center text-sm text-muted-foreground bg-card" data-portal-chrome>
                 <div className="container mx-auto px-4 flex flex-col sm:flex-row items-center justify-center gap-2">
                   <span>© {new Date().getFullYear()} Portal 659 — El centro comercial de tu barrio · 0% comisión</span>
                   <span className="hidden sm:inline text-border">·</span>

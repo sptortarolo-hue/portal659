@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { usePathname } from "next/navigation";
+import { isImmersivePath } from "@/lib/immersive";
 
 const STORAGE_KEY = "portal659_onboarded";
 
@@ -23,20 +25,25 @@ const SLIDES = [
 ];
 
 export function OnboardingOverlay() {
+  const pathname = usePathname();
   const [visible, setVisible] = useState(false);
   const [step, setStep] = useState(0);
+  // Pantalla TV: el overlay de bienvenida es del portal, no del local.
+  const immersive = isImmersivePath(pathname);
 
   useEffect(() => {
+    if (immersive) return;
     try {
       if (!localStorage.getItem(STORAGE_KEY)) setVisible(true);
     } catch {}
-  }, []);
+  }, [immersive]);
 
   function dismiss() {
     try { localStorage.setItem(STORAGE_KEY, "1"); } catch {}
     setVisible(false);
   }
 
+  if (immersive) return null;
   if (!visible) return null;
 
   const slide = SLIDES[step];

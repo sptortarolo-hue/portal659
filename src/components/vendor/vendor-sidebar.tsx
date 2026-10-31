@@ -293,6 +293,57 @@ export default function VendorSidebar({
   const wide = open || !rail;
   const toggle = onToggleRail || (() => {});
 
+
+  // ---- Iconos del riel: Hoy + la operacion del vertical + Catalogo/Menu
+  // (o Galeria en servicios) + Configuracion. Segun el perfil: el empleado
+  // no ve Catalogo ni Config (no tiene Gestion). El resto se ve al
+  // desplegar el menu. ----
+  const railItems: {
+    tab: Tab;
+    label: string;
+    title: string;
+    icon: typeof Package;
+    badge?: number;
+  }[] = [{ tab: "hoy", label: "Hoy", title: "Hoy", icon: Home }];
+
+  if (isService) {
+    railItems.push({
+      tab: "orders",
+      label: isEstetica ? "Consultas" : "Presup.",
+      title: isEstetica ? "Consultas" : "Presupuestos",
+      icon: MessageSquare,
+      badge: pendingQuotesCount,
+    });
+    railItems.push({ tab: "pos", label: "Turnos", title: "Turnos", icon: CalendarDays, badge: pendingBookingsCount });
+    railItems.push({ tab: "caja", label: "Caja", title: "Caja", icon: DollarSign });
+    if (isEstetica) {
+      railItems.push({ tab: "pedidos", label: "Pedidos", title: "Pedidos", icon: Package, badge: orderCount });
+      railItems.push({ tab: "mostrador", label: "Mostr.", title: "Mostrador", icon: ShoppingBag });
+      if (canFiscal) railItems.push({ tab: "fiscal", label: "Factura", title: "Facturacion", icon: Receipt });
+      if (canInventory) railItems.push({ tab: "inventario", label: "Invent.", title: "Inventario", icon: Boxes });
+    }
+  } else {
+    OPERACION_ITEMS.filter((i) => i.show(isGastro, isModa, isComercio)).forEach((item) => {
+      const count = item.badge ? item.badge(orderCount, kitchenCount) : 0;
+      railItems.push({ tab: item.tab, label: item.short, title: item.label, icon: item.icon, badge: count });
+    });
+    if (canFiscal) railItems.push({ tab: "fiscal", label: "Factura", title: "Facturacion", icon: Receipt });
+    if (canInventory) railItems.push({ tab: "inventario", label: "Invent.", title: "Inventario", icon: Boxes });
+  }
+
+  if (!isEmployee) {
+    if (isService) {
+      railItems.push({ tab: "galeria", label: "Galeria", title: "Galeria", icon: Image });
+    } else {
+      railItems.push({
+        tab: "menu",
+        label: isComercio || isModa ? "Catalogo" : "Menu",
+        title: isComercio || isModa ? "Catalogo" : "Menu",
+        icon: UtensilsCrossed,
+      });
+    }
+    railItems.push({ tab: "config", label: "Config", title: "Configuracion", icon: Settings });
+  }
   // ---- Contenido reutilizable ----
   const hoyItem = (
     <NavButton
@@ -516,52 +567,24 @@ export default function VendorSidebar({
               active={currentTab === "hoy"}
               onClick={() => handleTab("hoy")}
             />
-            <div className="my-1 border-t border-border" />
+          <div className="my-1 border-t border-border" />
 
-            {/* Riel: Hoy + Gestión (Menú/Catálogo, Promos, Preparación,
-                Clientes, Gastos, Tarjetas, Pantalla, Configuración…).
-                El resto —Operaciones, Análisis, Bot y Cuenta— aparece al
-                desplegar el menú con el botón de arriba. */}
-            {isService ? (
-              <>
-                <RailItem icon={ClipboardList} label="Config" active={currentTab === "config"} onClick={() => handleTab("config")} title="Configuración" />
-                <RailItem icon={Users} label="Clientes" active={currentTab === "clientes"} onClick={() => handleTab("clientes")} />
-                <RailItem icon={Share} label="Promos" active={currentTab === "promos"} onClick={() => handleTab("promos")} />
-                <RailItem icon={Image} label="Galería" active={currentTab === "galeria"} onClick={() => handleTab("galeria")} />
-                {isEstetica && <RailItem icon={CalendarDays} label="Servicios" active={currentTab === "servicios"} onClick={() => handleTab("servicios")} />}
-                {isEstetica && <RailItem icon={Gift} label="Tarjetas" active={currentTab === "tarjetas"} onClick={() => handleTab("tarjetas")} />}
-              </>
-            ) : !isEmployee ? (
-              /* En el riel, Catálogo/Menú va al FINAL del grupo: primero los
-                 demás íconos de Gestión (Promos, Preparación, Clientes,
-                 Gastos, Tarjetas, Pantalla, Configuración). */
-              GESTION_ITEMS
-                .filter((i) => i.show(isGastro, isModa, isComercio, canScreens))
-                .sort((a, b) => (a.tab === "menu" ? 1 : 0) - (b.tab === "menu" ? 1 : 0))
-                .map((item) => (
-                  <RailItem
-                    key={item.tab}
-                    icon={item.icon}
-                    label={item.tab === "menu" ? (isComercio || isModa ? "Catálogo" : "Menú") : item.short}
-                    active={currentTab === item.tab}
-                    onClick={() => handleTab(item.tab)}
-                    title={item.label}
-                  />
-                ))
-            ) : (
-              /* El empleado no tiene Gestión: su riel muestra Hoy + la
-                 operación diaria (Pedidos/Mostrador/Caja). */
-              OPERACION_ITEMS.filter((i) => i.show(isGastro, isModa, isComercio)).map((item) => (
-                <RailItem
-                  key={item.tab}
-                  icon={item.icon}
-                  label={item.short}
-                  active={currentTab === item.tab}
-                  onClick={() => handleTab(item.tab)}
-                  title={item.label}
-                />
-              ))
-            )}
+          {/* Riel: Hoy + la operacion del vertical + Catalogo/Menu (o
+              Galeria en servicios) + Configuracion. Lo demas --Promos,
+              Preparacion, Clientes, Gastos, Tarjetas, Pantalla, Analisis,
+              Bot y Cuenta-- aparece al desplegar el menu con el boton de
+              arriba. */}
+          {railItems.map((item) => (
+            <RailItem
+              key={item.tab}
+              icon={item.icon}
+              label={item.label}
+              title={item.title}
+              badge={item.badge}
+              active={currentTab === item.tab}
+              onClick={() => handleTab(item.tab)}
+            />
+          ))}
             </nav>
         </aside>
       </>

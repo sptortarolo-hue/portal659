@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import AdminGuard from "@/components/admin/admin-guard";
 import AdminSidebar from "@/components/admin/admin-sidebar";
 import AdminBottomNav from "@/components/admin/admin-bottom-nav";
@@ -13,13 +13,29 @@ export const dynamic = "force-dynamic";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  // Modo riel (desktop): sidebar de 76px con íconos + etiqueta mini.
+  const [rail, setRail] = useState(true);
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem("portal659-sidebar-rail");
+      if (saved === "0") setRail(false);
+      if (saved === "1") setRail(true);
+    } catch { /* storage bloqueado: default riel */ }
+  }, []);
+  const toggleRail = useCallback(() => {
+    setRail((v) => {
+      const next = !v;
+      try { window.localStorage.setItem("portal659-sidebar-rail", next ? "1" : "0"); } catch { /* noop */ }
+      return next;
+    });
+  }, []);
 
   return (
     <AdminGuard>
       <div className="ts-ui min-h-screen bg-background flex">
-        <AdminSidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+        <AdminSidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} rail={rail} onToggleRail={toggleRail} />
 
-        <div className="flex-1 flex flex-col min-h-screen lg:ml-64 min-w-0">
+        <div className={`flex-1 flex flex-col min-h-screen min-w-0 ${rail ? "lg:ml-[76px]" : "lg:ml-64"}`}>
           <header className="sticky top-14 sm:top-0 z-30 bg-card border-b border-border px-4 py-3 flex items-center gap-3 lg:hidden">
             <button
               onClick={() => setSidebarOpen(true)}

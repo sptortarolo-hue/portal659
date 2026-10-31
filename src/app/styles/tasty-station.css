@@ -52,8 +52,12 @@
   --ts-sidebar-w: 240px;
   --ts-right-w: 320px;
 
-  /* Sombras (spec) */
-  --ts-shadow-card: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
+  /* Sombras: en claro se NOTAN (dos capas) para que los componentes se
+     despeguen del fondo gris del panel. En oscuro quedan más profundas. */
+  --ts-shadow-card: 0 1px 2px 0 rgba(15, 23, 42, 0.06), 0 4px 12px -2px rgba(15, 23, 42, 0.1);
+  --ts-shadow-raised: 0 1px 3px 0 rgba(15, 23, 42, 0.08), 0 8px 20px -6px rgba(15, 23, 42, 0.12);
+  --ts-shadow-float: 0 8px 24px -4px rgba(15, 23, 42, 0.16), 0 2px 6px -2px rgba(15, 23, 42, 0.1);
+  --ts-shadow-btn: 0 1px 2px 0 rgba(13, 148, 136, 0.4), 0 4px 10px -2px rgba(13, 148, 136, 0.25);
   --ts-shadow-pop: 0 8px 24px -4px rgba(15, 23, 42, 0.12);
 
   /* Estados (spec) */
@@ -86,7 +90,10 @@ html.dark .ts-ui {
   --color-destructive: #f87171;
   --color-destructive-foreground: #450a0a;
 
-  --ts-shadow-card: 0 1px 3px 0 rgba(0, 0, 0, 0.4);
+  --ts-shadow-card: 0 1px 3px 0 rgba(0, 0, 0, 0.4), 0 6px 16px -4px rgba(0, 0, 0, 0.45);
+  --ts-shadow-raised: 0 1px 3px 0 rgba(0, 0, 0, 0.5), 0 10px 24px -6px rgba(0, 0, 0, 0.55);
+  --ts-shadow-float: 0 10px 30px -6px rgba(0, 0, 0, 0.6), 0 2px 8px -2px rgba(0, 0, 0, 0.5);
+  --ts-shadow-btn: 0 1px 2px 0 rgba(45, 212, 191, 0.35), 0 4px 10px -2px rgba(45, 212, 191, 0.2);
   --ts-shadow-pop: 0 8px 24px -4px rgba(0, 0, 0, 0.5);
 
   --ts-success: #34d399;
@@ -110,16 +117,29 @@ html[data-panel-ui="tasty"] .ts-ui :is(button, [role="button"]) {
   font-weight: 600;
 }
 
-/* Tarjetas: superficie blanca + borde slate + sombra corta del spec */
+/* Tarjetas: superficie blanca + borde slate + sombra que se nota */
 html[data-panel-ui="tasty"] .ts-ui .bg-card {
   border-color: var(--color-border);
   box-shadow: var(--ts-shadow-card);
 }
 
-/* Barras sticky del panel (topbar, headers de tablas): superficie blanca */
+/* Barras sticky del panel (topbar, headers de tablas): superficie blanca
+   y elevada sobre el contenido */
 html[data-panel-ui="tasty"] .ts-ui [class*="sticky"] {
   background-color: var(--color-card);
   border-color: var(--color-border);
+  box-shadow: var(--ts-shadow-raised);
+}
+
+/* Botón primario y badges de color: sombra de color para que resalten */
+html[data-panel-ui="tasty"] .ts-ui .bg-primary {
+  box-shadow: var(--ts-shadow-btn);
+}
+
+/* Flotantes (flyouts de la sidebar, menús, modales): sombra fuerte */
+html[data-panel-ui="tasty"] .ts-ui :is(.shadow-lg, .shadow-xl, [role="dialog"], [class*="z-50"], [class*="z-60"], [class*="z-70"]).bg-card,
+html[data-panel-ui="tasty"] .ts-ui :is([role="dialog"], .shadow-lg, .shadow-xl) {
+  box-shadow: var(--ts-shadow-float);
 }
 
 /* Links de acción del panel: teal, sin subrayado hasta el hover */

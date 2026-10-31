@@ -368,6 +368,23 @@ function VendorDashboardInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  // Modo riel (desktop): la sidebar izquierda se estrecha a íconos y los
+  // grupos abren en flyout. Persiste por navegadora; default = riel.
+  const [rail, setRail] = useState(true);
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem("portal659-sidebar-rail");
+      if (saved === "0") setRail(false);
+      if (saved === "1") setRail(true);
+    } catch { /* storage bloqueado: default riel */ }
+  }, []);
+  const toggleRail = useCallback(() => {
+    setRail((v) => {
+      const next = !v;
+      try { window.localStorage.setItem("portal659-sidebar-rail", next ? "1" : "0"); } catch { /* noop */ }
+      return next;
+    });
+  }, []);
   const [moreOpen, setMoreOpen] = useState(false);
   // Fullscreen del navegador (modo cocina de la Comanda).
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -1717,6 +1734,8 @@ function VendorDashboardInner() {
         configSectionStatus={(id) => getConfigSectionStatus(id, vendor)}
         isEmployee={isEmployee}
         isStaffMember={staffRole === "staff"}
+        rail={rail}
+        onToggleRail={toggleRail}
       />
       )}
 
@@ -1724,7 +1743,7 @@ function VendorDashboardInner() {
           header (etiquetas nowrap) estire el flex item más allá del viewport
           y desborde en mobile. En modo cocina no hay sidebar: se quita el
           offset lg:ml-64 para usar todo el ancho. */}
-      <div className={`flex-1 flex flex-col min-h-screen min-w-0 ${kitchenMode ? "" : "lg:ml-64"}`}>
+      <div className={`flex-1 flex flex-col min-h-screen min-w-0 ${kitchenMode ? "" : rail ? "lg:ml-[76px]" : "lg:ml-64"}`}>
         {impersonatingId && (
           <div className="bg-amber-50 border-b border-amber-200">
             <div className="container mx-auto px-4 py-2 flex items-center justify-between gap-3 text-sm text-amber-900">

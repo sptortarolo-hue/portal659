@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { Fragment, useMemo } from "react";
+import { usePathname } from "next/navigation";
 import { useCart } from "@/lib/cart";
+import { isImmersivePath } from "@/lib/immersive";
 import {
   isValidWeight,
   nudgeWeight,
@@ -16,12 +18,15 @@ import { ProductImage } from "@/components/product-image";
 import { VolumeProgress } from "@/components/store/volume-progress";
 
 export function CartDrawer() {
+  const pathname = usePathname();
   const { open, setOpen, items, vendor, total, count, setQty, removeItem, clear } = useCart();
   const vol = useMemo(() => mirrorVolume(items, vendor?.volumeGroups), [items, vendor]);
   // Mismas reglas de peso que el micrositio (múltiplo + mínimo del comercio).
   const weightRules = readWeightRules(vendor?.weightStepKg, vendor?.weightMinKg);
   const netTotal = total - vol.volumeDiscount;
 
+  // Pantalla TV: el carrito es del portal, no de la pantalla del local.
+  if (isImmersivePath(pathname)) return null;
   if (!open) return null;
 
   return (

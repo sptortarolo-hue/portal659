@@ -1,10 +1,15 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import { useCart } from "@/lib/cart";
+import { isImmersivePath } from "@/lib/immersive";
 
 export function CartFooter() {
+  const pathname = usePathname();
   const { count, total, vendor, setOpen } = useCart();
 
+  // Pantalla TV: sin barra de carrito (es la pantalla del local).
+  if (isImmersivePath(pathname)) return null;
   if (count === 0) return null;
 
   return (

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCart } from "@/lib/cart";
+import { isImmersivePath } from "@/lib/immersive";
 
 const NAV_ITEMS = [
   { href: "/", label: "Inicio", icon: "🏠" },
@@ -18,7 +19,9 @@ export function BottomNav() {
   if (
     pathname?.startsWith("/admin") ||
     pathname?.startsWith("/vendor") ||
-    pathname?.startsWith("/tienda")
+    pathname?.startsWith("/tienda") ||
+    // Pantalla TV: sin barra inferior (es pantalla completa del local).
+    isImmersivePath(pathname)
   ) {
     return null;
   }

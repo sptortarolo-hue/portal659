@@ -46,7 +46,10 @@ export default async function PantallaPage({
   const snapshot = await buildTvSnapshot(screen, vendor);
 
   return (
-    <main className="h-screen w-screen overflow-hidden bg-black">
+    // Div (no <main>): el layout raíz ya envuelve en <main> y dos <main>
+    // anidados son HTML inválido. El css del layout de la ruta ya anula el
+    // padding del main raíz, así que este contenedor queda a pantalla completa.
+    <div className="h-screen w-screen overflow-hidden bg-black">
       <TvPlayer
         snapshot={snapshot}
         token={token}
@@ -54,6 +57,6 @@ export default async function PantallaPage({
         vertical={vendor.vertical ?? null}
         debug={debug}
       />
-    </main>
+    </div>
   );
 }

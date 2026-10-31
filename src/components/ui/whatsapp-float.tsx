@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useCart } from "@/lib/cart";
+import { isImmersivePath } from "@/lib/immersive";
 
 const WHATSAPP_URL =
   "https://wa.me/5492212010898?text=" +
@@ -27,6 +28,8 @@ export function WhatsAppFloat() {
   if (pathname?.startsWith("/vendor") || pathname?.startsWith("/admin")) {
     return null;
   }
+  // Pantalla TV: el botón flotante del portal no va en la pantalla del local.
+  if (isImmersivePath(pathname)) return null;
   // Mientras se resuelve el setting no renderiza (sin flash del botón).
   if (enabled === null) return null;
 

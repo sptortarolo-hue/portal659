@@ -2,6 +2,12 @@ import { NextResponse } from "next/server";
 import { guardTvScreens } from "@/lib/tv-guard";
 import { createScreen, hasUnpublishedDraft, listVendorScreens, loadCatalogSections } from "@/lib/tv-data";
 import { normalizeTvConfig } from "@/lib/tv-config";
+import {
+  isGastroVendor,
+  isModaVendor,
+  isComercioVendor,
+  isEsteticaVendor,
+} from "@/lib/plans";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +20,10 @@ function vendorSellsOnline(vendor: any): boolean {
     vendor &&
     vendor.slug &&
     vendor.accepts_online_orders !== false &&
-    ["gastro", "moda", "comercio", "estetica"].includes(String(vendor.vertical || ""))
+    (isGastroVendor(vendor) ||
+      isModaVendor(vendor) ||
+      isComercioVendor(vendor) ||
+      isEsteticaVendor(vendor))
   );
 }
 

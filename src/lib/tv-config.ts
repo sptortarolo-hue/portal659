@@ -35,6 +35,15 @@ export type TvPoster = {
   type: "image" | "video";
   /** Segundos que se muestra (video: se ignora, se reproduce completo). */
   durationSec: number;
+  /**
+   * Proporción del medio: "portrait" = vertical (9:16), "landscape" = horizontal.
+   *
+   * Decide dónde se ve en el diseño Split: los verticales van a la columna 9:16
+   * de la izquierda (entran sin recorte) y los horizontales a pantalla completa.
+   * Si falta (posters subidos antes de esta opción) se trata como horizontal:
+   * sigue mostrando como hasta ahora.
+   */
+  orientation?: "portrait" | "landscape";
 };
 
 export type TvConfig = {
@@ -129,6 +138,53 @@ export const TV_DESIGN_CHOICES = [
     hint: "Imagen 9:16 a la izquierda, carta a la derecha",
   },
 ];
+
+/**
+ * Proporción de un archivo (imagen o video) para decidir dónde se muestra.
+ *
+ * "portrait" (vertical, tipo 9:16) → en el diseño Split va a la columna
+ * izquierda, donde entra sin recorte. "landscape" → a pantalla completa.
+ *
+ * Se mide en el navegador (el archivo ya está en memoria): si no se puede
+ * medir, se asume horizontal, que es como se mostraban hasta ahora.
+ */
+export async function detectMediaOrientation(
+  file: File,
+  isVideo: boolean
+): Promise<"portrait" | "landscape"> {
+  try {
+    if (isVideo) {
+      const url = URL.createObjectURL(file);
+      try {
+        const dims = await new Promise<{ w: number; h: number }>((resolve) => {
+          const v = document.createElement("video");
+          v.preload = "metadata";
+          v.muted = true;
+          v.onloadedmetadata = () => resolve({ w: v.videoWidth, h: v.videoHeight });
+          v.onerror = () => resolve({ w: 0, h: 0 });
+          v.src = url;
+        });
+        return dims.h > dims.w ? "portrait" : "landscape";
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+    }
+    const url = URL.createObjectURL(file);
+    try {
+      const dims = await new Promise<{ w: number; h: number }>((resolve) => {
+        const img = new Image();
+        img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
+        img.onerror = () => resolve({ w: 0, h: 0 });
+        img.src = url;
+      });
+      return dims.h > dims.w ? "portrait" : "landscape";
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  } catch {
+    return "landscape";
+  }
+}
 
 const SLIDE_SECONDS = [6, 10, 15, 20];
 const DAYS_OK = [0, 1, 2, 3, 4, 5, 6];
@@ -239,7 +295,10 @@ export function normalizeTvConfig(input: unknown): TvConfig {
           const type: TvPoster["type"] = pr.type === "video" ? "video" : "image";
           const dur = Number(pr.durationSec);
           const durationSec = Number.isFinite(dur) && dur > 0 ? Math.min(60, Math.max(3, Math.round(dur))) : 5;
-          return { url, type, durationSec };
+          // Orientación: tolerante (si no viene, es horizontal → pantalla completa).
+          const orientation: TvPoster["orientation"] =
+            pr.orientation === "portrait" ? "portrait" : "landscape";
+          return { url, type, durationSec, orientation } as TvPoster;
         })
         .filter((p): p is TvPoster => !!p)
         .slice(0, 20)

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { TV_THEME_LABELS, TV_THEME_SWATCH, type TvThemeTokens } from "@/components/tv/tv-themes";
 import { TvPlayer } from "@/components/tv/tv-player";
-import { TV_THEMES, normalizeTvConfig, TV_LAYOUT_CHOICES, TV_DESIGN_CHOICES, type TvConfig } from "@/lib/tv-config";
+import { TV_THEMES, normalizeTvConfig, TV_LAYOUT_CHOICES, TV_DESIGN_CHOICES, detectMediaOrientation, type TvConfig } from "@/lib/tv-config";
 import type { TvSnapshot } from "@/lib/tv-snapshot";
 import { TvDestacadosPicker } from "./tv-destacados-picker";
 
@@ -502,11 +502,28 @@ export function TvScreenEditor({ open, screen, categories, sellsOnline = false, 
             </div>
           </Field>
 
-          <Field label="Posters publicitarios (se intercalan entre las slides)">
+          <Field
+            label={
+              config.layout === "split"
+                ? "Posters publicitarios (verticales a la columna, horizontales a pantalla completa)"
+                : "Posters publicitarios (se intercalan entre las slides)"
+            }
+          >
             <div className="space-y-2">
               <p className="text-[11px] text-muted-foreground">
-                Imágenes (PNG/JPG/WEBP) o videos (MP4/WebM/MOV, hasta 25 MB). Se muestran a
-                pantalla completa, en bucle y sin sonido.
+                {config.layout === "split" ? (
+                  <>
+                    Imágenes (PNG/JPG/WEBP) o videos (MP4/WebM/MOV, hasta 25 MB). En el diseño{" "}
+                    <strong>Split</strong> los posters <strong>verticales (9:16)</strong> se muestran en
+                    la columna de la izquierda, alternando con el destacado; los <strong>horizontales
+                    (16:9)</strong> a pantalla completa.
+                  </>
+                ) : (
+                  <>
+                    Imágenes (PNG/JPG/WEBP) o videos (MP4/WebM/MOV, hasta 25 MB). Se muestran a
+                    pantalla completa, en bucle y sin sonido.
+                  </>
+                )}
               </p>
               {(config.posters || []).map((p, i) => (
                 <div key={`${p.url}-${i}`} className="flex items-center gap-2 rounded-lg border border-border bg-card p-2">
@@ -518,7 +535,25 @@ export function TvScreenEditor({ open, screen, categories, sellsOnline = false, 
                   )}
                   <div className="flex-1 min-w-0">
                     <div className="truncate text-xs text-muted-foreground">{p.url.split("/").pop()}</div>
-                    <div className="mt-1 flex items-center gap-2">
+                    <div className="mt-1 flex flex-wrap items-center gap-2">
+                      {/* Dónde se va a ver este poster (según diseño y proporción). */}
+                      <span
+                        className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
+                        style={{
+                          background:
+                            config.layout === "split" && p.orientation === "portrait"
+                              ? "rgba(13,148,136,0.15)"
+                              : "rgba(100,116,139,0.15)",
+                          color:
+                            config.layout === "split" && p.orientation === "portrait"
+                              ? "#0d9488"
+                              : "#64748b",
+                        }}
+                      >
+                        {config.layout === "split" && p.orientation === "portrait"
+                          ? "◧ Columna 9:16"
+                          : "⛶ Pantalla completa"}
+                      </span>
                       <label className="text-[10px] text-muted-foreground">Duración (s)</label>
                       <input
                         type="number"
@@ -604,7 +639,13 @@ export function TvScreenEditor({ open, screen, categories, sellsOnline = false, 
                           f.type.startsWith("video/") ||
                           /\.(mp4|webm|mov|m4v)$/i.test(f.name || "");
                         const type = isVideo ? "video" : "image";
-                        edit({ posters: [...(config.posters || []), { url: data.url, type, durationSec: 5 }] });
+                        // Proporción del archivo: en Split los verticales (9:16)
+                        // van a la columna izquierda y los horizontales a
+                        // pantalla completa. Se mide en el navegador.
+                        const orientation = await detectMediaOrientation(f, isVideo);
+                        edit({
+                          posters: [...(config.posters || []), { url: data.url, type, durationSec: 5, orientation }],
+                        });
                       } else {
                         setMsg(data.error || "No se pudo subir el poster");
                       }

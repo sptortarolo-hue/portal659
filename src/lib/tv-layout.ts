@@ -66,6 +66,11 @@ export type TvPosterRef = {
   url: string;
   type: "image" | "video";
   durationSec: number;
+  /**
+   * "portrait" (vertical 9:16) o "landscape" (horizontal). Solo decide dónde
+   * se muestra en el diseño Split (columna vertical vs pantalla completa).
+   */
+  orientation?: "portrait" | "landscape";
 };
 
 export type TvSlide = {

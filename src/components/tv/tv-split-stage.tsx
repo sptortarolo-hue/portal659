@@ -1,11 +1,21 @@
 "use client";
 
 import { ProductImage } from "@/components/product-image";
+import type { TvPosterRef } from "@/lib/tv-layout";
 import type { TvItem } from "@/lib/tv-snapshot";
 
 type Props = {
   /** Columna 9:16: el alto lo da el flex del padre, el ancho lo calcula el player. */
   width: number;
+  /**
+   * Qué se muestra en la columna:
+   * - "hero"   → el destacado del commerce (producto con precio y descripción);
+   * - "poster" → un poster publicitario del comercio (imagen o video).
+   * Alternan solos: el player va pasando de uno al otro.
+   */
+  mode?: "hero" | "poster";
+  /** Poster en escena (solo en modo "poster"). */
+  poster?: TvPosterRef | null;
   /** Pool de destacados (misma rotación y timer que el banner clásico). */
   hero: TvItem[];
   /** Índice de la oferta que está en escena. */
@@ -18,12 +28,16 @@ type Props = {
 };
 
 /**
- * Columna izquierda del diseño "Split": la pieza 9:16 con el destacado.
+ * Columna izquierda del diseño "Split": la pieza 9:16.
  *
  * Es el equivalente vertical del banner clásico: el destacado rota con el MISMO
  * timer y la MISMA selección que el banner (reutiliza `hero`/`index` del player,
  * así no hay una segunda configuración de rotación). Si no hay pool de
  * destacados se muestra el logo del comercio.
+ *
+ * En modo "poster" la columna muestra un poster publicitario del comercio
+ * (imagen o video), alternando con el destacado. Como la columna ES 9:16, un
+ * poster vertical entra perfecto: sin recorte y sin franjas negras.
  *
  * Usa la regla híbrida de los posters: la foto entra al MÁXIMO SIN RECORTE
  * (`object-contain` a escala completa) y el blur de la misma imagen completa
@@ -34,6 +48,8 @@ type Props = {
  */
 export function TvSplitStage({
   width,
+  mode = "hero",
+  poster = null,
   hero,
   index = 0,
   logoUrl,
@@ -42,9 +58,61 @@ export function TvSplitStage({
   upsellItem,
 }: Props) {
   const main = hero.length ? hero[index % hero.length] : null;
+  const isPoster = mode === "poster" && !!poster;
+  const isVideo = isPoster && poster?.type === "video";
   // La columna muestra la foto del destacado; sin foto (o sin pool) cae al logo.
-  const src = main?.imageUrl || logoUrl;
-  const showUpsell = upsell.enabled && (upsellItem || upsell.text);
+  const src = isPoster ? poster!.url : main?.imageUrl || logoUrl;
+  // Para los <video> el src no puede ser null (el bloque solo se dibuja si hay medio).
+  const mediaSrc = src ?? "";
+  const showUpsell = !isPoster && upsell.enabled && (upsellItem || upsell.text);
+  // En modo poster no hay pie de producto: el poster ya trae su propio texto.
+  const showFoot = !isPoster && !!main;
+
+  /** Medio (imagen o video) al máximo, sin recorte. */
+  const media = isVideo ? (
+    <video
+      key={`fg-${mediaSrc}`}
+      src={mediaSrc}
+      autoPlay
+      muted
+      loop
+      playsInline
+      className="tv-poster-in h-full w-full object-contain"
+    />
+  ) : (
+    <ProductImage
+      src={src}
+      name={storeName}
+      alt={isPoster ? "Poster" : main?.name ?? storeName}
+      fit="contain"
+      className="tv-poster-in h-full w-full"
+      iconClassName="h-24 w-24"
+      eager
+    />
+  );
+
+  /** Fondo desenfocado: la MISMA imagen cubriendo todo el 9:16. */
+  const backdrop = isVideo ? (
+    <video
+      key={`bg-${mediaSrc}`}
+      src={mediaSrc}
+      autoPlay
+      muted
+      loop
+      playsInline
+      aria-hidden
+      className="h-full w-full object-cover"
+    />
+  ) : (
+    <ProductImage
+      src={src}
+      name={storeName}
+      alt=""
+      className="h-full w-full object-cover"
+      iconClassName="h-24 w-24"
+      eager
+    />
+  );
 
   return (
     <section
@@ -54,7 +122,7 @@ export function TvSplitStage({
         boxShadow: "inset 0 0 0 2px var(--tv-line), 0 18px 44px rgba(0,0,0,0.18)",
         background: "var(--tv-card)",
       }}
-      aria-label="Destacado"
+      aria-label={isPoster ? "Poster" : "Destacado"}
     >
       {/* Fondo desenfocado: la MISMA imagen cubriendo todo el 9:16. */}
       {src && (
@@ -63,14 +131,7 @@ export function TvSplitStage({
             className="h-full w-full"
             style={{ filter: "blur(44px) saturate(1.15)", transform: "scale(1.25)", opacity: 0.55 }}
           >
-            <ProductImage
-              src={src}
-              name={storeName}
-              alt=""
-              className="h-full w-full object-cover"
-              iconClassName="h-24 w-24"
-              eager
-            />
+            {backdrop}
           </div>
         </div>
       )}
@@ -92,15 +153,7 @@ export function TvSplitStage({
           zoom recortaría la foto y acá la regla es no recortar nunca. */}
       <div className="absolute inset-0" key={`fg-${src ?? "none"}`}>
         {src ? (
-          <ProductImage
-            src={src}
-            name={storeName}
-            alt={main?.name ?? storeName}
-            fit="contain"
-            className="tv-poster-in h-full w-full"
-            iconClassName="h-24 w-24"
-            eager
-          />
+          media
         ) : (
           <div className="flex h-full w-full items-center justify-center">
             <span className="font-display text-[160px] font-black" style={{ color: "var(--tv-accent)" }}>
@@ -110,19 +163,26 @@ export function TvSplitStage({
         )}
       </div>
 
-      {/* Etiqueta + puntos de rotación: avisa que hay más destacados. */}
+      {/* Etiqueta + puntos de rotación: avisa que hay más destacados.
+          Van sobre un velo propio (no sobre la foto): con fotos claras la
+          etiqueta se perdía contra el fondo. */}
       <div className="absolute left-6 right-6 top-6 flex items-center gap-3">
-        {main && (
+        {(main || isPoster) && (
           <p
-            className="flex items-center gap-2 font-semibold uppercase tracking-[0.28em]"
-            style={{ fontSize: 20, color: "var(--tv-accent)" }}
+            className="flex items-center gap-2 rounded-full px-3 py-1.5 font-semibold uppercase tracking-[0.28em]"
+            style={{
+              fontSize: 20,
+              color: "var(--tv-accent)",
+              background: "rgba(0,0,0,0.45)",
+              boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.18)",
+            }}
           >
             <span className="inline-block h-[3px] w-8 rounded-full" style={{ background: "var(--tv-accent)" }} />
-            Destacado
+            {isPoster ? "Promo" : "Destacado"}
           </p>
         )}
-        {hero.length > 1 && (
-          <div className="ml-auto flex items-center gap-1.5">
+        {!isPoster && hero.length > 1 && (
+          <div className="ml-auto flex items-center gap-1.5 rounded-full px-3 py-2" style={{ background: "rgba(0,0,0,0.45)" }}>
             {hero.slice(0, 6).map((it, i) => (
               <span
                 key={it.id}
@@ -130,7 +190,7 @@ export function TvSplitStage({
                 style={{
                   width: i === index % hero.length ? 18 : 7,
                   height: 7,
-                  background: i === index % hero.length ? "var(--tv-accent)" : "rgba(255,255,255,0.5)",
+                  background: i === index % hero.length ? "var(--tv-accent)" : "rgba(255,255,255,0.75)",
                 }}
               />
             ))}
@@ -139,8 +199,8 @@ export function TvSplitStage({
       </div>
 
       {/* Pie: nombre + precio del destacado, con el upsell debajo. */}
-      <div className="absolute inset-x-0 bottom-0 flex flex-col gap-3" style={{ padding: "0 26px 26px 34px" }}>
-        {main && (
+      {showFoot && (
+        <div className="absolute inset-x-0 bottom-0 flex flex-col gap-3" style={{ padding: "0 26px 26px 34px" }}>
           <div className="tv-hero-enter" key={`txt-${main.id}`}>
             <h2
               className="font-display font-black leading-[1.05] tracking-tight"
@@ -185,25 +245,41 @@ export function TvSplitStage({
               )}
             </div>
           </div>
-        )}
 
-        {showUpsell && (
-          <div
-            className="flex items-center gap-3 rounded-2xl px-4 py-3"
-            style={{ background: "var(--tv-accent)", color: "var(--tv-accent-ink)" }}
-          >
-            <span className="text-2xl">🔥</span>
-            <span className="min-w-0 flex-1 truncate font-bold" style={{ fontSize: 25 }}>
-              {upsell.text || "Sumalo a tu pedido"}
-            </span>
-            {upsellItem?.priceLabel && (
-              <span className="font-black tabular-nums" style={{ fontSize: 26 }}>
-                +{upsellItem.priceLabel}
+          {showUpsell && (
+            <div
+              className="flex items-center gap-3 rounded-2xl px-4 py-3"
+              style={{ background: "var(--tv-accent)", color: "var(--tv-accent-ink)" }}
+            >
+              <span className="text-2xl">🔥</span>
+              <span className="min-w-0 flex-1 truncate font-bold" style={{ fontSize: 25 }}>
+                {upsell.text || "Sumalo a tu pedido"}
               </span>
-            )}
+              {upsellItem?.priceLabel && (
+                <span className="font-black tabular-nums" style={{ fontSize: 26 }}>
+                  +{upsellItem.priceLabel}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* En modo poster la columna lleva su propia barra de progreso (el pie
+          del destacado no está, así que no compite con nada). */}
+      {isPoster && poster && (
+        <div className="absolute inset-x-0 bottom-0" style={{ padding: "0 26px 18px 34px" }}>
+          <div className="h-[6px] w-full overflow-hidden rounded-full" style={{ background: "rgba(255,255,255,0.22)" }}>
+            <div
+              className="h-full rounded-full"
+              style={{
+                background: "var(--tv-accent)",
+                animation: `tv-progress ${Math.max(1, poster.durationSec)}s linear forwards`,
+              }}
+            />
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </section>
   );
 }

@@ -39,6 +39,9 @@ export function TvPlayer({ snapshot, token, mode, vertical, debug = false, fitPa
   const [idx, setIdx] = useState(0);
   /** Índice de la oferta que se muestra en el banner. */
   const [heroIdx, setHeroIdx] = useState(0);
+  /** Columna del split: qué se ve (destacado o poster) y cuál poster. */
+  const [splitMode, setSplitMode] = useState<"hero" | "poster">("hero");
+  const [splitPoster, setSplitPoster] = useState(0);
   const [online, setOnline] = useState(true);
   const [shifted, setShifted] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
@@ -94,11 +97,29 @@ export function TvPlayer({ snapshot, token, mode, vertical, debug = false, fitPa
         url: p.url,
         type: p.type === "video" ? "video" : "image",
         durationSec: p.durationSec || 5,
+        orientation: p.orientation === "portrait" ? "portrait" : "landscape",
       })),
     // Clave estable: si no, cada poll de 30s genera un array nuevo y reinicia
     // el timer de rotación de slides.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [(snap.config.posters || []).map((p) => `${p.url}|${p.type}|${p.durationSec}`).join(",")]
+    [(snap.config.posters || []).map((p) => `${p.url}|${p.type}|${p.durationSec}|${p.orientation ?? ""}`).join(",")]
+  );
+
+  /**
+   * Reparto de los posters según el diseño:
+   * - classic: TODOS a pantalla completa (como hasta ahora);
+   * - split: los verticales (9:16) van a la columna de la izquierda (entran
+   *   sin recorte) y los horizontales (16:9) a pantalla completa.
+   */
+  const columnPosters = useMemo(
+    () => posters.filter((p) => p.orientation === "portrait"),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [posters]
+  );
+  const takeoverPosters = useMemo(
+    () => posters.filter((p) => p.orientation !== "portrait"),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [posters]
   );
 
   // QR en rotación: solo si el server lo generó y el modo lo permite en
@@ -115,11 +136,13 @@ export function TvPlayer({ snapshot, token, mode, vertical, debug = false, fitPa
         height: contentH,
         photoStyle,
         showDescriptions: snap.config.showDescriptions,
-        posters,
+        // En split los posters verticales van en la columna (no como takeover
+        // a pantalla completa); los horizontales sí se intercalan.
+        posters: split ? takeoverPosters : posters,
         qr: { enabled: qrInRotation, every: 4 },
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [sections, columns, gridW, contentH, photoStyle, snap.config.showDescriptions, posters, qrInRotation]
+    [sections, columns, gridW, contentH, photoStyle, snap.config.showDescriptions, posters, takeoverPosters, qrInRotation, split]
   );
 
   // Solo se reinicia la rotación cuando cambia la VERSIÓN publicada (el
@@ -154,9 +177,37 @@ export function TvPlayer({ snapshot, token, mode, vertical, debug = false, fitPa
     return () => clearInterval(id);
   }, [heroRotateOn, heroCount, snap.config.hero?.seconds]);
 
+  // --- Columna del split: ALTERNA destacado y posters verticales ------------
+  // En el diseño split los posters 9:16 NO son takeover a pantalla completa
+  // (la columna vertical es su lugar): la columna va mostrando el destacado con
+  // su timer y después cada poster vertical con su duración, y vuelve al
+  // destacado. Así el comercio suma su banner 9:16 sin perder el precio.
+  const splitPosters = split ? columnPosters : [];
+  const heroSeconds = Math.max(5, snap.config.hero?.seconds ?? 10);
+  useEffect(() => {
+    if (!split || splitPosters.length === 0) return;
+    const delay =
+      splitMode === "hero"
+        ? heroSeconds * 1000
+        : Math.max(1, splitPosters[splitPoster]?.durationSec ?? 5) * 1000;
+    const id = setTimeout(() => {
+      if (splitMode === "hero") {
+        setSplitPoster(0);
+        setSplitMode("poster");
+      } else if (splitPoster + 1 < splitPosters.length) {
+        setSplitPoster((i) => i + 1);
+      } else {
+        setSplitMode("hero");
+      }
+    }, delay);
+    return () => clearTimeout(id);
+  }, [split, splitMode, splitPoster, splitPosters, heroSeconds]);
+
   // Al publicar (cambia la versión) el banner vuelve a la primera oferta.
   useEffect(() => {
     setHeroIdx(0);
+    setSplitMode("hero");
+    setSplitPoster(0);
   }, [snap.version]);
 
   // --- Cache offline: la TV sigue mostrando la última carta sin internet -----
@@ -353,6 +404,8 @@ export function TvPlayer({ snapshot, token, mode, vertical, debug = false, fitPa
               {split && (
                 <TvSplitStage
                   width={stageW}
+                  mode={splitMode}
+                  poster={splitPosters[splitPoster] ?? null}
                   hero={snap.hero}
                   index={heroIdx}
                   logoUrl={snap.vendor.logoUrl}

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { GroupForm } from "@/components/dashboard/modifier-editor";
+import { findOptionDuplicates } from "@/lib/option-duplicates";
 import type { ModifierGroup } from "@/types/database";
 
 type Product = { id: string; name: string };
@@ -67,6 +68,9 @@ export function ProductOptionsEditor({
   /** Contador de requests: descarta respuestas viejas al cambiar de producto. */
   const reqId = useRef(0);
   const [creating, setCreating] = useState(false);
+  /** Grupo nuevo SIN producto dueño (modo biblioteca: elegís a qué aplica). */
+  const [creatingGeneric, setCreatingGeneric] = useState(false);
+  const [showDuplicates, setShowDuplicates] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [otherEditingId, setOtherEditingId] = useState<string | null>(null);
   const [msg, setMsg] = useState("");
@@ -148,6 +152,20 @@ export function ProductOptionsEditor({
     [allGroups, mine]
   );
 
+  // Duplicados sobre TODOS los grupos del comercio (no solo los de este
+  // producto): misma opción en varios grupos, repetida dentro de un grupo y
+  // grupos con el mismo nombre. Es informativo: no bloquea nada.
+  const productNames = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const p of products) map[p.id] = p.name;
+    return map;
+  }, [products]);
+
+  const duplicates = useMemo(
+    () => findOptionDuplicates(allGroups, productNames),
+    [allGroups, productNames]
+  );
+
   const currentProduct = products.find((p) => p.id === productId) || null;
 
   async function saveScope(id: string, data: GroupData) {
@@ -216,6 +234,48 @@ export function ProductOptionsEditor({
     setMsg(`Grupo creado y asignado a ${currentProduct?.name || `este ${itemLabel}`}`);
     load();
     onChanged?.();
+  }
+
+  /** Grupo nuevo SIN producto dueño: se crea y se asigna a los productos que
+   *  elija el formulario (puede ser ninguno; queda en "Otros grupos"). */
+  async function createGeneric(data: GroupData) {
+    setBusy("new-generic");
+    setMsg("");
+    const res = await fetch("/api/vendor/modifiers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    const json = await res.json().catch(() => ({}));
+    setBusy(null);
+    if (!res.ok || json.error) {
+      setMsg(json.error || "No se pudo crear el grupo");
+      return;
+    }
+    setCreatingGeneric(false);
+    const n = (data.product_ids || []).length;
+    setMsg(
+      n > 0
+        ? `Grupo creado y asignado a ${n} ${n === 1 ? itemLabel : itemLabelPlural}`
+        : `Grupo creado (sin ${itemLabelPlural} asignados todavía)`
+    );
+    load();
+    onChanged?.();
+  }
+
+  /** Abre el editor de un grupo donde corresponda: en el producto si está
+   *  asignado, o en el plegable "Otros grupos" si no. */
+  function editGroupAnywhere(gid: string) {
+    setCreating(false);
+    setCreatingGeneric(false);
+    if (mineRich.some((g) => g.id === gid)) {
+      setOtherEditingId(null);
+      setEditingId(gid);
+    } else {
+      setEditingId(null);
+      setOtherEditingId(gid);
+      setShowOthers(true);
+    }
   }
 
   async function updateLibrary(id: string, data: GroupData) {
@@ -411,14 +471,26 @@ export function ProductOptionsEditor({
             ))}
           </select>
         </div>
-        <Button
-          type="button"
-          size="sm"
-          disabled={!productId || busy !== null}
-          onClick={() => { setCreating(!creating); setEditingId(null); setOtherEditingId(null); }}
-        >
-          {creating ? "Cancelar" : `+ Grupo para este ${itemLabel}`}
-        </Button>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={busy !== null}
+            title={`Crear un grupo y elegir a qué ${itemLabelPlural} aplica (podés no asignarlo a ninguno)`}
+            onClick={() => { setCreatingGeneric(!creatingGeneric); setCreating(false); setEditingId(null); setOtherEditingId(null); }}
+          >
+            {creatingGeneric ? "Cancelar" : "+ Grupo"}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            disabled={!productId || busy !== null}
+            onClick={() => { setCreating(!creating); setCreatingGeneric(false); setEditingId(null); setOtherEditingId(null); }}
+          >
+            {creating ? "Cancelar" : `+ Grupo para este ${itemLabel}`}
+          </Button>
+        </div>
       </div>
 
       <p className="text-sm text-muted-foreground">
@@ -427,6 +499,93 @@ export function ProductOptionsEditor({
         si es obligatorio, cuántas se pueden elegir, cómo se muestran los precios y cada opción (nombre, familia,
         precio, promo y pausar).
       </p>
+
+      {/* Duplicados sobre todos los grupos del comercio: misma opción en
+          varios grupos (avisando si los precios difieren), repetida dentro de
+          un grupo y grupos con el mismo nombre. Informativo, no bloquea. */}
+      {duplicates.total > 0 && (
+        <div className="rounded-xl border border-amber-300 dark:border-amber-700/60 bg-amber-50/60 dark:bg-amber-900/10">
+          <button
+            type="button"
+            onClick={() => setShowDuplicates(!showDuplicates)}
+            className="w-full flex items-center justify-between gap-2 px-3 py-2 text-sm"
+          >
+            <span className="font-medium text-amber-800 dark:text-amber-300">
+              ⚠️ Para revisar ({duplicates.total})
+            </span>
+            <span className="text-muted-foreground text-xs">{showDuplicates ? "▲" : "▼"}</span>
+          </button>
+          {showDuplicates && (
+            <div className="px-3 pb-3 space-y-3 text-sm">
+              {duplicates.crossGroups.map((d) => (
+                <div key={`x-${d.label}`}>
+                  <p className="font-medium">
+                    «{d.label}» está en {d.occurrences.length} grupos distintos
+                    {d.pricesDiffer && (
+                      <span className="text-amber-700 dark:text-amber-400"> — con precios distintos</span>
+                    )}
+                  </p>
+                  <ul className="mt-1 space-y-1">
+                    {d.occurrences.map((o, i) => (
+                      <li key={`${o.group_id}-${i}`} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                        <button
+                          type="button"
+                          onClick={() => editGroupAnywhere(o.group_id)}
+                          className="font-medium text-primary hover:underline"
+                        >
+                          {o.group_name}
+                        </button>
+                        <span>{o.product_names.length > 0 ? o.product_names.join(", ") : `sin ${itemLabelPlural}`}</span>
+                        <span className="font-medium text-foreground">
+                          ${o.price.toLocaleString("es-AR")}
+                          {o.promo != null && o.promo < o.price ? ` · promo $${o.promo.toLocaleString("es-AR")}` : ""}
+                        </span>
+                        {o.paused && <span title="Pausada (oculta en la venta)">🚫</span>}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+              {duplicates.withinGroup.map((r) => (
+                <p key={`w-${r.group_id}-${r.label}`} className="text-xs text-muted-foreground">
+                  «{r.label}» aparece {r.times} veces dentro del grupo{" "}
+                  <button
+                    type="button"
+                    onClick={() => editGroupAnywhere(r.group_id)}
+                    className="font-medium text-primary hover:underline"
+                  >
+                    {r.group_name}
+                  </button>
+                  {" "}— se mostraría repetida al vender.
+                </p>
+              ))}
+              {duplicates.groupNames.map((g) => (
+                <div key={`n-${g.name}`}>
+                  <p className="font-medium">Hay {g.groups.length} grupos llamados «{g.name}»</p>
+                  <ul className="mt-1 space-y-1">
+                    {g.groups.map((gg) => (
+                      <li key={gg.id} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                        <button
+                          type="button"
+                          onClick={() => editGroupAnywhere(gg.id)}
+                          className="font-medium text-primary hover:underline"
+                        >
+                          editar
+                        </button>
+                        <span>{gg.product_names.length > 0 ? gg.product_names.join(", ") : `sin ${itemLabelPlural}`}</span>
+                        <span>{gg.options_count} opciones</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+              <p className="text-[11px] text-muted-foreground">
+                Unificar no es obligatorio: es solo para que no convivan precios distintos de la misma opción.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
 
       {msg && <p className="text-sm text-green-600">{msg}</p>}
 
@@ -437,6 +596,15 @@ export function ProductOptionsEditor({
           onCancel={() => setCreating(false)}
           onSubmit={createScope}
           productScope={{ id: productId, name: currentProduct?.name || `este ${itemLabel}` }}
+        />
+      )}
+
+      {creatingGeneric && (
+        <GroupForm
+          products={products}
+          submitLabel="Crear grupo"
+          onCancel={() => setCreatingGeneric(false)}
+          onSubmit={createGeneric}
         />
       )}
 

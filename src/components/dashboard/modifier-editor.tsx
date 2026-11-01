@@ -754,6 +754,7 @@ export function ProductModifiersBlock({
 }) {
   const isRetail = isComercio || isModa;
   const itemLabel = isRetail ? "producto" : "plato";
+  const itemLabelPlural = isRetail ? "productos" : "platos";
 
   const [groups, setGroups] = useState<GroupRow[]>([]);
   const [assigned, setAssigned] = useState<string[]>([]);
@@ -767,6 +768,8 @@ export function ProductModifiersBlock({
   const [ovEditing, setOvEditing] = useState<string | null>(null);
   const [ovMax, setOvMax] = useState("");
   const [ovMin, setOvMin] = useState("");
+  /** Editor completo del grupo (todas las opciones), desplegado en línea. */
+  const [fullEditing, setFullEditing] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!productId) {
@@ -793,6 +796,40 @@ export function ProductModifiersBlock({
         </p>
       </div>
     );
+  }
+
+  /** Chips de resumen de las opciones de un grupo: nombre, familia, precio
+   *  (o precio final según el modo), promo y pausado. */
+  function optionChips(g: GroupRow) {
+    const groupTotal = g.price_mode === "total";
+    return (g.options || []).map((o, i) => {
+      const normal = groupTotal && o.price_total != null ? Number(o.price_total) : Number(o.price_mod) || 0;
+      const fmt = (n: number) =>
+        groupTotal ? `$${n.toLocaleString("es-AR")}` : n > 0 ? `+$${n.toLocaleString("es-AR")}` : `$${n.toLocaleString("es-AR")}`;
+      const hasPromo = o.promo != null && Number(o.promo) >= 0 && Number(o.promo) < normal;
+      const showNormal = groupTotal ? o.price_total != null : o.price_mod !== 0;
+      return (
+        <span
+          key={`${g.id}-o-${i}`}
+          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] ${
+            o.available === false
+              ? "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300"
+              : "bg-muted text-muted-foreground"
+          }`}
+        >
+          {o.available === false && <span title="Pausado (oculto en la venta)">🚫</span>}
+          {o.label}
+          {o.category ? <span className="opacity-70">· {o.category}</span> : null}
+          {hasPromo ? (
+            <span className="text-primary font-semibold">
+              <span className="line-through opacity-70 font-normal">{fmt(normal)}</span> {fmt(Number(o.promo))} 🔥
+            </span>
+          ) : showNormal ? (
+            <span className="text-primary">{fmt(normal)}</span>
+          ) : null}
+        </span>
+      );
+    });
   }
 
   const assignedGroups = assigned
@@ -843,6 +880,54 @@ export function ProductModifiersBlock({
     if (!res.ok || json.error) throw new Error(json.error || "No se pudo crear");
     setCreating(false);
     setMsg("Grupo creado y asignado");
+    load();
+  }
+
+  /** Guarda TODOS los campos del grupo desde la solapa Opciones del producto:
+   *  opciones, nombre, obligatorio, variante y modo de precio van al grupo;
+   *  el mínimo/máximo se guarda como override de ESTE producto (link). */
+  async function saveFull(gid: string, data: GroupData) {
+    if (!productId) return;
+    setBusy(gid);
+    setMsg("");
+    const res = await fetch(`/api/vendor/modifiers/${gid}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        group_name: data.group_name,
+        options: data.options,
+        required: data.required,
+        is_variant: data.is_variant,
+        price_mode: data.price_mode,
+      }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || json.error) {
+      setBusy(null);
+      setMsg(json.error || "No se pudo guardar el grupo");
+      return;
+    }
+    if (data.link_max !== undefined || data.link_min !== undefined) {
+      const r2 = await fetch("/api/vendor/modifier-links", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          group_id: gid,
+          product_id: productId,
+          max_selections: data.link_max ?? null,
+          min_selections: data.link_min ?? null,
+        }),
+      });
+      const j2 = await r2.json().catch(() => ({}));
+      if (!r2.ok || j2.error) {
+        setBusy(null);
+        setMsg(j2.error || "No se pudo guardar la cantidad de este producto");
+        return;
+      }
+    }
+    setBusy(null);
+    setFullEditing(null);
+    setMsg("Opciones actualizadas");
     load();
   }
 
@@ -965,12 +1050,23 @@ export function ProductModifiersBlock({
               <div className="flex items-center gap-1 flex-shrink-0">
                 <button
                   type="button"
+                  title="Editar todas las opciones de este grupo"
+                  onClick={() => {
+                    setFullEditing(fullEditing === g.id ? null : g.id);
+                    setOvEditing(null);
+                    setCreating(false);
+                  }}
+                  className={`p-1 rounded hover:bg-muted ${fullEditing === g.id ? "text-primary" : "text-muted-foreground"}`}
+                >✏️</button>
+                <button
+                  type="button"
                   title={`Cantidad propia de este ${itemLabel} (ej: 2 gustos en el 1/4)`}
                   onClick={() => {
                     if (ovEditing === g.id) return setOvEditing(null);
                     setOvMax(linkMax != null ? String(linkMax) : "");
                     setOvMin(linkMin != null ? String(linkMin) : "");
                     setOvEditing(g.id);
+                    setFullEditing(null);
                   }}
                   className={`p-1 rounded hover:bg-muted ${ovEditing === g.id ? "text-primary" : "text-muted-foreground"}`}
                 >✎</button>
@@ -979,6 +1075,26 @@ export function ProductModifiersBlock({
                 <button type="button" onClick={() => unassignGroup(g.id)} disabled={busy === g.id} className="p-1 rounded hover:bg-red-50 text-red-600">✕</button>
               </div>
               </div>
+              <div className="flex flex-wrap gap-1 mt-2">
+                {optionChips(g)}
+              </div>
+              {(g.products_count || 0) > 1 && (
+                <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">
+                  ⚑ Grupo compartido por {g.products_count} {itemLabelPlural}: los cambios en las opciones se aplican a todos.
+                </p>
+              )}
+              {fullEditing === g.id && (
+                <div className="mt-3 pt-3 border-t border-border">
+                  <GroupForm
+                    initial={{ ...g, link_max: linkMax, link_min: linkMin }}
+                    products={[{ id: productId, name: productName || `este ${itemLabel}` }]}
+                    submitLabel="Guardar cambios"
+                    onCancel={() => setFullEditing(null)}
+                    onSubmit={(d) => saveFull(g.id, d)}
+                    productScope={{ id: productId, name: productName || `este ${itemLabel}` }}
+                  />
+                </div>
+              )}
               {ovEditing === g.id && (
                 <div className="flex items-center gap-2 mt-2 pt-2 border-t border-border">
                   <span className="text-[11px] text-muted-foreground">En este {itemLabel} (vacío = default):</span>

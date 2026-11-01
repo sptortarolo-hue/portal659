@@ -8,10 +8,18 @@ import { TvSlideView } from "./tv-slide";
 import { TvTicker } from "./tv-ticker";
 import { TvPosterStage } from "./tv-poster-stage";
 import { TvSplitStage } from "./tv-split-stage";
-import { TvQrSlide } from "./tv-qr-slide";
+import { TvQrHighlight } from "./tv-qr-highlight";
+import { TvQrColumn } from "./tv-qr-column";
 import { TvClosed } from "./tv-closed";
 import { TV_FONT } from "./tv-themes";
 import { buildSlides, TV_CANVAS, type TvItemRef, type TvPosterRef } from "@/lib/tv-layout";
+import {
+  buildColumnSlots,
+  buildHeroSlots,
+  columnSlotSeconds,
+  heroSlotSeconds,
+  nextSlotLabels,
+} from "@/lib/tv-rotation";
 import type { TvItem, TvSnapshot } from "@/lib/tv-snapshot";
 import type { TvTheme } from "@/lib/tv-config";
 
@@ -37,11 +45,10 @@ type Props = {
 export function TvPlayer({ snapshot, token, mode, vertical, debug = false, fitParent = false }: Props) {
   const [snap, setSnap] = useState<TvSnapshot>(snapshot);
   const [idx, setIdx] = useState(0);
-  /** Índice de la oferta que se muestra en el banner. */
-  const [heroIdx, setHeroIdx] = useState(0);
-  /** Columna del split: qué se ve (destacado o poster) y cuál poster. */
-  const [splitMode, setSplitMode] = useState<"hero" | "poster">("hero");
-  const [splitPoster, setSplitPoster] = useState(0);
+  /** Slot del destacado en escena (clásico: producto o QR). */
+  const [heroSlotIdx, setHeroSlotIdx] = useState(0);
+  /** Slot de la columna 9:16 en escena (split: destacado, poster o QR). */
+  const [colSlotIdx, setColSlotIdx] = useState(0);
   const [online, setOnline] = useState(true);
   const [shifted, setShifted] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
@@ -76,12 +83,20 @@ export function TvPlayer({ snapshot, token, mode, vertical, debug = false, fitPa
   // En split no hay banner de destacados: esos 320px se liberan para la columna
   // izquierda, así que la fila de contenido crece y las columnas se angostan.
   const split = snap.config.layout === "split";
+
+  // QR de pedidos online: lo genera el server (dataUrl) y es un DESTACADO más:
+  // en el clásico rota en el banner superior y en el split en la columna 9:16.
+  // "cerrado" = solo en la pantalla de local cerrado; "abierto" = nunca ahí.
+  const qrInRotation = !!snap.qr && snap.config.qr?.mode !== "cerrado";
+  const qrSeconds = Math.max(5, snap.config.qr?.seconds ?? 12);
+  const heroSeconds = Math.max(5, snap.config.hero?.seconds ?? 10);
+
   const tickerH = snap.config.ticker.enabled && snap.config.ticker.text.trim() ? TICKER_H : 0;
   const contentH =
     TV_CANVAS.h -
     TV_CANVAS.safeY * 2 -
     HEADER_H -
-    (!split && snap.hero.length > 0 ? HERO_H : 0) -
+    (!split && (snap.hero.length > 0 || qrInRotation) ? HERO_H : 0) -
     tickerH;
   /** Ancho de la columna 9:16 (alto de la fila × 9/16) y de la grilla derecha. */
   const stageW = split ? Math.round((contentH * 9) / 16) : 0;
@@ -133,11 +148,6 @@ export function TvPlayer({ snapshot, token, mode, vertical, debug = false, fitPa
     [posters]
   );
 
-  // QR en rotación: solo si el server lo generó y el modo lo permite en
-  // abierto ("siempre" | "abierto"). En modo "cerrado" no rota: aparece solo
-  // en la pantalla de local cerrado.
-  const qrInRotation = !!snap.qr && snap.config.qr?.mode !== "cerrado";
-
   const slides = useMemo(
     () =>
       buildSlides({
@@ -150,10 +160,9 @@ export function TvPlayer({ snapshot, token, mode, vertical, debug = false, fitPa
         // En split los posters verticales van en la columna (no como takeover
         // a pantalla completa); los horizontales sí se intercalan.
         posters: split ? takeoverPosters : posters,
-        qr: { enabled: qrInRotation, every: 4 },
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [sections, columns, gridW, contentH, photoStyle, snap.config.showDescriptions, posters, takeoverPosters, qrInRotation, split]
+    [sections, columns, gridW, contentH, photoStyle, snap.config.showDescriptions, posters, takeoverPosters, split]
   );
 
   // Solo se reinicia la rotación cuando cambia la VERSIÓN publicada (el
@@ -167,58 +176,59 @@ export function TvPlayer({ snapshot, token, mode, vertical, debug = false, fitPa
   useEffect(() => {
     if (slides.length <= 1) return;
     const cur = slides[Math.min(idx, slides.length - 1)];
-    const dur = (cur?.poster
-      ? cur.poster.durationSec
-      : cur?.qr
-        ? snap.config.qr?.seconds ?? 12
-        : snap.config.slideSeconds) * 1000;
+    const dur = (cur?.poster ? cur.poster.durationSec : snap.config.slideSeconds) * 1000;
     const id = setTimeout(() => setIdx((i) => (i + 1) % slides.length), dur);
     return () => clearTimeout(id);
-  }, [idx, slides, snap.config.slideSeconds, snap.config.qr?.seconds]);
+  }, [idx, slides, snap.config.slideSeconds]);
 
-  // --- Rotación del banner de ofertas (timer PROPIO, independiente de las
-  // slides): el destacado cambia solo aunque la carta se quede en la misma
-  // slide. Con una sola oferta no hay rotación (no hay salto visual). -------
-  const heroCount = snap.hero?.length ?? 0;
-  const heroRotateOn = snap.config.hero?.rotate !== false && heroCount > 1;
+  // --- Rotación del DESTACADO (banner clásico): productos + QR ------------
+  // El QR de "Pedí online" es una pieza más de la rotación: entra al lugar
+  // prominente de la pantalla, no perdida entre las slides de la carta.
+  const heroSlots = useMemo(
+    () => buildHeroSlots(snap.hero.length, qrInRotation, snap.config.hero?.rotate !== false),
+    [snap.hero.length, qrInRotation, snap.config.hero?.rotate]
+  );
+  const heroSlot = heroSlots[heroSlotIdx % Math.max(1, heroSlots.length)] ?? null;
+  /** Índice del producto en escena (undefined si el slot es el QR). */
+  const heroProductIdx = heroSlot?.kind === "product" ? heroSlot.index : 0;
+  const heroIsQr = heroSlot?.kind === "qr";
   useEffect(() => {
-    if (!heroRotateOn) return;
-    const ms = Math.max(5, snap.config.hero?.seconds ?? 10) * 1000;
-    const id = setInterval(() => setHeroIdx((i) => (i + 1) % heroCount), ms);
-    return () => clearInterval(id);
-  }, [heroRotateOn, heroCount, snap.config.hero?.seconds]);
-
-  // --- Columna del split: ALTERNA destacado y posters verticales ------------
-  // En el diseño split los posters 9:16 NO son takeover a pantalla completa
-  // (la columna vertical es su lugar): la columna va mostrando el destacado con
-  // su timer y después cada poster vertical con su duración, y vuelve al
-  // destacado. Así el comercio suma su banner 9:16 sin perder el precio.
-  const splitPosters = split ? columnPosters : [];
-  const heroSeconds = Math.max(5, snap.config.hero?.seconds ?? 10);
-  useEffect(() => {
-    if (!split || splitPosters.length === 0) return;
-    const delay =
-      splitMode === "hero"
-        ? heroSeconds * 1000
-        : Math.max(1, splitPosters[splitPoster]?.durationSec ?? 5) * 1000;
-    const id = setTimeout(() => {
-      if (splitMode === "hero") {
-        setSplitPoster(0);
-        setSplitMode("poster");
-      } else if (splitPoster + 1 < splitPosters.length) {
-        setSplitPoster((i) => i + 1);
-      } else {
-        setSplitMode("hero");
-      }
-    }, delay);
+    if (heroSlots.length <= 1) return;
+    const slot = heroSlots[heroSlotIdx % heroSlots.length];
+    const ms = heroSlotSeconds(slot, { heroSeconds, qrSeconds }) * 1000;
+    const id = setTimeout(() => setHeroSlotIdx((i) => (i + 1) % heroSlots.length), ms);
     return () => clearTimeout(id);
-  }, [split, splitMode, splitPoster, splitPosters, heroSeconds]);
+  }, [heroSlotIdx, heroSlots, heroSeconds, qrSeconds]);
 
-  // Al publicar (cambia la versión) el banner vuelve a la primera oferta.
+  /** Los próximos slots de la rotación (chips "qué viene después"). */
+  const heroNext = useMemo(
+    () =>
+      nextSlotLabels(heroSlots, heroSlotIdx % Math.max(1, heroSlots.length), 2, snap.hero || []),
+    [heroSlots, heroSlotIdx, snap.hero]
+  );
+
+  // --- Columna del split: destacado + posters verticales + QR --------------
+  // La columna 9:16 rota entre el destacado del comercio, sus posters
+  // verticales y el QR de pedidos online.
+  const splitPosters = split ? columnPosters : [];
+  const columnSlots = useMemo(
+    () => buildColumnSlots(splitPosters.length, qrInRotation && split),
+    [splitPosters.length, qrInRotation, split]
+  );
+  const colSlot = columnSlots[colSlotIdx % Math.max(1, columnSlots.length)] ?? null;
+  const posterSeconds = useMemo(() => splitPosters.map((p) => p.durationSec), [splitPosters]);
   useEffect(() => {
-    setHeroIdx(0);
-    setSplitMode("hero");
-    setSplitPoster(0);
+    if (columnSlots.length <= 1) return;
+    const slot = columnSlots[colSlotIdx % columnSlots.length];
+    const ms = columnSlotSeconds(slot, { heroSeconds, qrSeconds, posterSeconds }) * 1000;
+    const id = setTimeout(() => setColSlotIdx((i) => (i + 1) % columnSlots.length), ms);
+    return () => clearTimeout(id);
+  }, [colSlotIdx, columnSlots, heroSeconds, qrSeconds, posterSeconds]);
+
+  // Al publicar (cambia la versión) el destacado vuelve al primero.
+  useEffect(() => {
+    setHeroSlotIdx(0);
+    setColSlotIdx(0);
   }, [snap.version]);
 
   // --- Cache offline: la TV sigue mostrando la última carta sin internet -----
@@ -326,12 +336,8 @@ export function TvPlayer({ snapshot, token, mode, vertical, debug = false, fitPa
   // permite en cerrado ("siempre" | "cerrado"). En "abierto" no aparece acá.
   const qrInClosed = !!snap.qr && snap.config.qr?.mode !== "abierto" ? snap.qr.dataUrl : null;
   const slide = slides[Math.min(idx, Math.max(0, slides.length - 1))];
-  // Duración de la slide actual: posters y QR tienen la suya.
-  const slideDuration = slide?.poster
-    ? slide.poster.durationSec
-    : slide?.qr
-      ? snap.config.qr?.seconds ?? 12
-      : snap.config.slideSeconds;
+  // Duración de la slide actual: los posters tienen la suya.
+  const slideDuration = slide?.poster ? slide.poster.durationSec : snap.config.slideSeconds;
   const upsellItem: TvItem | null = useMemo(() => {
     if (!snap.config.upsell.enabled) return null;
     const id = snap.config.upsell.productId;
@@ -354,16 +360,6 @@ export function TvPlayer({ snapshot, token, mode, vertical, debug = false, fitPa
           key={`poster-${slide.poster.url}`}
           poster={slide.poster}
           durationSec={slide.poster.durationSec}
-          shifted={shifted}
-        />
-      )}
-      {slide?.qr && snap.qr && (
-        <TvQrSlide
-          key="qr-slide"
-          name={snap.vendor.name}
-          logoUrl={snap.vendor.logoUrl}
-          qrDataUrl={snap.qr.dataUrl}
-          durationSec={snap.config.qr?.seconds ?? 12}
           shifted={shifted}
         />
       )}
@@ -396,15 +392,27 @@ export function TvPlayer({ snapshot, token, mode, vertical, debug = false, fitPa
         ) : (
           <>
             {/* Clásico: banner de destacados arriba. En split el destacado
-                vive rotando dentro de la columna izquierda, sin banner. */}
-            {!split && snap.hero.length > 0 && (
+                vive rotando dentro de la columna izquierda, sin banner.
+                El QR de "Pedí online" es un destacado más: cuando le toca
+                rotar, el banner muestra su plantilla ancha. */}
+            {!split && (snap.hero.length > 0 || qrInRotation) && (
               <div style={{ marginTop: 24 }}>
-                <TvHero
-                  hero={snap.hero}
-                  index={heroIdx}
-                  upsell={snap.config.upsell}
-                  upsellItem={upsellItem}
-                />
+                {heroIsQr && snap.qr ? (
+                  <TvQrHighlight
+                    key="qr-highlight"
+                    name={snap.vendor.name}
+                    qrDataUrl={snap.qr.dataUrl}
+                    durationSec={qrSeconds}
+                  />
+                ) : (
+                  <TvHero
+                    hero={snap.hero}
+                    index={heroProductIdx}
+                    next={heroNext}
+                    upsell={snap.config.upsell}
+                    upsellItem={upsellItem}
+                  />
+                )}
               </div>
             )}
             {/* Contenido: en split la columna 9:16 es ESTABLE (no se remonta
@@ -415,10 +423,13 @@ export function TvPlayer({ snapshot, token, mode, vertical, debug = false, fitPa
               {split && (
                 <TvSplitStage
                   width={stageW}
-                  mode={splitMode}
-                  poster={splitPosters[splitPoster] ?? null}
+                  slot={colSlot}
+                  poster={splitPosters[0] ?? null}
+                  posterFor={(i) => splitPosters[i] ?? null}
+                  qrDataUrl={qrInRotation ? snap.qr?.dataUrl ?? null : null}
+                  qrSeconds={qrSeconds}
                   hero={snap.hero}
-                  index={heroIdx}
+                  index={heroProductIdx}
                   logoUrl={snap.vendor.logoUrl}
                   storeName={snap.vendor.name}
                   upsell={snap.config.upsell}
@@ -426,7 +437,7 @@ export function TvPlayer({ snapshot, token, mode, vertical, debug = false, fitPa
                 />
               )}
               <div key={idx} className="tv-slide-enter relative min-h-0 flex-1">
-                {slide?.poster || slide?.qr ? null : slide ? (
+                {slide?.poster ? null : slide ? (
                   <TvSlideView slide={slide} sections={snap.sections} photoStyle={photoStyle} vertical={vertical} />
                 ) : (
                   <div className="flex h-full items-center justify-center">

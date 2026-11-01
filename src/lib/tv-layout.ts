@@ -79,8 +79,6 @@ export type TvSlide = {
   columns: TvColumn[];
   /** Si está presente, la slide es un poster a pantalla completa (sin columnas). */
   poster?: TvPosterRef | null;
-  /** Si es true, la slide es el QR de pedidos online a pantalla completa. */
-  qr?: boolean;
 };
 
 export type BuildSlidesInput = {
@@ -96,8 +94,6 @@ export type BuildSlidesInput = {
   posters?: TvPosterRef[];
   /** Cada cuántas slides se intercala un poster (default 3). */
   posterEvery?: number;
-  /** QR de pedidos online: se intercala como una slide más de la rotación. */
-  qr?: { enabled: boolean; every: number };
 };
 
 function textLines(text: string, charW: number, fontSize: number, width: number): number {
@@ -207,7 +203,14 @@ export function packColumns(
   return slides.filter((s) => s.columns.some((c) => c.itemIds.length > 0));
 }
 
-/** Todas las slides de la pantalla (wrapper cómodo para el player). */
+/**
+ * Todas las slides de la carta (wrapper cómodo para el player).
+ *
+ * OJO: el QR de pedidos online NO entra acá. Es un DESTACADO (rota en el
+ * banner clásico o en la columna del split, según la vista): intercalado
+ * como una slide más se perdía entre las slides de producto. Ver
+ * `src/lib/tv-rotation.ts`.
+ */
 export function buildSlides(input: BuildSlidesInput): TvSlide[] {
   const width = TV_CANVAS.w - TV_CANVAS.safeX * 2;
   const menuSlides = packColumns(
@@ -219,35 +222,18 @@ export function buildSlides(input: BuildSlidesInput): TvSlide[] {
     input.showDescriptions
   );
   const posters = (input.posters || []).filter((p) => !!p?.url);
-  const qrOn = !!input.qr?.enabled;
-  if (posters.length === 0 && !qrOn) return menuSlides;
+  if (posters.length === 0) return menuSlides;
 
   const every = Math.max(1, Math.floor(input.posterEvery || 3));
-  const qrEvery = Math.max(2, Math.floor(input.qr?.every || 4));
   const out: TvSlide[] = [];
   let p = 0;
-  let sinceQr = 0;
-  let qrShown = false;
   menuSlides.forEach((s, i) => {
     if (i > 0 && i % every === 0 && p < posters.length) {
       out.push({ columns: [], poster: posters[p++] });
     }
     out.push(s);
-    // QR intercalado: cuenta las slides de carta (los takeovers no cuentan
-    // para no amontonarlos contra un poster recién mostrado).
-    if (qrOn) {
-      sinceQr += 1;
-      if (sinceQr >= qrEvery) {
-        out.push({ columns: [], qr: true });
-        qrShown = true;
-        sinceQr = 0;
-      }
-    }
   });
   while (p < posters.length) out.push({ columns: [], poster: posters[p++] });
-  // Con pocas slides de carta el QR no llegaría a encadenar: se agrega al
-  // final para que siempre aparezca aunque la carta sea corta.
-  if (qrOn && !qrShown) out.push({ columns: [], qr: true });
   return out;
 }
 

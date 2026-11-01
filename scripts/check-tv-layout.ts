@@ -17,6 +17,13 @@ import {
   TV_CANVAS,
   type TvSectionInput,
 } from "../src/lib/tv-layout.ts";
+import {
+  buildColumnSlots,
+  buildHeroSlots,
+  columnSlotSeconds,
+  heroSlotSeconds,
+  nextSlotLabels,
+} from "../src/lib/tv-rotation.ts";
 
 const CONTENT_H = TV_CANVAS.h - TV_CANVAS.safeY * 2;
 const CONTENT_W = TV_CANVAS.w - TV_CANVAS.safeX * 2;
@@ -148,6 +155,53 @@ check("altura de ítem razonable (100-200px)", h > 100 && h < 200, h);
 check(
   "modo sin foto achica la fila",
   estimateItemHeight(item("z", "Hamburguesa"), w, "none", false) < h
+);
+
+// Caso 8: rotaciones del destacado (el QR es un destacado más).
+// - clásico: el QR rota en el banner superior;
+// - split: el QR rota en la columna 9:16 (junto al destacado y los posters).
+const heroNoQr = buildHeroSlots(4, false);
+check("clásico: sin QR la rotación son solo los productos", heroNoQr.length === 4);
+check("clásico: sin QR no hay slot de QR", heroNoQr.every((s) => s.kind === "product"));
+const heroQr = buildHeroSlots(4, true);
+check("clásico: con QR el banner suma el slot del QR", heroQr.length === 5);
+check("clásico: el QR aparece una sola vez", heroQr.filter((s) => s.kind === "qr").length === 1);
+check("clásico: el QR no pisa ningún producto", heroQr.filter((s) => s.kind === "product").length === 4);
+const heroOne = buildHeroSlots(1, true);
+check("clásico: un solo producto + QR igual rota", heroOne.length === 2);
+const heroNoRotate = buildHeroSlots(4, true, false);
+check(
+  "clásico: con la rotación apagada el producto queda fijo pero el QR sigue",
+  heroNoRotate.filter((s) => s.kind === "product").length === 1 && heroNoRotate.some((s) => s.kind === "qr")
+);
+check(
+  "clásico: cada slot tiene su duración (producto vs QR)",
+  heroSlotSeconds({ kind: "product", index: 0 }, { heroSeconds: 10, qrSeconds: 12 }) === 10 &&
+    heroSlotSeconds({ kind: "qr", index: 1 }, { heroSeconds: 10, qrSeconds: 12 }) === 12
+);
+const colQr = buildColumnSlots(2, true);
+check("split: la columna suma el slot del QR", colQr.length === 4);
+check("split: la columna arranca con el destacado", colQr[0].kind === "hero");
+check("split: el QR aparece una sola vez en la columna", colQr.filter((s) => s.kind === "qr").length === 1);
+check(
+  "split: el slot del QR es el último (vuelve al destacado después)",
+  colQr[colQr.length - 1].kind === "qr"
+);
+check(
+  "split: duración del poster = su durationSec",
+  columnSlotSeconds({ kind: "poster", index: 1 }, { heroSeconds: 10, qrSeconds: 12, posterSeconds: [6, 8] }) ===
+    8
+);
+const labels = nextSlotLabels(heroQr, 0, 2, [
+  { name: "Combo", priceLabel: "$9.900" },
+  { name: "Empanada", priceLabel: "$1.200" },
+  { name: "Milanesa", priceLabel: "$7.500" },
+  { name: "Tarta", priceLabel: "$6.000" },
+]);
+check("chips: el próximo slot se anuncia", labels.length === 2 && labels[0].label === "Empanada");
+check(
+  "chips: cuando viene el QR se anuncia como pedido online",
+  nextSlotLabels(heroQr, 3, 2, []).some((l) => l.label.includes("Pedí online"))
 );
 
 if (failures > 0) {

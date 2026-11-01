@@ -1,6 +1,8 @@
 "use client";
 
 import { ProductImage } from "@/components/product-image";
+import { TvQrColumn } from "./tv-qr-column";
+import type { ColumnSlot } from "@/lib/tv-rotation";
 import type { TvPosterRef } from "@/lib/tv-layout";
 import type { TvItem } from "@/lib/tv-snapshot";
 
@@ -10,12 +12,19 @@ type Props = {
   /**
    * Qué se muestra en la columna:
    * - "hero"   → el destacado del commerce (producto con precio y descripción);
-   * - "poster" → un poster publicitario del comercio (imagen o video).
+   * - "poster" → un poster publicitario del comercio (imagen o video);
+   * - "qr"     → el QR de "Pedí online" (plantilla vertical).
    * Alternan solos: el player va pasando de uno al otro.
    */
-  mode?: "hero" | "poster";
+  slot?: ColumnSlot | null;
   /** Poster en escena (solo en modo "poster"). */
   poster?: TvPosterRef | null;
+  /** Devuelve el poster por índice (la rotación elige cuál queda en pantalla). */
+  posterFor?: (index: number) => TvPosterRef | null;
+  /** PNG del QR (dataUrl). null = sin QR en esta pantalla. */
+  qrDataUrl?: string | null;
+  /** Segundos que dura el slot del QR (barra de progreso). */
+  qrSeconds?: number;
   /** Pool de destacados (misma rotación y timer que el banner clásico). */
   hero: TvItem[];
   /** Índice de la oferta que está en escena. */
@@ -48,8 +57,11 @@ type Props = {
  */
 export function TvSplitStage({
   width,
-  mode = "hero",
+  slot = { kind: "hero", index: 0 },
   poster = null,
+  posterFor,
+  qrDataUrl = null,
+  qrSeconds = 12,
   hero,
   index = 0,
   logoUrl,
@@ -57,11 +69,16 @@ export function TvSplitStage({
   upsell,
   upsellItem,
 }: Props) {
+  const activeSlot = slot ?? { kind: "hero" as const, index: 0 };
+  const mode = activeSlot.kind;
+  // El poster en escena lo elige la rotación (por índice).
+  const activePoster = activeSlot.kind === "poster" ? posterFor?.(activeSlot.index) ?? poster : poster;
   const main = hero.length ? hero[index % hero.length] : null;
-  const isPoster = mode === "poster" && !!poster;
-  const isVideo = isPoster && poster?.type === "video";
+  const isPoster = mode === "poster" && !!activePoster;
+  const isQr = mode === "qr" && !!qrDataUrl;
+  const isVideo = isPoster && activePoster?.type === "video";
   // La columna muestra la foto del destacado; sin foto (o sin pool) cae al logo.
-  const src = isPoster ? poster!.url : main?.imageUrl || logoUrl;
+  const src = isPoster ? activePoster!.url : main?.imageUrl || logoUrl;
   // Para los <video> el src no puede ser null (el bloque solo se dibuja si hay medio).
   const mediaSrc = src ?? "";
   const showUpsell = !isPoster && upsell.enabled && (upsellItem || upsell.text);
@@ -122,8 +139,20 @@ export function TvSplitStage({
         boxShadow: "inset 0 0 0 2px var(--tv-line), 0 18px 44px rgba(0,0,0,0.18)",
         background: "var(--tv-card)",
       }}
-      aria-label={isPoster ? "Poster" : "Destacado"}
+      aria-label={isQr ? "Pedí online" : isPoster ? "Poster" : "Destacado"}
     >
+      {/* Slot del QR: la columna entera es la plantilla vertical de "Pedí
+          online". No lleva foto de fondo: el QR es el protagonista y tiene
+          que leerse al instante. */}
+      {isQr && qrDataUrl ? (
+        <TvQrColumn
+          name={storeName}
+          qrDataUrl={qrDataUrl}
+          durationSec={qrSeconds}
+          width={width}
+        />
+      ) : (
+        <>
       {/* Fondo desenfocado: la MISMA imagen cubriendo todo el 9:16. */}
       {src && (
         <div className="absolute inset-0 overflow-hidden" aria-hidden>
@@ -267,18 +296,20 @@ export function TvSplitStage({
 
       {/* En modo poster la columna lleva su propia barra de progreso (el pie
           del destacado no está, así que no compite con nada). */}
-      {isPoster && poster && (
+      {isPoster && activePoster && (
         <div className="absolute inset-x-0 bottom-0" style={{ padding: "0 26px 18px 34px" }}>
           <div className="h-[6px] w-full overflow-hidden rounded-full" style={{ background: "rgba(255,255,255,0.22)" }}>
             <div
               className="h-full rounded-full"
               style={{
                 background: "var(--tv-accent)",
-                animation: `tv-progress ${Math.max(1, poster.durationSec)}s linear forwards`,
+                animation: `tv-progress ${Math.max(1, activePoster.durationSec)}s linear forwards`,
               }}
             />
           </div>
         </div>
+      )}
+        </>
       )}
     </section>
   );

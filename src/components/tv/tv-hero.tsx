@@ -7,6 +7,12 @@ type Props = {
   hero: TvItem[];
   /** Índice de la oferta que se muestra como pieza principal. */
   index?: number;
+  /**
+   * Los próximos slots de la rotación (chips de la derecha). Los calcula el
+   * reproductor porque la rotación incluye el QR de "Pedí online": el cliente
+   * ve que viene un pedido online, no solo los otros productos.
+   */
+  next?: { label: string; priceLabel: string | null }[];
   upsell: { enabled: boolean; text: string; productId: string | null };
   upsellItem: TvItem | null;
 };
@@ -20,14 +26,19 @@ type Props = {
  * `index` hace que la pieza principal rote entre las ofertas del pool; los
  * chips de la derecha muestran las que siguen (con wraparound).
  */
-export function TvHero({ hero, index = 0, upsell, upsellItem }: Props) {
+export function TvHero({ hero, index = 0, next, upsell, upsellItem }: Props) {
   if (!hero.length) return null;
   const main = hero[index % hero.length];
   if (!main) return null;
   // Los 2 que siguen en la rotación (con wraparound): "qué viene después".
-  const others = [1, 2]
-    .map((n) => hero[(index + n) % hero.length])
-    .filter((i) => i && i.id !== main.id);
+  // Si el reproductor los pasa (rotación con QR), se usan esos.
+  const others =
+    next && next.length
+      ? next
+      : [1, 2]
+          .map((n) => hero[(index + n) % hero.length])
+          .filter((i) => i && i.id !== main.id)
+          .map((i) => ({ label: i.name, priceLabel: i.priceLabel }));
 
   return (
     <section
@@ -128,9 +139,9 @@ export function TvHero({ hero, index = 0, upsell, upsellItem }: Props) {
 
         {/* Columna derecha: los otros destacados + el upsell. */}
         <div className="flex shrink-0 flex-col items-end gap-3" style={{ maxWidth: 480 }}>
-          {others.map((item) => (
+          {others.map((item, i) => (
             <div
-              key={item.id}
+              key={`${item.label}-${i}`}
               className="flex w-full items-center gap-4 rounded-2xl px-5 py-3"
               style={{
                 background: "rgba(255,255,255,0.10)",
@@ -139,7 +150,7 @@ export function TvHero({ hero, index = 0, upsell, upsellItem }: Props) {
               }}
             >
               <span className="min-w-0 flex-1 truncate text-right font-semibold leading-tight" style={{ fontSize: 28, color: "#FFFFFF" }}>
-                {item.name}
+                {item.label}
               </span>
               {item.priceLabel && (
                 <span

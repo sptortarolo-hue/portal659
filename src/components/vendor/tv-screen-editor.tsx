@@ -755,8 +755,9 @@ export function TvScreenEditor({
                 </div>
               ) : (
                 <p className="mt-1.5 text-[11px] text-muted-foreground">
-                  Aparece cada tanto en la carta y/o en la pantalla de local cerrado, para que
-                  los clientes escaneen y pidan desde el celular.
+                  Entra en el <strong>destacado</strong> de la pantalla (el banner en el diseño clásico,
+                  la columna 9:16 en el Split) y/o en la pantalla de local cerrado, para que los
+                  clientes escaneen y pidan desde el celular.
                 </p>
               )}
 
@@ -768,8 +769,8 @@ export function TvScreenEditor({
                     </p>
                     <div className="grid grid-cols-3 gap-2">
                       {[
-                        { v: "siempre", label: "Siempre", icon: "🔄", desc: "Carta + cerrado" },
-                        { v: "abierto", label: "Solo abierto", icon: "🟢", desc: "En la carta" },
+                        { v: "siempre", label: "Siempre", icon: "🔄", desc: "Destacado + cerrado" },
+                        { v: "abierto", label: "Solo abierto", icon: "🟢", desc: "En el destacado" },
                         { v: "cerrado", label: "Solo cerrado", icon: "🌙", desc: "Al cerrar" },
                       ].map((o) => (
                         <button

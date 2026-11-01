@@ -9,7 +9,15 @@ import { Card } from "@/components/ui/card";
 import type { ModifierGroup, ModifierOption } from "@/types/database";
 import { validateOptionPromos } from "@/lib/modifier-select";
 
-type GroupRow = ModifierGroup & { product_ids?: string[]; products_count?: number };
+type GroupRow = ModifierGroup & {
+  product_ids?: string[];
+  products_count?: number;
+  /** Fila plana del link (compat): trae el override por producto. */
+  position?: number;
+  product_id?: string;
+  link_max?: number | null;
+  link_min?: number | null;
+};
 
 type Product = { id: string; name: string };
 
@@ -24,40 +32,58 @@ type GroupData = {
   /** "diferencia" (+$X, default) o "total" (precio final por opción, solo max=1). */
   price_mode: "diferencia" | "total";
   product_ids: string[];
+  /** Override de cantidad PARA UN producto (solo modo `productScope`).
+   *  NULL = usa el default del grupo. Se guarda en el link, no en el grupo. */
+  link_max?: number | null;
+  link_min?: number | null;
 };
 
 function emptyOption(): ModifierOption {
   return { label: "", price_mod: 0 };
 }
 
-function GroupForm({
+/** Form de grupo de opciones. Con `productScope` edita "del lado del
+ *  producto": el mínimo/máximo se guardan como override de ESE producto
+ *  (link) en vez de tocar el default del grupo. */
+export function GroupForm({
   initial = null,
   products,
   submitLabel,
   onCancel,
   onSubmit,
+  productScope = null,
 }: {
   initial?: GroupRow | null;
   products: Product[];
   submitLabel: string;
   onCancel?: () => void;
   onSubmit: (data: GroupData) => Promise<void>;
+  /** Producto dueño de la vista (solapa Opciones). NULL = modo biblioteca. */
+  productScope?: { id: string; name: string } | null;
 }) {
   const [name, setName] = useState(initial?.group_name || "");
   const [options, setOptions] = useState<ModifierOption[]>(
     (initial?.options && initial.options.length ? initial.options : [emptyOption()]).map((o) => ({ ...o }))
   );
   const [required, setRequired] = useState(initial ? !!initial.required : false);
-  const [maxSel, setMaxSel] = useState(String(initial?.max_selections || 1));
+  // En modo producto, mín/máx editan el override de ESTE producto: vacío =
+  // "usa el default del grupo" (se guarda como NULL en el link).
+  const [maxSel, setMaxSel] = useState(
+    productScope && initial?.link_max != null
+      ? String(initial.link_max)
+      : String(initial?.max_selections || 1)
+  );
   const [minSel, setMinSel] = useState(
-    initial?.min_selections != null ? String(initial.min_selections) : ""
+    productScope
+      ? (initial?.link_min != null ? String(initial.link_min) : "")
+      : (initial?.min_selections != null ? String(initial.min_selections) : "")
   );
   const [isVariant, setIsVariant] = useState(initial ? !!initial.is_variant : false);
   const [priceMode, setPriceMode] = useState<"diferencia" | "total">(
     initial?.price_mode === "total" ? "total" : "diferencia"
   );
   const [selected, setSelected] = useState<Set<string>>(
-    new Set(initial?.product_ids || [])
+    productScope ? new Set([productScope.id]) : new Set(initial?.product_ids || [])
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -131,6 +157,12 @@ function GroupForm({
     }
     setSaving(true);
     try {
+      // Override por producto (modo producto): NULL = default del grupo.
+      const linkMax = maxSel === "" ? null : Math.max(1, Math.floor(Number(maxSel) || 1));
+      const linkMinRaw = minSel === "" ? null : Math.floor(Number(minSel));
+      const linkMin = linkMinRaw != null && Number.isFinite(linkMinRaw) && linkMinRaw >= 1
+        ? Math.min(linkMinRaw, linkMax ?? 99)
+        : null;
       await onSubmit({
         group_name: name.trim(),
         options: clean,
@@ -140,6 +172,11 @@ function GroupForm({
         is_variant: isVariant,
         price_mode: useTotal ? "total" : "diferencia",
         product_ids: Array.from(selected),
+        // En modo producto el mínimo/máximo van al link de este producto
+        // (el default del grupo no se toca desde la vista del producto).
+        ...(productScope
+          ? { link_max: linkMax, link_min: req || isVariant ? linkMin : null }
+          : {}),
       });
     } catch (e) {
       setError((e as Error).message || "No se pudo guardar");
@@ -181,8 +218,8 @@ function GroupForm({
             className="flex-1 sm:flex-none sm:w-20 min-w-0"
             value={minSel}
             onChange={(e) => setMinSel(e.target.value)}
-            title="Mínimo de selecciones (vacío = 1 si es obligatorio)"
-            placeholder="Mín"
+            title={productScope ? "Mínimo en este producto (vacío = el del grupo)" : "Mínimo de selecciones (vacío = 1 si es obligatorio)"}
+            placeholder={productScope ? "Mín (grupo)" : "Mín"}
             disabled={!required && !isVariant}
           />
           <Input
@@ -192,11 +229,16 @@ function GroupForm({
             className="flex-1 sm:flex-none sm:w-20 min-w-0"
             value={maxSel}
             onChange={(e) => setMaxSel(e.target.value)}
-            title="Máximo de selecciones"
-            placeholder="Máx"
+            title={productScope ? "Máximo en este producto (vacío = el del grupo)" : "Máximo de selecciones"}
+            placeholder={productScope ? "Máx (grupo)" : "Máx"}
           />
         </div>
-        {(required || isVariant) && (
+        {(required || isVariant) && productScope && minSel === "" && maxSel === "" && (
+          <p className="text-xs text-muted-foreground">
+            Vacío = usa la cantidad del grupo ({String(initial?.max_selections || 1)} como máximo).
+          </p>
+        )}
+        {(required || isVariant) && (!productScope || minSel !== "" || maxSel !== "") && (
           <p className="text-xs text-muted-foreground">
             Mínimo {minSel && Number(minSel) >= 1 ? Math.min(Math.max(1, Math.floor(Number(minSel))), Math.max(1, Number(maxSel) || 1)) : 1}
             {" "}· Máximo {Math.max(1, Number(maxSel) || 1)}
@@ -339,31 +381,43 @@ function GroupForm({
           </div>
         </div>
 
-        <div>
-          <Label className="text-xs text-muted-foreground">
-            Aplicar a platos ({selected.size})
-          </Label>
-          <div className="grid grid-cols-2 gap-1 max-h-40 overflow-y-auto mt-1">
-            {products.map((p) => (
-              <label key={p.id} className="flex items-center gap-2 text-sm rounded-lg px-2 py-1 hover:bg-muted cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={selected.has(p.id)}
-                  onChange={(e) => {
-                    setSelected((prev) => {
-                      const next = new Set(prev);
-                      if (e.target.checked) next.add(p.id);
-                      else next.delete(p.id);
-                      return next;
-                    });
-                  }}
-                  className="h-4 w-4"
-                />
-                <span className="truncate text-xs">{p.name}</span>
-              </label>
-            ))}
+        {productScope ? (
+          <div>
+            <Label className="text-xs text-muted-foreground">Se aplica a</Label>
+            <p className="text-sm mt-1 truncate">📦 {productScope.name}</p>
+            {(initial?.products_count ?? 0) > 1 && (
+              <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                ⚑ Este grupo lo usan {initial?.products_count} productos: los cambios en las opciones se aplican a todos.
+              </p>
+            )}
           </div>
-        </div>
+        ) : (
+          <div>
+            <Label className="text-xs text-muted-foreground">
+              Aplicar a platos ({selected.size})
+            </Label>
+            <div className="grid grid-cols-2 gap-1 max-h-40 overflow-y-auto mt-1">
+              {products.map((p) => (
+                <label key={p.id} className="flex items-center gap-2 text-sm rounded-lg px-2 py-1 hover:bg-muted cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selected.has(p.id)}
+                    onChange={(e) => {
+                      setSelected((prev) => {
+                        const next = new Set(prev);
+                        if (e.target.checked) next.add(p.id);
+                        else next.delete(p.id);
+                        return next;
+                      });
+                    }}
+                    className="h-4 w-4"
+                  />
+                  <span className="truncate text-xs">{p.name}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
 
         {error && <p className="text-sm text-red-600">{error}</p>}
 

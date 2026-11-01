@@ -15,7 +15,8 @@ import {
 } from "@/components/dashboard/shared";
 import { clearDraft } from "@/lib/draft";
 import { toDateOnly } from "@/lib/expiry";
-import { ModifierLibrary, ProductModifiersBlock } from "@/components/dashboard/modifier-editor";
+import { HeladeriaKitCard, ProductModifiersBlock } from "@/components/dashboard/modifier-editor";
+import { ProductOptionsEditor } from "@/components/dashboard/product-options-editor";
 import { VolumeEditor } from "@/components/dashboard/volume-editor";
 import { MenuImportModal } from "@/components/dashboard/menu-import";
 import { MenuImportWaModal } from "@/components/dashboard/menu-import-wa";
@@ -1218,10 +1219,12 @@ export function MenuStudio({
       )}
 
       {view === "opciones" && (
-        <ModifierLibrary
+        <ProductOptionsEditor
           products={offers.map((o) => ({ id: o.id, name: o.name }))}
+          initialProductId={editingId}
+          isComercio={isComercio}
           onChanged={reload}
-          enableHeladeriaKit={enableHeladeriaKit}
+          header={enableHeladeriaKit ? <HeladeriaKitCard onDone={reload} /> : undefined}
         />
       )}
 

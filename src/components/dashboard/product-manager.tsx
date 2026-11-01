@@ -15,7 +15,8 @@ import { SupplierSelect } from "@/components/dashboard/supplier-select";
 import { clearDraft } from "@/lib/draft";
 import { toDateOnly } from "@/lib/expiry";
 import { isGiftProductRow } from "@/lib/gift-card-share";
-import { ModifierLibrary, ProductModifiersBlock } from "@/components/dashboard/modifier-editor";
+import { ProductModifiersBlock } from "@/components/dashboard/modifier-editor";
+import { ProductOptionsEditor } from "@/components/dashboard/product-options-editor";
 import { ProductImage } from "@/components/product-image";
 import { SIZE_GUIDE_TEMPLATES, templateToText } from "@/lib/size-guides";
 import type { ProductVariant } from "@/types/database";
@@ -968,11 +969,12 @@ export function ProductManager({ isModa = false, isComercio = false, showStock =
           )}
 
           {view === "opciones" && (
-            <ModifierLibrary
+            <ProductOptionsEditor
               products={offers.map((o) => ({ id: o.id, name: o.name }))}
-              onChanged={load}
+              initialProductId={editingId}
               isModa={isModa}
               isComercio={isComercio}
+              onChanged={load}
             />
           )}
 

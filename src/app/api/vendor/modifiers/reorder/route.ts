@@ -1,5 +1,6 @@
 import { getVendorByRequest } from "@/lib/vendor-utils";
 import { queryOne, queryMany, query } from "@/lib/db";
+import { isMissingColumnError } from "@/lib/modifier-rules";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -29,14 +30,35 @@ export async function POST(request: Request) {
   );
   const validIds = new Set(valid.map((r) => r.id));
 
+  // Preservar los overrides por link (min/max) de este producto: el delete +
+  // insert en crudo los perdería (caso heladería: 2/3/5 gustos por tamaño).
+  let overrides: Record<string, { max: number | null; min: number | null }> = {};
+  try {
+    const cur = await queryMany<{ group_id: string; max_selections: number | null; min_selections: number | null }>(
+      `SELECT group_id, max_selections, min_selections FROM product_modifier_links WHERE product_id = $1`,
+      [product_id]
+    );
+    for (const r of cur || []) overrides[r.group_id] = { max: r.max_selections ?? null, min: r.min_selections ?? null };
+  } catch (e) {
+    if (!isMissingColumnError(e)) throw e;
+  }
+
   await query(`DELETE FROM product_modifier_links WHERE product_id = $1`, [product_id]);
   let pos = 0;
   for (const gid of group_ids) {
     if (!validIds.has(gid)) continue;
-    await query(
-      `INSERT INTO product_modifier_links (group_id, product_id, position) VALUES ($1, $2, $3)`,
-      [gid, product_id, pos]
-    );
+    const ov = overrides[gid];
+    if (ov) {
+      await query(
+        `INSERT INTO product_modifier_links (group_id, product_id, position, max_selections, min_selections) VALUES ($1, $2, $3, $4, $5)`,
+        [gid, product_id, pos, ov.max, ov.min]
+      );
+    } else {
+      await query(
+        `INSERT INTO product_modifier_links (group_id, product_id, position) VALUES ($1, $2, $3)`,
+        [gid, product_id, pos]
+      );
+    }
     pos++;
   }
 

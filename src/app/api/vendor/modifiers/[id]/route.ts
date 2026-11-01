@@ -1,5 +1,6 @@
 import { getVendorByRequest } from "@/lib/vendor-utils";
 import { queryOne, queryMany, query, withTransaction } from "@/lib/db";
+import { isMissingColumnError } from "@/lib/modifier-rules";
 import { NextResponse } from "next/server";
 import type { ModifierOption } from "@/types/database";
 import { validateOptionPromos } from "@/lib/modifier-select";
@@ -120,12 +121,32 @@ export async function PATCH(
         );
         cleanIds = rows.map((r) => r.id);
       }
+      // Preservar los overrides por link (min/max) de las asignaciones que
+      // siguen: borrar y reinsertar en crudo los perderría (caso heladería).
+      let overrides: Record<string, { max: number | null; min: number | null }> = {};
+      try {
+        const cur = await tx.query<{ product_id: string; max_selections: number | null; min_selections: number | null }>(
+          `SELECT product_id, max_selections, min_selections FROM product_modifier_links WHERE group_id = $1`,
+          [id]
+        );
+        for (const r of cur || []) overrides[r.product_id] = { max: r.max_selections ?? null, min: r.min_selections ?? null };
+      } catch (e) {
+        if (!isMissingColumnError(e)) throw e;
+      }
       await tx.queryVoid(`DELETE FROM product_modifier_links WHERE group_id = $1`, [id]);
       for (let i = 0; i < cleanIds.length; i++) {
-        await tx.queryVoid(
-          `INSERT INTO product_modifier_links (group_id, product_id, position) VALUES ($1, $2, $3)`,
-          [id, cleanIds[i], i]
-        );
+        const ov = overrides[cleanIds[i]];
+        if (ov) {
+          await tx.queryVoid(
+            `INSERT INTO product_modifier_links (group_id, product_id, position, max_selections, min_selections) VALUES ($1, $2, $3, $4, $5)`,
+            [id, cleanIds[i], i, ov.max, ov.min]
+          );
+        } else {
+          await tx.queryVoid(
+            `INSERT INTO product_modifier_links (group_id, product_id, position) VALUES ($1, $2, $3)`,
+            [id, cleanIds[i], i]
+          );
+        }
       }
     }
   });

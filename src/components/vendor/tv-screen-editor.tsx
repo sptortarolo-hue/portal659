@@ -15,6 +15,8 @@ type ScreenApi = {
   name: string;
   kind: string;
   token: string;
+  /** Código corto para /t/<code> (si la migración está aplicada). */
+  shortCode?: string | null;
   version: number;
   publishedAt: string | null;
   lastSeenAt: string | null;

@@ -21,7 +21,7 @@ import {
   type TvConfig,
 } from "./tv-config";
 import type { TvItem, TvSection, TvSnapshot } from "./tv-snapshot";
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomInt } from "node:crypto";
 import {
   isGastroVendor,
   isModaVendor,
@@ -45,6 +45,11 @@ export type TvScreenRow = {
   last_seen_at: string | null;
   client_version: string | null;
   created_at: string;
+  /** Codigo corto para /t/<code> (migrate-tv-remote.sql). */
+  short_code?: string | null;
+  /** Token de la pantalla a la que la tele debe cambiar (mando a distancia). */
+  remote_command?: string | null;
+  remote_at?: string | null;
 };
 
 const SELECT_SCREEN = `SELECT * FROM tv_screens`;
@@ -192,6 +197,118 @@ export async function touchScreen(token: string, clientVersion?: string | null):
     return true;
   } catch {
     return false;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// URL corta (/t/<code>) y mando a distancia (celular -> tele)
+// ---------------------------------------------------------------------------
+
+/**
+ * Alfabeto del codigo corto: sin vocales ni caracteres ambiguos (0/O/1/I),
+ * como el token largo. Se lee en voz alta por telefono sin confusiones.
+ */
+const SHORT_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789";
+
+/** Codigo corto de 4 caracteres (p. ej. "k7f2"): se tipea rapido en la tele. */
+export function randomShortCode(len = 4): string {
+  let out = "";
+  for (let i = 0; i < len; i++) out += SHORT_ALPHABET[randomInt(0, SHORT_ALPHABET.length)];
+  return out;
+}
+
+/** Normaliza lo que escribe el usuario (minusculas, sin signos). */
+export function normalizeShortCode(raw: string): string {
+  return (raw || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 12);
+}
+
+/**
+ * Codigo corto de la pantalla, generandolo si todavia no tiene (pantallas
+ * viejas o creadas antes de la migracion). Tolera la migracion ausente:
+ * devuelve null y la URL corta simplemente no se ofrece.
+ */
+export async function ensureShortCode(screen: Pick<TvScreenRow, "id" | "short_code">): Promise<string | null> {
+  if (screen.short_code) return screen.short_code;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const code = randomShortCode();
+    try {
+      const row = await queryOne<{ short_code: string }>(
+        `UPDATE tv_screens SET short_code = $2, updated_at = now()
+          WHERE id = $1 AND short_code IS NULL
+          RETURNING short_code`,
+        [screen.id, code]
+      );
+      if (row?.short_code) return row.short_code;
+      // Perdió la carrera (otra peticion lo ganó): leer el que quedó.
+      const cur = await queryOne<{ short_code: string }>(
+        `SELECT short_code FROM tv_screens WHERE id = $1 LIMIT 1`,
+        [screen.id]
+      );
+      if (cur?.short_code) return cur.short_code;
+      return null;
+    } catch {
+      // Sin migración (columna inexistente) o conflicto de unicidad: reintento.
+      const cur = await queryOne<{ short_code: string }>(
+        `SELECT short_code FROM tv_screens WHERE id = $1 LIMIT 1`,
+        [screen.id]
+      ).catch(() => null);
+      if (cur?.short_code) return cur.short_code;
+    }
+  }
+  return null;
+}
+
+/** Busca la pantalla por su codigo corto (ruta /t/<code>). */
+export async function findScreenByShortCode(code: string): Promise<TvScreenRow | null> {
+  const clean = normalizeShortCode(code);
+  if (!clean) return null;
+  try {
+    const row = await queryOne<TvScreenRow>(
+      `${SELECT_SCREEN} WHERE short_code = $1 LIMIT 1`,
+      [clean]
+    );
+    return row ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Mando a distancia: le dice a la tele del comercio que muestre otra pantalla.
+ *
+ * El comando se escribe en TODAS las pantallas del comercio (la tele puede
+ * estar mostrando cualquiera de ellas) y el SSE de cada una lo empuja: la que
+ * este abierta cambia sola a la pantalla destino.
+ *
+ * @returns cuantas filas se actualizaron, o -1 si la migración no esta aplicada.
+ */
+export async function pushRemoteCommand(vendorId: string, targetToken: string): Promise<number> {
+  try {
+    const rows = await queryMany<{ id: string }>(
+      `UPDATE tv_screens
+          SET remote_command = $2, remote_at = now(), updated_at = now()
+        WHERE vendor_id = $1
+        RETURNING id`,
+      [vendorId, targetToken]
+    );
+    return rows?.length ?? 0;
+  } catch {
+    return -1;
+  }
+}
+
+/** Estado de conexion de una pantalla (lo usa la pagina del celular). */
+export async function screenConnection(token: string): Promise<{ connected: boolean; lastSeenAt: string | null }> {
+  try {
+    const row = await queryOne<{ last_seen_at: string | null }>(
+      `SELECT last_seen_at FROM tv_screens WHERE token = $1 LIMIT 1`,
+      [token]
+    );
+    const last = row?.last_seen_at ?? null;
+    const connected = !!last && Date.now() - new Date(last).getTime() < 3 * 60 * 1000;
+    return { connected, lastSeenAt: last };
+  } catch {
+    return { connected: false, lastSeenAt: null };
   }
 }
 

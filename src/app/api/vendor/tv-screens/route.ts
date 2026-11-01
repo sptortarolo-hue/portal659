@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import { guardTvScreens } from "@/lib/tv-guard";
-import { createScreen, hasUnpublishedDraft, listVendorScreens, loadCatalogSections } from "@/lib/tv-data";
+import {
+  createScreen,
+  ensureShortCode,
+  hasUnpublishedDraft,
+  listVendorScreens,
+  loadCatalogSections,
+} from "@/lib/tv-data";
 import { normalizeTvConfig } from "@/lib/tv-config";
 import { getPortalSetting } from "@/lib/portal-settings";
 import { isAdmin } from "@/lib/admin-utils";
@@ -42,20 +48,24 @@ export async function GET(request: Request) {
   // Categorías reales del comercio: el editor las usa para elegir visibilidad
   // y orden (y así no se configuran nombres que ya no existen).
   const catalog = await loadCatalogSections(guard.ctx.vendorId).catch(() => ({ categoryNames: [] as string[], sections: [] }));
-  const screens = rows.map((r) => ({
-    id: r.id,
-    name: r.name,
-    kind: r.kind,
-    token: r.token,
-    version: r.version,
-    publishedAt: r.published_at,
-    lastSeenAt: r.last_seen_at,
-    clientVersion: r.client_version,
-    createdAt: r.created_at,
-    published: r.published ? true : false,
-    unpublishedDraft: hasUnpublishedDraft(r),
-    config: normalizeTvConfig(r.draft ?? {}),
-  }));
+  const screens = await Promise.all(
+    rows.map(async (r) => ({
+      id: r.id,
+      name: r.name,
+      kind: r.kind,
+      token: r.token,
+      // Código corto para /t/<code> (se genera si la pantalla es vieja).
+      shortCode: await ensureShortCode(r),
+      version: r.version,
+      publishedAt: r.published_at,
+      lastSeenAt: r.last_seen_at,
+      clientVersion: r.client_version,
+      createdAt: r.created_at,
+      published: r.published ? true : false,
+      unpublishedDraft: hasUnpublishedDraft(r),
+      config: normalizeTvConfig(r.draft ?? {}),
+    }))
+  );
 
   return NextResponse.json({
     screens,

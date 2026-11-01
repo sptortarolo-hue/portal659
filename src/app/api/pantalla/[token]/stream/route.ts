@@ -5,7 +5,8 @@ export const dynamic = "force-dynamic";
 
 /**
  * SSE de la Pantalla TV: avisa cuando cambia la versión publicada (el comercio
- * tocó "Publicar") o el heartbeat propio. El cliente recarga el snapshot.
+ * tocó "Publicar"), llega un comando remoto (el celular le pidió mostrar otra
+ * pantalla) o el heartbeat propio. El cliente recarga el snapshot.
  *
  * Fallback: si el navegador del TV o el proxy no soportan SSE, el reproductor
  * tiene polling de 30s. Nunca es el único camino.
@@ -20,6 +21,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ toke
   const encoder = new TextEncoder();
   let lastVersion = Number(screen.version ?? 0);
   let lastSeen = new Date().toISOString();
+  /** Último comando remoto aplicado (para no repetirlo en cada tick). */
+  let lastRemoteAt = screen.remote_at ? new Date(screen.remote_at).toISOString() : null;
 
   const stream = new ReadableStream({
     start(controller) {
@@ -30,7 +33,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ toke
         if (closed) return;
         try {
           const { rows } = await getPool().query(
-            `SELECT version, last_seen_at FROM tv_screens WHERE token = $1 LIMIT 1`,
+            `SELECT version, last_seen_at, remote_command, remote_at FROM tv_screens WHERE token = $1 LIMIT 1`,
             [token]
           );
           const row = rows[0];
@@ -41,6 +44,16 @@ export async function GET(request: Request, { params }: { params: Promise<{ toke
           if (Number(row.version) !== lastVersion) {
             lastVersion = Number(row.version);
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({ version: lastVersion })}\n\n`));
+          }
+          // Mando a distancia: la tele cambia sola a la pantalla destino.
+          const remoteAt = row.remote_at ? new Date(row.remote_at).toISOString() : null;
+          if (remoteAt && remoteAt !== lastRemoteAt && row.remote_command) {
+            lastRemoteAt = remoteAt;
+            controller.enqueue(
+              encoder.encode(
+                `data: ${JSON.stringify({ remote: { target: String(row.remote_command), at: remoteAt } })}\n\n`
+              )
+            );
           }
           const seen = row.last_seen_at ? new Date(row.last_seen_at).toISOString() : null;
           if (seen && seen !== lastSeen) {

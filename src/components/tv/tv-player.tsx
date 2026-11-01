@@ -314,7 +314,7 @@ export function TvPlayer({ snapshot, token, mode, vertical, debug = false, fitPa
     return () => clearInterval(id);
   }, [mode, token]);
 
-  // --- SSE: recarga al publicar un cambio de layout -------------------------
+  // --- SSE: recarga al publicar + mando a distancia -------------------------
   useEffect(() => {
     if (mode !== "live") return;
     let es: EventSource | null = null;
@@ -323,6 +323,14 @@ export function TvPlayer({ snapshot, token, mode, vertical, debug = false, fitPa
       es.onmessage = async (ev) => {
         try {
           const data = JSON.parse(ev.data || "{}");
+          // Mando a distancia: el celular pidió que la tele muestre otra
+          // pantalla → la tele cambia sola (tarda ≤5s: el SSE consulta la DB
+          // cada 5 segundos).
+          const target = data?.remote?.target ? String(data.remote.target) : "";
+          if (target && target !== token) {
+            window.location.href = `/pantalla/${target}`;
+            return;
+          }
           if (typeof data?.version === "number" && data.version !== versionRef.current) {
             versionRef.current = data.version;
             const r = await fetch(`/api/pantalla/${token}`, { cache: "no-store" });
@@ -337,6 +345,37 @@ export function TvPlayer({ snapshot, token, mode, vertical, debug = false, fitPa
     }
     return () => es?.close();
   }, [mode, token]);
+
+  // --- Pantalla encendida: la tele no se duerme mientras muestra la carta ---
+  // Screen Wake Lock API (mismo patrón que el tablero de reparto). Si el
+  // navegador no la soporta, no pasa nada: el TVsabe configurarse a mano.
+  useEffect(() => {
+    if (mode !== "live") return;
+    let lock: { release: () => Promise<void> } | null = null;
+    let cancelled = false;
+    const nav = navigator as Navigator & {
+      wakeLock?: { request: (t: string) => Promise<{ release: () => Promise<void> }> };
+    };
+    const request = async () => {
+      try {
+        const wl = await nav.wakeLock?.request("screen");
+        if (wl && !cancelled) lock = wl;
+      } catch {
+        /* sin soporte o sin permiso: se deja igual */
+      }
+    };
+    request();
+    // Si la pantalla se apaga y vuelve, hay que pedir el lock de nuevo.
+    const onVisible = () => {
+      if (document.visibilityState === "visible") request();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", onVisible);
+      lock?.release().catch(() => {});
+    };
+  }, [mode]);
 
   // --- Heartbeat: "pantalla conectada" en el panel --------------------------
   useEffect(() => {

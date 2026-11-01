@@ -4,6 +4,14 @@ import { useState, useMemo } from "react";
 import { ChevronUp, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/panel-ui";
 
 export interface Column<T> {
   key: string;
@@ -114,13 +122,13 @@ export default function DataTable<T extends Record<string, any>>({
       </div>
 
       <div className="hidden sm:block overflow-x-auto border border-border rounded-xl">
-        <table className="w-full min-w-[640px] text-sm">
-          <thead>
-            <tr className="border-b border-border bg-muted/50">
+        <Table className="min-w-[640px]">
+          <TableHeader>
+            <TableRow>
               {columns.map((col) => (
-                <th
+                <TableHead
                   key={col.key}
-                  className={`px-4 py-3 text-left font-medium text-muted-foreground ${col.sortable ? "cursor-pointer hover:text-foreground select-none" : ""} ${col.className || ""}`}
+                  className={`px-4 py-3 ${col.sortable ? "cursor-pointer hover:text-foreground select-none" : ""} ${col.className || ""}`}
                   onClick={() => col.sortable && handleSort(col.key)}
                 >
                   <span className="flex items-center gap-1">
@@ -129,36 +137,36 @@ export default function DataTable<T extends Record<string, any>>({
                       sortDir === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
                     )}
                   </span>
-                </th>
+                </TableHead>
               ))}
-              {actions && <th className="px-4 py-3 text-right font-medium text-muted-foreground">Acciones</th>}
-            </tr>
-          </thead>
-          <tbody>
+              {actions && <TableHead className="px-4 py-3 text-right">Acciones</TableHead>}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {paged.length === 0 ? (
-              <tr>
-                <td colSpan={columns.length + (actions ? 1 : 0)} className="px-4 py-8 text-center text-muted-foreground">
+              <TableRow>
+                <TableCell colSpan={columns.length + (actions ? 1 : 0)} className="px-4 py-8 text-center text-muted-foreground">
                   {emptyMessage}
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             ) : (
               paged.map((item, idx) => (
-                <tr key={idx} className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors">
+                <TableRow key={idx} className="hover:bg-muted/30 transition-colors">
                   {columns.map((col) => (
-                    <td key={col.key} className={`px-4 py-3 ${col.className || ""}`}>
+                    <TableCell key={col.key} className={`px-4 py-3 ${col.className || ""}`}>
                       {col.render ? col.render(item) : String(item[col.key] ?? "")}
-                    </td>
+                    </TableCell>
                   ))}
                   {actions && (
-                    <td className="px-4 py-3 text-right">
+                    <TableCell className="px-4 py-3 text-right">
                       {actions(item)}
-                    </td>
+                    </TableCell>
                   )}
-                </tr>
+                </TableRow>
               ))
             )}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </div>
 
       {totalPages > 1 && (

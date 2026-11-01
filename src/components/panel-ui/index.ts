@@ -4,5 +4,7 @@ export { Input, SearchInput, type InputProps } from "./input";
 export { Badge, Chip, StatusDot, type BadgeTone } from "./badge";
 export { KpiCard, SectionHeader } from "./kpi-card";
 export { Stepper, EmptyState } from "./stepper";
+export { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "./table";
+export { TONE_CHIP, TONE_COLOR, type PanelTone } from "./tones";
 export { PanelUiProvider, usePanelUi } from "./panel-ui-provider";
 export { PanelUiSwitch } from "./panel-ui-switch";

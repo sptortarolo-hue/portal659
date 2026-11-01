@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { Activity, RefreshCw, ShieldCheck, Send, ChevronLeft, FileText, ExternalLink, AlertTriangle, ServerCog } from "lucide-react";
 import StatsCard from "@/components/admin/stats-card";
+import type { PanelTone } from "@/components/panel-ui";
 
 type ContainerRow = {
   name: string;
@@ -229,7 +230,7 @@ export default function AdminMonitor() {
   }
 
   const s = data.status;
-  const diskTone = s.disk_pct >= (s.disk_heal_max_pct || 90) ? "text-red-600" : s.disk_pct >= 75 ? "text-amber-600" : "text-emerald-600";
+  const diskTone: PanelTone = s.disk_pct >= (s.disk_heal_max_pct || 90) ? "danger" : s.disk_pct >= 75 ? "warning" : "success";
   const up = s.up !== false && s.http === 200;
   const disk = data.disk_detail ?? null;
   const diskArr = disk ? [...disk.dirs, ...disk.volumes].map((x) => x.mb) : [];
@@ -299,20 +300,20 @@ export default function AdminMonitor() {
 
       {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatsCard label="Disco" value={`${s.disk_pct}%`} icon={ServerCog} color={diskTone} />
+        <StatsCard label="Disco" value={`${s.disk_pct}%`} icon={ServerCog} accent={diskTone} />
         <StatsCard
           label="Memoria"
           value={`${gb(s.mem_used_mb)} / ${gb(s.mem_total_mb)}`}
           icon={Activity}
-          color="text-indigo-600"
+          accent="info"
         />
         <StatsCard
           label="Swap"
           value={s.swap_total_mb > 0 ? `${gb(s.swap_used_mb)} / ${gb(s.swap_total_mb)}` : "sin swap"}
           icon={Activity}
-          color="text-violet-600"
+          accent="primary"
         />
-        <StatsCard label="Load" value={s.load || "—"} icon={Activity} color="text-blue-600" />
+        <StatsCard label="Load" value={s.load || "—"} icon={Activity} accent="neutral" />
       </div>
 
       {/* Contenedores */}

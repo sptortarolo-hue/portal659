@@ -2,6 +2,19 @@
 
 import { useEffect, useState, useCallback } from "react";
 import StatsCard from "@/components/admin/stats-card";
+import {
+  Button,
+  Card,
+  CardContent,
+  EmptyState,
+  SectionHeader,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/panel-ui";
 import { Store, Users, ShoppingCart, Package, Star, DollarSign, ShieldCheck, AlertTriangle } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts";
 import { VERTICALS } from "@/lib/config";
@@ -201,131 +214,139 @@ export default function AdminDashboard() {
       )}
 
       <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-        <StatsCard label="Comercios" value={stats?.totalVendors || 0} icon={Store} color="text-primary" />
-        <StatsCard label="Usuarios" value={totalUsers} icon={Users} color="text-indigo-600" />
-        <StatsCard label="Pedidos" value={stats?.totalOrders || 0} icon={ShoppingCart} color="text-blue-600" />
-        <StatsCard label="Productos" value={stats?.totalProducts || 0} icon={Package} color="text-emerald-600" />
-        <StatsCard label="Reseñas" value={stats?.totalReviews || 0} icon={Star} color="text-amber-600" />
+        <StatsCard label="Comercios" value={stats?.totalVendors || 0} icon={Store} accent="primary" />
+        <StatsCard label="Usuarios" value={totalUsers} icon={Users} accent="info" />
+        <StatsCard label="Pedidos" value={stats?.totalOrders || 0} icon={ShoppingCart} accent="neutral" />
+        <StatsCard label="Productos" value={stats?.totalProducts || 0} icon={Package} accent="success" />
+        <StatsCard label="Reseñas" value={stats?.totalReviews || 0} icon={Star} accent="warning" />
         <StatsCard
           label="Facturación"
           value={`$${(stats?.totalRevenue || 0).toLocaleString("es-AR")}`}
           icon={DollarSign}
-          color="text-green-600"
+          accent="primary"
         />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="border border-border rounded-xl p-4 bg-card">
-          <h2 className="font-medium text-sm mb-4">Pedidos últimos 30 días</h2>
-          <ResponsiveContainer width="100%" height={280}>
-            <BarChart data={ordersByDay}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-              <XAxis dataKey="date" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
-              <YAxis allowDecimals={false} tick={{ fontSize: 10 }} />
-              <Tooltip />
-              <Bar dataKey="pedidos" fill="var(--primary)" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-
-        <div className="border border-border rounded-xl p-4 bg-card">
-          <h2 className="font-medium text-sm mb-4">Pedidos por vertical</h2>
-          {ordersByVertical.length > 0 ? (
+        <Card>
+          <SectionHeader title="Pedidos últimos 30 días" />
+          <CardContent className="mt-4">
             <ResponsiveContainer width="100%" height={280}>
-              <PieChart>
-                <Pie
-                  data={ordersByVertical}
-                  cx="50%"
-                  cy="50%"
-                  outerRadius={90}
-                  dataKey="value"
-                  label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`}
-                >
-                  {ordersByVertical.map((entry) => {
-                    const v = VERTICALS.find((v2) => v2.name === entry.name);
-                    return <Cell key={entry.name} fill={v?.hex || "#8884d8"} />;
-                  })}
-                </Pie>
+              <BarChart data={ordersByDay}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
+                <XAxis dataKey="date" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
+                <YAxis allowDecimals={false} tick={{ fontSize: 10 }} />
                 <Tooltip />
-              </PieChart>
+                <Bar dataKey="pedidos" fill="var(--color-primary)" radius={[4, 4, 0, 0]} />
+              </BarChart>
             </ResponsiveContainer>
-          ) : (
-            <p className="text-sm text-muted-foreground text-center py-12">Sin datos de pedidos</p>
-          )}
-        </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <SectionHeader title="Pedidos por vertical" />
+          <CardContent className="mt-4">
+            {ordersByVertical.length > 0 ? (
+              <ResponsiveContainer width="100%" height={280}>
+                <PieChart>
+                  <Pie
+                    data={ordersByVertical}
+                    cx="50%"
+                    cy="50%"
+                    outerRadius={90}
+                    dataKey="value"
+                    label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`}
+                  >
+                    {ordersByVertical.map((entry) => {
+                      const v = VERTICALS.find((v2) => v2.name === entry.name);
+                      return <Cell key={entry.name} fill={v?.hex || "var(--color-chart-1)"} />;
+                    })}
+                  </Pie>
+                  <Tooltip />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <EmptyState
+                icon={ShoppingCart}
+                title="Sin datos de pedidos"
+                hint="Cuando los comercios empiecen a recibir pedidos, el reparto por vertical aparece acá."
+              />
+            )}
+          </CardContent>
+        </Card>
       </div>
 
-      <div className="border border-border rounded-xl p-4 bg-card">
-        <h2 className="font-medium text-sm mb-4">Pedidos recientes</h2>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border">
-                <th className="text-left px-3 py-2 text-muted-foreground font-medium">Fecha</th>
-                <th className="text-left px-3 py-2 text-muted-foreground font-medium">Comercio</th>
-                <th className="text-left px-3 py-2 text-muted-foreground font-medium">Estado</th>
-                <th className="text-right px-3 py-2 text-muted-foreground font-medium">Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {orders.slice(0, 10).map((o) => (
-                <tr key={o.id} className="border-b border-border last:border-0">
-                  <td className="px-3 py-2 text-xs">
-                    {new Date(o.created_at).toLocaleDateString("es-AR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
-                  </td>
-                  <td className="px-3 py-2">{o.store_name || "-"}</td>
-                  <td className="px-3 py-2">
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-muted">
-                      {ORDER_STATUS_LABELS[o.status] || o.status}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2 text-right font-medium">${Number(o.total).toLocaleString("es-AR")}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <Card>
+        <SectionHeader title="Pedidos recientes" />
+        <CardContent className="mt-4">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Fecha</TableHead>
+                  <TableHead>Comercio</TableHead>
+                  <TableHead>Estado</TableHead>
+                  <TableHead className="text-right">Total</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {orders.slice(0, 10).map((o) => (
+                  <TableRow key={o.id}>
+                    <TableCell className="text-xs">
+                      {new Date(o.created_at).toLocaleDateString("es-AR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                    </TableCell>
+                    <TableCell>{o.store_name || "-"}</TableCell>
+                    <TableCell>
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-muted">
+                        {ORDER_STATUS_LABELS[o.status] || o.status}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-right font-medium tabular-nums">
+                      ${Number(o.total).toLocaleString("es-AR")}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
 
-      <div className="border border-border rounded-xl p-4 bg-card flex flex-col sm:flex-row sm:items-center gap-3">
-        <div className="flex-1 min-w-0">
-          <h2 className="font-medium text-sm">📣 Difundir Portal 659</h2>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Mandá este link a comercios que quieras sumar: explica beneficios, planes y lleva al registro.
-          </p>
-          <p className="text-xs text-muted-foreground mt-1 font-mono truncate">
-            portal659.com.ar{comerciosUrl}
-          </p>
+      <Card>
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+          <div className="flex-1 min-w-0">
+            <p className="ts-subtitle">📣 Difundir Portal 659</p>
+            <p className="ts-body text-muted-foreground mt-0.5">
+              Mandá este link a comercios que quieras sumar: explica beneficios, planes y lleva al registro.
+            </p>
+            <p className="ts-body mt-1 font-mono truncate">
+              portal659.com.ar{comerciosUrl}
+            </p>
+          </div>
+          <div className="flex gap-2 flex-shrink-0">
+            <Button asChild variant="secondary" size="sm">
+              <a href={comerciosUrl} target="_blank" rel="noopener noreferrer">
+                Ver página
+              </a>
+            </Button>
+            <Button type="button" variant="secondary" size="sm" onClick={copyComerciosLink}>
+              {shareCopied ? "¡Copiado!" : "Copiar link"}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => {
+                const url = `${window.location.origin}${comerciosUrl}`;
+                const text = `Mirá Portal 659, el centro comercial de tu barrio 🏘️ Tu comercio online con carta y QR, pedidos por WhatsApp y 0% de comisión: ${url}`;
+                window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank", "noopener,noreferrer");
+              }}
+              className="bg-green-500 text-white hover:bg-green-600"
+            >
+              💬 Por WhatsApp
+            </Button>
+          </div>
         </div>
-        <div className="flex gap-2 flex-shrink-0">
-          <a
-            href={comerciosUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="rounded-lg border border-border px-3 py-2 text-xs font-medium hover:bg-muted transition-colors"
-          >
-            Ver página
-          </a>
-          <button
-            type="button"
-            onClick={copyComerciosLink}
-            className="rounded-lg border border-border px-3 py-2 text-xs font-medium hover:bg-muted transition-colors"
-          >
-            {shareCopied ? "¡Copiado!" : "Copiar link"}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              const url = `${window.location.origin}${comerciosUrl}`;
-              const text = `Mirá Portal 659, el centro comercial de tu barrio 🏘️ Tu comercio online con carta y QR, pedidos por WhatsApp y 0% de comisión: ${url}`;
-              window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank", "noopener,noreferrer");
-            }}
-            className="rounded-lg bg-green-500 text-white px-3 py-2 text-xs font-medium hover:bg-green-600 transition-colors"
-          >
-            💬 Por WhatsApp
-          </button>
-        </div>
-      </div>
+      </Card>
     </div>
   );
 }

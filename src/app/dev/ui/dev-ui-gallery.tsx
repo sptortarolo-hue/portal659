@@ -23,6 +23,12 @@ import {
   Stepper,
   EmptyState,
   PanelUiSwitch,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
 } from "@/components/panel-ui";
 
 /**
@@ -253,6 +259,47 @@ export default function DevUiGallery() {
             </span>
             <Button size="sm">Probá el foco (Tab)</Button>
           </div>
+        </Card>
+
+        {/* Tabla del kit (la usan el panel de comercio y el de admin) */}
+        <h3 className="ts-subtitle mt-10">Tabla</h3>
+        <Card className="mt-3">
+          <SectionHeader
+            title="Pedidos recientes"
+            hint="Encabezado en muted, filas con línea de 1px y tipografía del kit."
+          />
+          <CardContent className="mt-4">
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Fecha</TableHead>
+                    <TableHead>Comercio</TableHead>
+                    <TableHead>Estado</TableHead>
+                    <TableHead className="text-right">Total</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {[
+                    { fecha: "01/11 10:24", comercio: "Kiosco La Esquina", estado: "Entregado", total: "$8.400" },
+                    { fecha: "01/11 09:02", comercio: "Pizzería Don Pepe", estado: "En camino", total: "$32.100" },
+                    { fecha: "31/10 22:41", comercio: "Verdulería Del barrio", estado: "Nuevo", total: "$5.900" },
+                  ].map((o) => (
+                    <TableRow key={o.fecha + o.comercio}>
+                      <TableCell className="text-xs">{o.fecha}</TableCell>
+                      <TableCell>{o.comercio}</TableCell>
+                      <TableCell>
+                        <Badge tone={o.estado === "Nuevo" ? "warning" : o.estado === "Entregado" ? "success" : "info"}>
+                          {o.estado}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right font-medium tabular-nums">{o.total}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
         </Card>
 
         <h3 className="ts-subtitle mt-10">Lenguaje del panel</h3>

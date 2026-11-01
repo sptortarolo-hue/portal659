@@ -9,10 +9,11 @@
  * este script (que falla si un token no coincide exactamente).
  *
  * Comprueba:
- *   1. los tokens del theme están con su valor exacto (claro y oscuro),
- *      incluido el accent ámbar y sus variantes de oscuro;
+ *   1. los tokens del theme están con su valor exacto (claro y oscuro);
  *   2. los tokens viven bajo `.ts-ui`, NUNCA en `:root` (el sitio público
- *      no se puede repintar) y no quedó la lima de una versión anterior;
+ *      no se puede repintar);
+ *   2b. el accent del panel es la lima de la marca (identidad) y el
+ *      override queda documentado en el CSS con el valor del theme;
  *   3. la escala de sombras del theme está conectada a las utilidades
  *      shadow-* de Tailwind (en v4 hay que pisar `--tw-shadow`);
  *   4. los bordes por defecto usan el token, pero las utilidades de color
@@ -50,8 +51,6 @@ const SPEC_LIGHT = {
   "--color-secondary": "oklch(0.8153 0.2710 141.6680)",
   "--color-muted": "oklch(0.9551 0 0)",
   "--color-muted-foreground": "oklch(0.3211 0 0)",
-  "--color-accent": "oklch(0.7686 0.1647 70.0804)",
-  "--color-accent-foreground": "oklch(0 0 0)",
   "--color-destructive": "oklch(0.6368 0.2078 25.3313)",
   "--color-border": "oklch(0 0 0)",
   "--color-input": "oklch(0.5555 0 0)",
@@ -59,8 +58,6 @@ const SPEC_LIGHT = {
   "--color-sidebar": "oklch(0.9789 0.0082 121.6272)",
   "--color-sidebar-primary": "oklch(0.5106 0.2301 276.9656)",
   "--color-sidebar-primary-foreground": "oklch(1 0 0)",
-  "--color-sidebar-accent": "oklch(0.7686 0.1647 70.0804)",
-  "--color-sidebar-accent-foreground": "oklch(0 0 0)",
   "--color-sidebar-border": "oklch(0 0 0)",
   "--color-sidebar-ring": "oklch(0.7853 0.1041 274.7134)",
   "--color-chart-1": "oklch(0.5106 0.2301 276.9656)",
@@ -82,8 +79,6 @@ const SPEC_DARK = {
   "--color-primary-foreground": "oklch(0 0 0)",
   "--color-muted": "oklch(0.3211 0 0)",
   "--color-muted-foreground": "oklch(0.8452 0 0)",
-  "--color-accent": "oklch(0.8790 0.1534 91.6054)",
-  "--color-accent-foreground": "oklch(0 0 0)",
   "--color-destructive": "oklch(0.7467 0.2202 324.8734)",
   "--color-border": "oklch(0.4459 0 0)",
   "--color-input": "oklch(1 0 0)",
@@ -92,8 +87,6 @@ const SPEC_DARK = {
   "--color-sidebar-foreground": "oklch(1 0 0)",
   "--color-sidebar-primary": "oklch(0.6801 0.1583 276.9349)",
   "--color-sidebar-primary-foreground": "oklch(0 0 0)",
-  "--color-sidebar-accent": "oklch(0.8790 0.1534 91.6054)",
-  "--color-sidebar-accent-foreground": "oklch(0 0 0)",
   "--color-sidebar-border": "oklch(1 0 0)",
   "--color-sidebar-ring": "oklch(0.6801 0.1583 276.9349)",
   "--color-chart-1": "oklch(0.6801 0.1583 276.9349)",
@@ -153,18 +146,44 @@ check(
   css.includes(".ts-ui {") && !css.includes(":root {"),
 );
 
-// 2b. El theme manda: dentro del panel NO puede quedar la lima de antes
-// (#a3e635) ni ningún color hardcodeado en los tokens del theme.
+// 2b. Identidad de marca: el accent del panel es la LIMA de Portal 659
+// (el theme pide naranja). Es el único override de color, y tiene que
+// quedar documentado en el CSS con el valor original del theme.
+const BRAND_ACCENT = "#a3e635";
 check(
-  "no queda la lima #a3e635 en los tokens del panel",
-  !lightCss.includes("#a3e635") && !darkCss.includes("#a3e635"),
+  "el accent del panel es la lima de la marca (identidad)",
+  lightCss.includes(`--color-accent: ${BRAND_ACCENT};`) &&
+    darkCss.includes(`--color-accent: ${BRAND_ACCENT};`) &&
+    lightCss.includes(`--color-sidebar-accent: ${BRAND_ACCENT};`) &&
+    darkCss.includes(`--color-sidebar-accent: ${BRAND_ACCENT};`),
 );
 check(
-  "el ítem activo del riel y el 'Hoy' siguen al accent del theme",
+  "el override de marca está documentado con el valor del theme",
+  /oklch\(0\.7686 0\.1647 70\.0804\)/.test(css) &&
+    /oklch\(0\.8790 0\.1534 91\.6054\)/.test(css),
+);
+check(
+  "el ítem activo del riel y el 'Hoy' siguen al accent del panel",
   lightCss.includes("--color-primary-light: var(--color-accent)") &&
     lightCss.includes("--color-sun: var(--color-accent)") &&
     darkCss.includes("--color-primary-light: var(--color-accent)") &&
     darkCss.includes("--color-sun: var(--color-accent)"),
+);
+/** Nombres de token donde la lima puede aparecer (identidad de marca). */
+const BRAND_TOKENS = new Set([
+  "--color-accent",
+  "--color-sidebar-accent",
+  "--ts-accent-strong",
+]);
+const limaTokens = (cssText) =>
+  [...cssText.matchAll(/(--[a-z0-9-]+)\s*:\s*#a3e635\s*;/g)].map((m) => m[1]);
+check(
+  "la lima solo aparece en los tokens de marca (accent/sidebar-accent/accent-strong)",
+  limaTokens(lightCss).every((t) => BRAND_TOKENS.has(t)) &&
+    limaTokens(darkCss).every((t) => BRAND_TOKENS.has(t)) &&
+    limaTokens(lightCss).length >= 2 &&
+    limaTokens(darkCss).length >= 2,
+  [...limaTokens(lightCss), ...limaTokens(darkCss)].join(", "),
 );
 
 // 3. Sombras: en Tailwind v4 las shadow-* fijan --tw-shadow, hay que pisarla.

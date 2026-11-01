@@ -13,6 +13,10 @@ type MeResponse = {
     eligibleForPaid: boolean;
     trialActive: boolean;
     active: boolean;
+    expired: boolean;
+    plan?: {
+      slug: string;
+    };
   };
 };
 
@@ -58,6 +62,15 @@ export function PlanesCta({ slug, planName, trial }: { slug: string; planName: s
 
   if (loading) {
     return <Button className="w-full" disabled>Cargando...</Button>;
+  }
+
+  // Si el comercio ya tuvo un plan y se le vence, no mostrar opción de activar plan gratuito
+  if (me?.effective?.expired && me?.effective?.plan?.slug !== "gratuito") {
+    return (
+      <Button className="w-full" variant="outline" onClick={() => router.push("/vendor/suscripcion")}>
+        Ver mi suscripción
+      </Button>
+    );
   }
 
   if (me?.effective?.status === "trial" || me?.effective?.status === "active") {

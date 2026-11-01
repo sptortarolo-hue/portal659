@@ -23,6 +23,9 @@ export async function POST(request: Request) {
   // Info de efectivo para precuenta (viene del panel, es solo informativa).
   const cashPct = Number(body.cashPct) || 0;
   const cashTotal = Number(body.cashTotal) || 0;
+  // "¿Con cuánto paga?" (efectivo): el cierre de mesa imprime el vuelto de la
+  // CUENTA (no del pedido portador), así que viaja como el total del ticket.
+  const cashAmount = Number(body.cashAmount) > 0 ? Math.round(Number(body.cashAmount) * 100) / 100 : null;
 
   const vendor = await queryOne<PrinterVendor & Vendor>(
     `SELECT * FROM vendors WHERE id = $1 LIMIT 1`,
@@ -540,6 +543,9 @@ export async function POST(request: Request) {
             total: Number(total),
           }
         : {}),
+      // "¿Con cuánto paga?" (efectivo): el cierre de mesa fiscal muestra el
+      // vuelto de la cuenta. Fuera de la mesa el pedido ya trae cash_amount.
+      ...(cashAmount != null ? { cashAmount } : {}),
       ...(await fiadoBalanceExtra(vendor.id, order)),
     },
   });

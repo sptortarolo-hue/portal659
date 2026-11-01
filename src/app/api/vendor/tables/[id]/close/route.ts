@@ -42,6 +42,10 @@ export async function POST(
   const paymentMethod = ["efectivo", "transferencia", "tarjeta", "mixto", "whatsapp"].includes(body?.paymentMethod)
     ? body.paymentMethod
     : "efectivo";
+  // "¿Con cuánto paga?" (mesa, efectivo). Opcional y tolerante: se valida
+  // contra el total REAL recién re-resuelto (cash + volumen + manual); si no
+  // alcanza o no es efectivo, se ignora.
+  const cashAmountRaw = Number(body?.cashAmount);
 
   // Descuento manual al cobrar ($ o % con motivo). Si no viene, se conserva
   // el ya guardado en cada cuenta (recalculado sobre la cuenta final).
@@ -352,6 +356,15 @@ export async function POST(
 
   // Total a cobrar: suma de las cuentas re-resueltas.
   const total = [...perOrder.values()].reduce((s, d) => s + d.total, 0);
+  // "¿Con cuánto paga?": el vuelto no se guarda por pedido (cada cuenta de la
+  // mesa tiene su propio total: un "vuelto" por cuenta mentiría en el
+  // detalle). Viaja al panel para mostrarlo y al ticket fiscal del cierre.
+  const cashAmountFinal =
+    paymentMethod === "efectivo" && Number.isFinite(cashAmountRaw) && cashAmountRaw > 0 && cashAmountRaw >= total - 0.001
+      ? Math.round(cashAmountRaw * 100) / 100
+      : null;
+  const cashChangeFinal =
+    cashAmountFinal != null ? Math.round(Math.max(0, cashAmountFinal - total) * 100) / 100 : 0;
   const now = new Date().toISOString();
 
   await withTransaction(async (tx) => {
@@ -404,6 +417,9 @@ export async function POST(
     manualDiscount: manualDiscountTotal > 0 ? Math.round(manualDiscountTotal * 100) / 100 : 0,
     ordersClosed: list.length,
     paymentMethod,
+    // "¿Con cuánto paga?" (efectivo): null si no se cargó o no alcanzaba.
+    cashAmount: cashAmountFinal,
+    change: cashChangeFinal,
     // Factura C de la cuenta (check "con fiscal" en Mesas): pedidos cerrados
     // en ESTE cierre, principal (el más nuevo, donde se adjunta la factura,
     // UNIQUE vendor+order) e ítems agregados de toda la mesa.

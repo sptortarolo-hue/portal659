@@ -64,6 +64,7 @@ export async function POST(request: Request) {
     deliveryZoneId,
     deliveryOutOfArea,
     deliveryManualFee,
+    cashAmount,
   } = body;
 
   // Venta directa (mostrador, todos los verticales): vende en el acto sin
@@ -99,6 +100,12 @@ export async function POST(request: Request) {
   const payment = (PAYMENT_METHODS as readonly string[]).includes(paymentMethod)
     ? (paymentMethod as PaymentMethod)
     : "efectivo";
+
+  // "¿Con cuánto paga?" (mostrador, efectivo): monto con el que abona el
+  // cliente. Se valida contra el total REAL más abajo (el servidor lo
+  // recalcula: cash, volumen, giftcard, envío y descuento manual). Es
+  // opcional y tolerante: vacío, no numérico o faltante → no se guarda nada.
+  const cashAmountIn = Number(cashAmount);
 
   // Fiado: exige cliente identificado con teléfono real (cuaderno sin
   // teléfono no existe). Sin descuento en efectivo (es crédito, no cash).
@@ -226,6 +233,21 @@ export async function POST(request: Request) {
     hasManualCol = mc?.exists === true;
   } catch {
     hasManualCol = false;
+  }
+  // Columna "con cuánto abona" (migrate-order-cash-amount.sql, tolerante a
+  // migración sin aplicar): sin la columna el mostrador funciona igual, solo
+  // no queda registrado el vuelto en el pedido/ticket.
+  let hasCashAmountCol = false;
+  try {
+    const cc = await queryOne<{ exists: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1 FROM information_schema.columns
+         WHERE table_name = 'orders' AND column_name = 'cash_amount'
+       ) AS exists`
+    );
+    hasCashAmountCol = cc?.exists === true;
+  } catch {
+    hasCashAmountCol = false;
   }
 
   const now = new Date().toISOString();
@@ -435,6 +457,18 @@ export async function POST(request: Request) {
     }
 
     const pickupNumber = await nextOrderNumber(tx, gate.vendor.id);
+    // "¿Con cuánto paga?" (mostrador, efectivo): valido contra el total FINAL
+    // recién calculado (cash + volumen + giftcard + descuento manual + envío).
+    // Opcional y tolerante: si no alcanza, si no es efectivo o si falta la
+    // columna, no se guarda (nunca rompe la venta).
+    const cashAmountFinal =
+      hasCashAmountCol &&
+      payment === "efectivo" &&
+      Number.isFinite(cashAmountIn) &&
+      cashAmountIn > 0 &&
+      cashAmountIn >= finalTotal - 0.001
+        ? Math.round(cashAmountIn * 100) / 100
+        : null;
     // payment_status: tolerante a migración sin aplicar.
     let hasPayStatus = false;
     try {
@@ -458,6 +492,7 @@ export async function POST(request: Request) {
       ...syncCols,
       ...(hasZoneCols ? ["delivery_zone_id", "delivery_zone_name", "delivery_out_of_area", "delivery_fee"] : []),
       ...(hasGiftcardCols ? ["giftcard_code", "giftcard_discount"] : []),
+      ...(hasCashAmountCol ? ["cash_amount"] : []),
     ];
     const vals: unknown[] = [
       gate.vendor.id,
@@ -486,6 +521,7 @@ export async function POST(request: Request) {
       ...(caps.ordersOccurredAt ? [occurredAt] : []),
       ...(hasZoneCols ? [deliveryResolved.zoneId, deliveryResolved.zoneName, deliveryResolved.outOfArea, deliveryResolved.fee] : []),
       ...(hasGiftcardCols ? [giftcardCodeFinal, giftcardApplied] : []),
+      ...(hasCashAmountCol ? [cashAmountFinal] : []),
     ];
     const placeholders = vals.map((_, i) => `$${i + 1}`).join(", ");
     const order = await tx.queryOne<Record<string, any>>(

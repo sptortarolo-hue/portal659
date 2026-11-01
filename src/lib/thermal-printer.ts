@@ -696,6 +696,12 @@ export type ReceiptExtra = {
   /** Factura electrónica ARCA (se imprime bloque fiscal con CAE + QR). */
   fiscal?: FiscalPrintInfo | null;
   /**
+   * "¿Con cuánto paga?" (efectivo): monto con el que abona el cliente, para
+   * imprimir "Abona con / Vuelto". Pisa `order.cash_amount` cuando el total
+   * impreso no es el del pedido (cierre de mesa: el total es de la cuenta).
+   */
+  cashAmount?: number | null;
+  /**
    * Cierre de mesa fiscal: los ítems y el total vienen de la CUENTA (varias
    * consumiciones sumadas por close), no del pedido individual que se usa
    * solo como portador de la factura. Presentes → pisan los del pedido y se
@@ -993,8 +999,14 @@ async function composeReceipt(
   printer.println(`Pago: ${paymentStr} — ${paidStr}`);
   printer.bold(false);
   // "¿Con cuánto abonás?": el que cobra sabe cuánto vuelto dar.
-  const receiptAbona = Number((order as any)?.cash_amount) || 0;
-  if (order.payment_method === "efectivo" && receiptAbona > 0) {
+  // `extra.cashAmount` manda sobre `order.cash_amount` cuando el total impreso
+  // no es el del pedido (cierre de mesa: el total es de la cuenta). Viene del
+  // cierre, que solo lo acepta si la mesa se cobró EN EFECTIVO, así que tener
+  // el monto ya alcanza para imprimirlo (el `payment_method` del pedido
+  // portador puede quedar del momento en que se cargó la consumición).
+  const receiptAbona =
+    Number(extra?.cashAmount) > 0 ? Number(extra?.cashAmount) : Number((order as any)?.cash_amount) || 0;
+  if (receiptAbona > 0 && (Number(extra?.cashAmount) > 0 || order.payment_method === "efectivo")) {
     printer.println(`Abona con: $${receiptAbona.toLocaleString("es-AR")}`);
     const receiptChange = Math.max(0, Math.round((receiptAbona - receiptTotal) * 100) / 100);
     printer.bold(true);

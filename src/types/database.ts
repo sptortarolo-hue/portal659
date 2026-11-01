@@ -762,6 +762,8 @@ export type Order = {
   cash_discount?: number | null;
     /** % de descuento en efectivo aplicado. */
     cash_pct?: number | null;
+    /** "¿Con cuánto paga?" (efectivo): monto con el que abona el cliente. Sirve para saber el vuelto a dar (ticket, comanda, detalle). */
+    cash_amount?: number | null;
     /** Descuento por volumen aplicado (detalle para ticket/WhatsApp). */
     volume_discount?: number | null;
   /** Pedido de prueba (modo preview). true = no cuenta en topes/métricas/ingresos. */

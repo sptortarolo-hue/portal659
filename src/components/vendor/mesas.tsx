@@ -9,6 +9,7 @@ import { ModifierPicker } from "@/components/offers/modifier-picker";
 import { ProductImage } from "@/components/product-image";
 import { ProductPickCard } from "@/components/vendor/product-pick-card";
 import { cashAppliesToItem, normalizeCashPct } from "@/lib/cash-discount";
+import { tenderState } from "@/lib/cash-tender";
 import { mirrorVolume } from "@/lib/volume-mirror";
 import { cartLineTotal } from "@/lib/order-line";
 import type { CartItem, CartVolumeGroup } from "@/lib/cart";
@@ -20,6 +21,7 @@ import { describePrintError, dispatchOfflinePrint, markPrintsDone } from "@/lib/
 
 import { SYNC_COMPLETED_EVENT } from "@/lib/sync-engine";
 import { useCashShift } from "@/lib/use-cash-shift";
+import { CashTender } from "@/components/vendor/cash-tender";
 import { FiscalSaleFields } from "@/components/vendor/fiscal-receptor";
 import { FloorPlan, type FloorDecor, type FloorTable } from "@/components/vendor/floor-plan";
 import {
@@ -474,6 +476,9 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
   const [modifiersMap, setModifiersMap] = useState<Record<string, ProductModifier[]>>({});
   const [pickerProduct, setPickerProduct] = useState<Product | null>(null);
   const [payment, setPayment] = useState("efectivo");
+  // "¿Con cuánto paga?" (efectivo, opcional): muestra el vuelto antes de
+  // cerrar y viaja al cierre (y al ticket fiscal). Vacío = no se manda nada.
+  const [cashAmount, setCashAmount] = useState("");
   // Mobile: la mesa se divide en 2 pantallas — "catalog" (sticky buscador +
   // pastillas + grilla) y "detail" (cuenta: consumiciones, precuenta, cobro).
   const [mobileView, setMobileView] = useState<"catalog" | "detail">("catalog");
@@ -485,6 +490,8 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
     cart: { product_id: string; name: string; price: number; qty: number; requires_prep: boolean; modifiers?: CartModifier[]; packSize?: number; manual?: boolean }[];
     payment: string;
     mobileView: "catalog" | "detail";
+    /** "¿Con cuánto paga?" (efectivo): sobrevive al borrador de la mesa. */
+    cashAmount: string;
   };
   useEffect(() => {
     if (mesaDraftReady.current || !vendorId || tables.length === 0) return;
@@ -499,6 +506,7 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
         const match = tables.find((t) => t.id === d.selectedId);
         if (match) setSelected(match);
       }
+      setCashAmount(d.cashAmount || "");
       if ((d.cart || []).length > 0 || d.selectedId) setMesaRestored(true);
     } catch { /* borrador corrupto: se ignora */ }
   }, [vendorId, tables]);
@@ -511,11 +519,11 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
       }
       saveDraft(vendorId, "mesa", {
         selectedId: selected?.id || null,
-        cart, payment, mobileView,
+        cart, payment, mobileView, cashAmount,
       } satisfies MesaDraft);
     }, 400);
     return () => clearTimeout(t);
-  }, [cart, selected, payment, mobileView, vendorId]);
+  }, [cart, selected, payment, mobileView, cashAmount, vendorId]);
   const [printingTicket, setPrintingTicket] = useState(false);
   // Cobro parcial de la cuenta de la mesa.
   const [partialPayOpen, setPartialPayOpen] = useState(false);
@@ -1352,6 +1360,9 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
       client_key: newClientKey(),
       occurred_at: new Date().toISOString(),
       expected_keys,
+      // "¿Con cuánto paga?" (efectivo, opcional): validado por el servidor
+      // contra el total real de la cuenta.
+      cashAmount: cashToSend,
       // Meta solo-cliente (el servidor la ignora): permite rehidratar el
       // ledger tras un reload sin red.
       tableId,
@@ -1431,6 +1442,9 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
       setFiscalReceptorCond("6");
       setMsg(
         `📡 ${tableName} cobrada ($${closeTotal.toLocaleString("es-AR")}, estimado) — se sincroniza al reconectar` +
+        (cashToSend
+          ? ` · abona $${cashToSend.toLocaleString("es-AR")} (vuelto $${Math.max(0, Math.round((cashToSend - closeTotal) * 100) / 100).toLocaleString("es-AR")})`
+          : "") +
         (fiscalReady && withFiscal ? " · 🧾 sin factura (offline)" : "")
       );
       setTimeout(() => setMsg(""), 4000);
@@ -1453,7 +1467,7 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
       res = await fetch(`/api/vendor/tables/${tableId}/close`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ paymentMethod: payment, manualDiscount: tableManualPayload }),
+        body: JSON.stringify({ paymentMethod: payment, manualDiscount: tableManualPayload, cashAmount: cashToSend }),
       });
     } catch (e) {
       if (isNetworkError(e)) {
@@ -1480,7 +1494,14 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
           : "") +
         (Number(data.cashDiscount) > 0
           ? ` (desc. efectivo −$${Number(data.cashDiscount).toLocaleString("es-AR")})`
+          : "") +
+        // "¿Con cuánto paga?": el servidor devuelve el monto validado contra
+        // el total real de la cuenta (null si no se cargó o no alcanzaba).
+        (Number(data.cashAmount) > 0
+          ? ` · abona $${Number(data.cashAmount).toLocaleString("es-AR")} (vuelto $${Number(data.change ?? 0).toLocaleString("es-AR")})`
           : "");
+      // El vuelto no se arrastra a la próxima mesa.
+      setCashAmount("");
       // Reset fiscal por venta (no se arrastra a la próxima mesa).
       setWithFiscal(false);
       setFiscalReceptorTipo("cf");
@@ -1536,6 +1557,9 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
                   tableName,
                   items: Array.isArray(data.fiscalItems) ? data.fiscalItems : [],
                   total: Number(data.total),
+                  // "¿Con cuánto paga?" (efectivo): el ticket imprime el vuelto
+                  // de la CUENTA (el pedido portador tiene otro total).
+                  cashAmount: Number(data.cashAmount) > 0 ? Number(data.cashAmount) : undefined,
                 }),
               }),
               "El ticket fiscal"
@@ -1647,6 +1671,10 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
       : 0;
   // Con efectivo se cobra el neto con descuento; con otros medios, el neto.
   const mesaPayTotal = Math.max(0, Math.round((mesaNet - uiManualAmount - (payment === "efectivo" ? mesaCash.cashDiscount : 0)) * 100) / 100);
+  // "¿Con cuánto paga?" (efectivo): `ok` = el monto escrito alcanza el total
+  // y por lo tanto se manda al cierre (si no, se ignora: nunca bloquea).
+  const cashTender = tenderState(cashAmount, mesaPayTotal);
+  const cashToSend = cashTender.ok && payment === "efectivo" ? cashTender.amount : undefined;
   /** Payload de descuento manual para consumición/cierre (undefined = sin descuento). */
   const tableManualPayload = uiManualAmount > 0
     ? { kind: discountKind, value: Number(discountValue), reason: discountReason.trim() || undefined }
@@ -2339,6 +2367,16 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
                       : `💵 Pagando en efectivo: $${(mesaNet - mesaCash.cashDiscount).toLocaleString("es-AR")} (−${mesaCash.cashPct}%)`}
                   </p>
                 )}
+                {/* "¿Con cuánto paga?" (efectivo): el vuelto antes de cerrar. */}
+                {payment === "efectivo" && (
+                  <CashTender
+                    total={mesaPayTotal}
+                    value={cashAmount}
+                    onChange={setCashAmount}
+                    compact
+                    className="flex-shrink-0"
+                  />
+                )}
                 <div className="flex-shrink-0">{manualChargeRow}</div>
                 <Button size="sm" className="flex-shrink-0" disabled={cart.length === 0 || resBlocked} onClick={addConsumicion}>Agregar consumición</Button>
                 {resBlocked && (
@@ -2580,6 +2618,10 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
                         ? `💵 Desc. efectivo (${mesaCash.cashPct}%) aplicado: −$${mesaCash.cashDiscount.toLocaleString("es-AR")}`
                         : `💵 Pagando en efectivo: $${(mesaNet - mesaCash.cashDiscount).toLocaleString("es-AR")} (−${mesaCash.cashPct}%)`}
                     </p>
+                  )}
+                  {/* "¿Con cuánto paga?" (efectivo): el vuelto antes de cerrar. */}
+                  {payment === "efectivo" && (
+                    <CashTender total={mesaPayTotal} value={cashAmount} onChange={setCashAmount} compact />
                   )}
                   <div className="grid grid-cols-1 gap-1.5">
                     {resBlocked && (

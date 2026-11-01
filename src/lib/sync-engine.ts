@@ -133,6 +133,8 @@ async function processAction(
         client_key: p.client_key,
         occurred_at: p.occurred_at,
         expected_keys: p.expected_keys,
+        // "¿Con cuánto paga?" (efectivo): el cierre se arma campo por campo.
+        cashAmount: p.cashAmount,
       });
       if (r.status === 401) return { done: false, auth: true };
       // Faltan consumiciones por sincronizar: se reintenta más tarde (las

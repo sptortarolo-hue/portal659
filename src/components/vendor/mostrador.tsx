@@ -7,6 +7,7 @@ import { ModifierPicker } from "@/components/offers/modifier-picker";
 import { ProductPickCard } from "@/components/vendor/product-pick-card";
 import { CustomerPicker, type LookupCustomer } from "@/components/vendor/customer-picker";
 import { cashAppliesToItem, normalizeCashPct } from "@/lib/cash-discount";
+import { tenderState } from "@/lib/cash-tender";
 import { mirrorVolume } from "@/lib/volume-mirror";
 import type { CartItem, CartVolumeGroup } from "@/lib/cart";
 import type { VolumeResult } from "@/lib/volume-pricing";
@@ -40,6 +41,7 @@ const OFFLINE_PAYMENT_LABELS: Record<string, string> = {
 };
 import { SYNC_COMPLETED_EVENT } from "@/lib/sync-engine";
 import { FiscalSaleFields } from "@/components/vendor/fiscal-receptor";
+import { CashTender } from "@/components/vendor/cash-tender";
 
 type ModifierOption = { label: string; price_mod: number };
 type ProductModifier = {
@@ -174,6 +176,9 @@ export function Mostrador({ vendorId }: { vendorId?: string | null }) {
   const [products, setProducts] = useState<Product[]>([]);
   const [items, setItems] = useState<LineItem[]>([]);
   const [payment, setPayment] = useState("efectivo");
+  // "¿Con cuánto paga?" (efectivo): opcional, para mostrar el vuelto antes de
+  // cobrar y dejarlo en el pedido/ticket. Vacío = no se manda nada.
+  const [cashAmount, setCashAmount] = useState("");
   const [customerName, setCustomerName] = useState("");
   // Canje de giftcard en mostrador (pagos en el acto): se valida y se
   // descuenta del total en vivo; si no nada cambia.
@@ -431,6 +436,10 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
         : Math.min(discountBase, Math.round(discountValNum * 100) / 100)
       : 0;
   const payableTotal = Math.max(0, Math.round((netSubtotal - activeCashDiscount + posDeliveryFee - giftcardAmount - manualDiscountAmount) * 100) / 100);
+  // "¿Con cuánto paga?" (efectivo): `ok` = el monto escrito alcanza el total
+  // y por lo tanto se manda al servidor (si no, se ignora: nunca bloquea).
+  const cashTender = tenderState(cashAmount, payableTotal);
+  const cashToSend = cashTender.ok && payment === "efectivo" ? cashTender.amount : undefined;
 
   // Chips de categoría agrupados por clave normalizada (trim+lowercase):
   // "Pizzas", "pizzas" o " Pizzas" forman un solo chip (igual que el micrositio).
@@ -1005,6 +1014,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
     fiscalReceptorNro: string; fiscalReceptorNombre: string;
     fiscalReceptorCond: string; posManualFee: string; sheetOpen: boolean;
     discountKind: "amount" | "percent"; discountValue: string; discountReason: string;
+    cashAmount: string;
   };
   // Restaurar una sola vez al montar (si hay borrador con ítems).
   useEffect(() => {
@@ -1029,6 +1039,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
         setFiscalReceptorNombre(d.fiscalReceptorNombre || "");
         setFiscalReceptorCond(d.fiscalReceptorCond || "6");
         setPosManualFee(d.posManualFee || "");
+        setCashAmount(d.cashAmount || "");
         if (d.sheetOpen === true) setSheetOpen(true);
         if (d.discountKind === "percent" || d.discountKind === "amount") setDiscountKind(d.discountKind);
         setDiscountValue(d.discountValue || "");
@@ -1050,10 +1061,11 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
         payment, method, notes, withFiscal, fiscalReceptorTipo,
         fiscalReceptorNro, fiscalReceptorNombre, fiscalReceptorCond, posManualFee,
         sheetOpen, discountKind, discountValue, discountReason,
+        cashAmount,
       } satisfies SaleDraft);
     }, 400);
     return () => clearTimeout(t);
-  }, [items, customerName, customerPhone, customerAddress, posReferences, payment, method, notes, withFiscal, fiscalReceptorTipo, fiscalReceptorNro, fiscalReceptorNombre, fiscalReceptorCond, posManualFee, sheetOpen, discountKind, discountValue, discountReason, vendorId]);
+  }, [items, customerName, customerPhone, customerAddress, posReferences, payment, method, notes, withFiscal, fiscalReceptorTipo, fiscalReceptorNro, fiscalReceptorNombre, fiscalReceptorCond, posManualFee, sheetOpen, discountKind, discountValue, discountReason, cashAmount, vendorId]);
   function discardDraft() {
     clearDraft(vendorId, "mostrador");
     setItems([]);
@@ -1072,6 +1084,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
     setGiftcardExpires(null);
     setGiftcardErr("");
     setGiftcardOpen(false);
+    setCashAmount("");
   }
   function addManualLine() {
     const name = manualName.trim() || "Varios";
@@ -1397,6 +1410,9 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
         ? { kind: discountKind, value: Number(discountValue), reason: discountReason.trim() || undefined }
         : undefined,
       notes: notes.trim() || null,
+      // "¿Con cuánto paga?" (efectivo, opcional): lo valida el servidor contra
+      // el total real. Vacío = no se guarda nada.
+      cashAmount: cashToSend,
       client_key: newClientKey(),
       occurred_at: new Date().toISOString(),
     };
@@ -1426,6 +1442,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
       setFiscalReceptorNro("");
       setFiscalReceptorNombre("");
       setFiscalReceptorCond("6");
+      setCashAmount("");
       setSheetOpen(false);
       setSaving(false);
     };
@@ -1519,6 +1536,11 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
             d.doc !== "COMANDA" && payment === "efectivo" && activeCashDiscount > 0
               ? payableTotal
               : 0,
+          // "¿Con cuánto paga?" (efectivo): el ticket offline sale con el vuelto.
+          cashAmount:
+            d.doc !== "COMANDA" && payment === "efectivo" && cashToSend
+              ? cashToSend
+              : null,
           createdAt: Date.now(),
         }).catch(() => ({ printed: false as const }));
         if (r.printed) {
@@ -1595,11 +1617,17 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
     // El servidor recalcula el descuento en efectivo (pos/order): el total
     // cobrado real viene en data.order.total.
     const netTotal = Number(data.order?.total ?? total);
-    const baseMsg = direct
+    // "¿Con cuánto paga?": el vuelto contra el total REAL (no el estimado).
+    // Va dentro de baseMsg para que todos los mensajes de salida lo muestren.
+    const tenderMsg =
+      cashToSend && cashToSend >= netTotal - 0.001
+        ? ` · abona $${cashToSend.toLocaleString("es-AR")} (vuelto $${Math.max(0, Math.round((cashToSend - netTotal) * 100) / 100).toLocaleString("es-AR")})`
+        : "";
+    const baseMsg = (direct
       ? `Venta registrada $${netTotal.toLocaleString("es-AR")}${withReceipt ? " · comprobante" : ""}`
       : isDelivery
       ? "Pedido a domicilio registrado"
-      : `Cobrado $${netTotal.toLocaleString("es-AR")}${withReceipt ? (isRetail ? " · comprobante" : " · comprobante de retiro") : ""}`;
+      : `Cobrado $${netTotal.toLocaleString("es-AR")}${withReceipt ? (isRetail ? " · comprobante" : " · comprobante de retiro") : ""}`) + tenderMsg;
 
     // /api/print responde 200 aunque el trabajo falle (ok:false en el body):
     // hay que leerlo, si no una comanda fallida pasa en silencio y sale
@@ -2555,6 +2583,16 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
             <p className="text-[11px] leading-snug text-green-700 dark:text-green-400">
               💵 Pagando en efectivo: ${(netSubtotal - cashResult.cashDiscount).toLocaleString("es-AR")}
             </p>
+          )}
+          {/* "¿Con cuánto paga?" (efectivo): el vuelto en vivo antes de cobrar. */}
+          {payment === "efectivo" && (
+            <CashTender
+              total={payableTotal}
+              value={cashAmount}
+              onChange={setCashAmount}
+              disabled={saving}
+              compact
+            />
           )}
         </div>
 

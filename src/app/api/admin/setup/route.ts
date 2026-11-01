@@ -1,8 +1,20 @@
 import { NextResponse } from "next/server";
 import { withTransaction } from "@/lib/db";
 import { hashPassword } from "@/lib/auth";
+import { isAdmin } from "@/lib/admin-utils";
+
+export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
+  // Alta de administradores: en PRODUCCIÓN solo puede hacerlo un admin que
+  // ya esté autenticado. Antes el endpoint era público y cualquiera que
+  // hiciera un POST se convertía en admin (agujero de seguridad).
+  // Para el primer admin (o para cambiar la clave del dueño) está el script
+  // scripts/create-admin-v2.mjs, que habla directo con la DB.
+  if (process.env.NODE_ENV === "production" && !(await isAdmin(request))) {
+    return NextResponse.json({ error: "No autorizado" }, { status: 403 });
+  }
+
   const { email, password, firstName, lastName, whatsapp } = await request.json();
 
   if (!email || !password || !firstName || !lastName) {

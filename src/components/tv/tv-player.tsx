@@ -19,6 +19,8 @@ import {
   columnSlotSeconds,
   heroSlotSeconds,
   nextSlotLabels,
+  qrInClosedScreen,
+  qrInHighlight,
 } from "@/lib/tv-rotation";
 import type { TvItem, TvSnapshot } from "@/lib/tv-snapshot";
 import type { TvTheme } from "@/lib/tv-config";
@@ -49,6 +51,8 @@ export function TvPlayer({ snapshot, token, mode, vertical, debug = false, fitPa
   const [heroSlotIdx, setHeroSlotIdx] = useState(0);
   /** Slot de la columna 9:16 en escena (split: destacado, poster o QR). */
   const [colSlotIdx, setColSlotIdx] = useState(0);
+  /** Oferta del pool que muestra la columna del split (rota con el destacado). */
+  const [colHeroIdx, setColHeroIdx] = useState(0);
   const [online, setOnline] = useState(true);
   const [shifted, setShifted] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
@@ -86,8 +90,9 @@ export function TvPlayer({ snapshot, token, mode, vertical, debug = false, fitPa
 
   // QR de pedidos online: lo genera el server (dataUrl) y es un DESTACADO más:
   // en el clásico rota en el banner superior y en el split en la columna 9:16.
-  // "cerrado" = solo en la pantalla de local cerrado; "abierto" = nunca ahí.
-  const qrInRotation = !!snap.qr && snap.config.qr?.mode !== "cerrado";
+  // El modo decide dónde aparece: "siempre" = destacado + cerrado,
+  // "abierto" = solo en el destacado, "cerrado" = solo al cerrar.
+  const qrInRotation = !!snap.qr && qrInHighlight(snap.config.qr?.mode);
   const qrSeconds = Math.max(5, snap.config.qr?.seconds ?? 12);
   const heroSeconds = Math.max(5, snap.config.hero?.seconds ?? 10);
 
@@ -193,12 +198,15 @@ export function TvPlayer({ snapshot, token, mode, vertical, debug = false, fitPa
   const heroProductIdx = heroSlot?.kind === "product" ? heroSlot.index : 0;
   const heroIsQr = heroSlot?.kind === "qr";
   useEffect(() => {
+    // El banner del destacado solo existe en el diseño clásico: en el split
+    // la columna lleva su propia rotación (abajo).
+    if (split) return;
     if (heroSlots.length <= 1) return;
     const slot = heroSlots[heroSlotIdx % heroSlots.length];
     const ms = heroSlotSeconds(slot, { heroSeconds, qrSeconds }) * 1000;
     const id = setTimeout(() => setHeroSlotIdx((i) => (i + 1) % heroSlots.length), ms);
     return () => clearTimeout(id);
-  }, [heroSlotIdx, heroSlots, heroSeconds, qrSeconds]);
+  }, [split, heroSlotIdx, heroSlots, heroSeconds, qrSeconds]);
 
   /** Los próximos slots de la rotación (chips "qué viene después"). */
   const heroNext = useMemo(
@@ -221,14 +229,23 @@ export function TvPlayer({ snapshot, token, mode, vertical, debug = false, fitPa
     if (columnSlots.length <= 1) return;
     const slot = columnSlots[colSlotIdx % columnSlots.length];
     const ms = columnSlotSeconds(slot, { heroSeconds, qrSeconds, posterSeconds }) * 1000;
-    const id = setTimeout(() => setColSlotIdx((i) => (i + 1) % columnSlots.length), ms);
+    const id = setTimeout(() => {
+      // Cuando termina una pieza de DESTACADO, la próxima muestra la
+      // SIGUIENTE oferta del pool (mismo ritmo que el banner clásico): el
+      // commerce ve rotar sus destacados en la columna, no siempre el mismo.
+      if (slot.kind === "hero") {
+        setColHeroIdx((i) => (i + 1) % Math.max(1, snap.hero.length));
+      }
+      setColSlotIdx((i) => (i + 1) % columnSlots.length);
+    }, ms);
     return () => clearTimeout(id);
-  }, [colSlotIdx, columnSlots, heroSeconds, qrSeconds, posterSeconds]);
+  }, [colSlotIdx, columnSlots, heroSeconds, qrSeconds, posterSeconds, snap.hero.length]);
 
   // Al publicar (cambia la versión) el destacado vuelve al primero.
   useEffect(() => {
     setHeroSlotIdx(0);
     setColSlotIdx(0);
+    setColHeroIdx(0);
   }, [snap.version]);
 
   // --- Cache offline: la TV sigue mostrando la última carta sin internet -----
@@ -334,7 +351,7 @@ export function TvPlayer({ snapshot, token, mode, vertical, debug = false, fitPa
   const closed = snap.vendor.isOpen === false && snap.config.closedScreen;
   // QR en la pantalla de cerrado: solo si el server lo generó y el modo lo
   // permite en cerrado ("siempre" | "cerrado"). En "abierto" no aparece acá.
-  const qrInClosed = !!snap.qr && snap.config.qr?.mode !== "abierto" ? snap.qr.dataUrl : null;
+  const qrInClosed = !!snap.qr && qrInClosedScreen(snap.config.qr?.mode) ? snap.qr.dataUrl : null;
   const slide = slides[Math.min(idx, Math.max(0, slides.length - 1))];
   // Duración de la slide actual: los posters tienen la suya.
   const slideDuration = slide?.poster ? slide.poster.durationSec : snap.config.slideSeconds;
@@ -429,7 +446,7 @@ export function TvPlayer({ snapshot, token, mode, vertical, debug = false, fitPa
                   qrDataUrl={qrInRotation ? snap.qr?.dataUrl ?? null : null}
                   qrSeconds={qrSeconds}
                   hero={snap.hero}
-                  index={heroProductIdx}
+                  index={colHeroIdx}
                   logoUrl={snap.vendor.logoUrl}
                   storeName={snap.vendor.name}
                   upsell={snap.config.upsell}

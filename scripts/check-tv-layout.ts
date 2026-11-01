@@ -23,6 +23,8 @@ import {
   columnSlotSeconds,
   heroSlotSeconds,
   nextSlotLabels,
+  qrInClosedScreen,
+  qrInHighlight,
 } from "../src/lib/tv-rotation.ts";
 
 const CONTENT_H = TV_CANVAS.h - TV_CANVAS.safeY * 2;
@@ -203,6 +205,14 @@ check(
   "chips: cuando viene el QR se anuncia como pedido online",
   nextSlotLabels(heroQr, 3, 2, []).some((l) => l.label.includes("Pedí online"))
 );
+
+// Caso 9: modos del QR ("Cuándo mostrarlo" en el editor).
+check("modo siempre: el QR va al destacado", qrInHighlight("siempre"));
+check("modo siempre: el QR va a la pantalla de cerrado", qrInClosedScreen("siempre"));
+check("modo abierto: el QR va al destacado", qrInHighlight("abierto"));
+check("modo abierto: el QR NO va a la pantalla de cerrado", !qrInClosedScreen("abierto"));
+check("modo cerrado: el QR NO va al destacado", !qrInHighlight("cerrado"));
+check("modo cerrado: el QR va a la pantalla de cerrado", qrInClosedScreen("cerrado"));
 
 if (failures > 0) {
   console.log(`\n${failures} verificación(es) fallaron`);

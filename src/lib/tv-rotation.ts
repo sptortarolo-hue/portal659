@@ -105,3 +105,26 @@ export function nextSlotLabels(
   }
   return out;
 }
+
+/** Modos del QR ("Cuándo mostrarlo" en el editor). */
+export type QrMode = "siempre" | "abierto" | "cerrado";
+
+/**
+ * ¿El QR aparece como DESTACADO con el local abierto?
+ *  - "siempre" → sí (destacado + pantalla de cerrado)
+ *  - "abierto" → sí (solo en el destacado)
+ *  - "cerrado" → no (solo en la pantalla de local cerrado)
+ */
+export function qrInHighlight(mode: QrMode | undefined): boolean {
+  return mode === "siempre" || mode === "abierto";
+}
+
+/**
+ * ¿El QR aparece en la pantalla de local cerrado?
+ *  - "siempre" → sí
+ *  - "abierto" → no (solo en el destacado, con el local abierto)
+ *  - "cerrado" → sí
+ */
+export function qrInClosedScreen(mode: QrMode | undefined): boolean {
+  return mode === "siempre" || mode === "cerrado";
+}

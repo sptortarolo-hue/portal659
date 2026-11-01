@@ -217,7 +217,7 @@ export function ProductsTable({
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="font-medium truncate">{offer.name}</span>
                         {offer.featured_today && (
-                          <Badge className="bg-sun/20 text-ink text-[10px] px-1.5 py-0">Hoy</Badge>
+                          <Badge className="bg-sun/15 text-[var(--ts-accent-strong)] text-[10px] px-1.5 py-0">Hoy</Badge>
                         )}
                         {offer.promo_only && (
                           <Badge className="bg-violet-100 text-violet-700 text-[10px] px-1.5 py-0">Solo promo</Badge>

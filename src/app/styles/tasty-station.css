@@ -2,17 +2,21 @@
    Panel UI — estilo "soft brutal" (spec v2 del usuario)
    Fondo verde suave · radios 1rem · bordes negros · sombras difusas
 
-   Origen: el theme (CSS vars) del spec v2 que pasó el usuario, traducido
-   a tokens de Tailwind. Todo lo que se aparta del spec está marcado como
-   OVERRIDE o como nota al pie de cada bloque.
+   EL THEME DEL USUARIO MANDA: este archivo es la traducción de ese theme
+   (tokens OKLCH) a los tokens de Tailwind del panel. Si el theme cambia,
+   se actualiza acá y se corre `node scripts/check-panel-ui.mjs`, que
+   verifica token por token que el panel no se desvíe (incluye el accent
+   ámbar y sus variantes de oscuro).
 
-   Overrides consciouses sobre el spec:
-     - `--accent` / `--sidebar-accent`: LIMA de Portal 659 (#a3e635) en vez
-       del ÁMBAR del spec (commit 31d276f).
-     - Sombras: se les suma un halo de 1px al 5% (el spec las deja en
+   Desvíos conscientes sobre el theme (documentados, no son overrides de
+   color):
+     - Sombras: se les suma un halo de 1px al 5% (el theme las deja en
        `0 0 0 0`), para el contorno suave de "soft brutal".
      - En oscuro el halo se invierte a claro para que las superficies se
        lean sobre el fondo negro.
+     - `--color-sun` / `--color-primary-light` (tokens del portal) siguen al
+       `--color-accent` del theme dentro del panel; la lima #a3e635 queda
+       solo para el sitio público (globals.css).
 
    REGLA DE ORO: los tokens van bajo `.ts-ui`, NUNCA en `:root`. Fuera de
    `.ts-ui` el sitio público y los micrositios siguen con los tokens de
@@ -24,6 +28,7 @@
      - los shells del panel (`/vendor/dashboard`, `/admin`) llevan `.ts-ui`
        siempre (no-op sin el attribute).
    Helper: src/lib/panel-ui.ts
+   Verificación: node scripts/check-panel-ui.mjs
    ========================================================================== */
 
 /* --------------------------------------------------------------------------
@@ -44,13 +49,14 @@
   --color-secondary-foreground: oklch(1 0 0);
   --color-muted: oklch(0.9551 0 0);
   --color-muted-foreground: oklch(0.3211 0 0);
-  /* OVERRIDE DE MARCA: el spec v2 pide ÁMBAR (oklch(0.7686 0.1647 70.0804),
-     y en oscuro un amarillo distinto: oklch(0.8790 0.1534 91.6054)).
-     Acá va la LIMA de Portal 659 (#a3e635) a pedido del usuario (commit
-     31d276f). Para volver al spec: cambiar --color-accent y
-     --color-sidebar-accent (en claro y en oscuro). */
-  --color-accent: #a3e635;
+  /* ACCENT DEL SPEC v2 (ámbar). Es el color de destacado del panel: ítem
+     activo del menú/riel, chips y "Hoy". EL THEME MANDA: si el usuario
+     actualiza el theme, se actualiza acá (lo verifica
+     `node scripts/check-panel-ui.mjs`). No hay overrides de marca. */
+  --color-accent: oklch(0.7686 0.1647 70.0804);
   --color-accent-foreground: oklch(0 0 0);
+  /* Ámbar fuerte para texto sobre tintes (badges translúcidos) en claro */
+  --ts-accent-strong: oklch(0.52 0.13 55);
   --color-destructive: oklch(0.6368 0.2078 25.3313);
   --color-destructive-foreground: oklch(1 0 0);
 
@@ -76,17 +82,19 @@
   --color-sidebar-foreground: oklch(0 0 0);
   --color-sidebar-primary: oklch(0.5106 0.2301 276.9656);
   --color-sidebar-primary-foreground: oklch(1 0 0);
-  /* LIMA de Portal 659 también en el sidebar-accent del spec */
-  --color-sidebar-accent: #a3e635;
+  /* Sidebar-accent del spec v2 = el mismo ámbar del accent */
+  --color-sidebar-accent: oklch(0.7686 0.1647 70.0804);
   --color-sidebar-accent-foreground: oklch(0 0 0);
   --color-sidebar-border: oklch(0 0 0);
   --color-sidebar-ring: oklch(0.7853 0.1041 274.7134);
 
-  /* El ítem activo del menú/riel usa el ACCENT (ahora el lima de Portal
-     659) con texto negro; el lima del spec como secundario sigue en los
-     chips activos y destacados. */
-  --color-primary-light: #a3e635;
+  /* El ítem activo del menú/riel usa el ACCENT del spec (ámbar) con texto
+     negro; el hover del riel usa el mismo token. */
+  --color-primary-light: var(--color-accent);
   --color-primary-accent: oklch(0 0 0);
+  /* "Hoy"/destacado del panel = el accent del spec. La lima #a3e635 queda
+     solo para el sitio público (tokens de globals.css). */
+  --color-sun: var(--color-accent);
 
   /* Layout del panel */
   --ts-sidebar-w: 240px;
@@ -166,11 +174,13 @@ html.dark .ts-ui {
   --color-secondary-foreground: oklch(0 0 0);
   --color-muted: oklch(0.3211 0 0);
   --color-muted-foreground: oklch(0.8452 0 0);
-  /* OVERRIDE DE MARCA: el spec v2 pide ÁMBAR/AMARILLO en oscuro
-     (oklch(0.8790 0.1534 91.6054)); va la LIMA de Portal 659, igual que en
-     claro. Ver la nota del bloque claro. */
-  --color-accent: #a3e635;
+  /* ACCENT DEL SPEC v2 en oscuro: el theme usa un amarillo distinto al de
+     claro (hue 91.6 vs 70.08). El theme manda. */
+  --color-accent: oklch(0.8790 0.1534 91.6054);
   --color-accent-foreground: oklch(0 0 0);
+  /* Ámbar fuerte para texto sobre tintes en oscuro (el del spec alcanza:
+     es claro y se lee sobre negro) */
+  --ts-accent-strong: oklch(0.8790 0.1534 91.6054);
   --color-destructive: oklch(0.7467 0.2202 324.8734);
   --color-destructive-foreground: oklch(0 0 0);
 
@@ -184,13 +194,16 @@ html.dark .ts-ui {
   --color-sidebar-foreground: oklch(1 0 0);
   --color-sidebar-primary: oklch(0.6801 0.1583 276.9349);
   --color-sidebar-primary-foreground: oklch(0 0 0);
-  --color-sidebar-accent: #a3e635;
+  --color-sidebar-accent: oklch(0.8790 0.1534 91.6054);
   --color-sidebar-accent-foreground: oklch(0 0 0);
   --color-sidebar-border: oklch(1 0 0);
   --color-sidebar-ring: oklch(0.6801 0.1583 276.9349);
 
-  --color-primary-light: #a3e635;
+  --color-primary-light: var(--color-accent);
   --color-primary-accent: oklch(1 0 0);
+  /* "Hoy"/destacado del panel = el accent del spec (la lima es del sitio
+     público) */
+  --color-sun: var(--color-accent);
 
   /* En oscuro la sombra se invierte (halo claro sobre el fondo negro) */
   --ts-shadow-card: 0 0 0 1px rgba(255, 255, 255, 0.06), 0 1px 2px -1px rgba(0, 0, 0, 0.4);
@@ -292,8 +305,8 @@ html[data-panel-ui="tasty"] .ts-ui :is(button, [role="button"]):active {
   }
 }
 
-/* Ítem activo del menú/riel: fondo LIMA (override de marca sobre el ÁMBAR
-   del spec) con texto negro y barra negra */
+/* Ítem activo del menú/riel: fondo ÁMBAR (accent del theme) con texto
+   negro y barra negra */
 html[data-panel-ui="tasty"] .ts-ui .bg-primary-light {
   background-color: var(--color-accent);
   color: oklch(0 0 0);

@@ -277,9 +277,8 @@ export default function DevUiGallery() {
               <p className="ts-caption text-muted-foreground">Color</p>
               <p className="ts-body mt-1">
                 Fondo <strong>verde suave</strong>, tarjetas blancas, azul para
-                las acciones, <strong>lima</strong> para el ítem activo del
-                menú (el spec pedía ámbar: es un override de marca) y verde
-                para los chips activos.
+                las acciones, <strong>ámbar</strong> (accent del theme) para el
+                ítem activo del menú y verde para los chips activos.
               </p>
             </div>
             <div>

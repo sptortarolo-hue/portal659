@@ -830,7 +830,7 @@ onAdd={async (name) => { const r = await apiJson("/api/vendor/categories", { met
                       <div className="flex items-center gap-1.5">
                         <span className="font-medium text-sm truncate">{offer.name}</span>
                         {offer.has_variants && <Badge variant="secondary" className="text-[10px] px-1.5 py-0">Variantes</Badge>}
-                        {offer.featured_today && <Badge className="bg-sun/20 text-ink text-[10px] px-1.5 py-0">Hoy</Badge>}
+                        {offer.featured_today && <Badge className="bg-sun/15 text-[var(--ts-accent-strong)] text-[10px] px-1.5 py-0">Hoy</Badge>}
                         {!offer.available && <Badge variant="secondary" className="text-[10px] px-1.5 py-0">Pausado</Badge>}
                       </div>
                       <p className="text-xs text-muted-foreground">

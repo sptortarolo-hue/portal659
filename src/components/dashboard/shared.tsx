@@ -822,7 +822,7 @@ export function OfferList({ offers, onEdit, onToggleFeatured, onToggleAvailable,
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5">
                     <span className="font-medium text-sm truncate">{offer.name}</span>
-                    {offer.featured_today && <Badge className="bg-sun/20 text-ink text-[10px] px-1.5 py-0">Hoy</Badge>}
+                    {offer.featured_today && <Badge className="bg-sun/15 text-[var(--ts-accent-strong)] text-[10px] px-1.5 py-0">Hoy</Badge>}
                     {!offer.available && <Badge variant="secondary" className="text-[10px] px-1.5 py-0">Pausado</Badge>}
                     {offer.promo_only && <Badge className="bg-violet-100 text-violet-700 text-[10px] px-1.5 py-0">Solo promo</Badge>}
                     {costByProduct?.[offer.id]?.cost !== null && costByProduct?.[offer.id]?.cost !== undefined && (

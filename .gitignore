@@ -28,3 +28,7 @@ promo-video/
 
 # Flyer promocional generado localmente (artefactos de build)
 promo-flyer/
+
+# Uploads locales (fotos de productos, comprobantes, posters de TV).
+# En produccion viven en el volumen Docker "uploads_data": NO se versionan.
+uploads/

@@ -247,9 +247,10 @@ export default function AdminConfigPage() {
           <div>
             <p className="text-sm font-medium">QR de pedidos online en la Pantalla TV</p>
             <p className="text-xs text-muted-foreground">
-              Muestra una pantalla con el QR para pedir desde el celular dentro de la carta
-              (y en la pantalla de local cerrado). Solo lo ven los comercios que venden online
-              y que lo activen en su pantalla.
+              Interruptor general de los QR de pedidos online en las pantallas. Está{" "}
+              <strong>encendido</strong>: cada comercio igual tiene que activarlo en su propia
+              pantalla (y vender online) para que se vea. Apagalo solo si querés sacarlo de todas
+              las pantallas del portal a la vez.
             </p>
           </div>
           {tvQrOnline === null ? (
@@ -278,8 +279,8 @@ export default function AdminConfigPage() {
           <p className="text-xs text-red-600 pt-3">{tvQrError}</p>
         )}
         {tvQrOnline === false && !tvQrError && (
-          <p className="text-xs text-muted-foreground pt-3">
-            Nadie ve el QR hasta que lo enciendas acá.
+          <p className="text-xs text-amber-700 pt-3">
+            Apagado: no se muestra el QR de pedidos online en ninguna pantalla del portal.
           </p>
         )}
       </div>

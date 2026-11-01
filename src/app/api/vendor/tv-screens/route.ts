@@ -3,6 +3,7 @@ import { guardTvScreens } from "@/lib/tv-guard";
 import { createScreen, hasUnpublishedDraft, listVendorScreens, loadCatalogSections } from "@/lib/tv-data";
 import { normalizeTvConfig } from "@/lib/tv-config";
 import { getPortalSetting } from "@/lib/portal-settings";
+import { isAdmin } from "@/lib/admin-utils";
 import {
   isGastroVendor,
   isModaVendor,
@@ -66,6 +67,9 @@ export async function GET(request: Request) {
     // switch del editor queda activo pero el QR nunca se muestra: el aviso
     // evita que el comercio espere un QR que no va a aparecer.
     qrAllowedByPortal: await getPortalSetting("tv_qr_online"),
+    // Si quien mira el editor es admin, puede ir directo a la configuración
+    // del portal a encender el interruptor global.
+    isAdmin: await isAdmin(request),
   });
 }
 

@@ -26,6 +26,8 @@ export function TvScreenManager({ enabled, maxScreens }: Props) {
   const [sellsOnline, setSellsOnline] = useState(false);
   /** ¿El portal habilitó el QR de pedidos online en las pantallas? */
   const [qrAllowed, setQrAllowed] = useState(true);
+  /** ¿El usuario actual es admin del portal? (atajo a /admin/config) */
+  const [isAdminUser, setIsAdminUser] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<ScreenApi | null>(null);
   const [qrFor, setQrFor] = useState<ScreenApi | null>(null);
@@ -46,6 +48,7 @@ export function TvScreenManager({ enabled, maxScreens }: Props) {
       setCategories(j.categories || []);
       setSellsOnline(!!j.sellsOnline);
       setQrAllowed(j.qrAllowedByPortal !== false);
+      setIsAdminUser(!!j.isAdmin);
       setMax(Number(j.maxScreens ?? maxScreens));
     } catch {
       setError("Sin conexión con el servidor");
@@ -242,6 +245,7 @@ export function TvScreenManager({ enabled, maxScreens }: Props) {
           categories={categories}
           sellsOnline={sellsOnline}
           qrAllowedByPortal={qrAllowed}
+          isAdmin={isAdminUser}
           onClose={() => setEditing(null)}
           onSaved={load}
         />

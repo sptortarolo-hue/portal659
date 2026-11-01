@@ -33,10 +33,12 @@ type Props = {
   sellsOnline?: boolean;
   /**
    * ¿El portal habilitó el QR de pedidos online en las pantallas? Si está
-   * apagado (switch global del admin), el QR no se muestra aunque el comercio
-   * lo active: se avisa para que no espere un QR que no va a aparecer.
+   * apagado (interruptor global del admin), el QR no se muestra aunque el
+   * comercio lo active: se avisa para que no espere un QR que no aparece.
    */
   qrAllowedByPortal?: boolean;
+  /** Si quien edita es admin: puede ir directo a la configuración del portal. */
+  isAdmin?: boolean;
   onClose: () => void;
   onSaved: () => void;
 };
@@ -52,6 +54,7 @@ export function TvScreenEditor({
   categories,
   sellsOnline = false,
   qrAllowedByPortal = true,
+  isAdmin = false,
   onClose,
   onSaved,
 }: Props) {
@@ -729,18 +732,31 @@ export function TvScreenEditor({
                   Activala en tu configuración para poder usarlo.
                 </p>
               ) : !qrAllowedByPortal ? (
-                /* El switch global del portal está apagado: aunque lo actives y
-                   publiques, el QR no se genera. Sin este aviso el comercio
-                   espera un QR que nunca aparece. */
-                <p className="mt-1.5 text-[11px] text-amber-600">
-                  El portal tiene desactivado el QR de pedidos online en las pantallas (lo activa
-                  el administrador). Pedinos que lo habiliten y el QR va a empezar a aparecer.
-                </p>
+                /* El interruptor global del portal está apagado: aunque el
+                   comercio lo active y publique, el QR no se genera. El aviso
+                   dice DÓNDE se enciende (Configuración del portal, sección
+                   Portal) y, si quien mira es admin, le da el atajo. */
+                <div className="mt-1.5 rounded-md border border-amber-200 bg-amber-50 p-2">
+                  <p className="text-[11px] text-amber-800">
+                    El portal tiene apagado el QR de pedidos online en todas las pantallas. Lo
+                    enciende un administrador en{" "}
+                    <strong>Configuración del portal → Portal → QR de pedidos online</strong>.
+                  </p>
+                  {isAdmin && (
+                    <a
+                      href="/admin/config"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-1.5 inline-block text-[11px] font-semibold text-amber-900 underline"
+                    >
+                      Abrir la configuración del portal ↗
+                    </a>
+                  )}
+                </div>
               ) : (
                 <p className="mt-1.5 text-[11px] text-muted-foreground">
                   Aparece cada tanto en la carta y/o en la pantalla de local cerrado, para que
-                  los clientes escaneen y pidan desde el celular. Requiere que el portal lo tenga
-                  habilitado.
+                  los clientes escaneen y pidan desde el celular.
                 </p>
               )}
 

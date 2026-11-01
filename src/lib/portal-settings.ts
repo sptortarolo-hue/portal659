@@ -9,9 +9,13 @@ export type PortalSettingKey = "wa_float" | "tv_qr_online";
 
 const DEFAULTS: Record<PortalSettingKey, boolean> = {
   wa_float: true,
-  // QR de pedidos online en la Pantalla TV: apagado por default (fail-safe:
-  // nada cambia para los comercios existentes hasta que el admin lo encienda).
-  tv_qr_online: false,
+  // QR de pedidos online en la Pantalla TV: ENCENDIDO por defecto. El QR
+  // igual solo aparece donde el comercio lo activa en su pantalla y vende
+  // online, así que el switch global no hace falta para "proteger" nada:
+  // sirve como interruptor de emergencia para sacarlo de todas las pantallas
+  // a la vez. Antes estaba en false y el QR no aparecía nunca (el comercio
+  // activaba su switch y no veía nada: el bug reportado).
+  tv_qr_online: true,
 };
 
 export async function getPortalSetting(key: PortalSettingKey): Promise<boolean> {

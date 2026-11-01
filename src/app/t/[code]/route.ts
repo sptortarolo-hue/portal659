@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { findScreenByShortCode, hasTvScreens } from "@/lib/tv-data";
+import { getSiteUrl } from "@/lib/site-url";
 
 export const dynamic = "force-dynamic";
 
@@ -28,8 +29,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ code
   const screen = await findScreenByShortCode(code);
   if (!screen) return new Response("No encontrada", { status: 404 });
 
-  // URL absoluta: el redirect tiene que llevar el dominio (la tele puede
-  // estar detrás de Cloudflare, así que usamos el host de la request).
-  const target = new URL(`/pantalla/${screen.token}`, request.url);
+  // URL absoluta con getSiteUrl(): en producción SIEMPRE el dominio online.
+  // El host de la request NO sirve acá: detrás de nginx el redirect salía con
+  // `localhost:3000` y la tele no encontraba la carta.
+  const target = new URL(`/pantalla/${screen.token}`, getSiteUrl(request));
   return NextResponse.redirect(target, 307);
 }

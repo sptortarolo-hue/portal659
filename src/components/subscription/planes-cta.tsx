@@ -67,9 +67,12 @@ export function PlanesCta({ slug, planName, trial }: { slug: string; planName: s
   // Si el comercio ya tuvo un plan y se le vence, no mostrar opción de activar plan gratuito
   if (me?.effective?.expired && me?.effective?.plan?.slug !== "gratuito") {
     return (
-      <Button className="w-full" variant="outline" onClick={() => router.push("/vendor/suscripcion")}>
-        Ver mi suscripción
-      </Button>
+      <div className="space-y-2">
+        <Button className="w-full" variant="outline" onClick={() => router.push("/vendor/suscripcion")}>
+          Ver mi suscripción
+        </Button>
+        <p className="text-[11px] text-muted-foreground text-center">No puedes activar un plan gratuito después de haber tenido uno.</p>
+      </div>
     );
   }
 

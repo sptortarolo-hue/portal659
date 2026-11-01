@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { guardTvScreens } from "@/lib/tv-guard";
 import { createScreen, hasUnpublishedDraft, listVendorScreens, loadCatalogSections } from "@/lib/tv-data";
 import { normalizeTvConfig } from "@/lib/tv-config";
+import { getPortalSetting } from "@/lib/portal-settings";
 import {
   isGastroVendor,
   isModaVendor,
@@ -61,6 +62,10 @@ export async function GET(request: Request) {
     categories: catalog.categoryNames || [],
     // ¿Este comercio vende online? (para habilitar/deshabilitar el QR en el editor)
     sellsOnline: vendorSellsOnline(guard.ctx.vendor),
+    // ¿El portal habilitó el QR de pedidos online en las pantallas? Si no, el
+    // switch del editor queda activo pero el QR nunca se muestra: el aviso
+    // evita que el comercio espere un QR que no va a aparecer.
+    qrAllowedByPortal: await getPortalSetting("tv_qr_online"),
   });
 }
 

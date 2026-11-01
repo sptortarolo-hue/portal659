@@ -31,6 +31,12 @@ type Props = {
   categories: string[];
   /** ¿El comercio vende online? (para habilitar el QR de pedidos). */
   sellsOnline?: boolean;
+  /**
+   * ¿El portal habilitó el QR de pedidos online en las pantallas? Si está
+   * apagado (switch global del admin), el QR no se muestra aunque el comercio
+   * lo active: se avisa para que no espere un QR que no va a aparecer.
+   */
+  qrAllowedByPortal?: boolean;
   onClose: () => void;
   onSaved: () => void;
 };
@@ -40,7 +46,15 @@ type Props = {
  * ve la TV, alimentado por el borrador. "Cómo queda" y "cómo se ve" no pueden
  * divergir, y no hace falta publicar para probar un cambio.
  */
-export function TvScreenEditor({ open, screen, categories, sellsOnline = false, onClose, onSaved }: Props) {
+export function TvScreenEditor({
+  open,
+  screen,
+  categories,
+  sellsOnline = false,
+  qrAllowedByPortal = true,
+  onClose,
+  onSaved,
+}: Props) {
   const [config, setConfig] = useState<TvConfig>(() => normalizeTvConfig(screen?.config));
   const [snapshot, setSnapshot] = useState<TvSnapshot | null>(null);
   const [saving, setSaving] = useState(false);
@@ -505,7 +519,7 @@ export function TvScreenEditor({ open, screen, categories, sellsOnline = false, 
           <Field
             label={
               config.layout === "split"
-                ? "Posters publicitarios (verticales a la columna, horizontales a pantalla completa)"
+                ? "Posters publicitarios (cada uno: columna o pantalla completa)"
                 : "Posters publicitarios (se intercalan entre las slides)"
             }
           >
@@ -514,9 +528,10 @@ export function TvScreenEditor({ open, screen, categories, sellsOnline = false, 
                 {config.layout === "split" ? (
                   <>
                     Imágenes (PNG/JPG/WEBP) o videos (MP4/WebM/MOV, hasta 25 MB). En el diseño{" "}
-                    <strong>Split</strong> los posters <strong>verticales (9:16)</strong> se muestran en
-                    la columna de la izquierda, alternando con el destacado; los <strong>horizontales
-                    (16:9)</strong> a pantalla completa.
+                    <strong>Split</strong> elegís vos dónde se ve cada poster: en la{" "}
+                    <strong>columna 9:16</strong> de la izquierda (alternando con el destacado) o a{" "}
+                    <strong>pantalla completa</strong>. Los verticales (9:16) entran sin recorte en
+                    la columna.
                   </>
                 ) : (
                   <>
@@ -536,23 +551,54 @@ export function TvScreenEditor({ open, screen, categories, sellsOnline = false, 
                   <div className="flex-1 min-w-0">
                     <div className="truncate text-xs text-muted-foreground">{p.url.split("/").pop()}</div>
                     <div className="mt-1 flex flex-wrap items-center gap-2">
-                      {/* Dónde se va a ver este poster (según diseño y proporción). */}
-                      <span
-                        className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
-                        style={{
-                          background:
-                            config.layout === "split" && p.orientation === "portrait"
-                              ? "rgba(13,148,136,0.15)"
-                              : "rgba(100,116,139,0.15)",
-                          color:
-                            config.layout === "split" && p.orientation === "portrait"
-                              ? "#0d9488"
-                              : "#64748b",
-                        }}
-                      >
-                        {config.layout === "split" && p.orientation === "portrait"
-                          ? "◧ Columna 9:16"
-                          : "⛶ Pantalla completa"}
+                      {/* Dónde se va a ver este poster (lo elige el comercio).
+                          En clásico todos van a pantalla completa: el selector
+                          solo tiene sentido en el diseño Split. */}
+                      {config.layout === "split" && (
+                        <div className="inline-flex overflow-hidden rounded border border-border">
+                          <button
+                            type="button"
+                            title="Verlo en la columna 9:16 (a la izquierda)"
+                            className={`px-2 py-0.5 text-[10px] font-semibold transition-colors ${
+                              p.placement === "column"
+                                ? "bg-primary text-primary-foreground"
+                                : "bg-background text-muted-foreground hover:bg-muted"
+                            }`}
+                            onClick={() => {
+                              const next = (config.posters || []).map((x, j) =>
+                                j === i ? { ...x, placement: "column" as const } : x
+                              );
+                              edit({ posters: next });
+                            }}
+                          >
+                            ◧ Columna
+                          </button>
+                          <button
+                            type="button"
+                            title="Verlo a pantalla completa"
+                            className={`border-l border-border px-2 py-0.5 text-[10px] font-semibold transition-colors ${
+                              p.placement !== "column"
+                                ? "bg-primary text-primary-foreground"
+                                : "bg-background text-muted-foreground hover:bg-muted"
+                            }`}
+                            onClick={() => {
+                              const next = (config.posters || []).map((x, j) =>
+                                j === i ? { ...x, placement: "fullscreen" as const } : x
+                              );
+                              edit({ posters: next });
+                            }}
+                          >
+                            ⛶ Pantalla completa
+                          </button>
+                        </div>
+                      )}
+                      {/* Proporción real del archivo (informativa). */}
+                      <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">
+                        {p.orientation === "portrait"
+                          ? "9:16 vertical"
+                          : p.orientation === "landscape"
+                            ? "16:9 horizontal"
+                            : "proporción no detectada"}
                       </span>
                       <label className="text-[10px] text-muted-foreground">Duración (s)</label>
                       <input
@@ -640,11 +686,16 @@ export function TvScreenEditor({ open, screen, categories, sellsOnline = false, 
                           /\.(mp4|webm|mov|m4v)$/i.test(f.name || "");
                         const type = isVideo ? "video" : "image";
                         // Proporción del archivo: en Split los verticales (9:16)
-                        // van a la columna izquierda y los horizontales a
-                        // pantalla completa. Se mide en el navegador.
+                        // van por defecto a la columna izquierda y los
+                        // horizontales (16:9) a pantalla completa. El comercio
+                        // puede cambiarlo después con el selector.
                         const orientation = await detectMediaOrientation(f, isVideo);
+                        const placement = orientation === "portrait" ? "column" : "fullscreen";
                         edit({
-                          posters: [...(config.posters || []), { url: data.url, type, durationSec: 5, orientation }],
+                          posters: [
+                            ...(config.posters || []),
+                            { url: data.url, type, durationSec: 5, orientation: orientation ?? undefined, placement },
+                          ],
                         });
                       } else {
                         setMsg(data.error || "No se pudo subir el poster");
@@ -676,6 +727,14 @@ export function TvScreenEditor({ open, screen, categories, sellsOnline = false, 
                 <p className="mt-1.5 text-[11px] text-amber-600">
                   Este comercio no tiene venta online activada: el QR no se mostraría.
                   Activala en tu configuración para poder usarlo.
+                </p>
+              ) : !qrAllowedByPortal ? (
+                /* El switch global del portal está apagado: aunque lo actives y
+                   publiques, el QR no se genera. Sin este aviso el comercio
+                   espera un QR que nunca aparece. */
+                <p className="mt-1.5 text-[11px] text-amber-600">
+                  El portal tiene desactivado el QR de pedidos online en las pantallas (lo activa
+                  el administrador). Pedinos que lo habiliten y el QR va a empezar a aparecer.
                 </p>
               ) : (
                 <p className="mt-1.5 text-[11px] text-muted-foreground">

@@ -37,13 +37,16 @@ export type TvPoster = {
   durationSec: number;
   /**
    * Proporción del medio: "portrait" = vertical (9:16), "landscape" = horizontal.
-   *
-   * Decide dónde se ve en el diseño Split: los verticales van a la columna 9:16
-   * de la izquierda (entran sin recorte) y los horizontales a pantalla completa.
-   * Si falta (posters subidos antes de esta opción) se trata como horizontal:
-   * sigue mostrando como hasta ahora.
+   * Es dato informative: se detecta al subir el archivo.
    */
   orientation?: "portrait" | "landscape";
+  /**
+   * Dónde se muestra en el diseño Split (lo elige el comercio):
+   * - "column"    → en la columna 9:16 de la izquierda;
+   * - "fullscreen"→ a pantalla completa (como en el diseño clásico).
+   * Si no viene, se deduce de la orientación (vertical → columna).
+   */
+  placement?: "column" | "fullscreen";
 };
 
 export type TvConfig = {
@@ -144,14 +147,13 @@ export const TV_DESIGN_CHOICES = [
  *
  * "portrait" (vertical, tipo 9:16) → en el diseño Split va a la columna
  * izquierda, donde entra sin recorte. "landscape" → a pantalla completa.
- *
- * Se mide en el navegador (el archivo ya está en memoria): si no se puede
- * medir, se asume horizontal, que es como se mostraban hasta ahora.
+ * `null` = no se pudo medir (archivo raro o codec que el navegador no decodica):
+ * no se inventa una proporción, el comercio elige el destino a mano.
  */
 export async function detectMediaOrientation(
   file: File,
   isVideo: boolean
-): Promise<"portrait" | "landscape"> {
+): Promise<"portrait" | "landscape" | null> {
   try {
     if (isVideo) {
       const url = URL.createObjectURL(file);
@@ -164,6 +166,7 @@ export async function detectMediaOrientation(
           v.onerror = () => resolve({ w: 0, h: 0 });
           v.src = url;
         });
+        if (!dims.w || !dims.h) return null;
         return dims.h > dims.w ? "portrait" : "landscape";
       } finally {
         URL.revokeObjectURL(url);
@@ -177,12 +180,13 @@ export async function detectMediaOrientation(
         img.onerror = () => resolve({ w: 0, h: 0 });
         img.src = url;
       });
+      if (!dims.w || !dims.h) return null;
       return dims.h > dims.w ? "portrait" : "landscape";
     } finally {
       URL.revokeObjectURL(url);
     }
   } catch {
-    return "landscape";
+    return null;
   }
 }
 
@@ -295,10 +299,20 @@ export function normalizeTvConfig(input: unknown): TvConfig {
           const type: TvPoster["type"] = pr.type === "video" ? "video" : "image";
           const dur = Number(pr.durationSec);
           const durationSec = Number.isFinite(dur) && dur > 0 ? Math.min(60, Math.max(3, Math.round(dur))) : 5;
-          // Orientación: tolerante (si no viene, es horizontal → pantalla completa).
+          // Orientación: dato informativo (se detecta al subir el archivo).
+          // Si no se pudo medir, queda sin dato (no se inventa).
           const orientation: TvPoster["orientation"] =
-            pr.orientation === "portrait" ? "portrait" : "landscape";
-          return { url, type, durationSec, orientation } as TvPoster;
+            pr.orientation === "portrait" ? "portrait" : pr.orientation === "landscape" ? "landscape" : undefined;
+          // Destino en el diseño Split: lo elige el comercio. Si no viene
+          // (posters subidos antes de esta opción) se deduce de la orientación:
+          // vertical → columna; horizontal (o sin dato) → pantalla completa.
+          const placement: TvPoster["placement"] =
+            pr.placement === "column" || pr.placement === "fullscreen"
+              ? pr.placement
+              : orientation === "portrait"
+                ? "column"
+                : "fullscreen";
+          return { url, type, durationSec, orientation, placement } as TvPoster;
         })
         .filter((p): p is TvPoster => !!p)
         .slice(0, 20)

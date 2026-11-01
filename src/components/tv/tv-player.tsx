@@ -98,26 +98,37 @@ export function TvPlayer({ snapshot, token, mode, vertical, debug = false, fitPa
         type: p.type === "video" ? "video" : "image",
         durationSec: p.durationSec || 5,
         orientation: p.orientation === "portrait" ? "portrait" : "landscape",
+        // Destino en split: lo elige el comercio. Sin dato → según orientación.
+        placement:
+          p.placement === "column" || p.placement === "fullscreen"
+            ? p.placement
+            : p.orientation === "portrait"
+              ? "column"
+              : "fullscreen",
       })),
     // Clave estable: si no, cada poll de 30s genera un array nuevo y reinicia
     // el timer de rotación de slides.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [(snap.config.posters || []).map((p) => `${p.url}|${p.type}|${p.durationSec}|${p.orientation ?? ""}`).join(",")]
+    [
+      (snap.config.posters || [])
+        .map((p) => `${p.url}|${p.type}|${p.durationSec}|${p.orientation ?? ""}|${p.placement ?? ""}`)
+        .join(","),
+    ]
   );
 
   /**
    * Reparto de los posters según el diseño:
    * - classic: TODOS a pantalla completa (como hasta ahora);
-   * - split: los verticales (9:16) van a la columna de la izquierda (entran
-   *   sin recorte) y los horizontales (16:9) a pantalla completa.
+   * - split: los que el comercio marcó "column" van a la columna 9:16 de la
+   *   izquierda (entran sin recorte) y el resto a pantalla completa.
    */
   const columnPosters = useMemo(
-    () => posters.filter((p) => p.orientation === "portrait"),
+    () => posters.filter((p) => p.placement === "column"),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [posters]
   );
   const takeoverPosters = useMemo(
-    () => posters.filter((p) => p.orientation !== "portrait"),
+    () => posters.filter((p) => p.placement !== "column"),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [posters]
   );

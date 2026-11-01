@@ -71,6 +71,8 @@ export type TvPosterRef = {
    * se muestra en el diseño Split (columna vertical vs pantalla completa).
    */
   orientation?: "portrait" | "landscape";
+  /** Destino elegido por el comercio en el diseño Split. */
+  placement?: "column" | "fullscreen";
 };
 
 export type TvSlide = {

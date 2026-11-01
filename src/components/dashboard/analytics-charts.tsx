@@ -23,7 +23,21 @@ const PRIMARY = "var(--color-primary)";
 const BORDER = "var(--color-border)";
 const MUTED = "var(--color-muted-foreground)";
 const CARD = "var(--color-card)";
-const PALETTE = ["#10b981", "#0ea5e9", "#8b5cf6", "#f59e0b", "#ec4899", "#64748b"];
+
+/**
+ * Paleta de gráficos del spec v2 (--chart-1..5: violeta, teal, ámbar, rosa
+ * y verde). Los tokens están scoped en `.ts-ui` (dentro del panel); el
+ * fallback hex cubre las páginas que no van dentro del shell, como
+ * /vendor/reportes/[tipo].
+ */
+const PALETTE = [
+  "var(--color-chart-1, #8b5cf6)",
+  "var(--color-chart-2, #14b8a6)",
+  "var(--color-chart-3, #f59e0b)",
+  "var(--color-chart-4, #ec4899)",
+  "var(--color-chart-5, #10b981)",
+  "#64748b",
+];
 
 const tooltipStyle = {
   backgroundColor: CARD,
@@ -170,7 +184,7 @@ export function HourlyChart({ hourly }: { hourly: { hour: string; count: number;
             />
             <Bar dataKey="revenue" name="Ventas" radius={[4, 4, 0, 0]}>
               {rows.map((r) => (
-                <Cell key={r.hour} fill={r.revenue >= max ? "#10b981" : PRIMARY} opacity={r.revenue >= max ? 1 : 0.8} />
+                <Cell key={r.hour} fill={r.revenue >= max ? "var(--color-chart-5, #10b981)" : PRIMARY} opacity={r.revenue >= max ? 1 : 0.8} />
               ))}
             </Bar>
           </BarChart>

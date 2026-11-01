@@ -2,6 +2,18 @@
    Panel UI — estilo "soft brutal" (spec v2 del usuario)
    Fondo verde suave · radios 1rem · bordes negros · sombras difusas
 
+   Origen: el theme (CSS vars) del spec v2 que pasó el usuario, traducido
+   a tokens de Tailwind. Todo lo que se aparta del spec está marcado como
+   OVERRIDE o como nota al pie de cada bloque.
+
+   Overrides consciouses sobre el spec:
+     - `--accent` / `--sidebar-accent`: LIMA de Portal 659 (#a3e635) en vez
+       del ÁMBAR del spec (commit 31d276f).
+     - Sombras: se les suma un halo de 1px al 5% (el spec las deja en
+       `0 0 0 0`), para el contorno suave de "soft brutal".
+     - En oscuro el halo se invierte a claro para que las superficies se
+       lean sobre el fondo negro.
+
    REGLA DE ORO: los tokens van bajo `.ts-ui`, NUNCA en `:root`. Fuera de
    `.ts-ui` el sitio público y los micrositios siguen con los tokens de
    globals.css intactos → el rediseño no puede repintar lo público.
@@ -32,7 +44,11 @@
   --color-secondary-foreground: oklch(1 0 0);
   --color-muted: oklch(0.9551 0 0);
   --color-muted-foreground: oklch(0.3211 0 0);
-  /* LIMA de Portal 659 en lugar del ámbar del spec */
+  /* OVERRIDE DE MARCA: el spec v2 pide ÁMBAR (oklch(0.7686 0.1647 70.0804),
+     y en oscuro un amarillo distinto: oklch(0.8790 0.1534 91.6054)).
+     Acá va la LIMA de Portal 659 (#a3e635) a pedido del usuario (commit
+     31d276f). Para volver al spec: cambiar --color-accent y
+     --color-sidebar-accent (en claro y en oscuro). */
   --color-accent: #a3e635;
   --color-accent-foreground: oklch(0 0 0);
   --color-destructive: oklch(0.6368 0.2078 25.3313);
@@ -41,6 +57,19 @@
   --color-border: oklch(0 0 0);
   --color-input: oklch(0.5555 0 0);
   --color-ring: oklch(0.7853 0.1041 274.7134);
+  /* Aro de foco del spec (`outline-ring/50`): el lila del panel al 50%.
+     Token propio con alfa explícito para no depender de color-mix (el
+     compilador lo resolvía contra el --color-ring del tema público). */
+  --ts-ring-focus: oklch(0.7853 0.1041 274.7134 / 0.5);
+
+  /* Paleta de gráficos del spec (--chart-1..5): violeta, teal, ámbar, rosa y
+     verde. La consumen analytics-charts.tsx (con fallback para páginas que
+     no van dentro de .ts-ui, como /vendor/reportes/[tipo]). */
+  --color-chart-1: oklch(0.5106 0.2301 276.9656);
+  --color-chart-2: oklch(0.7038 0.1230 182.5025);
+  --color-chart-3: oklch(0.7686 0.1647 70.0804);
+  --color-chart-4: oklch(0.6559 0.2118 354.3084);
+  --color-chart-5: oklch(0.7227 0.1920 149.5793);
 
   /* Familia sidebar del spec */
   --color-sidebar: oklch(0.9789 0.0082 121.6272);
@@ -77,6 +106,21 @@
   --ts-shadow-raised: 0 0 0 1px rgba(26, 26, 26, 0.05), 0 2px 4px -1px rgba(26, 26, 26, 0.05);
   --ts-shadow-float: 0 0 0 1px rgba(26, 26, 26, 0.05), 0 8px 10px -1px rgba(26, 26, 26, 0.05);
   --ts-shadow-pop: 0 0 0 1px rgba(26, 26, 26, 0.05), 0 4px 6px -1px rgba(26, 26, 26, 0.05);
+
+  /* Escala de sombras del spec como tokens de Tailwind. OJO: en Tailwind v4
+     las utilidades shadow-* NO leen estos vars (fijan --tw-shadow con valores
+     duros), por eso más abajo se sobreescribe --tw-shadow por clase. Se
+     declaran igual para que cualquier var(--shadow-*) dentro del panel tome
+     el valor del spec. El halo de 1px es una capa extra sobre el spec (que
+     lo deja en 0 0 0 0): da el contorno suave de "soft brutal". */
+  --shadow-2xs: 0 0 #0000;
+  --shadow-xs: 0 0 #0000;
+  --shadow-sm: var(--ts-shadow-card);
+  --shadow: var(--ts-shadow-card);
+  --shadow-md: var(--ts-shadow-raised);
+  --shadow-lg: var(--ts-shadow-pop);
+  --shadow-xl: var(--ts-shadow-float);
+  --shadow-2xl: 0 0 #0000;
 
   /* Tipografías del spec (next/font en el root layout) */
   --ts-font: var(--font-dm-sans), ui-sans-serif, system-ui, sans-serif;
@@ -122,7 +166,9 @@ html.dark .ts-ui {
   --color-secondary-foreground: oklch(0 0 0);
   --color-muted: oklch(0.3211 0 0);
   --color-muted-foreground: oklch(0.8452 0 0);
-  /* LIMA de Portal 659 (mismo token que en claro) */
+  /* OVERRIDE DE MARCA: el spec v2 pide ÁMBAR/AMARILLO en oscuro
+     (oklch(0.8790 0.1534 91.6054)); va la LIMA de Portal 659, igual que en
+     claro. Ver la nota del bloque claro. */
   --color-accent: #a3e635;
   --color-accent-foreground: oklch(0 0 0);
   --color-destructive: oklch(0.7467 0.2202 324.8734);
@@ -131,6 +177,8 @@ html.dark .ts-ui {
   --color-border: oklch(0.4459 0 0);
   --color-input: oklch(1 0 0);
   --color-ring: oklch(0.6801 0.1583 276.9349);
+  /* Aro de foco en oscuro: el lila del panel al 50% */
+  --ts-ring-focus: oklch(0.6801 0.1583 276.9349 / 0.5);
 
   --color-sidebar: oklch(0 0 0);
   --color-sidebar-foreground: oklch(1 0 0);
@@ -151,6 +199,25 @@ html.dark .ts-ui {
   --ts-shadow-float: 0 0 0 1px rgba(255, 255, 255, 0.06), 0 8px 10px -1px rgba(0, 0, 0, 0.5);
   --ts-shadow-pop: 0 0 0 1px rgba(255, 255, 255, 0.06), 0 4px 6px -1px rgba(0, 0, 0, 0.45);
 
+  /* Escala de sombras en oscuro: el halo claro reemplaza al oscuro para que
+     las superficies se lean sobre el fondo negro (mismo criterio que
+     --ts-shadow-* de arriba). */
+  --shadow-2xs: 0 0 #0000;
+  --shadow-xs: 0 0 #0000;
+  --shadow-sm: var(--ts-shadow-card);
+  --shadow: var(--ts-shadow-card);
+  --shadow-md: var(--ts-shadow-raised);
+  --shadow-lg: var(--ts-shadow-pop);
+  --shadow-xl: var(--ts-shadow-float);
+  --shadow-2xl: 0 0 #0000;
+
+  /* Paleta de gráficos del spec en oscuro (--chart-1..5). */
+  --color-chart-1: oklch(0.6801 0.1583 276.9349);
+  --color-chart-2: oklch(0.7845 0.1325 181.9120);
+  --color-chart-3: oklch(0.8790 0.1534 91.6054);
+  --color-chart-4: oklch(0.7253 0.1752 349.7607);
+  --color-chart-5: oklch(0.8003 0.1821 151.7110);
+
   --ts-success: #4ade80;
   --ts-warning: #fbbf24;
   --ts-danger: #f87171;
@@ -161,15 +228,21 @@ html.dark .ts-ui {
    3. Shell del panel con el diseño nuevo (solo con el switch prendido)
    -------------------------------------------------------------------------- */
 
-/* Bordes negros en claro (el spec los pide así); en oscuro usa el gris del
-   token y las reglas de abajo solo fijan el color, no el grosor. */
-html[data-panel-ui="tasty"] .ts-ui .border,
-html[data-panel-ui="tasty"] .ts-ui .border-t,
-html[data-panel-ui="tasty"] .ts-ui .border-b,
-html[data-panel-ui="tasty"] .ts-ui .border-l,
-html[data-panel-ui="tasty"] .ts-ui .border-r,
-html[data-panel-ui="tasty"] .ts-ui [class*="border-"] {
-  border-color: var(--color-border);
+/* Bordes: el spec pone border-border por defecto (`* { @apply border-border }`).
+   Va en la capa `components` A PROPÓSITO: así las utilidades de color
+   (border-red-400, border-amber-300, border-t-2 border-red-500…) siguen
+   mandando y no se pierden los bordes de color (línea "ahora" de la agenda,
+   mesas libres/ocupadas/reservadas, pedidos vencidos). Antes esta regla
+   pisaba TODOS los bordes con el negro del token. */
+@layer components {
+  html[data-panel-ui="tasty"] .ts-ui .border,
+  html[data-panel-ui="tasty"] .ts-ui .border-t,
+  html[data-panel-ui="tasty"] .ts-ui .border-b,
+  html[data-panel-ui="tasty"] .ts-ui .border-l,
+  html[data-panel-ui="tasty"] .ts-ui .border-r,
+  html[data-panel-ui="tasty"] .ts-ui [class*="border-"] {
+    border-color: var(--color-border);
+  }
 }
 
 /* Botones e inputs: radios del spec y una respuesta sutil al presionar */
@@ -186,26 +259,41 @@ html[data-panel-ui="tasty"] .ts-ui :is(button, [role="button"]):active {
   box-shadow: none;
 }
 
-/* Tarjetas: superficie blanca, borde negro y sombra suave del spec */
-html[data-panel-ui="tasty"] .ts-ui .bg-card {
-  border: 1px solid var(--color-border);
-  box-shadow: var(--ts-shadow-card);
+/* Superficies del panel: borde/sombra del spec.
+   TODO esto va en la capa `components` a propósito: así las utilidades de
+   Tailwind (border-red-400, shadow-lg, shadow-none, bg-transparent…) mandan
+   sobre el remapeo. Antes estas reglas estaban fuera de capa y pisaban:
+     - el color de borde de un `bg-card border-red-400`
+     - la sombra de un `bg-card shadow-lg` / `shadow-none`
+     - el fondo de una barra `sticky bg-primary`. */
+@layer components {
+  /* Tarjetas: superficie blanca, borde negro y sombra suave del spec */
+  html[data-panel-ui="tasty"] .ts-ui .bg-card {
+    border: 1px solid var(--color-border);
+    box-shadow: var(--ts-shadow-card);
+  }
+
+  /* Barra superior y headers fijos: mismos radios, sombra un poco mayor */
+  html[data-panel-ui="tasty"] .ts-ui [class*="sticky"] {
+    background-color: var(--color-card);
+    border-color: var(--color-border);
+    box-shadow: var(--ts-shadow-raised);
+  }
+
+  /* Botón primario: azul del spec con sombra suave */
+  html[data-panel-ui="tasty"] .ts-ui .bg-primary {
+    border: 1px solid var(--color-border);
+    box-shadow: var(--ts-shadow-btn);
+  }
+
+  /* Chips de estado del panel: borde negro, radios del spec */
+  html[data-panel-ui="tasty"] .ts-ui :is(.bg-blue-100, .bg-amber-100, .bg-orange-100, .bg-green-100, .bg-emerald-100, .bg-violet-100, .bg-purple-100, .bg-cyan-100, .bg-gray-100) {
+    border: 1px solid var(--color-border);
+  }
 }
 
-/* Barra superior y headers fijos: mismos radios, sombra un poco mayor */
-html[data-panel-ui="tasty"] .ts-ui [class*="sticky"] {
-  background-color: var(--color-card);
-  border-color: var(--color-border);
-  box-shadow: var(--ts-shadow-raised);
-}
-
-/* Botón primario: azul del spec con sombra suave */
-html[data-panel-ui="tasty"] .ts-ui .bg-primary {
-  border: 1px solid var(--color-border);
-  box-shadow: var(--ts-shadow-btn);
-}
-
-/* Ítem activo del menú/riel: fondo ÁMBAR con texto negro y barra negra */
+/* Ítem activo del menú/riel: fondo LIMA (override de marca sobre el ÁMBAR
+   del spec) con texto negro y barra negra */
 html[data-panel-ui="tasty"] .ts-ui .bg-primary-light {
   background-color: var(--color-accent);
   color: oklch(0 0 0);
@@ -221,20 +309,47 @@ html[data-panel-ui="tasty"] .ts-ui .text-primary {
   color: var(--color-primary);
 }
 
-/* Flotantes (flyouts, menús, modales): sombra difusa grande */
-html[data-panel-ui="tasty"] .ts-ui :is(.shadow-lg, .shadow-xl, [role="dialog"]) {
+/* Flotantes (flyouts, menús, modales): borde del spec + sombra difusa */
+html[data-panel-ui="tasty"] .ts-ui :is(.shadow-lg, .shadow-xl) {
+  border: 1px solid var(--color-border);
+}
+
+html[data-panel-ui="tasty"] .ts-ui [role="dialog"] {
   border: 1px solid var(--color-border);
   box-shadow: var(--ts-shadow-float);
 }
 
-/* Chips de estado del panel: borde negro, radios del spec */
-html[data-panel-ui="tasty"] .ts-ui :is(.bg-blue-100, .bg-amber-100, .bg-orange-100, .bg-green-100, .bg-emerald-100, .bg-violet-100, .bg-purple-100, .bg-cyan-100, .bg-gray-100) {
-  border: 1px solid var(--color-border);
+/* Sombras del spec en las utilidades de Tailwind. En v4 las shadow-* fijan
+   --tw-shadow con valores DUROS (no leen var(--shadow-*)), por eso se pisa
+   la variable: el box-shadow sigue componiendo el ring y el inset-shadow,
+   solo cambia la capa difusa. Antes `shadow-sm`/`shadow-md` dejaban la
+   sombra dura de Tailwind y `shadow-lg` recibía la intensidad de `xl`. */
+html[data-panel-ui="tasty"] .ts-ui .shadow-2xs,
+html[data-panel-ui="tasty"] .ts-ui .shadow-xs,
+html[data-panel-ui="tasty"] .ts-ui .shadow-2xl {
+  --tw-shadow: 0 0 #0000;
 }
 
-/* Foco visible: aro lila del spec */
+html[data-panel-ui="tasty"] .ts-ui .shadow-sm,
+html[data-panel-ui="tasty"] .ts-ui .shadow {
+  --tw-shadow: var(--ts-shadow-card);
+}
+
+html[data-panel-ui="tasty"] .ts-ui .shadow-md {
+  --tw-shadow: var(--ts-shadow-raised);
+}
+
+html[data-panel-ui="tasty"] .ts-ui .shadow-lg {
+  --tw-shadow: var(--ts-shadow-pop);
+}
+
+html[data-panel-ui="tasty"] .ts-ui .shadow-xl {
+  --tw-shadow: var(--ts-shadow-float);
+}
+
+/* Foco visible: aro lila del spec al 50% (`outline-ring/50` del spec v2) */
 html[data-panel-ui="tasty"] .ts-ui :is(button, a, input, select, textarea, [role="button"]):focus-visible {
-  outline: 2px solid var(--color-ring);
+  outline: 2px solid var(--ts-ring-focus);
   outline-offset: 2px;
 }
 
@@ -306,10 +421,10 @@ html[data-panel-ui="tasty"] .ts-ui :is(button, a, input, select, textarea, [role
     box-shadow 0.15s ease-out;
 }
 
-/* Chip activo: LIMA del spec con texto blanco (así lo pide el spec) */
+/* Chip activo: verde --secondary del spec con texto blanco (secondary-foreground) */
 @utility ts-chip-active {
   border-color: var(--color-border);
-  color: oklch(1 0 0);
+  color: var(--color-secondary-foreground);
   background-color: var(--color-secondary);
   box-shadow: var(--ts-shadow-card);
 }

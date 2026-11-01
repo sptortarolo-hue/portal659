@@ -1,15 +1,12 @@
+"use client";
+
 import * as React from "react";
 import { cn } from "@/lib/utils";
+import { TONE_CHIP, type PanelTone } from "./tones";
 
-export type BadgeTone = "neutral" | "success" | "warning" | "danger" | "info";
+export type BadgeTone = PanelTone;
 
-const TONE: Record<BadgeTone, string> = {
-  neutral: "bg-muted text-muted-foreground",
-  success: "bg-[var(--ts-success)]/15 text-[var(--ts-success)]",
-  warning: "bg-[var(--ts-warning)]/15 text-[var(--ts-warning)]",
-  danger: "bg-[var(--ts-danger)]/15 text-[var(--ts-danger)]",
-  info: "bg-[var(--ts-info)]/15 text-[var(--ts-info)]",
-};
+const TONE = TONE_CHIP;
 
 /** Badge de estado del spec: radio 12, 11px, semibold. */
 export function Badge({
@@ -25,7 +22,7 @@ export function Badge({
   );
 }
 
-/** Chip de categoría (pill). `active` pinta el borde en teal. */
+/** Chip de categoría (pill). `active` pinta el fondo en el verde --secondary del spec. */
 export function Chip({
   active = false,
   className,

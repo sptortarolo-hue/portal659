@@ -321,6 +321,7 @@ export function DashboardHome({
               value={`$${ticketProm.toLocaleString("es-AR", { maximumFractionDigits: 0 })}`}
               sub="de los pedidos de hoy"
               icon={Receipt}
+              accent="neutral"
             />
             <KpiCardUi
               label={isRetail ? "Por aceptar" : "Nuevos"}

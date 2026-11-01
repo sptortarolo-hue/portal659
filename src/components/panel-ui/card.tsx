@@ -3,8 +3,9 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
 /**
- * Tarjetas del spec: `default` 12px con sombra corta, `interactive` 16px
- * que marca el borde en teal al pasar el puntero (tarjetas de catálogo).
+ * Tarjetas del spec: `default` con radio del spec (rounded-lg = 16px) y
+ * sombra corta difusa, `interactive` (rounded-2xl = 20px) que marca el
+ * borde en el azul de acción al pasar el puntero (tarjetas de catálogo).
  */
 const cardVariants = cva("ts-card", {
   variants: {

@@ -1,11 +1,14 @@
+"use client";
+
 import * as React from "react";
 import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
 /**
- * Botón del panel con diseño Tasty Station (spec): radio 8px, peso 600,
- * primario teal (#0d9488 dentro de .ts-ui) y secundario blanco con borde.
+ * Botón del panel con diseño Tasty Station (spec v2): radio del spec
+ * (rounded-md = 14px), peso 600, primario en el azul del spec
+ * (oklch(0.6341 0.1195 232.0836)) y secundario blanco con borde.
  * Los tokens salen de `src/app/styles/tasty-station.css`.
  */
 const buttonVariants = cva(

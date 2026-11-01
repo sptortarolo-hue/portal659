@@ -1,7 +1,14 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
+import { TONE_CHIP, type PanelTone } from "./tones";
 
-/** KPI del panel: etiqueta chica, número grande, ícono en círculo claro. */
+/**
+ * KPI del panel: etiqueta chica, número grande, ícono en círculo.
+ *
+ * El círculo sigue el TONO del KPI (ventas=verde, pedidos=azul, avisos=ámbar)
+ * con su tinte al 15%: antes todos los círculos eran del mismo lima y no se
+ * distinguían entre sí.
+ */
 export function KpiCard({
   label,
   value,
@@ -14,11 +21,9 @@ export function KpiCard({
   value: React.ReactNode;
   sub?: React.ReactNode;
   icon?: React.ComponentType<{ className?: string }>;
-  accent?: "primary" | "success" | "warning" | "danger" | "info";
+  accent?: PanelTone;
   className?: string;
 }) {
-  const accentColor =
-    accent === "primary" ? "var(--color-primary)" : `var(--ts-${accent})`;
   return (
     <div className={cn("ts-card rounded-lg p-4", className)}>
       <div className="flex items-start justify-between gap-3">
@@ -29,8 +34,10 @@ export function KpiCard({
         </div>
         {Icon ? (
           <span
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
-            style={{ backgroundColor: "var(--color-accent)", color: accentColor }}
+            className={cn(
+              "flex h-9 w-9 shrink-0 items-center justify-center rounded-full",
+              TONE_CHIP[accent],
+            )}
           >
             <Icon className="h-5 w-5" />
           </span>

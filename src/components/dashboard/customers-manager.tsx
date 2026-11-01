@@ -4,6 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { CustomerFormTimeline } from "@/components/dashboard/customer-form-timeline";
 import { customerMatches } from "@/lib/search-match";
+import { cn } from "@/lib/utils";
+import { TONE_CHIP, type PanelTone } from "@/components/panel-ui/tones";
 
 type Segment = "frecuente" | "nuevo" | "inactivo" | "ocasional";
 
@@ -52,6 +54,14 @@ const SEGMENT_STYLE: Record<Segment, string> = {
   nuevo: "bg-blue-100 text-blue-700",
   inactivo: "bg-amber-100 text-amber-700",
   ocasional: "bg-muted text-muted-foreground",
+};
+
+/** Tono del panel para el avatar: cada segmento con su color. */
+const SEGMENT_TONE: Record<Segment, PanelTone> = {
+  frecuente: "success",
+  nuevo: "info",
+  inactivo: "warning",
+  ocasional: "neutral",
 };
 
 const SEGMENT_LABEL: Record<Segment, string> = {
@@ -605,8 +615,13 @@ export function CustomersManager({ serviceMode = false, vendorId = null, loyalty
                 className="w-full text-left p-3 flex items-center gap-3"
                 aria-expanded={expandedId === c.id}
               >
-                <div className="h-9 w-9 rounded-full bg-accent flex items-center justify-center flex-shrink-0">
-                  <span className="font-bold text-primary text-sm">{(c.name || "?").charAt(0).toUpperCase()}</span>
+                <div
+                  className={cn(
+                    "h-9 w-9 rounded-full flex items-center justify-center flex-shrink-0",
+                    TONE_CHIP[SEGMENT_TONE[c.segment]],
+                  )}
+                >
+                  <span className="font-bold text-sm">{(c.name || "?").charAt(0).toUpperCase()}</span>
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">

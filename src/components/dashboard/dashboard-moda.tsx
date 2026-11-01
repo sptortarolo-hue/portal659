@@ -824,7 +824,7 @@ onAdd={async (name) => { const r = await apiJson("/api/vendor/categories", { met
                     {offer.image_url || prodImages[0]?.url ? (
                       <img src={offer.image_url || prodImages[0]?.url || ""} alt={offer.name} className="h-12 w-12 rounded-lg object-cover flex-shrink-0" />
                     ) : (
-                      <div className="h-12 w-12 rounded-lg bg-accent flex items-center justify-center flex-shrink-0"><span className="font-bold text-primary/60">{offer.name.charAt(0)}</span></div>
+                      <div className="h-12 w-12 rounded-lg bg-primary/15 flex items-center justify-center flex-shrink-0"><span className="font-bold text-primary">{offer.name.charAt(0)}</span></div>
                     )}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5">

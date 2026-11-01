@@ -817,7 +817,7 @@ export function OfferList({ offers, onEdit, onToggleFeatured, onToggleAvailable,
                 {offer.image_url ? (
                   <img src={offer.image_url} alt={offer.name} className="h-12 w-12 rounded-lg object-cover flex-shrink-0" />
                 ) : (
-                  <div className="h-12 w-12 rounded-lg bg-accent flex items-center justify-center flex-shrink-0"><span className="font-bold text-primary/60">{offer.name.charAt(0)}</span></div>
+                  <div className="h-12 w-12 rounded-lg bg-primary/15 flex items-center justify-center flex-shrink-0"><span className="font-bold text-primary">{offer.name.charAt(0)}</span></div>
                 )}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5">
@@ -984,7 +984,7 @@ export function LivePreview({ storeName, storePreview, vendor, logoPreview, desc
           {logoPreview || vendor?.logo_url ? (
             <img src={logoPreview || vendor?.logo_url || ""} alt="" className="h-10 w-10 rounded-full object-cover border-2 border-white shadow -mt-8 relative" />
           ) : (
-            <div className="h-10 w-10 rounded-full bg-accent flex items-center justify-center border-2 border-white shadow -mt-8 relative"><span className="font-bold text-primary text-sm">{(storeName || vendor?.store_name || "?").charAt(0)}</span></div>
+            <div className="h-10 w-10 rounded-full bg-primary/15 flex items-center justify-center border-2 border-white shadow -mt-8 relative"><span className="font-bold text-primary text-sm">{(storeName || vendor?.store_name || "?").charAt(0)}</span></div>
           )}
           <div className="min-w-0">
             <p className="font-semibold text-sm truncate">{storeName || vendor?.store_name}</p>

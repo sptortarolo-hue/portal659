@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { TV_THEME_LABELS, TV_THEME_SWATCH, type TvThemeTokens } from "@/components/tv/tv-themes";
 import { TvPlayer } from "@/components/tv/tv-player";
-import { TV_THEMES, normalizeTvConfig, TV_LAYOUT_CHOICES, type TvConfig } from "@/lib/tv-config";
+import { TV_THEMES, normalizeTvConfig, TV_LAYOUT_CHOICES, TV_DESIGN_CHOICES, type TvConfig } from "@/lib/tv-config";
 import type { TvSnapshot } from "@/lib/tv-snapshot";
 import { TvDestacadosPicker } from "./tv-destacados-picker";
 
@@ -185,13 +185,26 @@ export function TvScreenEditor({ open, screen, categories, sellsOnline = false, 
             </div>
           </Field>
 
-          <Field label="Densidad">
+          <Field label="Diseño">
             <RadioCards
-              options={TV_LAYOUT_CHOICES.map((c) => ({ label: c.label, value: String(c.columns), icon: "▦", desc: c.hint }))}
-              value={String(config.columns)}
-              onChange={(v) => edit({ columns: Number(v) as TvConfig["columns"] })}
+              options={TV_DESIGN_CHOICES.map((c) => ({ label: c.label, value: c.value, icon: c.icon, desc: c.hint }))}
+              value={config.layout}
+              onChange={(v) => edit({ layout: v as TvConfig["layout"] })}
             />
           </Field>
+
+          {/* En split la grilla derecha es angosta: el motor fija 2 columnas,
+              así que el selector de densidad no aplica (se oculta en vez de
+              mostrar una opción que el player ignora). */}
+          {config.layout !== "split" && (
+            <Field label="Densidad">
+              <RadioCards
+                options={TV_LAYOUT_CHOICES.map((c) => ({ label: c.label, value: String(c.columns), icon: "▦", desc: c.hint }))}
+                value={String(config.columns)}
+                onChange={(v) => edit({ columns: Number(v) as TvConfig["columns"] })}
+              />
+            </Field>
+          )}
 
           <div className="grid grid-cols-2 gap-3">
             <Field label="Duración de cada pantalla">
@@ -767,7 +780,10 @@ function RadioCards({
   onChange: (v: string) => void;
 }) {
   return (
-    <div className="grid grid-cols-3 gap-2">
+    <div
+      className="grid gap-2"
+      style={{ gridTemplateColumns: `repeat(${Math.max(1, options.length)}, minmax(0, 1fr))` }}
+    >
       {options.map((o) => (
         <button
           key={o.value}

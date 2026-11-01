@@ -39,6 +39,13 @@ export type TvPoster = {
 
 export type TvConfig = {
   theme: TvTheme;
+  /**
+   * Diseño del tablero: "classic" = banner de destacados arriba y columnas
+   * debajo (como siempre); "split" = columna 9:16 a la izquierda (destacado
+   * rotando, o el logo si no hay) y las columnas de la carta a la derecha.
+   * Default "classic": nadie cambia hasta que lo elige en el editor.
+   */
+  layout: "classic" | "split";
   columns: 2 | 3 | 4;
   slideSeconds: 6 | 10 | 15 | 20;
   showPrices: boolean;
@@ -80,6 +87,7 @@ export type TvConfig = {
 
 export const DEFAULT_TV_CONFIG: TvConfig = {
   theme: "barrio",
+  layout: "classic",
   columns: 3,
   slideSeconds: 10,
   showPrices: true,
@@ -104,6 +112,22 @@ export const TV_LAYOUT_CHOICES = [
   { label: "2 columnas", columns: 2 as const, hint: "Menús chicos y letra grande" },
   { label: "3 columnas", columns: 3 as const, hint: "Equilibrado (recomendado)" },
   { label: "4 columnas", columns: 4 as const, hint: "Cartas largas, letra más chica" },
+];
+
+/** Opciones del selector "Diseño" del editor. */
+export const TV_DESIGN_CHOICES = [
+  {
+    value: "classic" as const,
+    label: "Clásico",
+    icon: "▤",
+    hint: "Banner de destacados arriba, carta en columnas debajo",
+  },
+  {
+    value: "split" as const,
+    label: "Split",
+    icon: "◧",
+    hint: "Imagen 9:16 a la izquierda, carta a la derecha",
+  },
 ];
 
 const SLIDE_SECONDS = [6, 10, 15, 20];
@@ -141,6 +165,8 @@ export function normalizeTvConfig(input: unknown): TvConfig {
 
   const theme: TvTheme =
     TV_THEMES.includes(raw.theme as TvTheme) ? (raw.theme as TvTheme) : DEFAULT_TV_CONFIG.theme;
+  // Diseño: tolerante (el draft viejo no lo trae → clásico, sin cambios).
+  const layout: TvConfig["layout"] = raw.layout === "split" ? "split" : "classic";
   const columns: 2 | 3 | 4 = [2, 3, 4].includes(Number(raw.columns)) ? (Number(raw.columns) as 2 | 3 | 4) : 3;
   const slideSeconds = SLIDE_SECONDS.includes(Number(raw.slideSeconds))
     ? (Number(raw.slideSeconds) as TvConfig["slideSeconds"])
@@ -221,6 +247,7 @@ export function normalizeTvConfig(input: unknown): TvConfig {
 
   return {
     theme,
+    layout,
     columns,
     slideSeconds,
     showPrices: bool(raw.showPrices, true),

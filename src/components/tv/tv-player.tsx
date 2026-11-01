@@ -7,6 +7,7 @@ import { TvHero } from "./tv-hero";
 import { TvSlideView } from "./tv-slide";
 import { TvTicker } from "./tv-ticker";
 import { TvPosterStage } from "./tv-poster-stage";
+import { TvSplitStage } from "./tv-split-stage";
 import { TvQrSlide } from "./tv-qr-slide";
 import { TvClosed } from "./tv-closed";
 import { TV_FONT } from "./tv-themes";
@@ -68,12 +69,24 @@ export function TvPlayer({ snapshot, token, mode, vertical, debug = false, fitPa
     ]
   );
 
+  // --- Geometría: clásico (banner arriba) vs split (columna 9:16 izquierda) ---
+  // En split no hay banner de destacados: esos 320px se liberan para la columna
+  // izquierda, así que la fila de contenido crece y las columnas se angostan.
+  const split = snap.config.layout === "split";
+  const tickerH = snap.config.ticker.enabled && snap.config.ticker.text.trim() ? TICKER_H : 0;
   const contentH =
     TV_CANVAS.h -
     TV_CANVAS.safeY * 2 -
     HEADER_H -
-    (snap.hero.length > 0 ? HERO_H : 0) -
-    (snap.config.ticker.enabled && snap.config.ticker.text.trim() ? TICKER_H : 0);
+    (!split && snap.hero.length > 0 ? HERO_H : 0) -
+    tickerH;
+  /** Ancho de la columna 9:16 (alto de la fila × 9/16) y de la grilla derecha. */
+  const stageW = split ? Math.round((contentH * 9) / 16) : 0;
+  const gridW = split
+    ? TV_CANVAS.w - TV_CANVAS.safeX * 2 - stageW - 32
+    : TV_CANVAS.w - TV_CANVAS.safeX * 2;
+  /** Split fuerza 2 columnas (la derecha es angosta; 3 o 4 achatarían la letra). */
+  const columns = split ? 2 : snap.config.columns;
 
   const posters: TvPosterRef[] = useMemo(
     () =>
@@ -97,8 +110,8 @@ export function TvPlayer({ snapshot, token, mode, vertical, debug = false, fitPa
     () =>
       buildSlides({
         sections,
-        columns: snap.config.columns,
-        width: TV_CANVAS.w - TV_CANVAS.safeX * 2,
+        columns,
+        width: gridW,
         height: contentH,
         photoStyle,
         showDescriptions: snap.config.showDescriptions,
@@ -106,7 +119,7 @@ export function TvPlayer({ snapshot, token, mode, vertical, debug = false, fitPa
         qr: { enabled: qrInRotation, every: 4 },
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [sections, snap.config.columns, contentH, photoStyle, snap.config.showDescriptions, posters, qrInRotation]
+    [sections, columns, gridW, contentH, photoStyle, snap.config.showDescriptions, posters, qrInRotation]
   );
 
   // Solo se reinicia la rotación cuando cambia la VERSIÓN publicada (el
@@ -320,7 +333,9 @@ export function TvPlayer({ snapshot, token, mode, vertical, debug = false, fitPa
           </div>
         ) : (
           <>
-            {snap.hero.length > 0 && (
+            {/* Clásico: banner de destacados arriba. En split el destacado
+                vive rotando dentro de la columna izquierda, sin banner. */}
+            {!split && snap.hero.length > 0 && (
               <div style={{ marginTop: 24 }}>
                 <TvHero
                   hero={snap.hero}
@@ -330,48 +345,65 @@ export function TvPlayer({ snapshot, token, mode, vertical, debug = false, fitPa
                 />
               </div>
             )}
-            <div key={idx} className="tv-slide-enter relative min-h-0 flex-1">
-              {slide?.poster || slide?.qr ? null : slide ? (
-                <TvSlideView slide={slide} sections={snap.sections} photoStyle={photoStyle} vertical={vertical} />
-              ) : (
-                <div className="flex h-full items-center justify-center">
-                  <p style={{ fontSize: 44, color: "var(--tv-muted)" }}>
-                    {snap.sections.length === 0
-                      ? "Este local todavía no cargó su carta."
-                      : "No hay productos para mostrar con estos filtros."}
-                  </p>
-                </div>
+            {/* Contenido: en split la columna 9:16 es ESTABLE (no se remonta
+                con cada slide: si no, la foto del destacado parpadearía y se
+                perdería el crossfade de la rotación). Solo la grilla derecha
+                entra/sale con `tv-slide-enter`. */}
+            <div className="flex min-h-0 flex-1 gap-8">
+              {split && (
+                <TvSplitStage
+                  width={stageW}
+                  hero={snap.hero}
+                  index={heroIdx}
+                  logoUrl={snap.vendor.logoUrl}
+                  storeName={snap.vendor.name}
+                  upsell={snap.config.upsell}
+                  upsellItem={upsellItem}
+                />
               )}
-              {slides.length > 1 && (
-                <div className="absolute inset-x-0 bottom-0 flex items-center gap-4">
-                  <div
-                    className="h-[6px] flex-1 overflow-hidden rounded-full"
-                    style={{ background: "var(--tv-scrim)" }}
-                  >
-                    <div
-                      className="h-full rounded-full"
-                      style={{
-                        background: "var(--tv-accent)",
-                        animation: `tv-progress ${slideDuration}s linear forwards`,
-                      }}
-                    />
+              <div key={idx} className="tv-slide-enter relative min-h-0 flex-1">
+                {slide?.poster || slide?.qr ? null : slide ? (
+                  <TvSlideView slide={slide} sections={snap.sections} photoStyle={photoStyle} vertical={vertical} />
+                ) : (
+                  <div className="flex h-full items-center justify-center">
+                    <p style={{ fontSize: 44, color: "var(--tv-muted)" }}>
+                      {snap.sections.length === 0
+                        ? "Este local todavía no cargó su carta."
+                        : "No hay productos para mostrar con estos filtros."}
+                    </p>
                   </div>
-                  <div className="flex items-center gap-2 pb-0.5">
-                    {slides.map((s, i) => (
-                      <span
-                        key={i}
-                        className="rounded-full transition-all"
+                )}
+                {slides.length > 1 && (
+                  <div className="absolute inset-x-0 bottom-0 flex items-center gap-4">
+                    <div
+                      className="h-[6px] flex-1 overflow-hidden rounded-full"
+                      style={{ background: "var(--tv-scrim)" }}
+                    >
+                      <div
+                        className="h-full rounded-full"
                         style={{
-                          width: i === idx ? 26 : 9,
-                          height: 9,
-                          background: i === idx ? "var(--tv-accent)" : "var(--tv-muted)",
-                          opacity: i === idx ? 1 : 0.45,
+                          background: "var(--tv-accent)",
+                          animation: `tv-progress ${slideDuration}s linear forwards`,
                         }}
                       />
-                    ))}
+                    </div>
+                    <div className="flex items-center gap-2 pb-0.5">
+                      {slides.map((s, i) => (
+                        <span
+                          key={i}
+                          className="rounded-full transition-all"
+                          style={{
+                            width: i === idx ? 26 : 9,
+                            height: 9,
+                            background: i === idx ? "var(--tv-accent)" : "var(--tv-muted)",
+                            opacity: i === idx ? 1 : 0.45,
+                          }}
+                        />
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
             {snap.config.ticker.enabled && <TvTicker text={snap.config.ticker.text} />}
           </>

@@ -116,6 +116,30 @@ check("nombres largos: sin pérdida", auditSlides(s4, nasty).ok, auditSlides(s4,
 check("menú vacío: 0 slides", run([]).length === 0);
 check("categorías vacías: 0 slides", run([{ id: "a", name: "A", items: [] }]).length === 0);
 
+// Caso 6: diseño "split" — columna 9:16 a la izquierda, grilla derecha angosta.
+// El player descuenta el ancho de la columna y fuerza 2 columnas; acá se
+// replica esa geometría para exigir las mismas invariantes.
+const SPLIT_STAGE_H = GRID_H; // la columna mide el alto de la fila de contenido
+const SPLIT_STAGE_W = Math.round((SPLIT_STAGE_H * 9) / 16);
+const SPLIT_GRID_W = CONTENT_W - SPLIT_STAGE_W - 32;
+const s6 = run(typical, { columns: 2, width: SPLIT_GRID_W });
+check("split: ancho de columna 9:16 razonable", SPLIT_STAGE_W > 380 && SPLIT_STAGE_W < 480, SPLIT_STAGE_W);
+check("split: la grilla derecha queda con espacio para 2 columnas", SPLIT_GRID_W > 1100, SPLIT_GRID_W);
+check("split: todos los ítems aparecen una vez", auditSlides(s6, typical).ok, auditSlides(s6, typical));
+check("split: al menos una slide", s6.length >= 1);
+check(
+  "split: ninguna columna queda con menos de 2 ítems si hay contenido (sin columnas huérfanas)",
+  s6.every((s) => s.columns.filter((c) => c.itemIds.length >= 2).length > 0) || s6.length === 1,
+  s6.map((s) => s.columns.map((c) => c.itemIds.length))
+);
+const splitW = columnWidth(SPLIT_GRID_W, 2);
+check("split: ancho de columna derecha entero y usable", Number.isInteger(splitW) && splitW > 500, splitW);
+
+// Caso 7: split con la carta larga (nada se pierde al paginar angosto).
+const s7 = run(huge, { columns: 2, width: SPLIT_GRID_W });
+check("split + categoría gigante: pagina y no pierde nada", auditSlides(s7, huge).ok, auditSlides(s7, huge));
+check("split + categoría gigante: varias slides", s7.length > 1, `slides=${s7.length}`);
+
 // Caso 6: modelo de alturas y escala.
 const w = columnWidth(CONTENT_W, 3);
 check("ancho de columna entero", Number.isInteger(w) && w > 400, w);

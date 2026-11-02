@@ -240,6 +240,28 @@ export function resolveVendorPlan(
     plans.find((p) => p.slug === "gratuito") ||
     null;
 
+  // En desarrollo: todo desbloqueado (sin candados) para poder probar.
+  if ((process.env.NODE_ENV as string) === "development") {
+    return {
+      plan,
+      slug: plan?.slug ?? "none",
+      status: "active",
+      trialActive: false,
+      active: true,
+      expired: false,
+      grace: false,
+      eligibleForPaid: true,
+      can: () => true,
+      analyticsDays: 99999,
+      maxProducts: null,
+      maxOrdersMonth: null,
+      maxQuotesMonth: null,
+      maxScreens: 2,
+      hasTrial: false,
+      trialEndsAt: vendor.trial_ends_at,
+    };
+  }
+
   if (vendor.visible === false) {
     return {
       plan,
@@ -301,7 +323,7 @@ export function resolveVendorPlan(
   // el resto de los verticales resuelven siempre como gratuito.
   // En desarrollo mostramos todos los planes para poder probarlos.
   const eligibleForPaid =
-    process.env.NODE_ENV === "development" ||
+    (process.env.NODE_ENV as string) === "development" ||
     isGastroVendor(vendor) ||
     isComercioVendor(vendor) ||
     isServicioVendor(vendor) ||

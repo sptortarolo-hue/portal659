@@ -2452,7 +2452,8 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
                   <Button size="sm" variant="secondary" disabled={!hasAccount || shiftBlocked || resBlocked || paymentBlocked} onClick={() => setPartialPayOpen(true)}>
                     💵 Cobrar parcial
                   </Button>
-                  <Button size="sm" variant="default" disabled={!hasAccount || shiftBlocked || resBlocked || paymentBlocked} onClick={closeTable}>
+                 </div>
+                 <Button size="sm" variant="default" className="w-full flex-shrink-0" disabled={!hasAccount || shiftBlocked || resBlocked || paymentBlocked} onClick={closeTable}>
                     <span className="flex items-center justify-center gap-1.5">
                       {fiscalReady && (
                         <span onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1">
@@ -2464,7 +2465,6 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
                     </span>
                   </Button>
                 </div>
-              </div>
             </div>
           </div>
 

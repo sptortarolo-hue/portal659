@@ -2437,31 +2437,33 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
               )}
             </div>
           )}
-          {/* Opciones avanzadas: un solo toggle (progressive disclosure) */}
-          <div className="pt-1">
+          {/* 3 desplegables independientes, uno al lado del otro */}
+          <div className="flex flex-wrap gap-1.5 pt-1">
             <button
               type="button"
-              onClick={() => setOptionsOpen((v) => !v)}
-              className="flex w-full items-center justify-between gap-2 text-xs font-medium text-muted-foreground hover:text-foreground"
+              onClick={() => setGiftcardOpen((v) => !v)}
+              className="rounded-full px-2.5 py-1 text-[11px] font-medium bg-muted text-muted-foreground"
             >
-              <span>{optionsOpen ? "Ocultar opciones" : "+ Ajustes (giftcard, descuento)"}</span>
-              <span className="text-[10px]">{optionsOpen ? "▲" : "▼"}</span>
+              🎁 Giftcard {giftcardOpen ? "▲" : "▼"}
             </button>
-            {optionsOpen && (
-              <div className="mt-2 space-y-2">
-                {/* 3 colapsables distintos */}
-                <div>
-                  <button
-                    type="button"
-                    onClick={() => setGiftcardOpen((v) => !v)}
-                    className="flex w-full items-center justify-between gap-2 text-xs font-medium text-primary"
-                  >
-                    🎁 Giftcard
-                    <span className="text-muted-foreground text-[10px]">{giftcardOpen ? "▲" : "▼"}</span>
-                  </button>
-                  {giftcardOpen && (
-                    <div className="mt-2 space-y-2">
-                      <div className="flex gap-1.5">
+            <button
+              type="button"
+              onClick={() => setDiscountOpen((v) => !v)}
+              className="rounded-full px-2.5 py-1 text-[11px] font-medium bg-muted text-muted-foreground"
+            >
+              🏷️ Descuento {discountOpen ? "▲" : "▼"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setManualOpen((v) => !v)}
+              className="rounded-full px-2.5 py-1 text-[11px] font-medium bg-muted text-muted-foreground"
+            >
+              ＋ Monto {manualOpen ? "▲" : "▼"}
+            </button>
+          </div>
+          {giftcardOpen && (
+            <div className="mt-2 space-y-2">
+              <div className="flex gap-1.5">
                         <input
                           type="text"
                           value={giftcardCodeValue}
@@ -2510,19 +2512,9 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
                       )}
                     </div>
                   )}
-                </div>
 
-                <div>
-                  <button
-                    type="button"
-                    onClick={() => setDiscountOpen((v) => !v)}
-                    className="flex w-full items-center justify-between gap-2 text-xs font-medium text-orange-700 dark:text-orange-400"
-                  >
-                    🏷️ Descuento
-                    <span className="text-muted-foreground text-[10px]">{discountOpen ? "▲" : "▼"}</span>
-                  </button>
-                  {discountOpen && (
-                    <div className="mt-2 space-y-2">
+                {discountOpen && (
+                  <div className="mt-2 space-y-2">
                       <div className="flex gap-1.5">
                         <div className="flex rounded-lg border border-input overflow-hidden flex-shrink-0">
                           {(["amount", "percent"] as const).map((k) => (
@@ -2569,19 +2561,9 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
                       )}
                     </div>
                   )}
-                </div>
 
-                <div>
-                  <button
-                    type="button"
-                    onClick={() => setManualOpen((v) => !v)}
-                    className="flex w-full items-center justify-between gap-2 text-xs font-medium text-muted-foreground hover:text-foreground"
-                  >
-                    ＋ Monto manual (Varios)
-                    <span className="text-muted-foreground text-[10px]">{manualOpen ? "▲" : "▼"}</span>
-                  </button>
-                  {manualOpen && (
-                    <div className="mt-2 space-y-2">
+                {manualOpen && (
+                  <div className="mt-2 space-y-2">
                       <div className="flex flex-wrap items-center gap-1.5">
                         <input
                           type="text"
@@ -2618,10 +2600,6 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
                       </div>
                     </div>
                   )}
-                </div>
-              </div>
-            )}
-          </div>
           {/* Total ya se muestra arriba (prominente); acá solo el hint de efectivo. */}
           {cashResult.cashPct > 0 && payment !== "efectivo" && cashResult.cashDiscount > 0 && (
             <p className="text-[11px] leading-snug text-green-700 dark:text-green-400">

@@ -92,66 +92,47 @@ export async function POST(request: Request) {
     );
   }
 
-  // Intentar crear orden QR interoperable (instore API de MP).
+  // API de QR de MP (genera QR interoperable EMVCo con monto).
   let qrData: string | null = null;
   let qrImage: string | null = null;
   let mpOrderId: string | null = null;
+  const externalPosId = `portal659_${vendor.id}`;
 
   try {
-    const mpUserId = vendor.mp_user_id;
-    const externalPosId = `portal659_${vendor.id}`;
-    // 1) Crear POS si no existe (idempotente: MP devuelve 409 si ya existe, lo ignoramos).
-    try {
-      await fetch("https://api.mercadopago.com/pos", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${mpToken}` },
-        body: JSON.stringify({
-          name: vendor.store_name || "Portal 659",
-          external_id: externalPosId,
-          category: 621102,
-        }),
-      });
-    } catch {
-      /* ignorar */
-    }
-
-    // 2) Crear orden QR.
-    const orderRes = await fetch(
-      `https://api.mercadopago.com/instore/qr/seller/collectors/${mpUserId}/pos/${externalPosId}/orders`,
+    const qrRes = await fetch(
+      `https://api.mercadopago.com/mpmobile/instore/qr/${vendor.mp_user_id}/${externalPosId}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${mpToken}` },
         body: JSON.stringify({
           external_reference: externalReference,
-          title: concept || `Cobro ${vendor.store_name}`,
-          description: concept || `Cobro en ${vendor.store_name}`,
           notification_url: `${getSiteUrl()}/api/webhooks/mercadopago`,
-          total_amount: amount,
           items: [
             {
-              sku_number: "cobro",
-              category: "services",
-              title: concept || "Cobro",
-              description: concept || "Cobro presencial",
+              title: concept || `Cobro ${vendor.store_name}`,
               unit_price: amount,
               quantity: 1,
-              unit_measure: "unit",
-              total_amount: amount,
+              currency_id: "ARS",
             },
           ],
+          total_amount: amount,
         }),
       }
     );
-    const orderData = await orderRes.json();
-    if (orderData?.qr_data) {
-      qrData = orderData.qr_data;
-      mpOrderId = orderData.in_store_order_id || null;
+    const qrJson = await qrRes.json().catch(() => null);
+    console.log("[mp-qr] mpmobile response:", JSON.stringify(qrJson)?.slice(0, 500), "status:", qrRes.status);
+    if (qrJson?.qr_data) {
+      qrData = qrJson.qr_data;
+      mpOrderId = qrJson.in_store_order_id || null;
+    } else if (qrJson?.qr_code) {
+      qrData = qrJson.qr_code;
+      mpOrderId = qrJson.in_store_order_id || null;
     }
   } catch (e) {
-    console.warn("[mp-qr] instore order failed:", (e as any)?.message);
+    console.warn("[mp-qr] mpmobile failed:", (e as any)?.message);
   }
 
-  // Fallback: si la API instore no devolvió qr_data, usar preferencia (QR con link).
+  // Fallback: si la API mpmobile no devolvió qr_data, usar preferencia (QR con link).
   if (!qrData) {
     try {
       const prefRes = await fetch("https://api.mercadopago.com/checkout/preferences", {

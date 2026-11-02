@@ -321,6 +321,8 @@ export default function VendorSidebar({
       railItems.push({ tab: "mostrador", label: "Mostr.", title: "Mostrador", icon: ShoppingBag });
       if (canFiscal) railItems.push({ tab: "fiscal", label: "Factura", title: "Facturacion", icon: Receipt });
       if (canInventory) railItems.push({ tab: "inventario", label: "Invent.", title: "Inventario", icon: Boxes });
+      railItems.push({ tab: "menu", label: "Catalogo", title: "Catalogo", icon: ShoppingBag, badge: menuCount });
+      railItems.push({ tab: "servicios", label: "Servicios", title: "Servicios", icon: CalendarDays });
     }
   } else {
     OPERACION_ITEMS.filter((i) => i.show(isGastro, isModa, isComercio)).forEach((item) => {
@@ -414,6 +416,23 @@ export default function VendorSidebar({
                 label="Inventario"
               />
             )}
+            {isEstetica && (
+              <>
+                <NavButton
+                  active={currentTab === "menu"}
+                  onClick={() => handleTab("menu")}
+                  icon={ShoppingBag}
+                  label="Catalogo"
+                  badge={menuCount}
+                />
+                <NavButton
+                  active={currentTab === "servicios"}
+                  onClick={() => handleTab("servicios")}
+                  icon={CalendarDays}
+                  label="Servicios"
+                />
+              </>
+            )}
           </>
         ) : (
           OPERACION_ITEMS.filter((i) => i.show(isGastro, isModa, isComercio)).map((item) => {
@@ -466,10 +485,7 @@ export default function VendorSidebar({
             <NavButton active={currentTab === "clientes"} onClick={() => handleTab("clientes")} icon={Users} label="Clientes" />
             <NavButton active={currentTab === "promos"} onClick={() => handleTab("promos")} icon={Share} label="Promos" />
             {isEstetica && (
-              <>
-                <NavButton active={currentTab === "servicios"} onClick={() => handleTab("servicios")} icon={CalendarDays} label="Servicios" />
-                <NavButton active={currentTab === "tarjetas"} onClick={() => handleTab("tarjetas")} icon={Gift} label="Tarjetas" />
-              </>
+              <NavButton active={currentTab === "tarjetas"} onClick={() => handleTab("tarjetas")} icon={Gift} label="Tarjetas" />
             )}
           </>
         ) : (

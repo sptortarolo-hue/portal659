@@ -13,9 +13,11 @@ export async function POST(request: Request) {
 
   const gate = await (async () => {
     try {
-      const { vendor, previewSession } = await getVendorByRequest(request);
-      return { vendor, previewSession };
-    } catch {
+      const r = await getVendorByRequest(request);
+      console.log("[mp-qr] getVendorByRequest:", JSON.stringify({ vendorId: r?.vendor?.id, storeName: r?.vendor?.store_name, previewSession: r?.previewSession, staffRole: r?.staffRole, hasMpToken: !!r?.vendor?.mp_access_token }));
+      return r;
+    } catch (e) {
+      console.log("[mp-qr] getVendorByRequest ERROR:", (e as any)?.message);
       return null;
     }
   })();
@@ -23,7 +25,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "No autorizado" }, { status: 403 });
   }
   const vendor = gate.vendor as any;
-  const isPreview = gate.previewSession === true;
+  const isPreview = (gate as any).previewSession === true;
+  console.log("[mp-qr] isPreview:", isPreview, "vendor:", vendor?.id, vendor?.store_name, "mp_user_id:", vendor?.mp_user_id);
 
   const body = await request.json().catch(() => ({}));
   const orderId = typeof body?.orderId === "string" ? body.orderId : null;

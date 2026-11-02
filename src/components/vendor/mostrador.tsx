@@ -2428,17 +2428,8 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
             <span className="text-base font-semibold">Total</span>
             <span className="font-display font-bold text-xl tabular-nums">${payableTotal.toLocaleString("es-AR")}</span>
           </div>
-          {/* Desglose colapsable (progressive disclosure) */}
-          <button
-            type="button"
-            onClick={() => setDesgloseOpen((v) => !v)}
-            className="flex w-full items-center justify-between text-[11px] text-muted-foreground hover:text-foreground"
-          >
-            <span>Ver desglose</span>
-            <span>{desgloseOpen ? "▲" : "▼"}</span>
-          </button>
-          {desgloseOpen && (
-            <>
+          {/* Desglose (siempre visible) */}
+          <>
               {(activeCashDiscount > 0 || volumeDiscount > 0) && (
                 <>
                   <div className="flex items-center justify-between text-xs text-muted-foreground">
@@ -2490,7 +2481,6 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
                 </>
               )}
             </>
-          )}
           {/* Chips de ajustes aplicados (removibles) */}
           {(giftcardAmount > 0 || manualDiscountAmount > 0 || volumeDiscount > 0) && (
             <div className="flex flex-wrap gap-1.5 pt-1">

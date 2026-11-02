@@ -137,7 +137,7 @@ export async function POST(request: Request) {
             street_name: vendor.address || "Calle",
             street_number: "1",
             city_name: "La Plata",
-            state_code: "AR-B",
+            state_code: "B",
             zip_code: "1900",
             country_name: "Argentina",
           },

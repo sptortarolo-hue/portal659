@@ -92,44 +92,138 @@ export async function POST(request: Request) {
     );
   }
 
-  // API de QR de MP (genera QR interoperable EMVCo con monto).
-  let qrData: string | null = null;
-  let qrImage: string | null = null;
-  let mpOrderId: string | null = null;
-  const externalPosId = `portal659_${vendor.id}`;
-
+  // API de QR interoperable de MP (EMVCo): requiere store + POS en MP.
+  // 1) Verificar si el vendor tiene store/pos persistidos (tolerante a migración).
+  let hasStoreCol = false;
+  let hasPosCol = false;
   try {
-    const qrRes = await fetch(
-      `https://api.mercadopago.com/mpmobile/instore/qr/${vendor.mp_user_id}/${externalPosId}`,
-      {
+    const sc = await queryOne<{ exists: boolean }>(`SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'vendors' AND column_name = 'mp_store_id') AS exists`);
+    hasStoreCol = sc?.exists === true;
+  } catch { hasStoreCol = false; }
+  try {
+    const pc = await queryOne<{ exists: boolean }>(`SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'vendors' AND column_name = 'mp_external_pos_id') AS exists`);
+    hasPosCol = pc?.exists === true;
+  } catch { hasPosCol = false; }
+
+  // Si las columnas no existen, crearlas on-the-fly (tolerante).
+  if (!hasStoreCol) {
+    try {
+      await queryOne(`ALTER TABLE vendors ADD COLUMN IF NOT EXISTS mp_store_id text`);
+      hasStoreCol = true;
+    } catch { /* ignorar */ }
+  }
+  if (!hasPosCol) {
+    try {
+      await queryOne(`ALTER TABLE vendors ADD COLUMN IF NOT EXISTS mp_external_pos_id text`);
+      hasPosCol = true;
+    } catch { /* ignorar */ }
+  }
+
+  let storeId: string | null = (hasStoreCol ? vendor.mp_store_id : null) || null;
+  let externalPosId: string | null = (hasPosCol ? vendor.mp_external_pos_id : null) || null;
+
+  // 2) Si no hay store/pos, crearlos en MP.
+  if (!storeId || !externalPosId) {
+    externalPosId = `portal659_${vendor.id}`;
+    try {
+      // Crear store en MP.
+      const storeRes = await fetch("https://api.mercadopago.com/users/" + vendor.mp_user_id + "/stores", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${mpToken}` },
         body: JSON.stringify({
-          external_reference: externalReference,
-          notification_url: `${getSiteUrl()}/api/webhooks/mercadopago`,
-          items: [
-            {
-              title: concept || `Cobro ${vendor.store_name}`,
-              unit_price: amount,
-              quantity: 1,
-              currency_id: "ARS",
-            },
-          ],
-          total_amount: amount,
+          name: vendor.store_name || "Portal 659",
+          external_id: externalPosId,
+          location: {
+            street_name: vendor.address || "Calle",
+            street_number: "1",
+            city_name: "La Plata",
+            state_code: "BA",
+            zip_code: "1900",
+            country_name: "Argentina",
+          },
         }),
+      });
+      const storeData = await storeRes.json().catch(() => null);
+      console.log("[mp-qr] store response:", JSON.stringify(storeData)?.slice(0, 300), "status:", storeRes.status);
+      if (storeData?.id) {
+        storeId = String(storeData.id);
       }
-    );
-    const qrJson = await qrRes.json().catch(() => null);
-    console.log("[mp-qr] mpmobile response:", JSON.stringify(qrJson)?.slice(0, 500), "status:", qrRes.status);
-    if (qrJson?.qr_data) {
-      qrData = qrJson.qr_data;
-      mpOrderId = qrJson.in_store_order_id || null;
-    } else if (qrJson?.qr_code) {
-      qrData = qrJson.qr_code;
-      mpOrderId = qrJson.in_store_order_id || null;
+    } catch (e) {
+      console.warn("[mp-qr] store creation failed:", (e as any)?.message);
     }
-  } catch (e) {
-    console.warn("[mp-qr] mpmobile failed:", (e as any)?.message);
+
+    if (storeId) {
+      try {
+        // Crear POS en MP.
+        const posRes = await fetch("https://api.mercadopago.com/pos", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${mpToken}` },
+          body: JSON.stringify({
+            name: "POS Portal 659",
+            external_id: externalPosId,
+            store_id: storeId,
+            fixed_amount: false,
+            category: 621102,
+          }),
+        });
+        const posData = await posRes.json().catch(() => null);
+        console.log("[mp-qr] pos response:", JSON.stringify(posData)?.slice(0, 300), "status:", posRes.status);
+      } catch (e) {
+        console.warn("[mp-qr] pos creation failed:", (e as any)?.message);
+      }
+
+      // Persistir store_id y external_pos_id.
+      try {
+        await queryOne(
+          `UPDATE vendors SET mp_store_id = $1, mp_external_pos_id = $2 WHERE id = $3`,
+          [storeId, externalPosId, vendor.id]
+        );
+      } catch { /* tolerante */ }
+    }
+  }
+
+  // 3) Crear orden QR interoperable (EMVCo).
+  let qrData: string | null = null;
+  let qrImage: string | null = null;
+  let mpOrderId: string | null = null;
+
+  if (storeId && externalPosId) {
+    try {
+      const orderRes = await fetch(
+        `https://api.mercadopago.com/instore/qr/seller/collectors/${vendor.mp_user_id}/stores/${storeId}/pos/${externalPosId}/orders`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${mpToken}` },
+          body: JSON.stringify({
+            external_reference: externalReference,
+            title: concept || `Cobro ${vendor.store_name}`,
+            description: concept || `Cobro en ${vendor.store_name}`,
+            notification_url: `${getSiteUrl()}/api/webhooks/mercadopago`,
+            total_amount: amount,
+            items: [
+              {
+                sku_number: "cobro",
+                category: "services",
+                title: concept || "Cobro",
+                description: concept || "Cobro presencial",
+                unit_price: amount,
+                quantity: 1,
+                unit_measure: "unit",
+                total_amount: amount,
+              },
+            ],
+          }),
+        }
+      );
+      const orderData = await orderRes.json().catch(() => null);
+      console.log("[mp-qr] instore order response:", JSON.stringify(orderData)?.slice(0, 500), "status:", orderRes.status);
+      if (orderData?.qr_data) {
+        qrData = orderData.qr_data;
+        mpOrderId = orderData.in_store_order_id || null;
+      }
+    } catch (e) {
+      console.warn("[mp-qr] instore order failed:", (e as any)?.message);
+    }
   }
 
   // Fallback: si la API mpmobile no devolvió qr_data, usar preferencia (QR con link).

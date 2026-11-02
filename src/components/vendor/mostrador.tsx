@@ -2282,32 +2282,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
         ))}
       </div>
 
-      {/* Avanzado plegado: monto manual + fiscal (lo diario queda visible) */}
-      <button
-        type="button"
-        onClick={() => setShowAdvanced((v) => !v)}
-        className="w-full flex items-center justify-between px-1 py-1 text-xs font-medium text-muted-foreground hover:text-foreground"
-        aria-expanded={showAdvanced}
-      >
-        <span>⚙️ Más opciones (monto manual{fiscalReady ? ", fiscal" : ""})</span>
-        <span className="flex-shrink-0">{showAdvanced ? "▾" : "▸"}</span>
-      </button>
-      {showAdvanced && (
-        <div className="space-y-2">
-          {!fiscalReady && (
-            <p className="text-[11px] text-muted-foreground/70">
-              🧾 Factura C: requiere plan Gestión y completar la configuración en Config → Facturación.
-            </p>
-          )}
-          {/* Monto manual (Varios) movido al footer, justo encima del Total. */}
-          {qcReplaceKey && (
-            <p className="text-[11px] text-muted-foreground pt-1">
-              Al guardar se reemplaza la línea manual “{manualName.trim() || "Varios"}” por el producto real.
-            </p>
-          )}
-          {/* Fiscal se movió al footer (cobro), embebido en el botón Cobrar. */}
-        </div>
-      )}
+      {/* (Eliminado: el bloque "Más opciones" / ruedita ya no se usa; monto manual y fiscal están en el footer.) */}
 
       <div className="mt-3 space-y-2 pt-3 border-t border-border">
         {/* Modalidad de venta movida al footer (cobro) para quedar fija arriba del botón Cobrar. */}

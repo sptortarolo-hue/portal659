@@ -2431,10 +2431,7 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
                    <button type="button" onClick={() => setManualChargeOpen((v) => !v)} className="text-xs font-medium text-muted-foreground hover:text-foreground">
                      + Monto manual (consumicion) {manualChargeOpen ? "▲" : "▼"}
                    </button>
-                   <button type="button" onClick={() => setManualChargeOpen((v) => !v)} className="text-xs font-medium text-muted-foreground hover:text-foreground">
-  + Monto manual (consumicion) {manualChargeOpen ? "▲" : "▼"}
-</button>
-{manualChargeOpen && manualChargeRow}
+                   {manualChargeOpen && manualChargeRow}
                  </div>
                 <Button size="sm" className="flex-shrink-0" disabled={cart.length === 0 || resBlocked} onClick={addConsumicion}>Agregar consumición</Button>
                 {resBlocked && (

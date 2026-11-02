@@ -268,6 +268,7 @@ export function Mostrador({ vendorId }: { vendorId?: string | null }) {
   }, [msg]);
   useEffect(() => {
     if (!vendorId) return;
+    // En preview, el botón aparece igual (el endpoint simula el QR).
     fetch(`/api/payments?vendorId=${encodeURIComponent(vendorId)}`)
       .then((r) => r.json())
       .then((d) => setMpConfigured(d?.configured === true))

@@ -20,6 +20,7 @@ export function MpQrModal({ open, onClose, amount, orderId, concept, fiscalAutoE
   const [qrId, setQrId] = useState<string | null>(null);
   const [status, setStatus] = useState<"pending" | "paid" | "expired" | "cancelled">("pending");
   const [paid, setPaid] = useState(false);
+  const isPreview = typeof window !== "undefined" && (window.location.search.includes("preview=") || window.location.search.includes("token="));
 
   useEffect(() => {
     if (!open) {
@@ -95,6 +96,24 @@ export function MpQrModal({ open, onClose, amount, orderId, concept, fiscalAutoE
             <p className="text-2xl font-bold">${amount.toLocaleString("es-AR")}</p>
             {concept && <p className="text-xs text-muted-foreground">{concept}</p>}
             <p className="text-xs text-muted-foreground">Esperando confirmación de pago…</p>
+            {isPreview && qrId && (
+              <button
+                onClick={async () => {
+                  try {
+                    const res = await fetch(`/api/vendor/mp-qr/${qrId}?simulate=1`);
+                    const data = await res.json();
+                    if (data.status === "paid") {
+                      setPaid(true);
+                      setStatus("paid");
+                      onPaid?.(qrId);
+                    }
+                  } catch { /* ignorar */ }
+                }}
+                className="mt-2 px-4 py-2 rounded-lg bg-green-600 text-white text-sm font-medium hover:bg-green-700 transition-colors"
+              >
+                ✅ Simular pago exitoso (preview)
+              </button>
+            )}
           </>
         )}
         {paid && (

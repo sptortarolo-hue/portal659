@@ -13,8 +13,8 @@ export async function POST(request: Request) {
 
   const gate = await (async () => {
     try {
-      const { vendor } = await getVendorByRequest(request);
-      return { vendor };
+      const { vendor, previewSession } = await getVendorByRequest(request);
+      return { vendor, previewSession };
     } catch {
       return null;
     }
@@ -23,6 +23,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "No autorizado" }, { status: 403 });
   }
   const vendor = gate.vendor as any;
+  const isPreview = gate.previewSession === true;
 
   const body = await request.json().catch(() => ({}));
   const orderId = typeof body?.orderId === "string" ? body.orderId : null;
@@ -50,6 +51,33 @@ export async function POST(request: Request) {
     );
   }
 
+  const externalReference = `portal659_mpqr_${vendor.id}_${Date.now()}`;
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+
+  // En preview, simular (no requiere MP conectado).
+  if (isPreview) {
+    // Generar QR simulado con un link de prueba.
+    const qrData = `https://www.portal659.com.ar/seguimiento/simulado?amount=${amount}`;
+    let qrImage: string | null = null;
+    try {
+      const QRCode = (await import("qrcode")).default;
+      qrImage = await QRCode.toDataURL(qrData, { width: 320, margin: 2 });
+    } catch {
+      qrImage = null;
+    }
+    const row = await queryOne<{ id: string }>(
+      `INSERT INTO mp_qr_orders (vendor_id, order_id, amount, concept, external_reference, expires_at)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+      [vendor.id, orderId, amount, concept, externalReference, expiresAt]
+    );
+    if (orderId && row?.id) {
+      try {
+        await queryOne(`UPDATE orders SET mp_qr_order_id = $1 WHERE id = $2 AND vendor_id = $3`, [row.id, orderId, vendor.id]);
+      } catch { /* tolerante */ }
+    }
+    return NextResponse.json({ id: row?.id, qrData, qrImage, externalReference, expiresAt, amount, simulated: true });
+  }
+
   const mpToken = await getVendorMpToken(vendor);
   if (!mpToken) {
     return NextResponse.json(
@@ -57,9 +85,6 @@ export async function POST(request: Request) {
       { status: 409 }
     );
   }
-
-  const externalReference = `portal659_mpqr_${vendor.id}_${Date.now()}`;
-  const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
 
   // Intentar crear orden QR interoperable (instore API de MP).
   let qrData: string | null = null;

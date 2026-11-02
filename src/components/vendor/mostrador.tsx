@@ -181,7 +181,7 @@ const PAYMENT_OPTIONS = [
 export function Mostrador({ vendorId }: { vendorId?: string | null }) {
   const [products, setProducts] = useState<Product[]>([]);
   const [items, setItems] = useState<LineItem[]>([]);
-  const [payment, setPayment] = useState("efectivo");
+  const [payment, setPayment] = useState("transferencia");
   // "¿Con cuánto paga?" (efectivo): opcional, para mostrar el vuelto antes de
   // cobrar y dejarlo en el pedido/ticket. Vacío = no se manda nada.
   const [cashAmount, setCashAmount] = useState("");
@@ -203,6 +203,7 @@ export function Mostrador({ vendorId }: { vendorId?: string | null }) {
   // Descuento manual por venta ($ o % con motivo). Lo calcula el servidor
   // (fuente de verdad); acá se espeja en vivo sobre el neto de mercadería.
   const [discountOpen, setDiscountOpen] = useState(false);
+  const [manualOpen, setManualOpen] = useState(false);
   const [discountKind, setDiscountKind] = useState<"amount" | "percent">("amount");
   const [discountValue, setDiscountValue] = useState("");
   const [discountReason, setDiscountReason] = useState("");
@@ -2447,142 +2448,176 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
               <span className="text-[10px]">{optionsOpen ? "▲" : "▼"}</span>
             </button>
             {optionsOpen && (
-              <div className="mt-2 space-y-3">
-                <div className="space-y-2">
-                  <p className="text-[10px] uppercase tracking-wide font-semibold text-muted-foreground">🎁 Giftcard</p>
-                  <div className="flex gap-1.5">
-                    <input
-                      type="text"
-                      value={giftcardCodeValue}
-                      onChange={(e) => { setGiftcardCodeValue(e.target.value.toUpperCase()); setGiftcardErr(""); }}
-                      placeholder="Código (ej: ABC-123456)"
-                      className="flex-1 h-9 min-w-0 rounded-lg border border-input bg-background px-2.5 text-sm font-mono"
-                    />
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      className="h-9"
-                      disabled={giftcardBusy || !giftcardCodeValue.trim()}
-                      onClick={async () => {
-                        const code = giftcardCodeValue.trim();
-                        if (!code || !vendorId) return;
-                        setGiftcardBusy(true);
-                        setGiftcardErr("");
-                        try {
-                          const res = await fetch(`/api/giftcards/validate?vendorId=${encodeURIComponent(vendorId)}&code=${encodeURIComponent(code)}`);
-                          const data = await res.json();
-                          if (data.ok) {
-                            const balance = Number(data.balance);
-                            setGiftcardAmount(Math.min(balance, netSubtotal - activeCashDiscount));
-                            setGiftcardExpires(typeof data.expires_at === "string" ? data.expires_at : null);
-                          } else {
-                            setGiftcardErr(data.error || "Código no válido");
-                            setGiftcardAmount(0);
-                            setGiftcardExpires(null);
-                          }
-                        } catch {
-                          setGiftcardErr("Error de conexión");
-                          setGiftcardAmount(0);
-                          setGiftcardExpires(null);
-                        } finally {
-                          setGiftcardBusy(false);
-                        }
-                      }}
-                    >
-                      {giftcardBusy ? "..." : "Aplicar"}
-                    </Button>
-                  </div>
-                  {giftcardErr && <p className="text-[11px] text-red-600">{giftcardErr}</p>}
-                  {giftcardAmount > 0 && (
-                    <p className="text-[11px] text-muted-foreground">Saldo: ${(giftcardAmount).toLocaleString("es-AR")}{giftcardExpires ? ` · Vence ${fmtVence(giftcardExpires)}` : " · Sin vencimiento"}</p>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  <p className="text-[10px] uppercase tracking-wide font-semibold text-muted-foreground">🏷️ Descuento manual</p>
-                  <div className="flex gap-1.5">
-                    <div className="flex rounded-lg border border-input overflow-hidden flex-shrink-0">
-                      {(["amount", "percent"] as const).map((k) => (
-                        <button
-                          key={k}
+              <div className="mt-2 space-y-2">
+                {/* 3 colapsables distintos */}
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => setGiftcardOpen((v) => !v)}
+                    className="flex w-full items-center justify-between gap-2 text-xs font-medium text-primary"
+                  >
+                    🎁 Giftcard
+                    <span className="text-muted-foreground text-[10px]">{giftcardOpen ? "▲" : "▼"}</span>
+                  </button>
+                  {giftcardOpen && (
+                    <div className="mt-2 space-y-2">
+                      <div className="flex gap-1.5">
+                        <input
+                          type="text"
+                          value={giftcardCodeValue}
+                          onChange={(e) => { setGiftcardCodeValue(e.target.value.toUpperCase()); setGiftcardErr(""); }}
+                          placeholder="Código (ej: ABC-123456)"
+                          className="flex-1 h-9 min-w-0 rounded-lg border border-input bg-background px-2.5 text-sm font-mono"
+                        />
+                        <Button
                           type="button"
-                          onClick={() => setDiscountKind(k)}
-                          className={`h-9 px-3 text-xs font-semibold ${discountKind === k ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+                          size="sm"
+                          variant="outline"
+                          className="h-9"
+                          disabled={giftcardBusy || !giftcardCodeValue.trim()}
+                          onClick={async () => {
+                            const code = giftcardCodeValue.trim();
+                            if (!code || !vendorId) return;
+                            setGiftcardBusy(true);
+                            setGiftcardErr("");
+                            try {
+                              const res = await fetch(`/api/giftcards/validate?vendorId=${encodeURIComponent(vendorId)}&code=${encodeURIComponent(code)}`);
+                              const data = await res.json();
+                              if (data.ok) {
+                                const balance = Number(data.balance);
+                                setGiftcardAmount(Math.min(balance, netSubtotal - activeCashDiscount));
+                                setGiftcardExpires(typeof data.expires_at === "string" ? data.expires_at : null);
+                              } else {
+                                setGiftcardErr(data.error || "Código no válido");
+                                setGiftcardAmount(0);
+                                setGiftcardExpires(null);
+                              }
+                            } catch {
+                              setGiftcardErr("Error de conexión");
+                              setGiftcardAmount(0);
+                              setGiftcardExpires(null);
+                            } finally {
+                              setGiftcardBusy(false);
+                            }
+                          }}
                         >
-                          {k === "amount" ? "$" : "%"}
-                        </button>
-                      ))}
+                          {giftcardBusy ? "..." : "Aplicar"}
+                        </Button>
+                      </div>
+                      {giftcardErr && <p className="text-[11px] text-red-600">{giftcardErr}</p>}
+                      {giftcardAmount > 0 && (
+                        <p className="text-[11px] text-muted-foreground">Saldo: ${(giftcardAmount).toLocaleString("es-AR")}{giftcardExpires ? ` · Vence ${fmtVence(giftcardExpires)}` : " · Sin vencimiento"}</p>
+                      )}
                     </div>
-                    <input
-                      type="number"
-                      inputMode="decimal"
-                      min="0"
-                      value={discountValue}
-                      onChange={(e) => setDiscountValue(e.target.value)}
-                      placeholder={discountKind === "percent" ? "%" : "$"}
-                      className="flex-1 min-w-0 h-9 px-3 text-xs rounded-lg border border-input bg-background tabular-nums"
-                    />
-                    {(discountValue || discountReason) && (
-                      <button
-                        type="button"
-                        onClick={clearManualDiscount}
-                        title="Quitar descuento"
-                        className="h-9 px-2.5 rounded-lg bg-muted hover:bg-accent text-xs font-medium text-muted-foreground flex-shrink-0"
-                      >
-                        ✕
-                      </button>
-                    )}
-                  </div>
-                  <input
-                    type="text"
-                    value={discountReason}
-                    onChange={(e) => setDiscountReason(e.target.value)}
-                    placeholder="Motivo (ej: cliente frecuente)"
-                    maxLength={120}
-                    className="w-full h-9 px-3 text-xs rounded-lg border border-input bg-background"
-                  />
-                  {payment === "fiado" && discountValNum > 0 && (
-                    <p className="text-[11px] text-amber-700">📓 El descuento manual no aplica al fiado.</p>
                   )}
                 </div>
 
-                {/* Monto manual (Varios) — separado, dentro de + Ajustes */}
-                <div className="space-y-2">
-                  <p className="text-[10px] uppercase tracking-wide font-semibold text-muted-foreground">＋ Monto manual (Varios)</p>
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <input
-                      type="text"
-                      value={manualName}
-                      onChange={(e) => setManualName(e.target.value)}
-                      placeholder="Monto manual (ej: Varios)"
-                      className="flex-1 min-w-[120px] h-8 px-2.5 text-xs rounded-lg border border-input bg-background"
-                    />
-                    <input
-                      type="number"
-                      inputMode="decimal"
-                      min="0"
-                      value={manualPrice}
-                      onChange={(e) => setManualPrice(e.target.value)}
-                      placeholder="$"
-                      className="w-20 h-8 px-2 text-xs rounded-lg border border-input bg-background"
-                    />
-                    <button
-                      type="button"
-                      onClick={addManualLine}
-                      className="h-8 px-2.5 rounded-lg bg-muted hover:bg-accent text-xs font-medium"
-                    >
-                      ＋ Monto
-                    </button>
-                    <button
-                      type="button"
-                      title="Guardar esta línea como producto del catálogo"
-                      onClick={() => openQuickCreate({ name: manualName.trim(), price: manualPrice, fromManual: true })}
-                      disabled={!manualName.trim() && !manualPrice}
-                      className="h-8 px-2 rounded-lg bg-muted hover:bg-accent text-xs font-medium disabled:opacity-50"
-                    >
-                      💾 Grabar
-                    </button>
-                  </div>
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => setDiscountOpen((v) => !v)}
+                    className="flex w-full items-center justify-between gap-2 text-xs font-medium text-orange-700 dark:text-orange-400"
+                  >
+                    🏷️ Descuento
+                    <span className="text-muted-foreground text-[10px]">{discountOpen ? "▲" : "▼"}</span>
+                  </button>
+                  {discountOpen && (
+                    <div className="mt-2 space-y-2">
+                      <div className="flex gap-1.5">
+                        <div className="flex rounded-lg border border-input overflow-hidden flex-shrink-0">
+                          {(["amount", "percent"] as const).map((k) => (
+                            <button
+                              key={k}
+                              type="button"
+                              onClick={() => setDiscountKind(k)}
+                              className={`h-9 px-3 text-xs font-semibold ${discountKind === k ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+                            >
+                              {k === "amount" ? "$" : "%"}
+                            </button>
+                          ))}
+                        </div>
+                        <input
+                          type="number"
+                          inputMode="decimal"
+                          min="0"
+                          value={discountValue}
+                          onChange={(e) => setDiscountValue(e.target.value)}
+                          placeholder={discountKind === "percent" ? "%" : "$"}
+                          className="flex-1 min-w-0 h-9 px-3 text-xs rounded-lg border border-input bg-background tabular-nums"
+                        />
+                        {(discountValue || discountReason) && (
+                          <button
+                            type="button"
+                            onClick={clearManualDiscount}
+                            title="Quitar descuento"
+                            className="h-9 px-2.5 rounded-lg bg-muted hover:bg-accent text-xs font-medium text-muted-foreground flex-shrink-0"
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
+                      <input
+                        type="text"
+                        value={discountReason}
+                        onChange={(e) => setDiscountReason(e.target.value)}
+                        placeholder="Motivo (ej: cliente frecuente)"
+                        maxLength={120}
+                        className="w-full h-9 px-3 text-xs rounded-lg border border-input bg-background"
+                      />
+                      {payment === "fiado" && discountValNum > 0 && (
+                        <p className="text-[11px] text-amber-700">📓 El descuento manual no aplica al fiado.</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => setManualOpen((v) => !v)}
+                    className="flex w-full items-center justify-between gap-2 text-xs font-medium text-muted-foreground hover:text-foreground"
+                  >
+                    ＋ Monto manual (Varios)
+                    <span className="text-muted-foreground text-[10px]">{manualOpen ? "▲" : "▼"}</span>
+                  </button>
+                  {manualOpen && (
+                    <div className="mt-2 space-y-2">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <input
+                          type="text"
+                          value={manualName}
+                          onChange={(e) => setManualName(e.target.value)}
+                          placeholder="Monto manual (ej: Varios)"
+                          className="flex-1 min-w-[120px] h-8 px-2.5 text-xs rounded-lg border border-input bg-background"
+                        />
+                        <input
+                          type="number"
+                          inputMode="decimal"
+                          min="0"
+                          value={manualPrice}
+                          onChange={(e) => setManualPrice(e.target.value)}
+                          placeholder="$"
+                          className="w-20 h-8 px-2 text-xs rounded-lg border border-input bg-background"
+                        />
+                        <button
+                          type="button"
+                          onClick={addManualLine}
+                          className="h-8 px-2.5 rounded-lg bg-muted hover:bg-accent text-xs font-medium"
+                        >
+                          ＋ Monto
+                        </button>
+                        <button
+                          type="button"
+                          title="Guardar esta línea como producto del catálogo"
+                          onClick={() => openQuickCreate({ name: manualName.trim(), price: manualPrice, fromManual: true })}
+                          disabled={!manualName.trim() && !manualPrice}
+                          className="h-8 px-2 rounded-lg bg-muted hover:bg-accent text-xs font-medium disabled:opacity-50"
+                        >
+                          💾 Grabar
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}

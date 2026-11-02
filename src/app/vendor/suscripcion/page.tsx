@@ -647,7 +647,7 @@ export default function VendorSuscripcionPage() {
                   {me.plans
                     .filter((p) => p.slug !== "gratuito")
                     // Oficios ya no se ofrece a estética; solo ve su card quien ya lo tiene.
-                    .filter((p) => (me.vertical === "servicio" ? p.slug === "oficios" : p.slug !== "oficios" || eff.slug === "oficios"))
+                    .filter((p) => process.env.NODE_ENV === "development" ? true : (me.vertical === "servicio" ? p.slug === "oficios" : p.slug !== "oficios" || eff.slug === "oficios"))
                     .map((plan) => {
                       const current = eff.slug === plan.slug && (eff.status === "active" || eff.status === "past_due");
                       const active = eff.status === "active" || eff.status === "past_due" || eff.status === "trial";

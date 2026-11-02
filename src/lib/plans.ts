@@ -249,7 +249,7 @@ export function resolveVendorPlan(
       active: false,
       expired: false,
       grace: false,
-      eligibleForPaid: isGastroVendor(vendor) || isComercioVendor(vendor) || isServicioVendor(vendor) || isModaVendor(vendor) || isEsteticaVendor(vendor),
+      eligibleForPaid: true,
       can: () => true,
       analyticsDays: 99999,
       maxProducts: null,
@@ -299,7 +299,14 @@ export function resolveVendorPlan(
 
   // Gastro, comercio, moda, servicios y estética pueden tener planes pagos;
   // el resto de los verticales resuelven siempre como gratuito.
-  const eligibleForPaid = isGastroVendor(vendor) || isComercioVendor(vendor) || isServicioVendor(vendor) || isModaVendor(vendor) || isEsteticaVendor(vendor);
+  // En desarrollo mostramos todos los planes para poder probarlos.
+  const eligibleForPaid =
+    process.env.NODE_ENV === "development" ||
+    isGastroVendor(vendor) ||
+    isComercioVendor(vendor) ||
+    isServicioVendor(vendor) ||
+    isModaVendor(vendor) ||
+    isEsteticaVendor(vendor);
 
   const can = (feature: FeatureKey): boolean => {
     if (isModaVendor(vendor)) {

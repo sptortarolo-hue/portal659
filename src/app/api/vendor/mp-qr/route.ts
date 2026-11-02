@@ -14,7 +14,7 @@ export async function POST(request: Request) {
   const gate = await (async () => {
     try {
       const r = await getVendorByRequest(request);
-      console.log("[mp-qr] getVendorByRequest:", JSON.stringify({ vendorId: r?.vendor?.id, storeName: r?.vendor?.store_name, previewSession: r?.previewSession, staffRole: r?.staffRole, hasMpToken: !!r?.vendor?.mp_access_token }));
+      console.log("[mp-qr] getVendorByRequest:", JSON.stringify({ vendorId: r?.vendor?.id, previewSession: r?.previewSession, staffRole: r?.staffRole }));
       return r;
     } catch (e) {
       console.log("[mp-qr] getVendorByRequest ERROR:", (e as any)?.message);
@@ -26,7 +26,7 @@ export async function POST(request: Request) {
   }
   const vendor = gate.vendor as any;
   const isPreview = (gate as any).previewSession === true;
-  console.log("[mp-qr] isPreview:", isPreview, "vendor:", vendor?.id, vendor?.store_name, "mp_user_id:", vendor?.mp_user_id);
+  console.log("[mp-qr] isPreview:", isPreview, "vendor:", vendor?.id, "mp_user_id:", vendor?.mp_user_id);
 
   const body = await request.json().catch(() => ({}));
   const orderId = typeof body?.orderId === "string" ? body.orderId : null;

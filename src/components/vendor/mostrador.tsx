@@ -2200,6 +2200,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
   const orderBody = (
     <>
       <div className="space-y-1.5">
+      <div className={method === "direct" ? "" : "sm:hidden"}>{saleDetailsFields}</div>
         {items.length === 0 && <p className="text-xs text-muted-foreground text-center py-6">Tocá productos para armar el pedido</p>}
         {items.map((i) => (
           <div
@@ -2330,7 +2331,6 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
         )}
 
         {/* Mobile: campos inline. En desktop van en el modal de modalidad. */}
-        <div className={method === "direct" ? "" : "sm:hidden"}>{saleDetailsFields}</div>
 
         {/* Modalidad de pago movida al footer (cobro). */}
 
@@ -2880,7 +2880,10 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
       )}
 
       <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_360px] gap-4 items-start">
-        <div className="min-w-0">{productsGrid}</div>
+        <div className="min-w-0">
+          <div className="sm:hidden mb-3">{saleDetailsFields}</div>
+          {productsGrid}
+        </div>
 
         {/* Desktop sidebar: cuerpo con scroll + pie fijo con totales y Cobrar */}
         <div className="hidden sm:flex rounded-2xl border border-border bg-card p-4 flex-col max-h-[70vh] lg:sticky lg:top-24 lg:h-[calc(100vh-7rem)] lg:max-h-none">

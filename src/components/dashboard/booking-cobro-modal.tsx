@@ -36,7 +36,7 @@ export function BookingCobroModal({
     booking.deposit_status === "paid" ? Number(booking.deposit_amount || 0) : 0;
   const fromPricing = service ? isFromPricing(service) : false;
 
-  const [paymentMethod, setPaymentMethod] = useState<"efectivo" | "transferencia" | "tarjeta" | "mixto" | "fiado">("efectivo");
+  const [paymentMethod, setPaymentMethod] = useState<"efectivo" | "transferencia" | "tarjeta" | "mixto" | "fiado">("transferencia");
   const [finalPrice, setFinalPrice] = useState("");
   const [amountToCharge, setAmountToCharge] = useState("");
   const [amountReceived, setAmountReceived] = useState("");

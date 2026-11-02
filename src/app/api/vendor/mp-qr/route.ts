@@ -13,20 +13,23 @@ export async function POST(request: Request) {
 
   const gate = await (async () => {
     try {
-      const r = await getVendorByRequest(request);
-      console.log("[mp-qr] getVendorByRequest:", JSON.stringify({ vendorId: r?.vendor?.id, previewSession: r?.previewSession, staffRole: r?.staffRole }));
-      return r;
-    } catch (e) {
-      console.log("[mp-qr] getVendorByRequest ERROR:", (e as any)?.message);
+      return await getVendorByRequest(request);
+    } catch {
       return null;
     }
   })();
   if (!gate?.vendor) {
     return NextResponse.json({ error: "No autorizado" }, { status: 403 });
   }
-  const vendor = gate.vendor as any;
+  // getVendorByRequest solo trae id/user_id; necesitamos los campos mp_*.
+  const vendor = await queryOne<any>(
+    `SELECT * FROM vendors WHERE id = $1 LIMIT 1`,
+    [gate.vendor.id]
+  );
+  if (!vendor) {
+    return NextResponse.json({ error: "No autorizado" }, { status: 403 });
+  }
   const isPreview = (gate as any).previewSession === true;
-  console.log("[mp-qr] isPreview:", isPreview, "vendor:", vendor?.id, "mp_user_id:", vendor?.mp_user_id);
 
   const body = await request.json().catch(() => ({}));
   const orderId = typeof body?.orderId === "string" ? body.orderId : null;

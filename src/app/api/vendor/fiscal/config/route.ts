@@ -62,6 +62,7 @@ export async function GET(request: Request) {
     has_key: !!vendor.fiscal_key,
     cert_info: certInfo,
     ready,
+    fiscal_auto_emit: (vendor as any).fiscal_auto_emit === true,
   });
 }
 

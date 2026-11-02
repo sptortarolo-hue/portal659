@@ -125,6 +125,47 @@ export async function POST(request: Request) {
       if (payment.status === "approved") {
         const externalRef = payment.external_reference;
 
+        // Rama cobro por QR MP interoperable: portal659_mpqr_{vendorId}_{ts}.
+        if (externalRef?.startsWith("portal659_mpqr_")) {
+          try {
+            const qrOrder = await queryOne<{ id: string; vendor_id: string; order_id: string | null; amount: number }>(
+              `SELECT id, vendor_id, order_id, amount FROM mp_qr_orders WHERE external_reference = $1 LIMIT 1`,
+              [externalRef]
+            );
+            if (qrOrder) {
+              await queryOne(
+                `UPDATE mp_qr_orders SET status = 'paid', payment_id = $1, paid_at = now(), updated_at = now() WHERE id = $2`,
+                [String(paymentId), qrOrder.id]
+              );
+              if (qrOrder.order_id) {
+                try {
+                  await queryOne(
+                    `UPDATE orders SET payment_status = 'paid', paid_at = now(), payment_method = 'mercadopago' WHERE id = $1`,
+                    [qrOrder.order_id]
+                  );
+                } catch { /* columnas sin migrar */ }
+              }
+              try {
+                const { sendPushToUser } = await import("@/lib/push");
+                const vendor = await queryOne<{ user_id: string }>(
+                  `SELECT user_id FROM vendors WHERE id = $1 LIMIT 1`,
+                  [qrOrder.vendor_id]
+                );
+                if (vendor?.user_id) {
+                  await sendPushToUser(vendor.user_id, {
+                    title: "Cobro QR acreditado",
+                    body: `Se acreditó un cobro por QR de $${qrOrder.amount}.`,
+                    link: "/vendor/dashboard",
+                  });
+                }
+              } catch { /* push best-effort */ }
+            }
+          } catch (e) {
+            console.warn("[mp-qr webhook] error:", (e as any)?.message);
+          }
+          return NextResponse.json({ ok: true });
+        }
+
         // Rama suscripción: portal659_sub_{vendorId}_{planSlug}_{periodStart}
         if (externalRef?.startsWith("portal659_sub_")) {
           const parts = externalRef.split("_");

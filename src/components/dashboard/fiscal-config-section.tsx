@@ -16,6 +16,7 @@ type FiscalStatus = {
   has_key: boolean;
   cert_info: { subject: string; issuer: string; notAfter: string } | null;
   ready: boolean;
+  fiscal_auto_emit?: boolean;
 };
 
 type InvoiceRow = {
@@ -427,7 +428,27 @@ export function FiscalConfigSection({ defaultOpen = false }: { defaultOpen?: boo
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-2">
+          {status.ready && (
+             <label className="flex items-center gap-2 text-sm mt-2">
+               <input
+                 type="checkbox"
+                 checked={status.fiscal_auto_emit === true}
+                 onChange={async (e) => {
+                   await fetch("/api/vendor/me", {
+                     method: "POST",
+                     headers: { "Content-Type": "application/json" },
+                     body: JSON.stringify({ fiscal_auto_emit: e.target.checked }),
+                   });
+                   fetch("/api/vendor/fiscal/config")
+                     .then((r) => r.json())
+                     .then((d) => setStatus((s: any) => ({ ...s, fiscal_auto_emit: d?.fiscal_auto_emit === true })));
+                 }}
+               />
+               Emitir comprobante fiscal automáticamente al cobrar con QR MP
+             </label>
+           )}
+
+           <div className="grid grid-cols-2 gap-2">
             <div>
               <Label>CUIT</Label>
               <Input

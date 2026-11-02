@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { MpQrModal } from "@/components/vendor/mp-qr-modal";
 import { ModifierPicker } from "@/components/offers/modifier-picker";
 import { ProductPickCard } from "@/components/vendor/product-pick-card";
 import { CustomerPicker, type LookupCustomer } from "@/components/vendor/customer-picker";
@@ -200,6 +201,10 @@ export function Mostrador({ vendorId }: { vendorId?: string | null }) {
   // de envío por WhatsApp. Se limpian al iniciar el próximo cobro.
   const [issuedCodes, setIssuedCodes] = useState<{ id: string; code: string; amount: number }[]>([]);
   const [storeBrand, setStoreBrand] = useState<{ name: string; logo: string | null } | null>(null);
+  const [mpConfigured, setMpConfigured] = useState(false);
+  const [qrOpen, setQrOpen] = useState(false);
+  const [qrOrderId, setQrOrderId] = useState<string | null>(null);
+  const [qrAmount, setQrAmount] = useState<number>(0);
   // Descuento manual por venta ($ o % con motivo). Lo calcula el servidor
   // (fuente de verdad); acá se espeja en vivo sobre el neto de mercadería.
   const [discountOpen, setDiscountOpen] = useState(false);
@@ -212,6 +217,35 @@ export function Mostrador({ vendorId }: { vendorId?: string | null }) {
     setDiscountReason("");
     setDiscountKind("amount");
   }
+  const clearSaleForm = () => {
+    clearDraft(vendorId, "mostrador");
+    setItems([]);
+    setCustomerQuery("");
+    setCustomerName("");
+    setCustomerPhone("");
+    setCustomerAddress("");
+    setPosReferences("");
+    setPosOutOfArea(false);
+    setPosManualFee("");
+    setNotes("");
+    setManualName("");
+    setManualPrice("");
+    setClientOpen(false);
+    clearManualDiscount();
+    setGiftcardAmount(0);
+    setGiftcardCodeValue("");
+    setGiftcardExpires(null);
+    setGiftcardErr("");
+    setGiftcardOpen(false);
+    setFiscalReceptorTipo("cf");
+    setFiscalReceptorNro("");
+    setFiscalReceptorNombre("");
+    setFiscalReceptorCond("6");
+    setCashAmount("");
+    setSplitPayments([]);
+    setSheetOpen(false);
+    setSaving(false);
+  };
   // Progressive disclosure: el desglose y las opciones avanzadas se ocultan
   // por defecto para reducir la carga visual (se expanden on-demand).
   const [desgloseOpen, setDesgloseOpen] = useState(false);
@@ -232,6 +266,13 @@ export function Mostrador({ vendorId }: { vendorId?: string | null }) {
   useEffect(() => {
     if (msg) msgRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }, [msg]);
+  useEffect(() => {
+    if (!vendorId) return;
+    fetch(`/api/payments?vendorId=${encodeURIComponent(vendorId)}`)
+      .then((r) => r.json())
+      .then((d) => setMpConfigured(d?.configured === true))
+      .catch(() => setMpConfigured(false));
+  }, [vendorId]);
   const msgIsErr = /^(No se pudo|Sin |Error|Hay |Ingresá|El envío|Completá)/.test(msg) || msg.includes("⚠️");
   const [recent, setRecent] = useState<MostradorOrder[]>([]);
   const [query, setQuery] = useState("");
@@ -308,6 +349,8 @@ export function Mostrador({ vendorId }: { vendorId?: string | null }) {
   const [isRetail, setIsRetail] = useState(false);
   // Fiscal ARCA (plan Gestión + config completa): toggle por venta.
   const [fiscalReady, setFiscalReady] = useState(false);
+  const [fiscalAutoEmit, setFiscalAutoEmit] = useState(false);
+  const [autoPrint, setAutoPrint] = useState(false);
   const [withFiscal, setWithFiscal] = useState(false);
 // Receptor fiscal: consumidor final por default; con documento sale a nombre.
 const [fiscalReceptorTipo, setFiscalReceptorTipo] = useState<"cf" | "dni" | "cuit">("cf");
@@ -321,7 +364,14 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
   useEffect(() => {
     fetch("/api/vendor/fiscal/config")
       .then((r) => r.json())
-      .then((d) => setFiscalReady(d?.ready === true))
+      .then((d) => {
+        setFiscalReady(d?.ready === true);
+        setFiscalAutoEmit(d?.fiscal_auto_emit === true);
+      })
+      .catch(() => {});
+    fetch("/api/vendor/print/status")
+      .then((r) => r.json())
+      .then((d) => setAutoPrint(d?.vendor?.auto_print === true))
       .catch(() => {});
   }, []);
 
@@ -1193,7 +1243,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
   // Wrapper anti-silencio: cualquier excepción inesperada del cobro deja
   // mensaje visible y desbloquea el botón (antes quedaba en "Cobrando..."
   // para siempre y los toques siguientes no hacían nada).
-  async function charge(withReceipt: boolean) {
+  async function charge(withReceipt: boolean, forcePayment?: string, defer?: boolean) {
     // Migaja de inicio (fire-and-forget): si el tap llega hasta acá, el
     // servidor lo ve en docker logs aunque todo lo demás falle.
     try {
@@ -1201,13 +1251,13 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          message: `mostrador:charge:start withReceipt=${withReceipt} items=${items.length} payment=${payment} method=${method}`,
+          message: `mostrador:charge:start withReceipt=${withReceipt} items=${items.length} payment=${forcePayment || payment} method=${method}`,
           pathname: "/vendor (mostrador)",
         }),
       }).catch(() => {});
     } catch { /* noop */ }
     try {
-      await chargeInner(withReceipt);
+      await chargeInner(forcePayment || payment, withReceipt, defer);
     } catch (e) {
       console.error("[mostrador] charge", e);
       try {
@@ -1378,7 +1428,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [finePointer]);
 
-  async function chargeInner(withReceipt: boolean) {
+  async function chargeInner(payment: string, withReceipt: boolean, defer?: boolean) {
     if (items.length === 0) return;
 
     // Venta directa: retail sin pedido (nace cerrada). Retiro/delivery = pedido.
@@ -1416,6 +1466,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
       items: items.map((i) => ({ ...i, modifiers: (i.modifiers || []).map((m) => m.label) })),
       total,
       paymentMethod: payment,
+      deferPayment: defer === true,
       customerName: customerName || "Mostrador",
       // La DB solo admite pickup/delivery: la directa viaja como pickup + flag.
       method: direct ? "pickup" : method,
@@ -1438,37 +1489,6 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
       payments: splitToSend,
       client_key: newClientKey(),
       occurred_at: new Date().toISOString(),
-    };
-
-    const clearSaleForm = () => {
-      clearDraft(vendorId, "mostrador");
-      setItems([]);
-      setCustomerQuery("");
-      setCustomerName("");
-      setCustomerPhone("");
-      setCustomerAddress("");
-      setPosReferences("");
-      setPosOutOfArea(false);
-      setPosManualFee("");
-      setNotes("");
-      setManualName("");
-      setManualPrice("");
-      setClientOpen(false);
-      clearManualDiscount();
-      // Canje de giftcard: consumida al cobrar, el renglón vuelve a cero.
-      setGiftcardAmount(0);
-      setGiftcardCodeValue("");
-      setGiftcardExpires(null);
-      setGiftcardErr("");
-      setGiftcardOpen(false);
-      setFiscalReceptorTipo("cf");
-      setFiscalReceptorNro("");
-      setFiscalReceptorNombre("");
-      setFiscalReceptorCond("6");
-      setCashAmount("");
-      setSplitPayments([]);
-      setSheetOpen(false);
-      setSaving(false);
     };
 
     setSaving(true);
@@ -1639,6 +1659,17 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
     const data = await res.json().catch(() => ({}));
     if (!data.ok) {
       setMsg(data.error || "No se pudo registrar el pedido");
+      setSaving(false);
+      return;
+    }
+
+    // Pago diferido (QR MP): la venta queda pendiente. Se abre el modal QR y
+    // la confirmación del pago (webhook) marca como pagada + emite comprobante.
+    if (defer) {
+      const netTotal = Number(data.order?.total ?? total);
+      setQrOrderId(data.orderId as string);
+      setQrAmount(netTotal);
+      setQrOpen(true);
       setSaving(false);
       return;
     }
@@ -2631,6 +2662,15 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
               </button>
             ))}
           </div>
+          {mpConfigured && items.length > 0 && (
+            <button
+              onClick={() => charge(true, "mercadopago", true)}
+              disabled={saving}
+              className="w-full rounded-lg py-2 text-xs font-semibold border border-primary bg-primary/5 text-primary hover:bg-primary/10 transition-colors disabled:opacity-50"
+            >
+              💳 Cobrar con QR de Mercado Pago
+            </button>
+          )}
           {payment === "fiado" && (
             <p className="text-[11px] text-amber-700">
               📓 El fiado requiere nombre y celular del cliente (bloque Cliente).
@@ -3151,6 +3191,36 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
           </div>
         </div>
       )}
+      <MpQrModal
+        open={qrOpen}
+        onClose={() => {
+          setQrOpen(false);
+          setQrOrderId(null);
+        }}
+        amount={qrAmount || payableTotal}
+        orderId={qrOrderId}
+        concept={`Cobro ${storeBrand?.name || ""}`.trim()}
+        fiscalAutoEmit={fiscalAutoEmit}
+        onPaid={(id) => {
+          if (!qrOrderId) return;
+          if (fiscalAutoEmit && fiscalReady) {
+            fetch("/api/vendor/fiscal/emitir", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ orderId: qrOrderId }),
+            }).catch(() => {});
+          }
+          // Impresión no fiscal si auto_print está ON.
+          if (autoPrint) {
+            fetch("/api/print", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ orderId: qrOrderId, type: "ticket" }),
+            }).catch(() => {});
+          }
+          clearSaleForm();
+        }}
+      />
     </div>
   );
 }

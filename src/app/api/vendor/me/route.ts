@@ -180,6 +180,7 @@ export async function POST(request: Request) {
     weight_tolerance_pct,
     weight_step_kg,
     weight_min_kg,
+    fiscal_auto_emit,
   } = body;
 
   // Limpia y valida delivery_extra_days. Devuelve el objeto podado o false
@@ -406,6 +407,17 @@ export async function POST(request: Request) {
   if (printer_port !== undefined) payload.printer_port = printer_port || 9100;
   if (paper_size !== undefined) payload.paper_size = paper_size || "80mm";
   if (auto_print !== undefined) payload.auto_print = auto_print === true;
+  if (fiscal_auto_emit !== undefined) {
+    // Tolerante a migración sin aplicar: si la columna no existe, ignorar.
+    try {
+      const fc = await queryOne<{ exists: boolean }>(
+        `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'vendors' AND column_name = 'fiscal_auto_emit') AS exists`
+      );
+      if (fc?.exists === true) payload.fiscal_auto_emit = fiscal_auto_emit === true;
+    } catch {
+      /* ignorar */
+    }
+  }
   if (print_mode !== undefined)
     payload.print_mode = print_mode === "app" ? "app" : print_mode === "usb" ? "usb" : "server";
   if (transfer_alias !== undefined) payload.transfer_alias = transfer_alias || null;

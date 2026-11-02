@@ -73,6 +73,7 @@ export async function POST(request: Request) {
     deliveryManualFee,
     cashAmount,
     payments,
+    deferPayment,
   } = body;
 
   // Venta directa (mostrador, todos los verticales): vende en el acto sin
@@ -528,7 +529,7 @@ export async function POST(request: Request) {
       status,
       "mostrador",
       // Fiado: impago (no entra al Z hasta cubrirse).
-      payment === "fiado" ? null : now,
+      (deferPayment === true || payment === "fiado") ? null : now,
       notes || null,
       pickupNumber,
       previewOrder,
@@ -538,7 +539,7 @@ export async function POST(request: Request) {
       ...(hasManualCol ? [manualDiscountAmount, manualIn ? manualIn.kind : null, manualIn ? manualIn.reason : null, manualIn ? manualIn.value : null] : []),
       ...(direct && hasClosedAt ? [now] : []),
       ...(direct && hasDirectCol ? [true] : []),
-      ...(hasPayStatus ? [payment === "fiado" ? "pending" : "paid"] : []),
+      ...(hasPayStatus ? [deferPayment === true ? "pending" : (payment === "fiado" ? "pending" : "paid")] : []),
       ...(caps.ordersClientKey ? [clientKey] : []),
       ...(caps.ordersOccurredAt ? [occurredAt] : []),
       ...(hasZoneCols ? [deliveryResolved.zoneId, deliveryResolved.zoneName, deliveryResolved.outOfArea, deliveryResolved.fee] : []),

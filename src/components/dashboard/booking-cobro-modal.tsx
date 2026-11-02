@@ -235,18 +235,10 @@ export function BookingCobroModal({
             </p>
           )}
 
-          {canFiscal && (
-            <div className="flex items-center gap-1.5">
-              <Switch checked={wantFiscal} onCheckedChange={setWantFiscal} disabled={!fiscalReady} />
-              <Label className="text-xs text-muted-foreground">
-                Emitir comprobante fiscal (Factura C)
-              </Label>
-              {!fiscalReady && (
-                <span className="text-[10px] text-muted-foreground">
-                  Configurá facturación en Config → Fiscal para habilitarlo.
-                </span>
-              )}
-            </div>
+          {canFiscal && !fiscalReady && (
+            <p className="text-[10px] text-muted-foreground">
+              Configurá facturación en Config → Fiscal para habilitarlo.
+            </p>
           )}
 
           {wantFiscal && fiscalReady && (
@@ -305,9 +297,17 @@ export function BookingCobroModal({
           <Button variant="outline" size="sm" className="h-9 flex-1" onClick={onClose} disabled={submitting}>
             Cancelar
           </Button>
-          <Button size="sm" className="h-9 flex-1" disabled={submitting} onClick={submit}>
-            {submitting ? "Cobrando…" : paymentMethod === "fiado" ? "Registrar deuda" : "Cobrar"}
-          </Button>
+           <Button size="sm" className="h-9 flex-1" disabled={submitting} onClick={submit}>
+             <span className="flex items-center justify-center gap-2">
+               {canFiscal && fiscalReady && (
+                 <span onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1">
+                   <input type="checkbox" checked={wantFiscal} onChange={(e) => setWantFiscal(e.target.checked)} className="h-3.5 w-3.5 rounded border-border" aria-label="Facturar (Factura C)" />
+                   <span className="text-[10px] opacity-90">Facturar</span>
+                 </span>
+               )}
+               <span>{submitting ? "Cobrando…" : paymentMethod === "fiado" ? "Registrar deuda" : "Cobrar"}</span>
+             </span>
+           </Button>
         </div>
       </div>
     </div>

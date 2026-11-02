@@ -481,7 +481,7 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
   );
   const [modifiersMap, setModifiersMap] = useState<Record<string, ProductModifier[]>>({});
   const [pickerProduct, setPickerProduct] = useState<Product | null>(null);
-  const [payment, setPayment] = useState("efectivo");
+  const [payment, setPayment] = useState("transferencia");
   // "¿Con cuánto paga?" (efectivo, opcional): muestra el vuelto antes de
   // cerrar y viaja al cierre (y al ticket fiscal). Vacío = no se manda nada.
   const [cashAmount, setCashAmount] = useState("");
@@ -2450,7 +2450,15 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
                     {printingTicket ? "Imprimiendo..." : "🖨️ Precuenta"}
                   </Button>
                   <Button size="sm" variant="default" disabled={!hasAccount || shiftBlocked || resBlocked || paymentBlocked} onClick={closeTable}>
-                    Cobrar y cerrar
+                    <span className="flex items-center justify-center gap-1.5">
+                      {fiscalReady && (
+                        <span onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1">
+                          <input type="checkbox" checked={withFiscal} onChange={(e) => setWithFiscal(e.target.checked)} className="h-3.5 w-3.5 rounded border-border" aria-label="Facturar (Factura C)" />
+                          <span className="text-[10px] opacity-90">Facturar</span>
+                        </span>
+                      )}
+                      <span>Cobrar y cerrar</span>
+                    </span>
                   </Button>
                 </div>
               </div>
@@ -2721,7 +2729,15 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
                       onClick={closeTable}
                       className="w-full"
                     >
-                      Cobrado y cerrar
+                      <span className="flex items-center justify-center gap-1.5">
+                        {fiscalReady && (
+                          <span onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1">
+                            <input type="checkbox" checked={withFiscal} onChange={(e) => setWithFiscal(e.target.checked)} className="h-3.5 w-3.5 rounded border-border" aria-label="Facturar (Factura C)" />
+                            <span className="text-[10px] opacity-90">Facturar</span>
+                          </span>
+                        )}
+                        <span>Cobrado y cerrar</span>
+                      </span>
                     </Button>
                     {shiftBlocked && (
                       <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5 mt-1.5">

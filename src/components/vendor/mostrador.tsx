@@ -2329,7 +2329,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
         )}
 
         {/* Mobile: campos inline. En desktop van en el modal de modalidad. */}
-        <div className="sm:hidden">{saleDetailsFields}</div>
+        <div className={method === "direct" ? "" : "sm:hidden"}>{saleDetailsFields}</div>
 
         {/* Modalidad de pago movida al footer (cobro). */}
 
@@ -2342,42 +2342,6 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
     const orderFooter = (
       <>
         <div className="space-y-1 pt-1">
-          {/* Monto manual (Varios) — fijo justo encima del Total, compacto */}
-          <div className="flex flex-wrap items-center gap-1.5">
-            <input
-              type="text"
-              value={manualName}
-              onChange={(e) => setManualName(e.target.value)}
-              placeholder="Monto manual (ej: Varios)"
-              className="flex-1 min-w-[120px] h-8 px-2.5 text-xs rounded-lg border border-input bg-background"
-            />
-            <input
-              type="number"
-              inputMode="decimal"
-              min="0"
-              value={manualPrice}
-              onChange={(e) => setManualPrice(e.target.value)}
-              placeholder="$"
-              className="w-20 h-8 px-2 text-xs rounded-lg border border-input bg-background"
-            />
-            <button
-              type="button"
-              onClick={addManualLine}
-              className="h-8 px-2.5 rounded-lg bg-muted hover:bg-accent text-xs font-medium"
-            >
-              ＋ Monto
-            </button>
-            <button
-              type="button"
-              title="Guardar esta línea como producto del catálogo"
-              onClick={() => openQuickCreate({ name: manualName.trim(), price: manualPrice, fromManual: true })}
-              disabled={!manualName.trim() && !manualPrice}
-              className="h-8 px-2 rounded-lg bg-muted hover:bg-accent text-xs font-medium disabled:opacity-50"
-            >
-              💾 Grabar
-            </button>
-          </div>
-
           {/* Total prominente (siempre visible) */}
           <div className="flex items-center justify-between">
             <span className="text-base font-semibold">Total</span>
@@ -2580,6 +2544,45 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
                   {payment === "fiado" && discountValNum > 0 && (
                     <p className="text-[11px] text-amber-700">📓 El descuento manual no aplica al fiado.</p>
                   )}
+                </div>
+
+                {/* Monto manual (Varios) — separado, dentro de + Ajustes */}
+                <div className="space-y-2">
+                  <p className="text-[10px] uppercase tracking-wide font-semibold text-muted-foreground">＋ Monto manual (Varios)</p>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <input
+                      type="text"
+                      value={manualName}
+                      onChange={(e) => setManualName(e.target.value)}
+                      placeholder="Monto manual (ej: Varios)"
+                      className="flex-1 min-w-[120px] h-8 px-2.5 text-xs rounded-lg border border-input bg-background"
+                    />
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      min="0"
+                      value={manualPrice}
+                      onChange={(e) => setManualPrice(e.target.value)}
+                      placeholder="$"
+                      className="w-20 h-8 px-2 text-xs rounded-lg border border-input bg-background"
+                    />
+                    <button
+                      type="button"
+                      onClick={addManualLine}
+                      className="h-8 px-2.5 rounded-lg bg-muted hover:bg-accent text-xs font-medium"
+                    >
+                      ＋ Monto
+                    </button>
+                    <button
+                      type="button"
+                      title="Guardar esta línea como producto del catálogo"
+                      onClick={() => openQuickCreate({ name: manualName.trim(), price: manualPrice, fromManual: true })}
+                      disabled={!manualName.trim() && !manualPrice}
+                      className="h-8 px-2 rounded-lg bg-muted hover:bg-accent text-xs font-medium disabled:opacity-50"
+                    >
+                      💾 Grabar
+                    </button>
+                  </div>
                 </div>
               </div>
             )}

@@ -51,8 +51,9 @@ function newRow(method: SplitMethod = "efectivo"): SplitRow {
  * Patrón de los POS de referencia (Square "Split payment", Toast/Upserve con
  * saldo restante, Shopify "Remaining to pay", Loyverse "Split"):
  *  - total visible y **"Falta $X" en vivo** mientras se cubre el saldo,
- *  - atajos de un toque: **"Resto en efectivo" / "Resto en tarjeta"**
- *    (setean el saldo pendiente en la última línea),
+ *  - atajos de un toque: **💵 Efectivo** y **🏦 Transferencia** (cargan el
+ *    saldo que falta en ese medio, agregando la línea si no existe) y
+ *    **＋ Sumar medio** para las demás combinaciones,
  *  - la línea de efectivo muestra el **vuelto** con lo que entregó el cliente,
  *  - y el cobro solo se habilita cuando falta $0 (acá sí se bloquea: una
  *    venta a medias descuadra la caja).
@@ -74,7 +75,6 @@ export function PaymentSplit({
   const missing = round2(Math.max(0, tot - paid));
   const covered = tot > 0 && missing <= 0.01;
   const options = useMemo(() => COMBINED_METHODS.filter((m) => !rows.some((r) => r.method === m)), [rows]);
-  const valid = covered && rows.length > 0 && rows.every((r) => parseMonto(r.amount) > 0);
 
   const update = (key: string, patch: Partial<SplitRow>) =>
     onChange(rows.map((r) => (r.key === key ? { ...r, ...patch } : r)));
@@ -92,17 +92,22 @@ export function PaymentSplit({
 
   const pad = compact ? "px-2 py-1.5" : "p-2.5";
   const inputH = compact ? "h-7 text-xs" : "h-9 text-sm";
+  // Paleta con tokens del tema (no colores fijos): se ve igual en claro, en
+  // oscuro y con el switch "Actual ↔ Nuevo" del panel. Un verde fijo sobre
+  // fondo gris oscuro desaparecía.
+  const chip =
+    "rounded-full border border-input bg-background px-2.5 py-1 text-[11px] font-medium text-foreground hover:bg-muted disabled:opacity-40";
 
   return (
-    <div className={`rounded-xl border border-green-200 bg-green-50/60 dark:border-green-900 dark:bg-green-950/30 ${pad} space-y-1.5${className ? ` ${className}` : ""}`}>
+    <div className={`rounded-xl border border-border bg-muted/40 ${pad} space-y-1.5${className ? ` ${className}` : ""}`}>
       <div className="flex items-center justify-between gap-2">
-        <span className="text-[11px] font-semibold text-green-900 dark:text-green-200">
+        <span className="text-[11px] font-semibold text-foreground">
           🪙 Pago combinado — {subject} de ${fmt(tot)}
         </span>
         {covered ? (
-          <span className="text-[11px] font-semibold text-green-700 dark:text-green-300">Pagado $0 ✓</span>
+          <span className="text-[11px] font-bold text-primary">Pagado ✓</span>
         ) : (
-          <span className="text-[11px] font-bold text-amber-700 dark:text-amber-300">Falta ${fmt(missing)}</span>
+          <span className="text-[11px] font-bold text-destructive">Falta ${fmt(missing)}</span>
         )}
       </div>
 
@@ -117,7 +122,7 @@ export function PaymentSplit({
                 value={r.method}
                 onChange={(e) => update(r.key, { method: e.target.value as SplitMethod, tendered: "" })}
                 disabled={disabled}
-                className={`${inputH} w-[9.5rem] flex-shrink-0 rounded-lg border border-input bg-background px-1.5`}
+                className={`${inputH} w-[9.5rem] flex-shrink-0 rounded-lg border border-input bg-background px-1.5 text-foreground`}
               >
                 {COMBINED_METHODS.map((m) => (
                   <option key={m} value={m}>
@@ -162,7 +167,7 @@ export function PaymentSplit({
                   className={`${inputH} w-24 rounded-lg border border-input bg-background px-2 tabular-nums`}
                 />
                 {tendered > 0 && (
-                  <span className={`text-[11px] font-semibold ${change >= 0 ? "text-green-700 dark:text-green-300" : "text-red-600"}`}>
+                  <span className={`text-[11px] font-bold ${change >= 0 ? "text-primary" : "text-destructive"}`}>
                     {change >= 0 ? `Vuelto $${fmt(change)}` : "No alcanza"}
                   </span>
                 )}
@@ -172,24 +177,16 @@ export function PaymentSplit({
         );
       })}
 
+      {/* Medios habituales de un toque: cargo el saldo que falta en ese medio
+          (si no existe la línea, la agrega). "Sumar medio" es para el resto. */}
       <div className="flex flex-wrap items-center gap-1">
         {missing > 0 && (
           <>
-            <button
-              type="button"
-              onClick={() => fillRest("efectivo")}
-              disabled={disabled || rows.some((r) => r.method === "efectivo")}
-              className="rounded-full border border-green-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-green-800 hover:bg-green-100 disabled:opacity-40 dark:border-green-800 dark:bg-green-950 dark:text-green-200"
-            >
-              Resto en efectivo
+            <button type="button" onClick={() => fillRest("efectivo")} disabled={disabled} className={chip}>
+              💵 Efectivo ${fmt(missing)}
             </button>
-            <button
-              type="button"
-              onClick={() => fillRest("tarjeta")}
-              disabled={disabled || rows.some((r) => r.method === "tarjeta")}
-              className="rounded-full border border-green-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-green-800 hover:bg-green-100 disabled:opacity-40 dark:border-green-800 dark:bg-green-950 dark:text-green-200"
-            >
-              Resto en tarjeta
+            <button type="button" onClick={() => fillRest("transferencia")} disabled={disabled} className={chip}>
+              🏦 Transferencia ${fmt(missing)}
             </button>
           </>
         )}
@@ -198,7 +195,7 @@ export function PaymentSplit({
             type="button"
             onClick={() => onChange([...rows, newRow(options[0])])}
             disabled={disabled}
-            className="rounded-full border border-dashed border-green-400 px-2.5 py-1 text-[11px] font-medium text-green-700 hover:bg-green-100 disabled:opacity-40 dark:text-green-300"
+            className="rounded-full border border-dashed border-input px-2.5 py-1 text-[11px] font-medium text-muted-foreground hover:bg-muted disabled:opacity-40"
           >
             ＋ Sumar medio
           </button>

@@ -37,13 +37,13 @@ export function CashTender({ total, value, onChange, disabled = false, compact =
 
   return (
     <div
-      className={`rounded-xl border border-green-200 bg-green-50/60 dark:border-green-900 dark:bg-green-950/30 ${
+      className={`rounded-xl border border-border bg-muted/40 ${
         compact ? "px-2 py-1.5" : "p-2.5"
       } space-y-1.5${className ? ` ${className}` : ""}`}
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="text-[11px] font-semibold text-green-900 dark:text-green-200">
-          💵 ¿Con cuánto paga? <span className="font-normal text-green-700/80 dark:text-green-300/80">(opcional)</span>
+        <span className="text-[11px] font-semibold text-foreground">
+          💵 ¿Con cuánto paga? <span className="font-normal text-muted-foreground">(opcional)</span>
         </span>
         {state.touched && (
           <button
@@ -51,7 +51,7 @@ export function CashTender({ total, value, onChange, disabled = false, compact =
             onClick={() => onChange("")}
             disabled={disabled}
             title="Limpiar el monto"
-            className="flex-shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-medium text-green-800/80 hover:bg-green-100 dark:text-green-200/80 dark:hover:bg-green-900/50"
+            className="flex-shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground hover:bg-muted"
           >
             ✕
           </button>
@@ -64,7 +64,7 @@ export function CashTender({ total, value, onChange, disabled = false, compact =
           type="button"
           onClick={() => onChange(String(total))}
           disabled={disabled}
-          className="rounded-full border border-green-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-green-800 hover:bg-green-100 disabled:opacity-50 dark:border-green-800 dark:bg-green-950 dark:text-green-200 dark:hover:bg-green-900"
+          className="rounded-full border border-input bg-background px-2.5 py-1 text-[11px] font-semibold text-foreground hover:bg-muted disabled:opacity-50"
         >
           Exacto (${fmt(total)})
         </button>
@@ -74,7 +74,7 @@ export function CashTender({ total, value, onChange, disabled = false, compact =
             type="button"
             onClick={() => onChange(String(b))}
             disabled={disabled}
-            className="rounded-full border border-green-300 bg-white px-2.5 py-1 text-[11px] font-medium text-green-800 hover:bg-green-100 disabled:opacity-50 dark:border-green-800 dark:bg-green-950 dark:text-green-200 dark:hover:bg-green-900"
+            className="rounded-full border border-input bg-background px-2.5 py-1 text-[11px] font-medium text-foreground hover:bg-muted disabled:opacity-50"
           >
             ${fmt(b)}
           </button>
@@ -97,7 +97,7 @@ export function CashTender({ total, value, onChange, disabled = false, compact =
 
       {state.touched ? (
         state.ok ? (
-          <p className="text-sm font-bold text-green-700 dark:text-green-300">
+          <p className="text-sm font-bold text-primary">
             Vuelto: <span className="tabular-nums">${fmt(state.change)}</span>
           </p>
         ) : (

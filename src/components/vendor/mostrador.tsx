@@ -2336,51 +2336,12 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
               Al guardar se reemplaza la línea manual “{manualName.trim() || "Varios"}” por el producto real.
             </p>
           )}
-          {fiscalReady && (
-            <FiscalSaleFields
-              withFiscal={withFiscal}
-              onWithFiscal={setWithFiscal}
-              receptor={{ tipo: fiscalReceptorTipo, nro: fiscalReceptorNro, nombre: fiscalReceptorNombre, cond: fiscalReceptorCond }}
-              onReceptor={(r) => {
-                setFiscalReceptorTipo(r.tipo);
-                setFiscalReceptorNro(r.nro);
-                setFiscalReceptorNombre(r.nombre);
-                setFiscalReceptorCond(r.cond);
-              }}
-              payableTotal={payableTotal}
-            />
-          )}
+          {/* Fiscal se movió al footer (cobro), embebido en el botón Cobrar. */}
         </div>
       )}
 
       <div className="mt-3 space-y-2 pt-3 border-t border-border">
-        {/* Método de entrega (default: retiro; retail defaultea directa) + venta directa (sin pedido) */}
-        <div className="grid gap-1.5 grid-cols-3">
-          <button
-            onClick={() => selectMethod("direct")}
-            className={`rounded-lg py-1.5 text-xs font-medium border transition-colors ${
-              method === "direct" ? "border-primary bg-primary/5 text-primary" : "border-border text-muted-foreground"
-            }`}
-          >
-            ⚡ Venta directa
-          </button>
-          <button
-            onClick={() => selectMethod("pickup")}
-            className={`rounded-lg py-1.5 text-xs font-medium border transition-colors ${
-              method === "pickup" ? "border-primary bg-primary/5 text-primary" : "border-border text-muted-foreground"
-            }`}
-          >
-            🛍️ Para retirar
-          </button>
-          <button
-            onClick={() => selectMethod("delivery")}
-            className={`rounded-lg py-1.5 text-xs font-medium border transition-colors ${
-              method === "delivery" ? "border-primary bg-primary/5 text-primary" : "border-border text-muted-foreground"
-            }`}
-          >
-            🛵 Envío a domicilio
-          </button>
-        </div>
+        {/* Modalidad de venta movida al footer (cobro) para quedar fija arriba del botón Cobrar. */}
 
         {/* Desktop: resumen de los datos + editar (los campos viven en el modal) */}
         {(method === "pickup" || method === "delivery") && (
@@ -2403,30 +2364,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
         {/* Mobile: campos inline. En desktop van en el modal de modalidad. */}
         <div className="sm:hidden">{saleDetailsFields}</div>
 
-        <div className="flex flex-wrap gap-1.5">
-          {PAYMENT_OPTIONS.map((o) => (
-            <button
-              key={o.key}
-              onClick={() => {
-                setPayment(o.key);
-                if (o.key === "fiado") {
-                  setClientOpen(true);
-                  if (finePointer && method !== "direct") setMethodModal(method as "pickup" | "delivery");
-                }
-              }}
-              className={`rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                payment === o.key ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
-              }`}
-            >
-              {o.label}
-            </button>
-          ))}
-        </div>
-        {payment === "fiado" && (
-          <p className="text-[11px] text-amber-700">
-            📓 El fiado requiere nombre y celular del cliente (bloque Cliente).
-          </p>
-        )}
+        {/* Modalidad de pago movida al footer (cobro). */}
 
         {/* Fin del cuerpo: el pie (totales + Cobrar) va fijo abajo. */}
         </div>
@@ -2659,6 +2597,80 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
               💵 Pagando en efectivo: ${(netSubtotal - cashResult.cashDiscount).toLocaleString("es-AR")}
             </p>
           )}
+          {/* Modalidad de venta (fija arriba del cobro) */}
+          <div className="grid gap-1.5 grid-cols-3 pt-1">
+            <button
+              onClick={() => selectMethod("direct")}
+              className={`rounded-lg py-1.5 text-xs font-medium border transition-colors ${
+                method === "direct" ? "border-primary bg-primary/5 text-primary" : "border-border text-muted-foreground"
+              }`}
+            >
+              ⚡ Directa
+            </button>
+            <button
+              onClick={() => selectMethod("pickup")}
+              className={`rounded-lg py-1.5 text-xs font-medium border transition-colors ${
+                method === "pickup" ? "border-primary bg-primary/5 text-primary" : "border-border text-muted-foreground"
+              }`}
+            >
+              🛍️ Retiro
+            </button>
+            <button
+              onClick={() => selectMethod("delivery")}
+              className={`rounded-lg py-1.5 text-xs font-medium border transition-colors ${
+                method === "delivery" ? "border-primary bg-primary/5 text-primary" : "border-border text-muted-foreground"
+              }`}
+            >
+              🛵 Envío
+            </button>
+          </div>
+
+          {/* Modalidad de pago (fija arriba del cobro) */}
+          <div className="flex flex-wrap gap-1.5 pt-1">
+            {PAYMENT_OPTIONS.map((o) => (
+              <button
+                key={o.key}
+                onClick={() => {
+                  setPayment(o.key);
+                  if (o.key === "fiado") {
+                    setClientOpen(true);
+                    if (finePointer && method !== "direct") setMethodModal(method as "pickup" | "delivery");
+                  }
+                }}
+                className={`rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                  payment === o.key ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                }`}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
+          {payment === "fiado" && (
+            <p className="text-[11px] text-amber-700">
+              📓 El fiado requiere nombre y celular del cliente (bloque Cliente).
+            </p>
+          )}
+
+          {/* Fiscal: check embebido + receptor colapsable */}
+          {fiscalReady && (
+            <div className="space-y-1.5 pt-1">
+              {withFiscal && (
+                <FiscalSaleFields
+                  withFiscal={withFiscal}
+                  onWithFiscal={setWithFiscal}
+                  receptor={{ tipo: fiscalReceptorTipo, nro: fiscalReceptorNro, nombre: fiscalReceptorNombre, cond: fiscalReceptorCond }}
+                  onReceptor={(r) => {
+                    setFiscalReceptorTipo(r.tipo);
+                    setFiscalReceptorNro(r.nro);
+                    setFiscalReceptorNombre(r.nombre);
+                    setFiscalReceptorCond(r.cond);
+                  }}
+                  payableTotal={payableTotal}
+                />
+              )}
+            </div>
+          )}
+
           {/* "¿Con cuánto paga?" (efectivo): el vuelto en vivo antes de cobrar. */}
           {payment === "efectivo" && (
             <CashTender
@@ -2768,7 +2780,24 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
             onClick={() => charge(true)}
             title={finePointer ? "Atajo: apretá Enter dos veces para cobrar" : undefined}
           >
-            {saving ? "Cobrando..." : <>Cobrar{finePointer && <span className="opacity-70 font-normal"> ⏎⏎</span>}</>}
+            <span className="flex items-center justify-center gap-2">
+              {fiscalReady && (
+                <span
+                  onClick={(e) => e.stopPropagation()}
+                  className="inline-flex items-center gap-1"
+                >
+                  <input
+                    type="checkbox"
+                    checked={withFiscal}
+                    onChange={(e) => setWithFiscal(e.target.checked)}
+                    className="h-4 w-4 rounded border-border"
+                    aria-label="Facturar (Factura C)"
+                  />
+                  <span className="text-[11px] opacity-90">Facturar</span>
+                </span>
+              )}
+              <span>{saving ? "Cobrando..." : <>Cobrar{finePointer && <span className="opacity-70 font-normal"> ⏎⏎</span>}</>}</span>
+            </span>
           </Button>
           <Button
             className="w-full"
@@ -2782,7 +2811,21 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
         ) : (
           <>
             <Button className="w-full" disabled={items.length === 0 || saving || shiftBlocked || paymentBlocked} onClick={() => charge(true)}>
-              {saving ? "Cobrando..." : method === "pickup" ? (isRetail ? "Cobrar + comprobante" : "Cobrar + comprobante de retiro") : "Cobrar y despachar"}
+              <span className="flex items-center justify-center gap-2">
+                {fiscalReady && (
+                  <span onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1">
+                    <input
+                      type="checkbox"
+                      checked={withFiscal}
+                      onChange={(e) => setWithFiscal(e.target.checked)}
+                      className="h-4 w-4 rounded border-border"
+                      aria-label="Facturar (Factura C)"
+                    />
+                    <span className="text-[11px] opacity-90">Facturar</span>
+                  </span>
+                )}
+                <span>{saving ? "Cobrando..." : method === "pickup" ? (isRetail ? "Cobrar + comprobante" : "Cobrar + comprobante de retiro") : "Cobrar y despachar"}</span>
+              </span>
             </Button>
             <Button className="w-full" variant="outline" disabled={items.length === 0 || saving || shiftBlocked || paymentBlocked} onClick={() => charge(false)}>
               {method === "pickup" ? "Cobrar sin comprobante" : "Cobrar sin imprimir comprobante"}

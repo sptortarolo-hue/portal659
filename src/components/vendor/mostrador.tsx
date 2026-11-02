@@ -211,6 +211,10 @@ export function Mostrador({ vendorId }: { vendorId?: string | null }) {
     setDiscountReason("");
     setDiscountKind("amount");
   }
+  // Progressive disclosure: el desglose y las opciones avanzadas se ocultan
+  // por defecto para reducir la carga visual (se expanden on-demand).
+  const [desgloseOpen, setDesgloseOpen] = useState(false);
+  const [optionsOpen, setOptionsOpen] = useState(false);
   const [method, setMethod] = useState<"pickup" | "delivery" | "direct">("pickup");
   const [customerPhone, setCustomerPhone] = useState("");
   const [customerAddress, setCustomerAddress] = useState("");
@@ -2433,179 +2437,223 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
     const orderFooter = (
       <>
         <div className="space-y-1 pt-1">
-          {(activeCashDiscount > 0 || volumeDiscount > 0) && (
+          {/* Total prominente (siempre visible) */}
+          <div className="flex items-center justify-between">
+            <span className="text-base font-semibold">Total</span>
+            <span className="font-display font-bold text-xl tabular-nums">${payableTotal.toLocaleString("es-AR")}</span>
+          </div>
+          {/* Desglose colapsable (progressive disclosure) */}
+          <button
+            type="button"
+            onClick={() => setDesgloseOpen((v) => !v)}
+            className="flex w-full items-center justify-between text-[11px] text-muted-foreground hover:text-foreground"
+          >
+            <span>Ver desglose</span>
+            <span>{desgloseOpen ? "▲" : "▼"}</span>
+          </button>
+          {desgloseOpen && (
             <>
-              <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span>Subtotal</span>
-                <span className="tabular-nums">${total.toLocaleString("es-AR")}</span>
-              </div>
-              {activeCashDiscount > 0 && (
-              <div className="flex items-center justify-between text-xs font-medium text-green-600 dark:text-green-400">
-                <span>💵 Desc. efectivo ({cashResult.cashPct}%)</span>
-                <span className="tabular-nums">−${activeCashDiscount.toLocaleString("es-AR")}</span>
-              </div>
+              {(activeCashDiscount > 0 || volumeDiscount > 0) && (
+                <>
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>Subtotal</span>
+                    <span className="tabular-nums">${total.toLocaleString("es-AR")}</span>
+                  </div>
+                  {activeCashDiscount > 0 && (
+                  <div className="flex items-center justify-between text-xs font-medium text-green-600 dark:text-green-400">
+                    <span>💵 Desc. efectivo ({cashResult.cashPct}%)</span>
+                    <span className="tabular-nums">−${activeCashDiscount.toLocaleString("es-AR")}</span>
+                  </div>
+                  )}
+                </>
+              )}
+              {volumeDiscount > 0 && (
+                <div className="flex items-center justify-between text-xs font-medium text-violet-700 dark:text-violet-400">
+                  <span className="truncate">🎁 Desc. pack{volumeLabel ? ` · ${volumeLabel}` : ""}</span>
+                  <span className="tabular-nums flex-shrink-0">−${volumeDiscount.toLocaleString("es-AR")}</span>
+                </div>
+              )}
+              {giftcardAmount > 0 && (
+                <div className="flex items-center justify-between text-xs font-medium text-primary">
+                  <span className="truncate">🎁 Giftcard{giftcardCodeValue ? ` (${giftcardCodeValue})` : ""}</span>
+                  <span className="tabular-nums flex-shrink-0">−${giftcardAmount.toLocaleString("es-AR")}</span>
+                </div>
+              )}
+              {manualDiscountAmount > 0 && (
+                <div className="flex items-center justify-between text-xs font-medium text-orange-700 dark:text-orange-400">
+                  <span className="truncate">🏷️ Desc. manual{discountReason.trim() ? ` · ${discountReason.trim()}` : ""}</span>
+                  <span className="tabular-nums flex-shrink-0">−${manualDiscountAmount.toLocaleString("es-AR")}</span>
+                </div>
+              )}
+              {method === "delivery" && (
+                <>
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>Productos</span>
+                    <span className="tabular-nums">${total.toLocaleString("es-AR")}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>Envío{posResolvedDelivery.zoneName ? ` (${posResolvedDelivery.zoneName})` : ""}</span>
+                    {posOutOfAreaFlag && !(Number(posManualFee) > 0) ? (
+                      <span className="font-semibold text-amber-700">A convenir*</span>
+                    ) : posResolvedDelivery.freeShipping ? (
+                      <span className="font-semibold text-green-600">🎉 ¡Gratis!</span>
+                    ) : (
+                      <span className="tabular-nums">${posDeliveryFee.toLocaleString("es-AR")}{posOutOfAreaFlag ? "*" : ""}</span>
+                    )}
+                  </div>
+                </>
               )}
             </>
           )}
-          {volumeDiscount > 0 && (
-            <div className="flex items-center justify-between text-xs font-medium text-violet-700 dark:text-violet-400">
-              <span className="truncate">🎁 Desc. pack{volumeLabel ? ` · ${volumeLabel}` : ""}</span>
-              <span className="tabular-nums flex-shrink-0">−${volumeDiscount.toLocaleString("es-AR")}</span>
+          {/* Chips de ajustes aplicados (removibles) */}
+          {(giftcardAmount > 0 || manualDiscountAmount > 0 || volumeDiscount > 0) && (
+            <div className="flex flex-wrap gap-1.5 pt-1">
+              {giftcardAmount > 0 && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 text-primary px-2.5 py-1 text-[11px] font-medium">
+                  🎁 Giftcard −${giftcardAmount.toLocaleString("es-AR")}
+                  <button
+                    type="button"
+                    onClick={() => { setGiftcardAmount(0); setGiftcardCodeValue(""); setGiftcardExpires(null); }}
+                    className="ml-0.5 hover:text-primary/70"
+                    aria-label="Quitar giftcard"
+                  >
+                    ✕
+                  </button>
+                </span>
+              )}
+              {manualDiscountAmount > 0 && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400 px-2.5 py-1 text-[11px] font-medium">
+                  🏷️ Desc. −${manualDiscountAmount.toLocaleString("es-AR")}
+                  <button
+                    type="button"
+                    onClick={clearManualDiscount}
+                    className="ml-0.5 hover:opacity-70"
+                    aria-label="Quitar descuento"
+                  >
+                    ✕
+                  </button>
+                </span>
+              )}
+              {volumeDiscount > 0 && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400 px-2.5 py-1 text-[11px] font-medium">
+                  🎁 Pack −${volumeDiscount.toLocaleString("es-AR")}
+                </span>
+              )}
             </div>
           )}
-          {giftcardAmount > 0 && (
-            <div className="flex items-center justify-between text-xs font-medium text-primary">
-              <span className="truncate">🎁 Giftcard{giftcardCodeValue ? ` (${giftcardCodeValue})` : ""}</span>
-              <span className="tabular-nums flex-shrink-0">−${giftcardAmount.toLocaleString("es-AR")}</span>
-            </div>
-          )}
-          {manualDiscountAmount > 0 && (
-            <div className="flex items-center justify-between text-xs font-medium text-orange-700 dark:text-orange-400">
-              <span className="truncate">🏷️ Desc. manual{discountReason.trim() ? ` · ${discountReason.trim()}` : ""}</span>
-              <span className="tabular-nums flex-shrink-0">−${manualDiscountAmount.toLocaleString("es-AR")}</span>
-            </div>
-          )}
-          {method === "delivery" && (
-            <>
-              <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span>Productos</span>
-                <span className="tabular-nums">${total.toLocaleString("es-AR")}</span>
-              </div>
-              <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span>Envío{posResolvedDelivery.zoneName ? ` (${posResolvedDelivery.zoneName})` : ""}</span>
-                {posOutOfAreaFlag && !(Number(posManualFee) > 0) ? (
-                  <span className="font-semibold text-amber-700">A convenir*</span>
-                ) : posResolvedDelivery.freeShipping ? (
-                  <span className="font-semibold text-green-600">🎉 ¡Gratis!</span>
-                ) : (
-                  <span className="tabular-nums">${posDeliveryFee.toLocaleString("es-AR")}{posOutOfAreaFlag ? "*" : ""}</span>
-                )}
-              </div>
-            </>
-          )}
+          {/* Opciones avanzadas: un solo toggle (progressive disclosure) */}
           <div className="pt-1">
             <button
               type="button"
-              onClick={() => setGiftcardOpen((v) => !v)}
-              className="flex w-full items-center justify-between gap-2 text-xs font-medium text-primary"
+              onClick={() => setOptionsOpen((v) => !v)}
+              className="flex w-full items-center justify-between gap-2 text-xs font-medium text-muted-foreground hover:text-foreground"
             >
-              🎁 Giftcard
-              <span className="text-muted-foreground text-[10px]">{giftcardOpen ? "▲" : "▼"}</span>
+              <span>{optionsOpen ? "Ocultar opciones" : "+ Ajustes (giftcard, descuento)"}</span>
+              <span className="text-[10px]">{optionsOpen ? "▲" : "▼"}</span>
             </button>
-            {giftcardOpen && (
-              <div className="mt-2 space-y-2">
-                <div className="flex gap-1.5">
-                  <input
-                    type="text"
-                    value={giftcardCodeValue}
-                    onChange={(e) => { setGiftcardCodeValue(e.target.value.toUpperCase()); setGiftcardErr(""); }}
-                    placeholder="Código (ej: ABC-123456)"
-                    className="flex-1 h-9 min-w-0 rounded-lg border border-input bg-background px-2.5 text-sm font-mono"
-                  />
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    className="h-9"
-                    disabled={giftcardBusy || !giftcardCodeValue.trim()}
-                    onClick={async () => {
-                      const code = giftcardCodeValue.trim();
-                      if (!code || !vendorId) return;
-                      setGiftcardBusy(true);
-                      setGiftcardErr("");
-                      try {
-                        const res = await fetch(`/api/giftcards/validate?vendorId=${encodeURIComponent(vendorId)}&code=${encodeURIComponent(code)}`);
-                        const data = await res.json();
-                        if (data.ok) {
-                          const balance = Number(data.balance);
-                          setGiftcardAmount(Math.min(balance, netSubtotal - activeCashDiscount));
-                          setGiftcardExpires(typeof data.expires_at === "string" ? data.expires_at : null);
-                        } else {
-                          setGiftcardErr(data.error || "Código no válido");
+            {optionsOpen && (
+              <div className="mt-2 space-y-3">
+                <div className="space-y-2">
+                  <p className="text-[10px] uppercase tracking-wide font-semibold text-muted-foreground">🎁 Giftcard</p>
+                  <div className="flex gap-1.5">
+                    <input
+                      type="text"
+                      value={giftcardCodeValue}
+                      onChange={(e) => { setGiftcardCodeValue(e.target.value.toUpperCase()); setGiftcardErr(""); }}
+                      placeholder="Código (ej: ABC-123456)"
+                      className="flex-1 h-9 min-w-0 rounded-lg border border-input bg-background px-2.5 text-sm font-mono"
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-9"
+                      disabled={giftcardBusy || !giftcardCodeValue.trim()}
+                      onClick={async () => {
+                        const code = giftcardCodeValue.trim();
+                        if (!code || !vendorId) return;
+                        setGiftcardBusy(true);
+                        setGiftcardErr("");
+                        try {
+                          const res = await fetch(`/api/giftcards/validate?vendorId=${encodeURIComponent(vendorId)}&code=${encodeURIComponent(code)}`);
+                          const data = await res.json();
+                          if (data.ok) {
+                            const balance = Number(data.balance);
+                            setGiftcardAmount(Math.min(balance, netSubtotal - activeCashDiscount));
+                            setGiftcardExpires(typeof data.expires_at === "string" ? data.expires_at : null);
+                          } else {
+                            setGiftcardErr(data.error || "Código no válido");
+                            setGiftcardAmount(0);
+                            setGiftcardExpires(null);
+                          }
+                        } catch {
+                          setGiftcardErr("Error de conexión");
                           setGiftcardAmount(0);
                           setGiftcardExpires(null);
+                        } finally {
+                          setGiftcardBusy(false);
                         }
-                      } catch {
-                        setGiftcardErr("Error de conexión");
-                        setGiftcardAmount(0);
-                        setGiftcardExpires(null);
-                      } finally {
-                        setGiftcardBusy(false);
-                      }
-                    }}
-                  >
-                    {giftcardBusy ? "..." : "Aplicar"}
-                  </Button>
-                </div>
-                {giftcardErr && <p className="text-[11px] text-red-600">{giftcardErr}</p>}
-                {giftcardAmount > 0 && (
-                  <p className="text-[11px] text-muted-foreground">Saldo: ${(giftcardAmount).toLocaleString("es-AR")}{giftcardExpires ? ` · Vence ${fmtVence(giftcardExpires)}` : " · Sin vencimiento"}</p>
-                )}
-              </div>
-            )}
-          </div>
-          <div className="pt-1">
-            <button
-              type="button"
-              onClick={() => setDiscountOpen((v) => !v)}
-              className="flex w-full items-center justify-between gap-2 text-xs font-medium text-orange-700 dark:text-orange-400"
-            >
-              🏷️ Descuento
-              <span className="text-muted-foreground text-[10px]">{discountOpen ? "▲" : "▼"}</span>
-            </button>
-            {discountOpen && (
-              <div className="mt-2 space-y-2">
-                <div className="flex gap-1.5">
-                  <div className="flex rounded-lg border border-input overflow-hidden flex-shrink-0">
-                    {(["amount", "percent"] as const).map((k) => (
-                      <button
-                        key={k}
-                        type="button"
-                        onClick={() => setDiscountKind(k)}
-                        className={`h-9 px-3 text-xs font-semibold ${discountKind === k ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
-                      >
-                        {k === "amount" ? "$" : "%"}
-                      </button>
-                    ))}
-                  </div>
-                  <input
-                    type="number"
-                    inputMode="decimal"
-                    min="0"
-                    value={discountValue}
-                    onChange={(e) => setDiscountValue(e.target.value)}
-                    placeholder={discountKind === "percent" ? "%" : "$"}
-                    className="flex-1 min-w-0 h-9 px-3 text-xs rounded-lg border border-input bg-background tabular-nums"
-                  />
-                  {(discountValue || discountReason) && (
-                    <button
-                      type="button"
-                      onClick={clearManualDiscount}
-                      title="Quitar descuento"
-                      className="h-9 px-2.5 rounded-lg bg-muted hover:bg-accent text-xs font-medium text-muted-foreground flex-shrink-0"
+                      }}
                     >
-                      ✕
-                    </button>
+                      {giftcardBusy ? "..." : "Aplicar"}
+                    </Button>
+                  </div>
+                  {giftcardErr && <p className="text-[11px] text-red-600">{giftcardErr}</p>}
+                  {giftcardAmount > 0 && (
+                    <p className="text-[11px] text-muted-foreground">Saldo: ${(giftcardAmount).toLocaleString("es-AR")}{giftcardExpires ? ` · Vence ${fmtVence(giftcardExpires)}` : " · Sin vencimiento"}</p>
                   )}
                 </div>
-                <input
-                  type="text"
-                  value={discountReason}
-                  onChange={(e) => setDiscountReason(e.target.value)}
-                  placeholder="Motivo (ej: cliente frecuente)"
-                  maxLength={120}
-                  className="w-full h-9 px-3 text-xs rounded-lg border border-input bg-background"
-                />
-                {payment === "fiado" && discountValNum > 0 && (
-                  <p className="text-[11px] text-amber-700">📓 El descuento manual no aplica al fiado.</p>
-                )}
+                <div className="space-y-2">
+                  <p className="text-[10px] uppercase tracking-wide font-semibold text-muted-foreground">🏷️ Descuento manual</p>
+                  <div className="flex gap-1.5">
+                    <div className="flex rounded-lg border border-input overflow-hidden flex-shrink-0">
+                      {(["amount", "percent"] as const).map((k) => (
+                        <button
+                          key={k}
+                          type="button"
+                          onClick={() => setDiscountKind(k)}
+                          className={`h-9 px-3 text-xs font-semibold ${discountKind === k ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+                        >
+                          {k === "amount" ? "$" : "%"}
+                        </button>
+                      ))}
+                    </div>
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      min="0"
+                      value={discountValue}
+                      onChange={(e) => setDiscountValue(e.target.value)}
+                      placeholder={discountKind === "percent" ? "%" : "$"}
+                      className="flex-1 min-w-0 h-9 px-3 text-xs rounded-lg border border-input bg-background tabular-nums"
+                    />
+                    {(discountValue || discountReason) && (
+                      <button
+                        type="button"
+                        onClick={clearManualDiscount}
+                        title="Quitar descuento"
+                        className="h-9 px-2.5 rounded-lg bg-muted hover:bg-accent text-xs font-medium text-muted-foreground flex-shrink-0"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                  <input
+                    type="text"
+                    value={discountReason}
+                    onChange={(e) => setDiscountReason(e.target.value)}
+                    placeholder="Motivo (ej: cliente frecuente)"
+                    maxLength={120}
+                    className="w-full h-9 px-3 text-xs rounded-lg border border-input bg-background"
+                  />
+                  {payment === "fiado" && discountValNum > 0 && (
+                    <p className="text-[11px] text-amber-700">📓 El descuento manual no aplica al fiado.</p>
+                  )}
+                </div>
               </div>
             )}
           </div>
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-semibold">Total</span>
-            <span className="font-display font-bold text-lg tabular-nums">${payableTotal.toLocaleString("es-AR")}</span>
-          </div>
+          {/* Total ya se muestra arriba (prominente); acá solo el hint de efectivo. */}
           {cashResult.cashPct > 0 && payment !== "efectivo" && cashResult.cashDiscount > 0 && (
             <p className="text-[11px] leading-snug text-green-700 dark:text-green-400">
               💵 Pagando en efectivo: ${(netSubtotal - cashResult.cashDiscount).toLocaleString("es-AR")}

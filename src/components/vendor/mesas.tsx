@@ -2449,6 +2449,9 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
                   >
                     {printingTicket ? "Imprimiendo..." : "🖨️ Precuenta"}
                   </Button>
+                  <Button size="sm" variant="secondary" disabled={!hasAccount || shiftBlocked || resBlocked || paymentBlocked} onClick={() => setPartialPayOpen(true)}>
+                    💵 Cobrar parcial
+                  </Button>
                   <Button size="sm" variant="default" disabled={!hasAccount || shiftBlocked || resBlocked || paymentBlocked} onClick={closeTable}>
                     <span className="flex items-center justify-center gap-1.5">
                       {fiscalReady && (

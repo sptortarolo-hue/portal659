@@ -2351,6 +2351,12 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
 
 
                 </div>
+                {/* Total mesa - prominente */}
+                <div className="flex items-center justify-between text-sm flex-shrink-0 mb-2">
+                  <span>Total mesa</span>
+                  <b className="tabular-nums">${mesaPayTotal.toLocaleString("es-AR")}</b>
+                </div>
+                {/* Forma de pago - chips */}
                 <div className="flex flex-wrap gap-1 pt-2 flex-shrink-0">
                   {PAYMENT_OPTIONS.map((o) => (
                     <button
@@ -2362,45 +2368,6 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
                     </button>
                   ))}
                 </div>
-                {!fiscalReady && (
-                  <p className="text-[11px] text-muted-foreground/70 flex-shrink-0">
-                    🧾 Factura C: completá la configuración en Config → Facturación para facturar acá.
-                  </p>
-                )}
-                {fiscalReady && (
-                  <div className="space-y-1.5 flex-shrink-0">
-                    <FiscalSaleFields
-                      withFiscal={withFiscal}
-                      onWithFiscal={setWithFiscal}
-                      receptor={{ tipo: fiscalReceptorTipo, nro: fiscalReceptorNro, nombre: fiscalReceptorNombre, cond: fiscalReceptorCond }}
-                      onReceptor={(r) => {
-                        setFiscalReceptorTipo(r.tipo);
-                        setFiscalReceptorNro(r.nro);
-                        setFiscalReceptorNombre(r.nombre);
-                        setFiscalReceptorCond(r.cond);
-                      }}
-                      payableTotal={mesaPayTotal}
-                    />
-                  </div>
-                )}
-                {mesaVolumeDiscount > 0 && (
-                  <p className="text-[11px] font-medium text-violet-700 dark:text-violet-400 flex-shrink-0">
-                    🎁 Desc. pack{mesaVolumeLabel ? ` · ${mesaVolumeLabel}` : ""}: −${mesaVolumeDiscount.toLocaleString("es-AR")}
-                  </p>
-                )}
-                {discountLines}
-                <div className="flex-shrink-0">{discountEditor}</div>
-                <div className="flex items-center justify-between text-sm flex-shrink-0">
-                  <span>Total mesa</span>
-                  <b className="tabular-nums">${mesaPayTotal.toLocaleString("es-AR")}</b>
-                </div>
-                {mesaCash.cashDiscount > 0 && (
-                  <p className="text-[11px] leading-snug text-green-600 dark:text-green-400 flex-shrink-0">
-                    {payment === "efectivo"
-                      ? `💵 Desc. efectivo (${mesaCash.cashPct}%) aplicado: −$${mesaCash.cashDiscount.toLocaleString("es-AR")}`
-                      : `💵 Pagando en efectivo: $${(mesaNet - mesaCash.cashDiscount).toLocaleString("es-AR")} (−${mesaCash.cashPct}%)`}
-                  </p>
-                )}
                 {/* "¿Con cuánto paga?" (efectivo): el vuelto antes de cerrar. */}
                 {payment === "efectivo" && (
                   <CashTender
@@ -2422,17 +2389,54 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
                     className="flex-shrink-0"
                   />
                 )}
+                {mesaCash.cashDiscount > 0 && (
+                  <p className="text-[11px] leading-snug text-green-600 dark:text-green-400 flex-shrink-0">
+                    {payment === "efectivo"
+                      ? `💵 Desc. efectivo (${mesaCash.cashPct}%) aplicado: −$${mesaCash.cashDiscount.toLocaleString("es-AR")}`
+                      : `💵 Pagando en efectivo: $${(mesaNet - mesaCash.cashDiscount).toLocaleString("es-AR")} (−${mesaCash.cashPct}%)`}
+                  </p>
+                )}
                 {payment === "mixto" && partialPaid > 0 && (
                   <p className="text-[10px] text-muted-foreground flex-shrink-0">
                     Saldo = total ${mesaPayTotal.toLocaleString("es-AR")} − ya pagado ${partialPaid.toLocaleString("es-AR")}
                   </p>
                 )}
+                {/* Descuentos y volumen */}
+                {mesaVolumeDiscount > 0 && (
+                  <p className="text-[11px] font-medium text-violet-700 dark:text-violet-400 flex-shrink-0">
+                    🎁 Desc. pack{mesaVolumeLabel ? ` · ${mesaVolumeLabel}` : ""}: −${mesaVolumeDiscount.toLocaleString("es-AR")}
+                  </p>
+                )}
+                {discountLines}
+                <div className="flex-shrink-0">{discountEditor}</div>
                 <div className="flex-shrink-0">
                    <button type="button" onClick={() => setManualChargeOpen((v) => !v)} className="text-xs font-medium text-muted-foreground hover:text-foreground">
                      + Monto manual (consumicion) {manualChargeOpen ? "▲" : "▼"}
                    </button>
                    {manualChargeOpen && manualChargeRow}
                  </div>
+                {/* Fiscal: fila con comprobante arriba de Agregar consumición */}
+                {!fiscalReady && (
+                  <p className="text-[11px] text-muted-foreground/70 flex-shrink-0">
+                    🧾 Factura C: completá la configuración en Config → Facturación para facturar acá.
+                  </p>
+                )}
+                {fiscalReady && (
+                  <div className="space-y-1.5 flex-shrink-0 pt-2">
+                    <FiscalSaleFields
+                      withFiscal={withFiscal}
+                      onWithFiscal={setWithFiscal}
+                      receptor={{ tipo: fiscalReceptorTipo, nro: fiscalReceptorNro, nombre: fiscalReceptorNombre, cond: fiscalReceptorCond }}
+                      onReceptor={(r) => {
+                        setFiscalReceptorTipo(r.tipo);
+                        setFiscalReceptorNro(r.nro);
+                        setFiscalReceptorNombre(r.nombre);
+                        setFiscalReceptorCond(r.cond);
+                      }}
+                      payableTotal={mesaPayTotal}
+                    />
+                  </div>
+                )}
                 <Button size="sm" className="flex-shrink-0" disabled={cart.length === 0 || resBlocked} onClick={addConsumicion}>Agregar consumición</Button>
                 {resBlocked && (
                   <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5 flex-shrink-0">
@@ -2461,15 +2465,7 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
                   </Button>
                  </div>
                  <Button size="sm" variant="default" className="w-full flex-shrink-0" disabled={!hasAccount || shiftBlocked || resBlocked || paymentBlocked} onClick={closeTable}>
-                    <span className="flex items-center justify-center gap-1.5">
-                      {fiscalReady && (
-                        <span onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1">
-                          <input type="checkbox" checked={withFiscal} onChange={(e) => setWithFiscal(e.target.checked)} className="h-3.5 w-3.5 rounded border-border" aria-label="Facturar (Factura C)" />
-                          <span className="text-[10px] opacity-90">Facturar</span>
-                        </span>
-                      )}
-                      <span>Cobrar y cerrar</span>
-                    </span>
+                    Cobrar y cerrar
                   </Button>
                 </div>
             </div>
@@ -2618,12 +2614,15 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
                       <div className="space-y-1.5">{cart.map(cartLine)}</div>
                     </div>
                   )}
-                  {manualChargeOpen && manualChargeRow}
-
-                  
                 </div>
 
                 <footer className="border-t border-border px-3 pt-2 pb-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] space-y-2 bg-card">
+                  {/* Total a cobrar - prominente */}
+                  <div className="flex items-center justify-between text-sm">
+                    <span>Total a cobrar</span>
+                    <b className="tabular-nums">${mesaPayTotal.toLocaleString("es-AR")}</b>
+                  </div>
+                  {/* Forma de pago - chips */}
                   <div className="flex flex-wrap gap-1">
                     {PAYMENT_OPTIONS.map((o) => (
                       <button
@@ -2635,43 +2634,6 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
                       </button>
                     ))}
                   </div>
-                  {!fiscalReady && (
-                    <p className="text-[11px] text-muted-foreground/70">
-                      🧾 Factura C: completá la configuración en Config → Facturación para facturar acá.
-                    </p>
-                  )}
-                  {fiscalReady && (
-                    <FiscalSaleFields
-                      withFiscal={withFiscal}
-                      onWithFiscal={setWithFiscal}
-                      receptor={{ tipo: fiscalReceptorTipo, nro: fiscalReceptorNro, nombre: fiscalReceptorNombre, cond: fiscalReceptorCond }}
-                      onReceptor={(r) => {
-                        setFiscalReceptorTipo(r.tipo);
-                        setFiscalReceptorNro(r.nro);
-                        setFiscalReceptorNombre(r.nombre);
-                        setFiscalReceptorCond(r.cond);
-                      }}
-                      payableTotal={mesaPayTotal}
-                    />
-                  )}
-                  {mesaVolumeDiscount > 0 && (
-                    <p className="text-[11px] font-medium text-violet-700 dark:text-violet-400">
-                      🎁 Desc. pack{mesaVolumeLabel ? ` · ${mesaVolumeLabel}` : ""}: −${mesaVolumeDiscount.toLocaleString("es-AR")}
-                    </p>
-                  )}
-                  {discountLines}
-                  {discountEditor}
-                  <div className="flex items-center justify-between text-sm">
-                    <span>Total a cobrar</span>
-                    <b className="tabular-nums">${mesaPayTotal.toLocaleString("es-AR")}</b>
-                  </div>
-                  {mesaCash.cashDiscount > 0 && (
-                    <p className="text-[11px] leading-snug text-green-600 dark:text-green-400">
-                      {payment === "efectivo"
-                        ? `💵 Desc. efectivo (${mesaCash.cashPct}%) aplicado: −$${mesaCash.cashDiscount.toLocaleString("es-AR")}`
-                        : `💵 Pagando en efectivo: $${(mesaNet - mesaCash.cashDiscount).toLocaleString("es-AR")} (−${mesaCash.cashPct}%)`}
-                    </p>
-                  )}
                   {/* "¿Con cuánto paga?" (efectivo): el vuelto antes de cerrar. */}
                   {payment === "efectivo" && (
                     <CashTender total={mesaPayTotal} value={cashAmount} onChange={setCashAmount} compact />
@@ -2686,10 +2648,47 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
                       compact
                     />
                   )}
+                  {mesaCash.cashDiscount > 0 && (
+                    <p className="text-[11px] leading-snug text-green-600 dark:text-green-400">
+                      {payment === "efectivo"
+                        ? `💵 Desc. efectivo (${mesaCash.cashPct}%) aplicado: −$${mesaCash.cashDiscount.toLocaleString("es-AR")}`
+                        : `💵 Pagando en efectivo: $${(mesaNet - mesaCash.cashDiscount).toLocaleString("es-AR")} (−${mesaCash.cashPct}%)`}
+                    </p>
+                  )}
                   {payment === "mixto" && partialPaid > 0 && (
                     <p className="text-[10px] text-muted-foreground">
                       Saldo = total ${mesaPayTotal.toLocaleString("es-AR")} − ya pagado ${partialPaid.toLocaleString("es-AR")}
                     </p>
+                  )}
+                  {/* Descuentos y volumen */}
+                  {mesaVolumeDiscount > 0 && (
+                    <p className="text-[11px] font-medium text-violet-700 dark:text-violet-400">
+                      🎁 Desc. pack{mesaVolumeLabel ? ` · ${mesaVolumeLabel}` : ""}: −${mesaVolumeDiscount.toLocaleString("es-AR")}
+                    </p>
+                  )}
+                  {discountLines}
+                  {discountEditor}
+                  {/* Fiscal: fila con comprobante arriba de Cargar a la mesa */}
+                  {!fiscalReady && (
+                    <p className="text-[11px] text-muted-foreground/70">
+                      🧾 Factura C: completá la configuración en Config → Facturación para facturar acá.
+                    </p>
+                  )}
+                  {fiscalReady && (
+                    <div className="space-y-1.5 pt-2">
+                      <FiscalSaleFields
+                        withFiscal={withFiscal}
+                        onWithFiscal={setWithFiscal}
+                        receptor={{ tipo: fiscalReceptorTipo, nro: fiscalReceptorNro, nombre: fiscalReceptorNombre, cond: fiscalReceptorCond }}
+                        onReceptor={(r) => {
+                          setFiscalReceptorTipo(r.tipo);
+                          setFiscalReceptorNro(r.nro);
+                          setFiscalReceptorNombre(r.nombre);
+                          setFiscalReceptorCond(r.cond);
+                        }}
+                        payableTotal={mesaPayTotal}
+                      />
+                    </div>
                   )}
                   <div className="grid grid-cols-1 gap-1.5">
                     {resBlocked && (
@@ -2698,9 +2697,15 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
                       </p>
                     )}
                     {cart.length > 0 && (
-                      <Button size="sm" variant="secondary" disabled={resBlocked} onClick={addConsumicion}>
-                        ➕ Cargar a la mesa ({cartCount} ítem{cartCount === 1 ? "" : "s"})
-                      </Button>
+                      <>
+                        <button type="button" onClick={() => setManualChargeOpen((v) => !v)} className="text-xs font-medium text-muted-foreground hover:text-foreground">
+                          + Monto manual (consumicion) {manualChargeOpen ? "▲" : "▼"}
+                        </button>
+                        {manualChargeOpen && manualChargeRow}
+                        <Button size="sm" variant="secondary" disabled={resBlocked} onClick={addConsumicion}>
+                          ➕ Cargar a la mesa ({cartCount} ítem{cartCount === 1 ? "" : "s"})
+                        </Button>
+                      </>
                     )}
                     <div className="grid grid-cols-2 gap-1.5">
                       <Button
@@ -2726,15 +2731,7 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
                       onClick={closeTable}
                       className="w-full"
                     >
-                      <span className="flex items-center justify-center gap-1.5">
-                        {fiscalReady && (
-                          <span onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1">
-                            <input type="checkbox" checked={withFiscal} onChange={(e) => setWithFiscal(e.target.checked)} className="h-3.5 w-3.5 rounded border-border" aria-label="Facturar (Factura C)" />
-                            <span className="text-[10px] opacity-90">Facturar</span>
-                          </span>
-                        )}
-                        <span>Cobrado y cerrar</span>
-                      </span>
+                      Cobrado y cerrar
                     </Button>
                     {shiftBlocked && (
                       <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5 mt-1.5">

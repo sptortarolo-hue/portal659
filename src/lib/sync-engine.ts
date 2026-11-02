@@ -135,6 +135,9 @@ async function processAction(
         expected_keys: p.expected_keys,
         // "¿Con cuánto paga?" (efectivo): el cierre se arma campo por campo.
         cashAmount: p.cashAmount,
+        // Pago combinado: el desglose viaja tal cual (lo valida el server
+        // contra el saldo real de la mesa).
+        payments: p.payments,
       });
       if (r.status === 401) return { done: false, auth: true };
       // Faltan consumiciones por sincronizar: se reintenta más tarde (las

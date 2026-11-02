@@ -1,4 +1,12 @@
 import { gateRequest, gateError } from "@/lib/subscription-gate";
+import {
+  hasOrderPaymentsTable,
+  insertOrderPayments,
+  normalizeSplitPayments,
+  primaryMethod,
+  SPLIT_METHODS,
+  type SplitPayment,
+} from "@/lib/order-payments";
 import { queryOne, queryMany, withTransaction } from "@/lib/db";
 import { cashDiscountForItems, normalizeCashPct } from "@/lib/cash-discount";
 import { resolveOrderPricing, PricingError, type IncomingOrderItem, type ResolvedPricing } from "@/lib/pricing";
@@ -45,7 +53,14 @@ export async function POST(
   // "¿Con cuánto paga?" (mesa, efectivo). Opcional y tolerante: se valida
   // contra el total REAL recién re-resuelto (cash + volumen + manual); si no
   // alcanza o no es efectivo, se ignora.
-  const cashAmountRaw = Number(body?.cashAmount);
+  const cashAmountIn = Number(body?.cashAmount);
+  // Pago combinado: desglose que manda el panel (contra el SALDO de la
+  // mesa). Se normaliza más abajo, cuando se conoce el total real.
+  const paymentsRaw = body?.payments;
+  // Pago combinado (split) + cuánto ya se cobró en parciales de esta mesa:
+  // el cierre solo registra el SALDO, así la Caja no cuenta dos veces la
+  // plata que ya entró al cajón (los parciales se cuentan por su fecha).
+  const hasPaymentsTable = await hasOrderPaymentsTable();
 
   // Descuento manual al cobrar ($ o % con motivo). Si no viene, se conserva
   // el ya guardado en cada cuenta (recalculado sobre la cuenta final).
@@ -113,6 +128,21 @@ export async function POST(
   if (table.status !== "ocupada") {
     await abortClaim();
     return NextResponse.json({ error: "La mesa está libre" }, { status: 400 });
+  }
+
+  // Plata que ya entró por cobros parciales de esta mesa (se cuentan por su
+  // propia fecha en la Caja: el cierre solo registra el saldo).
+  let paidParcial = 0;
+  if (hasPaymentsTable) {
+    try {
+      const prows = await queryMany<{ sum: number | string }>(
+        `SELECT COALESCE(SUM(amount), 0) AS sum FROM table_payments WHERE vendor_id = $1 AND table_id = $2`,
+        [vendorId, table.id]
+      );
+      paidParcial = Math.round((Number(prows[0]?.sum) || 0) * 100) / 100;
+    } catch {
+      paidParcial = 0;
+    }
   }
 
   if (expectedKeys.length > 0) {
@@ -360,11 +390,40 @@ export async function POST(
   // mesa tiene su propio total: un "vuelto" por cuenta mentiría en el
   // detalle). Viaja al panel para mostrarlo y al ticket fiscal del cierre.
   const cashAmountFinal =
-    paymentMethod === "efectivo" && Number.isFinite(cashAmountRaw) && cashAmountRaw > 0 && cashAmountRaw >= total - 0.001
-      ? Math.round(cashAmountRaw * 100) / 100
+    paymentMethod === "efectivo" && Number.isFinite(cashAmountIn) && cashAmountIn > 0 && cashAmountIn >= total - 0.001
+      ? Math.round(cashAmountIn * 100) / 100
       : null;
   const cashChangeFinal =
     cashAmountFinal != null ? Math.round(Math.max(0, cashAmountFinal - total) * 100) / 100 : 0;
+  // Pago combinado del cierre: el desglose se arma contra el SALDO (total
+  // menos lo ya cobrado en parciales). Si el panel no manda split, un cierre
+  // con un medio simple también se registra como fila: así la Caja cuadra
+  // con el medio que realmente se usó al cerrar (hoy las consumiciones
+  // arrastraban el medio de cuando se cargaron).
+  const remainder = Math.max(0, Math.round((total - paidParcial) * 100) / 100);
+  // 1) el desglose que manda el panel (contra el saldo),
+  // 2) si no hay desglose: cierre todo-efectivo con "¿con cuánto paga?"
+  //    (el tender viaja en la fila para el ticket), y
+  // 3) si tampoco: un cierre con medio simple también deja fila, para que
+  //    la Caja cuadre con el medio usado al cerrar.
+  const splitFromClient =
+    hasPaymentsTable && remainder > 0.01 ? normalizeSplitPayments(paymentsRaw, remainder) : null;
+  const closeSplit: SplitPayment[] | null =
+    splitFromClient ??
+    (hasPaymentsTable && remainder > 0.01 && paymentMethod === "efectivo" && cashAmountIn >= remainder - 0.001
+      ? [{ method: "efectivo", amount: remainder, tendered: Math.round(cashAmountIn * 100) / 100 }]
+      : hasPaymentsTable && remainder > 0.01 && SPLIT_METHODS.includes(paymentMethod)
+        ? [{ method: paymentMethod, amount: remainder, tendered: null }]
+        : null);
+  // Vuelto de la parte en efectivo del cierre (incluye el "entregó" tipeado).
+  const closeCashRow = closeSplit?.find((p) => p.method === "efectivo") ?? null;
+  const primaryMethodDb = closeSplit ? primaryMethod(closeSplit) : paymentMethod;
+  // Vuelto de la parte en efectivo: del "entregó" del desglose, o del
+  // "¿con cuánto paga?" cuando el cierre es todo efectivo.
+  const changeFinal =
+    closeCashRow && closeCashRow.tendered != null && closeCashRow.tendered >= closeCashRow.amount
+      ? Math.round((closeCashRow.tendered - closeCashRow.amount) * 100) / 100
+      : cashChangeFinal;
   const now = new Date().toISOString();
 
   await withTransaction(async (tx) => {
@@ -404,7 +463,72 @@ export async function POST(
       );
     }
 
+    // El cierre es el momento de la verdad del cobro: el medio que se usó
+    // acá pisa el que tenía cada consumición de cuando se cargó (hoy la
+    // Caja y el ticket podían mostrar un medio distinto al real).
+    if (closeSplit || hasPaymentsTable) {
+      await tx.query(`UPDATE orders SET payment_method = $1 WHERE id = ANY($2)`, [
+        primaryMethodDb,
+        list.map((o) => o.id),
+      ]);
+    }
+
     await tx.query(`UPDATE tables SET status = 'libre' WHERE id = $1`, [table.id]);
+
+    // Desglose del cobro (pago combinado o medio único del cierre): se
+    // distribuye entre las consumiciones proporcionalmente a su total —
+    // misma técnica del descuento manual — y el último pedido absorbe los
+    // centavos, así la suma siempre cierra con el total de la mesa.
+    if (closeSplit) {
+      const orderTotals = list.map((o) => [o.id, Math.max(0, Number(perOrder.get(o.id)?.total ?? o.total) || 0)] as const);
+      const totalBase = Math.round(orderTotals.reduce((s, [, t]) => s + t, 0) * 100) / 100;
+      const n = orderTotals.length;
+      for (const p of closeSplit) {
+        const amount = Math.round(p.amount * 100) / 100;
+        let remaining = amount;
+        for (let i = 0; i < n; i++) {
+          const [orderId, base] = orderTotals[i];
+          const isLast = i === n - 1;
+          const share = isLast
+            ? Math.round(Math.max(0, remaining) * 100) / 100
+            : totalBase > 0
+              ? Math.round(((amount * base) / totalBase) * 100) / 100
+              : 0;
+          if (!(share > 0)) continue;
+          remaining = Math.round((remaining - share) * 100) / 100;
+          // Sin client_key acá: cada pedido reemplaza SU fila (kind='cobro');
+          // la idempotencia por mesa la da el DELETE por order_id.
+          await insertOrderPayments(tx, {
+            vendorId,
+            orderId,
+            tableId: table.id,
+            payments: [
+              {
+                method: p.method,
+                amount: share,
+                // El "entregó" es un dato de la mesa (no de cada cuenta):
+                // viaja en la respuesta del cierre y en el ticket de la mesa,
+                // no en la fila de cada consumición.
+                tendered: null,
+              },
+            ],
+            createdBy: gate.previewSession ? null : gate.user?.id ?? null,
+          });
+        }
+      }
+      // Cubierto por desglose: la Caja no lo vuelve a contar por el medio
+      // único del pedido (y una mesa saldada solo con parciales también
+      // queda marcada, para no contar dos veces).
+      await tx.query(
+        `UPDATE orders SET paid_via_payments = true WHERE id = ANY($1)`,
+        [list.map((o) => o.id)]
+      );
+    } else if (hasPaymentsTable && paidParcial > 0) {
+      await tx.query(
+        `UPDATE orders SET paid_via_payments = true WHERE id = ANY($1)`,
+        [list.map((o) => o.id)]
+      );
+    }
   });
 
   const result = {
@@ -419,7 +543,11 @@ export async function POST(
     paymentMethod,
     // "¿Con cuánto paga?" (efectivo): null si no se cargó o no alcanzaba.
     cashAmount: cashAmountFinal,
-    change: cashChangeFinal,
+    change: changeFinal,
+    // Pago combinado del cierre: una fila por medio con su monto (null si
+    // el comercio cobró con un medio no desglosable, ej. whatsapp).
+    payments: closeSplit,
+    paidParcial,
     // Factura C de la cuenta (check "con fiscal" en Mesas): pedidos cerrados
     // en ESTE cierre, principal (el más nuevo, donde se adjunta la factura,
     // UNIQUE vendor+order) e ítems agregados de toda la mesa.

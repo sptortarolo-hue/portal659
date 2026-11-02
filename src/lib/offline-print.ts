@@ -39,6 +39,8 @@ export type ContingencyDoc = {
   cashTotal?: number | null;
   /** "¿Con cuánto abonás?" (efectivo + delivery): monto y vuelto estimado. */
   cashAmount?: number | null;
+  /** Pago combinado (split): una línea por medio con su monto. */
+  payments?: { method: string; amount: number; tendered?: number | null }[];
   /** Descuento por pack aplicado (precuenta de mesa). */
   volumeDiscount?: number | null;
   /** Descuento manual aplicado (precuenta de mesa). */
@@ -206,6 +208,19 @@ export function buildContingencyBytes(doc: ContingencyDoc): Uint8Array {
   if (Number(doc.cashAmount) > 0) {
     p.text(`Abona con: ${money(Number(doc.cashAmount))}`);
     p.text(`Vuelto: ${money(Math.max(0, Number(doc.cashAmount) - doc.total))}`);
+  }
+  const splitRows = Array.isArray(doc.payments)
+    ? doc.payments.filter((x) => Number(x?.amount) > 0)
+    : null;
+  if (splitRows && splitRows.length > 0) {
+    const splitPaid = splitRows.reduce((s, x) => s + (Number(x.amount) || 0), 0);
+    const splitCash = splitRows.find((x) => x.method === "efectivo");
+    for (const x of splitRows) p.text(`${x.method}: ${money(Number(x.amount))}`);
+    p.bold(true).text(`TOTAL PAGADO: ${money(splitPaid)}`).bold(false);
+    if (splitCash && Number(splitCash.tendered) > 0) {
+      p.text(`Abona con: ${money(Number(splitCash.tendered))}`);
+      p.text(`Vuelto: ${money(Math.max(0, Number(splitCash.tendered) - Number(splitCash.amount)))}`);
+    }
   }
   p.rule(width);
   p.align(1).text("Portal 659 - ticket offline");

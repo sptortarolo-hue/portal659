@@ -5,6 +5,7 @@ import { dispatchPrint, type CashClosingPrintData, type CashSnapshotData, type F
 import { getSiteUrl } from "@/lib/site-url";
 import { computeCashClosing, computeShiftSummary, getOpenShift, lastClosingSince } from "@/lib/cash-closing";
 import { resolveVendorPlan } from "@/lib/plans";
+import { fetchOrderPayments } from "@/lib/order-payments";
 import { formatShipmentCode } from "@/lib/shipping";
 import type { Order, Plan, Vendor } from "@/types/database";
 
@@ -26,6 +27,13 @@ export async function POST(request: Request) {
   // "¿Con cuánto paga?" (efectivo): el cierre de mesa imprime el vuelto de la
   // CUENTA (no del pedido portador), así que viaja como el total del ticket.
   const cashAmount = Number(body.cashAmount) > 0 ? Math.round(Number(body.cashAmount) * 100) / 100 : null;
+  // Pago combinado: el panel lo manda en el cierre fiscal de mesa (el total
+  // impreso es el de la cuenta). Para el resto, sale de order_payments.
+  const paymentsBody = Array.isArray(body.payments)
+    ? (body.payments as { method: string; amount: number; tendered?: number | null }[]).filter(
+        (p) => Number(p?.amount) > 0
+      )
+    : null;
 
   const vendor = await queryOne<PrinterVendor & Vendor>(
     `SELECT * FROM vendors WHERE id = $1 LIMIT 1`,
@@ -505,6 +513,19 @@ export async function POST(request: Request) {
       fiscal = null;
     }
   }
+  // Desglose del pago para el ticket: si el panel lo manda (cierre fiscal de
+  // mesa) manda; si no, sale de order_payments del pedido (tolerante a
+  // migración sin aplicar: devuelve {} y el ticket imprime el medio único).
+  const splitPaymentsExtra = async (): Promise<{
+    payments: { method: string; amount: number; tendered?: number | null }[];
+  }> => {
+    if (paymentsBody && paymentsBody.length > 0) return { payments: paymentsBody };
+    if (!order?.id) return {} as { payments: never[] };
+    const rows = await fetchOrderPayments(vendor.id, [String(order.id)]);
+    const list = rows[String(order.id)];
+    return list && list.length > 0 ? { payments: list } : ({} as { payments: never[] });
+  };
+
   const result = await dispatchPrint({
     vendor,
     order,
@@ -546,6 +567,9 @@ export async function POST(request: Request) {
       // "¿Con cuánto paga?" (efectivo): el cierre de mesa fiscal muestra el
       // vuelto de la cuenta. Fuera de la mesa el pedido ya trae cash_amount.
       ...(cashAmount != null ? { cashAmount } : {}),
+      // Pago combinado: una línea por medio (manda sobre cashAmount).
+      // Si el panel no la manda, sale del desglose guardado del pedido.
+      ...(await splitPaymentsExtra()),
       ...(await fiadoBalanceExtra(vendor.id, order)),
     },
   });

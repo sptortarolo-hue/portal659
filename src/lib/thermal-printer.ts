@@ -702,6 +702,12 @@ export type ReceiptExtra = {
    */
   cashAmount?: number | null;
   /**
+   * Pago combinado (split): una línea por medio con su monto. Presente →
+   * imprime el desglose y el TOTAL PAGADO en lugar del medio único (y el
+   * vuelto sale de la fila de efectivo, no de `cashAmount`).
+   */
+  payments?: { method: string; amount: number; tendered?: number | null }[];
+  /**
    * Cierre de mesa fiscal: los ítems y el total vienen de la CUENTA (varias
    * consumiciones sumadas por close), no del pedido individual que se usa
    * solo como portador de la factura. Presentes → pisan los del pedido y se
@@ -1004,14 +1010,46 @@ async function composeReceipt(
   // cierre, que solo lo acepta si la mesa se cobró EN EFECTIVO, así que tener
   // el monto ya alcanza para imprimirlo (el `payment_method` del pedido
   // portador puede quedar del momento en que se cargó la consumición).
-  const receiptAbona =
-    Number(extra?.cashAmount) > 0 ? Number(extra?.cashAmount) : Number((order as any)?.cash_amount) || 0;
-  if (receiptAbona > 0 && (Number(extra?.cashAmount) > 0 || order.payment_method === "efectivo")) {
-    printer.println(`Abona con: $${receiptAbona.toLocaleString("es-AR")}`);
-    const receiptChange = Math.max(0, Math.round((receiptAbona - receiptTotal) * 100) / 100);
+  const receiptPayments =
+    Array.isArray(extra?.payments) && extra!.payments!.length > 0
+      ? extra!.payments!
+          .filter((p) => Number(p.amount) > 0)
+          .map((p) => ({
+            method: String(p.method),
+            amount: Number(p.amount) || 0,
+            tendered: p.tendered != null ? Number(p.tendered) : null,
+          }))
+      : null;
+  if (receiptPayments) {
+    // Pago combinado: una línea por medio con su monto + TOTAL PAGADO, y el
+    // vuelto de la fila de efectivo (lo que entregó vs lo que se aplicó).
+    const splitPaid = receiptPayments.reduce((s, p) => s + p.amount, 0);
+    for (const p of receiptPayments) {
+      const label = CASH_METHOD_LABELS[p.method] ?? p.method;
+      printer.println(`${label}: $${p.amount.toLocaleString("es-AR")}`);
+    }
     printer.bold(true);
-    printer.println(`Vuelto: $${receiptChange.toLocaleString("es-AR")}`);
+    printer.println(`TOTAL PAGADO: $${(Math.round(splitPaid * 100) / 100).toLocaleString("es-AR")}`);
     printer.bold(false);
+    const splitCash = receiptPayments.find((p) => p.method === "efectivo");
+    if (splitCash && splitCash.tendered != null && splitCash.tendered > 0) {
+      printer.println(`Abona con: $${splitCash.tendered.toLocaleString("es-AR")}`);
+      printer.bold(true);
+      printer.println(
+        `Vuelto: $${Math.max(0, Math.round((splitCash.tendered - splitCash.amount) * 100) / 100).toLocaleString("es-AR")}`
+      );
+      printer.bold(false);
+    }
+  } else {
+    const receiptAbona =
+      Number(extra?.cashAmount) > 0 ? Number(extra?.cashAmount) : Number((order as any)?.cash_amount) || 0;
+    if (receiptAbona > 0 && (Number(extra?.cashAmount) > 0 || order.payment_method === "efectivo")) {
+      printer.println(`Abona con: $${receiptAbona.toLocaleString("es-AR")}`);
+      const receiptChange = Math.max(0, Math.round((receiptAbona - receiptTotal) * 100) / 100);
+      printer.bold(true);
+      printer.println(`Vuelto: $${receiptChange.toLocaleString("es-AR")}`);
+      printer.bold(false);
+    }
   }
   // Fiado: saldo de la cuenta para que el cliente sepa cuánto debe.
   if (order.payment_method === "fiado" && extra?.fiadoBalance != null && Number(extra.fiadoBalance) > 0) {

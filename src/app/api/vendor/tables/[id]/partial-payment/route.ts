@@ -1,6 +1,7 @@
 import { gateRequest, gateError } from "@/lib/subscription-gate";
-import { queryOne, queryMany } from "@/lib/db";
+import { queryOne, queryMany, withTransaction } from "@/lib/db";
 import { getOpenShift } from "@/lib/cash-closing";
+import { hasOrderPaymentsTable, insertOrderPayments, isSplitMethod, type SplitMethod } from "@/lib/order-payments";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -130,7 +131,12 @@ export async function POST(
   }
 
   // Movimiento de caja si es efectivo y hay turno abierto.
-  if (paymentMethod === "efectivo") {
+  // Con la migración de order_payments aplicada, el parcial queda registrado
+  // en `order_payments` (kind='parcial', contado por su propia fecha) y NO
+  // se duplica como movimiento: antes la plata entraba dos veces al cierre
+  // (movimiento + la venta del cierre de mesa).
+  const paymentsTable = await hasOrderPaymentsTable();
+  if (paymentMethod === "efectivo" && !paymentsTable) {
     try {
       const shift = await getOpenShift(gate.vendor.id);
       if (shift) {
@@ -142,6 +148,36 @@ export async function POST(
       }
     } catch {
       /* best-effort */
+    }
+  }
+
+  // Desglose por medio: el parcial de mesa es su propia fila de pago (la
+  // plata entró al cajón en este momento, aunque la mesa cierre después).
+  // Guarda de doble envío: si el mismo monto/medio se registró en los últimos
+  // 2 minutos (doble tap o reintento de red), no se duplica la fila.
+  if (paymentsTable && isSplitMethod(paymentMethod)) {
+    try {
+      const dup = await queryOne<{ id: string }>(
+        `SELECT id FROM order_payments
+         WHERE vendor_id = $1 AND table_id = $2 AND kind = 'parcial'
+           AND method = $3 AND amount = $4 AND created_at > now() - interval '2 minutes'
+         LIMIT 1`,
+        [gate.vendor.id, id, paymentMethod, amount]
+      ).catch(() => null);
+      if (!dup) {
+        await withTransaction(async (tx) =>
+          insertOrderPayments(tx, {
+            vendorId: gate.vendor.id,
+            tableId: id,
+            kind: "parcial",
+            payments: [{ method: paymentMethod as SplitMethod, amount, tendered: null }],
+            createdBy: userId,
+            replace: false,
+          })
+        );
+      }
+    } catch {
+      /* best-effort: si falla, el table_payment ya quedó registrado */
     }
   }
 

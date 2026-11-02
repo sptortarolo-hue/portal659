@@ -279,18 +279,83 @@ async function fetchPeriodManualIncome(
   return { total: round2(total), count, byMethod };
 }
 
+/**
+ * ¿Existe la tabla del desglose de pagos? Tolerante a migración sin aplicar.
+ */
+async function hasPaymentsTable(): Promise<boolean> {
+  const row = await queryOne<{ ok: boolean }>(
+    `SELECT to_regclass('public.order_payments') IS NOT NULL AS ok`
+  ).catch(() => null);
+  return row?.ok === true;
+}
+
+/**
+ * Desglose de cobros del período agrupado por medio (migrate-order-payments).
+ * Dos bloques:
+ *  - `kind='cobro'`: la venta/pago de un pedido, anclado al `paid_at`.
+ *  - `kind='parcial'`: plata que entró por un cobro parcial de mesa, anclado
+ *    a su propia fecha (la mesa puede cerrar mucho después).
+ * Devuelve {} si la tabla no existe (la Caja cae al medio único de siempre).
+ */
+async function fetchPaymentsByMethod(
+  vendorId: string,
+  since: string
+): Promise<Record<string, { count: number; total: number }>> {
+  const byMethod: Record<string, { count: number; total: number }> = {};
+  try {
+    const cobro = await queryMany<{ method: string; total: number | string; cnt: number | string }>(
+      `SELECT p.method, SUM(p.amount) AS total, COUNT(*)::int AS cnt
+       FROM order_payments p
+       JOIN orders o ON o.id = p.order_id
+       WHERE p.vendor_id = $1 AND p.kind = 'cobro'
+         AND o.paid_at IS NOT NULL AND o.paid_at >= $2 AND o.status != 'cancelled'
+       GROUP BY p.method`,
+      [vendorId, since]
+    );
+    for (const r of cobro || []) {
+      byMethod[r.method] = {
+        count: Number(r.cnt) || 0,
+        total: Math.round((Number(r.total) || 0) * 100) / 100,
+      };
+    }
+    const parcial = await queryMany<{ method: string; total: number | string; cnt: number | string }>(
+      `SELECT method, SUM(amount) AS total, COUNT(*)::int AS cnt
+       FROM order_payments
+       WHERE vendor_id = $1 AND kind = 'parcial' AND created_at >= $2
+       GROUP BY method`,
+      [vendorId, since]
+    );
+    for (const r of parcial || []) {
+      if (!byMethod[r.method]) byMethod[r.method] = { count: 0, total: 0 };
+      byMethod[r.method].count += Number(r.cnt) || 0;
+      byMethod[r.method].total =
+        Math.round((byMethod[r.method].total + (Number(r.total) || 0)) * 100) / 100;
+    }
+  } catch {
+    return {};
+  }
+  return byMethod;
+}
+
 export async function computeCashClosing(
   vendorId: string,
   since: string
 ): Promise<CashClosingSummary> {
+  // Pedidos SIN desglose (online y anteriores a la migración): el medio
+  // único de siempre. Los que tienen filas en order_payments quedan
+  // marcados con paid_via_payments y no se cuentan dos veces.
+  const paymentsTable = await hasPaymentsTable();
+  const viaFlag = paymentsTable
+    ? `AND COALESCE(o.paid_via_payments, false) = false`
+    : "";
   const rows = await queryMany<{
     payment_method: string | null;
     total: number;
     cash_discount: number | null;
   }>(
-    `SELECT payment_method, total, cash_discount
-     FROM orders
-     WHERE vendor_id = $1 AND paid_at IS NOT NULL AND paid_at >= $2 AND status != 'cancelled'`,
+    `SELECT o.payment_method, o.total, o.cash_discount
+     FROM orders o
+     WHERE o.vendor_id = $1 AND o.paid_at IS NOT NULL AND o.paid_at >= $2 AND o.status != 'cancelled' ${viaFlag}`,
     [vendorId, since]
   );
 
@@ -402,6 +467,19 @@ export async function computeCashClosing(
     byMethod[m].total += d.total;
     gross += d.total;
     net += d.total;
+  }
+
+  // Desglose de cobros (pago combinado / medio real del cierre de mesa y
+  // cobros parciales): suma al bucket de cada medio. El bruto y el neto
+  // siguen saliendo de los pedidos (valor de la venta); esto es cómo se
+  // cobró, que es lo que el arqueo necesita.
+  if (paymentsTable) {
+    const paymentsByMethod = await fetchPaymentsByMethod(vendorId, since);
+    for (const [m, d] of Object.entries(paymentsByMethod)) {
+      if (!byMethod[m]) byMethod[m] = { count: 0, total: 0 };
+      byMethod[m].count += d.count;
+      byMethod[m].total += d.total;
+    }
   }
 
   const rounded: Record<string, ClosingMethodTotals> = {};

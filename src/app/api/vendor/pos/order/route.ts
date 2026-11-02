@@ -1,4 +1,11 @@
 import { gateRequest, gateError } from "@/lib/subscription-gate";
+import {
+  hasOrderPaymentsTable,
+  insertOrderPayments,
+  normalizeSplitPayments,
+  primaryMethod,
+  type SplitPayment,
+} from "@/lib/order-payments";
 import { hasTable, queryMany, queryOne, withTransaction } from "@/lib/db";
 import { fetchVendorDelivery } from "@/lib/delivery-server";
 import { resolveDeliveryFee, type DeliverySelection } from "@/lib/delivery";
@@ -65,6 +72,7 @@ export async function POST(request: Request) {
     deliveryOutOfArea,
     deliveryManualFee,
     cashAmount,
+    payments,
   } = body;
 
   // Venta directa (mostrador, todos los verticales): vende en el acto sin
@@ -106,6 +114,9 @@ export async function POST(request: Request) {
   // recalcula: cash, volumen, giftcard, envío y descuento manual). Es
   // opcional y tolerante: vacío, no numérico o faltante → no se guarda nada.
   const cashAmountIn = Number(cashAmount);
+  // Pago combinado (split payments): se normaliza más abajo contra el total
+  // real y viaja en la respuesta para que el panel muestre el desglose.
+  let resolvedSplit: SplitPayment[] | null = null;
 
   // Fiado: exige cliente identificado con teléfono real (cuaderno sin
   // teléfono no existe). Sin descuento en efectivo (es crédito, no cash).
@@ -249,6 +260,9 @@ export async function POST(request: Request) {
   } catch {
     hasCashAmountCol = false;
   }
+  // Desglose de pago combinado (migrate-order-payments.sql, tolerante a
+  // migración sin aplicar): sin la tabla la venta sale con medio único.
+  const hasPaymentsTable = await hasOrderPaymentsTable();
 
   const now = new Date().toISOString();
 
@@ -469,6 +483,14 @@ export async function POST(request: Request) {
       cashAmountIn >= finalTotal - 0.001
         ? Math.round(cashAmountIn * 100) / 100
         : null;
+    // Pago combinado (split): se valida contra el total FINAL recién calculado
+    // (mismo total que cashAmountFinal). Si no cierra con el real (o falta la
+    // tabla) se ignora y la venta sale con el medio único de la pastilla.
+    const split = hasPaymentsTable ? normalizeSplitPayments(payments, finalTotal) : null;
+    resolvedSplit = split;
+    // Con desglose, `orders.payment_method` guarda el medio de mayor monto
+    // (Kanban/tickets/analytics siguen leyendo un valor único como siempre).
+    const paymentMethodDb = split ? primaryMethod(split) : payment;
     // payment_status: tolerante a migración sin aplicar.
     let hasPayStatus = false;
     try {
@@ -500,7 +522,7 @@ export async function POST(request: Request) {
       customerPhoneClean,
       isDelivery ? (customerAddress?.trim() || null) : null,
       isDelivery ? "delivery" : "pickup",
-      payment,
+      paymentMethodDb,
       JSON.stringify(finalItems),
       finalTotal,
       status,
@@ -528,6 +550,18 @@ export async function POST(request: Request) {
       `INSERT INTO orders (${cols.join(", ")}) VALUES (${placeholders}) RETURNING *`,
       vals
     );
+
+    // Pago combinado: una fila por medio, en la MISMA transacción (si algo
+    // falla, la venta entera se descarta: nunca queda cobro sin desglose).
+    if (split && order?.id) {
+      await insertOrderPayments(tx, {
+        vendorId: gate.vendor.id,
+        orderId: String(order.id),
+        payments: split as SplitPayment[],
+        clientKey: clientKey ?? null,
+        createdBy: gate.previewSession ? null : gate.user?.id ?? null,
+      });
+    }
 
     // Emisión automática de giftcards vendidas (F2): al cobrar en el acto
     // (fiado queda pendiente → se emiten al cubrirse o a mano desde el
@@ -613,5 +647,5 @@ export async function POST(request: Request) {
     throw e;
   }
 
-  return NextResponse.json({ ok: true, orderId: order?.id, order, volumeDiscount: (order as any)?.volume_discount ?? 0, volumeApplied: resolvedVolumeApplied, manualDiscount: resolvedManualDiscount, giftcardIssued, store: { name: gate.vendor.store_name, logo: ((gate.vendor as any)?.logo_url ?? null) as string | null } });
+  return NextResponse.json({ ok: true, orderId: order?.id, order, volumeDiscount: (order as any)?.volume_discount ?? 0, volumeApplied: resolvedVolumeApplied, manualDiscount: resolvedManualDiscount, giftcardIssued, payments: resolvedSplit, store: { name: gate.vendor.store_name, logo: ((gate.vendor as any)?.logo_url ?? null) as string | null } });
 }

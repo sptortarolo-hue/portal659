@@ -42,6 +42,12 @@ const OFFLINE_PAYMENT_LABELS: Record<string, string> = {
 import { SYNC_COMPLETED_EVENT } from "@/lib/sync-engine";
 import { FiscalSaleFields } from "@/components/vendor/fiscal-receptor";
 import { CashTender } from "@/components/vendor/cash-tender";
+import {
+  PaymentSplit,
+  splitCoversTotal,
+  splitPayload,
+  type SplitRow,
+} from "@/components/vendor/payment-split";
 
 type ModifierOption = { label: string; price_mod: number };
 type ProductModifier = {
@@ -168,7 +174,7 @@ const PAYMENT_OPTIONS = [
   { key: "efectivo", label: "💵 Efectivo" },
   { key: "transferencia", label: "🏦 Transferencia" },
   { key: "tarjeta", label: "💳 Tarjeta" },
-  { key: "mixto", label: "🪙 Mixto" },
+  { key: "mixto", label: "🪙 Combinado" },
   { key: "fiado", label: "📓 Fiado" },
 ];
 
@@ -179,6 +185,8 @@ export function Mostrador({ vendorId }: { vendorId?: string | null }) {
   // "¿Con cuánto paga?" (efectivo): opcional, para mostrar el vuelto antes de
   // cobrar y dejarlo en el pedido/ticket. Vacío = no se manda nada.
   const [cashAmount, setCashAmount] = useState("");
+  // Pago combinado (split): líneas medio + monto. Vacío = medio único.
+  const [splitPayments, setSplitPayments] = useState<SplitRow[]>([]);
   const [customerName, setCustomerName] = useState("");
   // Canje de giftcard en mostrador (pagos en el acto): se valida y se
   // descuenta del total en vivo; si no nada cambia.
@@ -440,6 +448,11 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
   // y por lo tanto se manda al servidor (si no, se ignora: nunca bloquea).
   const cashTender = tenderState(cashAmount, payableTotal);
   const cashToSend = cashTender.ok && payment === "efectivo" ? cashTender.amount : undefined;
+  // Pago combinado: se arma solo con el medio "Combinado" y se habilita el
+  // cobro únicamente cuando el desglose cubre el total.
+  const splitOk = payment === "mixto" && splitCoversTotal(splitPayments, payableTotal);
+  const splitToSend = splitOk ? splitPayload(splitPayments) : undefined;
+  const paymentBlocked = payment === "mixto" && !splitOk;
 
   // Chips de categoría agrupados por clave normalizada (trim+lowercase):
   // "Pizzas", "pizzas" o " Pizzas" forman un solo chip (igual que el micrositio).
@@ -1014,7 +1027,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
     fiscalReceptorNro: string; fiscalReceptorNombre: string;
     fiscalReceptorCond: string; posManualFee: string; sheetOpen: boolean;
     discountKind: "amount" | "percent"; discountValue: string; discountReason: string;
-    cashAmount: string;
+    cashAmount: string; splitPayments: SplitRow[];
   };
   // Restaurar una sola vez al montar (si hay borrador con ítems).
   useEffect(() => {
@@ -1040,6 +1053,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
         setFiscalReceptorCond(d.fiscalReceptorCond || "6");
         setPosManualFee(d.posManualFee || "");
         setCashAmount(d.cashAmount || "");
+        setSplitPayments(Array.isArray(d.splitPayments) ? d.splitPayments : []);
         if (d.sheetOpen === true) setSheetOpen(true);
         if (d.discountKind === "percent" || d.discountKind === "amount") setDiscountKind(d.discountKind);
         setDiscountValue(d.discountValue || "");
@@ -1061,11 +1075,11 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
         payment, method, notes, withFiscal, fiscalReceptorTipo,
         fiscalReceptorNro, fiscalReceptorNombre, fiscalReceptorCond, posManualFee,
         sheetOpen, discountKind, discountValue, discountReason,
-        cashAmount,
+        cashAmount, splitPayments,
       } satisfies SaleDraft);
     }, 400);
     return () => clearTimeout(t);
-  }, [items, customerName, customerPhone, customerAddress, posReferences, payment, method, notes, withFiscal, fiscalReceptorTipo, fiscalReceptorNro, fiscalReceptorNombre, fiscalReceptorCond, posManualFee, sheetOpen, discountKind, discountValue, discountReason, cashAmount, vendorId]);
+  }, [items, customerName, customerPhone, customerAddress, posReferences, payment, method, notes, withFiscal, fiscalReceptorTipo, fiscalReceptorNro, fiscalReceptorNombre, fiscalReceptorCond, posManualFee, sheetOpen, discountKind, discountValue, discountReason, cashAmount, splitPayments, vendorId]);
   function discardDraft() {
     clearDraft(vendorId, "mostrador");
     setItems([]);
@@ -1085,6 +1099,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
     setGiftcardErr("");
     setGiftcardOpen(false);
     setCashAmount("");
+    setSplitPayments([]);
   }
   function addManualLine() {
     const name = manualName.trim() || "Varios";
@@ -1413,6 +1428,9 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
       // "¿Con cuánto paga?" (efectivo, opcional): lo valida el servidor contra
       // el total real. Vacío = no se guarda nada.
       cashAmount: cashToSend,
+      // Pago combinado: una fila por medio. El server valida la suma contra
+      // el total real; si no cierra, la venta sale con medio único.
+      payments: splitToSend,
       client_key: newClientKey(),
       occurred_at: new Date().toISOString(),
     };
@@ -1443,6 +1461,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
       setFiscalReceptorNombre("");
       setFiscalReceptorCond("6");
       setCashAmount("");
+      setSplitPayments([]);
       setSheetOpen(false);
       setSaving(false);
     };
@@ -1541,6 +1560,11 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
             d.doc !== "COMANDA" && payment === "efectivo" && cashToSend
               ? cashToSend
               : null,
+          // Pago combinado: el ticket offline muestra una línea por medio.
+          payments:
+            d.doc !== "COMANDA" && payment === "mixto" && splitToSend
+              ? splitToSend
+              : undefined,
           createdAt: Date.now(),
         }).catch(() => ({ printed: false as const }));
         if (r.printed) {
@@ -1617,10 +1641,13 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
     // El servidor recalcula el descuento en efectivo (pos/order): el total
     // cobrado real viene en data.order.total.
     const netTotal = Number(data.order?.total ?? total);
-    // "¿Con cuánto paga?": el vuelto contra el total REAL (no el estimado).
-    // Va dentro de baseMsg para que todos los mensajes de salida lo muestren.
-    const tenderMsg =
-      cashToSend && cashToSend >= netTotal - 0.001
+    // "¿Con cuánto paga?" y pago combinado: el vuelto/desglose contra el total
+    // REAL (no el estimado del panel). Va dentro de baseMsg para que todos los
+    // mensajes de salida lo muestren.
+    const splitRows = Array.isArray((data as any)?.payments) ? ((data as any).payments as { method: string; amount: number; tendered?: number | null }[]) : null;
+    const tenderMsg = splitRows && splitRows.length > 0
+      ? ` · ${splitRows.map((p) => `${p.method} $${Number(p.amount).toLocaleString("es-AR")}`).join(" + ")}`
+      : cashToSend && cashToSend >= netTotal - 0.001
         ? ` · abona $${cashToSend.toLocaleString("es-AR")} (vuelto $${Math.max(0, Math.round((cashToSend - netTotal) * 100) / 100).toLocaleString("es-AR")})`
         : "";
     const baseMsg = (direct
@@ -2594,6 +2621,17 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
               compact
             />
           )}
+          {/* Pago combinado: desglose por medio con el saldo en vivo. */}
+          {payment === "mixto" && (
+            <PaymentSplit
+              total={payableTotal}
+              rows={splitPayments}
+              onChange={setSplitPayments}
+              subject="la venta"
+              disabled={saving}
+              compact
+            />
+          )}
         </div>
 
         {restored && (
@@ -2678,7 +2716,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
           <>
           <Button
             className="w-full"
-            disabled={items.length === 0 || saving || shiftBlocked}
+            disabled={items.length === 0 || saving || shiftBlocked || paymentBlocked}
             onClick={() => charge(true)}
             title={finePointer ? "Atajo: apretá Enter dos veces para cobrar" : undefined}
           >
@@ -2687,7 +2725,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
           <Button
             className="w-full"
             variant="outline"
-            disabled={items.length === 0 || saving || shiftBlocked}
+            disabled={items.length === 0 || saving || shiftBlocked || paymentBlocked}
             onClick={() => charge(false)}
           >
             Cobrar sin comprobante
@@ -2695,10 +2733,10 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
           </>
         ) : (
           <>
-            <Button className="w-full" disabled={items.length === 0 || saving || shiftBlocked} onClick={() => charge(true)}>
+            <Button className="w-full" disabled={items.length === 0 || saving || shiftBlocked || paymentBlocked} onClick={() => charge(true)}>
               {saving ? "Cobrando..." : method === "pickup" ? (isRetail ? "Cobrar + comprobante" : "Cobrar + comprobante de retiro") : "Cobrar y despachar"}
             </Button>
-            <Button className="w-full" variant="outline" disabled={items.length === 0 || saving || shiftBlocked} onClick={() => charge(false)}>
+            <Button className="w-full" variant="outline" disabled={items.length === 0 || saving || shiftBlocked || paymentBlocked} onClick={() => charge(false)}>
               {method === "pickup" ? "Cobrar sin comprobante" : "Cobrar sin imprimir comprobante"}
             </Button>
           </>

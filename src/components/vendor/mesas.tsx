@@ -22,6 +22,12 @@ import { describePrintError, dispatchOfflinePrint, markPrintsDone } from "@/lib/
 import { SYNC_COMPLETED_EVENT } from "@/lib/sync-engine";
 import { useCashShift } from "@/lib/use-cash-shift";
 import { CashTender } from "@/components/vendor/cash-tender";
+import {
+  PaymentSplit,
+  splitCoversTotal,
+  splitPayload,
+  type SplitRow,
+} from "@/components/vendor/payment-split";
 import { FiscalSaleFields } from "@/components/vendor/fiscal-receptor";
 import { FloorPlan, type FloorDecor, type FloorTable } from "@/components/vendor/floor-plan";
 import {
@@ -132,7 +138,7 @@ const PAYMENT_OPTIONS = [
   { key: "efectivo", label: "💵 Efectivo" },
   { key: "transferencia", label: "🏦 Transferencia" },
   { key: "tarjeta", label: "💳 Tarjeta" },
-  { key: "mixto", label: "🪙 Mixto" },
+  { key: "mixto", label: "🪙 Combinado" },
 ];
 
 const PAYMENT_LABELS: Record<string, string> = {
@@ -479,6 +485,8 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
   // "¿Con cuánto paga?" (efectivo, opcional): muestra el vuelto antes de
   // cerrar y viaja al cierre (y al ticket fiscal). Vacío = no se manda nada.
   const [cashAmount, setCashAmount] = useState("");
+  // Pago combinado (split): líneas medio + monto contra el SALDO de la mesa.
+  const [splitPayments, setSplitPayments] = useState<SplitRow[]>([]);
   // Mobile: la mesa se divide en 2 pantallas — "catalog" (sticky buscador +
   // pastillas + grilla) y "detail" (cuenta: consumiciones, precuenta, cobro).
   const [mobileView, setMobileView] = useState<"catalog" | "detail">("catalog");
@@ -492,6 +500,8 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
     mobileView: "catalog" | "detail";
     /** "¿Con cuánto paga?" (efectivo): sobrevive al borrador de la mesa. */
     cashAmount: string;
+    /** Pago combinado: líneas medio + monto (sobreviven al borrador). */
+    splitPayments: SplitRow[];
   };
   useEffect(() => {
     if (mesaDraftReady.current || !vendorId || tables.length === 0) return;
@@ -507,6 +517,7 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
         if (match) setSelected(match);
       }
       setCashAmount(d.cashAmount || "");
+      setSplitPayments(Array.isArray(d.splitPayments) ? d.splitPayments : []);
       if ((d.cart || []).length > 0 || d.selectedId) setMesaRestored(true);
     } catch { /* borrador corrupto: se ignora */ }
   }, [vendorId, tables]);
@@ -519,11 +530,11 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
       }
       saveDraft(vendorId, "mesa", {
         selectedId: selected?.id || null,
-        cart, payment, mobileView, cashAmount,
+        cart, payment, mobileView, cashAmount, splitPayments,
       } satisfies MesaDraft);
     }, 400);
     return () => clearTimeout(t);
-  }, [cart, selected, payment, mobileView, cashAmount, vendorId]);
+  }, [cart, selected, payment, mobileView, cashAmount, splitPayments, vendorId]);
   const [printingTicket, setPrintingTicket] = useState(false);
   // Cobro parcial de la cuenta de la mesa.
   const [partialPayOpen, setPartialPayOpen] = useState(false);
@@ -1360,6 +1371,7 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
       client_key: newClientKey(),
       occurred_at: new Date().toISOString(),
       expected_keys,
+      payments: splitToSend,
       // "¿Con cuánto paga?" (efectivo, opcional): validado por el servidor
       // contra el total real de la cuenta.
       cashAmount: cashToSend,
@@ -1442,9 +1454,11 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
       setFiscalReceptorCond("6");
       setMsg(
         `📡 ${tableName} cobrada ($${closeTotal.toLocaleString("es-AR")}, estimado) — se sincroniza al reconectar` +
-        (cashToSend
-          ? ` · abona $${cashToSend.toLocaleString("es-AR")} (vuelto $${Math.max(0, Math.round((cashToSend - closeTotal) * 100) / 100).toLocaleString("es-AR")})`
-          : "") +
+        (splitToSend
+          ? ` · ${splitToSend.map((p) => `${p.method} $${Number(p.amount).toLocaleString("es-AR")}`).join(" + ")}`
+          : cashToSend
+            ? ` · abona $${cashToSend.toLocaleString("es-AR")} (vuelto $${Math.max(0, Math.round((cashToSend - closeTotal) * 100) / 100).toLocaleString("es-AR")})`
+            : "") +
         (fiscalReady && withFiscal ? " · 🧾 sin factura (offline)" : "")
       );
       setTimeout(() => setMsg(""), 4000);
@@ -1467,7 +1481,7 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
       res = await fetch(`/api/vendor/tables/${tableId}/close`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ paymentMethod: payment, manualDiscount: tableManualPayload, cashAmount: cashToSend }),
+        body: JSON.stringify({ paymentMethod: payment, manualDiscount: tableManualPayload, cashAmount: cashToSend, payments: splitToSend }),
       });
     } catch (e) {
       if (isNetworkError(e)) {
@@ -1499,9 +1513,16 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
         // el total real de la cuenta (null si no se cargó o no alcanzaba).
         (Number(data.cashAmount) > 0
           ? ` · abona $${Number(data.cashAmount).toLocaleString("es-AR")} (vuelto $${Number(data.change ?? 0).toLocaleString("es-AR")})`
+          : "") +
+        // Pago combinado: una línea por medio contra el total real.
+        (Array.isArray((data as any)?.payments) && (data as any).payments.length > 0
+          ? ` · ${((data as any).payments as { method: string; amount: number }[])
+              .map((p) => `${p.method} $${Number(p.amount).toLocaleString("es-AR")}`)
+              .join(" + ")} (vuelto $${Number(data.change ?? 0).toLocaleString("es-AR")})`
           : "");
       // El vuelto no se arrastra a la próxima mesa.
       setCashAmount("");
+      setSplitPayments([]);
       // Reset fiscal por venta (no se arrastra a la próxima mesa).
       setWithFiscal(false);
       setFiscalReceptorTipo("cf");
@@ -1560,6 +1581,9 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
                   // "¿Con cuánto paga?" (efectivo): el ticket imprime el vuelto
                   // de la CUENTA (el pedido portador tiene otro total).
                   cashAmount: Number(data.cashAmount) > 0 ? Number(data.cashAmount) : undefined,
+                  // Pago combinado: una línea por medio con su monto (y el
+                  // tender de la parte en efectivo para el vuelto).
+                  payments: Array.isArray((data as any)?.payments) ? (data as any).payments : undefined,
                 }),
               }),
               "El ticket fiscal"
@@ -1675,6 +1699,14 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
   // y por lo tanto se manda al cierre (si no, se ignora: nunca bloquea).
   const cashTender = tenderState(cashAmount, mesaPayTotal);
   const cashToSend = cashTender.ok && payment === "efectivo" ? cashTender.amount : undefined;
+  // Saldo real a cubrir: total de la mesa menos lo ya cobrado en parciales.
+  // El cierre del server arma el desglose contra este mismo saldo.
+  const mesaPendiente = Math.max(0, Math.round((mesaPayTotal - partialPaid) * 100) / 100);
+  // Pago combinado (split): se habilita el cierre solo cuando el desglose
+  // cubre el saldo pendiente.
+  const splitOk = payment === "mixto" && splitCoversTotal(splitPayments, mesaPendiente);
+  const splitToSend = splitOk ? splitPayload(splitPayments) : undefined;
+  const paymentBlocked = payment === "mixto" && !splitOk;
   /** Payload de descuento manual para consumición/cierre (undefined = sin descuento). */
   const tableManualPayload = uiManualAmount > 0
     ? { kind: discountKind, value: Number(discountValue), reason: discountReason.trim() || undefined }
@@ -2377,6 +2409,22 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
                     className="flex-shrink-0"
                   />
                 )}
+                {/* Pago combinado: desglose por medio contra el saldo. */}
+                {payment === "mixto" && (
+                  <PaymentSplit
+                    total={mesaPendiente}
+                    rows={splitPayments}
+                    onChange={setSplitPayments}
+                    subject="la mesa"
+                    compact
+                    className="flex-shrink-0"
+                  />
+                )}
+                {payment === "mixto" && partialPaid > 0 && (
+                  <p className="text-[10px] text-muted-foreground flex-shrink-0">
+                    Saldo = total ${mesaPayTotal.toLocaleString("es-AR")} − ya pagado ${partialPaid.toLocaleString("es-AR")}
+                  </p>
+                )}
                 <div className="flex-shrink-0">{manualChargeRow}</div>
                 <Button size="sm" className="flex-shrink-0" disabled={cart.length === 0 || resBlocked} onClick={addConsumicion}>Agregar consumición</Button>
                 {resBlocked && (
@@ -2401,7 +2449,7 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
                   >
                     {printingTicket ? "Imprimiendo..." : "🖨️ Precuenta"}
                   </Button>
-                  <Button size="sm" variant="default" disabled={!hasAccount || shiftBlocked || resBlocked} onClick={closeTable}>
+                  <Button size="sm" variant="default" disabled={!hasAccount || shiftBlocked || resBlocked || paymentBlocked} onClick={closeTable}>
                     Cobrar y cerrar
                   </Button>
                 </div>
@@ -2623,6 +2671,21 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
                   {payment === "efectivo" && (
                     <CashTender total={mesaPayTotal} value={cashAmount} onChange={setCashAmount} compact />
                   )}
+                  {/* Pago combinado: desglose por medio contra el saldo. */}
+                  {payment === "mixto" && (
+                    <PaymentSplit
+                      total={mesaPendiente}
+                      rows={splitPayments}
+                      onChange={setSplitPayments}
+                      subject="la mesa"
+                      compact
+                    />
+                  )}
+                  {payment === "mixto" && partialPaid > 0 && (
+                    <p className="text-[10px] text-muted-foreground">
+                      Saldo = total ${mesaPayTotal.toLocaleString("es-AR")} − ya pagado ${partialPaid.toLocaleString("es-AR")}
+                    </p>
+                  )}
                   <div className="grid grid-cols-1 gap-1.5">
                     {resBlocked && (
                       <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5">
@@ -2646,7 +2709,7 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
                       <Button
                         size="sm"
                         variant="secondary"
-                        disabled={!hasAccount || shiftBlocked || resBlocked}
+                        disabled={!hasAccount || shiftBlocked || resBlocked || paymentBlocked}
                         onClick={() => setPartialPayOpen(true)}
                       >
                         💵 Cobrar parcial
@@ -2654,7 +2717,7 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
                     </div>
                     <Button
                       size="sm"
-                      disabled={!hasAccount || shiftBlocked || resBlocked}
+                      disabled={!hasAccount || shiftBlocked || resBlocked || paymentBlocked}
                       onClick={closeTable}
                       className="w-full"
                     >

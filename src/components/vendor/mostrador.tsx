@@ -2541,53 +2541,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
                     <p className="text-[11px] text-muted-foreground">Saldo: ${(giftcardAmount).toLocaleString("es-AR")}{giftcardExpires ? ` · Vence ${fmtVence(giftcardExpires)}` : " · Sin vencimiento"}</p>
                   )}
                 </div>
-                <div className="space-y-2">
-                  <p className="text-[10px] uppercase tracking-wide font-semibold text-muted-foreground">🏷️ Descuento manual</p>
-                  <div className="flex gap-1.5">
-                    <div className="flex rounded-lg border border-input overflow-hidden flex-shrink-0">
-                      {(["amount", "percent"] as const).map((k) => (
-                        <button
-                          key={k}
-                          type="button"
-                          onClick={() => setDiscountKind(k)}
-                          className={`h-9 px-3 text-xs font-semibold ${discountKind === k ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
-                        >
-                          {k === "amount" ? "$" : "%"}
-                        </button>
-                      ))}
-                    </div>
-                    <input
-                      type="number"
-                      inputMode="decimal"
-                      min="0"
-                      value={discountValue}
-                      onChange={(e) => setDiscountValue(e.target.value)}
-                      placeholder={discountKind === "percent" ? "%" : "$"}
-                      className="flex-1 min-w-0 h-9 px-3 text-xs rounded-lg border border-input bg-background tabular-nums"
-                    />
-                    {(discountValue || discountReason) && (
-                      <button
-                        type="button"
-                        onClick={clearManualDiscount}
-                        title="Quitar descuento"
-                        className="h-9 px-2.5 rounded-lg bg-muted hover:bg-accent text-xs font-medium text-muted-foreground flex-shrink-0"
-                      >
-                        ✕
-                      </button>
-                    )}
-                  </div>
-                  <input
-                    type="text"
-                    value={discountReason}
-                    onChange={(e) => setDiscountReason(e.target.value)}
-                    placeholder="Motivo (ej: cliente frecuente)"
-                    maxLength={120}
-                    className="w-full h-9 px-3 text-xs rounded-lg border border-input bg-background"
-                  />
-                  {payment === "fiado" && discountValNum > 0 && (
-                    <p className="text-[11px] text-amber-700">📓 El descuento manual no aplica al fiado.</p>
-                  )}
-                </div>
+                {/* Descuento manual movido arriba de modalidad de venta. */}
               </div>
             )}
           </div>
@@ -2597,11 +2551,59 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
               💵 Pagando en efectivo: ${(netSubtotal - cashResult.cashDiscount).toLocaleString("es-AR")}
             </p>
           )}
+          {/* Descuento manual (fijo, fuera de + Ajustes) */}
+          <div className="space-y-1.5 pt-1">
+            <div className="flex gap-1.5">
+              <div className="flex rounded-lg border border-input overflow-hidden flex-shrink-0">
+                {(["amount", "percent"] as const).map((k) => (
+                  <button
+                    key={k}
+                    type="button"
+                    onClick={() => setDiscountKind(k)}
+                    className={`h-9 px-3 text-xs font-semibold ${discountKind === k ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+                  >
+                    {k === "amount" ? "$" : "%"}
+                  </button>
+                ))}
+              </div>
+              <input
+                type="number"
+                inputMode="decimal"
+                min="0"
+                value={discountValue}
+                onChange={(e) => setDiscountValue(e.target.value)}
+                placeholder={discountKind === "percent" ? "%" : "$"}
+                className="flex-1 min-w-0 h-9 px-3 text-xs rounded-lg border border-input bg-background tabular-nums"
+              />
+              {(discountValue || discountReason) && (
+                <button
+                  type="button"
+                  onClick={clearManualDiscount}
+                  title="Quitar descuento"
+                  className="h-9 px-2.5 rounded-lg bg-muted hover:bg-accent text-xs font-medium text-muted-foreground flex-shrink-0"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+            <input
+              type="text"
+              value={discountReason}
+              onChange={(e) => setDiscountReason(e.target.value)}
+              placeholder="Motivo (ej: cliente frecuente)"
+              maxLength={120}
+              className="w-full h-9 px-3 text-xs rounded-lg border border-input bg-background"
+            />
+            {payment === "fiado" && discountValNum > 0 && (
+              <p className="text-[11px] text-amber-700">📓 El descuento manual no aplica al fiado.</p>
+            )}
+          </div>
+
           {/* Modalidad de venta (fija arriba del cobro) */}
-          <div className="grid gap-1.5 grid-cols-3 pt-1">
+          <div className="flex flex-wrap gap-1.5 pt-1">
             <button
               onClick={() => selectMethod("direct")}
-              className={`rounded-lg py-1.5 text-xs font-medium border transition-colors ${
+              className={`flex-1 min-w-[90px] rounded-lg py-1.5 text-xs font-medium border transition-colors ${
                 method === "direct" ? "border-primary bg-primary/5 text-primary" : "border-border text-muted-foreground"
               }`}
             >
@@ -2609,7 +2611,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
             </button>
             <button
               onClick={() => selectMethod("pickup")}
-              className={`rounded-lg py-1.5 text-xs font-medium border transition-colors ${
+              className={`flex-1 min-w-[90px] rounded-lg py-1.5 text-xs font-medium border transition-colors ${
                 method === "pickup" ? "border-primary bg-primary/5 text-primary" : "border-border text-muted-foreground"
               }`}
             >
@@ -2617,7 +2619,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
             </button>
             <button
               onClick={() => selectMethod("delivery")}
-              className={`rounded-lg py-1.5 text-xs font-medium border transition-colors ${
+              className={`flex-1 min-w-[90px] rounded-lg py-1.5 text-xs font-medium border transition-colors ${
                 method === "delivery" ? "border-primary bg-primary/5 text-primary" : "border-border text-muted-foreground"
               }`}
             >

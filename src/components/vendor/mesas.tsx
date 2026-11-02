@@ -426,6 +426,7 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
   const [cart, setCart] = useState<{ product_id: string; name: string; price: number; qty: number; requires_prep: boolean; modifiers?: CartModifier[]; packSize?: number; manual?: boolean }[]>([]);
   // Cargo manual ("Varios"): línea sin producto (igual que en Mostrador).
   const [manualName, setManualName] = useState("");
+   const [manualChargeOpen, setManualChargeOpen] = useState(false);
   const [manualPrice, setManualPrice] = useState("");
   // Descuento manual por cuenta ($ o % con motivo). Vive en la UI hasta
   // cargarse/cobrarse (el servidor lo persiste y recalcula); al cambiar de
@@ -2319,6 +2320,22 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
 
             <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_360px] gap-4 items-start">
               <div className="min-w-0">
+                {closedOrders.length > 0 && (
+                  <div className="mb-3">
+                    <CollapsibleSection icon="🧾" title={`Cuentas cerradas (${closedOrders.length})`} defaultOpen={false}>
+                      <div className="space-y-1.5 opacity-70">
+                        {closedOrders.map((o) => (
+                          <div key={o.id} className="flex items-center justify-between text-xs">
+                            <span className="text-muted-foreground">
+                              {o.paid_at ? new Date(o.paid_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }) : new Date(o.created_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })} · {o.pickup_number != null ? `Nro. ${o.pickup_number}` : `#${o.id.slice(0, 6)}`}
+                            </span>
+                            <span className="font-semibold tabular-nums">${Number(o.total).toLocaleString("es-AR")}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </CollapsibleSection>
+                  </div>
+                )}
                 {catalogBlock("xl:grid-cols-4")}
               </div>
               {/* Cuenta sticky con scroll interno */}
@@ -2332,22 +2349,7 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
                     </div>
                   )}
 
-                  {closedOrders.length > 0 && (
-                    <div>
-                      <CollapsibleSection icon="🧾" title={`Cuentas cerradas (${closedOrders.length})`} defaultOpen={false}>
-                        <div className="space-y-1.5 opacity-70">
-                          {closedOrders.map((o) => (
-                            <div key={o.id} className="flex items-center justify-between text-xs">
-                              <span className="text-muted-foreground">
-                                {o.paid_at ? new Date(o.paid_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }) : new Date(o.created_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })} · {o.pickup_number != null ? `Nro. ${o.pickup_number}` : `#${o.id.slice(0, 6)}`}
-                              </span>
-                              <span className="font-semibold tabular-nums">${Number(o.total).toLocaleString("es-AR")}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </CollapsibleSection>
-                    </div>
-                  )}
+
                 </div>
                 <div className="flex flex-wrap gap-1 pt-2 flex-shrink-0">
                   {PAYMENT_OPTIONS.map((o) => (
@@ -2425,7 +2427,15 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
                     Saldo = total ${mesaPayTotal.toLocaleString("es-AR")} − ya pagado ${partialPaid.toLocaleString("es-AR")}
                   </p>
                 )}
-                <div className="flex-shrink-0">{manualChargeRow}</div>
+                <div className="flex-shrink-0">
+                   <button type="button" onClick={() => setManualChargeOpen((v) => !v)} className="text-xs font-medium text-muted-foreground hover:text-foreground">
+                     + Monto manual (consumicion) {manualChargeOpen ? "▲" : "▼"}
+                   </button>
+                   <button type="button" onClick={() => setManualChargeOpen((v) => !v)} className="text-xs font-medium text-muted-foreground hover:text-foreground">
+  + Monto manual (consumicion) {manualChargeOpen ? "▲" : "▼"}
+</button>
+{manualChargeOpen && manualChargeRow}
+                 </div>
                 <Button size="sm" className="flex-shrink-0" disabled={cart.length === 0 || resBlocked} onClick={addConsumicion}>Agregar consumición</Button>
                 {resBlocked && (
                   <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5 flex-shrink-0">
@@ -2611,22 +2621,9 @@ export function Mesas({ vendorId, liveOrders }: { vendorId?: string | null; live
                       <div className="space-y-1.5">{cart.map(cartLine)}</div>
                     </div>
                   )}
-                  {manualChargeRow}
+                  {manualChargeOpen && manualChargeRow}
 
-                  {closedOrders.length > 0 && (
-                    <CollapsibleSection icon="🧾" title={`Cuentas cerradas (${closedOrders.length})`} defaultOpen={false}>
-                      <div className="space-y-1.5 opacity-70">
-                        {closedOrders.map((o) => (
-                          <div key={o.id} className="flex items-center justify-between gap-2 text-xs">
-                            <span className="text-muted-foreground min-w-0 truncate">
-                          {o.paid_at ? new Date(o.paid_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }) : new Date(o.created_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })} · {o.pickup_number != null ? `Nro. ${o.pickup_number}` : `#${o.id.slice(0, 6)}`}
-                            </span>
-                            <span className="font-semibold tabular-nums shrink-0">${Number(o.total).toLocaleString("es-AR")}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </CollapsibleSection>
-                  )}
+                  
                 </div>
 
                 <footer className="border-t border-border px-3 pt-2 pb-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] space-y-2 bg-card">

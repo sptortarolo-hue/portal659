@@ -2297,40 +2297,7 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
               🧾 Factura C: requiere plan Gestión y completar la configuración en Config → Facturación.
             </p>
           )}
-          <div className="flex items-center gap-1.5">
-            <input
-              type="text"
-              value={manualName}
-              onChange={(e) => setManualName(e.target.value)}
-              placeholder="Monto manual (ej: Varios)"
-              className="flex-1 min-w-0 h-9 px-3 text-xs rounded-lg border border-input bg-background"
-            />
-            <input
-              type="number"
-              inputMode="decimal"
-              min="0"
-              value={manualPrice}
-              onChange={(e) => setManualPrice(e.target.value)}
-              placeholder="$"
-              className="w-24 h-9 px-2 text-xs rounded-lg border border-input bg-background"
-            />
-            <button
-              type="button"
-              onClick={addManualLine}
-              className="h-9 px-3 rounded-lg bg-muted hover:bg-accent text-xs font-medium"
-            >
-              ＋ Monto
-            </button>
-            <button
-              type="button"
-              title="Guardar esta línea como producto del catálogo (con código y stock de ahora en más)"
-              onClick={() => openQuickCreate({ name: manualName.trim(), price: manualPrice, fromManual: true })}
-              disabled={!manualName.trim() && !manualPrice}
-              className="h-9 px-2 rounded-lg bg-muted hover:bg-accent text-xs font-medium disabled:opacity-50"
-            >
-              💾
-            </button>
-          </div>
+          {/* Monto manual (Varios) movido al footer, justo encima del Total. */}
           {qcReplaceKey && (
             <p className="text-[11px] text-muted-foreground pt-1">
               Al guardar se reemplaza la línea manual “{manualName.trim() || "Varios"}” por el producto real.
@@ -2375,52 +2342,40 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
     const orderFooter = (
       <>
         <div className="space-y-1 pt-1">
-          {/* Descuento manual (fijo justo encima del Total) */}
-          <div className="space-y-1.5">
-            <div className="flex gap-1.5">
-              <div className="flex rounded-lg border border-input overflow-hidden flex-shrink-0">
-                {(["amount", "percent"] as const).map((k) => (
-                  <button
-                    key={k}
-                    type="button"
-                    onClick={() => setDiscountKind(k)}
-                    className={`h-9 px-3 text-xs font-semibold ${discountKind === k ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
-                  >
-                    {k === "amount" ? "$" : "%"}
-                  </button>
-                ))}
-              </div>
-              <input
-                type="number"
-                inputMode="decimal"
-                min="0"
-                value={discountValue}
-                onChange={(e) => setDiscountValue(e.target.value)}
-                placeholder={discountKind === "percent" ? "%" : "$"}
-                className="flex-1 min-w-0 h-9 px-3 text-xs rounded-lg border border-input bg-background tabular-nums"
-              />
-              {(discountValue || discountReason) && (
-                <button
-                  type="button"
-                  onClick={clearManualDiscount}
-                  title="Quitar descuento"
-                  className="h-9 px-2.5 rounded-lg bg-muted hover:bg-accent text-xs font-medium text-muted-foreground flex-shrink-0"
-                >
-                  ✕
-                </button>
-              )}
-            </div>
+          {/* Monto manual (Varios) — fijo justo encima del Total, compacto */}
+          <div className="flex flex-wrap items-center gap-1.5">
             <input
               type="text"
-              value={discountReason}
-              onChange={(e) => setDiscountReason(e.target.value)}
-              placeholder="Motivo (ej: cliente frecuente)"
-              maxLength={120}
-              className="w-full h-9 px-3 text-xs rounded-lg border border-input bg-background"
+              value={manualName}
+              onChange={(e) => setManualName(e.target.value)}
+              placeholder="Monto manual (ej: Varios)"
+              className="flex-1 min-w-[120px] h-8 px-2.5 text-xs rounded-lg border border-input bg-background"
             />
-            {payment === "fiado" && discountValNum > 0 && (
-              <p className="text-[11px] text-amber-700">📓 El descuento manual no aplica al fiado.</p>
-            )}
+            <input
+              type="number"
+              inputMode="decimal"
+              min="0"
+              value={manualPrice}
+              onChange={(e) => setManualPrice(e.target.value)}
+              placeholder="$"
+              className="w-20 h-8 px-2 text-xs rounded-lg border border-input bg-background"
+            />
+            <button
+              type="button"
+              onClick={addManualLine}
+              className="h-8 px-2.5 rounded-lg bg-muted hover:bg-accent text-xs font-medium"
+            >
+              ＋ Monto
+            </button>
+            <button
+              type="button"
+              title="Guardar esta línea como producto del catálogo"
+              onClick={() => openQuickCreate({ name: manualName.trim(), price: manualPrice, fromManual: true })}
+              disabled={!manualName.trim() && !manualPrice}
+              className="h-8 px-2 rounded-lg bg-muted hover:bg-accent text-xs font-medium disabled:opacity-50"
+            >
+              💾 Grabar
+            </button>
           </div>
 
           {/* Total prominente (siempre visible) */}
@@ -2579,7 +2534,53 @@ const [fiscalReceptorCond, setFiscalReceptorCond] = useState("6");  // Pedido co
                     <p className="text-[11px] text-muted-foreground">Saldo: ${(giftcardAmount).toLocaleString("es-AR")}{giftcardExpires ? ` · Vence ${fmtVence(giftcardExpires)}` : " · Sin vencimiento"}</p>
                   )}
                 </div>
-                {/* Descuento manual movido arriba de modalidad de venta. */}
+                <div className="space-y-2">
+                  <p className="text-[10px] uppercase tracking-wide font-semibold text-muted-foreground">🏷️ Descuento manual</p>
+                  <div className="flex gap-1.5">
+                    <div className="flex rounded-lg border border-input overflow-hidden flex-shrink-0">
+                      {(["amount", "percent"] as const).map((k) => (
+                        <button
+                          key={k}
+                          type="button"
+                          onClick={() => setDiscountKind(k)}
+                          className={`h-9 px-3 text-xs font-semibold ${discountKind === k ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+                        >
+                          {k === "amount" ? "$" : "%"}
+                        </button>
+                      ))}
+                    </div>
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      min="0"
+                      value={discountValue}
+                      onChange={(e) => setDiscountValue(e.target.value)}
+                      placeholder={discountKind === "percent" ? "%" : "$"}
+                      className="flex-1 min-w-0 h-9 px-3 text-xs rounded-lg border border-input bg-background tabular-nums"
+                    />
+                    {(discountValue || discountReason) && (
+                      <button
+                        type="button"
+                        onClick={clearManualDiscount}
+                        title="Quitar descuento"
+                        className="h-9 px-2.5 rounded-lg bg-muted hover:bg-accent text-xs font-medium text-muted-foreground flex-shrink-0"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                  <input
+                    type="text"
+                    value={discountReason}
+                    onChange={(e) => setDiscountReason(e.target.value)}
+                    placeholder="Motivo (ej: cliente frecuente)"
+                    maxLength={120}
+                    className="w-full h-9 px-3 text-xs rounded-lg border border-input bg-background"
+                  />
+                  {payment === "fiado" && discountValNum > 0 && (
+                    <p className="text-[11px] text-amber-700">📓 El descuento manual no aplica al fiado.</p>
+                  )}
+                </div>
               </div>
             )}
           </div>

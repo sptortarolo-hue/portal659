@@ -203,14 +203,15 @@ export async function POST(request: Request) {
         body: JSON.stringify({
           type: "qr",
           external_reference: externalReference,
-          total_amount: amount,
-          config: { qr: { mode: "dynamic" } },
-          transactions: { payments: [{ amount }] },
+          total_amount: amount.toFixed(2),
+          config: { qr: { mode: "dynamic", external_pos_id: externalPosId } },
+          transactions: { payments: [{ amount: amount.toFixed(2) }] },
           items: [
             {
               title: concept || "Cobro",
               quantity: 1,
-              unit_price: amount,
+              unit_measure: "unit",
+              unit_price: amount.toFixed(2),
             },
           ],
         }),

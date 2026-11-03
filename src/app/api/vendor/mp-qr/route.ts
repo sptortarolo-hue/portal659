@@ -57,7 +57,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const externalReference = `portal659_mpqr_${vendor.id}_${Date.now()}`;
+  const externalReference = `mpqr_${vendor.id}_${Date.now()}`;
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
 
   // En preview, simular (no requiere MP conectado).
@@ -203,18 +203,14 @@ export async function POST(request: Request) {
         body: JSON.stringify({
           type: "qr",
           external_reference: externalReference,
-          title: concept || `Cobro ${vendor.store_name}`,
-          description: concept || `Cobro en ${vendor.store_name}`,
           total_amount: amount,
           config: { qr: { mode: "dynamic" } },
-          notification_url: `${getSiteUrl()}/api/webhooks/mercadopago`,
+          transactions: { payments: [{ amount }] },
           items: [
             {
               title: concept || "Cobro",
-              description: concept || `Cobro en ${vendor.store_name}`,
-              unit_price: amount,
               quantity: 1,
-              total_amount: amount,
+              unit_price: amount,
             },
           ],
         }),

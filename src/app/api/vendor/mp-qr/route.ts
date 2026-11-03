@@ -218,8 +218,8 @@ export async function POST(request: Request) {
       });
       const orderData = await orderRes.json().catch(() => null);
       console.log("[mp-qr] orders api response:", JSON.stringify(orderData), "status:", orderRes.status);
-      if (orderData?.qr_data) {
-        qrData = orderData.qr_data;
+      if (orderData?.type_response?.qr_data) {
+        qrData = orderData.type_response.qr_data;
         mpOrderId = orderData.id || null;
       }
       console.log("[mp-qr] qrData extraido:", qrData ? String(qrData).slice(0, 80) : "VACIO (cae a fallback)");

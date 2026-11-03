@@ -139,6 +139,8 @@ export async function POST(request: Request) {
             city_name: "La Plata",
             state_name: "Buenos Aires",
             zip_code: "1900",
+            latitude: vendor.lat || -34.9215,
+            longitude: vendor.lng || -57.9545,
           },
         }),
       });

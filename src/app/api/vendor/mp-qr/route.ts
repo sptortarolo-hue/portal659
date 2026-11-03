@@ -137,9 +137,8 @@ export async function POST(request: Request) {
             street_name: vendor.address || "Calle",
             street_number: "1",
             city_name: "La Plata",
-            // state_code: omitido (MP no reconoce ningún código probado)
+            state_name: "Buenos Aires",
             zip_code: "1900",
-            country_name: "Argentina",
           },
         }),
       });

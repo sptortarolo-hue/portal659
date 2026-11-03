@@ -129,7 +129,7 @@ export async function POST(request: Request) {
 
   // 2) Si no hay store/pos, crearlos en MP.
   if (!storeId || !externalPosId) {
-    externalPosId = `portal659${vendor.id.replace(/-/g, "")}`;
+    externalPosId = vendor.id.replace(/-/g, "");
     try {
       // Crear store en MP.
       const storeRes = await fetch("https://api.mercadopago.com/users/" + vendor.mp_user_id + "/stores", {

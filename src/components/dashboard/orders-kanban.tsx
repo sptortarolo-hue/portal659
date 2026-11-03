@@ -12,6 +12,10 @@ import {
   CONDITION_META,
   orderReadyLabel,
   kitchenProgress,
+  jumpToDoneAvailable,
+  jumpSkippedSteps,
+  orderJumpLabel,
+  statusLabel,
 } from "@/lib/order-utils";
 import { AlertTriangle, ChevronRight, Banknote, MessageSquare, CheckCircle, Truck, Plus, ChefHat, Package } from "lucide-react";
 import { apartadoInfo } from "@/lib/apartado";
@@ -45,6 +49,7 @@ function OrderCard({
   isRetail,
   onClick,
   onNextStatus,
+  onJumpDone,
   style,
   courierName,
 }: {
@@ -52,6 +57,8 @@ function OrderCard({
   isRetail: boolean;
   onClick: () => void;
   onNextStatus: () => void;
+  /** Atajo "Entregar ya": un toque al estado final. */
+  onJumpDone: () => void;
   style?: React.CSSProperties;
   /** Nombre del repartidor asignado (si lo hay). */
   courierName?: string | null;
@@ -230,20 +237,35 @@ function OrderCard({
         )}
       </div>
 
-      <div className="flex items-center justify-between text-[10px] text-muted-foreground">
-        <span>
+      <div className="flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
+        <span className="min-w-0 truncate">
           {order.payment_method === "efectivo" && <Banknote className="mr-1 h-3 w-3" />}
           {order.payment_method === "transferencia" && <Banknote className="mr-1 h-3 w-3" />}
           {order.payment_method === "whatsapp" && <MessageSquare className="mr-1 h-3 w-3" />}
           {new Date(order.created_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}
         </span>
-        <button
-          onClick={(e) => { e.stopPropagation(); onNextStatus(); }}
-          className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-primary hover:text-primary/80 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-          aria-label="Avanzar al siguiente estado"
-        >
-          <ChevronRight className="h-3.5 w-3.5" />
-        </button>
+        <span className="flex items-center gap-1 shrink-0">
+          {/* Atajo "Entregar ya": solo cuando salta pasos (desde "Listo" en
+              retiro/mesa/mostrador y desde "Enviado" el botón de al lado ya
+              llega a Entregado). */}
+          {jumpToDoneAvailable(order, isRetail) && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onJumpDone(); }}
+              className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-bold text-primary hover:bg-primary/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              aria-label={orderJumpLabel(order)}
+              title={orderJumpLabel(order)}
+            >
+              ✓ {orderJumpLabel(order)}
+            </button>
+          )}
+          <button
+            onClick={(e) => { e.stopPropagation(); onNextStatus(); }}
+            className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-primary hover:text-primary/80 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            aria-label="Avanzar al siguiente estado"
+          >
+            <ChevronRight className="h-3.5 w-3.5" />
+          </button>
+        </span>
       </div>
     </div>
   );
@@ -255,6 +277,7 @@ function KanbanColumn({
   isRetail,
   onSelectOrder,
   onNextStatus,
+  onJumpDone,
   count,
   courierNameOf,
 }: {
@@ -263,6 +286,7 @@ function KanbanColumn({
   isRetail: boolean;
   onSelectOrder: (order: Order) => void;
   onNextStatus: (order: Order) => void;
+  onJumpDone: (order: Order) => void;
   count: number;
   courierNameOf: (order: Order) => string | null;
 }) {
@@ -344,6 +368,7 @@ function KanbanColumn({
               isRetail={isRetail}
               onClick={() => onSelectOrder(order)}
               onNextStatus={() => onNextStatus(order)}
+              onJumpDone={() => onJumpDone(order)}
               style={{ animationDelay: `${index * 50}ms` }}
               courierName={courierNameOf(order)}
             />
@@ -474,6 +499,37 @@ export function OrdersKanban({
     [isRetail, onRefresh, onError]
   );
 
+  // Atajo "Entregar ya" (un toque): lleva el pedido directo a "Entregado"
+  // salteando los pasos intermedios. Igual que el avance normal: si el server
+  // rechaza (409 por tildado incompleto, 403 por pago pendiente) el error
+  // sube al padre para mostrarlo.
+  const handleJumpDone = useCallback(
+    async (order: Order) => {
+      const skipped = jumpSkippedSteps(order, isRetail);
+      // Saltar 2+ pasos se confirma; saltar uno va directo.
+      if (skipped.length >= 2) {
+        const steps = skipped.map((s) => statusLabel(s, isRetail)).join(" → ");
+        if (!window.confirm(`El pedido pasa a Entregado y se salta: ${steps}. ¿Confirmás?`)) return;
+      }
+      try {
+        const res = await fetch(`/api/vendor/orders/${order.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: "completed" }),
+        });
+        const data = await res.json();
+        if (data.error) {
+          onError?.(String(data.error));
+          return;
+        }
+        onRefresh?.();
+      } catch {
+        onError?.("No se pudo actualizar el pedido");
+      }
+    },
+    [isRetail, onRefresh, onError]
+  );
+
   if (isLoading) {
     return (
       <div className="flex gap-3 overflow-x-auto pb-4 px-1">
@@ -531,6 +587,7 @@ export function OrdersKanban({
           isRetail={isRetail}
           onSelectOrder={onSelectOrder}
           onNextStatus={handleNextStatus}
+          onJumpDone={handleJumpDone}
           count={ordersByStatus[status]?.length || 0}
           courierNameOf={courierNameOf}
         />

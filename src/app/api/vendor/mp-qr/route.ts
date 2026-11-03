@@ -199,7 +199,7 @@ export async function POST(request: Request) {
       // Nueva Orders API de MP: devuelve qr_data (string EMVCo interoperable).
       const orderRes = await fetch("https://api.mercadopago.com/v1/orders", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${mpToken}` },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${mpToken}`, "X-Idempotency-Key": `${externalReference}-${Date.now()}` },
         body: JSON.stringify({
           type: "qr",
           external_reference: externalReference,

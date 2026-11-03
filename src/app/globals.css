@@ -80,6 +80,82 @@
   max-width: 1200px;
 }
 
+/* Utilidades de color de estado del KDS/kanban.
+   Las variables --color-status-* ya están en @theme (claro y oscuro), pero
+   Tailwind v4 no genera automáticamente las variantes de opacidad
+   (bg-status-new/10, text-status-new, border-status-new/20, etc.) que se
+   usan en el código. Las definimos explícitamente para que funcionen en
+   ambos modos de tema. */
+@utility bg-status-new { background-color: var(--color-status-new); }
+@utility bg-status-new\/10 { background-color: color-mix(in srgb, var(--color-status-new) 10%, transparent); }
+@utility bg-status-new\/15 { background-color: color-mix(in srgb, var(--color-status-new) 15%, transparent); }
+@utility bg-status-new\/20 { background-color: color-mix(in srgb, var(--color-status-new) 20%, transparent); }
+@utility bg-status-new\/50 { background-color: color-mix(in srgb, var(--color-status-new) 50%, transparent); }
+@utility text-status-new { color: var(--color-status-new); }
+@utility border-status-new { border-color: var(--color-status-new); }
+@utility border-status-new\/15 { border-color: color-mix(in srgb, var(--color-status-new) 15%, transparent); }
+@utility border-status-new\/20 { border-color: color-mix(in srgb, var(--color-status-new) 20%, transparent); }
+
+@utility bg-status-confirmed { background-color: var(--color-status-confirmed); }
+@utility bg-status-confirmed\/10 { background-color: color-mix(in srgb, var(--color-status-confirmed) 10%, transparent); }
+@utility bg-status-confirmed\/15 { background-color: color-mix(in srgb, var(--color-status-confirmed) 15%, transparent); }
+@utility bg-status-confirmed\/20 { background-color: color-mix(in srgb, var(--color-status-confirmed) 20%, transparent); }
+@utility bg-status-confirmed\/50 { background-color: color-mix(in srgb, var(--color-status-confirmed) 50%, transparent); }
+@utility text-status-confirmed { color: var(--color-status-confirmed); }
+@utility border-status-confirmed { border-color: var(--color-status-confirmed); }
+@utility border-status-confirmed\/15 { border-color: color-mix(in srgb, var(--color-status-confirmed) 15%, transparent); }
+@utility border-status-confirmed\/20 { border-color: color-mix(in srgb, var(--color-status-confirmed) 20%, transparent); }
+
+@utility bg-status-preparing { background-color: var(--color-status-preparing); }
+@utility bg-status-preparing\/10 { background-color: color-mix(in srgb, var(--color-status-preparing) 10%, transparent); }
+@utility bg-status-preparing\/15 { background-color: color-mix(in srgb, var(--color-status-preparing) 15%, transparent); }
+@utility bg-status-preparing\/20 { background-color: color-mix(in srgb, var(--color-status-preparing) 20%, transparent); }
+@utility bg-status-preparing\/50 { background-color: color-mix(in srgb, var(--color-status-preparing) 50%, transparent); }
+@utility text-status-preparing { color: var(--color-status-preparing); }
+@utility border-status-preparing { border-color: var(--color-status-preparing); }
+@utility border-status-preparing\/15 { border-color: color-mix(in srgb, var(--color-status-preparing) 15%, transparent); }
+@utility border-status-preparing\/20 { border-color: color-mix(in srgb, var(--color-status-preparing) 20%, transparent); }
+
+@utility bg-status-ready { background-color: var(--color-status-ready); }
+@utility bg-status-ready\/10 { background-color: color-mix(in srgb, var(--color-status-ready) 10%, transparent); }
+@utility bg-status-ready\/15 { background-color: color-mix(in srgb, var(--color-status-ready) 15%, transparent); }
+@utility bg-status-ready\/20 { background-color: color-mix(in srgb, var(--color-status-ready) 20%, transparent); }
+@utility bg-status-ready\/50 { background-color: color-mix(in srgb, var(--color-status-ready) 50%, transparent); }
+@utility text-status-ready { color: var(--color-status-ready); }
+@utility border-status-ready { border-color: var(--color-status-ready); }
+@utility border-status-ready\/15 { border-color: color-mix(in srgb, var(--color-status-ready) 15%, transparent); }
+@utility border-status-ready\/20 { border-color: color-mix(in srgb, var(--color-status-ready) 20%, transparent); }
+
+@utility bg-status-sent { background-color: var(--color-status-sent); }
+@utility bg-status-sent\/10 { background-color: color-mix(in srgb, var(--color-status-sent) 10%, transparent); }
+@utility bg-status-sent\/15 { background-color: color-mix(in srgb, var(--color-status-sent) 15%, transparent); }
+@utility bg-status-sent\/20 { background-color: color-mix(in srgb, var(--color-status-sent) 20%, transparent); }
+@utility bg-status-sent\/50 { background-color: color-mix(in srgb, var(--color-status-sent) 50%, transparent); }
+@utility text-status-sent { color: var(--color-status-sent); }
+@utility border-status-sent { border-color: var(--color-status-sent); }
+@utility border-status-sent\/15 { border-color: color-mix(in srgb, var(--color-status-sent) 15%, transparent); }
+@utility border-status-sent\/20 { border-color: color-mix(in srgb, var(--color-status-sent) 20%, transparent); }
+
+@utility bg-status-completed { background-color: var(--color-status-completed); }
+@utility bg-status-completed\/10 { background-color: color-mix(in srgb, var(--color-status-completed) 10%, transparent); }
+@utility bg-status-completed\/15 { background-color: color-mix(in srgb, var(--color-status-completed) 15%, transparent); }
+@utility bg-status-completed\/20 { background-color: color-mix(in srgb, var(--color-status-completed) 20%, transparent); }
+@utility bg-status-completed\/50 { background-color: color-mix(in srgb, var(--color-status-completed) 50%, transparent); }
+@utility text-status-completed { color: var(--color-status-completed); }
+@utility border-status-completed { border-color: var(--color-status-completed); }
+@utility border-status-completed\/15 { border-color: color-mix(in srgb, var(--color-status-completed) 15%, transparent); }
+@utility border-status-completed\/20 { border-color: color-mix(in srgb, var(--color-status-completed) 20%, transparent); }
+
+@utility bg-status-cancelled { background-color: var(--color-status-cancelled); }
+@utility bg-status-cancelled\/10 { background-color: color-mix(in srgb, var(--color-status-cancelled) 10%, transparent); }
+@utility bg-status-cancelled\/15 { background-color: color-mix(in srgb, var(--color-status-cancelled) 15%, transparent); }
+@utility bg-status-cancelled\/20 { background-color: color-mix(in srgb, var(--color-status-cancelled) 20%, transparent); }
+@utility bg-status-cancelled\/50 { background-color: color-mix(in srgb, var(--color-status-cancelled) 50%, transparent); }
+@utility text-status-cancelled { color: var(--color-status-cancelled); }
+@utility border-status-cancelled { border-color: var(--color-status-cancelled); }
+@utility border-status-cancelled\/15 { border-color: color-mix(in srgb, var(--color-status-cancelled) 15%, transparent); }
+@utility border-status-cancelled\/20 { border-color: color-mix(in srgb, var(--color-status-cancelled) 20%, transparent); }
+
 @layer base {
   /* Nada puede desbordar el viewport en horizontal (red de seguridad global).
      `clip` (a diferencia de `hidden`) no crea un scroll container: los

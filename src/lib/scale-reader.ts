@@ -235,17 +235,22 @@ async function readForMs(
     await sendEnq();
     lastEnq = Date.now();
     while (Date.now() < deadline) {
+      // Corte temprano: con peso válido y 100 ms desde el primer byte,
+      // terminamos. Se evalúa en CADA vuelta (no solo al recibir chunks):
+      // en modo polled la trama llega y después viene silencio, y ese caso
+      // era justamente el que antes esperaba el timeout completo.
+      if (buf && firstByteAt && Date.now() - firstByteAt >= 100 && parseScaleKg(buf) != null) {
+        break;
+      }
       // Re-pedir cada ~900ms: cubre peso inestable (WACK) y cambios de peso.
       if (Date.now() - lastEnq > 900) {
         await sendEnq();
         lastEnq = Date.now();
       }
       if (!pending) pending = reader.read();
-      // No se corta en el primer silencio: se reusa la misma lectura
-      // pendiente hasta agotar la ventana (balanzas que mandan a ráfagas).
       const res = await Promise.race([
         pending,
-        new Promise<typeof SLEEP>((res) => setTimeout(() => res(SLEEP), 400)),
+        new Promise<typeof SLEEP>((res) => setTimeout(() => res(SLEEP), 100)),
       ]);
       if (res === SLEEP) continue;
       pending = null;
@@ -255,11 +260,6 @@ async function readForMs(
       buf += chunk;
       if (!firstByteAt) firstByteAt = Date.now();
       onChunk(chunk);
-      // Corte temprano: apenas llega un peso válido y pasaron 250 ms desde el
-      // primer byte, terminamos (evita esperar el timeout completo).
-      if (firstByteAt && Date.now() - firstByteAt >= 100 && parseScaleKg(buf) != null) {
-        break;
-      }
     }
   } finally {
     try {

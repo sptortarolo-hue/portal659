@@ -220,6 +220,8 @@ async function readForMs(
     const deadline = Date.now() + ms;
     let pending: Promise<any> | null = null;
     let lastEnq = 0;
+    let buf = "";
+    let firstByteAt = 0;
     // Envía el byte de pedido ENQ (0x05): imprescindible para balanzas en
     // modo polled (Systel Clipse/Croma/Cuora) y harmless en modo continuo.
     const sendEnq = async () => {
@@ -249,7 +251,15 @@ async function readForMs(
       pending = null;
       const { value, done } = res as any;
       if (done || !value) break;
-      onChunk(decoder.decode(value, { stream: true }));
+      const chunk = decoder.decode(value, { stream: true });
+      buf += chunk;
+      if (!firstByteAt) firstByteAt = Date.now();
+      onChunk(chunk);
+      // Corte temprano: apenas llega un peso válido y pasaron 250 ms desde el
+      // primer byte, terminamos (evita esperar el timeout completo).
+      if (firstByteAt && Date.now() - firstByteAt >= 250 && parseScaleKg(buf) != null) {
+        break;
+      }
     }
   } finally {
     try {

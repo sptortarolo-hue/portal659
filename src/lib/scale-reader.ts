@@ -15,8 +15,8 @@
 
 const BAUDS = [9600, 19200, 38400, 115200, 4800, 2400];
 
-const READ_MS_FIRST = 7000; // primer intento (baud recordado o 9600): más margen
-const READ_MS_SCAN = 4000; // resto del barrido
+const READ_MS_FIRST = 3000; // primer intento (baud recordado o 9600): más margen
+const READ_MS_SCAN = 1500; // resto del barrido
 
 /** Peso máximo plausible de una balanza de mostrador (kg). */
 const MAX_KG = 1000;
@@ -257,7 +257,7 @@ async function readForMs(
       onChunk(chunk);
       // Corte temprano: apenas llega un peso válido y pasaron 250 ms desde el
       // primer byte, terminamos (evita esperar el timeout completo).
-      if (firstByteAt && Date.now() - firstByteAt >= 250 && parseScaleKg(buf) != null) {
+      if (firstByteAt && Date.now() - firstByteAt >= 100 && parseScaleKg(buf) != null) {
         break;
       }
     }
@@ -308,7 +308,7 @@ export async function readScaleFromPort(
       /* noop: no todos los navegadores/adaptadores lo soportan */
     }
     // Dar tiempo a que la balanza detecte DTR antes de enviar ENQ.
-    await new Promise((r) => setTimeout(r, 150));
+    await new Promise((r) => setTimeout(r, 30));
     let raw = "";
     let writer: any = null;
     try {
@@ -329,7 +329,7 @@ export async function readScaleFromPort(
         }
       };
       await send([0x05]);
-      await new Promise((r) => setTimeout(r, 250));
+      await new Promise((r) => setTimeout(r, 50));
       await send([0x07, 0x07]);
       await readForMs(
         port,

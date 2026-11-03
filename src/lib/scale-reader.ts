@@ -150,26 +150,50 @@ function toNumber(token: string): number | null {
  * Devuelve null si no hay ningún peso interpretable > 0.
  */
 export function parseScaleKg(text: string): number | null {
+  // 1) Frames delimitados (protocolo polled): Systel STX...ETX, CAS STX...CR.
+  //    El peso viaja ASCII entre los delimitadores; la verificación (CRC) va
+  //    después y NO debe confundirse con el peso (antes un CRC dígito podía
+  //    sobrescribir el peso real).
+  let lastKg: number | null = null;
+  const frameRes = [/\x02([^\x03]*)\x03/g, /\x02([^\x0D]*)\x0D/g];
+  for (const re of frameRes) {
+    re.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text)) !== null) {
+      const token = (m[1] || "").replace(/\s+/g, "");
+      if (!token) continue;
+      const v = toNumber(token);
+      if (v == null || !Number.isFinite(v)) continue;
+      // En frames polled el visor envía kg con decimales: si tiene separador
+      // decimal es kg; si es entero se asume gramos (CAS/Torrey típicos).
+      const kg = token.includes(".") || token.includes(",")
+        ? Math.abs(v)
+        : Math.abs(v) / 1000;
+      if (kg > 0 && kg <= MAX_KG) lastKg = kg;
+    }
+  }
+  if (lastKg != null) return lastKg;
+
+  // 2) Parser genérico (modo continuo / texto libre).
   const clean = text.replace(/[^\x20-\x7E]/g, " ");
   // Número (con separadores decimales/miles opcionales) + unidad opcional
   // pegada (kg|g). Sin \s en la clase interna: los saltos de línea separan
   // lecturas consecutivas y no deben pegarse en un solo número.
-  const re = /([+-]?\d[\d.,]{0,11}\d|[+-]?\d)\s*(kg|g)?/gi;
-  let lastKg: number | null = null;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(clean)) !== null) {
-    const unit = m[2]?.toLowerCase();
-    const v = toNumber(m[1]);
+  const re2 = /([+-]?\d[\d.,]{0,11}\d|[+-]?\d)\s*(kg|g)?/gi;
+  let m2: RegExpExecArray | null;
+  while ((m2 = re2.exec(clean)) !== null) {
+    const unit = m2[2]?.toLowerCase();
+    const v = toNumber(m2[1]);
     if (v == null || !Number.isFinite(v)) continue;
     let kg: number | null = null;
     if (unit === "kg") kg = Math.abs(v);
     else if (unit === "g") kg = Math.abs(v) / 1000;
-    else if (m[1].includes(".") || m[1].includes(","))
+    else if (m2[1].includes(".") || m2[1].includes(","))
       kg = Math.abs(v); // decimal sin unidad: kg (x.yyy kg ≡ xyyy g: mismo valor)
     else kg = Math.abs(v) / 1000; // entero sin unidad: gramos (frames típicos)
     if (kg != null && kg > 0 && kg <= MAX_KG) lastKg = kg;
     // Avanzar más allá del match para no loopear sobre cadenas vacías.
-    if (m.index === re.lastIndex) re.lastIndex++;
+    if (m2.index === re2.lastIndex) re2.lastIndex++;
   }
   return lastKg;
 }
@@ -181,14 +205,33 @@ const SLEEP = Symbol("timeout");
 async function readForMs(
   port: any,
   ms: number,
-  onChunk: (s: string) => void
+  onChunk: (s: string) => void,
+  writer?: any
 ): Promise<void> {
   const reader = port.readable.getReader();
   const decoder = new TextDecoder();
   try {
     const deadline = Date.now() + ms;
     let pending: Promise<any> | null = null;
+    let lastEnq = 0;
+    // Envía el byte de pedido ENQ (0x05): imprescindible para balanzas en
+    // modo polled (Systel Clipse/Croma/Cuora) y harmless en modo continuo.
+    const sendEnq = async () => {
+      if (!writer) return;
+      try {
+        await writer.write(new Uint8Array([0x05]));
+      } catch {
+        /* noop */
+      }
+    };
+    await sendEnq();
+    lastEnq = Date.now();
     while (Date.now() < deadline) {
+      // Re-pedir cada ~900ms: cubre peso inestable (WACK) y cambios de peso.
+      if (Date.now() - lastEnq > 900) {
+        await sendEnq();
+        lastEnq = Date.now();
+      }
       if (!pending) pending = reader.read();
       // No se corta en el primer silencio: se reusa la misma lectura
       // pendiente hasta agotar la ventana (balanzas que mandan a ráfagas).
@@ -240,15 +283,41 @@ export async function readScaleFromPort(
       }
     }
     let raw = "";
+    let writer: any = null;
     try {
+      try {
+        writer = port.writable?.getWriter?.();
+      } catch {
+        writer = null;
+      }
+      // Systel (Clipse/Croma/Cuora) polled: requiere ENQ (0x05) para responder.
+      // Modo B (estabilidad): requiere 0x07 0x07. Ambos son inofensivos en
+      // modo continuo y en otras marcas.
+      const send = async (bytes: number[]) => {
+        if (!writer) return;
+        try {
+          await writer.write(new Uint8Array(bytes));
+        } catch {
+          /* noop */
+        }
+      };
+      await send([0x05]);
+      await new Promise((r) => setTimeout(r, 250));
+      await send([0x07, 0x07]);
       await readForMs(
         port,
         baud === bauds[0] ? READ_MS_FIRST : READ_MS_SCAN,
         (s) => {
           raw += s;
-        }
+        },
+        writer
       );
     } finally {
+      try {
+        writer?.releaseLock();
+      } catch {
+        /* noop */
+      }
       try {
         await port.close();
       } catch {

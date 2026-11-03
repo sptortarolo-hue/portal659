@@ -436,7 +436,7 @@ export async function POST(request: Request) {
     // comanda y usan el flow corto de 2 pasos: new → ready ("Listo").
     // Venta directa retail: nace cerrada (no genera pedido).
     const needsKitchen = finalItems.some((i) => i.requires_prep !== false);
-    const status = direct ? "completed" : needsKitchen || isDelivery ? "preparing" : "new";
+    const status = direct && !deferPayment ? "completed" : needsKitchen || isDelivery ? "preparing" : "new";
 
     // Stock: la venta de mostrador descuenta igual que el canal app (la
     // función es no-op para productos sin stock_control — gastro no nota el
@@ -509,8 +509,8 @@ export async function POST(request: Request) {
       "cash_discount",
       ...(hasVolumeCol ? ["volume_discount"] : []),
       ...(hasManualCol ? ["manual_discount", "manual_discount_kind", "manual_discount_reason", "manual_discount_value"] : []),
-      ...(direct && hasClosedAt ? ["closed_at"] : []),
-      ...(direct && hasDirectCol ? ["is_direct"] : []),
+      ...(direct && !deferPayment && hasClosedAt ? ["closed_at"] : []),
+      ...(direct && !deferPayment && hasDirectCol ? ["is_direct"] : []),
       ...(hasPayStatus ? ["payment_status"] : []),
       ...syncCols,
       ...(hasZoneCols ? ["delivery_zone_id", "delivery_zone_name", "delivery_out_of_area", "delivery_fee"] : []),
@@ -537,7 +537,7 @@ export async function POST(request: Request) {
       cashDiscount,
       ...(hasVolumeCol ? [volumeDiscount] : []),
       ...(hasManualCol ? [manualDiscountAmount, manualIn ? manualIn.kind : null, manualIn ? manualIn.reason : null, manualIn ? manualIn.value : null] : []),
-      ...(direct && hasClosedAt ? [now] : []),
+      ...(direct && !deferPayment && hasClosedAt ? [now] : []),
       ...(direct && hasDirectCol ? [true] : []),
       ...(hasPayStatus ? [deferPayment === true ? "pending" : (payment === "fiado" ? "pending" : "paid")] : []),
       ...(caps.ordersClientKey ? [clientKey] : []),
